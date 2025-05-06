@@ -577,6 +577,7 @@ pub enum EntryId {
     TakeScreenshot,
     Reboot,
     Quit,
+    Suspend,
 }
 
 impl EntryKind {

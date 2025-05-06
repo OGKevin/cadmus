@@ -8,7 +8,7 @@ use xi_unicode::LineBreakIterator;
 use percent_encoding::percent_decode_str;
 use septem::Roman;
 use crate::helpers::{Normalize, decode_entities};
-use crate::framebuffer::{Framebuffer, Pixmap};
+use crate::framebuffer::{Framebuffer, Pixmap, Samples};
 use crate::font::{FontOpener, FontFamily};
 use crate::document::{Document, Location};
 use crate::document::pdf::PdfOpener;
@@ -1669,7 +1669,7 @@ impl Engine {
         merged_items
     }
 
-    pub fn render_page(&mut self, page: &[DrawCommand], scale_factor: f32, samples: usize, resource_fetcher: &mut dyn ResourceFetcher) -> Option<Pixmap> {
+    pub fn render_page(&mut self, page: &[DrawCommand], scale_factor: f32, samples: Samples, resource_fetcher: &mut dyn ResourceFetcher) -> Option<Pixmap> {
         let width = (self.dims.0 as f32 * scale_factor) as u32;
         let height = (self.dims.1 as f32 * scale_factor) as u32;
         let mut fb = Pixmap::try_new(width, height, samples)?;

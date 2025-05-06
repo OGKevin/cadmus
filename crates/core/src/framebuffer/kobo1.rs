@@ -112,6 +112,10 @@ impl KoboFramebuffer1 {
 
 impl Framebuffer for KoboFramebuffer1 {
     fn set_pixel(&mut self, x: u32, y: u32, color: Color) {
+        if color.is_transparent() {
+            return
+        }
+
         let c = (self.transform)(x, y, color);
         (self.set_pixel_rgb)(self, x, y, c.rgb());
     }

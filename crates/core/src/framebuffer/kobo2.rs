@@ -234,6 +234,10 @@ impl KoboFramebuffer2 {
 
 impl Framebuffer for KoboFramebuffer2 {
     fn set_pixel(&mut self, x: u32, y: u32, color: Color) {
+        if color.is_transparent() {
+            return
+        }
+
         let mut c = (self.transform)(x, y, color);
         if self.inverted {
             c.invert();

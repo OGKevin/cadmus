@@ -11,7 +11,7 @@ use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 use fxhash::FxHashMap;
 use anyhow::Error;
-use crate::framebuffer::Pixmap;
+use crate::framebuffer::{Pixmap, Samples};
 use crate::helpers::{Normalize, decode_entities};
 use crate::document::{Document, Location, TextLocation, TocEntry, BoundedText};
 use crate::unit::pt_to_px;
@@ -372,7 +372,7 @@ impl Document for HtmlDocument {
         }).collect(), offset))
     }
 
-    fn pixmap(&mut self, loc: Location, scale: f32, samples: usize) -> Option<(Pixmap, usize)> {
+    fn pixmap(&mut self, loc: Location, scale: f32, samples: Samples) -> Option<(Pixmap, usize)> {
         let offset = self.resolve_location(loc)?;
         let page_index = self.page_index(offset)?;
         let page = self.pages[page_index].clone();

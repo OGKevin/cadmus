@@ -11,6 +11,7 @@ use std::ffi::{CString, CStr};
 use std::os::unix::ffi::OsStrExt;
 use super::{Document, Location, TextLocation, BoundedText, TocEntry};
 use super::{chapter, chapter_relative};
+use crate::framebuffer::Samples;
 use crate::metadata::TextAlign;
 use crate::geom::{Boundary, CycleDir};
 use crate::unit::pt_to_px;
@@ -209,7 +210,7 @@ impl Document for PdfDocument {
         }
     }
 
-    fn pixmap(&mut self, loc: Location, scale: f32, samples: usize) -> Option<(Pixmap, usize)> {
+    fn pixmap(&mut self, loc: Location, scale: f32, samples: Samples) -> Option<(Pixmap, usize)> {
         let index = self.resolve_location(loc)?;
         self.page(index).and_then(|page| page.pixmap(scale, samples)).map(|pixmap| (pixmap, index))
     }
@@ -467,7 +468,7 @@ impl<'a> PdfPage<'a> {
         }
     }
 
-    pub fn pixmap(&self, scale: f32, color_samples: usize) -> Option<Pixmap> {
+    pub fn pixmap(&self, scale: f32, color_samples: Samples) -> Option<Pixmap> {
         unsafe {
             let mat = fz_scale(scale as libc::c_float, scale as libc::c_float);
             let color_space = if color_samples == 1 {

@@ -1,6 +1,8 @@
 use std::env;
 use std::fmt;
 use lazy_static::lazy_static;
+use crate::framebuffer::Samples;
+use crate::framebuffer::ToSamples;
 use crate::input::TouchProto;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -89,6 +91,15 @@ pub enum FrontlightKind {
     Standard,
     Natural,
     Premixed,
+}
+
+impl ToSamples for Device {
+    fn to_samples(&self) -> Samples {
+        match self.model {
+            Model::ClaraColour | Model::LibraColour => Samples::Rgb,
+            _ => Samples::Grey,
+        }
+    }
 }
 
 impl Device {
@@ -236,10 +247,7 @@ impl Device {
     }
 
     pub fn color_samples(&self) -> usize {
-        match self.model {
-            Model::ClaraColour | Model::LibraColour => 3,
-            _ => 1,
-        }
+        self.to_samples().into()
     }
 
     pub fn frontlight_kind(&self) -> FrontlightKind {

@@ -105,7 +105,12 @@ pub fn toggle_main_menu(view: &mut dyn View, rect: Rectangle, enable: Option<boo
                                EntryKind::SubMenu("Rotate".to_string(), rotate),
                                EntryKind::Command("Take Screenshot".to_string(),
                                                   EntryId::TakeScreenshot),
+
                                EntryKind::Separator,
+                               EntryKind::Command("Suspend".to_string(),
+                                                  EntryId::Suspend),
+                               EntryKind::Separator,
+
                                EntryKind::SubMenu("Applications".to_string(), apps),
                                EntryKind::Separator];
 

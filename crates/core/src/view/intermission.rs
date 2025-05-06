@@ -1,14 +1,16 @@
-use std::path::PathBuf;
-use crate::device::CURRENT_DEVICE;
-use crate::document::{Location, open};
-use crate::geom::Rectangle;
-use crate::font::{Fonts, font_from_style, DISPLAY_STYLE};
-use super::{View, Event, Hub, Bus, Id, ID_FEEDER, RenderQueue};
-use crate::framebuffer::Framebuffer;
-use crate::settings::{IntermKind, LOGO_SPECIAL_PATH, COVER_SPECIAL_PATH};
-use crate::metadata::{SortMethod, BookQuery, sort};
-use crate::color::{TEXT_NORMAL, TEXT_INVERTED_HARD};
+use rand::Rng;
+
+use super::{Bus, Event, Hub, Id, RenderQueue, View, ID_FEEDER};
+use crate::color::{TEXT_INVERTED_HARD, TEXT_NORMAL};
 use crate::context::Context;
+use crate::device::CURRENT_DEVICE;
+use crate::document::{open, Location};
+use crate::font::{font_from_style, Fonts, DISPLAY_STYLE};
+use crate::framebuffer::{Framebuffer, Samples, ToSamples};
+use crate::geom::Rectangle;
+use crate::metadata::{sort, BookQuery, SortMethod};
+use crate::settings::{IntermKind, COVER_SPECIAL_PATH, LOGO_SPECIAL_PATH};
+use std::path::PathBuf;
 
 pub struct Intermission {
     id: Id,
@@ -27,23 +29,37 @@ pub enum Message {
 impl Intermission {
     pub fn new(rect: Rectangle, kind: IntermKind, context: &Context) -> Intermission {
         let path = &context.settings.intermissions[kind];
-        let message = match path.to_str() {
-            Some(LOGO_SPECIAL_PATH) => Message::Text(kind.text().to_string()),
-            Some(COVER_SPECIAL_PATH) => {
-                let query = BookQuery {
-                    reading: Some(true),
-                    .. Default::default()
-                };
-                let (mut files, _) = context.library.list(&context.library.home, Some(&query), false);
-                sort(&mut files, SortMethod::Opened, true);
-                if !files.is_empty() {
-                    Message::Cover(context.library.home.join(&files[0].file.path))
-                } else {
-                    Message::Text(kind.text().to_string())
+
+        let message = match path.is_dir() {
+            true => {
+                let mut rng = rand::rng();
+                let images: Vec<_> = path.read_dir().expect("could not read dir").collect();
+                let image = images.get(rng.random_range(0..images.len())).expect("").as_ref().expect("");
+
+                Message::Image(image.path())
+            }
+            false => match path.to_str() {
+                Some(LOGO_SPECIAL_PATH) => Message::Text(kind.text().to_string()),
+                Some(COVER_SPECIAL_PATH) => {
+                    let query = BookQuery {
+                        reading: Some(true),
+                        ..Default::default()
+                    };
+                    let (mut files, _) =
+                        context
+                            .library
+                            .list(&context.library.home, Some(&query), false);
+                    sort(&mut files, SortMethod::Opened, true);
+                    if !files.is_empty() {
+                        Message::Cover(context.library.home.join(&files[0].file.path))
+                    } else {
+                        Message::Text(kind.text().to_string())
+                    }
                 }
+                _ => Message::Image(path.clone()),
             },
-            _ => Message::Image(path.clone()),
         };
+
         Intermission {
             id: ID_FEEDER.next(),
             rect,
@@ -66,7 +82,7 @@ impl View for Intermission {
             TEXT_NORMAL
         };
 
-        fb.draw_rectangle(&self.rect, scheme[0]);
+        // fb.draw_rectangle(&self.rect, scheme[0]);
 
         match self.message {
             Message::Text(ref text) => {
@@ -94,22 +110,23 @@ impl View for Intermission {
                 let mut doc = open("icons/dodecahedron.svg").unwrap();
                 let (width, height) = doc.dims(0).unwrap();
                 let scale = (plan.width as f32 / width.max(height) as f32) / 4.0;
-                let (pixmap, _) = doc.pixmap(Location::Exact(0), scale, 1).unwrap();
+                let (pixmap, _) = doc.pixmap(Location::Exact(0), scale, Samples::Grey).unwrap();
                 let dx = (self.rect.width() as i32 - pixmap.width as i32) / 2;
                 let dy = dy + 2 * x_height;
                 let pt = self.rect.min + pt!(dx, dy);
 
                 fb.draw_blended_pixmap(&pixmap, pt, scheme[1]);
-            },
+            }
             Message::Image(ref path) => {
                 if let Some(mut doc) = open(path) {
                     if let Some((width, height)) = doc.dims(0) {
                         let w_ratio = self.rect.width() as f32 / width;
                         let h_ratio = self.rect.height() as f32 / height;
                         let scale = w_ratio.min(h_ratio);
-                        if let Some((pixmap, _)) = doc.pixmap(Location::Exact(0),
-                                                              scale,
-                                                              CURRENT_DEVICE.color_samples()) {
+                        if let Some((pixmap, _)) =
+                            doc.pixmap(Location::Exact(0), scale, Samples::Rgba)
+                        {
+                            // pixmap.
                             let dx = (self.rect.width() as i32 - pixmap.width as i32) / 2;
                             let dy = (self.rect.height() as i32 - pixmap.height as i32) / 2;
                             let pt = self.rect.min + pt!(dx, dy);
@@ -121,12 +138,14 @@ impl View for Intermission {
                         }
                     }
                 }
-            },
+            }
             Message::Cover(ref path) => {
                 if let Some(mut doc) = open(path) {
-                    if let Some(pixmap) = doc.preview_pixmap(self.rect.width() as f32,
-                                                             self.rect.height() as f32,
-                                                             CURRENT_DEVICE.color_samples()) {
+                    if let Some(pixmap) = doc.preview_pixmap(
+                        self.rect.width() as f32,
+                        self.rect.height() as f32,
+                        CURRENT_DEVICE.to_samples(),
+                    ) {
                         let dx = (self.rect.width() as i32 - pixmap.width as i32) / 2;
                         let dy = (self.rect.height() as i32 - pixmap.height as i32) / 2;
                         let pt = self.rect.min + pt!(dx, dy);
@@ -137,7 +156,7 @@ impl View for Intermission {
                         }
                     }
                 }
-            },
+            }
         }
     }
 

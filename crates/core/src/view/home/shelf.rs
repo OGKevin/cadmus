@@ -8,7 +8,7 @@ use crate::view::{View, Event, Hub, Bus, Id, ID_FEEDER, RenderQueue, RenderData}
 use crate::view::{BIG_BAR_HEIGHT, THICKNESS_MEDIUM};
 use crate::view::filler::Filler;
 use crate::document::open;
-use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::framebuffer::{Framebuffer, ToSamples, UpdateMode};
 use crate::settings::{FirstColumn, SecondColumn};
 use crate::geom::{Rectangle, Dir, CycleDir, halves};
 use crate::color::{WHITE, SEPARATOR_NORMAL};
@@ -90,7 +90,7 @@ impl Shelf {
                         // triggered by loading multiple jp2 pixmaps in parallel.
                         let _guard = EXCLUSIVE_ACCESS.lock().unwrap();
                         open(full_path).and_then(|mut doc| {
-                            doc.preview_pixmap(tw as f32, th as f32, CURRENT_DEVICE.color_samples())
+                            doc.preview_pixmap(tw as f32, th as f32, CURRENT_DEVICE.to_samples())
                         }).map(|pixmap| {
                             if pixmap.save(&thumb_path2).is_ok() {
                                 hub2.send(Event::RefreshBookPreview(path, Some(PathBuf::from(thumb_path2)))).ok();

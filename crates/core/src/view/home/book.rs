@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 use crate::device::CURRENT_DEVICE;
-use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::framebuffer::{Framebuffer, ToSamples, UpdateMode};
 use crate::view::{View, Event, Hub, Bus, Id, ID_FEEDER, RenderQueue, RenderData, THICKNESS_SMALL};
 use crate::font::{MD_TITLE, MD_AUTHOR, MD_YEAR, MD_KIND, MD_SIZE};
 use crate::color::{BLACK, WHITE, READING_PROGRESS};
@@ -129,7 +129,7 @@ impl View for Book {
                 }).and_then(|mut doc| {
                     doc.dims(0).and_then(|dims| {
                         let scale = (tw as f32 / dims.0).min(th as f32 / dims.1);
-                        doc.pixmap(Location::Exact(0), scale, CURRENT_DEVICE.color_samples())
+                        doc.pixmap(Location::Exact(0), scale, CURRENT_DEVICE.to_samples())
                     })
                 }) {
                     let dx = (tw - pixmap.width as i32) / 2;

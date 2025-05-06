@@ -15,7 +15,7 @@ use crate::view::common::{locate_by_id};
 use crate::view::{View, Event, Hub, Bus, RenderQueue, RenderData};
 use crate::view::{EntryKind, EntryId, ViewId, Id, ID_FEEDER};
 use crate::view::{SMALL_BAR_HEIGHT, BORDER_RADIUS_SMALL};
-use crate::framebuffer::{Framebuffer, UpdateMode, Pixmap};
+use crate::framebuffer::{Framebuffer, Pixmap, Samples, UpdateMode};
 use crate::settings::{ImportSettings, Pen};
 use crate::helpers::IsHidden;
 use crate::font::Fonts;
@@ -77,7 +77,7 @@ impl Sketch {
             id,
             rect,
             children,
-            pixmap: Pixmap::new(rect.width(), rect.height(), 1),
+            pixmap: Pixmap::new(rect.width(), rect.height(), Samples::Grey),
             fingers: FxHashMap::default(),
             pen: context.settings.sketch.pen.clone(),
             save_path,

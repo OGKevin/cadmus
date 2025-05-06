@@ -2,6 +2,7 @@ pub mod djvu;
 pub mod pdf;
 pub mod epub;
 pub mod html;
+mod image;
 
 mod djvulibre_sys;
 mod mupdf_sys;
@@ -28,7 +29,7 @@ use self::epub::EpubDocument;
 use self::html::HtmlDocument;
 use crate::geom::{Boundary, CycleDir};
 use crate::metadata::{TextAlign, Annotation};
-use crate::framebuffer::Pixmap;
+use crate::framebuffer::{Pixmap, Samples};
 use crate::settings::INTERNAL_CARD_ROOT;
 use crate::device::CURRENT_DEVICE;
 
@@ -101,7 +102,7 @@ pub trait Document: Send+Sync {
     fn links(&mut self, loc: Location) -> Option<(Vec<BoundedText>, usize)>;
     fn images(&mut self, loc: Location) -> Option<(Vec<Boundary>, usize)>;
 
-    fn pixmap(&mut self, loc: Location, scale: f32, samples: usize) -> Option<(Pixmap, usize)>;
+    fn pixmap(&mut self, loc: Location, scale: f32, samples: Samples) -> Option<(Pixmap, usize)>;
     fn layout(&mut self, width: u32, height: u32, font_size: f32, dpi: u16);
     fn set_font_family(&mut self, family_name: &str, search_path: &str);
     fn set_margin_width(&mut self, width: i32);
@@ -125,7 +126,7 @@ pub trait Document: Send+Sync {
         Err(format_err!("this document can't be saved"))
     }
 
-    fn preview_pixmap(&mut self, width: f32, height: f32, samples: usize) -> Option<Pixmap> {
+    fn preview_pixmap(&mut self, width: f32, height: f32, samples: Samples) -> Option<Pixmap> {
         self.dims(0).and_then(|dims| {
             let scale = (width / dims.0).min(height / dims.1);
             self.pixmap(Location::Exact(0), scale, samples)
@@ -237,6 +238,11 @@ pub fn open<P: AsRef<Path>>(path: P) -> Option<Box<dyn Document>> {
                 DjvuOpener::new().and_then(|o| {
                     o.open(path)
                      .map(|d| Box::new(d) as Box<dyn Document>)
+                })
+            },
+            "png" => {
+                image::open(path.as_ref()).and_then(|i| {
+                    Some(Box::new(i) as Box<dyn Document>)
                 })
             },
             _ => {

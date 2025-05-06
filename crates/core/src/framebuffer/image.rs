@@ -1,20 +1,105 @@
 use std::fs::File;
+use std::ops::{Add, Mul};
 use std::path::Path;
 use anyhow::{Error, Context, format_err};
+use png::ColorType;
 use super::{Framebuffer, UpdateMode};
 use crate::color::{Color, WHITE};
 use crate::geom::{Rectangle, lerp};
+
+#[derive(Clone, Debug, Copy)]
+pub enum Samples {
+    Grey,
+    // TODO(ogkevin): implement GreyAlpha
+    // GreyAlpha,
+    Rgb,
+    Rgba,
+}
+
+impl PartialEq<usize> for Samples {
+    fn eq(&self, other: &usize) -> bool {
+        self.value() == *other
+    }
+}
+
+impl PartialEq<Samples> for usize {
+    fn eq(&self, other: &Samples) -> bool {
+        *self == other.value()
+    }
+}
+
+impl Samples {
+    fn value(&self) -> usize {
+        match self {
+            Samples::Grey => 1,
+            Samples::Rgb => 3,
+            Samples::Rgba => 4,
+        }
+    }
+}
+
+impl Mul<Samples> for usize {
+    type Output = usize;
+
+    fn mul(self, rhs: Samples) -> Self::Output {
+        self * rhs.value()
+    }
+}
+
+impl Mul<usize> for Samples {
+    type Output = usize;
+
+    fn mul(self, rhs: usize) -> Self::Output {
+        self.value() * rhs
+    }
+}
+
+impl Add<Samples> for usize {
+    type Output = usize;
+
+    fn add(self, rhs: Samples) -> Self::Output {
+        self + rhs.value()
+    }
+}
+
+impl Add<usize> for Samples {
+    type Output = usize;
+
+    fn add(self, rhs: usize) -> Self::Output {
+        self.value() + rhs
+    }
+}
+
+impl From<Samples> for usize {
+    fn from(value: Samples) -> Self {
+        value.value()
+    }
+}
+
+pub trait ToSamples {
+    fn to_samples(&self) -> Samples;
+}
+
+impl ToSamples for ColorType {
+    fn to_samples(&self) -> Samples {
+        match self {
+            ColorType::Grayscale | ColorType::Indexed | ColorType::GrayscaleAlpha => Samples::Grey,
+            ColorType::Rgb => Samples::Rgb,
+            ColorType::Rgba => Samples::Rgba,
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct Pixmap {
     pub width: u32,
     pub height: u32,
-    pub samples: usize,
+    pub samples: Samples,
     pub data: Vec<u8>,
 }
 
 impl Pixmap {
-    pub fn new(width: u32, height: u32, samples: usize) -> Pixmap {
+    pub fn new(width: u32, height: u32, samples: Samples) -> Pixmap {
         let len = samples * (width * height) as usize;
         Pixmap {
             width,
@@ -24,7 +109,7 @@ impl Pixmap {
         }
     }
 
-    pub fn try_new(width: u32, height: u32, samples: usize) -> Option<Pixmap> {
+    pub fn try_new(width: u32, height: u32, samples: Samples) -> Option<Pixmap> {
         let mut data = Vec::new();
         let len = samples * (width * height) as usize;
         data.try_reserve_exact(len).ok()?;
@@ -37,7 +122,7 @@ impl Pixmap {
         })
     }
 
-    pub fn empty(width: u32, height: u32, samples: usize) -> Pixmap {
+    pub fn empty(width: u32, height: u32, samples: Samples) -> Pixmap {
         Pixmap {
             width,
             height,
@@ -59,7 +144,7 @@ impl Pixmap {
         let decoder = png::Decoder::new(file);
         let mut reader = decoder.read_info()?;
         let info = reader.info();
-        let mut pixmap = Pixmap::new(info.width, info.height, info.color_type.samples());
+        let mut pixmap = Pixmap::new(info.width, info.height, info.color_type.to_samples());
         reader.next_frame(pixmap.data_mut())?;
         Ok(pixmap)
     }
@@ -69,11 +154,18 @@ impl Pixmap {
         if self.data.is_empty() {
             return WHITE;
         }
+
         let addr = self.samples * (y * self.width + x) as usize;
-        if self.samples == 1 {
-            Color::Gray(self.data[addr])
-        } else {
-            Color::from_rgb(&self.data[addr..addr+3])
+        match self.samples {
+            Samples::Grey => {
+                Color::Gray(self.data[addr])
+            },
+            Samples::Rgba => {
+                Color::from_rgba(&self.data[addr..addr+4])
+            },
+            _ => {
+                Color::from_rgb(&self.data[addr..addr+3])
+            },
         }
     }
 }
@@ -86,13 +178,21 @@ impl Framebuffer for Pixmap {
         if self.data.is_empty() {
             return;
         }
+
         let addr = self.samples * (y * self.width + x) as usize;
-        if self.samples == 1 {
-            self.data[addr] = color.gray();
-        } else {
-            let rgb = color.rgb();
-            self.data[addr..addr+3].copy_from_slice(&rgb);
-        }
+        match self.samples {
+            Samples::Grey => {
+                self.data[addr] = color.gray();
+            },
+            Samples::Rgba => {
+                let rgba = color.rgba();
+                self.data[addr..addr + self.samples].copy_from_slice(&rgba);
+            },
+            _ => {
+                let rgb = color.rgb();
+                self.data[addr..addr + Samples::Rgb].copy_from_slice(&rgb);
+            },
+        };
     }
 
     fn set_blended_pixel(&mut self, x: u32, y: u32, color: Color, alpha: f32) {

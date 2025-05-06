@@ -112,7 +112,14 @@ struct FBCanvas(WindowCanvas);
 impl Framebuffer for FBCanvas {
     fn set_pixel(&mut self, x: u32, y: u32, color: Color) {
         let [red, green, blue] = color.rgb();
-        self.0.set_draw_color(SdlColor::RGB(red, green, blue));
+
+        if color.is_transparent() {
+            return
+        }
+
+        let alpha: u8 = if let Color::Rgba(_, _, _, a) = color {a} else {255};
+
+        self.0.set_draw_color(SdlColor::RGBA(red, green, blue, alpha));
         self.0.draw_point(SdlPoint::new(x as i32, y as i32)).unwrap();
     }
 
@@ -559,6 +566,11 @@ fn main() -> Result<(), Error> {
                     };
                     let notif = Notification::new(msg, &tx, &mut rq, &mut context);
                     view.children_mut().push(Box::new(notif) as Box<dyn View>);
+                },
+                Event::Select(EntryId::Suspend) => {
+                    let interm = Intermission::new(context.fb.rect(), IntermKind::Suspend, &context);
+                    rq.add(RenderData::new(interm.id(), *interm.rect(), UpdateMode::Full));
+                    view.children_mut().push(Box::new(interm) as Box<dyn View>);
                 },
                 Event::Notify(msg) => {
                     let notif = Notification::new(msg, &tx, &mut rq, &mut context);

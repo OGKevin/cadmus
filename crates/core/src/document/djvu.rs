@@ -8,7 +8,7 @@ use std::os::unix::ffi::OsStrExt;
 use super::{Document, Location, TextLocation, BoundedText, TocEntry};
 use super::{chapter, chapter_relative};
 use crate::metadata::TextAlign;
-use crate::framebuffer::Pixmap;
+use crate::framebuffer::{Pixmap, Samples};
 use crate::geom::{Rectangle, Boundary, CycleDir};
 
 impl Into<DjvuRect> for Rectangle {
@@ -111,7 +111,7 @@ impl Document for DjvuDocument {
         unsafe { ddjvu_document_get_pagenum(self.doc) as usize }
     }
 
-    fn pixmap(&mut self, loc: Location, scale: f32, samples: usize) -> Option<(Pixmap, usize)> {
+    fn pixmap(&mut self, loc: Location, scale: f32, samples: Samples) -> Option<(Pixmap, usize)> {
         let index = self.resolve_location(loc)? as usize;
         self.page(index).and_then(|page| page.pixmap(scale, samples)).map(|pixmap| (pixmap, index))
     }
@@ -388,7 +388,7 @@ impl DjvuDocument {
 }
 
 impl<'a> DjvuPage<'a> {
-    pub fn pixmap(&self, scale: f32, samples: usize) -> Option<Pixmap> {
+    pub fn pixmap(&self, scale: f32, samples: Samples) -> Option<Pixmap> {
         unsafe {
             let (width, height) = self.dims();
             let rect = DjvuRect {

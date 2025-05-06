@@ -30,7 +30,7 @@ lazy_static! {
                      "align-center", "margin", "plug", "cover", "enclosed_menu", "contrast", "gray"].iter().cloned() {
             let path = dir.join(&format!("{}.svg", name));
             let doc = PdfOpener::new().and_then(|o| o.open(path)).unwrap();
-            let pixmap = doc.page(0).and_then(|p| p.pixmap(scale, 1)).unwrap();
+            let pixmap = doc.page(0).and_then(|p| p.pixmap(scale, crate::framebuffer::Samples::Grey)).unwrap();
             m.insert(name, pixmap);
         }
         m

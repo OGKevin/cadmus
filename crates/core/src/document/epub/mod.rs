@@ -6,7 +6,7 @@ use fxhash::FxHashMap;
 use zip::ZipArchive;
 use percent_encoding::percent_decode_str;
 use anyhow::{Error, format_err};
-use crate::framebuffer::Pixmap;
+use crate::framebuffer::{Pixmap, Samples};
 use crate::helpers::{Normalize, decode_entities};
 use crate::document::{Document, Location, TextLocation, TocEntry, BoundedText, chapter_from_uri};
 use crate::unit::pt_to_px;
@@ -583,7 +583,7 @@ impl EpubDocument {
 }
 
 impl Document for EpubDocument {
-    fn preview_pixmap(&mut self, width: f32, height: f32, samples: usize) -> Option<Pixmap> {
+    fn preview_pixmap(&mut self, width: f32, height: f32, samples: Samples) -> Option<Pixmap> {
         let opener = PdfOpener::new()?;
         self.cover_image()
             .map(|path| self.parent.join(path)
@@ -856,7 +856,7 @@ impl Document for EpubDocument {
         })
     }
 
-    fn pixmap(&mut self, loc: Location, scale: f32, samples: usize) -> Option<(Pixmap, usize)> {
+    fn pixmap(&mut self, loc: Location, scale: f32, samples: Samples) -> Option<(Pixmap, usize)> {
         if self.spine.is_empty() {
             return None;
         }

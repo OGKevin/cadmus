@@ -15,6 +15,8 @@ use crate::color::{Color, BLACK, WHITE};
 pub use self::kobo1::KoboFramebuffer1;
 pub use self::kobo2::KoboFramebuffer2;
 pub use self::image::Pixmap;
+pub use self::image::Samples;
+pub use self::image::ToSamples;
 
 #[derive(Debug, Copy, Clone)]
 pub struct Display {
