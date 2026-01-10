@@ -1,0 +1,7 @@
+[
+  {
+    "label": "run emulator",
+    "command": "./run-emulator.sh",
+    "args": []
+  }
+]
