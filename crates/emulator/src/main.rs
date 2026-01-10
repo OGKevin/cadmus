@@ -31,6 +31,7 @@ use cadmus_core::view::menu::{Menu, MenuKind};
 use cadmus_core::view::notification::Notification;
 use cadmus_core::view::reader::Reader;
 use cadmus_core::view::rotation_values::RotationValues;
+use cadmus_core::view::settings_editor::SettingsEditor;
 use cadmus_core::view::sketch::Sketch;
 use cadmus_core::view::touch_events::TouchEvents;
 use cadmus_core::view::{
@@ -565,6 +566,10 @@ fn main() -> Result<(), Error> {
                             &mut rq,
                             &mut context,
                         )),
+                        AppCmd::SettingsEditor => Box::new(
+                            SettingsEditor::new(context.fb.rect(), &tx, &mut rq, &mut context)
+                                .build()?,
+                        ),
                         AppCmd::TouchEvents => {
                             Box::new(TouchEvents::new(context.fb.rect(), &mut rq, &mut context))
                         }

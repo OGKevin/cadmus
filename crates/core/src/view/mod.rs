@@ -42,6 +42,7 @@ pub mod reader;
 pub mod rotation_values;
 pub mod rounded_button;
 pub mod search_bar;
+pub mod settings_editor;
 pub mod sketch;
 pub mod slider;
 pub mod toggleable_keyboard;
@@ -61,7 +62,7 @@ use crate::input::{DeviceEvent, FingerStatus};
 use crate::metadata::{
     Info, Margin, PageScheme, ScrollMode, SimpleStatus, SortMethod, TextAlign, ZoomMode,
 };
-use crate::settings::{ButtonScheme, FirstColumn, RotationLock, SecondColumn};
+use crate::settings::{self, ButtonScheme, FirstColumn, RotationLock, SecondColumn};
 use downcast_rs::{impl_downcast, Downcast};
 use fxhash::FxHashMap;
 use std::collections::VecDeque;
@@ -392,6 +393,8 @@ pub enum Event {
     ToggleBookMenu(Rectangle, usize),
     TogglePresetMenu(Rectangle, usize),
     SubMenu(Rectangle, Vec<EntryKind>),
+    OpenSettingsCategory(settings_editor::Category),
+    UpdateSettings(settings::Settings),
     ProcessLine(LineOrigin, String),
     History(CycleDir, bool),
     Toggle(ViewId),
@@ -439,6 +442,7 @@ pub enum AppCmd {
     Sketch,
     Calculator,
     Dictionary { query: String, language: String },
+    SettingsEditor,
     TouchEvents,
     RotationValues,
 }
@@ -473,6 +477,9 @@ pub enum ViewId {
     PresetMenu,
     MarginCropperMenu,
     SearchMenu,
+    SettingsMenu,
+    SettingsValueMenu,
+    SettingsCategoryEditor,
     SketchMenu,
     RenameDocument,
     RenameDocumentInput,
@@ -629,6 +636,9 @@ pub enum EntryId {
     SetInputText(ViewId, String),
     SetKeyboardLayout(String),
     ToggleShowHidden,
+    // TODO: Make one entryId for settings editor
+    ToggleSleepCover,
+    ToggleAutoShare,
     ToggleFuzzy,
     ToggleInverted,
     ToggleDithered,
