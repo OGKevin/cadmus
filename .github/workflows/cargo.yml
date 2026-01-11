@@ -77,7 +77,7 @@ jobs:
             libs/
             thirdparty/
             mupdf_wrapper/
-          key: ${{ runner.os }}-thirdparty-libs-kobo-${{ hashFiles('thirdparty/download.sh') }}
+          key: ${{ runner.os }}-thirdparty-libs-kobo-${{ hashFiles('thirdparty/download.sh', 'thirdparty/**/build-kobo.sh', 'thirdparty/**/*.patch') }}
 
       - uses: awalsh128/cache-apt-pkgs-action@latest
         with:
