@@ -41,7 +41,7 @@ pub type MessageTag = libc::c_uint;
 pub type RenderMode = libc::c_uint;
 pub type FormatStyle = libc::c_uint;
 
-#[link(name="djvulibre")]
+#[link(name = "djvulibre")]
 extern "C" {
     pub fn ddjvu_context_create(name: *const libc::c_char) -> *mut ExoContext;
     pub fn ddjvu_context_release(ctx: *mut ExoContext);
@@ -53,26 +53,56 @@ extern "C" {
     pub fn ddjvu_page_job(page: *mut ExoPage) -> *mut ExoJob;
     pub fn ddjvu_job_status(job: *mut ExoJob) -> JobStatus;
     pub fn ddjvu_job_release(job: *mut ExoJob);
-    pub fn ddjvu_document_create_by_filename_utf8(ctx: *mut ExoContext, path: *const libc::c_char, cache: libc::c_int) -> *mut ExoDocument;
+    pub fn ddjvu_document_create_by_filename_utf8(
+        ctx: *mut ExoContext,
+        path: *const libc::c_char,
+        cache: libc::c_int,
+    ) -> *mut ExoDocument;
     pub fn ddjvu_document_get_pagenum(doc: *mut ExoDocument) -> libc::c_int;
-    pub fn ddjvu_page_create_by_pageno(doc: *mut ExoDocument, page_idx: libc::c_int) -> *mut ExoPage;
-    pub fn ddjvu_page_create_by_pageid(doc: *mut ExoDocument, pageid: *const libc::c_char) -> *mut ExoPage;
+    pub fn ddjvu_page_create_by_pageno(
+        doc: *mut ExoDocument,
+        page_idx: libc::c_int,
+    ) -> *mut ExoPage;
+    pub fn ddjvu_page_create_by_pageid(
+        doc: *mut ExoDocument,
+        pageid: *const libc::c_char,
+    ) -> *mut ExoPage;
     pub fn ddjvu_page_get_width(page: *mut ExoPage) -> libc::c_int;
     pub fn ddjvu_page_get_height(page: *mut ExoPage) -> libc::c_int;
     pub fn ddjvu_page_get_resolution(page: *mut ExoPage) -> libc::c_int;
     pub fn ddjvu_page_get_rotation(page: *mut ExoPage) -> libc::c_uint;
-    pub fn ddjvu_page_render(page: *mut ExoPage, mode: RenderMode, p_rect: *const DjvuRect, r_rect: *const DjvuRect, fmt: *const ExoFormat, row_size: libc::c_ulong, buf: *mut u8) -> libc::c_int;
-    pub fn ddjvu_format_create(style: FormatStyle, nargs: libc::c_int, args: *const libc::c_uint) -> *mut ExoFormat;
+    pub fn ddjvu_page_render(
+        page: *mut ExoPage,
+        mode: RenderMode,
+        p_rect: *const DjvuRect,
+        r_rect: *const DjvuRect,
+        fmt: *const ExoFormat,
+        row_size: libc::c_ulong,
+        buf: *mut u8,
+    ) -> libc::c_int;
+    pub fn ddjvu_format_create(
+        style: FormatStyle,
+        nargs: libc::c_int,
+        args: *const libc::c_uint,
+    ) -> *mut ExoFormat;
     pub fn ddjvu_format_release(fmt: *mut ExoFormat);
     pub fn ddjvu_format_set_row_order(fmt: *mut ExoFormat, top_to_bottom: libc::c_int);
     pub fn ddjvu_format_set_y_direction(fmt: *mut ExoFormat, top_to_bottom: libc::c_int);
-    pub fn ddjvu_document_get_pagetext(doc: *mut ExoDocument, page_idx: libc::c_int, max_detail: *const libc::c_char) -> *mut MiniExp;
+    pub fn ddjvu_document_get_pagetext(
+        doc: *mut ExoDocument,
+        page_idx: libc::c_int,
+        max_detail: *const libc::c_char,
+    ) -> *mut MiniExp;
     pub fn ddjvu_document_get_outline(doc: *mut ExoDocument) -> *mut MiniExp;
     pub fn ddjvu_document_get_anno(doc: *mut ExoDocument, compat: libc::c_int) -> *mut MiniExp;
-    pub fn ddjvu_document_get_pageanno(doc: *mut ExoDocument, page_idx: libc::c_int) -> *mut MiniExp;
+    pub fn ddjvu_document_get_pageanno(
+        doc: *mut ExoDocument,
+        page_idx: libc::c_int,
+    ) -> *mut MiniExp;
     pub fn ddjvu_anno_get_hyperlinks(annot: *mut MiniExp) -> *mut *mut MiniExp;
     pub fn ddjvu_anno_get_metadata_keys(annot: *mut MiniExp) -> *mut *mut MiniExp;
-    pub fn ddjvu_anno_get_metadata(annot: *mut MiniExp, key: *const MiniExp) -> *const libc::c_char;
+    pub fn ddjvu_anno_get_metadata(annot: *mut MiniExp, key: *const MiniExp)
+        -> *const libc::c_char;
     pub fn ddjvu_miniexp_release(document: *mut ExoDocument, exp: *mut MiniExp);
     pub fn miniexp_symbol(s: *const libc::c_char) -> *const MiniExp;
     pub fn miniexp_length(exp: *mut MiniExp) -> libc::c_int;

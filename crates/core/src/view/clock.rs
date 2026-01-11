@@ -1,12 +1,12 @@
-use chrono::{Local, DateTime};
-use crate::device::CURRENT_DEVICE;
-use crate::framebuffer::{Framebuffer, UpdateMode};
-use super::{View, ViewId, Event, Hub, Bus, Id, ID_FEEDER, RenderQueue, RenderData};
-use crate::gesture::GestureEvent;
-use crate::font::{Fonts, font_from_style, NORMAL_STYLE};
+use super::{Bus, Event, Hub, Id, RenderData, RenderQueue, View, ViewId, ID_FEEDER};
 use crate::color::{BLACK, WHITE};
-use crate::geom::{Rectangle};
 use crate::context::Context;
+use crate::device::CURRENT_DEVICE;
+use crate::font::{font_from_style, Fonts, NORMAL_STYLE};
+use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::geom::Rectangle;
+use crate::gesture::GestureEvent;
+use chrono::{DateTime, Local};
 
 pub struct Clock {
     id: Id,
@@ -21,7 +21,10 @@ impl Clock {
         let time = Local::now();
         let format = context.settings.time_format.clone();
         let font = font_from_style(&mut context.fonts, &NORMAL_STYLE, CURRENT_DEVICE.dpi);
-        let width = font.plan(&time.format(&format).to_string(), None, None).width + font.em() as i32;
+        let width = font
+            .plan(&time.format(&format).to_string(), None, None)
+            .width
+            + font.em() as i32;
         rect.min.x = rect.max.x - width;
         Clock {
             id: ID_FEEDER.next(),
@@ -39,16 +42,23 @@ impl Clock {
 }
 
 impl View for Clock {
-    fn handle_event(&mut self, evt: &Event, _hub: &Hub, bus: &mut Bus, rq: &mut RenderQueue, _context: &mut Context) -> bool {
+    fn handle_event(
+        &mut self,
+        evt: &Event,
+        _hub: &Hub,
+        bus: &mut Bus,
+        rq: &mut RenderQueue,
+        _context: &mut Context,
+    ) -> bool {
         match *evt {
             Event::ClockTick => {
                 self.update(rq);
                 true
-            },
+            }
             Event::Gesture(GestureEvent::Tap(center)) if self.rect.includes(center) => {
                 bus.push_back(Event::ToggleNear(ViewId::ClockMenu, self.rect));
                 true
-            },
+            }
             _ => false,
         }
     }

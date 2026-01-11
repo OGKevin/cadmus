@@ -1,5 +1,5 @@
-use fxhash::FxHashSet;
 use super::style::StyleSheet;
+use fxhash::FxHashSet;
 
 #[derive(Debug, Clone)]
 pub struct Selector {
@@ -121,10 +121,7 @@ pub struct CssParser<'a> {
 
 impl<'a> CssParser<'a> {
     pub fn new(input: &str) -> CssParser<'_> {
-        CssParser {
-            input,
-            offset: 0,
-        }
+        CssParser { input, offset: 0 }
     }
 
     fn eof(&self) -> bool {
@@ -145,7 +142,10 @@ impl<'a> CssParser<'a> {
         }
     }
 
-    fn advance_while<F>(&mut self, test: F) where F: FnMut(&char) -> bool {
+    fn advance_while<F>(&mut self, test: F)
+    where
+        F: FnMut(&char) -> bool,
+    {
         for c in self.input[self.offset..].chars().take_while(test) {
             self.offset += c.len_utf8();
         }
@@ -173,9 +173,7 @@ impl<'a> CssParser<'a> {
     }
 
     fn skip_ident(&mut self) {
-        self.advance_while(|&c| c.is_ascii_alphanumeric() ||
-                                c == '-' ||
-                                c == '_');
+        self.advance_while(|&c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
     }
 
     fn skip_block(&mut self) {
@@ -186,11 +184,11 @@ impl<'a> CssParser<'a> {
                 Some('{') => {
                     self.advance(1);
                     balance = balance.saturating_add(1);
-                },
+                }
                 Some('}') => {
                     self.advance(1);
                     balance = balance.saturating_sub(1);
-                },
+                }
                 _ => break,
             }
             if balance == 0 {
@@ -219,12 +217,12 @@ impl<'a> CssParser<'a> {
                 let end_offset = self.offset;
                 self.advance(1);
                 self.input[start_offset..end_offset].to_string()
-            },
+            }
             _ => {
                 let offset = self.offset;
                 self.skip_ident();
                 self.input[offset..self.offset].to_string()
-            },
+            }
         }
     }
 
@@ -242,13 +240,15 @@ impl<'a> CssParser<'a> {
                     let offset = self.offset;
                     self.skip_ident();
                     selec.id = Some(self.input[offset..self.offset].to_string());
-                },
+                }
                 Some('.') => {
                     self.advance(1);
                     let offset = self.offset;
                     self.skip_ident();
-                    selec.classes.insert(self.input[offset..self.offset].to_string());
-                },
+                    selec
+                        .classes
+                        .insert(self.input[offset..self.offset].to_string());
+                }
                 Some('[') => {
                     self.advance(1);
                     self.skip_spaces_and_comments();
@@ -270,7 +270,7 @@ impl<'a> CssParser<'a> {
                                 name,
                                 operator: AttributeOperator::Exists,
                             });
-                        },
+                        }
                         Some('=') => {
                             self.advance(1);
                             self.skip_spaces_and_comments();
@@ -281,7 +281,7 @@ impl<'a> CssParser<'a> {
                             });
                             self.skip_spaces_and_comments();
                             self.advance(1);
-                        },
+                        }
                         Some('~') => {
                             self.advance(2);
                             self.skip_spaces_and_comments();
@@ -292,7 +292,7 @@ impl<'a> CssParser<'a> {
                             });
                             self.skip_spaces_and_comments();
                             self.advance(1);
-                        },
+                        }
                         Some('|') => {
                             self.advance(2);
                             self.skip_spaces_and_comments();
@@ -303,16 +303,15 @@ impl<'a> CssParser<'a> {
                             });
                             self.skip_spaces_and_comments();
                             self.advance(1);
-                        },
+                        }
                         _ => {
                             self.advance(2);
                             self.skip_spaces_and_comments();
                             self.advance(1);
                             supported = false;
-                        },
+                        }
                     }
-
-                },
+                }
                 Some(':') => {
                     self.advance(1);
                     if self.next() == Some(':') {
@@ -324,22 +323,22 @@ impl<'a> CssParser<'a> {
                     match &self.input[offset..self.offset] {
                         "first-child" => {
                             selec.pseudo_classes.push(PseudoClass::FirstChild);
-                        },
+                        }
                         "last-child" => {
                             selec.pseudo_classes.push(PseudoClass::LastChild);
-                        },
+                        }
                         _ => {
                             supported = false;
-                        },
+                        }
                     }
                     if self.next() == Some('(') {
                         self.advance_while(|&c| c != ')');
                         self.advance(1);
                     }
-                },
+                }
                 Some('*') => {
                     self.advance(1);
-                },
+                }
                 _ => {
                     let offset = self.offset;
                     self.skip_ident();
@@ -363,33 +362,33 @@ impl<'a> CssParser<'a> {
                                 s = Selector::default();
                                 comb = Combinator::None;
                                 supported = true;
-                            },
+                            }
                             Some('{') => {
                                 self.advance(1);
                                 break;
-                            },
+                            }
                             Some('>') => {
                                 self.advance(1);
                                 self.skip_spaces_and_comments();
                                 comb = Combinator::Child;
-                            },
+                            }
                             Some('+') => {
                                 self.advance(1);
                                 self.skip_spaces_and_comments();
                                 comb = Combinator::NextSibling;
-                            },
+                            }
                             Some('~') => {
                                 self.advance(1);
                                 self.skip_spaces_and_comments();
                                 comb = Combinator::SubsequentSibling;
-                            },
+                            }
                             _ => {
                                 if self.offset > offset {
                                     comb = Combinator::Descendant;
                                 } else {
                                     self.advance(1);
                                 }
-                            },
+                            }
                         }
                     }
                 }
@@ -417,35 +416,31 @@ impl<'a> CssParser<'a> {
                     let offset = self.offset;
 
                     while !self.eof() {
-                        self.advance_while(|&c| c != '"' &&
-                                                c != ';' &&
-                                                c != '}' &&
-                                                c != '!');
+                        self.advance_while(|&c| c != '"' && c != ';' && c != '}' && c != '!');
                         match self.next() {
                             Some('"') => {
                                 self.advance(1);
                                 self.advance_while(|&c| c != '"');
                                 self.advance(1);
-                            },
+                            }
                             Some('!') => {
                                 d.important = true;
                                 break;
-                            },
+                            }
                             _ => break,
                         }
                     }
 
                     d.value = self.input[offset..self.offset].trim().to_string();
                     if d.important {
-                        self.advance_while(|&c| c != ';' &&
-                                                c != '}');
+                        self.advance_while(|&c| c != ';' && c != '}');
                     }
-                },
+                }
                 Some(';') => {
                     self.advance(1);
                     declarations.push(d);
                     d = Declaration::default();
-                },
+                }
                 Some('}') => {
                     self.advance(1);
                     break;

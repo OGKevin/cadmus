@@ -1,13 +1,13 @@
-use crate::device::CURRENT_DEVICE;
-use crate::geom::{Rectangle, Dir, CycleDir};
-use crate::font::{Fonts, font_from_style, NORMAL_STYLE};
-use crate::framebuffer::{Framebuffer, UpdateMode};
-use super::{View, Event, Hub, Bus, Id, ID_FEEDER, RenderQueue, RenderData};
 use super::preset::{Preset, PresetKind};
-use crate::gesture::GestureEvent;
-use crate::settings::LightPreset;
+use super::{Bus, Event, Hub, Id, RenderData, RenderQueue, View, ID_FEEDER};
 use crate::color::WHITE;
 use crate::context::Context;
+use crate::device::CURRENT_DEVICE;
+use crate::font::{font_from_style, Fonts, NORMAL_STYLE};
+use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::geom::{CycleDir, Dir, Rectangle};
+use crate::gesture::GestureEvent;
+use crate::settings::LightPreset;
 
 pub struct PresetsList {
     id: Id,
@@ -43,17 +43,27 @@ impl PresetsList {
         let mut item_index = 0;
         let mut index = 0;
 
-        let dx = (self.rect.width() as i32 - (first_line_count * preset_width +
-                                              (first_line_count - 1) * padding)) / 2;
+        let dx = (self.rect.width() as i32
+            - (first_line_count * preset_width + (first_line_count - 1) * padding))
+            / 2;
 
         while index < presets_count {
             let position = item_index % max_per_line;
             let x = self.rect.min.x + dx + position * (preset_width + padding);
-            let preset_rect = rect![x, self.rect.max.y - preset_height,
-                                    x + preset_width, self.rect.max.y];
-            let kind = if (position == 0 && index > 0) || (position == max_per_line - 1 &&
-                                                           index < presets_count - 1) {
-                let dir = if position == 0 { CycleDir::Previous } else { CycleDir::Next };
+            let preset_rect = rect![
+                x,
+                self.rect.max.y - preset_height,
+                x + preset_width,
+                self.rect.max.y
+            ];
+            let kind = if (position == 0 && index > 0)
+                || (position == max_per_line - 1 && index < presets_count - 1)
+            {
+                let dir = if position == 0 {
+                    CycleDir::Previous
+                } else {
+                    CycleDir::Next
+                };
                 PresetKind::Page(dir)
             } else {
                 let name = presets[index as usize].name();
@@ -81,17 +91,24 @@ impl PresetsList {
         match dir {
             CycleDir::Next if self.current_page < self.pages.len() - 1 => {
                 self.current_page += 1;
-            },
+            }
             CycleDir::Previous if self.current_page > 0 => {
                 self.current_page -= 1;
-            },
+            }
             _ => (),
         }
     }
 }
 
 impl View for PresetsList {
-    fn handle_event(&mut self, evt: &Event, _hub: &Hub, _bus: &mut Bus, rq: &mut RenderQueue, _context: &mut Context) -> bool {
+    fn handle_event(
+        &mut self,
+        evt: &Event,
+        _hub: &Hub,
+        _bus: &mut Bus,
+        rq: &mut RenderQueue,
+        _context: &mut Context,
+    ) -> bool {
         match *evt {
             Event::Gesture(GestureEvent::Swipe { dir, start, .. }) if self.rect.includes(start) => {
                 match dir {
@@ -99,20 +116,20 @@ impl View for PresetsList {
                         self.set_current_page(CycleDir::Next);
                         rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
                         true
-                    },
+                    }
                     Dir::East => {
                         self.set_current_page(CycleDir::Previous);
                         rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
                         true
-                    },
+                    }
                     _ => false,
                 }
-            },
+            }
             Event::Page(dir) => {
                 self.set_current_page(dir);
                 rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
                 true
-            },
+            }
             _ => false,
         }
     }

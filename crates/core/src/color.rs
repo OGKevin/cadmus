@@ -1,7 +1,7 @@
 #![allow(unused)]
 
-use serde::{Serialize, Deserialize};
 use crate::geom::lerp;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -16,7 +16,7 @@ impl Color {
             Color::Gray(level) => level,
             Color::Rgb(red, green, blue) => {
                 (red as f32 * 0.2126 + green as f32 * 0.7152 + blue as f32 * 0.0722) as u8
-            },
+            }
         }
     }
 
@@ -31,7 +31,10 @@ impl Color {
         Color::Rgb(rgb[0], rgb[1], rgb[2])
     }
 
-    pub fn apply<F>(&self, f: F) -> Color where F: Fn(u8) -> u8 {
+    pub fn apply<F>(&self, f: F) -> Color
+    where
+        F: Fn(u8) -> u8,
+    {
         match *self {
             Color::Gray(level) => Color::Gray(f(level)),
             Color::Rgb(red, green, blue) => Color::Rgb(f(red), f(green), f(blue)),
@@ -40,16 +43,24 @@ impl Color {
 
     pub fn lerp(&self, color: Color, alpha: f32) -> Color {
         match (*self, color) {
-            (Color::Gray(l1), Color::Gray(l2)) => Color::Gray(lerp(l1 as f32, l2 as f32, alpha) as u8),
-            (Color::Rgb(red, green, blue), Color::Gray(level)) => Color::Rgb(lerp(red as f32, level as f32, alpha) as u8,
-                                                                             lerp(green as f32, level as f32, alpha) as u8,
-                                                                             lerp(blue as f32, level as f32, alpha) as u8),
-            (Color::Gray(level), Color::Rgb(red, green, blue)) => Color::Rgb(lerp(level as f32, red as f32, alpha) as u8,
-                                                                             lerp(level as f32, green as f32, alpha) as u8,
-                                                                             lerp(level as f32, blue as f32, alpha) as u8),
-            (Color::Rgb(r1, g1, b1), Color::Rgb(r2, g2, b2)) => Color::Rgb(lerp(r1 as f32, r2 as f32, alpha) as u8,
-                                                                           lerp(g1 as f32, g2 as f32, alpha) as u8,
-                                                                           lerp(b1 as f32, b2 as f32, alpha) as u8),
+            (Color::Gray(l1), Color::Gray(l2)) => {
+                Color::Gray(lerp(l1 as f32, l2 as f32, alpha) as u8)
+            }
+            (Color::Rgb(red, green, blue), Color::Gray(level)) => Color::Rgb(
+                lerp(red as f32, level as f32, alpha) as u8,
+                lerp(green as f32, level as f32, alpha) as u8,
+                lerp(blue as f32, level as f32, alpha) as u8,
+            ),
+            (Color::Gray(level), Color::Rgb(red, green, blue)) => Color::Rgb(
+                lerp(level as f32, red as f32, alpha) as u8,
+                lerp(level as f32, green as f32, alpha) as u8,
+                lerp(level as f32, blue as f32, alpha) as u8,
+            ),
+            (Color::Rgb(r1, g1, b1), Color::Rgb(r2, g2, b2)) => Color::Rgb(
+                lerp(r1 as f32, r2 as f32, alpha) as u8,
+                lerp(g1 as f32, g2 as f32, alpha) as u8,
+                lerp(b1 as f32, b2 as f32, alpha) as u8,
+            ),
         }
     }
 
@@ -60,7 +71,7 @@ impl Color {
                 *red = 255 - *red;
                 *green = 255 - *green;
                 *blue = 255 - *blue;
-            },
+            }
         }
     }
 
@@ -71,13 +82,15 @@ impl Color {
                 *red = red.saturating_sub(drift);
                 *green = green.saturating_sub(drift);
                 *blue = blue.saturating_sub(drift);
-            },
+            }
         }
     }
 }
 
 macro_rules! gray {
-    ($a:expr) => ($crate::color::Color::Gray($a));
+    ($a:expr) => {
+        $crate::color::Color::Gray($a)
+    };
 }
 
 pub const GRAY00: Color = gray!(0x00);

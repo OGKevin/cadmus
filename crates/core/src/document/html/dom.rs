@@ -1,5 +1,5 @@
-use std::num::NonZeroUsize;
 use fxhash::{FxHashMap, FxHashSet};
+use std::num::NonZeroUsize;
 
 pub type Attributes = FxHashMap<String, String>;
 pub const WRAPPER_TAG_NAME: &str = "anonymous";
@@ -23,29 +23,70 @@ pub struct ElementData {
 
 impl ElementData {
     fn is_block(&self) -> bool {
-        matches!(self.name.as_str(),
-                 "address" | "article" | "aside" | "blockquote" | "body" | "head" |
-                 "details" | "dialog" | "dd" | "div" | "dl" | "dt" | "fieldset" | "figcaption" |
-                 "figure" | "footer" | "form" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "header" |
-                 "hgroup" | "hr" | "html" | "li" | "main" | "nav" | "ol" | "p" | "pre" | "section" |
-                 "table" | "thead" | "colgroup" | "tbody" | "tfoot" | "tr" | "caption" | "td" | "th" | "ul")
+        matches!(
+            self.name.as_str(),
+            "address"
+                | "article"
+                | "aside"
+                | "blockquote"
+                | "body"
+                | "head"
+                | "details"
+                | "dialog"
+                | "dd"
+                | "div"
+                | "dl"
+                | "dt"
+                | "fieldset"
+                | "figcaption"
+                | "figure"
+                | "footer"
+                | "form"
+                | "h1"
+                | "h2"
+                | "h3"
+                | "h4"
+                | "h5"
+                | "h6"
+                | "header"
+                | "hgroup"
+                | "hr"
+                | "html"
+                | "li"
+                | "main"
+                | "nav"
+                | "ol"
+                | "p"
+                | "pre"
+                | "section"
+                | "table"
+                | "thead"
+                | "colgroup"
+                | "tbody"
+                | "tfoot"
+                | "tr"
+                | "caption"
+                | "td"
+                | "th"
+                | "ul"
+        )
     }
 }
 
 impl NodeData {
     fn text(&self) -> Option<&str> {
         match *self {
-            NodeData::Text(TextData { ref text, .. }) |
-            NodeData::Whitespace(TextData { ref text, .. }) => Some(text),
+            NodeData::Text(TextData { ref text, .. })
+            | NodeData::Whitespace(TextData { ref text, .. }) => Some(text),
             _ => None,
         }
     }
 
     fn offset(&self) -> usize {
         match *self {
-            NodeData::Text(TextData { offset, .. }) |
-            NodeData::Whitespace(TextData { offset, .. }) |
-            NodeData::Element(ElementData { offset, .. }) => offset,
+            NodeData::Text(TextData { offset, .. })
+            | NodeData::Whitespace(TextData { offset, .. })
+            | NodeData::Element(ElementData { offset, .. }) => offset,
             NodeData::Wrapper(offset) => offset,
             NodeData::Root => 0,
         }
@@ -62,7 +103,7 @@ pub fn element(name: &str, offset: usize, attributes: Attributes) -> NodeData {
     let colon = name.find(':');
     NodeData::Element(ElementData {
         offset,
-        name: name[colon.map(|index| index+1).unwrap_or(0)..].to_string(),
+        name: name[colon.map(|index| index + 1).unwrap_or(0)..].to_string(),
         qualified_name: colon.map(|_| name.to_string()),
         attributes,
     })
@@ -152,7 +193,11 @@ impl XmlTree {
     }
 
     pub fn get(&self, id: NodeId) -> NodeRef<'_> {
-        NodeRef { id, node: self.node(id), tree: self }
+        NodeRef {
+            id,
+            node: self.node(id),
+            tree: self,
+        }
     }
 
     pub fn get_mut(&mut self, id: NodeId) -> NodeMut<'_> {
@@ -199,9 +244,11 @@ impl XmlTree {
 
             if first_id.is_some() || last_id.is_some() {
                 let parent = n.parent().unwrap();
-                ids.push([parent.id,
-                          first_id.unwrap_or_else(|| parent.node.first_child.unwrap()),
-                          last_id.unwrap_or_else(|| parent.node.last_child.unwrap())]);
+                ids.push([
+                    parent.id,
+                    first_id.unwrap_or_else(|| parent.node.first_child.unwrap()),
+                    last_id.unwrap_or_else(|| parent.node.last_child.unwrap()),
+                ]);
             }
         }
 
@@ -215,7 +262,7 @@ impl XmlTree {
 
 impl<'a> NodeRef<'a> {
     pub fn parent(&self) -> Option<Self> {
-        self.node.parent.map(|id|  self.tree.get(id))
+        self.node.parent.map(|id| self.tree.get(id))
     }
 
     pub fn parent_element(&self) -> Option<Self> {
@@ -252,8 +299,9 @@ impl<'a> NodeRef<'a> {
         }
     }
 
-    pub fn ancestor_elements(&self) -> impl Iterator<Item=NodeRef<'a>> {
-        self.ancestors().filter(|n| n.is_element() && !n.is_wrapper())
+    pub fn ancestor_elements(&self) -> impl Iterator<Item = NodeRef<'a>> {
+        self.ancestors()
+            .filter(|n| n.is_element() && !n.is_wrapper())
     }
 
     pub fn previous_siblings(&self) -> PreviousSiblings<'a> {
@@ -268,11 +316,11 @@ impl<'a> NodeRef<'a> {
         }
     }
 
-    pub fn previous_sibling_elements(&self) -> impl Iterator<Item=NodeRef<'a>> {
+    pub fn previous_sibling_elements(&self) -> impl Iterator<Item = NodeRef<'a>> {
         self.previous_siblings().filter(|n| n.is_element())
     }
 
-    pub fn next_sibling_elements(&self) -> impl Iterator<Item=NodeRef<'a>> {
+    pub fn next_sibling_elements(&self) -> impl Iterator<Item = NodeRef<'a>> {
         self.next_siblings().filter(|n| n.is_element())
     }
 
@@ -294,9 +342,10 @@ impl<'a> NodeRef<'a> {
     }
 
     pub fn is_element(&self) -> bool {
-        matches!(self.node.data, NodeData::Element { .. } |
-                                 NodeData::Wrapper(..) |
-                                 NodeData::Root)
+        matches!(
+            self.node.data,
+            NodeData::Element { .. } | NodeData::Wrapper(..) | NodeData::Root
+        )
     }
 
     pub fn is_inline(&self) -> bool {
@@ -348,7 +397,9 @@ impl<'a> NodeRef<'a> {
 
     pub fn tag_qualified_name(&self) -> Option<&'a str> {
         match self.node.data {
-            NodeData::Element(ElementData { ref qualified_name, .. }) => qualified_name.as_deref(),
+            NodeData::Element(ElementData {
+                ref qualified_name, ..
+            }) => qualified_name.as_deref(),
             _ => None,
         }
     }
@@ -365,10 +416,8 @@ impl<'a> NodeRef<'a> {
             .and_then(|a| a.get(name).map(String::as_str))
     }
 
-    pub fn classes(&self) -> impl Iterator<Item=&'a str> {
-        self.attribute("class")
-            .unwrap_or("")
-            .split_whitespace()
+    pub fn classes(&self) -> impl Iterator<Item = &'a str> {
+        self.attribute("class").unwrap_or("").split_whitespace()
     }
 
     pub fn id(&self) -> Option<&str> {
@@ -376,13 +425,11 @@ impl<'a> NodeRef<'a> {
     }
 
     pub fn find(&self, tag_name: &str) -> Option<Self> {
-        self.descendants()
-            .find(|n| n.tag_name() == Some(tag_name))
+        self.descendants().find(|n| n.tag_name() == Some(tag_name))
     }
 
     pub fn find_by_id(&self, id: &str) -> Option<Self> {
-        self.descendants()
-            .find(|n| n.id() == Some(id))
+        self.descendants().find(|n| n.id() == Some(id))
     }
 }
 
@@ -533,12 +580,15 @@ impl<'a> Iterator for Descendants<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         let node = self.next.take();
         if let Some(node) = node {
-            self.next = node.first_child()
-                            .or_else(|| node.next_sibling())
-                            .or_else(|| node.ancestors()
-                                            .take_while(|n| n.id != self.root_id)
-                                            .find(|n| n.node.next_sibling.is_some())
-                                            .and_then(|n| n.next_sibling()));
+            self.next = node
+                .first_child()
+                .or_else(|| node.next_sibling())
+                .or_else(|| {
+                    node.ancestors()
+                        .take_while(|n| n.id != self.root_id)
+                        .find(|n| n.node.next_sibling.is_some())
+                        .and_then(|n| n.next_sibling())
+                });
         }
         node
     }

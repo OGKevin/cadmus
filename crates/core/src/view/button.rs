@@ -1,14 +1,14 @@
-use crate::device::CURRENT_DEVICE;
-use crate::geom::{Rectangle, CornerSpec, BorderSpec};
-use crate::font::{Fonts, font_from_style, NORMAL_STYLE};
-use super::{View, Event, Hub, Bus, Id, ID_FEEDER, RenderQueue, RenderData};
-use super::{THICKNESS_MEDIUM, BORDER_RADIUS_LARGE};
-use crate::framebuffer::{Framebuffer, UpdateMode};
-use crate::input::{DeviceEvent, FingerStatus};
-use crate::gesture::GestureEvent;
-use crate::color::{TEXT_NORMAL, TEXT_INVERTED_HARD};
-use crate::unit::scale_by_dpi;
+use super::{Bus, Event, Hub, Id, RenderData, RenderQueue, View, ID_FEEDER};
+use super::{BORDER_RADIUS_LARGE, THICKNESS_MEDIUM};
+use crate::color::{TEXT_INVERTED_HARD, TEXT_NORMAL};
 use crate::context::Context;
+use crate::device::CURRENT_DEVICE;
+use crate::font::{font_from_style, Fonts, NORMAL_STYLE};
+use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::geom::{BorderSpec, CornerSpec, Rectangle};
+use crate::gesture::GestureEvent;
+use crate::input::{DeviceEvent, FingerStatus};
+use crate::unit::scale_by_dpi;
 
 pub struct Button {
     id: Id,
@@ -40,29 +40,36 @@ impl Button {
 }
 
 impl View for Button {
-    fn handle_event(&mut self, evt: &Event, _hub: &Hub, bus: &mut Bus, rq: &mut RenderQueue, _context: &mut Context) -> bool {
+    fn handle_event(
+        &mut self,
+        evt: &Event,
+        _hub: &Hub,
+        bus: &mut Bus,
+        rq: &mut RenderQueue,
+        _context: &mut Context,
+    ) -> bool {
         match *evt {
-            Event::Device(DeviceEvent::Finger { status, position, .. }) if !self.disabled => {
-                match status {
-                    FingerStatus::Down if self.rect.includes(position) => {
-                        self.active = true;
-                        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Fast));
-                        true
-                    },
-                    FingerStatus::Up if self.active => {
-                        self.active = false;
-                        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
-                        true
-                    },
-                    _ => false,
+            Event::Device(DeviceEvent::Finger {
+                status, position, ..
+            }) if !self.disabled => match status {
+                FingerStatus::Down if self.rect.includes(position) => {
+                    self.active = true;
+                    rq.add(RenderData::new(self.id, self.rect, UpdateMode::Fast));
+                    true
                 }
+                FingerStatus::Up if self.active => {
+                    self.active = false;
+                    rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+                    true
+                }
+                _ => false,
             },
             Event::Gesture(GestureEvent::Tap(center)) if self.rect.includes(center) => {
                 if !self.disabled {
                     bus.push_back(self.event.clone());
                 }
                 true
-            },
+            }
             _ => false,
         }
     }
@@ -80,11 +87,15 @@ impl View for Button {
         let border_radius = scale_by_dpi(BORDER_RADIUS_LARGE, dpi) as i32;
         let border_thickness = scale_by_dpi(THICKNESS_MEDIUM, dpi) as u16;
 
-        fb.draw_rounded_rectangle_with_border(&self.rect,
-                                              &CornerSpec::Uniform(border_radius),
-                                              &BorderSpec { thickness: border_thickness,
-                                                            color: foreground },
-                                              &scheme[0]);
+        fb.draw_rounded_rectangle_with_border(
+            &self.rect,
+            &CornerSpec::Uniform(border_radius),
+            &BorderSpec {
+                thickness: border_thickness,
+                color: foreground,
+            },
+            &scheme[0],
+        );
 
         let font = font_from_style(fonts, &NORMAL_STYLE, dpi);
         let x_height = font.x_heights.0 as i32;

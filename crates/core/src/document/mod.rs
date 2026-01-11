@@ -1,36 +1,36 @@
 pub mod djvu;
-pub mod pdf;
 pub mod epub;
 pub mod html;
+pub mod pdf;
 
 mod djvulibre_sys;
 mod mupdf_sys;
 
-use std::env;
-use std::process::Command;
-use std::path::Path;
-use std::fs::{self, File};
-use std::ffi::OsStr;
-use std::collections::BTreeSet;
-use std::os::unix::fs::FileExt;
-use anyhow::{Error, format_err};
-use regex::Regex;
+use self::djvu::DjvuOpener;
+use self::epub::EpubDocument;
+use self::html::HtmlDocument;
+use self::pdf::PdfOpener;
+use crate::device::CURRENT_DEVICE;
+use crate::framebuffer::Pixmap;
+use crate::geom::{Boundary, CycleDir};
+use crate::metadata::{Annotation, TextAlign};
+use crate::settings::INTERNAL_CARD_ROOT;
+use anyhow::{format_err, Error};
+use fxhash::FxHashMap;
 use nix::sys::statvfs;
 #[cfg(target_os = "linux")]
 use nix::sys::sysinfo;
-use fxhash::FxHashMap;
+use regex::Regex;
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
+use std::env;
+use std::ffi::OsStr;
+use std::fs::{self, File};
+use std::os::unix::fs::FileExt;
+use std::path::Path;
+use std::process::Command;
+use unicode_normalization::char::is_combining_mark;
 use unicode_normalization::UnicodeNormalization;
-use unicode_normalization::char::{is_combining_mark};
-use serde::{Serialize, Deserialize};
-use self::djvu::DjvuOpener;
-use self::pdf::PdfOpener;
-use self::epub::EpubDocument;
-use self::html::HtmlDocument;
-use crate::geom::{Boundary, CycleDir};
-use crate::metadata::{TextAlign, Annotation};
-use crate::framebuffer::Pixmap;
-use crate::settings::INTERNAL_CARD_ROOT;
-use crate::device::CURRENT_DEVICE;
 
 pub const BYTES_PER_PAGE: f64 = 2048.0;
 
@@ -89,13 +89,18 @@ pub struct Neighbors {
     pub next_page: Option<usize>,
 }
 
-pub trait Document: Send+Sync {
+pub trait Document: Send + Sync {
     fn dims(&self, index: usize) -> Option<(f32, f32)>;
     fn pages_count(&self) -> usize;
 
     fn toc(&mut self) -> Option<Vec<TocEntry>>;
     fn chapter<'a>(&mut self, offset: usize, toc: &'a [TocEntry]) -> Option<(&'a TocEntry, f32)>;
-    fn chapter_relative<'a>(&mut self, offset: usize, dir: CycleDir, toc: &'a [TocEntry]) -> Option<&'a TocEntry>;
+    fn chapter_relative<'a>(
+        &mut self,
+        offset: usize,
+        dir: CycleDir,
+        toc: &'a [TocEntry],
+    ) -> Option<&'a TocEntry>;
     fn words(&mut self, loc: Location) -> Option<(Vec<BoundedText>, usize)>;
     fn lines(&mut self, loc: Location) -> Option<(Vec<BoundedText>, usize)>;
     fn links(&mut self, loc: Location) -> Option<(Vec<BoundedText>, usize)>;
@@ -126,10 +131,12 @@ pub trait Document: Send+Sync {
     }
 
     fn preview_pixmap(&mut self, width: f32, height: f32, samples: usize) -> Option<Pixmap> {
-        self.dims(0).and_then(|dims| {
-            let scale = (width / dims.0).min(height / dims.1);
-            self.pixmap(Location::Exact(0), scale, samples)
-        }).map(|(pixmap, _)| pixmap)
+        self.dims(0)
+            .and_then(|dims| {
+                let scale = (width / dims.0).min(height / dims.1);
+                self.pixmap(Location::Exact(0), scale, samples)
+            })
+            .map(|(pixmap, _)| pixmap)
     }
 
     fn resolve_location(&mut self, loc: Location) -> Option<usize> {
@@ -144,14 +151,14 @@ pub trait Document: Send+Sync {
                 } else {
                     Some(index)
                 }
-            },
+            }
             Location::Previous(index) => {
                 if index > 0 {
                     Some(index - 1)
                 } else {
                     None
                 }
-            },
+            }
             Location::Next(index) => {
                 if index < self.pages_count() - 1 {
                     Some(index + 1)
@@ -165,12 +172,11 @@ pub trait Document: Send+Sync {
 }
 
 pub fn file_kind<P: AsRef<Path>>(path: P) -> Option<String> {
-    path.as_ref().extension()
+    path.as_ref()
+        .extension()
         .and_then(OsStr::to_str)
         .map(str::to_lowercase)
-        .or_else(|| guess_kind(path.as_ref())
-                              .ok()
-                              .map(String::from))
+        .or_else(|| guess_kind(path.as_ref()).ok().map(String::from))
 }
 
 pub fn guess_kind<P: AsRef<Path>>(path: P) -> Result<&'static str, Error> {
@@ -205,12 +211,19 @@ impl HumanSize for u64 {
         let level = (value.max(1.0).log(SIZE_BASE).floor() as usize).min(3);
         let factor = value / (SIZE_BASE).powi(level as i32);
         let precision = level.saturating_sub(1 + factor.log(10.0).floor() as usize);
-        format!("{0:.1$} {2}", factor, precision, ['B', 'K', 'M', 'G'][level])
+        format!(
+            "{0:.1$} {2}",
+            factor,
+            precision,
+            ['B', 'K', 'M', 'G'][level]
+        )
     }
 }
 
 pub fn asciify(name: &str) -> String {
-    name.nfkd().filter(|&c| !is_combining_mark(c)).collect::<String>()
+    name.nfkd()
+        .filter(|&c| !is_combining_mark(c))
+        .collect::<String>()
         .replace('œ', "oe")
         .replace('Œ', "Oe")
         .replace('æ', "ae")
@@ -221,34 +234,24 @@ pub fn asciify(name: &str) -> String {
 }
 
 pub fn open<P: AsRef<Path>>(path: P) -> Option<Box<dyn Document>> {
-    file_kind(path.as_ref()).and_then(|k| {
-        match k.as_ref() {
-            "epub" => {
-                EpubDocument::new(&path)
-                             .map_err(|e| eprintln!("{}: {:#}.", path.as_ref().display(), e))
-                             .map(|d| Box::new(d) as Box<dyn Document>).ok()
-            },
-            "html" | "htm" => {
-                HtmlDocument::new(&path)
-                             .map_err(|e| eprintln!("{}: {:#}.", path.as_ref().display(), e))
-                             .map(|d| Box::new(d) as Box<dyn Document>).ok()
-            },
-            "djvu" | "djv" => {
-                DjvuOpener::new().and_then(|o| {
-                    o.open(path)
-                     .map(|d| Box::new(d) as Box<dyn Document>)
-                })
-            },
-            _ => {
-                PdfOpener::new().and_then(|mut o| {
-                    if matches!(k.as_ref(), "mobi" | "fb2" | "xps" | "txt") {
-                        o.load_user_stylesheet();
-                    }
-                    o.open(path)
-                     .map(|d| Box::new(d) as Box<dyn Document>)
-                })
-            },
+    file_kind(path.as_ref()).and_then(|k| match k.as_ref() {
+        "epub" => EpubDocument::new(&path)
+            .map_err(|e| eprintln!("{}: {:#}.", path.as_ref().display(), e))
+            .map(|d| Box::new(d) as Box<dyn Document>)
+            .ok(),
+        "html" | "htm" => HtmlDocument::new(&path)
+            .map_err(|e| eprintln!("{}: {:#}.", path.as_ref().display(), e))
+            .map(|d| Box::new(d) as Box<dyn Document>)
+            .ok(),
+        "djvu" | "djv" => {
+            DjvuOpener::new().and_then(|o| o.open(path).map(|d| Box::new(d) as Box<dyn Document>))
         }
+        _ => PdfOpener::new().and_then(|mut o| {
+            if matches!(k.as_ref(), "mobi" | "fb2" | "xps" | "txt") {
+                o.load_user_stylesheet();
+            }
+            o.open(path).map(|d| Box::new(d) as Box<dyn Document>)
+        }),
     })
 }
 
@@ -278,7 +281,8 @@ impl From<TocLocation> for Location {
 pub fn toc_as_html(toc: &[TocEntry], chap_index: usize) -> String {
     let mut buf = "<html>\n\t<head>\n\t\t<title>Table of Contents</title>\n\t\t\
                    <link rel=\"stylesheet\" type=\"text/css\" href=\"css/toc.css\"/>\n\t\
-                   </head>\n\t<body>\n".to_string();
+                   </head>\n\t<body>\n"
+        .to_string();
     toc_as_html_aux(toc, chap_index, 0, &mut buf);
     buf.push_str("\t</body>\n</html>");
     buf
@@ -309,10 +313,14 @@ pub fn toc_as_html_aux(toc: &[TocEntry], chap_index: usize, depth: usize, buf: &
     buf.push_str("</ul>\n");
 }
 
-pub fn annotations_as_html(annotations: &[Annotation], active_range: Option<(TextLocation, TextLocation)>) -> String {
+pub fn annotations_as_html(
+    annotations: &[Annotation],
+    active_range: Option<(TextLocation, TextLocation)>,
+) -> String {
     let mut buf = "<html>\n\t<head>\n\t\t<title>Annotations</title>\n\t\t\
                    <link rel=\"stylesheet\" type=\"text/css\" href=\"css/annotations.css\"/>\n\t\
-                   </head>\n\t<body>\n".to_string();
+                   </head>\n\t<body>\n"
+        .to_string();
     buf.push_str("\t\t<ul>\n");
     for annot in annotations {
         let mut note = annot.note.replace('<', "&lt;").replace('>', "&gt;");
@@ -325,9 +333,18 @@ pub fn annotations_as_html(annotations: &[Annotation], active_range: Option<(Tex
             text = format!("<b>{}</b>", text);
         }
         if note.is_empty() {
-            buf.push_str(&format!("\t\t<li><a href=\"@{}\">{}</a></li>\n", start.location(), text));
+            buf.push_str(&format!(
+                "\t\t<li><a href=\"@{}\">{}</a></li>\n",
+                start.location(),
+                text
+            ));
         } else {
-            buf.push_str(&format!("\t\t<li><a href=\"@{}\"><i>{}</i> — {}</a></li>\n", start.location(), note, text));
+            buf.push_str(&format!(
+                "\t\t<li><a href=\"@{}\"><i>{}</i> — {}</a></li>\n",
+                start.location(),
+                note,
+                text
+            ));
         }
     }
     buf.push_str("\t\t</ul>\n");
@@ -338,7 +355,8 @@ pub fn annotations_as_html(annotations: &[Annotation], active_range: Option<(Tex
 pub fn bookmarks_as_html(bookmarks: &BTreeSet<usize>, index: usize, synthetic: bool) -> String {
     let mut buf = "<html>\n\t<head>\n\t\t<title>Bookmarks</title>\n\t\t\
                    <link rel=\"stylesheet\" type=\"text/css\" href=\"css/bookmarks.css\"/>\n\t\
-                   </head>\n\t<body>\n".to_string();
+                   </head>\n\t<body>\n"
+        .to_string();
     buf.push_str("\t\t<ul>\n");
     for bkm in bookmarks {
         let mut text = if synthetic {
@@ -362,11 +380,18 @@ fn chapter(index: usize, pages_count: usize, toc: &[TocEntry]) -> Option<(&TocEn
     let mut chap_index = 0;
     let mut end_index = pages_count;
     chapter_aux(toc, index, &mut chap, &mut chap_index, &mut end_index);
-    chap.zip(Some((index - chap_index) as f32 / (end_index - chap_index) as f32))
+    chap.zip(Some(
+        (index - chap_index) as f32 / (end_index - chap_index) as f32,
+    ))
 }
 
-fn chapter_aux<'a>(toc: &'a [TocEntry], index: usize, chap: &mut Option<&'a TocEntry>,
-                   chap_index: &mut usize, end_index: &mut usize) {
+fn chapter_aux<'a>(
+    toc: &'a [TocEntry],
+    index: usize,
+    chap: &mut Option<&'a TocEntry>,
+    chap_index: &mut usize,
+    end_index: &mut usize,
+) {
     for entry in toc {
         if let Location::Exact(entry_index) = entry.location {
             if entry_index <= index && (chap.is_none() || entry_index > *chap_index) {
@@ -391,7 +416,11 @@ fn chapter_relative(index: usize, dir: CycleDir, toc: &[TocEntry]) -> Option<&To
     }
 }
 
-fn previous_chapter<'a>(chap: Option<&TocEntry>, index: usize, toc: &'a [TocEntry]) -> Option<&'a TocEntry> {
+fn previous_chapter<'a>(
+    chap: Option<&TocEntry>,
+    index: usize,
+    toc: &'a [TocEntry],
+) -> Option<&'a TocEntry> {
     for entry in toc.iter().rev() {
         let result = previous_chapter(chap, index, &entry.children);
         if result.is_some() {
@@ -402,7 +431,7 @@ fn previous_chapter<'a>(chap: Option<&TocEntry>, index: usize, toc: &'a [TocEntr
             if entry.index < chap.index {
                 if let Location::Exact(entry_index) = entry.location {
                     if entry_index != index {
-                        return Some(entry)
+                        return Some(entry);
                     }
                 }
             }
@@ -417,13 +446,17 @@ fn previous_chapter<'a>(chap: Option<&TocEntry>, index: usize, toc: &'a [TocEntr
     None
 }
 
-fn next_chapter<'a>(chap: Option<&TocEntry>, index: usize, toc: &'a [TocEntry]) -> Option<&'a TocEntry> {
+fn next_chapter<'a>(
+    chap: Option<&TocEntry>,
+    index: usize,
+    toc: &'a [TocEntry],
+) -> Option<&'a TocEntry> {
     for entry in toc {
         if let Some(chap) = chap {
             if entry.index > chap.index {
                 if let Location::Exact(entry_index) = entry.location {
                     if entry_index != index {
-                        return Some(entry)
+                        return Some(entry);
                     }
                 }
             }
@@ -459,32 +492,60 @@ pub fn chapter_from_uri<'a>(target_uri: &str, toc: &'a [TocEntry]) -> Option<&'a
 }
 
 const CPUINFO_KEYS: [&str; 3] = ["Processor", "Features", "Hardware"];
-const HWINFO_KEYS: [&str; 19] = ["CPU", "PCB", "DisplayPanel", "DisplayCtrl", "DisplayBusWidth",
-                                 "DisplayResolution", "FrontLight", "FrontLight_LEDrv", "FL_PWM",
-                                 "TouchCtrl", "TouchType", "Battery", "IFlash", "RamSize", "RamType",
-                                 "LightSensor", "HallSensor", "RSensor", "Wifi"];
+const HWINFO_KEYS: [&str; 19] = [
+    "CPU",
+    "PCB",
+    "DisplayPanel",
+    "DisplayCtrl",
+    "DisplayBusWidth",
+    "DisplayResolution",
+    "FrontLight",
+    "FrontLight_LEDrv",
+    "FL_PWM",
+    "TouchCtrl",
+    "TouchType",
+    "Battery",
+    "IFlash",
+    "RamSize",
+    "RamType",
+    "LightSensor",
+    "HallSensor",
+    "RSensor",
+    "Wifi",
+];
 
 pub fn sys_info_as_html() -> String {
     let mut buf = "<html>\n\t<head>\n\t\t<title>System Info</title>\n\t\t\
                    <link rel=\"stylesheet\" type=\"text/css\" \
-                   href=\"css/sysinfo.css\"/>\n\t</head>\n\t<body>\n".to_string();
+                   href=\"css/sysinfo.css\"/>\n\t</head>\n\t<body>\n"
+        .to_string();
 
     buf.push_str("\t\t<table>\n");
 
     buf.push_str("\t\t\t<tr>\n");
     buf.push_str("\t\t\t\t<td class=\"key\">Model name</td>\n");
-    buf.push_str(&format!("\t\t\t\t<td class=\"value\">{}</td>\n", CURRENT_DEVICE.model));
+    buf.push_str(&format!(
+        "\t\t\t\t<td class=\"value\">{}</td>\n",
+        CURRENT_DEVICE.model
+    ));
     buf.push_str("\t\t\t</tr>\n");
 
     buf.push_str("\t\t\t<tr>\n");
     buf.push_str("\t\t\t\t<td class=\"key\">Hardware</td>\n");
-    buf.push_str(&format!("\t\t\t\t<td class=\"value\">Mark {}</td>\n", CURRENT_DEVICE.mark()));
+    buf.push_str(&format!(
+        "\t\t\t\t<td class=\"value\">Mark {}</td>\n",
+        CURRENT_DEVICE.mark()
+    ));
     buf.push_str("\t\t\t</tr>\n");
     buf.push_str("\t\t\t<tr class=\"sep\"></tr>\n");
 
-    for (name, var) in [("Code name", "PRODUCT"),
-                         ("Model number", "MODEL_NUMBER"),
-                         ("Firmware version", "FIRMWARE_VERSION")].iter() {
+    for (name, var) in [
+        ("Code name", "PRODUCT"),
+        ("Model number", "MODEL_NUMBER"),
+        ("Firmware version", "FIRMWARE_VERSION"),
+    ]
+    .iter()
+    {
         if let Ok(value) = env::var(var) {
             buf.push_str("\t\t\t<tr>\n");
             buf.push_str(&format!("\t\t\t\t<td class=\"key\">{}</td>\n", name));
@@ -496,13 +557,15 @@ pub fn sys_info_as_html() -> String {
     buf.push_str("\t\t\t<tr class=\"sep\"></tr>\n");
 
     let output = Command::new("scripts/ip.sh")
-                         .output()
-                         .map_err(|e| eprintln!("Can't execute command: {:#}.", e))
-                         .ok();
+        .output()
+        .map_err(|e| eprintln!("Can't execute command: {:#}.", e))
+        .ok();
 
-    if let Some(stdout) = output.filter(|output| output.status.success())
-                                .and_then(|output| String::from_utf8(output.stdout).ok())
-                                .filter(|stdout| !stdout.is_empty()) {
+    if let Some(stdout) = output
+        .filter(|output| output.status.success())
+        .and_then(|output| String::from_utf8(output.stdout).ok())
+        .filter(|stdout| !stdout.is_empty())
+    {
         buf.push_str("\t\t\t<tr>\n");
         buf.push_str("\t\t\t\t<td>IP Address</td>\n");
         buf.push_str(&format!("\t\t\t\t<td>{}</td>\n", stdout));
@@ -515,7 +578,11 @@ pub fn sys_info_as_html() -> String {
         let total = info.blocks() as u64 * fbs;
         buf.push_str("\t\t\t<tr>\n");
         buf.push_str("\t\t\t\t<td>Storage (Free / Total)</td>\n");
-        buf.push_str(&format!("\t\t\t\t<td>{} / {}</td>\n", free.human_size(), total.human_size()));
+        buf.push_str(&format!(
+            "\t\t\t\t<td>{} / {}</td>\n",
+            free.human_size(),
+            total.human_size()
+        ));
         buf.push_str("\t\t\t</tr>\n");
     }
 
@@ -523,17 +590,21 @@ pub fn sys_info_as_html() -> String {
     if let Ok(info) = sysinfo::sysinfo() {
         buf.push_str("\t\t\t<tr>\n");
         buf.push_str("\t\t\t\t<td>Memory (Free / Total)</td>\n");
-        buf.push_str(&format!("\t\t\t\t<td>{} / {}</td>\n",
-                              info.ram_unused().human_size(),
-                              info.ram_total().human_size()));
+        buf.push_str(&format!(
+            "\t\t\t\t<td>{} / {}</td>\n",
+            info.ram_unused().human_size(),
+            info.ram_total().human_size()
+        ));
         buf.push_str("\t\t\t</tr>\n");
         let load = info.load_average();
         buf.push_str("\t\t\t<tr>\n");
         buf.push_str("\t\t\t\t<td>Load Average</td>\n");
-        buf.push_str(&format!("\t\t\t\t<td>{:.1}% {:.1}% {:.1}%</td>\n",
-                              load.0 * 100.0,
-                              load.1 * 100.0,
-                              load.2 * 100.0));
+        buf.push_str(&format!(
+            "\t\t\t\t<td>{:.1}% {:.1}% {:.1}%</td>\n",
+            load.0 * 100.0,
+            load.1 * 100.0,
+            load.2 * 100.0
+        ));
         buf.push_str("\t\t\t</tr>\n");
     }
 
@@ -543,7 +614,7 @@ pub fn sys_info_as_html() -> String {
         for line in info.lines() {
             if let Some(index) = line.find(':') {
                 let key = line[0..index].trim();
-                let value = line[index+1..].trim();
+                let value = line[index + 1..].trim();
                 if CPUINFO_KEYS.contains(&key) {
                     buf.push_str("\t\t\t<tr>\n");
                     buf.push_str(&format!("\t\t\t\t<td class=\"key\">{}</td>\n", key));
@@ -557,10 +628,10 @@ pub fn sys_info_as_html() -> String {
     buf.push_str("\t\t\t<tr class=\"sep\"></tr>\n");
 
     let output = Command::new("/bin/ntx_hwconfig")
-                         .args(&["-s", "/dev/mmcblk0"])
-                         .output()
-                         .map_err(|e| eprintln!("Can't execute command: {:#}.", e))
-                         .ok();
+        .args(&["-s", "/dev/mmcblk0"])
+        .output()
+        .map_err(|e| eprintln!("Can't execute command: {:#}.", e))
+        .ok();
 
     let mut map = FxHashMap::default();
 

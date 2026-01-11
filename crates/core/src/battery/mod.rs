@@ -1,18 +1,17 @@
-mod kobo;
 mod fake;
+mod kobo;
 
 use anyhow::Error;
 
-pub use self::kobo::KoboBattery;
 pub use self::fake::FakeBattery;
+pub use self::kobo::KoboBattery;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum Status {
     Discharging,
     Charging,
     Charged,
-    Unknown
-    // Full,
+    Unknown, // Full,
 }
 
 impl Status {

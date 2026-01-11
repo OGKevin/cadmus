@@ -1,11 +1,11 @@
-use crate::device::CURRENT_DEVICE;
-use crate::font::{Fonts, font_from_style, NORMAL_STYLE};
+use super::{Bus, Event, Hub, Id, RenderData, RenderQueue, View, ViewId, ID_FEEDER};
 use crate::color::{BLACK, WHITE};
-use crate::gesture::GestureEvent;
-use crate::geom::{Rectangle};
-use crate::framebuffer::{Framebuffer, UpdateMode};
-use super::{View, Event, Hub, Bus, Id, ID_FEEDER, RenderQueue, RenderData, ViewId};
 use crate::context::Context;
+use crate::device::CURRENT_DEVICE;
+use crate::font::{font_from_style, Fonts, NORMAL_STYLE};
+use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::geom::Rectangle;
+use crate::gesture::GestureEvent;
 
 pub struct ChapterLabel {
     id: Id,
@@ -16,7 +16,7 @@ pub struct ChapterLabel {
 }
 
 impl ChapterLabel {
-    pub fn new(rect: Rectangle, title: String, progress: f32)  -> ChapterLabel {
+    pub fn new(rect: Rectangle, title: String, progress: f32) -> ChapterLabel {
         ChapterLabel {
             id: ID_FEEDER.next(),
             rect,
@@ -42,14 +42,20 @@ impl ChapterLabel {
     }
 }
 
-
 impl View for ChapterLabel {
-    fn handle_event(&mut self, evt: &Event, _hub: &Hub, bus: &mut Bus, _rq: &mut RenderQueue, _context: &mut Context) -> bool {
+    fn handle_event(
+        &mut self,
+        evt: &Event,
+        _hub: &Hub,
+        bus: &mut Bus,
+        _rq: &mut RenderQueue,
+        _context: &mut Context,
+    ) -> bool {
         match *evt {
             Event::Gesture(GestureEvent::Tap(center)) if self.rect.includes(center) => {
                 bus.push_back(Event::Show(ViewId::TableOfContents));
                 true
-            },
+            }
             _ => false,
         }
     }
@@ -62,13 +68,13 @@ impl View for ChapterLabel {
             let padding = font.em() as i32 / 2;
             let max_width = self.rect.width().saturating_sub(2 * padding as u32) as i32;
             let max_progress_width = max_width - font.ellipsis.width;
-            let progress_plan = font.plan(&format!(" ({:.1}%)", 100.0 * self.progress),
-                                          Some(max_progress_width),
-                                          None);
+            let progress_plan = font.plan(
+                &format!(" ({:.1}%)", 100.0 * self.progress),
+                Some(max_progress_width),
+                None,
+            );
             let max_title_width = max_width - progress_plan.width;
-            let title_plan = font.plan(&self.title,
-                                       Some(max_title_width),
-                                       None);
+            let title_plan = font.plan(&self.title, Some(max_title_width), None);
             let dx = padding + (max_width - title_plan.width - progress_plan.width) / 2;
             let dy = (self.rect.height() as i32 - font.x_heights.0 as i32) / 2;
             let mut pt = pt!(self.rect.min.x + dx, self.rect.max.y - dy);

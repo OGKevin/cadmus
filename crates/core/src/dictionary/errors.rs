@@ -32,8 +32,12 @@ impl ::std::fmt::Display for DictError {
         match *self {
             DictError::IoError(ref e) => e.fmt(f),
             DictError::Utf8Error(ref e) => e.fmt(f),
-            DictError::DeflateError(ref err) => write!(f, "Error while using \
-                        the flate2 crate: {:?}", err),
+            DictError::DeflateError(ref err) => write!(
+                f,
+                "Error while using \
+                        the flate2 crate: {:?}",
+                err
+            ),
             DictError::MemoryError => write!(f, "not enough memory available"),
             DictError::WordNotFound(ref word) => write!(f, "Word not found: {}", word),
             DictError::InvalidCharacter(ref ch, ref line, ref pos) => {
@@ -45,11 +49,19 @@ impl ::std::fmt::Display for DictError {
                     ret = write!(f, " at position {}", pos);
                 }
                 ret
-            },
-            DictError::MissingColumnInIndex(ref lnum) => write!(f, "line {}: not \
-                    enough <tab>-separated columns found, expected at least 3", lnum),
-            DictError::InvalidFileFormat(ref explanation, ref path) =>
-                write!(f, "{}{}", path.clone().unwrap_or_else(String::new), explanation)
+            }
+            DictError::MissingColumnInIndex(ref lnum) => write!(
+                f,
+                "line {}: not \
+                    enough <tab>-separated columns found, expected at least 3",
+                lnum
+            ),
+            DictError::InvalidFileFormat(ref explanation, ref path) => write!(
+                f,
+                "{}{}",
+                path.clone().unwrap_or_else(String::new),
+                explanation
+            ),
         }
     }
 }
@@ -82,4 +94,3 @@ impl From<flate2::DecompressError> for DictError {
         DictError::DeflateError(err)
     }
 }
-

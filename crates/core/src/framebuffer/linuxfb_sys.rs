@@ -1,13 +1,21 @@
 #![allow(unused)]
 
-use std::mem;
-use std::fs::File;
-use std::os::unix::io::AsRawFd;
-use anyhow::{Error, Context};
+use anyhow::{Context, Error};
 use nix::{ioctl_read_bad, ioctl_write_ptr_bad};
+use std::fs::File;
+use std::mem;
+use std::os::unix::io::AsRawFd;
 
-ioctl_read_bad!(read_variable_screen_info, FBIOGET_VSCREENINFO, VarScreenInfo);
-ioctl_write_ptr_bad!(write_variable_screen_info, FBIOPUT_VSCREENINFO, VarScreenInfo);
+ioctl_read_bad!(
+    read_variable_screen_info,
+    FBIOGET_VSCREENINFO,
+    VarScreenInfo
+);
+ioctl_write_ptr_bad!(
+    write_variable_screen_info,
+    FBIOPUT_VSCREENINFO,
+    VarScreenInfo
+);
 ioctl_read_bad!(read_fixed_screen_info, FBIOGET_FSCREENINFO, FixScreenInfo);
 
 pub const FBIOGET_VSCREENINFO: libc::c_ulong = 0x4600;
@@ -96,9 +104,7 @@ impl Default for FixScreenInfo {
 
 pub fn fix_screen_info(file: &File) -> Result<FixScreenInfo, Error> {
     let mut info: FixScreenInfo = Default::default();
-    let result = unsafe {
-        read_fixed_screen_info(file.as_raw_fd(), &mut info)
-    };
+    let result = unsafe { read_fixed_screen_info(file.as_raw_fd(), &mut info) };
     match result {
         Err(e) => Err(Error::from(e).context("can't get fixed screen info")),
         _ => Ok(info),
@@ -107,9 +113,7 @@ pub fn fix_screen_info(file: &File) -> Result<FixScreenInfo, Error> {
 
 pub fn var_screen_info(file: &File) -> Result<VarScreenInfo, Error> {
     let mut info: VarScreenInfo = Default::default();
-    let result = unsafe {
-        read_variable_screen_info(file.as_raw_fd(), &mut info)
-    };
+    let result = unsafe { read_variable_screen_info(file.as_raw_fd(), &mut info) };
     match result {
         Err(e) => Err(Error::from(e).context("can't get variable screen info")),
         _ => Ok(info),

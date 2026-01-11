@@ -1,14 +1,16 @@
-use crate::device::CURRENT_DEVICE;
-use crate::framebuffer::{Framebuffer, UpdateMode};
-use crate::input::{DeviceEvent, FingerStatus};
-use crate::gesture::GestureEvent;
-use super::{View, Event, ViewId, KeyboardEvent, Hub, Bus, Id, ID_FEEDER, RenderQueue, RenderData, TextKind};
-use super::BORDER_RADIUS_LARGE;
 use super::icon::ICONS_PIXMAPS;
-use crate::color::{Color, TEXT_NORMAL, TEXT_INVERTED_HARD, KEYBOARD_BG};
-use crate::font::{Fonts, font_from_style, KBD_CHAR, KBD_LABEL};
-use crate::geom::{Rectangle, LinearDir, CornerSpec};
+use super::BORDER_RADIUS_LARGE;
+use super::{
+    Bus, Event, Hub, Id, KeyboardEvent, RenderData, RenderQueue, TextKind, View, ViewId, ID_FEEDER,
+};
+use crate::color::{Color, KEYBOARD_BG, TEXT_INVERTED_HARD, TEXT_NORMAL};
 use crate::context::Context;
+use crate::device::CURRENT_DEVICE;
+use crate::font::{font_from_style, Fonts, KBD_CHAR, KBD_LABEL};
+use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::geom::{CornerSpec, LinearDir, Rectangle};
+use crate::gesture::GestureEvent;
+use crate::input::{DeviceEvent, FingerStatus};
 use crate::unit::scale_by_dpi;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -22,9 +24,9 @@ pub enum KeyKind {
     Alternate,
 }
 
-use std::fmt;
-use serde::{Deserializer, Deserialize};
 use serde::de::{self, Visitor};
+use serde::{Deserialize, Deserializer};
+use std::fmt;
 
 impl<'de> Deserialize<'de> for KeyKind {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
@@ -34,15 +36,28 @@ impl<'de> Deserialize<'de> for KeyKind {
         struct FieldVisitor;
 
         const FIELDS: &[&str] = &[
-            "Shift", "Sft",
-            "Return", "Ret",
-            "Alternate", "Alt",
-            "Combine", "Cmb",
-            "MoveFwd", "MoveF", "MF",
-            "MoveBwd", "MoveB", "MB",
-            "DelFwd", "DelF", "DF",
-            "DelBwd", "DelB", "DB",
-            "Space", "Spc",
+            "Shift",
+            "Sft",
+            "Return",
+            "Ret",
+            "Alternate",
+            "Alt",
+            "Combine",
+            "Cmb",
+            "MoveFwd",
+            "MoveF",
+            "MF",
+            "MoveBwd",
+            "MoveB",
+            "MB",
+            "DelFwd",
+            "DelF",
+            "DF",
+            "DelBwd",
+            "DelB",
+            "DB",
+            "Space",
+            "Spc",
         ];
 
         impl<'de> Visitor<'de> for FieldVisitor {
@@ -70,9 +85,12 @@ impl<'de> Deserialize<'de> for KeyKind {
                         if value.chars().count() != 1 {
                             return Err(serde::de::Error::unknown_field(value, FIELDS));
                         }
-                        value.chars().next().map(KeyKind::Output)
-                             .ok_or_else(|| serde::de::Error::custom("impossible"))
-                    },
+                        value
+                            .chars()
+                            .next()
+                            .map(KeyKind::Output)
+                            .ok_or_else(|| serde::de::Error::custom("impossible"))
+                    }
                 }
             }
         }
@@ -80,7 +98,6 @@ impl<'de> Deserialize<'de> for KeyKind {
         deserializer.deserialize_identifier(FieldVisitor)
     }
 }
-
 
 #[derive(Clone, Debug)]
 pub enum KeyLabel {
@@ -97,22 +114,50 @@ impl KeyKind {
     pub fn label(self, ratio: f32) -> KeyLabel {
         match self {
             KeyKind::Output(ch) => KeyLabel::Char(ch),
-            KeyKind::Delete(dir) => {
-                match dir {
-                    LinearDir::Forward => KeyLabel::Icon("delete-forward"),
-                    LinearDir::Backward => KeyLabel::Icon("delete-backward"),
-                }
+            KeyKind::Delete(dir) => match dir {
+                LinearDir::Forward => KeyLabel::Icon("delete-forward"),
+                LinearDir::Backward => KeyLabel::Icon("delete-backward"),
             },
-            KeyKind::Move(dir) => {
-                match dir {
-                    LinearDir::Forward => KeyLabel::Icon(if ratio <= 1.0 { "move-forward-short" } else { "move-forward" }),
-                    LinearDir::Backward => KeyLabel::Icon(if ratio <= 1.0 { "move-backward-short" } else { "move-backward"}),
-                }
+            KeyKind::Move(dir) => match dir {
+                LinearDir::Forward => KeyLabel::Icon(if ratio <= 1.0 {
+                    "move-forward-short"
+                } else {
+                    "move-forward"
+                }),
+                LinearDir::Backward => KeyLabel::Icon(if ratio <= 1.0 {
+                    "move-backward-short"
+                } else {
+                    "move-backward"
+                }),
             },
-            KeyKind::Shift => if ratio < 2.0 { KeyLabel::Icon("shift") } else { KeyLabel::Text("SHIFT") },
-            KeyKind::Return => if ratio < 2.0 { KeyLabel::Icon("return") } else { KeyLabel::Text("RETURN") },
-            KeyKind::Combine => if ratio <= 1.0 { KeyLabel::Icon("combine") } else { KeyLabel::Text("CMB") },
-            KeyKind::Alternate => if ratio <= 1.0 { KeyLabel::Icon("alternate") } else { KeyLabel::Text("ALT") },
+            KeyKind::Shift => {
+                if ratio < 2.0 {
+                    KeyLabel::Icon("shift")
+                } else {
+                    KeyLabel::Text("SHIFT")
+                }
+            }
+            KeyKind::Return => {
+                if ratio < 2.0 {
+                    KeyLabel::Icon("return")
+                } else {
+                    KeyLabel::Text("RETURN")
+                }
+            }
+            KeyKind::Combine => {
+                if ratio <= 1.0 {
+                    KeyLabel::Icon("combine")
+                } else {
+                    KeyLabel::Text("CMB")
+                }
+            }
+            KeyKind::Alternate => {
+                if ratio <= 1.0 {
+                    KeyLabel::Icon("alternate")
+                } else {
+                    KeyLabel::Text("ALT")
+                }
+            }
         }
     }
 }
@@ -158,49 +203,71 @@ impl Key {
 }
 
 impl View for Key {
-    fn handle_event(&mut self, evt: &Event, hub: &Hub, bus: &mut Bus, rq: &mut RenderQueue, _context: &mut Context) -> bool {
+    fn handle_event(
+        &mut self,
+        evt: &Event,
+        hub: &Hub,
+        bus: &mut Bus,
+        rq: &mut RenderQueue,
+        _context: &mut Context,
+    ) -> bool {
         match *evt {
-            Event::Device(DeviceEvent::Finger { status, position, .. }) => {
-                match status {
-                    FingerStatus::Down if self.rect.includes(position) => {
-                        self.active = true;
-                        rq.add(RenderData::no_wait(self.id, self.rect, UpdateMode::Fast));
-                        true
-                    },
-                    FingerStatus::Up if self.active => {
-                        self.active = false;
-                        rq.add(RenderData::no_wait(self.id, self.rect, UpdateMode::Gui));
-                        true
-                    },
-                    _ => false,
+            Event::Device(DeviceEvent::Finger {
+                status, position, ..
+            }) => match status {
+                FingerStatus::Down if self.rect.includes(position) => {
+                    self.active = true;
+                    rq.add(RenderData::no_wait(self.id, self.rect, UpdateMode::Fast));
+                    true
                 }
+                FingerStatus::Up if self.active => {
+                    self.active = false;
+                    rq.add(RenderData::no_wait(self.id, self.rect, UpdateMode::Gui));
+                    true
+                }
+                _ => false,
             },
             Event::Gesture(GestureEvent::Tap(center)) if self.rect.includes(center) => {
                 match self.kind {
-                    KeyKind::Shift |
-                    KeyKind::Alternate |
-                    KeyKind::Combine => {
+                    KeyKind::Shift | KeyKind::Alternate | KeyKind::Combine => {
                         if self.kind == KeyKind::Combine {
                             self.pressure = (self.pressure + 2) % 4;
                         } else {
                             self.pressure = (self.pressure + 1) % 3;
                         }
                         rq.add(RenderData::no_wait(self.id, self.rect, UpdateMode::Gui));
-                    },
+                    }
                     _ => (),
                 }
                 bus.push_back(Event::Key(self.kind));
                 true
-            },
-            Event::Gesture(GestureEvent::HoldFingerShort(center, ..)) if self.rect.includes(center) => {
+            }
+            Event::Gesture(GestureEvent::HoldFingerShort(center, ..))
+                if self.rect.includes(center) =>
+            {
                 match self.kind {
-                    KeyKind::Delete(dir) => { hub.send(Event::Keyboard(KeyboardEvent::Delete { target: TextKind::Word, dir })).ok(); },
-                    KeyKind::Move(dir) => { hub.send(Event::Keyboard(KeyboardEvent::Move { target: TextKind::Word, dir })).ok(); },
-                    KeyKind::Output(' ') => { hub.send(Event::ToggleNear(ViewId::KeyboardLayoutMenu, self.rect)).ok(); },
+                    KeyKind::Delete(dir) => {
+                        hub.send(Event::Keyboard(KeyboardEvent::Delete {
+                            target: TextKind::Word,
+                            dir,
+                        }))
+                        .ok();
+                    }
+                    KeyKind::Move(dir) => {
+                        hub.send(Event::Keyboard(KeyboardEvent::Move {
+                            target: TextKind::Word,
+                            dir,
+                        }))
+                        .ok();
+                    }
+                    KeyKind::Output(' ') => {
+                        hub.send(Event::ToggleNear(ViewId::KeyboardLayoutMenu, self.rect))
+                            .ok();
+                    }
                     _ => (),
                 };
                 true
-            },
+            }
             _ => false,
         }
     }
@@ -226,7 +293,7 @@ impl View for Key {
                 let dy = (self.rect.height() - font.x_heights.0) as i32 / 2;
                 let pt = pt!(self.rect.min.x + dx, self.rect.max.y - dy);
                 font.render(fb, scheme[1], &plan, pt);
-            },
+            }
             KeyLabel::Text(label) => {
                 let font = font_from_style(fonts, &KBD_LABEL, dpi);
                 let mut plan = font.plan(label, None, None);
@@ -236,7 +303,7 @@ impl View for Key {
                 let dy = (self.rect.height() - font.x_heights.1) as i32 / 2;
                 let pt = pt!(self.rect.min.x + dx, self.rect.max.y - dy);
                 font.render(fb, scheme[1], &plan, pt);
-            },
+            }
             KeyLabel::Icon(name) => {
                 let pixmap = ICONS_PIXMAPS.get(name).unwrap();
                 let dx = (self.rect.width() as i32 - pixmap.width as i32) / 2;

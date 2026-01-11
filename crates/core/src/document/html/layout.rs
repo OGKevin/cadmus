@@ -1,14 +1,14 @@
+use crate::color::Color;
+use crate::color::BLACK;
+use crate::font::{Font, FontFamily, RenderPlan};
+use crate::geom::{Edge, Point, Rectangle};
+pub use crate::metadata::TextAlign;
+use fxhash::FxHashMap;
+use kl_hyphenate::{Language, Load, Standard};
+use lazy_static::lazy_static;
+use std::fmt::Debug;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::fmt::Debug;
-use fxhash::FxHashMap;
-use lazy_static::lazy_static;
-use kl_hyphenate::{Standard, Language, Load};
-use crate::color::Color;
-use crate::geom::{Point, Rectangle, Edge};
-use crate::font::{FontFamily, Font, RenderPlan};
-pub use crate::metadata::TextAlign;
-use crate::color::BLACK;
 
 pub const DEFAULT_HYPH_LANG: &str = "en";
 
@@ -211,8 +211,8 @@ pub enum InlineMaterial {
 impl InlineMaterial {
     pub fn offset(&self) -> Option<usize> {
         match self {
-            InlineMaterial::Text(TextMaterial { offset, .. }) |
-            InlineMaterial::Image(ImageMaterial { offset, .. }) => Some(*offset),
+            InlineMaterial::Text(TextMaterial { offset, .. })
+            | InlineMaterial::Image(ImageMaterial { offset, .. }) => Some(*offset),
             _ => None,
         }
     }
@@ -283,31 +283,30 @@ pub struct Fonts {
 }
 
 impl Fonts {
-    pub fn get_mut(&mut self, font_kind: FontKind, font_style: FontStyle, font_weight: FontWeight) -> &mut Font {
+    pub fn get_mut(
+        &mut self,
+        font_kind: FontKind,
+        font_style: FontStyle,
+        font_weight: FontWeight,
+    ) -> &mut Font {
         match font_kind {
-            FontKind::Serif => {
-                match (font_style, font_weight) {
-                    (FontStyle::Normal, FontWeight::Normal) => &mut self.serif.regular,
-                    (FontStyle::Normal, FontWeight::Bold) => &mut self.serif.bold,
-                    (FontStyle::Italic, FontWeight::Normal) => &mut self.serif.italic,
-                    (FontStyle::Italic, FontWeight::Bold) => &mut self.serif.bold_italic,
-                }
+            FontKind::Serif => match (font_style, font_weight) {
+                (FontStyle::Normal, FontWeight::Normal) => &mut self.serif.regular,
+                (FontStyle::Normal, FontWeight::Bold) => &mut self.serif.bold,
+                (FontStyle::Italic, FontWeight::Normal) => &mut self.serif.italic,
+                (FontStyle::Italic, FontWeight::Bold) => &mut self.serif.bold_italic,
             },
-            FontKind::SansSerif => {
-                match (font_style, font_weight) {
-                    (FontStyle::Normal, FontWeight::Normal) => &mut self.sans_serif.regular,
-                    (FontStyle::Normal, FontWeight::Bold) => &mut self.sans_serif.bold,
-                    (FontStyle::Italic, FontWeight::Normal) => &mut self.sans_serif.italic,
-                    (FontStyle::Italic, FontWeight::Bold) => &mut self.sans_serif.bold_italic,
-                }
+            FontKind::SansSerif => match (font_style, font_weight) {
+                (FontStyle::Normal, FontWeight::Normal) => &mut self.sans_serif.regular,
+                (FontStyle::Normal, FontWeight::Bold) => &mut self.sans_serif.bold,
+                (FontStyle::Italic, FontWeight::Normal) => &mut self.sans_serif.italic,
+                (FontStyle::Italic, FontWeight::Bold) => &mut self.sans_serif.bold_italic,
             },
-            FontKind::Monospace => {
-                match (font_style, font_weight) {
-                    (FontStyle::Normal, FontWeight::Normal) => &mut self.monospace.regular,
-                    (FontStyle::Normal, FontWeight::Bold) => &mut self.monospace.bold,
-                    (FontStyle::Italic, FontWeight::Normal) => &mut self.monospace.italic,
-                    (FontStyle::Italic, FontWeight::Bold) => &mut self.monospace.bold_italic,
-                }
+            FontKind::Monospace => match (font_style, font_weight) {
+                (FontStyle::Normal, FontWeight::Normal) => &mut self.monospace.regular,
+                (FontStyle::Normal, FontWeight::Bold) => &mut self.monospace.bold,
+                (FontStyle::Italic, FontWeight::Normal) => &mut self.monospace.italic,
+                (FontStyle::Italic, FontWeight::Bold) => &mut self.monospace.bold_italic,
             },
             FontKind::Cursive => &mut self.cursive,
             FontKind::Fantasy => &mut self.fantasy,
@@ -407,9 +406,15 @@ impl DrawCommand {
 
     pub fn position_mut(&mut self) -> Option<&mut Point> {
         match *self {
-            DrawCommand::Text(TextCommand { ref mut position, .. }) => Some(position),
-            DrawCommand::ExtraText(TextCommand { ref mut position, .. }) => Some(position),
-            DrawCommand::Image(ImageCommand { ref mut position, .. }) => Some(position),
+            DrawCommand::Text(TextCommand {
+                ref mut position, ..
+            }) => Some(position),
+            DrawCommand::ExtraText(TextCommand {
+                ref mut position, ..
+            }) => Some(position),
+            DrawCommand::Image(ImageCommand {
+                ref mut position, ..
+            }) => Some(position),
             _ => None,
         }
     }
@@ -441,20 +446,22 @@ mod tests {
 }
 
 pub fn hyph_lang(name: &str) -> Option<Language> {
-    HYPHENATION_LANGUAGES.get(name).or_else(|| {
-        HYPHENATION_LANGUAGES.get(name.to_lowercase().as_str())
-    }).or_else(|| {
-        let name_lc = name.to_lowercase();
-        let mut s = name_lc.as_str();
-        while let Some(index) = s.rfind('-') {
-            s = &s[..index];
-            let opt = HYPHENATION_LANGUAGES.get(s);
-            if opt.is_some() {
-                return opt;
+    HYPHENATION_LANGUAGES
+        .get(name)
+        .or_else(|| HYPHENATION_LANGUAGES.get(name.to_lowercase().as_str()))
+        .or_else(|| {
+            let name_lc = name.to_lowercase();
+            let mut s = name_lc.as_str();
+            while let Some(index) = s.rfind('-') {
+                s = &s[..index];
+                let opt = HYPHENATION_LANGUAGES.get(s);
+                if opt.is_some() {
+                    return opt;
+                }
             }
-        }
-        None
-    }).cloned()
+            None
+        })
+        .cloned()
 }
 
 lazy_static! {

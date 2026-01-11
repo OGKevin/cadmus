@@ -1,13 +1,13 @@
-use std::mem;
-use crate::device::CURRENT_DEVICE;
-use crate::geom::{Point, Rectangle};
-use crate::view::{View, Event, Hub, Bus, RenderQueue, RenderData};
-use crate::view::{Id, ID_FEEDER};
-use crate::gesture::GestureEvent;
-use crate::framebuffer::{Framebuffer, UpdateMode};
-use crate::font::{Fonts, font_from_style, NORMAL_STYLE, DISPLAY_STYLE};
-use crate::color::{BLACK, WHITE, GRAY07};
+use crate::color::{BLACK, GRAY07, WHITE};
 use crate::context::Context;
+use crate::device::CURRENT_DEVICE;
+use crate::font::{font_from_style, Fonts, DISPLAY_STYLE, NORMAL_STYLE};
+use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::geom::{Point, Rectangle};
+use crate::gesture::GestureEvent;
+use crate::view::{Bus, Event, Hub, RenderData, RenderQueue, View};
+use crate::view::{Id, ID_FEEDER};
+use std::mem;
 
 const MESSAGE_1: &str = "Hold you device in portrait mode\n\
                          with the Kobo logo at the bottom,\n\
@@ -58,7 +58,14 @@ impl RotationValues {
 }
 
 impl View for RotationValues {
-    fn handle_event(&mut self, evt: &Event, hub: &Hub, _bus: &mut Bus, rq: &mut RenderQueue, context: &mut Context) -> bool {
+    fn handle_event(
+        &mut self,
+        evt: &Event,
+        hub: &Hub,
+        _bus: &mut Bus,
+        rq: &mut RenderQueue,
+        context: &mut Context,
+    ) -> bool {
         match *evt {
             Event::Gesture(GestureEvent::Tap(mut pt)) if !self.finished => {
                 if self.mirror_x {
@@ -84,9 +91,11 @@ impl View for RotationValues {
                     } else {
                         (self.taps.len() - CORNERS_COUNT) as i8
                     };
-                    context.fb.set_rotation(rotation)
-                           .map_err(|e| eprintln!("Can't set rotation: {:#}.", e))
-                           .ok();
+                    context
+                        .fb
+                        .set_rotation(rotation)
+                        .map_err(|e| eprintln!("Can't set rotation: {:#}.", e))
+                        .ok();
                     if context.fb.rotation() == self.read_rotation {
                         self.written_rotation = rotation;
                     }
@@ -97,16 +106,18 @@ impl View for RotationValues {
                 if self.finished {
                     // Infer the startup rotation and the mirroring scheme.
                     let first = self.taps[0];
-                    let startup_rotation = self.taps[CORNERS_COUNT..2*CORNERS_COUNT].iter()
-                                               .enumerate()
-                                               .min_by_key(|(_, &pt)| first.dist2(pt))
-                                               .map(|(i, _)| i)
-                                               .unwrap();
-                    let origin = self.taps[CORNERS_COUNT..2*CORNERS_COUNT].iter()
-                                     .enumerate()
-                                     .min_by_key(|(_, pt)| pt.x + pt.y)
-                                     .map(|(i, _)| i)
-                                     .unwrap();
+                    let startup_rotation = self.taps[CORNERS_COUNT..2 * CORNERS_COUNT]
+                        .iter()
+                        .enumerate()
+                        .min_by_key(|(_, &pt)| first.dist2(pt))
+                        .map(|(i, _)| i)
+                        .unwrap();
+                    let origin = self.taps[CORNERS_COUNT..2 * CORNERS_COUNT]
+                        .iter()
+                        .enumerate()
+                        .min_by_key(|(_, pt)| pt.x + pt.y)
+                        .map(|(i, _)| i)
+                        .unwrap();
                     let center = (origin + 2) % 4;
                     let next = self.taps[CORNERS_COUNT + (center + 1) % 4];
                     let polarity = 2 * ((origin + startup_rotation) as i8 % 2) - 1;
@@ -119,7 +130,7 @@ impl View for RotationValues {
                 }
 
                 true
-            },
+            }
             _ => false,
         }
     }
@@ -158,12 +169,30 @@ impl View for RotationValues {
 
         if self.taps.len() < CORNERS_COUNT {
             fb.draw_triangle(&[pt!(0, 0), pt!(side, 0), pt!(0, side)], GRAY07);
-            fb.draw_triangle(&[pt!(width - 1, 0), pt!(width - 1, side),
-                               pt!(width - 1 - side, 0)], GRAY07);
-            fb.draw_triangle(&[pt!(width - 1, height - 1), pt!(width - 1 - side, height - 1),
-                               pt!(width - 1, height - 1 - side)], GRAY07);
-            fb.draw_triangle(&[pt!(0, height - 1), pt!(0, height - 1 - side),
-                               pt!(side, height - 1)], GRAY07);
+            fb.draw_triangle(
+                &[
+                    pt!(width - 1, 0),
+                    pt!(width - 1, side),
+                    pt!(width - 1 - side, 0),
+                ],
+                GRAY07,
+            );
+            fb.draw_triangle(
+                &[
+                    pt!(width - 1, height - 1),
+                    pt!(width - 1 - side, height - 1),
+                    pt!(width - 1, height - 1 - side),
+                ],
+                GRAY07,
+            );
+            fb.draw_triangle(
+                &[
+                    pt!(0, height - 1),
+                    pt!(0, height - 1 - side),
+                    pt!(side, height - 1),
+                ],
+                GRAY07,
+            );
         } else {
             fb.draw_triangle(&[pt!(0, 0), pt!(side, 0), pt!(0, side)], BLACK);
         }

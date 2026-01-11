@@ -1,15 +1,15 @@
-use crate::device::CURRENT_DEVICE;
-use crate::framebuffer::{Framebuffer, UpdateMode};
-use super::{View, Event, Hub, Bus, Id, ID_FEEDER, RenderQueue, RenderData};
-use super::THICKNESS_MEDIUM;
 use super::icon::ICONS_PIXMAPS;
+use super::THICKNESS_MEDIUM;
+use super::{Bus, Event, Hub, Id, RenderData, RenderQueue, View, ID_FEEDER};
+use crate::color::{TEXT_INVERTED_HARD, TEXT_NORMAL};
+use crate::context::Context;
+use crate::device::CURRENT_DEVICE;
+use crate::font::Fonts;
+use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::geom::{BorderSpec, CornerSpec, Rectangle};
 use crate::gesture::GestureEvent;
 use crate::input::{DeviceEvent, FingerStatus};
 use crate::unit::scale_by_dpi;
-use crate::font::Fonts;
-use crate::context::Context;
-use crate::geom::{Rectangle, CornerSpec, BorderSpec};
-use crate::color::{TEXT_NORMAL, TEXT_INVERTED_HARD};
 
 pub struct RoundedButton {
     id: Id,
@@ -34,27 +34,34 @@ impl RoundedButton {
 }
 
 impl View for RoundedButton {
-    fn handle_event(&mut self, evt: &Event, _hub: &Hub, bus: &mut Bus, rq: &mut RenderQueue, _context: &mut Context) -> bool {
+    fn handle_event(
+        &mut self,
+        evt: &Event,
+        _hub: &Hub,
+        bus: &mut Bus,
+        rq: &mut RenderQueue,
+        _context: &mut Context,
+    ) -> bool {
         match *evt {
-            Event::Device(DeviceEvent::Finger { status, position, .. }) => {
-                match status {
-                    FingerStatus::Down if self.rect.includes(position) => {
-                        self.active = true;
-                        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Fast));
-                        true
-                    },
-                    FingerStatus::Up if self.active => {
-                        self.active = false;
-                        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
-                        true
-                    },
-                    _ => false,
+            Event::Device(DeviceEvent::Finger {
+                status, position, ..
+            }) => match status {
+                FingerStatus::Down if self.rect.includes(position) => {
+                    self.active = true;
+                    rq.add(RenderData::new(self.id, self.rect, UpdateMode::Fast));
+                    true
                 }
+                FingerStatus::Up if self.active => {
+                    self.active = false;
+                    rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+                    true
+                }
+                _ => false,
             },
             Event::Gesture(GestureEvent::Tap(center)) if self.rect.includes(center) => {
                 bus.push_back(self.event.clone());
                 true
-            },
+            }
             _ => false,
         }
     }
@@ -75,11 +82,15 @@ impl View for RoundedButton {
         let dy = (self.rect.height() as i32 - pixmap.height as i32) / 2;
         let pt = self.rect.min + pt!(dx, dy);
 
-        fb.draw_rounded_rectangle_with_border(&self.rect,
-                                              &CornerSpec::Uniform(button_radius),
-                                              &BorderSpec { thickness: thickness as u16,
-                                                            color: scheme[1] },
-                                              &scheme[0]);
+        fb.draw_rounded_rectangle_with_border(
+            &self.rect,
+            &CornerSpec::Uniform(button_radius),
+            &BorderSpec {
+                thickness: thickness as u16,
+                color: scheme[1],
+            },
+            &scheme[0],
+        );
 
         fb.draw_blended_pixmap(pixmap, pt, scheme[1]);
     }

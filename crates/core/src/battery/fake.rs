@@ -1,5 +1,5 @@
-use anyhow::Error;
 use super::{Battery, Status};
+use anyhow::Error;
 
 pub struct FakeBattery {
     capacity: f32,
@@ -8,7 +8,10 @@ pub struct FakeBattery {
 
 impl FakeBattery {
     pub fn new() -> FakeBattery {
-        FakeBattery { capacity: 50.0, status: Status::Discharging }
+        FakeBattery {
+            capacity: 50.0,
+            status: Status::Discharging,
+        }
     }
 }
 

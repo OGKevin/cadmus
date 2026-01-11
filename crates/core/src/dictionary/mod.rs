@@ -37,19 +37,28 @@ impl Dictionary {
     ///
     /// Words are looked up in the index and then retrieved from the dict file. If no word was
     /// found, the returned vector is empty. Errors result from the parsing of the underlying files.
-    pub fn lookup(&mut self, word: &str, fuzzy: bool) -> Result<Vec<[String; 2]>, errors::DictError> {
+    pub fn lookup(
+        &mut self,
+        word: &str,
+        fuzzy: bool,
+    ) -> Result<Vec<[String; 2]>, errors::DictError> {
         let mut query = word.to_string();
         if !self.metadata.case_sensitive {
             query = query.to_lowercase();
         }
         if !self.metadata.all_chars {
-            query = query.chars().filter(|c| c.is_alphanumeric() || c.is_whitespace()).collect();
+            query = query
+                .chars()
+                .filter(|c| c.is_alphanumeric() || c.is_whitespace())
+                .collect();
         }
         let entries = self.index.load_and_find(&query, fuzzy, &self.metadata);
         let mut results = Vec::new();
         for entry in entries.into_iter() {
-            results.push([entry.original.unwrap_or(entry.headword),
-                          self.content.fetch_definition(entry.offset, entry.size)?]);
+            results.push([
+                entry.original.unwrap_or(entry.headword),
+                self.content.fetch_definition(entry.offset, entry.size)?,
+            ]);
         }
         Ok(results)
     }
@@ -63,12 +72,16 @@ impl Dictionary {
             query = query.replace(|c: char| !c.is_alphanumeric(), "");
         }
         let entries = self.index.find(&query, false);
-        let entry = entries.get(0).ok_or_else(|| errors::DictError::WordNotFound(name.into()))?;
-        self.content.fetch_definition(entry.offset, entry.size)
+        let entry = entries
+            .get(0)
+            .ok_or_else(|| errors::DictError::WordNotFound(name.into()))?;
+        self.content
+            .fetch_definition(entry.offset, entry.size)
             .map(|def| {
-                let start = def.find('\n')
-                               .filter(|pos| *pos < def.len() - 1)
-                               .unwrap_or(0);
+                let start = def
+                    .find('\n')
+                    .filter(|pos| *pos < def.len() - 1)
+                    .unwrap_or(0);
                 def[start..].trim().to_string()
             })
     }
@@ -94,7 +107,10 @@ impl Dictionary {
 ///
 /// A dictionary is made of an index and a dictionary (data) file, both are opened from the given
 /// input file names. Gzipped files with the suffix `.dz` will be handled automatically.
-pub fn load_dictionary_from_file<P: AsRef<Path>>(content_path: P, index_path: P) -> Result<Dictionary, errors::DictError> {
+pub fn load_dictionary_from_file<P: AsRef<Path>>(
+    content_path: P,
+    index_path: P,
+) -> Result<Dictionary, errors::DictError> {
     let content = dictreader::load_dict(content_path)?;
     let index = Box::new(indexing::parse_index_from_file(index_path, true)?);
     Ok(load_dictionary(content, index))
@@ -114,7 +130,14 @@ pub fn load_dictionary(content: Box<dyn DictReader>, index: Box<dyn IndexReader>
         "00databasecasesensitive"
     };
     let case_sensitive = !index.find(word, false).is_empty();
-    Dictionary { content, index, metadata: Metadata { all_chars, case_sensitive } }
+    Dictionary {
+        content,
+        index,
+        metadata: Metadata {
+            all_chars,
+            case_sensitive,
+        },
+    }
 }
 
 #[cfg(test)]
@@ -126,7 +149,11 @@ mod tests {
     const PATH_CASE_INSENSITIVE_DICT: &str = "src/dictionary/testdata/case_insensitive_dict.dict";
     const PATH_CASE_INSENSITIVE_INDEX: &str = "src/dictionary/testdata/case_insensitive_dict.index";
 
-    fn assert_dict_word_exists(mut dict: Dictionary, headword: &str, definition: &str) -> Dictionary {
+    fn assert_dict_word_exists(
+        mut dict: Dictionary,
+        headword: &str,
+        definition: &str,
+    ) -> Dictionary {
         let r = dict.lookup(headword, false);
         assert!(r.is_ok());
         let search = r.unwrap();
@@ -138,14 +165,12 @@ mod tests {
 
     #[test]
     fn test_load_dictionary_from_file() {
-
         let r = load_dictionary_from_file(PATH_CASE_INSENSITIVE_DICT, PATH_CASE_INSENSITIVE_INDEX);
         assert!(r.is_ok());
     }
 
     #[test]
     fn test_dictionary_lookup_case_insensitive() {
-
         let r = load_dictionary_from_file(PATH_CASE_INSENSITIVE_DICT, PATH_CASE_INSENSITIVE_INDEX);
         let mut dict = r.unwrap();
 
@@ -156,7 +181,6 @@ mod tests {
 
     #[test]
     fn test_dictionary_lookup_case_insensitive_fuzzy() {
-
         let r = load_dictionary_from_file(PATH_CASE_INSENSITIVE_DICT, PATH_CASE_INSENSITIVE_INDEX);
         let mut dict = r.unwrap();
 
@@ -170,7 +194,6 @@ mod tests {
 
     #[test]
     fn test_dictionary_lookup_case_sensitive() {
-
         let r = load_dictionary_from_file(PATH_CASE_SENSITIVE_DICT, PATH_CASE_SENSITIVE_INDEX);
         let mut dict = r.unwrap();
 
@@ -186,7 +209,6 @@ mod tests {
 
     #[test]
     fn test_dictionary_lookup_case_sensitive_fuzzy() {
-
         let r = load_dictionary_from_file(PATH_CASE_SENSITIVE_DICT, PATH_CASE_SENSITIVE_INDEX);
         let mut dict = r.unwrap();
 
@@ -198,4 +220,3 @@ mod tests {
         assert!(search[0][1].contains("test for case-sensitivity"));
     }
 }
-

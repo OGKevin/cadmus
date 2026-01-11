@@ -1,7 +1,7 @@
-use std::io::{Read, Seek, SeekFrom};
-use std::fs::File;
-use anyhow::Error;
 use super::LightSensor;
+use anyhow::Error;
+use std::fs::File;
+use std::io::{Read, Seek, SeekFrom};
 
 // The Aura ONE uses a Silicon Graphics light sensor,
 // the model code is si114x (where x is 5, 6, or 7).

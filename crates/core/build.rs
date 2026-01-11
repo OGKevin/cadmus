@@ -16,11 +16,11 @@ fn main() {
             "linux" => {
                 println!("cargo:rustc-link-search=target/mupdf_wrapper/Linux");
                 println!("cargo:rustc-link-lib=dylib=stdc++");
-            },
+            }
             "macos" => {
                 println!("cargo:rustc-link-search=target/mupdf_wrapper/Darwin");
                 println!("cargo:rustc-link-lib=dylib=c++");
-            },
+            }
             _ => panic!("Unsupported platform: {}.", target_os),
         }
 

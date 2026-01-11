@@ -1,13 +1,15 @@
-use std::fs::File;
-use std::path::Path;
-use std::io::{Read, Seek, SeekFrom};
-use anyhow::{Error, format_err};
-use crate::device::CURRENT_DEVICE;
 use super::{Battery, Status};
+use crate::device::CURRENT_DEVICE;
+use anyhow::{format_err, Error};
+use std::fs::File;
+use std::io::{Read, Seek, SeekFrom};
+use std::path::Path;
 
-const BATTERY_INTERFACES: [&str; 3] = ["/sys/class/power_supply/bd71827_bat",
-                                       "/sys/class/power_supply/mc13892_bat",
-                                       "/sys/class/power_supply/battery"];
+const BATTERY_INTERFACES: [&str; 3] = [
+    "/sys/class/power_supply/bd71827_bat",
+    "/sys/class/power_supply/mc13892_bat",
+    "/sys/class/power_supply/battery",
+];
 const POWER_COVER_INTERFACE: &str = "/sys/class/misc/cilix";
 
 const BATTERY_CAPACITY: &str = "capacity";
@@ -32,9 +34,12 @@ pub struct KoboBattery {
 
 impl KoboBattery {
     pub fn new() -> Result<KoboBattery, Error> {
-        let base = Path::new(BATTERY_INTERFACES.iter()
-                             .find(|bi| Path::new(bi).exists())
-                             .ok_or_else(|| format_err!("battery path missing"))?);
+        let base = Path::new(
+            BATTERY_INTERFACES
+                .iter()
+                .find(|bi| Path::new(bi).exists())
+                .ok_or_else(|| format_err!("battery path missing"))?,
+        );
         let capacity = File::open(base.join(BATTERY_CAPACITY))?;
         let status = File::open(base.join(BATTERY_STATUS))?;
         let power_cover = if CURRENT_DEVICE.has_power_cover() {
@@ -42,11 +47,19 @@ impl KoboBattery {
             let capacity = File::open(base.join(POWER_COVER_CAPACITY))?;
             let status = File::open(base.join(POWER_COVER_STATUS))?;
             let connected = File::open(base.join(POWER_COVER_CONNECTED))?;
-            Some(PowerCover { capacity, status, connected })
+            Some(PowerCover {
+                capacity,
+                status,
+                connected,
+            })
         } else {
             None
         };
-        Ok(KoboBattery { capacity, status, power_cover })
+        Ok(KoboBattery {
+            capacity,
+            status,
+            power_cover,
+        })
     }
 }
 
@@ -68,16 +81,14 @@ impl Battery for KoboBattery {
         let mut buf = String::new();
         self.capacity.seek(SeekFrom::Start(0))?;
         self.capacity.read_to_string(&mut buf)?;
-        let capacity = buf.trim_end().parse::<f32>()
-                                     .unwrap_or(0.0);
+        let capacity = buf.trim_end().parse::<f32>().unwrap_or(0.0);
         if matches!(self.is_power_cover_connected(), Ok(true)) {
             let mut buf = String::new();
             self.power_cover.iter_mut().for_each(|power_cover| {
                 power_cover.capacity.seek(SeekFrom::Start(0)).ok();
                 power_cover.capacity.read_to_string(&mut buf).ok();
             });
-            let aux_capacity = buf.trim_end().parse::<f32>()
-                                             .unwrap_or(0.0);
+            let aux_capacity = buf.trim_end().parse::<f32>().unwrap_or(0.0);
             Ok(vec![capacity, aux_capacity])
         } else {
             Ok(vec![capacity])
@@ -93,7 +104,6 @@ impl Battery for KoboBattery {
             "Charging" => Status::Charging,
             "Not charging" | "Full" => Status::Charged,
             _ => Status::Unknown,
-
         };
         if matches!(self.is_power_cover_connected(), Ok(true)) {
             let mut buf = String::new();

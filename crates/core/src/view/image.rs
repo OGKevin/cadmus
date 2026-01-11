@@ -1,9 +1,9 @@
-use crate::framebuffer::{Framebuffer, UpdateMode, Pixmap};
-use crate::view::{View, Event, Hub, Bus, Id, ID_FEEDER, RenderQueue, RenderData};
 use crate::color::WHITE;
-use crate::geom::Rectangle;
 use crate::context::Context;
 use crate::font::Fonts;
+use crate::framebuffer::{Framebuffer, Pixmap, UpdateMode};
+use crate::geom::Rectangle;
+use crate::view::{Bus, Event, Hub, Id, RenderData, RenderQueue, View, ID_FEEDER};
 
 pub struct Image {
     id: Id,
@@ -29,7 +29,14 @@ impl Image {
 }
 
 impl View for Image {
-    fn handle_event(&mut self, _evt: &Event, _hub: &Hub, _bus: &mut Bus, _rq: &mut RenderQueue, _context: &mut Context) -> bool {
+    fn handle_event(
+        &mut self,
+        _evt: &Event,
+        _hub: &Hub,
+        _bus: &mut Bus,
+        _rq: &mut RenderQueue,
+        _context: &mut Context,
+    ) -> bool {
         false
     }
 
@@ -57,8 +64,7 @@ impl View for Image {
     }
 
     fn render_rect(&self, rect: &Rectangle) -> Rectangle {
-        rect.intersection(&self.rect)
-            .unwrap_or(self.rect)
+        rect.intersection(&self.rect).unwrap_or(self.rect)
     }
 
     fn rect(&self) -> &Rectangle {

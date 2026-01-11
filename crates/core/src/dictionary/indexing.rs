@@ -18,14 +18,14 @@
 //! The sum makes up the index.
 
 use std::fs::File;
-use std::path::Path;
 use std::io::{BufRead, BufReader};
+use std::path::Path;
 
 use levenshtein::levenshtein;
 
-use super::Metadata;
 use super::errors::DictError;
 use super::errors::DictError::*;
+use super::Metadata;
 
 /// The index is partially loaded if `state` isn't `None`.
 pub struct Index<R: BufRead> {
@@ -53,9 +53,10 @@ fn normalize(entries: &[Entry], metadata: &Metadata) -> Vec<Entry> {
         let mut headword = entry.headword.clone();
 
         if !metadata.all_chars {
-            headword = headword.chars()
-                               .filter(|c| c.is_alphanumeric() || c.is_whitespace())
-                               .collect();
+            headword = headword
+                .chars()
+                .filter(|c| c.is_alphanumeric() || c.is_whitespace())
+                .collect();
         }
 
         if !metadata.case_sensitive {
@@ -64,7 +65,7 @@ fn normalize(entries: &[Entry], metadata: &Metadata) -> Vec<Entry> {
 
         let mut i = result.len();
 
-        while i > 0 && headword < result[i-1].headword {
+        while i > 0 && headword < result[i - 1].headword {
             i -= 1;
         }
 
@@ -74,12 +75,15 @@ fn normalize(entries: &[Entry], metadata: &Metadata) -> Vec<Entry> {
             None
         };
 
-        result.insert(i, Entry {
-            headword,
-            offset: entry.offset,
-            size: entry.size,
-            original,
-        });
+        result.insert(
+            i,
+            Entry {
+                headword,
+                offset: entry.offset,
+                size: entry.size,
+                original,
+            },
+        );
     }
 
     result
@@ -88,8 +92,7 @@ fn normalize(entries: &[Entry], metadata: &Metadata) -> Vec<Entry> {
 impl<R: BufRead> IndexReader for Index<R> {
     fn load_and_find(&mut self, headword: &str, fuzzy: bool, metadata: &Metadata) -> Vec<Entry> {
         if let Some(br) = self.state.take() {
-            let has_dictfmt = self.entries.iter()
-                                  .any(|e| e.headword.contains("dictfmt"));
+            let has_dictfmt = self.entries.iter().any(|e| e.headword.contains("dictfmt"));
             if let Ok(mut index) = parse_index(br, false) {
                 self.entries.append(&mut index.entries);
                 if !has_dictfmt {
@@ -102,9 +105,16 @@ impl<R: BufRead> IndexReader for Index<R> {
 
     fn find(&self, headword: &str, fuzzy: bool) -> Vec<Entry> {
         if fuzzy {
-            self.entries.iter().filter(|entry| levenshtein(headword, &entry.headword) <= 1).cloned().collect()
+            self.entries
+                .iter()
+                .filter(|entry| levenshtein(headword, &entry.headword) <= 1)
+                .cloned()
+                .collect()
         } else {
-            if let Ok(mut i) = self.entries.binary_search_by_key(&headword, |entry| &entry.headword) {
+            if let Ok(mut i) = self
+                .entries
+                .binary_search_by_key(&headword, |entry| &entry.headword)
+            {
                 let mut results = vec![self.entries[i].clone()];
                 let j = i;
                 while i > 0 {
@@ -135,9 +145,9 @@ impl<R: BufRead> IndexReader for Index<R> {
 #[inline]
 fn get_base(input: char) -> Option<u64> {
     match input {
-        'A' ..= 'Z' => Some((input as u64) - 65), // 'A' should become 0
-        'a' ..= 'z' => Some((input as u64) - 71), // 'a' should become 26, ...
-        '0' ..= '9' => Some((input as u64) + 4), // 0 should become 52
+        'A'..='Z' => Some((input as u64) - 65), // 'A' should become 0
+        'a'..='z' => Some((input as u64) - 71), // 'a' should become 26, ...
+        '0'..='9' => Some((input as u64) + 4),  // 0 should become 52
         '+' => Some(62),
         '/' => Some(63),
         _ => None,
@@ -201,9 +211,13 @@ pub fn parse_index<B: BufRead>(mut br: B, lazy: bool) -> Result<Index<B>, DictEr
         });
 
         if lazy {
-            if !info && (headword.starts_with("00-database-") || headword.starts_with("00database")) {
+            if !info && (headword.starts_with("00-database-") || headword.starts_with("00database"))
+            {
                 info = true;
-            } else if info && !headword.starts_with("00-database-") && !headword.starts_with("00database") {
+            } else if info
+                && !headword.starts_with("00-database-")
+                && !headword.starts_with("00database")
+            {
                 break;
             }
         }
@@ -211,17 +225,16 @@ pub fn parse_index<B: BufRead>(mut br: B, lazy: bool) -> Result<Index<B>, DictEr
         line.clear();
     }
 
-    let state = if lazy {
-        Some(br)
-    } else {
-        None
-    };
+    let state = if lazy { Some(br) } else { None };
 
     Ok(Index { entries, state })
 }
 
 /// Parse the index for a dictionary from a given path.
-pub fn parse_index_from_file<P: AsRef<Path>>(path: P, lazy: bool) -> Result<Index<BufReader<File>>, DictError> {
+pub fn parse_index_from_file<P: AsRef<Path>>(
+    path: P,
+    lazy: bool,
+) -> Result<Index<BufReader<File>>, DictError> {
     let file = File::open(path)?;
     let reader = BufReader::new(file);
     parse_index(reader, lazy)
@@ -238,19 +251,19 @@ mod tests {
     #[test]
     fn test_index_find() {
         let words = vec![
-            Entry{
+            Entry {
                 headword: String::from("bar"),
                 offset: 0,
                 size: 8,
                 original: None,
             },
-            Entry{
+            Entry {
                 headword: String::from("baz"),
                 offset: 8,
                 size: 4,
                 original: None,
             },
-            Entry{
+            Entry {
                 headword: String::from("foo"),
                 offset: 12,
                 size: 4,
@@ -258,7 +271,7 @@ mod tests {
             },
         ];
 
-        let index: Index<Empty> = Index{
+        let index: Index<Empty> = Index {
             entries: words,
             state: None,
         };
@@ -287,10 +300,24 @@ mod tests {
         assert_eq!(index.entries[0].headword, "00-database-allchars");
         assert_eq!(index.entries.last().unwrap().headword, "bar");
 
-        let r = index.load_and_find("bar", false, &Metadata{ all_chars: true, case_sensitive: false });
+        let r = index.load_and_find(
+            "bar",
+            false,
+            &Metadata {
+                all_chars: true,
+                case_sensitive: false,
+            },
+        );
         assert!(!r.is_empty());
 
-        let r = index.load_and_find("foo", false, &Metadata{ all_chars: true, case_sensitive: false });
+        let r = index.load_and_find(
+            "foo",
+            false,
+            &Metadata {
+                all_chars: true,
+                case_sensitive: false,
+            },
+        );
         assert!(!r.is_empty());
     }
 

@@ -1,30 +1,29 @@
+use crate::battery::Battery;
+use crate::device::CURRENT_DEVICE;
+use crate::dictionary::{load_dictionary_from_file, Dictionary};
+use crate::font::Fonts;
+use crate::framebuffer::{Display, Framebuffer};
+use crate::frontlight::Frontlight;
+use crate::geom::Rectangle;
+use crate::helpers::{load_json, IsHidden};
+use crate::library::Library;
+use crate::lightsensor::LightSensor;
+use crate::rtc::Rtc;
+use crate::settings::Settings;
 use crate::view::keyboard::Layout;
-use std::path::Path;
-use std::collections::{BTreeMap, VecDeque};
-use fxhash::FxHashMap;
+use crate::view::ViewId;
 use chrono::Local;
+use fxhash::FxHashMap;
 use globset::Glob;
-use walkdir::WalkDir;
 use rand_core::SeedableRng;
 use rand_xoshiro::Xoroshiro128Plus;
-use crate::dictionary::{Dictionary, load_dictionary_from_file};
-use crate::framebuffer::{Framebuffer, Display};
-use crate::view::ViewId;
-use crate::helpers::{load_json, IsHidden};
-use crate::settings::Settings;
-use crate::frontlight::Frontlight;
-use crate::lightsensor::LightSensor;
-use crate::battery::Battery;
-use crate::geom::Rectangle;
-use crate::device::CURRENT_DEVICE;
-use crate::library::Library;
-use crate::font::Fonts;
-use crate::rtc::Rtc;
+use std::collections::{BTreeMap, VecDeque};
+use std::path::Path;
+use walkdir::WalkDir;
 
 const KEYBOARD_LAYOUTS_DIRNAME: &str = "keyboard-layouts";
 const DICTIONARIES_DIRNAME: &str = "dictionaries";
 const INPUT_HISTORY_SIZE: usize = 32;
-
 
 pub struct Context {
     pub fb: Box<dyn Framebuffer>,
@@ -49,18 +48,40 @@ pub struct Context {
 }
 
 impl Context {
-    pub fn new(fb: Box<dyn Framebuffer>, rtc: Option<Rtc>, library: Library,
-               settings: Settings, fonts: Fonts, battery: Box<dyn Battery>,
-               frontlight: Box<dyn Frontlight>, lightsensor: Box<dyn LightSensor>) -> Context {
+    pub fn new(
+        fb: Box<dyn Framebuffer>,
+        rtc: Option<Rtc>,
+        library: Library,
+        settings: Settings,
+        fonts: Fonts,
+        battery: Box<dyn Battery>,
+        frontlight: Box<dyn Frontlight>,
+        lightsensor: Box<dyn LightSensor>,
+    ) -> Context {
         let dims = fb.dims();
         let rotation = CURRENT_DEVICE.transformed_rotation(fb.rotation());
         let rng = Xoroshiro128Plus::seed_from_u64(Local::now().timestamp_subsec_nanos() as u64);
-        Context { fb, rtc, display: Display { dims, rotation },
-                  library, settings, fonts, dictionaries: BTreeMap::new(),
-                  keyboard_layouts: BTreeMap::new(), input_history: FxHashMap::default(),
-                  battery, frontlight, lightsensor, notification_index: 0,
-                  kb_rect: Rectangle::default(), rng, plugged: false, covered: false,
-                  shared: false, online: false }
+        Context {
+            fb,
+            rtc,
+            display: Display { dims, rotation },
+            library,
+            settings,
+            fonts,
+            dictionaries: BTreeMap::new(),
+            keyboard_layouts: BTreeMap::new(),
+            input_history: FxHashMap::default(),
+            battery,
+            frontlight,
+            lightsensor,
+            notification_index: 0,
+            kb_rect: Rectangle::default(),
+            rng,
+            plugged: false,
+            covered: false,
+            shared: false,
+            online: false,
+        }
     }
 
     pub fn batch_import(&mut self) {
@@ -71,7 +92,8 @@ impl Context {
                 continue;
             }
             if let Ok(mut library) = Library::new(&library_settings.path, library_settings.mode)
-                                             .map_err(|e| eprintln!("{:#?}", e)) {
+                .map_err(|e| eprintln!("{:#?}", e))
+            {
                 library.import(&self.settings.import);
                 library.flush();
             }
@@ -80,8 +102,11 @@ impl Context {
 
     pub fn load_keyboard_layouts(&mut self) {
         let glob = Glob::new("**/*.json").unwrap().compile_matcher();
-        for entry in WalkDir::new(Path::new(KEYBOARD_LAYOUTS_DIRNAME)).min_depth(1)
-                             .into_iter().filter_entry(|e| !e.is_hidden()) {
+        for entry in WalkDir::new(Path::new(KEYBOARD_LAYOUTS_DIRNAME))
+            .min_depth(1)
+            .into_iter()
+            .filter_entry(|e| !e.is_hidden())
+        {
             if entry.is_err() {
                 continue;
             }
@@ -91,7 +116,8 @@ impl Context {
                 continue;
             }
             if let Ok(layout) = load_json::<Layout, _>(path)
-                                          .map_err(|e| eprintln!("Can't load {}: {:#?}.", path.display(), e)) {
+                .map_err(|e| eprintln!("Can't load {}: {:#?}.", path.display(), e))
+            {
                 self.keyboard_layouts.insert(layout.name.clone(), layout);
             }
         }
@@ -99,8 +125,11 @@ impl Context {
 
     pub fn load_dictionaries(&mut self) {
         let glob = Glob::new("**/*.index").unwrap().compile_matcher();
-        for entry in WalkDir::new(Path::new(DICTIONARIES_DIRNAME)).min_depth(1)
-                             .into_iter().filter_entry(|e| !e.is_hidden()) {
+        for entry in WalkDir::new(Path::new(DICTIONARIES_DIRNAME))
+            .min_depth(1)
+            .into_iter()
+            .filter_entry(|e| !e.is_hidden())
+        {
             if entry.is_err() {
                 continue;
             }
@@ -116,7 +145,8 @@ impl Context {
             }
             if let Ok(mut dict) = load_dictionary_from_file(&content_path, &index_path) {
                 let name = dict.short_name().ok().unwrap_or_else(|| {
-                    index_path.file_stem()
+                    index_path
+                        .file_stem()
                         .map(|s| s.to_string_lossy().into_owned())
                         .unwrap_or_default()
                 });
@@ -130,8 +160,7 @@ impl Context {
             return;
         }
 
-        let history = self.input_history.entry(id)
-                          .or_insert_with(VecDeque::new);
+        let history = self.input_history.entry(id).or_insert_with(VecDeque::new);
 
         if history.front().map(String::as_str) != Some(text) {
             history.push_front(text.to_string());
@@ -156,5 +185,3 @@ impl Context {
         }
     }
 }
-
-

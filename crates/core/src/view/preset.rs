@@ -1,14 +1,14 @@
-use crate::device::CURRENT_DEVICE;
-use crate::geom::{Rectangle, CornerSpec, CycleDir};
-use crate::font::{Fonts, font_from_style, NORMAL_STYLE};
-use super::{View, Event, Hub, Bus, Id, ID_FEEDER, RenderQueue, RenderData};
 use super::BORDER_RADIUS_MEDIUM;
-use crate::framebuffer::{Framebuffer, UpdateMode};
-use crate::input::{DeviceEvent, FingerStatus};
-use crate::gesture::GestureEvent;
-use crate::color::{TEXT_NORMAL, TEXT_INVERTED_HARD};
-use crate::unit::scale_by_dpi;
+use super::{Bus, Event, Hub, Id, RenderData, RenderQueue, View, ID_FEEDER};
+use crate::color::{TEXT_INVERTED_HARD, TEXT_NORMAL};
 use crate::context::Context;
+use crate::device::CURRENT_DEVICE;
+use crate::font::{font_from_style, Fonts, NORMAL_STYLE};
+use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::geom::{CornerSpec, CycleDir, Rectangle};
+use crate::gesture::GestureEvent;
+use crate::input::{DeviceEvent, FingerStatus};
+use crate::unit::scale_by_dpi;
 
 pub struct Preset {
     id: Id,
@@ -36,22 +36,29 @@ impl Preset {
 }
 
 impl View for Preset {
-    fn handle_event(&mut self, evt: &Event, _hub: &Hub, bus: &mut Bus, rq: &mut RenderQueue, _context: &mut Context) -> bool {
+    fn handle_event(
+        &mut self,
+        evt: &Event,
+        _hub: &Hub,
+        bus: &mut Bus,
+        rq: &mut RenderQueue,
+        _context: &mut Context,
+    ) -> bool {
         match *evt {
-            Event::Device(DeviceEvent::Finger { status, position, .. }) => {
-                match status {
-                    FingerStatus::Down if self.rect.includes(position) => {
-                        self.active = true;
-                        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Fast));
-                        true
-                    },
-                    FingerStatus::Up if self.active => {
-                        self.active = false;
-                        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
-                        true
-                    },
-                    _ => false,
+            Event::Device(DeviceEvent::Finger {
+                status, position, ..
+            }) => match status {
+                FingerStatus::Down if self.rect.includes(position) => {
+                    self.active = true;
+                    rq.add(RenderData::new(self.id, self.rect, UpdateMode::Fast));
+                    true
                 }
+                FingerStatus::Up if self.active => {
+                    self.active = false;
+                    rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+                    true
+                }
+                _ => false,
             },
             Event::Gesture(GestureEvent::Tap(center)) if self.rect.includes(center) => {
                 match self.kind {
@@ -59,13 +66,15 @@ impl View for Preset {
                     PresetKind::Page(dir) => bus.push_back(Event::Page(dir)),
                 }
                 true
-            },
-            Event::Gesture(GestureEvent::HoldFingerShort(center, ..)) if self.rect.includes(center) => {
+            }
+            Event::Gesture(GestureEvent::HoldFingerShort(center, ..))
+                if self.rect.includes(center) =>
+            {
                 if let PresetKind::Normal(_, index) = self.kind {
-                    bus.push_back(Event::TogglePresetMenu(self.rect, index)); 
+                    bus.push_back(Event::TogglePresetMenu(self.rect, index));
                 }
                 true
-            },
+            }
             _ => false,
         }
     }
@@ -74,7 +83,10 @@ impl View for Preset {
         let dpi = CURRENT_DEVICE.dpi;
 
         let (scheme, border_radius) = if self.active {
-            (TEXT_INVERTED_HARD, scale_by_dpi(BORDER_RADIUS_MEDIUM, dpi) as i32)
+            (
+                TEXT_INVERTED_HARD,
+                scale_by_dpi(BORDER_RADIUS_MEDIUM, dpi) as i32,
+            )
         } else {
             (TEXT_NORMAL, 0)
         };

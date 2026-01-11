@@ -1,7 +1,7 @@
-use chrono::{Local, Timelike};
-use serde::{Serialize, Deserialize};
 use crate::frontlight::LightLevels;
 use crate::geom::circular_distances;
+use chrono::{Local, Timelike};
+use serde::{Deserialize, Serialize};
 
 const MINUTES_PER_DAY: u16 = 24 * 60;
 
@@ -33,13 +33,16 @@ impl LightPreset {
     }
 }
 
-pub fn guess_frontlight(lightsensor_level: Option<u16>, light_presets: &[LightPreset]) -> Option<LightLevels> {
+pub fn guess_frontlight(
+    lightsensor_level: Option<u16>,
+    light_presets: &[LightPreset],
+) -> Option<LightLevels> {
     if light_presets.len() < 2 {
         return None;
     }
     let cur = LightPreset {
         lightsensor_level,
-        .. Default::default()
+        ..Default::default()
     };
 
     let mut dmin = [u16::MAX; 2];
@@ -81,7 +84,7 @@ pub fn guess_frontlight(lightsensor_level: Option<u16>, light_presets: &[LightPr
     if dmin[0] == 0 || dmin[1] == u16::MAX {
         return Some(light_presets[index[0]].frontlight_levels);
     }
-    
+
     if dmin[1] == 0 || dmin[0] == u16::MAX {
         return Some(light_presets[index[1]].frontlight_levels);
     }

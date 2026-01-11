@@ -1,9 +1,9 @@
-use crate::framebuffer::Framebuffer;
-use super::{View, Event, Hub, Bus, Id, ID_FEEDER, RenderQueue};
-use crate::geom::Rectangle;
+use super::{Bus, Event, Hub, Id, RenderQueue, View, ID_FEEDER};
+use crate::color::Color;
 use crate::context::Context;
 use crate::font::Fonts;
-use crate::color::Color;
+use crate::framebuffer::Framebuffer;
+use crate::geom::Rectangle;
 
 pub struct Filler {
     id: Id,
@@ -24,7 +24,14 @@ impl Filler {
 }
 
 impl View for Filler {
-    fn handle_event(&mut self, _evt: &Event, _hub: &Hub, _bus: &mut Bus, _rq: &mut RenderQueue, _context: &mut Context) -> bool {
+    fn handle_event(
+        &mut self,
+        _evt: &Event,
+        _hub: &Hub,
+        _bus: &mut Bus,
+        _rq: &mut RenderQueue,
+        _context: &mut Context,
+    ) -> bool {
         false
     }
 
@@ -35,8 +42,7 @@ impl View for Filler {
     }
 
     fn render_rect(&self, rect: &Rectangle) -> Rectangle {
-        rect.intersection(&self.rect)
-            .unwrap_or(self.rect)
+        rect.intersection(&self.rect).unwrap_or(self.rect)
     }
 
     fn rect(&self) -> &Rectangle {

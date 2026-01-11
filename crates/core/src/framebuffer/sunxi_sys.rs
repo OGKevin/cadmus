@@ -1,9 +1,13 @@
 #![allow(unused)]
 
-use std::mem::ManuallyDrop;
 use nix::{ioctl_readwrite_bad, ioctl_write_ptr_bad};
+use std::mem::ManuallyDrop;
 ioctl_readwrite_bad!(send_update, DISP_EINK_UPDATE2, SunxiDispEinkUpdate2);
-ioctl_write_ptr_bad!(wait_for_update, DISP_EINK_WAIT_FRAME_SYNC_COMPLETE, SunxiDispEinkWaitFrameSyncComplete);
+ioctl_write_ptr_bad!(
+    wait_for_update,
+    DISP_EINK_WAIT_FRAME_SYNC_COMPLETE,
+    SunxiDispEinkWaitFrameSyncComplete
+);
 
 pub const DISP_EINK_UPDATE2: libc::c_ulong = 0x0406;
 pub const DISP_EINK_WAIT_FRAME_SYNC_COMPLETE: libc::c_ulong = 0x4014;
@@ -124,31 +128,31 @@ pub struct SunxiDispEinkWaitFrameSyncComplete {
     pub frame_id: u32,
 }
 
-pub const EINK_INIT_MODE:u32  = 0x01;
-pub const EINK_DU_MODE:u32    = 0x02;
-pub const EINK_GC16_MODE:u32  = 0x04;
-pub const EINK_GC4_MODE:u32   = 0x08;
-pub const EINK_A2_MODE:u32    = 0x10;
-pub const EINK_GL16_MODE:u32  = 0x20;
-pub const EINK_GLR16_MODE:u32 = 0x40;
-pub const EINK_GLD16_MODE:u32 = 0x80;
-pub const EINK_GU16_MODE:u32  = 0x84;
-pub const EINK_GCK16_MODE:u32 = 0x90;
-pub const EINK_GLK16_MODE:u32 = 0x94;
-pub const EINK_CLEAR_MODE:u32 = 0x88;
-pub const EINK_GC4L_MODE:u32  = 0x8c;
-pub const EINK_GCC16_MODE:u32 = 0xa0;
+pub const EINK_INIT_MODE: u32 = 0x01;
+pub const EINK_DU_MODE: u32 = 0x02;
+pub const EINK_GC16_MODE: u32 = 0x04;
+pub const EINK_GC4_MODE: u32 = 0x08;
+pub const EINK_A2_MODE: u32 = 0x10;
+pub const EINK_GL16_MODE: u32 = 0x20;
+pub const EINK_GLR16_MODE: u32 = 0x40;
+pub const EINK_GLD16_MODE: u32 = 0x80;
+pub const EINK_GU16_MODE: u32 = 0x84;
+pub const EINK_GCK16_MODE: u32 = 0x90;
+pub const EINK_GLK16_MODE: u32 = 0x94;
+pub const EINK_CLEAR_MODE: u32 = 0x88;
+pub const EINK_GC4L_MODE: u32 = 0x8c;
+pub const EINK_GCC16_MODE: u32 = 0xa0;
 
-pub const EINK_AUTO_MODE:u32        = 0x0000_8000;
-pub const EINK_DITHERING_Y1:u32     = 0x0180_0000;
-pub const EINK_DITHERING_Y4:u32     = 0x0280_0000;
-pub const EINK_DITHERING_SIMPLE:u32 = 0x0480_0000;
-pub const EINK_DITHERING_NTX_Y1:u32 = 0x0880_0000;
+pub const EINK_AUTO_MODE: u32 = 0x0000_8000;
+pub const EINK_DITHERING_Y1: u32 = 0x0180_0000;
+pub const EINK_DITHERING_Y4: u32 = 0x0280_0000;
+pub const EINK_DITHERING_SIMPLE: u32 = 0x0480_0000;
+pub const EINK_DITHERING_NTX_Y1: u32 = 0x0880_0000;
 
-pub const EINK_GAMMA_CORRECT:u32 = 0x0020_0000;
-pub const EINK_MONOCHROME:u32    = 0x0040_0000;
-pub const EINK_NEGATIVE_MODE:u32 = 0x0001_0000;
-pub const EINK_REGAL_MODE:u32    = 0x0008_0000;
-pub const EINK_NO_MERGE:u32      = 0x8000_0000;
+pub const EINK_GAMMA_CORRECT: u32 = 0x0020_0000;
+pub const EINK_MONOCHROME: u32 = 0x0040_0000;
+pub const EINK_NEGATIVE_MODE: u32 = 0x0001_0000;
+pub const EINK_REGAL_MODE: u32 = 0x0008_0000;
+pub const EINK_NO_MERGE: u32 = 0x8000_0000;
 
-pub const EINK_PARTIAL_MODE:u32 = 0x0400;
+pub const EINK_PARTIAL_MODE: u32 = 0x0400;

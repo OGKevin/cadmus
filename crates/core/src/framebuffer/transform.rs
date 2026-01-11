@@ -1,6 +1,6 @@
-use lazy_static::lazy_static;
 use super::image::Pixmap;
 use crate::color::Color;
+use lazy_static::lazy_static;
 
 pub type ColorTransform = fn(u32, u32, Color) -> Color;
 
@@ -64,11 +64,7 @@ pub fn transform_dither_g2(x: u32, y: u32, color: Color) -> Color {
     // Apply the drift to the input color.
     let c = (gray as i16 + DITHER_G2_DRIFTS[addr as usize] as i16).clamp(0, 255);
     // Return the nearest color in G2.
-    Color::Gray(if c < 128 {
-        0
-    } else {
-        255
-    })
+    Color::Gray(if c < 128 { 0 } else { 255 })
 }
 
 pub fn transform_identity(_x: u32, _y: u32, color: Color) -> Color {

@@ -1,15 +1,15 @@
+use crate::color::{BLACK, GRAY05, GRAY10, WHITE};
+use crate::context::Context;
 use crate::device::CURRENT_DEVICE;
-use crate::geom::{Rectangle, Region, Dir, CornerSpec};
+use crate::font::Fonts;
+use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::geom::{CornerSpec, Dir, Rectangle, Region};
+use crate::unit::scale_by_dpi;
 use crate::view::icon::Icon;
 use crate::view::notification::Notification;
-use crate::view::{View, Event, Hub, Bus, RenderQueue, RenderData};
-use crate::view::{Id, ID_FEEDER};
 use crate::view::SMALL_BAR_HEIGHT;
-use crate::framebuffer::{Framebuffer, UpdateMode};
-use crate::font::Fonts;
-use crate::unit::scale_by_dpi;
-use crate::color::{BLACK, WHITE, GRAY05, GRAY10};
-use crate::context::Context;
+use crate::view::{Bus, Event, Hub, RenderData, RenderQueue, View};
+use crate::view::{Id, ID_FEEDER};
 
 pub struct TouchEvents {
     id: Id,
@@ -27,12 +27,14 @@ impl TouchEvents {
         let small_height = scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32;
         let dx = (rect.width() as i32 - small_height) / 2;
         let dy = (rect.height() as i32 - small_height) / 3;
-        let icon_rect = rect![rect.min.x + dx, rect.min.y + dy,
-                              rect.min.x + dx + small_height, rect.min.y + dy + small_height];
-        let icon = Icon::new("back",
-                             icon_rect,
-                             Event::Back)
-                        .corners(Some(CornerSpec::Uniform(small_height/2)));
+        let icon_rect = rect![
+            rect.min.x + dx,
+            rect.min.y + dy,
+            rect.min.x + dx + small_height,
+            rect.min.y + dy + small_height
+        ];
+        let icon = Icon::new("back", icon_rect, Event::Back)
+            .corners(Some(CornerSpec::Uniform(small_height / 2)));
         children.push(Box::new(icon) as Box<dyn View>);
         rq.add(RenderData::new(id, rect, UpdateMode::Full));
         let strip_width = context.settings.reader.strip_width;
@@ -45,17 +47,23 @@ impl TouchEvents {
             corner_width,
         }
     }
-
 }
 
 impl View for TouchEvents {
-    fn handle_event(&mut self, evt: &Event, hub: &Hub, _bus: &mut Bus, rq: &mut RenderQueue, context: &mut Context) -> bool {
+    fn handle_event(
+        &mut self,
+        evt: &Event,
+        hub: &Hub,
+        _bus: &mut Bus,
+        rq: &mut RenderQueue,
+        context: &mut Context,
+    ) -> bool {
         match *evt {
             Event::Gesture(ge) => {
                 let notif = Notification::new(ge.to_string(), hub, rq, context);
                 self.children.push(Box::new(notif) as Box<dyn View>);
                 true
-            },
+            }
             _ => false,
         }
     }
@@ -63,7 +71,12 @@ impl View for TouchEvents {
     fn render(&self, fb: &mut dyn Framebuffer, rect: Rectangle, _fonts: &mut Fonts) {
         for x in rect.min.x..rect.max.x {
             for y in rect.min.y..rect.max.y {
-                let color = match Region::from_point(pt!(x, y), self.rect, self.strip_width, self.corner_width) {
+                let color = match Region::from_point(
+                    pt!(x, y),
+                    self.rect,
+                    self.strip_width,
+                    self.corner_width,
+                ) {
                     Region::Corner(..) => BLACK,
                     Region::Strip(Dir::West) | Region::Strip(Dir::East) => GRAY05,
                     Region::Strip(Dir::South) | Region::Strip(Dir::North) => GRAY10,
@@ -75,8 +88,7 @@ impl View for TouchEvents {
     }
 
     fn render_rect(&self, rect: &Rectangle) -> Rectangle {
-        rect.intersection(&self.rect)
-            .unwrap_or(self.rect)
+        rect.intersection(&self.rect).unwrap_or(self.rect)
     }
 
     fn is_background(&self) -> bool {
@@ -88,8 +100,12 @@ impl View for TouchEvents {
         let small_height = scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32;
         let dx = (rect.width() as i32 - small_height) / 2;
         let dy = (rect.height() as i32 - small_height) / 3;
-        let icon_rect = rect![rect.min.x + dx, rect.min.y + dy,
-                              rect.min.x + dx + small_height, rect.min.y + dy + small_height];
+        let icon_rect = rect![
+            rect.min.x + dx,
+            rect.min.y + dy,
+            rect.min.x + dx + small_height,
+            rect.min.y + dy + small_height
+        ];
         self.children[0].resize(icon_rect, hub, rq, context);
 
         // Floating windows.

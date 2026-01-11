@@ -35,23 +35,48 @@ pub enum FtDriver {}
 pub enum FtMemory {}
 pub enum FtStream {}
 
-#[link(name="freetype")]
+#[link(name = "freetype")]
 extern "C" {
     pub fn FT_Init_FreeType(lib: *mut *mut FtLibrary) -> FtError;
     pub fn FT_Done_FreeType(lib: *mut FtLibrary) -> FtError;
-    pub fn FT_New_Face(lib: *mut FtLibrary, path: *const libc::c_char, idx: libc::c_long, face: *mut *mut FtFace) -> FtError;
-    pub fn FT_New_Memory_Face(lib: *mut FtLibrary, buf: *const FtByte, len: libc::c_long, idx: libc::c_long, face: *mut *mut FtFace) -> FtError;
+    pub fn FT_New_Face(
+        lib: *mut FtLibrary,
+        path: *const libc::c_char,
+        idx: libc::c_long,
+        face: *mut *mut FtFace,
+    ) -> FtError;
+    pub fn FT_New_Memory_Face(
+        lib: *mut FtLibrary,
+        buf: *const FtByte,
+        len: libc::c_long,
+        idx: libc::c_long,
+        face: *mut *mut FtFace,
+    ) -> FtError;
     pub fn FT_Done_Face(face: *mut FtFace) -> FtError;
-    pub fn FT_Set_Char_Size(face: *mut FtFace, sx: FtF26Dot6, sy: FtF26Dot6, rx: libc::c_uint, ry: libc::c_uint) -> FtError;
+    pub fn FT_Set_Char_Size(
+        face: *mut FtFace,
+        sx: FtF26Dot6,
+        sy: FtF26Dot6,
+        rx: libc::c_uint,
+        ry: libc::c_uint,
+    ) -> FtError;
     pub fn FT_Set_Pixel_Sizes(face: *mut FtFace, sx: libc::c_uint, sy: libc::c_uint) -> FtError;
     pub fn FT_Load_Glyph(face: *const FtFace, idx: libc::c_uint, flags: i32) -> FtError;
     pub fn FT_Load_Char(face: *const FtFace, code: libc::c_ulong, flags: i32) -> FtError;
     pub fn FT_Get_Char_Index(face: *const FtFace, code: libc::c_ulong) -> libc::c_uint;
     pub fn FT_Get_MM_Var(face: *const FtFace, varia: *mut *mut FtMmVar) -> FtError;
     pub fn FT_Done_MM_Var(lib: *mut FtLibrary, varia: *mut FtMmVar) -> FtError;
-    pub fn FT_Set_Var_Design_Coordinates(face: *mut FtFace, num_coords: libc::c_uint, coords: *const FtFixed) -> FtError;
+    pub fn FT_Set_Var_Design_Coordinates(
+        face: *mut FtFace,
+        num_coords: libc::c_uint,
+        coords: *const FtFixed,
+    ) -> FtError;
     pub fn FT_Get_Sfnt_Name_Count(face: *const FtFace) -> libc::c_uint;
-    pub fn FT_Get_Sfnt_Name(face: *const FtFace, idx: libc::c_uint, name: *mut FtSfntName) -> FtError;
+    pub fn FT_Get_Sfnt_Name(
+        face: *const FtFace,
+        idx: libc::c_uint,
+        name: *mut FtSfntName,
+    ) -> FtError;
 }
 
 #[repr(C)]
@@ -133,7 +158,7 @@ pub struct FtSizeMetrics {
     pub ascender: FtPos,
     pub descender: FtPos,
     pub height: FtPos,
-    max_advance: FtPos
+    max_advance: FtPos,
 }
 
 #[repr(C)]

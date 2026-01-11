@@ -1,10 +1,10 @@
-use crate::device::CURRENT_DEVICE;
-use crate::font::{Fonts, font_from_style, NORMAL_STYLE};
-use crate::framebuffer::{Framebuffer, UpdateMode};
 use crate::color::TEXT_NORMAL;
-use crate::geom::{Rectangle};
-use crate::view::{View, Event, Hub, Bus, Id, ID_FEEDER, RenderQueue, RenderData};
 use crate::context::Context;
+use crate::device::CURRENT_DEVICE;
+use crate::font::{font_from_style, Fonts, NORMAL_STYLE};
+use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::geom::Rectangle;
+use crate::view::{Bus, Event, Hub, Id, RenderData, RenderQueue, View, ID_FEEDER};
 
 pub struct ResultsLabel {
     id: Id,
@@ -31,11 +31,7 @@ impl ResultsLabel {
     }
 
     fn text(&self) -> String {
-        let qualifier = if self.count != 1 {
-            "results"
-        } else {
-            "result"
-        };
+        let qualifier = if self.count != 1 { "results" } else { "result" };
 
         if self.count == 0 {
             format!("No {}", qualifier)
@@ -45,15 +41,21 @@ impl ResultsLabel {
     }
 }
 
-
 impl View for ResultsLabel {
-    fn handle_event(&mut self, evt: &Event, _hub: &Hub, _bus: &mut Bus, rq: &mut RenderQueue, _context: &mut Context) -> bool {
+    fn handle_event(
+        &mut self,
+        evt: &Event,
+        _hub: &Hub,
+        _bus: &mut Bus,
+        rq: &mut RenderQueue,
+        _context: &mut Context,
+    ) -> bool {
         match *evt {
             Event::EndOfSearch => {
                 self.completed = true;
                 rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
                 false
-            },
+            }
             _ => false,
         }
     }

@@ -1,10 +1,10 @@
+use crate::context::Context;
+use crate::font::Fonts;
 use crate::framebuffer::Framebuffer;
-use crate::view::{View, Event, Hub, Bus, Id, ID_FEEDER, RenderQueue, Align};
+use crate::geom::Rectangle;
 use crate::view::icon::Icon;
 use crate::view::label::Label;
-use crate::geom::Rectangle;
-use crate::font::Fonts;
-use crate::context::Context;
+use crate::view::{Align, Bus, Event, Hub, Id, RenderQueue, View, ID_FEEDER};
 
 #[derive(Debug)]
 pub struct LabeledIcon {
@@ -20,17 +20,19 @@ impl LabeledIcon {
         let mut children = Vec::new();
         let side = rect.height() as i32;
 
-        let icon = Icon::new(name,
-                             rect![rect.min.x, rect.min.y,
-                                   rect.min.x + side, rect.max.y],
-                             Event::Validate);
+        let icon = Icon::new(
+            name,
+            rect![rect.min.x, rect.min.y, rect.min.x + side, rect.max.y],
+            Event::Validate,
+        );
         children.push(Box::new(icon) as Box<dyn View>);
 
-        let label = Label::new(rect![rect.min.x + side, rect.min.y,
-                                     rect.max.x, rect.max.y],
-                               text,
-                               Align::Left(0))
-                          .event(Some(Event::Validate));
+        let label = Label::new(
+            rect![rect.min.x + side, rect.min.y, rect.max.x, rect.max.y],
+            text,
+            Align::Left(0),
+        )
+        .event(Some(Event::Validate));
         children.push(Box::new(label) as Box<dyn View>);
 
         LabeledIcon {
@@ -49,7 +51,14 @@ impl LabeledIcon {
 }
 
 impl View for LabeledIcon {
-    fn handle_event(&mut self, evt: &Event, _hub: &Hub, bus: &mut Bus, _rq: &mut RenderQueue, _context: &mut Context) -> bool {
+    fn handle_event(
+        &mut self,
+        evt: &Event,
+        _hub: &Hub,
+        bus: &mut Bus,
+        _rq: &mut RenderQueue,
+        _context: &mut Context,
+    ) -> bool {
         match *evt {
             Event::Validate => {
                 if let Event::Show(view_id) = self.event {
@@ -58,22 +67,27 @@ impl View for LabeledIcon {
                     bus.push_back(self.event.clone());
                 }
                 true
-            },
+            }
             _ => false,
         }
     }
 
-    fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {
-    }
+    fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {}
 
     fn resize(&mut self, rect: Rectangle, hub: &Hub, rq: &mut RenderQueue, context: &mut Context) {
         let side = rect.height() as i32;
-        self.children[0].resize(rect![rect.min.x, rect.min.y,
-                                      rect.min.x + side, rect.max.y],
-                                hub, rq, context);
-        self.children[1].resize(rect![rect.min.x + side, rect.min.y,
-                                     rect.max.x, rect.max.y],
-                                hub, rq, context);
+        self.children[0].resize(
+            rect![rect.min.x, rect.min.y, rect.min.x + side, rect.max.y],
+            hub,
+            rq,
+            context,
+        );
+        self.children[1].resize(
+            rect![rect.min.x + side, rect.min.y, rect.max.x, rect.max.y],
+            hub,
+            rq,
+            context,
+        );
         if let Event::ToggleNear(_, ref mut event_rect) = self.event {
             *event_rect = rect;
         }

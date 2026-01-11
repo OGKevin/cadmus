@@ -1,23 +1,23 @@
-use std::fs;
-use std::fmt;
-use std::ffi::OsStr;
-use std::collections::{BTreeSet, BTreeMap};
-use std::path::{Path, PathBuf};
-use std::cmp::Ordering;
-use regex::Regex;
-use chrono::{NaiveDateTime, Local};
-use fxhash::FxHashMap;
-use serde::{Serialize, Deserialize};
-use lazy_static::lazy_static;
-use titlecase::titlecase;
-use crate::geom::Point;
-use crate::document::{Document, SimpleTocEntry, TextLocation};
 use crate::document::asciify;
+use crate::document::djvu::DjvuOpener;
 use crate::document::epub::EpubDocument;
 use crate::document::html::HtmlDocument;
 use crate::document::pdf::PdfOpener;
-use crate::document::djvu::DjvuOpener;
+use crate::document::{Document, SimpleTocEntry, TextLocation};
+use crate::geom::Point;
 use crate::helpers::datetime_format;
+use chrono::{Local, NaiveDateTime};
+use fxhash::FxHashMap;
+use lazy_static::lazy_static;
+use regex::Regex;
+use serde::{Deserialize, Serialize};
+use std::cmp::Ordering;
+use std::collections::{BTreeMap, BTreeSet};
+use std::ffi::OsStr;
+use std::fmt;
+use std::fs;
+use std::path::{Path, PathBuf};
+use titlecase::titlecase;
 
 pub const DEFAULT_CONTRAST_EXPONENT: f32 = 1.0;
 pub const DEFAULT_CONTRAST_GRAY: f32 = 224.0;
@@ -113,7 +113,12 @@ pub struct Margin {
 
 impl Margin {
     pub fn new(top: f32, right: f32, bottom: f32, left: f32) -> Margin {
-        Margin { top, right, bottom, left }
+        Margin {
+            top,
+            right,
+            bottom,
+            left,
+        }
     }
 }
 
@@ -364,7 +369,12 @@ impl Info {
     }
 
     pub fn file_stem(&self) -> String {
-        self.file.path.file_stem().unwrap().to_string_lossy().into_owned()
+        self.file
+            .path
+            .file_stem()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned()
     }
 
     pub fn title(&self) -> String {
@@ -383,8 +393,9 @@ impl Info {
         }
 
         if !self.subtitle.is_empty() {
-            title = if self.subtitle.chars().next().unwrap().is_alphanumeric() &&
-                       title.chars().last().unwrap().is_alphanumeric() {
+            title = if self.subtitle.chars().next().unwrap().is_alphanumeric()
+                && title.chars().last().unwrap().is_alphanumeric()
+            {
                 format!("{}: {}", title, self.subtitle)
             } else {
                 format!("{} {}", title, self.subtitle)
@@ -402,9 +413,11 @@ impl Info {
     // NOTE: e.g.: John Le Carré: the space between *Le* and *Carré*
     // is a non-breaking space
     pub fn alphabetic_author(&self) -> &str {
-        self.author.split(',').next()
-                     .and_then(|a| a.split(' ').last())
-                     .unwrap_or_default()
+        self.author
+            .split(',')
+            .next()
+            .and_then(|a| a.split(' ').last())
+            .unwrap_or_default()
     }
 
     pub fn alphabetic_title(&self) -> &str {
@@ -418,8 +431,7 @@ impl Info {
             &self.language
         };
 
-        if let Some(m) = TITLE_PREFIXES.get(lang)
-                                       .and_then(|re| re.find(&self.title)) {
+        if let Some(m) = TITLE_PREFIXES.get(lang).and_then(|re| re.find(&self.title)) {
             start = m.end()
         }
 
@@ -442,17 +454,18 @@ pub fn make_query(text: &str) -> Option<Regex> {
         return None;
     }
 
-    let text = text.replace('a', "[aáàâä]")
-                   .replace('e', "[eéèêë]")
-                   .replace('i', "[iíìîï]")
-                   .replace('o', "[oóòôö]")
-                   .replace('u', "[uúùûü]")
-                   .replace('c', "[cç]")
-                   .replace("ae", "(ae|æ)")
-                   .replace("oe", "(oe|œ)");
+    let text = text
+        .replace('a', "[aáàâä]")
+        .replace('e', "[eéèêë]")
+        .replace('i', "[iíìîï]")
+        .replace('o', "[oóòôö]")
+        .replace('u', "[uúùûü]")
+        .replace('c', "[cç]")
+        .replace("ae", "(ae|æ)")
+        .replace("oe", "(oe|œ)");
     Regex::new(&format!("(?i){}", text))
-          .map_err(|e| eprintln!("Can't create query: {:#}.", e))
-          .ok()
+        .map_err(|e| eprintln!("Can't create query: {:#}.", e))
+        .ok()
 }
 
 #[derive(Debug, Clone, Default)]
@@ -491,16 +504,56 @@ impl BookQuery {
                         chars.next();
                     }
                     match chars.next() {
-                        Some('t') => { buf.reverse(); query.title = make_query(&buf.join(" ")); buf.clear(); },
-                        Some('u') => { buf.reverse(); query.subtitle = make_query(&buf.join(" ")); buf.clear(); },
-                        Some('a') => { buf.reverse(); query.author = make_query(&buf.join(" ")); buf.clear(); },
-                        Some('y') => { buf.reverse(); query.year = make_query(&buf.join(" ")); buf.clear(); },
-                        Some('l') => { buf.reverse(); query.language = make_query(&buf.join(" ")); buf.clear(); },
-                        Some('p') => { buf.reverse(); query.publisher = make_query(&buf.join(" ")); buf.clear(); },
-                        Some('s') => { buf.reverse(); query.series = make_query(&buf.join(" ")); buf.clear(); },
-                        Some('e') => { buf.reverse(); query.edition = make_query(&buf.join(" ")); buf.clear(); },
-                        Some('v') => { buf.reverse(); query.volume = make_query(&buf.join(" ")); buf.clear(); },
-                        Some('n') => { buf.reverse(); query.number = make_query(&buf.join(" ")); buf.clear(); },
+                        Some('t') => {
+                            buf.reverse();
+                            query.title = make_query(&buf.join(" "));
+                            buf.clear();
+                        }
+                        Some('u') => {
+                            buf.reverse();
+                            query.subtitle = make_query(&buf.join(" "));
+                            buf.clear();
+                        }
+                        Some('a') => {
+                            buf.reverse();
+                            query.author = make_query(&buf.join(" "));
+                            buf.clear();
+                        }
+                        Some('y') => {
+                            buf.reverse();
+                            query.year = make_query(&buf.join(" "));
+                            buf.clear();
+                        }
+                        Some('l') => {
+                            buf.reverse();
+                            query.language = make_query(&buf.join(" "));
+                            buf.clear();
+                        }
+                        Some('p') => {
+                            buf.reverse();
+                            query.publisher = make_query(&buf.join(" "));
+                            buf.clear();
+                        }
+                        Some('s') => {
+                            buf.reverse();
+                            query.series = make_query(&buf.join(" "));
+                            buf.clear();
+                        }
+                        Some('e') => {
+                            buf.reverse();
+                            query.edition = make_query(&buf.join(" "));
+                            buf.clear();
+                        }
+                        Some('v') => {
+                            buf.reverse();
+                            query.volume = make_query(&buf.join(" "));
+                            buf.clear();
+                        }
+                        Some('n') => {
+                            buf.reverse();
+                            query.number = make_query(&buf.join(" "));
+                            buf.clear();
+                        }
                         Some('R') => query.reading = Some(!invert),
                         Some('N') => query.new = Some(!invert),
                         Some('F') => query.finished = Some(!invert),
@@ -508,45 +561,52 @@ impl BookQuery {
                         Some('B') => query.bookmarks = Some(!invert),
                         Some('O') => {
                             buf.reverse();
-                            query.opened_after = NaiveDateTime::parse_from_str(&buf.join(" "),
-                                                                               datetime_format::FORMAT)
-                                                              .ok().map(|opened| (!invert, opened));
+                            query.opened_after = NaiveDateTime::parse_from_str(
+                                &buf.join(" "),
+                                datetime_format::FORMAT,
+                            )
+                            .ok()
+                            .map(|opened| (!invert, opened));
                             buf.clear();
-                        },
+                        }
                         Some('D') => {
                             buf.reverse();
-                            query.added_after = NaiveDateTime::parse_from_str(&buf.join(" "),
-                                                                              datetime_format::FORMAT)
-                                                             .ok().map(|added| (!invert, added));
+                            query.added_after = NaiveDateTime::parse_from_str(
+                                &buf.join(" "),
+                                datetime_format::FORMAT,
+                            )
+                            .ok()
+                            .map(|added| (!invert, added));
                             buf.clear();
-                        },
+                        }
                         Some('\'') => buf.push(&word[1..]),
                         _ => (),
                     }
-                },
+                }
                 _ => buf.push(word),
             }
         }
         buf.reverse();
         query.free = make_query(&buf.join(" "));
-        if query.free.is_none() &&
-           query.title.is_none() &&
-           query.subtitle.is_none() &&
-           query.author.is_none() &&
-           query.year.is_none() &&
-           query.language.is_none() &&
-           query.publisher.is_none() &&
-           query.series.is_none() &&
-           query.edition.is_none() &&
-           query.volume.is_none() &&
-           query.number.is_none() &&
-           query.reading.is_none() &&
-           query.new.is_none() &&
-           query.finished.is_none() &&
-           query.annotations.is_none() &&
-           query.bookmarks.is_none() &&
-           query.opened_after.is_none() &&
-           query.added_after.is_none() {
+        if query.free.is_none()
+            && query.title.is_none()
+            && query.subtitle.is_none()
+            && query.author.is_none()
+            && query.year.is_none()
+            && query.language.is_none()
+            && query.publisher.is_none()
+            && query.series.is_none()
+            && query.edition.is_none()
+            && query.volume.is_none()
+            && query.number.is_none()
+            && query.reading.is_none()
+            && query.new.is_none()
+            && query.finished.is_none()
+            && query.annotations.is_none()
+            && query.bookmarks.is_none()
+            && query.opened_after.is_none()
+            && query.added_after.is_none()
+        {
             None
         } else {
             Some(query)
@@ -555,31 +615,63 @@ impl BookQuery {
 
     #[inline]
     pub fn is_match(&self, info: &Info) -> bool {
-        self.free.as_ref().map(|re| re.is_match(&info.title) ||
-                                    re.is_match(&info.subtitle) ||
-                                    re.is_match(&info.author) ||
-                                    re.is_match(&info.series) ||
-                                    info.file.path.to_str()
-                                        .map_or(false, |s| re.is_match(s))) != Some(false) &&
-        self.title.as_ref().map(|re| re.is_match(&info.title)) != Some(false) &&
-        self.subtitle.as_ref().map(|re| re.is_match(&info.subtitle)) != Some(false) &&
-        self.author.as_ref().map(|re| re.is_match(&info.author)) != Some(false) &&
-        self.year.as_ref().map(|re| re.is_match(&info.year)) != Some(false) &&
-        self.language.as_ref().map(|re| re.is_match(&info.language)) != Some(false) &&
-        self.publisher.as_ref().map(|re| re.is_match(&info.publisher)) != Some(false) &&
-        self.series.as_ref().map(|re| re.is_match(&info.series)) != Some(false) &&
-        self.edition.as_ref().map(|re| re.is_match(&info.edition)) != Some(false) &&
-        self.volume.as_ref().map(|re| re.is_match(&info.volume)) != Some(false) &&
-        self.number.as_ref().map(|re| re.is_match(&info.number)) != Some(false) &&
-        self.reading.as_ref().map(|eq| info.simple_status().eq(&SimpleStatus::Reading) == *eq) != Some(false) &&
-        self.new.as_ref().map(|eq| info.simple_status().eq(&SimpleStatus::New) == *eq) != Some(false) &&
-        self.finished.as_ref().map(|eq| info.simple_status().eq(&SimpleStatus::Finished) == *eq) != Some(false) &&
-        self.annotations.as_ref().map(|eq| info.reader.as_ref().map_or(false, |r| !r.annotations.is_empty()) == *eq) != Some(false) &&
-        self.bookmarks.as_ref().map(|eq| info.reader.as_ref().map_or(false, |r| !r.bookmarks.is_empty()) == *eq) != Some(false) &&
-        self.opened_after.as_ref().map(|(eq, opened)| info.reader.as_ref().map_or(false, |r| r.opened.gt(opened)) == *eq) != Some(false) &&
-        self.added_after.as_ref().map(|(eq, added)| info.added.gt(added) == *eq) != Some(false)
+        self.free.as_ref().map(|re| {
+            re.is_match(&info.title)
+                || re.is_match(&info.subtitle)
+                || re.is_match(&info.author)
+                || re.is_match(&info.series)
+                || info.file.path.to_str().map_or(false, |s| re.is_match(s))
+        }) != Some(false)
+            && self.title.as_ref().map(|re| re.is_match(&info.title)) != Some(false)
+            && self.subtitle.as_ref().map(|re| re.is_match(&info.subtitle)) != Some(false)
+            && self.author.as_ref().map(|re| re.is_match(&info.author)) != Some(false)
+            && self.year.as_ref().map(|re| re.is_match(&info.year)) != Some(false)
+            && self.language.as_ref().map(|re| re.is_match(&info.language)) != Some(false)
+            && self
+                .publisher
+                .as_ref()
+                .map(|re| re.is_match(&info.publisher))
+                != Some(false)
+            && self.series.as_ref().map(|re| re.is_match(&info.series)) != Some(false)
+            && self.edition.as_ref().map(|re| re.is_match(&info.edition)) != Some(false)
+            && self.volume.as_ref().map(|re| re.is_match(&info.volume)) != Some(false)
+            && self.number.as_ref().map(|re| re.is_match(&info.number)) != Some(false)
+            && self
+                .reading
+                .as_ref()
+                .map(|eq| info.simple_status().eq(&SimpleStatus::Reading) == *eq)
+                != Some(false)
+            && self
+                .new
+                .as_ref()
+                .map(|eq| info.simple_status().eq(&SimpleStatus::New) == *eq)
+                != Some(false)
+            && self
+                .finished
+                .as_ref()
+                .map(|eq| info.simple_status().eq(&SimpleStatus::Finished) == *eq)
+                != Some(false)
+            && self.annotations.as_ref().map(|eq| {
+                info.reader
+                    .as_ref()
+                    .map_or(false, |r| !r.annotations.is_empty())
+                    == *eq
+            }) != Some(false)
+            && self.bookmarks.as_ref().map(|eq| {
+                info.reader
+                    .as_ref()
+                    .map_or(false, |r| !r.bookmarks.is_empty())
+                    == *eq
+            }) != Some(false)
+            && self.opened_after.as_ref().map(|(eq, opened)| {
+                info.reader.as_ref().map_or(false, |r| r.opened.gt(opened)) == *eq
+            }) != Some(false)
+            && self
+                .added_after
+                .as_ref()
+                .map(|(eq, added)| info.added.gt(added) == *eq)
+                != Some(false)
     }
-
 
     #[inline]
     pub fn is_simple_match(&self, text: &str) -> bool {
@@ -607,16 +699,22 @@ pub enum SortMethod {
 
 impl SortMethod {
     pub fn reverse_order(self) -> bool {
-        !matches!(self,
-                  SortMethod::Author | SortMethod::Title |
-                  SortMethod::Series | SortMethod::Kind |
-                  SortMethod::FileName | SortMethod::FilePath)
+        !matches!(
+            self,
+            SortMethod::Author
+                | SortMethod::Title
+                | SortMethod::Series
+                | SortMethod::Kind
+                | SortMethod::FileName
+                | SortMethod::FilePath
+        )
     }
 
     pub fn is_status_related(self) -> bool {
-        matches!(self,
-                 SortMethod::Opened | SortMethod::Status |
-                 SortMethod::Progress)
+        matches!(
+            self,
+            SortMethod::Opened | SortMethod::Status | SortMethod::Progress
+        )
     }
 
     pub fn label(&self) -> &str {
@@ -672,8 +770,10 @@ pub fn sorter(sort_method: SortMethod) -> fn(&Info, &Info) -> Ordering {
 }
 
 pub fn sort_opened(i1: &Info, i2: &Info) -> Ordering {
-    i1.reader.as_ref().map(|r1| r1.opened)
-      .cmp(&i2.reader.as_ref().map(|r2| r2.opened))
+    i1.reader
+        .as_ref()
+        .map(|r1| r1.opened)
+        .cmp(&i2.reader.as_ref().map(|r2| r2.opened))
 }
 
 pub fn sort_added(i1: &Info, i2: &Info) -> Ordering {
@@ -681,8 +781,10 @@ pub fn sort_added(i1: &Info, i2: &Info) -> Ordering {
 }
 
 pub fn sort_pages(i1: &Info, i2: &Info) -> Ordering {
-    i1.reader.as_ref().map(|r1| r1.pages_count)
-      .cmp(&i2.reader.as_ref().map(|r2| r2.pages_count))
+    i1.reader
+        .as_ref()
+        .map(|r1| r1.pages_count)
+        .cmp(&i2.reader.as_ref().map(|r2| r2.pages_count))
 }
 
 // FIXME: 'Z'.cmp('É') equals Ordering::Less
@@ -696,8 +798,8 @@ pub fn sort_title(i1: &Info, i2: &Info) -> Ordering {
 
 pub fn sort_status(i1: &Info, i2: &Info) -> Ordering {
     match (i1.simple_status(), i2.simple_status()) {
-        (SimpleStatus::Reading, SimpleStatus::Reading) |
-        (SimpleStatus::Finished, SimpleStatus::Finished) => sort_opened(i1, i2),
+        (SimpleStatus::Reading, SimpleStatus::Reading)
+        | (SimpleStatus::Finished, SimpleStatus::Finished) => sort_opened(i1, i2),
         (SimpleStatus::New, SimpleStatus::New) => sort_added(i1, i2),
         (SimpleStatus::New, SimpleStatus::Finished) => Ordering::Greater,
         (SimpleStatus::Finished, SimpleStatus::New) => Ordering::Less,
@@ -719,8 +821,9 @@ pub fn sort_progress(i1: &Info, i2: &Info) -> Ordering {
         (Status::Reading(..), Status::New) => Ordering::Greater,
         (Status::Finished, Status::Reading(..)) => Ordering::Less,
         (Status::Reading(..), Status::Finished) => Ordering::Greater,
-        (Status::Reading(p1), Status::Reading(p2)) => p1.partial_cmp(&p2)
-                                                        .unwrap_or(Ordering::Equal),
+        (Status::Reading(p1), Status::Reading(p2)) => {
+            p1.partial_cmp(&p2).unwrap_or(Ordering::Equal)
+        }
     }
 }
 
@@ -738,9 +841,10 @@ pub fn sort_year(i1: &Info, i2: &Info) -> Ordering {
 
 pub fn sort_series(i1: &Info, i2: &Info) -> Ordering {
     i1.series.cmp(&i2.series).then_with(|| {
-        usize::from_str_radix(&i1.number, 10).ok()
-              .zip(usize::from_str_radix(&i2.number, 10).ok())
-              .map_or_else(|| i1.number.cmp(&i2.number), |(a, b)| a.cmp(&b))
+        usize::from_str_radix(&i1.number, 10)
+            .ok()
+            .zip(usize::from_str_radix(&i2.number, 10).ok())
+            .map_or_else(|| i1.number.cmp(&i2.number), |(a, b)| a.cmp(&b))
     })
 }
 
@@ -756,7 +860,10 @@ lazy_static! {
     pub static ref TITLE_PREFIXES: FxHashMap<&'static str, Regex> = {
         let mut p = FxHashMap::default();
         p.insert("en", Regex::new(r"^(The|An?)\s").unwrap());
-        p.insert("fr", Regex::new(r"^(Les?\s|La\s|L’|Une?\s|Des?\s|Du\s)").unwrap());
+        p.insert(
+            "fr",
+            Regex::new(r"^(Les?\s|La\s|L’|Une?\s|Des?\s|Du\s)").unwrap(),
+        );
         p
     };
 }
@@ -766,57 +873,52 @@ pub fn extract_metadata_from_document(prefix: &Path, info: &mut Info) {
     let path = prefix.join(&info.file.path);
 
     match info.file.kind.as_ref() {
-        "epub" => {
-            match EpubDocument::new(&path) {
-                Ok(doc) => {
-                    info.title = doc.title().unwrap_or_default();
-                    info.author = doc.author().unwrap_or_default();
-                    info.year = doc.year().unwrap_or_default();
-                    info.publisher = doc.publisher().unwrap_or_default();
-                    if let Some((title, index)) = doc.series() {
-                        info.series = title;
-                        info.number = index;
-                    }
-                    info.language = doc.language().unwrap_or_default();
-                    info.categories.append(&mut doc.categories());
-                },
-                Err(e) => eprintln!("Can't open {}: {:#}.", info.file.path.display(), e),
+        "epub" => match EpubDocument::new(&path) {
+            Ok(doc) => {
+                info.title = doc.title().unwrap_or_default();
+                info.author = doc.author().unwrap_or_default();
+                info.year = doc.year().unwrap_or_default();
+                info.publisher = doc.publisher().unwrap_or_default();
+                if let Some((title, index)) = doc.series() {
+                    info.series = title;
+                    info.number = index;
+                }
+                info.language = doc.language().unwrap_or_default();
+                info.categories.append(&mut doc.categories());
             }
+            Err(e) => eprintln!("Can't open {}: {:#}.", info.file.path.display(), e),
         },
-        "html" | "htm" => {
-            match HtmlDocument::new(&path) {
-                Ok(doc) => {
-                    info.title = doc.title().unwrap_or_default();
-                    info.author = doc.author().unwrap_or_default();
-                    info.language = doc.language().unwrap_or_default();
-                },
-                Err(e) => eprintln!("Can't open {}: {:#}.", info.file.path.display(), e),
+        "html" | "htm" => match HtmlDocument::new(&path) {
+            Ok(doc) => {
+                info.title = doc.title().unwrap_or_default();
+                info.author = doc.author().unwrap_or_default();
+                info.language = doc.language().unwrap_or_default();
             }
+            Err(e) => eprintln!("Can't open {}: {:#}.", info.file.path.display(), e),
         },
-        "pdf" => {
-            match PdfOpener::new().and_then(|o| o.open(path)) {
-                Some(doc) => {
-                    info.title = doc.title().unwrap_or_default();
-                    info.author = doc.author().unwrap_or_default();
-                },
-                None => eprintln!("Can't open {}.", info.file.path.display()),
+        "pdf" => match PdfOpener::new().and_then(|o| o.open(path)) {
+            Some(doc) => {
+                info.title = doc.title().unwrap_or_default();
+                info.author = doc.author().unwrap_or_default();
             }
+            None => eprintln!("Can't open {}.", info.file.path.display()),
         },
-        "djvu" | "djv" => {
-            match DjvuOpener::new().and_then(|o| o.open(path)) {
-                Some(doc) => {
-                    info.title = doc.title().unwrap_or_default();
-                    info.author = doc.author().unwrap_or_default();
-                    info.year = doc.year().unwrap_or_default();
-                    info.series = doc.series().unwrap_or_default();
-                    info.publisher = doc.publisher().unwrap_or_default();
-                },
-                None => eprintln!("Can't open {}.", info.file.path.display()),
+        "djvu" | "djv" => match DjvuOpener::new().and_then(|o| o.open(path)) {
+            Some(doc) => {
+                info.title = doc.title().unwrap_or_default();
+                info.author = doc.author().unwrap_or_default();
+                info.year = doc.year().unwrap_or_default();
+                info.series = doc.series().unwrap_or_default();
+                info.publisher = doc.publisher().unwrap_or_default();
             }
+            None => eprintln!("Can't open {}.", info.file.path.display()),
         },
         _ => {
-                eprintln!("Don't know how to extract metadata from {}.", &info.file.kind);
-        },
+            eprintln!(
+                "Don't know how to extract metadata from {}.",
+                &info.file.kind
+            );
+        }
     }
 }
 
@@ -827,39 +929,51 @@ pub fn extract_metadata_from_filename(_prefix: &Path, info: &mut Info) {
         if filename.starts_with('(') {
             start_index += 1;
             if let Some(index) = filename[start_index..].find(')') {
-                info.series = filename[start_index..start_index+index].trim_end().to_string();
+                info.series = filename[start_index..start_index + index]
+                    .trim_end()
+                    .to_string();
                 start_index += index + 1;
             }
         }
 
         if let Some(index) = filename[start_index..].find("- ") {
-            info.author = filename[start_index..start_index+index].trim().to_string();
+            info.author = filename[start_index..start_index + index]
+                .trim()
+                .to_string();
             start_index += index + 1;
         }
 
         let title_start = start_index;
 
         if let Some(index) = filename[start_index..].find('_') {
-            info.title = filename[start_index..start_index+index].trim_start().to_string();
+            info.title = filename[start_index..start_index + index]
+                .trim_start()
+                .to_string();
             start_index += index + 1;
         }
 
         if let Some(index) = filename[start_index..].find('-') {
             if title_start == start_index {
-                info.title = filename[start_index..start_index+index].trim_start().to_string();
+                info.title = filename[start_index..start_index + index]
+                    .trim_start()
+                    .to_string();
             } else {
-                info.subtitle = filename[start_index..start_index+index].trim_start().to_string();
+                info.subtitle = filename[start_index..start_index + index]
+                    .trim_start()
+                    .to_string();
             }
             start_index += index + 1;
         }
 
         if let Some(index) = filename[start_index..].find('(') {
-            info.publisher = filename[start_index..start_index+index].trim_end().to_string();
+            info.publisher = filename[start_index..start_index + index]
+                .trim_end()
+                .to_string();
             start_index += index + 1;
         }
 
         if let Some(index) = filename[start_index..].find(')') {
-            info.year = filename[start_index..start_index+index].to_string();
+            info.year = filename[start_index..start_index + index].to_string();
         }
     }
 }
@@ -896,14 +1010,16 @@ pub fn rename_from_info(prefix: &Path, info: &mut Info) {
         let new_path = old_path.with_file_name(&new_file_name);
         if old_path != new_path {
             match fs::rename(&old_path, &new_path) {
-                Err(e) => eprintln!("Can't rename {} to {}: {:#}.",
-                                    old_path.display(),
-                                    new_path.display(), e),
+                Err(e) => eprintln!(
+                    "Can't rename {} to {}: {:#}.",
+                    old_path.display(),
+                    new_path.display(),
+                    e
+                ),
                 Ok(..) => {
-                    let relat = new_path.strip_prefix(prefix)
-                                        .unwrap_or(&new_path);
+                    let relat = new_path.strip_prefix(prefix).unwrap_or(&new_path);
                     info.file.path = relat.to_path_buf();
-                },
+                }
             }
         }
     }

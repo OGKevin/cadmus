@@ -1,18 +1,18 @@
-use std::ptr;
-use std::path::Path;
-use std::io::{self, Write};
-use std::fs::{OpenOptions, File};
-use std::slice;
-use std::os::unix::io::AsRawFd;
-use std::ops::Drop;
-use anyhow::{Error, Context};
-use crate::color::Color;
-use crate::geom::Rectangle;
-use crate::device::{CURRENT_DEVICE, Model};
-use super::{UpdateMode, Framebuffer};
 use super::linuxfb_sys::*;
 use super::mxcfb_sys::*;
 use super::transform::*;
+use super::{Framebuffer, UpdateMode};
+use crate::color::Color;
+use crate::device::{Model, CURRENT_DEVICE};
+use crate::geom::Rectangle;
+use anyhow::{Context, Error};
+use std::fs::{File, OpenOptions};
+use std::io::{self, Write};
+use std::ops::Drop;
+use std::os::unix::io::AsRawFd;
+use std::path::Path;
+use std::ptr;
+use std::slice;
 
 impl Into<MxcfbRect> for Rectangle {
     fn into(self) -> MxcfbRect {
@@ -32,7 +32,7 @@ type AsRgb = fn(&KoboFramebuffer1) -> Vec<u8>;
 pub struct KoboFramebuffer1 {
     file: File,
     frame: *mut libc::c_void,
-    frame_size: libc::size_t, 
+    frame_size: libc::size_t,
     token: u32,
     flags: u32,
     monochrome: bool,
@@ -52,10 +52,13 @@ pub struct KoboFramebuffer1 {
 
 impl KoboFramebuffer1 {
     pub fn new<P: AsRef<Path>>(path: P) -> Result<KoboFramebuffer1, Error> {
-        let file = OpenOptions::new().read(true)
-                                     .write(true)
-                                     .open(&path)
-                                     .with_context(|| format!("can't open framebuffer device {}", path.as_ref().display()))?;
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&path)
+            .with_context(|| {
+                format!("can't open framebuffer device {}", path.as_ref().display())
+            })?;
 
         let var_info = var_screen_info(&file)?;
         let fix_info = fix_screen_info(&file)?;
@@ -66,42 +69,48 @@ impl KoboFramebuffer1 {
         let frame_size = (var_info.yres * fix_info.line_length) as libc::size_t;
 
         let frame = unsafe {
-            libc::mmap(ptr::null_mut(), fix_info.smem_len as usize,
-                       libc::PROT_READ | libc::PROT_WRITE, libc::MAP_SHARED,
-                       file.as_raw_fd(), 0)
+            libc::mmap(
+                ptr::null_mut(),
+                fix_info.smem_len as usize,
+                libc::PROT_READ | libc::PROT_WRITE,
+                libc::MAP_SHARED,
+                file.as_raw_fd(),
+                0,
+            )
         };
 
         if frame == libc::MAP_FAILED {
             Err(Error::from(io::Error::last_os_error()).context("can't map memory"))
         } else {
-            let (set_pixel_rgb, get_pixel_rgb, as_rgb): (SetPixelRgb, GetPixelRgb, AsRgb) = if var_info.bits_per_pixel > 16 {
-                (set_pixel_rgb_32, get_pixel_rgb_32, as_rgb_32)
-            } else if var_info.bits_per_pixel > 8 {
-                (set_pixel_rgb_16, get_pixel_rgb_16, as_rgb_16)
-            } else {
-                (set_pixel_rgb_8, get_pixel_rgb_8, as_rgb_8)
-            };
+            let (set_pixel_rgb, get_pixel_rgb, as_rgb): (SetPixelRgb, GetPixelRgb, AsRgb) =
+                if var_info.bits_per_pixel > 16 {
+                    (set_pixel_rgb_32, get_pixel_rgb_32, as_rgb_32)
+                } else if var_info.bits_per_pixel > 8 {
+                    (set_pixel_rgb_16, get_pixel_rgb_16, as_rgb_16)
+                } else {
+                    (set_pixel_rgb_8, get_pixel_rgb_8, as_rgb_8)
+                };
             let red_index = if var_info.red.offset > 0 { 2 } else { 0 };
             Ok(KoboFramebuffer1 {
-                   file,
-                   frame,
-                   frame_size,
-                   token: 1,
-                   flags: 0,
-                   monochrome: false,
-                   dithered: false,
-                   inverted: false,
-                   transform: transform_identity,
-                   set_pixel_rgb,
-                   get_pixel_rgb,
-                   as_rgb,
-                   red_index,
-                   green_index: 1,
-                   blue_index: 2 - red_index,
-                   bytes_per_pixel: bytes_per_pixel as u8,
-                   var_info,
-                   fix_info,
-               })
+                file,
+                frame,
+                frame_size,
+                token: 1,
+                flags: 0,
+                monochrome: false,
+                dithered: false,
+                inverted: false,
+                transform: transform_identity,
+                set_pixel_rgb,
+                get_pixel_rgb,
+                as_rgb,
+                red_index,
+                green_index: 1,
+                blue_index: 2 - red_index,
+                bytes_per_pixel: bytes_per_pixel as u8,
+                var_info,
+                fix_info,
+            })
         }
     }
 
@@ -141,7 +150,11 @@ impl Framebuffer for KoboFramebuffer1 {
         for y in rect.min.y..rect.max.y {
             for x in rect.min.x..rect.max.x {
                 let rgb = (self.get_pixel_rgb)(self, x as u32, y as u32);
-                let color = [rgb[0].saturating_sub(drift), rgb[1].saturating_sub(drift), rgb[2].saturating_sub(drift)];
+                let color = [
+                    rgb[0].saturating_sub(drift),
+                    rgb[1].saturating_sub(drift),
+                    rgb[2].saturating_sub(drift),
+                ];
                 (self.set_pixel_rgb)(self, x as u32, y as u32, color);
             }
         }
@@ -171,7 +184,7 @@ impl Framebuffer for KoboFramebuffer1 {
                 } else {
                     (UPDATE_MODE_PARTIAL, WAVEFORM_MODE_AUTO)
                 }
-            },
+            }
             UpdateMode::Full => {
                 monochrome = false;
                 if mark >= 12 && color_samples > 1 && dithered {
@@ -179,14 +192,14 @@ impl Framebuffer for KoboFramebuffer1 {
                 } else {
                     (UPDATE_MODE_FULL, NTX_WFM_MODE_GC16)
                 }
-            },
+            }
             UpdateMode::Fast => {
                 if mark >= 11 {
                     (UPDATE_MODE_PARTIAL, HWTCON_WAVEFORM_MODE_A2)
                 } else {
                     (UPDATE_MODE_PARTIAL, NTX_WFM_MODE_A2)
                 }
-            },
+            }
             UpdateMode::FastMono => {
                 if mark >= 11 {
                     flags |= HWTCON_FLAG_FORCE_A2_OUTPUT;
@@ -195,7 +208,7 @@ impl Framebuffer for KoboFramebuffer1 {
                     flags |= EPDC_FLAG_FORCE_MONOCHROME;
                     (UPDATE_MODE_PARTIAL, NTX_WFM_MODE_A2)
                 }
-            },
+            }
         };
 
         if monochrome {
@@ -250,9 +263,7 @@ impl Framebuffer for KoboFramebuffer1 {
                 flags,
                 dither_mode,
             };
-            unsafe {
-                send_update_v3(self.file.as_raw_fd(), &update_data)
-            }
+            unsafe { send_update_v3(self.file.as_raw_fd(), &update_data) }
         } else if mark >= 7 {
             let mut quant_bit = 0;
             let mut dither_mode = EPDC_FLAG_USE_DITHERING_PASSTHROUGH;
@@ -277,9 +288,7 @@ impl Framebuffer for KoboFramebuffer1 {
                 quant_bit,
                 alt_buffer_data: MxcfbAltBufferDataV2::default(),
             };
-            unsafe {
-                send_update_v2(self.file.as_raw_fd(), &update_data)
-            }
+            unsafe { send_update_v2(self.file.as_raw_fd(), &update_data) }
         } else {
             if monochrome && !dithered {
                 flags |= EPDC_FLAG_FORCE_MONOCHROME;
@@ -294,9 +303,7 @@ impl Framebuffer for KoboFramebuffer1 {
                 flags,
                 alt_buffer_data: MxcfbAltBufferDataV1::default(),
             };
-            unsafe {
-                send_update_v1(self.file.as_raw_fd(), &update_data)
-            }
+            unsafe { send_update_v1(self.file.as_raw_fd(), &update_data) }
         };
 
         match result {
@@ -315,25 +322,26 @@ impl Framebuffer for KoboFramebuffer1 {
                 update_marker: token,
                 collision_test: 0,
             };
-            unsafe {
-                wait_for_update_v2(self.file.as_raw_fd(), &mut marker_data)
-            }
+            unsafe { wait_for_update_v2(self.file.as_raw_fd(), &mut marker_data) }
         } else {
-            unsafe {
-                wait_for_update_v1(self.file.as_raw_fd(), &token)
-            }
+            unsafe { wait_for_update_v1(self.file.as_raw_fd(), &token) }
         };
         result.context("can't wait for framebuffer update")
     }
 
     fn save(&self, path: &str) -> Result<(), Error> {
         let (width, height) = self.dims();
-        let file = File::create(path).with_context(|| format!("can't create output file {}", path))?;
+        let file =
+            File::create(path).with_context(|| format!("can't create output file {}", path))?;
         let mut encoder = png::Encoder::new(file, width, height);
         encoder.set_depth(png::BitDepth::Eight);
         encoder.set_color(png::ColorType::Rgb);
-        let mut writer = encoder.write_header().with_context(|| format!("can't write PNG header for {}", path))?;
-        writer.write_image_data(&(self.as_rgb)(self)).with_context(|| format!("can't write PNG data to {}", path))?;
+        let mut writer = encoder
+            .write_header()
+            .with_context(|| format!("can't write PNG header for {}", path))?;
+        writer
+            .write_image_data(&(self.as_rgb)(self))
+            .with_context(|| format!("can't write PNG data to {}", path))?;
         Ok(())
     }
 
@@ -349,16 +357,14 @@ impl Framebuffer for KoboFramebuffer1 {
         // if (n - m).abs() % 2 == 1, where m is the previously written value.
         // In order for the call to have an effect, we need to write an intermediate
         // value: (n+1)%4.
-        for (i, v) in [n, (n+1)%4, n].iter().enumerate() {
+        for (i, v) in [n, (n + 1) % 4, n].iter().enumerate() {
             self.var_info.rotate = *v as u32;
 
-            let result = unsafe {
-                write_variable_screen_info(self.file.as_raw_fd(), &self.var_info)
-            };
+            let result =
+                unsafe { write_variable_screen_info(self.file.as_raw_fd(), &self.var_info) };
 
             if let Err(e) = result {
-                return Err(Error::from(e)
-                                 .context("can't set variable screen info"));
+                return Err(Error::from(e).context("can't set variable screen info"));
             }
 
             // If the first call changed the rotation value, we can exit the loop.
@@ -388,11 +394,18 @@ impl Framebuffer for KoboFramebuffer1 {
             }
         } else {
             OpenOptions::new()
-            .read(false)
-            .write(true)
-            .open("/proc/hwtcon/cmd").and_then(|mut file| {
-                file.write_all(if enable { b"night_mode 4" } else { b"night_mode 0" })
-            }).map_err(|e| eprintln!("Failed to invert colors: {:#?}", e)).ok();
+                .read(false)
+                .write(true)
+                .open("/proc/hwtcon/cmd")
+                .and_then(|mut file| {
+                    file.write_all(if enable {
+                        b"night_mode 4"
+                    } else {
+                        b"night_mode 0"
+                    })
+                })
+                .map_err(|e| eprintln!("Failed to invert colors: {:#?}", e))
+                .ok();
         }
     }
 
@@ -446,8 +459,8 @@ impl Drop for KoboFramebuffer1 {
 }
 
 fn set_pixel_rgb_8(fb: &mut KoboFramebuffer1, x: u32, y: u32, rgb: [u8; 3]) {
-    let addr = (fb.var_info.xoffset as isize + x as isize) * (fb.bytes_per_pixel as isize) +
-               (fb.var_info.yoffset as isize + y as isize) * (fb.fix_info.line_length as isize);
+    let addr = (fb.var_info.xoffset as isize + x as isize) * (fb.bytes_per_pixel as isize)
+        + (fb.var_info.yoffset as isize + y as isize) * (fb.fix_info.line_length as isize);
 
     debug_assert!(addr < fb.frame_size as isize);
 
@@ -458,8 +471,8 @@ fn set_pixel_rgb_8(fb: &mut KoboFramebuffer1, x: u32, y: u32, rgb: [u8; 3]) {
 }
 
 fn set_pixel_rgb_16(fb: &mut KoboFramebuffer1, x: u32, y: u32, rgb: [u8; 3]) {
-    let addr = (fb.var_info.xoffset as isize + x as isize) * (fb.bytes_per_pixel as isize) +
-               (fb.var_info.yoffset as isize + y as isize) * (fb.fix_info.line_length as isize);
+    let addr = (fb.var_info.xoffset as isize + x as isize) * (fb.bytes_per_pixel as isize)
+        + (fb.var_info.yoffset as isize + y as isize) * (fb.fix_info.line_length as isize);
 
     debug_assert!(addr < fb.frame_size as isize);
 
@@ -471,8 +484,8 @@ fn set_pixel_rgb_16(fb: &mut KoboFramebuffer1, x: u32, y: u32, rgb: [u8; 3]) {
 }
 
 fn set_pixel_rgb_32(fb: &mut KoboFramebuffer1, x: u32, y: u32, rgb: [u8; 3]) {
-    let addr = (fb.var_info.xoffset as isize + x as isize) * (fb.bytes_per_pixel as isize) +
-               (fb.var_info.yoffset as isize + y as isize) * (fb.fix_info.line_length as isize);
+    let addr = (fb.var_info.xoffset as isize + x as isize) * (fb.bytes_per_pixel as isize)
+        + (fb.var_info.yoffset as isize + y as isize) * (fb.fix_info.line_length as isize);
 
     debug_assert!(addr < fb.frame_size as isize);
 
@@ -486,15 +499,15 @@ fn set_pixel_rgb_32(fb: &mut KoboFramebuffer1, x: u32, y: u32, rgb: [u8; 3]) {
 }
 
 fn get_pixel_rgb_8(fb: &KoboFramebuffer1, x: u32, y: u32) -> [u8; 3] {
-    let addr = (fb.var_info.xoffset as isize + x as isize) * (fb.bytes_per_pixel as isize) +
-               (fb.var_info.yoffset as isize + y as isize) * (fb.fix_info.line_length as isize);
+    let addr = (fb.var_info.xoffset as isize + x as isize) * (fb.bytes_per_pixel as isize)
+        + (fb.var_info.yoffset as isize + y as isize) * (fb.fix_info.line_length as isize);
     let gray = unsafe { *(fb.frame.offset(addr) as *const u8) };
     [gray, gray, gray]
 }
 
 fn get_pixel_rgb_16(fb: &KoboFramebuffer1, x: u32, y: u32) -> [u8; 3] {
-    let addr = (fb.var_info.xoffset as isize + x as isize) * (fb.bytes_per_pixel as isize) +
-               (fb.var_info.yoffset as isize + y as isize) * (fb.fix_info.line_length as isize);
+    let addr = (fb.var_info.xoffset as isize + x as isize) * (fb.bytes_per_pixel as isize)
+        + (fb.var_info.yoffset as isize + y as isize) * (fb.fix_info.line_length as isize);
     let pair = unsafe {
         let spot = fb.frame.offset(addr) as *mut u8;
         [*spot.offset(0), *spot.offset(1)]
@@ -506,13 +519,15 @@ fn get_pixel_rgb_16(fb: &KoboFramebuffer1, x: u32, y: u32) -> [u8; 3] {
 }
 
 fn get_pixel_rgb_32(fb: &KoboFramebuffer1, x: u32, y: u32) -> [u8; 3] {
-    let addr = (fb.var_info.xoffset as isize + x as isize) * (fb.bytes_per_pixel as isize) +
-               (fb.var_info.yoffset as isize + y as isize) * (fb.fix_info.line_length as isize);
+    let addr = (fb.var_info.xoffset as isize + x as isize) * (fb.bytes_per_pixel as isize)
+        + (fb.var_info.yoffset as isize + y as isize) * (fb.fix_info.line_length as isize);
     unsafe {
         let spot = fb.frame.offset(addr) as *mut u8;
-        [*spot.offset(fb.red_index as isize),
-         *spot.offset(fb.green_index as isize),
-         *spot.offset(fb.blue_index as isize)]
+        [
+            *spot.offset(fb.red_index as isize),
+            *spot.offset(fb.green_index as isize),
+            *spot.offset(fb.blue_index as isize),
+        ]
     }
 }
 
@@ -521,8 +536,12 @@ fn as_rgb_8(fb: &KoboFramebuffer1) -> Vec<u8> {
     let mut rgb888 = Vec::with_capacity((width * height * 3) as usize);
     let rgb8 = fb.as_bytes();
     let virtual_width = fb.var_info.xres_virtual as usize;
-    for (_, &gray) in rgb8.iter().take(height as usize * virtual_width).enumerate()
-                          .filter(|&(i, _)| i % virtual_width < width as usize) {
+    for (_, &gray) in rgb8
+        .iter()
+        .take(height as usize * virtual_width)
+        .enumerate()
+        .filter(|&(i, _)| i % virtual_width < width as usize)
+    {
         rgb888.extend_from_slice(&[gray, gray, gray]);
     }
     rgb888
@@ -533,8 +552,12 @@ fn as_rgb_16(fb: &KoboFramebuffer1) -> Vec<u8> {
     let mut rgb888 = Vec::with_capacity((width * height * 3) as usize);
     let rgb565 = fb.as_bytes();
     let virtual_width = fb.var_info.xres_virtual as usize;
-    for (_, pair) in rgb565.chunks(2).take(height as usize * virtual_width).enumerate()
-                           .filter(|&(i, _)| i % virtual_width < width as usize) {
+    for (_, pair) in rgb565
+        .chunks(2)
+        .take(height as usize * virtual_width)
+        .enumerate()
+        .filter(|&(i, _)| i % virtual_width < width as usize)
+    {
         let red = pair[1] & 0b1111_1000;
         let green = ((pair[1] & 0b0000_0111) << 5) | ((pair[0] & 0b1110_0000) >> 3);
         let blue = (pair[0] & 0b0001_1111) << 3;
@@ -548,8 +571,12 @@ fn as_rgb_32(fb: &KoboFramebuffer1) -> Vec<u8> {
     let mut rgb888 = Vec::with_capacity((width * height * 3) as usize);
     let data = fb.as_bytes();
     let virtual_width = fb.var_info.xres_virtual as usize;
-    for (_, color) in data.chunks(4).take(height as usize * virtual_width).enumerate()
-                          .filter(|&(i, _)| i % virtual_width < width as usize) {
+    for (_, color) in data
+        .chunks(4)
+        .take(height as usize * virtual_width)
+        .enumerate()
+        .filter(|&(i, _)| i % virtual_width < width as usize)
+    {
         let red = color[fb.red_index];
         let green = color[fb.green_index];
         let blue = color[fb.blue_index];

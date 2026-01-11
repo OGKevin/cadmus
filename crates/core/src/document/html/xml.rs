@@ -1,6 +1,6 @@
+use super::dom::{element, text, whitespace};
+use super::dom::{Attributes, NodeId, XmlTree};
 use fxhash::FxHashMap;
-use super::dom::{XmlTree, NodeId, Attributes};
-use super::dom::{text, element, whitespace};
 
 #[derive(Debug)]
 pub struct XmlParser<'a> {
@@ -10,10 +10,7 @@ pub struct XmlParser<'a> {
 
 impl<'a> XmlParser<'a> {
     pub fn new(input: &str) -> XmlParser<'_> {
-        XmlParser {
-            input,
-            offset: 0,
-        }
+        XmlParser { input, offset: 0 }
     }
 
     fn eof(&self) -> bool {
@@ -34,7 +31,10 @@ impl<'a> XmlParser<'a> {
         }
     }
 
-    fn advance_while<F>(&mut self, test: F) where F: FnMut(&char) -> bool {
+    fn advance_while<F>(&mut self, test: F)
+    where
+        F: FnMut(&char) -> bool,
+    {
         for c in self.input[self.offset..].chars().take_while(test) {
             self.offset += c.len_utf8();
         }
@@ -82,13 +82,14 @@ impl<'a> XmlParser<'a> {
                 self.advance(2);
                 tree.get_mut(parent_id)
                     .append(element(name, offset - 1, attributes));
-            },
+            }
             Some('>') => {
                 self.advance(1);
-                let id = tree.get_mut(parent_id)
-                             .append(element(name, offset - 1, attributes));
+                let id = tree
+                    .get_mut(parent_id)
+                    .append(element(name, offset - 1, attributes));
                 self.parse_nodes(tree, id);
-            },
+            }
             _ => (),
         }
     }
@@ -115,32 +116,32 @@ impl<'a> XmlParser<'a> {
                         Some('?') => {
                             self.advance(1);
                             self.advance_until("?>");
-                        },
+                        }
                         Some('!') => {
                             self.advance(1);
                             match self.next() {
                                 Some('-') => {
                                     self.advance(2);
                                     self.advance_until("-->");
-                                },
+                                }
                                 Some('[') => {
                                     self.advance(1);
                                     self.advance_until("]]>");
-                                },
+                                }
                                 _ => {
                                     self.advance_while(|&c| c != '>');
                                     self.advance(1);
                                 }
                             }
-                        },
+                        }
                         _ => self.parse_element(tree, parent_id),
                     }
-                },
+                }
                 Some(..) => {
                     self.advance_while(|&c| c != '<');
                     tree.get_mut(parent_id)
                         .append(text(&self.input[offset..self.offset], offset));
-                },
+                }
                 None => break,
             }
         }
@@ -198,8 +199,7 @@ mod tests {
     fn test_inbetween_space() {
         let text = "<a><b>x</b> <c>y</c></a>";
         let xml = XmlParser::new(text).parse();
-        let child = xml.root().first_child().unwrap()
-                       .children().nth(1);
+        let child = xml.root().first_child().unwrap().children().nth(1);
         assert_eq!(child.map(|c| c.text()), Some(" ".to_string()));
     }
 

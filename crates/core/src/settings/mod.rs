@@ -1,19 +1,19 @@
 mod preset;
 
-use std::env;
-use std::ops::Index;
-use std::fmt::{self, Debug};
-use std::path::PathBuf;
-use std::collections::{BTreeMap, HashMap};
-use fxhash::FxHashSet;
-use serde::{Serialize, Deserialize};
-use crate::metadata::{SortMethod, TextAlign};
-use crate::frontlight::LightLevels;
 use crate::color::{Color, BLACK};
 use crate::device::CURRENT_DEVICE;
+use crate::frontlight::LightLevels;
+use crate::metadata::{SortMethod, TextAlign};
 use crate::unit::mm_to_px;
+use fxhash::FxHashSet;
+use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, HashMap};
+use std::env;
+use std::fmt::{self, Debug};
+use std::ops::Index;
+use std::path::PathBuf;
 
-pub use self::preset::{LightPreset, guess_frontlight};
+pub use self::preset::{guess_frontlight, LightPreset};
 
 pub const SETTINGS_PATH: &str = "Settings.toml";
 pub const DEFAULT_FONT_PATH: &str = "/mnt/onboard/fonts";
@@ -152,8 +152,9 @@ impl Default for LibrarySettings {
     fn default() -> Self {
         LibrarySettings {
             name: "Unnamed".to_string(),
-            path: env::current_dir().ok()
-                      .unwrap_or_else(|| PathBuf::from("/")),
+            path: env::current_dir()
+                .ok()
+                .unwrap_or_else(|| PathBuf::from("/")),
             mode: LibraryMode::Database,
             sort_method: SortMethod::Opened,
             first_column: FirstColumn::TitleAndAuthor,
@@ -305,7 +306,6 @@ pub struct HomeSettings {
     pub max_trash_size: u64,
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, rename_all = "kebab-case")]
 pub struct RefreshRateSettings {
@@ -411,7 +411,10 @@ pub enum WestStripAction {
 impl Default for RefreshRateSettings {
     fn default() -> Self {
         RefreshRateSettings {
-            global: RefreshRatePair { regular: 8, inverted: 2 },
+            global: RefreshRatePair {
+                regular: 8,
+                inverted: 2,
+            },
             by_kind: HashMap::new(),
         }
     }
@@ -460,7 +463,10 @@ impl Default for ReaderSettings {
             line_height: DEFAULT_LINE_HEIGHT,
             continuous_fit_to_width: true,
             ignore_document_css: false,
-            dithered_kinds: ["cbz", "png", "jpg", "jpeg"].iter().map(|k| k.to_string()).collect(),
+            dithered_kinds: ["cbz", "png", "jpg", "jpeg"]
+                .iter()
+                .map(|k| k.to_string())
+                .collect(),
             paragraph_breaker: ParagraphBreakerSettings::default(),
             refresh_rate: RefreshRateSettings::default(),
         }
@@ -473,9 +479,16 @@ impl Default for ImportSettings {
             unshare_trigger: true,
             startup_trigger: true,
             sync_metadata: true,
-            metadata_kinds: ["epub", "pdf", "djvu"].iter().map(|k| k.to_string()).collect(),
-            allowed_kinds: ["pdf", "djvu", "epub", "fb2", "txt",
-                            "xps", "oxps", "mobi", "cbz"].iter().map(|k| k.to_string()).collect(),
+            metadata_kinds: ["epub", "pdf", "djvu"]
+                .iter()
+                .map(|k| k.to_string())
+                .collect(),
+            allowed_kinds: [
+                "pdf", "djvu", "epub", "fb2", "txt", "xps", "oxps", "mobi", "cbz",
+            ]
+            .iter()
+            .map(|k| k.to_string())
+            .collect(),
         }
     }
 }
@@ -497,31 +510,29 @@ impl Default for Settings {
                 LibrarySettings {
                     name: "On Board".to_string(),
                     path: PathBuf::from(INTERNAL_CARD_ROOT),
-                    hooks: vec![
-                        Hook {
-                            path: PathBuf::from("Articles"),
-                            program: PathBuf::from("bin/article_fetcher/article_fetcher"),
-                            sort_method: Some(SortMethod::Added),
-                            first_column: Some(FirstColumn::TitleAndAuthor),
-                            second_column: Some(SecondColumn::Progress),
-                        }
-                    ],
-                    .. Default::default()
+                    hooks: vec![Hook {
+                        path: PathBuf::from("Articles"),
+                        program: PathBuf::from("bin/article_fetcher/article_fetcher"),
+                        sort_method: Some(SortMethod::Added),
+                        first_column: Some(FirstColumn::TitleAndAuthor),
+                        second_column: Some(SecondColumn::Progress),
+                    }],
+                    ..Default::default()
                 },
                 LibrarySettings {
                     name: "Removable".to_string(),
                     path: PathBuf::from(EXTERNAL_CARD_ROOT),
-                    .. Default::default()
+                    ..Default::default()
                 },
                 LibrarySettings {
                     name: "Dropbox".to_string(),
                     path: PathBuf::from("/mnt/onboard/.kobo/dropbox"),
-                    .. Default::default()
+                    ..Default::default()
                 },
                 LibrarySettings {
                     name: "KePub".to_string(),
                     path: PathBuf::from("/mnt/onboard/.kobo/kepub"),
-                    .. Default::default()
+                    ..Default::default()
                 },
             ],
             external_urls_queue: Some(PathBuf::from("bin/article_fetcher/urls.txt")),

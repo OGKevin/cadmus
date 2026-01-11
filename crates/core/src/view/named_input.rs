@@ -1,16 +1,16 @@
-use crate::framebuffer::Framebuffer;
-use crate::font::{Fonts, font_from_style, NORMAL_STYLE};
-use crate::geom::{Rectangle, CornerSpec, BorderSpec, halves, big_half};
-use crate::gesture::GestureEvent;
-use super::{View, Event, Hub, Bus, Id, ID_FEEDER, RenderQueue, ViewId, Align};
-use super::{THICKNESS_LARGE, BORDER_RADIUS_MEDIUM};
 use super::common::shift;
-use super::label::Label;
 use super::input_field::InputField;
-use crate::unit::scale_by_dpi;
+use super::label::Label;
+use super::{Align, Bus, Event, Hub, Id, RenderQueue, View, ViewId, ID_FEEDER};
+use super::{BORDER_RADIUS_MEDIUM, THICKNESS_LARGE};
 use crate::color::{BLACK, WHITE};
-use crate::device::CURRENT_DEVICE;
 use crate::context::Context;
+use crate::device::CURRENT_DEVICE;
+use crate::font::{font_from_style, Fonts, NORMAL_STYLE};
+use crate::framebuffer::Framebuffer;
+use crate::geom::{big_half, halves, BorderSpec, CornerSpec, Rectangle};
+use crate::gesture::GestureEvent;
+use crate::unit::scale_by_dpi;
 
 pub struct NamedInput {
     id: Id,
@@ -20,7 +20,13 @@ pub struct NamedInput {
 }
 
 impl NamedInput {
-    pub fn new(text: String, view_id: ViewId, input_id: ViewId, input_size: usize, context: &mut Context) -> NamedInput {
+    pub fn new(
+        text: String,
+        view_id: ViewId,
+        input_id: ViewId,
+        input_size: usize,
+        context: &mut Context,
+    ) -> NamedInput {
         let id = ID_FEEDER.next();
         let dpi = CURRENT_DEVICE.dpi;
         let (width, height) = context.display.dims;
@@ -41,7 +47,7 @@ impl NamedInput {
             let label_delta = (delta as f32 * label_ratio) as i32;
             let input_delta = delta - label_delta;
             label_width = (label_width + label_delta).abs();
-            input_width = (input_width + input_delta).abs(); 
+            input_width = (input_width + input_delta).abs();
             total_width += delta;
         }
 
@@ -54,24 +60,31 @@ impl NamedInput {
         let y_min = anchor.y - 4 * x_height;
         let y_max = anchor.y + 4 * x_height;
 
-        let label = Label::new(rect![x_min + big_half_padding,
-                                     y_min + x_height,
-                                     x_min + big_half_padding + padding + label_width,
-                                     y_max - x_height],
-                               text,
-                               Align::Center);
+        let label = Label::new(
+            rect![
+                x_min + big_half_padding,
+                y_min + x_height,
+                x_min + big_half_padding + padding + label_width,
+                y_max - x_height
+            ],
+            text,
+            Align::Center,
+        );
         children.push(Box::new(label) as Box<dyn View>);
 
-        let input_field = InputField::new(rect![x_max - 3 * padding - input_width,
-                                                y_min + 2 * x_height,
-                                                x_max - padding,
-                                                y_max - 2 * x_height],
-                                          input_id);
+        let input_field = InputField::new(
+            rect![
+                x_max - 3 * padding - input_width,
+                y_min + 2 * x_height,
+                x_max - padding,
+                y_max - 2 * x_height
+            ],
+            input_id,
+        );
         children.push(Box::new(input_field) as Box<dyn View>);
 
-        let rect = rect![x_min, y_min,
-                         x_max, y_max];
-                                          
+        let rect = rect![x_min, y_min, x_max, y_max];
+
         NamedInput {
             id,
             rect,
@@ -88,13 +101,21 @@ impl NamedInput {
 }
 
 impl View for NamedInput {
-    fn handle_event(&mut self, evt: &Event, _hub: &Hub, bus: &mut Bus, _rq: &mut RenderQueue, context: &mut Context) -> bool {
+    fn handle_event(
+        &mut self,
+        evt: &Event,
+        _hub: &Hub,
+        bus: &mut Bus,
+        _rq: &mut RenderQueue,
+        context: &mut Context,
+    ) -> bool {
         match *evt {
             Event::Submit(..) => {
                 bus.push_back(Event::Close(self.view_id));
                 false
-            },
-            Event::Gesture(GestureEvent::Tap(center)) | Event::Gesture(GestureEvent::HoldFingerShort(center, _)) => {
+            }
+            Event::Gesture(GestureEvent::Tap(center))
+            | Event::Gesture(GestureEvent::HoldFingerShort(center, _)) => {
                 if !self.rect.includes(center) && !context.kb_rect.includes(center) {
                     if !context.kb_rect.is_empty() {
                         bus.push_back(Event::Close(self.view_id));
@@ -103,7 +124,7 @@ impl View for NamedInput {
                 } else {
                     self.rect.includes(center)
                 }
-            },
+            }
             Event::Gesture(..) => true,
             _ => false,
         }
@@ -113,14 +134,24 @@ impl View for NamedInput {
         let dpi = CURRENT_DEVICE.dpi;
         let border_radius = scale_by_dpi(BORDER_RADIUS_MEDIUM, dpi) as i32;
         let border_thickness = scale_by_dpi(THICKNESS_LARGE, dpi) as u16;
-        fb.draw_rounded_rectangle_with_border(&self.rect,
-                                              &CornerSpec::Uniform(border_radius),
-                                              &BorderSpec { thickness: border_thickness,
-                                                            color: BLACK },
-                                              &WHITE);
+        fb.draw_rounded_rectangle_with_border(
+            &self.rect,
+            &CornerSpec::Uniform(border_radius),
+            &BorderSpec {
+                thickness: border_thickness,
+                color: BLACK,
+            },
+            &WHITE,
+        );
     }
 
-    fn resize(&mut self, _rect: Rectangle, _hub: &Hub, _rq: &mut RenderQueue, context: &mut Context) {
+    fn resize(
+        &mut self,
+        _rect: Rectangle,
+        _hub: &Hub,
+        _rq: &mut RenderQueue,
+        context: &mut Context,
+    ) {
         let (width, height) = context.display.dims;
         let dx = (width as i32 - height as i32) / 2;
         let dy = (height as i32 - width as i32) / 3;

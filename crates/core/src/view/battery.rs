@@ -1,15 +1,15 @@
-use crate::device::CURRENT_DEVICE;
-use crate::framebuffer::{Framebuffer, UpdateMode};
-use crate::geom::{Rectangle, BorderSpec, CornerSpec};
-use crate::color::{BLACK, WHITE, BATTERY_FILL};
-use super::{View, ViewId, Event, Hub, Bus, Id, ID_FEEDER, RenderQueue, RenderData};
-use super::{THICKNESS_LARGE, THICKNESS_MEDIUM, BORDER_RADIUS_SMALL};
 use super::icon::ICONS_PIXMAPS;
-use crate::gesture::GestureEvent;
+use super::{Bus, Event, Hub, Id, RenderData, RenderQueue, View, ViewId, ID_FEEDER};
+use super::{BORDER_RADIUS_SMALL, THICKNESS_LARGE, THICKNESS_MEDIUM};
 use crate::battery::Status;
-use crate::unit::scale_by_dpi;
-use crate::font::Fonts;
+use crate::color::{BATTERY_FILL, BLACK, WHITE};
 use crate::context::Context;
+use crate::device::CURRENT_DEVICE;
+use crate::font::Fonts;
+use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::geom::{BorderSpec, CornerSpec, Rectangle};
+use crate::gesture::GestureEvent;
+use crate::unit::scale_by_dpi;
 
 const BUMP_HEIGHT: f32 = 5.0 * THICKNESS_LARGE;
 const BUMP_WIDTH: f32 = 4.0 * THICKNESS_LARGE;
@@ -43,16 +43,23 @@ impl Battery {
 }
 
 impl View for Battery {
-    fn handle_event(&mut self, evt: &Event, _hub: &Hub, bus: &mut Bus, rq: &mut RenderQueue, context: &mut Context) -> bool {
+    fn handle_event(
+        &mut self,
+        evt: &Event,
+        _hub: &Hub,
+        bus: &mut Bus,
+        rq: &mut RenderQueue,
+        context: &mut Context,
+    ) -> bool {
         match *evt {
             Event::BatteryTick => {
                 self.update(rq, context);
                 true
-            },
+            }
             Event::Gesture(GestureEvent::Tap(center)) if self.rect.includes(center) => {
                 bus.push_back(Event::ToggleNear(ViewId::BatteryMenu, self.rect));
                 true
-            },
+            }
             _ => false,
         }
     }
@@ -85,30 +92,53 @@ impl View for Battery {
         let x_offset_edge = pt.x + border_thickness + fill_width;
         let x_offset_fill = x_offset_edge.saturating_sub(edge_width);
 
-        fb.draw_rounded_rectangle_with_border(&batt_rect,
-                                              &CornerSpec::Uniform(border_radius),
-                                              &BorderSpec { thickness: border_thickness as u16,
-                                                            color: BLACK },
-                                              &|x, _| if x <= x_offset_fill { BATTERY_FILL }
-                                                      else if x <= x_offset_edge { BLACK }
-                                                      else { WHITE });
+        fb.draw_rounded_rectangle_with_border(
+            &batt_rect,
+            &CornerSpec::Uniform(border_radius),
+            &BorderSpec {
+                thickness: border_thickness as u16,
+                color: BLACK,
+            },
+            &|x, _| {
+                if x <= x_offset_fill {
+                    BATTERY_FILL
+                } else if x <= x_offset_edge {
+                    BLACK
+                } else {
+                    WHITE
+                }
+            },
+        );
 
-        pt += pt!(batt_width - border_thickness as i32, (batt_height - bump_height) / 2);
+        pt += pt!(
+            batt_width - border_thickness as i32,
+            (batt_height - bump_height) / 2
+        );
         let bump_rect = rect![pt, pt + pt!(bump_width, bump_height)];
 
-        fb.draw_rounded_rectangle_with_border(&bump_rect,
-                                              &CornerSpec::East(border_radius / 2),
-                                              &BorderSpec { thickness: border_thickness as u16,
-                                                            color: BLACK },
-                                              &WHITE);
+        fb.draw_rounded_rectangle_with_border(
+            &bump_rect,
+            &CornerSpec::East(border_radius / 2),
+            &BorderSpec {
+                thickness: border_thickness as u16,
+                color: BLACK,
+            },
+            &WHITE,
+        );
 
         pt = self.rect.min + pt!(dx, dy) + pt!(border_thickness);
 
         if self.status.is_wired() {
-            let name = if self.status == Status::Charging { "plug" } else { "check_mark-small" };
+            let name = if self.status == Status::Charging {
+                "plug"
+            } else {
+                "check_mark-small"
+            };
             let pixmap = ICONS_PIXMAPS.get(name).unwrap();
-            pt += pt!((max_fill_width - pixmap.width as i32) / 2,
-                      (fill_height - pixmap.height as i32) / 2);
+            pt += pt!(
+                (max_fill_width - pixmap.width as i32) / 2,
+                (fill_height - pixmap.height as i32) / 2
+            );
             fb.draw_blended_pixmap(pixmap, pt, BLACK);
         }
     }

@@ -1,11 +1,11 @@
-use crate::device::CURRENT_DEVICE;
-use crate::font::{Fonts, font_from_style, NORMAL_STYLE};
-use crate::framebuffer::{Framebuffer, UpdateMode};
-use crate::gesture::GestureEvent;
 use crate::color::{BLACK, WHITE};
-use crate::geom::{Rectangle};
-use crate::view::{View, Event, Hub, Bus, Id, ID_FEEDER, RenderQueue, RenderData, ViewId};
 use crate::context::Context;
+use crate::device::CURRENT_DEVICE;
+use crate::font::{font_from_style, Fonts, NORMAL_STYLE};
+use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::geom::Rectangle;
+use crate::gesture::GestureEvent;
+use crate::view::{Bus, Event, Hub, Id, RenderData, RenderQueue, View, ViewId, ID_FEEDER};
 
 pub struct LibraryLabel {
     id: Id,
@@ -17,7 +17,7 @@ pub struct LibraryLabel {
 }
 
 impl LibraryLabel {
-    pub fn new(rect: Rectangle, name: &str, count: usize, filter: bool)  -> LibraryLabel {
+    pub fn new(rect: Rectangle, name: &str, count: usize, filter: bool) -> LibraryLabel {
         LibraryLabel {
             id: ID_FEEDER.next(),
             rect,
@@ -70,14 +70,20 @@ impl LibraryLabel {
     }
 }
 
-
 impl View for LibraryLabel {
-    fn handle_event(&mut self, evt: &Event, _hub: &Hub, bus: &mut Bus, _rq: &mut RenderQueue, _context: &mut Context) -> bool {
+    fn handle_event(
+        &mut self,
+        evt: &Event,
+        _hub: &Hub,
+        bus: &mut Bus,
+        _rq: &mut RenderQueue,
+        _context: &mut Context,
+    ) -> bool {
         match *evt {
             Event::Gesture(GestureEvent::Tap(center)) if self.rect.includes(center) => {
                 bus.push_back(Event::ToggleNear(ViewId::LibraryMenu, self.rect));
                 true
-            },
+            }
             _ => false,
         }
     }

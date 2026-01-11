@@ -1,15 +1,15 @@
-use crate::framebuffer::{Framebuffer, UpdateMode, Pixmap};
-use crate::metadata::Margin;
-use crate::gesture::GestureEvent;
-use crate::font::Fonts;
-use crate::geom::{Rectangle, Point, CornerSpec, BorderSpec};
-use crate::view::{View, Event, Hub, Bus, Id, ID_FEEDER, RenderQueue, RenderData, ViewId};
-use crate::view::{SMALL_BAR_HEIGHT, THICKNESS_MEDIUM};
-use crate::view::rounded_button::RoundedButton;
-use crate::unit::scale_by_dpi;
-use crate::color::{BLACK, WHITE, GRAY12};
-use crate::device::CURRENT_DEVICE;
+use crate::color::{BLACK, GRAY12, WHITE};
 use crate::context::Context;
+use crate::device::CURRENT_DEVICE;
+use crate::font::Fonts;
+use crate::framebuffer::{Framebuffer, Pixmap, UpdateMode};
+use crate::geom::{BorderSpec, CornerSpec, Point, Rectangle};
+use crate::gesture::GestureEvent;
+use crate::metadata::Margin;
+use crate::unit::scale_by_dpi;
+use crate::view::rounded_button::RoundedButton;
+use crate::view::{Bus, Event, Hub, Id, RenderData, RenderQueue, View, ViewId, ID_FEEDER};
+use crate::view::{SMALL_BAR_HEIGHT, THICKNESS_MEDIUM};
 
 pub const BUTTON_DIAMETER: f32 = 30.0;
 
@@ -22,18 +22,25 @@ pub struct MarginCropper {
 }
 
 impl MarginCropper {
-    pub fn new(rect: Rectangle, pixmap: Pixmap, margin: &Margin, _context: &mut Context) -> MarginCropper {
+    pub fn new(
+        rect: Rectangle,
+        pixmap: Pixmap,
+        margin: &Margin,
+        _context: &mut Context,
+    ) -> MarginCropper {
         let id = ID_FEEDER.next();
         let mut children = Vec::new();
 
-        let pt = pt!((rect.width() as i32 - pixmap.width as i32) / 2,
-                     (rect.height() as i32 - pixmap.height as i32) / 2);
-        let x_min = pt.x +
-                    (margin.left * pixmap.width as f32).round() as i32;
-        let y_min = pt.y +
-                    (margin.top * pixmap.height as f32).round() as i32;
-        let x_max = pt.x + pixmap.width as i32 - (margin.right * pixmap.width as f32).round() as i32;
-        let y_max = pt.y + pixmap.height as i32 - (margin.bottom * pixmap.height as f32).round() as i32;
+        let pt = pt!(
+            (rect.width() as i32 - pixmap.width as i32) / 2,
+            (rect.height() as i32 - pixmap.height as i32) / 2
+        );
+        let x_min = pt.x + (margin.left * pixmap.width as f32).round() as i32;
+        let y_min = pt.y + (margin.top * pixmap.height as f32).round() as i32;
+        let x_max =
+            pt.x + pixmap.width as i32 - (margin.right * pixmap.width as f32).round() as i32;
+        let y_max =
+            pt.y + pixmap.height as i32 - (margin.bottom * pixmap.height as f32).round() as i32;
         let frame = rect![x_min, y_min, x_max, y_max];
 
         let dpi = CURRENT_DEVICE.dpi;
@@ -41,20 +48,28 @@ impl MarginCropper {
         let big_button_diameter = small_height;
         let padding = big_button_diameter / 2;
 
-        let cancel_button = RoundedButton::new("close",
-                                                rect![rect.min.x + padding,
-                                                      rect.max.y - padding - big_button_diameter,
-                                                      rect.min.x + padding + big_button_diameter,
-                                                      rect.max.y - padding],
-                                                Event::Cancel);
+        let cancel_button = RoundedButton::new(
+            "close",
+            rect![
+                rect.min.x + padding,
+                rect.max.y - padding - big_button_diameter,
+                rect.min.x + padding + big_button_diameter,
+                rect.max.y - padding
+            ],
+            Event::Cancel,
+        );
         children.push(Box::new(cancel_button) as Box<dyn View>);
 
-        let validate_button = RoundedButton::new("check_mark-large",
-                                                 rect![rect.max.x - padding - big_button_diameter,
-                                                       rect.max.y - padding - big_button_diameter,
-                                                       rect.max.x - padding,
-                                                       rect.max.y - padding],
-                                                 Event::Validate);
+        let validate_button = RoundedButton::new(
+            "check_mark-large",
+            rect![
+                rect.max.x - padding - big_button_diameter,
+                rect.max.y - padding - big_button_diameter,
+                rect.max.x - padding,
+                rect.max.y - padding
+            ],
+            Event::Validate,
+        );
         children.push(Box::new(validate_button) as Box<dyn View>);
 
         MarginCropper {
@@ -73,7 +88,7 @@ impl MarginCropper {
         for i in 0..3i32 {
             for j in 0..3i32 {
                 if i == 1 && j == 1 {
-                    continue
+                    continue;
                 }
                 let x = self.frame.min.x + i * self.frame.width() as i32 / 2;
                 let y = self.frame.min.y + j * self.frame.height() as i32 / 2;
@@ -93,8 +108,14 @@ impl MarginCropper {
                 (1, 2) => self.frame.max.y = end.y,
                 (0, 1) => self.frame.min.x = end.x,
                 (2, 1) => self.frame.max.x = end.x,
-                (0, 2) => { self.frame.min.x = end.x; self.frame.max.y = end.y },
-                (2, 0) => { self.frame.max.x = end.x; self.frame.min.y = end.y },
+                (0, 2) => {
+                    self.frame.min.x = end.x;
+                    self.frame.max.y = end.y
+                }
+                (2, 0) => {
+                    self.frame.max.x = end.x;
+                    self.frame.min.y = end.y
+                }
                 (2, 2) => self.frame.max = end,
                 _ => (),
             }
@@ -125,28 +146,39 @@ impl MarginCropper {
 }
 
 impl View for MarginCropper {
-    fn handle_event(&mut self, evt: &Event, _hub: &Hub, bus: &mut Bus, rq: &mut RenderQueue, _context: &mut Context) -> bool {
+    fn handle_event(
+        &mut self,
+        evt: &Event,
+        _hub: &Hub,
+        bus: &mut Bus,
+        rq: &mut RenderQueue,
+        _context: &mut Context,
+    ) -> bool {
         match *evt {
             Event::Gesture(GestureEvent::Tap(center)) if self.rect.includes(center) => {
                 self.update(center, center);
                 rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
                 true
-            },
+            }
             Event::Gesture(GestureEvent::Swipe { start, end, .. }) if self.rect.includes(start) => {
                 self.update(start, end);
                 rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
                 true
-            },
-            Event::Gesture(GestureEvent::HoldFingerShort(center, ..)) if self.rect.includes(center) => true,
+            }
+            Event::Gesture(GestureEvent::HoldFingerShort(center, ..))
+                if self.rect.includes(center) =>
+            {
+                true
+            }
             Event::Validate => {
                 bus.push_back(Event::CropMargins(Box::new(self.margin())));
                 bus.push_back(Event::Close(ViewId::MarginCropper));
                 true
-            },
+            }
             Event::Cancel => {
                 bus.push_back(Event::Close(ViewId::MarginCropper));
                 true
-            },
+            }
             _ => false,
         }
     }
@@ -161,45 +193,81 @@ impl View for MarginCropper {
 
         let thickness = scale_by_dpi(THICKNESS_MEDIUM, dpi) as u16;
 
-        fb.draw_blended_rectangle(&rect![self.rect.min.x, self.rect.min.y,
-                                         self.frame.min.x, self.frame.max.y],
-                                  GRAY12,
-                                  0.4);
-        fb.draw_blended_rectangle(&rect![self.rect.min.x, self.frame.max.y,
-                                         self.frame.max.x, self.rect.max.y],
-                                  GRAY12,
-                                  0.4);
-        fb.draw_blended_rectangle(&rect![self.frame.max.x, self.frame.min.y,
-                                         self.rect.max.x, self.rect.max.y],
-                                  GRAY12,
-                                  0.4);
-        fb.draw_blended_rectangle(&rect![self.frame.min.x, self.rect.min.y,
-                                         self.rect.max.x, self.frame.min.y],
-                                  GRAY12,
-                                  0.4);
+        fb.draw_blended_rectangle(
+            &rect![
+                self.rect.min.x,
+                self.rect.min.y,
+                self.frame.min.x,
+                self.frame.max.y
+            ],
+            GRAY12,
+            0.4,
+        );
+        fb.draw_blended_rectangle(
+            &rect![
+                self.rect.min.x,
+                self.frame.max.y,
+                self.frame.max.x,
+                self.rect.max.y
+            ],
+            GRAY12,
+            0.4,
+        );
+        fb.draw_blended_rectangle(
+            &rect![
+                self.frame.max.x,
+                self.frame.min.y,
+                self.rect.max.x,
+                self.rect.max.y
+            ],
+            GRAY12,
+            0.4,
+        );
+        fb.draw_blended_rectangle(
+            &rect![
+                self.frame.min.x,
+                self.rect.min.y,
+                self.rect.max.x,
+                self.frame.min.y
+            ],
+            GRAY12,
+            0.4,
+        );
 
-        fb.draw_rectangle_outline(&self.frame,
-                                  &BorderSpec { thickness: thickness as u16,
-                                                color: BLACK });
+        fb.draw_rectangle_outline(
+            &self.frame,
+            &BorderSpec {
+                thickness: thickness as u16,
+                color: BLACK,
+            },
+        );
 
         let button_radius = scale_by_dpi(BUTTON_DIAMETER / 2.0, dpi) as i32;
 
         for i in 0..3i32 {
             for j in 0..3i32 {
                 if i == 1 && j == 1 {
-                    continue
+                    continue;
                 }
 
                 let x = self.frame.min.x + i * self.frame.width() as i32 / 2;
                 let y = self.frame.min.y + j * self.frame.height() as i32 / 2;
-                let button_rect = rect![x - button_radius, y - button_radius,
-                                        x + button_radius, y + button_radius];
+                let button_rect = rect![
+                    x - button_radius,
+                    y - button_radius,
+                    x + button_radius,
+                    y + button_radius
+                ];
 
-                fb.draw_rounded_rectangle_with_border(&button_rect,
-                                                      &CornerSpec::Uniform(button_radius),
-                                                      &BorderSpec { thickness: thickness as u16,
-                                                                    color: BLACK },
-                                                      &WHITE);
+                fb.draw_rounded_rectangle_with_border(
+                    &button_rect,
+                    &CornerSpec::Uniform(button_radius),
+                    &BorderSpec {
+                        thickness: thickness as u16,
+                        color: BLACK,
+                    },
+                    &WHITE,
+                );
             }
         }
     }

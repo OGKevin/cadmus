@@ -1,13 +1,13 @@
-use std::io::Read;
-use std::io::Write;
-use std::fs::File;
-use std::fs::OpenOptions;
-use std::path::PathBuf;
+use super::{Frontlight, LightLevels};
+use crate::device::{Model, CURRENT_DEVICE};
+use anyhow::Error;
 use fxhash::FxHashMap;
 use lazy_static::lazy_static;
-use anyhow::Error;
-use crate::device::{CURRENT_DEVICE, Model};
-use super::{Frontlight, LightLevels};
+use std::fs::File;
+use std::fs::OpenOptions;
+use std::io::Read;
+use std::io::Write;
+use std::path::PathBuf;
 
 const FRONTLIGHT_INTERFACE: &str = "/sys/class/backlight";
 
@@ -36,17 +36,27 @@ pub enum LightColor {
 }
 
 lazy_static! {
-pub static ref FRONTLIGHT_DIRS: FxHashMap<LightColor, &'static str> =
-    match CURRENT_DEVICE.model {
+    pub static ref FRONTLIGHT_DIRS: FxHashMap<LightColor, &'static str> = match CURRENT_DEVICE.model
+    {
         Model::AuraONE | Model::AuraONELimEd => {
-            [(LightColor::White, FRONTLIGHT_WHITE_A),
-             (LightColor::Red, FRONTLIGHT_RED_A),
-             (LightColor::Green, FRONTLIGHT_GREEN_A)].iter().cloned().collect()
-        },
+            [
+                (LightColor::White, FRONTLIGHT_WHITE_A),
+                (LightColor::Red, FRONTLIGHT_RED_A),
+                (LightColor::Green, FRONTLIGHT_GREEN_A),
+            ]
+            .iter()
+            .cloned()
+            .collect()
+        }
         _ => {
-            [(LightColor::White, FRONTLIGHT_WHITE_B),
-             (LightColor::Orange, FRONTLIGHT_ORANGE_B)].iter().cloned().collect()
-        },
+            [
+                (LightColor::White, FRONTLIGHT_WHITE_B),
+                (LightColor::Orange, FRONTLIGHT_ORANGE_B),
+            ]
+            .iter()
+            .cloned()
+            .collect()
+        }
     };
 }
 
@@ -70,9 +80,13 @@ impl NaturalFrontlight {
             let mut file = File::open(dir.join(FRONTLIGHT_MAX_VALUE))?;
             file.read_to_string(&mut buf)?;
             maxima.insert(*light, buf.trim_end().parse()?);
-            let file = OpenOptions::new().write(true).open(dir.join(FRONTLIGHT_VALUE))?;
+            let file = OpenOptions::new()
+                .write(true)
+                .open(dir.join(FRONTLIGHT_VALUE))?;
             values.insert(*light, file);
-            let file = OpenOptions::new().write(true).open(dir.join(FRONTLIGHT_POWER))?;
+            let file = OpenOptions::new()
+                .write(true)
+                .open(dir.join(FRONTLIGHT_POWER))?;
             powers.insert(*light, file);
         }
         Ok(NaturalFrontlight {

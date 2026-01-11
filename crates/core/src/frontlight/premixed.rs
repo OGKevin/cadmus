@@ -1,10 +1,10 @@
-use std::path::Path;
-use std::io::Write;
+use super::{Frontlight, LightLevels};
+use crate::device::CURRENT_DEVICE;
+use anyhow::Error;
 use std::fs::File;
 use std::fs::OpenOptions;
-use anyhow::Error;
-use crate::device::CURRENT_DEVICE;
-use super::{Frontlight, LightLevels};
+use std::io::Write;
+use std::path::Path;
 
 const FRONTLIGHT_WHITE: &str = "/sys/class/backlight/mxc_msp430.0/brightness";
 
@@ -13,7 +13,7 @@ const FRONTLIGHT_ORANGE_A: &str = "/sys/class/backlight/tlc5947_bl/color";
 // Libra H₂O, Clara HD, Libra 2, Clara BW, Libra Colour, Clara Colour
 const FRONTLIGHT_ORANGE_B: &str = "/sys/class/backlight/lm3630a_led/color";
 // Sage, Libra 2, Clara 2E, Elipsa 2E
-const FRONTLIGHT_ORANGE_C: &str =  "/sys/class/leds/aw99703-bl_FL1/color";
+const FRONTLIGHT_ORANGE_C: &str = "/sys/class/leds/aw99703-bl_FL1/color";
 
 pub struct PremixedFrontlight {
     intensity: f32,
@@ -33,7 +33,12 @@ impl PremixedFrontlight {
             FRONTLIGHT_ORANGE_A
         };
         let orange = OpenOptions::new().write(true).open(orange_path)?;
-        Ok(PremixedFrontlight { intensity, warmth, white, orange })
+        Ok(PremixedFrontlight {
+            intensity,
+            warmth,
+            white,
+            orange,
+        })
     }
 }
 

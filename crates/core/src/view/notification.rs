@@ -1,16 +1,16 @@
-use std::thread;
-use std::time::Duration;
+use super::{Bus, Event, Hub, Id, RenderData, RenderQueue, View, ViewId, ID_FEEDER};
+use super::{BORDER_RADIUS_MEDIUM, SMALL_BAR_HEIGHT, THICKNESS_LARGE};
+use crate::color::{BLACK, TEXT_NORMAL, WHITE};
+use crate::context::Context;
 use crate::device::CURRENT_DEVICE;
+use crate::font::{font_from_style, Fonts, NORMAL_STYLE};
 use crate::framebuffer::{Framebuffer, UpdateMode};
-use crate::geom::{Rectangle, CornerSpec, BorderSpec};
-use crate::font::{Fonts, font_from_style, NORMAL_STYLE};
-use crate::color::{BLACK, WHITE, TEXT_NORMAL};
-use super::{View, Event, Hub, Bus, Id, ID_FEEDER, RenderQueue, RenderData, ViewId};
-use super::{SMALL_BAR_HEIGHT, THICKNESS_LARGE, BORDER_RADIUS_MEDIUM};
+use crate::geom::{BorderSpec, CornerSpec, Rectangle};
 use crate::gesture::GestureEvent;
 use crate::input::DeviceEvent;
 use crate::unit::scale_by_dpi;
-use crate::context::Context;
+use std::thread;
+use std::time::Duration;
 
 const NOTIFICATION_CLOSE_DELAY: Duration = Duration::from_secs(4);
 
@@ -25,7 +25,12 @@ pub struct Notification {
 }
 
 impl Notification {
-    pub fn new(text: String, hub: &Hub, rq: &mut RenderQueue, context: &mut Context) -> Notification {
+    pub fn new(
+        text: String,
+        hub: &Hub,
+        rq: &mut RenderQueue,
+        context: &mut Context,
+    ) -> Notification {
         let id = ID_FEEDER.next();
         let view_id = ViewId::MessageNotif(id);
         let hub2 = hub.clone();
@@ -58,8 +63,7 @@ impl Notification {
         };
         let dy = small_height + padding + (index % 3) as i32 * (dialog_height + padding);
 
-        let rect = rect![dx, dy,
-                         dx + dialog_width, dy + dialog_height];
+        let rect = rect![dx, dy, dx + dialog_width, dy + dialog_height];
 
         rq.add(RenderData::new(id, rect, UpdateMode::Gui));
         context.notification_index = index.wrapping_add(1);
@@ -77,11 +81,20 @@ impl Notification {
 }
 
 impl View for Notification {
-    fn handle_event(&mut self, evt: &Event, _hub: &Hub, _bus: &mut Bus, _rq: &mut RenderQueue, _context: &mut Context) -> bool {
+    fn handle_event(
+        &mut self,
+        evt: &Event,
+        _hub: &Hub,
+        _bus: &mut Bus,
+        _rq: &mut RenderQueue,
+        _context: &mut Context,
+    ) -> bool {
         match *evt {
             Event::Gesture(GestureEvent::Tap(center)) if self.rect.includes(center) => true,
             Event::Gesture(GestureEvent::Swipe { start, .. }) if self.rect.includes(start) => true,
-            Event::Device(DeviceEvent::Finger { position, .. }) if self.rect.includes(position) => true,
+            Event::Device(DeviceEvent::Finger { position, .. }) if self.rect.includes(position) => {
+                true
+            }
             _ => false,
         }
     }
@@ -92,11 +105,15 @@ impl View for Notification {
         let border_radius = scale_by_dpi(BORDER_RADIUS_MEDIUM, dpi) as i32;
         let border_thickness = scale_by_dpi(THICKNESS_LARGE, dpi) as u16;
 
-        fb.draw_rounded_rectangle_with_border(&self.rect,
-                                              &CornerSpec::Uniform(border_radius),
-                                              &BorderSpec { thickness: border_thickness,
-                                                            color: BLACK },
-                                              &WHITE);
+        fb.draw_rounded_rectangle_with_border(
+            &self.rect,
+            &CornerSpec::Uniform(border_radius),
+            &BorderSpec {
+                thickness: border_thickness,
+                color: BLACK,
+            },
+            &WHITE,
+        );
 
         let font = font_from_style(fonts, &NORMAL_STYLE, dpi);
         let plan = font.plan(&self.text, Some(self.max_width), None);
@@ -109,7 +126,13 @@ impl View for Notification {
         font.render(fb, TEXT_NORMAL[1], &plan, pt);
     }
 
-    fn resize(&mut self, _rect: Rectangle, _hub: &Hub, _rq: &mut RenderQueue, context: &mut Context) {
+    fn resize(
+        &mut self,
+        _rect: Rectangle,
+        _hub: &Hub,
+        _rq: &mut RenderQueue,
+        context: &mut Context,
+    ) {
         let dpi = CURRENT_DEVICE.dpi;
         let (width, height) = context.display.dims;
         let small_height = scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32;
@@ -127,8 +150,7 @@ impl View for Notification {
             padding
         };
         let dy = small_height + padding + (self.index % 3) as i32 * (dialog_height + padding);
-        let rect = rect![dx, dy,
-                         dx + dialog_width, dy + dialog_height];
+        let rect = rect![dx, dy, dx + dialog_width, dy + dialog_height];
         self.rect = rect;
     }
 

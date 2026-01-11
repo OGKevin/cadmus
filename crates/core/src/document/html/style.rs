@@ -1,20 +1,18 @@
-use fxhash::FxHashMap;
-use super::dom::NodeRef;
+use super::css::{AttributeOperator, Combinator, PseudoClass};
 use super::css::{CssParser, Rule, Selector, SimpleSelector};
-use super::css::{Combinator, AttributeOperator, PseudoClass};
+use super::dom::NodeRef;
+use fxhash::FxHashMap;
 
 pub type PropertyMap = FxHashMap<String, String>;
 
 #[derive(Debug, Clone)]
 pub struct StyleSheet {
-    pub rules: Vec<Rule>
+    pub rules: Vec<Rule>,
 }
 
 impl StyleSheet {
     pub fn new() -> Self {
-        StyleSheet {
-            rules: Vec::new(),
-        }
+        StyleSheet { rules: Vec::new() }
     }
 
     pub fn append(&mut self, other: &mut Self, sort: bool) {
@@ -25,7 +23,8 @@ impl StyleSheet {
     }
 
     pub fn sort(&mut self) {
-        self.rules.sort_by_cached_key(|rule| rule.selector.specificity());
+        self.rules
+            .sort_by_cached_key(|rule| rule.selector.specificity());
     }
 }
 
@@ -33,8 +32,11 @@ pub fn specified_values(node: NodeRef, stylesheet: &StyleSheet) -> PropertyMap {
     let mut props = FxHashMap::default();
     let mut important = Vec::new();
 
-    for rule in stylesheet.rules.iter()
-                          .filter(|rule| rule.selector.matches(node)) {
+    for rule in stylesheet
+        .rules
+        .iter()
+        .filter(|rule| rule.selector.matches(node))
+    {
         for declaration in &rule.declarations {
             if declaration.important {
                 important.push([&declaration.name, &declaration.value]);
@@ -44,9 +46,10 @@ pub fn specified_values(node: NodeRef, stylesheet: &StyleSheet) -> PropertyMap {
         }
     }
 
-    let local_declarations = node.attribute("style").map(|text| {
-        CssParser::new(text).parse_declarations()
-    }).unwrap_or_default();
+    let local_declarations = node
+        .attribute("style")
+        .map(|text| CssParser::new(text).parse_declarations())
+        .unwrap_or_default();
 
     for declaration in &local_declarations {
         expand_and_insert(&declaration.name, &declaration.value, &mut props);
@@ -81,7 +84,7 @@ impl Selector {
                     }
                 }
                 false
-            },
+            }
             Combinator::Descendant => {
                 for anc in node.ancestor_elements() {
                     if self.matches_rec(anc, index - 1) {
@@ -89,7 +92,7 @@ impl Selector {
                     }
                 }
                 false
-            },
+            }
             Combinator::NextSibling => {
                 if let Some(nsib) = node.previous_sibling_element() {
                     if self.matches_rec(nsib, index - 1) {
@@ -97,7 +100,7 @@ impl Selector {
                     }
                 }
                 false
-            },
+            }
             Combinator::SubsequentSibling => {
                 for sib in node.previous_sibling_elements() {
                     if self.matches_rec(sib, index - 1) {
@@ -105,7 +108,7 @@ impl Selector {
                     }
                 }
                 false
-            },
+            }
             Combinator::None => true,
         }
     }
@@ -113,11 +116,19 @@ impl Selector {
 
 impl SimpleSelector {
     fn matches(&self, node: NodeRef) -> bool {
-        if self.tag_name.iter().any(|name| node.tag_name() != Some(name)) {
+        if self
+            .tag_name
+            .iter()
+            .any(|name| node.tag_name() != Some(name))
+        {
             return false;
         }
 
-        if self.classes.iter().any(|class| node.classes().all(|c| c != class)) {
+        if self
+            .classes
+            .iter()
+            .any(|class| node.classes().all(|c| c != class))
+        {
             return false;
         }
 
@@ -125,8 +136,11 @@ impl SimpleSelector {
             return false;
         }
 
-        if self.attributes.iter().any(|attr| node.attribute(&attr.name)
-                                                 .map(|value| attr.operator.matches(value)) != Some(true)) {
+        if self.attributes.iter().any(|attr| {
+            node.attribute(&attr.name)
+                .map(|value| attr.operator.matches(value))
+                != Some(true)
+        }) {
             return false;
         }
 
@@ -143,11 +157,10 @@ impl AttributeOperator {
         match self {
             AttributeOperator::Exists => true,
             AttributeOperator::Matches(v) => v == value,
-            AttributeOperator::Contains(v) => value.split_whitespace()
-                                                   .any(|value| value == v),
-            AttributeOperator::StartsWith(v) => v == value ||
-                                               (value.starts_with(v) &&
-                                                value[v.len()..].starts_with('-')),
+            AttributeOperator::Contains(v) => value.split_whitespace().any(|value| value == v),
+            AttributeOperator::StartsWith(v) => {
+                v == value || (value.starts_with(v) && value[v.len()..].starts_with('-'))
+            }
         }
     }
 }
@@ -171,7 +184,7 @@ fn expand_and_insert(name: &str, value: &str, props: &mut PropertyMap) {
                     props.insert(format!("{}-right", name), value.to_string());
                     props.insert(format!("{}-bottom", name), value.to_string());
                     props.insert(format!("{}-left", name), value.to_string());
-                },
+                }
                 2 => {
                     let vertical = values[0];
                     let horizontal = values[1];
@@ -179,7 +192,7 @@ fn expand_and_insert(name: &str, value: &str, props: &mut PropertyMap) {
                     props.insert(format!("{}-right", name), horizontal.to_string());
                     props.insert(format!("{}-bottom", name), vertical.to_string());
                     props.insert(format!("{}-left", name), horizontal.to_string());
-                },
+                }
                 3 => {
                     let top = values[0];
                     let horizontal = values[1];
@@ -188,7 +201,7 @@ fn expand_and_insert(name: &str, value: &str, props: &mut PropertyMap) {
                     props.insert(format!("{}-right", name), horizontal.to_string());
                     props.insert(format!("{}-bottom", name), bottom.to_string());
                     props.insert(format!("{}-left", name), horizontal.to_string());
-                },
+                }
                 4 => {
                     let top = values[0];
                     let right = values[1];
@@ -198,10 +211,10 @@ fn expand_and_insert(name: &str, value: &str, props: &mut PropertyMap) {
                     props.insert(format!("{}-right", name), right.to_string());
                     props.insert(format!("{}-bottom", name), bottom.to_string());
                     props.insert(format!("{}-left", name), left.to_string());
-                },
+                }
                 _ => (),
             }
-        },
+        }
         // TODO: border -> border-{top,right,bottom,left}-{width,style,color}
         // border-left -> border-left-{width,style,color}
         // border-style -> border-{top,right,bottom,left}-style
@@ -213,23 +226,40 @@ fn expand_and_insert(name: &str, value: &str, props: &mut PropertyMap) {
 
 #[cfg(test)]
 mod tests {
-    use super::specified_values;
     use super::super::css::CssParser;
     use super::super::xml::XmlParser;
+    use super::specified_values;
 
     #[test]
     fn simple_style() {
         let xml1 = XmlParser::new("<a class='c x y' style='c: 7'/>").parse();
         let xml2 = XmlParser::new("<a id='e' class='x y'/>").parse();
-        let mut css = CssParser::new("a { b: 23 }\
+        let mut css = CssParser::new(
+            "a { b: 23 }\
                                       .c.x.y { b: 6; c: 3 }\
                                       #e { b: 5 }\
-                                      .y { b: 2 }").parse();
+                                      .y { b: 2 }",
+        )
+        .parse();
         css.sort();
         let n1 = xml1.root().first_child().unwrap();
         let n2 = xml2.root().first_child().unwrap();
-        assert_eq!(specified_values(n1, &css), [("b".to_string(), "6".to_string()),
-                                                ("c".to_string(), "7".to_string())].iter().cloned().collect());
-        assert_eq!(specified_values(n2, &css), [("b".to_string(), "5".to_string())].iter().cloned().collect());
+        assert_eq!(
+            specified_values(n1, &css),
+            [
+                ("b".to_string(), "6".to_string()),
+                ("c".to_string(), "7".to_string())
+            ]
+            .iter()
+            .cloned()
+            .collect()
+        );
+        assert_eq!(
+            specified_values(n2, &css),
+            [("b".to_string(), "5".to_string())]
+                .iter()
+                .cloned()
+                .collect()
+        );
     }
 }

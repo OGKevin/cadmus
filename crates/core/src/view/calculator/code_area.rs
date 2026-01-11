@@ -1,14 +1,14 @@
-use crate::device::CURRENT_DEVICE;
-use crate::font::Fonts;
-use crate::input::{DeviceEvent, ButtonCode, ButtonStatus};
-use crate::view::{View, Event, Hub, Bus, Id, ID_FEEDER, RenderQueue};
 use super::{Line, LineOrigin};
-use crate::gesture::GestureEvent;
-use crate::framebuffer::{Framebuffer, UpdateMode};
-use crate::unit::mm_to_px;
-use crate::geom::{Rectangle, Dir, CycleDir};
 use crate::color::TEXT_NORMAL;
 use crate::context::Context;
+use crate::device::CURRENT_DEVICE;
+use crate::font::Fonts;
+use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::geom::{CycleDir, Dir, Rectangle};
+use crate::gesture::GestureEvent;
+use crate::input::{ButtonCode, ButtonStatus, DeviceEvent};
+use crate::unit::mm_to_px;
+use crate::view::{Bus, Event, Hub, Id, RenderQueue, View, ID_FEEDER};
 
 pub struct CodeArea {
     id: Id,
@@ -31,7 +31,13 @@ impl CodeArea {
         }
     }
 
-    pub fn append(&mut self, line: Line, added_lines: i32, screen_lines: i32, context: &mut Context) {
+    pub fn append(
+        &mut self,
+        line: Line,
+        added_lines: i32,
+        screen_lines: i32,
+        context: &mut Context,
+    ) {
         let dpi = CURRENT_DEVICE.dpi;
         let font = &mut context.fonts.monospace.regular;
         font.set_size((64.0 * self.font_size) as u32, dpi);
@@ -39,10 +45,12 @@ impl CodeArea {
         let margin_width_px = mm_to_px(self.margin_width as f32, dpi) as i32;
         let min_y = self.rect.min.y + margin_width_px + screen_lines * line_height;
 
-        let rect = rect![self.rect.min.x + margin_width_px,
-                         min_y,
-                         self.rect.max.x - margin_width_px,
-                         min_y + added_lines * line_height];
+        let rect = rect![
+            self.rect.min.x + margin_width_px,
+            min_y,
+            self.rect.max.x - margin_width_px,
+            min_y + added_lines * line_height
+        ];
         self.data.push(line);
         self.render(context.fb.as_mut(), rect, &mut context.fonts);
         context.fb.update(&rect, UpdateMode::Gui).ok();
@@ -61,24 +69,37 @@ impl CodeArea {
 }
 
 impl View for CodeArea {
-    fn handle_event(&mut self, evt: &Event, _hub: &Hub, bus: &mut Bus, _rq: &mut RenderQueue, _context: &mut Context) -> bool {
+    fn handle_event(
+        &mut self,
+        evt: &Event,
+        _hub: &Hub,
+        bus: &mut Bus,
+        _rq: &mut RenderQueue,
+        _context: &mut Context,
+    ) -> bool {
         match *evt {
-            Event::Gesture(GestureEvent::Swipe { dir, start, end, .. }) if self.rect.includes(start) => {
+            Event::Gesture(GestureEvent::Swipe {
+                dir, start, end, ..
+            }) if self.rect.includes(start) => {
                 match dir {
                     Dir::South | Dir::North => bus.push_back(Event::Scroll(start.y - end.y)),
                     Dir::West => bus.push_back(Event::Page(CycleDir::Next)),
                     Dir::East => bus.push_back(Event::Page(CycleDir::Previous)),
                 }
                 true
-            },
-            Event::Device(DeviceEvent::Button { code, status: ButtonStatus::Pressed, .. }) => {
+            }
+            Event::Device(DeviceEvent::Button {
+                code,
+                status: ButtonStatus::Pressed,
+                ..
+            }) => {
                 match code {
                     ButtonCode::Backward => bus.push_back(Event::Page(CycleDir::Previous)),
                     ButtonCode::Forward => bus.push_back(Event::Page(CycleDir::Next)),
                     _ => (),
                 }
                 true
-            },
+            }
             Event::Gesture(GestureEvent::Tap(center)) if self.rect.includes(center) => {
                 let middle_x = (self.rect.min.x + self.rect.max.x) / 2;
                 if center.x < middle_x {
@@ -87,7 +108,7 @@ impl View for CodeArea {
                     bus.push_back(Event::Page(CycleDir::Next));
                 }
                 true
-            },
+            }
             _ => false,
         }
     }
@@ -135,8 +156,7 @@ impl View for CodeArea {
     }
 
     fn render_rect(&self, rect: &Rectangle) -> Rectangle {
-        rect.intersection(&self.rect)
-            .unwrap_or(self.rect)
+        rect.intersection(&self.rect).unwrap_or(self.rect)
     }
 
     fn rect(&self) -> &Rectangle {

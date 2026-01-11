@@ -1,10 +1,10 @@
-use std::mem;
-use std::fs::File;
-use std::path::Path;
-use std::os::unix::io::AsRawFd;
 use anyhow::Error;
-use nix::{ioctl_read, ioctl_write_ptr, ioctl_none};
-use chrono::{Duration, Utc, Datelike, Timelike};
+use chrono::{Datelike, Duration, Timelike, Utc};
+use nix::{ioctl_none, ioctl_read, ioctl_write_ptr};
+use std::fs::File;
+use std::mem;
+use std::os::unix::io::AsRawFd;
+use std::path::Path;
 
 ioctl_read!(rtc_read_alarm, b'p', 0x10, RtcWkalrm);
 ioctl_write_ptr!(rtc_write_alarm, b'p', 0x0f, RtcWkalrm);
@@ -66,8 +66,8 @@ impl Rtc {
         let mut rwa = RtcWkalrm::default();
         unsafe {
             rtc_read_alarm(self.0.as_raw_fd(), &mut rwa)
-                          .map(|_| rwa)
-                          .map_err(|e| e.into())
+                .map(|_| rwa)
+                .map_err(|e| e.into())
         }
     }
 

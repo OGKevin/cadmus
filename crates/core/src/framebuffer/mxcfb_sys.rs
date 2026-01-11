@@ -1,8 +1,8 @@
 #![allow(unused)]
 
+use nix::{ioctl_readwrite, ioctl_write_ptr};
 use std::mem;
 use std::ptr;
-use nix::{ioctl_write_ptr, ioctl_readwrite};
 
 const MAGIC: u8 = b'F';
 
@@ -115,21 +115,21 @@ pub struct HwtConUpdateData {
 
 pub const WAVEFORM_MODE_AUTO: u32 = 0x101;
 
-pub const NTX_WFM_MODE_INIT: u32   =  0;
-pub const NTX_WFM_MODE_DU: u32     =  1;
-pub const NTX_WFM_MODE_GC16: u32   =  2;
-pub const NTX_WFM_MODE_GC4: u32    =  3;
-pub const NTX_WFM_MODE_A2: u32     =  4;
-pub const NTX_WFM_MODE_GL16: u32   =  5;
-pub const NTX_WFM_MODE_GLR16: u32  =  6;
-pub const NTX_WFM_MODE_GLD16: u32  =  7;
+pub const NTX_WFM_MODE_INIT: u32 = 0;
+pub const NTX_WFM_MODE_DU: u32 = 1;
+pub const NTX_WFM_MODE_GC16: u32 = 2;
+pub const NTX_WFM_MODE_GC4: u32 = 3;
+pub const NTX_WFM_MODE_A2: u32 = 4;
+pub const NTX_WFM_MODE_GL16: u32 = 5;
+pub const NTX_WFM_MODE_GLR16: u32 = 6;
+pub const NTX_WFM_MODE_GLD16: u32 = 7;
 /* Mark 9 */
-pub const NTX_WFM_MODE_DU4: u32    =  8;
-pub const NTX_WFM_MODE_GCK16: u32  =  9;
+pub const NTX_WFM_MODE_DU4: u32 = 8;
+pub const NTX_WFM_MODE_GCK16: u32 = 9;
 pub const NTX_WFM_MODE_GLKW16: u32 = 10;
 
 pub const UPDATE_MODE_PARTIAL: u32 = 0x0;
-pub const UPDATE_MODE_FULL: u32    = 0x1;
+pub const UPDATE_MODE_FULL: u32 = 0x1;
 
 pub const TEMP_USE_AMBIENT: libc::c_int = 0x1000;
 
@@ -153,15 +153,15 @@ pub const EPDC_FLAG_USE_DITHERING_ORDERED: libc::c_int = 3;
 // pub const EPDC_FLAG_USE_DITHERING_QUANT_ONLY: libc::c_int = 4;
 
 /* Mark 11 */
-pub const HWTCON_WAVEFORM_MODE_GL16  :u32 =  3;
-pub const HWTCON_WAVEFORM_MODE_GLR16 :u32 =  4;
-pub const HWTCON_WAVEFORM_MODE_REAGL :u32 =  4;
-pub const HWTCON_WAVEFORM_MODE_A2    :u32 =  6;
-pub const HWTCON_WAVEFORM_MODE_GCK16 :u32 =  8;
-pub const HWTCON_WAVEFORM_MODE_GLKW16:u32 =  9;
+pub const HWTCON_WAVEFORM_MODE_GL16: u32 = 3;
+pub const HWTCON_WAVEFORM_MODE_GLR16: u32 = 4;
+pub const HWTCON_WAVEFORM_MODE_REAGL: u32 = 4;
+pub const HWTCON_WAVEFORM_MODE_A2: u32 = 6;
+pub const HWTCON_WAVEFORM_MODE_GCK16: u32 = 8;
+pub const HWTCON_WAVEFORM_MODE_GLKW16: u32 = 9;
 /* Mark 12 */
-pub const HWTCON_WAVEFORM_MODE_GCC16 :u32 = 10;
-pub const HWTCON_WAVEFORM_MODE_GLRC16:u32 = 11;
+pub const HWTCON_WAVEFORM_MODE_GCC16: u32 = 10;
+pub const HWTCON_WAVEFORM_MODE_GLRC16: u32 = 11;
 
 pub const HWTCON_FLAG_USE_DITHERING: libc::c_uint = 0x1;
 pub const HWTCON_FLAG_FORCE_A2_OUTPUT: libc::c_uint = 16;

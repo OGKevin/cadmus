@@ -1,12 +1,12 @@
-use crate::device::CURRENT_DEVICE;
-use crate::font::{Fonts, font_from_style, NORMAL_STYLE};
+use super::{Bus, Event, Hub, Id, RenderData, RenderQueue, View, ViewId, ID_FEEDER};
 use crate::color::{BLACK, WHITE};
-use crate::gesture::GestureEvent;
-use crate::geom::{Rectangle};
-use crate::document::BYTES_PER_PAGE;
-use crate::framebuffer::{Framebuffer, UpdateMode};
-use super::{View, Event, Hub, Bus, Id, ID_FEEDER, RenderQueue, RenderData, ViewId};
 use crate::context::Context;
+use crate::device::CURRENT_DEVICE;
+use crate::document::BYTES_PER_PAGE;
+use crate::font::{font_from_style, Fonts, NORMAL_STYLE};
+use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::geom::Rectangle;
+use crate::gesture::GestureEvent;
 
 pub struct PageLabel {
     id: Id,
@@ -18,7 +18,12 @@ pub struct PageLabel {
 }
 
 impl PageLabel {
-    pub fn new(rect: Rectangle, current_page: usize, pages_count: usize, synthetic: bool)  -> PageLabel {
+    pub fn new(
+        rect: Rectangle,
+        current_page: usize,
+        pages_count: usize,
+        synthetic: bool,
+    ) -> PageLabel {
         PageLabel {
             id: ID_FEEDER.next(),
             rect,
@@ -49,35 +54,54 @@ impl PageLabel {
             return "No pages".to_string();
         }
         let (current_page, pages_count, precision) = if self.synthetic {
-            (self.current_page as f64 / BYTES_PER_PAGE,
-             self.pages_count as f64 / BYTES_PER_PAGE, 1)
+            (
+                self.current_page as f64 / BYTES_PER_PAGE,
+                self.pages_count as f64 / BYTES_PER_PAGE,
+                1,
+            )
         } else {
-            (self.current_page as f64 + 1.0,
-             self.pages_count as f64, 0)
+            (self.current_page as f64 + 1.0, self.pages_count as f64, 0)
         };
         let percent = 100.0 * self.current_page as f32 / self.pages_count as f32;
         match size {
-            0 => format!("Page {1:.0$} of {2:.0$} ({3:.1}%)", precision, current_page, pages_count, percent),
-            1 => format!("P. {1:.0$} of {2:.0$} ({3:.1}%)", precision, current_page, pages_count, percent),
-            2 => format!("{1:.0$}/{2:.0$} ({3:.1}%)", precision, current_page, pages_count, percent),
+            0 => format!(
+                "Page {1:.0$} of {2:.0$} ({3:.1}%)",
+                precision, current_page, pages_count, percent
+            ),
+            1 => format!(
+                "P. {1:.0$} of {2:.0$} ({3:.1}%)",
+                precision, current_page, pages_count, percent
+            ),
+            2 => format!(
+                "{1:.0$}/{2:.0$} ({3:.1}%)",
+                precision, current_page, pages_count, percent
+            ),
             3 => format!("{1:.0$} ({2:.1}%)", precision, current_page, percent),
             _ => format!("{:.1}%", percent),
         }
     }
 }
 
-
 impl View for PageLabel {
-    fn handle_event(&mut self, evt: &Event, _hub: &Hub, bus: &mut Bus, _rq: &mut RenderQueue, _context: &mut Context) -> bool {
+    fn handle_event(
+        &mut self,
+        evt: &Event,
+        _hub: &Hub,
+        bus: &mut Bus,
+        _rq: &mut RenderQueue,
+        _context: &mut Context,
+    ) -> bool {
         match *evt {
             Event::Gesture(GestureEvent::Tap(center)) if self.rect.includes(center) => {
                 bus.push_back(Event::Toggle(ViewId::GoToPage));
                 true
-            },
-            Event::Gesture(GestureEvent::HoldFingerShort(center, ..)) if self.rect.includes(center) => {
+            }
+            Event::Gesture(GestureEvent::HoldFingerShort(center, ..))
+                if self.rect.includes(center) =>
+            {
                 bus.push_back(Event::ToggleNear(ViewId::PageMenu, self.rect));
                 true
-            },
+            }
             _ => false,
         }
     }

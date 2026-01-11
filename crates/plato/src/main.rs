@@ -1,7 +1,7 @@
 mod app;
 
-use plato_core::anyhow::Error;
 use crate::app::run;
+use plato_core::anyhow::Error;
 
 fn main() -> Result<(), Error> {
     run()?;

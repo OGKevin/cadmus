@@ -1,28 +1,28 @@
-pub mod dom;
-pub mod xml;
 pub mod css;
+pub mod dom;
+pub mod engine;
+pub mod layout;
 pub mod parse;
 pub mod style;
-pub mod layout;
-pub mod engine;
+pub mod xml;
 
-use std::io::{Read, Write};
-use std::fs::{self, File};
-use std::path::{Path, PathBuf};
-use fxhash::FxHashMap;
-use anyhow::Error;
-use crate::framebuffer::Pixmap;
-use crate::helpers::{Normalize, decode_entities};
-use crate::document::{Document, Location, TextLocation, TocEntry, BoundedText};
-use crate::unit::pt_to_px;
-use crate::geom::{Boundary, Edge, CycleDir};
-use self::dom::{XmlTree, NodeRef};
-use self::layout::{RootData, StyleData, DrawState, LoopContext};
-use self::layout::{DrawCommand, TextCommand, ImageCommand, TextAlign};
-use self::engine::{Page, Engine, ResourceFetcher};
-use self::style::StyleSheet;
 use self::css::CssParser;
+use self::dom::{NodeRef, XmlTree};
+use self::engine::{Engine, Page, ResourceFetcher};
+use self::layout::{DrawCommand, ImageCommand, TextAlign, TextCommand};
+use self::layout::{DrawState, LoopContext, RootData, StyleData};
+use self::style::StyleSheet;
 use self::xml::XmlParser;
+use crate::document::{BoundedText, Document, Location, TextLocation, TocEntry};
+use crate::framebuffer::Pixmap;
+use crate::geom::{Boundary, CycleDir, Edge};
+use crate::helpers::{decode_entities, Normalize};
+use crate::unit::pt_to_px;
+use anyhow::Error;
+use fxhash::FxHashMap;
+use std::fs::{self, File};
+use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
 
 const VIEWER_STYLESHEET: &str = "css/html.css";
 const USER_STYLESHEET: &str = "css/html-user.css";
@@ -127,14 +127,21 @@ impl HtmlDocument {
         if self.pages.is_empty() {
             self.pages = self.build_pages();
         }
-        if self.pages.len() < 2 || self.pages[1].first().map(|dc| offset < dc.offset()) == Some(true) {
+        if self.pages.len() < 2
+            || self.pages[1].first().map(|dc| offset < dc.offset()) == Some(true)
+        {
             return Some(0);
-        } else if self.pages[self.pages.len() - 1].first().map(|dc| offset >= dc.offset()) == Some(true) {
+        } else if self.pages[self.pages.len() - 1]
+            .first()
+            .map(|dc| offset >= dc.offset())
+            == Some(true)
+        {
             return Some(self.pages.len() - 1);
         } else {
-            for i in 1..self.pages.len()-1 {
-                if self.pages[i].first().map(|dc| offset >= dc.offset()) == Some(true) &&
-                   self.pages[i+1].first().map(|dc| offset < dc.offset()) == Some(true) {
+            for i in 1..self.pages.len() - 1 {
+                if self.pages[i].first().map(|dc| offset >= dc.offset()) == Some(true)
+                    && self.pages[i + 1].first().map(|dc| offset < dc.offset()) == Some(true)
+                {
                     return Some(i);
                 }
             }
@@ -178,7 +185,9 @@ impl HtmlDocument {
 
             if let Some(head) = self.content.root().find("head") {
                 for child in head.children() {
-                    if child.tag_name() == Some("link") && child.attribute("rel") == Some("stylesheet") {
+                    if child.tag_name() == Some("link")
+                        && child.attribute("rel") == Some("stylesheet")
+                    {
                         if let Some(href) = child.attribute("href") {
                             if let Some(name) = spine_dir.join(href).normalize().to_str() {
                                 if let Ok(buf) = self.parent.fetch(name) {
@@ -189,7 +198,9 @@ impl HtmlDocument {
                                 }
                             }
                         }
-                    } else if child.tag_name() == Some("style") && child.attribute("type") == Some("text/css") {
+                    } else if child.tag_name() == Some("style")
+                        && child.attribute("type") == Some("text/css")
+                    {
                         let mut css = CssParser::new(&child.text()).parse();
                         inner_css.append(&mut css, false);
                     }
@@ -204,26 +215,32 @@ impl HtmlDocument {
         let mut rect = self.engine.rect();
         rect.shrink(&self.engine.margin);
 
-        let language = self.content.root()
-                           .find("html")
-                           .and_then(|html| html.attribute("xml:lang"))
-                           .map(String::from);
+        let language = self
+            .content
+            .root()
+            .find("html")
+            .and_then(|html| html.attribute("xml:lang"))
+            .map(String::from);
 
         let style = StyleData {
             language,
             font_size: self.engine.font_size,
-            line_height: pt_to_px(self.engine.line_height * self.engine.font_size, self.engine.dpi).round() as i32,
+            line_height: pt_to_px(
+                self.engine.line_height * self.engine.font_size,
+                self.engine.dpi,
+            )
+            .round() as i32,
             text_align: self.engine.text_align,
             start_x: rect.min.x,
             end_x: rect.max.x,
             width: rect.max.x - rect.min.x,
-            .. Default::default()
+            ..Default::default()
         };
 
         let loop_context = LoopContext::default();
         let mut draw_state = DrawState {
             position: rect.min,
-            .. Default::default()
+            ..Default::default()
         };
 
         let root_data = RootData {
@@ -234,7 +251,16 @@ impl HtmlDocument {
 
         pages.push(Vec::new());
 
-        self.engine.build_display_list(self.content.root(), &style, &loop_context, &stylesheet, &root_data, &mut self.parent, &mut draw_state, &mut pages);
+        self.engine.build_display_list(
+            self.content.root(),
+            &style,
+            &loop_context,
+            &stylesheet,
+            &root_data,
+            &mut self.parent,
+            &mut draw_state,
+            &mut pages,
+        );
 
         pages.retain(|page| !page.is_empty());
 
@@ -254,7 +280,8 @@ impl HtmlDocument {
     }
 
     pub fn language(&self) -> Option<String> {
-        self.content.root()
+        self.content
+            .root()
             .find("html")
             .and_then(|html| html.attribute("xml:lang"))
             .map(String::from)
@@ -283,7 +310,12 @@ impl Document for HtmlDocument {
         None
     }
 
-    fn chapter_relative<'a>(&mut self, _offset: usize, _dir: CycleDir, _toc: &'a [TocEntry]) -> Option<&'a TocEntry> {
+    fn chapter_relative<'a>(
+        &mut self,
+        _offset: usize,
+        _dir: CycleDir,
+        _toc: &'a [TocEntry],
+    ) -> Option<&'a TocEntry> {
         None
     }
 
@@ -293,29 +325,28 @@ impl Document for HtmlDocument {
         match loc {
             Location::Exact(offset) => {
                 let page_index = self.page_index(offset)?;
-                self.pages[page_index].first()
-                    .map(DrawCommand::offset)
-            },
+                self.pages[page_index].first().map(DrawCommand::offset)
+            }
             Location::Previous(offset) => {
                 let page_index = self.page_index(offset)?;
                 if page_index > 0 {
-                    self.pages[page_index-1].first().map(DrawCommand::offset)
+                    self.pages[page_index - 1].first().map(DrawCommand::offset)
                 } else {
                     None
                 }
-            },
+            }
             Location::Next(offset) => {
                 let page_index = self.page_index(offset)?;
                 if page_index < self.pages.len() - 1 {
-                    self.pages[page_index+1].first().map(DrawCommand::offset)
+                    self.pages[page_index + 1].first().map(DrawCommand::offset)
                 } else {
                     None
                 }
-            },
-            Location::LocalUri(_, ref uri) | Location::Uri(ref  uri) => {
+            }
+            Location::LocalUri(_, ref uri) | Location::Uri(ref uri) => {
                 let mut cache = FxHashMap::default();
                 self.resolve_link(uri, &mut cache)
-            },
+            }
         }
     }
 
@@ -323,18 +354,22 @@ impl Document for HtmlDocument {
         let offset = self.resolve_location(loc)?;
         let page_index = self.page_index(offset)?;
 
-        Some((self.pages[page_index].iter().filter_map(|dc| {
-            match dc {
-                DrawCommand::Text(TextCommand { text, rect, offset, .. }) => {
-                    Some(BoundedText {
+        Some((
+            self.pages[page_index]
+                .iter()
+                .filter_map(|dc| match dc {
+                    DrawCommand::Text(TextCommand {
+                        text, rect, offset, ..
+                    }) => Some(BoundedText {
                         text: text.clone(),
                         rect: (*rect).into(),
                         location: TextLocation::Dynamic(*offset),
-                    })
-                },
-                _ => None,
-            }
-        }).collect(), offset))
+                    }),
+                    _ => None,
+                })
+                .collect(),
+            offset,
+        ))
     }
 
     fn lines(&mut self, _loc: Location) -> Option<(Vec<BoundedText>, usize)> {
@@ -345,38 +380,50 @@ impl Document for HtmlDocument {
         let offset = self.resolve_location(loc)?;
         let page_index = self.page_index(offset)?;
 
-        Some((self.pages[page_index].iter().filter_map(|dc| {
-            match dc {
-                DrawCommand::Image(ImageCommand { rect, .. }) => Some((*rect).into()),
-                _ => None,
-            }
-        }).collect(), offset))
+        Some((
+            self.pages[page_index]
+                .iter()
+                .filter_map(|dc| match dc {
+                    DrawCommand::Image(ImageCommand { rect, .. }) => Some((*rect).into()),
+                    _ => None,
+                })
+                .collect(),
+            offset,
+        ))
     }
 
     fn links(&mut self, loc: Location) -> Option<(Vec<BoundedText>, usize)> {
         let offset = self.resolve_location(loc)?;
         let page_index = self.page_index(offset)?;
 
-        Some((self.pages[page_index].iter().filter_map(|dc| {
-            match dc {
-                DrawCommand::Text(TextCommand { uri, rect, offset, .. }) |
-                DrawCommand::Image(ImageCommand { uri, rect, offset, .. }) if uri.is_some() => {
-                    Some(BoundedText {
+        Some((
+            self.pages[page_index]
+                .iter()
+                .filter_map(|dc| match dc {
+                    DrawCommand::Text(TextCommand {
+                        uri, rect, offset, ..
+                    })
+                    | DrawCommand::Image(ImageCommand {
+                        uri, rect, offset, ..
+                    }) if uri.is_some() => Some(BoundedText {
                         text: uri.clone().unwrap(),
                         rect: (*rect).into(),
                         location: TextLocation::Dynamic(*offset),
-                    })
-                },
-                _ => None,
-            }
-        }).collect(), offset))
+                    }),
+                    _ => None,
+                })
+                .collect(),
+            offset,
+        ))
     }
 
     fn pixmap(&mut self, loc: Location, scale: f32, samples: usize) -> Option<(Pixmap, usize)> {
         let offset = self.resolve_location(loc)?;
         let page_index = self.page_index(offset)?;
         let page = self.pages[page_index].clone();
-        let pixmap = self.engine.render_page(&page, scale, samples, &mut self.parent)?;
+        let pixmap = self
+            .engine
+            .render_page(&page, scale, samples, &mut self.parent)?;
 
         Some((pixmap, offset))
     }
@@ -422,9 +469,13 @@ impl Document for HtmlDocument {
     }
 
     fn title(&self) -> Option<String> {
-        self.content.root()
+        self.content
+            .root()
             .find("head")
-            .and_then(|head| head.children().find(|child| child.tag_name() == Some("title")))
+            .and_then(|head| {
+                head.children()
+                    .find(|child| child.tag_name() == Some("title"))
+            })
             .map(|child| decode_entities(&child.text()).into_owned())
     }
 
@@ -433,16 +484,24 @@ impl Document for HtmlDocument {
     }
 
     fn metadata(&self, key: &str) -> Option<String> {
-        self.content.root()
+        self.content
+            .root()
             .find("head")
-            .and_then(|head| head.children().find(|child| child.tag_name() == Some("meta") && child.attribute("name") == Some(key)))
-            .and_then(|child| child.attribute("content").map(|s| decode_entities(s).into_owned()))
+            .and_then(|head| {
+                head.children().find(|child| {
+                    child.tag_name() == Some("meta") && child.attribute("name") == Some(key)
+                })
+            })
+            .and_then(|child| {
+                child
+                    .attribute("content")
+                    .map(|s| decode_entities(s).into_owned())
+            })
     }
 
     fn save(&self, path: &str) -> Result<(), Error> {
         let mut file = File::create(path)?;
-        file.write_all(self.text.as_bytes())
-            .map_err(Into::into)
+        file.write_all(self.text.as_bytes()).map_err(Into::into)
     }
 
     fn is_reflowable(&self) -> bool {
