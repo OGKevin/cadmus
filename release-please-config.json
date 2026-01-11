@@ -1,4 +1,5 @@
 {
+  "bootstrap-sha": "2a79669128f44fe905519fab4da650ca833248a4",
   "release-type": "rust",
   "bump-minor-pre-major": true,
   "bump-patch-for-minor-pre-major": true,
