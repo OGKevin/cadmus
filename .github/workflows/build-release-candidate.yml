@@ -30,9 +30,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          pr_data=$(gh pr view ${{ inputs.pr_number }} --repo ${{ github.repository }} --json headRefName,headRepository)
+          pr_data=$(gh pr view ${{ inputs.pr_number }} --repo ${{ github.repository }} --json headRefName,headRepository,headRepositoryOwner)
           echo "branch=$(echo $pr_data | jq -r '.headRefName')" >> $GITHUB_OUTPUT
-          echo "repo=$(echo $pr_data | jq -r '.headRepository.owner.login + "/" + .headRepository.name')" >> $GITHUB_OUTPUT
+          echo "repo=$(echo $pr_data | jq -r '.headRepositoryOwner.login + "/" + .headRepository.name')" >> $GITHUB_OUTPUT
 
       - uses: actions/checkout@v4
         with:
