@@ -368,7 +368,7 @@ checksum = "92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813"
 
 [[package]]
 name = "emulator"
-version = "0.9.44"
+version = "0.9.45"
 dependencies = [
  "plato-core",
  "sdl2",
@@ -407,7 +407,7 @@ dependencies = [
 
 [[package]]
 name = "fetcher"
-version = "0.9.44"
+version = "0.9.45"
 dependencies = [
  "plato-core",
  "reqwest",
@@ -813,7 +813,7 @@ dependencies = [
 
 [[package]]
 name = "importer"
-version = "0.9.44"
+version = "0.9.45"
 dependencies = [
  "getopts",
  "plato-core",
@@ -1095,14 +1095,14 @@ checksum = "7edddbd0b52d732b21ad9a5fab5c704c14cd949e5e9a1ec5929a24fded1b904c"
 
 [[package]]
 name = "plato"
-version = "0.9.44"
+version = "0.9.45"
 dependencies = [
  "plato-core",
 ]
 
 [[package]]
 name = "plato-core"
-version = "0.9.44"
+version = "0.9.45"
 dependencies = [
  "anyhow",
  "bitflags 2.10.0",
