@@ -9,6 +9,7 @@ on:
   pull_request:
     paths:
       - .github/workflows/release.yml
+      - release-plz.toml
 
 permissions:
   contents: write

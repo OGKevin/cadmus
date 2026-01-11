@@ -5,7 +5,7 @@ git_release_enable = false
 publish = false
 semver_check = true
 
-[[plato]]
+[[package]]
 name = "plato"
 changelog_include = ["core"]
 changelog_path = "CHANGELOG.md"
