@@ -661,7 +661,7 @@ fn main() -> Result<(), Error> {
                     let dialog = Dialog::new(
                         ViewId::AboutDialog,
                         None,
-                        format!("Plato {}", env!("CARGO_PKG_VERSION")),
+                        format!("Plato {}", env!("GIT_VERSION")),
                         &mut context,
                     );
                     rq.add(RenderData::new(
