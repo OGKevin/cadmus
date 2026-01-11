@@ -154,6 +154,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload ${{ steps.extract-tag.outputs.releases[0].tag }} \
+          gh release upload ${{ steps.extract-tag.outputs.tag }} \
             plato-kobo.tar.gz \
             --repo ${{ github.repository }}

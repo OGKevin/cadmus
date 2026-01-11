@@ -4,6 +4,7 @@ allow_dirty = false
 git_release_enable = false
 publish = false
 semver_check = true
+git_tag_enable = false
 
 [[package]]
 name = "plato"
@@ -12,6 +13,8 @@ changelog_path = "CHANGELOG.md"
 changelog_update = true
 git_release_enable = true
 publish = false
+git_tag_enable = true
+git_release_name = "v{version}"
 
 # Changelog configuration
 [changelog]
