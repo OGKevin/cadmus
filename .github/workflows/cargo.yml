@@ -111,8 +111,10 @@ jobs:
         with:
           subject-path: |
             dist/plato
+            dist/*.sh
             dist/scripts/*
             dist/libs/*
+            dist/bin/*
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
