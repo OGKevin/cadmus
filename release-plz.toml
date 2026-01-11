@@ -1,12 +1,17 @@
 [workspace]
 # Automatically update all workspace dependencies
 allow_dirty = false
-# Use conventional commits
-# conventional_commits = "error"
-# Create a single PR for all workspace members
-git_release_enable = true
+git_release_enable = false
 publish = false
 semver_check = true
+
+[[plato]]
+name = "plato"
+changelog_include = ["core"]
+changelog_path = "CHANGELOG.md"
+changelog_update = true
+git_release_enable = true
+publish = false
 
 # Changelog configuration
 [changelog]
