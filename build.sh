@@ -5,6 +5,7 @@ set -e
 method=${1:-"fast"}
 
 [ -e libs -a $# -eq 0 ] && method=skip
+[ -e libs -a "$1" = "slow" ] && method=skip
 
 case "$method" in
 	fast)

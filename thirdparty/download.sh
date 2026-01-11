@@ -1,5 +1,7 @@
 #! /usr/bin/env bash
 
+set -e
+
 declare -A urls=(
 	# Compression
 	["zlib"]="https://www.zlib.net/zlib-1.3.1.tar.gz"
@@ -30,6 +32,6 @@ for name in "${@:-${!urls[@]}}" ; do
 	else
 		mkdir "$name"
 	fi
-	wget -q --show-progress -O "${name}.tgz" "$url"
+	wget -q --show-progress --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=15 --tries=3 -O "${name}.tgz" "$url"
 	tar -xz --strip-components 1 -C "$name" -f "${name}.tgz" && rm "${name}.tgz"
 done
