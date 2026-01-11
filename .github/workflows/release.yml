@@ -1,0 +1,133 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - release/*
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    name: Release Please
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      pr_number: ${{ steps.release.outputs.pr }}
+    steps:
+      - name: Run release-please
+        id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          target-branch: ${{ github.ref_name }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  build-and-upload:
+    name: Build and Upload Release Assets
+    runs-on: ubuntu-latest
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+
+    permissions:
+      id-token: write
+      contents: write
+      attestations: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        id: rust-toolchain
+        with:
+          targets: arm-unknown-linux-gnueabihf
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ steps.rust-toolchain.outputs.cachekey }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache Linaro toolchain
+        id: cache-linaro
+        uses: actions/cache@v4
+        with:
+          path: ~/linaro-toolchain
+          key: linaro-gcc-4.9.4-2017.01
+
+      - name: Download Linaro toolchain
+        if: steps.cache-linaro.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/linaro-toolchain
+          cd ~/linaro-toolchain
+          wget -q https://releases.linaro.org/components/toolchain/binaries/4.9-2017.01/arm-linux-gnueabihf/gcc-linaro-4.9.4-2017.01-x86_64_arm-linux-gnueabihf.tar.xz
+          tar xf gcc-linaro-4.9.4-2017.01-x86_64_arm-linux-gnueabihf.tar.xz --strip-components=1
+          rm gcc-linaro-4.9.4-2017.01-x86_64_arm-linux-gnueabihf.tar.xz
+
+      - name: Cache thirdparty libraries
+        uses: actions/cache@v4
+        with:
+          path: |
+            libs/
+            thirdparty/
+            mupdf_wrapper/
+          key: ${{ runner.os }}-thirdparty-libs-kobo-${{ hashFiles('thirdparty/download.sh', 'thirdparty/**/build-kobo.sh', 'thirdparty/**/*.patch') }}
+
+      - uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: git wget curl pkg-config unzip jq patchelf gcc g++ make cmake meson ninja-build autoconf automake libtool gperf python3 zlib1g-dev libbz2-dev libpng-dev libjpeg-dev libopenjp2-7-dev libjbig2dec0-dev libgumbo-dev libfreetype6-dev libharfbuzz-dev libdjvulibre-dev
+          version: 1.0
+
+      - name: Setup Linaro toolchain
+        run: |
+          echo "$HOME/linaro-toolchain/bin" >> $GITHUB_PATH
+
+      - name: Build for Kobo
+        env:
+          CC: arm-linux-gnueabihf-gcc
+          CXX: arm-linux-gnueabihf-g++
+          AR: arm-linux-gnueabihf-ar
+          LD: arm-linux-gnueabihf-ld
+          RANLIB: arm-linux-gnueabihf-ranlib
+          STRIP: arm-linux-gnueabihf-strip
+          PKG_CONFIG_ALLOW_CROSS: "1"
+          CARGO_TARGET_ARM_UNKNOWN_LINUX_GNUEABIHF_LINKER: arm-linux-gnueabihf-gcc
+          CC_arm_unknown_linux_gnueabihf: arm-linux-gnueabihf-gcc
+          AR_arm_unknown_linux_gnueabihf: arm-linux-gnueabihf-ar
+        run: |
+          ./build.sh slow
+
+      - name: Create distribution
+        run: ./dist.sh
+
+      - name: Generate artifact attestation
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: |
+            dist/plato
+            dist/*.sh
+            dist/scripts/*
+            dist/libs/*.so*
+            dist/bin/*
+
+      - name: Create distribution archive
+        run: |
+          cd dist
+          tar czf ../plato-kobo.tar.gz .
+
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload ${{ needs.release-please.outputs.tag_name }} \
+            plato-kobo.tar.gz \
+            --repo ${{ github.repository }}

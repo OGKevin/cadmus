@@ -1,0 +1,137 @@
+name: Build Release Candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to build (typically the release PR)'
+        required: true
+        type: number
+      issue_number:
+        description: 'Optional issue number to comment on (if not set, comments on PR)'
+        required: false
+        type: number
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  id-token: write
+  attestations: write
+
+jobs:
+  build-pr:
+    name: Build PR #${{ inputs.pr_number }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Get PR details
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          pr_data=$(gh pr view ${{ inputs.pr_number }} --repo ${{ github.repository }} --json headRefName,headRepository)
+          echo "branch=$(echo $pr_data | jq -r '.headRefName')" >> $GITHUB_OUTPUT
+          echo "repo=$(echo $pr_data | jq -r '.headRepository.owner.login + \"/\" + .headRepository.name')" >> $GITHUB_OUTPUT
+
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.pr.outputs.repo }}
+          ref: ${{ steps.pr.outputs.branch }}
+
+      - uses: dtolnay/rust-toolchain@stable
+        id: rust-toolchain
+        with:
+          targets: arm-unknown-linux-gnueabihf
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ steps.rust-toolchain.outputs.cachekey }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache Linaro toolchain
+        id: cache-linaro
+        uses: actions/cache@v4
+        with:
+          path: ~/linaro-toolchain
+          key: linaro-gcc-4.9.4-2017.01
+
+      - name: Download Linaro toolchain
+        if: steps.cache-linaro.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/linaro-toolchain
+          cd ~/linaro-toolchain
+          wget -q https://releases.linaro.org/components/toolchain/binaries/4.9-2017.01/arm-linux-gnueabihf/gcc-linaro-4.9.4-2017.01-x86_64_arm-linux-gnueabihf.tar.xz
+          tar xf gcc-linaro-4.9.4-2017.01-x86_64_arm-linux-gnueabihf.tar.xz --strip-components=1
+          rm gcc-linaro-4.9.4-2017.01-x86_64_arm-linux-gnueabihf.tar.xz
+
+      - name: Cache thirdparty libraries
+        uses: actions/cache@v4
+        with:
+          path: |
+            libs/
+            thirdparty/
+            mupdf_wrapper/
+          key: ${{ runner.os }}-thirdparty-libs-kobo-${{ hashFiles('thirdparty/download.sh', 'thirdparty/**/build-kobo.sh', 'thirdparty/**/*.patch') }}
+
+      - uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: git wget curl pkg-config unzip jq patchelf gcc g++ make cmake meson ninja-build autoconf automake libtool gperf python3 zlib1g-dev libbz2-dev libpng-dev libjpeg-dev libopenjp2-7-dev libjbig2dec0-dev libgumbo-dev libfreetype6-dev libharfbuzz-dev libdjvulibre-dev
+          version: 1.0
+
+      - name: Setup Linaro toolchain
+        run: |
+          echo "$HOME/linaro-toolchain/bin" >> $GITHUB_PATH
+
+      - name: Build for Kobo
+        env:
+          CC: arm-linux-gnueabihf-gcc
+          CXX: arm-linux-gnueabihf-g++
+          AR: arm-linux-gnueabihf-ar
+          LD: arm-linux-gnueabihf-ld
+          RANLIB: arm-linux-gnueabihf-ranlib
+          STRIP: arm-linux-gnueabihf-strip
+          PKG_CONFIG_ALLOW_CROSS: "1"
+          CARGO_TARGET_ARM_UNKNOWN_LINUX_GNUEABIHF_LINKER: arm-linux-gnueabihf-gcc
+          CC_arm_unknown_linux_gnueabihf: arm-linux-gnueabihf-gcc
+          AR_arm_unknown_linux_gnueabihf: arm-linux-gnueabihf-ar
+        run: |
+          ./build.sh slow
+
+      - name: Create distribution
+        run: ./dist.sh
+
+      - name: Generate artifact attestation
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: |
+            dist/plato
+            dist/*.sh
+            dist/scripts/*
+            dist/libs/*
+            dist/bin/*
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: plato-kobo-pr${{ inputs.pr_number }}
+          path: dist/
+          retention-days: 30
+
+      - name: Comment on PR or Issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          COMMENT_BODY="🎉 Release candidate build completed successfully! Download the artifacts from the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) to test this release."
+
+          if [ -n "${{ inputs.issue_number }}" ]; then
+            gh issue comment ${{ inputs.issue_number }} --repo ${{ github.repository }} --body "$COMMENT_BODY"
+          else
+            gh pr comment ${{ inputs.pr_number }} --repo ${{ github.repository }} --body "$COMMENT_BODY"
+          fi
