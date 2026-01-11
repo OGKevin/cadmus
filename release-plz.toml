@@ -5,16 +5,21 @@ git_release_enable = false
 publish = false
 semver_check = true
 git_tag_enable = false
+changelog_update = false
+release = false
+release_always = false
 
 [[package]]
 name = "plato"
-changelog_include = ["core"]
+changelog_include = ["plato-core", "importer", "fetcher"]
 changelog_path = "CHANGELOG.md"
 changelog_update = true
 git_release_enable = true
 publish = false
 git_tag_enable = true
-git_release_name = "v{version}"
+git_release_name = "v{{version}}"
+git_tag_name = "v{{version}}"
+release = true
 
 # Changelog configuration
 [changelog]
