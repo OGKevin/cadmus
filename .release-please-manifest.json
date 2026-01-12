@@ -1,4 +1,5 @@
 {
+  ".": "0.9.44",
   "crates/core": "0.9.44",
   "crates/plato": "0.9.44",
   "crates/emulator": "0.9.44",
