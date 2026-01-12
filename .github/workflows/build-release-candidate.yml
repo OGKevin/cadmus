@@ -34,7 +34,7 @@ jobs:
           echo "branch=$(echo $pr_data | jq -r '.headRefName')" >> $GITHUB_OUTPUT
           echo "repo=$(echo $pr_data | jq -r '.headRepositoryOwner.login + "/" + .headRepository.name')" >> $GITHUB_OUTPUT
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           repository: ${{ steps.pr.outputs.repo }}
           ref: ${{ steps.pr.outputs.branch }}
