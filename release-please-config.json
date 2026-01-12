@@ -6,40 +6,18 @@
   "changelog-path": "CHANGELOG.md",
   "include-component-in-tag": false,
   "packages": {
-    "crates/core": {
-      "component": "plato-core",
-      "skip-github-release": true
-    },
-    "crates/plato": {
-      "component": "plato"
-    },
-    "crates/emulator": {
-      "component": "emulator",
-      "skip-github-release": true
-    },
-    "crates/importer": {
-      "component": "importer",
-      "skip-github-release": true
-    },
-    "crates/fetcher": {
-      "component": "fetcher",
-      "skip-github-release": true
+    ".": {
+      "component": "plato",
+      "extra-files": [
+        {"type": "toml", "path": "crates/core/Cargo.toml", "jsonpath": "$.package.version"},
+        {"type": "toml", "path": "crates/plato/Cargo.toml", "jsonpath": "$.package.version"},
+        {"type": "toml", "path": "crates/emulator/Cargo.toml", "jsonpath": "$.package.version"},
+        {"type": "toml", "path": "crates/importer/Cargo.toml", "jsonpath": "$.package.version"},
+        {"type": "toml", "path": "crates/fetcher/Cargo.toml", "jsonpath": "$.package.version"}
+      ]
     }
   },
   "plugins": [
-    {
-      "type": "cargo-workspace"
-    },
-    {
-      "type": "linked-versions",
-      "groupName": "plato",
-      "components": [
-        "plato-core",
-        "plato",
-        "emulator",
-        "importer",
-        "fetcher"
-      ]
-    }
+    "cargo-workspace"
   ]
 }
