@@ -1,23 +1,59 @@
 {
   "bootstrap-sha": "2a79669128f44fe905519fab4da650ca833248a4",
-  "release-type": "rust",
   "bump-minor-pre-major": true,
   "bump-patch-for-minor-pre-major": true,
-  "changelog-path": "CHANGELOG.md",
-  "include-component-in-tag": false,
+  "include-component-in-tag": true,
   "packages": {
     ".": {
+      "release-type": "simple",
       "component": "plato",
-      "extra-files": [
-        {"type": "toml", "path": "crates/core/Cargo.toml", "jsonpath": "$.package.version"},
-        {"type": "toml", "path": "crates/plato/Cargo.toml", "jsonpath": "$.package.version"},
-        {"type": "toml", "path": "crates/emulator/Cargo.toml", "jsonpath": "$.package.version"},
-        {"type": "toml", "path": "crates/importer/Cargo.toml", "jsonpath": "$.package.version"},
-        {"type": "toml", "path": "crates/fetcher/Cargo.toml", "jsonpath": "$.package.version"}
-      ]
+      "changelog-path": "CHANGELOG.md",
+      "include-component-in-tag": false
+    },
+    "crates/core": {
+      "release-type": "rust",
+      "component": "plato-core",
+      "skip-github-release": true,
+      "skip-changelog": true
+    },
+    "crates/plato": {
+      "release-type": "rust",
+      "component": "plato-bin",
+      "skip-github-release": true,
+      "skip-changelog": true
+    },
+    "crates/emulator": {
+      "release-type": "rust",
+      "component": "emulator",
+      "skip-github-release": true,
+      "skip-changelog": true
+    },
+    "crates/importer": {
+      "release-type": "rust",
+      "component": "importer",
+      "skip-github-release": true,
+      "skip-changelog": true
+    },
+    "crates/fetcher": {
+      "release-type": "rust",
+      "component": "fetcher",
+      "skip-github-release": true,
+      "skip-changelog": true
     }
   },
   "plugins": [
-    "cargo-workspace"
+    "cargo-workspace",
+    {
+      "type": "linked-versions",
+      "groupName": "plato",
+      "components": [
+        "plato",
+        "plato-core",
+        "plato-bin",
+        "emulator",
+        "importer",
+        "fetcher"
+      ]
+    }
   ]
 }
