@@ -68,6 +68,61 @@ jobs:
             ~/.cargo/git/db/
             target/
           key: ${{ runner.os }}-cargo-${{ steps.rust-toolchain.outputs.cachekey }}-${{ hashFiles('**/Cargo.lock') }}
+      - name: Cache thirdparty libraries
+        uses: actions/cache@v5
+        with:
+          path: |
+            thirdparty/mupdf
+            mupdf_wrapper/
+          key: ${{ runner.os }}-thirdparty-libs-native-${{ hashFiles('thirdparty/download.sh') }}
+      - uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: git wget curl pkg-config gcc g++ make cmake meson ninja-build autoconf automake libtool gperf python3 zlib1g-dev libbz2-dev libpng-dev libjpeg-dev libopenjp2-7-dev libjbig2dec0-dev libgumbo-dev libfreetype6-dev libharfbuzz-dev libdjvulibre-dev libsdl2-dev
+          version: 1.0
+      - name: Setup native dependencies
+        run: |
+          # Download mupdf sources if not cached
+          if [ ! -d thirdparty/mupdf/include ]; then
+            cd thirdparty
+            ./download.sh mupdf
+            cd ..
+          fi
+
+          # Build mupdf wrapper for Linux
+          cd mupdf_wrapper
+          ./build.sh
+          cd ..
+
+          # Build MuPDF for native development using system libraries
+          cd thirdparty/mupdf
+          [ -e .gitattributes ] && rm -rf .git*
+
+          # Clean any previous builds
+          make clean || true
+
+          # Generate sources
+          make verbose=yes generate
+
+          # Build MuPDF libraries using system libraries
+          make verbose=yes \
+            mujs=no tesseract=no extract=no archive=no brotli=no barcode=no commercial=no \
+            USE_SYSTEM_LIBS=yes \
+            XCFLAGS="-DFZ_ENABLE_ICC=0 -DFZ_ENABLE_SPOT_RENDERING=0 -DFZ_ENABLE_ODT_OUTPUT=0 -DFZ_ENABLE_OCR_OUTPUT=0" \
+            libs
+
+          cd ../..
+
+          # Create target directory structure
+          mkdir -p target/mupdf_wrapper/Linux
+
+          # Copy libmupdf.a
+          ln -sf "$(pwd)/thirdparty/mupdf/build/release/libmupdf.a" target/mupdf_wrapper/Linux/
+
+          # Create empty libmupdf-third.a (system libs used instead)
+          if [ ! -e thirdparty/mupdf/build/release/libmupdf-third.a ]; then
+            ar cr thirdparty/mupdf/build/release/libmupdf-third.a
+          fi
+          ln -sf "$(pwd)/thirdparty/mupdf/build/release/libmupdf-third.a" target/mupdf_wrapper/Linux/
       - name: Run cargo test
         run: cargo test --workspace
 
@@ -125,7 +180,7 @@ jobs:
 
       - uses: awalsh128/cache-apt-pkgs-action@latest
         with:
-          packages: git wget curl pkg-config unzip jq patchelf gcc g++ make cmake meson ninja-build autoconf automake libtool gperf python3 zlib1g-dev libbz2-dev libpng-dev libjpeg-dev libopenjp2-7-dev libjbig2dec0-dev libgumbo-dev libfreetype6-dev libharfbuzz-dev libdjvulibre-dev
+          packages: git wget curl pkg-config unzip jq patchelf gcc g++ make cmake meson ninja-build autoconf automake libtool gperf python3 zlib1g-dev libbz2-dev libpng-dev libjpeg-dev libopenjp2-7-dev libjbig2dec0-dev libgumbo-dev libfreetype6-dev libharfbuzz-dev libdjvulibre-dev libsdl2-dev
           version: 1.0
 
       - name: Setup Linaro toolchain
