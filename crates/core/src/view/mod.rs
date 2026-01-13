@@ -16,6 +16,7 @@ pub mod clock;
 pub mod common;
 pub mod dialog;
 pub mod dictionary;
+pub mod file_chooser;
 pub mod filler;
 pub mod frontlight;
 pub mod home;
@@ -434,6 +435,8 @@ pub enum Event {
     Back,
     Quit,
     WakeUp,
+    Hold(EntryId),
+    FileChooserClosed(Option<PathBuf>),
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -509,6 +512,7 @@ pub enum ViewId {
     SubMenu(u8),
     OtaView,
     OtaPrInput,
+    FileChooser,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -655,6 +659,7 @@ pub enum EntryId {
     Reboot,
     Quit,
     CheckForUpdates,
+    FileEntry(PathBuf),
 }
 
 impl EntryKind {
