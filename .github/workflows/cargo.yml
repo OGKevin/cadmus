@@ -24,6 +24,8 @@ jobs:
             ~/.cargo/git/db/
             target/
           key: ${{ runner.os }}-cargo-${{ steps.rust-toolchain.outputs.cachekey }}-${{ hashFiles('**/Cargo.lock') }}
+      - name: copy ui-dev template
+        run: cp crates/ui-dev/src/view.rs.template crates/ui-dev/src/view.rs
       - name: Check formatting
         run: cargo fmt --all --check
 
@@ -56,6 +58,8 @@ jobs:
           tool: cargo-diff-tools
       - name: Fetch base ref
         run: git fetch origin ${{ github.base_ref }}
+      - name: copy ui-dev template
+        run: cp crates/ui-dev/src/view.rs.template crates/ui-dev/src/view.rs
       - name: Run cargo clippy
         run: cargo-clippy-diff -o GitHub origin/${{ github.base_ref }} -- -q --workspace --all-targets --all-features
 
@@ -133,6 +137,8 @@ jobs:
             ar cr thirdparty/mupdf/build/release/libmupdf-third.a
           fi
           ln -sf "$(pwd)/thirdparty/mupdf/build/release/libmupdf-third.a" target/mupdf_wrapper/Linux/
+      - name: copy ui-dev template
+        run: cp crates/ui-dev/src/view.rs.template crates/ui-dev/src/view.rs
       - name: Run cargo test
         run: cargo test --workspace
 
