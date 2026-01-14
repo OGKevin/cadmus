@@ -17,6 +17,7 @@ use anyhow::Error;
 mod category;
 mod category_editor;
 mod category_row;
+mod library_editor;
 mod setting_row;
 mod setting_value;
 

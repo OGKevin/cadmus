@@ -1258,6 +1258,9 @@ pub fn run() -> Result<(), Error> {
                         raw_sender.send(button_scheme_event(VAL_PRESS)).ok();
                     }
                 }
+
+                // Re-dispatch event to view hierarchy so UI can update
+                handle_event(view.as_mut(), &evt, &tx, &mut bus, &mut rq, &mut context);
             }
             Event::SetWifi(enable) => {
                 set_wifi(enable, &mut context);

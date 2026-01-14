@@ -715,6 +715,9 @@ fn main() -> Result<(), Error> {
                 }
                 Event::Select(EntryId::SetButtonScheme(button_scheme)) => {
                     context.settings.button_scheme = button_scheme;
+
+                    // Re-dispatch event to view hierarchy so UI can update
+                    handle_event(view.as_mut(), &evt, &tx, &mut bus, &mut rq, &mut context);
                 }
                 Event::Select(EntryId::ToggleInverted) => {
                     context.fb.toggle_inverted();

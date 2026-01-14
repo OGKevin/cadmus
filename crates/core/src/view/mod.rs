@@ -396,6 +396,8 @@ pub enum Event {
     SubMenu(Rectangle, Vec<EntryKind>),
     OpenSettingsCategory(settings_editor::Category),
     UpdateSettings(settings::Settings),
+    EditLibrary(usize),
+    UpdateLibrary(usize, Box<settings::LibrarySettings>),
     ProcessLine(LineOrigin, String),
     History(CycleDir, bool),
     Toggle(ViewId),
@@ -437,6 +439,8 @@ pub enum Event {
     Quit,
     WakeUp,
     Hold(EntryId),
+    /// The file chooser was closed.
+    ///  The `Option<PathBuf>` contains the selected path, if any.
     FileChooserClosed(Option<PathBuf>),
 }
 
@@ -483,6 +487,9 @@ pub enum ViewId {
     SettingsMenu,
     SettingsValueMenu,
     SettingsCategoryEditor,
+    LibraryEditor,
+    LibraryRename,
+    LibraryRenameInput,
     SketchMenu,
     RenameDocument,
     RenameDocumentInput,
@@ -639,6 +646,9 @@ pub enum EntryId {
     SetSearchTarget(Option<String>),
     SetInputText(ViewId, String),
     SetKeyboardLayout(String),
+    EditLibraryName,
+    EditLibraryPath,
+    SetLibraryMode(settings::LibraryMode),
     ToggleShowHidden,
     // TODO: Make one entryId for settings editor
     ToggleSleepCover,

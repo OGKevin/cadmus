@@ -8,18 +8,24 @@ use crate::framebuffer::{Framebuffer, UpdateMode};
 use crate::geom::Rectangle;
 use crate::gesture::GestureEvent;
 use crate::input::{DeviceEvent, FingerStatus};
-use crate::settings::ButtonScheme;
+use crate::settings::{ButtonScheme, Settings};
 use anyhow::Error;
+use core::panic;
 use std::fs;
 use std::path::Path;
 
 use crate::view::EntryId;
 
+#[derive(Debug)]
 pub enum Kind {
     KeyboardLayout,
     SleepCover,
     AutoShare,
     ButtonScheme,
+    LibraryInfo(usize),
+    LibraryName(usize),
+    LibraryPath(usize),
+    LibraryMode(usize),
 }
 
 pub struct SettingValue {
@@ -33,8 +39,8 @@ pub struct SettingValue {
 }
 
 impl SettingValue {
-    pub fn new(kind: Kind, rect: Rectangle, context: &Context) -> SettingValue {
-        let (value, entries) = Self::fetch_data_for_kind(&kind, context);
+    pub fn new(kind: Kind, rect: Rectangle, settings: &Settings) -> SettingValue {
+        let (value, entries) = Self::fetch_data_for_kind(&kind, settings);
 
         SettingValue {
             id: ID_FEEDER.next(),
@@ -47,17 +53,21 @@ impl SettingValue {
         }
     }
 
-    fn fetch_data_for_kind(kind: &Kind, context: &Context) -> (String, Vec<EntryKind>) {
+    fn fetch_data_for_kind(kind: &Kind, settings: &Settings) -> (String, Vec<EntryKind>) {
         match kind {
-            Kind::KeyboardLayout => Self::fetch_keyboard_layout_data(context),
-            Kind::SleepCover => Self::fetch_sleep_cover_data(context),
-            Kind::AutoShare => Self::fetch_auto_share_data(context),
-            Kind::ButtonScheme => Self::fetch_button_scheme_data(context),
+            Kind::KeyboardLayout => Self::fetch_keyboard_layout_data(settings),
+            Kind::SleepCover => Self::fetch_sleep_cover_data(settings),
+            Kind::AutoShare => Self::fetch_auto_share_data(settings),
+            Kind::ButtonScheme => Self::fetch_button_scheme_data(settings),
+            Kind::LibraryInfo(index) => Self::fetch_library_info_data(*index, settings),
+            Kind::LibraryName(index) => Self::fetch_library_name_data(*index, settings),
+            Kind::LibraryPath(index) => Self::fetch_library_path_data(*index, settings),
+            Kind::LibraryMode(index) => Self::fetch_library_mode_data(*index, settings),
         }
     }
 
-    fn fetch_keyboard_layout_data(context: &Context) -> (String, Vec<EntryKind>) {
-        let current_layout = context.settings.keyboard_layout.clone();
+    fn fetch_keyboard_layout_data(settings: &Settings) -> (String, Vec<EntryKind>) {
+        let current_layout = settings.keyboard_layout.clone();
         let available_layouts = Self::get_available_layouts().unwrap_or_default();
 
         let entries: Vec<EntryKind> = available_layouts
@@ -74,8 +84,8 @@ impl SettingValue {
         (current_layout, entries)
     }
 
-    fn fetch_sleep_cover_data(context: &Context) -> (String, Vec<EntryKind>) {
-        let enabled = context.settings.sleep_cover;
+    fn fetch_sleep_cover_data(settings: &Settings) -> (String, Vec<EntryKind>) {
+        let enabled = settings.sleep_cover;
         let value = if enabled {
             "Enabled".to_string()
         } else {
@@ -91,8 +101,8 @@ impl SettingValue {
         (value, entries)
     }
 
-    fn fetch_auto_share_data(context: &Context) -> (String, Vec<EntryKind>) {
-        let enabled = context.settings.auto_share;
+    fn fetch_auto_share_data(settings: &Settings) -> (String, Vec<EntryKind>) {
+        let enabled = settings.auto_share;
         let value = if enabled {
             "Enabled".to_string()
         } else {
@@ -108,8 +118,8 @@ impl SettingValue {
         (value, entries)
     }
 
-    fn fetch_button_scheme_data(context: &Context) -> (String, Vec<EntryKind>) {
-        let current_scheme = context.settings.button_scheme;
+    fn fetch_button_scheme_data(settings: &Settings) -> (String, Vec<EntryKind>) {
+        let current_scheme = settings.button_scheme;
         let value = format!("{:?}", current_scheme);
 
         let schemes = vec![ButtonScheme::Natural, ButtonScheme::Inverted];
@@ -125,6 +135,56 @@ impl SettingValue {
             .collect();
 
         (value, entries)
+    }
+
+    fn fetch_library_info_data(index: usize, settings: &Settings) -> (String, Vec<EntryKind>) {
+        if let Some(library) = settings.libraries.get(index) {
+            let path_str = library.path.display().to_string();
+            let value = format!("{}", path_str);
+
+            (value, vec![])
+        } else {
+            ("Unknown".to_string(), vec![])
+        }
+    }
+
+    fn fetch_library_name_data(index: usize, settings: &Settings) -> (String, Vec<EntryKind>) {
+        if let Some(library) = settings.libraries.get(index) {
+            (library.name.clone(), vec![])
+        } else {
+            ("Unknown".to_string(), vec![])
+        }
+    }
+
+    fn fetch_library_path_data(index: usize, settings: &Settings) -> (String, Vec<EntryKind>) {
+        if let Some(library) = settings.libraries.get(index) {
+            (library.path.display().to_string(), vec![])
+        } else {
+            ("Unknown".to_string(), vec![])
+        }
+    }
+
+    fn fetch_library_mode_data(index: usize, settings: &Settings) -> (String, Vec<EntryKind>) {
+        use crate::settings::LibraryMode;
+
+        if let Some(library) = settings.libraries.get(index) {
+            let value = format!("{:?}", library.mode);
+            let entries = vec![
+                EntryKind::RadioButton(
+                    "Database".to_string(),
+                    EntryId::SetLibraryMode(LibraryMode::Database),
+                    library.mode == LibraryMode::Database,
+                ),
+                EntryKind::RadioButton(
+                    "Filesystem".to_string(),
+                    EntryId::SetLibraryMode(LibraryMode::Filesystem),
+                    library.mode == LibraryMode::Filesystem,
+                ),
+            ];
+            (value, entries)
+        } else {
+            ("Unknown".to_string(), vec![])
+        }
     }
 
     fn get_available_layouts() -> Result<Vec<String>, Error> {
@@ -197,7 +257,35 @@ impl View for SettingValue {
                 _ => false,
             },
             Event::Gesture(GestureEvent::Tap(point)) if self.rect.includes(point) => {
-                bus.push_back(Event::SubMenu(self.rect, self.entries.clone()));
+                match self.kind {
+                    Kind::LibraryInfo(index) => {
+                        bus.push_back(Event::EditLibrary(index));
+                    }
+                    Kind::LibraryName(_) => {
+                        bus.push_back(Event::Select(EntryId::EditLibraryName));
+                    }
+                    Kind::LibraryPath(_) => {
+                        bus.push_back(Event::Select(EntryId::EditLibraryPath));
+                    }
+                    Kind::LibraryMode(_) => match self.entries.is_empty() {
+                        true => panic!(
+                            "No entries available for setting value menu of kind {:?}",
+                            self.kind
+                        ),
+                        false => {
+                            bus.push_back(Event::SubMenu(self.rect, self.entries.clone()));
+                        }
+                    },
+                    _ => match self.entries.is_empty() {
+                        true => panic!(
+                            "No entries available for setting value menu of kind {:?}",
+                            self.kind
+                        ),
+                        false => {
+                            bus.push_back(Event::SubMenu(self.rect, self.entries.clone()));
+                        }
+                    },
+                }
 
                 true
             }
@@ -298,15 +386,27 @@ impl View for SettingValue {
                 }
                 _ => false,
             },
-            // Event::Validate => {
-            //     bus.push_back(Event::Close(crate::view::ViewId::SettingsValueMenu));
-
-            //     true
-            // }
+            Event::Submit(crate::view::ViewId::LibraryRenameInput, ref name)
+                if matches!(self.kind, Kind::LibraryName(_)) =>
+            {
+                self.update(name.clone(), rq);
+                true
+            }
+            Event::FileChooserClosed(ref path) => match path {
+                Some(ref selected_path) => match self.kind {
+                    Kind::LibraryPath(_) => {
+                        self.update(selected_path.display().to_string(), rq);
+                        false
+                    }
+                    _ => false,
+                },
+                _ => false,
+            },
             _ => false,
         }
     }
 
+    // TODO: this can use a label as child isntea
     fn render(&self, fb: &mut dyn Framebuffer, rect: Rectangle, fonts: &mut Fonts) {
         let dpi = CURRENT_DEVICE.dpi;
         let font = font_from_style(fonts, &NORMAL_STYLE, dpi);

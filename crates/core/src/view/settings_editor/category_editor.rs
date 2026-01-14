@@ -10,12 +10,14 @@ use crate::view::filler::Filler;
 use crate::view::icon::Icon;
 use crate::view::menu::Menu;
 use crate::view::top_bar::TopBar;
-use crate::view::EntryId;
-use crate::view::{Bus, Event, Hub, Id, RenderData, RenderQueue, View, ViewId, ID_FEEDER};
-use crate::view::{BIG_BAR_HEIGHT, SMALL_BAR_HEIGHT, THICKNESS_MEDIUM};
+use crate::view::{
+    Bus, EntryId, Event, Hub, Id, RenderData, RenderQueue, View, ViewId, BIG_BAR_HEIGHT, ID_FEEDER,
+    SMALL_BAR_HEIGHT, THICKNESS_MEDIUM,
+};
 use anyhow::Error;
 
 use super::category::Category;
+use super::library_editor::LibraryEditor;
 use super::setting_row::{Kind as RowKind, SettingRow};
 
 pub struct CategoryEditor {
@@ -26,6 +28,8 @@ pub struct CategoryEditor {
     category: Category,
     settings: Settings,
     original_settings: Settings,
+    content_rect: Rectangle,
+    row_height: i32,
 }
 
 pub struct CategoryEditorBuilder<'a> {
@@ -33,6 +37,7 @@ pub struct CategoryEditorBuilder<'a> {
     category: Category,
     rq: &'a mut RenderQueue,
     context: &'a mut Context,
+    settings: Settings,
 }
 
 impl<'a> CategoryEditorBuilder<'a> {
@@ -46,6 +51,7 @@ impl<'a> CategoryEditorBuilder<'a> {
             rect,
             category,
             rq,
+            settings: context.settings.clone(),
             context,
         }
     }
@@ -123,7 +129,7 @@ impl<'a> CategoryEditorBuilder<'a> {
         kind: RowKind,
         row_rect: Rectangle,
     ) -> Result<Box<dyn View>, Error> {
-        let setting_row = SettingRow::new(kind, row_rect, self.context);
+        let setting_row = SettingRow::new(kind, row_rect, &self.settings);
         Ok(Box::new(setting_row) as Box<dyn View>)
     }
 
@@ -207,7 +213,7 @@ impl<'a> CategoryEditorBuilder<'a> {
         children.push(background);
 
         let row_height = scale_by_dpi(BIG_BAR_HEIGHT, CURRENT_DEVICE.dpi) as i32;
-        let setting_kinds = self.category.settings();
+        let setting_kinds = self.category.settings(self.context);
         let mut current_y = content_rect.min.y;
 
         for kind in setting_kinds {
@@ -238,8 +244,10 @@ impl<'a> CategoryEditorBuilder<'a> {
             rect: self.rect,
             children,
             category: self.category,
-            settings: self.context.settings.clone(),
-            original_settings: self.context.settings.clone(),
+            original_settings: self.settings.clone(),
+            settings: self.settings,
+            content_rect,
+            row_height,
         })
     }
 }
@@ -253,6 +261,47 @@ impl CategoryEditor {
         context: &'a mut Context,
     ) -> CategoryEditorBuilder<'a> {
         CategoryEditorBuilder::new(rect, category, rq, context)
+    }
+
+    fn rebuild_library_rows(&mut self, rq: &mut RenderQueue) -> Result<(), Error> {
+        if self.category != Category::Libraries {
+            return Ok(());
+        }
+
+        let num_libraries = self.settings.libraries.len();
+
+        let first_row_index = 3;
+
+        for _ in 0..num_libraries {
+            if first_row_index < self.children.len() {
+                self.children.remove(first_row_index);
+            }
+        }
+
+        let mut current_y = self.content_rect.min.y;
+        let mut new_rows = Vec::new();
+
+        for i in 0..num_libraries {
+            let row_rect = rect![
+                self.content_rect.min.x,
+                current_y,
+                self.content_rect.max.x,
+                current_y + self.row_height
+            ];
+
+            let setting_row = SettingRow::new(RowKind::Library(i), row_rect, &self.settings);
+
+            new_rows.push(Box::new(setting_row) as Box<dyn View>);
+            current_y += self.row_height;
+        }
+
+        for (offset, row) in new_rows.into_iter().enumerate() {
+            self.children.insert(first_row_index + offset, row);
+        }
+
+        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+
+        Ok(())
     }
 }
 
@@ -306,6 +355,35 @@ impl View for CategoryEditor {
             Event::Validate => {
                 bus.push_back(Event::UpdateSettings(self.settings.clone()));
                 bus.push_back(Event::Close(ViewId::SettingsCategoryEditor));
+                true
+            }
+            Event::EditLibrary(index) => {
+                if let Some(library) = self.settings.libraries.get(*index).cloned() {
+                    if let Ok(library_editor) =
+                        LibraryEditor::new(self.rect, *index, library, hub, rq, context)
+                    {
+                        self.children.push(Box::new(library_editor));
+                        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+                    }
+                }
+                true
+            }
+            Event::UpdateLibrary(index, ref library) => {
+                if *index < self.settings.libraries.len() {
+                    self.settings.libraries[*index] = (**library).clone();
+
+                    if let Err(e) = self.rebuild_library_rows(rq) {
+                        eprintln!("Failed to rebuild library rows: {}", e);
+                    }
+                }
+
+                false
+            }
+            Event::Close(ViewId::LibraryEditor) => {
+                if let Some(index) = locate_by_id(self, ViewId::LibraryEditor) {
+                    self.children.remove(index);
+                    rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+                }
                 true
             }
             Event::Close(view_id) if *view_id == ViewId::SettingsCategoryEditor => {
