@@ -113,6 +113,10 @@ pub struct FileChooser {
     breadcrumb_index: usize,
     entries_start_index: usize,
     error_message: Option<String>,
+
+    /// The path that was selected by the user.
+    /// This is used to determine how the file chooser should be closed.
+    selected_path: Option<PathBuf>,
 }
 
 impl FileChooser {
@@ -190,6 +194,7 @@ impl FileChooser {
             breadcrumb_index,
             entries_start_index,
             error_message: None,
+            selected_path: None,
         };
 
         file_chooser.navigate_to(file_chooser.current_path.clone(), rq, context);
@@ -472,7 +477,9 @@ impl FileChooser {
         }
     }
 
-    fn select_item(&mut self, path: PathBuf, hub: &Hub) {
+    /// Selects the given item if it matches the selection mode.
+    /// Sends FileChooserClosed event with the selected path to the bus.
+    fn select_item(&mut self, path: PathBuf, bus: &mut Bus) {
         let is_dir = path.is_dir();
 
         let can_select = match self.mode {
@@ -481,9 +488,11 @@ impl FileChooser {
             SelectionMode::Both => true,
         };
 
-        // if can_select {
-        //     hub.send(Event::FileChooserClosed(Some(path))).ok();
-        // }
+        if can_select {
+            self.selected_path = Some(path);
+            bus.push_back(Event::FileChooserClosed(self.selected_path.clone()));
+            bus.push_back(Event::Close(self.view_id().unwrap()));
+        }
     }
 
     fn go_to_page(&mut self, dir: CycleDir, rq: &mut RenderQueue, context: &mut Context) {
@@ -508,32 +517,25 @@ impl View for FileChooser {
         &mut self,
         evt: &Event,
         hub: &Hub,
-        _bus: &mut Bus,
+        bus: &mut Bus,
         rq: &mut RenderQueue,
         context: &mut Context,
     ) -> bool {
         match evt {
             Event::SelectDirectory(path) => {
-                dbg!(&evt);
                 self.navigate_to(path.clone(), rq, context);
                 true
             }
             Event::Select(EntryId::FileEntry(path)) => {
-                dbg!(&evt);
-                self.select_item(path.clone(), hub);
+                self.select_item(path.clone(), bus);
                 true
             }
             Event::Hold(EntryId::FileEntry(path)) => {
-                dbg!(&evt);
-                self.select_item(path.clone(), hub);
+                self.select_item(path.clone(), bus);
                 true
             }
             Event::Page(dir) => {
                 self.go_to_page(*dir, rq, context);
-                true
-            }
-            Event::Close(ViewId::FileChooser) => {
-                hub.send(Event::FileChooserClosed(None)).ok();
                 true
             }
             _ => false,
@@ -560,5 +562,9 @@ impl View for FileChooser {
 
     fn id(&self) -> Id {
         self.id
+    }
+
+    fn view_id(&self) -> Option<ViewId> {
+        Some(ViewId::FileChooser)
     }
 }
