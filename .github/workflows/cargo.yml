@@ -54,6 +54,8 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    env:
+     TEST_ROOT_DIR: ${{ github.workspace }}
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable

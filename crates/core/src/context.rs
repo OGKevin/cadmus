@@ -18,7 +18,10 @@ use globset::Glob;
 use rand_core::SeedableRng;
 use rand_xoshiro::Xoroshiro128Plus;
 use std::collections::{BTreeMap, VecDeque};
+#[cfg(test)]
+use std::env;
 use std::path::Path;
+
 use walkdir::WalkDir;
 
 const KEYBOARD_LAYOUTS_DIRNAME: &str = "keyboard-layouts";
@@ -102,7 +105,18 @@ impl Context {
 
     pub fn load_keyboard_layouts(&mut self) {
         let glob = Glob::new("**/*.json").unwrap().compile_matcher();
-        for entry in WalkDir::new(Path::new(KEYBOARD_LAYOUTS_DIRNAME))
+
+        #[cfg(test)]
+        let path = Path::new(
+            &env::var("TEST_ROOT_DIR")
+                .expect("TEST_ROOT_DIR must be set for test using keyboard layouts"),
+        )
+        .join(KEYBOARD_LAYOUTS_DIRNAME);
+
+        #[cfg(not(test))]
+        let path = Path::new(KEYBOARD_LAYOUTS_DIRNAME);
+
+        for entry in WalkDir::new(path)
             .min_depth(1)
             .into_iter()
             .filter_entry(|e| !e.is_hidden())
@@ -125,7 +139,19 @@ impl Context {
 
     pub fn load_dictionaries(&mut self) {
         let glob = Glob::new("**/*.index").unwrap().compile_matcher();
-        for entry in WalkDir::new(Path::new(DICTIONARIES_DIRNAME))
+
+        #[cfg(test)]
+        let path = Path::new(
+            env::var("TEST_ROOT_DIR")
+                .expect("Please set TEST_ROOT_DIR for tests that need dictionaries")
+                .as_str(),
+        )
+        .join(DICTIONARIES_DIRNAME);
+
+        #[cfg(not(test))]
+        let path = Path::new(DICTIONARIES_DIRNAME);
+
+        for entry in WalkDir::new(path)
             .min_depth(1)
             .into_iter()
             .filter_entry(|e| !e.is_hidden())

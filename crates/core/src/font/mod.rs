@@ -18,6 +18,7 @@ use std::collections::BTreeSet;
 use std::ffi::{CStr, CString};
 use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
+use std::path::PathBuf;
 use std::ptr;
 use std::rc::Rc;
 use std::slice;
@@ -679,33 +680,48 @@ pub struct Fonts {
 }
 
 impl Fonts {
-    pub fn load() -> Result<Fonts, Error> {
+    fn _load(root_dir: Option<PathBuf>) -> Result<Fonts, Error> {
+        let search_path = if let Some(root_dir) = root_dir {
+            root_dir.join("fonts")
+        } else {
+            PathBuf::from("fonts")
+        };
+
         let opener = FontOpener::new()?;
         let mut fonts = Fonts {
             sans_serif: FontFamily {
-                regular: opener.open("fonts/NotoSans-Regular.ttf")?,
-                italic: opener.open("fonts/NotoSans-Italic.ttf")?,
-                bold: opener.open("fonts/NotoSans-Bold.ttf")?,
-                bold_italic: opener.open("fonts/NotoSans-BoldItalic.ttf")?,
+                regular: opener.open(search_path.join("NotoSans-Regular.ttf").as_path())?,
+                italic: opener.open(search_path.join("NotoSans-Italic.ttf").as_path())?,
+                bold: opener.open(search_path.join("NotoSans-Bold.ttf").as_path())?,
+                bold_italic: opener.open(search_path.join("NotoSans-BoldItalic.ttf").as_path())?,
             },
             serif: FontFamily {
-                regular: opener.open("fonts/NotoSerif-Regular.ttf")?,
-                italic: opener.open("fonts/NotoSerif-Italic.ttf")?,
-                bold: opener.open("fonts/NotoSerif-Bold.ttf")?,
-                bold_italic: opener.open("fonts/NotoSerif-BoldItalic.ttf")?,
+                regular: opener.open(search_path.join("NotoSerif-Regular.ttf").as_path())?,
+                italic: opener.open(search_path.join("NotoSerif-Italic.ttf").as_path())?,
+                bold: opener.open(search_path.join("NotoSerif-Bold.ttf").as_path())?,
+                bold_italic: opener.open(search_path.join("NotoSerif-BoldItalic.ttf").as_path())?,
             },
             monospace: FontFamily {
-                regular: opener.open("fonts/SourceCodeVariable-Roman.otf")?,
-                italic: opener.open("fonts/SourceCodeVariable-Italic.otf")?,
-                bold: opener.open("fonts/SourceCodeVariable-Roman.otf")?,
-                bold_italic: opener.open("fonts/SourceCodeVariable-Italic.otf")?,
+                regular: opener.open(search_path.join("SourceCodeVariable-Roman.otf").as_path())?,
+                italic: opener.open(search_path.join("SourceCodeVariable-Italic.otf").as_path())?,
+                bold: opener.open(search_path.join("SourceCodeVariable-Roman.otf").as_path())?,
+                bold_italic: opener
+                    .open(search_path.join("SourceCodeVariable-Italic.otf").as_path())?,
             },
-            keyboard: opener.open("fonts/VarelaRound-Regular.ttf")?,
-            display: opener.open("fonts/Cormorant-Regular.ttf")?,
+            keyboard: opener.open(search_path.join("VarelaRound-Regular.ttf").as_path())?,
+            display: opener.open(search_path.join("Cormorant-Regular.ttf").as_path())?,
         };
         fonts.monospace.bold.set_variations(&["wght=600"]);
         fonts.monospace.bold_italic.set_variations(&["wght=600"]);
         Ok(fonts)
+    }
+
+    pub fn load() -> Result<Fonts, Error> {
+        Fonts::_load(None)
+    }
+
+    pub fn load_from(root_dir: PathBuf) -> Result<Fonts, Error> {
+        Fonts::_load(Some(root_dir))
     }
 }
 

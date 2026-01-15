@@ -91,6 +91,9 @@ in
   };
 
   env = {
+    # override this in devenv.local.nix to the right place for your test plato root dir
+    # TEST_ROOT_DIR = "$DEVENV_ROOT" ;
+
     # pkg-config configuration for cross-compilation
     PKG_CONFIG_ALLOW_CROSS = "1";
 

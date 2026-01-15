@@ -40,6 +40,7 @@ pub mod rounded_button;
 pub mod search_bar;
 pub mod sketch;
 pub mod slider;
+pub mod toggleable_keyboard;
 pub mod top_bar;
 pub mod touch_events;
 
@@ -734,6 +735,16 @@ impl RenderQueue {
         self.entry((data.mode, data.wait))
             .or_insert_with(|| Vec::new())
             .push((data.id, data.rect));
+    }
+
+    #[cfg(test)]
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    #[cfg(test)]
+    pub fn len(&self) -> usize {
+        self.0.values().map(|v| v.len()).sum()
     }
 }
 
