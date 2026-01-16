@@ -19,6 +19,8 @@ impl Category {
         match self {
             Category::General => vec![
                 RowKind::AutoShare,
+                RowKind::AutoSuspend,
+                RowKind::AutoPowerOff,
                 RowKind::ButtonScheme,
                 RowKind::KeyboardLayout,
                 RowKind::SleepCover,

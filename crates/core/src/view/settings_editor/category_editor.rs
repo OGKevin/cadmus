@@ -9,6 +9,7 @@ use crate::unit::scale_by_dpi;
 use crate::view::common::locate_by_id;
 use crate::view::filler::Filler;
 use crate::view::menu::Menu;
+use crate::view::toggleable_keyboard::ToggleableKeyboard;
 use crate::view::top_bar::{TopBar, TopBarVariant};
 use crate::view::{
     Bus, EntryId, EntryKind, Event, Hub, Id, RenderData, RenderQueue, View, ViewId, BIG_BAR_HEIGHT,
@@ -32,6 +33,8 @@ pub struct CategoryEditor {
     original_settings: Settings,
     content_rect: Rectangle,
     row_height: i32,
+    focus: Option<ViewId>,
+    keyboard_index: usize,
 }
 
 pub struct CategoryEditorBuilder<'a> {
@@ -223,6 +226,11 @@ impl<'a> CategoryEditorBuilder<'a> {
 
         children.push(self.build_bottom_bar(bar_height, separator_bottom_half));
 
+        let keyboard = ToggleableKeyboard::new(self.rect, true);
+        children.push(Box::new(keyboard) as Box<dyn View>);
+
+        let keyboard_index = children.len() - 1;
+
         self.rq.add(RenderData::new(id, self.rect, UpdateMode::Gui));
 
         Ok(CategoryEditor {
@@ -234,6 +242,8 @@ impl<'a> CategoryEditorBuilder<'a> {
             settings: self.settings,
             content_rect,
             row_height,
+            focus: None,
+            keyboard_index,
         })
     }
 }
@@ -294,6 +304,20 @@ impl CategoryEditor {
 
         Ok(())
     }
+
+    fn toggle_keyboard(
+        &mut self,
+        visible: bool,
+        _id: Option<ViewId>,
+        hub: &Hub,
+        rq: &mut RenderQueue,
+        context: &mut Context,
+    ) {
+        let keyboard = self.children[self.keyboard_index]
+            .downcast_mut::<ToggleableKeyboard>()
+            .expect("keyboard_index points to non-ToggleableKeyboard view");
+        keyboard.set_visible(visible, hub, rq, context);
+    }
 }
 
 impl View for CategoryEditor {
@@ -306,6 +330,17 @@ impl View for CategoryEditor {
         context: &mut Context,
     ) -> bool {
         match evt {
+            Event::Focus(v) => {
+                if self.focus != *v {
+                    self.focus = *v;
+                    if v.is_some() {
+                        self.toggle_keyboard(true, *v, hub, rq, context);
+                    } else {
+                        self.toggle_keyboard(false, None, hub, rq, context);
+                    }
+                }
+                true
+            }
             Event::Back => {
                 bus.push_back(Event::Close(ViewId::SettingsCategoryEditor));
                 true
@@ -368,6 +403,51 @@ impl View for CategoryEditor {
                 EntryId::ToggleAutoShare => {
                     self.settings.auto_share = !self.settings.auto_share;
                     false
+                }
+                EntryId::EditAutoSuspend => {
+                    let mut suspend_input = crate::view::named_input::NamedInput::new(
+                        "Auto Suspend (minutes, 0 = never)".to_string(),
+                        ViewId::AutoSuspendInput,
+                        ViewId::AutoSuspendInput,
+                        10,
+                        context,
+                    );
+                    let text = if self.settings.auto_suspend == 0.0 {
+                        "0".to_string()
+                    } else {
+                        format!("{:.1}", self.settings.auto_suspend)
+                    };
+
+                    suspend_input.set_text(&text, rq, context);
+
+                    self.children.push(Box::new(suspend_input));
+                    hub.send(Event::Focus(Some(ViewId::AutoSuspendInput))).ok();
+
+                    rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+
+                    true
+                }
+                EntryId::EditAutoPowerOff => {
+                    let mut power_off_input = crate::view::named_input::NamedInput::new(
+                        "Auto Power Off (days, 0 = never)".to_string(),
+                        ViewId::AutoPowerOffInput,
+                        ViewId::AutoPowerOffInput,
+                        10,
+                        context,
+                    );
+                    let text = if self.settings.auto_power_off == 0.0 {
+                        "0".to_string()
+                    } else {
+                        format!("{:.1}", self.settings.auto_power_off)
+                    };
+
+                    power_off_input.set_text(&text, rq, context);
+
+                    self.children.push(Box::new(power_off_input));
+                    hub.send(Event::Focus(Some(ViewId::AutoPowerOffInput))).ok();
+                    rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+
+                    true
                 }
                 EntryId::SetButtonScheme(button_scheme) => {
                     self.settings.button_scheme = *button_scheme;
@@ -443,8 +523,40 @@ impl View for CategoryEditor {
 
                 false
             }
+            Event::Submit(ViewId::AutoSuspendInput, ref text) => {
+                if let Ok(value) = text.parse::<f32>() {
+                    self.settings.auto_suspend = value;
+                }
+
+                hub.send(Event::Focus(None)).ok();
+
+                false
+            }
+            Event::Submit(ViewId::AutoPowerOffInput, ref text) => {
+                if let Ok(value) = text.parse::<f32>() {
+                    self.settings.auto_power_off = value;
+                }
+
+                hub.send(Event::Focus(None)).ok();
+
+                false
+            }
             Event::Close(ViewId::LibraryEditor) => {
                 if let Some(index) = locate_by_id(self, ViewId::LibraryEditor) {
+                    self.children.remove(index);
+                    rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+                }
+                true
+            }
+            Event::Close(ViewId::AutoSuspendInput) => {
+                if let Some(index) = locate_by_id(self, ViewId::AutoSuspendInput) {
+                    self.children.remove(index);
+                    rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+                }
+                true
+            }
+            Event::Close(ViewId::AutoPowerOffInput) => {
+                if let Some(index) = locate_by_id(self, ViewId::AutoPowerOffInput) {
                     self.children.remove(index);
                     rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
                 }

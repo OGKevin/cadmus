@@ -11,6 +11,8 @@ pub enum Kind {
     KeyboardLayout,
     SleepCover,
     AutoShare,
+    AutoSuspend,
+    AutoPowerOff,
     ButtonScheme,
     Library(usize),
     LibraryName(usize),
@@ -24,6 +26,8 @@ impl Kind {
             Kind::KeyboardLayout => "Keyboard Layout".to_string(),
             Kind::SleepCover => "Enable Sleep Cover".to_string(),
             Kind::AutoShare => "Enable Auto Share".to_string(),
+            Kind::AutoSuspend => "Auto Suspend (minutes)".to_string(),
+            Kind::AutoPowerOff => "Auto Power Off (days)".to_string(),
             Kind::ButtonScheme => "Button Scheme".to_string(),
             Kind::Library(index) => settings
                 .libraries
@@ -41,6 +45,8 @@ impl Kind {
             Kind::KeyboardLayout => ValueKind::KeyboardLayout,
             Kind::SleepCover => ValueKind::SleepCover,
             Kind::AutoShare => ValueKind::AutoShare,
+            Kind::AutoSuspend => ValueKind::AutoSuspend,
+            Kind::AutoPowerOff => ValueKind::AutoPowerOff,
             Kind::ButtonScheme => ValueKind::ButtonScheme,
             Kind::Library(index) => ValueKind::LibraryInfo(*index),
             Kind::LibraryName(index) => ValueKind::LibraryName(*index),
