@@ -178,6 +178,12 @@ jobs:
             mupdf_wrapper/
           key: ${{ runner.os }}-thirdparty-libs-kobo-${{ hashFiles('thirdparty/download.sh', 'thirdparty/**/build-kobo.sh', 'thirdparty/**/*.patch') }}
 
+      - name: Cache NickelMenu downloads
+        uses: actions/cache@v5
+        with:
+          path: .cache/
+          key: ${{ runner.os }}-nickelmenu-${{ hashFiles('bundle.sh') }}
+
       - uses: awalsh128/cache-apt-pkgs-action@latest
         with:
           packages: git wget curl pkg-config unzip jq patchelf gcc g++ make cmake meson ninja-build autoconf automake libtool gperf python3 zlib1g-dev libbz2-dev libpng-dev libjpeg-dev libopenjp2-7-dev libjbig2dec0-dev libgumbo-dev libfreetype6-dev libharfbuzz-dev libdjvulibre-dev libsdl2-dev
@@ -205,6 +211,37 @@ jobs:
       - name: Create distribution
         run: ./dist.sh
 
+      - name: Get commit hash
+        id: commit
+        run: echo "short_sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Determine artifact suffix
+        id: artifact
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "suffix=pr${{ github.event.pull_request.number }}-${{ steps.commit.outputs.short_sha }}" >> $GITHUB_OUTPUT
+          else
+            echo "suffix=${{ steps.commit.outputs.short_sha }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build release artifacts
+        run: |
+          mkdir -p release-artifacts
+
+          # Raw dist folder
+          cd dist
+          tar czf ../release-artifacts/plato-kobo.tar.gz .
+          cd ..
+
+          # KoboRoot without NickelMenu
+          ./bundle.sh --no-nickel
+          cp bundle/KoboRoot.tgz release-artifacts/KoboRoot.tgz
+
+          # KoboRoot with NickelMenu
+          rm -rf bundle
+          ./bundle.sh
+          cp bundle/KoboRoot-nm.tgz release-artifacts/KoboRoot-nm.tgz
+
       - name: Generate artifact attestation
         uses: actions/attest-build-provenance@v3
         with:
@@ -212,12 +249,13 @@ jobs:
             dist/plato
             dist/*.sh
             dist/scripts/*
-            dist/libs/*
+            dist/libs/*.so*
             dist/bin/*
+            release-artifacts/*.tgz
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v6
         with:
-          name: plato-kobo
-          path: dist/
+          name: plato-kobo-${{ steps.artifact.outputs.suffix }}
+          path: release-artifacts/*
           retention-days: 7

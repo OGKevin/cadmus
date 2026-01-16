@@ -85,6 +85,12 @@ jobs:
           packages: git wget curl pkg-config unzip jq patchelf gcc g++ make cmake meson ninja-build autoconf automake libtool gperf python3 zlib1g-dev libbz2-dev libpng-dev libjpeg-dev libopenjp2-7-dev libjbig2dec0-dev libgumbo-dev libfreetype6-dev libharfbuzz-dev libdjvulibre-dev
           version: 1.0
 
+      - name: Cache NickelMenu
+        uses: actions/cache@v5
+        with:
+          path: .cache/
+          key: ${{ runner.os }}-nickelmenu-${{ hashFiles('bundle.sh') }}
+
       - name: Setup Linaro toolchain
         run: |
           echo "$HOME/linaro-toolchain/bin" >> $GITHUB_PATH
@@ -107,6 +113,28 @@ jobs:
       - name: Create distribution
         run: ./dist.sh
 
+      - name: Get commit hash
+        id: commit
+        run: echo "short_sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Build release artifacts
+        run: |
+          mkdir -p release-artifacts
+
+          # Raw dist folder
+          cd dist
+          tar czf ../release-artifacts/plato-kobo.tar.gz .
+          cd ..
+
+          # KoboRoot without NickelMenu
+          ./bundle.sh --no-nickel
+          cp bundle/KoboRoot.tgz release-artifacts/KoboRoot.tgz
+
+          # KoboRoot with NickelMenu
+          rm -rf bundle
+          ./bundle.sh
+          cp bundle/KoboRoot-nm.tgz release-artifacts/KoboRoot-nm.tgz
+
       - name: Generate artifact attestation
         uses: actions/attest-build-provenance@v3
         with:
@@ -114,15 +142,16 @@ jobs:
             dist/plato
             dist/*.sh
             dist/scripts/*
-            dist/libs/*
+            dist/libs/*.so*
             dist/bin/*
+            release-artifacts/*.tgz
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v6
         with:
-          name: plato-kobo-pr${{ inputs.pr_number }}
-          path: dist/
-          retention-days: 30
+          name: plato-kobo-pr${{ inputs.pr_number }}-${{ steps.commit.outputs.short_sha }}
+          path: release-artifacts/*
+          retention-days: 14
 
       - name: Comment on PR or Issue
         env:

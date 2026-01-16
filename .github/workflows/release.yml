@@ -90,6 +90,12 @@ jobs:
           packages: git wget curl pkg-config unzip jq patchelf gcc g++ make cmake meson ninja-build autoconf automake libtool gperf python3 zlib1g-dev libbz2-dev libpng-dev libjpeg-dev libopenjp2-7-dev libjbig2dec0-dev libgumbo-dev libfreetype6-dev libharfbuzz-dev libdjvulibre-dev
           version: 1.0
 
+      - name: Cache NickelMenu
+        uses: actions/cache@v5
+        with:
+          path: .cache/
+          key: ${{ runner.os }}-nickelmenu-${{ hashFiles('bundle.sh') }}
+
       - name: Setup Linaro toolchain
         run: |
           echo "$HOME/linaro-toolchain/bin" >> $GITHUB_PATH
@@ -112,6 +118,22 @@ jobs:
       - name: Create distribution
         run: ./dist.sh
 
+      - name: Build release artifacts
+        run: |
+          # Raw dist folder
+          cd dist
+          tar czf ../plato-kobo.tar.gz .
+          cd ..
+          
+          # KoboRoot without NickelMenu
+          ./bundle.sh --no-nickel
+          cp bundle/KoboRoot.tgz KoboRoot.tgz
+          
+          # KoboRoot with NickelMenu
+          rm -rf bundle
+          ./bundle.sh
+          cp bundle/KoboRoot-nm.tgz KoboRoot-nm.tgz
+
       - name: Generate artifact attestation
         uses: actions/attest-build-provenance@v3
         with:
@@ -121,11 +143,8 @@ jobs:
             dist/scripts/*
             dist/libs/*.so*
             dist/bin/*
-
-      - name: Create distribution archive
-        run: |
-          cd dist
-          tar czf ../plato-kobo.tar.gz .
+            KoboRoot.tgz
+            KoboRoot-nm.tgz
 
       - name: Upload release assets
         env:
@@ -133,4 +152,6 @@ jobs:
         run: |
           gh release upload ${{ needs.release-please.outputs.tag_name }} \
             plato-kobo.tar.gz \
+            KoboRoot.tgz \
+            KoboRoot-nm.tgz \
             --repo ${{ github.repository }}

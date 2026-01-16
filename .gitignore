@@ -16,6 +16,7 @@
 /dictionaries
 /dist
 /bundle
+/.cache
 /plato-*.zip
 /thirdparty/*/*
 !/thirdparty/*/*kobo*

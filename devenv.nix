@@ -220,4 +220,10 @@ in
     echo "Running Plato tests"
     cargo test --workspace
   '';
+
+  git-hooks.hooks = {
+    actionlint.enable = true;
+    shellcheck.enable = true;
+    shfmt.enable = true;
+  };
 }
