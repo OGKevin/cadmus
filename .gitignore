@@ -37,3 +37,4 @@ devenv.local.yaml
 
 .tmp
 logs
+.workspaces/

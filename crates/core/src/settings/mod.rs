@@ -10,7 +10,7 @@ use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::env;
-use std::fmt::{self, Debug};
+use std::fmt::{self, Debug, Display};
 use std::ops::Index;
 use std::path::PathBuf;
 
@@ -177,6 +177,15 @@ pub struct Settings {
 pub enum LibraryMode {
     Database,
     Filesystem,
+}
+
+impl Display for LibraryMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            LibraryMode::Database => write!(f, "Database"),
+            LibraryMode::Filesystem => write!(f, "Filesystem"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
