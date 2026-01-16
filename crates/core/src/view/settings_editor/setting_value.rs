@@ -166,25 +166,25 @@ impl SettingValue {
 
     fn fetch_library_mode_data(index: usize, settings: &Settings) -> (String, Vec<EntryKind>) {
         use crate::settings::LibraryMode;
+        let mut mode = LibraryMode::Filesystem;
 
         if let Some(library) = settings.libraries.get(index) {
-            let value = format!("{:?}", library.mode);
-            let entries = vec![
-                EntryKind::RadioButton(
-                    "Database".to_string(),
-                    EntryId::SetLibraryMode(LibraryMode::Database),
-                    library.mode == LibraryMode::Database,
-                ),
-                EntryKind::RadioButton(
-                    "Filesystem".to_string(),
-                    EntryId::SetLibraryMode(LibraryMode::Filesystem),
-                    library.mode == LibraryMode::Filesystem,
-                ),
-            ];
-            (value, entries)
-        } else {
-            ("Unknown".to_string(), vec![])
+            mode = library.mode;
         }
+
+        let entries = vec![
+            EntryKind::RadioButton(
+                LibraryMode::Database.to_string(),
+                EntryId::SetLibraryMode(LibraryMode::Database),
+                mode == LibraryMode::Database,
+            ),
+            EntryKind::RadioButton(
+                LibraryMode::Filesystem.to_string(),
+                EntryId::SetLibraryMode(LibraryMode::Filesystem),
+                mode == LibraryMode::Filesystem,
+            ),
+        ];
+        (mode.to_string(), entries)
     }
 
     fn get_available_layouts() -> Result<Vec<String>, Error> {

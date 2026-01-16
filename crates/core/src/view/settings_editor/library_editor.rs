@@ -4,6 +4,7 @@ use crate::device::CURRENT_DEVICE;
 use crate::font::Fonts;
 use crate::framebuffer::{Framebuffer, UpdateMode};
 use crate::geom::{halves, Rectangle};
+use crate::gesture::GestureEvent;
 use crate::settings::{LibrarySettings, Settings};
 use crate::unit::scale_by_dpi;
 use crate::view::common::locate_by_id;
@@ -312,6 +313,10 @@ impl View for LibraryEditor {
         context: &mut Context,
     ) -> bool {
         match *evt {
+            // Ignore hold, as CategoryEditor uses it to open cateogry submenu for deletion
+            Event::Gesture(GestureEvent::HoldFingerShort(_, _)) => {
+                return true;
+            }
             Event::Focus(v) => {
                 if self.focus != v {
                     self.focus = v;
@@ -324,6 +329,18 @@ impl View for LibraryEditor {
                 true
             }
             Event::Validate => {
+                if self.library.name.trim().is_empty() {
+                    hub.send(Event::Notify("Library name cannot be empty".to_string()))
+                        .ok();
+                    return true;
+                }
+
+                if !self.library.path.exists() {
+                    hub.send(Event::Notify("Path does not exist".to_string()))
+                        .ok();
+                    return true;
+                }
+
                 bus.push_back(Event::UpdateLibrary(
                     self.library_index,
                     Box::new(self.library.clone()),

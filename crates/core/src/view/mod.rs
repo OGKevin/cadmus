@@ -397,6 +397,8 @@ pub enum Event {
     UpdateSettings(settings::Settings),
     EditLibrary(usize),
     UpdateLibrary(usize, Box<settings::LibrarySettings>),
+    AddLibrary,
+    DeleteLibrary(usize),
     ProcessLine(LineOrigin, String),
     History(CycleDir, bool),
     Toggle(ViewId),
@@ -648,6 +650,7 @@ pub enum EntryId {
     EditLibraryName,
     EditLibraryPath,
     SetLibraryMode(settings::LibraryMode),
+    DeleteLibrary(usize),
     ToggleShowHidden,
     // TODO: Make one entryId for settings editor
     ToggleSleepCover,
