@@ -7,15 +7,15 @@ use crate::settings::Settings;
 use crate::unit::scale_by_dpi;
 use crate::view::common::locate_by_id;
 use crate::view::filler::Filler;
-use crate::view::icon::Icon;
 use crate::view::menu::Menu;
-use crate::view::top_bar::TopBar;
+use crate::view::top_bar::{TopBar, TopBarVariant};
 use crate::view::{
     Bus, EntryId, Event, Hub, Id, RenderData, RenderQueue, View, ViewId, BIG_BAR_HEIGHT, ID_FEEDER,
     SMALL_BAR_HEIGHT, THICKNESS_MEDIUM,
 };
 use anyhow::Error;
 
+use super::bottom_bar::{BottomBarVariant, SettingsEditorBottomBar};
 use super::category::Category;
 use super::library_editor::LibraryEditor;
 use super::setting_row::{Kind as RowKind, SettingRow};
@@ -82,7 +82,7 @@ impl<'a> CategoryEditorBuilder<'a> {
                 self.rect.max.x,
                 self.rect.min.y + bar_height - separator_top_half
             ],
-            Event::Back,
+            TopBarVariant::Cancel(Event::Close(ViewId::SettingsCategoryEditor)),
             self.category.label(),
             self.context,
         );
@@ -151,11 +151,7 @@ impl<'a> CategoryEditorBuilder<'a> {
         Box::new(separator) as Box<dyn View>
     }
 
-    fn build_bottom_bar(
-        &mut self,
-        bar_height: i32,
-        separator_bottom_half: i32,
-    ) -> (Box<dyn View>, Box<dyn View>) {
+    fn build_bottom_bar(&mut self, bar_height: i32, separator_bottom_half: i32) -> Box<dyn View> {
         let bottom_bar_rect = rect![
             self.rect.min.x,
             self.rect.max.y - bar_height + separator_bottom_half,
@@ -163,34 +159,14 @@ impl<'a> CategoryEditorBuilder<'a> {
             self.rect.max.y
         ];
 
-        let button_width = bottom_bar_rect.width() as i32 / 2;
-
-        let cancel_rect = rect![
-            bottom_bar_rect.min.x,
-            bottom_bar_rect.min.y,
-            bottom_bar_rect.min.x + button_width,
-            bottom_bar_rect.max.y
-        ];
-
-        let cancel_icon = Icon::new(
-            "back",
-            cancel_rect,
-            Event::Close(ViewId::SettingsCategoryEditor),
+        let bottom_bar = SettingsEditorBottomBar::new(
+            bottom_bar_rect,
+            BottomBarVariant::SingleButton {
+                event: Event::Validate,
+                icon: "check_mark-large",
+            },
         );
-
-        let save_rect = rect![
-            bottom_bar_rect.min.x + button_width,
-            bottom_bar_rect.min.y,
-            bottom_bar_rect.max.x,
-            bottom_bar_rect.max.y
-        ];
-
-        let save_icon = Icon::new("check_mark", save_rect, Event::Validate);
-
-        (
-            Box::new(cancel_icon) as Box<dyn View>,
-            Box::new(save_icon) as Box<dyn View>,
-        )
+        Box::new(bottom_bar) as Box<dyn View>
     }
 
     pub fn build(mut self) -> Result<CategoryEditor, Error> {
@@ -233,9 +209,7 @@ impl<'a> CategoryEditorBuilder<'a> {
             separator_bottom_half,
         ));
 
-        let (cancel_icon, save_icon) = self.build_bottom_bar(bar_height, separator_bottom_half);
-        children.push(cancel_icon);
-        children.push(save_icon);
+        children.push(self.build_bottom_bar(bar_height, separator_bottom_half));
 
         self.rq.add(RenderData::new(id, self.rect, UpdateMode::Gui));
 
