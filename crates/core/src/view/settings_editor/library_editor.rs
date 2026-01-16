@@ -9,16 +9,16 @@ use crate::unit::scale_by_dpi;
 use crate::view::common::locate_by_id;
 use crate::view::file_chooser::{FileChooser, SelectionMode};
 use crate::view::filler::Filler;
-use crate::view::icon::Icon;
 use crate::view::menu::Menu;
 use crate::view::named_input::NamedInput;
 use crate::view::toggleable_keyboard::ToggleableKeyboard;
-use crate::view::top_bar::TopBar;
+use crate::view::top_bar::{TopBar, TopBarVariant};
 use crate::view::EntryId;
 use crate::view::{Bus, Event, Hub, Id, RenderData, RenderQueue, View, ViewId, ID_FEEDER};
 use crate::view::{BIG_BAR_HEIGHT, SMALL_BAR_HEIGHT, THICKNESS_MEDIUM};
 use anyhow::Error;
 
+use super::bottom_bar::{BottomBarVariant, SettingsEditorBottomBar};
 use super::setting_row::{Kind as RowKind, SettingRow};
 
 pub struct LibraryEditor {
@@ -90,7 +90,7 @@ impl<'a> LibraryEditorBuilder<'a> {
                 self.rect.max.x,
                 self.rect.min.y + bar_height - separator_top_half
             ],
-            Event::Back,
+            TopBarVariant::Cancel(Event::Close(ViewId::LibraryEditor)),
             "Library Editor".to_string(),
             self.context,
         );
@@ -207,10 +207,6 @@ impl<'a> LibraryEditorBuilder<'a> {
     }
 
     fn build_bottom_bar(&mut self, bar_height: i32, separator_bottom_half: i32) -> Box<dyn View> {
-        let dpi = CURRENT_DEVICE.dpi;
-        let button_width = scale_by_dpi(120.0, dpi) as i32;
-        let padding = scale_by_dpi(10.0, dpi) as i32;
-
         let bottom_bar_rect = rect![
             self.rect.min.x,
             self.rect.max.y - bar_height + separator_bottom_half,
@@ -218,31 +214,14 @@ impl<'a> LibraryEditorBuilder<'a> {
             self.rect.max.y
         ];
 
-        let mut bottom_bar_children: Vec<Box<dyn View>> = Vec::new();
-
-        let cancel_rect = rect![
-            bottom_bar_rect.min.x + padding,
-            bottom_bar_rect.min.y,
-            bottom_bar_rect.min.x + padding + button_width,
-            bottom_bar_rect.max.y
-        ];
-        let cancel_icon = Icon::new("close", cancel_rect, Event::Close(ViewId::LibraryEditor));
-        bottom_bar_children.push(Box::new(cancel_icon) as Box<dyn View>);
-
-        let save_rect = rect![
-            bottom_bar_rect.max.x - padding - button_width,
-            bottom_bar_rect.min.y,
-            bottom_bar_rect.max.x - padding,
-            bottom_bar_rect.max.y
-        ];
-        let save_icon = Icon::new("check_mark-large", save_rect, Event::Validate);
-        bottom_bar_children.push(Box::new(save_icon) as Box<dyn View>);
-
-        let filler = Filler::new(bottom_bar_rect, WHITE);
-        let mut bottom_bar = Box::new(filler);
-        *bottom_bar.children_mut() = bottom_bar_children;
-
-        bottom_bar
+        let bottom_bar = SettingsEditorBottomBar::new(
+            bottom_bar_rect,
+            BottomBarVariant::SingleButton {
+                event: Event::Validate,
+                icon: "check_mark-large",
+            },
+        );
+        Box::new(bottom_bar) as Box<dyn View>
     }
 
     pub fn build(mut self) -> Result<LibraryEditor, Error> {

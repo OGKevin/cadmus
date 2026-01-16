@@ -15,7 +15,7 @@ use crate::view::filler::Filler;
 use crate::view::icon::Icon;
 use crate::view::label::Label;
 use crate::view::page_label::PageLabel;
-use crate::view::top_bar::TopBar;
+use crate::view::top_bar::{TopBar, TopBarVariant};
 use crate::view::{Bus, EntryId, Event, Hub, Id, RenderData, RenderQueue, View, ViewId, ID_FEEDER};
 use crate::view::{BIG_BAR_HEIGHT, SMALL_BAR_HEIGHT, THICKNESS_MEDIUM};
 use std::collections::BTreeSet;
@@ -147,7 +147,7 @@ impl FileChooser {
         let title = Self::get_title_for_mode(mode);
         let top_bar = TopBar::new(
             layout.top_bar_rect(&rect),
-            Event::Close(ViewId::FileChooser),
+            TopBarVariant::Cancel(Event::Close(ViewId::FileChooser)),
             title.to_string(),
             context,
         );

@@ -8,12 +8,12 @@ use crate::settings::SETTINGS_PATH;
 use crate::unit::scale_by_dpi;
 use crate::view::common::{locate_by_id, toggle_main_menu};
 use crate::view::filler::Filler;
-use crate::view::icon::Icon;
-use crate::view::top_bar::TopBar;
+use crate::view::top_bar::{TopBar, TopBarVariant};
 use crate::view::{Bus, Event, Hub, Id, RenderData, RenderQueue, View, ViewId, ID_FEEDER};
 use crate::view::{BIG_BAR_HEIGHT, SMALL_BAR_HEIGHT, THICKNESS_MEDIUM};
 use anyhow::Error;
 
+mod bottom_bar;
 mod category;
 mod category_editor;
 mod category_row;
@@ -21,6 +21,7 @@ mod library_editor;
 mod setting_row;
 mod setting_value;
 
+pub use self::bottom_bar::{BottomBarVariant, SettingsEditorBottomBar};
 pub use self::category::Category;
 pub use self::category_editor::CategoryEditor;
 pub use self::category_row::CategoryRow;
@@ -70,7 +71,7 @@ impl<'a> SettingsEditorBuilder<'a> {
                 self.rect.max.x,
                 self.rect.min.y + bar_height - separator_top_half
             ],
-            Event::Back,
+            TopBarVariant::Back,
             "Settings".to_string(),
             self.context,
         );
@@ -105,7 +106,7 @@ impl<'a> SettingsEditorBuilder<'a> {
             self.rect.min.x,
             self.rect.min.y + bar_height + separator_bottom_half,
             self.rect.max.x,
-            self.rect.max.y - bar_height - separator_top_half
+            self.rect.max.y
         ];
 
         let background = Filler::new(content_rect, WHITE);
@@ -115,36 +116,6 @@ impl<'a> SettingsEditorBuilder<'a> {
     fn build_category_row(&mut self, category: Category, row_rect: Rectangle) -> Box<dyn View> {
         let category_row = CategoryRow::new(category, row_rect, self.context);
         Box::new(category_row) as Box<dyn View>
-    }
-
-    fn build_bottom_separator(
-        &mut self,
-        bar_height: i32,
-        separator_top_half: i32,
-        separator_bottom_half: i32,
-    ) -> Box<dyn View> {
-        let separator = Filler::new(
-            rect![
-                self.rect.min.x,
-                self.rect.max.y - bar_height - separator_top_half,
-                self.rect.max.x,
-                self.rect.max.y - bar_height + separator_bottom_half
-            ],
-            BLACK,
-        );
-        Box::new(separator) as Box<dyn View>
-    }
-
-    fn build_bottom_bar(&mut self, bar_height: i32, separator_bottom_half: i32) -> Box<dyn View> {
-        let bottom_bar_rect = rect![
-            self.rect.min.x,
-            self.rect.max.y - bar_height + separator_bottom_half,
-            self.rect.max.x,
-            self.rect.max.y
-        ];
-
-        let back_icon = Icon::new("back", bottom_bar_rect, Event::Back);
-        Box::new(back_icon) as Box<dyn View>
     }
 
     pub fn build(mut self) -> Result<SettingsEditor, Error> {
@@ -180,14 +151,6 @@ impl<'a> SettingsEditorBuilder<'a> {
             children.push(self.build_category_row(category, row_rect));
             current_y += row_height;
         }
-
-        children.push(self.build_bottom_separator(
-            bar_height,
-            separator_top_half,
-            separator_bottom_half,
-        ));
-
-        children.push(self.build_bottom_bar(bar_height, separator_bottom_half));
 
         self.rq.add(RenderData::new(id, self.rect, UpdateMode::Gui));
 
