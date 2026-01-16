@@ -1,0 +1,93 @@
+name: Copilot Setup Steps
+
+on:
+  workflow_call:
+  pull_request:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+
+jobs:
+  copilot-setup-steps:
+    name: Prepare Copilot Agent Environment
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        id: rust-toolchain
+        with:
+          components: rustfmt, clippy
+          targets: arm-unknown-linux-gnueabihf
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ steps.rust-toolchain.outputs.cachekey }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache thirdparty libraries
+        uses: actions/cache@v5
+        with:
+          path: |
+            libs/
+            thirdparty/
+            mupdf_wrapper/
+          key: ${{ runner.os }}-thirdparty-libs-kobo-${{ hashFiles('thirdparty/download.sh', 'thirdparty/**/build-kobo.sh', 'thirdparty/**/*.patch') }}
+
+      - name: Cache Linaro toolchain
+        id: cache-linaro
+        uses: actions/cache@v5
+        with:
+          path: ~/linaro-toolchain
+          key: linaro-gcc-4.9.4-2017.01
+
+      - name: Cache NickelMenu downloads
+        uses: actions/cache@v5
+        with:
+          path: .cache/
+          key: ${{ runner.os }}-nickelmenu-${{ hashFiles('bundle.sh') }}
+
+      - name: Install system packages
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: git wget curl pkg-config gcc g++ make cmake meson ninja-build autoconf automake libtool gperf python3 zlib1g-dev libbz2-dev libpng-dev libjpeg-dev libopenjp2-7-dev libjbig2dec0-dev libgumbo-dev libfreetype6-dev libharfbuzz-dev libdjvulibre-dev libsdl2-dev shellcheck zip unzip ca-certificates jq patchelf
+          version: 1.0
+
+      - name: Download Linaro toolchain
+        if: steps.cache-linaro.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/linaro-toolchain
+          cd ~/linaro-toolchain
+          wget -q https://releases.linaro.org/components/toolchain/binaries/4.9-2017.01/arm-linux-gnueabihf/gcc-linaro-4.9.4-2017.01-x86_64_arm-linux-gnueabihf.tar.xz
+          tar xf gcc-linaro-4.9.4-2017.01-x86_64_arm-linux-gnueabihf.tar.xz --strip-components=1
+          rm gcc-linaro-4.9.4-2017.01-x86_64_arm-linux-gnueabihf.tar.xz
+
+      - name: Setup Linaro toolchain
+        run: |
+          echo "$HOME/linaro-toolchain/bin" >> $GITHUB_PATH
+
+      - name: Download thirdparty dependencies
+        run: |
+          # Download all thirdparty sources if not cached
+          cd thirdparty
+          for lib in zlib bzip2 libpng libjpeg openjpeg jbig2dec freetype2 harfbuzz gumbo djvulibre mupdf; do
+            if [ ! -d "$lib" ]; then
+              ./download.sh "$lib"
+            fi
+          done
+          cd ..
+
+      - name: Verify installation
+        run: |
+          rustc --version || true
+          cargo --version || true
+          cargo fmt --version || true
+          cargo clippy --version || true
+          arm-linux-gnueabihf-gcc --version || true
