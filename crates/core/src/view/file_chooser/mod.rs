@@ -10,6 +10,7 @@ use crate::device::CURRENT_DEVICE;
 use crate::font::Fonts;
 use crate::framebuffer::{Framebuffer, UpdateMode};
 use crate::geom::{halves, CycleDir, Rectangle};
+use crate::gesture::GestureEvent;
 use crate::unit::scale_by_dpi;
 use crate::view::filler::Filler;
 use crate::view::icon::Icon;
@@ -117,6 +118,8 @@ pub struct FileChooser {
     /// The path that was selected by the user.
     /// This is used to determine how the file chooser should be closed.
     selected_path: Option<PathBuf>,
+
+    bottom_bar_rect: Rectangle,
 }
 
 impl FileChooser {
@@ -180,7 +183,7 @@ impl FileChooser {
             Self::build_children(rect, &initial_path, mode, &layout, context);
         let entries_start_index = children.len();
 
-        rq.add(RenderData::new(id, rect, UpdateMode::Full));
+        rq.add(RenderData::new(id, rect, UpdateMode::Gui));
 
         let mut file_chooser = FileChooser {
             id,
@@ -195,6 +198,7 @@ impl FileChooser {
             entries_start_index,
             error_message: None,
             selected_path: None,
+            bottom_bar_rect: Rectangle::default(),
         };
 
         file_chooser.navigate_to(file_chooser.current_path.clone(), rq, context);
@@ -441,6 +445,8 @@ impl FileChooser {
             self.rect.max.y
         ];
 
+        self.bottom_bar_rect = bottom_bar_rect;
+
         let side = bottom_bar_rect.height() as i32;
         let is_prev_disabled = self.pages_count < 2 || self.current_page == 0;
         let is_next_disabled = self.pages_count < 2 || self.current_page == self.pages_count - 1;
@@ -516,7 +522,7 @@ impl View for FileChooser {
     fn handle_event(
         &mut self,
         evt: &Event,
-        hub: &Hub,
+        _hub: &Hub,
         bus: &mut Bus,
         rq: &mut RenderQueue,
         context: &mut Context,
@@ -536,6 +542,9 @@ impl View for FileChooser {
             }
             Event::Page(dir) => {
                 self.go_to_page(*dir, rq, context);
+                true
+            }
+            Event::Gesture(GestureEvent::Tap(center)) if self.bottom_bar_rect.includes(*center) => {
                 true
             }
             _ => false,
@@ -566,5 +575,178 @@ impl View for FileChooser {
 
     fn view_id(&self) -> Option<ViewId> {
         Some(ViewId::FileChooser)
+    }
+}
+
+#[cfg(test)]
+impl FileChooser {
+    pub fn bottom_bar_rect(&self) -> Rectangle {
+        self.bottom_bar_rect
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::battery::{Battery, FakeBattery};
+    use crate::framebuffer::Pixmap;
+    use crate::frontlight::{Frontlight, LightLevels};
+    use crate::geom::Point;
+    use crate::library::Library;
+    use crate::lightsensor::LightSensor;
+    use crate::settings::{LibraryMode, Settings};
+    use std::collections::VecDeque;
+    use std::env;
+    use std::path::Path;
+    use std::sync::mpsc::channel;
+
+    fn create_test_context() -> Context {
+        let fb = Box::new(Pixmap::new(600, 800, 1)) as Box<dyn Framebuffer>;
+        let battery = Box::new(FakeBattery::new()) as Box<dyn Battery>;
+        let frontlight = Box::new(LightLevels::default()) as Box<dyn Frontlight>;
+        let lightsensor = Box::new(0u16) as Box<dyn LightSensor>;
+        let settings = Settings::default();
+        let library = Library::new(Path::new("/tmp"), LibraryMode::Database)
+            .unwrap_or_else(|_| Library::new(Path::new("/tmp"), LibraryMode::Database).unwrap());
+        let fonts = Fonts::load_from(
+            Path::new(
+                &env::var("TEST_ROOT_DIR").expect("TEST_ROOT_DIR must be set for this test."),
+            )
+            .to_path_buf(),
+        )
+        .expect(
+            "Failed to load fonts. Tests require font files to be present. \
+             Run tests from the project root directory.",
+        );
+
+        Context::new(
+            fb,
+            None,
+            library,
+            settings,
+            fonts,
+            battery,
+            frontlight,
+            lightsensor,
+        )
+    }
+
+    fn create_test_file_chooser(rq: &mut RenderQueue, context: &mut Context) -> FileChooser {
+        let rect = rect![0, 0, 600, 800];
+        let path = PathBuf::from("/tmp");
+        let (hub, _receiver) = channel();
+        FileChooser::new(rect, path, SelectionMode::File, &hub, rq, context)
+    }
+
+    #[test]
+    fn test_bottom_bar_rect_stored_correctly() {
+        let mut rq = RenderQueue::new();
+        let mut context = create_test_context();
+        let file_chooser = create_test_file_chooser(&mut rq, &mut context);
+
+        let bottom_bar = file_chooser.bottom_bar_rect();
+
+        assert!(
+            bottom_bar.max.y > 0,
+            "bottom_bar_rect should be properly initialized"
+        );
+        assert_eq!(
+            bottom_bar.min.x, 0,
+            "bottom_bar_rect should start at left edge"
+        );
+        assert_eq!(
+            bottom_bar.max.x, 600,
+            "bottom_bar_rect should span full width"
+        );
+        assert!(
+            bottom_bar.min.y < bottom_bar.max.y,
+            "bottom_bar_rect should have positive height"
+        );
+    }
+
+    #[test]
+    fn test_tap_in_bottom_bar_is_consumed() {
+        let mut rq = RenderQueue::new();
+        let mut context = create_test_context();
+        let mut file_chooser = create_test_file_chooser(&mut rq, &mut context);
+
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+
+        let bottom_bar = file_chooser.bottom_bar_rect();
+        let center = Point {
+            x: (bottom_bar.min.x + bottom_bar.max.x) / 2,
+            y: (bottom_bar.min.y + bottom_bar.max.y) / 2,
+        };
+
+        let tap_event = Event::Gesture(GestureEvent::Tap(center));
+        let consumed = file_chooser.handle_event(&tap_event, &hub, &mut bus, &mut rq, &mut context);
+
+        assert!(consumed, "Tap event in bottom bar should be consumed");
+        assert!(
+            bus.is_empty(),
+            "Consumed event should not be forwarded to bus"
+        );
+    }
+
+    #[test]
+    fn test_tap_outside_bottom_bar_not_consumed() {
+        let mut rq = RenderQueue::new();
+        let mut context = create_test_context();
+        let mut file_chooser = create_test_file_chooser(&mut rq, &mut context);
+
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+
+        let bottom_bar = file_chooser.bottom_bar_rect();
+        let entry_point = Point {
+            x: 300,
+            y: bottom_bar.min.y - 50,
+        };
+
+        let tap_event = Event::Gesture(GestureEvent::Tap(entry_point));
+        let consumed = file_chooser.handle_event(&tap_event, &hub, &mut bus, &mut rq, &mut context);
+
+        assert!(
+            !consumed,
+            "Tap event outside bottom bar should not be consumed"
+        );
+    }
+
+    #[test]
+    fn test_page_event_still_handled() {
+        let mut rq = RenderQueue::new();
+        let mut context = create_test_context();
+        let mut file_chooser = create_test_file_chooser(&mut rq, &mut context);
+
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+
+        let page_event = Event::Page(CycleDir::Next);
+        let consumed =
+            file_chooser.handle_event(&page_event, &hub, &mut bus, &mut rq, &mut context);
+
+        assert!(consumed, "Page event should still be handled correctly");
+    }
+
+    #[test]
+    fn test_tap_on_bottom_bar_edge_is_consumed() {
+        let mut rq = RenderQueue::new();
+        let mut context = create_test_context();
+        let mut file_chooser = create_test_file_chooser(&mut rq, &mut context);
+
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+
+        let bottom_bar = file_chooser.bottom_bar_rect();
+        let edge_point = Point {
+            x: bottom_bar.min.x + 1,
+            y: bottom_bar.min.y + 1,
+        };
+
+        let tap_event = Event::Gesture(GestureEvent::Tap(edge_point));
+        let consumed = file_chooser.handle_event(&tap_event, &hub, &mut bus, &mut rq, &mut context);
+
+        assert!(consumed, "Tap event on bottom bar edge should be consumed");
     }
 }
