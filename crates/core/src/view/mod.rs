@@ -492,6 +492,8 @@ pub enum ViewId {
     LibraryEditor,
     LibraryRename,
     LibraryRenameInput,
+    AutoSuspendInput,
+    AutoPowerOffInput,
     SketchMenu,
     RenameDocument,
     RenameDocumentInput,
@@ -656,6 +658,8 @@ pub enum EntryId {
     // TODO: Make one entryId for settings editor
     ToggleSleepCover,
     ToggleAutoShare,
+    EditAutoSuspend,
+    EditAutoPowerOff,
     ToggleFuzzy,
     ToggleInverted,
     ToggleDithered,

@@ -21,6 +21,8 @@ pub enum Kind {
     KeyboardLayout,
     SleepCover,
     AutoShare,
+    AutoSuspend,
+    AutoPowerOff,
     ButtonScheme,
     LibraryInfo(usize),
     LibraryName(usize),
@@ -58,6 +60,8 @@ impl SettingValue {
             Kind::KeyboardLayout => Self::fetch_keyboard_layout_data(settings),
             Kind::SleepCover => Self::fetch_sleep_cover_data(settings),
             Kind::AutoShare => Self::fetch_auto_share_data(settings),
+            Kind::AutoSuspend => Self::fetch_auto_suspend_data(settings),
+            Kind::AutoPowerOff => Self::fetch_auto_power_off_data(settings),
             Kind::ButtonScheme => Self::fetch_button_scheme_data(settings),
             Kind::LibraryInfo(index) => Self::fetch_library_info_data(*index, settings),
             Kind::LibraryName(index) => Self::fetch_library_name_data(*index, settings),
@@ -135,6 +139,26 @@ impl SettingValue {
             .collect();
 
         (value, entries)
+    }
+
+    fn fetch_auto_suspend_data(settings: &Settings) -> (String, Vec<EntryKind>) {
+        let value = if settings.auto_suspend == 0.0 {
+            "Never".to_string()
+        } else {
+            format!("{:.1}", settings.auto_suspend)
+        };
+
+        (value, vec![])
+    }
+
+    fn fetch_auto_power_off_data(settings: &Settings) -> (String, Vec<EntryKind>) {
+        let value = if settings.auto_power_off == 0.0 {
+            "Never".to_string()
+        } else {
+            format!("{:.1}", settings.auto_power_off)
+        };
+
+        (value, vec![])
     }
 
     fn fetch_library_info_data(index: usize, settings: &Settings) -> (String, Vec<EntryKind>) {
@@ -267,6 +291,12 @@ impl View for SettingValue {
                     Kind::LibraryPath(_) => {
                         bus.push_back(Event::Select(EntryId::EditLibraryPath));
                     }
+                    Kind::AutoSuspend => {
+                        bus.push_back(Event::Select(EntryId::EditAutoSuspend));
+                    }
+                    Kind::AutoPowerOff => {
+                        bus.push_back(Event::Select(EntryId::EditAutoPowerOff));
+                    }
                     Kind::LibraryMode(_) => match self.entries.is_empty() {
                         true => panic!(
                             "No entries available for setting value menu of kind {:?}",
@@ -390,6 +420,32 @@ impl View for SettingValue {
                 if matches!(self.kind, Kind::LibraryName(_)) =>
             {
                 self.update(name.clone(), rq);
+                true
+            }
+            Event::Submit(crate::view::ViewId::AutoSuspendInput, ref text)
+                if matches!(self.kind, Kind::AutoSuspend) =>
+            {
+                if let Ok(value) = text.parse::<f32>() {
+                    let display_value = if value == 0.0 {
+                        "Never".to_string()
+                    } else {
+                        format!("{:.1}", value)
+                    };
+                    self.update(display_value, rq);
+                }
+                true
+            }
+            Event::Submit(crate::view::ViewId::AutoPowerOffInput, ref text)
+                if matches!(self.kind, Kind::AutoPowerOff) =>
+            {
+                if let Ok(value) = text.parse::<f32>() {
+                    let display_value = if value == 0.0 {
+                        "Never".to_string()
+                    } else {
+                        format!("{:.1}", value)
+                    };
+                    self.update(display_value, rq);
+                }
                 true
             }
             Event::FileChooserClosed(ref path) => match path {
