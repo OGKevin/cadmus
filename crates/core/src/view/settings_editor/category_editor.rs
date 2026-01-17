@@ -394,15 +394,36 @@ impl View for CategoryEditor {
             Event::Select(ref id) => match id {
                 EntryId::SetKeyboardLayout(ref layout) => {
                     self.settings.keyboard_layout = layout.clone();
-                    false
+                    // alright, so instead of returing false and letting it bubble up all the way for it to get resend,
+                    // just loop over the grandchildren, which are SettingsValue's and let them update themselfs.
+                    // TODO: refactor this so that it is clearer.
+                    for child in &mut self.children {
+                        for grandchild in child.children_mut() {
+                            grandchild.handle_event(evt, hub, bus, rq, context);
+                        }
+                    }
+
+                    true
                 }
                 EntryId::ToggleSleepCover => {
                     self.settings.sleep_cover = !self.settings.sleep_cover;
-                    false
+                    for child in &mut self.children {
+                        for grandchild in child.children_mut() {
+                            grandchild.handle_event(evt, hub, bus, rq, context);
+                        }
+                    }
+
+                    true
                 }
                 EntryId::ToggleAutoShare => {
                     self.settings.auto_share = !self.settings.auto_share;
-                    false
+                    for child in &mut self.children {
+                        for grandchild in child.children_mut() {
+                            grandchild.handle_event(evt, hub, bus, rq, context);
+                        }
+                    }
+
+                    true
                 }
                 EntryId::EditAutoSuspend => {
                     let mut suspend_input = crate::view::named_input::NamedInput::new(
@@ -451,7 +472,13 @@ impl View for CategoryEditor {
                 }
                 EntryId::SetButtonScheme(button_scheme) => {
                     self.settings.button_scheme = *button_scheme;
-                    false
+                    for child in &mut self.children {
+                        for grandchild in child.children_mut() {
+                            grandchild.handle_event(evt, hub, bus, rq, context);
+                        }
+                    }
+
+                    true
                 }
                 EntryId::DeleteLibrary(index) => {
                     if *index < self.settings.libraries.len() {
@@ -468,7 +495,7 @@ impl View for CategoryEditor {
                         rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
                     }
 
-                    false
+                    true
                 }
                 _ => false,
             },
@@ -527,19 +554,30 @@ impl View for CategoryEditor {
                 if let Ok(value) = text.parse::<f32>() {
                     self.settings.auto_suspend = value;
                 }
+                for child in &mut self.children {
+                    for grandchild in child.children_mut() {
+                        grandchild.handle_event(evt, hub, bus, rq, context);
+                    }
+                }
 
                 hub.send(Event::Focus(None)).ok();
 
-                false
+                true
             }
             Event::Submit(ViewId::AutoPowerOffInput, ref text) => {
                 if let Ok(value) = text.parse::<f32>() {
                     self.settings.auto_power_off = value;
                 }
 
+                for child in &mut self.children {
+                    for grandchild in child.children_mut() {
+                        grandchild.handle_event(evt, hub, bus, rq, context);
+                    }
+                }
+
                 hub.send(Event::Focus(None)).ok();
 
-                false
+                true
             }
             Event::Close(ViewId::LibraryEditor) => {
                 if let Some(index) = locate_by_id(self, ViewId::LibraryEditor) {
