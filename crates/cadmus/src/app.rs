@@ -1235,6 +1235,13 @@ pub fn run() -> Result<(), Error> {
             Event::SetWifi(enable) => {
                 set_wifi(enable, &mut context);
             }
+            Event::Select(EntryId::CheckForUpdates) => {
+                use cadmus_core::view::ota::show_ota_view;
+
+                if show_ota_view(view.as_mut(), &tx, &mut rq, &mut context) {
+                    tx.send(Event::Focus(Some(ViewId::OtaPrInput))).ok();
+                }
+            }
             Event::Select(EntryId::ToggleWifi) => {
                 set_wifi(!context.settings.wifi, &mut context);
             }

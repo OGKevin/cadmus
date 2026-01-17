@@ -38,4 +38,18 @@ fxhash = "0.2.1"
 rand_core = "0.9.3"
 rand_xoshiro = "0.7.0"
 percent-encoding = "2.3.2"
-chrono = { version = "0.4.42", features = ["serde", "clock"], default-features = false }
+chrono = { version = "0.4.42", features = [
+    "serde",
+    "clock",
+], default-features = false }
+
+reqwest = { version = "0.13.1", default-features = false, features = [
+    "blocking",
+    "json",
+    "rustls-no-provider",
+] }
+rustls = { workspace = true }
+webpki-roots = "1.0.5"
+
+[features]
+default = []

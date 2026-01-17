@@ -8,6 +8,14 @@ members = [
   "crates/fetcher",
 ]
 
+[workspace.dependencies]
+rustls = { version = "0.23", default-features = false, features = [
+  "ring",
+  "logging",
+  "std",
+  "tls12",
+] }
+
 [profile.release-minsized]
 inherits = "release"
 panic = "abort"

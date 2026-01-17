@@ -31,6 +31,7 @@ pub mod menu;
 pub mod menu_entry;
 pub mod named_input;
 pub mod notification;
+pub mod ota;
 pub mod page_label;
 pub mod preset;
 pub mod presets_list;
@@ -495,6 +496,8 @@ pub enum ViewId {
     TableOfContents,
     MessageNotif(Id),
     SubMenu(u8),
+    OtaView,
+    OtaPrInput,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -637,6 +640,7 @@ pub enum EntryId {
     Restart,
     Reboot,
     Quit,
+    CheckForUpdates,
 }
 
 impl EntryKind {

@@ -125,6 +125,7 @@ pub fn toggle_main_menu(
         let mut entries = vec![
             EntryKind::Command("About".to_string(), EntryId::About),
             EntryKind::Command("System Info".to_string(), EntryId::SystemInfo),
+            EntryKind::Command("Check for Updates".to_string(), EntryId::CheckForUpdates),
             EntryKind::Separator,
             EntryKind::CheckBox(
                 "Invert Colors".to_string(),

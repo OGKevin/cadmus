@@ -125,6 +125,7 @@ pub struct Settings {
     pub calculator: CalculatorSettings,
     pub battery: BatterySettings,
     pub frontlight_levels: LightLevels,
+    pub ota: OtaSettings,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -364,6 +365,19 @@ pub struct BatterySettings {
     pub power_off: f32,
 }
 
+/// Configuration for Over-the-Air (OTA) update feature.
+///
+/// Stores the GitHub personal access token required for downloading
+/// build artifacts from pull requests.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default, rename_all = "kebab-case")]
+pub struct OtaSettings {
+    /// GitHub personal access token with workflow artifact read permissions.
+    /// Required for authenticated API access to download build artifacts.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub github_token: Option<String>,
+}
+
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum FinishedAction {
@@ -562,6 +576,7 @@ impl Default for Settings {
             battery: BatterySettings::default(),
             frontlight_levels: LightLevels::default(),
             frontlight_presets: Vec::new(),
+            ota: OtaSettings::default(),
         }
     }
 }
