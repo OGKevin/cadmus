@@ -2,6 +2,7 @@
 
 TRIPLE=arm-linux-gnueabihf
 JPEG_DIR=$(realpath ../libjpeg)
+export CC=${TRIPLE}-gcc
 export CFLAGS="-O2 -mcpu=cortex-a9 -mfpu=neon"
 export CXXFLAGS="$CFLAGS"
 export CXX=${TRIPLE}-g++

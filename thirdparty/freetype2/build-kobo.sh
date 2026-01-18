@@ -1,6 +1,8 @@
 #! /bin/sh
 
 export TRIPLE=arm-linux-gnueabihf
+export CC=${TRIPLE}-gcc
+export CXX=${TRIPLE}-g++
 export CFLAGS="-O2 -mcpu=cortex-a9 -mfpu=neon"
 export CXXFLAGS="$CFLAGS"
 export ZLIB_CFLAGS="-I../zlib"
@@ -11,5 +13,5 @@ export LIBPNG_CFLAGS="-I../libpng"
 export LIBPNG_LIBS="-L../libpng/.libs -lpng16"
 
 ./configure --host=${TRIPLE} --with-zlib=yes --with-png=yes \
-            --with-bzip2=yes --with-harfbuzz=no --with-brotli=no \
-            --disable-static && make
+	--with-bzip2=yes --with-harfbuzz=no --with-brotli=no \
+	--disable-static && make
