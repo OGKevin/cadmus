@@ -1,14 +1,13 @@
 [package]
-authors = ["Bastien Dejean <nihilhill@gmail.com>"]
 name = "importer"
 version = "0.9.45"
 edition = "2021"
+authors = ["Cadmus Authors", "Bastien Dejean <nihilhill@gmail.com> (original Plato author)"]
 
 [[bin]]
-name = "plato-import"
+name = "cadmus-import"
 path = "src/main.rs"
 
 [dependencies]
-plato-core = { path = "../core" }
+cadmus-core = { path = "../core" }
 getopts = "0.2.24"
-

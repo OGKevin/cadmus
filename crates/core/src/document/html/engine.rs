@@ -960,7 +960,7 @@ impl Engine {
                     _ => {}
                 }
 
-                if let Some(mut v) = props.get("-plato-insert-before").map(|value| {
+                if let Some(mut v) = props.get("-cadmus-insert-before").map(|value| {
                     parse_inline_material(value, style.font_size, self.font_size, self.dpi)
                 }) {
                     inlines.append(&mut v);
@@ -972,7 +972,7 @@ impl Engine {
                     );
                 }
 
-                if let Some(mut v) = props.get("-plato-insert-after").map(|value| {
+                if let Some(mut v) = props.get("-cadmus-insert-after").map(|value| {
                     parse_inline_material(value, style.font_size, self.font_size, self.dpi)
                 }) {
                     inlines.append(&mut v);

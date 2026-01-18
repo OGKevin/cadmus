@@ -3,11 +3,11 @@
 Start by cloning the repository:
 
 ```sh
-git clone https://github.com/baskerville/plato.git
-cd plato
+git clone https://github.com/OGKevin/cadmus.git
+cd cadmus
 ```
 
-## Plato
+## Cadmus
 
 #### Preliminary
 

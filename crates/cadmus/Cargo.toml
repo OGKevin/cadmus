@@ -1,13 +1,12 @@
 [package]
-name = "emulator"
+name = "cadmus"
 version = "0.9.45"
 edition = "2021"
 authors = ["Cadmus Authors", "Bastien Dejean <nihilhill@gmail.com> (original Plato author)"]
 
 [[bin]]
-name = "cadmus-emulator"
+name = "cadmus"
 path = "src/main.rs"
 
 [dependencies]
 cadmus-core = { path = "../core" }
-sdl2 = "0.38.0"

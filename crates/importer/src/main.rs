@@ -1,11 +1,11 @@
+use cadmus_core::anyhow::{format_err, Context, Error};
+use cadmus_core::chrono::NaiveDateTime;
+use cadmus_core::helpers::datetime_format;
+use cadmus_core::library::Library;
+use cadmus_core::metadata::{consolidate, rename_from_info};
+use cadmus_core::metadata::{extract_metadata_from_document, extract_metadata_from_filename};
+use cadmus_core::settings::{ImportSettings, LibraryMode};
 use getopts::Options;
-use plato_core::anyhow::{format_err, Context, Error};
-use plato_core::chrono::NaiveDateTime;
-use plato_core::helpers::datetime_format;
-use plato_core::library::Library;
-use plato_core::metadata::{consolidate, rename_from_info};
-use plato_core::metadata::{extract_metadata_from_document, extract_metadata_from_filename};
-use plato_core::settings::{ImportSettings, LibraryMode};
 use std::env;
 use std::path::Path;
 
@@ -71,7 +71,7 @@ fn main() -> Result<(), Error> {
         .context("failed to parse the command line arguments")?;
 
     if matches.opt_present("h") {
-        println!("{}", opts.usage("Usage: plato-import -h|-I|-C|-EFSN [-k ALLOWED_KINDS] [-e METADATA_KINDS] [-a ADDED_DATETIME] [-m LIBRARY_MODE] LIBRARY_PATH"));
+        println!("{}", opts.usage("Usage: cadmus-import -h|-I|-C|-EFSN [-k ALLOWED_KINDS] [-e METADATA_KINDS] [-a ADDED_DATETIME] [-m LIBRARY_MODE] LIBRARY_PATH"));
         return Ok(());
     }
 

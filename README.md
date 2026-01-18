@@ -1,6 +1,24 @@
-![Logo](artworks/plato-logo.svg)
+<div align="center">
 
-*Plato* is a document reader for *Kobo*'s e-readers.
+# Cadmus
+
+</div>
+
+<p align="center">
+    <a href="https://github.com/ogkevin/cadmus/releases" alt="GitHub release">
+        <img src="https://img.shields.io/github/release/ogkevin/cadmus.svg?style=for-the-badge" /></a>
+    <img src="https://img.shields.io/github/actions/workflow/status/ogkevin/cadmus/cargo.yml?style=for-the-badge" />
+    <a href="https://discord.gg/3AJHp6rV5a" alt="Discord">
+        <img src="https://img.shields.io/discord/1459138935203565741?style=for-the-badge" /></a>
+</p>
+
+<div align="center">
+
+*Cadmus* is a document reader for *Kobo*'s e-readers.
+
+</div>
+
+---
 
 Documentation: [GUIDE](doc/GUIDE.md), [MANUAL](doc/MANUAL.md) and [BUILD](doc/BUILD.md).
 
@@ -50,6 +68,6 @@ Any 4.*X*.*Y* firmware, with *X* ≥ 6, will do.
 
 [![Tn01](artworks/thumbnail01.png)](artworks/screenshot01.png) [![Tn02](artworks/thumbnail02.png)](artworks/screenshot02.png) [![Tn03](artworks/thumbnail03.png)](artworks/screenshot03.png) [![Tn04](artworks/thumbnail04.png)](artworks/screenshot04.png)
 
-## Donations
+## Acknowledgments
 
-[![Donate](https://img.shields.io/badge/Donate-PayPal-green.svg)](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=KNAR2VKYRYUV6)
+Cadmus is a fork of [Plato](https://github.com/baskerville/plato), a document reader created by Bastien Dejean.

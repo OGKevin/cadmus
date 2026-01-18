@@ -5,7 +5,7 @@
 [ -d bin ] || ./download.sh 'bin/*'
 [ -d resources ] || ./download.sh 'resources/*'
 [ -d hyphenation-patterns ] || ./download.sh 'hyphenation-patterns/*'
-[ -e target/arm-unknown-linux-gnueabihf/release/plato ] || ./build.sh
+[ -e target/arm-unknown-linux-gnueabihf/release/cadmus ] || ./build.sh
 
 mkdir -p dist/libs
 mkdir dist/dictionaries
@@ -37,11 +37,11 @@ find dist/css -name '*-user.css' -delete
 find dist/keyboard-layouts -name '*-user.json' -delete
 find dist/hyphenation-patterns -name '*.bounds' -delete
 find dist/scripts -name 'wifi-*-*.sh' -delete
-cp target/arm-unknown-linux-gnueabihf/release/plato dist/
+cp target/arm-unknown-linux-gnueabihf/release/cadmus dist/
 cp contrib/*.sh dist
 cp contrib/Settings-sample.toml dist
-cp LICENSE-AGPLv3 dist
+cp LICENSE dist
 
 patchelf --remove-rpath dist/libs/*
 
-arm-linux-gnueabihf-strip dist/plato dist/libs/*
+arm-linux-gnueabihf-strip dist/cadmus dist/libs/*

@@ -1,7 +1,7 @@
 Hooks are defined in `Settings.toml`.
 
 Here's an example hook, that launches the default article fetcher included in
-*Plato*'s release archive:
+*Cadmus*'s release archive:
 ```toml
 [[libraries.hooks]]
 path = "Articles"
@@ -26,7 +26,7 @@ directory in the navigation bar. When the hook is triggered, the associated
 directory path, wifi and online statuses (*true* or *false*) as arguments.
 
 A fetcher can use its standard output (resp. standard input) to send events to
-(resp. receive events from) *Plato*. An event is a JSON object with a required
+(resp. receive events from) *Cadmus*. An event is a JSON object with a required
 `type` key. Events are read and written line by line, one per line.
 
 The events that can be written to standard output are:
@@ -56,5 +56,5 @@ The events that can be read from standard input are:
 {"type": "network", "status": "up"}
 ```
 
-When a directory is deselected, *Plato* will send the `SIGTERM` signal to all
+When a directory is deselected, *Cadmus* will send the `SIGTERM` signal to all
 the matching fetchers.

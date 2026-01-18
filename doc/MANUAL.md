@@ -196,7 +196,7 @@ You can back and forth in history by tapping on the buttons to the left and righ
 
 You can adjust the margin and font size by tapping on the buttons in the bottom bar.
 
-Here is an example of `ivy` code showing its conciseness. The code below appears in one of the Plato screenshots. It defines a binary operator `lab` that takes two inputs `a` and `b` and displays an `a` by `b` grid of Unicode characters.
+Here is an example of `ivy` code showing its conciseness. The code below appears in one of the Cadmus screenshots. It defines a binary operator `lab` that takes two inputs `a` and `b` and displays an `a` by `b` grid of Unicode characters.
 
 ```j
 op a lab b = char 9584 + ? a b rho 2
@@ -251,4 +251,4 @@ Tap and hold inside an input field to bring up the input history menu.
 	Z '   Ź       I :   Ï       . <   ‹       o p   ℗
 	S '   Ś       O :   Ö       ' 1   ′       t m   ™
 	C '   Ć       U :   Ü       ' 2   ″       
-	N '   Ń       Y :   Ÿ       [ [   ⟦       
+	N '   Ń       Y :   Ÿ       [ [   ⟦

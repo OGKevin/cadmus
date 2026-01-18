@@ -1,8 +1,8 @@
 [package]
-authors = ["Bastien Dejean <nihilhill@gmail.com>"]
-name = "plato-core"
+name = "cadmus-core"
 version = "0.9.45"
 edition = "2021"
+authors = ["Cadmus Authors", "Bastien Dejean <nihilhill@gmail.com> (original Plato author)"]
 
 [lib]
 crate-type = ["rlib"]

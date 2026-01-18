@@ -60,7 +60,7 @@ impl DjvuContext {
 impl DjvuOpener {
     pub fn new() -> Option<DjvuOpener> {
         unsafe {
-            let name = CString::new("Plato").unwrap();
+            let name = CString::new("Cadmus").unwrap();
             let ctx = ddjvu_context_create(name.as_ptr());
             if ctx.is_null() {
                 None

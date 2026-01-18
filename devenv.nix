@@ -91,7 +91,7 @@ in
   };
 
   env = {
-    # override this in devenv.local.nix to the right place for your test plato root dir
+    # override this in devenv.local.nix to the right place for your test cadmus root dir
     # TEST_ROOT_DIR = "$DEVENV_ROOT" ;
 
     # pkg-config configuration for cross-compilation
@@ -107,7 +107,7 @@ in
 
   scripts = {
     # Script to build mupdf for native development
-    plato-setup-native.exec = ''
+    cadmus-setup-native.exec = ''
       set -e
       echo "Setting up native development environment..."
 
@@ -137,7 +137,7 @@ in
       cd ..
 
       # Build MuPDF for native development using system libraries from Nix
-      # We skip building plato/thirdparty/* and use pkg-config to find system libs
+      # We skip building cadmus/thirdparty/* and use pkg-config to find system libs
       echo "Building mupdf for native development..."
       cd thirdparty/mupdf
       [ -e .gitattributes ] && rm -rf .git*
@@ -186,7 +186,7 @@ in
     '';
 
     # Script to build for Kobo with proper cross-compilation environment
-    plato-build-kobo.exec = ''
+    cadmus-build-kobo.exec = ''
       set -e
 
       # Set up cross-compilation environment
@@ -207,20 +207,20 @@ in
     # Add Linaro toolchain to PATH
     export PATH="${linaroToolchain}/bin:$PATH"
 
-    echo "Plato development environment"
+    echo "Cadmus development environment"
     echo ""
     echo "Available commands:"
-    echo "  plato-setup-native  - Build mupdf for native development (run once)"
-    echo "  plato-build-kobo    - Build for Kobo (sets up cross-compilation env)"
-    echo "  cargo test          - Run tests (after setup)"
-    echo "  ./run-emulator.sh   - Run the emulator (after setup)"
+    echo "  cadmus-setup-native  - Build mupdf for native development (run once)"
+    echo "  cadmus-build-kobo    - Build for Kobo (sets up cross-compilation env)"
+    echo "  cargo test           - Run tests (after setup)"
+    echo "  ./run-emulator.sh    - Run the emulator (after setup)"
     echo ""
     echo "Linaro toolchain: $(which arm-linux-gnueabihf-gcc 2>/dev/null || echo 'not found')"
   '';
 
   # https://devenv.sh/tests/
   enterTest = ''
-    echo "Running Plato tests"
+    echo "Running Cadmus tests"
     cargo test --workspace
   '';
 

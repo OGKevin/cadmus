@@ -16,11 +16,11 @@ The shelf displays the direct children of the current directory.
 
 ## Import Metadata
 
-You can use `plato-import` to off-load the import task to a computer.
+You can use `cadmus-import` to off-load the import task to a computer.
 
-You can import with `plato-import -I LIBRARY_PATH`.
+You can import with `cadmus-import -I LIBRARY_PATH`.
 
-If new entries were added, you might populate the metadata with `plato-import -a ADDED_DATETIME -E LIBRARY_PATH` where the argument passed to `-a` is the added date-time of the first added entry (the new entries are at the bottom of the database).
+If new entries were added, you might populate the metadata with `cadmus-import -a ADDED_DATETIME -E LIBRARY_PATH` where the argument passed to `-a` is the added date-time of the first added entry (the new entries are at the bottom of the database).
 
 You can then edit the database with your text editor to manually fix the metadata.
 

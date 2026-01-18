@@ -3,23 +3,23 @@
   "bump-minor-pre-major": true,
   "bump-patch-for-minor-pre-major": true,
   "include-component-in-tag": true,
-  "group-pull-request-title-pattern": "chore${scope}: release plato ${version}",
+  "group-pull-request-title-pattern": "chore${scope}: release cadmus ${version}",
   "packages": {
     ".": {
       "release-type": "simple",
-      "component": "plato",
+      "component": "cadmus",
       "changelog-path": "CHANGELOG.md",
       "include-component-in-tag": false
     },
     "crates/core": {
       "release-type": "rust",
-      "component": "plato-core",
+      "component": "cadmus-core",
       "skip-github-release": true,
       "skip-changelog": true
     },
-    "crates/plato": {
+    "crates/cadmus": {
       "release-type": "rust",
-      "component": "plato-bin",
+      "component": "cadmus-bin",
       "skip-github-release": true,
       "skip-changelog": true
     },
@@ -46,11 +46,11 @@
     "cargo-workspace",
     {
       "type": "linked-versions",
-      "groupName": "plato",
+      "groupName": "cadmus",
       "components": [
-        "plato",
-        "plato-core",
-        "plato-bin",
+        "cadmus",
+        "cadmus-core",
+        "cadmus-bin",
         "emulator",
         "importer",
         "fetcher"

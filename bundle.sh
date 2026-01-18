@@ -1,6 +1,6 @@
 #! /bin/sh
 #
-# Bundle Plato for Kobo devices (with or without NickelMenu)
+# Bundle Cadmus for Kobo devices (with or without NickelMenu)
 #
 # Usage:
 #   bundle.sh [--skip-download] [--no-nickel]
@@ -126,19 +126,19 @@ extract_and_merge() {
 	mv mnt/onboard/.adds .
 	rm -Rf mnt
 
-	mv ../dist .adds/plato
+	mv ../dist .adds/cadmus
 	cp ../contrib/NickelMenu/* .adds/nm
 
 	cd ..
 }
 
-create_bundle_plato_only() {
-	mkdir -p bundle/mnt/onboard/.adds/plato
-	cp -r dist/* bundle/mnt/onboard/.adds/plato/
+create_bundle_cadmus_only() {
+	mkdir -p bundle/mnt/onboard/.adds/cadmus
+	cp -r dist/* bundle/mnt/onboard/.adds/cadmus/
 
 	cd bundle || exit 1
 
-	echo "Creating KoboRoot.tgz (Plato only)..."
+	echo "Creating KoboRoot.tgz (Cadmus only)..."
 	tar -czf "KoboRoot.tgz" mnt
 
 	rm -Rf mnt
@@ -189,7 +189,7 @@ check_dependencies
 [ -d bundle ] && rm -Rf bundle
 
 if [ "$no_nickel" = true ]; then
-	create_bundle_plato_only
+	create_bundle_cadmus_only
 else
 	if [ "$skip_download" = false ]; then
 		download_nickel_menu

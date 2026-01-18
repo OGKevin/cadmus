@@ -123,7 +123,7 @@ jobs:
 
           # Raw dist folder
           cd dist
-          tar czf ../release-artifacts/plato-kobo.tar.gz .
+          tar czf ../release-artifacts/cadmus-kobo.tar.gz .
           cd ..
 
           # KoboRoot without NickelMenu
@@ -139,7 +139,7 @@ jobs:
         uses: actions/attest-build-provenance@v3
         with:
           subject-path: |
-            dist/plato
+            dist/cadmus
             dist/*.sh
             dist/scripts/*
             dist/libs/*.so*
@@ -149,7 +149,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v6
         with:
-          name: plato-kobo-pr${{ inputs.pr_number }}-${{ steps.commit.outputs.short_sha }}
+          name: cadmus-kobo-pr${{ inputs.pr_number }}-${{ steps.commit.outputs.short_sha }}
           path: release-artifacts/*
           retention-days: 14
 

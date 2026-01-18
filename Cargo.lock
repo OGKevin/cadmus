@@ -171,6 +171,50 @@ dependencies = [
 ]
 
 [[package]]
+name = "cadmus"
+version = "0.9.45"
+dependencies = [
+ "cadmus-core",
+]
+
+[[package]]
+name = "cadmus-core"
+version = "0.9.45"
+dependencies = [
+ "anyhow",
+ "bitflags 2.10.0",
+ "byteorder",
+ "chrono",
+ "downcast-rs",
+ "entities",
+ "flate2",
+ "fxhash",
+ "globset",
+ "indexmap",
+ "kl-hyphenate",
+ "lazy_static",
+ "levenshtein",
+ "libc",
+ "nix",
+ "paragraph-breaker",
+ "percent-encoding",
+ "png",
+ "rand_core",
+ "rand_xoshiro",
+ "regex",
+ "septem",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.17",
+ "titlecase",
+ "toml",
+ "unicode-normalization",
+ "walkdir",
+ "xi-unicode",
+ "zip",
+]
+
+[[package]]
 name = "cc"
 version = "1.2.52"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -370,7 +414,7 @@ checksum = "92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813"
 name = "emulator"
 version = "0.9.45"
 dependencies = [
- "plato-core",
+ "cadmus-core",
  "sdl2",
 ]
 
@@ -409,7 +453,7 @@ dependencies = [
 name = "fetcher"
 version = "0.9.45"
 dependencies = [
- "plato-core",
+ "cadmus-core",
  "reqwest",
  "signal-hook",
 ]
@@ -815,8 +859,8 @@ dependencies = [
 name = "importer"
 version = "0.9.45"
 dependencies = [
+ "cadmus-core",
  "getopts",
- "plato-core",
 ]
 
 [[package]]
@@ -1092,50 +1136,6 @@ name = "pkg-config"
 version = "0.3.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7edddbd0b52d732b21ad9a5fab5c704c14cd949e5e9a1ec5929a24fded1b904c"
-
-[[package]]
-name = "plato"
-version = "0.9.45"
-dependencies = [
- "plato-core",
-]
-
-[[package]]
-name = "plato-core"
-version = "0.9.45"
-dependencies = [
- "anyhow",
- "bitflags 2.10.0",
- "byteorder",
- "chrono",
- "downcast-rs",
- "entities",
- "flate2",
- "fxhash",
- "globset",
- "indexmap",
- "kl-hyphenate",
- "lazy_static",
- "levenshtein",
- "libc",
- "nix",
- "paragraph-breaker",
- "percent-encoding",
- "png",
- "rand_core",
- "rand_xoshiro",
- "regex",
- "septem",
- "serde",
- "serde_json",
- "thiserror 2.0.17",
- "titlecase",
- "toml",
- "unicode-normalization",
- "walkdir",
- "xi-unicode",
- "zip",
-]
 
 [[package]]
 name = "png"

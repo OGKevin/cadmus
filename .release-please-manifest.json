@@ -1,7 +1,7 @@
 {
   ".": "0.9.45",
   "crates/core": "0.9.45",
-  "crates/plato": "0.9.45",
+  "crates/cadmus": "0.9.45",
   "crates/emulator": "0.9.45",
   "crates/importer": "0.9.45",
   "crates/fetcher": "0.9.45"

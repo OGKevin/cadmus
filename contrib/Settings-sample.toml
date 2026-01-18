@@ -155,7 +155,7 @@ inverted = 2
 [import]
 # Start the import process when the device is unplugged from a computer.
 unshare-trigger = true
-# Start the import process when *Plato* starts.
+# Start the import process when *Cadmus* starts.
 startup-trigger = true
 # When a document changes, re-extract its metadata.
 sync-metadata = true

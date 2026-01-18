@@ -1,15 +1,15 @@
 [package]
-authors = ["Bastien Dejean <nihilhill@gmail.com>"]
 name = "fetcher"
 version = "0.9.45"
 edition = "2021"
+authors = ["Cadmus Authors", "Bastien Dejean <nihilhill@gmail.com> (original Plato author)"]
 
 [[bin]]
 name = "article_fetcher"
 path = "src/main.rs"
 
 [dependencies]
-plato-core = { path = "../core" }
+cadmus-core = { path = "../core" }
 signal-hook = "0.4.1"
 
 [dependencies.reqwest]

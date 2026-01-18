@@ -1,8 +1,8 @@
-use plato_core::anyhow::{format_err, Context, Error};
-use plato_core::chrono::{DateTime, Duration, Local, Utc};
-use plato_core::helpers::{decode_entities, load_json, load_toml, save_json};
-use plato_core::serde::{Deserialize, Serialize};
-use plato_core::serde_json::{self, json, Value as JsonValue};
+use cadmus_core::anyhow::{format_err, Context, Error};
+use cadmus_core::chrono::{DateTime, Duration, Local, Utc};
+use cadmus_core::helpers::{decode_entities, load_json, load_toml, save_json};
+use cadmus_core::serde::{Deserialize, Serialize};
+use cadmus_core::serde_json::{self, json, Value as JsonValue};
 use reqwest::blocking::Client;
 use std::env;
 use std::fs::{self, File};
@@ -18,7 +18,7 @@ const URLS_PATH: &str = "urls.txt";
 const DATE_FORMAT: &str = "%FT%T%z";
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
-#[serde(crate = "plato_core::serde")]
+#[serde(crate = "cadmus_core::serde")]
 #[serde(default, rename_all = "kebab-case")]
 struct Settings {
     base_url: String,
@@ -32,7 +32,7 @@ struct Settings {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(crate = "plato_core::serde")]
+#[serde(crate = "cadmus_core::serde")]
 #[serde(default, rename_all = "camelCase")]
 struct Session {
     since: i64,
@@ -43,7 +43,7 @@ struct Session {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(crate = "plato_core::serde")]
+#[serde(crate = "cadmus_core::serde")]
 #[serde(default, rename_all = "camelCase")]
 struct Token {
     data: String,

@@ -1,45 +1,45 @@
-use plato_core::anyhow::{format_err, Context as ResultExt, Error};
-use plato_core::battery::{Battery, KoboBattery};
-use plato_core::chrono::Local;
-use plato_core::context::Context;
-use plato_core::device::{FrontlightKind, Orientation, CURRENT_DEVICE};
-use plato_core::document::sys_info_as_html;
-use plato_core::font::Fonts;
-use plato_core::framebuffer::{Framebuffer, KoboFramebuffer1, KoboFramebuffer2, UpdateMode};
-use plato_core::frontlight::{
+use cadmus_core::anyhow::{format_err, Context as ResultExt, Error};
+use cadmus_core::battery::{Battery, KoboBattery};
+use cadmus_core::chrono::Local;
+use cadmus_core::context::Context;
+use cadmus_core::device::{FrontlightKind, Orientation, CURRENT_DEVICE};
+use cadmus_core::document::sys_info_as_html;
+use cadmus_core::font::Fonts;
+use cadmus_core::framebuffer::{Framebuffer, KoboFramebuffer1, KoboFramebuffer2, UpdateMode};
+use cadmus_core::frontlight::{
     Frontlight, NaturalFrontlight, PremixedFrontlight, StandardFrontlight,
 };
-use plato_core::geom::{DiagDir, Rectangle, Region};
-use plato_core::gesture::{gesture_events, GestureEvent};
-use plato_core::helpers::{load_toml, save_toml};
-use plato_core::input::{
+use cadmus_core::geom::{DiagDir, Rectangle, Region};
+use cadmus_core::gesture::{gesture_events, GestureEvent};
+use cadmus_core::helpers::{load_toml, save_toml};
+use cadmus_core::input::{
     button_scheme_event, device_events, display_rotate_event, raw_events, usb_events,
 };
-use plato_core::input::{
+use cadmus_core::input::{
     ButtonCode, ButtonStatus, DeviceEvent, PowerSource, VAL_PRESS, VAL_RELEASE,
 };
-use plato_core::library::Library;
-use plato_core::lightsensor::{KoboLightSensor, LightSensor};
-use plato_core::rtc::Rtc;
-use plato_core::settings::{ButtonScheme, IntermKind, RotationLock, Settings, SETTINGS_PATH};
-use plato_core::view::calculator::Calculator;
-use plato_core::view::common::{
+use cadmus_core::library::Library;
+use cadmus_core::lightsensor::{KoboLightSensor, LightSensor};
+use cadmus_core::rtc::Rtc;
+use cadmus_core::settings::{ButtonScheme, IntermKind, RotationLock, Settings, SETTINGS_PATH};
+use cadmus_core::view::calculator::Calculator;
+use cadmus_core::view::common::{
     locate, locate_by_id, overlapping_rectangle, transfer_notifications,
 };
-use plato_core::view::common::{toggle_input_history_menu, toggle_keyboard_layout_menu};
-use plato_core::view::dialog::Dialog;
-use plato_core::view::dictionary::Dictionary as DictionaryApp;
-use plato_core::view::frontlight::FrontlightWindow;
-use plato_core::view::home::Home;
-use plato_core::view::intermission::Intermission;
-use plato_core::view::menu::{Menu, MenuKind};
-use plato_core::view::notification::Notification;
-use plato_core::view::reader::Reader;
-use plato_core::view::rotation_values::RotationValues;
-use plato_core::view::sketch::Sketch;
-use plato_core::view::touch_events::TouchEvents;
-use plato_core::view::{handle_event, process_render_queue, wait_for_all};
-use plato_core::view::{
+use cadmus_core::view::common::{toggle_input_history_menu, toggle_keyboard_layout_menu};
+use cadmus_core::view::dialog::Dialog;
+use cadmus_core::view::dictionary::Dictionary as DictionaryApp;
+use cadmus_core::view::frontlight::FrontlightWindow;
+use cadmus_core::view::home::Home;
+use cadmus_core::view::intermission::Intermission;
+use cadmus_core::view::menu::{Menu, MenuKind};
+use cadmus_core::view::notification::Notification;
+use cadmus_core::view::reader::Reader;
+use cadmus_core::view::rotation_values::RotationValues;
+use cadmus_core::view::sketch::Sketch;
+use cadmus_core::view::touch_events::TouchEvents;
+use cadmus_core::view::{handle_event, process_render_queue, wait_for_all};
+use cadmus_core::view::{
     AppCmd, EntryId, EntryKind, Event, RenderData, RenderQueue, UpdateData, View, ViewId,
 };
 use std::collections::VecDeque;
@@ -51,7 +51,7 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
 use std::time::{Duration, Instant};
 
-pub const APP_NAME: &str = "Plato";
+pub const APP_NAME: &str = "Cadmus";
 const FB_DEVICE: &str = "/dev/fb0";
 const RTC_DEVICE: &str = "/dev/rtc0";
 const TOUCH_INPUTS: [&str; 5] = [
@@ -806,7 +806,7 @@ pub fn run() -> Result<(), Error> {
                     &mut tasks,
                 );
                 if context.settings.auto_power_off > 0.0 {
-                    let dur = plato_core::chrono::Duration::seconds(
+                    let dur = cadmus_core::chrono::Duration::seconds(
                         (86_400.0 * context.settings.auto_power_off) as i64,
                     );
                     if let Some(fired) = context.rtc.as_ref().and_then(|rtc| {
@@ -1009,7 +1009,7 @@ pub fn run() -> Result<(), Error> {
                 let dialog = Dialog::new(
                     ViewId::AboutDialog,
                     None,
-                    format!("Plato {}", env!("GIT_VERSION")),
+                    format!("Cadmus {}", env!("GIT_VERSION")),
                     &mut context,
                 );
                 rq.add(RenderData::new(

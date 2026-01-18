@@ -122,7 +122,7 @@ jobs:
         run: |
           # Raw dist folder
           cd dist
-          tar czf ../plato-kobo.tar.gz .
+          tar czf ../cadmus-kobo.tar.gz .
           cd ..
           
           # KoboRoot without NickelMenu
@@ -138,7 +138,7 @@ jobs:
         uses: actions/attest-build-provenance@v3
         with:
           subject-path: |
-            dist/plato
+            dist/cadmus
             dist/*.sh
             dist/scripts/*
             dist/libs/*.so*
@@ -151,7 +151,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release upload ${{ needs.release-please.outputs.tag_name }} \
-            plato-kobo.tar.gz \
+            cadmus-kobo.tar.gz \
             KoboRoot.tgz \
             KoboRoot-nm.tgz \
             --repo ${{ github.repository }}
