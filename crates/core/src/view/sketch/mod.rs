@@ -373,7 +373,7 @@ impl View for Sketch {
             Event::Select(EntryId::Load(ref name)) => {
                 if let Err(e) = self.load(name) {
                     let msg = format!("Couldn't load sketch: {}).", e);
-                    let notif = Notification::new(msg, hub, rq, context);
+                    let notif = Notification::new(None, msg, false, hub, rq, context);
                     self.children.push(Box::new(notif) as Box<dyn View>);
                 } else {
                     rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
@@ -402,7 +402,7 @@ impl View for Sketch {
                     }
                 };
                 if let Some(msg) = msg.take() {
-                    let notif = Notification::new(msg, hub, rq, context);
+                    let notif = Notification::new(None, msg, false, hub, rq, context);
                     self.children.push(Box::new(notif) as Box<dyn View>);
                 }
                 true

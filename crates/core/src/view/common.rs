@@ -67,6 +67,35 @@ pub fn transfer_notifications(
     }
 }
 
+/// Recursively searches the view tree for a notification with the given ViewId.
+///
+/// # Arguments
+///
+/// * `view` - The root view to start searching from
+/// * `id` - The ViewId to search for
+///
+/// # Returns
+///
+/// A mutable reference to the Notification if found, or `None` if not found.
+///
+/// # Note
+///
+/// This function performs a depth-first search through the entire view hierarchy.
+/// It will find the first notification that matches the given id.
+pub fn find_notification_mut(view: &mut dyn View, id: ViewId) -> Option<&mut Notification> {
+    if view.is::<Notification>() && view.view_id() == Some(id) {
+        return view.downcast_mut::<Notification>();
+    }
+
+    for child in view.children_mut() {
+        if let Some(notif) = find_notification_mut(child.as_mut(), id) {
+            return Some(notif);
+        }
+    }
+
+    None
+}
+
 pub fn toggle_main_menu(
     view: &mut dyn View,
     rect: Rectangle,

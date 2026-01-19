@@ -10,7 +10,7 @@ use crate::font::{font_from_style, Fonts, NORMAL_STYLE};
 use crate::framebuffer::Framebuffer;
 use crate::geom::Rectangle;
 use crate::gesture::GestureEvent;
-use crate::ota::OtaClient;
+use crate::ota::{OtaClient, OtaProgress};
 use crate::unit::scale_by_dpi;
 use crate::view::filler::Filler;
 use crate::view::BIG_BAR_HEIGHT;
@@ -43,7 +43,9 @@ pub fn show_ota_view(
 ) -> bool {
     if !context.settings.wifi {
         let notif = Notification::new(
+            None,
             "WiFi must be enabled to check for updates.".to_string(),
+            false,
             hub,
             rq,
             context,
@@ -249,7 +251,28 @@ impl OtaView {
                 }
             };
 
-            let download_result = client.download_pr_artifact(pr_number, |_progress| {});
+            let notify_id = ViewId::MessageNotif(ID_FEEDER.next());
+            hub2.send(Event::PinnedNotify(
+                notify_id,
+                "Starting update download".to_string(),
+            ))
+            .ok();
+            hub2.send(Event::UpdateNotificationProgress(notify_id, 0))
+                .ok();
+
+            let download_result =
+                client.download_pr_artifact(pr_number, |progress| match progress {
+                    OtaProgress::DownloadingArtifact { downloaded, total } => {
+                        let progress = (downloaded as f32 / total as f32) * 100.0;
+                        let msg = format!("Downloading update: {}%", progress as u8);
+                        hub2.send(Event::UpdateNotification(notify_id, msg)).ok();
+                        hub2.send(Event::UpdateNotificationProgress(notify_id, progress as u8))
+                            .ok();
+                    }
+                    _ => { /* Ignore other progress updates for now */ }
+                });
+
+            hub2.send(Event::Close(notify_id)).ok();
 
             match download_result {
                 Ok(zip_path) => {

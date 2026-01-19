@@ -24,7 +24,7 @@ use cadmus_core::rtc::Rtc;
 use cadmus_core::settings::{ButtonScheme, IntermKind, RotationLock, Settings, SETTINGS_PATH};
 use cadmus_core::view::calculator::Calculator;
 use cadmus_core::view::common::{
-    locate, locate_by_id, overlapping_rectangle, transfer_notifications,
+    find_notification_mut, locate, locate_by_id, overlapping_rectangle, transfer_notifications,
 };
 use cadmus_core::view::common::{toggle_input_history_menu, toggle_keyboard_layout_menu};
 use cadmus_core::view::dialog::Dialog;
@@ -534,7 +534,9 @@ pub fn run() -> Result<(), Error> {
                         .map(|o| String::from_utf8_lossy(&o.stdout).trim_end().to_string())
                         .unwrap_or_default();
                     let notif = Notification::new(
+                        None,
                         format!("Network is up ({}, {}).", ip, essid),
+                        false,
                         &tx,
                         &mut rq,
                         &mut context,
@@ -743,7 +745,9 @@ pub fn run() -> Result<(), Error> {
                         break;
                     } else if v < context.settings.battery.warn {
                         let notif = Notification::new(
+                            None,
                             "The battery capacity is getting low.".to_string(),
+                            false,
                             &tx,
                             &mut rq,
                             &mut context,
@@ -1251,7 +1255,7 @@ pub fn run() -> Result<(), Error> {
                     Err(e) => format!("{}", e),
                     Ok(_) => format!("Saved {}.", name),
                 };
-                let notif = Notification::new(msg, &tx, &mut rq, &mut context);
+                let notif = Notification::new(None, msg, false, &tx, &mut rq, &mut context);
                 view.children_mut().push(Box::new(notif) as Box<dyn View>);
             }
             Event::CheckFetcher(..)
@@ -1272,8 +1276,31 @@ pub fn run() -> Result<(), Error> {
                 }
             }
             Event::Notify(msg) => {
-                let notif = Notification::new(msg, &tx, &mut rq, &mut context);
+                let notif = Notification::new(None, msg, false, &tx, &mut rq, &mut context);
                 view.children_mut().push(Box::new(notif) as Box<dyn View>);
+            }
+            Event::PinnedNotify(id, msg) => {
+                let notif = Notification::new(Some(id), msg, true, &tx, &mut rq, &mut context);
+                view.children_mut().push(Box::new(notif) as Box<dyn View>);
+            }
+            Event::UpdateNotification(id, text) => {
+                if let Some(notif) = find_notification_mut(view.as_mut(), id) {
+                    notif.update_text(text, &mut rq);
+                } else {
+                    view.children_mut().push(Box::new(Notification::new(
+                        Some(id),
+                        text,
+                        true,
+                        &tx,
+                        &mut rq,
+                        &mut context,
+                    )) as Box<dyn View>);
+                }
+            }
+            Event::UpdateNotificationProgress(id, progress) => {
+                if let Some(notif) = find_notification_mut(view.as_mut(), id) {
+                    notif.update_progress(progress, &mut rq);
+                }
             }
             Event::Select(EntryId::Restart) => {
                 exit_status = ExitStatus::Restart;

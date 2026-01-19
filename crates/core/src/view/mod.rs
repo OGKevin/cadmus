@@ -365,6 +365,12 @@ pub enum Event {
     RefreshBookPreview(PathBuf, Option<PathBuf>),
     Invalid(PathBuf),
     Notify(String),
+    /// Create a pinned notification with caller-provided ID that persists until dismissed.
+    PinnedNotify(ViewId, String),
+    /// Update the text of an existing notification. Panics if notification not found.
+    UpdateNotification(ViewId, String),
+    /// Update the progress percentage (0-100) of an existing notification. Panics if notification not found.
+    UpdateNotificationProgress(ViewId, u8),
     Page(CycleDir),
     ResultsPage(CycleDir),
     GoTo(usize),

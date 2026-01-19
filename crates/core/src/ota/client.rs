@@ -88,7 +88,7 @@ pub enum OtaProgress {
     /// Searching for the associated GitHub Actions workflow run
     FindingWorkflow,
     /// Actively downloading the artifact with optional progress tracking
-    DownloadingArtifact { downloaded: u64, total: Option<u64> },
+    DownloadingArtifact { downloaded: u64, total: u64 },
     /// Download completed successfully, artifact saved to disk
     Complete { path: PathBuf },
 }
@@ -282,7 +282,7 @@ impl OtaClient {
 
         progress_callback(OtaProgress::DownloadingArtifact {
             downloaded: 0,
-            total: Some(artifact.size_in_bytes),
+            total: artifact.size_in_bytes,
         });
 
         let download_url = format!(
@@ -320,7 +320,7 @@ impl OtaClient {
 
             progress_callback(OtaProgress::DownloadingArtifact {
                 downloaded,
-                total: Some(total_size),
+                total: total_size,
             });
 
             println!(

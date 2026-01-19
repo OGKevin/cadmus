@@ -19,7 +19,7 @@ use cadmus_core::pt;
 use cadmus_core::settings::{IntermKind, Settings, SETTINGS_PATH};
 use cadmus_core::view::calculator::Calculator;
 use cadmus_core::view::common::{
-    locate, locate_by_id, overlapping_rectangle, transfer_notifications,
+    find_notification_mut, locate, locate_by_id, overlapping_rectangle, transfer_notifications,
 };
 use cadmus_core::view::common::{toggle_input_history_menu, toggle_keyboard_layout_menu};
 use cadmus_core::view::dialog::Dialog;
@@ -717,12 +717,36 @@ fn main() -> Result<(), Error> {
                         Err(e) => format!("Couldn't take screenshot: {}).", e),
                         Ok(_) => format!("Saved {}.", name),
                     };
-                    let notif = Notification::new(msg, &tx, &mut rq, &mut context);
+                    let notif = Notification::new(None, msg, false, &tx, &mut rq, &mut context);
                     view.children_mut().push(Box::new(notif) as Box<dyn View>);
                 }
                 Event::Notify(msg) => {
-                    let notif = Notification::new(msg, &tx, &mut rq, &mut context);
+                    let notif = Notification::new(None, msg, false, &tx, &mut rq, &mut context);
                     view.children_mut().push(Box::new(notif) as Box<dyn View>);
+                }
+                Event::PinnedNotify(id, msg) => {
+                    let notif = Notification::new(Some(id), msg, true, &tx, &mut rq, &mut context);
+                    view.children_mut().push(Box::new(notif) as Box<dyn View>);
+                }
+                Event::UpdateNotification(id, text) => {
+                    if let Some(notif) = find_notification_mut(view.as_mut(), id) {
+                        notif.update_text(text, &mut rq);
+                    } else {
+                        panic!(
+                            "Attempted to update non-existent notification with id: {:?}",
+                            id
+                        );
+                    }
+                }
+                Event::UpdateNotificationProgress(id, progress) => {
+                    if let Some(notif) = find_notification_mut(view.as_mut(), id) {
+                        notif.update_progress(progress, &mut rq);
+                    } else {
+                        panic!(
+                            "Attempted to update progress of non-existent notification with id: {:?}",
+                            id
+                        );
+                    }
                 }
                 Event::Device(DeviceEvent::NetUp)
                 | Event::CheckFetcher(..)
