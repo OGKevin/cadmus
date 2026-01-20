@@ -67,4 +67,4 @@ cd mupdf_wrapper
 ./build-kobo.sh
 cd ..
 
-cargo build --release --target=arm-unknown-linux-gnueabihf -p cadmus
+cargo build --release --target=arm-unknown-linux-gnueabihf -p cadmus ${CARGO_FEATURES:+--features $CARGO_FEATURES}

@@ -131,20 +131,24 @@ jobs:
   build-kobo:
     runs-on: ubuntu-latest
 
-    permissions:
+    permissions: &build-permissions
       id-token: write
       contents: read
       attestations: write
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 20
+          fetch-tags: true
 
       - uses: dtolnay/rust-toolchain@stable
         id: rust-toolchain
         with:
           targets: arm-unknown-linux-gnueabihf
 
-      - name: Cache Cargo registry
+      - &cache-cargo
+        name: Cache Cargo registry
         uses: actions/cache@v5
         with:
           path: |
@@ -155,14 +159,16 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-${{ steps.rust-toolchain.outputs.cachekey }}-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Cache Linaro toolchain
+      - &cache-linaro
+        name: Cache Linaro toolchain
         id: cache-linaro
         uses: actions/cache@v5
         with:
           path: ~/linaro-toolchain
           key: linaro-gcc-4.9.4-2017.01
 
-      - name: Download Linaro toolchain
+      - &download-linaro
+        name: Download Linaro toolchain
         if: steps.cache-linaro.outputs.cache-hit != 'true'
         run: |
           mkdir -p ~/linaro-toolchain
@@ -171,7 +177,8 @@ jobs:
           tar xf gcc-linaro-4.9.4-2017.01-x86_64_arm-linux-gnueabihf.tar.xz --strip-components=1
           rm gcc-linaro-4.9.4-2017.01-x86_64_arm-linux-gnueabihf.tar.xz
 
-      - name: Cache thirdparty libraries
+      - &cache-thirdparty
+        name: Cache thirdparty libraries
         uses: actions/cache@v5
         with:
           path: |
@@ -180,18 +187,21 @@ jobs:
             mupdf_wrapper/
           key: ${{ runner.os }}-thirdparty-libs-kobo-${{ hashFiles('thirdparty/download.sh', 'thirdparty/**/build-kobo.sh', 'thirdparty/**/*.patch') }}
 
-      - name: Cache NickelMenu downloads
+      - &cache-nickelmenu
+        name: Cache NickelMenu downloads
         uses: actions/cache@v5
         with:
           path: .cache/
           key: ${{ runner.os }}-nickelmenu-${{ hashFiles('bundle.sh') }}
 
-      - uses: awalsh128/cache-apt-pkgs-action@latest
+      - &install-deps
+        uses: awalsh128/cache-apt-pkgs-action@latest
         with:
           packages: git wget curl pkg-config unzip jq patchelf gcc g++ make cmake meson ninja-build autoconf automake libtool gperf python3 zlib1g-dev libbz2-dev libpng-dev libjpeg-dev libopenjp2-7-dev libjbig2dec0-dev libgumbo-dev libfreetype6-dev libharfbuzz-dev libdjvulibre-dev libsdl2-dev
           version: 1.0
 
-      - name: Setup Linaro toolchain
+      - &setup-linaro
+        name: Setup Linaro toolchain
         run: |
           echo "$HOME/linaro-toolchain/bin" >> $GITHUB_PATH
 
@@ -210,14 +220,17 @@ jobs:
         run: |
           ./build.sh slow
 
-      - name: Create distribution
+      - &create-dist
+        name: Create distribution
         run: ./dist.sh
 
-      - name: Get commit hash
+      - &get-commit
+        name: Get commit hash
         id: commit
         run: echo "short_sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
-      - name: Determine artifact suffix
+      - &determine-suffix
+        name: Determine artifact suffix
         id: artifact
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
@@ -244,7 +257,8 @@ jobs:
           ./bundle.sh
           cp bundle/KoboRoot-nm.tgz release-artifacts/KoboRoot-nm.tgz
 
-      - name: Generate artifact attestation
+      - &generate-attestation
+        name: Generate artifact attestation
         uses: actions/attest-build-provenance@v3
         with:
           subject-path: |
@@ -259,5 +273,75 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: cadmus-kobo-${{ steps.artifact.outputs.suffix }}
+          path: release-artifacts/*
+          retention-days: 7
+
+  build-kobo-test:
+    runs-on: ubuntu-latest
+
+    permissions: *build-permissions
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 20
+          fetch-tags: true
+
+      - uses: dtolnay/rust-toolchain@stable
+        id: rust-toolchain
+        with:
+          targets: arm-unknown-linux-gnueabihf
+      - *cache-cargo
+      - *cache-linaro
+      - *download-linaro
+      - *cache-thirdparty
+      - *cache-nickelmenu
+      - *install-deps
+      - *setup-linaro
+
+      - name: Build for Kobo (test build)
+        env:
+          CC: arm-linux-gnueabihf-gcc
+          CXX: arm-linux-gnueabihf-g++
+          AR: arm-linux-gnueabihf-ar
+          LD: arm-linux-gnueabihf-ld
+          RANLIB: arm-linux-gnueabihf-ranlib
+          STRIP: arm-linux-gnueabihf-strip
+          PKG_CONFIG_ALLOW_CROSS: "1"
+          CARGO_TARGET_ARM_UNKNOWN_LINUX_GNUEABIHF_LINKER: arm-linux-gnueabihf-gcc
+          CC_arm_unknown_linux_gnueabihf: arm-linux-gnueabihf-gcc
+          AR_arm_unknown_linux_gnueabihf: arm-linux-gnueabihf-ar
+          CARGO_FEATURES: test
+        run: |
+          ./build.sh slow
+
+      - *create-dist
+      - *get-commit
+      - *determine-suffix
+
+      - name: Build release artifacts
+        run: |
+          mkdir -p release-artifacts
+
+          # Raw dist folder
+          cd dist
+          tar czf ../release-artifacts/cadmus-kobo-test.tar.gz .
+          cd ..
+
+          # KoboRoot without NickelMenu
+          ./bundle.sh --no-nickel --test
+          cp bundle/KoboRoot-test.tgz release-artifacts/KoboRoot-test.tgz
+
+          # KoboRoot with NickelMenu
+          rm -rf bundle
+          ./bundle.sh --test
+          cp bundle/KoboRoot-nm-test.tgz release-artifacts/KoboRoot-nm-test.tgz
+
+      - *generate-attestation
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: cadmus-kobo-test-${{ steps.artifact.outputs.suffix }}
           path: release-artifacts/*
           retention-days: 7

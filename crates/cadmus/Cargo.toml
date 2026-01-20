@@ -8,5 +8,8 @@ authors = ["Cadmus Authors", "Bastien Dejean <nihilhill@gmail.com> (original Pla
 name = "cadmus"
 path = "src/main.rs"
 
+[features]
+test = []
+
 [dependencies]
 cadmus-core = { path = "../core" }
