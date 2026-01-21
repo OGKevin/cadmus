@@ -45,25 +45,36 @@ impl Dialog {
         let max_button_width = width as i32 / 4;
         let button_height = 4 * x_height;
 
-        let plan = font.plan(&text, Some(max_message_width), None);
+        let text_lines: Vec<&str> = text.lines().collect();
+        let line_count = text_lines.len().max(1);
+        let line_height = font.line_height();
 
-        let dialog_width = plan.width.max(min_message_width) + 3 * padding;
-        let dialog_height = 2 * button_height + 3 * padding;
+        let mut max_line_width = min_message_width;
+        for line in &text_lines {
+            let plan = font.plan(line, Some(max_message_width), None);
+            max_line_width = max_line_width.max(plan.width);
+        }
+
+        let label_height = line_count as i32 * line_height;
+        let dialog_width = max_line_width.max(min_message_width) + 3 * padding;
+        let dialog_height = label_height + button_height + 3 * padding;
 
         let dx = (width as i32 - dialog_width) / 2;
         let dy = (height as i32 - dialog_height) / 2;
         let rect = rect![dx, dy, dx + dialog_width, dy + dialog_height];
 
-        let rect_label = rect![
-            rect.min.x + padding,
-            rect.min.y + padding,
-            rect.max.x - padding,
-            rect.min.y + padding + button_height
-        ];
+        for (i, line) in text_lines.iter().enumerate() {
+            let y_offset = rect.min.y + padding + (i as i32 * line_height);
+            let rect_label = rect![
+                rect.min.x + padding,
+                y_offset,
+                rect.max.x - padding,
+                y_offset + line_height
+            ];
 
-        let label = Label::new(rect_label, text, Align::Center);
-
-        children.push(Box::new(label) as Box<dyn View>);
+            let label = Label::new(rect_label, line.to_string(), Align::Center);
+            children.push(Box::new(label) as Box<dyn View>);
+        }
 
         let plan_cancel = event
             .as_ref()
@@ -185,15 +196,27 @@ impl View for Dialog {
         let dy = (height as i32 - dialog_height) / 2;
         let rect = rect![dx, dy, dx + dialog_width, dy + dialog_height];
 
-        let label_rect = rect![
-            rect.min.x + padding,
-            rect.min.y + padding,
-            rect.max.x - padding,
-            rect.min.y + padding + button_height
-        ];
-        self.children[0].resize(label_rect, hub, rq, context);
+        let font = font_from_style(&mut context.fonts, &NORMAL_STYLE, dpi);
+        let line_height = font.line_height();
 
-        let mut index = 1;
+        let label_count = if self.event.is_some() {
+            self.children.len() - 2
+        } else {
+            self.children.len() - 1
+        };
+
+        for i in 0..label_count {
+            let y_offset = rect.min.y + padding + (i as i32 * line_height);
+            let label_rect = rect![
+                rect.min.x + padding,
+                y_offset,
+                rect.max.x - padding,
+                y_offset + line_height
+            ];
+            self.children[i].resize(label_rect, hub, rq, context);
+        }
+
+        let mut index = label_count;
         if self.event.is_some() {
             let cancel_rect = rect![
                 rect.min.x + padding,

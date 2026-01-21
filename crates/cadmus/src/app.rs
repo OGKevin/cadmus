@@ -380,8 +380,11 @@ pub fn run() -> Result<(), Error> {
     let current_dir = env::current_dir()?;
 
     println!(
-        "{} is running on a Kobo {}.",
-        APP_NAME, CURRENT_DEVICE.model
+        "{} {} {} is running on a Kobo {}.",
+        APP_NAME,
+        env!("GIT_VERSION"),
+        option_env!("PR_INFO").unwrap_or(""),
+        CURRENT_DEVICE.model
     );
     println!(
         "The framebuffer resolution is {} by {}.",
@@ -1013,9 +1016,15 @@ pub fn run() -> Result<(), Error> {
             }
             Event::Select(EntryId::About) => {
                 #[cfg(feature = "test")]
-                let version_text = format!("Cadmus {} (Test)", env!("GIT_VERSION"));
+                let version_text = match option_env!("PR_INFO") {
+                    Some(pr_info) => format!("Cadmus Test {}\n{}", env!("GIT_VERSION"), pr_info),
+                    None => format!("Cadmus {} (Test)", env!("GIT_VERSION")),
+                };
                 #[cfg(not(feature = "test"))]
-                let version_text = format!("Cadmus {}", env!("GIT_VERSION"));
+                let version_text = match option_env!("PR_INFO") {
+                    Some(pr_info) => format!("Cadmus {}\n{}", env!("GIT_VERSION"), pr_info),
+                    None => format!("Cadmus {}", env!("GIT_VERSION")),
+                };
 
                 let dialog = Dialog::new(ViewId::AboutDialog, None, version_text, &mut context);
                 rq.add(RenderData::new(
