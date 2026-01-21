@@ -227,7 +227,7 @@ jobs:
       - &get-commit
         name: Get commit hash
         id: commit
-        run: echo "short_sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+        run: echo "short_sha=$(echo '${{ github.event.pull_request.head.sha || github.sha }}' | cut -c1-7)" >> $GITHUB_OUTPUT
 
       - &determine-suffix
         name: Determine artifact suffix
