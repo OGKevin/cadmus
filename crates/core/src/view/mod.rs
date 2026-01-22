@@ -32,6 +32,8 @@ pub mod menu_entry;
 pub mod named_input;
 pub mod notification;
 pub mod ota;
+
+pub use self::notification::NotificationEvent;
 pub mod page_label;
 pub mod preset;
 pub mod presets_list;
@@ -364,13 +366,9 @@ pub enum Event {
     Update(UpdateMode),
     RefreshBookPreview(PathBuf, Option<PathBuf>),
     Invalid(PathBuf),
+    Notification(NotificationEvent),
+    #[deprecated(note = "Use Event::Notification(NotificationEvent::Show) instead")]
     Notify(String),
-    /// Create a pinned notification with caller-provided ID that persists until dismissed.
-    PinnedNotify(ViewId, String),
-    /// Update the text of an existing notification. Panics if notification not found.
-    UpdateNotification(ViewId, String),
-    /// Update the progress percentage (0-100) of an existing notification. Panics if notification not found.
-    UpdateNotificationProgress(ViewId, u8),
     Page(CycleDir),
     ResultsPage(CycleDir),
     GoTo(usize),

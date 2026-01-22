@@ -42,7 +42,8 @@ use cadmus_core::view::sketch::Sketch;
 use cadmus_core::view::touch_events::TouchEvents;
 use cadmus_core::view::{handle_event, process_render_queue, wait_for_all};
 use cadmus_core::view::{
-    AppCmd, EntryId, EntryKind, Event, RenderData, RenderQueue, UpdateData, View, ViewId,
+    AppCmd, EntryId, EntryKind, Event, NotificationEvent, RenderData, RenderQueue, UpdateData,
+    View, ViewId,
 };
 use std::collections::VecDeque;
 use std::env;
@@ -1285,32 +1286,38 @@ pub fn run() -> Result<(), Error> {
                     );
                 }
             }
+            Event::Notification(notif_event) => match notif_event {
+                NotificationEvent::Show(msg) => {
+                    let notif = Notification::new(None, msg, false, &tx, &mut rq, &mut context);
+                    view.children_mut().push(Box::new(notif) as Box<dyn View>);
+                }
+                NotificationEvent::ShowPinned(id, msg) => {
+                    let notif = Notification::new(Some(id), msg, true, &tx, &mut rq, &mut context);
+                    view.children_mut().push(Box::new(notif) as Box<dyn View>);
+                }
+                NotificationEvent::UpdateText(id, text) => {
+                    if let Some(notif) = find_notification_mut(view.as_mut(), id) {
+                        notif.update_text(text, &mut rq);
+                    } else {
+                        view.children_mut().push(Box::new(Notification::new(
+                            Some(id),
+                            text,
+                            true,
+                            &tx,
+                            &mut rq,
+                            &mut context,
+                        )) as Box<dyn View>);
+                    }
+                }
+                NotificationEvent::UpdateProgress(id, progress) => {
+                    if let Some(notif) = find_notification_mut(view.as_mut(), id) {
+                        notif.update_progress(progress, &mut rq);
+                    }
+                }
+            },
             Event::Notify(msg) => {
                 let notif = Notification::new(None, msg, false, &tx, &mut rq, &mut context);
                 view.children_mut().push(Box::new(notif) as Box<dyn View>);
-            }
-            Event::PinnedNotify(id, msg) => {
-                let notif = Notification::new(Some(id), msg, true, &tx, &mut rq, &mut context);
-                view.children_mut().push(Box::new(notif) as Box<dyn View>);
-            }
-            Event::UpdateNotification(id, text) => {
-                if let Some(notif) = find_notification_mut(view.as_mut(), id) {
-                    notif.update_text(text, &mut rq);
-                } else {
-                    view.children_mut().push(Box::new(Notification::new(
-                        Some(id),
-                        text,
-                        true,
-                        &tx,
-                        &mut rq,
-                        &mut context,
-                    )) as Box<dyn View>);
-                }
-            }
-            Event::UpdateNotificationProgress(id, progress) => {
-                if let Some(notif) = find_notification_mut(view.as_mut(), id) {
-                    notif.update_progress(progress, &mut rq);
-                }
             }
             Event::Select(EntryId::Restart) => {
                 exit_status = ExitStatus::Restart;

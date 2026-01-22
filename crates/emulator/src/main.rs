@@ -36,7 +36,7 @@ use cadmus_core::view::touch_events::TouchEvents;
 use cadmus_core::view::{
     handle_event, process_render_queue, wait_for_all, RenderData, RenderQueue,
 };
-use cadmus_core::view::{AppCmd, EntryId, EntryKind, Event, View, ViewId};
+use cadmus_core::view::{AppCmd, EntryId, EntryKind, Event, NotificationEvent, View, ViewId};
 use sdl2::event::Event as SdlEvent;
 use sdl2::keyboard::{Keycode, Mod, Scancode};
 use sdl2::mouse::MouseState;
@@ -720,33 +720,40 @@ fn main() -> Result<(), Error> {
                     let notif = Notification::new(None, msg, false, &tx, &mut rq, &mut context);
                     view.children_mut().push(Box::new(notif) as Box<dyn View>);
                 }
+                Event::Notification(notif_event) => match notif_event {
+                    NotificationEvent::Show(msg) => {
+                        let notif = Notification::new(None, msg, false, &tx, &mut rq, &mut context);
+                        view.children_mut().push(Box::new(notif) as Box<dyn View>);
+                    }
+                    NotificationEvent::ShowPinned(id, msg) => {
+                        let notif =
+                            Notification::new(Some(id), msg, true, &tx, &mut rq, &mut context);
+                        view.children_mut().push(Box::new(notif) as Box<dyn View>);
+                    }
+                    NotificationEvent::UpdateText(id, text) => {
+                        if let Some(notif) = find_notification_mut(view.as_mut(), id) {
+                            notif.update_text(text, &mut rq);
+                        } else {
+                            panic!(
+                                "Attempted to update non-existent notification with id: {:?}",
+                                id
+                            );
+                        }
+                    }
+                    NotificationEvent::UpdateProgress(id, progress) => {
+                        if let Some(notif) = find_notification_mut(view.as_mut(), id) {
+                            notif.update_progress(progress, &mut rq);
+                        } else {
+                            panic!(
+                                "Attempted to update progress of non-existent notification with id: {:?}",
+                                id
+                            );
+                        }
+                    }
+                },
                 Event::Notify(msg) => {
                     let notif = Notification::new(None, msg, false, &tx, &mut rq, &mut context);
                     view.children_mut().push(Box::new(notif) as Box<dyn View>);
-                }
-                Event::PinnedNotify(id, msg) => {
-                    let notif = Notification::new(Some(id), msg, true, &tx, &mut rq, &mut context);
-                    view.children_mut().push(Box::new(notif) as Box<dyn View>);
-                }
-                Event::UpdateNotification(id, text) => {
-                    if let Some(notif) = find_notification_mut(view.as_mut(), id) {
-                        notif.update_text(text, &mut rq);
-                    } else {
-                        panic!(
-                            "Attempted to update non-existent notification with id: {:?}",
-                            id
-                        );
-                    }
-                }
-                Event::UpdateNotificationProgress(id, progress) => {
-                    if let Some(notif) = find_notification_mut(view.as_mut(), id) {
-                        notif.update_progress(progress, &mut rq);
-                    } else {
-                        panic!(
-                            "Attempted to update progress of non-existent notification with id: {:?}",
-                            id
-                        );
-                    }
                 }
                 Event::Device(DeviceEvent::NetUp)
                 | Event::CheckFetcher(..)

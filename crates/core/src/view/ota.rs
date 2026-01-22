@@ -2,7 +2,7 @@ use super::input_field::InputField;
 use super::label::Label;
 use super::notification::Notification;
 use super::toggleable_keyboard::ToggleableKeyboard;
-use super::{Align, Bus, Event, Hub, Id, RenderQueue, View, ViewId, ID_FEEDER};
+use super::{Align, Bus, Event, Hub, Id, NotificationEvent, RenderQueue, View, ViewId, ID_FEEDER};
 use crate::color::WHITE;
 use crate::context::Context;
 use crate::device::CURRENT_DEVICE;
@@ -41,6 +41,9 @@ pub fn show_ota_view(
     rq: &mut RenderQueue,
     context: &mut Context,
 ) -> bool {
+    // TODO(ogkevin): This only checks if WiFi is enabled in settings, not if there's an actual
+    // connection or internet access. Should verify actual network connectivity.
+    // See: https://github.com/OGKevin/cadmus/issues/69
     if !context.settings.wifi {
         let notif = Notification::new(
             None,
@@ -193,16 +196,18 @@ impl OtaView {
     /// * `hub` - Event hub for sending notifications
     fn handle_pr_submission(&mut self, text: &str, hub: &Hub) {
         if let Ok(pr_number) = text.trim().parse::<u32>() {
-            hub.send(Event::Notify(format!(
+            hub.send(Event::Notification(NotificationEvent::Show(format!(
                 "Downloading PR #{} build...",
                 pr_number
-            )))
+            ))))
             .ok();
             self.start_download(pr_number, hub);
             hub.send(Event::Close(self.view_id)).ok();
         } else {
-            hub.send(Event::Notify("Invalid PR number".to_string()))
-                .ok();
+            hub.send(Event::Notification(NotificationEvent::Show(
+                "Invalid PR number".to_string(),
+            )))
+            .ok();
         }
     }
 
@@ -246,31 +251,38 @@ impl OtaView {
                 Err(e) => {
                     eprintln!("[OTA] Failed to create github client {:?}", e);
                     let error_msg = format!("Failed to create client: {}", e);
-                    hub2.send(Event::Notify(error_msg)).ok();
+                    hub2.send(Event::Notification(NotificationEvent::Show(error_msg)))
+                        .ok();
                     return;
                 }
             };
 
             let notify_id = ViewId::MessageNotif(ID_FEEDER.next());
-            hub2.send(Event::PinnedNotify(
+            hub2.send(Event::Notification(NotificationEvent::ShowPinned(
                 notify_id,
                 "Starting update download".to_string(),
-            ))
+            )))
             .ok();
-            hub2.send(Event::UpdateNotificationProgress(notify_id, 0))
-                .ok();
+            hub2.send(Event::Notification(NotificationEvent::UpdateProgress(
+                notify_id, 0,
+            )))
+            .ok();
 
-            let download_result =
-                client.download_pr_artifact(pr_number, |progress| match progress {
-                    OtaProgress::DownloadingArtifact { downloaded, total } => {
-                        let progress = (downloaded as f32 / total as f32) * 100.0;
-                        let msg = format!("Downloading update: {}%", progress as u8);
-                        hub2.send(Event::UpdateNotification(notify_id, msg)).ok();
-                        hub2.send(Event::UpdateNotificationProgress(notify_id, progress as u8))
-                            .ok();
-                    }
-                    _ => { /* Ignore other progress updates for now */ }
-                });
+            let download_result = client.download_pr_artifact(pr_number, |ota_progress| {
+                if let OtaProgress::DownloadingArtifact { downloaded, total } = ota_progress {
+                    let progress = (downloaded as f32 / total as f32) * 100.0;
+                    let msg = format!("Downloading update: {}%", progress as u8);
+                    hub2.send(Event::Notification(NotificationEvent::UpdateText(
+                        notify_id, msg,
+                    )))
+                    .ok();
+                    hub2.send(Event::Notification(NotificationEvent::UpdateProgress(
+                        notify_id,
+                        progress as u8,
+                    )))
+                    .ok();
+                }
+            });
 
             hub2.send(Event::Close(notify_id)).ok();
 
@@ -280,22 +292,24 @@ impl OtaView {
 
                     match client.extract_and_deploy(zip_path) {
                         Ok(_) => {
-                            hub2.send(Event::Notify(
+                            hub2.send(Event::Notification(NotificationEvent::Show(
                                 "Update installed! Reboot to apply.".to_string(),
-                            ))
+                            )))
                             .ok();
                         }
                         Err(e) => {
                             println!("[OTA] Deployment error: {:?}", e);
                             let error_msg = format!("Deployment failed: {}", e);
-                            hub2.send(Event::Notify(error_msg)).ok();
+                            hub2.send(Event::Notification(NotificationEvent::Show(error_msg)))
+                                .ok();
                         }
                     }
                 }
                 Err(e) => {
                     println!("[OTA] Download error: {:?}", e);
                     let error_msg = format!("Download failed: {}", e);
-                    hub2.send(Event::Notify(error_msg)).ok();
+                    hub2.send(Event::Notification(NotificationEvent::Show(error_msg)))
+                        .ok();
                 }
             }
         });

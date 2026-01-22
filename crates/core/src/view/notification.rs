@@ -6,30 +6,30 @@
 //!
 //! ```
 //! use cadmus_core::view::notification::Notification;
-//! use cadmus_core::view::Event;
+//! use cadmus_core::view::{Event, NotificationEvent};
 //!
 //! let (tx, rx) = std::sync::mpsc::channel();
 //! // Send via event for standard notifications
-//! tx.send(Event::Notify("File saved successfully.".to_string())).ok();
+//! tx.send(Event::Notification(NotificationEvent::Show("File saved successfully.".to_string()))).ok();
 //! ```
 //!
 //! ## Pinned notification with progress bar
 //!
 //! ```
-//! use cadmus_core::view::{Event, ViewId, ID_FEEDER};
+//! use cadmus_core::view::{Event, NotificationEvent, ViewId, ID_FEEDER};
 //! let (tx, rx) = std::sync::mpsc::channel();
 //! // Create a pinned notification with a custom ID
 //! let download_id = ViewId::MessageNotif(ID_FEEDER.next());
-//! tx.send(Event::PinnedNotify(download_id, "Download: 0%".to_string())).ok();
+//! tx.send(Event::Notification(NotificationEvent::ShowPinned(download_id, "Download: 0%".to_string()))).ok();
 //!
 //! // Update the notification text as progress changes
-//! tx.send(Event::UpdateNotification(
+//! tx.send(Event::Notification(NotificationEvent::UpdateText(
 //!     download_id,
 //!     "Download: 50%".to_string()
-//! )).ok();
+//! ))).ok();
 //!
 //! // Update the progress bar (0-100)
-//! tx.send(Event::UpdateNotificationProgress(download_id, 50)).ok();
+//! tx.send(Event::Notification(NotificationEvent::UpdateProgress(download_id, 50))).ok();
 //!
 //! // Dismiss when done
 //! tx.send(Event::Close(download_id)).ok();
@@ -50,6 +50,19 @@ use std::thread;
 use std::time::Duration;
 
 const NOTIFICATION_CLOSE_DELAY: Duration = Duration::from_secs(4);
+
+/// Events related to notifications.
+#[derive(Debug, Clone)]
+pub enum NotificationEvent {
+    /// Show a standard auto-dismissing notification.
+    Show(String),
+    /// Show a pinned notification that persists until dismissed.
+    ShowPinned(ViewId, String),
+    /// Update the text of a pinned notification.
+    UpdateText(ViewId, String),
+    /// Update the progress of a pinned notification (0-100).
+    UpdateProgress(ViewId, u8),
+}
 
 /// A notification view that displays temporary or persistent messages.
 ///
