@@ -3,12 +3,13 @@
 # Bundle Cadmus for Kobo devices (with or without NickelMenu)
 #
 # Usage:
-#   bundle.sh [--skip-download] [--no-nickel]
+#   bundle.sh [--skip-download] [--no-nickel] [--test]
 #
 # Examples:
 #   bundle.sh                          Auto-download NickelMenu and bundle
 #   bundle.sh --skip-download          Use cached NickelMenu archive
 #   bundle.sh --no-nickel              Create KoboRoot without NickelMenu
+#   bundle.sh --test                   Create test build bundle
 #   NICKEL_VERSION=0.7.0 bundle.sh     Download NickelMenu v0.7.0
 #
 # Environment Variables:
@@ -126,25 +127,44 @@ extract_and_merge() {
 	mv mnt/onboard/.adds .
 	rm -Rf mnt
 
-	mv ../dist .adds/cadmus
-	cp ../contrib/NickelMenu/* .adds/nm
+	if [ "$test_build" = true ]; then
+		mv ../dist .adds/cadmus-tst
+		cp ../contrib/NickelMenu/cadmus-tst .adds/nm/
+	else
+		mv ../dist .adds/cadmus
+		cp ../contrib/NickelMenu/cadmus .adds/nm/
+	fi
 
 	cd ..
 }
 
 create_bundle_cadmus_only() {
-	mkdir -p bundle/mnt/onboard/.adds/cadmus
-	cp -r dist/* bundle/mnt/onboard/.adds/cadmus/
+	if [ "$test_build" = true ]; then
+		mkdir -p bundle/mnt/onboard/.adds/cadmus-tst
+		cp -r dist/* bundle/mnt/onboard/.adds/cadmus-tst/
+	else
+		mkdir -p bundle/mnt/onboard/.adds/cadmus
+		cp -r dist/* bundle/mnt/onboard/.adds/cadmus/
+	fi
 
 	cd bundle || exit 1
 
-	echo "Creating KoboRoot.tgz (Cadmus only)..."
-	tar -czf "KoboRoot.tgz" mnt
+	if [ "$test_build" = true ]; then
+		echo "Creating KoboRoot-test.tgz (Cadmus test build only)..."
+		tar -czf "KoboRoot-test.tgz" mnt
+	else
+		echo "Creating KoboRoot.tgz (Cadmus only)..."
+		tar -czf "KoboRoot.tgz" mnt
+	fi
 
 	rm -Rf mnt
 	cd ..
 
-	echo "Bundle created: bundle/KoboRoot.tgz"
+	if [ "$test_build" = true ]; then
+		echo "Bundle created: bundle/KoboRoot-test.tgz"
+	else
+		echo "Bundle created: bundle/KoboRoot.tgz"
+	fi
 	echo "Place this file in the .kobo directory on your Kobo device"
 }
 
@@ -154,18 +174,28 @@ create_bundle_with_nickel() {
 	mkdir -p mnt/onboard
 	mv .adds mnt/onboard/.adds
 
-	echo "Creating KoboRoot-nm.tgz (with NickelMenu)..."
-	tar -czf "KoboRoot-nm.tgz" usr mnt
+	if [ "$test_build" = true ]; then
+		echo "Creating KoboRoot-nm-test.tgz (test build with NickelMenu)..."
+		tar -czf "KoboRoot-nm-test.tgz" usr mnt
+	else
+		echo "Creating KoboRoot-nm.tgz (with NickelMenu)..."
+		tar -czf "KoboRoot-nm.tgz" usr mnt
+	fi
 
 	rm -Rf usr mnt
 	cd ..
 
-	echo "Bundle created: bundle/KoboRoot-nm.tgz"
+	if [ "$test_build" = true ]; then
+		echo "Bundle created: bundle/KoboRoot-nm-test.tgz"
+	else
+		echo "Bundle created: bundle/KoboRoot-nm.tgz"
+	fi
 	echo "Place this file in the .kobo directory on your Kobo device"
 }
 
 skip_download=false
 no_nickel=false
+test_build=false
 
 for arg in "$@"; do
 	case "$arg" in
@@ -175,9 +205,12 @@ for arg in "$@"; do
 	--no-nickel)
 		no_nickel=true
 		;;
+	--test)
+		test_build=true
+		;;
 	*)
 		echo "Unknown option: $arg" >&2
-		echo "Usage: bundle.sh [--skip-download] [--no-nickel]" >&2
+		echo "Usage: bundle.sh [--skip-download] [--no-nickel] [--test]" >&2
 		exit 1
 		;;
 	esac

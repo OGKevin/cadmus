@@ -17,7 +17,9 @@
 /dist
 /bundle
 /.cache
-/cadmus-*.zip
+/cadmus-*.tar.gz
+/plato-*.tar.gz
+/plato-*.zip
 /thirdparty/*/*
 !/thirdparty/*/*kobo*
 

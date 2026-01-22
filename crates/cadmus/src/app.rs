@@ -1006,12 +1006,12 @@ pub fn run() -> Result<(), Error> {
                 }
             }
             Event::Select(EntryId::About) => {
-                let dialog = Dialog::new(
-                    ViewId::AboutDialog,
-                    None,
-                    format!("Cadmus {}", env!("GIT_VERSION")),
-                    &mut context,
-                );
+                #[cfg(feature = "test")]
+                let version_text = format!("Cadmus {} (Test)", env!("GIT_VERSION"));
+                #[cfg(not(feature = "test"))]
+                let version_text = format!("Cadmus {}", env!("GIT_VERSION"));
+
+                let dialog = Dialog::new(ViewId::AboutDialog, None, version_text, &mut context);
                 rq.add(RenderData::new(
                     dialog.id(),
                     *dialog.rect(),
