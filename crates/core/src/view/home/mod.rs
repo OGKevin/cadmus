@@ -1572,7 +1572,7 @@ impl Home {
             count,
             if count != 1 { "s" } else { "" }
         );
-        let notif = Notification::new(message, hub, rq, context);
+        let notif = Notification::new(None, message, false, hub, rq, context);
         self.children.push(Box::new(notif) as Box<dyn View>);
     }
 
@@ -2186,8 +2186,14 @@ impl View for Home {
                     }
                     self.refresh_visibles(true, true, hub, rq, context);
                 } else {
-                    let notif =
-                        Notification::new("Invalid search query.".to_string(), hub, rq, context);
+                    let notif = Notification::new(
+                        None,
+                        "Invalid search query.".to_string(),
+                        false,
+                        hub,
+                        rq,
+                        context,
+                    );
                     self.children.push(Box::new(notif) as Box<dyn View>);
                 }
                 true
@@ -2372,7 +2378,7 @@ impl View for Home {
                                 "{}: abnormal process termination.",
                                 fetcher.path.display()
                             );
-                            let notif = Notification::new(msg, hub, rq, context);
+                            let notif = Notification::new(None, msg, false, hub, rq, context);
                             self.children.push(Box::new(notif) as Box<dyn View>);
                         }
                     }

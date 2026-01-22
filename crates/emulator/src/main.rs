@@ -19,7 +19,7 @@ use cadmus_core::pt;
 use cadmus_core::settings::{IntermKind, Settings, SETTINGS_PATH};
 use cadmus_core::view::calculator::Calculator;
 use cadmus_core::view::common::{
-    locate, locate_by_id, overlapping_rectangle, transfer_notifications,
+    find_notification_mut, locate, locate_by_id, overlapping_rectangle, transfer_notifications,
 };
 use cadmus_core::view::common::{toggle_input_history_menu, toggle_keyboard_layout_menu};
 use cadmus_core::view::dialog::Dialog;
@@ -36,7 +36,7 @@ use cadmus_core::view::touch_events::TouchEvents;
 use cadmus_core::view::{
     handle_event, process_render_queue, wait_for_all, RenderData, RenderQueue,
 };
-use cadmus_core::view::{AppCmd, EntryId, EntryKind, Event, View, ViewId};
+use cadmus_core::view::{AppCmd, EntryId, EntryKind, Event, NotificationEvent, View, ViewId};
 use sdl2::event::Event as SdlEvent;
 use sdl2::keyboard::{Keycode, Mod, Scancode};
 use sdl2::mouse::MouseState;
@@ -717,11 +717,42 @@ fn main() -> Result<(), Error> {
                         Err(e) => format!("Couldn't take screenshot: {}).", e),
                         Ok(_) => format!("Saved {}.", name),
                     };
-                    let notif = Notification::new(msg, &tx, &mut rq, &mut context);
+                    let notif = Notification::new(None, msg, false, &tx, &mut rq, &mut context);
                     view.children_mut().push(Box::new(notif) as Box<dyn View>);
                 }
+                Event::Notification(notif_event) => match notif_event {
+                    NotificationEvent::Show(msg) => {
+                        let notif = Notification::new(None, msg, false, &tx, &mut rq, &mut context);
+                        view.children_mut().push(Box::new(notif) as Box<dyn View>);
+                    }
+                    NotificationEvent::ShowPinned(id, msg) => {
+                        let notif =
+                            Notification::new(Some(id), msg, true, &tx, &mut rq, &mut context);
+                        view.children_mut().push(Box::new(notif) as Box<dyn View>);
+                    }
+                    NotificationEvent::UpdateText(id, text) => {
+                        if let Some(notif) = find_notification_mut(view.as_mut(), id) {
+                            notif.update_text(text, &mut rq);
+                        } else {
+                            panic!(
+                                "Attempted to update non-existent notification with id: {:?}",
+                                id
+                            );
+                        }
+                    }
+                    NotificationEvent::UpdateProgress(id, progress) => {
+                        if let Some(notif) = find_notification_mut(view.as_mut(), id) {
+                            notif.update_progress(progress, &mut rq);
+                        } else {
+                            panic!(
+                                "Attempted to update progress of non-existent notification with id: {:?}",
+                                id
+                            );
+                        }
+                    }
+                },
                 Event::Notify(msg) => {
-                    let notif = Notification::new(msg, &tx, &mut rq, &mut context);
+                    let notif = Notification::new(None, msg, false, &tx, &mut rq, &mut context);
                     view.children_mut().push(Box::new(notif) as Box<dyn View>);
                 }
                 Event::Device(DeviceEvent::NetUp)

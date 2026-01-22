@@ -24,7 +24,7 @@ use cadmus_core::rtc::Rtc;
 use cadmus_core::settings::{ButtonScheme, IntermKind, RotationLock, Settings, SETTINGS_PATH};
 use cadmus_core::view::calculator::Calculator;
 use cadmus_core::view::common::{
-    locate, locate_by_id, overlapping_rectangle, transfer_notifications,
+    find_notification_mut, locate, locate_by_id, overlapping_rectangle, transfer_notifications,
 };
 use cadmus_core::view::common::{toggle_input_history_menu, toggle_keyboard_layout_menu};
 use cadmus_core::view::dialog::Dialog;
@@ -34,13 +34,16 @@ use cadmus_core::view::home::Home;
 use cadmus_core::view::intermission::Intermission;
 use cadmus_core::view::menu::{Menu, MenuKind};
 use cadmus_core::view::notification::Notification;
+#[cfg(feature = "test")]
+use cadmus_core::view::ota::show_ota_view;
 use cadmus_core::view::reader::Reader;
 use cadmus_core::view::rotation_values::RotationValues;
 use cadmus_core::view::sketch::Sketch;
 use cadmus_core::view::touch_events::TouchEvents;
 use cadmus_core::view::{handle_event, process_render_queue, wait_for_all};
 use cadmus_core::view::{
-    AppCmd, EntryId, EntryKind, Event, RenderData, RenderQueue, UpdateData, View, ViewId,
+    AppCmd, EntryId, EntryKind, Event, NotificationEvent, RenderData, RenderQueue, UpdateData,
+    View, ViewId,
 };
 use std::collections::VecDeque;
 use std::env;
@@ -378,8 +381,11 @@ pub fn run() -> Result<(), Error> {
     let current_dir = env::current_dir()?;
 
     println!(
-        "{} is running on a Kobo {}.",
-        APP_NAME, CURRENT_DEVICE.model
+        "{} {} {} is running on a Kobo {}.",
+        APP_NAME,
+        env!("GIT_VERSION"),
+        option_env!("PR_INFO").unwrap_or(""),
+        CURRENT_DEVICE.model
     );
     println!(
         "The framebuffer resolution is {} by {}.",
@@ -534,7 +540,9 @@ pub fn run() -> Result<(), Error> {
                         .map(|o| String::from_utf8_lossy(&o.stdout).trim_end().to_string())
                         .unwrap_or_default();
                     let notif = Notification::new(
+                        None,
                         format!("Network is up ({}, {}).", ip, essid),
+                        false,
                         &tx,
                         &mut rq,
                         &mut context,
@@ -743,7 +751,9 @@ pub fn run() -> Result<(), Error> {
                         break;
                     } else if v < context.settings.battery.warn {
                         let notif = Notification::new(
+                            None,
                             "The battery capacity is getting low.".to_string(),
+                            false,
                             &tx,
                             &mut rq,
                             &mut context,
@@ -1007,9 +1017,15 @@ pub fn run() -> Result<(), Error> {
             }
             Event::Select(EntryId::About) => {
                 #[cfg(feature = "test")]
-                let version_text = format!("Cadmus {} (Test)", env!("GIT_VERSION"));
+                let version_text = match option_env!("PR_INFO") {
+                    Some(pr_info) => format!("Cadmus Test {}\n{}", env!("GIT_VERSION"), pr_info),
+                    None => format!("Cadmus {} (Test)", env!("GIT_VERSION")),
+                };
                 #[cfg(not(feature = "test"))]
-                let version_text = format!("Cadmus {}", env!("GIT_VERSION"));
+                let version_text = match option_env!("PR_INFO") {
+                    Some(pr_info) => format!("Cadmus {}\n{}", env!("GIT_VERSION"), pr_info),
+                    None => format!("Cadmus {}", env!("GIT_VERSION")),
+                };
 
                 let dialog = Dialog::new(ViewId::AboutDialog, None, version_text, &mut context);
                 rq.add(RenderData::new(
@@ -1235,6 +1251,12 @@ pub fn run() -> Result<(), Error> {
             Event::SetWifi(enable) => {
                 set_wifi(enable, &mut context);
             }
+            #[cfg(feature = "test")]
+            Event::Select(EntryId::CheckForUpdates) => {
+                if show_ota_view(view.as_mut(), &tx, &mut rq, &mut context) {
+                    tx.send(Event::Focus(Some(ViewId::OtaPrInput))).ok();
+                }
+            }
             Event::Select(EntryId::ToggleWifi) => {
                 set_wifi(!context.settings.wifi, &mut context);
             }
@@ -1244,7 +1266,7 @@ pub fn run() -> Result<(), Error> {
                     Err(e) => format!("{}", e),
                     Ok(_) => format!("Saved {}.", name),
                 };
-                let notif = Notification::new(msg, &tx, &mut rq, &mut context);
+                let notif = Notification::new(None, msg, false, &tx, &mut rq, &mut context);
                 view.children_mut().push(Box::new(notif) as Box<dyn View>);
             }
             Event::CheckFetcher(..)
@@ -1264,8 +1286,37 @@ pub fn run() -> Result<(), Error> {
                     );
                 }
             }
+            Event::Notification(notif_event) => match notif_event {
+                NotificationEvent::Show(msg) => {
+                    let notif = Notification::new(None, msg, false, &tx, &mut rq, &mut context);
+                    view.children_mut().push(Box::new(notif) as Box<dyn View>);
+                }
+                NotificationEvent::ShowPinned(id, msg) => {
+                    let notif = Notification::new(Some(id), msg, true, &tx, &mut rq, &mut context);
+                    view.children_mut().push(Box::new(notif) as Box<dyn View>);
+                }
+                NotificationEvent::UpdateText(id, text) => {
+                    if let Some(notif) = find_notification_mut(view.as_mut(), id) {
+                        notif.update_text(text, &mut rq);
+                    } else {
+                        view.children_mut().push(Box::new(Notification::new(
+                            Some(id),
+                            text,
+                            true,
+                            &tx,
+                            &mut rq,
+                            &mut context,
+                        )) as Box<dyn View>);
+                    }
+                }
+                NotificationEvent::UpdateProgress(id, progress) => {
+                    if let Some(notif) = find_notification_mut(view.as_mut(), id) {
+                        notif.update_progress(progress, &mut rq);
+                    }
+                }
+            },
             Event::Notify(msg) => {
-                let notif = Notification::new(msg, &tx, &mut rq, &mut context);
+                let notif = Notification::new(None, msg, false, &tx, &mut rq, &mut context);
                 view.children_mut().push(Box::new(notif) as Box<dyn View>);
             }
             Event::Select(EntryId::Restart) => {

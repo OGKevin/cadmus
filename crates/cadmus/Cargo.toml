@@ -9,7 +9,7 @@ name = "cadmus"
 path = "src/main.rs"
 
 [features]
-test = []
+test = ["cadmus-core/test"]
 
 [dependencies]
 cadmus-core = { path = "../core" }

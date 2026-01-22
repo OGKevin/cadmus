@@ -60,7 +60,7 @@ impl View for TouchEvents {
     ) -> bool {
         match *evt {
             Event::Gesture(ge) => {
-                let notif = Notification::new(ge.to_string(), hub, rq, context);
+                let notif = Notification::new(None, ge.to_string(), false, hub, rq, context);
                 self.children.push(Box::new(notif) as Box<dyn View>);
                 true
             }

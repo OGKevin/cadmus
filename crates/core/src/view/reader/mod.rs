@@ -1029,8 +1029,14 @@ impl Reader {
                     };
                     match action {
                         FinishedAction::Notify => {
-                            let notif =
-                                Notification::new("No next page.".to_string(), hub, rq, context);
+                            let notif = Notification::new(
+                                None,
+                                "No next page.".to_string(),
+                                false,
+                                hub,
+                                rq,
+                                context,
+                            );
                             self.children.push(Box::new(notif) as Box<dyn View>);
                         }
                         FinishedAction::Close => {
@@ -1040,8 +1046,14 @@ impl Reader {
                     }
                 }
                 CycleDir::Previous => {
-                    let notif =
-                        Notification::new("No previous page.".to_string(), hub, rq, context);
+                    let notif = Notification::new(
+                        None,
+                        "No previous page.".to_string(),
+                        false,
+                        hub,
+                        rq,
+                        context,
+                    );
                     self.children.push(Box::new(notif) as Box<dyn View>);
                 }
             },
@@ -4267,29 +4279,25 @@ impl View for Reader {
                         let loc = Location::LocalUri(self.current_page, link.text.clone());
                         if let Some(location) = doc.resolve_location(loc) {
                             hub.send(Event::GoTo(location)).ok();
-                        } else {
-                            if link.text.starts_with("https:") || link.text.starts_with("http:") {
-                                if let Some(path) = context.settings.external_urls_queue.as_ref() {
-                                    if let Ok(mut file) =
-                                        OpenOptions::new().create(true).append(true).open(path)
-                                    {
-                                        if let Err(e) = writeln!(file, "{}", link.text) {
-                                            eprintln!(
-                                                "Couldn't write to {}: {:#}.",
-                                                path.display(),
-                                                e
-                                            );
-                                        } else {
-                                            let message = format!("Queued {}.", link.text);
-                                            let notif =
-                                                Notification::new(message, hub, rq, context);
-                                            self.children.push(Box::new(notif) as Box<dyn View>);
-                                        }
+                        } else if link.text.starts_with("https:") || link.text.starts_with("http:")
+                        {
+                            if let Some(path) = context.settings.external_urls_queue.as_ref() {
+                                if let Ok(mut file) =
+                                    OpenOptions::new().create(true).append(true).open(path)
+                                {
+                                    if let Err(e) = writeln!(file, "{}", link.text) {
+                                        eprintln!("Couldn't write to {}: {:#}.", path.display(), e);
+                                    } else {
+                                        let message = format!("Queued {}.", link.text);
+                                        let notif = Notification::new(
+                                            None, message, false, hub, rq, context,
+                                        );
+                                        self.children.push(Box::new(notif) as Box<dyn View>);
                                     }
                                 }
-                            } else {
-                                eprintln!("Can't resolve URI: {}.", link.text);
                             }
+                        } else {
+                            eprintln!("Can't resolve URI: {}.", link.text);
                         }
                     }
                     return true;
@@ -4612,7 +4620,9 @@ impl View for Reader {
                     }
                     None => {
                         let notif = Notification::new(
+                            None,
                             "Invalid search query.".to_string(),
+                            false,
                             hub,
                             rq,
                             context,
@@ -4889,8 +4899,14 @@ impl View for Reader {
                     .map(|s| s.results_count)
                     .unwrap_or(usize::MAX);
                 if results_count == 0 {
-                    let notif =
-                        Notification::new("No search results.".to_string(), hub, rq, context);
+                    let notif = Notification::new(
+                        None,
+                        "No search results.".to_string(),
+                        false,
+                        hub,
+                        rq,
+                        context,
+                    );
                     self.children.push(Box::new(notif) as Box<dyn View>);
                     self.toggle_search_bar(true, hub, rq, context);
                     hub.send(Event::Focus(Some(ViewId::ReaderSearchInput))).ok();
@@ -4944,7 +4960,9 @@ impl View for Reader {
                         }
                         None => {
                             let notif = Notification::new(
+                                None,
                                 "Invalid search query.".to_string(),
+                                false,
                                 hub,
                                 rq,
                                 context,
@@ -5033,7 +5051,7 @@ impl View for Reader {
                     Err(e) => format!("{}", e),
                     Ok(()) => format!("Saved {}.", name),
                 };
-                let notif = Notification::new(msg, hub, rq, context);
+                let notif = Notification::new(None, msg, false, hub, rq, context);
                 self.children.push(Box::new(notif) as Box<dyn View>);
                 true
             }

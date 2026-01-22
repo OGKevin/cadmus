@@ -212,3 +212,8 @@ power-off = 3.0
 [frontlight-levels]
 intensity = 0.0
 warmth = 0.0
+
+# Over-The-Air (OTA) updates allow you to download and install
+# Cadmus builds directly from GitHub.
+[ota]
+# github-token = "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"

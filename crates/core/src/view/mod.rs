@@ -31,6 +31,9 @@ pub mod menu;
 pub mod menu_entry;
 pub mod named_input;
 pub mod notification;
+pub mod ota;
+
+pub use self::notification::NotificationEvent;
 pub mod page_label;
 pub mod preset;
 pub mod presets_list;
@@ -363,6 +366,8 @@ pub enum Event {
     Update(UpdateMode),
     RefreshBookPreview(PathBuf, Option<PathBuf>),
     Invalid(PathBuf),
+    Notification(NotificationEvent),
+    #[deprecated(note = "Use Event::Notification(NotificationEvent::Show) instead")]
     Notify(String),
     Page(CycleDir),
     ResultsPage(CycleDir),
@@ -495,6 +500,8 @@ pub enum ViewId {
     TableOfContents,
     MessageNotif(Id),
     SubMenu(u8),
+    OtaView,
+    OtaPrInput,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -637,6 +644,7 @@ pub enum EntryId {
     Restart,
     Reboot,
     Quit,
+    CheckForUpdates,
 }
 
 impl EntryKind {

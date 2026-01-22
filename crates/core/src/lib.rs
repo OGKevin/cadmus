@@ -16,6 +16,7 @@ pub mod input;
 pub mod library;
 pub mod lightsensor;
 pub mod metadata;
+pub mod ota;
 pub mod rtc;
 pub mod settings;
 mod unit;
