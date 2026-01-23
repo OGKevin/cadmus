@@ -679,8 +679,7 @@ impl CategoryEditor {
 
         self.rebuild_library_rows(rq, Some(old_count));
 
-        let library_editor =
-            LibraryEditor::new(self.rect, old_count, library, hub, rq, context);
+        let library_editor = LibraryEditor::new(self.rect, old_count, library, hub, rq, context);
         self.children.push(Box::new(library_editor));
         rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
 
@@ -701,8 +700,7 @@ impl CategoryEditor {
         context: &mut Context,
     ) -> bool {
         if let Some(library) = self.settings.libraries.get(index).cloned() {
-            let library_editor =
-                LibraryEditor::new(self.rect, index, library, hub, rq, context);
+            let library_editor = LibraryEditor::new(self.rect, index, library, hub, rq, context);
             self.children.push(Box::new(library_editor));
             rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
         }
@@ -1063,7 +1061,8 @@ mod tests {
 
         assert_eq!(
             // minus 2 to account for the newly added library editor
-            editor.keyboard_index, editor.children.len() - 2,
+            editor.keyboard_index,
+            editor.children.len() - 2,
             "keyboard_index should point to the last child (the keyboard)"
         );
 
