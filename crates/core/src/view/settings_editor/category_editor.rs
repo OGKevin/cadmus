@@ -23,11 +23,29 @@ use super::category::Category;
 use super::library_editor::LibraryEditor;
 use super::setting_row::{Kind as RowKind, SettingRow};
 
+/// A view for editing category-specific settings.
+///
+/// The `CategoryEditor` manages the UI for editing settings within a specific category
+/// (e.g., Libraries, Intermissions, etc.). It displays setting rows, handles user interactions,
+/// and manages child views such as keyboards, input fields, and file choosers.
+///
+/// # Fields
+///
+/// * `id` - Unique identifier for this view
+/// * `rect` - The rectangular area occupied by this view
+/// * `children` - Child views managed by this editor (rows, keyboard, menus, etc.)
+/// * `category` - The settings category being edited
+/// * `settings` - Current settings being edited
+/// * `original_settings` - Original settings before any edits (used for cancellation)
+/// * `content_rect` - The rectangular area where setting rows are displayed
+/// * `row_height` - The height of each setting row
+/// * `focus` - Currently focused child view, if any
+/// * `keyboard_index` - Index of the keyboard child view in the children vector
+/// * `active_intermission_edit` - Tracks which intermission type is currently being edited via file chooser
 pub struct CategoryEditor {
     id: Id,
     rect: Rectangle,
     children: Vec<Box<dyn View>>,
-    #[allow(dead_code)]
     category: Category,
     settings: Settings,
     original_settings: Settings,
@@ -38,31 +56,96 @@ pub struct CategoryEditor {
     active_intermission_edit: Option<crate::settings::IntermKind>,
 }
 
-pub struct CategoryEditorBuilder<'a> {
-    rect: Rectangle,
-    category: Category,
-    rq: &'a mut RenderQueue,
-    context: &'a mut Context,
-    settings: Settings,
-}
-
-impl<'a> CategoryEditorBuilder<'a> {
-    fn new(
+impl CategoryEditor {
+    pub fn new(
         rect: Rectangle,
         category: Category,
-        rq: &'a mut RenderQueue,
-        context: &'a mut Context,
-    ) -> Self {
-        CategoryEditorBuilder {
+        _hub: &Hub,
+        rq: &mut RenderQueue,
+        context: &mut Context,
+    ) -> Result<CategoryEditor, Error> {
+        let id = ID_FEEDER.next();
+        let mut children = Vec::new();
+        let settings = context.settings.clone();
+
+        let (bar_height, _separator_thickness, separator_top_half, separator_bottom_half) =
+            Self::calculate_dimensions();
+
+        children.push(Self::build_top_bar(
             rect,
+            bar_height,
+            separator_top_half,
             category,
-            rq,
-            settings: context.settings.clone(),
             context,
+        ));
+
+        children.push(Self::build_top_separator(
+            rect,
+            bar_height,
+            separator_top_half,
+            separator_bottom_half,
+        ));
+
+        let (background, content_rect) = Self::build_content_background(
+            rect,
+            bar_height,
+            separator_top_half,
+            separator_bottom_half,
+        );
+        children.push(background);
+
+        let row_height = scale_by_dpi(BIG_BAR_HEIGHT, CURRENT_DEVICE.dpi) as i32;
+        let setting_kinds = category.settings(context);
+        let mut current_y = content_rect.min.y;
+
+        for kind in setting_kinds {
+            let row_rect = rect![
+                content_rect.min.x,
+                current_y,
+                content_rect.max.x,
+                current_y + row_height
+            ];
+            children.push(Self::build_setting_row(kind, row_rect, &settings)?);
+            current_y += row_height;
         }
+
+        children.push(Self::build_bottom_separator(
+            rect,
+            bar_height,
+            separator_top_half,
+            separator_bottom_half,
+        ));
+
+        children.push(Self::build_bottom_bar(
+            rect,
+            bar_height,
+            separator_bottom_half,
+            category,
+        ));
+
+        let keyboard = ToggleableKeyboard::new(rect, true);
+        children.push(Box::new(keyboard) as Box<dyn View>);
+
+        let keyboard_index = children.len() - 1;
+
+        rq.add(RenderData::new(id, rect, UpdateMode::Gui));
+
+        Ok(CategoryEditor {
+            id,
+            rect,
+            children,
+            category,
+            original_settings: settings.clone(),
+            settings,
+            content_rect,
+            row_height,
+            focus: None,
+            keyboard_index,
+            active_intermission_edit: None,
+        })
     }
 
-    fn calculate_dimensions(&self) -> (i32, i32, i32, i32) {
+    fn calculate_dimensions() -> (i32, i32, i32, i32) {
         let dpi = CURRENT_DEVICE.dpi;
         let (small_height, _big_height) = (
             scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32,
@@ -80,33 +163,39 @@ impl<'a> CategoryEditorBuilder<'a> {
         )
     }
 
-    fn build_top_bar(&mut self, bar_height: i32, separator_top_half: i32) -> Box<dyn View> {
+    fn build_top_bar(
+        rect: Rectangle,
+        bar_height: i32,
+        separator_top_half: i32,
+        category: Category,
+        context: &mut Context,
+    ) -> Box<dyn View> {
         let top_bar = TopBar::new(
             rect![
-                self.rect.min.x,
-                self.rect.min.y,
-                self.rect.max.x,
-                self.rect.min.y + bar_height - separator_top_half
+                rect.min.x,
+                rect.min.y,
+                rect.max.x,
+                rect.min.y + bar_height - separator_top_half
             ],
             TopBarVariant::Cancel(Event::Close(ViewId::SettingsCategoryEditor)),
-            self.category.label(),
-            self.context,
+            category.label(),
+            context,
         );
         Box::new(top_bar) as Box<dyn View>
     }
 
     fn build_top_separator(
-        &mut self,
+        rect: Rectangle,
         bar_height: i32,
         separator_top_half: i32,
         separator_bottom_half: i32,
     ) -> Box<dyn View> {
         let separator = Filler::new(
             rect![
-                self.rect.min.x,
-                self.rect.min.y + bar_height - separator_top_half,
-                self.rect.max.x,
-                self.rect.min.y + bar_height + separator_bottom_half
+                rect.min.x,
+                rect.min.y + bar_height - separator_top_half,
+                rect.max.x,
+                rect.min.y + bar_height + separator_bottom_half
             ],
             BLACK,
         );
@@ -114,16 +203,16 @@ impl<'a> CategoryEditorBuilder<'a> {
     }
 
     fn build_content_background(
-        &mut self,
+        rect: Rectangle,
         bar_height: i32,
         separator_top_half: i32,
         separator_bottom_half: i32,
     ) -> (Box<dyn View>, Rectangle) {
         let content_rect = rect![
-            self.rect.min.x,
-            self.rect.min.y + bar_height + separator_bottom_half,
-            self.rect.max.x,
-            self.rect.max.y - bar_height - separator_top_half
+            rect.min.x,
+            rect.min.y + bar_height + separator_bottom_half,
+            rect.max.x,
+            rect.max.y - bar_height - separator_top_half
         ];
 
         let background = Filler::new(content_rect, WHITE);
@@ -131,41 +220,46 @@ impl<'a> CategoryEditorBuilder<'a> {
     }
 
     fn build_setting_row(
-        &mut self,
         kind: RowKind,
         row_rect: Rectangle,
+        settings: &Settings,
     ) -> Result<Box<dyn View>, Error> {
-        let setting_row = SettingRow::new(kind, row_rect, &self.settings);
+        let setting_row = SettingRow::new(kind, row_rect, settings);
         Ok(Box::new(setting_row) as Box<dyn View>)
     }
 
     fn build_bottom_separator(
-        &mut self,
+        rect: Rectangle,
         bar_height: i32,
         separator_top_half: i32,
         separator_bottom_half: i32,
     ) -> Box<dyn View> {
         let separator = Filler::new(
             rect![
-                self.rect.min.x,
-                self.rect.max.y - bar_height - separator_top_half,
-                self.rect.max.x,
-                self.rect.max.y - bar_height + separator_bottom_half
+                rect.min.x,
+                rect.max.y - bar_height - separator_top_half,
+                rect.max.x,
+                rect.max.y - bar_height + separator_bottom_half
             ],
             BLACK,
         );
         Box::new(separator) as Box<dyn View>
     }
 
-    fn build_bottom_bar(&mut self, bar_height: i32, separator_bottom_half: i32) -> Box<dyn View> {
+    fn build_bottom_bar(
+        rect: Rectangle,
+        bar_height: i32,
+        separator_bottom_half: i32,
+        category: Category,
+    ) -> Box<dyn View> {
         let bottom_bar_rect = rect![
-            self.rect.min.x,
-            self.rect.max.y - bar_height + separator_bottom_half,
-            self.rect.max.x,
-            self.rect.max.y
+            rect.min.x,
+            rect.max.y - bar_height + separator_bottom_half,
+            rect.max.x,
+            rect.max.y
         ];
 
-        match self.category {
+        match category {
             Category::Libraries => Box::new(SettingsEditorBottomBar::new(
                 bottom_bar_rect,
                 BottomBarVariant::TwoButtons {
@@ -185,82 +279,22 @@ impl<'a> CategoryEditorBuilder<'a> {
         }
     }
 
-    pub fn build(mut self) -> Result<CategoryEditor, Error> {
-        let id = ID_FEEDER.next();
-        let mut children = Vec::new();
-
-        let (bar_height, _separator_thickness, separator_top_half, separator_bottom_half) =
-            self.calculate_dimensions();
-
-        children.push(self.build_top_bar(bar_height, separator_top_half));
-
-        children.push(self.build_top_separator(
-            bar_height,
-            separator_top_half,
-            separator_bottom_half,
-        ));
-
-        let (background, content_rect) =
-            self.build_content_background(bar_height, separator_top_half, separator_bottom_half);
-        children.push(background);
-
-        let row_height = scale_by_dpi(BIG_BAR_HEIGHT, CURRENT_DEVICE.dpi) as i32;
-        let setting_kinds = self.category.settings(self.context);
-        let mut current_y = content_rect.min.y;
-
-        for kind in setting_kinds {
-            let row_rect = rect![
-                content_rect.min.x,
-                current_y,
-                content_rect.max.x,
-                current_y + row_height
-            ];
-            children.push(self.build_setting_row(kind, row_rect)?);
-            current_y += row_height;
-        }
-
-        children.push(self.build_bottom_separator(
-            bar_height,
-            separator_top_half,
-            separator_bottom_half,
-        ));
-
-        children.push(self.build_bottom_bar(bar_height, separator_bottom_half));
-
-        let keyboard = ToggleableKeyboard::new(self.rect, true);
-        children.push(Box::new(keyboard) as Box<dyn View>);
-
-        let keyboard_index = children.len() - 1;
-
-        self.rq.add(RenderData::new(id, self.rect, UpdateMode::Gui));
-
-        Ok(CategoryEditor {
-            id,
-            rect: self.rect,
-            children,
-            category: self.category,
-            original_settings: self.settings.clone(),
-            settings: self.settings,
-            content_rect,
-            row_height,
-            focus: None,
-            keyboard_index,
-            active_intermission_edit: None,
-        })
-    }
-}
-
-impl CategoryEditor {
-    pub fn new<'a>(
-        rect: Rectangle,
-        category: Category,
-        _hub: &'a Hub,
-        rq: &'a mut RenderQueue,
-        context: &'a mut Context,
-    ) -> CategoryEditorBuilder<'a> {
-        CategoryEditorBuilder::new(rect, category, rq, context)
-    }
-
+    /// Rebuilds the library rows in the UI after a library is added, removed, or modified.
+    ///
+    /// This method removes the old library rows and inserts new ones based on the current
+    /// state of `self.settings.libraries`. It only operates when the current category is
+    /// `Category::Libraries`.
+    ///
+    /// # Arguments
+    ///
+    /// * `rq` - The render queue to add render updates to
+    /// * `original_count` - The original number of library rows before the change. If `None`,
+    ///   uses the current library count. This is used to determine how many old rows to remove.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` if the operation succeeds, or an error if the operation fails.
+    /// If the current category is not `Category::Libraries`, returns `Ok(())` immediately.
     fn rebuild_library_rows(
         &mut self,
         rq: &mut RenderQueue,
@@ -320,6 +354,456 @@ impl CategoryEditor {
             .expect("keyboard_index points to non-ToggleableKeyboard view");
         keyboard.set_visible(visible, hub, rq, context);
     }
+
+    /// Updates all child setting views to reflect the current settings in the UI.
+    ///
+    /// This method propagates the given event to all grandchildren (nested views) of this editor,
+    /// ensuring that any setting value displays are refreshed to show the latest state of the settings.
+    /// This is typically called after a setting has been modified to ensure the UI remains in sync
+    /// with the underlying settings data.
+    ///
+    /// # Arguments
+    ///
+    /// * `evt` - The event to propagate to child views
+    /// * `hub` - The event hub for sending messages
+    /// * `bus` - The event bus for queueing events
+    /// * `rq` - The render queue for scheduling UI updates
+    /// * `context` - The application context containing settings and device information
+    fn update_setting_values(
+        &mut self,
+        evt: &Event,
+        hub: &Hub,
+        bus: &mut Bus,
+        rq: &mut RenderQueue,
+        context: &mut Context,
+    ) {
+        for child in &mut self.children {
+            for grandchild in child.children_mut() {
+                grandchild.handle_event(evt, hub, bus, rq, context);
+            }
+        }
+    }
+
+    fn handle_focus_event(
+        &mut self,
+        view_id: &Option<ViewId>,
+        hub: &Hub,
+        rq: &mut RenderQueue,
+        context: &mut Context,
+    ) -> bool {
+        if self.focus != *view_id {
+            self.focus = *view_id;
+            if view_id.is_some() {
+                self.toggle_keyboard(true, *view_id, hub, rq, context);
+            } else {
+                self.toggle_keyboard(false, None, hub, rq, context);
+            }
+        }
+        true
+    }
+
+    /// Handles a short hold finger gesture to show a context menu for deleting libraries.
+    fn handle_hold_finger_short(&mut self, point: &crate::geom::Point, bus: &mut Bus) -> bool {
+        if self.category != Category::Libraries {
+            return false;
+        }
+
+        if !self.content_rect.includes(*point) {
+            return false;
+        }
+
+        let row_index = (point.y - self.content_rect.min.y) / self.row_height;
+        let library_index = row_index as usize;
+
+        if library_index < self.settings.libraries.len() {
+            let row_y = self.content_rect.min.y + (row_index * self.row_height);
+            let row_rect = rect![
+                self.content_rect.min.x,
+                row_y,
+                self.content_rect.max.x,
+                row_y + self.row_height
+            ];
+
+            let entries = vec![EntryKind::Command(
+                "Delete".to_string(),
+                EntryId::DeleteLibrary(library_index),
+            )];
+
+            bus.push_back(Event::SubMenu(row_rect, entries));
+            return true;
+        }
+
+        false
+    }
+
+    fn handle_submenu_event(
+        &mut self,
+        rect: &Rectangle,
+        entries: &[EntryKind],
+        rq: &mut RenderQueue,
+        context: &mut Context,
+    ) -> bool {
+        let menu = Menu::new(
+            *rect,
+            ViewId::SettingsValueMenu,
+            crate::view::menu::MenuKind::SubMenu,
+            entries.to_vec(),
+            context,
+        );
+
+        rq.add(RenderData::new(menu.id(), *menu.rect(), UpdateMode::Gui));
+        self.children.push(Box::new(menu));
+
+        true
+    }
+
+    fn handle_set_keyboard_layout(
+        &mut self,
+        layout: &str,
+        evt: &Event,
+        hub: &Hub,
+        bus: &mut Bus,
+        rq: &mut RenderQueue,
+        context: &mut Context,
+    ) -> bool {
+        self.settings.keyboard_layout = layout.to_string();
+        self.update_setting_values(evt, hub, bus, rq, context);
+        true
+    }
+
+    fn handle_toggle_sleep_cover(
+        &mut self,
+        evt: &Event,
+        hub: &Hub,
+        bus: &mut Bus,
+        rq: &mut RenderQueue,
+        context: &mut Context,
+    ) -> bool {
+        self.settings.sleep_cover = !self.settings.sleep_cover;
+        self.update_setting_values(evt, hub, bus, rq, context);
+        true
+    }
+
+    fn handle_toggle_auto_share(
+        &mut self,
+        evt: &Event,
+        hub: &Hub,
+        bus: &mut Bus,
+        rq: &mut RenderQueue,
+        context: &mut Context,
+    ) -> bool {
+        self.settings.auto_share = !self.settings.auto_share;
+        self.update_setting_values(evt, hub, bus, rq, context);
+        true
+    }
+
+    fn handle_edit_auto_suspend(
+        &mut self,
+        hub: &Hub,
+        rq: &mut RenderQueue,
+        context: &mut Context,
+    ) -> bool {
+        let mut suspend_input = crate::view::named_input::NamedInput::new(
+            "Auto Suspend (minutes, 0 = never)".to_string(),
+            ViewId::AutoSuspendInput,
+            ViewId::AutoSuspendInput,
+            10,
+            context,
+        );
+        let text = if self.settings.auto_suspend == 0.0 {
+            "0".to_string()
+        } else {
+            format!("{:.1}", self.settings.auto_suspend)
+        };
+
+        suspend_input.set_text(&text, rq, context);
+
+        self.children.push(Box::new(suspend_input));
+        hub.send(Event::Focus(Some(ViewId::AutoSuspendInput))).ok();
+
+        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+
+        true
+    }
+
+    fn handle_edit_auto_power_off(
+        &mut self,
+        hub: &Hub,
+        rq: &mut RenderQueue,
+        context: &mut Context,
+    ) -> bool {
+        let mut power_off_input = crate::view::named_input::NamedInput::new(
+            "Auto Power Off (days, 0 = never)".to_string(),
+            ViewId::AutoPowerOffInput,
+            ViewId::AutoPowerOffInput,
+            10,
+            context,
+        );
+        let text = if self.settings.auto_power_off == 0.0 {
+            "0".to_string()
+        } else {
+            format!("{:.1}", self.settings.auto_power_off)
+        };
+
+        power_off_input.set_text(&text, rq, context);
+
+        self.children.push(Box::new(power_off_input));
+        hub.send(Event::Focus(Some(ViewId::AutoPowerOffInput))).ok();
+        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+
+        true
+    }
+
+    fn handle_set_button_scheme(
+        &mut self,
+        button_scheme: &crate::settings::ButtonScheme,
+        evt: &Event,
+        hub: &Hub,
+        bus: &mut Bus,
+        rq: &mut RenderQueue,
+        context: &mut Context,
+    ) -> bool {
+        self.settings.button_scheme = *button_scheme;
+        self.update_setting_values(evt, hub, bus, rq, context);
+        true
+    }
+
+    fn handle_delete_library(&mut self, index: usize, rq: &mut RenderQueue) -> bool {
+        if index < self.settings.libraries.len() {
+            let original_count = self.settings.libraries.len();
+            self.settings.libraries.remove(index);
+
+            if let Err(e) = self.rebuild_library_rows(rq, Some(original_count)) {
+                eprintln!("Failed to rebuild library rows: {}", e);
+            }
+        }
+
+        if let Some(menu_index) = locate_by_id(self, ViewId::SettingsValueMenu) {
+            self.children.remove(menu_index);
+            rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+        }
+
+        true
+    }
+
+    fn handle_set_intermission(
+        &mut self,
+        kind: &crate::settings::IntermKind,
+        display: &crate::settings::IntermissionDisplay,
+        evt: &Event,
+        hub: &Hub,
+        bus: &mut Bus,
+        rq: &mut RenderQueue,
+        context: &mut Context,
+    ) -> bool {
+        self.settings.intermissions[*kind] = display.clone();
+        self.update_setting_values(evt, hub, bus, rq, context);
+        true
+    }
+
+    fn handle_edit_intermission_image(
+        &mut self,
+        kind: &crate::settings::IntermKind,
+        hub: &Hub,
+        rq: &mut RenderQueue,
+        context: &mut Context,
+    ) -> bool {
+        use crate::view::file_chooser::{FileChooser, SelectionMode};
+
+        self.active_intermission_edit = Some(*kind);
+
+        let initial_path = PathBuf::from("/mnt/onboard");
+        let file_chooser = FileChooser::new(
+            self.rect,
+            initial_path,
+            SelectionMode::File,
+            hub,
+            rq,
+            context,
+        );
+
+        self.children.push(Box::new(file_chooser));
+        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+
+        true
+    }
+
+    fn handle_validate_event(&mut self, bus: &mut Bus) -> bool {
+        bus.push_back(Event::UpdateSettings(self.settings.clone()));
+        bus.push_back(Event::Close(ViewId::SettingsCategoryEditor));
+        true
+    }
+
+    fn handle_add_library_event(
+        &mut self,
+        hub: &Hub,
+        rq: &mut RenderQueue,
+        context: &mut Context,
+    ) -> bool {
+        let library = LibrarySettings {
+            name: String::new(),
+            path: PathBuf::from("/mnt/onboard"),
+            mode: LibraryMode::Filesystem,
+            ..Default::default()
+        };
+
+        let library_index = self.settings.libraries.len();
+        self.settings.libraries.push(library.clone());
+
+        if let Err(e) = self.rebuild_library_rows(rq, None) {
+            eprintln!("Failed to rebuild library rows: {}", e);
+        }
+
+        if let Ok(library_editor) =
+            LibraryEditor::new(self.rect, library_index, library, hub, rq, context)
+        {
+            self.children.push(Box::new(library_editor));
+            rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+        }
+
+        true
+    }
+
+    fn handle_edit_library_event(
+        &mut self,
+        index: usize,
+        hub: &Hub,
+        rq: &mut RenderQueue,
+        context: &mut Context,
+    ) -> bool {
+        if let Some(library) = self.settings.libraries.get(index).cloned() {
+            if let Ok(library_editor) =
+                LibraryEditor::new(self.rect, index, library, hub, rq, context)
+            {
+                self.children.push(Box::new(library_editor));
+                rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+            }
+        }
+        true
+    }
+
+    fn handle_update_library_event(
+        &mut self,
+        index: usize,
+        library: &LibrarySettings,
+        rq: &mut RenderQueue,
+    ) -> bool {
+        if index < self.settings.libraries.len() {
+            self.settings.libraries[index] = library.clone();
+
+            if let Err(e) = self.rebuild_library_rows(rq, None) {
+                eprintln!("Failed to rebuild library rows: {}", e);
+            }
+        }
+
+        false
+    }
+
+    fn handle_submit_auto_suspend(
+        &mut self,
+        text: &str,
+        evt: &Event,
+        hub: &Hub,
+        bus: &mut Bus,
+        rq: &mut RenderQueue,
+        context: &mut Context,
+    ) -> bool {
+        if let Ok(value) = text.parse::<f32>() {
+            self.settings.auto_suspend = value;
+        }
+        self.update_setting_values(evt, hub, bus, rq, context);
+
+        hub.send(Event::Focus(None)).ok();
+
+        true
+    }
+
+    fn handle_submit_auto_power_off(
+        &mut self,
+        text: &str,
+        evt: &Event,
+        hub: &Hub,
+        bus: &mut Bus,
+        rq: &mut RenderQueue,
+        context: &mut Context,
+    ) -> bool {
+        if let Ok(value) = text.parse::<f32>() {
+            self.settings.auto_power_off = value;
+        }
+
+        self.update_setting_values(evt, hub, bus, rq, context);
+
+        hub.send(Event::Focus(None)).ok();
+
+        true
+    }
+
+    fn handle_file_chooser_closed(
+        &mut self,
+        path: &Option<PathBuf>,
+        hub: &Hub,
+        bus: &mut Bus,
+        rq: &mut RenderQueue,
+        context: &mut Context,
+    ) -> bool {
+        if let Some(kind) = self.active_intermission_edit.take() {
+            if let Some(ref selected_path) = *path {
+                use crate::settings::IntermissionDisplay;
+                self.settings.intermissions[kind] =
+                    IntermissionDisplay::Image(selected_path.clone());
+
+                let display_name = selected_path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("Custom")
+                    .to_string();
+
+                let update_event = match kind {
+                    crate::settings::IntermKind::Suspend => {
+                        Event::Submit(ViewId::IntermissionSuspendInput, display_name)
+                    }
+                    crate::settings::IntermKind::PowerOff => {
+                        Event::Submit(ViewId::IntermissionPowerOffInput, display_name)
+                    }
+                    crate::settings::IntermKind::Share => {
+                        Event::Submit(ViewId::IntermissionShareInput, display_name)
+                    }
+                };
+
+                self.update_setting_values(&update_event, hub, bus, rq, context);
+            }
+        }
+
+        false
+    }
+
+    fn handle_close_view_event(&mut self, view_id: &ViewId, rq: &mut RenderQueue) -> bool {
+        match view_id {
+            ViewId::SettingsCategoryEditor => {
+                self.settings = self.original_settings.clone();
+                false
+            }
+            ViewId::LibraryEditor
+            | ViewId::AutoSuspendInput
+            | ViewId::AutoPowerOffInput
+            | ViewId::SettingsValueMenu => {
+                if let Some(index) = locate_by_id(self, *view_id) {
+                    self.children.remove(index);
+                    rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+                }
+                true
+            }
+            ViewId::FileChooser => {
+                if let Some(index) = locate_by_id(self, ViewId::FileChooser) {
+                    self.children.remove(index);
+                    rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+                }
+                self.active_intermission_edit = None;
+                true
+            }
+            _ => false,
+        }
+    }
 }
 
 impl View for CategoryEditor {
@@ -332,363 +816,57 @@ impl View for CategoryEditor {
         context: &mut Context,
     ) -> bool {
         match evt {
-            Event::Focus(v) => {
-                if self.focus != *v {
-                    self.focus = *v;
-                    if v.is_some() {
-                        self.toggle_keyboard(true, *v, hub, rq, context);
-                    } else {
-                        self.toggle_keyboard(false, None, hub, rq, context);
-                    }
-                }
-                true
-            }
+            Event::Focus(view_id) => self.handle_focus_event(view_id, hub, rq, context),
             Event::Back => {
                 bus.push_back(Event::Close(ViewId::SettingsCategoryEditor));
                 true
             }
             Event::Gesture(GestureEvent::HoldFingerShort(point, _)) => {
-                if self.category != Category::Libraries {
-                    return false;
-                }
-
-                if !self.content_rect.includes(*point) {
-                    return false;
-                }
-
-                let row_index = (point.y - self.content_rect.min.y) / self.row_height;
-                let library_index = row_index as usize;
-
-                if library_index < self.settings.libraries.len() {
-                    let row_y = self.content_rect.min.y + (row_index * self.row_height);
-                    let row_rect = rect![
-                        self.content_rect.min.x,
-                        row_y,
-                        self.content_rect.max.x,
-                        row_y + self.row_height
-                    ];
-
-                    let entries = vec![EntryKind::Command(
-                        "Delete".to_string(),
-                        EntryId::DeleteLibrary(library_index),
-                    )];
-
-                    bus.push_back(Event::SubMenu(row_rect, entries));
-                    return true;
-                }
-
-                false
+                self.handle_hold_finger_short(point, bus)
             }
             Event::SubMenu(rect, ref entries) => {
-                let menu = Menu::new(
-                    *rect,
-                    ViewId::SettingsValueMenu,
-                    crate::view::menu::MenuKind::SubMenu,
-                    entries.clone(),
-                    context,
-                );
-
-                rq.add(RenderData::new(menu.id(), *menu.rect(), UpdateMode::Gui));
-                self.children.push(Box::new(menu));
-
-                true
+                self.handle_submenu_event(rect, entries, rq, context)
             }
             Event::Select(ref id) => match id {
                 EntryId::SetKeyboardLayout(ref layout) => {
-                    self.settings.keyboard_layout = layout.clone();
-                    // alright, so instead of returing false and letting it bubble up all the way for it to get resend,
-                    // just loop over the grandchildren, which are SettingsValue's and let them update themselfs.
-                    // TODO: refactor this so that it is clearer.
-                    for child in &mut self.children {
-                        for grandchild in child.children_mut() {
-                            grandchild.handle_event(evt, hub, bus, rq, context);
-                        }
-                    }
-
-                    true
+                    self.handle_set_keyboard_layout(layout, evt, hub, bus, rq, context)
                 }
                 EntryId::ToggleSleepCover => {
-                    self.settings.sleep_cover = !self.settings.sleep_cover;
-                    for child in &mut self.children {
-                        for grandchild in child.children_mut() {
-                            grandchild.handle_event(evt, hub, bus, rq, context);
-                        }
-                    }
-
-                    true
+                    self.handle_toggle_sleep_cover(evt, hub, bus, rq, context)
                 }
                 EntryId::ToggleAutoShare => {
-                    self.settings.auto_share = !self.settings.auto_share;
-                    for child in &mut self.children {
-                        for grandchild in child.children_mut() {
-                            grandchild.handle_event(evt, hub, bus, rq, context);
-                        }
-                    }
-
-                    true
+                    self.handle_toggle_auto_share(evt, hub, bus, rq, context)
                 }
-                EntryId::EditAutoSuspend => {
-                    let mut suspend_input = crate::view::named_input::NamedInput::new(
-                        "Auto Suspend (minutes, 0 = never)".to_string(),
-                        ViewId::AutoSuspendInput,
-                        ViewId::AutoSuspendInput,
-                        10,
-                        context,
-                    );
-                    let text = if self.settings.auto_suspend == 0.0 {
-                        "0".to_string()
-                    } else {
-                        format!("{:.1}", self.settings.auto_suspend)
-                    };
-
-                    suspend_input.set_text(&text, rq, context);
-
-                    self.children.push(Box::new(suspend_input));
-                    hub.send(Event::Focus(Some(ViewId::AutoSuspendInput))).ok();
-
-                    rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
-
-                    true
-                }
-                EntryId::EditAutoPowerOff => {
-                    let mut power_off_input = crate::view::named_input::NamedInput::new(
-                        "Auto Power Off (days, 0 = never)".to_string(),
-                        ViewId::AutoPowerOffInput,
-                        ViewId::AutoPowerOffInput,
-                        10,
-                        context,
-                    );
-                    let text = if self.settings.auto_power_off == 0.0 {
-                        "0".to_string()
-                    } else {
-                        format!("{:.1}", self.settings.auto_power_off)
-                    };
-
-                    power_off_input.set_text(&text, rq, context);
-
-                    self.children.push(Box::new(power_off_input));
-                    hub.send(Event::Focus(Some(ViewId::AutoPowerOffInput))).ok();
-                    rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
-
-                    true
-                }
+                EntryId::EditAutoSuspend => self.handle_edit_auto_suspend(hub, rq, context),
+                EntryId::EditAutoPowerOff => self.handle_edit_auto_power_off(hub, rq, context),
                 EntryId::SetButtonScheme(button_scheme) => {
-                    self.settings.button_scheme = *button_scheme;
-                    for child in &mut self.children {
-                        for grandchild in child.children_mut() {
-                            grandchild.handle_event(evt, hub, bus, rq, context);
-                        }
-                    }
-
-                    true
+                    self.handle_set_button_scheme(button_scheme, evt, hub, bus, rq, context)
                 }
-                EntryId::DeleteLibrary(index) => {
-                    if *index < self.settings.libraries.len() {
-                        let original_count = self.settings.libraries.len();
-                        self.settings.libraries.remove(*index);
-
-                        if let Err(e) = self.rebuild_library_rows(rq, Some(original_count)) {
-                            eprintln!("Failed to rebuild library rows: {}", e);
-                        }
-                    }
-
-                    if let Some(menu_index) = locate_by_id(self, ViewId::SettingsValueMenu) {
-                        self.children.remove(menu_index);
-                        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
-                    }
-
-                    true
-                }
+                EntryId::DeleteLibrary(index) => self.handle_delete_library(*index, rq),
                 EntryId::SetIntermission(kind, display) => {
-                    self.settings.intermissions[*kind] = display.clone();
-
-                    for child in &mut self.children {
-                        for grandchild in child.children_mut() {
-                            grandchild.handle_event(evt, hub, bus, rq, context);
-                        }
-                    }
-
-                    true
+                    self.handle_set_intermission(kind, display, evt, hub, bus, rq, context)
                 }
                 EntryId::EditIntermissionImage(kind) => {
-                    use crate::view::file_chooser::{FileChooser, SelectionMode};
-
-                    self.active_intermission_edit = Some(*kind);
-
-                    let initial_path = PathBuf::from("/mnt/onboard");
-                    let file_chooser = FileChooser::new(
-                        self.rect,
-                        initial_path,
-                        SelectionMode::File,
-                        hub,
-                        rq,
-                        context,
-                    );
-
-                    self.children.push(Box::new(file_chooser));
-                    rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
-
-                    true
+                    self.handle_edit_intermission_image(kind, hub, rq, context)
                 }
                 _ => false,
             },
-            Event::Validate => {
-                bus.push_back(Event::UpdateSettings(self.settings.clone()));
-                bus.push_back(Event::Close(ViewId::SettingsCategoryEditor));
-                true
-            }
-            Event::AddLibrary => {
-                let library = LibrarySettings {
-                    name: String::new(),
-                    path: PathBuf::from("/mnt/onboard"),
-                    mode: LibraryMode::Filesystem,
-                    ..Default::default()
-                };
-
-                let library_index = self.settings.libraries.len();
-                self.settings.libraries.push(library.clone());
-
-                if let Err(e) = self.rebuild_library_rows(rq, None) {
-                    eprintln!("Failed to rebuild library rows: {}", e);
-                }
-
-                if let Ok(library_editor) =
-                    LibraryEditor::new(self.rect, library_index, library, hub, rq, context)
-                {
-                    self.children.push(Box::new(library_editor));
-                    rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
-                }
-
-                true
-            }
-            Event::EditLibrary(index) => {
-                if let Some(library) = self.settings.libraries.get(*index).cloned() {
-                    if let Ok(library_editor) =
-                        LibraryEditor::new(self.rect, *index, library, hub, rq, context)
-                    {
-                        self.children.push(Box::new(library_editor));
-                        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
-                    }
-                }
-                true
-            }
+            Event::Validate => self.handle_validate_event(bus),
+            Event::AddLibrary => self.handle_add_library_event(hub, rq, context),
+            Event::EditLibrary(index) => self.handle_edit_library_event(*index, hub, rq, context),
             Event::UpdateLibrary(index, ref library) => {
-                if *index < self.settings.libraries.len() {
-                    self.settings.libraries[*index] = (**library).clone();
-
-                    if let Err(e) = self.rebuild_library_rows(rq, None) {
-                        eprintln!("Failed to rebuild library rows: {}", e);
-                    }
-                }
-
-                false
+                self.handle_update_library_event(*index, library, rq)
             }
             Event::Submit(ViewId::AutoSuspendInput, ref text) => {
-                if let Ok(value) = text.parse::<f32>() {
-                    self.settings.auto_suspend = value;
-                }
-                for child in &mut self.children {
-                    for grandchild in child.children_mut() {
-                        grandchild.handle_event(evt, hub, bus, rq, context);
-                    }
-                }
-
-                hub.send(Event::Focus(None)).ok();
-
-                true
+                self.handle_submit_auto_suspend(text, evt, hub, bus, rq, context)
             }
             Event::Submit(ViewId::AutoPowerOffInput, ref text) => {
-                if let Ok(value) = text.parse::<f32>() {
-                    self.settings.auto_power_off = value;
-                }
-
-                for child in &mut self.children {
-                    for grandchild in child.children_mut() {
-                        grandchild.handle_event(evt, hub, bus, rq, context);
-                    }
-                }
-
-                hub.send(Event::Focus(None)).ok();
-
-                true
+                self.handle_submit_auto_power_off(text, evt, hub, bus, rq, context)
             }
             Event::FileChooserClosed(ref path) => {
-                if let Some(kind) = self.active_intermission_edit.take() {
-                    if let Some(ref selected_path) = *path {
-                        use crate::settings::IntermissionDisplay;
-                        self.settings.intermissions[kind] =
-                            IntermissionDisplay::Image(selected_path.clone());
-
-                        let display_name = selected_path
-                            .file_name()
-                            .and_then(|n| n.to_str())
-                            .unwrap_or("Custom")
-                            .to_string();
-
-                        let update_event = match kind {
-                            crate::settings::IntermKind::Suspend => {
-                                Event::Submit(ViewId::IntermissionSuspendInput, display_name)
-                            }
-                            crate::settings::IntermKind::PowerOff => {
-                                Event::Submit(ViewId::IntermissionPowerOffInput, display_name)
-                            }
-                            crate::settings::IntermKind::Share => {
-                                Event::Submit(ViewId::IntermissionShareInput, display_name)
-                            }
-                        };
-
-                        for child in &mut self.children {
-                            for grandchild in child.children_mut() {
-                                grandchild.handle_event(&update_event, hub, bus, rq, context);
-                            }
-                        }
-                    }
-                }
-
-                false
+                self.handle_file_chooser_closed(path, hub, bus, rq, context)
             }
-            Event::Close(ViewId::LibraryEditor) => {
-                if let Some(index) = locate_by_id(self, ViewId::LibraryEditor) {
-                    self.children.remove(index);
-                    rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
-                }
-                true
-            }
-            Event::Close(ViewId::AutoSuspendInput) => {
-                if let Some(index) = locate_by_id(self, ViewId::AutoSuspendInput) {
-                    self.children.remove(index);
-                    rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
-                }
-                true
-            }
-            Event::Close(ViewId::AutoPowerOffInput) => {
-                if let Some(index) = locate_by_id(self, ViewId::AutoPowerOffInput) {
-                    self.children.remove(index);
-                    rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
-                }
-                true
-            }
-            Event::Close(view_id) if *view_id == ViewId::SettingsCategoryEditor => {
-                self.settings = self.original_settings.clone();
-                false
-            }
-            Event::Close(view_id) if *view_id == ViewId::SettingsValueMenu => {
-                if let Some(index) = locate_by_id(self, *view_id) {
-                    self.children.remove(index);
-                    rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
-                }
-
-                true
-            }
-            Event::Close(ViewId::FileChooser) => {
-                if let Some(index) = locate_by_id(self, ViewId::FileChooser) {
-                    self.children.remove(index);
-                    rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
-                }
-                self.active_intermission_edit = None;
-
-                true
-            }
+            Event::Close(view_id) => self.handle_close_view_event(view_id, rq),
             _ => false,
         }
     }
@@ -801,7 +979,7 @@ mod tests {
         let (hub, _receiver) = channel();
         let mut rq = RenderQueue::new();
 
-        CategoryEditor::new(rect, Category::Libraries, &hub, &mut rq, context).build()
+        CategoryEditor::new(rect, Category::Libraries, &hub, &mut rq, context)
     }
 
     #[test]
@@ -997,7 +1175,7 @@ mod tests {
         let (hub, _receiver) = channel();
         let mut rq = RenderQueue::new();
 
-        CategoryEditor::new(rect, Category::Intermissions, &hub, &mut rq, context).build()
+        CategoryEditor::new(rect, Category::Intermissions, &hub, &mut rq, context)
     }
 
     #[test]

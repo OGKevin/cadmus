@@ -1,3 +1,34 @@
+//! Settings editor module for managing application configuration.
+//!
+//! This module provides a hierarchical settings interface with the following structure:
+//!
+//! ```text
+//! SettingsEditor (Main view)
+//!   └── CategoryRow (One for each category: General, Libraries, Intermissions)
+//!       └── CategoryEditor (Opened when a category is selected)
+//!           └── SettingRow (One for each setting in the category)
+//!               ├── Label (Setting name)
+//!               └── SettingValue (Current value, can be tapped to edit)
+//! ```
+//!
+//! ## Components
+//!
+//! - **SettingsEditor**: Top-level view showing all setting categories
+//! - **CategoryRow**: Represents a category in the settings list
+//! - **CategoryEditor**: Full-screen editor for a specific category's settings
+//! - **SettingRow**: Individual setting with label and value
+//! - **SettingValue**: Interactive value display that opens editors/menus
+//! - **LibraryEditor**: Specialized editor for library settings
+//!
+//! ## Event Flow
+//!
+//! When a setting is modified, the CategoryEditor updates its internal settings copy.
+//! Changes are only persisted when the user taps the validate button, which sends
+//! an `Event::UpdateSettings` to save the configuration.
+//!
+//! The grandchild update pattern is used to propagate setting changes from the
+//! CategoryEditor to SettingValue views for UI updates without full rebuilds.
+
 use crate::color::{BLACK, WHITE};
 use crate::context::Context;
 use crate::device::CURRENT_DEVICE;
@@ -184,8 +215,7 @@ impl View for SettingsEditor {
     ) -> bool {
         match evt {
             Event::OpenSettingsCategory(category) => {
-                let category_editor =
-                    CategoryEditor::new(self.rect, *category, hub, rq, context).build();
+                let category_editor = CategoryEditor::new(self.rect, *category, hub, rq, context);
 
                 if let Ok(editor) = category_editor {
                     self.children.push(Box::new(editor));

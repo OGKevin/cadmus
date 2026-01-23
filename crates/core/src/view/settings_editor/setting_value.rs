@@ -1,35 +1,46 @@
+use super::super::action_label::ActionLabel;
 use super::super::EntryKind;
-use super::super::{Bus, Event, Hub, Id, RenderData, RenderQueue, View, ID_FEEDER};
-use crate::color::{TEXT_INVERTED_HARD, TEXT_NORMAL};
+use super::super::{Align, Bus, Event, Hub, Id, RenderQueue, View, ID_FEEDER};
 use crate::context::Context;
-use crate::device::CURRENT_DEVICE;
-use crate::font::{font_from_style, Fonts, NORMAL_STYLE};
-use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::framebuffer::Framebuffer;
 use crate::geom::Rectangle;
-use crate::gesture::GestureEvent;
-use crate::input::{DeviceEvent, FingerStatus};
 use crate::settings::{ButtonScheme, IntermKind, Settings};
+use crate::view::EntryId;
 use anyhow::Error;
-use core::panic;
 use std::fs;
 use std::path::Path;
 
-use crate::view::EntryId;
-
+/// Represents the type of setting value being displayed.
+///
+/// This enum categorizes different settings that can be configured in the application,
+/// including keyboard layout, power management, button schemes, and library settings.
 #[derive(Debug)]
 pub enum Kind {
+    /// Keyboard layout selection setting
     KeyboardLayout,
+    /// Sleep cover enable/disable setting
     SleepCover,
+    /// Auto-share enable/disable setting
     AutoShare,
+    /// Auto-suspend timeout setting (in minutes)
     AutoSuspend,
+    /// Auto power-off timeout setting (in minutes)
     AutoPowerOff,
+    /// Button scheme selection (natural or inverted)
     ButtonScheme,
+    /// Library info display for the library at the given index
     LibraryInfo(usize),
+    /// Library name setting for the library at the given index
     LibraryName(usize),
+    /// Library path setting for the library at the given index
     LibraryPath(usize),
+    /// Library mode setting (database or filesystem) for the library at the given index
     LibraryMode(usize),
+    /// Intermission display setting for suspend screen
     IntermissionSuspend,
+    /// Intermission display setting for power-off screen
     IntermissionPowerOff,
+    /// Intermission display setting for share screen
     IntermissionShare,
 }
 
@@ -44,13 +55,22 @@ impl Kind {
     }
 }
 
+/// Represents a single setting value display in the settings UI.
+///
+/// This struct manages the display and interaction of a setting value, including
+/// the current value, available options (entries), and associated UI components.
+/// It acts as a View that can be rendered and handle events related to setting changes.
+#[derive(Debug)]
 pub struct SettingValue {
+    /// Unique identifier for this setting value view
     id: Id,
+    /// The type of setting this value represents
     kind: Kind,
+    /// The rectangular area occupied by this view
     rect: Rectangle,
+    /// Child views, typically containing an ActionLabel for display
     children: Vec<Box<dyn View>>,
-    value: String,
-    active: bool,
+    /// Available options/entries for this setting (e.g., radio buttons, checkboxes)
     entries: Vec<EntryKind>,
 }
 
@@ -58,15 +78,19 @@ impl SettingValue {
     pub fn new(kind: Kind, rect: Rectangle, settings: &Settings) -> SettingValue {
         let (value, entries) = Self::fetch_data_for_kind(&kind, settings);
 
-        SettingValue {
+        let mut setting_value = SettingValue {
             id: ID_FEEDER.next(),
             kind,
             rect,
-            children: Vec::new(),
-            value,
-            active: false,
+            children: vec![],
             entries,
-        }
+        };
+
+        let event = setting_value.create_tap_event();
+        let action_label = ActionLabel::new(rect, value, Align::Right(10)).event(event);
+        setting_value.children = vec![Box::new(action_label)];
+
+        setting_value
     }
 
     fn fetch_data_for_kind(kind: &Kind, settings: &Settings) -> (String, Vec<EntryKind>) {
@@ -308,10 +332,267 @@ impl SettingValue {
     }
 
     pub fn update(&mut self, value: String, rq: &mut RenderQueue) {
-        if self.value != value {
-            self.value = value;
-            rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+        if let Some(action_label) = self.children[0].downcast_mut::<ActionLabel>() {
+            action_label.update(&value, rq);
         }
+    }
+
+    pub fn value(&self) -> String {
+        if let Some(action_label) = self.children[0].downcast_ref::<ActionLabel>() {
+            action_label.value()
+        } else {
+            String::new()
+        }
+    }
+
+    fn create_tap_event(&self) -> Option<Event> {
+        match self.kind {
+            Kind::LibraryInfo(index) => Some(Event::EditLibrary(index)),
+            Kind::LibraryName(_) => Some(Event::Select(EntryId::EditLibraryName)),
+            Kind::LibraryPath(_) => Some(Event::Select(EntryId::EditLibraryPath)),
+            Kind::AutoSuspend => Some(Event::Select(EntryId::EditAutoSuspend)),
+            Kind::AutoPowerOff => Some(Event::Select(EntryId::EditAutoPowerOff)),
+            _ if !self.entries.is_empty() => Some(Event::SubMenu(self.rect, self.entries.clone())),
+            _ => None,
+        }
+    }
+
+    fn handle_set_keyboard_layout(&mut self, selected_layout: &str, rq: &mut RenderQueue) -> bool {
+        if !matches!(self.kind, Kind::KeyboardLayout) {
+            return false;
+        }
+
+        for entry in &mut self.entries {
+            if let EntryKind::RadioButton(
+                _,
+                EntryId::SetKeyboardLayout(ref layout),
+                ref mut selected,
+            ) = entry
+            {
+                *selected = layout == selected_layout
+            }
+        }
+
+        self.update(selected_layout.to_string(), rq);
+
+        let event = self.create_tap_event();
+        if let Some(action_label) = self.children[0].downcast_mut::<ActionLabel>() {
+            action_label.set_event(event);
+        }
+
+        true
+    }
+
+    fn handle_toggle_sleep_cover(&mut self, rq: &mut RenderQueue) -> bool {
+        if !matches!(self.kind, Kind::SleepCover) {
+            return false;
+        }
+
+        let mut new_value = None;
+        for entry in &mut self.entries {
+            if let EntryKind::CheckBox(_, EntryId::ToggleSleepCover, ref mut checked) = entry {
+                *checked = !*checked;
+                new_value = Some(if *checked {
+                    "Enabled".to_string()
+                } else {
+                    "Disabled".to_string()
+                });
+            }
+        }
+
+        if let Some(value) = new_value {
+            self.update(value, rq);
+        }
+
+        let event = self.create_tap_event();
+        if let Some(action_label) = self.children[0].downcast_mut::<ActionLabel>() {
+            action_label.set_event(event);
+        }
+
+        true
+    }
+
+    fn handle_toggle_auto_share(&mut self, rq: &mut RenderQueue) -> bool {
+        if !matches!(self.kind, Kind::AutoShare) {
+            return false;
+        }
+
+        let mut new_value = None;
+        for entry in &mut self.entries {
+            if let EntryKind::CheckBox(_, EntryId::ToggleAutoShare, ref mut checked) = entry {
+                *checked = !*checked;
+                new_value = Some(if *checked {
+                    "Enabled".to_string()
+                } else {
+                    "Disabled".to_string()
+                });
+            }
+        }
+
+        if let Some(value) = new_value {
+            self.update(value, rq);
+        }
+
+        let event = self.create_tap_event();
+        if let Some(action_label) = self.children[0].downcast_mut::<ActionLabel>() {
+            action_label.set_event(event);
+        }
+
+        true
+    }
+
+    fn handle_set_button_scheme(
+        &mut self,
+        selected_scheme: &ButtonScheme,
+        rq: &mut RenderQueue,
+    ) -> bool {
+        if !matches!(self.kind, Kind::ButtonScheme) {
+            return false;
+        }
+
+        for entry in &mut self.entries {
+            if let EntryKind::RadioButton(
+                _,
+                EntryId::SetButtonScheme(ref scheme),
+                ref mut selected,
+            ) = entry
+            {
+                *selected = scheme == selected_scheme
+            }
+        }
+
+        self.update(format!("{:?}", selected_scheme), rq);
+
+        let event = self.create_tap_event();
+        if let Some(action_label) = self.children[0].downcast_mut::<ActionLabel>() {
+            action_label.set_event(event);
+        }
+
+        true
+    }
+
+    fn handle_set_library_mode(
+        &mut self,
+        mode: &crate::settings::LibraryMode,
+        rq: &mut RenderQueue,
+    ) -> bool {
+        if !matches!(self.kind, Kind::LibraryMode(_)) {
+            return false;
+        }
+
+        for entry in &mut self.entries {
+            if let EntryKind::RadioButton(
+                _,
+                EntryId::SetLibraryMode(ref entry_mode),
+                ref mut selected,
+            ) = entry
+            {
+                *selected = entry_mode == mode
+            }
+        }
+
+        self.update(format!("{:?}", mode), rq);
+
+        let event = self.create_tap_event();
+        if let Some(action_label) = self.children[0].downcast_mut::<ActionLabel>() {
+            action_label.set_event(event);
+        }
+
+        true
+    }
+
+    fn handle_set_intermission(
+        &mut self,
+        kind: &IntermKind,
+        display_kind: &crate::settings::IntermissionDisplay,
+        rq: &mut RenderQueue,
+    ) -> bool {
+        if !self.kind.matches_interm_kind(kind) {
+            return false;
+        }
+
+        for entry in &mut self.entries {
+            if let EntryKind::RadioButton(_, ref button_entry_id, ref mut selected) = entry {
+                *selected = matches!(
+                    button_entry_id,
+                    EntryId::SetIntermission(k, d) if k == kind && d == display_kind
+                );
+            }
+        }
+
+        self.update(display_kind.to_string(), rq);
+
+        let event = self.create_tap_event();
+        if let Some(action_label) = self.children[0].downcast_mut::<ActionLabel>() {
+            action_label.set_event(event);
+        }
+
+        true
+    }
+
+    fn handle_submit_library_name(&mut self, name: &str, rq: &mut RenderQueue) -> bool {
+        if matches!(self.kind, Kind::LibraryName(_)) {
+            self.update(name.to_string(), rq);
+            true
+        } else {
+            false
+        }
+    }
+
+    fn handle_submit_auto_suspend(&mut self, text: &str, rq: &mut RenderQueue) -> bool {
+        if !matches!(self.kind, Kind::AutoSuspend) {
+            return false;
+        }
+
+        if let Ok(value) = text.parse::<f32>() {
+            let display_value = if value == 0.0 {
+                "Never".to_string()
+            } else {
+                format!("{:.1}", value)
+            };
+            self.update(display_value, rq);
+        }
+        true
+    }
+
+    fn handle_submit_auto_power_off(&mut self, text: &str, rq: &mut RenderQueue) -> bool {
+        if !matches!(self.kind, Kind::AutoPowerOff) {
+            return false;
+        }
+
+        if let Ok(value) = text.parse::<f32>() {
+            let display_value = if value == 0.0 {
+                "Never".to_string()
+            } else {
+                format!("{:.1}", value)
+            };
+            self.update(display_value, rq);
+        }
+        true
+    }
+
+    fn handle_submit_intermission(&mut self, display_name: &str, rq: &mut RenderQueue) -> bool {
+        match self.kind {
+            Kind::IntermissionSuspend | Kind::IntermissionPowerOff | Kind::IntermissionShare => {
+                self.update(display_name.to_string(), rq);
+                true
+            }
+            _ => false,
+        }
+    }
+
+    fn handle_file_chooser_closed(
+        &mut self,
+        path: &Option<std::path::PathBuf>,
+        rq: &mut RenderQueue,
+    ) -> bool {
+        if let Some(ref selected_path) = *path {
+            if matches!(self.kind, Kind::LibraryPath(_)) {
+                self.update(selected_path.display().to_string(), rq);
+                return false;
+            }
+        }
+        false
     }
 }
 
@@ -320,270 +601,53 @@ impl View for SettingValue {
         &mut self,
         evt: &Event,
         _hub: &Hub,
-        bus: &mut Bus,
+        _bus: &mut Bus,
         rq: &mut RenderQueue,
         _context: &mut Context,
     ) -> bool {
         match *evt {
-            Event::Device(DeviceEvent::Finger {
-                status, position, ..
-            }) => match status {
-                FingerStatus::Down if self.rect.includes(position) => {
-                    self.active = true;
-
-                    rq.add(RenderData::new(self.id, self.rect, UpdateMode::Fast));
-
-                    true
-                }
-                FingerStatus::Up if self.active => {
-                    self.active = false;
-
-                    rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
-
-                    true
-                }
-                _ => false,
-            },
-            Event::Gesture(GestureEvent::Tap(point)) if self.rect.includes(point) => {
-                match self.kind {
-                    Kind::LibraryInfo(index) => {
-                        bus.push_back(Event::EditLibrary(index));
-                    }
-                    Kind::LibraryName(_) => {
-                        bus.push_back(Event::Select(EntryId::EditLibraryName));
-                    }
-                    Kind::LibraryPath(_) => {
-                        bus.push_back(Event::Select(EntryId::EditLibraryPath));
-                    }
-                    Kind::AutoSuspend => {
-                        bus.push_back(Event::Select(EntryId::EditAutoSuspend));
-                    }
-                    Kind::AutoPowerOff => {
-                        bus.push_back(Event::Select(EntryId::EditAutoPowerOff));
-                    }
-                    Kind::LibraryMode(_) => match self.entries.is_empty() {
-                        true => panic!(
-                            "No entries available for setting value menu of kind {:?}",
-                            self.kind
-                        ),
-                        false => {
-                            bus.push_back(Event::SubMenu(self.rect, self.entries.clone()));
-                        }
-                    },
-                    _ => match self.entries.is_empty() {
-                        true => panic!(
-                            "No entries available for setting value menu of kind {:?}",
-                            self.kind
-                        ),
-                        false => {
-                            bus.push_back(Event::SubMenu(self.rect, self.entries.clone()));
-                        }
-                    },
-                }
-
-                true
-            }
             Event::Select(ref id) => match id {
-                EntryId::SetKeyboardLayout(ref selected_layout)
-                    if matches!(self.kind, Kind::KeyboardLayout) =>
-                {
-                    for entry in &mut self.entries {
-                        if let EntryKind::RadioButton(
-                            _,
-                            EntryId::SetKeyboardLayout(ref layout),
-                            ref mut selected,
-                        ) = entry
-                        {
-                            *selected = layout == selected_layout
-                        }
-                    }
-
-                    self.update(selected_layout.clone(), rq);
-
-                    true
+                EntryId::SetKeyboardLayout(ref selected_layout) => {
+                    self.handle_set_keyboard_layout(selected_layout, rq)
                 }
-                EntryId::ToggleSleepCover if matches!(self.kind, Kind::SleepCover) => {
-                    let mut new_value = None;
-                    for entry in &mut self.entries {
-                        if let EntryKind::CheckBox(_, EntryId::ToggleSleepCover, ref mut checked) =
-                            entry
-                        {
-                            *checked = !*checked;
-                            new_value = Some(if *checked {
-                                "Enabled".to_string()
-                            } else {
-                                "Disabled".to_string()
-                            });
-                        }
-                    }
-
-                    if let Some(value) = new_value {
-                        self.update(value, rq);
-                    }
-
-                    true
+                EntryId::ToggleSleepCover => self.handle_toggle_sleep_cover(rq),
+                EntryId::ToggleAutoShare => self.handle_toggle_auto_share(rq),
+                EntryId::SetButtonScheme(ref selected_scheme) => {
+                    self.handle_set_button_scheme(selected_scheme, rq)
                 }
-                EntryId::ToggleAutoShare if matches!(self.kind, Kind::AutoShare) => {
-                    let mut new_value = None;
-                    for entry in &mut self.entries {
-                        if let EntryKind::CheckBox(_, EntryId::ToggleAutoShare, ref mut checked) =
-                            entry
-                        {
-                            *checked = !*checked;
-                            new_value = Some(if *checked {
-                                "Enabled".to_string()
-                            } else {
-                                "Disabled".to_string()
-                            });
-                        }
-                    }
-
-                    if let Some(value) = new_value {
-                        self.update(value, rq);
-                    }
-
-                    true
-                }
-                EntryId::SetButtonScheme(ref selected_scheme)
-                    if matches!(self.kind, Kind::ButtonScheme) =>
-                {
-                    for entry in &mut self.entries {
-                        if let EntryKind::RadioButton(
-                            _,
-                            EntryId::SetButtonScheme(ref scheme),
-                            ref mut selected,
-                        ) = entry
-                        {
-                            *selected = scheme == selected_scheme
-                        }
-                    }
-
-                    self.update(format!("{:?}", selected_scheme), rq);
-
-                    true
-                }
-                EntryId::SetLibraryMode(mode) if matches!(self.kind, Kind::LibraryMode(_)) => {
-                    for entry in &mut self.entries {
-                        if let EntryKind::RadioButton(
-                            _,
-                            EntryId::SetLibraryMode(ref entry_mode),
-                            ref mut selected,
-                        ) = entry
-                        {
-                            *selected = entry_mode == mode
-                        }
-                    }
-
-                    self.update(format!("{:?}", mode), rq);
-
-                    true
-                }
-                EntryId::SetIntermission(kind, display_kind)
-                    if self.kind.matches_interm_kind(kind) =>
-                {
-                    for entry in &mut self.entries {
-                        if let EntryKind::RadioButton(_, ref button_entry_id, ref mut selected) =
-                            entry
-                        {
-                            *selected = matches!(
-                                button_entry_id,
-                                EntryId::SetIntermission(k, d) if k == kind && d == display_kind
-                            );
-                        }
-                    }
-
-                    self.update(display_kind.to_string(), rq);
-
-                    true
+                EntryId::SetLibraryMode(mode) => self.handle_set_library_mode(mode, rq),
+                EntryId::SetIntermission(kind, display_kind) => {
+                    self.handle_set_intermission(kind, display_kind, rq)
                 }
                 _ => false,
             },
-            Event::Submit(crate::view::ViewId::LibraryRenameInput, ref name)
-                if matches!(self.kind, Kind::LibraryName(_)) =>
-            {
-                self.update(name.clone(), rq);
-                true
+            Event::Submit(crate::view::ViewId::LibraryRenameInput, ref name) => {
+                self.handle_submit_library_name(name, rq)
             }
-            Event::Submit(crate::view::ViewId::AutoSuspendInput, ref text)
-                if matches!(self.kind, Kind::AutoSuspend) =>
-            {
-                if let Ok(value) = text.parse::<f32>() {
-                    let display_value = if value == 0.0 {
-                        "Never".to_string()
-                    } else {
-                        format!("{:.1}", value)
-                    };
-                    self.update(display_value, rq);
-                }
-                true
+            Event::Submit(crate::view::ViewId::AutoSuspendInput, ref text) => {
+                self.handle_submit_auto_suspend(text, rq)
             }
-            Event::Submit(crate::view::ViewId::AutoPowerOffInput, ref text)
-                if matches!(self.kind, Kind::AutoPowerOff) =>
-            {
-                if let Ok(value) = text.parse::<f32>() {
-                    let display_value = if value == 0.0 {
-                        "Never".to_string()
-                    } else {
-                        format!("{:.1}", value)
-                    };
-                    self.update(display_value, rq);
-                }
-                true
+            Event::Submit(crate::view::ViewId::AutoPowerOffInput, ref text) => {
+                self.handle_submit_auto_power_off(text, rq)
             }
-            Event::Submit(crate::view::ViewId::IntermissionSuspendInput, ref display_name)
-                if matches!(self.kind, Kind::IntermissionSuspend) =>
-            {
-                self.update(display_name.clone(), rq);
-                true
+            Event::Submit(crate::view::ViewId::IntermissionSuspendInput, ref display_name) => {
+                matches!(self.kind, Kind::IntermissionSuspend)
+                    && self.handle_submit_intermission(display_name, rq)
             }
-            Event::Submit(crate::view::ViewId::IntermissionPowerOffInput, ref display_name)
-                if matches!(self.kind, Kind::IntermissionPowerOff) =>
-            {
-                self.update(display_name.clone(), rq);
-                true
+            Event::Submit(crate::view::ViewId::IntermissionPowerOffInput, ref display_name) => {
+                matches!(self.kind, Kind::IntermissionPowerOff)
+                    && self.handle_submit_intermission(display_name, rq)
             }
-            Event::Submit(crate::view::ViewId::IntermissionShareInput, ref display_name)
-                if matches!(self.kind, Kind::IntermissionShare) =>
-            {
-                self.update(display_name.clone(), rq);
-                true
+            Event::Submit(crate::view::ViewId::IntermissionShareInput, ref display_name) => {
+                matches!(self.kind, Kind::IntermissionShare)
+                    && self.handle_submit_intermission(display_name, rq)
             }
-            Event::FileChooserClosed(ref path) => match path {
-                Some(ref selected_path) => match self.kind {
-                    Kind::LibraryPath(_) => {
-                        self.update(selected_path.display().to_string(), rq);
-                        false
-                    }
-                    _ => false,
-                },
-                _ => false,
-            },
+            Event::FileChooserClosed(ref path) => self.handle_file_chooser_closed(path, rq),
             _ => false,
         }
     }
 
-    // TODO: this can use a label as child isntea
-    fn render(&self, fb: &mut dyn Framebuffer, rect: Rectangle, fonts: &mut Fonts) {
-        let dpi = CURRENT_DEVICE.dpi;
-        let font = font_from_style(fonts, &NORMAL_STYLE, dpi);
-        let x_height = font.x_heights.0 as i32;
-        let padding = font.em() as i32;
-
-        let scheme = if self.active {
-            TEXT_INVERTED_HARD
-        } else {
-            TEXT_NORMAL
-        };
-
-        fb.draw_rectangle(&rect, scheme[0]);
-
-        let max_width = rect.width() as i32 - padding;
-        let plan = font.plan(&self.value, Some(max_width), None);
-        let dy = (rect.height() as i32 - x_height) / 2;
-        let dx = rect.width() as i32 - padding - plan.width;
-        let pt = pt!(rect.min.x + dx, rect.max.y - dy);
-
-        font.render(fb, scheme[1], &plan, pt);
+    fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut crate::font::Fonts) {
     }
 
     fn rect(&self) -> &Rectangle {
@@ -610,6 +674,7 @@ impl View for SettingValue {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::gesture::GestureEvent;
     use crate::settings::Settings;
     use crate::view::{RenderQueue, ViewId};
     use std::collections::VecDeque;
@@ -650,9 +715,9 @@ mod tests {
             Box::new(0u16),
         );
 
-        let initial_suspend = suspend_value.value.clone();
-        let initial_power_off = power_off_value.value.clone();
-        let initial_share = share_value.value.clone();
+        let initial_suspend = suspend_value.value().clone();
+        let initial_power_off = power_off_value.value().clone();
+        let initial_share = share_value.value().clone();
 
         let test_path = PathBuf::from("/mnt/onboard/test_image.png");
         let event = Event::FileChooserClosed(Some(test_path.clone()));
@@ -662,15 +727,15 @@ mod tests {
         share_value.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
 
         println!("Initial suspend value: {}", initial_suspend);
-        println!("After event suspend value: {}", suspend_value.value);
+        println!("After event suspend value: {}", suspend_value.value());
         println!("Initial power_off value: {}", initial_power_off);
-        println!("After event power_off value: {}", power_off_value.value);
+        println!("After event power_off value: {}", power_off_value.value());
         println!("Initial share value: {}", initial_share);
-        println!("After event share value: {}", share_value.value);
+        println!("After event share value: {}", share_value.value());
 
-        assert_eq!(suspend_value.value, initial_suspend);
-        assert_eq!(power_off_value.value, initial_power_off);
-        assert_eq!(share_value.value, initial_share);
+        assert_eq!(suspend_value.value(), initial_suspend);
+        assert_eq!(power_off_value.value(), initial_power_off);
+        assert_eq!(share_value.value(), initial_share);
     }
 
     #[test]
@@ -707,7 +772,6 @@ mod tests {
             Box::new(0u16),
         );
 
-        // Each value should only respond to its specific Submit event
         let suspend_event = Event::Submit(
             ViewId::IntermissionSuspendInput,
             "suspend_image.png".to_string(),
@@ -733,9 +797,450 @@ mod tests {
         share_value.handle_event(&power_off_event, &hub, &mut bus, &mut rq, &mut context);
         share_value.handle_event(&share_event, &hub, &mut bus, &mut rq, &mut context);
 
-        // Each value should only be updated by its matching event
-        assert_eq!(suspend_value.value, "suspend_image.png");
-        assert_eq!(power_off_value.value, "poweroff_image.png");
-        assert_eq!(share_value.value, "share_image.png");
+        assert_eq!(suspend_value.value(), "suspend_image.png");
+        assert_eq!(power_off_value.value(), "poweroff_image.png");
+        assert_eq!(share_value.value(), "share_image.png");
+    }
+
+    #[test]
+    fn test_keyboard_layout_select_updates_value() {
+        let mut settings = Settings::default();
+        settings.keyboard_layout = "English".to_string();
+        let rect = rect![0, 0, 200, 50];
+
+        let mut value = SettingValue::new(Kind::KeyboardLayout, rect, &settings);
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+        let mut rq = RenderQueue::new();
+        let mut context = crate::context::Context::new(
+            Box::new(crate::framebuffer::Pixmap::new(600, 800, 1)),
+            None,
+            crate::library::Library::new(
+                std::path::Path::new("/tmp"),
+                crate::settings::LibraryMode::Database,
+            )
+            .unwrap(),
+            Settings::default(),
+            crate::font::Fonts::load_from(
+                std::path::Path::new(
+                    &std::env::var("TEST_ROOT_DIR")
+                        .expect("TEST_ROOT_DIR must be set for this test."),
+                )
+                .to_path_buf(),
+            )
+            .expect("Failed to load fonts"),
+            Box::new(crate::battery::FakeBattery::new()),
+            Box::new(crate::frontlight::LightLevels::default()),
+            Box::new(0u16),
+        );
+
+        let event = Event::Select(EntryId::SetKeyboardLayout("French".to_string()));
+        let handled = value.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+
+        assert!(handled);
+        assert_eq!(value.value(), "French");
+        assert!(!rq.is_empty());
+    }
+
+    #[test]
+    fn test_sleep_cover_toggle_updates_value() {
+        let mut settings = Settings::default();
+        settings.sleep_cover = false;
+        let rect = rect![0, 0, 200, 50];
+
+        let mut value = SettingValue::new(Kind::SleepCover, rect, &settings);
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+        let mut rq = RenderQueue::new();
+        let mut context = crate::context::Context::new(
+            Box::new(crate::framebuffer::Pixmap::new(600, 800, 1)),
+            None,
+            crate::library::Library::new(
+                std::path::Path::new("/tmp"),
+                crate::settings::LibraryMode::Database,
+            )
+            .unwrap(),
+            Settings::default(),
+            crate::font::Fonts::load_from(
+                std::path::Path::new(
+                    &std::env::var("TEST_ROOT_DIR")
+                        .expect("TEST_ROOT_DIR must be set for this test."),
+                )
+                .to_path_buf(),
+            )
+            .expect("Failed to load fonts"),
+            Box::new(crate::battery::FakeBattery::new()),
+            Box::new(crate::frontlight::LightLevels::default()),
+            Box::new(0u16),
+        );
+
+        assert_eq!(value.value(), "Disabled");
+
+        let event = Event::Select(EntryId::ToggleSleepCover);
+        let handled = value.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+
+        assert!(handled);
+        assert_eq!(value.value(), "Enabled");
+        assert!(!rq.is_empty());
+    }
+
+    #[test]
+    fn test_auto_share_toggle_updates_value() {
+        let mut settings = Settings::default();
+        settings.auto_share = false;
+        let rect = rect![0, 0, 200, 50];
+
+        let mut value = SettingValue::new(Kind::AutoShare, rect, &settings);
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+        let mut rq = RenderQueue::new();
+        let mut context = crate::context::Context::new(
+            Box::new(crate::framebuffer::Pixmap::new(600, 800, 1)),
+            None,
+            crate::library::Library::new(
+                std::path::Path::new("/tmp"),
+                crate::settings::LibraryMode::Database,
+            )
+            .unwrap(),
+            Settings::default(),
+            crate::font::Fonts::load_from(
+                std::path::Path::new(
+                    &std::env::var("TEST_ROOT_DIR")
+                        .expect("TEST_ROOT_DIR must be set for this test."),
+                )
+                .to_path_buf(),
+            )
+            .expect("Failed to load fonts"),
+            Box::new(crate::battery::FakeBattery::new()),
+            Box::new(crate::frontlight::LightLevels::default()),
+            Box::new(0u16),
+        );
+
+        assert_eq!(value.value(), "Disabled");
+
+        let event = Event::Select(EntryId::ToggleAutoShare);
+        let handled = value.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+
+        assert!(handled);
+        assert_eq!(value.value(), "Enabled");
+        assert!(!rq.is_empty());
+    }
+
+    #[test]
+    fn test_button_scheme_select_updates_value() {
+        let mut settings = Settings::default();
+        settings.button_scheme = ButtonScheme::Natural;
+        let rect = rect![0, 0, 200, 50];
+
+        let mut value = SettingValue::new(Kind::ButtonScheme, rect, &settings);
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+        let mut rq = RenderQueue::new();
+        let mut context = crate::context::Context::new(
+            Box::new(crate::framebuffer::Pixmap::new(600, 800, 1)),
+            None,
+            crate::library::Library::new(
+                std::path::Path::new("/tmp"),
+                crate::settings::LibraryMode::Database,
+            )
+            .unwrap(),
+            Settings::default(),
+            crate::font::Fonts::load_from(
+                std::path::Path::new(
+                    &std::env::var("TEST_ROOT_DIR")
+                        .expect("TEST_ROOT_DIR must be set for this test."),
+                )
+                .to_path_buf(),
+            )
+            .expect("Failed to load fonts"),
+            Box::new(crate::battery::FakeBattery::new()),
+            Box::new(crate::frontlight::LightLevels::default()),
+            Box::new(0u16),
+        );
+
+        let event = Event::Select(EntryId::SetButtonScheme(ButtonScheme::Inverted));
+        let handled = value.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+
+        assert!(handled);
+        assert_eq!(value.value(), "Inverted");
+        assert!(!rq.is_empty());
+    }
+
+    #[test]
+    fn test_library_mode_select_updates_value() {
+        use crate::settings::{LibraryMode, LibrarySettings};
+        let mut settings = Settings::default();
+        settings.libraries.clear();
+        let mut library = LibrarySettings::default();
+        library.name = "Test Library".to_string();
+        library.path = PathBuf::from("/tmp");
+        library.mode = LibraryMode::Filesystem;
+        settings.libraries.push(library);
+        let rect = rect![0, 0, 200, 50];
+
+        let mut value = SettingValue::new(Kind::LibraryMode(0), rect, &settings);
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+        let mut rq = RenderQueue::new();
+        let mut context = crate::context::Context::new(
+            Box::new(crate::framebuffer::Pixmap::new(600, 800, 1)),
+            None,
+            crate::library::Library::new(
+                std::path::Path::new("/tmp"),
+                crate::settings::LibraryMode::Database,
+            )
+            .unwrap(),
+            Settings::default(),
+            crate::font::Fonts::load_from(
+                std::path::Path::new(
+                    &std::env::var("TEST_ROOT_DIR")
+                        .expect("TEST_ROOT_DIR must be set for this test."),
+                )
+                .to_path_buf(),
+            )
+            .expect("Failed to load fonts"),
+            Box::new(crate::battery::FakeBattery::new()),
+            Box::new(crate::frontlight::LightLevels::default()),
+            Box::new(0u16),
+        );
+
+        assert_eq!(value.value(), "Filesystem");
+
+        let event = Event::Select(EntryId::SetLibraryMode(LibraryMode::Database));
+        let handled = value.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+
+        assert!(handled);
+        assert_eq!(value.value(), "Database");
+        assert!(!rq.is_empty());
+    }
+
+    #[test]
+    fn test_auto_suspend_submit_updates_value() {
+        let settings = Settings::default();
+        let rect = rect![0, 0, 200, 50];
+
+        let mut value = SettingValue::new(Kind::AutoSuspend, rect, &settings);
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+        let mut rq = RenderQueue::new();
+        let mut context = crate::context::Context::new(
+            Box::new(crate::framebuffer::Pixmap::new(600, 800, 1)),
+            None,
+            crate::library::Library::new(
+                std::path::Path::new("/tmp"),
+                crate::settings::LibraryMode::Database,
+            )
+            .unwrap(),
+            Settings::default(),
+            crate::font::Fonts::load_from(
+                std::path::Path::new(
+                    &std::env::var("TEST_ROOT_DIR")
+                        .expect("TEST_ROOT_DIR must be set for this test."),
+                )
+                .to_path_buf(),
+            )
+            .expect("Failed to load fonts"),
+            Box::new(crate::battery::FakeBattery::new()),
+            Box::new(crate::frontlight::LightLevels::default()),
+            Box::new(0u16),
+        );
+
+        let event = Event::Submit(ViewId::AutoSuspendInput, "15.0".to_string());
+        let handled = value.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+
+        assert!(handled);
+        assert_eq!(value.value(), "15.0");
+        assert!(!rq.is_empty());
+    }
+
+    #[test]
+    fn test_auto_power_off_submit_updates_value() {
+        let settings = Settings::default();
+        let rect = rect![0, 0, 200, 50];
+
+        let mut value = SettingValue::new(Kind::AutoPowerOff, rect, &settings);
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+        let mut rq = RenderQueue::new();
+        let mut context = crate::context::Context::new(
+            Box::new(crate::framebuffer::Pixmap::new(600, 800, 1)),
+            None,
+            crate::library::Library::new(
+                std::path::Path::new("/tmp"),
+                crate::settings::LibraryMode::Database,
+            )
+            .unwrap(),
+            Settings::default(),
+            crate::font::Fonts::load_from(
+                std::path::Path::new(
+                    &std::env::var("TEST_ROOT_DIR")
+                        .expect("TEST_ROOT_DIR must be set for this test."),
+                )
+                .to_path_buf(),
+            )
+            .expect("Failed to load fonts"),
+            Box::new(crate::battery::FakeBattery::new()),
+            Box::new(crate::frontlight::LightLevels::default()),
+            Box::new(0u16),
+        );
+
+        let event = Event::Submit(ViewId::AutoPowerOffInput, "7.0".to_string());
+        let handled = value.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+
+        assert!(handled);
+        assert_eq!(value.value(), "7.0");
+        assert!(!rq.is_empty());
+    }
+
+    #[test]
+    fn test_library_name_submit_updates_value() {
+        use crate::settings::LibrarySettings;
+        let mut settings = Settings::default();
+        settings.libraries.push(LibrarySettings {
+            name: "Old Name".to_string(),
+            path: PathBuf::from("/tmp"),
+            mode: crate::settings::LibraryMode::Filesystem,
+            ..Default::default()
+        });
+        let rect = rect![0, 0, 200, 50];
+
+        let mut value = SettingValue::new(Kind::LibraryName(0), rect, &settings);
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+        let mut rq = RenderQueue::new();
+        let mut context = crate::context::Context::new(
+            Box::new(crate::framebuffer::Pixmap::new(600, 800, 1)),
+            None,
+            crate::library::Library::new(
+                std::path::Path::new("/tmp"),
+                crate::settings::LibraryMode::Database,
+            )
+            .unwrap(),
+            Settings::default(),
+            crate::font::Fonts::load_from(
+                std::path::Path::new(
+                    &std::env::var("TEST_ROOT_DIR")
+                        .expect("TEST_ROOT_DIR must be set for this test."),
+                )
+                .to_path_buf(),
+            )
+            .expect("Failed to load fonts"),
+            Box::new(crate::battery::FakeBattery::new()),
+            Box::new(crate::frontlight::LightLevels::default()),
+            Box::new(0u16),
+        );
+
+        let event = Event::Submit(ViewId::LibraryRenameInput, "New Name".to_string());
+        let handled = value.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+
+        assert!(handled);
+        assert_eq!(value.value(), "New Name");
+        assert!(!rq.is_empty());
+    }
+
+    #[test]
+    fn test_library_path_file_chooser_closed_updates_value() {
+        use crate::settings::LibrarySettings;
+        let mut settings = Settings::default();
+        settings.libraries.push(LibrarySettings {
+            name: "Test Library".to_string(),
+            path: PathBuf::from("/tmp"),
+            mode: crate::settings::LibraryMode::Filesystem,
+            ..Default::default()
+        });
+        let rect = rect![0, 0, 200, 50];
+
+        let mut value = SettingValue::new(Kind::LibraryPath(0), rect, &settings);
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+        let mut rq = RenderQueue::new();
+        let mut context = crate::context::Context::new(
+            Box::new(crate::framebuffer::Pixmap::new(600, 800, 1)),
+            None,
+            crate::library::Library::new(
+                std::path::Path::new("/tmp"),
+                crate::settings::LibraryMode::Database,
+            )
+            .unwrap(),
+            Settings::default(),
+            crate::font::Fonts::load_from(
+                std::path::Path::new(
+                    &std::env::var("TEST_ROOT_DIR")
+                        .expect("TEST_ROOT_DIR must be set for this test."),
+                )
+                .to_path_buf(),
+            )
+            .expect("Failed to load fonts"),
+            Box::new(crate::battery::FakeBattery::new()),
+            Box::new(crate::frontlight::LightLevels::default()),
+            Box::new(0u16),
+        );
+
+        let new_path = PathBuf::from("/mnt/onboard/new_library");
+        let event = Event::FileChooserClosed(Some(new_path.clone()));
+        let handled = value.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+
+        assert!(!handled);
+        assert_eq!(value.value(), new_path.display().to_string());
+        assert!(!rq.is_empty());
+    }
+
+    #[test]
+    fn test_tap_gesture_on_library_info_emits_edit_event() {
+        use crate::settings::LibrarySettings;
+        let mut settings = Settings::default();
+        settings.libraries.push(LibrarySettings {
+            name: "Test Library".to_string(),
+            path: PathBuf::from("/tmp"),
+            mode: crate::settings::LibraryMode::Filesystem,
+            ..Default::default()
+        });
+        let rect = rect![0, 0, 200, 50];
+
+        let mut value = SettingValue::new(Kind::LibraryInfo(0), rect, &settings);
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+        let mut rq = RenderQueue::new();
+        let mut context = crate::context::Context::new(
+            Box::new(crate::framebuffer::Pixmap::new(600, 800, 1)),
+            None,
+            crate::library::Library::new(
+                std::path::Path::new("/tmp"),
+                crate::settings::LibraryMode::Database,
+            )
+            .unwrap(),
+            Settings::default(),
+            crate::font::Fonts::load_from(
+                std::path::Path::new(
+                    &std::env::var("TEST_ROOT_DIR")
+                        .expect("TEST_ROOT_DIR must be set for this test."),
+                )
+                .to_path_buf(),
+            )
+            .expect("Failed to load fonts"),
+            Box::new(crate::battery::FakeBattery::new()),
+            Box::new(crate::frontlight::LightLevels::default()),
+            Box::new(0u16),
+        );
+
+        let point = crate::geom::Point::new(100, 25);
+        let event = Event::Gesture(GestureEvent::Tap(point));
+
+        let mut boxed: Box<dyn View> = Box::new(value);
+        crate::view::handle_event(
+            boxed.as_mut(),
+            &event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        );
+
+        assert_eq!(bus.len(), 1);
+        if let Some(Event::EditLibrary(index)) = bus.pop_front() {
+            assert_eq!(index, 0);
+        } else {
+            panic!("Expected EditLibrary event");
+        }
     }
 }
