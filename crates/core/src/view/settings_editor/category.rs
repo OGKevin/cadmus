@@ -34,7 +34,7 @@ impl Category {
                 RowKind::SleepCover,
             ],
             Category::Libraries => (0..context.settings.libraries.len())
-                .map(|i| RowKind::Library(i))
+                .map(RowKind::Library)
                 .collect(),
             Category::Intermissions => vec![
                 RowKind::IntermissionSuspend,

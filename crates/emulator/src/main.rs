@@ -566,10 +566,11 @@ fn main() -> Result<(), Error> {
                             &mut rq,
                             &mut context,
                         )),
-                        AppCmd::SettingsEditor => Box::new(
-                            SettingsEditor::new(context.fb.rect(), &tx, &mut rq, &mut context)
-                                .build()?,
-                        ),
+                        AppCmd::SettingsEditor => Box::new(SettingsEditor::new(
+                            context.fb.rect(),
+                            &mut rq,
+                            &mut context,
+                        )),
                         AppCmd::TouchEvents => {
                             Box::new(TouchEvents::new(context.fb.rect(), &mut rq, &mut context))
                         }

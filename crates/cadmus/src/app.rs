@@ -1108,10 +1108,11 @@ pub fn run() -> Result<(), Error> {
                         &mut rq,
                         &mut context,
                     )),
-                    AppCmd::SettingsEditor => Box::new(
-                        SettingsEditor::new(context.fb.rect(), &tx, &mut rq, &mut context)
-                            .build()?,
-                    ),
+                    AppCmd::SettingsEditor => Box::new(SettingsEditor::new(
+                        context.fb.rect(),
+                        &mut rq,
+                        &mut context,
+                    )),
                 };
                 transfer_notifications(view.as_mut(), next_view.as_mut(), &mut rq, &mut context);
                 history.push(HistoryItem {

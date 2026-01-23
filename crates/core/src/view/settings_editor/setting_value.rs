@@ -46,12 +46,12 @@ pub enum Kind {
 
 impl Kind {
     pub fn matches_interm_kind(&self, interm_kind: &IntermKind) -> bool {
-        match (self, interm_kind) {
-            (Kind::IntermissionSuspend, IntermKind::Suspend) => true,
-            (Kind::IntermissionPowerOff, IntermKind::PowerOff) => true,
-            (Kind::IntermissionShare, IntermKind::Share) => true,
-            _ => false,
-        }
+        matches!(
+            (self, interm_kind),
+            (Kind::IntermissionSuspend, IntermKind::Suspend)
+                | (Kind::IntermissionPowerOff, IntermKind::PowerOff)
+                | (Kind::IntermissionShare, IntermKind::Share)
+        )
     }
 }
 
@@ -173,7 +173,7 @@ impl SettingValue {
         let current_scheme = settings.button_scheme;
         let value = format!("{:?}", current_scheme);
 
-        let schemes = vec![ButtonScheme::Natural, ButtonScheme::Inverted];
+        let schemes = [ButtonScheme::Natural, ButtonScheme::Inverted];
         let entries: Vec<EntryKind> = schemes
             .iter()
             .map(|scheme| {
@@ -210,8 +210,7 @@ impl SettingValue {
 
     fn fetch_library_info_data(index: usize, settings: &Settings) -> (String, Vec<EntryKind>) {
         if let Some(library) = settings.libraries.get(index) {
-            let path_str = library.path.display().to_string();
-            let value = format!("{}", path_str);
+            let value = library.path.display().to_string();
 
             (value, vec![])
         } else {
@@ -804,8 +803,10 @@ mod tests {
 
     #[test]
     fn test_keyboard_layout_select_updates_value() {
-        let mut settings = Settings::default();
-        settings.keyboard_layout = "English".to_string();
+        let settings = Settings {
+            keyboard_layout: "English".to_string(),
+            ..Default::default()
+        };
         let rect = rect![0, 0, 200, 50];
 
         let mut value = SettingValue::new(Kind::KeyboardLayout, rect, &settings);
@@ -844,8 +845,10 @@ mod tests {
 
     #[test]
     fn test_sleep_cover_toggle_updates_value() {
-        let mut settings = Settings::default();
-        settings.sleep_cover = false;
+        let settings = Settings {
+            sleep_cover: false,
+            ..Default::default()
+        };
         let rect = rect![0, 0, 200, 50];
 
         let mut value = SettingValue::new(Kind::SleepCover, rect, &settings);
@@ -886,8 +889,10 @@ mod tests {
 
     #[test]
     fn test_auto_share_toggle_updates_value() {
-        let mut settings = Settings::default();
-        settings.auto_share = false;
+        let settings = Settings {
+            auto_share: false,
+            ..Default::default()
+        };
         let rect = rect![0, 0, 200, 50];
 
         let mut value = SettingValue::new(Kind::AutoShare, rect, &settings);
@@ -928,8 +933,10 @@ mod tests {
 
     #[test]
     fn test_button_scheme_select_updates_value() {
-        let mut settings = Settings::default();
-        settings.button_scheme = ButtonScheme::Natural;
+        let settings = Settings {
+            button_scheme: ButtonScheme::Natural,
+            ..Default::default()
+        };
         let rect = rect![0, 0, 200, 50];
 
         let mut value = SettingValue::new(Kind::ButtonScheme, rect, &settings);
@@ -971,10 +978,12 @@ mod tests {
         use crate::settings::{LibraryMode, LibrarySettings};
         let mut settings = Settings::default();
         settings.libraries.clear();
-        let mut library = LibrarySettings::default();
-        library.name = "Test Library".to_string();
-        library.path = PathBuf::from("/tmp");
-        library.mode = LibraryMode::Filesystem;
+        let library = LibrarySettings {
+            name: "Test Library".to_string(),
+            path: PathBuf::from("/tmp"),
+            mode: LibraryMode::Filesystem,
+            ..Default::default()
+        };
         settings.libraries.push(library);
         let rect = rect![0, 0, 200, 50];
 
@@ -1197,7 +1206,7 @@ mod tests {
         });
         let rect = rect![0, 0, 200, 50];
 
-        let mut value = SettingValue::new(Kind::LibraryInfo(0), rect, &settings);
+        let value = SettingValue::new(Kind::LibraryInfo(0), rect, &settings);
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();

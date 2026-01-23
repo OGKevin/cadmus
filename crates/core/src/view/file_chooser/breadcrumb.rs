@@ -1,4 +1,4 @@
-use crate::color::{TEXT_NORMAL, WHITE};
+use crate::color::TEXT_NORMAL;
 use crate::context::Context;
 use crate::device::CURRENT_DEVICE;
 use crate::font::{font_from_style, Fonts, NORMAL_STYLE};
@@ -51,9 +51,8 @@ impl View for BreadcrumbEntry {
             Event::Gesture(GestureEvent::Tap(center))
                 if self.rect.includes(*center) && !self.is_current =>
             {
-                match &self.path {
-                    Some(p) => bus.push_back(Event::SelectDirectory(p.clone())),
-                    None => (),
+                if let Some(p) = &self.path {
+                    bus.push_back(Event::SelectDirectory(p.clone()));
                 }
                 true
             }
@@ -153,7 +152,7 @@ impl Breadcrumb {
                 format!("{} / ", name)
             };
 
-            let width = font.plan(&text, None, None).width as i32;
+            let width = font.plan(&text, None, None).width;
             let is_current = i == components.len() - 1;
 
             component_data.push(ComponentData {
@@ -179,7 +178,7 @@ impl Breadcrumb {
         }
 
         let ellipsis_text = "... / ";
-        let ellipsis_width = font.plan(ellipsis_text, None, None).width as i32;
+        let ellipsis_width = font.plan(ellipsis_text, None, None).width;
 
         let mut accumulated_width = ellipsis_width;
         let mut start_idx = component_data.len();
@@ -220,7 +219,7 @@ impl Breadcrumb {
 
         if start_index > 0 {
             let ellipsis_text = "... / ";
-            x += font.plan(ellipsis_text, None, None).width as i32;
+            x += font.plan(ellipsis_text, None, None).width;
         }
 
         for data in component_data.iter().skip(start_index) {
@@ -274,7 +273,7 @@ impl View for Breadcrumb {
         false
     }
 
-    fn render(&self, fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {}
+    fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {}
 
     fn rect(&self) -> &Rectangle {
         &self.rect

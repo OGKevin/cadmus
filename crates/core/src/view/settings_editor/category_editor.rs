@@ -586,6 +586,7 @@ impl CategoryEditor {
         true
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn handle_set_intermission(
         &mut self,
         kind: &crate::settings::IntermKind,
@@ -629,7 +630,7 @@ impl CategoryEditor {
     }
 
     fn handle_validate_event(&mut self, bus: &mut Bus) -> bool {
-        bus.push_back(Event::UpdateSettings(self.settings.clone()));
+        bus.push_back(Event::UpdateSettings(Box::new(self.settings.clone())));
         bus.push_back(Event::Close(ViewId::SettingsCategoryEditor));
         true
     }

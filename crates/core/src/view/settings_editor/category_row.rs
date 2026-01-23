@@ -1,13 +1,9 @@
-use super::super::label::Label;
-use super::super::Align;
-use super::super::{Bus, Event, Hub, Id, RenderData, RenderQueue, View, ID_FEEDER};
+use super::super::{Bus, Event, Hub, Id, RenderQueue, View, ID_FEEDER};
 use super::category::Category;
-use crate::color::{TEXT_INVERTED_HARD, TEXT_NORMAL};
 use crate::context::Context;
-use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::framebuffer::Framebuffer;
 use crate::geom::Rectangle;
 use crate::gesture::GestureEvent;
-use crate::input::{DeviceEvent, FingerStatus};
 use crate::view::button::Button;
 
 pub struct CategoryRow {
@@ -43,7 +39,7 @@ impl View for CategoryRow {
         evt: &Event,
         _hub: &Hub,
         bus: &mut Bus,
-        rq: &mut RenderQueue,
+        _rq: &mut RenderQueue,
         _context: &mut Context,
     ) -> bool {
         match *evt {
