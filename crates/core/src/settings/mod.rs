@@ -20,8 +20,50 @@ pub const SETTINGS_PATH: &str = "Settings.toml";
 pub const DEFAULT_FONT_PATH: &str = "/mnt/onboard/fonts";
 pub const INTERNAL_CARD_ROOT: &str = "/mnt/onboard";
 pub const EXTERNAL_CARD_ROOT: &str = "/mnt/sd";
-pub const LOGO_SPECIAL_PATH: &str = "logo:";
-pub const COVER_SPECIAL_PATH: &str = "cover:";
+const LOGO_SPECIAL_PATH: &str = "logo:";
+const COVER_SPECIAL_PATH: &str = "cover:";
+
+/// How to display intermission screens.
+/// Logo and Cover are special values that map to built-in images.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum IntermissionDisplay {
+    /// Display the built-in logo image.
+    Logo,
+    /// Display the cover of the currently reading book.
+    Cover,
+    /// Display a custom image from the given path.
+    Image(PathBuf),
+}
+
+impl Serialize for IntermissionDisplay {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            IntermissionDisplay::Logo => serializer.serialize_str(LOGO_SPECIAL_PATH),
+            IntermissionDisplay::Cover => serializer.serialize_str(COVER_SPECIAL_PATH),
+            IntermissionDisplay::Image(path) => {
+                serializer.serialize_str(path.to_str().unwrap_or(""))
+            }
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for IntermissionDisplay {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        Ok(match s.as_str() {
+            LOGO_SPECIAL_PATH => IntermissionDisplay::Logo,
+            COVER_SPECIAL_PATH => IntermissionDisplay::Cover,
+            _ => IntermissionDisplay::Image(PathBuf::from(s)),
+        })
+    }
+}
+
 // Default font size in points.
 pub const DEFAULT_FONT_SIZE: f32 = 11.0;
 // Default margin width in millimeters.
@@ -77,13 +119,13 @@ impl IntermKind {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct Intermissions {
-    suspend: PathBuf,
-    power_off: PathBuf,
-    share: PathBuf,
+    suspend: IntermissionDisplay,
+    power_off: IntermissionDisplay,
+    share: IntermissionDisplay,
 }
 
 impl Index<IntermKind> for Intermissions {
-    type Output = PathBuf;
+    type Output = IntermissionDisplay;
 
     fn index(&self, key: IntermKind) -> &Self::Output {
         match key {
@@ -591,9 +633,9 @@ impl Default for Settings {
             time_format: "%H:%M".to_string(),
             date_format: "%A, %B %-d, %Y".to_string(),
             intermissions: Intermissions {
-                suspend: PathBuf::from(LOGO_SPECIAL_PATH),
-                power_off: PathBuf::from(LOGO_SPECIAL_PATH),
-                share: PathBuf::from(LOGO_SPECIAL_PATH),
+                suspend: IntermissionDisplay::Logo,
+                power_off: IntermissionDisplay::Logo,
+                share: IntermissionDisplay::Logo,
             },
             home: HomeSettings::default(),
             reader: ReaderSettings::default(),
@@ -711,6 +753,83 @@ mod tests {
         assert!(
             deserialized.github_token.is_none(),
             "Deserialized settings should have None token"
+        );
+    }
+
+    #[test]
+    fn test_intermissions_struct_serialization() {
+        let intermissions = Intermissions {
+            suspend: IntermissionDisplay::Logo,
+            power_off: IntermissionDisplay::Cover,
+            share: IntermissionDisplay::Image(PathBuf::from("/custom/share.png")),
+        };
+
+        let serialized = toml::to_string(&intermissions).expect("Failed to serialize");
+
+        assert!(
+            serialized.contains("logo:"),
+            "Should contain logo: for suspend"
+        );
+        assert!(
+            serialized.contains("cover:"),
+            "Should contain cover: for power-off"
+        );
+        assert!(
+            serialized.contains("/custom/share.png"),
+            "Should contain custom path for share"
+        );
+    }
+
+    #[test]
+    fn test_intermissions_struct_deserialization() {
+        let toml_str = r#"
+suspend = "logo:"
+power-off = "cover:"
+share = "/path/to/custom.png"
+"#;
+
+        let intermissions: Intermissions = toml::from_str(toml_str).expect("Failed to deserialize");
+
+        assert!(
+            matches!(intermissions.suspend, IntermissionDisplay::Logo),
+            "suspend should deserialize to Logo"
+        );
+        assert!(
+            matches!(intermissions.power_off, IntermissionDisplay::Cover),
+            "power_off should deserialize to Cover"
+        );
+        assert!(
+            matches!(
+                intermissions.share,
+                IntermissionDisplay::Image(ref path) if path == &PathBuf::from("/path/to/custom.png")
+            ),
+            "share should deserialize to Image with correct path"
+        );
+    }
+
+    #[test]
+    fn test_intermissions_struct_round_trip() {
+        let original = Intermissions {
+            suspend: IntermissionDisplay::Logo,
+            power_off: IntermissionDisplay::Cover,
+            share: IntermissionDisplay::Image(PathBuf::from("/some/custom/image.jpg")),
+        };
+
+        let serialized = toml::to_string(&original).expect("Failed to serialize");
+        let deserialized: Intermissions =
+            toml::from_str(&serialized).expect("Failed to deserialize");
+
+        assert_eq!(
+            original.suspend, deserialized.suspend,
+            "suspend should survive round trip"
+        );
+        assert_eq!(
+            original.power_off, deserialized.power_off,
+            "power_off should survive round trip"
+        );
+        assert_eq!(
+            original.share, deserialized.share,
+            "share should survive round trip"
         );
     }
 }
