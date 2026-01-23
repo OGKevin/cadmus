@@ -761,6 +761,16 @@ impl CategoryEditor {
         true
     }
 
+    /// Handles the `FileChooserClosed` event for intermission image selection.
+    ///
+    /// Updates the intermission display settings with the selected image path and triggers
+    /// the corresponding UI update through a Submit event.
+    ///
+    /// # Returns
+    ///
+    /// Always returns `false` to allow the event to propagate through the view hierarchy.
+    /// Other views in the chain (LibraryEditor, SettingValue) may also need to handle this
+    /// event for their own path selection needs.
     fn handle_file_chooser_closed(
         &mut self,
         path: &Option<PathBuf>,
@@ -800,6 +810,31 @@ impl CategoryEditor {
         false
     }
 
+    /// Handles the `Close` event for various child views within the category editor.
+    ///
+    /// This method manages the closure of different overlay and child views:
+    ///
+    /// - **SettingsCategoryEditor**: When the category editor itself is closed, all settings
+    ///   are reset to their original values (cancellation). This ensures any unsaved changes
+    ///   are discarded and the editor returns to its initial state.
+    ///
+    /// - **LibraryEditor, AutoSuspendInput, AutoPowerOffInput, SettingsValueMenu**: These overlay
+    ///   views are removed from the children list and a GUI update is scheduled. The event is
+    ///   considered handled.
+    ///
+    /// - **FileChooser**: The file chooser is removed from the children list, the active
+    ///   intermission edit state is cleared, and a GUI update is scheduled.
+    ///
+    /// - **Other view IDs**: Return false as they are not handled by this method.
+    ///
+    /// # Arguments
+    ///
+    /// * `view_id` - The ID of the view being closed
+    /// * `rq` - The render queue for scheduling UI updates
+    ///
+    /// # Returns
+    ///
+    /// `true` if the event was handled, `false` otherwise.
     fn handle_close_view_event(&mut self, view_id: &ViewId, rq: &mut RenderQueue) -> bool {
         match view_id {
             ViewId::SettingsCategoryEditor => {

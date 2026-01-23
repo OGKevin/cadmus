@@ -44,7 +44,7 @@ impl Serialize for IntermissionDisplay {
             IntermissionDisplay::Logo => serializer.serialize_str(LOGO_SPECIAL_PATH),
             IntermissionDisplay::Cover => serializer.serialize_str(COVER_SPECIAL_PATH),
             IntermissionDisplay::Image(path) => {
-                serializer.serialize_str(path.to_str().unwrap_or(""))
+                serializer.serialize_str(path.to_string_lossy().as_ref())
             }
         }
     }

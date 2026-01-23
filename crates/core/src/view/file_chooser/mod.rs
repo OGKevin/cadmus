@@ -588,48 +588,10 @@ impl FileChooser {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::battery::{Battery, FakeBattery};
-    use crate::framebuffer::Pixmap;
-    use crate::frontlight::{Frontlight, LightLevels};
+    use crate::context::test_helpers::create_test_context;
     use crate::geom::Point;
-    use crate::library::Library;
-    use crate::lightsensor::LightSensor;
-    use crate::settings::{LibraryMode, Settings};
     use std::collections::VecDeque;
-    use std::env;
-    use std::path::Path;
     use std::sync::mpsc::channel;
-
-    fn create_test_context() -> Context {
-        let fb = Box::new(Pixmap::new(600, 800, 1)) as Box<dyn Framebuffer>;
-        let battery = Box::new(FakeBattery::new()) as Box<dyn Battery>;
-        let frontlight = Box::new(LightLevels::default()) as Box<dyn Frontlight>;
-        let lightsensor = Box::new(0u16) as Box<dyn LightSensor>;
-        let settings = Settings::default();
-        let library = Library::new(Path::new("/tmp"), LibraryMode::Database)
-            .unwrap_or_else(|_| Library::new(Path::new("/tmp"), LibraryMode::Database).unwrap());
-        let fonts = Fonts::load_from(
-            Path::new(
-                &env::var("TEST_ROOT_DIR").expect("TEST_ROOT_DIR must be set for this test."),
-            )
-            .to_path_buf(),
-        )
-        .expect(
-            "Failed to load fonts. Tests require font files to be present. \
-             Run tests from the project root directory.",
-        );
-
-        Context::new(
-            fb,
-            None,
-            library,
-            settings,
-            fonts,
-            battery,
-            frontlight,
-            lightsensor,
-        )
-    }
 
     fn create_test_file_chooser(rq: &mut RenderQueue, context: &mut Context) -> FileChooser {
         let rect = rect![0, 0, 600, 800];
