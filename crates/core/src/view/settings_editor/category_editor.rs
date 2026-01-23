@@ -35,6 +35,7 @@ pub struct CategoryEditor {
     row_height: i32,
     focus: Option<ViewId>,
     keyboard_index: usize,
+    active_intermission_edit: Option<crate::settings::IntermKind>,
 }
 
 pub struct CategoryEditorBuilder<'a> {
@@ -244,6 +245,7 @@ impl<'a> CategoryEditorBuilder<'a> {
             row_height,
             focus: None,
             keyboard_index,
+            active_intermission_edit: None,
         })
     }
 }
@@ -497,6 +499,37 @@ impl View for CategoryEditor {
 
                     true
                 }
+                EntryId::SetIntermission(kind, display) => {
+                    self.settings.intermissions[*kind] = display.clone();
+
+                    for child in &mut self.children {
+                        for grandchild in child.children_mut() {
+                            grandchild.handle_event(evt, hub, bus, rq, context);
+                        }
+                    }
+
+                    true
+                }
+                EntryId::EditIntermissionImage(kind) => {
+                    use crate::view::file_chooser::{FileChooser, SelectionMode};
+
+                    self.active_intermission_edit = Some(*kind);
+
+                    let initial_path = PathBuf::from("/mnt/onboard");
+                    let file_chooser = FileChooser::new(
+                        self.rect,
+                        initial_path,
+                        SelectionMode::File,
+                        hub,
+                        rq,
+                        context,
+                    );
+
+                    self.children.push(Box::new(file_chooser));
+                    rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+
+                    true
+                }
                 _ => false,
             },
             Event::Validate => {
@@ -579,6 +612,41 @@ impl View for CategoryEditor {
 
                 true
             }
+            Event::FileChooserClosed(ref path) => {
+                if let Some(kind) = self.active_intermission_edit.take() {
+                    if let Some(ref selected_path) = *path {
+                        use crate::settings::IntermissionDisplay;
+                        self.settings.intermissions[kind] =
+                            IntermissionDisplay::Image(selected_path.clone());
+
+                        let display_name = selected_path
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or("Custom")
+                            .to_string();
+
+                        let update_event = match kind {
+                            crate::settings::IntermKind::Suspend => {
+                                Event::Submit(ViewId::IntermissionSuspendInput, display_name)
+                            }
+                            crate::settings::IntermKind::PowerOff => {
+                                Event::Submit(ViewId::IntermissionPowerOffInput, display_name)
+                            }
+                            crate::settings::IntermKind::Share => {
+                                Event::Submit(ViewId::IntermissionShareInput, display_name)
+                            }
+                        };
+
+                        for child in &mut self.children {
+                            for grandchild in child.children_mut() {
+                                grandchild.handle_event(&update_event, hub, bus, rq, context);
+                            }
+                        }
+                    }
+                }
+
+                false
+            }
             Event::Close(ViewId::LibraryEditor) => {
                 if let Some(index) = locate_by_id(self, ViewId::LibraryEditor) {
                     self.children.remove(index);
@@ -609,6 +677,15 @@ impl View for CategoryEditor {
                     self.children.remove(index);
                     rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
                 }
+
+                true
+            }
+            Event::Close(ViewId::FileChooser) => {
+                if let Some(index) = locate_by_id(self, ViewId::FileChooser) {
+                    self.children.remove(index);
+                    rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+                }
+                self.active_intermission_edit = None;
 
                 true
             }
@@ -911,5 +988,187 @@ mod tests {
         } else {
             panic!("Expected SubMenu event in bus");
         }
+    }
+
+    fn create_test_intermissions_category_editor(
+        context: &mut Context,
+    ) -> Result<CategoryEditor, Error> {
+        let rect = rect![0, 0, 600, 800];
+        let (hub, _receiver) = channel();
+        let mut rq = RenderQueue::new();
+
+        CategoryEditor::new(rect, Category::Intermissions, &hub, &mut rq, context).build()
+    }
+
+    #[test]
+    fn test_set_intermission_logo() {
+        use crate::settings::{IntermKind, IntermissionDisplay};
+
+        let mut context = create_test_context();
+        let mut editor = create_test_intermissions_category_editor(&mut context)
+            .expect("Failed to create intermissions category editor");
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+        let mut rq = RenderQueue::new();
+
+        let handled = editor.handle_event(
+            &Event::Select(EntryId::SetIntermission(
+                IntermKind::Suspend,
+                IntermissionDisplay::Logo,
+            )),
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        );
+
+        assert!(handled);
+        assert!(matches!(
+            editor.settings.intermissions[IntermKind::Suspend],
+            IntermissionDisplay::Logo
+        ));
+    }
+
+    #[test]
+    fn test_set_intermission_cover() {
+        use crate::settings::{IntermKind, IntermissionDisplay};
+
+        let mut context = create_test_context();
+        let mut editor = create_test_intermissions_category_editor(&mut context)
+            .expect("Failed to create intermissions category editor");
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+        let mut rq = RenderQueue::new();
+
+        let handled = editor.handle_event(
+            &Event::Select(EntryId::SetIntermission(
+                IntermKind::PowerOff,
+                IntermissionDisplay::Cover,
+            )),
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        );
+
+        assert!(handled);
+        assert!(matches!(
+            editor.settings.intermissions[IntermKind::PowerOff],
+            IntermissionDisplay::Cover
+        ));
+    }
+
+    #[test]
+    fn test_edit_intermission_image_opens_file_chooser() {
+        use crate::settings::IntermKind;
+
+        let mut context = create_test_context();
+        let mut editor = create_test_intermissions_category_editor(&mut context)
+            .expect("Failed to create intermissions category editor");
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+        let mut rq = RenderQueue::new();
+
+        let initial_children_count = editor.children.len();
+
+        let handled = editor.handle_event(
+            &Event::Select(EntryId::EditIntermissionImage(IntermKind::Share)),
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        );
+
+        assert!(handled);
+        assert_eq!(editor.children.len(), initial_children_count + 1);
+        assert!(editor.active_intermission_edit.is_some());
+        assert_eq!(editor.active_intermission_edit.unwrap(), IntermKind::Share);
+        assert!(!rq.is_empty());
+    }
+
+    #[test]
+    fn test_file_chooser_closed_sets_custom_image() {
+        use crate::settings::{IntermKind, IntermissionDisplay};
+
+        let mut context = create_test_context();
+        let mut editor = create_test_intermissions_category_editor(&mut context)
+            .expect("Failed to create intermissions category editor");
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+        let mut rq = RenderQueue::new();
+
+        editor.active_intermission_edit = Some(IntermKind::Suspend);
+
+        let test_path = PathBuf::from("/mnt/onboard/test.png");
+        let handled = editor.handle_event(
+            &Event::FileChooserClosed(Some(test_path.clone())),
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        );
+
+        assert!(!handled);
+        assert!(editor.active_intermission_edit.is_none());
+        assert!(matches!(
+            &editor.settings.intermissions[IntermKind::Suspend],
+            IntermissionDisplay::Image(path) if path == &test_path
+        ));
+    }
+
+    #[test]
+    fn test_file_chooser_cancelled_clears_active_edit() {
+        use crate::settings::IntermKind;
+
+        let mut context = create_test_context();
+        let mut editor = create_test_intermissions_category_editor(&mut context)
+            .expect("Failed to create intermissions category editor");
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+        let mut rq = RenderQueue::new();
+
+        editor.active_intermission_edit = Some(IntermKind::Share);
+
+        let handled = editor.handle_event(
+            &Event::FileChooserClosed(None),
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        );
+
+        assert!(!handled);
+        assert!(editor.active_intermission_edit.is_none());
+    }
+
+    #[test]
+    fn test_close_file_chooser_clears_active_edit() {
+        use crate::settings::IntermKind;
+
+        let mut context = create_test_context();
+        let mut editor = create_test_intermissions_category_editor(&mut context)
+            .expect("Failed to create intermissions category editor");
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+        let mut rq = RenderQueue::new();
+
+        editor.active_intermission_edit = Some(IntermKind::PowerOff);
+        editor
+            .children
+            .push(Box::new(crate::view::filler::Filler::new(
+                rect![0, 0, 100, 100],
+                crate::color::WHITE,
+            )));
+
+        let handled = editor.handle_event(
+            &Event::Close(ViewId::FileChooser),
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        );
+
+        assert!(handled);
+        assert!(editor.active_intermission_edit.is_none());
     }
 }

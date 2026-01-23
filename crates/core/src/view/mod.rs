@@ -486,6 +486,7 @@ pub enum ViewId {
     PresetMenu,
     MarginCropperMenu,
     SearchMenu,
+    // TODO(ogkevin): merge all these settings editor view IDs into one
     SettingsMenu,
     SettingsValueMenu,
     SettingsCategoryEditor,
@@ -494,6 +495,9 @@ pub enum ViewId {
     LibraryRenameInput,
     AutoSuspendInput,
     AutoPowerOffInput,
+    IntermissionSuspendInput,
+    IntermissionPowerOffInput,
+    IntermissionShareInput,
     SketchMenu,
     RenameDocument,
     RenameDocumentInput,
@@ -650,12 +654,14 @@ pub enum EntryId {
     SetSearchTarget(Option<String>),
     SetInputText(ViewId, String),
     SetKeyboardLayout(String),
+    // TODO(ogkevin): Make one entryId for settings editor
     EditLibraryName,
     EditLibraryPath,
     SetLibraryMode(settings::LibraryMode),
     DeleteLibrary(usize),
+    SetIntermission(settings::IntermKind, settings::IntermissionDisplay),
+    EditIntermissionImage(settings::IntermKind),
     ToggleShowHidden,
-    // TODO: Make one entryId for settings editor
     ToggleSleepCover,
     ToggleAutoShare,
     EditAutoSuspend,
