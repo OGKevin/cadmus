@@ -544,7 +544,7 @@ impl SettingValue {
         }
 
         if let Ok(value) = text.parse::<f32>() {
-            let display_value = if value == 0.0 {
+            let display_value = if value.max(0.0) == 0.0 {
                 "Never".to_string()
             } else {
                 format!("{:.1}", value)
@@ -560,7 +560,7 @@ impl SettingValue {
         }
 
         if let Ok(value) = text.parse::<f32>() {
-            let display_value = if value == 0.0 {
+            let display_value = if value.max(0.0) == 0.0 {
                 "Never".to_string()
             } else {
                 format!("{:.1}", value)
@@ -1012,5 +1012,43 @@ mod tests {
         } else {
             panic!("Expected EditLibrary event");
         }
+    }
+
+    #[test]
+    fn test_handle_submit_auto_suspend_negative_value() {
+        let settings = Settings::default();
+        let rect = rect![0, 0, 200, 50];
+
+        let mut value = SettingValue::new(Kind::AutoSuspend, rect, &settings);
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+        let mut rq = RenderQueue::new();
+        let mut context = create_test_context();
+
+        let event = Event::Submit(ViewId::AutoSuspendInput, "-5.0".to_string());
+        let handled = value.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+
+        assert!(handled);
+        assert_eq!(value.value(), "Never");
+        assert!(!rq.is_empty());
+    }
+
+    #[test]
+    fn test_handle_submit_auto_power_off_negative_value() {
+        let settings = Settings::default();
+        let rect = rect![0, 0, 200, 50];
+
+        let mut value = SettingValue::new(Kind::AutoPowerOff, rect, &settings);
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+        let mut rq = RenderQueue::new();
+        let mut context = create_test_context();
+
+        let event = Event::Submit(ViewId::AutoPowerOffInput, "-5.0".to_string());
+        let handled = value.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+
+        assert!(handled);
+        assert_eq!(value.value(), "Never");
+        assert!(!rq.is_empty());
     }
 }
