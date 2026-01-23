@@ -218,11 +218,7 @@ impl View for SettingsEditor {
         match evt {
             Event::OpenSettingsCategory(category) => {
                 let category_editor = CategoryEditor::new(self.rect, *category, hub, rq, context);
-
-                if let Ok(editor) = category_editor {
-                    self.children.push(Box::new(editor));
-                }
-
+                self.children.push(Box::new(category_editor));
                 true
             }
             Event::UpdateSettings(ref settings) => {
