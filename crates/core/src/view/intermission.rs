@@ -7,7 +7,7 @@ use crate::font::{font_from_style, Fonts, DISPLAY_STYLE};
 use crate::framebuffer::Framebuffer;
 use crate::geom::Rectangle;
 use crate::metadata::{sort, BookQuery, SortMethod};
-use crate::settings::{IntermKind, COVER_SPECIAL_PATH, LOGO_SPECIAL_PATH};
+use crate::settings::{IntermKind, IntermissionDisplay};
 use std::path::PathBuf;
 
 pub struct Intermission {
@@ -26,10 +26,9 @@ pub enum Message {
 
 impl Intermission {
     pub fn new(rect: Rectangle, kind: IntermKind, context: &Context) -> Intermission {
-        let path = &context.settings.intermissions[kind];
-        let message = match path.to_str() {
-            Some(LOGO_SPECIAL_PATH) => Message::Text(kind.text().to_string()),
-            Some(COVER_SPECIAL_PATH) => {
+        let message = match &context.settings.intermissions[kind] {
+            IntermissionDisplay::Logo => Message::Text(kind.text().to_string()),
+            IntermissionDisplay::Cover => {
                 let query = BookQuery {
                     reading: Some(true),
                     ..Default::default()
@@ -45,7 +44,7 @@ impl Intermission {
                     Message::Text(kind.text().to_string())
                 }
             }
-            _ => Message::Image(path.clone()),
+            IntermissionDisplay::Image(path) => Message::Image(path.clone()),
         };
         Intermission {
             id: ID_FEEDER.next(),
