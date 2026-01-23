@@ -9,6 +9,7 @@
 //! be written to the main event channel and will be sent to every leaf in one of the next loop
 //! iterations.
 
+pub mod action_label;
 pub mod battery;
 pub mod button;
 pub mod calculator;

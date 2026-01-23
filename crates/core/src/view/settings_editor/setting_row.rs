@@ -148,3 +148,116 @@ impl View for SettingRow {
         self.id
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::settings::{LibraryMode, LibrarySettings};
+    use std::collections::VecDeque;
+    use std::path::PathBuf;
+    use std::sync::mpsc::channel;
+
+    fn create_test_settings() -> Settings {
+        let mut settings = Settings::default();
+        settings.libraries.clear();
+        settings.libraries.push(LibrarySettings {
+            name: "Test Library 0".to_string(),
+            path: PathBuf::from("/tmp/lib0"),
+            mode: LibraryMode::Filesystem,
+            ..Default::default()
+        });
+        settings.libraries.push(LibrarySettings {
+            name: "Test Library 1".to_string(),
+            path: PathBuf::from("/tmp/lib1"),
+            mode: LibraryMode::Database,
+            ..Default::default()
+        });
+        settings
+    }
+
+    #[test]
+    fn test_update_library_event_updates_matching_row() {
+        let settings = create_test_settings();
+        let rect = rect![0, 0, 400, 60];
+
+        let mut row = SettingRow::new(Kind::Library(0), rect, &settings);
+
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+        let mut rq = RenderQueue::new();
+        let mut context = crate::context::Context::new(
+            Box::new(crate::framebuffer::Pixmap::new(600, 800, 1)),
+            None,
+            crate::library::Library::new(std::path::Path::new("/tmp"), LibraryMode::Database)
+                .unwrap(),
+            Settings::default(),
+            crate::font::Fonts::load_from(
+                std::path::Path::new(
+                    &std::env::var("TEST_ROOT_DIR")
+                        .expect("TEST_ROOT_DIR must be set for this test."),
+                )
+                .to_path_buf(),
+            )
+            .expect("Failed to load fonts"),
+            Box::new(crate::battery::FakeBattery::new()),
+            Box::new(crate::frontlight::LightLevels::default()),
+            Box::new(0u16),
+        );
+
+        let updated_library = LibrarySettings {
+            name: "Updated Library Name".to_string(),
+            path: PathBuf::from("/tmp/updated"),
+            mode: LibraryMode::Database,
+            ..Default::default()
+        };
+
+        let event = Event::UpdateLibrary(0, Box::new(updated_library.clone()));
+        let handled = row.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+
+        assert!(handled);
+        assert!(!rq.is_empty());
+    }
+
+    #[test]
+    fn test_update_library_event_ignores_non_matching() {
+        let settings = create_test_settings();
+        let rect = rect![0, 0, 400, 60];
+
+        let mut row = SettingRow::new(Kind::Library(0), rect, &settings);
+
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+        let mut rq = RenderQueue::new();
+        let mut context = crate::context::Context::new(
+            Box::new(crate::framebuffer::Pixmap::new(600, 800, 1)),
+            None,
+            crate::library::Library::new(std::path::Path::new("/tmp"), LibraryMode::Database)
+                .unwrap(),
+            Settings::default(),
+            crate::font::Fonts::load_from(
+                std::path::Path::new(
+                    &std::env::var("TEST_ROOT_DIR")
+                        .expect("TEST_ROOT_DIR must be set for this test."),
+                )
+                .to_path_buf(),
+            )
+            .expect("Failed to load fonts"),
+            Box::new(crate::battery::FakeBattery::new()),
+            Box::new(crate::frontlight::LightLevels::default()),
+            Box::new(0u16),
+        );
+
+        let updated_library = LibrarySettings {
+            name: "Updated Library 1".to_string(),
+            path: PathBuf::from("/tmp/lib1_updated"),
+            mode: LibraryMode::Database,
+            ..Default::default()
+        };
+
+        let event = Event::UpdateLibrary(1, Box::new(updated_library));
+        let handled = row.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+
+        assert!(!handled);
+        assert!(rq.is_empty());
+    }
+}
