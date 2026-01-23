@@ -24,6 +24,15 @@ pub enum Kind {
 }
 
 impl Kind {
+    /// Returns the human-readable label for this setting kind.
+    ///
+    /// # Arguments
+    ///
+    /// * `settings` - The current settings, used to look up dynamic labels (e.g., library names)
+    ///
+    /// # Returns
+    ///
+    /// A `String` containing the display label for this setting
     pub fn label(&self, settings: &Settings) -> String {
         match self {
             Kind::KeyboardLayout => "Keyboard Layout".to_string(),
@@ -65,6 +74,18 @@ impl Kind {
     }
 }
 
+/// A row in the settings UI that displays a setting label and its corresponding value.
+///
+/// `SettingRow` is a composite view that contains two child views:
+/// - A `Label` displaying the human-readable name of the setting
+/// - A `SettingValue` displaying the current value and allowing modifications
+///
+/// # Fields
+///
+/// * `id` - Unique identifier for this view
+/// * `rect` - The rectangular area occupied by this row
+/// * `children` - Vector containing the label and value child views
+/// * `kind` - The type of setting this row represents
 pub struct SettingRow {
     id: Id,
     rect: Rectangle,

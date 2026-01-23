@@ -17,7 +17,6 @@ use crate::view::top_bar::{TopBar, TopBarVariant};
 use crate::view::{Bus, Event, Hub, Id, RenderData, RenderQueue, View, ViewId, ID_FEEDER};
 use crate::view::{EntryId, NotificationEvent};
 use crate::view::{BIG_BAR_HEIGHT, SMALL_BAR_HEIGHT, THICKNESS_MEDIUM};
-use anyhow::Error;
 
 use super::bottom_bar::{BottomBarVariant, SettingsEditorBottomBar};
 use super::setting_row::{Kind as RowKind, SettingRow};
@@ -57,7 +56,7 @@ impl LibraryEditor {
         _hub: &Hub,
         rq: &mut RenderQueue,
         context: &mut Context,
-    ) -> Result<LibraryEditor, Error> {
+    ) -> LibraryEditor {
         let id = ID_FEEDER.next();
         let mut children = Vec::new();
 
@@ -111,7 +110,7 @@ impl LibraryEditor {
 
         rq.add(RenderData::new(id, rect, UpdateMode::Gui));
 
-        Ok(LibraryEditor {
+        LibraryEditor {
             id,
             rect,
             children,
@@ -120,7 +119,7 @@ impl LibraryEditor {
             _original_library: library,
             focus: None,
             keyboard_index,
-        })
+        }
     }
 
     fn calculate_dimensions() -> (i32, i32, i32, i32) {
@@ -592,8 +591,7 @@ mod tests {
         let mut library = create_test_library();
         library.name = "".to_string();
 
-        let mut editor = LibraryEditor::new(rect, 0, library, &hub, &mut rq, &mut context)
-            .expect("Failed to create library editor");
+        let mut editor = LibraryEditor::new(rect, 0, library, &hub, &mut rq, &mut context);
 
         let mut bus = VecDeque::new();
 
@@ -619,8 +617,7 @@ mod tests {
         let mut library = create_test_library();
         library.path = std::path::PathBuf::from("/nonexistent/path/that/does/not/exist");
 
-        let mut editor = LibraryEditor::new(rect, 0, library, &hub, &mut rq, &mut context)
-            .expect("Failed to create library editor");
+        let mut editor = LibraryEditor::new(rect, 0, library, &hub, &mut rq, &mut context);
 
         let mut bus = VecDeque::new();
 
@@ -653,8 +650,7 @@ mod tests {
             &hub,
             &mut rq,
             &mut context,
-        )
-        .expect("Failed to create library editor");
+        );
 
         let mut bus = VecDeque::new();
 
@@ -686,8 +682,7 @@ mod tests {
 
         let library = create_test_library();
 
-        let mut editor = LibraryEditor::new(rect, 0, library, &hub, &mut rq, &mut context)
-            .expect("Failed to create library editor");
+        let mut editor = LibraryEditor::new(rect, 0, library, &hub, &mut rq, &mut context);
 
         let initial_children_count = editor.children.len();
 
@@ -720,8 +715,7 @@ mod tests {
 
         let library = create_test_library();
 
-        let mut editor = LibraryEditor::new(rect, 0, library, &hub, &mut rq, &mut context)
-            .expect("Failed to create library editor");
+        let mut editor = LibraryEditor::new(rect, 0, library, &hub, &mut rq, &mut context);
 
         let initial_children_count = editor.children.len();
 
@@ -749,8 +743,7 @@ mod tests {
 
         let library = create_test_library();
 
-        let mut editor = LibraryEditor::new(rect, 0, library, &hub, &mut rq, &mut context)
-            .expect("Failed to create library editor");
+        let mut editor = LibraryEditor::new(rect, 0, library, &hub, &mut rq, &mut context);
 
         assert_eq!(editor.library.mode, LibraryMode::Filesystem);
 
@@ -779,8 +772,7 @@ mod tests {
 
         let library = create_test_library();
 
-        let mut editor = LibraryEditor::new(rect, 0, library, &hub, &mut rq, &mut context)
-            .expect("Failed to create library editor");
+        let mut editor = LibraryEditor::new(rect, 0, library, &hub, &mut rq, &mut context);
 
         let original_path = editor.library.path.clone();
         let new_path = std::path::PathBuf::from("/mnt/onboard/newpath");
@@ -811,8 +803,7 @@ mod tests {
 
         let library = create_test_library();
 
-        let mut editor = LibraryEditor::new(rect, 0, library, &hub, &mut rq, &mut context)
-            .expect("Failed to create library editor");
+        let mut editor = LibraryEditor::new(rect, 0, library, &hub, &mut rq, &mut context);
 
         let original_name = editor.library.name.clone();
         let new_name = "Updated Library Name".to_string();

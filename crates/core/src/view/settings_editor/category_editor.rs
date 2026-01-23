@@ -15,7 +15,7 @@ use crate::view::{
     Bus, EntryId, EntryKind, Event, Hub, Id, RenderData, RenderQueue, View, ViewId, BIG_BAR_HEIGHT,
     ID_FEEDER, SMALL_BAR_HEIGHT, THICKNESS_MEDIUM,
 };
-use anyhow::Error;
+
 use std::path::PathBuf;
 
 use super::bottom_bar::{BottomBarVariant, SettingsEditorBottomBar};
@@ -33,13 +33,22 @@ use super::setting_row::{Kind as RowKind, SettingRow};
 ///
 /// * `id` - Unique identifier for this view
 /// * `rect` - The rectangular area occupied by this view
-/// * `children` - Child views managed by this editor (rows, keyboard, menus, etc.)
+/// * `children` - Child views managed by this editor. The structure is:
+///   1. TopBar (index 0)
+///   2. TopSeparator (index 1)
+///   3. Content background filler (index 2)
+///   4. Setting rows (indices from `first_row_index` onwards)
+///   5. BottomSeparator (variable index based on row count)
+///   6. BottomBar (variable index based on row count)
+///   7. ToggleableKeyboard (at index `keyboard_index`)
+///   8. Plus optional overlay views like LibraryEditor, FileChooser, Menu, and NamedInput fields
 /// * `category` - The settings category being edited
 /// * `settings` - Current settings being edited
 /// * `original_settings` - Original settings before any edits (used for cancellation)
 /// * `content_rect` - The rectangular area where setting rows are displayed
 /// * `row_height` - The height of each setting row
 /// * `focus` - Currently focused child view, if any
+/// * `first_row_index` - Index in the children vector where setting rows begin (after structural elements)
 /// * `keyboard_index` - Index of the keyboard child view in the children vector
 /// * `active_intermission_edit` - Tracks which intermission type is currently being edited via file chooser
 pub struct CategoryEditor {
@@ -52,6 +61,7 @@ pub struct CategoryEditor {
     content_rect: Rectangle,
     row_height: i32,
     focus: Option<ViewId>,
+    first_row_index: usize,
     keyboard_index: usize,
     active_intermission_edit: Option<crate::settings::IntermKind>,
 }
@@ -63,7 +73,7 @@ impl CategoryEditor {
         _hub: &Hub,
         rq: &mut RenderQueue,
         context: &mut Context,
-    ) -> Result<CategoryEditor, Error> {
+    ) -> CategoryEditor {
         let id = ID_FEEDER.next();
         let mut children = Vec::new();
         let settings = context.settings.clone();
@@ -98,6 +108,8 @@ impl CategoryEditor {
         let setting_kinds = category.settings(context);
         let mut current_y = content_rect.min.y;
 
+        let first_row_index = children.len();
+
         for kind in setting_kinds {
             let row_rect = rect![
                 content_rect.min.x,
@@ -105,7 +117,7 @@ impl CategoryEditor {
                 content_rect.max.x,
                 current_y + row_height
             ];
-            children.push(Self::build_setting_row(kind, row_rect, &settings)?);
+            children.push(Self::build_setting_row(kind, row_rect, &settings));
             current_y += row_height;
         }
 
@@ -130,7 +142,7 @@ impl CategoryEditor {
 
         rq.add(RenderData::new(id, rect, UpdateMode::Gui));
 
-        Ok(CategoryEditor {
+        CategoryEditor {
             id,
             rect,
             children,
@@ -140,9 +152,10 @@ impl CategoryEditor {
             content_rect,
             row_height,
             focus: None,
+            first_row_index,
             keyboard_index,
             active_intermission_edit: None,
-        })
+        }
     }
 
     fn calculate_dimensions() -> (i32, i32, i32, i32) {
@@ -219,13 +232,9 @@ impl CategoryEditor {
         (Box::new(background) as Box<dyn View>, content_rect)
     }
 
-    fn build_setting_row(
-        kind: RowKind,
-        row_rect: Rectangle,
-        settings: &Settings,
-    ) -> Result<Box<dyn View>, Error> {
+    fn build_setting_row(kind: RowKind, row_rect: Rectangle, settings: &Settings) -> Box<dyn View> {
         let setting_row = SettingRow::new(kind, row_rect, settings);
-        Ok(Box::new(setting_row) as Box<dyn View>)
+        Box::new(setting_row) as Box<dyn View>
     }
 
     fn build_bottom_separator(
@@ -285,29 +294,37 @@ impl CategoryEditor {
     /// state of `self.settings.libraries`. It only operates when the current category is
     /// `Category::Libraries`.
     ///
+    /// # Example
+    ///
+    /// If we have 3 structural children + 2 library rows + keyboard:
+    /// ```ignore
+    /// Before:  [TopBar, TopSep, BgFiller, LibRow0, LibRow1, BottomSep, BottomBar, Keyboard]
+    ///           indices: 0      1        2        3        4         5          6        7
+    /// ```
+    ///
+    /// After adding a library (original_count=2, now 3 libraries):
+    /// ```ignore
+    /// Removal phase:    [TopBar, TopSep, BgFiller, BottomSep, BottomBar, Keyboard]
+    ///                    Remove indices 3,4 (2 rows)
+    ///
+    /// Insertion phase:  [TopBar, TopSep, BgFiller, LibRow0, LibRow1, LibRow2, BottomSep, BottomBar, Keyboard]
+    ///                    Insert at indices 3,4,5
+    /// ```
+    ///
     /// # Arguments
     ///
     /// * `rq` - The render queue to add render updates to
     /// * `original_count` - The original number of library rows before the change. If `None`,
     ///   uses the current library count. This is used to determine how many old rows to remove.
-    ///
-    /// # Returns
-    ///
-    /// Returns `Ok(())` if the operation succeeds, or an error if the operation fails.
-    /// If the current category is not `Category::Libraries`, returns `Ok(())` immediately.
-    fn rebuild_library_rows(
-        &mut self,
-        rq: &mut RenderQueue,
-        original_count: Option<usize>,
-    ) -> Result<(), Error> {
+    fn rebuild_library_rows(&mut self, rq: &mut RenderQueue, original_count: Option<usize>) {
         if self.category != Category::Libraries {
-            return Ok(());
+            return;
         }
 
         let num_libraries = self.settings.libraries.len();
         let rows_to_remove = original_count.unwrap_or(num_libraries);
 
-        let first_row_index = 3;
+        let first_row_index = self.first_row_index;
 
         for _ in 0..rows_to_remove {
             if first_row_index < self.children.len() {
@@ -336,9 +353,9 @@ impl CategoryEditor {
             self.children.insert(first_row_index + offset, row);
         }
 
-        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+        self.keyboard_index = self.children.len() - 1;
 
-        Ok(())
+        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
     }
 
     fn toggle_keyboard(
@@ -573,9 +590,7 @@ impl CategoryEditor {
             let original_count = self.settings.libraries.len();
             self.settings.libraries.remove(index);
 
-            if let Err(e) = self.rebuild_library_rows(rq, Some(original_count)) {
-                eprintln!("Failed to rebuild library rows: {}", e);
-            }
+            self.rebuild_library_rows(rq, Some(original_count));
         }
 
         if let Some(menu_index) = locate_by_id(self, ViewId::SettingsValueMenu) {
@@ -635,6 +650,17 @@ impl CategoryEditor {
         true
     }
 
+    /// Handles the `AddLibrary` event by creating a new library and opening an editor overlay.
+    ///
+    /// This function:
+    /// 1. Creates a new `LibrarySettings` with default values
+    /// 2. Adds it to the settings
+    /// 3. Rebuilds the library rows to display the new library in the list
+    /// 4. Opens a `LibraryEditor` overlay so the user can immediately configure the new library
+    ///
+    /// The `LibraryEditor` is pushed to the end of the children array, after the keyboard.
+    /// This means `keyboard_index` remains valid and continues to correctly point to the keyboard,
+    /// while the `LibraryEditor` becomes the new last child.
     fn handle_add_library_event(
         &mut self,
         hub: &Hub,
@@ -648,23 +674,24 @@ impl CategoryEditor {
             ..Default::default()
         };
 
-        let library_index = self.settings.libraries.len();
+        let old_count = self.settings.libraries.len();
         self.settings.libraries.push(library.clone());
 
-        if let Err(e) = self.rebuild_library_rows(rq, None) {
-            eprintln!("Failed to rebuild library rows: {}", e);
-        }
+        self.rebuild_library_rows(rq, Some(old_count));
 
-        if let Ok(library_editor) =
-            LibraryEditor::new(self.rect, library_index, library, hub, rq, context)
-        {
-            self.children.push(Box::new(library_editor));
-            rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
-        }
+        let library_editor = LibraryEditor::new(self.rect, old_count, library, hub, rq, context);
+        self.children.push(Box::new(library_editor));
+        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
 
         true
     }
 
+    /// Handles the `EditLibrary` event by opening a `LibraryEditor` overlay for the specified library.
+    ///
+    /// This function creates a `LibraryEditor` view that allows the user to modify an existing
+    /// library's settings (name, path, mode, etc.). The editor is pushed as a child view,
+    /// creating an overlay on top of the category editor. The `LibraryEditor` is pushed to the
+    /// end of the children array, after the keyboard, so `keyboard_index` remains valid.
     fn handle_edit_library_event(
         &mut self,
         index: usize,
@@ -673,12 +700,9 @@ impl CategoryEditor {
         context: &mut Context,
     ) -> bool {
         if let Some(library) = self.settings.libraries.get(index).cloned() {
-            if let Ok(library_editor) =
-                LibraryEditor::new(self.rect, index, library, hub, rq, context)
-            {
-                self.children.push(Box::new(library_editor));
-                rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
-            }
+            let library_editor = LibraryEditor::new(self.rect, index, library, hub, rq, context);
+            self.children.push(Box::new(library_editor));
+            rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
         }
         true
     }
@@ -692,9 +716,7 @@ impl CategoryEditor {
         if index < self.settings.libraries.len() {
             self.settings.libraries[index] = library.clone();
 
-            if let Err(e) = self.rebuild_library_rows(rq, None) {
-                eprintln!("Failed to rebuild library rows: {}", e);
-            }
+            self.rebuild_library_rows(rq, None);
         }
 
         false
@@ -973,9 +995,7 @@ mod tests {
         settings
     }
 
-    fn create_test_category_editor_with_context(
-        context: &mut Context,
-    ) -> Result<CategoryEditor, Error> {
+    fn create_test_category_editor_with_context(context: &mut Context) -> CategoryEditor {
         let rect = rect![0, 0, 600, 800];
         let (hub, _receiver) = channel();
         let mut rq = RenderQueue::new();
@@ -988,8 +1008,7 @@ mod tests {
         let mut context = create_test_context();
         context.settings = Settings::default();
         context.settings.libraries.clear();
-        let mut editor = create_test_category_editor_with_context(&mut context)
-            .expect("Failed to create category editor");
+        let mut editor = create_test_category_editor_with_context(&mut context);
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
@@ -1008,16 +1027,66 @@ mod tests {
         assert_eq!(added_library.path, PathBuf::from("/mnt/onboard"));
         assert_eq!(added_library.mode, LibraryMode::Filesystem);
 
-        assert_eq!(editor.children.len(), initial_children_count + 1);
+        assert_eq!(
+            editor.children.len(),
+            initial_children_count + 2,
+            "Expected +2: one new library row and one library editor"
+        );
         assert!(!rq.is_empty());
+    }
+
+    #[test]
+    fn test_add_library_preserves_structural_children() {
+        let mut context = create_test_context();
+        context.settings = create_test_settings_with_libraries(2);
+        let mut editor = create_test_category_editor_with_context(&mut context);
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+        let mut rq = RenderQueue::new();
+
+        assert_eq!(editor.settings.libraries.len(), 2);
+        let initial_children_count = editor.children.len();
+
+        let handled =
+            editor.handle_event(&Event::AddLibrary, &hub, &mut bus, &mut rq, &mut context);
+
+        assert!(handled);
+        assert_eq!(editor.settings.libraries.len(), 3);
+
+        assert_eq!(
+            editor.children.len(),
+            initial_children_count + 2,
+            "Expected children count to increase by 2: one new library row and one library editor"
+        );
+
+        assert_eq!(
+            // minus 2 to account for the newly added library editor
+            editor.keyboard_index,
+            editor.children.len() - 2,
+            "keyboard_index should point to the last child (the keyboard)"
+        );
+
+        assert!(
+            editor.keyboard_index < editor.children.len(),
+            "keyboard_index out of bounds - structural children were likely removed incorrectly"
+        );
+
+        let keyboard_still_exists = editor
+            .children
+            .iter()
+            .any(|child| child.downcast_ref::<ToggleableKeyboard>().is_some());
+
+        assert!(
+            keyboard_still_exists,
+            "ToggleableKeyboard view should still exist in children after adding library"
+        );
     }
 
     #[test]
     fn test_delete_library_event() {
         let mut context = create_test_context();
         context.settings = create_test_settings_with_libraries(2);
-        let mut editor = create_test_category_editor_with_context(&mut context)
-            .expect("Failed to create category editor");
+        let mut editor = create_test_category_editor_with_context(&mut context);
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
@@ -1058,8 +1127,7 @@ mod tests {
     fn test_update_library_event() {
         let mut context = create_test_context();
         context.settings = create_test_settings_with_libraries(1);
-        let mut editor = create_test_category_editor_with_context(&mut context)
-            .expect("Failed to create category editor");
+        let mut editor = create_test_category_editor_with_context(&mut context);
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
@@ -1097,8 +1165,7 @@ mod tests {
     fn test_edit_library_event() {
         let mut context = create_test_context();
         context.settings = create_test_settings_with_libraries(1);
-        let mut editor = create_test_category_editor_with_context(&mut context)
-            .expect("Failed to create category editor");
+        let mut editor = create_test_category_editor_with_context(&mut context);
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
@@ -1122,8 +1189,7 @@ mod tests {
     fn test_hold_finger_shows_delete_menu() {
         let mut context = create_test_context();
         context.settings = create_test_settings_with_libraries(1);
-        let mut editor = create_test_category_editor_with_context(&mut context)
-            .expect("Failed to create category editor");
+        let mut editor = create_test_category_editor_with_context(&mut context);
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
@@ -1169,9 +1235,7 @@ mod tests {
         }
     }
 
-    fn create_test_intermissions_category_editor(
-        context: &mut Context,
-    ) -> Result<CategoryEditor, Error> {
+    fn create_test_intermissions_category_editor(context: &mut Context) -> CategoryEditor {
         let rect = rect![0, 0, 600, 800];
         let (hub, _receiver) = channel();
         let mut rq = RenderQueue::new();
@@ -1184,8 +1248,7 @@ mod tests {
         use crate::settings::{IntermKind, IntermissionDisplay};
 
         let mut context = create_test_context();
-        let mut editor = create_test_intermissions_category_editor(&mut context)
-            .expect("Failed to create intermissions category editor");
+        let mut editor = create_test_intermissions_category_editor(&mut context);
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
@@ -1213,8 +1276,7 @@ mod tests {
         use crate::settings::{IntermKind, IntermissionDisplay};
 
         let mut context = create_test_context();
-        let mut editor = create_test_intermissions_category_editor(&mut context)
-            .expect("Failed to create intermissions category editor");
+        let mut editor = create_test_intermissions_category_editor(&mut context);
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
@@ -1242,8 +1304,7 @@ mod tests {
         use crate::settings::IntermKind;
 
         let mut context = create_test_context();
-        let mut editor = create_test_intermissions_category_editor(&mut context)
-            .expect("Failed to create intermissions category editor");
+        let mut editor = create_test_intermissions_category_editor(&mut context);
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
@@ -1270,8 +1331,7 @@ mod tests {
         use crate::settings::{IntermKind, IntermissionDisplay};
 
         let mut context = create_test_context();
-        let mut editor = create_test_intermissions_category_editor(&mut context)
-            .expect("Failed to create intermissions category editor");
+        let mut editor = create_test_intermissions_category_editor(&mut context);
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
@@ -1300,8 +1360,7 @@ mod tests {
         use crate::settings::IntermKind;
 
         let mut context = create_test_context();
-        let mut editor = create_test_intermissions_category_editor(&mut context)
-            .expect("Failed to create intermissions category editor");
+        let mut editor = create_test_intermissions_category_editor(&mut context);
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
@@ -1325,8 +1384,7 @@ mod tests {
         use crate::settings::IntermKind;
 
         let mut context = create_test_context();
-        let mut editor = create_test_intermissions_category_editor(&mut context)
-            .expect("Failed to create intermissions category editor");
+        let mut editor = create_test_intermissions_category_editor(&mut context);
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();

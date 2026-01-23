@@ -78,6 +78,16 @@ impl ActionLabel {
 
 impl View for ActionLabel {
     /// Handles finger down/up events to toggle active state and update label scheme.
+    ///
+    /// This method responds to touch input by managing the active state of the label,
+    /// which controls the visual feedback through color inversion.
+    ///
+    /// Behavior:
+    /// - **Finger Down**: If the touch position is within the label's bounds, sets the active
+    ///   state to true, inverting the label's colors to provide visual feedback.
+    /// - **Finger Up**: Deactivates the label and restores normal colors. This is handled
+    ///   regardless of whether the finger position is within the label's bounds.
+    ///
     /// Returns true if the event was handled, false otherwise.
     fn handle_event(
         &mut self,
