@@ -8,6 +8,9 @@ use std::path::PathBuf;
 use std::time::Duration;
 use zip::ZipArchive;
 
+#[cfg(not(test))]
+use crate::settings::INTERNAL_CARD_ROOT;
+
 /// Size of each download chunk in bytes (10 MB)
 const CHUNK_SIZE: usize = 10 * 1024 * 1024;
 
@@ -430,7 +433,7 @@ impl OtaClient {
         );
 
         #[cfg(not(test))]
-        let deploy_path = PathBuf::from("/mnt/onboard/.kobo/KoboRoot.tgz");
+        let deploy_path = PathBuf::from(format!("{}/.kobo/KoboRoot.tgz", INTERNAL_CARD_ROOT));
 
         #[cfg(test)]
         let deploy_path = {
