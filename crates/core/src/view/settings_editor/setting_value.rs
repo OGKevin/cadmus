@@ -71,6 +71,11 @@ pub struct SettingValue {
     /// Child views, typically containing an ActionLabel for display
     children: Vec<Box<dyn View>>,
     /// Available options/entries for this setting (e.g., radio buttons, checkboxes)
+    ///
+    /// # Important
+    /// Whenever this field is modified, the underlying ActionLabel's event must be updated
+    /// by calling `create_tap_event()` and setting it via `action_label.set_event()`.
+    /// This ensures the tap behavior reflects the current entries state.
     entries: Vec<EntryKind>,
 }
 
@@ -344,6 +349,26 @@ impl SettingValue {
         }
     }
 
+    /// Generates the appropriate event to be triggered when this setting value is tapped.
+    ///
+    /// This method determines what event should be emitted based on the type of setting.
+    /// It's used during initialization (in `new()`) and after updates (in various `handle_*` methods)
+    /// to ensure the ActionLabel always has the correct tap behavior.
+    ///
+    /// The behavior varies by setting type:
+    /// - **Direct edit settings** (LibraryInfo, LibraryName, LibraryPath, AutoSuspend, AutoPowerOff):
+    ///   Return specific edit events that trigger their corresponding input dialogs.
+    /// - **Settings with multiple options** (KeyboardLayout, SleepCover, AutoShare, ButtonScheme, LibraryMode, Intermission*):
+    ///   Return a SubMenu event that displays all available entries as radio buttons or checkboxes.
+    ///
+    /// # Returns
+    /// An Option containing:
+    /// - `Some(Event)` - the event to emit on tap
+    /// - `None`
+    ///
+    /// # Important
+    /// **This method must be called every time `self.entries` is updated** to ensure the tap event
+    /// reflects the current state of available entries.
     fn create_tap_event(&self) -> Option<Event> {
         match self.kind {
             Kind::LibraryInfo(index) => Some(Event::EditLibrary(index)),
