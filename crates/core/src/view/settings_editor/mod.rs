@@ -40,9 +40,10 @@ use crate::unit::scale_by_dpi;
 use crate::view::common::{locate_by_id, toggle_main_menu};
 use crate::view::filler::Filler;
 use crate::view::top_bar::{TopBar, TopBarVariant};
-use crate::view::{Bus, Event, Hub, Id, RenderData, RenderQueue, View, ViewId, ID_FEEDER};
+use crate::view::{
+    Bus, Event, Hub, Id, NotificationEvent, RenderData, RenderQueue, View, ViewId, ID_FEEDER,
+};
 use crate::view::{BIG_BAR_HEIGHT, SMALL_BAR_HEIGHT, THICKNESS_MEDIUM};
-use anyhow::Error;
 
 mod bottom_bar;
 mod category;
@@ -59,24 +60,58 @@ pub use self::category_row::CategoryRow;
 pub use self::setting_row::{Kind as RowKind, SettingRow};
 pub use self::setting_value::SettingValue;
 
+/// Main settings editor view.
+///
+/// This is the top-level view that displays all available setting categories
+/// (General, Libraries, Intermissions) as interactive rows. When a category is
+/// selected, it opens a full-screen `CategoryEditor` to allow editing of that
+/// category's settings.
+///
+/// # Structure
+///
+/// - `id`: Unique identifier for this view
+/// - `rect`: Bounding rectangle for the entire settings editor
+/// - `children`: Child views including the top bar, separators, background, and category rows
 pub struct SettingsEditor {
     id: Id,
     rect: Rectangle,
     children: Vec<Box<dyn View>>,
 }
 
-pub struct SettingsEditorBuilder<'a> {
-    rect: Rectangle,
-    rq: &'a mut RenderQueue,
-    context: &'a mut Context,
-}
+impl SettingsEditor {
+    pub fn new(rect: Rectangle, rq: &mut RenderQueue, context: &mut Context) -> Self {
+        let id = ID_FEEDER.next();
+        let mut children = Vec::new();
 
-impl<'a> SettingsEditorBuilder<'a> {
-    fn new(rect: Rectangle, rq: &'a mut RenderQueue, context: &'a mut Context) -> Self {
-        SettingsEditorBuilder { rect, rq, context }
+        let (bar_height, _separator_thickness, separator_top_half, separator_bottom_half) =
+            Self::calculate_dimensions();
+
+        children.push(Self::build_top_bar(
+            &rect,
+            bar_height,
+            separator_top_half,
+            context,
+        ));
+
+        children.push(Self::build_top_separator(
+            &rect,
+            bar_height,
+            separator_top_half,
+            separator_bottom_half,
+        ));
+
+        let (background, content_rect) =
+            Self::build_content_background(&rect, bar_height, separator_bottom_half);
+        children.push(background);
+
+        Self::build_category_rows(&mut children, &content_rect, context);
+
+        rq.add(RenderData::new(id, rect, UpdateMode::Gui));
+
+        SettingsEditor { id, rect, children }
     }
 
-    fn calculate_dimensions(&self) -> (i32, i32, i32, i32) {
+    fn calculate_dimensions() -> (i32, i32, i32, i32) {
         let dpi = CURRENT_DEVICE.dpi;
         let (small_height, _big_height) = (
             scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32,
@@ -94,33 +129,38 @@ impl<'a> SettingsEditorBuilder<'a> {
         )
     }
 
-    fn build_top_bar(&mut self, bar_height: i32, separator_top_half: i32) -> Box<dyn View> {
+    fn build_top_bar(
+        rect: &Rectangle,
+        bar_height: i32,
+        separator_top_half: i32,
+        context: &mut Context,
+    ) -> Box<dyn View> {
         let top_bar = TopBar::new(
             rect![
-                self.rect.min.x,
-                self.rect.min.y,
-                self.rect.max.x,
-                self.rect.min.y + bar_height - separator_top_half
+                rect.min.x,
+                rect.min.y,
+                rect.max.x,
+                rect.min.y + bar_height - separator_top_half
             ],
             TopBarVariant::Back,
             "Settings".to_string(),
-            self.context,
+            context,
         );
         Box::new(top_bar) as Box<dyn View>
     }
 
     fn build_top_separator(
-        &mut self,
+        rect: &Rectangle,
         bar_height: i32,
         separator_top_half: i32,
         separator_bottom_half: i32,
     ) -> Box<dyn View> {
         let separator = Filler::new(
             rect![
-                self.rect.min.x,
-                self.rect.min.y + bar_height - separator_top_half,
-                self.rect.max.x,
-                self.rect.min.y + bar_height + separator_bottom_half
+                rect.min.x,
+                rect.min.y + bar_height - separator_top_half,
+                rect.max.x,
+                rect.min.y + bar_height + separator_bottom_half
             ],
             BLACK,
         );
@@ -128,46 +168,26 @@ impl<'a> SettingsEditorBuilder<'a> {
     }
 
     fn build_content_background(
-        &mut self,
+        rect: &Rectangle,
         bar_height: i32,
-        separator_top_half: i32,
         separator_bottom_half: i32,
     ) -> (Box<dyn View>, Rectangle) {
         let content_rect = rect![
-            self.rect.min.x,
-            self.rect.min.y + bar_height + separator_bottom_half,
-            self.rect.max.x,
-            self.rect.max.y
+            rect.min.x,
+            rect.min.y + bar_height + separator_bottom_half,
+            rect.max.x,
+            rect.max.y
         ];
 
         let background = Filler::new(content_rect, WHITE);
         (Box::new(background) as Box<dyn View>, content_rect)
     }
 
-    fn build_category_row(&mut self, category: Category, row_rect: Rectangle) -> Box<dyn View> {
-        let category_row = CategoryRow::new(category, row_rect, self.context);
-        Box::new(category_row) as Box<dyn View>
-    }
-
-    pub fn build(mut self) -> Result<SettingsEditor, Error> {
-        let id = ID_FEEDER.next();
-        let mut children = Vec::new();
-
-        let (bar_height, _separator_thickness, separator_top_half, separator_bottom_half) =
-            self.calculate_dimensions();
-
-        children.push(self.build_top_bar(bar_height, separator_top_half));
-
-        children.push(self.build_top_separator(
-            bar_height,
-            separator_top_half,
-            separator_bottom_half,
-        ));
-
-        let (background, content_rect) =
-            self.build_content_background(bar_height, separator_top_half, separator_bottom_half);
-        children.push(background);
-
+    fn build_category_rows(
+        children: &mut Vec<Box<dyn View>>,
+        content_rect: &Rectangle,
+        context: &mut Context,
+    ) {
         let row_height = scale_by_dpi(BIG_BAR_HEIGHT, CURRENT_DEVICE.dpi) as i32;
         let categories = Category::all();
         let mut current_y = content_rect.min.y;
@@ -179,28 +199,10 @@ impl<'a> SettingsEditorBuilder<'a> {
                 content_rect.max.x,
                 current_y + row_height
             ];
-            children.push(self.build_category_row(category, row_rect));
+            let category_row = CategoryRow::new(category, row_rect, context);
+            children.push(Box::new(category_row) as Box<dyn View>);
             current_y += row_height;
         }
-
-        self.rq.add(RenderData::new(id, self.rect, UpdateMode::Gui));
-
-        Ok(SettingsEditor {
-            id,
-            rect: self.rect,
-            children,
-        })
-    }
-}
-
-impl SettingsEditor {
-    pub fn new<'a>(
-        rect: Rectangle,
-        _hub: &'a Hub,
-        rq: &'a mut RenderQueue,
-        context: &'a mut Context,
-    ) -> SettingsEditorBuilder<'a> {
-        SettingsEditorBuilder::new(rect, rq, context)
     }
 }
 
@@ -224,15 +226,19 @@ impl View for SettingsEditor {
                 true
             }
             Event::UpdateSettings(ref settings) => {
-                context.settings = settings.clone();
+                context.settings = (**settings).clone();
 
                 if let Err(e) = save_toml(&context.settings, SETTINGS_PATH) {
                     eprintln!("Failed to save settings: {:#}", e);
-                    hub.send(Event::Notify("Failed to save settings".to_string()))
-                        .ok();
+                    hub.send(Event::Notification(NotificationEvent::Show(
+                        "Failed to save settings".to_string(),
+                    )))
+                    .ok();
                 } else {
-                    hub.send(Event::Notify("Settings saved successfully".to_string()))
-                        .ok();
+                    hub.send(Event::Notification(NotificationEvent::Show(
+                        "Settings saved successfully".to_string(),
+                    )))
+                    .ok();
                 }
 
                 true
@@ -257,7 +263,7 @@ impl View for SettingsEditor {
                     toggle_main_menu(self, Rectangle::default(), Some(false), rq, context);
                     true
                 }
-                _ => return false,
+                _ => false,
             },
             _ => false,
         }

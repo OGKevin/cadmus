@@ -19,7 +19,6 @@ use crate::view::page_label::PageLabel;
 use crate::view::top_bar::{TopBar, TopBarVariant};
 use crate::view::{Bus, EntryId, Event, Hub, Id, RenderData, RenderQueue, View, ViewId, ID_FEEDER};
 use crate::view::{BIG_BAR_HEIGHT, SMALL_BAR_HEIGHT, THICKNESS_MEDIUM};
-use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
@@ -137,7 +136,7 @@ impl FileChooser {
 
     fn build_children(
         rect: Rectangle,
-        initial_path: &PathBuf,
+        initial_path: &Path,
         mode: SelectionMode,
         layout: &FileChooserLayout,
         context: &mut Context,
@@ -341,6 +340,7 @@ impl FileChooser {
         self.children.push(Box::new(label) as Box<dyn View>);
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn add_file_entries(
         &mut self,
         start_idx: usize,

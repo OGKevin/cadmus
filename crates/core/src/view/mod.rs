@@ -395,7 +395,7 @@ pub enum Event {
     TogglePresetMenu(Rectangle, usize),
     SubMenu(Rectangle, Vec<EntryKind>),
     OpenSettingsCategory(settings_editor::Category),
-    UpdateSettings(settings::Settings),
+    UpdateSettings(Box<settings::Settings>),
     EditLibrary(usize),
     UpdateLibrary(usize, Box<settings::LibrarySettings>),
     AddLibrary,

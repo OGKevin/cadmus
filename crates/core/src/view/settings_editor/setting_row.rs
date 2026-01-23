@@ -117,7 +117,7 @@ impl View for SettingRow {
                             }
                         }
                     }
-                    return false;
+                    false
                 }
                 _ => false,
             },
