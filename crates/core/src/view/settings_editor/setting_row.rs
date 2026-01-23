@@ -173,6 +173,7 @@ impl View for SettingRow {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::context::test_helpers::create_test_context;
     use crate::settings::{LibraryMode, LibrarySettings};
     use std::collections::VecDeque;
     use std::path::PathBuf;
@@ -206,24 +207,7 @@ mod tests {
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
-        let mut context = crate::context::Context::new(
-            Box::new(crate::framebuffer::Pixmap::new(600, 800, 1)),
-            None,
-            crate::library::Library::new(std::path::Path::new("/tmp"), LibraryMode::Database)
-                .unwrap(),
-            Settings::default(),
-            crate::font::Fonts::load_from(
-                std::path::Path::new(
-                    &std::env::var("TEST_ROOT_DIR")
-                        .expect("TEST_ROOT_DIR must be set for this test."),
-                )
-                .to_path_buf(),
-            )
-            .expect("Failed to load fonts"),
-            Box::new(crate::battery::FakeBattery::new()),
-            Box::new(crate::frontlight::LightLevels::default()),
-            Box::new(0u16),
-        );
+        let mut context = create_test_context();
 
         let updated_library = LibrarySettings {
             name: "Updated Library Name".to_string(),
@@ -249,24 +233,7 @@ mod tests {
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
-        let mut context = crate::context::Context::new(
-            Box::new(crate::framebuffer::Pixmap::new(600, 800, 1)),
-            None,
-            crate::library::Library::new(std::path::Path::new("/tmp"), LibraryMode::Database)
-                .unwrap(),
-            Settings::default(),
-            crate::font::Fonts::load_from(
-                std::path::Path::new(
-                    &std::env::var("TEST_ROOT_DIR")
-                        .expect("TEST_ROOT_DIR must be set for this test."),
-                )
-                .to_path_buf(),
-            )
-            .expect("Failed to load fonts"),
-            Box::new(crate::battery::FakeBattery::new()),
-            Box::new(crate::frontlight::LightLevels::default()),
-            Box::new(0u16),
-        );
+        let mut context = create_test_context();
 
         let updated_library = LibrarySettings {
             name: "Updated Library 1".to_string(),

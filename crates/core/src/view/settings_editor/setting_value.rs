@@ -673,6 +673,7 @@ impl View for SettingValue {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::context::test_helpers::create_test_context;
     use crate::gesture::GestureEvent;
     use crate::settings::Settings;
     use crate::view::{RenderQueue, ViewId};
@@ -692,27 +693,7 @@ mod tests {
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
-        let mut context = crate::context::Context::new(
-            Box::new(crate::framebuffer::Pixmap::new(600, 800, 1)),
-            None,
-            crate::library::Library::new(
-                std::path::Path::new("/tmp"),
-                crate::settings::LibraryMode::Database,
-            )
-            .unwrap(),
-            Settings::default(),
-            crate::font::Fonts::load_from(
-                std::path::Path::new(
-                    &std::env::var("TEST_ROOT_DIR")
-                        .expect("TEST_ROOT_DIR must be set for this test."),
-                )
-                .to_path_buf(),
-            )
-            .expect("Failed to load fonts"),
-            Box::new(crate::battery::FakeBattery::new()),
-            Box::new(crate::frontlight::LightLevels::default()),
-            Box::new(0u16),
-        );
+        let mut context = create_test_context();
 
         let initial_suspend = suspend_value.value().clone();
         let initial_power_off = power_off_value.value().clone();
@@ -749,27 +730,7 @@ mod tests {
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
-        let mut context = crate::context::Context::new(
-            Box::new(crate::framebuffer::Pixmap::new(600, 800, 1)),
-            None,
-            crate::library::Library::new(
-                std::path::Path::new("/tmp"),
-                crate::settings::LibraryMode::Database,
-            )
-            .unwrap(),
-            Settings::default(),
-            crate::font::Fonts::load_from(
-                std::path::Path::new(
-                    &std::env::var("TEST_ROOT_DIR")
-                        .expect("TEST_ROOT_DIR must be set for this test."),
-                )
-                .to_path_buf(),
-            )
-            .expect("Failed to load fonts"),
-            Box::new(crate::battery::FakeBattery::new()),
-            Box::new(crate::frontlight::LightLevels::default()),
-            Box::new(0u16),
-        );
+        let mut context = create_test_context();
 
         let suspend_event = Event::Submit(
             ViewId::IntermissionSuspendInput,
@@ -813,27 +774,7 @@ mod tests {
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
-        let mut context = crate::context::Context::new(
-            Box::new(crate::framebuffer::Pixmap::new(600, 800, 1)),
-            None,
-            crate::library::Library::new(
-                std::path::Path::new("/tmp"),
-                crate::settings::LibraryMode::Database,
-            )
-            .unwrap(),
-            Settings::default(),
-            crate::font::Fonts::load_from(
-                std::path::Path::new(
-                    &std::env::var("TEST_ROOT_DIR")
-                        .expect("TEST_ROOT_DIR must be set for this test."),
-                )
-                .to_path_buf(),
-            )
-            .expect("Failed to load fonts"),
-            Box::new(crate::battery::FakeBattery::new()),
-            Box::new(crate::frontlight::LightLevels::default()),
-            Box::new(0u16),
-        );
+        let mut context = create_test_context();
 
         let event = Event::Select(EntryId::SetKeyboardLayout("French".to_string()));
         let handled = value.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
@@ -855,27 +796,7 @@ mod tests {
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
-        let mut context = crate::context::Context::new(
-            Box::new(crate::framebuffer::Pixmap::new(600, 800, 1)),
-            None,
-            crate::library::Library::new(
-                std::path::Path::new("/tmp"),
-                crate::settings::LibraryMode::Database,
-            )
-            .unwrap(),
-            Settings::default(),
-            crate::font::Fonts::load_from(
-                std::path::Path::new(
-                    &std::env::var("TEST_ROOT_DIR")
-                        .expect("TEST_ROOT_DIR must be set for this test."),
-                )
-                .to_path_buf(),
-            )
-            .expect("Failed to load fonts"),
-            Box::new(crate::battery::FakeBattery::new()),
-            Box::new(crate::frontlight::LightLevels::default()),
-            Box::new(0u16),
-        );
+        let mut context = create_test_context();
 
         assert_eq!(value.value(), "Disabled");
 
@@ -899,27 +820,7 @@ mod tests {
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
-        let mut context = crate::context::Context::new(
-            Box::new(crate::framebuffer::Pixmap::new(600, 800, 1)),
-            None,
-            crate::library::Library::new(
-                std::path::Path::new("/tmp"),
-                crate::settings::LibraryMode::Database,
-            )
-            .unwrap(),
-            Settings::default(),
-            crate::font::Fonts::load_from(
-                std::path::Path::new(
-                    &std::env::var("TEST_ROOT_DIR")
-                        .expect("TEST_ROOT_DIR must be set for this test."),
-                )
-                .to_path_buf(),
-            )
-            .expect("Failed to load fonts"),
-            Box::new(crate::battery::FakeBattery::new()),
-            Box::new(crate::frontlight::LightLevels::default()),
-            Box::new(0u16),
-        );
+        let mut context = create_test_context();
 
         assert_eq!(value.value(), "Disabled");
 
@@ -943,27 +844,7 @@ mod tests {
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
-        let mut context = crate::context::Context::new(
-            Box::new(crate::framebuffer::Pixmap::new(600, 800, 1)),
-            None,
-            crate::library::Library::new(
-                std::path::Path::new("/tmp"),
-                crate::settings::LibraryMode::Database,
-            )
-            .unwrap(),
-            Settings::default(),
-            crate::font::Fonts::load_from(
-                std::path::Path::new(
-                    &std::env::var("TEST_ROOT_DIR")
-                        .expect("TEST_ROOT_DIR must be set for this test."),
-                )
-                .to_path_buf(),
-            )
-            .expect("Failed to load fonts"),
-            Box::new(crate::battery::FakeBattery::new()),
-            Box::new(crate::frontlight::LightLevels::default()),
-            Box::new(0u16),
-        );
+        let mut context = create_test_context();
 
         let event = Event::Select(EntryId::SetButtonScheme(ButtonScheme::Inverted));
         let handled = value.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
@@ -991,27 +872,7 @@ mod tests {
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
-        let mut context = crate::context::Context::new(
-            Box::new(crate::framebuffer::Pixmap::new(600, 800, 1)),
-            None,
-            crate::library::Library::new(
-                std::path::Path::new("/tmp"),
-                crate::settings::LibraryMode::Database,
-            )
-            .unwrap(),
-            Settings::default(),
-            crate::font::Fonts::load_from(
-                std::path::Path::new(
-                    &std::env::var("TEST_ROOT_DIR")
-                        .expect("TEST_ROOT_DIR must be set for this test."),
-                )
-                .to_path_buf(),
-            )
-            .expect("Failed to load fonts"),
-            Box::new(crate::battery::FakeBattery::new()),
-            Box::new(crate::frontlight::LightLevels::default()),
-            Box::new(0u16),
-        );
+        let mut context = create_test_context();
 
         assert_eq!(value.value(), "Filesystem");
 
@@ -1032,27 +893,7 @@ mod tests {
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
-        let mut context = crate::context::Context::new(
-            Box::new(crate::framebuffer::Pixmap::new(600, 800, 1)),
-            None,
-            crate::library::Library::new(
-                std::path::Path::new("/tmp"),
-                crate::settings::LibraryMode::Database,
-            )
-            .unwrap(),
-            Settings::default(),
-            crate::font::Fonts::load_from(
-                std::path::Path::new(
-                    &std::env::var("TEST_ROOT_DIR")
-                        .expect("TEST_ROOT_DIR must be set for this test."),
-                )
-                .to_path_buf(),
-            )
-            .expect("Failed to load fonts"),
-            Box::new(crate::battery::FakeBattery::new()),
-            Box::new(crate::frontlight::LightLevels::default()),
-            Box::new(0u16),
-        );
+        let mut context = create_test_context();
 
         let event = Event::Submit(ViewId::AutoSuspendInput, "15.0".to_string());
         let handled = value.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
@@ -1071,27 +912,7 @@ mod tests {
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
-        let mut context = crate::context::Context::new(
-            Box::new(crate::framebuffer::Pixmap::new(600, 800, 1)),
-            None,
-            crate::library::Library::new(
-                std::path::Path::new("/tmp"),
-                crate::settings::LibraryMode::Database,
-            )
-            .unwrap(),
-            Settings::default(),
-            crate::font::Fonts::load_from(
-                std::path::Path::new(
-                    &std::env::var("TEST_ROOT_DIR")
-                        .expect("TEST_ROOT_DIR must be set for this test."),
-                )
-                .to_path_buf(),
-            )
-            .expect("Failed to load fonts"),
-            Box::new(crate::battery::FakeBattery::new()),
-            Box::new(crate::frontlight::LightLevels::default()),
-            Box::new(0u16),
-        );
+        let mut context = create_test_context();
 
         let event = Event::Submit(ViewId::AutoPowerOffInput, "7.0".to_string());
         let handled = value.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
@@ -1117,27 +938,7 @@ mod tests {
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
-        let mut context = crate::context::Context::new(
-            Box::new(crate::framebuffer::Pixmap::new(600, 800, 1)),
-            None,
-            crate::library::Library::new(
-                std::path::Path::new("/tmp"),
-                crate::settings::LibraryMode::Database,
-            )
-            .unwrap(),
-            Settings::default(),
-            crate::font::Fonts::load_from(
-                std::path::Path::new(
-                    &std::env::var("TEST_ROOT_DIR")
-                        .expect("TEST_ROOT_DIR must be set for this test."),
-                )
-                .to_path_buf(),
-            )
-            .expect("Failed to load fonts"),
-            Box::new(crate::battery::FakeBattery::new()),
-            Box::new(crate::frontlight::LightLevels::default()),
-            Box::new(0u16),
-        );
+        let mut context = create_test_context();
 
         let event = Event::Submit(ViewId::LibraryRenameInput, "New Name".to_string());
         let handled = value.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
@@ -1163,27 +964,7 @@ mod tests {
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
-        let mut context = crate::context::Context::new(
-            Box::new(crate::framebuffer::Pixmap::new(600, 800, 1)),
-            None,
-            crate::library::Library::new(
-                std::path::Path::new("/tmp"),
-                crate::settings::LibraryMode::Database,
-            )
-            .unwrap(),
-            Settings::default(),
-            crate::font::Fonts::load_from(
-                std::path::Path::new(
-                    &std::env::var("TEST_ROOT_DIR")
-                        .expect("TEST_ROOT_DIR must be set for this test."),
-                )
-                .to_path_buf(),
-            )
-            .expect("Failed to load fonts"),
-            Box::new(crate::battery::FakeBattery::new()),
-            Box::new(crate::frontlight::LightLevels::default()),
-            Box::new(0u16),
-        );
+        let mut context = create_test_context();
 
         let new_path = PathBuf::from("/mnt/onboard/new_library");
         let event = Event::FileChooserClosed(Some(new_path.clone()));
@@ -1210,27 +991,7 @@ mod tests {
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
-        let mut context = crate::context::Context::new(
-            Box::new(crate::framebuffer::Pixmap::new(600, 800, 1)),
-            None,
-            crate::library::Library::new(
-                std::path::Path::new("/tmp"),
-                crate::settings::LibraryMode::Database,
-            )
-            .unwrap(),
-            Settings::default(),
-            crate::font::Fonts::load_from(
-                std::path::Path::new(
-                    &std::env::var("TEST_ROOT_DIR")
-                        .expect("TEST_ROOT_DIR must be set for this test."),
-                )
-                .to_path_buf(),
-            )
-            .expect("Failed to load fonts"),
-            Box::new(crate::battery::FakeBattery::new()),
-            Box::new(crate::frontlight::LightLevels::default()),
-            Box::new(0u16),
-        );
+        let mut context = create_test_context();
 
         let point = crate::geom::Point::new(100, 25);
         let event = Event::Gesture(GestureEvent::Tap(point));

@@ -101,6 +101,15 @@ impl View for Label {
     /// Similarly, when a hold gesture is detected and the label has an associated
     /// hold event, that event is pushed to the bus.
     ///
+    /// # ⚠️ Important Note
+    ///
+    /// **This label consumes all tap and hold gestures that occur within its bounds.**
+    /// Even if no event is configured, the gesture will still be marked as handled and
+    /// will not propagate to other views. You must explicitly set an event using
+    /// `.event()` or `.hold_event()` for gestures to be processed. If you want taps
+    /// to pass through to underlying views, you should not use this label or configure
+    /// appropriate event handlers.
+    ///
     /// # Arguments
     ///
     /// * `evt` - The event to handle
@@ -125,20 +134,18 @@ impl View for Label {
             Event::Gesture(GestureEvent::Tap(center)) if self.rect.includes(center) => {
                 if let Some(event) = self.event.clone() {
                     bus.push_back(event);
-                    true
-                } else {
-                    false
                 }
+
+                true
             }
             Event::Gesture(GestureEvent::HoldFingerShort(center, _))
                 if self.rect.includes(center) =>
             {
                 if let Some(event) = self.hold_event.clone() {
                     bus.push_back(event);
-                    true
-                } else {
-                    false
                 }
+
+                true
             }
             _ => false,
         }
@@ -212,6 +219,7 @@ impl View for Label {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::context::test_helpers::create_test_context;
     use crate::geom::Point;
     use crate::gesture::GestureEvent;
     use std::collections::VecDeque;
@@ -226,27 +234,7 @@ mod tests {
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
-        let mut context = crate::context::Context::new(
-            Box::new(crate::framebuffer::Pixmap::new(600, 800, 1)),
-            None,
-            crate::library::Library::new(
-                std::path::Path::new("/tmp"),
-                crate::settings::LibraryMode::Database,
-            )
-            .unwrap(),
-            crate::settings::Settings::default(),
-            crate::font::Fonts::load_from(
-                std::path::Path::new(
-                    &std::env::var("TEST_ROOT_DIR")
-                        .expect("TEST_ROOT_DIR must be set for this test."),
-                )
-                .to_path_buf(),
-            )
-            .expect("Failed to load fonts"),
-            Box::new(crate::battery::FakeBattery::new()),
-            Box::new(crate::frontlight::LightLevels::default()),
-            Box::new(0u16),
-        );
+        let mut context = create_test_context();
 
         let point = Point::new(100, 25);
         let event = Event::Gesture(GestureEvent::Tap(point));
@@ -258,40 +246,20 @@ mod tests {
     }
 
     #[test]
-    fn test_tap_without_event_does_not_consume() {
+    fn test_tap_without_event_does_consume() {
         let rect = rect![0, 0, 200, 50];
         let mut label = Label::new(rect, "Test".to_string(), Align::Center);
 
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
-        let mut context = crate::context::Context::new(
-            Box::new(crate::framebuffer::Pixmap::new(600, 800, 1)),
-            None,
-            crate::library::Library::new(
-                std::path::Path::new("/tmp"),
-                crate::settings::LibraryMode::Database,
-            )
-            .unwrap(),
-            crate::settings::Settings::default(),
-            crate::font::Fonts::load_from(
-                std::path::Path::new(
-                    &std::env::var("TEST_ROOT_DIR")
-                        .expect("TEST_ROOT_DIR must be set for this test."),
-                )
-                .to_path_buf(),
-            )
-            .expect("Failed to load fonts"),
-            Box::new(crate::battery::FakeBattery::new()),
-            Box::new(crate::frontlight::LightLevels::default()),
-            Box::new(0u16),
-        );
+        let mut context = create_test_context();
 
         let point = Point::new(100, 25);
         let event = Event::Gesture(GestureEvent::Tap(point));
         let handled = label.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
 
-        assert!(!handled);
+        assert!(handled);
         assert_eq!(bus.len(), 0);
     }
 
@@ -304,27 +272,7 @@ mod tests {
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
-        let mut context = crate::context::Context::new(
-            Box::new(crate::framebuffer::Pixmap::new(600, 800, 1)),
-            None,
-            crate::library::Library::new(
-                std::path::Path::new("/tmp"),
-                crate::settings::LibraryMode::Database,
-            )
-            .unwrap(),
-            crate::settings::Settings::default(),
-            crate::font::Fonts::load_from(
-                std::path::Path::new(
-                    &std::env::var("TEST_ROOT_DIR")
-                        .expect("TEST_ROOT_DIR must be set for this test."),
-                )
-                .to_path_buf(),
-            )
-            .expect("Failed to load fonts"),
-            Box::new(crate::battery::FakeBattery::new()),
-            Box::new(crate::frontlight::LightLevels::default()),
-            Box::new(0u16),
-        );
+        let mut context = create_test_context();
 
         let point = Point::new(300, 100);
         let event = Event::Gesture(GestureEvent::Tap(point));

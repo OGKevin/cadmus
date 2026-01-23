@@ -1,3 +1,5 @@
+use super::bottom_bar::{BottomBarVariant, SettingsEditorBottomBar};
+use super::setting_row::{Kind as RowKind, SettingRow};
 use crate::color::{BLACK, WHITE};
 use crate::context::Context;
 use crate::device::CURRENT_DEVICE;
@@ -17,9 +19,6 @@ use crate::view::top_bar::{TopBar, TopBarVariant};
 use crate::view::{Bus, Event, Hub, Id, RenderData, RenderQueue, View, ViewId, ID_FEEDER};
 use crate::view::{EntryId, NotificationEvent};
 use crate::view::{BIG_BAR_HEIGHT, SMALL_BAR_HEIGHT, THICKNESS_MEDIUM};
-
-use super::bottom_bar::{BottomBarVariant, SettingsEditorBottomBar};
-use super::setting_row::{Kind as RowKind, SettingRow};
 
 /// A view for editing library settings.
 ///
