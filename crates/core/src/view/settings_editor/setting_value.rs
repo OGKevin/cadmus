@@ -8,7 +8,7 @@ use crate::framebuffer::{Framebuffer, UpdateMode};
 use crate::geom::Rectangle;
 use crate::gesture::GestureEvent;
 use crate::input::{DeviceEvent, FingerStatus};
-use crate::settings::{ButtonScheme, Settings};
+use crate::settings::{ButtonScheme, IntermKind, Settings};
 use anyhow::Error;
 use core::panic;
 use std::fs;
@@ -28,6 +28,20 @@ pub enum Kind {
     LibraryName(usize),
     LibraryPath(usize),
     LibraryMode(usize),
+    IntermissionSuspend,
+    IntermissionPowerOff,
+    IntermissionShare,
+}
+
+impl Kind {
+    pub fn matches_interm_kind(&self, interm_kind: &IntermKind) -> bool {
+        match (self, interm_kind) {
+            (Kind::IntermissionSuspend, IntermKind::Suspend) => true,
+            (Kind::IntermissionPowerOff, IntermKind::PowerOff) => true,
+            (Kind::IntermissionShare, IntermKind::Share) => true,
+            _ => false,
+        }
+    }
 }
 
 pub struct SettingValue {
@@ -67,6 +81,15 @@ impl SettingValue {
             Kind::LibraryName(index) => Self::fetch_library_name_data(*index, settings),
             Kind::LibraryPath(index) => Self::fetch_library_path_data(*index, settings),
             Kind::LibraryMode(index) => Self::fetch_library_mode_data(*index, settings),
+            Kind::IntermissionSuspend => {
+                Self::fetch_intermission_data(crate::settings::IntermKind::Suspend, settings)
+            }
+            Kind::IntermissionPowerOff => {
+                Self::fetch_intermission_data(crate::settings::IntermKind::PowerOff, settings)
+            }
+            Kind::IntermissionShare => {
+                Self::fetch_intermission_data(crate::settings::IntermKind::Share, settings)
+            }
         }
     }
 
@@ -243,6 +266,47 @@ impl SettingValue {
         Ok(layouts)
     }
 
+    fn fetch_intermission_data(
+        kind: crate::settings::IntermKind,
+        settings: &Settings,
+    ) -> (String, Vec<EntryKind>) {
+        use crate::settings::IntermissionDisplay;
+
+        let display = &settings.intermissions[kind];
+
+        let (value, is_logo, is_cover) = match display {
+            IntermissionDisplay::Logo => ("Logo".to_string(), true, false),
+            IntermissionDisplay::Cover => ("Cover".to_string(), false, true),
+            IntermissionDisplay::Image(path) => {
+                let display_name = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("Custom")
+                    .to_string();
+                (display_name, false, false)
+            }
+        };
+
+        let entries = vec![
+            EntryKind::RadioButton(
+                "Logo".to_string(),
+                EntryId::SetIntermission(kind, IntermissionDisplay::Logo),
+                is_logo,
+            ),
+            EntryKind::RadioButton(
+                "Cover".to_string(),
+                EntryId::SetIntermission(kind, IntermissionDisplay::Cover),
+                is_cover,
+            ),
+            EntryKind::Command(
+                "Custom Image...".to_string(),
+                EntryId::EditIntermissionImage(kind),
+            ),
+        ];
+
+        (value, entries)
+    }
+
     pub fn update(&mut self, value: String, rq: &mut RenderQueue) {
         if self.value != value {
             self.value = value;
@@ -414,6 +478,24 @@ impl View for SettingValue {
 
                     true
                 }
+                EntryId::SetIntermission(kind, display_kind)
+                    if self.kind.matches_interm_kind(kind) =>
+                {
+                    for entry in &mut self.entries {
+                        if let EntryKind::RadioButton(_, ref button_entry_id, ref mut selected) =
+                            entry
+                        {
+                            *selected = matches!(
+                                button_entry_id,
+                                EntryId::SetIntermission(k, d) if k == kind && d == display_kind
+                            );
+                        }
+                    }
+
+                    self.update(display_kind.to_string(), rq);
+
+                    true
+                }
                 _ => false,
             },
             Event::Submit(crate::view::ViewId::LibraryRenameInput, ref name)
@@ -446,6 +528,24 @@ impl View for SettingValue {
                     };
                     self.update(display_value, rq);
                 }
+                true
+            }
+            Event::Submit(crate::view::ViewId::IntermissionSuspendInput, ref display_name)
+                if matches!(self.kind, Kind::IntermissionSuspend) =>
+            {
+                self.update(display_name.clone(), rq);
+                true
+            }
+            Event::Submit(crate::view::ViewId::IntermissionPowerOffInput, ref display_name)
+                if matches!(self.kind, Kind::IntermissionPowerOff) =>
+            {
+                self.update(display_name.clone(), rq);
+                true
+            }
+            Event::Submit(crate::view::ViewId::IntermissionShareInput, ref display_name)
+                if matches!(self.kind, Kind::IntermissionShare) =>
+            {
+                self.update(display_name.clone(), rq);
                 true
             }
             Event::FileChooserClosed(ref path) => match path {
@@ -504,5 +604,138 @@ impl View for SettingValue {
 
     fn id(&self) -> Id {
         self.id
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::settings::Settings;
+    use crate::view::{RenderQueue, ViewId};
+    use std::collections::VecDeque;
+    use std::path::PathBuf;
+    use std::sync::mpsc::channel;
+
+    #[test]
+    fn test_file_chooser_closed_updates_all_intermission_values() {
+        let settings = Settings::default();
+        let rect = rect![0, 0, 200, 50];
+
+        let mut suspend_value = SettingValue::new(Kind::IntermissionSuspend, rect, &settings);
+        let mut power_off_value = SettingValue::new(Kind::IntermissionPowerOff, rect, &settings);
+        let mut share_value = SettingValue::new(Kind::IntermissionShare, rect, &settings);
+
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+        let mut rq = RenderQueue::new();
+        let mut context = crate::context::Context::new(
+            Box::new(crate::framebuffer::Pixmap::new(600, 800, 1)),
+            None,
+            crate::library::Library::new(
+                std::path::Path::new("/tmp"),
+                crate::settings::LibraryMode::Database,
+            )
+            .unwrap(),
+            Settings::default(),
+            crate::font::Fonts::load_from(
+                std::path::Path::new(
+                    &std::env::var("TEST_ROOT_DIR")
+                        .expect("TEST_ROOT_DIR must be set for this test."),
+                )
+                .to_path_buf(),
+            )
+            .expect("Failed to load fonts"),
+            Box::new(crate::battery::FakeBattery::new()),
+            Box::new(crate::frontlight::LightLevels::default()),
+            Box::new(0u16),
+        );
+
+        let initial_suspend = suspend_value.value.clone();
+        let initial_power_off = power_off_value.value.clone();
+        let initial_share = share_value.value.clone();
+
+        let test_path = PathBuf::from("/mnt/onboard/test_image.png");
+        let event = Event::FileChooserClosed(Some(test_path.clone()));
+
+        suspend_value.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+        power_off_value.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+        share_value.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+
+        println!("Initial suspend value: {}", initial_suspend);
+        println!("After event suspend value: {}", suspend_value.value);
+        println!("Initial power_off value: {}", initial_power_off);
+        println!("After event power_off value: {}", power_off_value.value);
+        println!("Initial share value: {}", initial_share);
+        println!("After event share value: {}", share_value.value);
+
+        assert_eq!(suspend_value.value, initial_suspend);
+        assert_eq!(power_off_value.value, initial_power_off);
+        assert_eq!(share_value.value, initial_share);
+    }
+
+    #[test]
+    fn test_intermission_values_update_via_submit_event() {
+        let settings = Settings::default();
+        let rect = rect![0, 0, 200, 50];
+
+        let mut suspend_value = SettingValue::new(Kind::IntermissionSuspend, rect, &settings);
+        let mut power_off_value = SettingValue::new(Kind::IntermissionPowerOff, rect, &settings);
+        let mut share_value = SettingValue::new(Kind::IntermissionShare, rect, &settings);
+
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+        let mut rq = RenderQueue::new();
+        let mut context = crate::context::Context::new(
+            Box::new(crate::framebuffer::Pixmap::new(600, 800, 1)),
+            None,
+            crate::library::Library::new(
+                std::path::Path::new("/tmp"),
+                crate::settings::LibraryMode::Database,
+            )
+            .unwrap(),
+            Settings::default(),
+            crate::font::Fonts::load_from(
+                std::path::Path::new(
+                    &std::env::var("TEST_ROOT_DIR")
+                        .expect("TEST_ROOT_DIR must be set for this test."),
+                )
+                .to_path_buf(),
+            )
+            .expect("Failed to load fonts"),
+            Box::new(crate::battery::FakeBattery::new()),
+            Box::new(crate::frontlight::LightLevels::default()),
+            Box::new(0u16),
+        );
+
+        // Each value should only respond to its specific Submit event
+        let suspend_event = Event::Submit(
+            ViewId::IntermissionSuspendInput,
+            "suspend_image.png".to_string(),
+        );
+        let power_off_event = Event::Submit(
+            ViewId::IntermissionPowerOffInput,
+            "poweroff_image.png".to_string(),
+        );
+        let share_event = Event::Submit(
+            ViewId::IntermissionShareInput,
+            "share_image.png".to_string(),
+        );
+
+        suspend_value.handle_event(&suspend_event, &hub, &mut bus, &mut rq, &mut context);
+        suspend_value.handle_event(&power_off_event, &hub, &mut bus, &mut rq, &mut context);
+        suspend_value.handle_event(&share_event, &hub, &mut bus, &mut rq, &mut context);
+
+        power_off_value.handle_event(&suspend_event, &hub, &mut bus, &mut rq, &mut context);
+        power_off_value.handle_event(&power_off_event, &hub, &mut bus, &mut rq, &mut context);
+        power_off_value.handle_event(&share_event, &hub, &mut bus, &mut rq, &mut context);
+
+        share_value.handle_event(&suspend_event, &hub, &mut bus, &mut rq, &mut context);
+        share_value.handle_event(&power_off_event, &hub, &mut bus, &mut rq, &mut context);
+        share_value.handle_event(&share_event, &hub, &mut bus, &mut rq, &mut context);
+
+        // Each value should only be updated by its matching event
+        assert_eq!(suspend_value.value, "suspend_image.png");
+        assert_eq!(power_off_value.value, "poweroff_image.png");
+        assert_eq!(share_value.value, "share_image.png");
     }
 }

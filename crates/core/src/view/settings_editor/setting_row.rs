@@ -18,6 +18,9 @@ pub enum Kind {
     LibraryName(usize),
     LibraryPath(usize),
     LibraryMode(usize),
+    IntermissionSuspend,
+    IntermissionPowerOff,
+    IntermissionShare,
 }
 
 impl Kind {
@@ -37,6 +40,9 @@ impl Kind {
             Kind::LibraryName(_) => "Name".to_string(),
             Kind::LibraryPath(_) => "Path".to_string(),
             Kind::LibraryMode(_) => "Mode".to_string(),
+            Kind::IntermissionSuspend => "Suspend Screen".to_string(),
+            Kind::IntermissionPowerOff => "Power Off Screen".to_string(),
+            Kind::IntermissionShare => "Share Screen".to_string(),
         }
     }
 
@@ -52,6 +58,9 @@ impl Kind {
             Kind::LibraryName(index) => ValueKind::LibraryName(*index),
             Kind::LibraryPath(index) => ValueKind::LibraryPath(*index),
             Kind::LibraryMode(index) => ValueKind::LibraryMode(*index),
+            Kind::IntermissionSuspend => ValueKind::IntermissionSuspend,
+            Kind::IntermissionPowerOff => ValueKind::IntermissionPowerOff,
+            Kind::IntermissionShare => ValueKind::IntermissionShare,
         }
     }
 }
