@@ -35,7 +35,7 @@ use crate::device::CURRENT_DEVICE;
 use crate::framebuffer::{Framebuffer, UpdateMode};
 use crate::geom::{halves, Rectangle};
 use crate::helpers::save_toml;
-use crate::settings::SETTINGS_PATH;
+use crate::settings::{Settings, SETTINGS_PATH};
 use crate::unit::scale_by_dpi;
 use crate::view::common::{locate_by_id, toggle_main_menu};
 use crate::view::filler::Filler;
@@ -204,6 +204,44 @@ impl SettingsEditor {
             current_y += row_height;
         }
     }
+
+    /// Persist the new settings, emit user feedback, and trigger dependent side
+    /// effects.
+    ///
+    /// Steps:
+    /// 1. Operate directly on the mutable settings handle supplied by the caller
+    ///    (typically `context.settings`) so UI state stays authoritative.
+    /// 2. Attempt to store the settings on disk and emit a notification
+    ///    describing whether the persistence succeeded or failed.
+    /// 3. Re-dispatch the selected button scheme so platform-level handlers
+    ///    (e.g., the raw input reader) immediately apply the change.
+    fn handle_settings_update(
+        &mut self,
+        settings: &mut Settings,
+        hub: &Hub,
+        bus: &mut Bus,
+    ) -> bool {
+        let button_scheme = settings.button_scheme;
+
+        if let Err(e) = save_toml(settings, SETTINGS_PATH) {
+            eprintln!("Failed to save settings: {:#}", e);
+            hub.send(Event::Notification(NotificationEvent::Show(
+                "Failed to save settings".to_string(),
+            )))
+            .ok();
+        } else {
+            hub.send(Event::Notification(NotificationEvent::Show(
+                "Settings saved successfully".to_string(),
+            )))
+            .ok();
+        }
+
+        bus.push_back(Event::Select(super::EntryId::SetButtonScheme(
+            button_scheme,
+        )));
+
+        true
+    }
 }
 
 impl View for SettingsEditor {
@@ -211,7 +249,7 @@ impl View for SettingsEditor {
         &mut self,
         evt: &Event,
         hub: &Hub,
-        _bus: &mut Bus,
+        bus: &mut Bus,
         rq: &mut RenderQueue,
         context: &mut Context,
     ) -> bool {
@@ -223,21 +261,7 @@ impl View for SettingsEditor {
             }
             Event::UpdateSettings(ref settings) => {
                 context.settings = (**settings).clone();
-
-                if let Err(e) = save_toml(&context.settings, SETTINGS_PATH) {
-                    eprintln!("Failed to save settings: {:#}", e);
-                    hub.send(Event::Notification(NotificationEvent::Show(
-                        "Failed to save settings".to_string(),
-                    )))
-                    .ok();
-                } else {
-                    hub.send(Event::Notification(NotificationEvent::Show(
-                        "Settings saved successfully".to_string(),
-                    )))
-                    .ok();
-                }
-
-                true
+                self.handle_settings_update(&mut context.settings, hub, bus)
             }
             Event::ToggleNear(ViewId::MainMenu, rect) => {
                 toggle_main_menu(self, *rect, None, rq, context);
@@ -290,5 +314,64 @@ impl View for SettingsEditor {
 
     fn id(&self) -> Id {
         self.id
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::geom::Rectangle;
+    use crate::settings::ButtonScheme;
+    use crate::view::EntryId;
+    use std::env;
+    use std::path::Path;
+    use std::sync::mpsc;
+    use tempfile::tempdir;
+
+    /// Helper guard that temporarily switches the process working directory to the
+    /// test-specific temp folder so `save_toml` writes into a sandbox, restoring
+    /// the original directory once the guard drops.
+    struct DirGuard {
+        original: std::path::PathBuf,
+    }
+
+    impl DirGuard {
+        fn new(new_dir: &Path) -> Self {
+            let original = env::current_dir().unwrap();
+            env::set_current_dir(new_dir).unwrap();
+            DirGuard { original }
+        }
+    }
+
+    impl Drop for DirGuard {
+        fn drop(&mut self) {
+            env::set_current_dir(&self.original).unwrap();
+        }
+    }
+
+    #[test]
+    fn pushes_button_scheme_select_event() {
+        let temp = tempdir().unwrap();
+        let _guard = DirGuard::new(temp.path());
+
+        let mut editor = SettingsEditor {
+            id: 0,
+            rect: Rectangle::default(),
+            children: Vec::new(),
+        };
+
+        let mut settings = Settings::default();
+        settings.button_scheme = ButtonScheme::Inverted;
+
+        let (hub, _rx) = mpsc::channel();
+        let mut bus: Bus = Bus::default();
+
+        assert!(editor.handle_settings_update(&mut settings, &hub, &mut bus));
+
+        let event = bus.pop_front().expect("select event should be emitted");
+        match event {
+            Event::Select(EntryId::SetButtonScheme(ButtonScheme::Inverted)) => {}
+            other => panic!("unexpected event: {:?}", other),
+        }
     }
 }

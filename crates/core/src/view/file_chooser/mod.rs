@@ -341,6 +341,27 @@ impl FileChooser {
     }
 
     #[allow(clippy::too_many_arguments)]
+    /// Adds file entry views to the FileChooser's children for the current page.
+    ///
+    /// Each file entry is represented using the `FileEntry` component, which displays
+    /// the file or directory's name, icon, and metadata (such as size and modification date).
+    /// Between each entry, a separator is added using the `Filler` component to visually
+    /// separate the entries.
+    ///
+    /// Components used to build each file entry:
+    /// - [`FileEntry`]: Displays the file or directory entry, including icon, name, and metadata.
+    /// - [`Filler`]: Used as a separator between file entries for visual clarity.
+    ///
+    /// # Arguments
+    /// * `start_idx` - The starting index of the entries to display.
+    /// * `end_idx` - The ending index (exclusive) of the entries to display.
+    /// * `breadcrumb_bottom` - The y-coordinate below the breadcrumb bar.
+    /// * `thickness` - The thickness of the separator lines.
+    /// * `big_height` - The height of each file entry row.
+    /// * `big_thickness` - The thickness of the separator between entries.
+    /// * `small_thickness` - The thickness of the separator at the end of the list.
+    /// * `max_lines` - The maximum number of entries to display per page.
+    /// * `context`
     fn add_file_entries(
         &mut self,
         start_idx: usize,
@@ -368,13 +389,9 @@ impl FileChooser {
             let file_entry = FileEntry::new(entry_rect, entry_data.clone(), context);
             self.children.push(Box::new(file_entry) as Box<dyn View>);
 
-            let should_add_separator = i < max_lines - 1;
-            if should_add_separator {
-                let y_max = entry_rect.max.y;
-                let separator_rect =
-                    rect![self.rect.min.x, y_max, self.rect.max.x, y_max + thickness];
-                self.children.push(Self::create_separator(separator_rect));
-            }
+            let y_max = entry_rect.max.y;
+            let separator_rect = rect![self.rect.min.x, y_max, self.rect.max.x, y_max + thickness];
+            self.children.push(Self::create_separator(separator_rect));
 
             y_pos += big_height;
         }
