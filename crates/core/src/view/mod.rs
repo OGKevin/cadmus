@@ -30,6 +30,7 @@ pub mod labeled_icon;
 pub mod menu;
 pub mod menu_entry;
 pub mod named_input;
+pub mod navigation;
 pub mod notification;
 pub mod ota;
 
