@@ -32,6 +32,7 @@ pub mod labeled_icon;
 pub mod menu;
 pub mod menu_entry;
 pub mod named_input;
+pub mod navigation;
 pub mod notification;
 pub mod ota;
 
@@ -395,6 +396,7 @@ pub enum Event {
     TogglePresetMenu(Rectangle, usize),
     SubMenu(Rectangle, Vec<EntryKind>),
     OpenSettingsCategory(settings_editor::Category),
+    SelectSettingsCategory(settings_editor::Category),
     UpdateSettings(Box<settings::Settings>),
     EditLibrary(usize),
     UpdateLibrary(usize, Box<settings::LibrarySettings>),

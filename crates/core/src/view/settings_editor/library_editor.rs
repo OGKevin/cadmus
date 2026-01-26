@@ -60,27 +60,15 @@ impl LibraryEditor {
         let mut children = Vec::new();
 
         let mut settings = context.settings.clone();
-        if library_index < settings.libraries.len() {
-            settings.libraries[library_index] = library.clone();
+        if library_index <= settings.libraries.len() {
+            settings.libraries.insert(library_index, library.clone());
         }
+        let settings = settings;
 
         children.push(Box::new(Filler::new(rect, WHITE)) as Box<dyn View>);
 
         let (bar_height, separator_thickness, separator_top_half, separator_bottom_half) =
             Self::calculate_dimensions();
-
-        children.push(Self::build_top_bar(
-            rect,
-            bar_height,
-            separator_top_half,
-            context,
-        ));
-        children.push(Self::build_top_separator(
-            rect,
-            bar_height,
-            separator_top_half,
-            separator_bottom_half,
-        ));
 
         children.extend(Self::build_content_rows(
             rect,
@@ -121,6 +109,7 @@ impl LibraryEditor {
         }
     }
 
+    #[inline]
     fn calculate_dimensions() -> (i32, i32, i32, i32) {
         let dpi = CURRENT_DEVICE.dpi;
         let (small_height, _big_height) = (
@@ -139,44 +128,7 @@ impl LibraryEditor {
         )
     }
 
-    fn build_top_bar(
-        rect: Rectangle,
-        bar_height: i32,
-        separator_top_half: i32,
-        context: &mut Context,
-    ) -> Box<dyn View> {
-        let top_bar = TopBar::new(
-            rect![
-                rect.min.x,
-                rect.min.y,
-                rect.max.x,
-                rect.min.y + bar_height - separator_top_half
-            ],
-            TopBarVariant::Cancel(Event::Close(ViewId::LibraryEditor)),
-            "Library Editor".to_string(),
-            context,
-        );
-        Box::new(top_bar) as Box<dyn View>
-    }
-
-    fn build_top_separator(
-        rect: Rectangle,
-        bar_height: i32,
-        separator_top_half: i32,
-        separator_bottom_half: i32,
-    ) -> Box<dyn View> {
-        let separator = Filler::new(
-            rect![
-                rect.min.x,
-                rect.min.y + bar_height - separator_top_half,
-                rect.max.x,
-                rect.min.y + bar_height + separator_bottom_half
-            ],
-            BLACK,
-        );
-        Box::new(separator) as Box<dyn View>
-    }
-
+    #[inline]
     fn build_content_rows(
         rect: Rectangle,
         bar_height: i32,
@@ -188,7 +140,7 @@ impl LibraryEditor {
         let dpi = CURRENT_DEVICE.dpi;
         let row_height = scale_by_dpi(BIG_BAR_HEIGHT, dpi) as i32;
 
-        let content_start_y = rect.min.y + bar_height + separator_thickness;
+        let content_start_y = rect.min.y;
         let content_end_y = rect.max.y - bar_height - separator_thickness;
 
         let mut current_y = content_start_y;
@@ -213,6 +165,7 @@ impl LibraryEditor {
         children
     }
 
+    #[inline]
     fn build_name_row(rect: Rectangle, library_index: usize, settings: &Settings) -> Box<dyn View> {
         Box::new(SettingRow::new(
             RowKind::LibraryName(library_index),
@@ -229,6 +182,7 @@ impl LibraryEditor {
         )) as Box<dyn View>
     }
 
+    #[inline]
     fn build_mode_row(rect: Rectangle, library_index: usize, settings: &Settings) -> Box<dyn View> {
         Box::new(SettingRow::new(
             RowKind::LibraryMode(library_index),
@@ -237,6 +191,7 @@ impl LibraryEditor {
         )) as Box<dyn View>
     }
 
+    #[inline]
     fn build_bottom_separator(
         rect: Rectangle,
         bar_height: i32,
@@ -255,6 +210,7 @@ impl LibraryEditor {
         Box::new(separator) as Box<dyn View>
     }
 
+    #[inline]
     fn build_bottom_bar(
         rect: Rectangle,
         bar_height: i32,
@@ -269,19 +225,23 @@ impl LibraryEditor {
 
         let bottom_bar = SettingsEditorBottomBar::new(
             bottom_bar_rect,
-            BottomBarVariant::SingleButton {
-                event: Event::Validate,
-                icon: "check_mark-large",
+            BottomBarVariant::TwoButtons {
+                left_event: Event::Close(ViewId::LibraryEditor),
+                left_icon: "close",
+                right_event: Event::Validate,
+                right_icon: "check_mark-large",
             },
         );
         Box::new(bottom_bar) as Box<dyn View>
     }
 
+    #[inline]
     fn update_row_value(&mut self, rq: &mut RenderQueue) {
         // Event propagation via UpdateLibrary will handle updating the SettingValue widgets
         rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
     }
 
+    #[inline]
     fn toggle_keyboard(
         &mut self,
         visible: bool,
@@ -296,6 +256,7 @@ impl LibraryEditor {
         keyboard.set_visible(visible, hub, rq, context);
     }
 
+    #[inline]
     fn handle_focus_event(
         &mut self,
         focus: Option<ViewId>,
@@ -314,6 +275,7 @@ impl LibraryEditor {
         true
     }
 
+    #[inline]
     fn handle_validate_event(&self, hub: &Hub, bus: &mut Bus) -> bool {
         if self.library.name.trim().is_empty() {
             hub.send(Event::Notification(NotificationEvent::Show(
@@ -340,6 +302,7 @@ impl LibraryEditor {
         true
     }
 
+    #[inline]
     fn handle_edit_name_event(
         &mut self,
         hub: &Hub,
@@ -363,14 +326,22 @@ impl LibraryEditor {
         true
     }
 
+    #[inline]
     fn handle_edit_path_event(
         &mut self,
         hub: &Hub,
         rq: &mut RenderQueue,
         context: &mut Context,
     ) -> bool {
+        let screen_rect = rect!(
+            0,
+            0,
+            context.display.dims.0 as i32,
+            context.display.dims.1 as i32
+        );
+
         let file_chooser = FileChooser::new(
-            self.rect,
+            screen_rect,
             self.library.path.clone(),
             SelectionMode::Directory,
             hub,
@@ -378,10 +349,12 @@ impl LibraryEditor {
             context,
         );
         self.children.push(Box::new(file_chooser));
-        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+        rq.add(RenderData::new(self.id, screen_rect, UpdateMode::Gui));
+
         true
     }
 
+    #[inline]
     fn handle_set_mode_event(
         &mut self,
         mode: crate::settings::LibraryMode,
@@ -392,12 +365,14 @@ impl LibraryEditor {
         false
     }
 
+    #[inline]
     fn handle_submit_name_event(&mut self, text: &str, rq: &mut RenderQueue) -> bool {
         self.library.name = text.to_string();
         self.update_row_value(rq);
         false
     }
 
+    #[inline]
     fn handle_file_chooser_closed_event(
         &mut self,
         path: &Option<std::path::PathBuf>,
@@ -410,6 +385,7 @@ impl LibraryEditor {
         false
     }
 
+    #[inline]
     fn handle_submenu_event(
         &mut self,
         rect: Rectangle,
@@ -429,6 +405,24 @@ impl LibraryEditor {
         true
     }
 
+    /// Handles closing of overlay views (menus, dialogs, file choosers).
+    ///
+    /// Removes the specified view from the children vector and triggers a re-render.
+    /// When closing the rename dialog, also clears focus to hide the keyboard.
+    ///
+    /// # Arguments
+    ///
+    /// * `view_id` - The ID of the view to close
+    /// * `hub` - Event hub for sending focus events
+    /// * `rq` - Render queue for scheduling screen updates
+    ///
+    /// # Returns
+    ///
+    /// `true` if the event was handled and should not propagate to parent,
+    /// `false` if the parent should handle additional cleanup (e.g., FileChooser
+    /// requires the parent to redraw the entire screen as it temporarily captures
+    /// the full display area).
+    #[inline]
     fn handle_close_event(&mut self, view_id: ViewId, hub: &Hub, rq: &mut RenderQueue) -> bool {
         match view_id {
             ViewId::SettingsValueMenu => {
@@ -449,9 +443,8 @@ impl LibraryEditor {
             ViewId::FileChooser => {
                 if let Some(index) = locate_by_id(self, ViewId::FileChooser) {
                     self.children.remove(index);
-                    rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
                 }
-                true
+                false
             }
             _ => false,
         }

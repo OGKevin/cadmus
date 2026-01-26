@@ -98,6 +98,23 @@ impl SettingValue {
         setting_value
     }
 
+    /// Refreshes the displayed value by re-reading from context.settings.
+    ///
+    /// This method updates the ActionLabel text to reflect the current state of the setting
+    /// in context.settings. It should be called whenever the underlying setting changes.
+    pub fn refresh_from_context(&mut self, context: &Context, rq: &mut RenderQueue) {
+        let (value, entries) = Self::fetch_data_for_kind(&self.kind, &context.settings);
+        self.entries = entries;
+        let event = self.create_tap_event();
+
+        if let Some(action_label) = self.children.get_mut(0) {
+            if let Some(label) = action_label.as_any_mut().downcast_mut::<ActionLabel>() {
+                label.update(&value, rq);
+                label.set_event(event);
+            }
+        }
+    }
+
     fn fetch_data_for_kind(kind: &Kind, settings: &Settings) -> (String, Vec<EntryKind>) {
         match kind {
             Kind::KeyboardLayout => Self::fetch_keyboard_layout_data(settings),
@@ -380,295 +397,18 @@ impl SettingValue {
             _ => None,
         }
     }
-
-    fn handle_set_keyboard_layout(&mut self, selected_layout: &str, rq: &mut RenderQueue) -> bool {
-        if !matches!(self.kind, Kind::KeyboardLayout) {
-            return false;
-        }
-
-        for entry in &mut self.entries {
-            if let EntryKind::RadioButton(
-                _,
-                EntryId::SetKeyboardLayout(ref layout),
-                ref mut selected,
-            ) = entry
-            {
-                *selected = layout == selected_layout
-            }
-        }
-
-        self.update(selected_layout.to_string(), rq);
-
-        let event = self.create_tap_event();
-        if let Some(action_label) = self.children[0].downcast_mut::<ActionLabel>() {
-            action_label.set_event(event);
-        }
-
-        true
-    }
-
-    fn handle_toggle_sleep_cover(&mut self, rq: &mut RenderQueue) -> bool {
-        if !matches!(self.kind, Kind::SleepCover) {
-            return false;
-        }
-
-        let mut new_value = None;
-        for entry in &mut self.entries {
-            if let EntryKind::CheckBox(_, EntryId::ToggleSleepCover, ref mut checked) = entry {
-                *checked = !*checked;
-                new_value = Some(if *checked {
-                    "Enabled".to_string()
-                } else {
-                    "Disabled".to_string()
-                });
-            }
-        }
-
-        if let Some(value) = new_value {
-            self.update(value, rq);
-        }
-
-        let event = self.create_tap_event();
-        if let Some(action_label) = self.children[0].downcast_mut::<ActionLabel>() {
-            action_label.set_event(event);
-        }
-
-        true
-    }
-
-    fn handle_toggle_auto_share(&mut self, rq: &mut RenderQueue) -> bool {
-        if !matches!(self.kind, Kind::AutoShare) {
-            return false;
-        }
-
-        let mut new_value = None;
-        for entry in &mut self.entries {
-            if let EntryKind::CheckBox(_, EntryId::ToggleAutoShare, ref mut checked) = entry {
-                *checked = !*checked;
-                new_value = Some(if *checked {
-                    "Enabled".to_string()
-                } else {
-                    "Disabled".to_string()
-                });
-            }
-        }
-
-        if let Some(value) = new_value {
-            self.update(value, rq);
-        }
-
-        let event = self.create_tap_event();
-        if let Some(action_label) = self.children[0].downcast_mut::<ActionLabel>() {
-            action_label.set_event(event);
-        }
-
-        true
-    }
-
-    fn handle_set_button_scheme(
-        &mut self,
-        selected_scheme: &ButtonScheme,
-        rq: &mut RenderQueue,
-    ) -> bool {
-        if !matches!(self.kind, Kind::ButtonScheme) {
-            return false;
-        }
-
-        for entry in &mut self.entries {
-            if let EntryKind::RadioButton(
-                _,
-                EntryId::SetButtonScheme(ref scheme),
-                ref mut selected,
-            ) = entry
-            {
-                *selected = scheme == selected_scheme
-            }
-        }
-
-        self.update(format!("{:?}", selected_scheme), rq);
-
-        let event = self.create_tap_event();
-        if let Some(action_label) = self.children[0].downcast_mut::<ActionLabel>() {
-            action_label.set_event(event);
-        }
-
-        true
-    }
-
-    fn handle_set_library_mode(
-        &mut self,
-        mode: &crate::settings::LibraryMode,
-        rq: &mut RenderQueue,
-    ) -> bool {
-        if !matches!(self.kind, Kind::LibraryMode(_)) {
-            return false;
-        }
-
-        for entry in &mut self.entries {
-            if let EntryKind::RadioButton(
-                _,
-                EntryId::SetLibraryMode(ref entry_mode),
-                ref mut selected,
-            ) = entry
-            {
-                *selected = entry_mode == mode
-            }
-        }
-
-        self.update(format!("{:?}", mode), rq);
-
-        let event = self.create_tap_event();
-        if let Some(action_label) = self.children[0].downcast_mut::<ActionLabel>() {
-            action_label.set_event(event);
-        }
-
-        true
-    }
-
-    fn handle_set_intermission(
-        &mut self,
-        kind: &IntermKind,
-        display_kind: &crate::settings::IntermissionDisplay,
-        rq: &mut RenderQueue,
-    ) -> bool {
-        if !self.kind.matches_interm_kind(kind) {
-            return false;
-        }
-
-        for entry in &mut self.entries {
-            if let EntryKind::RadioButton(_, ref button_entry_id, ref mut selected) = entry {
-                *selected = matches!(
-                    button_entry_id,
-                    EntryId::SetIntermission(k, d) if k == kind && d == display_kind
-                );
-            }
-        }
-
-        self.update(display_kind.to_string(), rq);
-
-        let event = self.create_tap_event();
-        if let Some(action_label) = self.children[0].downcast_mut::<ActionLabel>() {
-            action_label.set_event(event);
-        }
-
-        true
-    }
-
-    fn handle_submit_library_name(&mut self, name: &str, rq: &mut RenderQueue) -> bool {
-        if matches!(self.kind, Kind::LibraryName(_)) {
-            self.update(name.to_string(), rq);
-            true
-        } else {
-            false
-        }
-    }
-
-    fn handle_submit_auto_suspend(&mut self, text: &str, rq: &mut RenderQueue) -> bool {
-        if !matches!(self.kind, Kind::AutoSuspend) {
-            return false;
-        }
-
-        if let Ok(value) = text.parse::<f32>() {
-            let display_value = if value.max(0.0) == 0.0 {
-                "Never".to_string()
-            } else {
-                format!("{:.1}", value)
-            };
-            self.update(display_value, rq);
-        }
-        true
-    }
-
-    fn handle_submit_auto_power_off(&mut self, text: &str, rq: &mut RenderQueue) -> bool {
-        if !matches!(self.kind, Kind::AutoPowerOff) {
-            return false;
-        }
-
-        if let Ok(value) = text.parse::<f32>() {
-            let display_value = if value.max(0.0) == 0.0 {
-                "Never".to_string()
-            } else {
-                format!("{:.1}", value)
-            };
-            self.update(display_value, rq);
-        }
-        true
-    }
-
-    fn handle_submit_intermission(&mut self, display_name: &str, rq: &mut RenderQueue) -> bool {
-        match self.kind {
-            Kind::IntermissionSuspend | Kind::IntermissionPowerOff | Kind::IntermissionShare => {
-                self.update(display_name.to_string(), rq);
-                true
-            }
-            _ => false,
-        }
-    }
-
-    fn handle_file_chooser_closed(
-        &mut self,
-        path: &Option<std::path::PathBuf>,
-        rq: &mut RenderQueue,
-    ) -> bool {
-        if let Some(ref selected_path) = *path {
-            if matches!(self.kind, Kind::LibraryPath(_)) {
-                self.update(selected_path.display().to_string(), rq);
-                return false;
-            }
-        }
-        false
-    }
 }
 
 impl View for SettingValue {
     fn handle_event(
         &mut self,
-        evt: &Event,
+        _evt: &Event,
         _hub: &Hub,
         _bus: &mut Bus,
-        rq: &mut RenderQueue,
+        _rq: &mut RenderQueue,
         _context: &mut Context,
     ) -> bool {
-        match *evt {
-            Event::Select(ref id) => match id {
-                EntryId::SetKeyboardLayout(ref selected_layout) => {
-                    self.handle_set_keyboard_layout(selected_layout, rq)
-                }
-                EntryId::ToggleSleepCover => self.handle_toggle_sleep_cover(rq),
-                EntryId::ToggleAutoShare => self.handle_toggle_auto_share(rq),
-                EntryId::SetButtonScheme(ref selected_scheme) => {
-                    self.handle_set_button_scheme(selected_scheme, rq)
-                }
-                EntryId::SetLibraryMode(mode) => self.handle_set_library_mode(mode, rq),
-                EntryId::SetIntermission(kind, display_kind) => {
-                    self.handle_set_intermission(kind, display_kind, rq)
-                }
-                _ => false,
-            },
-            Event::Submit(crate::view::ViewId::LibraryRenameInput, ref name) => {
-                self.handle_submit_library_name(name, rq)
-            }
-            Event::Submit(crate::view::ViewId::AutoSuspendInput, ref text) => {
-                self.handle_submit_auto_suspend(text, rq)
-            }
-            Event::Submit(crate::view::ViewId::AutoPowerOffInput, ref text) => {
-                self.handle_submit_auto_power_off(text, rq)
-            }
-            Event::Submit(crate::view::ViewId::IntermissionSuspendInput, ref display_name) => {
-                matches!(self.kind, Kind::IntermissionSuspend)
-                    && self.handle_submit_intermission(display_name, rq)
-            }
-            Event::Submit(crate::view::ViewId::IntermissionPowerOffInput, ref display_name) => {
-                matches!(self.kind, Kind::IntermissionPowerOff)
-                    && self.handle_submit_intermission(display_name, rq)
-            }
-            Event::Submit(crate::view::ViewId::IntermissionShareInput, ref display_name) => {
-                matches!(self.kind, Kind::IntermissionShare)
-                    && self.handle_submit_intermission(display_name, rq)
-            }
-            Event::FileChooserClosed(ref path) => self.handle_file_chooser_closed(path, rq),
-            _ => false,
-        }
+        false
     }
 
     fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut crate::font::Fonts) {
@@ -701,7 +441,7 @@ mod tests {
     use crate::context::test_helpers::create_test_context;
     use crate::gesture::GestureEvent;
     use crate::settings::Settings;
-    use crate::view::{RenderQueue, ViewId};
+    use crate::view::RenderQueue;
     use std::collections::VecDeque;
     use std::path::PathBuf;
     use std::sync::mpsc::channel;
@@ -745,6 +485,7 @@ mod tests {
 
     #[test]
     fn test_intermission_values_update_via_submit_event() {
+        use crate::settings::IntermKind;
         let settings = Settings::default();
         let rect = rect![0, 0, 200, 50];
 
@@ -752,35 +493,19 @@ mod tests {
         let mut power_off_value = SettingValue::new(Kind::IntermissionPowerOff, rect, &settings);
         let mut share_value = SettingValue::new(Kind::IntermissionShare, rect, &settings);
 
-        let (hub, _receiver) = channel();
-        let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
         let mut context = create_test_context();
 
-        let suspend_event = Event::Submit(
-            ViewId::IntermissionSuspendInput,
-            "suspend_image.png".to_string(),
-        );
-        let power_off_event = Event::Submit(
-            ViewId::IntermissionPowerOffInput,
-            "poweroff_image.png".to_string(),
-        );
-        let share_event = Event::Submit(
-            ViewId::IntermissionShareInput,
-            "share_image.png".to_string(),
-        );
+        context.settings.intermissions[IntermKind::Suspend] =
+            crate::settings::IntermissionDisplay::Image(PathBuf::from("suspend_image.png"));
+        context.settings.intermissions[IntermKind::PowerOff] =
+            crate::settings::IntermissionDisplay::Image(PathBuf::from("poweroff_image.png"));
+        context.settings.intermissions[IntermKind::Share] =
+            crate::settings::IntermissionDisplay::Image(PathBuf::from("share_image.png"));
 
-        suspend_value.handle_event(&suspend_event, &hub, &mut bus, &mut rq, &mut context);
-        suspend_value.handle_event(&power_off_event, &hub, &mut bus, &mut rq, &mut context);
-        suspend_value.handle_event(&share_event, &hub, &mut bus, &mut rq, &mut context);
-
-        power_off_value.handle_event(&suspend_event, &hub, &mut bus, &mut rq, &mut context);
-        power_off_value.handle_event(&power_off_event, &hub, &mut bus, &mut rq, &mut context);
-        power_off_value.handle_event(&share_event, &hub, &mut bus, &mut rq, &mut context);
-
-        share_value.handle_event(&suspend_event, &hub, &mut bus, &mut rq, &mut context);
-        share_value.handle_event(&power_off_event, &hub, &mut bus, &mut rq, &mut context);
-        share_value.handle_event(&share_event, &hub, &mut bus, &mut rq, &mut context);
+        suspend_value.refresh_from_context(&context, &mut rq);
+        power_off_value.refresh_from_context(&context, &mut rq);
+        share_value.refresh_from_context(&context, &mut rq);
 
         assert_eq!(suspend_value.value(), "suspend_image.png");
         assert_eq!(power_off_value.value(), "poweroff_image.png");
@@ -796,15 +521,12 @@ mod tests {
         let rect = rect![0, 0, 200, 50];
 
         let mut value = SettingValue::new(Kind::KeyboardLayout, rect, &settings);
-        let (hub, _receiver) = channel();
-        let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
         let mut context = create_test_context();
 
-        let event = Event::Select(EntryId::SetKeyboardLayout("French".to_string()));
-        let handled = value.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+        context.settings.keyboard_layout = "French".to_string();
+        value.refresh_from_context(&context, &mut rq);
 
-        assert!(handled);
         assert_eq!(value.value(), "French");
         assert!(!rq.is_empty());
     }
@@ -818,17 +540,14 @@ mod tests {
         let rect = rect![0, 0, 200, 50];
 
         let mut value = SettingValue::new(Kind::SleepCover, rect, &settings);
-        let (hub, _receiver) = channel();
-        let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
         let mut context = create_test_context();
 
         assert_eq!(value.value(), "Disabled");
 
-        let event = Event::Select(EntryId::ToggleSleepCover);
-        let handled = value.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+        context.settings.sleep_cover = true;
+        value.refresh_from_context(&context, &mut rq);
 
-        assert!(handled);
         assert_eq!(value.value(), "Enabled");
         assert!(!rq.is_empty());
     }
@@ -842,17 +561,14 @@ mod tests {
         let rect = rect![0, 0, 200, 50];
 
         let mut value = SettingValue::new(Kind::AutoShare, rect, &settings);
-        let (hub, _receiver) = channel();
-        let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
         let mut context = create_test_context();
 
         assert_eq!(value.value(), "Disabled");
 
-        let event = Event::Select(EntryId::ToggleAutoShare);
-        let handled = value.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+        context.settings.auto_share = true;
+        value.refresh_from_context(&context, &mut rq);
 
-        assert!(handled);
         assert_eq!(value.value(), "Enabled");
         assert!(!rq.is_empty());
     }
@@ -866,15 +582,12 @@ mod tests {
         let rect = rect![0, 0, 200, 50];
 
         let mut value = SettingValue::new(Kind::ButtonScheme, rect, &settings);
-        let (hub, _receiver) = channel();
-        let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
         let mut context = create_test_context();
 
-        let event = Event::Select(EntryId::SetButtonScheme(ButtonScheme::Inverted));
-        let handled = value.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+        context.settings.button_scheme = ButtonScheme::Inverted;
+        value.refresh_from_context(&context, &mut rq);
 
-        assert!(handled);
         assert_eq!(value.value(), "Inverted");
         assert!(!rq.is_empty());
     }
@@ -894,17 +607,14 @@ mod tests {
         let rect = rect![0, 0, 200, 50];
 
         let mut value = SettingValue::new(Kind::LibraryMode(0), rect, &settings);
-        let (hub, _receiver) = channel();
-        let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
         let mut context = create_test_context();
 
         assert_eq!(value.value(), "Filesystem");
 
-        let event = Event::Select(EntryId::SetLibraryMode(LibraryMode::Database));
-        let handled = value.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+        context.settings.libraries[0].mode = LibraryMode::Database;
+        value.refresh_from_context(&context, &mut rq);
 
-        assert!(handled);
         assert_eq!(value.value(), "Database");
         assert!(!rq.is_empty());
     }
@@ -915,15 +625,12 @@ mod tests {
         let rect = rect![0, 0, 200, 50];
 
         let mut value = SettingValue::new(Kind::AutoSuspend, rect, &settings);
-        let (hub, _receiver) = channel();
-        let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
         let mut context = create_test_context();
 
-        let event = Event::Submit(ViewId::AutoSuspendInput, "15.0".to_string());
-        let handled = value.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+        context.settings.auto_suspend = 15.0;
+        value.refresh_from_context(&context, &mut rq);
 
-        assert!(handled);
         assert_eq!(value.value(), "15.0");
         assert!(!rq.is_empty());
     }
@@ -934,15 +641,12 @@ mod tests {
         let rect = rect![0, 0, 200, 50];
 
         let mut value = SettingValue::new(Kind::AutoPowerOff, rect, &settings);
-        let (hub, _receiver) = channel();
-        let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
         let mut context = create_test_context();
 
-        let event = Event::Submit(ViewId::AutoPowerOffInput, "7.0".to_string());
-        let handled = value.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+        context.settings.auto_power_off = 7.0;
+        value.refresh_from_context(&context, &mut rq);
 
-        assert!(handled);
         assert_eq!(value.value(), "7.0");
         assert!(!rq.is_empty());
     }
@@ -960,15 +664,12 @@ mod tests {
         let rect = rect![0, 0, 200, 50];
 
         let mut value = SettingValue::new(Kind::LibraryName(0), rect, &settings);
-        let (hub, _receiver) = channel();
-        let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
         let mut context = create_test_context();
 
-        let event = Event::Submit(ViewId::LibraryRenameInput, "New Name".to_string());
-        let handled = value.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+        context.settings.libraries[0].name = "New Name".to_string();
+        value.refresh_from_context(&context, &mut rq);
 
-        assert!(handled);
         assert_eq!(value.value(), "New Name");
         assert!(!rq.is_empty());
     }
@@ -986,16 +687,13 @@ mod tests {
         let rect = rect![0, 0, 200, 50];
 
         let mut value = SettingValue::new(Kind::LibraryPath(0), rect, &settings);
-        let (hub, _receiver) = channel();
-        let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
         let mut context = create_test_context();
 
         let new_path = PathBuf::from("/mnt/onboard/new_library");
-        let event = Event::FileChooserClosed(Some(new_path.clone()));
-        let handled = value.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+        context.settings.libraries[0].path = new_path.clone();
+        value.refresh_from_context(&context, &mut rq);
 
-        assert!(!handled);
         assert_eq!(value.value(), new_path.display().to_string());
         assert!(!rq.is_empty());
     }
@@ -1037,43 +735,5 @@ mod tests {
         } else {
             panic!("Expected EditLibrary event");
         }
-    }
-
-    #[test]
-    fn test_handle_submit_auto_suspend_negative_value() {
-        let settings = Settings::default();
-        let rect = rect![0, 0, 200, 50];
-
-        let mut value = SettingValue::new(Kind::AutoSuspend, rect, &settings);
-        let (hub, _receiver) = channel();
-        let mut bus = VecDeque::new();
-        let mut rq = RenderQueue::new();
-        let mut context = create_test_context();
-
-        let event = Event::Submit(ViewId::AutoSuspendInput, "-5.0".to_string());
-        let handled = value.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
-
-        assert!(handled);
-        assert_eq!(value.value(), "Never");
-        assert!(!rq.is_empty());
-    }
-
-    #[test]
-    fn test_handle_submit_auto_power_off_negative_value() {
-        let settings = Settings::default();
-        let rect = rect![0, 0, 200, 50];
-
-        let mut value = SettingValue::new(Kind::AutoPowerOff, rect, &settings);
-        let (hub, _receiver) = channel();
-        let mut bus = VecDeque::new();
-        let mut rq = RenderQueue::new();
-        let mut context = create_test_context();
-
-        let event = Event::Submit(ViewId::AutoPowerOffInput, "-5.0".to_string());
-        let handled = value.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
-
-        assert!(handled);
-        assert_eq!(value.value(), "Never");
-        assert!(!rq.is_empty());
     }
 }
