@@ -2,7 +2,7 @@ use super::setting_row::Kind as RowKind;
 use crate::context::Context;
 
 /// Categories of settings available in the settings editor.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Category {
     /// General device settings (auto-suspend, keyboard layout, etc.)
     General,
@@ -51,5 +51,10 @@ impl Category {
             Category::Libraries,
             Category::Intermissions,
         ]
+    }
+
+    /// Returns the number of categories.
+    pub fn count() -> usize {
+        Self::all().len()
     }
 }

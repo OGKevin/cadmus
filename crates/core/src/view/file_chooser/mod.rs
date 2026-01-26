@@ -134,6 +134,7 @@ impl FileChooser {
         }
     }
 
+    #[inline]
     fn build_children(
         rect: Rectangle,
         initial_path: &Path,
