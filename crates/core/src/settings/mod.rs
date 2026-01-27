@@ -485,6 +485,7 @@ pub struct Settings {
     pub dictionary: DictionarySettings,
     pub sketch: SketchSettings,
     pub calculator: CalculatorSettings,
+    pub terminal: TerminalSettings,
     pub battery: BatterySettings,
     pub frontlight_levels: LightLevels,
     pub ota: OtaSettings,
@@ -597,6 +598,12 @@ pub struct CalculatorSettings {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, rename_all = "kebab-case")]
+pub struct TerminalSettings {
+    pub font_size: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, rename_all = "kebab-case")]
 pub struct Pen {
     pub size: i32,
     pub color: Color,
@@ -636,6 +643,12 @@ impl Default for CalculatorSettings {
             margin_width: 2,
             history_size: 4096,
         }
+    }
+}
+
+impl Default for TerminalSettings {
+    fn default() -> Self {
+        TerminalSettings { font_size: 12.0 }
     }
 }
 
@@ -1068,6 +1081,7 @@ impl Default for Settings {
             dictionary: DictionarySettings::default(),
             sketch: SketchSettings::default(),
             calculator: CalculatorSettings::default(),
+            terminal: TerminalSettings::default(),
             battery: BatterySettings::default(),
             frontlight_levels: LightLevels::default(),
             frontlight_presets: Vec::new(),
