@@ -37,10 +37,11 @@ pub struct Terminal {
 }
 
 impl Terminal {
-    pub fn new(rect: Rectangle, font_size: u32, rq: &mut RenderQueue, context: &mut Context, hub: &Hub) -> Result<Terminal> {
+    pub fn new(rect: Rectangle, font_size: f32, rq: &mut RenderQueue, context: &mut Context, hub: &Hub) -> Result<Terminal> {
         let id = ID_FEEDER.next();
         let mut children = Vec::new();
         let dpi = CURRENT_DEVICE.dpi;
+        let font_size_scaled = (font_size * 64.0) as u32;
         
         // Setup menu icon in top right corner
         let small_height = scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32;
@@ -96,7 +97,7 @@ impl Terminal {
         let (rows, cols) = TerminalRenderer::calculate_grid_for_font_size(
             available_width,
             available_height,
-            font_size,
+            font_size_scaled,
             &mut context.fonts
         );
  
@@ -110,7 +111,7 @@ impl Terminal {
         let buffer_shared = Arc::clone(&double_buffer);
         let emulator_shared = Arc::clone(&emulator_shared);
         let shutdown_shared = Arc::clone(&shutdown_flag);
-        let font_size_for_thread = font_size;
+        let font_size_scaled_for_thread = font_size_scaled;
         let reader_thread = std::thread::spawn(move || {
             // Load fonts in the reader thread
             let mut fonts = match Fonts::load() {
@@ -121,7 +122,7 @@ impl Terminal {
                 }
             };
             
-            let mut renderer = TerminalRenderer::new_with_font_size(&mut fonts, rows, cols, font_size_for_thread);
+            let mut renderer = TerminalRenderer::new_with_font_size(&mut fonts, rows, cols, font_size_scaled_for_thread);
             let mut buf = [0u8; 4096];
             let mut writer = buffer_writer;
             

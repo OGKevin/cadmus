@@ -1103,7 +1103,7 @@ pub fn run() -> Result<(), Error> {
                         &mut context,
                     )),
                     AppCmd::Terminal => {
-                        Box::new(Terminal::new(context.fb.rect(), 12, &mut rq, &mut context, &tx)?)
+                        Box::new(Terminal::new(context.fb.rect(), context.settings.terminal.font_size, &mut rq, &mut context, &tx)?)
                     }
                 };
                 transfer_notifications(view.as_mut(), next_view.as_mut(), &mut rq, &mut context);
