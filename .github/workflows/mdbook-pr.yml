@@ -8,6 +8,7 @@ on:
   pull_request:
     paths:
       - "docs/**"
+      - ".github/workflows/mdbook-pr.yml"
 
 jobs:
   build:
@@ -44,4 +45,4 @@ jobs:
           echo "$HOME/.local/bin" >> $GITHUB_PATH
       - name: Build book
         working-directory: docs
-        run: mdbook build .
+        run: mdbook build
