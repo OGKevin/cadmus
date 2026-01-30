@@ -16,6 +16,7 @@
 /dictionaries
 /dist
 /bundle
+docs/book/
 /.cache
 /cadmus-*.tar.gz
 /plato-*.tar.gz
@@ -33,3 +34,5 @@ devenv.local.yaml
 
 # pre-commit
 .pre-commit-config.yaml
+
+.tmp

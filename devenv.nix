@@ -48,6 +48,9 @@ in
     pkgs.jq
     pkgs.patchelf
 
+    pkgs.mdbook
+    pkgs.mdbook-epub
+
     # C/C++ build tools for compiling thirdparty libraries
     pkgs.gcc
     pkgs.gnumake
@@ -83,6 +86,12 @@ in
 
   # Enable Rust with cross-compilation support
   languages = {
+    javascript = {
+      enable = true;
+      npm = {
+        enable = true;
+      };
+    };
     rust = {
       enable = true;
       channel = "stable";
