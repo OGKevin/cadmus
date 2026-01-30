@@ -59,12 +59,10 @@ jobs:
       - name: Build book
         working-directory: docs
         run: mdbook build
-      - name: rm epub files
-        run: rm docs/book/*.epub
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v4
         with:
-          path: docs/book/
+          path: docs/book/html
 
   deploy:
     runs-on: ubuntu-latest
