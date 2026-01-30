@@ -12,13 +12,12 @@ use crate::unit::scale_by_dpi;
 use crate::view::common::locate_by_id;
 use crate::view::file_chooser::{FileChooser, SelectionMode};
 use crate::view::filler::Filler;
-use crate::view::menu::Menu;
+use crate::view::menu::{Menu, MenuKind};
 use crate::view::named_input::NamedInput;
 use crate::view::toggleable_keyboard::ToggleableKeyboard;
-use crate::view::top_bar::{TopBar, TopBarVariant};
 use crate::view::{Bus, Event, Hub, Id, RenderData, RenderQueue, View, ViewId, ID_FEEDER};
 use crate::view::{EntryId, NotificationEvent};
-use crate::view::{BIG_BAR_HEIGHT, SMALL_BAR_HEIGHT, THICKNESS_MEDIUM};
+use crate::view::{SMALL_BAR_HEIGHT, THICKNESS_MEDIUM};
 
 /// A view for editing library settings.
 ///
@@ -112,10 +111,7 @@ impl LibraryEditor {
     #[inline]
     fn calculate_dimensions() -> (i32, i32, i32, i32) {
         let dpi = CURRENT_DEVICE.dpi;
-        let (small_height, _big_height) = (
-            scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32,
-            scale_by_dpi(BIG_BAR_HEIGHT, dpi) as i32,
-        );
+        let small_height = scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32;
         let separator_thickness = scale_by_dpi(THICKNESS_MEDIUM, dpi) as i32;
         let (separator_top_half, separator_bottom_half) = halves(separator_thickness);
         let bar_height = small_height;
@@ -138,7 +134,7 @@ impl LibraryEditor {
     ) -> Vec<Box<dyn View>> {
         let mut children = Vec::new();
         let dpi = CURRENT_DEVICE.dpi;
-        let row_height = scale_by_dpi(BIG_BAR_HEIGHT, dpi) as i32;
+        let row_height = scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32;
 
         let content_start_y = rect.min.y;
         let content_end_y = rect.max.y - bar_height - separator_thickness;
@@ -396,7 +392,7 @@ impl LibraryEditor {
         let menu = Menu::new(
             rect,
             ViewId::SettingsValueMenu,
-            crate::view::menu::MenuKind::SubMenu,
+            MenuKind::Contextual,
             entries.to_vec(),
             context,
         );

@@ -51,6 +51,8 @@ mod library_editor;
 mod setting_row;
 mod setting_value;
 
+pub use setting_value::ToggleSettings;
+
 pub use self::bottom_bar::{BottomBarVariant, SettingsEditorBottomBar};
 pub use self::category::Category;
 pub use self::category_button::CategoryButton;
@@ -59,6 +61,8 @@ pub use self::category_navigation_bar::CategoryNavigationBar;
 pub use self::category_provider::SettingsCategoryProvider;
 pub use self::setting_row::{Kind as RowKind, SettingRow};
 pub use self::setting_value::SettingValue;
+
+// pub enum ToggleSettings{}
 
 /// Main settings editor view.
 ///

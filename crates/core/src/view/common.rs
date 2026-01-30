@@ -141,10 +141,6 @@ pub fn toggle_main_menu(
                 EntryId::Launch(AppCmd::Calculator),
             ),
             EntryKind::Command("Sketch".to_string(), EntryId::Launch(AppCmd::Sketch)),
-            EntryKind::Command(
-                "Settings".to_string(),
-                EntryId::Launch(AppCmd::SettingsEditor),
-            ),
             EntryKind::Separator,
             EntryKind::Command(
                 "Touch Events".to_string(),
@@ -158,6 +154,10 @@ pub fn toggle_main_menu(
         let mut entries = vec![
             EntryKind::Command("About".to_string(), EntryId::About),
             EntryKind::Command("System Info".to_string(), EntryId::SystemInfo),
+            EntryKind::Command(
+                "Settings".to_string(),
+                EntryId::Launch(AppCmd::SettingsEditor),
+            ),
             #[cfg(feature = "test")]
             EntryKind::Command("Check for Updates".to_string(), EntryId::CheckForUpdates),
             EntryKind::Separator,

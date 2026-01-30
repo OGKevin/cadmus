@@ -4,14 +4,14 @@ use crate::device::CURRENT_DEVICE;
 use crate::framebuffer::{Framebuffer, UpdateMode};
 use crate::geom::{halves, Rectangle};
 use crate::gesture::GestureEvent;
-use crate::settings::{LibraryMode, LibrarySettings, Settings};
+use crate::settings::{ButtonScheme, LibraryMode, LibrarySettings, Settings};
 use crate::unit::scale_by_dpi;
 use crate::view::common::locate_by_id;
 use crate::view::filler::Filler;
-use crate::view::menu::Menu;
+use crate::view::menu::{Menu, MenuKind};
 use crate::view::toggleable_keyboard::ToggleableKeyboard;
 use crate::view::{
-    Bus, EntryId, EntryKind, Event, Hub, Id, RenderData, RenderQueue, View, ViewId, BIG_BAR_HEIGHT,
+    Bus, EntryId, EntryKind, Event, Hub, Id, RenderData, RenderQueue, ToggleEvent, View, ViewId,
     ID_FEEDER, SMALL_BAR_HEIGHT, THICKNESS_MEDIUM,
 };
 
@@ -20,6 +20,7 @@ use super::category::Category;
 use super::library_editor::LibraryEditor;
 use super::setting_row::{Kind as RowKind, SettingRow};
 use crate::view::file_chooser::{FileChooser, SelectionMode};
+use crate::view::settings_editor::ToggleSettings;
 use std::path::PathBuf;
 
 /// A view for editing category-specific settings.
@@ -92,7 +93,7 @@ impl CategoryEditor {
 
         let first_row_index = children.len();
 
-        let row_height = scale_by_dpi(BIG_BAR_HEIGHT, CURRENT_DEVICE.dpi) as i32;
+        let row_height = scale_by_dpi(SMALL_BAR_HEIGHT, CURRENT_DEVICE.dpi) as i32;
         let setting_kinds = category.settings(context);
         let mut current_y = content_rect.min.y;
 
@@ -147,10 +148,8 @@ impl CategoryEditor {
     #[inline]
     fn calculate_dimensions() -> (i32, i32, i32) {
         let dpi = CURRENT_DEVICE.dpi;
-        let (small_height, _big_height) = (
-            scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32,
-            scale_by_dpi(BIG_BAR_HEIGHT, dpi) as i32,
-        );
+        let small_height = scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32;
+
         let separator_thickness = scale_by_dpi(THICKNESS_MEDIUM, dpi) as i32;
         let (separator_top_half, separator_bottom_half) = halves(separator_thickness);
         let bar_height = small_height;
@@ -392,7 +391,7 @@ impl CategoryEditor {
         let menu = Menu::new(
             *rect,
             ViewId::SettingsValueMenu,
-            crate::view::menu::MenuKind::SubMenu,
+            MenuKind::Contextual,
             entries.to_vec(),
             context,
         );
@@ -786,6 +785,49 @@ impl CategoryEditor {
             _ => false,
         }
     }
+
+    #[inline]
+    #[allow(clippy::too_many_arguments)]
+    fn handle_toggle_event(
+        &mut self,
+        evt: &Event,
+        hub: &Hub,
+        bus: &mut Bus,
+        rq: &mut RenderQueue,
+        context: &mut Context,
+        toggle: &ToggleEvent,
+    ) -> bool {
+        match toggle {
+            ToggleEvent::Setting(ref setting) => match setting {
+                ToggleSettings::SleepCover => {
+                    self.handle_toggle_sleep_cover(evt, hub, bus, rq, context)
+                }
+
+                ToggleSettings::AutoShare => {
+                    self.handle_toggle_auto_share(evt, hub, bus, rq, context)
+                }
+                ToggleSettings::ButtonScheme => match context.settings.button_scheme {
+                    ButtonScheme::Natural => self.handle_set_button_scheme(
+                        &ButtonScheme::Inverted,
+                        evt,
+                        hub,
+                        bus,
+                        rq,
+                        context,
+                    ),
+                    ButtonScheme::Inverted => self.handle_set_button_scheme(
+                        &ButtonScheme::Natural,
+                        evt,
+                        hub,
+                        bus,
+                        rq,
+                        context,
+                    ),
+                },
+            },
+            _ => unreachable!("mismatched toggle event"),
+        }
+    }
 }
 
 impl View for CategoryEditor {
@@ -805,15 +847,12 @@ impl View for CategoryEditor {
             Event::SubMenu(rect, ref entries) => {
                 self.handle_submenu_event(rect, entries, rq, context)
             }
+            Event::NewToggle(ref toggle) if matches!(toggle, ToggleEvent::Setting(_)) => {
+                self.handle_toggle_event(evt, hub, bus, rq, context, toggle)
+            }
             Event::Select(ref id) => match id {
                 EntryId::SetKeyboardLayout(ref layout) => {
                     self.handle_set_keyboard_layout(layout, evt, hub, bus, rq, context)
-                }
-                EntryId::ToggleSleepCover => {
-                    self.handle_toggle_sleep_cover(evt, hub, bus, rq, context)
-                }
-                EntryId::ToggleAutoShare => {
-                    self.handle_toggle_auto_share(evt, hub, bus, rq, context)
                 }
                 EntryId::EditAutoSuspend => self.handle_edit_auto_suspend(hub, rq, context),
                 EntryId::EditAutoPowerOff => self.handle_edit_auto_power_off(hub, rq, context),
