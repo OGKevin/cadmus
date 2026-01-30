@@ -90,6 +90,12 @@ impl Label {
     pub fn text(&self) -> &str {
         &self.text
     }
+
+    /// Get the current color scheme of the label.
+    #[cfg(test)]
+    pub fn get_scheme(&self) -> [Color; 3] {
+        self.scheme
+    }
 }
 
 impl View for Label {

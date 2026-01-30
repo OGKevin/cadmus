@@ -47,6 +47,7 @@ pub mod search_bar;
 pub mod settings_editor;
 pub mod sketch;
 pub mod slider;
+pub mod toggle;
 pub mod toggleable_keyboard;
 pub mod top_bar;
 pub mod touch_events;
