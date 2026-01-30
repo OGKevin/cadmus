@@ -7,3 +7,5 @@ build-dir = "book"
 create-missing = true
 
 [output.epub]
+
+[output.html]
