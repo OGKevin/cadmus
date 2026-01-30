@@ -6,6 +6,7 @@ use crate::context::Context;
 use crate::framebuffer::Framebuffer;
 use crate::geom::Rectangle;
 use crate::settings::Settings;
+use crate::view::settings_editor::ToggleSettings;
 
 pub enum Kind {
     KeyboardLayout,
@@ -58,11 +59,15 @@ impl Kind {
     fn value_kind(&self) -> ValueKind {
         match self {
             Kind::KeyboardLayout => ValueKind::KeyboardLayout,
-            Kind::SleepCover => ValueKind::SleepCover,
-            Kind::AutoShare => ValueKind::AutoShare,
+
+            // Kind::SleepCover => ValueKind::SleepCover,
+            Kind::SleepCover => ValueKind::Toggle(ToggleSettings::SleepCover),
+            // Kind::AutoShare => ValueKind::AutoShare,
+            Kind::AutoShare => ValueKind::Toggle(ToggleSettings::AutoShare),
             Kind::AutoSuspend => ValueKind::AutoSuspend,
             Kind::AutoPowerOff => ValueKind::AutoPowerOff,
-            Kind::ButtonScheme => ValueKind::ButtonScheme,
+            // Kind::ButtonScheme => ValueKind::ButtonScheme,
+            Kind::ButtonScheme => ValueKind::Toggle(ToggleSettings::ButtonScheme),
             Kind::Library(index) => ValueKind::LibraryInfo(*index),
             Kind::LibraryName(index) => ValueKind::LibraryName(*index),
             Kind::LibraryPath(index) => ValueKind::LibraryPath(*index),

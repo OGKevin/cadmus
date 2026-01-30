@@ -360,6 +360,12 @@ pub fn wait_for_all(updating: &mut Vec<UpdateData>, context: &mut Context) {
 }
 
 #[derive(Debug, Clone)]
+pub enum ToggleEvent {
+    View(ViewId),
+    Setting(settings_editor::ToggleSettings),
+}
+
+#[derive(Debug, Clone)]
 pub enum Event {
     Device(DeviceEvent),
     Gesture(GestureEvent),
@@ -405,7 +411,10 @@ pub enum Event {
     DeleteLibrary(usize),
     ProcessLine(LineOrigin, String),
     History(CycleDir, bool),
+    #[deprecated(note = "Use Event::NewToggle(ToggleEvent::View(ViewID)) instead")]
     Toggle(ViewId),
+    // TODO(ogkevin): remove Toggle variant above and rename this to Toggle
+    NewToggle(ToggleEvent),
     Show(ViewId),
     Close(ViewId),
     CloseSub(ViewId),
@@ -665,7 +674,9 @@ pub enum EntryId {
     SetIntermission(settings::IntermKind, settings::IntermissionDisplay),
     EditIntermissionImage(settings::IntermKind),
     ToggleShowHidden,
+    #[deprecated(note = "Use ToggleEvent::Settings instead")]
     ToggleSleepCover,
+    #[deprecated(note = "Use ToggleEvent::Settings instead")]
     ToggleAutoShare,
     EditAutoSuspend,
     EditAutoPowerOff,

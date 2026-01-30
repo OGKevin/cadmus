@@ -5,28 +5,47 @@ use crate::context::Context;
 use crate::framebuffer::Framebuffer;
 use crate::geom::Rectangle;
 use crate::settings::{ButtonScheme, IntermKind, Settings};
-use crate::view::EntryId;
+use crate::view::toggle::Toggle;
+use crate::view::{EntryId, ToggleEvent};
 use anyhow::Error;
+use libc::open_how;
 use std::fs;
 use std::path::Path;
+
+#[derive(Debug, Clone)]
+pub enum ToggleSettings {
+    /// Sleep cover enable/disable setting
+    SleepCover,
+    /// Auto-share enable/disable setting
+    AutoShare,
+    /// Button scheme selection (natural or inverted)
+    ButtonScheme,
+}
 
 /// Represents the type of setting value being displayed.
 ///
 /// This enum categorizes different settings that can be configured in the application,
 /// including keyboard layout, power management, button schemes, and library settings.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Kind {
     /// Keyboard layout selection setting
     KeyboardLayout,
     /// Sleep cover enable/disable setting
+    #[deprecated]
     SleepCover,
     /// Auto-share enable/disable setting
+    #[deprecated]
     AutoShare,
     /// Auto-suspend timeout setting (in minutes)
     AutoSuspend,
     /// Auto power-off timeout setting (in minutes)
     AutoPowerOff,
+
+    /// Generic toggle setting
+    Toggle(ToggleSettings),
+
     /// Button scheme selection (natural or inverted)
+    #[deprecated]
     ButtonScheme,
     /// Library info display for the library at the given index
     LibraryInfo(usize),
@@ -81,7 +100,7 @@ pub struct SettingValue {
 
 impl SettingValue {
     pub fn new(kind: Kind, rect: Rectangle, settings: &Settings) -> SettingValue {
-        let (value, entries) = Self::fetch_data_for_kind(&kind, settings);
+        let (value, entries, enabled_toggle) = Self::fetch_data_for_kind(&kind, settings);
 
         let mut setting_value = SettingValue {
             id: ID_FEEDER.next(),
@@ -91,11 +110,40 @@ impl SettingValue {
             entries,
         };
 
-        let event = setting_value.create_tap_event();
-        let action_label = ActionLabel::new(rect, value, Align::Right(10)).event(event);
-        setting_value.children = vec![Box::new(action_label)];
+        setting_value.children = vec![setting_value.kind_to_child_view(value, enabled_toggle)];
 
         setting_value
+    }
+
+    fn kind_to_child_view(&self, value: String, enabled_toggle: Option<bool>) -> Box<dyn View> {
+        let event = self.create_tap_event();
+
+        match self.kind {
+            Kind::Toggle(ref toggle) => match toggle {
+                ToggleSettings::AutoShare => Box::new(Toggle::new(
+                    self.rect,
+                    "on",
+                    "off",
+                    enabled_toggle.expect("enabled bool should be Some for toggle settings"),
+                    event.expect("Event should not be None for toggle"),
+                )),
+                ToggleSettings::ButtonScheme => Box::new(Toggle::new(
+                    self.rect,
+                    ButtonScheme::Natural.to_string().as_str(),
+                    ButtonScheme::Inverted.to_string().as_str(),
+                    enabled_toggle.expect("enabled bool should be Some for toggle settings"),
+                    event.expect("Event should not be None for toggle"),
+                )),
+                ToggleSettings::SleepCover => Box::new(Toggle::new(
+                    self.rect,
+                    "on",
+                    "off",
+                    enabled_toggle.expect("enabled bool should be Some for toggle settings"),
+                    event.expect("Event should not be None for toggle"),
+                )),
+            },
+            _ => Box::new(ActionLabel::new(self.rect, value, Align::Right(10)).event(event)),
+        }
     }
 
     /// Refreshes the displayed value by re-reading from context.settings.
@@ -103,7 +151,8 @@ impl SettingValue {
     /// This method updates the ActionLabel text to reflect the current state of the setting
     /// in context.settings. It should be called whenever the underlying setting changes.
     pub fn refresh_from_context(&mut self, context: &Context, rq: &mut RenderQueue) {
-        let (value, entries) = Self::fetch_data_for_kind(&self.kind, &context.settings);
+        let (value, entries, enabled_toggle) =
+            Self::fetch_data_for_kind(&self.kind, &context.settings);
         self.entries = entries;
         let event = self.create_tap_event();
 
@@ -115,7 +164,10 @@ impl SettingValue {
         }
     }
 
-    fn fetch_data_for_kind(kind: &Kind, settings: &Settings) -> (String, Vec<EntryKind>) {
+    fn fetch_data_for_kind(
+        kind: &Kind,
+        settings: &Settings,
+    ) -> (String, Vec<EntryKind>, Option<bool>) {
         match kind {
             Kind::KeyboardLayout => Self::fetch_keyboard_layout_data(settings),
             Kind::SleepCover => Self::fetch_sleep_cover_data(settings),
@@ -136,10 +188,15 @@ impl SettingValue {
             Kind::IntermissionShare => {
                 Self::fetch_intermission_data(crate::settings::IntermKind::Share, settings)
             }
+            Kind::Toggle(toggle) => match toggle {
+                ToggleSettings::SleepCover => Self::fetch_sleep_cover_data(settings),
+                ToggleSettings::AutoShare => Self::fetch_auto_share_data(settings),
+                ToggleSettings::ButtonScheme => Self::fetch_button_scheme_data(settings),
+            },
         }
     }
 
-    fn fetch_keyboard_layout_data(settings: &Settings) -> (String, Vec<EntryKind>) {
+    fn fetch_keyboard_layout_data(settings: &Settings) -> (String, Vec<EntryKind>, Option<bool>) {
         let current_layout = settings.keyboard_layout.clone();
         let available_layouts = Self::get_available_layouts().unwrap_or_default();
 
@@ -154,10 +211,10 @@ impl SettingValue {
             })
             .collect();
 
-        (current_layout, entries)
+        (current_layout, entries, None)
     }
 
-    fn fetch_sleep_cover_data(settings: &Settings) -> (String, Vec<EntryKind>) {
+    fn fetch_sleep_cover_data(settings: &Settings) -> (String, Vec<EntryKind>, Option<bool>) {
         let enabled = settings.sleep_cover;
         let value = if enabled {
             "Enabled".to_string()
@@ -165,16 +222,16 @@ impl SettingValue {
             "Disabled".to_string()
         };
 
-        let entries = vec![EntryKind::CheckBox(
-            "Enable".to_string(),
-            EntryId::ToggleSleepCover,
-            enabled,
-        )];
+        // let entries = vec![EntryKind::CheckBox(
+        //     "Enable".to_string(),
+        //     EntryId::ToggleSleepCover,
+        //     enabled,
+        // )];
 
-        (value, entries)
+        (value, vec![], Some(settings.sleep_cover))
     }
 
-    fn fetch_auto_share_data(settings: &Settings) -> (String, Vec<EntryKind>) {
+    fn fetch_auto_share_data(settings: &Settings) -> (String, Vec<EntryKind>, Option<bool>) {
         let enabled = settings.auto_share;
         let value = if enabled {
             "Enabled".to_string()
@@ -182,81 +239,97 @@ impl SettingValue {
             "Disabled".to_string()
         };
 
-        let entries = vec![EntryKind::CheckBox(
-            "Enable".to_string(),
-            EntryId::ToggleAutoShare,
-            enabled,
-        )];
+        // let entries = vec![EntryKind::CheckBox(
+        //     "Enable".to_string(),
+        //     EntryId::ToggleAutoShare,
+        //     enabled,
+        // )];
 
-        (value, entries)
+        (value, vec![], Some(settings.auto_share))
     }
 
-    fn fetch_button_scheme_data(settings: &Settings) -> (String, Vec<EntryKind>) {
+    fn fetch_button_scheme_data(settings: &Settings) -> (String, Vec<EntryKind>, Option<bool>) {
         let current_scheme = settings.button_scheme;
         let value = format!("{:?}", current_scheme);
 
-        let schemes = [ButtonScheme::Natural, ButtonScheme::Inverted];
-        let entries: Vec<EntryKind> = schemes
-            .iter()
-            .map(|scheme| {
-                EntryKind::RadioButton(
-                    format!("{:?}", scheme),
-                    EntryId::SetButtonScheme(*scheme),
-                    current_scheme == *scheme,
-                )
-            })
-            .collect();
+        // let schemes = [ButtonScheme::Natural, ButtonScheme::Inverted];
+        // let entries: Vec<EntryKind> = schemes
+        //     .iter()
+        //     .map(|scheme| {
+        //         EntryKind::RadioButton(
+        //             format!("{:?}", scheme),
+        //             EntryId::SetButtonScheme(*scheme),
+        //             current_scheme == *scheme,
+        //         )
+        //     })
+        //     .collect();
 
-        (value, entries)
+        (
+            value,
+            vec![],
+            Some(settings.button_scheme == ButtonScheme::Natural),
+        )
     }
 
-    fn fetch_auto_suspend_data(settings: &Settings) -> (String, Vec<EntryKind>) {
+    fn fetch_auto_suspend_data(settings: &Settings) -> (String, Vec<EntryKind>, Option<bool>) {
         let value = if settings.auto_suspend == 0.0 {
             "Never".to_string()
         } else {
             format!("{:.1}", settings.auto_suspend)
         };
 
-        (value, vec![])
+        (value, vec![], None)
     }
 
-    fn fetch_auto_power_off_data(settings: &Settings) -> (String, Vec<EntryKind>) {
+    fn fetch_auto_power_off_data(settings: &Settings) -> (String, Vec<EntryKind>, Option<bool>) {
         let value = if settings.auto_power_off == 0.0 {
             "Never".to_string()
         } else {
             format!("{:.1}", settings.auto_power_off)
         };
 
-        (value, vec![])
+        (value, vec![], None)
     }
 
-    fn fetch_library_info_data(index: usize, settings: &Settings) -> (String, Vec<EntryKind>) {
+    fn fetch_library_info_data(
+        index: usize,
+        settings: &Settings,
+    ) -> (String, Vec<EntryKind>, Option<bool>) {
         if let Some(library) = settings.libraries.get(index) {
             let value = library.path.display().to_string();
 
-            (value, vec![])
+            (value, vec![], None)
         } else {
-            ("Unknown".to_string(), vec![])
+            ("Unknown".to_string(), vec![], None)
         }
     }
 
-    fn fetch_library_name_data(index: usize, settings: &Settings) -> (String, Vec<EntryKind>) {
+    fn fetch_library_name_data(
+        index: usize,
+        settings: &Settings,
+    ) -> (String, Vec<EntryKind>, Option<bool>) {
         if let Some(library) = settings.libraries.get(index) {
-            (library.name.clone(), vec![])
+            (library.name.clone(), vec![], None)
         } else {
-            ("Unknown".to_string(), vec![])
+            ("Unknown".to_string(), vec![], None)
         }
     }
 
-    fn fetch_library_path_data(index: usize, settings: &Settings) -> (String, Vec<EntryKind>) {
+    fn fetch_library_path_data(
+        index: usize,
+        settings: &Settings,
+    ) -> (String, Vec<EntryKind>, Option<bool>) {
         if let Some(library) = settings.libraries.get(index) {
-            (library.path.display().to_string(), vec![])
+            (library.path.display().to_string(), vec![], None)
         } else {
-            ("Unknown".to_string(), vec![])
+            ("Unknown".to_string(), vec![], None)
         }
     }
 
-    fn fetch_library_mode_data(index: usize, settings: &Settings) -> (String, Vec<EntryKind>) {
+    fn fetch_library_mode_data(
+        index: usize,
+        settings: &Settings,
+    ) -> (String, Vec<EntryKind>, Option<bool>) {
         use crate::settings::LibraryMode;
         let mut mode = LibraryMode::Filesystem;
 
@@ -276,7 +349,7 @@ impl SettingValue {
                 mode == LibraryMode::Filesystem,
             ),
         ];
-        (mode.to_string(), entries)
+        (mode.to_string(), entries, None)
     }
 
     fn get_available_layouts() -> Result<Vec<String>, Error> {
@@ -312,9 +385,9 @@ impl SettingValue {
     }
 
     fn fetch_intermission_data(
-        kind: crate::settings::IntermKind,
+        kind: IntermKind,
         settings: &Settings,
-    ) -> (String, Vec<EntryKind>) {
+    ) -> (String, Vec<EntryKind>, Option<bool>) {
         use crate::settings::IntermissionDisplay;
 
         let display = &settings.intermissions[kind];
@@ -349,7 +422,7 @@ impl SettingValue {
             ),
         ];
 
-        (value, entries)
+        (value, entries, None)
     }
 
     pub fn update(&mut self, value: String, rq: &mut RenderQueue) {
@@ -393,6 +466,9 @@ impl SettingValue {
             Kind::LibraryPath(_) => Some(Event::Select(EntryId::EditLibraryPath)),
             Kind::AutoSuspend => Some(Event::Select(EntryId::EditAutoSuspend)),
             Kind::AutoPowerOff => Some(Event::Select(EntryId::EditAutoPowerOff)),
+            Kind::Toggle(ref toggle) => {
+                Some(Event::NewToggle(ToggleEvent::Setting(toggle.clone())))
+            }
             _ if !self.entries.is_empty() => Some(Event::SubMenu(self.rect, self.entries.clone())),
             _ => None,
         }

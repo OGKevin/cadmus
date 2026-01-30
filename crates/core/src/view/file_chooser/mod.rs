@@ -52,7 +52,7 @@ impl FileChooserLayout {
         let thickness = scale_by_dpi(THICKNESS_MEDIUM, dpi) as i32;
         let (small_thickness, big_thickness) = halves(thickness);
         let small_height = scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32;
-        let big_height = scale_by_dpi(BIG_BAR_HEIGHT, dpi) as i32;
+        let big_height = scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32;
 
         Self {
             thickness,
