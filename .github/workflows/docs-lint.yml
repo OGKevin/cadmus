@@ -1,0 +1,27 @@
+name: Docs lint
+
+on:
+  pull_request:
+    paths:
+      - "docs/**"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prettier check
+        run: npx prettier docs --check
+
+      - name: Markdownlint
+        run: npx markdownlint "docs/**/*.md"

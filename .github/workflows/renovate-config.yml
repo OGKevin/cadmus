@@ -1,0 +1,28 @@
+name: Renovate config validation
+
+on:
+  pull_request:
+    paths:
+      - "renovate.json"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          cache: "npm"
+
+      - name: Cache npx
+        uses: actions/cache@v5
+        with:
+          path: ~/.npm/_npx
+          key: ${{ runner.os }}-npx-renovate
+
+      - name: Validate Renovate config
+        uses: suzuki-shunsuke/github-action-renovate-config-validator@v2.0.0
+        with:
+          config_file_path: renovate.json

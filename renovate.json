@@ -1,0 +1,31 @@
+{
+  "extends": ["config:recommended"],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^\\.github\\/workflows\\/mdbook-pr\\.yml$/",
+        "/^\\.github\\/workflows\\/mdbook-pages\\.yml$/"
+      ],
+      "matchStrings": [
+        "MDBOOK_VERSION:\\s+\\\"(?<currentValue>[^\\\"]+)\\\""
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "rust-lang/mdBook",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^\\.github\\/workflows\\/mdbook-pr\\.yml$/",
+        "/^\\.github\\/workflows\\/mdbook-pages\\.yml$/"
+      ],
+      "matchStrings": [
+        "MDBOOK_EPUB_VERSION:\\s+\\\"(?<currentValue>[^\\\"]+)\\\""
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "Michael-F-Bryan/mdbook-epub",
+      "versioningTemplate": "semver"
+    }
+  ]
+}
