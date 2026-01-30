@@ -10,7 +10,8 @@ on:
       - main
       - master
     paths:
-      - docs/**  
+      - docs/**
+      - .github/workflows/mdbook-pages.yml
   workflow_dispatch:
 
 permissions:
@@ -63,7 +64,7 @@ jobs:
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v4
         with:
-          path: docs/book
+          path: docs/book/
 
   deploy:
     runs-on: ubuntu-latest
