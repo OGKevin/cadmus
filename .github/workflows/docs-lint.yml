@@ -6,6 +6,7 @@ on:
       - "docs/**"
       - "package.json"
       - "package-lock.json"
+      - ".github/workflows/docs-lint.yml"
 
 jobs:
   lint:
