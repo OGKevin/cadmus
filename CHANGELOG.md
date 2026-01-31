@@ -4,6 +4,13 @@
 
 This project is now maintained as **Cadmus**, a fork of the [Plato](https://github.com/baskerville/plato) document reader.
 
+## [0.9.46](https://github.com/OGKevin/cadmus/compare/v0.9.45...v0.9.46) (2026-01-31)
+
+
+### Features
+
+* add "Check for Updates" feature to install test builds ([#57](https://github.com/OGKevin/cadmus/issues/57)) ([0dacb95](https://github.com/OGKevin/cadmus/commit/0dacb95512312277917c2f323760e79700b4c3a4))
+
 ## [0.9.45](https://github.com/OGKevin/cadmus/compare/v0.9.44...v0.9.45) (2026-01-12)
 
 
