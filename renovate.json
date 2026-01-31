@@ -7,9 +7,7 @@
         "/^\\.github\\/workflows\\/mdbook-pr\\.yml$/",
         "/^\\.github\\/workflows\\/mdbook-pages\\.yml$/"
       ],
-      "matchStrings": [
-        "MDBOOK_VERSION:\\s+\\\"(?<currentValue>[^\\\"]+)\\\""
-      ],
+      "matchStrings": ["MDBOOK_VERSION:\\s+\\\"(?<currentValue>[^\\\"]+)\\\""],
       "datasourceTemplate": "github-releases",
       "depNameTemplate": "rust-lang/mdBook",
       "versioningTemplate": "semver"
@@ -21,11 +19,19 @@
         "/^\\.github\\/workflows\\/mdbook-pages\\.yml$/"
       ],
       "matchStrings": [
-        "MDBOOK_EPUB_VERSION:\\s+\\\"(?<currentValue>[^\\\"]+)\\\""
+        "MDBOOK_EPUB_REV:\\s+\\\"(?<currentValue>[a-f0-9]{40})\\\""
       ],
-      "datasourceTemplate": "github-releases",
+      "datasourceTemplate": "git-refs",
       "depNameTemplate": "Michael-F-Bryan/mdbook-epub",
-      "versioningTemplate": "semver"
+      "versioningTemplate": "git"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/^devenv\\.nix$/"],
+      "matchStrings": ["rev = \\\"(?<currentValue>[a-f0-9]{40})\\\""],
+      "datasourceTemplate": "git-refs",
+      "depNameTemplate": "Michael-F-Bryan/mdbook-epub",
+      "versioningTemplate": "git"
     }
   ]
 }

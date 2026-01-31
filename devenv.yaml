@@ -1,6 +1,6 @@
 inputs:
   nixpkgs:
-    url: github:cachix/devenv-nixpkgs/rolling
+    url: github:nixos/nixpkgs/nixpkgs-unstable
   rust-overlay:
     url: github:oxalica/rust-overlay
     inputs:
