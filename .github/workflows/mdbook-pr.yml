@@ -1,7 +1,7 @@
 name: mdBook PR build
 
 env:
-  MDBOOK_VERSION: "0.4.52"
+  MDBOOK_VERSION: "0.5.2"
   MDBOOK_EPUB_VERSION: "0.4.48"
 
 on:
