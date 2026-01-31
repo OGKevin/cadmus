@@ -164,7 +164,8 @@ impl DirectoriesBar {
         let vertical_padding = min_height - x_height;
         let max_line_width = self.rect.width() as i32 - 2 * padding;
         let max_lines = ((self.rect.height() as i32 - vertical_padding / 2)
-            / (x_height + vertical_padding / 2)) as usize;
+            / (x_height + vertical_padding / 2))
+            .max(1) as usize;
         let layout = Layout {
             x_height,
             padding,

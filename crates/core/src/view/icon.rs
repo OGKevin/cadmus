@@ -65,6 +65,7 @@ lazy_static! {
             "enclosed_menu",
             "contrast",
             "gray",
+            "plus",
         ]
         .iter()
         .cloned()
