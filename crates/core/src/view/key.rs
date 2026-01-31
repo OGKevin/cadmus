@@ -22,6 +22,13 @@ pub enum KeyKind {
     Return,
     Combine,
     Alternate,
+    Tab,
+    Escape,
+    Control,
+    ArrowUp,
+    ArrowDown,
+    ArrowLeft,
+    ArrowRight,
 }
 
 use serde::de::{self, Visitor};
@@ -36,28 +43,22 @@ impl<'de> Deserialize<'de> for KeyKind {
         struct FieldVisitor;
 
         const FIELDS: &[&str] = &[
-            "Shift",
-            "Sft",
-            "Return",
-            "Ret",
-            "Alternate",
-            "Alt",
-            "Combine",
-            "Cmb",
-            "MoveFwd",
-            "MoveF",
-            "MF",
-            "MoveBwd",
-            "MoveB",
-            "MB",
-            "DelFwd",
-            "DelF",
-            "DF",
-            "DelBwd",
-            "DelB",
-            "DB",
-            "Space",
-            "Spc",
+            "Shift", "Sft",
+            "Return", "Ret",
+            "Alternate", "Alt",
+            "Combine", "Cmb",
+            "MoveFwd", "MoveF", "MF",
+            "MoveBwd", "MoveB", "MB",
+            "DelFwd", "DelF", "DF",
+            "DelBwd", "DelB", "DB",
+            "Space", "Spc",
+            "Tab",
+            "Escape", "Esc",
+            "Control", "Ctrl",
+            "ArrowUp", "Up",
+            "ArrowDown", "Down",
+            "ArrowLeft", "Left",
+            "ArrowRight", "Right",
         ];
 
         impl<'de> Visitor<'de> for FieldVisitor {
@@ -81,16 +82,20 @@ impl<'de> Deserialize<'de> for KeyKind {
                     "DelFwd" | "DelF" | "DF" => Ok(KeyKind::Delete(LinearDir::Forward)),
                     "DelBwd" | "DelB" | "DB" => Ok(KeyKind::Delete(LinearDir::Backward)),
                     "Space" | "Spc" => Ok(KeyKind::Output(' ')),
+                    "Tab" => Ok(KeyKind::Tab),
+                    "Escape" | "Esc" => Ok(KeyKind::Escape),
+                    "Control" | "Ctrl" => Ok(KeyKind::Control),
+                    "ArrowUp" | "Up" => Ok(KeyKind::ArrowUp),
+                    "ArrowDown" | "Down" => Ok(KeyKind::ArrowDown),
+                    "ArrowLeft" | "Left" => Ok(KeyKind::ArrowLeft),
+                    "ArrowRight" | "Right" => Ok(KeyKind::ArrowRight),
                     _ => {
                         if value.chars().count() != 1 {
                             return Err(serde::de::Error::unknown_field(value, FIELDS));
                         }
-                        value
-                            .chars()
-                            .next()
-                            .map(KeyKind::Output)
-                            .ok_or_else(|| serde::de::Error::custom("impossible"))
-                    }
+                        value.chars().next().map(KeyKind::Output)
+                             .ok_or_else(|| serde::de::Error::custom("impossible"))
+                    },
                 }
             }
         }
@@ -114,9 +119,16 @@ impl KeyKind {
     pub fn label(self, ratio: f32) -> KeyLabel {
         match self {
             KeyKind::Output(ch) => KeyLabel::Char(ch),
+            KeyKind::Tab => KeyLabel::Text("TAB"),
+            KeyKind::Escape => KeyLabel::Text("ESC"),
+            KeyKind::Control => KeyLabel::Text("CTRL"),
+            KeyKind::ArrowUp => KeyLabel::Text("▲"),
+            KeyKind::ArrowDown => KeyLabel::Text("▼"),
+            KeyKind::ArrowLeft => KeyLabel::Text("◀"),
+            KeyKind::ArrowRight => KeyLabel::Text("▶"),
             KeyKind::Delete(dir) => match dir {
-                LinearDir::Forward => KeyLabel::Icon("delete-forward"),
-                LinearDir::Backward => KeyLabel::Icon("delete-backward"),
+                    LinearDir::Forward => KeyLabel::Icon("delete-forward"),
+                    LinearDir::Backward => KeyLabel::Icon("delete-backward"),
             },
             KeyKind::Move(dir) => match dir {
                 LinearDir::Forward => KeyLabel::Icon(if ratio <= 1.0 {
@@ -154,7 +166,7 @@ impl KeyKind {
             KeyKind::Alternate => {
                 if ratio <= 1.0 {
                     KeyLabel::Icon("alternate")
-                } else {
+                } else { 
                     KeyLabel::Text("ALT")
                 }
             }
@@ -214,22 +226,25 @@ impl View for Key {
         match *evt {
             Event::Device(DeviceEvent::Finger {
                 status, position, ..
-            }) => match status {
-                FingerStatus::Down if self.rect.includes(position) => {
-                    self.active = true;
-                    rq.add(RenderData::no_wait(self.id, self.rect, UpdateMode::Fast));
-                    true
-                }
-                FingerStatus::Up if self.active => {
-                    self.active = false;
-                    rq.add(RenderData::no_wait(self.id, self.rect, UpdateMode::Gui));
-                    true
-                }
-                _ => false,
+             }) => match status {
+                    FingerStatus::Down if self.rect.includes(position) => {
+                        self.active = true;
+                        rq.add(RenderData::no_wait(self.id, self.rect, UpdateMode::Fast));
+                        true
+                    }
+                    FingerStatus::Up if self.active => {
+                        self.active = false;
+                        rq.add(RenderData::no_wait(self.id, self.rect, UpdateMode::Gui));
+                        true
+                    }
+                    _ => false,
             },
             Event::Gesture(GestureEvent::Tap(center)) if self.rect.includes(center) => {
                 match self.kind {
-                    KeyKind::Shift | KeyKind::Alternate | KeyKind::Combine => {
+                    KeyKind::Shift |
+                    KeyKind::Alternate |
+                    KeyKind::Combine |
+                    KeyKind::Control => {
                         if self.kind == KeyKind::Combine {
                             self.pressure = (self.pressure + 2) % 4;
                         } else {
@@ -244,7 +259,7 @@ impl View for Key {
             }
             Event::Gesture(GestureEvent::HoldFingerShort(center, ..))
                 if self.rect.includes(center) =>
-            {
+                {
                 match self.kind {
                     KeyKind::Delete(dir) => {
                         hub.send(Event::Keyboard(KeyboardEvent::Delete {
@@ -263,7 +278,7 @@ impl View for Key {
                     KeyKind::Output(' ') => {
                         hub.send(Event::ToggleNear(ViewId::KeyboardLayoutMenu, self.rect))
                             .ok();
-                    }
+                        }
                     _ => (),
                 };
                 true

@@ -54,6 +54,8 @@ reqwest = { version = "0.13.1", default-features = false, features = [
 ] }
 rustls = { workspace = true }
 webpki-roots = "1.0.5"
+portable-pty = "0.8.1"
+vt100 = "0.16.2"
 
 [dev-dependencies]
 tempfile = "3.14"

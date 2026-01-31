@@ -201,6 +201,10 @@ margin-width = 2
 # The number of remembered inputs.
 history-size = 4_096
 
+[terminal]
+# The font size for the Terminal application.
+font-size = 12.0
+
 [battery]
 # Warn about the battery level being low, when the level
 # goes below `warn` percents.
