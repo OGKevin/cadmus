@@ -6,6 +6,7 @@ on:
       - "docs/**"
       - "package.json"
       - "package-lock.json"
+      - ".github/workflows/docs-lint.yml"
 
 jobs:
   lint:
@@ -14,7 +15,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Setup Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v6
         with:
           node-version: 20
           cache: "npm"
