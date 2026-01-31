@@ -36,8 +36,32 @@ let
     # Ignore python dependency for gdb (we don't need gdb for building)
     autoPatchelfIgnoreMissingDeps = [ "libpython2.7.so.1.0" ];
   };
+
+  # Custom mdbook-epub from specific commit
+  mdbook-epub-custom = pkgs.rustPlatform.buildRustPackage rec {
+    pname = "mdbook-epub";
+    version = "21a1c813";
+
+    src = pkgs.fetchFromGitHub {
+      owner = "Michael-F-Bryan";
+      repo = "mdbook-epub";
+      rev = "21a1c8134134201a2d555313447c96e56e2a8996";
+      hash = "sha256-7QxIggAioJ92iCPCxs2ZwtML3OtCcg0h2/kvTNMB/pw=";
+    };
+
+    cargoHash = "sha256-yxB1PMbc7Ck+PEAm/v/BrC6xMTi6jb1uLH++/whiKFU=";
+
+    nativeBuildInputs = [ pkgs.pkg-config ];
+
+    buildInputs = [ pkgs.bzip2 ];
+
+    # Tests are broken upstream
+    doCheck = false;
+  };
 in
 {
+  overlays = [ ];
+
   packages = [
     # Basic tools required by build scripts
     pkgs.git
@@ -49,7 +73,7 @@ in
     pkgs.patchelf
 
     pkgs.mdbook
-    pkgs.mdbook-epub
+    mdbook-epub-custom
 
     # C/C++ build tools for compiling thirdparty libraries
     pkgs.gcc
@@ -237,5 +261,7 @@ in
     actionlint.enable = true;
     shellcheck.enable = true;
     shfmt.enable = true;
+    markdownlint.enable = true;
+    prettier.enable = true;
   };
 }
