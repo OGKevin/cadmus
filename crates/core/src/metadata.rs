@@ -18,6 +18,7 @@ use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 use titlecase::titlecase;
+use tracing::{error, warn};
 
 pub const DEFAULT_CONTRAST_EXPONENT: f32 = 1.0;
 pub const DEFAULT_CONTRAST_GRAY: f32 = 224.0;
@@ -464,7 +465,7 @@ pub fn make_query(text: &str) -> Option<Regex> {
         .replace("ae", "(ae|æ)")
         .replace("oe", "(oe|œ)");
     Regex::new(&format!("(?i){}", text))
-        .map_err(|e| eprintln!("Can't create query: {:#}.", e))
+        .map_err(|e| error!("Can't create query: {:#}.", e))
         .ok()
 }
 
@@ -886,7 +887,7 @@ pub fn extract_metadata_from_document(prefix: &Path, info: &mut Info) {
                 info.language = doc.language().unwrap_or_default();
                 info.categories.append(&mut doc.categories());
             }
-            Err(e) => eprintln!("Can't open {}: {:#}.", info.file.path.display(), e),
+            Err(e) => error!("Can't open {}: {:#}.", info.file.path.display(), e),
         },
         "html" | "htm" => match HtmlDocument::new(&path) {
             Ok(doc) => {
@@ -894,14 +895,14 @@ pub fn extract_metadata_from_document(prefix: &Path, info: &mut Info) {
                 info.author = doc.author().unwrap_or_default();
                 info.language = doc.language().unwrap_or_default();
             }
-            Err(e) => eprintln!("Can't open {}: {:#}.", info.file.path.display(), e),
+            Err(e) => error!("Can't open {}: {:#}.", info.file.path.display(), e),
         },
         "pdf" => match PdfOpener::new().and_then(|o| o.open(path)) {
             Some(doc) => {
                 info.title = doc.title().unwrap_or_default();
                 info.author = doc.author().unwrap_or_default();
             }
-            None => eprintln!("Can't open {}.", info.file.path.display()),
+            None => error!("Can't open {}.", info.file.path.display()),
         },
         "djvu" | "djv" => match DjvuOpener::new().and_then(|o| o.open(path)) {
             Some(doc) => {
@@ -911,10 +912,10 @@ pub fn extract_metadata_from_document(prefix: &Path, info: &mut Info) {
                 info.series = doc.series().unwrap_or_default();
                 info.publisher = doc.publisher().unwrap_or_default();
             }
-            None => eprintln!("Can't open {}.", info.file.path.display()),
+            None => error!("Can't open {}.", info.file.path.display()),
         },
         _ => {
-            eprintln!(
+            warn!(
                 "Don't know how to extract metadata from {}.",
                 &info.file.kind
             );
@@ -1010,7 +1011,7 @@ pub fn rename_from_info(prefix: &Path, info: &mut Info) {
         let new_path = old_path.with_file_name(&new_file_name);
         if old_path != new_path {
             match fs::rename(&old_path, &new_path) {
-                Err(e) => eprintln!(
+                Err(e) => error!(
                     "Can't rename {} to {}: {:#}.",
                     old_path.display(),
                     new_path.display(),

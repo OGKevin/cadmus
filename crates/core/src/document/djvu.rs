@@ -10,6 +10,7 @@ use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
 use std::ptr;
 use std::rc::Rc;
+use tracing::error;
 
 impl Into<DjvuRect> for Rectangle {
     fn into(self) -> DjvuRect {
@@ -46,10 +47,10 @@ impl DjvuContext {
                 let filename = msg.filename;
                 let lineno = msg.lineno;
                 if filename.is_null() {
-                    eprintln!("Error: {}.", message);
+                    error!("Error: {}.", message);
                 } else {
                     let filename = CStr::from_ptr(filename).to_string_lossy();
-                    eprintln!("Error: {}: '{}:{}'.", message, filename, lineno);
+                    error!("Error: {}: '{}:{}'.", message, filename, lineno);
                 }
             }
             ddjvu_message_pop(self.0);

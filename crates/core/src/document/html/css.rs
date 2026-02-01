@@ -495,12 +495,13 @@ impl<'a> CssParser<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tracing::debug;
 
     #[test]
     fn simple_css() {
         let text = "a, .b { b: c; d: e }";
         let css = CssParser::new(text).parse();
-        println!("{:?}", css);
+        debug!("{:?}", css);
     }
 
     #[test]

@@ -70,6 +70,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::Sender;
 use std::time::{Duration, Instant};
+use tracing::error;
 
 // Border thicknesses in pixels, at 300 DPI.
 pub const THICKNESS_SMALL: f32 = 1.0;
@@ -234,10 +235,7 @@ pub fn render(
                     if overlaps && !update.has_completed() {
                         fb.wait(update.token)
                             .map_err(|e| {
-                                eprintln!(
-                                    "Can't wait for {}, {}: {:#}",
-                                    update.token, update.rect, e
-                                )
+                                error!("Can't wait for {}, {}: {:#}", update.token, update.rect, e)
                             })
                             .ok();
                     }
@@ -333,7 +331,7 @@ pub fn process_render_queue(
                     });
                 }
                 Err(err) => {
-                    eprintln!("Can't update {}: {:#}.", rect, err);
+                    error!("Can't update {}: {:#}.", rect, err);
                 }
             }
         }
@@ -349,7 +347,7 @@ pub fn wait_for_all(updating: &mut Vec<UpdateData>, context: &mut Context) {
         context
             .fb
             .wait(update.token)
-            .map_err(|e| eprintln!("Can't wait for {}, {}: {:#}", update.token, update.rect, e))
+            .map_err(|e| error!("Can't wait for {}, {}: {:#}", update.token, update.rect, e))
             .ok();
     }
 }

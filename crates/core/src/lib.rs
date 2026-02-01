@@ -15,10 +15,13 @@ pub mod helpers;
 pub mod input;
 pub mod library;
 pub mod lightsensor;
+pub mod logging;
 pub mod metadata;
 pub mod ota;
 pub mod rtc;
 pub mod settings;
+#[cfg(feature = "otel")]
+pub mod telemetry;
 mod unit;
 pub mod view;
 

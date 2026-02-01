@@ -6,6 +6,7 @@ use std::fs::File;
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::time::Duration;
+use tracing::info;
 use zip::ZipArchive;
 
 #[cfg(not(test))]
@@ -156,10 +157,10 @@ impl OtaClient {
     /// The token is stored securely and will never appear in debug output or logs.
     /// It is only exposed when making authenticated API requests.
     pub fn new(github_token: SecretString) -> Result<Self, OtaError> {
-        println!("[OTA] Initializing OTA client with webpki-roots certificates");
+        info!("[OTA] Initializing OTA client with webpki-roots certificates");
 
         let root_store = create_webpki_root_store();
-        println!(
+        info!(
             "[OTA] Created root certificate store with {} certificates",
             root_store.len()
         );
@@ -168,7 +169,7 @@ impl OtaClient {
             .with_root_certificates(root_store)
             .with_no_client_auth();
 
-        println!("[OTA] Built TLS configuration");
+        info!("[OTA] Built TLS configuration");
 
         let client = Client::builder()
             .use_preconfigured_tls(tls_config)
@@ -177,7 +178,7 @@ impl OtaClient {
             .build()
             .map_err(|e| OtaError::TlsConfig(format!("Failed to build HTTP client: {}", e)))?;
 
-        println!("[OTA] Successfully initialized OTA client with reqwest");
+        info!("[OTA] Successfully initialized OTA client with reqwest");
 
         Ok(Self {
             client,
@@ -222,7 +223,7 @@ impl OtaClient {
         check_disk_space("/tmp")?;
 
         progress_callback(OtaProgress::CheckingPr);
-        println!("[OTA] Checking PR #{}", pr_number);
+        info!("[OTA] Checking PR #{}", pr_number);
 
         let pr_url = format!(
             "https://api.github.com/repos/ogkevin/cadmus/pulls/{}",
@@ -242,10 +243,10 @@ impl OtaClient {
             .json()?;
 
         let head_sha = pr.head.sha;
-        println!("[OTA] PR #{} head SHA: {}", pr_number, head_sha);
+        info!("[OTA] PR #{} head SHA: {}", pr_number, head_sha);
 
         progress_callback(OtaProgress::FindingWorkflow);
-        println!("[OTA] Finding workflow runs for SHA: {}", head_sha);
+        info!("[OTA] Finding workflow runs for SHA: {}", head_sha);
 
         let runs_url = format!(
             "https://api.github.com/repos/ogkevin/cadmus/actions/runs?head_sha={}&event=pull_request",
@@ -264,7 +265,7 @@ impl OtaClient {
             .map_err(|e| OtaError::Api(format!("Failed to fetch workflow runs: {}", e)))?
             .json()?;
 
-        println!("[OTA] Found {} workflow runs", runs.workflow_runs.len());
+        info!("[OTA] Found {} workflow runs", runs.workflow_runs.len());
 
         let run = runs
             .workflow_runs
@@ -272,7 +273,7 @@ impl OtaClient {
             .find(|r| r.name == "Cargo")
             .ok_or(OtaError::NoArtifacts(pr_number))?;
 
-        println!("[OTA] Found Cargo workflow run with ID: {}", run.id);
+        info!("[OTA] Found Cargo workflow run with ID: {}", run.id);
 
         let artifacts_url = format!(
             "https://api.github.com/repos/ogkevin/cadmus/actions/runs/{}/artifacts",
@@ -291,7 +292,7 @@ impl OtaClient {
             .map_err(|e| OtaError::Api(format!("Failed to fetch artifacts: {}", e)))?
             .json()?;
 
-        println!("[OTA] Found {} artifacts", artifacts.artifacts.len());
+        info!("[OTA] Found {} artifacts", artifacts.artifacts.len());
 
         #[cfg(feature = "test")]
         let artifact_name_pattern = format!("cadmus-kobo-test-pr{}", pr_number);
@@ -304,7 +305,7 @@ impl OtaClient {
             .find(|a| a.name.starts_with(artifact_name_pattern.as_str()))
             .ok_or(OtaError::NoArtifacts(pr_number))?;
 
-        println!(
+        info!(
             "[OTA] Found artifact: {} (ID: {}, size: {} bytes)",
             artifact.name, artifact.id, artifact.size_in_bytes
         );
@@ -319,7 +320,7 @@ impl OtaClient {
             artifact.id
         );
 
-        println!("[OTA] Downloading artifact from: {}", download_url);
+        info!("[OTA] Downloading artifact from: {}", download_url);
 
         let download_path = PathBuf::from(format!("/tmp/cadmus-ota-{}.zip", pr_number));
         let mut file = File::create(&download_path)?;
@@ -327,7 +328,7 @@ impl OtaClient {
         let mut downloaded = 0u64;
         let total_size = artifact.size_in_bytes;
 
-        println!(
+        info!(
             "[OTA] Starting chunked download ({} MB chunks)",
             CHUNK_SIZE / (1024 * 1024)
         );
@@ -336,7 +337,7 @@ impl OtaClient {
             let chunk_start = downloaded;
             let chunk_end = std::cmp::min(downloaded + CHUNK_SIZE as u64 - 1, total_size - 1);
 
-            println!(
+            info!(
                 "[OTA] Downloading chunk: bytes {}-{} of {}",
                 chunk_start, chunk_end, total_size
             );
@@ -352,7 +353,7 @@ impl OtaClient {
                 total: total_size,
             });
 
-            println!(
+            info!(
                 "[OTA] Progress: {}/{} bytes ({:.1}%)",
                 downloaded,
                 total_size,
@@ -360,8 +361,8 @@ impl OtaClient {
             );
         }
 
-        println!("[OTA] Download complete: {} bytes", downloaded);
-        println!("[OTA] Saved artifact to: {:?}", download_path);
+        info!("[OTA] Download complete: {} bytes", downloaded);
+        info!("[OTA] Saved artifact to: {:?}", download_path);
 
         progress_callback(OtaProgress::Complete {
             path: download_path.clone(),
@@ -390,12 +391,12 @@ impl OtaClient {
     /// * `OtaError::DeploymentError` - KoboRoot.tgz not found in archive
     /// * `OtaError::Io` - Failed to write deployment file
     pub fn extract_and_deploy(&self, zip_path: PathBuf) -> Result<PathBuf, OtaError> {
-        println!("[OTA] Starting extraction of artifact: {:?}", zip_path);
+        info!("[OTA] Starting extraction of artifact: {:?}", zip_path);
 
         let file = File::open(&zip_path)?;
         let mut archive = ZipArchive::new(file)?;
 
-        println!("[OTA] Opened ZIP archive with {} files", archive.len());
+        info!("[OTA] Opened ZIP archive with {} files", archive.len());
 
         let mut kobo_root_data = Vec::new();
         let mut found = false;
@@ -409,10 +410,10 @@ impl OtaClient {
             let mut entry = archive.by_index(i)?;
             let entry_name = entry.name().to_string();
 
-            println!("[OTA] Checking entry: {}", entry_name);
+            info!("[OTA] Checking entry: {}", entry_name);
 
             if entry_name.eq(kobo_root_name) {
-                println!("[OTA] Found at {}: {}", kobo_root_name, entry_name);
+                info!("[OTA] Found at {}: {}", kobo_root_name, entry_name);
                 entry.read_to_end(&mut kobo_root_data)?;
                 found = true;
                 break;
@@ -426,7 +427,7 @@ impl OtaClient {
             )));
         }
 
-        println!(
+        info!(
             "[OTA] Extracted {} bytes from {}",
             kobo_root_data.len(),
             kobo_root_name
@@ -452,7 +453,7 @@ impl OtaClient {
         let mut file = File::create(&deploy_path)?;
         file.write_all(&kobo_root_data)?;
 
-        println!("[OTA] Deployment complete: {:?}", deploy_path);
+        info!("[OTA] Deployment complete: {:?}", deploy_path);
 
         Ok(deploy_path)
     }
@@ -487,7 +488,7 @@ impl OtaClient {
             match self.download_chunk(url, start, end) {
                 Ok(data) => {
                     if attempt > 1 {
-                        println!(
+                        info!(
                             "[OTA] Chunk download succeeded on attempt {}/{}",
                             attempt, MAX_RETRIES
                         );
@@ -495,7 +496,7 @@ impl OtaClient {
                     return Ok(data);
                 }
                 Err(e) => {
-                    println!(
+                    info!(
                         "[OTA] Chunk download failed (attempt {}/{}): {}",
                         attempt, MAX_RETRIES, e
                     );
@@ -503,7 +504,7 @@ impl OtaClient {
 
                     if attempt < MAX_RETRIES {
                         let backoff_ms = 1000 * (2u64.pow(attempt as u32 - 1));
-                        println!("[OTA] Retrying after {} ms...", backoff_ms);
+                        info!("[OTA] Retrying after {} ms...", backoff_ms);
                         std::thread::sleep(Duration::from_millis(backoff_ms));
                     }
                 }
@@ -566,7 +567,7 @@ fn check_disk_space(path: &str) -> Result<(), OtaError> {
 
     let stat = statvfs(path)?;
     let available_mb = (stat.blocks_available() * stat.block_size()) / (1024 * 1024);
-    println!(
+    info!(
         "[OTA] Available disk space in {}: {} MB",
         path, available_mb
     );
@@ -582,12 +583,12 @@ fn check_disk_space(path: &str) -> Result<(), OtaError> {
 /// Uses the webpki-roots crate which embeds Mozilla's CA certificate bundle
 /// for verifying HTTPS connections to GitHub's API.
 fn create_webpki_root_store() -> RootCertStore {
-    println!("[OTA] Loading Mozilla root certificates from webpki-roots");
+    info!("[OTA] Loading Mozilla root certificates from webpki-roots");
     let mut root_store = RootCertStore::empty();
 
     root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
 
-    println!(
+    info!(
         "[OTA] Loaded {} root certificates from webpki-roots",
         root_store.len()
     );

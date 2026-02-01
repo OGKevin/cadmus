@@ -27,6 +27,18 @@ date-format = "%A, %B %-d, %Y"
 # Appends the tapped external URLs to this file.
 external-urls-queue = "bin/article_fetcher/urls.txt"
 
+[logging]
+# Enable or disable structured JSON logging.
+enabled = true
+# Possible values: "trace", "debug", "info", "warn", "error".
+level = "info"
+# The number of rotated log files to keep. Use 0 to keep all files.
+max-files = 3
+# Directory for log files (relative to the installation directory).
+directory = "logs"
+# Optional OTLP endpoint for exporting logs when the build enables the otel feature.
+# otlp-endpoint = "https://otel.example.com:4318"
+
 # You can create libraries by adding further [[libraries]] entries.
 [[libraries]]
 name = "On Board"

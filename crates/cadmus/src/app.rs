@@ -53,6 +53,7 @@ use std::process::Command;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
 use std::time::{Duration, Instant};
+use tracing::{debug, error, info};
 
 pub const APP_NAME: &str = "Cadmus";
 const FB_DEVICE: &str = "/dev/fb0";
@@ -113,6 +114,11 @@ fn build_context(fb: Box<dyn Framebuffer>) -> Result<Context, Error> {
     } else {
         Default::default()
     };
+
+    if let Err(e) = cadmus_core::logging::init_logging(&settings.logging) {
+        eprintln!("Warning: Failed to initialize logging: {:#}", e);
+        eprintln!("Continuing without logging...");
+    }
 
     if settings.libraries.is_empty() {
         return Err(format_err!("no libraries found"));
@@ -380,14 +386,14 @@ pub fn run() -> Result<(), Error> {
     let mut updating = Vec::new();
     let current_dir = env::current_dir()?;
 
-    println!(
+    info!(
         "{} {} {} is running on a Kobo {}.",
         APP_NAME,
         env!("GIT_VERSION"),
         option_env!("PR_INFO").unwrap_or(""),
         CURRENT_DEVICE.model
     );
-    println!(
+    info!(
         "The framebuffer resolution is {} by {}.",
         context.fb.rect().width(),
         context.fb.rect().height()
@@ -637,7 +643,7 @@ pub fn run() -> Result<(), Error> {
                         Command::new("scripts/usb-disable.sh").status().ok();
                         env::set_current_dir(&current_dir)
                             .map_err(|e| {
-                                eprintln!(
+                                error!(
                                     "Can't set current directory to {}: {:#}.",
                                     current_dir.display(),
                                     e
@@ -646,7 +652,7 @@ pub fn run() -> Result<(), Error> {
                             .ok();
                         let path = Path::new(SETTINGS_PATH);
                         if let Ok(settings) = load_toml::<Settings, _>(path)
-                            .map_err(|e| eprintln!("Can't load settings: {:#}.", e))
+                            .map_err(|e| error!("Can't load settings: {:#}.", e))
                         {
                             context.settings = settings;
                         }
@@ -706,7 +712,7 @@ pub fn run() -> Result<(), Error> {
                     }
 
                     if view.is::<RotationValues>() {
-                        println!("Gyro rotation: {}", n);
+                        debug!("Gyro rotation: {}", n);
                     }
 
                     if let Some(rotation_lock) = context.settings.rotation_lock {
@@ -767,7 +773,7 @@ pub fn run() -> Result<(), Error> {
                 wait_for_all(&mut updating, &mut context);
                 let path = Path::new(SETTINGS_PATH);
                 save_toml(&context.settings, path)
-                    .map_err(|e| eprintln!("Can't save settings: {:#}.", e))
+                    .map_err(|e| error!("Can't save settings: {:#}.", e))
                     .ok();
                 context.library.flush();
 
@@ -793,18 +799,18 @@ pub fn run() -> Result<(), Error> {
                 if context.settings.auto_power_off > 0.0 {
                     context.rtc.iter().for_each(|rtc| {
                         rtc.set_alarm(context.settings.auto_power_off)
-                            .map_err(|e| eprintln!("Can't set alarm: {:#}.", e))
+                            .map_err(|e| error!("Can't set alarm: {:#}.", e))
                             .ok();
                     });
                 }
                 let before = Local::now();
-                println!(
+                info!(
                     "{}",
                     before.format("Went to sleep on %B %-d, %Y at %H:%M:%S.")
                 );
                 Command::new("scripts/suspend.sh").status().ok();
                 let after = Local::now();
-                println!("{}", after.format("Woke up on %B %-d, %Y at %H:%M:%S."));
+                info!("{}", after.format("Woke up on %B %-d, %Y at %H:%M:%S."));
                 Command::new("scripts/resume.sh").status().ok();
                 inactive_since = Instant::now();
                 // If the wake is legitimate, the task will be cancelled by `resume`.
@@ -821,7 +827,7 @@ pub fn run() -> Result<(), Error> {
                     );
                     if let Some(fired) = context.rtc.as_ref().and_then(|rtc| {
                         rtc.alarm()
-                            .map_err(|e| eprintln!("Can't get alarm: {:#}", e))
+                            .map_err(|e| error!("Can't get alarm: {:#}", e))
                             .map(|rwa| {
                                 !rwa.enabled()
                                     || (rwa.year() <= 1970
@@ -836,7 +842,7 @@ pub fn run() -> Result<(), Error> {
                         } else {
                             context.rtc.iter().for_each(|rtc| {
                                 rtc.disable_alarm()
-                                    .map_err(|e| eprintln!("Can't disable alarm: {:#}.", e))
+                                    .map_err(|e| error!("Can't disable alarm: {:#}.", e))
                                     .ok();
                             });
                         }
@@ -865,7 +871,7 @@ pub fn run() -> Result<(), Error> {
                 }
                 let path = Path::new(SETTINGS_PATH);
                 save_toml(&context.settings, path)
-                    .map_err(|e| eprintln!("Can't save settings: {:#}.", e))
+                    .map_err(|e| error!("Can't save settings: {:#}.", e))
                     .ok();
                 context.library.flush();
 
@@ -1401,6 +1407,8 @@ pub fn run() -> Result<(), Error> {
         }
         _ => (),
     }
+
+    cadmus_core::logging::shutdown_logging();
 
     Ok(())
 }

@@ -13,6 +13,7 @@ use crate::view::{Align, Bus, Event, Hub, Id, RenderData, RenderQueue, View, ID_
 use crate::view::{SMALL_BAR_HEIGHT, THICKNESS_MEDIUM};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
+use tracing::warn;
 
 #[derive(Debug)]
 pub struct DirectoriesBar {
@@ -574,7 +575,7 @@ impl View for DirectoriesBar {
                         if let Some(icon) = page[index].downcast_mut::<Icon>() {
                             icon.active = false;
                         } else {
-                            println!("oups");
+                            warn!("Unexpected directory bar icon type");
                         }
                         rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
                     }

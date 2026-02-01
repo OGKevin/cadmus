@@ -29,6 +29,7 @@ use std::fs::{self, File};
 use std::os::unix::fs::FileExt;
 use std::path::Path;
 use std::process::Command;
+use tracing::error;
 use unicode_normalization::char::is_combining_mark;
 use unicode_normalization::UnicodeNormalization;
 
@@ -236,11 +237,11 @@ pub fn asciify(name: &str) -> String {
 pub fn open<P: AsRef<Path>>(path: P) -> Option<Box<dyn Document>> {
     file_kind(path.as_ref()).and_then(|k| match k.as_ref() {
         "epub" => EpubDocument::new(&path)
-            .map_err(|e| eprintln!("{}: {:#}.", path.as_ref().display(), e))
+            .map_err(|e| error!("{}: {:#}.", path.as_ref().display(), e))
             .map(|d| Box::new(d) as Box<dyn Document>)
             .ok(),
         "html" | "htm" => HtmlDocument::new(&path)
-            .map_err(|e| eprintln!("{}: {:#}.", path.as_ref().display(), e))
+            .map_err(|e| error!("{}: {:#}.", path.as_ref().display(), e))
             .map(|d| Box::new(d) as Box<dyn Document>)
             .ok(),
         "djvu" | "djv" => {
@@ -558,7 +559,7 @@ pub fn sys_info_as_html() -> String {
 
     let output = Command::new("scripts/ip.sh")
         .output()
-        .map_err(|e| eprintln!("Can't execute command: {:#}.", e))
+        .map_err(|e| error!("Can't execute command: {:#}.", e))
         .ok();
 
     if let Some(stdout) = output
@@ -630,7 +631,7 @@ pub fn sys_info_as_html() -> String {
     let output = Command::new("/bin/ntx_hwconfig")
         .args(&["-s", "/dev/mmcblk0"])
         .output()
-        .map_err(|e| eprintln!("Can't execute command: {:#}.", e))
+        .map_err(|e| error!("Can't execute command: {:#}.", e))
         .ok();
 
     let mut map = FxHashMap::default();

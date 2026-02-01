@@ -1,5 +1,6 @@
 {
   pkgs,
+  config,
   ...
 }:
 
@@ -58,6 +59,32 @@ let
     # Tests are broken upstream
     doCheck = false;
   };
+
+  # Grafana datasource provisioning
+  grafanaDatasources = pkgs.writeText "datasources.yaml" ''
+    apiVersion: 1
+    datasources:
+      - name: Tempo
+        type: tempo
+        access: proxy
+        url: http://localhost:3200
+        isDefault: false
+        editable: true
+
+      - name: Loki
+        type: loki
+        access: proxy
+        url: http://localhost:3100
+        isDefault: false
+        editable: true
+
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://localhost:9090
+        isDefault: true
+        editable: true
+  '';
 in
 {
   overlays = [ ];
@@ -106,6 +133,11 @@ in
     pkgs.openjpeg
     pkgs.jbig2dec
     pkgs.gumbo
+
+    # Observability tools (for OTEL instrumentation in dev mode)
+    pkgs.grafana
+    pkgs.tempo
+    pkgs.grafana-loki
   ];
 
   # Enable Rust with cross-compilation support
@@ -136,6 +168,239 @@ in
     # C compiler for ARM target (used by cc crate for build scripts)
     CC_arm_unknown_linux_gnueabihf = "arm-linux-gnueabihf-gcc";
     AR_arm_unknown_linux_gnueabihf = "arm-linux-gnueabihf-ar";
+
+    RUST_LOG = "debug";
+    RUST_BACKTRACE = "1";
+    OTEL_EXPORTER_OTLP_ENDPOINT = "http://localhost:4318";
+  };
+
+  services.opentelemetry-collector = {
+    enable = true;
+    settings = {
+      receivers.otlp.protocols = {
+        grpc.endpoint = "0.0.0.0:4317";
+        http.endpoint = "0.0.0.0:4318";
+      };
+
+      processors.batch = { };
+
+      exporters = {
+        "otlp/tempo" = {
+          endpoint = "localhost:4327";
+          tls.insecure = true;
+        };
+
+        loki = {
+          endpoint = "http://localhost:3100/loki/api/v1/push";
+        };
+
+        prometheus = {
+          endpoint = "0.0.0.0:8889";
+        };
+
+        debug = {
+          verbosity = "basic";
+        };
+      };
+
+      service.pipelines = {
+        traces = {
+          receivers = [ "otlp" ];
+          processors = [ "batch" ];
+          exporters = [
+            "otlp/tempo"
+            "debug"
+          ];
+        };
+
+        logs = {
+          receivers = [ "otlp" ];
+          processors = [ "batch" ];
+          exporters = [ "loki" ];
+        };
+
+        metrics = {
+          receivers = [ "otlp" ];
+          processors = [ "batch" ];
+          exporters = [ "prometheus" ];
+        };
+      };
+    };
+  };
+
+  services.prometheus = {
+    enable = true;
+    port = 9090;
+
+    storage = {
+      path = "${config.devenv.state}/prometheus";
+      retentionTime = "1h";
+    };
+
+    globalConfig = {
+      scrape_interval = "15s";
+      evaluation_interval = "15s";
+    };
+
+    scrapeConfigs = [
+      {
+        job_name = "otel-collector";
+        static_configs = [
+          {
+            targets = [ "localhost:8889" ];
+          }
+        ];
+      }
+      {
+        job_name = "prometheus";
+        static_configs = [
+          {
+            targets = [ "localhost:9090" ];
+          }
+        ];
+      }
+    ];
+  };
+
+  # Processes for Grafana, Tempo, and Loki
+  processes = {
+    tempo = {
+      exec = ''
+        mkdir -p ${config.devenv.state}/tempo/{traces,wal,work}
+
+        ${pkgs.tempo}/bin/tempo \
+          -config.file=${pkgs.writeText "tempo.yaml" ''
+            server:
+              http_listen_port: 3200
+              grpc_listen_port: 9096
+
+            distributor:
+              receivers:
+                otlp:
+                  protocols:
+                    grpc:
+                      endpoint: 0.0.0.0:4327
+                    http:
+                      endpoint: 0.0.0.0:4328
+
+            ingester:
+              max_block_duration: 5m
+              trace_idle_period: 10s
+
+            memberlist:
+              bind_addr:
+                - 127.0.0.1
+              abort_if_cluster_join_fails: false
+
+            compactor:
+              compaction:
+                block_retention: 1h
+              ring:
+                kvstore:
+                  store: inmemory
+                instance_addr: 127.0.0.1
+
+            storage:
+              trace:
+                backend: local
+                local:
+                  path: ${config.devenv.state}/tempo/traces
+                wal:
+                  path: ${config.devenv.state}/tempo/wal
+
+            query_frontend:
+              search:
+                max_duration: 1h
+          ''} \
+          -target=all \
+          -backend-scheduler.local-work-path=${config.devenv.state}/tempo/work
+      '';
+    };
+
+    loki = {
+      exec = ''
+        mkdir -p ${config.devenv.state}/loki/{index,cache,chunks,wal,compactor}
+
+        ${pkgs.grafana-loki}/bin/loki \
+          -config.file=${pkgs.writeText "loki.yaml" ''
+            auth_enabled: false
+
+            server:
+              http_listen_port: 3100
+              grpc_listen_port: 9095
+
+            common:
+              path_prefix: ${config.devenv.state}/loki
+              replication_factor: 1
+              ring:
+                kvstore:
+                  store: inmemory
+
+            ingester:
+              lifecycler:
+                ring:
+                  kvstore:
+                    store: inmemory
+                  replication_factor: 1
+              chunk_idle_period: 5m
+              chunk_retain_period: 30s
+              wal:
+                enabled: true
+                dir: ${config.devenv.state}/loki/wal
+
+            schema_config:
+              configs:
+                - from: 2024-01-01
+                  store: tsdb
+                  object_store: filesystem
+                  schema: v13
+                  index:
+                    prefix: index_
+                    period: 24h
+
+            storage_config:
+              tsdb_shipper:
+                active_index_directory: ${config.devenv.state}/loki/index
+                cache_location: ${config.devenv.state}/loki/cache
+              filesystem:
+                directory: ${config.devenv.state}/loki/chunks
+
+            compactor:
+              working_directory: ${config.devenv.state}/loki/compactor
+              compaction_interval: 10m
+
+            limits_config:
+              retention_period: 1h
+              max_query_lookback: 1h
+          ''}
+      '';
+    };
+
+    grafana = {
+      exec = ''
+        mkdir -p ${config.devenv.state}/grafana/data
+        mkdir -p ${config.devenv.state}/grafana/logs
+        mkdir -p ${config.devenv.state}/grafana/plugins
+        mkdir -p ${config.devenv.state}/grafana/provisioning/datasources
+
+        rm -f ${config.devenv.state}/grafana/provisioning/datasources/datasources.yaml
+        cat ${grafanaDatasources} > ${config.devenv.state}/grafana/provisioning/datasources/datasources.yaml
+        chmod 644 ${config.devenv.state}/grafana/provisioning/datasources/datasources.yaml
+
+        export GF_PATHS_DATA=${config.devenv.state}/grafana/data
+        export GF_PATHS_LOGS=${config.devenv.state}/grafana/logs
+        export GF_PATHS_PLUGINS=${config.devenv.state}/grafana/plugins
+        export GF_PATHS_PROVISIONING=${config.devenv.state}/grafana/provisioning
+        export GF_SERVER_HTTP_PORT=3000
+        export GF_AUTH_ANONYMOUS_ENABLED=true
+        export GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+        export GF_SECURITY_ADMIN_PASSWORD=admin
+
+        ${pkgs.grafana}/bin/grafana server \
+          --homepath ${pkgs.grafana}/share/grafana \
+          --config ${pkgs.grafana}/share/grafana/conf/defaults.ini
+      '';
+    };
   };
 
   scripts = {
@@ -234,6 +499,27 @@ in
       exec ./build.sh "$@"
       exec ./dist.sh
     '';
+
+    # Build and run emulator with OTEL instrumentation
+    cadmus-dev-otel.exec = ''
+      set -e
+
+      echo ""
+      echo "Observability Stack:"
+      echo "  Grafana:    http://localhost:3000 (admin/admin)"
+      echo "  Tempo:      http://localhost:3200"
+      echo "  Loki:       http://localhost:3100"
+      echo "  Prometheus: http://localhost:9090"
+      echo "  OTLP:       http://localhost:4318"
+      echo ""
+      echo "Starting instrumented emulator..."
+      echo "   Traces will be visible in Grafana → Explore → Tempo"
+      echo ""
+
+      export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4318"
+
+      ./run-emulator.sh --features otel "$@"
+    '';
   };
 
   enterShell = ''
@@ -247,6 +533,12 @@ in
     echo "  cadmus-build-kobo    - Build for Kobo (sets up cross-compilation env)"
     echo "  cargo test           - Run tests (after setup)"
     echo "  ./run-emulator.sh    - Run the emulator (after setup)"
+    echo ""
+    echo "Observability (OTEL):"
+    echo "  devenv up            - Start all services (inc. observability stack)"
+    echo "  cadmus-dev-otel      - Build & run emulator with OTEL enabled"
+    echo ""
+    echo "  After 'devenv up', visit http://localhost:3000 for Grafana"
     echo ""
     echo "Linaro toolchain: $(which arm-linux-gnueabihf-gcc 2>/dev/null || echo 'not found')"
   '';
