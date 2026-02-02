@@ -141,6 +141,7 @@ pub fn toggle_main_menu(
                 EntryId::Launch(AppCmd::Calculator),
             ),
             EntryKind::Command("Sketch".to_string(), EntryId::Launch(AppCmd::Sketch)),
+            EntryKind::Command("Terminal".to_string(), EntryId::Launch(AppCmd::Terminal)),
             EntryKind::Separator,
             EntryKind::Command(
                 "Touch Events".to_string(),

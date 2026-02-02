@@ -280,7 +280,11 @@ impl View for InputField {
                     KeyboardEvent::Submit => {
                         bus.push_back(Event::Submit(self.view_id, self.text.clone()));
                         context.record_input(&self.text, self.view_id);
-                    }
+                    },
+                    KeyboardEvent::Raw(_) => {
+                    },
+                    KeyboardEvent::Control(_) => {
+                    },
                 };
                 rq.add(RenderData::no_wait(self.id, self.rect, UpdateMode::Gui));
                 true

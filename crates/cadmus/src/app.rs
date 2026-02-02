@@ -39,6 +39,7 @@ use cadmus_core::view::ota::show_ota_view;
 use cadmus_core::view::reader::Reader;
 use cadmus_core::view::rotation_values::RotationValues;
 use cadmus_core::view::sketch::Sketch;
+use cadmus_core::view::terminal::Terminal;
 use cadmus_core::view::touch_events::TouchEvents;
 use cadmus_core::view::{handle_event, process_render_queue, wait_for_all};
 use cadmus_core::view::{
@@ -1101,6 +1102,9 @@ pub fn run() -> Result<(), Error> {
                         &mut rq,
                         &mut context,
                     )),
+                    AppCmd::Terminal => {
+                        Box::new(Terminal::new(context.fb.rect(), context.settings.terminal.font_size, &mut rq, &mut context, &tx)?)
+                    }
                 };
                 transfer_notifications(view.as_mut(), next_view.as_mut(), &mut rq, &mut context);
                 history.push(HistoryItem {
