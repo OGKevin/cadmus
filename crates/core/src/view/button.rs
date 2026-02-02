@@ -40,6 +40,7 @@ impl Button {
 }
 
 impl View for Button {
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _hub, bus, rq, _context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
@@ -74,6 +75,7 @@ impl View for Button {
         }
     }
 
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, fb, fonts, _rect), fields(rect = ?_rect)))]
     fn render(&self, fb: &mut dyn Framebuffer, _rect: Rectangle, fonts: &mut Fonts) {
         let dpi = CURRENT_DEVICE.dpi;
 

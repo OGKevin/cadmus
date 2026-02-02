@@ -14,7 +14,6 @@ use fxhash::FxHashMap;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-#[derive(Debug)]
 pub struct NavigationBar {
     id: Id,
     pub rect: Rectangle,
@@ -343,6 +342,7 @@ fn guess_bar_size(dirs: &BTreeSet<PathBuf>) -> usize {
 }
 
 impl View for NavigationBar {
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _hub, bus, _rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
@@ -376,6 +376,7 @@ impl View for NavigationBar {
         }
     }
 
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _fb, _fonts, _rect), fields(rect = ?_rect)))]
     fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {}
 
     fn rect(&self) -> &Rectangle {

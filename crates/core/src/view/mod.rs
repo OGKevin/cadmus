@@ -165,6 +165,7 @@ impl Debug for Box<dyn View> {
 // capture any tap gesture with a touch point inside their rectangle.
 // A child can send events to the main channel through the *hub* or communicate with its parent through the *bus*.
 // A view that wants to render can write to the rendering queue.
+#[cfg_attr(feature = "otel", tracing::instrument(skip(view, hub, parent_bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
 pub fn handle_event(
     view: &mut dyn View,
     evt: &Event,
@@ -206,6 +207,7 @@ pub fn handle_event(
 // We render from bottom to top. For a view to render it has to either appear in `ids` or intersect
 // one of the rectangles in `bgs`. When we're about to render a view, if `wait` is true, we'll wait
 // for all the updates in `updating` that intersect with the view.
+#[cfg_attr(feature = "otel", tracing::instrument(skip(view, ids, rects, bgs, fb, fonts, updating), fields(wait = wait)))]
 pub fn render(
     view: &dyn View,
     wait: bool,

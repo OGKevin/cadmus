@@ -9,7 +9,6 @@ use crate::view::icon::Icon;
 use crate::view::page_label::PageLabel;
 use crate::view::{Bus, Event, Hub, Id, RenderData, RenderQueue, View, ID_FEEDER};
 
-#[derive(Debug)]
 pub struct BottomBar {
     id: Id,
     rect: Rectangle,
@@ -156,6 +155,7 @@ impl BottomBar {
 }
 
 impl View for BottomBar {
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _evt, _hub, _bus, _rq, _context), fields(event = ?_evt), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         _evt: &Event,
@@ -167,6 +167,7 @@ impl View for BottomBar {
         false
     }
 
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _fb, _fonts, _rect), fields(rect = ?_rect)))]
     fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {}
 
     fn resize(&mut self, rect: Rectangle, hub: &Hub, rq: &mut RenderQueue, context: &mut Context) {

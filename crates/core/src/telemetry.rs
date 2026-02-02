@@ -41,8 +41,9 @@
 use crate::settings::LoggingSettings;
 use anyhow::{Context, Error};
 use gethostname::gethostname;
+use opentelemetry::trace::TracerProvider;
 use opentelemetry::{global, KeyValue};
-use opentelemetry_otlp::WithExportConfig;
+use opentelemetry_otlp::{Protocol, WithExportConfig};
 use opentelemetry_sdk::logs::{BatchLogProcessor, LoggerProvider as SdkLoggerProvider};
 use opentelemetry_sdk::trace::{
     BatchSpanProcessor, Config as TraceConfig, TracerProvider as SdkTracerProvider,
@@ -51,6 +52,7 @@ use opentelemetry_sdk::{runtime, Resource};
 use std::sync::{mpsc, OnceLock};
 use std::thread;
 use std::time::Duration;
+use tracing_subscriber::Layer;
 
 const GIT_VERSION: &str = env!("GIT_VERSION");
 const SERVICE_NAME: &str = "cadmus";
@@ -100,18 +102,13 @@ static LOGGER_PROVIDER: OnceLock<SdkLoggerProvider> = OnceLock::new();
 /// let layer = init_telemetry(&settings, "run-123")?;
 /// # Ok::<(), anyhow::Error>(())
 /// ```
-pub fn init_telemetry(
+pub fn init_telemetry<S>(
     settings: &LoggingSettings,
     run_id: &str,
-) -> Result<
-    Option<
-        opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge<
-            SdkLoggerProvider,
-            opentelemetry_sdk::logs::Logger,
-        >,
-    >,
-    Error,
-> {
+) -> Result<Option<impl Layer<S> + Send + Sync + 'static>, Error>
+where
+    S: tracing::Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a> + Send + Sync,
+{
     let endpoint = match otel_endpoint(settings) {
         Some(endpoint) => endpoint,
         None => return Ok(None),
@@ -134,15 +131,20 @@ pub fn init_telemetry(
 
     global::set_tracer_provider(tracer_provider.clone());
 
-    let layer =
+    let tracer = tracer_provider.tracer(SERVICE_NAME);
+    let trace_layer = tracing_opentelemetry::layer().with_tracer(tracer);
+
+    let log_layer =
         opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge::new(logger_provider);
+
+    let combined_layer = trace_layer.and_then(log_layer);
 
     println!(
         "Initialized OpenTelemetry telemetry with endpoint {}",
         endpoint
     );
 
-    Ok(Some(layer))
+    Ok(Some(combined_layer))
 }
 
 /// This ensures that when there are connection failures during shutdown, it doesn't block
@@ -241,7 +243,9 @@ fn otel_endpoint(settings: &LoggingSettings) -> Option<String> {
 fn build_tracer_provider(endpoint: &str, resource: Resource) -> Result<SdkTracerProvider, Error> {
     let exporter = opentelemetry_otlp::new_exporter()
         .http()
-        .with_endpoint(endpoint)
+        .with_endpoint(format!("{}/v1/traces", endpoint.trim_end_matches('/')))
+        .with_protocol(Protocol::HttpBinary)
+        .with_timeout(Duration::from_secs(3))
         .build_span_exporter()
         .context("can't build otlp span exporter")?;
     let processor = BatchSpanProcessor::builder(exporter, runtime::TokioCurrentThread).build();
@@ -273,6 +277,8 @@ fn build_logger_provider(endpoint: &str, resource: Resource) -> Result<SdkLogger
     let exporter = opentelemetry_otlp::new_exporter()
         .http()
         .with_endpoint(format!("{}/v1/logs", endpoint.trim_end_matches('/')))
+        .with_protocol(Protocol::HttpBinary)
+        .with_timeout(Duration::from_secs(3))
         .build_log_exporter()
         .context("can't build otlp log exporter")?;
     let processor = BatchLogProcessor::builder(exporter, runtime::TokioCurrentThread).build();

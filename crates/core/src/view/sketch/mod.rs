@@ -293,6 +293,7 @@ fn draw_segment(
 }
 
 impl View for Sketch {
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, hub, _bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
@@ -416,6 +417,7 @@ impl View for Sketch {
         }
     }
 
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, fb, _fonts), fields(rect = ?rect)))]
     fn render(&self, fb: &mut dyn Framebuffer, rect: Rectangle, _fonts: &mut Fonts) {
         fb.draw_framed_pixmap_halftone(&self.pixmap, &rect, rect.min);
     }

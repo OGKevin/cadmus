@@ -29,6 +29,7 @@ impl Image {
 }
 
 impl View for Image {
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _evt, _hub, _bus, _rq, _context), fields(event = ?_evt), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         _evt: &Event,
@@ -40,6 +41,7 @@ impl View for Image {
         false
     }
 
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, fb, _fonts), fields(rect = ?rect)))]
     fn render(&self, fb: &mut dyn Framebuffer, rect: Rectangle, _fonts: &mut Fonts) {
         let x0 = self.rect.min.x + (self.rect.width() - self.pixmap.width) as i32 / 2;
         let y0 = self.rect.min.y + (self.rect.height() - self.pixmap.height) as i32 / 2;

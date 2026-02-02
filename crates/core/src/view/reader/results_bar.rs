@@ -11,7 +11,6 @@ use crate::view::icon::Icon;
 use crate::view::page_label::PageLabel;
 use crate::view::{Bus, Event, Hub, Id, RenderData, RenderQueue, View, ViewId, ID_FEEDER};
 
-#[derive(Debug)]
 pub struct ResultsBar {
     id: Id,
     rect: Rectangle,
@@ -155,6 +154,7 @@ impl ResultsBar {
 }
 
 impl View for ResultsBar {
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _hub, bus, _rq, _context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
@@ -183,6 +183,7 @@ impl View for ResultsBar {
         }
     }
 
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _fb, _fonts, _rect), fields(rect = ?_rect)))]
     fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {}
 
     fn resize(&mut self, rect: Rectangle, hub: &Hub, rq: &mut RenderQueue, context: &mut Context) {

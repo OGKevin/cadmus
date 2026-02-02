@@ -12,7 +12,6 @@ use crate::view::icon::Icon;
 use crate::view::input_field::InputField;
 use crate::view::{Bus, Event, Hub, Id, RenderQueue, View, ViewId, ID_FEEDER, THICKNESS_MEDIUM};
 
-#[derive(Debug)]
 pub struct AddressBar {
     id: Id,
     pub rect: Rectangle,
@@ -97,6 +96,7 @@ impl AddressBar {
 }
 
 impl View for AddressBar {
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _hub, _bus, _rq, _context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
@@ -120,6 +120,7 @@ impl View for AddressBar {
         }
     }
 
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _fb, _fonts, _rect), fields(rect = ?_rect)))]
     fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {}
 
     fn resize(&mut self, rect: Rectangle, hub: &Hub, rq: &mut RenderQueue, context: &mut Context) {

@@ -24,6 +24,7 @@ impl Filler {
 }
 
 impl View for Filler {
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _evt, _hub, _bus, _rq, _context), fields(event = ?_evt), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         _evt: &Event,
@@ -35,6 +36,7 @@ impl View for Filler {
         false
     }
 
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, fb, _fonts), fields(rect = ?rect)))]
     fn render(&self, fb: &mut dyn Framebuffer, rect: Rectangle, _fonts: &mut Fonts) {
         if let Some(r) = self.rect.intersection(&rect) {
             fb.draw_rectangle(&r, self.color);
