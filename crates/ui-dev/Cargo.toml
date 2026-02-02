@@ -1,0 +1,12 @@
+[package]
+name = "ui-dev"
+version = "0.9.45"
+edition = "2024"
+
+[[bin]]
+name = "plato-ui-dev"
+path = "src/main.rs"
+
+[dependencies]
+cadmus-core = { path = "../core" }
+sdl2 = "0.38.0"

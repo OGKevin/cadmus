@@ -23,6 +23,18 @@
       "skip-github-release": true,
       "skip-changelog": true
     },
+    "crates/ui-dev": {
+      "release-type": "rust",
+      "component": "ui-dev",
+      "skip-github-release": true,
+      "skip-changelog": true
+    },
+    "crates/ui-dev": {
+      "release-type": "rust",
+      "component": "ui-dev",
+      "skip-github-release": true,
+      "skip-changelog": true
+    },
     "crates/emulator": {
       "release-type": "rust",
       "component": "emulator",
@@ -52,8 +64,9 @@
         "cadmus-core",
         "cadmus-bin",
         "emulator",
+        "fetcher",
         "importer",
-        "fetcher"
+        "ui-dev"
       ]
     }
   ]

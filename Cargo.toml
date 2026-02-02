@@ -4,6 +4,7 @@ members = [
   "crates/core",
   "crates/cadmus",
   "crates/emulator",
+  "crates/ui-dev",
   "crates/importer",
   "crates/fetcher",
 ]
