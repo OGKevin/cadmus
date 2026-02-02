@@ -51,6 +51,7 @@ use std::path::Path;
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
+use tracing::info;
 
 pub const APP_NAME: &str = "Cadmus";
 const DEFAULT_ROTATION: i8 = 1;
@@ -59,6 +60,13 @@ const CLOCK_REFRESH_INTERVAL: Duration = Duration::from_secs(60);
 
 pub fn build_context(fb: Box<dyn Framebuffer>) -> Result<Context, Error> {
     let settings = load_toml::<Settings, _>(SETTINGS_PATH)?;
+
+    // Initialize logging
+    cadmus_core::logging::init_logging(&settings.logging)
+        .context("Failed to initialize logging")?;
+
+    info!("Starting Cadmus emulator");
+
     let library_settings = &settings.libraries[settings.selected_library];
     let library = Library::new(&library_settings.path, library_settings.mode)?;
 
@@ -312,11 +320,11 @@ fn main() -> Result<(), Error> {
         context.frontlight.set_intensity(0.0);
     }
 
-    println!(
+    info!(
         "{} is running on a Kobo {}.",
         APP_NAME, CURRENT_DEVICE.model
     );
-    println!(
+    info!(
         "The framebuffer resolution is {} by {}.",
         context.fb.rect().width(),
         context.fb.rect().height()
@@ -834,6 +842,8 @@ fn main() -> Result<(), Error> {
 
     let path = Path::new(SETTINGS_PATH);
     save_toml(&context.settings, path).context("can't save settings")?;
+
+    cadmus_core::logging::shutdown_logging();
 
     Ok(())
 }

@@ -15,6 +15,7 @@ use std::path::Path;
 use std::ptr;
 use std::rc::Rc;
 use std::slice;
+use tracing::error;
 
 const USER_STYLESHEET: &str = "css/html-user.css";
 
@@ -100,7 +101,7 @@ impl PdfOpener {
             .and_then(|s| CString::new(s).map_err(Into::into))
             .map_err(|e| {
                 if e.kind() != ErrorKind::NotFound {
-                    eprintln!("{:#}", e)
+                    error!("{:#}", e)
                 }
             })
         {

@@ -29,6 +29,7 @@ use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::thread;
+use tracing::error;
 
 const APP_DIR: &str = "bin/ivy";
 const APP_NAME: &str = "ivy";
@@ -649,7 +650,7 @@ impl Calculator {
         unsafe { libc::kill(self.process.id() as libc::pid_t, libc::SIGTERM) };
         self.process
             .wait()
-            .map_err(|e| eprintln!("Can't wait for child process: {:#}.", e))
+            .map_err(|e| error!("Can't wait for child process: {:#}.", e))
             .ok();
         context.settings.calculator.font_size = self.font_size;
         context.settings.calculator.margin_width = self.margin_width;

@@ -8,6 +8,7 @@ use crate::gesture::GestureEvent;
 use crate::view::{Bus, Event, Hub, RenderData, RenderQueue, View};
 use crate::view::{Id, ID_FEEDER};
 use std::mem;
+use tracing::{debug, error, info};
 
 const MESSAGE_1: &str = "Hold you device in portrait mode\n\
                          with the Kobo logo at the bottom,\n\
@@ -80,7 +81,7 @@ impl View for RotationValues {
                     mem::swap(&mut pt.x, &mut pt.y);
                 }
 
-                println!("Tap {} {:?}", pt, context.fb.dims());
+                debug!("Tap {} {:?}", pt, context.fb.dims());
 
                 self.taps.push(pt);
                 self.finished = self.taps.len() >= 2 * CORNERS_COUNT;
@@ -94,7 +95,7 @@ impl View for RotationValues {
                     context
                         .fb
                         .set_rotation(rotation)
-                        .map_err(|e| eprintln!("Can't set rotation: {:#}.", e))
+                        .map_err(|e| error!("Can't set rotation: {:#}.", e))
                         .ok();
                     if context.fb.rotation() == self.read_rotation {
                         self.written_rotation = rotation;
@@ -122,8 +123,8 @@ impl View for RotationValues {
                     let next = self.taps[CORNERS_COUNT + (center + 1) % 4];
                     let polarity = 2 * ((origin + startup_rotation) as i8 % 2) - 1;
                     let dir = if next.x < next.y { polarity } else { -polarity };
-                    println!("Startup rotation: {}.", startup_rotation);
-                    println!("Mirroring scheme: ({}, {}).", center, dir);
+                    info!("Startup rotation: {}.", startup_rotation);
+                    info!("Mirroring scheme: ({}, {}).", center, dir);
                     hub.send(Event::Back).ok();
                 } else {
                     rq.add(RenderData::new(self.id, self.rect, UpdateMode::Full));

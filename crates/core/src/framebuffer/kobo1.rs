@@ -13,6 +13,7 @@ use std::os::unix::io::AsRawFd;
 use std::path::Path;
 use std::ptr;
 use std::slice;
+use tracing::{error, info};
 
 impl Into<MxcfbRect> for Rectangle {
     fn into(self) -> MxcfbRect {
@@ -376,7 +377,7 @@ impl Framebuffer for KoboFramebuffer1 {
         self.fix_info = fix_screen_info(&self.file)?;
         self.frame_size = (self.var_info.yres * self.fix_info.line_length) as libc::size_t;
 
-        println!("Framebuffer rotation: {} -> {}.", n, self.rotation());
+        info!("Framebuffer rotation: {} -> {}.", n, self.rotation());
 
         Ok((self.var_info.xres, self.var_info.yres))
     }
@@ -404,7 +405,7 @@ impl Framebuffer for KoboFramebuffer1 {
                         b"night_mode 0"
                     })
                 })
-                .map_err(|e| eprintln!("Failed to invert colors: {:#?}", e))
+                .map_err(|e| error!("Failed to invert colors: {:#?}", e))
                 .ok();
         }
     }

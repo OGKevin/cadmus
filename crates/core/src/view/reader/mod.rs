@@ -69,6 +69,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering as AtomicOrdering;
 use std::sync::{Arc, Mutex};
 use std::thread;
+use tracing::{error, info};
 
 const HISTORY_SIZE: usize = 32;
 const RECT_DIST_JITTER: f32 = 24.0;
@@ -418,7 +419,7 @@ impl Reader {
             let synthetic = doc.has_synthetic_page_numbers();
             let reflowable = doc.is_reflowable();
 
-            println!("{}", info.file.path.display());
+            info!("{}", info.file.path.display());
 
             hub.send(Event::Update(UpdateMode::Partial)).ok();
 
@@ -2565,7 +2566,7 @@ impl Reader {
             }
 
             let mut families = family_names(&context.settings.reader.font_path)
-                .map_err(|e| eprintln!("Can't get family names: {:#}.", e))
+                .map_err(|e| error!("Can't get family names: {:#}.", e))
                 .unwrap_or_default();
             let current_family = self
                 .info
@@ -4286,7 +4287,7 @@ impl View for Reader {
                                     OpenOptions::new().create(true).append(true).open(path)
                                 {
                                     if let Err(e) = writeln!(file, "{}", link.text) {
-                                        eprintln!("Couldn't write to {}: {:#}.", path.display(), e);
+                                        error!("Couldn't write to {}: {:#}.", path.display(), e);
                                     } else {
                                         let message = format!("Queued {}.", link.text);
                                         let notif = Notification::new(
@@ -4297,7 +4298,7 @@ impl View for Reader {
                                 }
                             }
                         } else {
-                            eprintln!("Can't resolve URI: {}.", link.text);
+                            error!("Can't resolve URI: {}.", link.text);
                         }
                     }
                     return true;

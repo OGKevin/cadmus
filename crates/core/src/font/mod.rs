@@ -24,6 +24,7 @@ use std::rc::Rc;
 use std::slice;
 use std::str;
 use thiserror::Error;
+use tracing::{error, warn};
 use walkdir::WalkDir;
 
 // Font sizes in 1/64th of a point
@@ -587,12 +588,12 @@ pub fn family_names<P: AsRef<Path>>(search_path: P) -> Result<BTreeSet<String>, 
         }
         if let Ok(font) = opener
             .open(path)
-            .map_err(|e| eprintln!("Can't open '{}': {:#}.", path.display(), e))
+            .map_err(|e| error!("Can't open '{}': {:#}.", path.display(), e))
         {
             if let Some(family_name) = font.family_name() {
                 families.insert(family_name.to_string());
             } else {
-                eprintln!("Can't get the family name of '{}'.", path.display());
+                warn!("Can't get the family name of '{}'.", path.display());
             }
         }
     }
@@ -624,7 +625,7 @@ impl FontFamily {
             }
             if let Ok(font) = opener
                 .open(path)
-                .map_err(|e| eprintln!("Can't open '{}': {:#}.", path.display(), e))
+                .map_err(|e| error!("Can't open '{}': {:#}.", path.display(), e))
             {
                 if font.family_name() == Some(family_name) {
                     styles.insert(

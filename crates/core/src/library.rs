@@ -13,6 +13,7 @@ use std::io::{Error as IoError, ErrorKind};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::time::{Duration, SystemTime};
+use tracing::{debug, error, info, warn};
 use walkdir::WalkDir;
 
 pub const METADATA_FILENAME: &str = ".metadata.json";
@@ -77,13 +78,13 @@ impl Library {
                 .and_then(|v| Fp::from_str(v).ok())
             {
                 if let Ok(reader_info) =
-                    load_json(path).map_err(|e| eprintln!("Can't load reading state: {:#}.", e))
+                    load_json(path).map_err(|e| error!("Can't load reading state: {:#}.", e))
                 {
                     if mode == LibraryMode::Database {
                         if let Some(info) = db.get_mut(&fp) {
                             info.reader = Some(reader_info);
                         } else {
-                            eprintln!("Unknown fingerprint: {}.", fp);
+                            warn!("Unknown fingerprint: {}.", fp);
                         }
                     } else {
                         reading_states.insert(fp, reader_info);
@@ -255,7 +256,7 @@ impl Library {
             // The fp is know: update the path if it changed.
             if self.db.contains_key(&fp) {
                 if relat != self.db[&fp].file.path {
-                    println!(
+                    debug!(
                         "Update path for {}: {} → {}.",
                         fp,
                         self.db[&fp].file.path.display(),
@@ -268,7 +269,7 @@ impl Library {
                 }
             // The path is known: update the fp.
             } else if let Some(fp2) = self.paths.get(relat).cloned() {
-                println!(
+                debug!(
                     "Update fingerprint for {}: {} → {}.",
                     relat.display(),
                     fp2,
@@ -314,7 +315,7 @@ impl Library {
                 // drift by one second, when the file is created within an operating system
                 // and moved within another.
                 if let Some(nfp) = nfp {
-                    println!(
+                    debug!(
                         "Update fingerprint for {}: {} → {}.",
                         self.db[&nfp].file.path.display(),
                         nfp,
@@ -329,7 +330,7 @@ impl Library {
                     let tp2 = self.thumbnail_preview_path(fp);
                     fs::rename(tp1, tp2).ok();
                     if relat != self.db[&fp].file.path {
-                        println!(
+                        debug!(
                             "Update path for {}: {} → {}.",
                             fp,
                             self.db[&fp].file.path.display(),
@@ -345,7 +346,7 @@ impl Library {
                     if !settings.allowed_kinds.contains(&kind) {
                         continue;
                     }
-                    println!("Add new entry: {}, {}.", fp, relat.display());
+                    info!("Add new entry: {}, {}.", fp, relat.display());
                     let size = md.len();
                     let file = FileInfo {
                         path: relat.to_path_buf(),
@@ -375,7 +376,7 @@ impl Library {
             if path.exists() {
                 true
             } else {
-                println!("Remove entry: {}, {}.", fp, info.file.path.display());
+                info!("Remove entry: {}, {}.", fp, info.file.path.display());
                 false
             }
         });
@@ -712,7 +713,7 @@ impl Library {
             if fps.contains(fp) {
                 true
             } else {
-                println!("Remove reading state for {}.", fp);
+                info!("Remove reading state for {}.", fp);
                 false
             }
         });
@@ -862,7 +863,7 @@ impl Library {
 
             match load_json(&path) {
                 Err(e) => {
-                    eprintln!("Can't reload database: {:#}.", e);
+                    error!("Can't reload database: {:#}.", e);
                     return;
                 }
                 Ok(v) => {
@@ -888,13 +889,13 @@ impl Library {
                 .and_then(|v| Fp::from_str(v).ok())
             {
                 if let Ok(reader_info) =
-                    load_json(path).map_err(|e| eprintln!("Can't load reading state: {:#}.", e))
+                    load_json(path).map_err(|e| error!("Can't load reading state: {:#}.", e))
                 {
                     if self.mode == LibraryMode::Database {
                         if let Some(info) = self.db.get_mut(&fp) {
                             info.reader = Some(reader_info);
                         } else {
-                            eprintln!("Unknown fingerprint: {}.", fp);
+                            warn!("Unknown fingerprint: {}.", fp);
                         }
                     } else {
                         self.reading_states.insert(fp, reader_info);
@@ -921,7 +922,7 @@ impl Library {
             };
             if let Some(reader_info) = reader_info {
                 save_json(reader_info, self.reading_state_path(*fp))
-                    .map_err(|e| eprintln!("Can't save reading state: {:#}.", e))
+                    .map_err(|e| error!("Can't save reading state: {:#}.", e))
                     .ok();
             }
         }
@@ -930,7 +931,7 @@ impl Library {
 
         if self.has_db_changed {
             save_json(&self.db, self.home.join(METADATA_FILENAME))
-                .map_err(|e| eprintln!("Can't save database: {:#}.", e))
+                .map_err(|e| error!("Can't save database: {:#}.", e))
                 .ok();
             self.has_db_changed = false;
         }

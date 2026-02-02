@@ -169,6 +169,7 @@ pub struct Settings {
     pub battery: BatterySettings,
     pub frontlight_levels: LightLevels,
     pub ota: OtaSettings,
+    pub logging: LoggingSettings,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -408,6 +409,23 @@ pub struct BatterySettings {
     pub power_off: f32,
 }
 
+/// Configures structured logging to disk and optional OTLP export.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, rename_all = "kebab-case")]
+pub struct LoggingSettings {
+    /// Enables logging output when set to true.
+    pub enabled: bool,
+    /// Minimum log level to record (for example: "info", "debug").
+    pub level: String,
+    /// Maximum number of rotated log files to keep.
+    pub max_files: usize,
+    /// Directory where JSON log files are written.
+    pub directory: PathBuf,
+    /// Optional OTLP endpoint; env vars override this value.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub otlp_endpoint: Option<String>,
+}
+
 /// Configuration for Over-the-Air (OTA) update feature.
 ///
 /// Stores the GitHub personal access token required for downloading
@@ -586,6 +604,18 @@ impl Default for BatterySettings {
     }
 }
 
+impl Default for LoggingSettings {
+    fn default() -> Self {
+        LoggingSettings {
+            enabled: true,
+            level: "info".to_string(),
+            max_files: 3,
+            directory: PathBuf::from("logs"),
+            otlp_endpoint: None,
+        }
+    }
+}
+
 impl Default for Settings {
     fn default() -> Self {
         Settings {
@@ -647,6 +677,7 @@ impl Default for Settings {
             frontlight_levels: LightLevels::default(),
             frontlight_presets: Vec::new(),
             ota: OtaSettings::default(),
+            logging: LoggingSettings::default(),
         }
     }
 }

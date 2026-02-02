@@ -21,6 +21,7 @@ use std::collections::{BTreeMap, VecDeque};
 #[cfg(test)]
 use std::env;
 use std::path::Path;
+use tracing::error;
 
 use walkdir::WalkDir;
 
@@ -95,7 +96,7 @@ impl Context {
                 continue;
             }
             if let Ok(mut library) = Library::new(&library_settings.path, library_settings.mode)
-                .map_err(|e| eprintln!("{:#?}", e))
+                .map_err(|e| error!("{:#?}", e))
             {
                 library.import(&self.settings.import);
                 library.flush();
@@ -130,7 +131,7 @@ impl Context {
                 continue;
             }
             if let Ok(layout) = load_json::<Layout, _>(path)
-                .map_err(|e| eprintln!("Can't load {}: {:#?}.", path.display(), e))
+                .map_err(|e| error!("Can't load {}: {:#?}.", path.display(), e))
             {
                 self.keyboard_layouts.insert(layout.name.clone(), layout);
             }

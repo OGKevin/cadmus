@@ -25,6 +25,7 @@ use crate::view::{Bus, Event, Hub, RenderData, RenderQueue, View};
 use crate::view::{EntryId, EntryKind, Id, ViewId, ID_FEEDER};
 use crate::view::{BIG_BAR_HEIGHT, SMALL_BAR_HEIGHT, THICKNESS_MEDIUM};
 use regex::Regex;
+use tracing::error;
 
 const VIEWER_STYLESHEET: &str = "css/dictionary.css";
 const USER_STYLESHEET: &str = "css/dictionary-user.css";
@@ -66,7 +67,7 @@ fn query_to_content(
 
         if let Some(results) = dict
             .lookup(query, fuzzy)
-            .map_err(|e| eprintln!("Can't search dictionary: {:#}.", e))
+            .map_err(|e| error!("Can't search dictionary: {:#}.", e))
             .ok()
             .filter(|r| !r.is_empty())
         {

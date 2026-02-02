@@ -47,6 +47,7 @@ use std::mem;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::thread;
+use tracing::error;
 
 pub const TRASH_DIRNAME: &str = ".trash";
 
@@ -1492,7 +1493,7 @@ impl Home {
 
             let trash_path = context.library.home.join(TRASH_DIRNAME);
             if let Ok(trash) = Library::new(trash_path, LibraryMode::Database)
-                .map_err(|e| eprintln!("Can't inspect trash: {:#?}.", e))
+                .map_err(|e| error!("Can't inspect trash: {:#?}.", e))
             {
                 if trash.is_empty() == Some(false) {
                     entries.push(EntryKind::Separator);
@@ -1547,7 +1548,7 @@ impl Home {
         let trash_path = context.library.home.join(TRASH_DIRNAME);
 
         let trash = Library::new(trash_path, LibraryMode::Database)
-            .map_err(|e| eprintln!("Can't load trash: {:#}.", e));
+            .map_err(|e| error!("Can't load trash: {:#}.", e));
         if trash.is_err() {
             return;
         }
@@ -1562,7 +1563,7 @@ impl Home {
         let mut count = 0;
         for info in files {
             match trash.remove(&info.file.path) {
-                Err(e) => eprintln!("Can't erase {}: {:#}.", info.file.path.display(), e),
+                Err(e) => error!("Can't erase {}: {:#}.", info.file.path.display(), e),
                 Ok(()) => count += 1,
             }
         }
@@ -1611,7 +1612,7 @@ impl Home {
                 while size > context.settings.home.max_trash_size {
                     let info = files.pop().unwrap();
                     if let Err(e) = trash.remove(&info.file.path) {
-                        eprintln!("Can't erase {}: {:#}", info.file.path.display(), e);
+                        error!("Can't erase {}: {:#}", info.file.path.display(), e);
                         break;
                     }
                     size -= info.file.size;
@@ -1714,7 +1715,7 @@ impl Home {
 
         let library_settings = context.settings.libraries[index].clone();
         let library = Library::new(&library_settings.path, library_settings.mode)
-            .map_err(|e| eprintln!("Can't load library: {:#}.", e));
+            .map_err(|e| error!("Can't load library: {:#}.", e));
 
         if library.is_err() {
             return;
@@ -1857,7 +1858,7 @@ impl Home {
                     },
                 );
             }
-            Err(e) => eprintln!("Can't spawn child: {:#}.", e),
+            Err(e) => error!("Can't spawn child: {:#}.", e),
         }
     }
 
@@ -2214,7 +2215,7 @@ impl View for Home {
             Event::Submit(ViewId::RenameDocumentInput, ref file_name) => {
                 if let Some(ref path) = self.target_document.take() {
                     self.rename(path, file_name, hub, rq, context)
-                        .map_err(|e| eprintln!("Can't rename document: {:#}.", e))
+                        .map_err(|e| error!("Can't rename document: {:#}.", e))
                         .ok();
                 }
                 true
@@ -2244,19 +2245,19 @@ impl View for Home {
             Event::Select(EntryId::Remove(ref path))
             | Event::FetcherRemoveDocument(_, ref path) => {
                 self.remove(path, hub, rq, context)
-                    .map_err(|e| eprintln!("Can't remove document: {:#}.", e))
+                    .map_err(|e| error!("Can't remove document: {:#}.", e))
                     .ok();
                 true
             }
             Event::Select(EntryId::CopyTo(ref path, index)) => {
                 self.copy_to(path, index, context)
-                    .map_err(|e| eprintln!("Can't copy document: {:#}.", e))
+                    .map_err(|e| error!("Can't copy document: {:#}.", e))
                     .ok();
                 true
             }
             Event::Select(EntryId::MoveTo(ref path, index)) => {
                 self.move_to(path, index, hub, rq, context)
-                    .map_err(|e| eprintln!("Can't move document: {:#}.", e))
+                    .map_err(|e| error!("Can't move document: {:#}.", e))
                     .ok();
                 true
             }

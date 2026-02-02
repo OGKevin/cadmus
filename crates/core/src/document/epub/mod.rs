@@ -109,9 +109,10 @@ impl EpubDocument {
                             archive
                                 .by_name(path)
                                 .map_err(|e| {
-                                    eprintln!(
+                                    tracing::error!(
                                         "Can't retrieve '{}' from the archive: {:#}.",
-                                        path, e
+                                        path,
+                                        e
                                     )
                                     // We're assuming that the size of the spine is less than 4 GiB.
                                 })

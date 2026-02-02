@@ -16,6 +16,7 @@ use crate::view::filler::Filler;
 use crate::view::BIG_BAR_HEIGHT;
 use secrecy::SecretString;
 use std::thread;
+use tracing::{error, info};
 
 /// Attempts to show the OTA update view with validation checks.
 ///
@@ -256,7 +257,7 @@ impl OtaView {
             let client = match OtaClient::new(github_token) {
                 Ok(c) => c,
                 Err(e) => {
-                    eprintln!("[OTA] Failed to create github client {:?}", e);
+                    error!("[OTA] Failed to create github client {:?}", e);
                     let error_msg = format!("Failed to create client: {}", e);
                     hub2.send(Event::Notification(NotificationEvent::Show(error_msg)))
                         .ok();
@@ -295,7 +296,7 @@ impl OtaView {
 
             match download_result {
                 Ok(zip_path) => {
-                    println!("[OTA] Download completed, starting extraction...");
+                    info!("[OTA] Download completed, starting extraction...");
 
                     match client.extract_and_deploy(zip_path) {
                         Ok(_) => {
@@ -305,7 +306,7 @@ impl OtaView {
                             .ok();
                         }
                         Err(e) => {
-                            println!("[OTA] Deployment error: {:?}", e);
+                            error!("[OTA] Deployment error: {:?}", e);
                             let error_msg = format!("Deployment failed: {}", e);
                             hub2.send(Event::Notification(NotificationEvent::Show(error_msg)))
                                 .ok();
@@ -313,7 +314,7 @@ impl OtaView {
                     }
                 }
                 Err(e) => {
-                    println!("[OTA] Download error: {:?}", e);
+                    error!("[OTA] Download error: {:?}", e);
                     let error_msg = format!("Download failed: {}", e);
                     hub2.send(Event::Notification(NotificationEvent::Show(error_msg)))
                         .ok();
