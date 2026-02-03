@@ -7,7 +7,7 @@ use crate::framebuffer::Framebuffer;
 use crate::geom::{BorderSpec, CornerSpec, Rectangle};
 use crate::gesture::GestureEvent;
 use crate::unit::scale_by_dpi;
-use crate::view::{Bus, Event, Hub, Id, RenderQueue, View, ID_FEEDER};
+use crate::view::{Align, Bus, Event, Hub, Id, RenderQueue, View, ID_FEEDER};
 use crate::view::{BORDER_RADIUS_SMALL, THICKNESS_SMALL};
 
 // TODO(ogkevin): since this is very similar to directory bar, might as well make it one reusable component
@@ -22,16 +22,23 @@ pub struct CategoryButton {
     children: Vec<Box<dyn View>>,
     pub category: Category,
     selected: bool,
+    align: Align,
 }
 
 impl CategoryButton {
-    pub fn new(rect: Rectangle, category: Category, selected: bool) -> CategoryButton {
+    pub fn new(
+        rect: Rectangle,
+        category: Category,
+        selected: bool,
+        align: Align,
+    ) -> CategoryButton {
         CategoryButton {
             id: ID_FEEDER.next(),
             rect,
             children: Vec::new(),
             category,
             selected,
+            align,
         }
     }
 
@@ -67,7 +74,11 @@ impl View for CategoryButton {
         let text = self.category.label();
         let plan = font.plan(&text, None, None);
 
-        let dx = (self.rect.width() as i32 - plan.width as i32) / 2;
+        let dx = match self.align {
+            Align::Left(padding) => padding,
+            Align::Right(padding) => self.rect.width() as i32 - plan.width - padding,
+            Align::Center => (self.rect.width() as i32 - plan.width) / 2,
+        };
         let dy = (self.rect.height() as i32 - x_height) / 2;
 
         if self.selected {

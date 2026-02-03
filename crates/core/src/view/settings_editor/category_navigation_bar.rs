@@ -1,10 +1,13 @@
 use super::category::Category;
 use super::category_button::CategoryButton;
+use crate::color::TEXT_BUMP_SMALL;
 use crate::context::Context;
-use crate::font::Fonts;
+use crate::device::CURRENT_DEVICE;
+use crate::font::{font_from_style, Fonts, NORMAL_STYLE};
 use crate::framebuffer::Framebuffer;
 use crate::geom::{Point, Rectangle};
-use crate::view::{Bus, Event, Hub, Id, RenderQueue, View, ID_FEEDER};
+use crate::view::filler::Filler;
+use crate::view::{Align, Bus, Event, Hub, Id, RenderQueue, View, ID_FEEDER};
 
 /// Horizontal navigation bar displaying category tabs.
 ///
@@ -27,54 +30,75 @@ pub struct CategoryNavigationBar {
 }
 
 impl CategoryNavigationBar {
+    #[cfg_attr(feature = "otel", tracing::instrument())]
     pub fn new(rect: Rectangle, selected: Category) -> Self {
         let id = ID_FEEDER.next();
-        let children = Self::build_category_buttons(rect, selected);
 
         CategoryNavigationBar {
             id,
             rect,
-            children,
+            children: Vec::new(),
             selected,
         }
     }
 
-    fn build_category_buttons(rect: Rectangle, selected: Category) -> Vec<Box<dyn View>> {
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, fonts)))]
+    pub fn update_content(&mut self, selected: Category, fonts: &mut Fonts) {
+        self.selected = selected;
+        self.children.clear();
+        self.children = Self::build_category_buttons(self.rect, selected, fonts);
+    }
+
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(fonts)))]
+    fn build_category_buttons(
+        rect: Rectangle,
+        selected: Category,
+        fonts: &mut Fonts,
+    ) -> Vec<Box<dyn View>> {
         let mut children = Vec::new();
         let categories = Category::all();
-        let button_width = rect.width() as i32 / categories.len() as i32;
+        let dpi = CURRENT_DEVICE.dpi;
+        let font = font_from_style(fonts, &NORMAL_STYLE, dpi);
+        let padding = font.em() as i32;
+        let background = TEXT_BUMP_SMALL[0];
 
-        for (index, category) in categories.iter().enumerate() {
-            let x_min = rect.min.x + (index as i32 * button_width);
-            let x_max = if index == categories.len() - 1 {
-                rect.max.x
-            } else {
-                x_min + button_width
-            };
+        let mut x_pos = rect.min.x + padding / 2;
 
-            let button_rect = rect![x_min, rect.min.y, x_max, rect.max.y];
+        for category in categories.iter() {
+            let text = category.label();
+            let plan = font.plan(&text, None, None);
+            let button_width = plan.width + padding;
+
+            let button_rect = rect![x_pos, rect.min.y, x_pos + button_width, rect.max.y];
             let is_selected = *category == selected;
 
-            let button = CategoryButton::new(button_rect, *category, is_selected);
+            let button = CategoryButton::new(
+                button_rect,
+                *category,
+                is_selected,
+                Align::Left(padding / 2),
+            );
             children.push(Box::new(button) as Box<dyn View>);
+
+            x_pos += button_width;
+        }
+
+        if x_pos < rect.max.x {
+            let filler_rect = rect![x_pos, rect.min.y, rect.max.x, rect.max.y];
+            let filler = Filler::new(filler_rect, background);
+            children.push(Box::new(filler) as Box<dyn View>);
         }
 
         children
     }
 
-    pub fn update_selection(&mut self, selected: Category) {
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, fonts)))]
+    pub fn update_selection(&mut self, selected: Category, fonts: &mut Fonts) {
         if self.selected == selected {
             return;
         }
 
-        self.selected = selected;
-
-        for child in &mut self.children {
-            if let Some(button) = child.downcast_mut::<CategoryButton>() {
-                let is_selected = button.category == selected;
-                button.update_selected(is_selected);
-            }
-        }
+        self.update_content(selected, fonts);
     }
 
     pub fn resize_by(&mut self, _delta_y: i32, _fonts: &mut Fonts) -> i32 {
@@ -90,6 +114,10 @@ impl CategoryNavigationBar {
 }
 
 impl View for CategoryNavigationBar {
+    #[cfg_attr(
+        feature = "otel",
+        tracing::instrument(skip(self, _hub, _bus, _rq, _context), fields(event = ?_evt))
+    )]
     fn handle_event(
         &mut self,
         _evt: &Event,
@@ -101,6 +129,10 @@ impl View for CategoryNavigationBar {
         false
     }
 
+    #[cfg_attr(
+        feature = "otel",
+        tracing::instrument(skip(self, _fb, _rect, _fonts), fields(rect = ?_rect))
+    )]
     fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {}
 
     fn rect(&self) -> &Rectangle {

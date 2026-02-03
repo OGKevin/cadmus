@@ -51,13 +51,13 @@ impl NavigationProvider for SettingsCategoryProvider {
         bar: &mut Self::Bar,
         _data: &Self::LevelData,
         selected: &Self::LevelKey,
-        _fonts: &mut Fonts,
+        fonts: &mut Fonts,
     ) {
-        bar.update_selection(*selected);
+        bar.update_content(*selected, fonts);
     }
 
     fn update_bar_selection(&self, bar: &mut Self::Bar, selected: &Self::LevelKey) {
-        bar.update_selection(*selected);
+        bar.selected = *selected;
     }
 
     fn resize_bar_by(&self, bar: &mut Self::Bar, delta_y: i32, fonts: &mut Fonts) -> i32 {
