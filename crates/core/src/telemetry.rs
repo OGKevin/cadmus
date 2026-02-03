@@ -43,12 +43,10 @@ use anyhow::{Context, Error};
 use gethostname::gethostname;
 use opentelemetry::trace::TracerProvider;
 use opentelemetry::{global, KeyValue};
-use opentelemetry_otlp::{Protocol, WithExportConfig};
-use opentelemetry_sdk::logs::{BatchLogProcessor, LoggerProvider as SdkLoggerProvider};
-use opentelemetry_sdk::trace::{
-    BatchSpanProcessor, Config as TraceConfig, TracerProvider as SdkTracerProvider,
-};
-use opentelemetry_sdk::{runtime, Resource};
+use opentelemetry_otlp::{LogExporter, SpanExporter, WithExportConfig};
+use opentelemetry_sdk::logs::{BatchLogProcessor, SdkLoggerProvider};
+use opentelemetry_sdk::trace::{BatchSpanProcessor, SdkTracerProvider};
+use opentelemetry_sdk::Resource;
 use std::sync::{mpsc, OnceLock};
 use std::thread;
 use std::time::Duration;
@@ -116,12 +114,14 @@ where
 
     let hostname = gethostname().to_string_lossy().into_owned();
 
-    let resource = Resource::new([
-        KeyValue::new("service.name", SERVICE_NAME),
-        KeyValue::new("service.version", GIT_VERSION),
-        KeyValue::new("cadmus.run_id", run_id.to_string()),
-        KeyValue::new("hostname", hostname),
-    ]);
+    let resource = Resource::builder()
+        .with_service_name(SERVICE_NAME)
+        .with_attributes([
+            KeyValue::new("service.version", GIT_VERSION),
+            KeyValue::new("cadmus.run_id", run_id.to_string()),
+            KeyValue::new("hostname", hostname),
+        ])
+        .build();
 
     let tracer_provider = build_tracer_provider(&endpoint, resource.clone())?;
     let logger_provider = build_logger_provider(&endpoint, resource)?;
@@ -197,14 +197,12 @@ pub fn shutdown_telemetry() {
         shutdown_with_timeout(
             {
                 move || {
-                    let _ = provider.shutdown();
+                    let _ = provider.shutdown().ok();
                 }
             },
             timeout,
         );
     }
-
-    global::shutdown_tracer_provider();
 }
 
 /// Determines the OTLP endpoint from settings or environment variables.
@@ -241,19 +239,24 @@ fn otel_endpoint(settings: &LoggingSettings) -> Option<String> {
 ///
 /// Returns an error if the OTLP span exporter cannot be built.
 fn build_tracer_provider(endpoint: &str, resource: Resource) -> Result<SdkTracerProvider, Error> {
-    let exporter = opentelemetry_otlp::new_exporter()
-        .http()
+    let exporter = SpanExporter::builder()
+        .with_http()
         .with_endpoint(format!("{}/v1/traces", endpoint.trim_end_matches('/')))
-        .with_protocol(Protocol::HttpBinary)
         .with_timeout(Duration::from_secs(3))
-        .build_span_exporter()
+        .build()
         .context("can't build otlp span exporter")?;
-    let processor = BatchSpanProcessor::builder(exporter, runtime::TokioCurrentThread).build();
-    let config = TraceConfig::default().with_resource(resource);
+    
+    let processor = BatchSpanProcessor::builder(exporter)
+        .with_batch_config(
+            opentelemetry_sdk::trace::BatchConfigBuilder::default()
+                .with_scheduled_delay(Duration::from_millis(100))
+                .build(),
+        )
+        .build();
 
     Ok(SdkTracerProvider::builder()
         .with_span_processor(processor)
-        .with_config(config)
+        .with_resource(resource)
         .build())
 }
 
@@ -268,20 +271,26 @@ fn build_tracer_provider(endpoint: &str, resource: Resource) -> Result<SdkTracer
 ///
 /// # Returns
 ///
-/// Returns a configured `SdkLoggerProvider` ready for use.
+/// Returns a configured logger provider ready for use.
 ///
 /// # Errors
 ///
 /// Returns an error if the OTLP log exporter cannot be built.
 fn build_logger_provider(endpoint: &str, resource: Resource) -> Result<SdkLoggerProvider, Error> {
-    let exporter = opentelemetry_otlp::new_exporter()
-        .http()
+    let exporter = LogExporter::builder()
+        .with_http()
         .with_endpoint(format!("{}/v1/logs", endpoint.trim_end_matches('/')))
-        .with_protocol(Protocol::HttpBinary)
         .with_timeout(Duration::from_secs(3))
-        .build_log_exporter()
+        .build()
         .context("can't build otlp log exporter")?;
-    let processor = BatchLogProcessor::builder(exporter, runtime::TokioCurrentThread).build();
+    
+    let processor = BatchLogProcessor::builder(exporter)
+        .with_batch_config(
+            opentelemetry_sdk::logs::BatchConfigBuilder::default()
+                .with_scheduled_delay(Duration::from_millis(100))
+                .build(),
+        )
+        .build();
 
     Ok(SdkLoggerProvider::builder()
         .with_log_processor(processor)

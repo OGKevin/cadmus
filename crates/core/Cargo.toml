@@ -58,7 +58,7 @@ webpki-roots = "1.0.5"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
 tracing-appender = "0.2"
-tracing-opentelemetry = { version = "0.27", optional = true }
+tracing-opentelemetry = { version = "0.32", optional = true }
 opentelemetry-appender-tracing = { version = "0.31", optional = true }
 opentelemetry = { version = "0.31", features = ["trace", "logs"], optional = true }
 opentelemetry-otlp = { version = "0.31", features = ["trace", "logs", "http-proto", "reqwest-client"], optional = true }
