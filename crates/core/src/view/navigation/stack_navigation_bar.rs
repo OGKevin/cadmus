@@ -994,6 +994,7 @@ fn find_closest_ancestor_by_provider<P: NavigationProvider>(
 }
 
 impl<P: NavigationProvider + 'static> View for StackNavigationBar<P> {
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _hub, bus, _rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
@@ -1029,6 +1030,7 @@ impl<P: NavigationProvider + 'static> View for StackNavigationBar<P> {
         }
     }
 
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _fb, _fonts), fields(rect = ?_rect)))]
     fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {}
 
     fn rect(&self) -> &Rectangle {

@@ -9,7 +9,7 @@ use self::bottom_bar::BottomBar;
 use self::margin_cropper::{MarginCropper, BUTTON_DIAMETER};
 use self::results_bar::ResultsBar;
 use self::tool_bar::ToolBar;
-use super::top_bar::TopBar;
+use super::top_bar::{TopBar, TopBarVariant};
 use crate::color::{BLACK, WHITE};
 use crate::context::Context;
 use crate::device::CURRENT_DEVICE;
@@ -1889,7 +1889,7 @@ impl Reader {
                     self.rect.max.x,
                     self.rect.min.y + small_height - small_thickness
                 ],
-                Event::Back,
+                TopBarVariant::Back,
                 self.info.title(),
                 context,
             );

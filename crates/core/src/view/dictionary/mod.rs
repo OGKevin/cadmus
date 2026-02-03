@@ -20,7 +20,7 @@ use crate::view::keyboard::Keyboard;
 use crate::view::menu::{Menu, MenuKind};
 use crate::view::named_input::NamedInput;
 use crate::view::search_bar::SearchBar;
-use crate::view::top_bar::TopBar;
+use crate::view::top_bar::{TopBar, TopBarVariant};
 use crate::view::{Bus, Event, Hub, RenderData, RenderQueue, View};
 use crate::view::{EntryId, EntryKind, Id, ViewId, ID_FEEDER};
 use crate::view::{BIG_BAR_HEIGHT, SMALL_BAR_HEIGHT, THICKNESS_MEDIUM};
@@ -130,7 +130,7 @@ impl Dictionary {
                 rect.max.x,
                 rect.min.y + small_height - small_thickness
             ],
-            Event::Back,
+            TopBarVariant::Back,
             "Dictionary".to_string(),
             context,
         );

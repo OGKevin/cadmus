@@ -9,7 +9,7 @@ mod shelf;
 use self::address_bar::AddressBar;
 use self::bottom_bar::BottomBar;
 use self::shelf::Shelf;
-use super::top_bar::TopBar;
+use super::top_bar::{TopBar, TopBarVariant};
 use crate::color::BLACK;
 use crate::context::Context;
 use crate::device::CURRENT_DEVICE;
@@ -116,7 +116,7 @@ impl Home {
                 rect.max.x,
                 rect.min.y + small_height - small_thickness
             ],
-            Event::Toggle(ViewId::SearchBar),
+            TopBarVariant::Search(Event::Toggle(ViewId::SearchBar)),
             sort_method.title(),
             context,
         );

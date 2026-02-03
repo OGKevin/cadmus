@@ -212,3 +212,30 @@ impl Context {
         }
     }
 }
+
+#[cfg(test)]
+pub mod test_helpers {
+    use super::*;
+    use crate::battery::FakeBattery;
+    use crate::framebuffer::Pixmap;
+    use crate::frontlight::LightLevels;
+
+    pub fn create_test_context() -> Context {
+        Context::new(
+            Box::new(Pixmap::new(600, 800, 1)),
+            None,
+            Library::new(Path::new("/tmp"), crate::settings::LibraryMode::Database).unwrap(),
+            Settings::default(),
+            Fonts::load_from(
+                Path::new(
+                    &env::var("TEST_ROOT_DIR").expect("TEST_ROOT_DIR must be set for this test."),
+                )
+                .to_path_buf(),
+            )
+            .expect("Failed to load fonts"),
+            Box::new(FakeBattery::new()),
+            Box::new(LightLevels::default()),
+            Box::new(0u16),
+        )
+    }
+}

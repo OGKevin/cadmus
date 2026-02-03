@@ -38,6 +38,7 @@ use cadmus_core::view::notification::Notification;
 use cadmus_core::view::ota::show_ota_view;
 use cadmus_core::view::reader::Reader;
 use cadmus_core::view::rotation_values::RotationValues;
+use cadmus_core::view::settings_editor::SettingsEditor;
 use cadmus_core::view::sketch::Sketch;
 use cadmus_core::view::touch_events::TouchEvents;
 use cadmus_core::view::{handle_event, process_render_queue, wait_for_all};
@@ -1107,6 +1108,11 @@ pub fn run() -> Result<(), Error> {
                         &mut rq,
                         &mut context,
                     )),
+                    AppCmd::SettingsEditor => Box::new(SettingsEditor::new(
+                        context.fb.rect(),
+                        &mut rq,
+                        &mut context,
+                    )),
                 };
                 transfer_notifications(view.as_mut(), next_view.as_mut(), &mut rq, &mut context);
                 history.push(HistoryItem {
@@ -1253,6 +1259,9 @@ pub fn run() -> Result<(), Error> {
                         raw_sender.send(button_scheme_event(VAL_PRESS)).ok();
                     }
                 }
+
+                // Re-dispatch event to view hierarchy so UI can update
+                handle_event(view.as_mut(), &evt, &tx, &mut bus, &mut rq, &mut context);
             }
             Event::SetWifi(enable) => {
                 set_wifi(enable, &mut context);

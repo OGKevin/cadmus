@@ -10,6 +10,17 @@ use crate::view::icon::Icon;
 use crate::view::label::Label;
 use crate::view::{Align, Bus, Event, Hub, Id, RenderData, RenderQueue, View, ViewId, ID_FEEDER};
 
+/// Defines the behavior and appearance of the left icon in the top bar
+#[derive(Debug, Clone)]
+pub enum TopBarVariant {
+    /// Shows a back arrow icon and emits Event::Back when clicked
+    Back,
+    /// Shows a cancel/close icon and emits the specified event when clicked
+    Cancel(Event),
+    /// Shows a search icon and emits the specified event when clicked (typically Event::Toggle(ViewId::SearchBar))
+    Search(Event),
+}
+
 pub struct TopBar {
     id: Id,
     rect: Rectangle,
@@ -17,14 +28,20 @@ pub struct TopBar {
 }
 
 impl TopBar {
-    pub fn new(rect: Rectangle, root_event: Event, title: String, context: &mut Context) -> TopBar {
+    pub fn new(
+        rect: Rectangle,
+        variant: TopBarVariant,
+        title: String,
+        context: &mut Context,
+    ) -> TopBar {
         let id = ID_FEEDER.next();
         let mut children = Vec::new();
 
         let side = rect.height() as i32;
-        let icon_name = match root_event {
-            Event::Back => "back",
-            _ => "search",
+        let (icon_name, root_event) = match variant {
+            TopBarVariant::Back => ("back", Event::Back),
+            TopBarVariant::Cancel(event) => ("close", event),
+            TopBarVariant::Search(event) => ("search", event),
         };
 
         let root_icon = Icon::new(icon_name, rect![rect.min, rect.min + side], root_event);

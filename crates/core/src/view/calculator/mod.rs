@@ -18,7 +18,7 @@ use crate::view::common::{toggle_battery_menu, toggle_clock_menu, toggle_main_me
 use crate::view::filler::Filler;
 use crate::view::keyboard::Keyboard;
 use crate::view::menu::{Menu, MenuKind};
-use crate::view::top_bar::TopBar;
+use crate::view::top_bar::{TopBar, TopBarVariant};
 use crate::view::{Bus, Event, Hub, RenderData, RenderQueue, View};
 use crate::view::{EntryId, EntryKind, Id, ViewId, ID_FEEDER};
 use crate::view::{BIG_BAR_HEIGHT, SMALL_BAR_HEIGHT, THICKNESS_MEDIUM};
@@ -147,7 +147,7 @@ impl Calculator {
                 rect.max.x,
                 rect.min.y + side - small_thickness
             ],
-            Event::Back,
+            TopBarVariant::Back,
             "Calculator".to_string(),
             context,
         );

@@ -10,8 +10,8 @@ use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::env;
-use std::fmt::{self, Debug};
-use std::ops::Index;
+use std::fmt::{self, Debug, Display};
+use std::ops::{Index, IndexMut};
 use std::path::PathBuf;
 
 pub use self::preset::{guess_frontlight, LightPreset};
@@ -44,7 +44,7 @@ impl Serialize for IntermissionDisplay {
             IntermissionDisplay::Logo => serializer.serialize_str(LOGO_SPECIAL_PATH),
             IntermissionDisplay::Cover => serializer.serialize_str(COVER_SPECIAL_PATH),
             IntermissionDisplay::Image(path) => {
-                serializer.serialize_str(path.to_str().unwrap_or(""))
+                serializer.serialize_str(path.to_string_lossy().as_ref())
             }
         }
     }
@@ -61,6 +61,16 @@ impl<'de> Deserialize<'de> for IntermissionDisplay {
             COVER_SPECIAL_PATH => IntermissionDisplay::Cover,
             _ => IntermissionDisplay::Image(PathBuf::from(s)),
         })
+    }
+}
+
+impl fmt::Display for IntermissionDisplay {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            IntermissionDisplay::Logo => write!(f, "Logo"),
+            IntermissionDisplay::Cover => write!(f, "Cover"),
+            IntermissionDisplay::Image(_) => write!(f, "Custom"),
+        }
     }
 }
 
@@ -116,6 +126,7 @@ impl IntermKind {
     }
 }
 
+/// Configuration for intermission screen displays.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct Intermissions {
@@ -132,6 +143,16 @@ impl Index<IntermKind> for Intermissions {
             IntermKind::Suspend => &self.suspend,
             IntermKind::PowerOff => &self.power_off,
             IntermKind::Share => &self.share,
+        }
+    }
+}
+
+impl IndexMut<IntermKind> for Intermissions {
+    fn index_mut(&mut self, key: IntermKind) -> &mut Self::Output {
+        match key {
+            IntermKind::Suspend => &mut self.suspend,
+            IntermKind::PowerOff => &mut self.power_off,
+            IntermKind::Share => &mut self.share,
         }
     }
 }
@@ -177,6 +198,15 @@ pub struct Settings {
 pub enum LibraryMode {
     Database,
     Filesystem,
+}
+
+impl Display for LibraryMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            LibraryMode::Database => write!(f, "Database"),
+            LibraryMode::Filesystem => write!(f, "Filesystem"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
