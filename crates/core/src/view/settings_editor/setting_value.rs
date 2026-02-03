@@ -99,7 +99,12 @@ pub struct SettingValue {
 }
 
 impl SettingValue {
-    pub fn new(kind: Kind, rect: Rectangle, settings: &Settings) -> SettingValue {
+    pub fn new(
+        kind: Kind,
+        rect: Rectangle,
+        settings: &Settings,
+        fonts: &mut crate::font::Fonts,
+    ) -> SettingValue {
         let (value, entries, enabled_toggle) = Self::fetch_data_for_kind(&kind, settings);
 
         let mut setting_value = SettingValue {
@@ -110,12 +115,18 @@ impl SettingValue {
             entries,
         };
 
-        setting_value.children = vec![setting_value.kind_to_child_view(value, enabled_toggle)];
+        setting_value.children =
+            vec![setting_value.kind_to_child_view(value, enabled_toggle, fonts)];
 
         setting_value
     }
 
-    fn kind_to_child_view(&self, value: String, enabled_toggle: Option<bool>) -> Box<dyn View> {
+    fn kind_to_child_view(
+        &self,
+        value: String,
+        enabled_toggle: Option<bool>,
+        fonts: &mut crate::font::Fonts,
+    ) -> Box<dyn View> {
         let event = self.create_tap_event();
 
         match self.kind {
@@ -126,6 +137,8 @@ impl SettingValue {
                     "off",
                     enabled_toggle.expect("enabled bool should be Some for toggle settings"),
                     event.expect("Event should not be None for toggle"),
+                    fonts,
+                    Align::Right(10),
                 )),
                 ToggleSettings::ButtonScheme => Box::new(Toggle::new(
                     self.rect,
@@ -133,6 +146,8 @@ impl SettingValue {
                     ButtonScheme::Inverted.to_string().as_str(),
                     enabled_toggle.expect("enabled bool should be Some for toggle settings"),
                     event.expect("Event should not be None for toggle"),
+                    fonts,
+                    Align::Right(10),
                 )),
                 ToggleSettings::SleepCover => Box::new(Toggle::new(
                     self.rect,
@@ -140,6 +155,8 @@ impl SettingValue {
                     "off",
                     enabled_toggle.expect("enabled bool should be Some for toggle settings"),
                     event.expect("Event should not be None for toggle"),
+                    fonts,
+                    Align::Right(10),
                 )),
             },
             _ => Box::new(ActionLabel::new(self.rect, value, Align::Right(10)).event(event)),
@@ -526,17 +543,28 @@ mod tests {
 
     #[test]
     fn test_file_chooser_closed_updates_all_intermission_values() {
+        let mut context = create_test_context();
         let settings = Settings::default();
         let rect = rect![0, 0, 200, 50];
 
-        let mut suspend_value = SettingValue::new(Kind::IntermissionSuspend, rect, &settings);
-        let mut power_off_value = SettingValue::new(Kind::IntermissionPowerOff, rect, &settings);
-        let mut share_value = SettingValue::new(Kind::IntermissionShare, rect, &settings);
+        let mut suspend_value = SettingValue::new(
+            Kind::IntermissionSuspend,
+            rect,
+            &settings,
+            &mut context.fonts,
+        );
+        let mut power_off_value = SettingValue::new(
+            Kind::IntermissionPowerOff,
+            rect,
+            &settings,
+            &mut context.fonts,
+        );
+        let mut share_value =
+            SettingValue::new(Kind::IntermissionShare, rect, &settings, &mut context.fonts);
 
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
-        let mut context = create_test_context();
 
         let initial_suspend = suspend_value.value().clone();
         let initial_power_off = power_off_value.value().clone();
@@ -564,15 +592,26 @@ mod tests {
     #[test]
     fn test_intermission_values_update_via_submit_event() {
         use crate::settings::IntermKind;
+        let mut context = create_test_context();
         let settings = Settings::default();
         let rect = rect![0, 0, 200, 50];
 
-        let mut suspend_value = SettingValue::new(Kind::IntermissionSuspend, rect, &settings);
-        let mut power_off_value = SettingValue::new(Kind::IntermissionPowerOff, rect, &settings);
-        let mut share_value = SettingValue::new(Kind::IntermissionShare, rect, &settings);
+        let mut suspend_value = SettingValue::new(
+            Kind::IntermissionSuspend,
+            rect,
+            &settings,
+            &mut context.fonts,
+        );
+        let mut power_off_value = SettingValue::new(
+            Kind::IntermissionPowerOff,
+            rect,
+            &settings,
+            &mut context.fonts,
+        );
+        let mut share_value =
+            SettingValue::new(Kind::IntermissionShare, rect, &settings, &mut context.fonts);
 
         let mut rq = RenderQueue::new();
-        let mut context = create_test_context();
 
         context.settings.intermissions[IntermKind::Suspend] =
             crate::settings::IntermissionDisplay::Image(PathBuf::from("suspend_image.png"));
@@ -592,15 +631,16 @@ mod tests {
 
     #[test]
     fn test_keyboard_layout_select_updates_value() {
+        let mut context = create_test_context();
         let settings = Settings {
             keyboard_layout: "English".to_string(),
             ..Default::default()
         };
         let rect = rect![0, 0, 200, 50];
 
-        let mut value = SettingValue::new(Kind::KeyboardLayout, rect, &settings);
+        let mut value =
+            SettingValue::new(Kind::KeyboardLayout, rect, &settings, &mut context.fonts);
         let mut rq = RenderQueue::new();
-        let mut context = create_test_context();
 
         context.settings.keyboard_layout = "French".to_string();
         value.refresh_from_context(&context, &mut rq);
@@ -611,15 +651,15 @@ mod tests {
 
     #[test]
     fn test_sleep_cover_toggle_updates_value() {
+        let mut context = create_test_context();
         let settings = Settings {
             sleep_cover: false,
             ..Default::default()
         };
         let rect = rect![0, 0, 200, 50];
 
-        let mut value = SettingValue::new(Kind::SleepCover, rect, &settings);
+        let mut value = SettingValue::new(Kind::SleepCover, rect, &settings, &mut context.fonts);
         let mut rq = RenderQueue::new();
-        let mut context = create_test_context();
 
         assert_eq!(value.value(), "Disabled");
 
@@ -632,15 +672,15 @@ mod tests {
 
     #[test]
     fn test_auto_share_toggle_updates_value() {
+        let mut context = create_test_context();
         let settings = Settings {
             auto_share: false,
             ..Default::default()
         };
         let rect = rect![0, 0, 200, 50];
 
-        let mut value = SettingValue::new(Kind::AutoShare, rect, &settings);
+        let mut value = SettingValue::new(Kind::AutoShare, rect, &settings, &mut context.fonts);
         let mut rq = RenderQueue::new();
-        let mut context = create_test_context();
 
         assert_eq!(value.value(), "Disabled");
 
@@ -653,15 +693,15 @@ mod tests {
 
     #[test]
     fn test_button_scheme_select_updates_value() {
+        let mut context = create_test_context();
         let settings = Settings {
             button_scheme: ButtonScheme::Natural,
             ..Default::default()
         };
         let rect = rect![0, 0, 200, 50];
 
-        let mut value = SettingValue::new(Kind::ButtonScheme, rect, &settings);
+        let mut value = SettingValue::new(Kind::ButtonScheme, rect, &settings, &mut context.fonts);
         let mut rq = RenderQueue::new();
-        let mut context = create_test_context();
 
         context.settings.button_scheme = ButtonScheme::Inverted;
         value.refresh_from_context(&context, &mut rq);
@@ -684,9 +724,10 @@ mod tests {
         settings.libraries.push(library);
         let rect = rect![0, 0, 200, 50];
 
-        let mut value = SettingValue::new(Kind::LibraryMode(0), rect, &settings);
-        let mut rq = RenderQueue::new();
         let mut context = create_test_context();
+        let mut value =
+            SettingValue::new(Kind::LibraryMode(0), rect, &settings, &mut context.fonts);
+        let mut rq = RenderQueue::new();
 
         assert_eq!(value.value(), "Filesystem");
 
@@ -699,12 +740,12 @@ mod tests {
 
     #[test]
     fn test_auto_suspend_submit_updates_value() {
+        let mut context = create_test_context();
         let settings = Settings::default();
         let rect = rect![0, 0, 200, 50];
 
-        let mut value = SettingValue::new(Kind::AutoSuspend, rect, &settings);
+        let mut value = SettingValue::new(Kind::AutoSuspend, rect, &settings, &mut context.fonts);
         let mut rq = RenderQueue::new();
-        let mut context = create_test_context();
 
         context.settings.auto_suspend = 15.0;
         value.refresh_from_context(&context, &mut rq);
@@ -715,12 +756,12 @@ mod tests {
 
     #[test]
     fn test_auto_power_off_submit_updates_value() {
+        let mut context = create_test_context();
         let settings = Settings::default();
         let rect = rect![0, 0, 200, 50];
 
-        let mut value = SettingValue::new(Kind::AutoPowerOff, rect, &settings);
+        let mut value = SettingValue::new(Kind::AutoPowerOff, rect, &settings, &mut context.fonts);
         let mut rq = RenderQueue::new();
-        let mut context = create_test_context();
 
         context.settings.auto_power_off = 7.0;
         value.refresh_from_context(&context, &mut rq);
@@ -741,9 +782,10 @@ mod tests {
         });
         let rect = rect![0, 0, 200, 50];
 
-        let mut value = SettingValue::new(Kind::LibraryName(0), rect, &settings);
-        let mut rq = RenderQueue::new();
         let mut context = create_test_context();
+        let mut value =
+            SettingValue::new(Kind::LibraryName(0), rect, &settings, &mut context.fonts);
+        let mut rq = RenderQueue::new();
 
         context.settings.libraries[0].name = "New Name".to_string();
         value.refresh_from_context(&context, &mut rq);
@@ -764,9 +806,10 @@ mod tests {
         });
         let rect = rect![0, 0, 200, 50];
 
-        let mut value = SettingValue::new(Kind::LibraryPath(0), rect, &settings);
-        let mut rq = RenderQueue::new();
         let mut context = create_test_context();
+        let mut value =
+            SettingValue::new(Kind::LibraryPath(0), rect, &settings, &mut context.fonts);
+        let mut rq = RenderQueue::new();
 
         let new_path = PathBuf::from("/mnt/onboard/new_library");
         context.settings.libraries[0].path = new_path.clone();
@@ -788,11 +831,11 @@ mod tests {
         });
         let rect = rect![0, 0, 200, 50];
 
-        let value = SettingValue::new(Kind::LibraryInfo(0), rect, &settings);
+        let mut context = create_test_context();
+        let value = SettingValue::new(Kind::LibraryInfo(0), rect, &settings, &mut context.fonts);
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
-        let mut context = create_test_context();
 
         let point = crate::geom::Point::new(100, 25);
         let event = Event::Gesture(GestureEvent::Tap(point));

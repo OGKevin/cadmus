@@ -104,7 +104,12 @@ impl CategoryEditor {
                 content_rect.max.x,
                 current_y + row_height
             ];
-            children.push(Self::build_setting_row(kind, row_rect, &context.settings));
+            children.push(Self::build_setting_row(
+                kind,
+                row_rect,
+                &context.settings,
+                &mut context.fonts,
+            ));
             current_y += row_height;
         }
 
@@ -158,8 +163,13 @@ impl CategoryEditor {
     }
 
     #[inline]
-    fn build_setting_row(kind: RowKind, row_rect: Rectangle, settings: &Settings) -> Box<dyn View> {
-        let setting_row = SettingRow::new(kind, row_rect, settings);
+    fn build_setting_row(
+        kind: RowKind,
+        row_rect: Rectangle,
+        settings: &Settings,
+        fonts: &mut crate::font::Fonts,
+    ) -> Box<dyn View> {
+        let setting_row = SettingRow::new(kind, row_rect, settings, fonts);
         Box::new(setting_row) as Box<dyn View>
     }
 
@@ -241,7 +251,7 @@ impl CategoryEditor {
     fn rebuild_library_rows(
         &mut self,
         rq: &mut RenderQueue,
-        context: &Context,
+        context: &mut Context,
         original_count: Option<usize>,
     ) {
         if self.category != Category::Libraries {
@@ -270,7 +280,12 @@ impl CategoryEditor {
                 current_y + self.row_height
             ];
 
-            let setting_row = SettingRow::new(RowKind::Library(i), row_rect, &context.settings);
+            let setting_row = SettingRow::new(
+                RowKind::Library(i),
+                row_rect,
+                &context.settings,
+                &mut context.fonts,
+            );
 
             new_rows.push(Box::new(setting_row) as Box<dyn View>);
             current_y += self.row_height;

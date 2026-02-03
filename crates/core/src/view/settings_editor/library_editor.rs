@@ -76,6 +76,7 @@ impl LibraryEditor {
             separator_thickness,
             library_index,
             &settings,
+            &mut context.fonts,
         ));
 
         children.push(Self::build_bottom_separator(
@@ -132,6 +133,7 @@ impl LibraryEditor {
         separator_thickness: i32,
         library_index: usize,
         settings: &Settings,
+        fonts: &mut crate::font::Fonts,
     ) -> Vec<Box<dyn View>> {
         let mut children = Vec::new();
         let dpi = CURRENT_DEVICE.dpi;
@@ -144,47 +146,80 @@ impl LibraryEditor {
 
         if current_y + row_height <= content_end_y {
             let name_row_rect = rect![rect.min.x, current_y, rect.max.x, current_y + row_height];
-            children.push(Self::build_name_row(name_row_rect, library_index, settings));
+            children.push(Self::build_name_row(
+                name_row_rect,
+                library_index,
+                settings,
+                fonts,
+            ));
             current_y += row_height;
         }
 
         if current_y + row_height <= content_end_y {
             let path_row_rect = rect![rect.min.x, current_y, rect.max.x, current_y + row_height];
-            children.push(Self::build_path_row(path_row_rect, library_index, settings));
+            children.push(Self::build_path_row(
+                path_row_rect,
+                library_index,
+                settings,
+                fonts,
+            ));
             current_y += row_height;
         }
 
         if current_y + row_height <= content_end_y {
             let mode_row_rect = rect![rect.min.x, current_y, rect.max.x, current_y + row_height];
-            children.push(Self::build_mode_row(mode_row_rect, library_index, settings));
+            children.push(Self::build_mode_row(
+                mode_row_rect,
+                library_index,
+                settings,
+                fonts,
+            ));
         }
 
         children
     }
 
     #[inline]
-    fn build_name_row(rect: Rectangle, library_index: usize, settings: &Settings) -> Box<dyn View> {
+    fn build_name_row(
+        rect: Rectangle,
+        library_index: usize,
+        settings: &Settings,
+        fonts: &mut crate::font::Fonts,
+    ) -> Box<dyn View> {
         Box::new(SettingRow::new(
             RowKind::LibraryName(library_index),
             rect,
             settings,
+            fonts,
         )) as Box<dyn View>
     }
 
-    fn build_path_row(rect: Rectangle, library_index: usize, settings: &Settings) -> Box<dyn View> {
+    fn build_path_row(
+        rect: Rectangle,
+        library_index: usize,
+        settings: &Settings,
+        fonts: &mut crate::font::Fonts,
+    ) -> Box<dyn View> {
         Box::new(SettingRow::new(
             RowKind::LibraryPath(library_index),
             rect,
             settings,
+            fonts,
         )) as Box<dyn View>
     }
 
     #[inline]
-    fn build_mode_row(rect: Rectangle, library_index: usize, settings: &Settings) -> Box<dyn View> {
+    fn build_mode_row(
+        rect: Rectangle,
+        library_index: usize,
+        settings: &Settings,
+        fonts: &mut crate::font::Fonts,
+    ) -> Box<dyn View> {
         Box::new(SettingRow::new(
             RowKind::LibraryMode(library_index),
             rect,
             settings,
+            fonts,
         )) as Box<dyn View>
     }
 

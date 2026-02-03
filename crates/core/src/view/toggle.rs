@@ -1,3 +1,4 @@
+use std::env;
 use super::{Align, Bus, Event, Hub, Id, RenderQueue, View, ID_FEEDER};
 use crate::color::{BLACK, GRAY08, TEXT_NORMAL};
 use crate::context::Context;
@@ -11,31 +12,34 @@ use crate::view::label::Label;
 
 use super::{THICKNESS_MEDIUM, THICKNESS_SMALL};
 
-/// A minimal selection box indicator that renders on top of toggle labels.
+/// A minimal selection box indicator that renders tightly around selected label text.
 ///
-/// This is a leaf view (no children) that draws a rounded rectangle with border
-/// around a specific rectangle when visible.
+/// This is a leaf view (no children) that draws a rounded rectangle border
+/// around the actual rendered text dimensions.
 struct SelectionBox {
     id: Id,
     rect: Rectangle,
     children: Vec<Box<dyn View>>,
     target_rect: Rectangle,
+    text_width: i32,
     visible: bool,
 }
 
 impl SelectionBox {
-    fn new(rect: Rectangle, target_rect: Rectangle, visible: bool) -> Self {
+    fn new(rect: Rectangle, target_rect: Rectangle, text_width: i32, visible: bool) -> Self {
         Self {
             id: ID_FEEDER.next(),
             rect,
             children: Vec::new(),
             target_rect,
+            text_width,
             visible,
         }
     }
 
-    fn set_target(&mut self, target_rect: Rectangle, visible: bool) {
+    fn set_target(&mut self, target_rect: Rectangle, text_width: i32, visible: bool) {
         self.target_rect = target_rect;
+        self.text_width = text_width;
         self.visible = visible;
     }
 }
@@ -70,9 +74,7 @@ impl View for SelectionBox {
         let padding = font.em() as i32 / 2 - scale_by_dpi(3.0, dpi) as i32;
         let x_height = font.x_heights.0 as i32;
         let border_box_height = 3 * x_height;
-
-        let target_width = self.target_rect.width() as i32;
-        let border_box_width = target_width - 2 * padding;
+        let border_box_width = self.text_width + padding;
 
         let x_offset = padding;
         let dy = (self.target_rect.height() as i32 - x_height) / 2;
@@ -151,19 +153,31 @@ impl View for SelectionBox {
 ///
 /// ```
 /// use cadmus_core::view::toggle::Toggle;
-/// use cadmus_core::view::{Event, ViewId};
+/// use cadmus_core::view::{Align, Event, ViewId, ToggleEvent};
+/// use cadmus_core::font::Fonts;
 /// use cadmus_core::rect;
+/// use std::env;
+/// use std::path::PathBuf;
 ///
-/// // Create a simple WiFi toggle
+/// let fonts = &mut Fonts::load_from(PathBuf::from(env::var("TEST_ROOT_DIR").unwrap())).unwrap();
+///
 /// let rect = rect![10, 100, 410, 160];
 /// let wifi_toggle = Toggle::new(
 ///     rect,
 ///     "On",       // First option text
 ///     "Off",      // Second option text
 ///     true,       // Initial state (On selected)
-///     Event::Toggle(ViewId::SettingsMenu)
+///     Event::NewToggle(ToggleEvent::View(ViewId::SettingsMenu)),
+///     fonts,
+///     Align::Right(10)
 /// );
 /// ```
+///
+/// # Alignment Behavior
+///
+/// The right label uses the provided alignment, while the left label remains
+/// centered to avoid crowding the separator. This keeps the toggle right-aligned
+/// with other setting values while maintaining consistent padding to the edge.
 ///
 /// # Fields
 ///
@@ -184,6 +198,8 @@ pub struct Toggle {
     left_label_index: usize,
     right_label_index: usize,
     selection_box_index: usize,
+    left_text_width: i32,
+    right_text_width: i32,
 }
 
 impl Toggle {
@@ -196,23 +212,43 @@ impl Toggle {
     /// * `text_disabled` - Text for the second option (shown with border when enabled=false)
     /// * `enabled` - Initial state (true = first option selected)
     /// * `event` - Event to emit when toggled
+    /// * `align` - Alignment to apply to the right label
     ///
     /// # Returns
     ///
-    /// A new Toggle instance with two labels separated by a vertical line
+    /// A new Toggle instance with two labels separated by a vertical line, right-aligned
     pub fn new(
         rect: Rectangle,
         text_enabled: &str,
         text_disabled: &str,
         enabled: bool,
         event: Event,
+        fonts: &mut Fonts,
+        align: Align,
     ) -> Toggle {
-        let mut children = Vec::new();
         let dpi = CURRENT_DEVICE.dpi;
         let separator_width = scale_by_dpi(THICKNESS_MEDIUM, dpi) as i32;
-        let label_width = ((rect.width() as i32 - separator_width) / 2) as i32;
 
-        let left_rect = rect![rect.min.x, rect.min.y, rect.min.x + label_width, rect.max.y];
+        let font = font_from_style(fonts, &NORMAL_STYLE, dpi);
+        let padding = font.em() as i32;
+        let left_plan = font.plan(text_enabled, None, None);
+        let right_plan = font.plan(text_disabled, None, None);
+        let left_text_width = left_plan.width;
+        let right_text_width = right_plan.width;
+        let left_width = left_text_width + padding;
+        let right_width = right_text_width + padding;
+        let total_width = left_width + separator_width + right_width;
+
+        let x_offset = rect.width() as i32 - total_width;
+
+        let mut children = Vec::new();
+
+        let left_rect = rect![
+            rect.min.x + x_offset,
+            rect.min.y,
+            rect.min.x + x_offset + left_width,
+            rect.max.y
+        ];
         let left_label = Label::new(left_rect, text_enabled.to_string(), Align::Center)
             .scheme(TEXT_NORMAL)
             .event(Some(event.clone()));
@@ -222,28 +258,33 @@ impl Toggle {
         let separator_height = rect.height() as i32;
         let separator_padding = separator_height / 4;
         let separator_rect = rect![
-            rect.min.x + label_width,
+            rect.min.x + x_offset + left_width,
             rect.min.y + separator_padding,
-            rect.min.x + label_width + separator_width,
+            rect.min.x + x_offset + left_width + separator_width,
             rect.max.y - separator_padding
         ];
         let separator = Filler::new(separator_rect, GRAY08);
         children.push(Box::new(separator) as Box<dyn View>);
 
         let right_rect = rect![
-            rect.min.x + label_width + separator_width,
+            rect.min.x + x_offset + left_width + separator_width,
             rect.min.y,
             rect.max.x,
             rect.max.y
         ];
-        let right_label = Label::new(right_rect, text_disabled.to_string(), Align::Center)
+        let right_label = Label::new(right_rect, text_disabled.to_string(), align)
             .scheme(TEXT_NORMAL)
             .event(Some(event.clone()));
         children.push(Box::new(right_label) as Box<dyn View>);
         let right_label_index = children.len() - 1;
 
         let selected_rect = if enabled { left_rect } else { right_rect };
-        let selection_box = SelectionBox::new(rect, selected_rect, true);
+        let selected_text_width = if enabled {
+            left_text_width
+        } else {
+            right_text_width
+        };
+        let selection_box = SelectionBox::new(rect, selected_rect, selected_text_width, true);
         children.push(Box::new(selection_box) as Box<dyn View>);
         let selection_box_index = children.len() - 1;
 
@@ -256,6 +297,8 @@ impl Toggle {
             left_label_index,
             right_label_index,
             selection_box_index,
+            left_text_width,
+            right_text_width,
         }
     }
 
@@ -265,6 +308,29 @@ impl Toggle {
             self.rect,
             crate::framebuffer::UpdateMode::Gui,
         ));
+    }
+
+    fn update_selection_box(&mut self, rq: &mut RenderQueue) {
+        let selected_label_index = if self.enabled {
+            self.left_label_index
+        } else {
+            self.right_label_index
+        };
+
+        let text_width = if self.enabled {
+            self.left_text_width
+        } else {
+            self.right_text_width
+        };
+
+        let selected_rect = *self.children[selected_label_index].rect();
+
+        if let Some(selection_box) =
+            self.children[self.selection_box_index].downcast_mut::<SelectionBox>()
+        {
+            selection_box.set_target(selected_rect, text_width, true);
+        }
+        self.request_rerender(rq);
     }
 
     #[cfg(test)]
@@ -285,23 +351,8 @@ impl View for Toggle {
     ) -> bool {
         if std::mem::discriminant(evt) == std::mem::discriminant(&self.event) {
             self.enabled = !self.enabled;
-
-            let selected_rect = if self.enabled {
-                *self.children[self.left_label_index].rect()
-            } else {
-                *self.children[self.right_label_index].rect()
-            };
-
-            if let Some(selection_box) =
-                self.children[self.selection_box_index].downcast_mut::<SelectionBox>()
-            {
-                selection_box.set_target(selected_rect, true);
-            }
-
-            self.request_rerender(rq);
-
+            self.update_selection_box(rq);
             bus.push_back(evt.clone());
-
             return true;
         }
 
@@ -336,36 +387,62 @@ impl View for Toggle {
 mod tests {
     use super::*;
     use crate::context::test_helpers::create_test_context;
-    use crate::view::ViewId;
+    use crate::view::{ToggleEvent, ViewId};
     use std::collections::VecDeque;
     use std::sync::mpsc::channel;
 
     #[test]
     fn test_toggle_starts_in_enabled_state() {
+        let mut context = create_test_context();
         let rect = rect![0, 0, 200, 50];
-        let toggle_event = Event::Toggle(ViewId::SettingsMenu);
-        let toggle = Toggle::new(rect, "On", "Off", true, toggle_event);
+        let toggle_event = Event::NewToggle(ToggleEvent::View(ViewId::SettingsMenu));
+        let toggle = Toggle::new(
+            rect,
+            "On",
+            "Off",
+            true,
+            toggle_event,
+            &mut context.fonts,
+            Align::Center,
+        );
         assert_eq!(toggle.is_enabled(), true);
     }
 
     #[test]
     fn test_toggle_starts_in_disabled_state() {
+        let mut context = create_test_context();
         let rect = rect![0, 0, 200, 50];
-        let toggle_event = Event::Toggle(ViewId::SettingsMenu);
-        let toggle = Toggle::new(rect, "On", "Off", false, toggle_event);
+        let toggle_event = Event::NewToggle(ToggleEvent::View(ViewId::SettingsMenu));
+        let toggle = Toggle::new(
+            rect,
+            "On",
+            "Off",
+            false,
+            toggle_event,
+            &mut context.fonts,
+            Align::Center,
+        );
         assert_eq!(toggle.is_enabled(), false);
     }
 
     #[test]
     fn test_toggle_event_intercepted_and_state_flipped() {
+        let mut context = create_test_context();
         let rect = rect![0, 0, 200, 50];
-        let toggle_event = Event::Toggle(ViewId::SettingsMenu);
-        let mut toggle = Toggle::new(rect, "On", "Off", true, toggle_event.clone());
+        let toggle_event = Event::NewToggle(ToggleEvent::View(ViewId::SettingsMenu));
+        let mut toggle = Toggle::new(
+            rect,
+            "On",
+            "Off",
+            true,
+            toggle_event.clone(),
+            &mut context.fonts,
+            Align::Center,
+        );
 
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
-        let mut context = create_test_context();
 
         let handled = toggle.handle_event(&toggle_event, &hub, &mut bus, &mut rq, &mut context);
 
@@ -375,7 +452,7 @@ mod tests {
         assert_eq!(bus.len(), 1);
         assert!(matches!(
             bus.pop_front(),
-            Some(Event::Toggle(ViewId::SettingsMenu))
+            Some(Event::NewToggle(ToggleEvent::View(ViewId::SettingsMenu)))
         ));
 
         assert!(!rq.is_empty());
@@ -383,9 +460,18 @@ mod tests {
 
     #[test]
     fn test_labels_have_correct_events_configured() {
+        let mut context = create_test_context();
         let rect = rect![0, 0, 200, 50];
-        let toggle_event = Event::Toggle(ViewId::SettingsMenu);
-        let toggle = Toggle::new(rect, "On", "Off", true, toggle_event);
+        let toggle_event = Event::NewToggle(ToggleEvent::View(ViewId::SettingsMenu));
+        let toggle = Toggle::new(
+            rect,
+            "On",
+            "Off",
+            true,
+            toggle_event,
+            &mut context.fonts,
+            Align::Center,
+        );
 
         let left_label = toggle.children[0].downcast_ref::<Label>().unwrap();
         assert!(left_label.text() == "On");
@@ -396,9 +482,18 @@ mod tests {
 
     #[test]
     fn test_labels_use_normal_scheme() {
+        let mut context = create_test_context();
         let rect = rect![0, 0, 200, 50];
-        let toggle_event = Event::Toggle(ViewId::SettingsMenu);
-        let toggle = Toggle::new(rect, "On", "Off", true, toggle_event);
+        let toggle_event = Event::NewToggle(ToggleEvent::View(ViewId::SettingsMenu));
+        let toggle = Toggle::new(
+            rect,
+            "On",
+            "Off",
+            true,
+            toggle_event,
+            &mut context.fonts,
+            Align::Center,
+        );
 
         let left_label = toggle.children[0].downcast_ref::<Label>().unwrap();
         assert_eq!(left_label.get_scheme(), TEXT_NORMAL);
@@ -409,23 +504,40 @@ mod tests {
 
     #[test]
     fn test_filler_separator_is_present() {
+        let mut context = create_test_context();
         let rect = rect![0, 0, 200, 50];
-        let toggle_event = Event::Toggle(ViewId::SettingsMenu);
-        let toggle = Toggle::new(rect, "On", "Off", true, toggle_event);
+        let toggle_event = Event::NewToggle(ToggleEvent::View(ViewId::SettingsMenu));
+        let toggle = Toggle::new(
+            rect,
+            "On",
+            "Off",
+            true,
+            toggle_event,
+            &mut context.fonts,
+            Align::Center,
+        );
 
         assert!(toggle.children[1].is::<Filler>());
     }
 
     #[test]
     fn test_multiple_toggles_flips_state_multiple_times() {
+        let mut context = create_test_context();
         let rect = rect![0, 0, 200, 50];
-        let toggle_event = Event::Toggle(ViewId::SettingsMenu);
-        let mut toggle = Toggle::new(rect, "On", "Off", true, toggle_event.clone());
+        let toggle_event = Event::NewToggle(ToggleEvent::View(ViewId::SettingsMenu));
+        let mut toggle = Toggle::new(
+            rect,
+            "On",
+            "Off",
+            true,
+            toggle_event.clone(),
+            &mut context.fonts,
+            Align::Center,
+        );
 
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
-        let mut context = create_test_context();
 
         toggle.handle_event(&toggle_event, &hub, &mut bus, &mut rq, &mut context);
         assert_eq!(toggle.is_enabled(), false);
@@ -439,14 +551,22 @@ mod tests {
 
     #[test]
     fn test_non_toggle_events_are_ignored() {
+        let mut context = create_test_context();
         let rect = rect![0, 0, 200, 50];
-        let toggle_event = Event::Toggle(ViewId::SettingsMenu);
-        let mut toggle = Toggle::new(rect, "On", "Off", true, toggle_event);
+        let toggle_event = Event::NewToggle(ToggleEvent::View(ViewId::SettingsMenu));
+        let mut toggle = Toggle::new(
+            rect,
+            "On",
+            "Off",
+            true,
+            toggle_event,
+            &mut context.fonts,
+            Align::Center,
+        );
 
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
-        let mut context = create_test_context();
 
         let other_event = Event::Back;
         let handled = toggle.handle_event(&other_event, &hub, &mut bus, &mut rq, &mut context);
@@ -458,27 +578,47 @@ mod tests {
 
     #[test]
     fn test_event_bubbling_continues_after_toggle() {
+        let mut context = create_test_context();
         let rect = rect![0, 0, 200, 50];
-        let toggle_event = Event::Toggle(ViewId::SettingsMenu);
-        let mut toggle = Toggle::new(rect, "On", "Off", true, toggle_event.clone());
+        let toggle_event = Event::NewToggle(ToggleEvent::View(ViewId::SettingsMenu));
+        let mut toggle = Toggle::new(
+            rect,
+            "On",
+            "Off",
+            true,
+            toggle_event.clone(),
+            &mut context.fonts,
+            Align::Center,
+        );
 
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
-        let mut context = create_test_context();
 
         toggle.handle_event(&toggle_event, &hub, &mut bus, &mut rq, &mut context);
 
         assert_eq!(bus.len(), 1);
         let emitted_event = bus.pop_front().unwrap();
-        assert!(matches!(emitted_event, Event::Toggle(ViewId::SettingsMenu)));
+        assert!(matches!(
+            emitted_event,
+            Event::NewToggle(ToggleEvent::View(ViewId::SettingsMenu))
+        ));
     }
 
     #[test]
     fn test_has_four_children() {
+        let mut context = create_test_context();
         let rect = rect![0, 0, 200, 50];
-        let toggle_event = Event::Toggle(ViewId::SettingsMenu);
-        let toggle = Toggle::new(rect, "On", "Off", true, toggle_event);
+        let toggle_event = Event::NewToggle(ToggleEvent::View(ViewId::SettingsMenu));
+        let toggle = Toggle::new(
+            rect,
+            "On",
+            "Off",
+            true,
+            toggle_event,
+            &mut context.fonts,
+            Align::Center,
+        );
 
         assert_eq!(toggle.children.len(), 4);
         assert!(toggle.children[0].is::<Label>());

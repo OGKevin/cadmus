@@ -99,7 +99,12 @@ pub struct SettingRow {
 }
 
 impl SettingRow {
-    pub fn new(kind: Kind, rect: Rectangle, settings: &Settings) -> SettingRow {
+    pub fn new(
+        kind: Kind,
+        rect: Rectangle,
+        settings: &Settings,
+        fonts: &mut crate::font::Fonts,
+    ) -> SettingRow {
         let mut children = Vec::new();
 
         let half_width = rect.width() as i32 / 2;
@@ -110,7 +115,7 @@ impl SettingRow {
         let label = Label::new(label_rect, label_text, Align::Left(50));
         children.push(Box::new(label) as Box<dyn View>);
 
-        let setting_value = SettingValue::new(kind.value_kind(), value_rect, settings);
+        let setting_value = SettingValue::new(kind.value_kind(), value_rect, settings, fonts);
         children.push(Box::new(setting_value) as Box<dyn View>);
 
         SettingRow {
@@ -206,15 +211,15 @@ mod tests {
 
     #[test]
     fn test_update_library_event_updates_matching_row() {
+        let mut context = create_test_context();
         let settings = create_test_settings();
         let rect = rect![0, 0, 400, 60];
 
-        let mut row = SettingRow::new(Kind::Library(0), rect, &settings);
+        let mut row = SettingRow::new(Kind::Library(0), rect, &settings, &mut context.fonts);
 
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
-        let mut context = create_test_context();
 
         let updated_library = LibrarySettings {
             name: "Updated Library Name".to_string(),
@@ -232,15 +237,15 @@ mod tests {
 
     #[test]
     fn test_update_library_event_ignores_non_matching() {
+        let mut context = create_test_context();
         let settings = create_test_settings();
         let rect = rect![0, 0, 400, 60];
 
-        let mut row = SettingRow::new(Kind::Library(0), rect, &settings);
+        let mut row = SettingRow::new(Kind::Library(0), rect, &settings, &mut context.fonts);
 
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
-        let mut context = create_test_context();
 
         let updated_library = LibrarySettings {
             name: "Updated Library 1".to_string(),
