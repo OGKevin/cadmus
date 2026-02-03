@@ -1,15 +1,13 @@
 mod address_bar;
 mod book;
 mod bottom_bar;
-mod directories_bar;
+pub mod directories_bar;
 mod directory;
 mod library_label;
-mod navigation_bar;
 mod shelf;
 
 use self::address_bar::AddressBar;
 use self::bottom_bar::BottomBar;
-use self::navigation_bar::NavigationBar;
 use self::shelf::Shelf;
 use super::top_bar::TopBar;
 use crate::color::BLACK;
@@ -31,6 +29,8 @@ use crate::view::keyboard::Keyboard;
 use crate::view::menu::{Menu, MenuKind};
 use crate::view::menu_entry::MenuEntry;
 use crate::view::named_input::NamedInput;
+use crate::view::navigation::providers::directory::DirectoryNavigationProvider;
+use crate::view::navigation::StackNavigationBar;
 use crate::view::notification::Notification;
 use crate::view::search_bar::SearchBar;
 use crate::view::{Bus, Event, Hub, RenderData, RenderQueue, View};
@@ -159,7 +159,8 @@ impl Home {
         }
 
         if context.settings.home.navigation_bar {
-            let mut nav_bar = NavigationBar::new(
+            let provider = DirectoryNavigationProvider;
+            let mut nav_bar = StackNavigationBar::new(
                 rect![
                     rect.min.x,
                     y_start,
@@ -168,9 +169,11 @@ impl Home {
                 ],
                 rect.max.y - small_height - big_height - small_thickness,
                 context.settings.home.max_levels,
+                provider,
+                current_directory.clone(),
             );
 
-            nav_bar.set_path(&current_directory, &dirs, &mut RenderQueue::new(), context);
+            nav_bar.set_selected(current_directory.clone(), &mut RenderQueue::new(), context);
             y_start = nav_bar.rect().max.y;
 
             children.push(Box::new(nav_bar) as Box<dyn View>);
@@ -301,9 +304,9 @@ impl Home {
         if context.settings.home.navigation_bar {
             let nav_bar = self.children[index]
                 .as_mut()
-                .downcast_mut::<NavigationBar>()
+                .downcast_mut::<StackNavigationBar<DirectoryNavigationProvider>>()
                 .unwrap();
-            nav_bar.set_path(&self.current_directory, &dirs, rq, context);
+            nav_bar.set_selected(self.current_directory.clone(), rq, context);
             self.adjust_shelf_top_edge();
             rq.add(RenderData::new(
                 self.child(index + 1).id(),
@@ -322,10 +325,21 @@ impl Home {
     }
 
     fn adjust_shelf_top_edge(&mut self) {
-        let index = self.shelf_index - 2;
-        let y_shift = self.children[index].rect().max.y - self.children[index + 1].rect().min.y;
-        *self.children[index + 1].rect_mut() += pt!(0, y_shift);
-        self.children[index + 2].rect_mut().min.y = self.children[index + 1].rect().max.y;
+        let separator_index = self.shelf_index - 1;
+        let shelf_index = self.shelf_index;
+
+        let target_separator_min_y = if let Some(nav_bar_index) =
+            locate::<StackNavigationBar<DirectoryNavigationProvider>>(self)
+        {
+            self.children[nav_bar_index].rect().max.y
+        } else {
+            self.children[separator_index].rect().min.y
+        };
+        let current_separator_min_y = self.children[separator_index].rect().min.y;
+        let y_shift = target_separator_min_y - current_separator_min_y;
+
+        *self.children[separator_index].rect_mut() += pt!(0, y_shift);
+        self.children[shelf_index].rect_mut().min.y = self.children[separator_index].rect().max.y;
     }
 
     fn toggle_select_directory(
@@ -727,7 +741,7 @@ impl Home {
             // Move the navigation bar up.
             if context.settings.home.navigation_bar {
                 let nav_bar = self.children[self.shelf_index - 2]
-                    .downcast_mut::<NavigationBar>()
+                    .downcast_mut::<StackNavigationBar<DirectoryNavigationProvider>>()
                     .unwrap();
                 nav_bar.shift(pt!(0, -small_height));
             }
@@ -737,6 +751,10 @@ impl Home {
 
             // Move the shelf's top edge up.
             self.children[self.shelf_index].rect_mut().min.y -= small_height;
+
+            if context.settings.home.navigation_bar {
+                self.adjust_shelf_top_edge();
+            }
         } else {
             if let Some(false) = enable {
                 return;
@@ -773,7 +791,7 @@ impl Home {
                 let rect = *self.children[self.shelf_index].rect();
                 let y_shift = rect.height() as i32 - (big_height - thickness);
                 let nav_bar = self.children[self.shelf_index - 2]
-                    .downcast_mut::<NavigationBar>()
+                    .downcast_mut::<StackNavigationBar<DirectoryNavigationProvider>>()
                     .unwrap();
                 // Move the navigation bar down.
                 nav_bar.shift(pt!(0, small_height));
@@ -784,6 +802,8 @@ impl Home {
                     self.children[self.shelf_index].rect_mut().min.y += y_shift;
                     *self.children[self.shelf_index - 1].rect_mut() += pt!(0, y_shift);
                 }
+
+                self.adjust_shelf_top_edge();
             }
         }
 
@@ -817,7 +837,7 @@ impl Home {
         let thickness = scale_by_dpi(THICKNESS_MEDIUM, dpi) as i32;
         let (small_thickness, _) = halves(thickness);
 
-        if let Some(index) = locate::<NavigationBar>(self) {
+        if let Some(index) = locate::<StackNavigationBar<DirectoryNavigationProvider>>(self) {
             if let Some(true) = enable {
                 return;
             }
@@ -849,7 +869,8 @@ impl Home {
             self.children
                 .insert(sep_index + 1, Box::new(separator) as Box<dyn View>);
 
-            let mut nav_bar = NavigationBar::new(
+            let provider = DirectoryNavigationProvider;
+            let mut nav_bar = StackNavigationBar::new(
                 rect![
                     self.rect.min.x,
                     sp_rect.min.y - small_height + thickness,
@@ -858,9 +879,11 @@ impl Home {
                 ],
                 self.rect.max.y - small_height - big_height - small_thickness,
                 context.settings.home.max_levels,
+                provider,
+                self.current_directory.clone(),
             );
-            let (_, dirs) = context.library.list(&self.current_directory, None, true);
-            nav_bar.set_path(&self.current_directory, &dirs, rq, context);
+
+            nav_bar.set_selected(self.current_directory.clone(), rq, context);
             self.children
                 .insert(sep_index + 1, Box::new(nav_bar) as Box<dyn View>);
 
@@ -926,7 +949,7 @@ impl Home {
 
             if context.settings.home.navigation_bar {
                 let nav_bar = self.children[self.shelf_index - 2]
-                    .downcast_mut::<NavigationBar>()
+                    .downcast_mut::<StackNavigationBar<DirectoryNavigationProvider>>()
                     .unwrap();
                 nav_bar.vertical_limit += delta_y;
             }
@@ -965,7 +988,7 @@ impl Home {
                 let rect = *self.children[self.shelf_index].rect();
                 let y_shift = rect.height() as i32 - (big_height - thickness);
                 let nav_bar = self.children[self.shelf_index - 2]
-                    .downcast_mut::<NavigationBar>()
+                    .downcast_mut::<StackNavigationBar<DirectoryNavigationProvider>>()
                     .unwrap();
                 nav_bar.vertical_limit -= delta_y;
 
@@ -2471,9 +2494,8 @@ impl View for Home {
             };
             let nav_bar = self.children[index]
                 .as_mut()
-                .downcast_mut::<NavigationBar>()
+                .downcast_mut::<StackNavigationBar<DirectoryNavigationProvider>>()
                 .unwrap();
-            let (_, dirs) = context.library.list(&self.current_directory, None, true);
             nav_bar.clear();
             nav_bar.resize(
                 rect![
@@ -2488,9 +2510,8 @@ impl View for Home {
             );
             nav_bar.vertical_limit =
                 rect.max.y - count * small_height - big_height - small_thickness;
-            nav_bar.set_path(
-                &self.current_directory,
-                &dirs,
+            nav_bar.set_selected(
+                self.current_directory.clone(),
                 &mut RenderQueue::new(),
                 context,
             );
@@ -2601,5 +2622,102 @@ impl View for Home {
 
     fn id(&self) -> Id {
         self.id
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::battery::{Battery, FakeBattery};
+    use crate::framebuffer::Pixmap;
+    use crate::frontlight::{Frontlight, LightLevels};
+    use crate::lightsensor::LightSensor;
+    use std::env;
+    use std::path::Path;
+
+    fn create_test_context() -> Context {
+        let fb = Box::new(Pixmap::new(600, 800, 1)) as Box<dyn Framebuffer>;
+        let battery = Box::new(FakeBattery::new()) as Box<dyn Battery>;
+        let frontlight = Box::new(LightLevels::default()) as Box<dyn Frontlight>;
+        let lightsensor = Box::new(0u16) as Box<dyn LightSensor>;
+
+        let fonts = crate::font::Fonts::load_from(
+            Path::new(
+                &env::var("TEST_ROOT_DIR").expect("TEST_ROOT_DIR must be set for this test."),
+            )
+            .to_path_buf(),
+        )
+        .expect(
+            "Failed to load fonts. Tests require font files to be present. \
+             Run tests from the project root directory.",
+        );
+
+        Context::new(
+            fb,
+            None,
+            crate::library::Library::new(Path::new("/tmp"), crate::settings::LibraryMode::Database)
+                .unwrap(),
+            crate::settings::Settings::default(),
+            fonts,
+            battery,
+            frontlight,
+            lightsensor,
+        )
+    }
+
+    #[test]
+    fn test_toggle_address_bar_with_navigation_bar_maintains_separator_alignment() {
+        let mut context = create_test_context();
+        let (tx, _rx) = std::sync::mpsc::channel();
+        let hub = tx;
+        let mut rq = RenderQueue::new();
+
+        context.settings.home.navigation_bar = false;
+        context.settings.home.address_bar = false;
+
+        let rect = rect![0, 0, 600, 800];
+        let mut home = Home::new(rect, &hub, &mut rq, &mut context).unwrap();
+
+        home.toggle_navigation_bar(Some(true), false, &hub, &mut rq, &mut context);
+        assert!(context.settings.home.navigation_bar);
+
+        let nav_bar_index =
+            locate::<StackNavigationBar<DirectoryNavigationProvider>>(&home).unwrap();
+        let separator_index = home.shelf_index - 1;
+
+        let nav_bar_bottom_before = home.children[nav_bar_index].rect().max.y;
+        let separator_top_before = home.children[separator_index].rect().min.y;
+        assert_eq!(
+            nav_bar_bottom_before, separator_top_before,
+            "Navigation bar and separator should be aligned before toggling address bar"
+        );
+
+        home.toggle_address_bar(Some(true), false, &hub, &mut rq, &mut context);
+        assert!(context.settings.home.address_bar);
+
+        let nav_bar_index =
+            locate::<StackNavigationBar<DirectoryNavigationProvider>>(&home).unwrap();
+        let separator_index = home.shelf_index - 1;
+
+        let nav_bar_bottom_after_enable = home.children[nav_bar_index].rect().max.y;
+        let separator_top_after_enable = home.children[separator_index].rect().min.y;
+        assert_eq!(
+            nav_bar_bottom_after_enable, separator_top_after_enable,
+            "Navigation bar and separator should remain aligned after enabling address bar"
+        );
+
+        home.toggle_address_bar(Some(false), false, &hub, &mut rq, &mut context);
+        assert!(!context.settings.home.address_bar);
+
+        let nav_bar_index =
+            locate::<StackNavigationBar<DirectoryNavigationProvider>>(&home).unwrap();
+        let separator_index = home.shelf_index - 1;
+
+        let nav_bar_bottom_after_disable = home.children[nav_bar_index].rect().max.y;
+        let separator_top_after_disable = home.children[separator_index].rect().min.y;
+        assert_eq!(
+            nav_bar_bottom_after_disable, separator_top_after_disable,
+            "Navigation bar and separator should remain aligned after disabling address bar"
+        );
     }
 }
