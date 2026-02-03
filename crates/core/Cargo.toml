@@ -31,7 +31,7 @@ septem = "1.1.0"
 byteorder = "1.5.0"
 flate2 = "1.1.5"
 levenshtein = "1.0.5"
-nix = { version = "0.30.1", features = ["fs", "ioctl"] }
+nix = { version = "0.31.0", features = ["fs", "ioctl"] }
 indexmap = { version = "2.13.0", features = ["serde"] }
 anyhow = "1.0.100"
 thiserror = "2.0.17"
