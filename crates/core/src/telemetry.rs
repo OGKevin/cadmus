@@ -245,7 +245,7 @@ fn build_tracer_provider(endpoint: &str, resource: Resource) -> Result<SdkTracer
         .with_timeout(Duration::from_secs(3))
         .build()
         .context("can't build otlp span exporter")?;
-    
+
     let processor = BatchSpanProcessor::builder(exporter)
         .with_batch_config(
             opentelemetry_sdk::trace::BatchConfigBuilder::default()
@@ -283,7 +283,7 @@ fn build_logger_provider(endpoint: &str, resource: Resource) -> Result<SdkLogger
         .with_timeout(Duration::from_secs(3))
         .build()
         .context("can't build otlp log exporter")?;
-    
+
     let processor = BatchLogProcessor::builder(exporter)
         .with_batch_config(
             opentelemetry_sdk::logs::BatchConfigBuilder::default()
