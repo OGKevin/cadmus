@@ -4,16 +4,26 @@ Cadmus supports exporting logs and traces to OpenTelemetry-compatible backends w
 
 ## Overview
 
-The OpenTelemetry (OTEL) integration allows Cadmus to export structured logs and distributed traces to observability platforms like Grafana Loki/Tempo, or any OTLP-compatible service. This is useful for monitoring application behavior, debugging issues, and analyzing performance.
+The OpenTelemetry (OTEL) integration allows Cadmus to export both **structured logs** and **distributed traces** to
+observability platforms like Grafana Loki/Tempo, Jaeger, or any OTLP-compatible service.
+Both logs and traces are first-class features that work together to provide comprehensive observability for
+monitoring application behavior, debugging issues, and analyzing performance.
 
 ## Architecture
 
-The telemetry system consists of two main components:
+The telemetry system consists of three main components:
 
 - **Logging**: JSON-structured logs written to disk via `tracing_subscriber`
-- **OTLP Export**: Optional export of logs and traces to a remote OTLP endpoint
+- **Tracing**: Distributed traces capturing execution flow and timing
+- **OTLP Export**: Optional export of both logs and traces to a remote OTLP endpoint
 
-Each Cadmus run is assigned a unique Run ID (UUID v7) that ties together all logs and traces for that session.
+When the `otel` feature is enabled, Cadmus initializes:
+
+- **Tracer Provider**: Exports distributed traces to `<endpoint>/v1/traces` using batch span processors for async delivery
+- **Logger Provider**: Exports structured logs to `<endpoint>/v1/logs` using batch log processors
+
+Each Cadmus run is assigned a unique Run ID (UUID v7) that ties together all logs and traces for that session,
+enabling correlation between trace spans and log events.
 
 ## Building with OTEL Support
 
@@ -71,9 +81,40 @@ export RUST_LOG=cadmus::view=trace,info
 ./cadmus
 ```
 
+## Distributed Tracing
+
+Distributed tracing captures the execution flow of operations through the application, providing timing information and
+context about how different components interact.
+
+### How Tracing Works in Cadmus
+
+When the `otel` feature is enabled, Cadmus automatically instruments key operations using the `tracing` crate.
+Each instrumented function creates a **span** that records:
+
+- Function name and module path
+- Input parameters (selectively captured)
+- Execution duration
+- Return values (at TRACE level)
+- Hierarchical relationships between spans
+
+Spans are organized hierarchically, showing which operations triggered which other operations, making it easier to
+understand execution flow and identify performance bottlenecks.
+
+### Instrumentation
+
+View components in Cadmus are instrumented at critical chokepoints:
+
+- **`handle_event` methods**: Capture event flow through the UI hierarchy with event type and return value
+- **`render` methods**: Capture rendering operations with rectangle dimensions for layout debugging
+
+All instrumentation uses conditional compilation (`#[cfg_attr(feature = "otel", ...)]`) to ensure zero runtime overhead
+when the feature is disabled.
+
+For detailed instrumentation guidelines and examples, see `.github/instructions/rust-instrumentation.instructions.md`.
+
 ## Resource Attributes
 
-Each telemetry export includes the following resource attributes:
+Each telemetry export (both logs and traces) includes the following resource attributes:
 
 - **service.name**: Always `cadmus`
 - **service.version**: Git version from build metadata

@@ -312,8 +312,7 @@ in
               search:
                 max_duration: 1h
           ''} \
-          -target=all \
-          -backend-scheduler.local-work-path=${config.devenv.state}/tempo/work
+          -target=all
       '';
     };
 
@@ -517,6 +516,7 @@ in
       echo ""
 
       export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4318"
+      export RUST_LOG="trace"
 
       ./run-emulator.sh --features otel "$@"
     '';

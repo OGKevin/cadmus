@@ -296,14 +296,26 @@ pub fn init_logging(settings: &LoggingSettings) -> Result<(), Error> {
         .with_writer(non_blocking)
         .with_current_span(true);
 
-    let subscriber = tracing_subscriber::registry().with(filter).with(fmt_layer);
-
     #[cfg(feature = "otel")]
-    let subscriber = subscriber.with(telemetry::init_telemetry(settings, get_run_id())?);
+    {
+        let subscriber = tracing_subscriber::registry()
+            .with(filter)
+            .with(telemetry::init_telemetry(settings, get_run_id())?)
+            .with(fmt_layer);
 
-    subscriber
-        .try_init()
-        .context("can't initialize tracing subscriber")?;
+        subscriber
+            .try_init()
+            .context("can't initialize tracing subscriber")?;
+    }
+
+    #[cfg(not(feature = "otel"))]
+    {
+        let subscriber = tracing_subscriber::registry().with(filter).with(fmt_layer);
+
+        subscriber
+            .try_init()
+            .context("can't initialize tracing subscriber")?;
+    }
 
     eprintln!(
         "Cadmus run started with ID: {} (version {})",

@@ -199,6 +199,7 @@ impl ToggleableKeyboard {
 }
 
 impl View for ToggleableKeyboard {
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, hub, bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
@@ -219,7 +220,7 @@ impl View for ToggleableKeyboard {
 
         false
     }
-
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, fb, fonts), fields(rect = ?rect)))]
     fn render(&self, fb: &mut dyn Framebuffer, rect: Rectangle, fonts: &mut Fonts) {
         if !self.visible {
             return;

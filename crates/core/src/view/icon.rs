@@ -122,6 +122,7 @@ impl Icon {
 }
 
 impl View for Icon {
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, hub, bus, rq, _context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
@@ -172,6 +173,7 @@ impl View for Icon {
         }
     }
 
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, fb, _fonts, _rect), fields(rect = ?_rect)))]
     fn render(&self, fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {
         let scheme = if self.active {
             TEXT_INVERTED_HARD

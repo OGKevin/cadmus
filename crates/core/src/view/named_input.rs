@@ -101,6 +101,7 @@ impl NamedInput {
 }
 
 impl View for NamedInput {
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _hub, bus, _rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
@@ -130,6 +131,7 @@ impl View for NamedInput {
         }
     }
 
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, fb, _fonts, _rect), fields(rect = ?_rect)))]
     fn render(&self, fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {
         let dpi = CURRENT_DEVICE.dpi;
         let border_radius = scale_by_dpi(BORDER_RADIUS_MEDIUM, dpi) as i32;

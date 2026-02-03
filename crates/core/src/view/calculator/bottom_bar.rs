@@ -9,7 +9,6 @@ use crate::view::filler::Filler;
 use crate::view::labeled_icon::LabeledIcon;
 use crate::view::{Bus, Event, Hub, Id, RenderQueue, View, ViewId, ID_FEEDER};
 
-#[derive(Debug)]
 pub struct BottomBar {
     id: Id,
     rect: Rectangle,
@@ -91,6 +90,7 @@ impl BottomBar {
 }
 
 impl View for BottomBar {
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _hub, _bus, _rq, _context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
@@ -114,6 +114,7 @@ impl View for BottomBar {
         }
     }
 
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _fb, _fonts, _rect), fields(rect = ?_rect)))]
     fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {}
 
     fn resize(&mut self, rect: Rectangle, hub: &Hub, rq: &mut RenderQueue, context: &mut Context) {

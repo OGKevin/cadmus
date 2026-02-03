@@ -107,7 +107,6 @@ pub struct Reader {
     finished: bool,
 }
 
-#[derive(Debug)]
 struct ViewPort {
     zoom_mode: ZoomMode,
     scroll_mode: ScrollMode,
@@ -133,14 +132,12 @@ enum State {
     AdjustSelection,
 }
 
-#[derive(Debug)]
 struct Selection {
     start: TextLocation,
     end: TextLocation,
     anchor: TextLocation,
 }
 
-#[derive(Debug)]
 struct Resource {
     pixmap: Pixmap,
     frame: Rectangle, // The pixmap's rectangle minus the cropping margins.
@@ -155,7 +152,6 @@ struct RenderChunk {
     scale: f32,
 }
 
-#[derive(Debug)]
 struct Search {
     query: String,
     highlights: BTreeMap<usize, Vec<Vec<Boundary>>>,
@@ -176,7 +172,6 @@ impl Default for Search {
     }
 }
 
-#[derive(Debug)]
 struct Contrast {
     exponent: f32,
     gray: f32,
@@ -3763,6 +3758,7 @@ impl Reader {
 }
 
 impl View for Reader {
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, hub, _bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
@@ -5180,6 +5176,7 @@ impl View for Reader {
         }
     }
 
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, fb, _fonts), fields(rect = ?rect)))]
     fn render(&self, fb: &mut dyn Framebuffer, rect: Rectangle, _fonts: &mut Fonts) {
         fb.draw_rectangle(&rect, WHITE);
 
