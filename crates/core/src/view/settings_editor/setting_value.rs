@@ -8,7 +8,6 @@ use crate::settings::{ButtonScheme, IntermKind, Settings};
 use crate::view::toggle::Toggle;
 use crate::view::{EntryId, ToggleEvent};
 use anyhow::Error;
-use libc::open_how;
 use std::fs;
 use std::path::Path;
 
@@ -30,12 +29,6 @@ pub enum ToggleSettings {
 pub enum Kind {
     /// Keyboard layout selection setting
     KeyboardLayout,
-    /// Sleep cover enable/disable setting
-    #[deprecated]
-    SleepCover,
-    /// Auto-share enable/disable setting
-    #[deprecated]
-    AutoShare,
     /// Auto-suspend timeout setting (in minutes)
     AutoSuspend,
     /// Auto power-off timeout setting (in minutes)
@@ -44,9 +37,6 @@ pub enum Kind {
     /// Generic toggle setting
     Toggle(ToggleSettings),
 
-    /// Button scheme selection (natural or inverted)
-    #[deprecated]
-    ButtonScheme,
     /// Library info display for the library at the given index
     LibraryInfo(usize),
     /// Library name setting for the library at the given index
@@ -168,7 +158,7 @@ impl SettingValue {
     /// This method updates the ActionLabel text to reflect the current state of the setting
     /// in context.settings. It should be called whenever the underlying setting changes.
     pub fn refresh_from_context(&mut self, context: &Context, rq: &mut RenderQueue) {
-        let (value, entries, enabled_toggle) =
+        let (value, entries, _enabled_toggle) =
             Self::fetch_data_for_kind(&self.kind, &context.settings);
         self.entries = entries;
         let event = self.create_tap_event();
@@ -187,11 +177,8 @@ impl SettingValue {
     ) -> (String, Vec<EntryKind>, Option<bool>) {
         match kind {
             Kind::KeyboardLayout => Self::fetch_keyboard_layout_data(settings),
-            Kind::SleepCover => Self::fetch_sleep_cover_data(settings),
-            Kind::AutoShare => Self::fetch_auto_share_data(settings),
             Kind::AutoSuspend => Self::fetch_auto_suspend_data(settings),
             Kind::AutoPowerOff => Self::fetch_auto_power_off_data(settings),
-            Kind::ButtonScheme => Self::fetch_button_scheme_data(settings),
             Kind::LibraryInfo(index) => Self::fetch_library_info_data(*index, settings),
             Kind::LibraryName(index) => Self::fetch_library_name_data(*index, settings),
             Kind::LibraryPath(index) => Self::fetch_library_path_data(*index, settings),
@@ -239,12 +226,6 @@ impl SettingValue {
             "Disabled".to_string()
         };
 
-        // let entries = vec![EntryKind::CheckBox(
-        //     "Enable".to_string(),
-        //     EntryId::ToggleSleepCover,
-        //     enabled,
-        // )];
-
         (value, vec![], Some(settings.sleep_cover))
     }
 
@@ -256,30 +237,12 @@ impl SettingValue {
             "Disabled".to_string()
         };
 
-        // let entries = vec![EntryKind::CheckBox(
-        //     "Enable".to_string(),
-        //     EntryId::ToggleAutoShare,
-        //     enabled,
-        // )];
-
         (value, vec![], Some(settings.auto_share))
     }
 
     fn fetch_button_scheme_data(settings: &Settings) -> (String, Vec<EntryKind>, Option<bool>) {
         let current_scheme = settings.button_scheme;
         let value = format!("{:?}", current_scheme);
-
-        // let schemes = [ButtonScheme::Natural, ButtonScheme::Inverted];
-        // let entries: Vec<EntryKind> = schemes
-        //     .iter()
-        //     .map(|scheme| {
-        //         EntryKind::RadioButton(
-        //             format!("{:?}", scheme),
-        //             EntryId::SetButtonScheme(*scheme),
-        //             current_scheme == *scheme,
-        //         )
-        //     })
-        //     .collect();
 
         (
             value,
@@ -646,67 +609,6 @@ mod tests {
         value.refresh_from_context(&context, &mut rq);
 
         assert_eq!(value.value(), "French");
-        assert!(!rq.is_empty());
-    }
-
-    #[test]
-    fn test_sleep_cover_toggle_updates_value() {
-        let mut context = create_test_context();
-        let settings = Settings {
-            sleep_cover: false,
-            ..Default::default()
-        };
-        let rect = rect![0, 0, 200, 50];
-
-        let mut value = SettingValue::new(Kind::SleepCover, rect, &settings, &mut context.fonts);
-        let mut rq = RenderQueue::new();
-
-        assert_eq!(value.value(), "Disabled");
-
-        context.settings.sleep_cover = true;
-        value.refresh_from_context(&context, &mut rq);
-
-        assert_eq!(value.value(), "Enabled");
-        assert!(!rq.is_empty());
-    }
-
-    #[test]
-    fn test_auto_share_toggle_updates_value() {
-        let mut context = create_test_context();
-        let settings = Settings {
-            auto_share: false,
-            ..Default::default()
-        };
-        let rect = rect![0, 0, 200, 50];
-
-        let mut value = SettingValue::new(Kind::AutoShare, rect, &settings, &mut context.fonts);
-        let mut rq = RenderQueue::new();
-
-        assert_eq!(value.value(), "Disabled");
-
-        context.settings.auto_share = true;
-        value.refresh_from_context(&context, &mut rq);
-
-        assert_eq!(value.value(), "Enabled");
-        assert!(!rq.is_empty());
-    }
-
-    #[test]
-    fn test_button_scheme_select_updates_value() {
-        let mut context = create_test_context();
-        let settings = Settings {
-            button_scheme: ButtonScheme::Natural,
-            ..Default::default()
-        };
-        let rect = rect![0, 0, 200, 50];
-
-        let mut value = SettingValue::new(Kind::ButtonScheme, rect, &settings, &mut context.fonts);
-        let mut rq = RenderQueue::new();
-
-        context.settings.button_scheme = ButtonScheme::Inverted;
-        value.refresh_from_context(&context, &mut rq);
-
-        assert_eq!(value.value(), "Inverted");
         assert!(!rq.is_empty());
     }
 

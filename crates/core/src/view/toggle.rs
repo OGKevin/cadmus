@@ -1,4 +1,3 @@
-use std::env;
 use super::{Align, Bus, Event, Hub, Id, RenderQueue, View, ID_FEEDER};
 use crate::color::{BLACK, GRAY08, TEXT_NORMAL};
 use crate::context::Context;
@@ -405,7 +404,7 @@ mod tests {
             &mut context.fonts,
             Align::Center,
         );
-        assert_eq!(toggle.is_enabled(), true);
+        assert!(toggle.is_enabled());
     }
 
     #[test]
@@ -422,7 +421,7 @@ mod tests {
             &mut context.fonts,
             Align::Center,
         );
-        assert_eq!(toggle.is_enabled(), false);
+        assert!(!toggle.is_enabled());
     }
 
     #[test]
@@ -447,7 +446,7 @@ mod tests {
         let handled = toggle.handle_event(&toggle_event, &hub, &mut bus, &mut rq, &mut context);
 
         assert!(handled);
-        assert_eq!(toggle.is_enabled(), false);
+        assert!(!toggle.is_enabled());
 
         assert_eq!(bus.len(), 1);
         assert!(matches!(
@@ -540,13 +539,13 @@ mod tests {
         let mut rq = RenderQueue::new();
 
         toggle.handle_event(&toggle_event, &hub, &mut bus, &mut rq, &mut context);
-        assert_eq!(toggle.is_enabled(), false);
+        assert!(!toggle.is_enabled());
 
         toggle.handle_event(&toggle_event, &hub, &mut bus, &mut rq, &mut context);
-        assert_eq!(toggle.is_enabled(), true);
+        assert!(toggle.is_enabled());
 
         toggle.handle_event(&toggle_event, &hub, &mut bus, &mut rq, &mut context);
-        assert_eq!(toggle.is_enabled(), false);
+        assert!(!toggle.is_enabled());
     }
 
     #[test]
@@ -572,7 +571,7 @@ mod tests {
         let handled = toggle.handle_event(&other_event, &hub, &mut bus, &mut rq, &mut context);
 
         assert!(!handled);
-        assert_eq!(toggle.is_enabled(), true);
+        assert!(toggle.is_enabled());
         assert_eq!(bus.len(), 0);
     }
 

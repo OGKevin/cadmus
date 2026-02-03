@@ -62,8 +62,6 @@ pub use self::category_provider::SettingsCategoryProvider;
 pub use self::setting_row::{Kind as RowKind, SettingRow};
 pub use self::setting_value::SettingValue;
 
-// pub enum ToggleSettings{}
-
 /// Main settings editor view.
 ///
 /// This is the top-level view that displays a navigation bar with category tabs
@@ -114,7 +112,7 @@ impl SettingsEditor {
             rect.min.y + bar_height + separator_bottom_half + bar_height
         ];
 
-        let provider = SettingsCategoryProvider::default();
+        let provider = SettingsCategoryProvider;
         let mut navigation_bar =
             StackNavigationBar::new(nav_bar_rect, rect.max.y, 1, provider, Category::General)
                 .disable_resize();

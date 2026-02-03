@@ -18,7 +18,7 @@ use crate::view::label::Label;
 use crate::view::page_label::PageLabel;
 use crate::view::top_bar::{TopBar, TopBarVariant};
 use crate::view::{Bus, EntryId, Event, Hub, Id, RenderData, RenderQueue, View, ViewId, ID_FEEDER};
-use crate::view::{BIG_BAR_HEIGHT, SMALL_BAR_HEIGHT, THICKNESS_MEDIUM};
+use crate::view::{SMALL_BAR_HEIGHT, THICKNESS_MEDIUM};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
