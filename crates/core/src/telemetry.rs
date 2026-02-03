@@ -197,7 +197,7 @@ pub fn shutdown_telemetry() {
         shutdown_with_timeout(
             {
                 move || {
-                    let _ = provider.shutdown().ok();
+                    let _ = provider.shutdown();
                 }
             },
             timeout,
