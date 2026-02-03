@@ -39,6 +39,7 @@ impl BreadcrumbEntry {
 }
 
 impl View for BreadcrumbEntry {
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _hub, bus, _rq, _context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
@@ -60,6 +61,7 @@ impl View for BreadcrumbEntry {
         }
     }
 
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, fb, fonts), fields(rect = ?_rect)))]
     fn render(&self, fb: &mut dyn Framebuffer, _rect: Rectangle, fonts: &mut Fonts) {
         let dpi = CURRENT_DEVICE.dpi;
         let font = font_from_style(fonts, &NORMAL_STYLE, dpi);
@@ -262,6 +264,7 @@ impl Breadcrumb {
 }
 
 impl View for Breadcrumb {
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _hub, _bus, _rq, _context), fields(event = ?_evt), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         _evt: &Event,
@@ -273,6 +276,7 @@ impl View for Breadcrumb {
         false
     }
 
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _fb, _fonts), fields(rect = ?_rect)))]
     fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {}
 
     fn rect(&self) -> &Rectangle {

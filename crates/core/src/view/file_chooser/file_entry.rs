@@ -182,6 +182,7 @@ impl View for FileEntry {
     /// # Returns
     ///
     /// `true` if the event was handled, `false` otherwise.
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _hub, bus, _rq, _context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
@@ -209,6 +210,7 @@ impl View for FileEntry {
         }
     }
 
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, fb, _fonts), fields(rect = ?_rect)))]
     fn render(&self, fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {
         fb.draw_rectangle(&self.rect, WHITE);
     }

@@ -48,10 +48,12 @@ fn render(&self, fb: &mut dyn Framebuffer, rect: Rectangle, fonts: &mut Fonts) {
 - **Selective Skipping**: Skip only large data structures (self, hub, bus, rq, context, fb, fonts) while capturing critical information (event, rect)
 - **Return Value Tracing**: The `ret(level=tracing::Level::TRACE)` logs the return value at TRACE level for debugging
 - **Applies to All Views**: Every view component's `handle_event` and `render` methods must have these attributes
+- **Unused Parameters**: Keep unused parameter prefixes (e.g., `_hub`, `_bus`) to avoid compiler warnings. The instrumentation `skip()` directive must use the exact parameter names, including underscores (e.g., `skip(self, _hub, _bus, _rq, _context)` when parameters are named `_hub`, `_bus`, `_rq`, `_context`).
+- **Verification**: Always validate instrumentation with `cargo check --features otel` to ensure the tracing macro resolves parameter names correctly.
 
 ### Examples
 
-**Good:**
+**Good (all parameters used):**
 
 ```rust
 impl View for Button {
@@ -80,7 +82,31 @@ impl View for Button {
 }
 ```
 
-**Bad:**
+**Good (with unused parameters):**
+
+```rust
+impl View for Filler {
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _hub, _bus, _rq, _context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    fn handle_event(
+        &mut self,
+        evt: &Event,
+        _hub: &Hub,
+        _bus: &mut Bus,
+        _rq: &mut RenderQueue,
+        _context: &mut Context,
+    ) -> bool {
+        // No implementation needed - all params unused
+        false
+    }
+
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _fb, _fonts), fields(rect = ?_rect)))]
+    fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {
+        // No rendering needed - all params unused
+    }
+}
+```
+
+**Bad (missing instrumentation):**
 
 ```rust
 impl View for Button {
@@ -97,6 +123,25 @@ impl View for Button {
 
     fn render(&self, fb: &mut dyn Framebuffer, _rect: Rectangle, fonts: &mut Fonts) {
         // Missing instrumentation attribute
+    }
+}
+```
+
+**Bad (incorrect skip directive with mismatched names):**
+
+```rust
+impl View for Filler {
+    // Wrong: skip() uses names that do not match the parameters
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, hub, bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    fn handle_event(
+        &mut self,
+        evt: &Event,
+        _hub: &Hub,
+        _bus: &mut Bus,
+        _rq: &mut RenderQueue,
+        _context: &mut Context,
+    ) -> bool {
+        false
     }
 }
 ```

@@ -831,6 +831,7 @@ impl CategoryEditor {
 }
 
 impl View for CategoryEditor {
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, hub, bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
@@ -887,6 +888,7 @@ impl View for CategoryEditor {
         }
     }
 
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _fb, _fonts), fields(rect = ?_rect)))]
     fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut crate::font::Fonts) {
     }
 

@@ -123,12 +123,13 @@ impl SettingRow {
 }
 
 impl View for SettingRow {
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _hub, _bus, rq, _context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
         _hub: &Hub,
         _bus: &mut Bus,
-        _rq: &mut RenderQueue,
+        rq: &mut RenderQueue,
         _context: &mut Context,
     ) -> bool {
         match evt {
@@ -138,7 +139,7 @@ impl View for SettingRow {
                         if let Some(name_view) = self.children.get_mut(0) {
                             if let Some(name_label) = name_view.as_any_mut().downcast_mut::<Label>()
                             {
-                                name_label.update(&library.name, _rq);
+                                name_label.update(&library.name, rq);
                                 return true;
                             }
                         }
@@ -151,6 +152,7 @@ impl View for SettingRow {
         }
     }
 
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _fb, _fonts), fields(rect = ?_rect)))]
     fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut crate::font::Fonts) {
     }
 

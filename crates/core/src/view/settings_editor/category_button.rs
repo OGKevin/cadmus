@@ -26,6 +26,7 @@ pub struct CategoryButton {
 }
 
 impl CategoryButton {
+    #[cfg_attr(feature = "otel", tracing::instrument())]
     pub fn new(
         rect: Rectangle,
         category: Category,
@@ -48,6 +49,7 @@ impl CategoryButton {
 }
 
 impl View for CategoryButton {
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _hub, bus, _rq, _context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
@@ -65,9 +67,10 @@ impl View for CategoryButton {
         }
     }
 
-    fn render(&self, fb: &mut dyn Framebuffer, _rect: Rectangle, fonts: &mut Fonts) {
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, fb, fonts), fields(rect = ?rect)))]
+    fn render(&self, fb: &mut dyn Framebuffer, rect: Rectangle, fonts: &mut Fonts) {
         let dpi = CURRENT_DEVICE.dpi;
-        fb.draw_rectangle(&self.rect, TEXT_BUMP_SMALL[0]);
+        fb.draw_rectangle(&rect, TEXT_BUMP_SMALL[0]);
 
         let font = font_from_style(fonts, &NORMAL_STYLE, dpi);
         let x_height = font.x_heights.0 as i32;
@@ -76,10 +79,10 @@ impl View for CategoryButton {
 
         let dx = match self.align {
             Align::Left(padding) => padding,
-            Align::Right(padding) => self.rect.width() as i32 - plan.width - padding,
-            Align::Center => (self.rect.width() as i32 - plan.width) / 2,
+            Align::Right(padding) => rect.width() as i32 - plan.width - padding,
+            Align::Center => (rect.width() as i32 - plan.width) / 2,
         };
-        let dy = (self.rect.height() as i32 - x_height) / 2;
+        let dy = (rect.height() as i32 - x_height) / 2;
 
         if self.selected {
             let padding = font.em() as i32 / 2 - scale_by_dpi(3.0, dpi) as i32;
@@ -88,7 +91,7 @@ impl View for CategoryButton {
             let bg_height = 3 * small_x_height;
             let x_offset = dx - padding;
             let y_offset = dy + x_height - 2 * small_x_height;
-            let pt = self.rect.min + pt!(x_offset, y_offset);
+            let pt = rect.min + pt!(x_offset, y_offset);
             let bg_rect = rect![pt, pt + pt!(bg_width, bg_height)];
             let border_radius = scale_by_dpi(BORDER_RADIUS_SMALL, dpi) as i32;
             let border_thickness = scale_by_dpi(THICKNESS_SMALL, dpi) as u16;
@@ -103,7 +106,7 @@ impl View for CategoryButton {
             );
         }
 
-        let pt = pt!(self.rect.min.x + dx, self.rect.max.y - dy);
+        let pt = pt!(rect.min.x + dx, rect.max.y - dy);
         font.render(fb, TEXT_BUMP_SMALL[1], &plan, pt);
     }
 

@@ -38,3 +38,4 @@ devenv.local.yaml
 .tmp
 logs
 .workspaces/
+**/.fat32-epoch
