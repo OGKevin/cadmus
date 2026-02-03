@@ -59,11 +59,11 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
 tracing-appender = "0.2"
 tracing-opentelemetry = { version = "0.27", optional = true }
-opentelemetry-appender-tracing = { version = "0.26", optional = true }
-opentelemetry = { version = "0.26", features = ["trace", "logs"], optional = true }
-opentelemetry-otlp = { version = "0.26", features = ["trace", "logs", "http-proto", "reqwest-client"], optional = true }
-opentelemetry_sdk = { version = "0.26", features = ["trace", "logs", "rt-tokio-current-thread"], optional = true }
-opentelemetry-semantic-conventions = { version = "0.26", optional = true }
+opentelemetry-appender-tracing = { version = "0.31", optional = true }
+opentelemetry = { version = "0.31", features = ["trace", "logs"], optional = true }
+opentelemetry-otlp = { version = "0.31", features = ["trace", "logs", "http-proto", "reqwest-client"], optional = true }
+opentelemetry_sdk = { version = "0.31", features = ["trace", "logs", "rt-tokio-current-thread"], optional = true }
+opentelemetry-semantic-conventions = { version = "0.31", optional = true }
 log = "0.4.29"
 uuid = { version = "1.20.0", features = ["v7"] }
 gethostname = {version = "1.1.0", optional = true }
