@@ -57,7 +57,7 @@ use crate::view::{EntryId, EntryKind, Id, SliderId, ViewId, ID_FEEDER};
 use crate::view::{BIG_BAR_HEIGHT, SMALL_BAR_HEIGHT, THICKNESS_MEDIUM};
 use chrono::Local;
 use fxhash::{FxHashMap, FxHashSet};
-use rand_core::RngCore;
+use rand_core::Rng;
 use regex::Regex;
 use septem::prelude::*;
 use septem::{Digit, Roman};
