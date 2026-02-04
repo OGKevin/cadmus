@@ -61,7 +61,7 @@ tracing-appender = "0.2"
 tracing-opentelemetry = { version = "0.32", optional = true }
 opentelemetry-appender-tracing = { version = "0.31", optional = true }
 opentelemetry = { version = "0.31", features = ["trace", "logs"], optional = true }
-opentelemetry-otlp = { version = "0.31", features = ["trace", "logs", "http-proto", "reqwest-client"], optional = true }
+opentelemetry-otlp = { version = "0.31", features = ["trace", "logs", "http-proto", "reqwest-blocking-client"], optional = true }
 opentelemetry_sdk = { version = "0.31", features = ["trace", "logs", "rt-tokio-current-thread"], optional = true }
 opentelemetry-semantic-conventions = { version = "0.31", optional = true }
 log = "0.4.29"
