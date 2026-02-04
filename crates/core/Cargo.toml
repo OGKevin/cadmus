@@ -39,8 +39,8 @@ secrecy = { version = "0.10", features = ["serde"] }
 walkdir = "2.5.0"
 globset = "0.4.18"
 fxhash = "0.2.1"
-rand_core = "0.9.3"
-rand_xoshiro = "0.7.0"
+rand_core = "0.10.0"
+rand_xoshiro = "0.8.0"
 percent-encoding = "2.3.2"
 chrono = { version = "0.4.42", features = [
     "serde",
