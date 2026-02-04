@@ -23,6 +23,7 @@
       ],
       "datasourceTemplate": "git-refs",
       "depNameTemplate": "Michael-F-Bryan/mdbook-epub",
+      "packageNameTemplate": "https://github.com/Michael-F-Bryan/mdbook-epub",
       "versioningTemplate": "git"
     },
     {
@@ -31,6 +32,7 @@
       "matchStrings": ["rev = \\\"(?<currentValue>[a-f0-9]{40})\\\""],
       "datasourceTemplate": "git-refs",
       "depNameTemplate": "Michael-F-Bryan/mdbook-epub",
+      "packageNameTemplate": "https://github.com/Michael-F-Bryan/mdbook-epub",
       "versioningTemplate": "git"
     }
   ]
