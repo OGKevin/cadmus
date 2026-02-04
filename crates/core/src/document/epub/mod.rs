@@ -104,7 +104,7 @@ impl EpubDocument {
                     .and_then(|href| {
                         let href = decode_entities(href);
                         let href = percent_decode_str(&href).decode_utf8_lossy();
-                        let href_path = parent.join(href.as_ref());
+                        let href_path = parent.join::<&str>(href.as_ref());
                         href_path.to_str().and_then(|path| {
                             archive
                                 .by_name(path)
