@@ -32,7 +32,7 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-${{ steps.rust-toolchain.outputs.cachekey }}-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Cache thirdparty libraries
+      - name: Cache thirdparty libraries (Kobo cross-compile)
         uses: actions/cache@v5
         with:
           path: |
@@ -40,6 +40,14 @@ jobs:
             thirdparty/
             mupdf_wrapper/
           key: ${{ runner.os }}-thirdparty-libs-kobo-${{ hashFiles('thirdparty/download.sh', 'thirdparty/**/build-kobo.sh', 'thirdparty/**/*.patch') }}
+
+      - name: Cache thirdparty libraries (native testing)
+        uses: actions/cache@v5
+        with:
+          path: |
+            thirdparty/mupdf
+            mupdf_wrapper/
+          key: ${{ runner.os }}-thirdparty-libs-native-${{ hashFiles('thirdparty/download.sh') }}
 
       - name: Cache Linaro toolchain
         id: cache-linaro
@@ -84,6 +92,46 @@ jobs:
           done
           cd ..
 
+      - name: Setup native dependencies for testing
+        env:
+          TEST_ROOT_DIR: ${{ github.workspace }}
+        run: |
+          # Build mupdf wrapper for Linux (required for cargo test)
+          cd mupdf_wrapper
+          ./build.sh
+          cd ..
+
+          # Build MuPDF for native development using system libraries
+          cd thirdparty/mupdf
+          [ -e .gitattributes ] && rm -rf .git*
+
+          # Clean any previous builds
+          make clean || true
+
+          # Generate sources
+          make verbose=yes generate
+
+          # Build MuPDF libraries using system libraries
+          make verbose=yes \
+            mujs=no tesseract=no extract=no archive=no brotli=no barcode=no commercial=no \
+            USE_SYSTEM_LIBS=yes \
+            XCFLAGS="-DFZ_ENABLE_ICC=0 -DFZ_ENABLE_SPOT_RENDERING=0 -DFZ_ENABLE_ODT_OUTPUT=0 -DFZ_ENABLE_OCR_OUTPUT=0" \
+            libs
+
+          cd ../..
+
+          # Create target directory structure
+          mkdir -p target/mupdf_wrapper/Linux
+
+          # Copy libmupdf.a
+          ln -sf "$(pwd)/thirdparty/mupdf/build/release/libmupdf.a" target/mupdf_wrapper/Linux/
+
+          # Create empty libmupdf-third.a (system libs used instead)
+          if [ ! -e thirdparty/mupdf/build/release/libmupdf-third.a ]; then
+            ar cr thirdparty/mupdf/build/release/libmupdf-third.a
+          fi
+          ln -sf "$(pwd)/thirdparty/mupdf/build/release/libmupdf-third.a" target/mupdf_wrapper/Linux/
+
       - name: Verify installation
         run: |
           rustc --version || true
@@ -91,3 +139,5 @@ jobs:
           cargo fmt --version || true
           cargo clippy --version || true
           arm-linux-gnueabihf-gcc --version || true
+          # Verify native test setup
+          ls -la target/mupdf_wrapper/Linux/ || true
