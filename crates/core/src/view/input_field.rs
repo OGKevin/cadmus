@@ -247,8 +247,21 @@ impl View for InputField {
                 true
             }
             Event::Focus(id_opt) => {
+                #[cfg(feature = "otel")]
+                tracing::trace!(
+                    "InputField {:?} received focus event with id {:?}",
+                    self.view_id,
+                    id_opt,
+                );
+
                 let focused = id_opt.is_some() && id_opt.unwrap() == self.view_id;
                 if self.focused != focused {
+                    #[cfg(feature = "otel")]
+                    tracing::trace!(
+                        "InputField {:?} focus state changed to {:?}",
+                        self.view_id,
+                        focused,
+                    );
                     self.focused = focused;
                     rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
                 }

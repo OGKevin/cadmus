@@ -390,6 +390,47 @@ pub enum Event {
     SelectDirectory(PathBuf),
     ToggleSelectDirectory(PathBuf),
     NavigationBarResized(i32),
+    /// Manages input focus state for focusable views like [`InputField`](input_field::InputField).
+    ///
+    /// This event controls which view currently receives keyboard input.
+    /// It is **not** a navigation event — use [`Event::Show`] to transition
+    /// between screens or display new UI components.
+    ///
+    /// # Variants
+    ///
+    /// - `Focus(Some(view_id))` — Grants focus to the view matching `view_id`.
+    ///   The focused view will receive [`Event::Keyboard`] events. Parent views
+    ///   typically use this to show the on-screen keyboard.
+    /// - `Focus(None)` — Clears focus from all views. Parent views typically
+    ///   use this to hide the on-screen keyboard.
+    ///
+    /// # Dispatch behavior
+    ///
+    /// Focus events are **broadcast**: [`InputField`](input_field::InputField)
+    /// returns `false` after handling this event so that all input fields in
+    /// the hierarchy can update their focused/unfocused state.
+    ///
+    /// # Sending
+    ///
+    /// Typically sent through the hub (`hub.send(...)`) by:
+    /// - An [`InputField`](input_field::InputField) when tapped while unfocused
+    /// - A parent view after building a screen that contains an input field
+    /// - A keyboard's hide method to clear focus
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use cadmus_core::view::{Event, ViewId};
+    /// use cadmus_core::view::ota::OtaViewId;
+    ///
+    /// // Focus the PR input field (e.g. after building the PR input screen).
+    /// // Note: `hub` is provided by the application's event loop.
+    /// # let (hub, _) = std::sync::mpsc::channel();
+    /// hub.send(Event::Focus(Some(ViewId::Ota(OtaViewId::PrInput)))).ok();
+    ///
+    /// // Clear focus from all views.
+    /// hub.send(Event::Focus(None)).ok();
+    /// ```
     Focus(Option<ViewId>),
     Select(EntryId),
     PropagateSelect(EntryId),
@@ -538,8 +579,7 @@ pub enum ViewId {
     TableOfContents,
     MessageNotif(Id),
     SubMenu(u8),
-    OtaView,
-    OtaPrInput,
+    Ota(ota::OtaViewId),
     FileChooser,
 }
 
