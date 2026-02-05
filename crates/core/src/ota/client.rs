@@ -566,7 +566,7 @@ fn check_disk_space(path: &str) -> Result<(), OtaError> {
     use nix::sys::statvfs::statvfs;
 
     let stat = statvfs(path)?;
-    let available_mb = (stat.blocks_available() * stat.block_size()) / (1024 * 1024);
+    let available_mb = (stat.blocks_available() as u64 * stat.block_size() as u64) / (1024 * 1024);
     info!(
         "[OTA] Available disk space in {}: {} MB",
         path, available_mb
