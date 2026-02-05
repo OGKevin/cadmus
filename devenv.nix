@@ -5,8 +5,19 @@
 }:
 
 let
+  # Platform detection - use builtins for overlay-safe detection (avoids infinite recursion)
+  currentSystem = builtins.currentSystem or "unknown";
+  isDarwinSystem = builtins.match ".*-darwin" currentSystem != null;
+  isLinuxSystem = builtins.match ".*-linux" currentSystem != null;
+
+  # Also keep pkgs-based detection for use outside overlays
+  isLinux = pkgs.stdenv.isLinux;
+  isDarwin = pkgs.stdenv.isDarwin;
+
   # Linaro GCC toolchain for Kobo - same as used by Kobo Reader
   # https://github.com/kobolabs/Kobo-Reader/blob/master/toolchain/gcc-linaro-4.9.4-2017.01-x86_64_arm-linux-gnueabihf.tar.xz
+  # NOTE: This toolchain is x86_64 Linux-only (ELF binaries with autoPatchelfHook)
+  # On macOS, cross-compilation for Kobo is not supported - use Docker/Linux VM instead
   linaroToolchain = pkgs.stdenv.mkDerivation {
     pname = "gcc-linaro";
     version = "4.9.4-2017.01";
@@ -87,7 +98,19 @@ let
   '';
 in
 {
-  overlays = [ ];
+  # Overlays for platform-specific fixes
+  # NOTE: Use isDarwinSystem (builtins-based) here to avoid infinite recursion
+  # since overlays are evaluated before pkgs is fully constructed
+  overlays =
+    if isDarwinSystem then [
+      # macOS: Fix GDB 17.1 build failure with Clang (nixpkgs https://github.com/NixOS/nixpkgs/issues/483562)
+      (final: prev: {
+        gdb = prev.gdb.overrideAttrs (old: {
+          configureFlags = builtins.filter (f: f != "--enable-werror") (old.configureFlags or []);
+        });
+      })
+    ]
+    else [ ];
 
   packages = [
     # Basic tools required by build scripts
@@ -97,13 +120,11 @@ in
     pkgs.pkg-config
     pkgs.unzip
     pkgs.jq
-    pkgs.patchelf
 
     pkgs.mdbook
     mdbook-epub-custom
 
     # C/C++ build tools for compiling thirdparty libraries
-    pkgs.gcc
     pkgs.gnumake
     pkgs.cmake
     pkgs.meson
@@ -113,9 +134,6 @@ in
     pkgs.libtool
     pkgs.gperf
     pkgs.python3
-
-    # Linaro ARM cross-compilation toolchain (provides arm-linux-gnueabihf-* commands)
-    linaroToolchain
 
     # Libraries for native builds (emulator/tests)
     pkgs.djvulibre
@@ -138,6 +156,23 @@ in
     pkgs.grafana
     pkgs.tempo
     pkgs.grafana-loki
+  ]
+  # Linux-only packages
+  ++ pkgs.lib.optionals isLinux [
+    # patchelf is Linux-only (patches ELF binaries)
+    pkgs.patchelf
+
+    # GCC - on macOS we use clang from Xcode
+    pkgs.gcc
+
+    # Linaro ARM cross-compilation toolchain (provides arm-linux-gnueabihf-* commands)
+    # This is x86_64 Linux ELF binaries - cannot run on macOS
+    linaroToolchain
+  ]
+  # macOS-specific packages
+  ++ pkgs.lib.optionals isDarwin [
+    # macOS uses Apple's clang from Xcode Command Line Tools
+    # Frameworks are provided by the system SDK, no need to add them explicitly
   ];
 
   # Enable Rust with cross-compilation support
@@ -159,6 +194,12 @@ in
     # override this in devenv.local.nix to the right place for your test cadmus root dir
     # TEST_ROOT_DIR = "$DEVENV_ROOT" ;
 
+    RUST_LOG = "debug";
+    RUST_BACKTRACE = "1";
+    OTEL_EXPORTER_OTLP_ENDPOINT = "http://localhost:4318";
+  }
+  # Linux-only environment variables for cross-compilation
+  // pkgs.lib.optionalAttrs isLinux {
     # pkg-config configuration for cross-compilation
     PKG_CONFIG_ALLOW_CROSS = "1";
 
@@ -168,10 +209,6 @@ in
     # C compiler for ARM target (used by cc crate for build scripts)
     CC_arm_unknown_linux_gnueabihf = "arm-linux-gnueabihf-gcc";
     AR_arm_unknown_linux_gnueabihf = "arm-linux-gnueabihf-ar";
-
-    RUST_LOG = "debug";
-    RUST_BACKTRACE = "1";
-    OTEL_EXPORTER_OTLP_ENDPOINT = "http://localhost:4318";
   };
 
   services.opentelemetry-collector = {
@@ -445,22 +482,42 @@ in
       # Generate sources
       make verbose=yes generate
 
+      # On macOS, MuPDF's Makerules doesn't properly set up system library CFLAGS
+      # via pkg-config (the pkg-config checks are inside an `else` block after Darwin).
+      # We need to manually gather and pass them.
+      SYS_CFLAGS=""
+      if [ "$(uname -s)" = "Darwin" ]; then
+        SYS_CFLAGS="$SYS_CFLAGS $(pkg-config --cflags freetype2 2>/dev/null || true)"
+        SYS_CFLAGS="$SYS_CFLAGS $(pkg-config --cflags harfbuzz 2>/dev/null || true)"
+        SYS_CFLAGS="$SYS_CFLAGS $(pkg-config --cflags libopenjp2 2>/dev/null || true)"
+        SYS_CFLAGS="$SYS_CFLAGS $(pkg-config --cflags libjpeg 2>/dev/null || true)"
+        SYS_CFLAGS="$SYS_CFLAGS $(pkg-config --cflags zlib 2>/dev/null || true)"
+        SYS_CFLAGS="$SYS_CFLAGS $(pkg-config --cflags jbig2dec 2>/dev/null || true)"
+        SYS_CFLAGS="$SYS_CFLAGS $(pkg-config --cflags gumbo 2>/dev/null || true)"
+      fi
+
       # Build MuPDF libraries using system libraries (detected via pkg-config)
       make verbose=yes \
         mujs=no tesseract=no extract=no archive=no brotli=no barcode=no commercial=no \
         USE_SYSTEM_LIBS=yes \
-        XCFLAGS="-DFZ_ENABLE_ICC=0 -DFZ_ENABLE_SPOT_RENDERING=0 -DFZ_ENABLE_ODT_OUTPUT=0 -DFZ_ENABLE_OCR_OUTPUT=0" \
+        XCFLAGS="-DFZ_ENABLE_ICC=0 -DFZ_ENABLE_SPOT_RENDERING=0 -DFZ_ENABLE_ODT_OUTPUT=0 -DFZ_ENABLE_OCR_OUTPUT=0 $SYS_CFLAGS" \
         libs
 
       cd ../..
 
+      # Determine platform directory (matches crates/core/build.rs expectations)
+      case "$(uname -s)" in
+        Darwin) PLATFORM_DIR="Darwin" ;;
+        *)      PLATFORM_DIR="Linux" ;;
+      esac
+
       # Create target directory structure
-      mkdir -p target/mupdf_wrapper/Linux
+      mkdir -p "target/mupdf_wrapper/$PLATFORM_DIR"
 
       # Copy/link libmupdf.a
       if [ -e thirdparty/mupdf/build/release/libmupdf.a ]; then
-        ln -sf "$(pwd)/thirdparty/mupdf/build/release/libmupdf.a" target/mupdf_wrapper/Linux/
-        echo "✓ Created libmupdf.a"
+        ln -sf "$(pwd)/thirdparty/mupdf/build/release/libmupdf.a" "target/mupdf_wrapper/$PLATFORM_DIR/"
+        echo "✓ Created libmupdf.a in target/mupdf_wrapper/$PLATFORM_DIR"
       else
         echo "✗ ERROR: libmupdf.a not found!"
         exit 1
@@ -473,7 +530,7 @@ in
         echo "Creating empty libmupdf-third.a (system libs used instead)..."
         ar cr thirdparty/mupdf/build/release/libmupdf-third.a
       fi
-      ln -sf "$(pwd)/thirdparty/mupdf/build/release/libmupdf-third.a" target/mupdf_wrapper/Linux/
+      ln -sf "$(pwd)/thirdparty/mupdf/build/release/libmupdf-third.a" "target/mupdf_wrapper/$PLATFORM_DIR/"
       echo "✓ Created libmupdf-third.a"
 
       echo ""
@@ -483,21 +540,27 @@ in
     '';
 
     # Script to build for Kobo with proper cross-compilation environment
-    cadmus-build-kobo.exec = ''
-      set -e
+    # Only available on Linux where the Linaro toolchain can run
+    cadmus-build-kobo.exec =
+      if isLinux then ''
+        set -e
 
-      # Set up cross-compilation environment
-      export CC=arm-linux-gnueabihf-gcc
-      export CXX=arm-linux-gnueabihf-g++
-      export AR=arm-linux-gnueabihf-ar
-      export LD=arm-linux-gnueabihf-ld
-      export RANLIB=arm-linux-gnueabihf-ranlib
-      export STRIP=arm-linux-gnueabihf-strip
+        # Set up cross-compilation environment
+        export CC=arm-linux-gnueabihf-gcc
+        export CXX=arm-linux-gnueabihf-g++
+        export AR=arm-linux-gnueabihf-ar
+        export LD=arm-linux-gnueabihf-ld
+        export RANLIB=arm-linux-gnueabihf-ranlib
+        export STRIP=arm-linux-gnueabihf-strip
 
-      # Run the build script
-      exec ./build.sh "$@"
-      exec ./dist.sh
-    '';
+        # Run the build script
+        ./build.sh "$@" && ./dist.sh
+      '' else ''
+        echo "Error: cadmus-build-kobo is only available on Linux."
+        echo ""
+        echo "The Linaro ARM cross-compilation toolchain requires Linux."
+        exit 1
+      '';
 
     # Build and run emulator with OTEL instrumentation
     cadmus-dev-otel.exec = ''
@@ -523,24 +586,36 @@ in
   };
 
   enterShell = ''
-    # Add Linaro toolchain to PATH
-    export PATH="${linaroToolchain}/bin:$PATH"
-
     echo "Cadmus development environment"
     echo ""
     echo "Available commands:"
     echo "  cadmus-setup-native  - Build mupdf for native development (run once)"
-    echo "  cadmus-build-kobo    - Build for Kobo (sets up cross-compilation env)"
     echo "  cargo test           - Run tests (after setup)"
     echo "  ./run-emulator.sh    - Run the emulator (after setup)"
     echo ""
+  ''
+  # Linux-specific shell setup
+  + pkgs.lib.optionalString isLinux ''
+    # Add Linaro toolchain to PATH
+    export PATH="${linaroToolchain}/bin:$PATH"
+
+    echo "Cross-compilation (Linux only):"
+    echo "  cadmus-build-kobo    - Build for Kobo (sets up cross-compilation env)"
+    echo "  Linaro toolchain: $(which arm-linux-gnueabihf-gcc 2>/dev/null || echo 'not found')"
+    echo ""
+  ''
+  # macOS-specific shell setup
+  + pkgs.lib.optionalString isDarwin ''
+    echo "Note: Cross-compilation for Kobo is not available on macOS."
+    echo ""
+  ''
+  + ''
     echo "Observability (OTEL):"
     echo "  devenv up            - Start all services (inc. observability stack)"
     echo "  cadmus-dev-otel      - Build & run emulator with OTEL enabled"
     echo ""
     echo "  After 'devenv up', visit http://localhost:3000 for Grafana"
     echo ""
-    echo "Linaro toolchain: $(which arm-linux-gnueabihf-gcc 2>/dev/null || echo 'not found')"
   '';
 
   # https://devenv.sh/tests/

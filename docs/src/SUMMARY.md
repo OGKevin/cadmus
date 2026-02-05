@@ -10,4 +10,5 @@
 
 # Contributor Guide
 
+- [Development Environment](contributing/devenv-setup.md)
 - [OpenTelemetry Integration](contributing/telemetry.md)
