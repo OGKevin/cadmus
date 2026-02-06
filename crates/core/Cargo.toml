@@ -73,6 +73,7 @@ tempfile = "3.14"
 
 [features]
 default = []
+emulator = []
 test = []
 otel = [
     "tracing-opentelemetry",
