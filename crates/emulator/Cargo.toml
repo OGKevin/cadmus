@@ -15,5 +15,6 @@ tracing = "0.1"
 
 [features]
 default = []
+emulator = ["cadmus-core/emulator"]
 otel = ["cadmus-core/otel"]
 test = ["cadmus-core/test"]
