@@ -8,11 +8,10 @@ let
   # Platform detection - use builtins for overlay-safe detection (avoids infinite recursion)
   currentSystem = builtins.currentSystem or "unknown";
   isDarwinSystem = builtins.match ".*-darwin" currentSystem != null;
-  isLinuxSystem = builtins.match ".*-linux" currentSystem != null;
 
   # Also keep pkgs-based detection for use outside overlays
-  isLinux = pkgs.stdenv.isLinux;
-  isDarwin = pkgs.stdenv.isDarwin;
+  inherit (pkgs.stdenv) isLinux;
+  inherit (pkgs.stdenv) isDarwin;
 
   # Linaro GCC toolchain for Kobo - same as used by Kobo Reader
   # https://github.com/kobolabs/Kobo-Reader/blob/master/toolchain/gcc-linaro-4.9.4-2017.01-x86_64_arm-linux-gnueabihf.tar.xz
@@ -102,15 +101,17 @@ in
   # NOTE: Use isDarwinSystem (builtins-based) here to avoid infinite recursion
   # since overlays are evaluated before pkgs is fully constructed
   overlays =
-    if isDarwinSystem then [
-      # macOS: Fix GDB 17.1 build failure with Clang (nixpkgs https://github.com/NixOS/nixpkgs/issues/483562)
-      (final: prev: {
-        gdb = prev.gdb.overrideAttrs (old: {
-          configureFlags = builtins.filter (f: f != "--enable-werror") (old.configureFlags or []);
-        });
-      })
-    ]
-    else [ ];
+    if isDarwinSystem then
+      [
+        # macOS: Fix GDB 17.1 build failure with Clang (nixpkgs https://github.com/NixOS/nixpkgs/issues/483562)
+        (final: prev: {
+          gdb = prev.gdb.overrideAttrs (old: {
+            configureFlags = builtins.filter (f: f != "--enable-werror") (old.configureFlags or [ ]);
+          });
+        })
+      ]
+    else
+      [ ];
 
   packages = [
     # Basic tools required by build scripts
@@ -187,6 +188,9 @@ in
       enable = true;
       channel = "stable";
       targets = [ "arm-unknown-linux-gnueabihf" ];
+      toolchain = {
+        inherit (pkgs) cargo-expand;
+      };
     };
   };
 
@@ -542,25 +546,28 @@ in
     # Script to build for Kobo with proper cross-compilation environment
     # Only available on Linux where the Linaro toolchain can run
     cadmus-build-kobo.exec =
-      if isLinux then ''
-        set -e
+      if isLinux then
+        ''
+          set -e
 
-        # Set up cross-compilation environment
-        export CC=arm-linux-gnueabihf-gcc
-        export CXX=arm-linux-gnueabihf-g++
-        export AR=arm-linux-gnueabihf-ar
-        export LD=arm-linux-gnueabihf-ld
-        export RANLIB=arm-linux-gnueabihf-ranlib
-        export STRIP=arm-linux-gnueabihf-strip
+          # Set up cross-compilation environment
+          export CC=arm-linux-gnueabihf-gcc
+          export CXX=arm-linux-gnueabihf-g++
+          export AR=arm-linux-gnueabihf-ar
+          export LD=arm-linux-gnueabihf-ld
+          export RANLIB=arm-linux-gnueabihf-ranlib
+          export STRIP=arm-linux-gnueabihf-strip
 
-        # Run the build script
-        ./build.sh "$@" && ./dist.sh
-      '' else ''
-        echo "Error: cadmus-build-kobo is only available on Linux."
-        echo ""
-        echo "The Linaro ARM cross-compilation toolchain requires Linux."
-        exit 1
-      '';
+          # Run the build script
+          ./build.sh "$@" && ./dist.sh
+        ''
+      else
+        ''
+          echo "Error: cadmus-build-kobo is only available on Linux."
+          echo ""
+          echo "The Linaro ARM cross-compilation toolchain requires Linux."
+          exit 1
+        '';
 
     # Build and run emulator with OTEL instrumentation
     cadmus-dev-otel.exec = ''
@@ -616,6 +623,10 @@ in
     echo ""
     echo "  After 'devenv up', visit http://localhost:3000 for Grafana"
     echo ""
+    echo "Linaro toolchain: $(which arm-linux-gnueabihf-gcc 2>/dev/null || echo 'not found')"
+
+     echo "Linking rust source for stable access"
+     ln -fs ${config.env.RUST_SRC_PATH} ${config.env.DEVENV_STATE}/rust-lib-src
   '';
 
   # https://devenv.sh/tests/
