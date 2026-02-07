@@ -27,6 +27,7 @@ pub enum OtaViewId {
     Main,
     SourceSelection,
     PrInput,
+    DefaultBranch,
 }
 
 /// Attempts to show the OTA update view with validation checks.
@@ -163,6 +164,10 @@ impl OtaView {
         Dialog::builder(
             ViewId::Ota(OtaViewId::SourceSelection),
             "Where to check for updates?".to_string(),
+        )
+        .add_button(
+            "Main Branch",
+            Event::Show(ViewId::Ota(OtaViewId::DefaultBranch)),
         )
         .add_button("PR Build", Event::Show(ViewId::Ota(OtaViewId::PrInput)))
         .build(context)
@@ -373,6 +378,92 @@ impl OtaView {
             }
         });
     }
+
+    /// Initiates the default branch download in a background thread.
+    ///
+    /// Spawns a thread that:
+    /// 1. Creates an OTA client
+    /// 2. Downloads the latest artifact from the default branch
+    /// 3. Extracts and deploys KoboRoot.tgz
+    /// 4. Sends notification events on success or failure
+    ///
+    /// # Arguments
+    ///
+    /// * `hub` - Event hub for sending notifications and status updates
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, hub)))]
+    fn start_default_branch_download(&mut self, hub: &Hub) {
+        let github_token = self.github_token.clone();
+        let hub2 = hub.clone();
+
+        thread::spawn(move || {
+            let client = match OtaClient::new(github_token) {
+                Ok(c) => c,
+                Err(e) => {
+                    error!(error = %e, "Failed to create OTA client");
+                    let error_msg = format!("Failed to create client: {}", e);
+                    hub2.send(Event::Notification(NotificationEvent::Show(error_msg)))
+                        .ok();
+                    return;
+                }
+            };
+
+            let notify_id = ViewId::MessageNotif(ID_FEEDER.next());
+            hub2.send(Event::Notification(NotificationEvent::ShowPinned(
+                notify_id,
+                "Starting main branch download".to_string(),
+            )))
+            .ok();
+            hub2.send(Event::Notification(NotificationEvent::UpdateProgress(
+                notify_id, 0,
+            )))
+            .ok();
+
+            let download_result = client.download_default_branch_artifact(|ota_progress| {
+                if let OtaProgress::DownloadingArtifact { downloaded, total } = ota_progress {
+                    let progress = (downloaded as f32 / total as f32) * 100.0;
+                    let msg = format!("Downloading update: {}%", progress as u8);
+                    hub2.send(Event::Notification(NotificationEvent::UpdateText(
+                        notify_id, msg,
+                    )))
+                    .ok();
+                    hub2.send(Event::Notification(NotificationEvent::UpdateProgress(
+                        notify_id,
+                        progress as u8,
+                    )))
+                    .ok();
+                }
+            });
+
+            hub2.send(Event::Close(notify_id)).ok();
+
+            match download_result {
+                Ok(zip_path) => {
+                    info!("Main branch download completed, starting extraction");
+
+                    match client.extract_and_deploy(zip_path) {
+                        Ok(_) => {
+                            hub2.send(Event::Notification(NotificationEvent::Show(
+                                "Update installed! Reboot to apply.".to_string(),
+                            )))
+                            .ok();
+                        }
+                        Err(e) => {
+                            error!(error = %e, "Deployment failed");
+                            let error_msg = format!("Deployment failed: {}", e);
+                            hub2.send(Event::Notification(NotificationEvent::Show(error_msg)))
+                                .ok();
+                        }
+                    }
+                }
+                Err(e) => {
+                    error!(error = %e, "Main branch download failed");
+                    let error_msg = format!("Download failed: {}", e);
+                    hub2.send(Event::Notification(NotificationEvent::Show(error_msg)))
+                        .ok();
+                }
+            }
+        });
+    }
 }
 
 impl View for OtaView {
@@ -386,6 +477,15 @@ impl View for OtaView {
         context: &mut Context,
     ) -> bool {
         match *evt {
+            Event::Show(ViewId::Ota(OtaViewId::DefaultBranch)) => {
+                hub.send(Event::Notification(NotificationEvent::Show(
+                    "Downloading latest main branch build...".to_string(),
+                )))
+                .ok();
+                self.start_default_branch_download(hub);
+                hub.send(Event::Close(self.view_id)).ok();
+                true
+            }
             Event::Show(ViewId::Ota(OtaViewId::PrInput)) => {
                 #[cfg(feature = "otel")]
                 tracing::trace!("Showing PR input screen");
