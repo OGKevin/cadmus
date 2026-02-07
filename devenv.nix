@@ -5,11 +5,6 @@
 }:
 
 let
-  # Platform detection - use builtins for overlay-safe detection (avoids infinite recursion)
-  currentSystem = builtins.currentSystem or "unknown";
-  isDarwinSystem = builtins.match ".*-darwin" currentSystem != null;
-
-  # Also keep pkgs-based detection for use outside overlays
   inherit (pkgs.stdenv) isLinux;
   inherit (pkgs.stdenv) isDarwin;
 
@@ -98,20 +93,16 @@ let
 in
 {
   # Overlays for platform-specific fixes
-  # NOTE: Use isDarwinSystem (builtins-based) here to avoid infinite recursion
-  # since overlays are evaluated before pkgs is fully constructed
-  overlays =
-    if isDarwinSystem then
-      [
-        # macOS: Fix GDB 17.1 build failure with Clang (nixpkgs https://github.com/NixOS/nixpkgs/issues/483562)
-        (final: prev: {
-          gdb = prev.gdb.overrideAttrs (old: {
-            configureFlags = builtins.filter (f: f != "--enable-werror") (old.configureFlags or [ ]);
-          });
-        })
-      ]
-    else
-      [ ];
+  overlays = [
+    # macOS: Fix GDB 17.1 build failure with Clang (nixpkgs https://github.com/NixOS/nixpkgs/issues/483562)
+    (final: prev:
+      prev.lib.optionalAttrs prev.stdenv.hostPlatform.isDarwin {
+        gdb = prev.gdb.overrideAttrs (old: {
+          configureFlags = builtins.filter (f: f != "--enable-werror") (old.configureFlags or [ ]);
+        });
+      }
+    )
+  ];
 
   packages = [
     # Basic tools required by build scripts
