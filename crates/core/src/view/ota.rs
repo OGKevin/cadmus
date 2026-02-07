@@ -51,7 +51,8 @@ pub enum OtaViewId {
 #[cfg_attr(
     feature = "otel",
     tracing::instrument(
-        skip_all, ret(level=tracing::Level::TRACE)
+        skip_all, ret(level=tracing::Level::TRACE),
+        ret(level = tracing::Level::TRACE)
     )
 )]
 pub fn show_ota_view(
@@ -60,6 +61,9 @@ pub fn show_ota_view(
     rq: &mut RenderQueue,
     context: &mut Context,
 ) -> bool {
+    #[cfg(feature = "otel")]
+    tracing::trace!("showing ota view");
+
     // TODO(ogkevin): This only checks if WiFi is enabled in settings, not if there's an actual
     // connection or internet access. Should verify actual network connectivity.
     // See: https://github.com/OGKevin/cadmus/issues/69

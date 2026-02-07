@@ -467,7 +467,7 @@ pub struct LoggingSettings {
 /// which prevents accidental exposure in logs or debug output. The token is
 /// automatically wrapped when loaded from the configuration file and unwrapped
 /// only when needed for API authentication.
-#[derive(Debug, Clone, Deserialize, Default)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(default, rename_all = "kebab-case")]
 pub struct OtaSettings {
     /// GitHub personal access token with workflow artifact read permissions.
@@ -476,6 +476,9 @@ pub struct OtaSettings {
     /// When serialized, the token is stored as plain text in the configuration
     /// file. However, once loaded into memory, it is wrapped in `SecretString`
     /// to prevent accidental exposure.
+    ///
+    /// For development, you can set the `GH_TOKEN` environment variable to have it automatically
+    /// loaded into the default settings.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub github_token: Option<SecretString>,
 }
@@ -712,6 +715,20 @@ impl Default for Settings {
     }
 }
 
+impl Default for OtaSettings {
+    /// Creates a default `OtaSettings` instance, attempting to read the GitHub token
+    /// from the `GH_TOKEN` environment variable. If the variable is set, its value is wrapped
+    /// in a `SecretString` and used as the default token.
+    fn default() -> Self {
+        env::var("GH_TOKEN")
+            .ok()
+            .map(|token| OtaSettings {
+                github_token: Some(SecretString::from(token)),
+            })
+            .unwrap_or(OtaSettings { github_token: None })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -892,5 +909,27 @@ share = "/path/to/custom.png"
             original.share, deserialized.share,
             "share should survive round trip"
         );
+    }
+
+    #[test]
+    fn test_ota_default_from_env() {
+        let test_token = "ghp_env_default_test_token_1234567890";
+        env::set_var("GH_TOKEN", test_token);
+
+        let settings = OtaSettings::default();
+
+        assert!(
+            settings.github_token.is_some(),
+            "Default OtaSettings should read GH_TOKEN from environment"
+        );
+
+        let token = settings.github_token.as_ref().unwrap();
+        assert_eq!(
+            token.expose_secret(),
+            test_token,
+            "Token from environment should match expected value"
+        );
+
+        env::remove_var("GH_TOKEN");
     }
 }

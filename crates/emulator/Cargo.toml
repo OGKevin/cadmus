@@ -16,3 +16,4 @@ tracing = "0.1"
 [features]
 default = []
 otel = ["cadmus-core/otel"]
+test = ["cadmus-core/test"]
