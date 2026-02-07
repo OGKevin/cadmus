@@ -129,7 +129,6 @@ impl DialogBuilder {
     #[cfg_attr(feature = "otel", tracing::instrument(skip(self, context), fields(view_id = ?self.view_id, title = ?self.title)))]
     pub fn build(self, context: &mut Context) -> Dialog {
         let id = ID_FEEDER.next();
-        let mut children = Vec::new();
         let dpi = CURRENT_DEVICE.dpi;
         let (width, height) = context.display.dims;
 
@@ -153,25 +152,7 @@ impl DialogBuilder {
         }
 
         let label_height = line_count as i32 * line_height;
-        let dialog_width = max_line_width.max(min_message_width) + 3 * padding;
-        let dialog_height = label_height + button_height + 3 * padding;
-
-        let dx = (width as i32 - dialog_width) / 2;
-        let dy = (height as i32 - dialog_height) / 2;
-        let rect = rect![dx, dy, dx + dialog_width, dy + dialog_height];
-
-        for (i, line) in text_lines.iter().enumerate() {
-            let y_offset = rect.min.y + padding + (i as i32 * line_height);
-            let rect_label = rect![
-                rect.min.x + padding,
-                y_offset,
-                rect.max.x - padding,
-                y_offset + line_height
-            ];
-
-            let label = Label::new(rect_label, line.to_string(), Align::Center);
-            children.push(Box::new(label) as Box<dyn View>);
-        }
+        let message_width = max_line_width.max(min_message_width) + 3 * padding;
 
         let button_count = self.buttons.len().max(1);
         let mut max_button_text_width = 0;
@@ -181,32 +162,37 @@ impl DialogBuilder {
         }
         let button_width = max_button_text_width + padding;
 
-        let button_area_width = rect.width() as i32 - 2 * padding;
-        let button_spacing =
-            (button_area_width - button_count as i32 * button_width) / (button_count as i32 + 1);
+        let required_button_area_width =
+            button_count as i32 * button_width + (button_count as i32 + 1) * padding;
+        let dialog_width = message_width.max(required_button_area_width);
+        let dialog_height = label_height + button_height + 3 * padding;
 
-        for (idx, (text, event)) in self.buttons.iter().enumerate() {
-            let x_offset = rect.min.x
-                + padding
-                + (idx as i32 + 1) * button_spacing
-                + idx as i32 * button_width;
-            let rect_button = rect![
-                x_offset,
-                rect.max.y - button_height - padding,
-                x_offset + button_width,
-                rect.max.y - padding
-            ];
-            let button = Button::new(rect_button, event.clone(), text.clone());
+        let dx = (width as i32 - dialog_width) / 2;
+        let dy = (height as i32 - dialog_height) / 2;
+        let rect = rect![dx, dy, dx + dialog_width, dy + dialog_height];
+
+        let mut children: Vec<Box<dyn View>> = Vec::new();
+        for line in &text_lines {
+            let label = Label::new(Rectangle::default(), line.to_string(), Align::Center);
+            children.push(Box::new(label) as Box<dyn View>);
+        }
+        for (text, event) in &self.buttons {
+            let button = Button::new(Rectangle::default(), event.clone(), text.clone());
             children.push(Box::new(button) as Box<dyn View>);
         }
 
-        Dialog {
+        let mut dialog = Dialog {
             id,
             rect,
             children,
             view_id: self.view_id,
             button_count,
-        }
+            button_width,
+        };
+
+        dialog.layout_children(&mut context.fonts);
+
+        dialog
     }
 }
 
@@ -253,6 +239,10 @@ pub struct Dialog {
     children: Vec<Box<dyn View>>,
     view_id: ViewId,
     button_count: usize,
+    /// Content-based button width computed once during [`DialogBuilder::build`]
+    /// from the widest button text. Reused by [`layout_children`](Dialog::layout_children)
+    /// on every resize so buttons keep their text-proportional sizing.
+    button_width: i32,
 }
 
 impl Dialog {
@@ -281,6 +271,52 @@ impl Dialog {
     /// ```
     pub fn builder(view_id: ViewId, title: String) -> DialogBuilder {
         DialogBuilder::new(view_id, title)
+    }
+
+    /// Position all child views within the current dialog rect.
+    ///
+    /// Labels are stacked vertically with one `padding` inset from each edge.
+    /// Buttons use a content-based width ([`button_width`](Dialog::button_width))
+    /// and are centered horizontally with even spacing.
+    ///
+    /// Both [`DialogBuilder::build`] and [`Dialog::resize`] delegate to this
+    /// method so the layout algorithm is defined in a single place.
+    fn layout_children(&mut self, fonts: &mut Fonts) {
+        let dpi = CURRENT_DEVICE.dpi;
+        let font = font_from_style(fonts, &NORMAL_STYLE, dpi);
+        let x_height = font.x_heights.0 as i32;
+        let padding = font.em() as i32;
+        let line_height = font.line_height();
+        let button_height = 4 * x_height;
+
+        let label_count = self.children.len() - self.button_count;
+
+        for i in 0..label_count {
+            let y_offset = self.rect.min.y + padding + (i as i32 * line_height);
+            *self.children[i].rect_mut() = rect![
+                self.rect.min.x + padding,
+                y_offset,
+                self.rect.max.x - padding,
+                y_offset + line_height
+            ];
+        }
+
+        let button_area_width = self.rect.width() as i32 - 2 * padding;
+        let button_spacing = (button_area_width - self.button_count as i32 * self.button_width)
+            / (self.button_count as i32 + 1);
+
+        for idx in 0..self.button_count {
+            let x_offset = self.rect.min.x
+                + padding
+                + (idx as i32 + 1) * button_spacing
+                + idx as i32 * self.button_width;
+            *self.children[label_count + idx].rect_mut() = rect![
+                x_offset,
+                self.rect.max.y - button_height - padding,
+                x_offset + self.button_width,
+                self.rect.max.y - padding
+            ];
+        }
     }
 }
 
@@ -323,55 +359,20 @@ impl View for Dialog {
     }
 
     fn resize(&mut self, _rect: Rectangle, hub: &Hub, rq: &mut RenderQueue, context: &mut Context) {
-        let dpi = CURRENT_DEVICE.dpi;
         let (width, height) = context.display.dims;
         let dialog_width = self.rect.width() as i32;
         let dialog_height = self.rect.height() as i32;
 
-        let (x_height, padding) = {
-            let font = font_from_style(&mut context.fonts, &NORMAL_STYLE, dpi);
-            let x_height = font.x_heights.0 as i32;
-            let padding = font.em() as i32;
-            (x_height, padding)
-        };
-        let button_height = 4 * x_height;
-
         let dx = (width as i32 - dialog_width) / 2;
         let dy = (height as i32 - dialog_height) / 2;
-        let rect = rect![dx, dy, dx + dialog_width, dy + dialog_height];
+        self.rect = rect![dx, dy, dx + dialog_width, dy + dialog_height];
 
-        let font = font_from_style(&mut context.fonts, &NORMAL_STYLE, dpi);
-        let line_height = font.line_height();
+        self.layout_children(&mut context.fonts);
 
-        let label_count = self.children.len() - self.button_count;
-
-        for i in 0..label_count {
-            let y_offset = rect.min.y + padding + (i as i32 * line_height);
-            let label_rect = rect![
-                rect.min.x + padding,
-                y_offset,
-                rect.max.x - padding,
-                y_offset + line_height
-            ];
-            self.children[i].resize(label_rect, hub, rq, context);
+        for child in &mut self.children {
+            let rect = *child.rect();
+            child.resize(rect, hub, rq, context);
         }
-
-        let button_area_width = rect.width() as i32 - 2 * padding;
-        let button_width = (button_area_width - (self.button_count as i32 + 1) * padding)
-            / self.button_count as i32;
-
-        for (idx, i) in (label_count..self.children.len()).enumerate() {
-            let x_offset = rect.min.x + padding + (idx as i32) * (button_width + padding);
-            let button_rect = rect![
-                x_offset,
-                rect.max.y - button_height - padding,
-                x_offset + button_width,
-                rect.max.y - padding
-            ];
-            self.children[i].resize(button_rect, hub, rq, context);
-        }
-
-        self.rect = rect;
     }
 
     fn is_background(&self) -> bool {
@@ -400,5 +401,131 @@ impl View for Dialog {
 
     fn view_id(&self) -> Option<ViewId> {
         Some(self.view_id)
+    }
+}
+
+#[cfg(test)]
+impl Dialog {
+    fn rect_for_test(&self) -> &Rectangle {
+        &self.rect
+    }
+
+    fn button_count_for_test(&self) -> usize {
+        self.button_count
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::context::test_helpers::create_test_context;
+
+    #[test]
+    fn dialog_width_should_not_be_static() {
+        let mut context = create_test_context();
+
+        let dialog = Dialog::builder(ViewId::BookMenu, "Where to check for updates?".to_string())
+            .add_button("Stable Release", Event::Close(ViewId::BookMenu))
+            .add_button("Main Branch", Event::Close(ViewId::BookMenu))
+            .add_button("PR Build", Event::Close(ViewId::BookMenu))
+            .build(&mut context);
+
+        let dialog2 = Dialog::builder(ViewId::BookMenu, "Where to check for updates?".to_string())
+            .add_button("Stable Release", Event::Close(ViewId::BookMenu))
+            .build(&mut context);
+
+        let dialog1_rect = dialog.rect_for_test();
+        let dialog1_width = dialog1_rect.width() as i32;
+        let dialog2_rect = dialog2.rect_for_test();
+        let dialog2_width = dialog2_rect.width() as i32;
+
+        assert!(
+            dialog1_width > dialog2_width,
+            "Expected triple button dialog to be wider than single button: {}--{}",
+            dialog1_width,
+            dialog2_width
+        );
+    }
+    #[test]
+    fn dialog_width_with_three_buttons_should_expand() {
+        let mut context = create_test_context();
+
+        let dialog = Dialog::builder(ViewId::BookMenu, "Where to check for updates?".to_string())
+            .add_button("Stable Release", Event::Close(ViewId::BookMenu))
+            .add_button("Main Branch", Event::Close(ViewId::BookMenu))
+            .add_button("PR Build", Event::Close(ViewId::BookMenu))
+            .build(&mut context);
+
+        let dialog_rect = dialog.rect_for_test();
+        let dialog_width = dialog_rect.width() as i32;
+
+        assert!(
+            dialog_width > 0,
+            "Dialog width should be positive, got {}",
+            dialog_width
+        );
+
+        assert_eq!(
+            dialog.button_count_for_test(),
+            3,
+            "Dialog should have 3 buttons"
+        );
+    }
+
+    #[test]
+    fn dialog_width_single_button_should_be_valid() {
+        let mut context = create_test_context();
+
+        let dialog = Dialog::builder(ViewId::BookMenu, "Confirm deletion?".to_string())
+            .add_button("Cancel", Event::Close(ViewId::BookMenu))
+            .build(&mut context);
+
+        let dialog_rect = dialog.rect_for_test();
+        let dialog_width = dialog_rect.width() as i32;
+
+        assert!(
+            dialog_width > 0,
+            "Dialog width should be positive, got {}",
+            dialog_width
+        );
+
+        assert_eq!(
+            dialog.button_count_for_test(),
+            1,
+            "Dialog should have 1 button"
+        );
+    }
+
+    #[test]
+    fn dialog_should_center_on_display() {
+        if std::env::var("TEST_ROOT_DIR").is_err() {
+            return;
+        }
+
+        let mut context = create_test_context();
+
+        let dialog = Dialog::builder(ViewId::BookMenu, "Test message".to_string())
+            .add_button("OK", Event::Close(ViewId::BookMenu))
+            .build(&mut context);
+
+        let rect = dialog.rect_for_test();
+        let dialog_width = rect.width();
+        let dialog_height = rect.height();
+        let dialog_x = rect.min.x as u32;
+        let dialog_y = rect.min.y as u32;
+
+        let expected_x = (context.display.dims.0 - dialog_width) / 2;
+        let expected_y = (context.display.dims.1 - dialog_height) / 2;
+
+        assert_eq!(
+            dialog_x, expected_x,
+            "Dialog X position should be centered: got {}, expected {}",
+            dialog_x, expected_x
+        );
+        assert_eq!(
+            dialog_y, expected_y,
+            "Dialog Y position should be centered: got {}, expected {}",
+            dialog_y, expected_y
+        );
     }
 }
