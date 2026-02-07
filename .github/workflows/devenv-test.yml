@@ -1,0 +1,37 @@
+name: "Test devenv shell"
+
+on:
+  pull_request:
+    paths:
+      - "devenv.nix"
+      - "devenv.lock"
+      - ".github/workflows/devenv-test.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "devenv.nix"
+      - "devenv.lock"
+      - ".github/workflows/devenv-test.yml"
+
+jobs:
+  devenv:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: cachix/install-nix-action@v31
+
+      - uses: cachix/cachix-action@v16
+        with:
+          name: devenv
+
+      - name: Install devenv.sh
+        run: nix profile install nixpkgs#devenv
+
+      - name: Test devenv shell builds correctly
+        run: devenv shell whoami

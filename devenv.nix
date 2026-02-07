@@ -636,10 +636,10 @@ in
   '';
 
   git-hooks.hooks = {
-    actionlint.enable = true;
-    shellcheck.enable = true;
-    shfmt.enable = true;
-    markdownlint.enable = true;
-    prettier.enable = true;
+    actionlint.enable = isLinux;
+    shellcheck.enable = isLinux;
+    shfmt.enable = isLinux;
+    markdownlint.enable = isLinux;
+    prettier.enable = isLinux;
   };
 }
