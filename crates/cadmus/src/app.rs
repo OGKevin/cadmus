@@ -614,12 +614,13 @@ pub fn run() -> Result<(), Error> {
                             if context.settings.auto_share {
                                 tx.send(Event::PrepareShare).ok();
                             } else {
-                                let dialog = Dialog::new(
+                                let dialog = Dialog::builder(
                                     ViewId::ShareDialog,
-                                    Some(Event::PrepareShare),
                                     "Share storage via USB?".to_string(),
-                                    &mut context,
-                                );
+                                )
+                                .add_button("Cancel", Event::Close(ViewId::ShareDialog))
+                                .add_button("Share", Event::PrepareShare)
+                                .build(&mut context);
                                 rq.add(RenderData::new(
                                     dialog.id(),
                                     *dialog.rect(),
@@ -1034,7 +1035,9 @@ pub fn run() -> Result<(), Error> {
                     None => format!("Cadmus {}", env!("GIT_VERSION")),
                 };
 
-                let dialog = Dialog::new(ViewId::AboutDialog, None, version_text, &mut context);
+                let dialog = Dialog::builder(ViewId::AboutDialog, version_text)
+                    .add_button("OK", Event::Close(ViewId::AboutDialog))
+                    .build(&mut context);
                 rq.add(RenderData::new(
                     dialog.id(),
                     *dialog.rect(),

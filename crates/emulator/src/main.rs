@@ -674,12 +674,12 @@ fn main() -> Result<(), Error> {
                     }
                 }
                 Event::Select(EntryId::About) => {
-                    let dialog = Dialog::new(
+                    let dialog = Dialog::builder(
                         ViewId::AboutDialog,
-                        None,
                         format!("Cadmus {}", env!("GIT_VERSION")),
-                        &mut context,
-                    );
+                    )
+                    .add_button("OK", Event::Close(ViewId::AboutDialog))
+                    .build(&mut context);
                     rq.add(RenderData::new(
                         dialog.id(),
                         *dialog.rect(),
