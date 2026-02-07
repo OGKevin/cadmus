@@ -4,6 +4,11 @@ on:
   push:
     branches: [main, master]
   pull_request:
+    paths:
+      - "**/*.rs"
+      - "Cargo.*"
+      - "**/Cargo.*"
+      - ".github/workflows/cargo.yml"
 
 jobs:
   format:
