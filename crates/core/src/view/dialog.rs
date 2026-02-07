@@ -153,7 +153,19 @@ impl DialogBuilder {
         }
 
         let label_height = line_count as i32 * line_height;
-        let dialog_width = max_line_width.max(min_message_width) + 3 * padding;
+        let message_width = max_line_width.max(min_message_width) + 3 * padding;
+
+        let button_count = self.buttons.len().max(1);
+        let mut max_button_text_width = 0;
+        for (text, _) in &self.buttons {
+            let plan = font.plan(text, Some(max_button_width), None);
+            max_button_text_width = max_button_text_width.max(plan.width);
+        }
+        let button_width = max_button_text_width + padding;
+
+        let required_button_area_width =
+            button_count as i32 * button_width + (button_count as i32 + 1) * padding;
+        let dialog_width = message_width.max(required_button_area_width);
         let dialog_height = label_height + button_height + 3 * padding;
 
         let dx = (width as i32 - dialog_width) / 2;
@@ -172,14 +184,6 @@ impl DialogBuilder {
             let label = Label::new(rect_label, line.to_string(), Align::Center);
             children.push(Box::new(label) as Box<dyn View>);
         }
-
-        let button_count = self.buttons.len().max(1);
-        let mut max_button_text_width = 0;
-        for (text, _) in &self.buttons {
-            let plan = font.plan(text, Some(max_button_width), None);
-            max_button_text_width = max_button_text_width.max(plan.width);
-        }
-        let button_width = max_button_text_width + padding;
 
         let button_area_width = rect.width() as i32 - 2 * padding;
         let button_spacing =
@@ -400,5 +404,131 @@ impl View for Dialog {
 
     fn view_id(&self) -> Option<ViewId> {
         Some(self.view_id)
+    }
+}
+
+#[cfg(test)]
+impl Dialog {
+    fn rect_for_test(&self) -> &Rectangle {
+        &self.rect
+    }
+
+    fn button_count_for_test(&self) -> usize {
+        self.button_count
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::context::test_helpers::create_test_context;
+
+    #[test]
+    fn dialog_width_should_not_be_static() {
+        let mut context = create_test_context();
+
+        let dialog = Dialog::builder(ViewId::BookMenu, "Where to check for updates?".to_string())
+            .add_button("Stable Release", Event::Close(ViewId::BookMenu))
+            .add_button("Main Branch", Event::Close(ViewId::BookMenu))
+            .add_button("PR Build", Event::Close(ViewId::BookMenu))
+            .build(&mut context);
+
+        let dialog2 = Dialog::builder(ViewId::BookMenu, "Where to check for updates?".to_string())
+            .add_button("Stable Release", Event::Close(ViewId::BookMenu))
+            .build(&mut context);
+
+        let dialog1_rect = dialog.rect_for_test();
+        let dialog1_width = dialog1_rect.width() as i32;
+        let dialog2_rect = dialog2.rect_for_test();
+        let dialog2_width = dialog2_rect.width() as i32;
+
+        assert!(
+            dialog1_width > dialog2_width,
+            "Expected triple button dialog to be wider than single button: {}--{}",
+            dialog1_width,
+            dialog2_width
+        );
+    }
+    #[test]
+    fn dialog_width_with_three_buttons_should_expand() {
+        let mut context = create_test_context();
+
+        let dialog = Dialog::builder(ViewId::BookMenu, "Where to check for updates?".to_string())
+            .add_button("Stable Release", Event::Close(ViewId::BookMenu))
+            .add_button("Main Branch", Event::Close(ViewId::BookMenu))
+            .add_button("PR Build", Event::Close(ViewId::BookMenu))
+            .build(&mut context);
+
+        let dialog_rect = dialog.rect_for_test();
+        let dialog_width = dialog_rect.width() as i32;
+
+        assert!(
+            dialog_width > 0,
+            "Dialog width should be positive, got {}",
+            dialog_width
+        );
+
+        assert_eq!(
+            dialog.button_count_for_test(),
+            3,
+            "Dialog should have 3 buttons"
+        );
+    }
+
+    #[test]
+    fn dialog_width_single_button_should_be_valid() {
+        let mut context = create_test_context();
+
+        let dialog = Dialog::builder(ViewId::BookMenu, "Confirm deletion?".to_string())
+            .add_button("Cancel", Event::Close(ViewId::BookMenu))
+            .build(&mut context);
+
+        let dialog_rect = dialog.rect_for_test();
+        let dialog_width = dialog_rect.width() as i32;
+
+        assert!(
+            dialog_width > 0,
+            "Dialog width should be positive, got {}",
+            dialog_width
+        );
+
+        assert_eq!(
+            dialog.button_count_for_test(),
+            1,
+            "Dialog should have 1 button"
+        );
+    }
+
+    #[test]
+    fn dialog_should_center_on_display() {
+        if std::env::var("TEST_ROOT_DIR").is_err() {
+            return;
+        }
+
+        let mut context = create_test_context();
+
+        let dialog = Dialog::builder(ViewId::BookMenu, "Test message".to_string())
+            .add_button("OK", Event::Close(ViewId::BookMenu))
+            .build(&mut context);
+
+        let rect = dialog.rect_for_test();
+        let dialog_width = rect.width();
+        let dialog_height = rect.height();
+        let dialog_x = rect.min.x as u32;
+        let dialog_y = rect.min.y as u32;
+
+        let expected_x = (context.display.dims.0 - dialog_width) / 2;
+        let expected_y = (context.display.dims.1 - dialog_height) / 2;
+
+        assert_eq!(
+            dialog_x, expected_x,
+            "Dialog X position should be centered: got {}, expected {}",
+            dialog_x, expected_x
+        );
+        assert_eq!(
+            dialog_y, expected_y,
+            "Dialog Y position should be centered: got {}, expected {}",
+            dialog_y, expected_y
+        );
     }
 }

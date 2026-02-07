@@ -66,6 +66,7 @@ use crate::metadata::{
     Info, Margin, PageScheme, ScrollMode, SimpleStatus, SortMethod, TextAlign, ZoomMode,
 };
 use crate::settings::{self, ButtonScheme, FirstColumn, RotationLock, SecondColumn};
+use crate::view::ota::OtaEntryId;
 use downcast_rs::{impl_downcast, Downcast};
 use fxhash::FxHashMap;
 use std::collections::VecDeque;
@@ -738,6 +739,7 @@ pub enum EntryId {
     Quit,
     CheckForUpdates,
     FileEntry(PathBuf),
+    Ota(OtaEntryId),
 }
 
 impl EntryKind {
