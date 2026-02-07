@@ -9,7 +9,7 @@ use std::time::Duration;
 use tracing::info;
 use zip::ZipArchive;
 
-#[cfg(not(test))]
+#[cfg(all(not(test), not(feature = "emulator")))]
 use crate::settings::INTERNAL_CARD_ROOT;
 
 /// Size of each download chunk in bytes (10 MB)
@@ -433,9 +433,6 @@ impl OtaClient {
             kobo_root_name
         );
 
-        #[cfg(not(test))]
-        let deploy_path = PathBuf::from(format!("{}/.kobo/KoboRoot.tgz", INTERNAL_CARD_ROOT));
-
         #[cfg(test)]
         let deploy_path = {
             std::env::temp_dir()
@@ -443,7 +440,13 @@ impl OtaClient {
                 .join("KoboRoot.tgz")
         };
 
-        #[cfg(test)]
+        #[cfg(all(feature = "emulator", not(test)))]
+        let deploy_path = PathBuf::from("/tmp/.kobo/KoboRoot.tgz");
+
+        #[cfg(all(not(feature = "emulator"), not(test)))]
+        let deploy_path = PathBuf::from(format!("{}/.kobo/KoboRoot.tgz", INTERNAL_CARD_ROOT));
+
+        #[cfg(any(test, feature = "emulator"))]
         {
             if let Some(parent) = deploy_path.parent() {
                 std::fs::create_dir_all(parent)?;
