@@ -34,7 +34,6 @@ use cadmus_core::view::home::Home;
 use cadmus_core::view::intermission::Intermission;
 use cadmus_core::view::menu::{Menu, MenuKind};
 use cadmus_core::view::notification::Notification;
-#[cfg(feature = "test")]
 use cadmus_core::view::ota::show_ota_view;
 use cadmus_core::view::reader::Reader;
 use cadmus_core::view::rotation_values::RotationValues;
@@ -1269,7 +1268,6 @@ pub fn run() -> Result<(), Error> {
             Event::SetWifi(enable) => {
                 set_wifi(enable, &mut context);
             }
-            #[cfg(feature = "test")]
             Event::Select(EntryId::CheckForUpdates) => {
                 show_ota_view(view.as_mut(), &tx, &mut rq, &mut context);
             }
