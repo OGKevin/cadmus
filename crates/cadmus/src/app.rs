@@ -1271,9 +1271,7 @@ pub fn run() -> Result<(), Error> {
             }
             #[cfg(feature = "test")]
             Event::Select(EntryId::CheckForUpdates) => {
-                if show_ota_view(view.as_mut(), &tx, &mut rq, &mut context) {
-                    tx.send(Event::Focus(Some(ViewId::OtaPrInput))).ok();
-                }
+                show_ota_view(view.as_mut(), &tx, &mut rq, &mut context);
             }
             Event::Select(EntryId::ToggleWifi) => {
                 set_wifi(!context.settings.wifi, &mut context);
