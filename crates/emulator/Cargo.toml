@@ -1,6 +1,6 @@
 [package]
 name = "emulator"
-version = "0.9.46"
+version = "0.9.47"
 edition = "2021"
 authors = ["Cadmus Authors", "Bastien Dejean <nihilhill@gmail.com> (original Plato author)"]
 

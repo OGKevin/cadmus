@@ -4,6 +4,13 @@
 
 This project is now maintained as **Cadmus**, a fork of the [Plato](https://github.com/baskerville/plato) document reader.
 
+## [0.9.47](https://github.com/OGKevin/cadmus/compare/v0.9.46...v0.9.47) (2026-02-08)
+
+
+### Features
+
+* add emulator feature flag ([f889c0d](https://github.com/OGKevin/cadmus/commit/f889c0d438426ee7dbd27dadc06c02e977405544))
+
 ## [0.9.46](https://github.com/OGKevin/cadmus/compare/v0.9.45...v0.9.46) (2026-02-04)
 
 ### Features
