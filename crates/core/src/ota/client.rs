@@ -6,7 +6,6 @@ use std::fs::File;
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::time::Duration;
-use tracing::info;
 use zip::ZipArchive;
 
 #[cfg(all(not(test), not(feature = "emulator")))]
@@ -157,19 +156,19 @@ impl OtaClient {
     /// The token is stored securely and will never appear in debug output or logs.
     /// It is only exposed when making authenticated API requests.
     pub fn new(github_token: SecretString) -> Result<Self, OtaError> {
-        info!("[OTA] Initializing OTA client with webpki-roots certificates");
+        tracing::debug!("Initializing OTA client with webpki-roots certificates");
 
         let root_store = create_webpki_root_store();
-        info!(
-            "[OTA] Created root certificate store with {} certificates",
-            root_store.len()
+        tracing::debug!(
+            certificate_count = root_store.len(),
+            "Created root certificate store"
         );
 
         let tls_config = rustls::ClientConfig::builder()
             .with_root_certificates(root_store)
             .with_no_client_auth();
 
-        info!("[OTA] Built TLS configuration");
+        tracing::debug!("Built TLS configuration");
 
         let client = Client::builder()
             .use_preconfigured_tls(tls_config)
@@ -178,7 +177,7 @@ impl OtaClient {
             .build()
             .map_err(|e| OtaError::TlsConfig(format!("Failed to build HTTP client: {}", e)))?;
 
-        info!("[OTA] Successfully initialized OTA client with reqwest");
+        tracing::debug!("Successfully initialized OTA client");
 
         Ok(Self {
             client,
@@ -223,91 +222,181 @@ impl OtaClient {
         check_disk_space("/tmp")?;
 
         progress_callback(OtaProgress::CheckingPr);
-        info!("[OTA] Checking PR #{}", pr_number);
+        tracing::debug!(pr_number, "Checking PR");
 
         let pr_url = format!(
             "https://api.github.com/repos/ogkevin/cadmus/pulls/{}",
             pr_number
         );
+        tracing::debug!(url = %pr_url, "Fetching PR");
 
-        let pr: PullRequest = self
+        let response = self
             .client
             .get(&pr_url)
             .header(
                 "Authorization",
                 format!("Bearer {}", self.token.expose_secret()),
             )
-            .send()?
-            .error_for_status()
-            .map_err(|_| OtaError::PrNotFound(pr_number))?
-            .json()?;
+            .send()?;
+
+        tracing::debug!(
+            status = %response.status(),
+            headers = ?response.headers(),
+            "PR fetch response"
+        );
+
+        let response = response.error_for_status().map_err(|e| {
+            tracing::error!(
+                pr_number,
+                status = ?e.status(),
+                error = %e,
+                "PR fetch failed"
+            );
+            OtaError::PrNotFound(pr_number)
+        })?;
+
+        let pr: PullRequest = response.json()?;
+        tracing::debug!("Successfully parsed PR response");
 
         let head_sha = pr.head.sha;
-        info!("[OTA] PR #{} head SHA: {}", pr_number, head_sha);
+        tracing::debug!(pr_number, head_sha = %head_sha, "Retrieved PR head SHA");
 
         progress_callback(OtaProgress::FindingWorkflow);
-        info!("[OTA] Finding workflow runs for SHA: {}", head_sha);
+        tracing::debug!(head_sha = %head_sha, "Finding workflow runs");
 
         let runs_url = format!(
             "https://api.github.com/repos/ogkevin/cadmus/actions/runs?head_sha={}&event=pull_request",
             head_sha
         );
+        tracing::debug!(url = %runs_url, "Fetching workflow runs");
 
-        let runs: WorkflowRunsResponse = self
+        let response = self
             .client
             .get(&runs_url)
             .header(
                 "Authorization",
                 format!("Bearer {}", self.token.expose_secret()),
             )
-            .send()?
-            .error_for_status()
-            .map_err(|e| OtaError::Api(format!("Failed to fetch workflow runs: {}", e)))?
-            .json()?;
+            .send()?;
 
-        info!("[OTA] Found {} workflow runs", runs.workflow_runs.len());
+        tracing::debug!(
+            status = %response.status(),
+            headers = ?response.headers(),
+            "Workflow runs response"
+        );
+
+        let response = response.error_for_status().map_err(|e| {
+            tracing::error!(
+                head_sha = %head_sha,
+                status = ?e.status(),
+                error = %e,
+                "Workflow runs fetch failed"
+            );
+            OtaError::Api(format!("Failed to fetch workflow runs: {}", e))
+        })?;
+
+        let runs: WorkflowRunsResponse = response.json()?;
+        tracing::debug!(count = runs.workflow_runs.len(), "Found workflow runs");
+
+        #[cfg(feature = "otel")]
+        if tracing::enabled!(tracing::Level::DEBUG) {
+            for (idx, run) in runs.workflow_runs.iter().enumerate() {
+                tracing::debug!(
+                    index = idx,
+                    name = %run.name,
+                    id = run.id,
+                    "Workflow run"
+                );
+            }
+        }
 
         let run = runs
             .workflow_runs
             .iter()
             .find(|r| r.name == "Cargo")
-            .ok_or(OtaError::NoArtifacts(pr_number))?;
+            .ok_or_else(|| {
+                tracing::error!(
+                    pr_number,
+                    workflow_name = "Cargo",
+                    "No matching workflow run found"
+                );
+                OtaError::NoArtifacts(pr_number)
+            })?;
 
-        info!("[OTA] Found Cargo workflow run with ID: {}", run.id);
+        tracing::debug!(run_id = run.id, "Found Cargo workflow run");
 
         let artifacts_url = format!(
             "https://api.github.com/repos/ogkevin/cadmus/actions/runs/{}/artifacts",
             run.id
         );
+        tracing::debug!(url = %artifacts_url, "Fetching artifacts");
 
-        let artifacts: ArtifactsResponse = self
+        let response = self
             .client
             .get(&artifacts_url)
             .header(
                 "Authorization",
                 format!("Bearer {}", self.token.expose_secret()),
             )
-            .send()?
-            .error_for_status()
-            .map_err(|e| OtaError::Api(format!("Failed to fetch artifacts: {}", e)))?
-            .json()?;
+            .send()?;
 
-        info!("[OTA] Found {} artifacts", artifacts.artifacts.len());
+        tracing::debug!(
+            status = %response.status(),
+            headers = ?response.headers(),
+            "Artifacts response"
+        );
+
+        let response = response.error_for_status().map_err(|e| {
+            tracing::error!(
+                run_id = run.id,
+                status = ?e.status(),
+                error = %e,
+                "Artifacts fetch failed"
+            );
+            OtaError::Api(format!("Failed to fetch artifacts: {}", e))
+        })?;
+
+        let artifacts: ArtifactsResponse = response.json()?;
+        tracing::debug!(count = artifacts.artifacts.len(), "Found artifacts");
+
+        #[cfg(feature = "otel")]
+        if tracing::enabled!(tracing::Level::DEBUG) {
+            for (idx, artifact) in artifacts.artifacts.iter().enumerate() {
+                tracing::debug!(
+                    index = idx,
+                    name = %artifact.name,
+                    id = artifact.id,
+                    size_bytes = artifact.size_in_bytes,
+                    "Artifact"
+                );
+            }
+        }
 
         #[cfg(feature = "test")]
         let artifact_name_pattern = format!("cadmus-kobo-test-pr{}", pr_number);
         #[cfg(not(feature = "test"))]
         let artifact_name_pattern = format!("cadmus-kobo-pr{}", pr_number);
 
+        tracing::debug!(pattern = %artifact_name_pattern, "Looking for artifact");
+
         let artifact = artifacts
             .artifacts
             .iter()
             .find(|a| a.name.starts_with(artifact_name_pattern.as_str()))
-            .ok_or(OtaError::NoArtifacts(pr_number))?;
+            .ok_or_else(|| {
+                tracing::error!(
+                    pr_number,
+                    pattern = %artifact_name_pattern,
+                    "No matching artifact found"
+                );
+                OtaError::NoArtifacts(pr_number)
+            })?;
 
-        info!(
-            "[OTA] Found artifact: {} (ID: {}, size: {} bytes)",
-            artifact.name, artifact.id, artifact.size_in_bytes
+        tracing::debug!(
+            name = %artifact.name,
+            id = artifact.id,
+            size_bytes = artifact.size_in_bytes,
+            "Found artifact"
         );
 
         progress_callback(OtaProgress::DownloadingArtifact {
@@ -320,27 +409,26 @@ impl OtaClient {
             artifact.id
         );
 
-        info!("[OTA] Downloading artifact from: {}", download_url);
+        tracing::debug!(url = %download_url, "Downloading artifact");
 
         let download_path = PathBuf::from(format!("/tmp/cadmus-ota-{}.zip", pr_number));
+        tracing::debug!(path = ?download_path, "Download destination");
+
         let mut file = File::create(&download_path)?;
 
         let mut downloaded = 0u64;
         let total_size = artifact.size_in_bytes;
 
-        info!(
-            "[OTA] Starting chunked download ({} MB chunks)",
-            CHUNK_SIZE / (1024 * 1024)
+        tracing::debug!(
+            chunk_size_mb = CHUNK_SIZE / (1024 * 1024),
+            "Starting chunked download"
         );
 
         while downloaded < total_size {
             let chunk_start = downloaded;
             let chunk_end = std::cmp::min(downloaded + CHUNK_SIZE as u64 - 1, total_size - 1);
 
-            info!(
-                "[OTA] Downloading chunk: bytes {}-{} of {}",
-                chunk_start, chunk_end, total_size
-            );
+            tracing::debug!(chunk_start, chunk_end, total_size, "Downloading chunk");
 
             let chunk_data =
                 self.download_chunk_with_retries(&download_url, chunk_start, chunk_end)?;
@@ -353,16 +441,16 @@ impl OtaClient {
                 total: total_size,
             });
 
-            info!(
-                "[OTA] Progress: {}/{} bytes ({:.1}%)",
+            tracing::debug!(
                 downloaded,
                 total_size,
-                (downloaded as f64 / total_size as f64) * 100.0
+                progress_percent = (downloaded as f64 / total_size as f64) * 100.0,
+                "Download progress"
             );
         }
 
-        info!("[OTA] Download complete: {} bytes", downloaded);
-        info!("[OTA] Saved artifact to: {:?}", download_path);
+        tracing::debug!(bytes = downloaded, "Download complete");
+        tracing::debug!(path = ?download_path, "Saved artifact");
 
         progress_callback(OtaProgress::Complete {
             path: download_path.clone(),
@@ -391,12 +479,12 @@ impl OtaClient {
     /// * `OtaError::DeploymentError` - KoboRoot.tgz not found in archive
     /// * `OtaError::Io` - Failed to write deployment file
     pub fn extract_and_deploy(&self, zip_path: PathBuf) -> Result<PathBuf, OtaError> {
-        info!("[OTA] Starting extraction of artifact: {:?}", zip_path);
+        tracing::debug!(path = ?zip_path, "Starting extraction");
 
         let file = File::open(&zip_path)?;
         let mut archive = ZipArchive::new(file)?;
 
-        info!("[OTA] Opened ZIP archive with {} files", archive.len());
+        tracing::debug!(file_count = archive.len(), "Opened ZIP archive");
 
         let mut kobo_root_data = Vec::new();
         let mut found = false;
@@ -406,14 +494,16 @@ impl OtaClient {
         #[cfg(feature = "test")]
         let kobo_root_name = "KoboRoot-test.tgz";
 
+        tracing::debug!(target_file = kobo_root_name, "Looking for file");
+
         for i in 0..archive.len() {
             let mut entry = archive.by_index(i)?;
             let entry_name = entry.name().to_string();
 
-            info!("[OTA] Checking entry: {}", entry_name);
+            tracing::debug!(index = i, name = %entry_name, "Checking entry");
 
             if entry_name.eq(kobo_root_name) {
-                info!("[OTA] Found at {}: {}", kobo_root_name, entry_name);
+                tracing::debug!(name = %entry_name, "Found target file");
                 entry.read_to_end(&mut kobo_root_data)?;
                 found = true;
                 break;
@@ -421,16 +511,20 @@ impl OtaClient {
         }
 
         if !found {
+            tracing::error!(
+                target_file = kobo_root_name,
+                "Target file not found in artifact"
+            );
             return Err(OtaError::DeploymentError(format!(
                 "{} not found in artifact",
                 kobo_root_name
             )));
         }
 
-        info!(
-            "[OTA] Extracted {} bytes from {}",
-            kobo_root_data.len(),
-            kobo_root_name
+        tracing::debug!(
+            bytes = kobo_root_data.len(),
+            file = kobo_root_name,
+            "Extracted file"
         );
 
         #[cfg(test)]
@@ -446,17 +540,21 @@ impl OtaClient {
         #[cfg(all(not(feature = "emulator"), not(test)))]
         let deploy_path = PathBuf::from(format!("{}/.kobo/KoboRoot.tgz", INTERNAL_CARD_ROOT));
 
+        tracing::debug!(path = ?deploy_path, "Deploy destination");
+
         #[cfg(any(test, feature = "emulator"))]
         {
             if let Some(parent) = deploy_path.parent() {
+                tracing::debug!(directory = ?parent, "Creating parent directory");
                 std::fs::create_dir_all(parent)?;
             }
         }
 
+        tracing::debug!(bytes = kobo_root_data.len(), path = ?deploy_path, "Writing file");
         let mut file = File::create(&deploy_path)?;
         file.write_all(&kobo_root_data)?;
 
-        info!("[OTA] Deployment complete: {:?}", deploy_path);
+        tracing::debug!(path = ?deploy_path, "Deployment complete");
 
         Ok(deploy_path)
     }
@@ -491,23 +589,26 @@ impl OtaClient {
             match self.download_chunk(url, start, end) {
                 Ok(data) => {
                     if attempt > 1 {
-                        info!(
-                            "[OTA] Chunk download succeeded on attempt {}/{}",
-                            attempt, MAX_RETRIES
+                        tracing::debug!(
+                            attempt,
+                            max_retries = MAX_RETRIES,
+                            "Chunk download succeeded after retry"
                         );
                     }
                     return Ok(data);
                 }
                 Err(e) => {
-                    info!(
-                        "[OTA] Chunk download failed (attempt {}/{}): {}",
-                        attempt, MAX_RETRIES, e
+                    tracing::warn!(
+                        attempt,
+                        max_retries = MAX_RETRIES,
+                        error = %e,
+                        "Chunk download failed"
                     );
                     last_error = Some(e);
 
                     if attempt < MAX_RETRIES {
                         let backoff_ms = 1000 * (2u64.pow(attempt as u32 - 1));
-                        info!("[OTA] Retrying after {} ms...", backoff_ms);
+                        tracing::debug!(backoff_ms, "Retrying after backoff");
                         std::thread::sleep(Duration::from_millis(backoff_ms));
                     }
                 }
@@ -570,12 +671,15 @@ fn check_disk_space(path: &str) -> Result<(), OtaError> {
 
     let stat = statvfs(path)?;
     let available_mb = (stat.blocks_available() as u64 * stat.block_size() as u64) / (1024 * 1024);
-    info!(
-        "[OTA] Available disk space in {}: {} MB",
-        path, available_mb
-    );
+    tracing::debug!(path, available_mb, "Checking disk space");
 
     if available_mb < 100 {
+        tracing::error!(
+            path,
+            available_mb,
+            required_mb = 100,
+            "Insufficient disk space"
+        );
         return Err(OtaError::InsufficientSpace(available_mb as u64));
     }
     Ok(())
@@ -586,14 +690,14 @@ fn check_disk_space(path: &str) -> Result<(), OtaError> {
 /// Uses the webpki-roots crate which embeds Mozilla's CA certificate bundle
 /// for verifying HTTPS connections to GitHub's API.
 fn create_webpki_root_store() -> RootCertStore {
-    info!("[OTA] Loading Mozilla root certificates from webpki-roots");
+    tracing::debug!("Loading Mozilla root certificates from webpki-roots");
     let mut root_store = RootCertStore::empty();
 
     root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
 
-    info!(
-        "[OTA] Loaded {} root certificates from webpki-roots",
-        root_store.len()
+    tracing::debug!(
+        certificate_count = root_store.len(),
+        "Loaded root certificates from webpki-roots"
     );
     root_store
 }
