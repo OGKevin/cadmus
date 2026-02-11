@@ -58,6 +58,14 @@ pub enum OtaError {
     #[error("No build artifacts found for PR #{0}")]
     NoArtifacts(u32),
 
+    /// No build artifacts found for the default branch
+    #[error("No build artifacts found for default branch")]
+    NoDefaultBranchArtifacts,
+
+    /// No artifact matching the expected name prefix was found in a workflow run
+    #[error("No artifact matching '{0}' found in workflow run")]
+    ArtifactNotFound(String),
+
     /// GitHub token was not provided in configuration
     #[error("GitHub token not configured")]
     NoToken,
@@ -94,6 +102,8 @@ pub enum OtaError {
 pub enum OtaProgress {
     /// Verifying the pull request exists and fetching its metadata
     CheckingPr,
+    /// Searching for the latest successful build on the default branch
+    FindingLatestBuild,
     /// Searching for the associated GitHub Actions workflow run
     FindingWorkflow,
     /// Actively downloading the artifact with optional progress tracking
@@ -121,6 +131,13 @@ struct WorkflowRunsResponse {
 struct WorkflowRun {
     name: String,
     id: u64,
+    #[serde(default)]
+    head_sha: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct Repository {
+    default_branch: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -214,10 +231,10 @@ impl OtaClient {
     pub fn download_pr_artifact<F>(
         &self,
         pr_number: u32,
-        progress_callback: F,
+        mut progress_callback: F,
     ) -> Result<PathBuf, OtaError>
     where
-        F: Fn(OtaProgress),
+        F: FnMut(OtaProgress),
     {
         check_disk_space("/tmp")?;
 
@@ -325,71 +342,16 @@ impl OtaClient {
 
         tracing::debug!(run_id = run.id, "Found Cargo workflow run");
 
-        let artifacts_url = format!(
-            "https://api.github.com/repos/ogkevin/cadmus/actions/runs/{}/artifacts",
-            run.id
-        );
-        tracing::debug!(url = %artifacts_url, "Fetching artifacts");
-
-        let response = self
-            .client
-            .get(&artifacts_url)
-            .header(
-                "Authorization",
-                format!("Bearer {}", self.token.expose_secret()),
-            )
-            .send()?;
-
-        tracing::debug!(
-            status = %response.status(),
-            headers = ?response.headers(),
-            "Artifacts response"
-        );
-
-        let response = response.error_for_status().map_err(|e| {
-            tracing::error!(
-                run_id = run.id,
-                status = ?e.status(),
-                error = %e,
-                "Artifacts fetch failed"
-            );
-            OtaError::Api(format!("Failed to fetch artifacts: {}", e))
-        })?;
-
-        let artifacts: ArtifactsResponse = response.json()?;
-        tracing::debug!(count = artifacts.artifacts.len(), "Found artifacts");
-
-        #[cfg(feature = "otel")]
-        if tracing::enabled!(tracing::Level::DEBUG) {
-            for (idx, artifact) in artifacts.artifacts.iter().enumerate() {
-                tracing::debug!(
-                    index = idx,
-                    name = %artifact.name,
-                    id = artifact.id,
-                    size_bytes = artifact.size_in_bytes,
-                    "Artifact"
-                );
-            }
-        }
-
         #[cfg(feature = "test")]
         let artifact_name_pattern = format!("cadmus-kobo-test-pr{}", pr_number);
         #[cfg(not(feature = "test"))]
         let artifact_name_pattern = format!("cadmus-kobo-pr{}", pr_number);
 
-        tracing::debug!(pattern = %artifact_name_pattern, "Looking for artifact");
-
-        let artifact = artifacts
-            .artifacts
-            .iter()
-            .find(|a| a.name.starts_with(artifact_name_pattern.as_str()))
-            .ok_or_else(|| {
-                tracing::error!(
-                    pr_number,
-                    pattern = %artifact_name_pattern,
-                    "No matching artifact found"
-                );
-                OtaError::NoArtifacts(pr_number)
+        let artifact = self
+            .find_artifact_in_run(run.id, &artifact_name_pattern)
+            .map_err(|e| match e {
+                OtaError::ArtifactNotFound(_) => OtaError::NoArtifacts(pr_number),
+                other => other,
             })?;
 
         tracing::debug!(
@@ -399,58 +361,135 @@ impl OtaClient {
             "Found artifact"
         );
 
-        progress_callback(OtaProgress::DownloadingArtifact {
-            downloaded: 0,
-            total: artifact.size_in_bytes,
+        let download_path = PathBuf::from(format!("/tmp/cadmus-ota-{}.zip", pr_number));
+
+        self.download_artifact_to_path(&artifact, &download_path, &mut progress_callback)?;
+
+        progress_callback(OtaProgress::Complete {
+            path: download_path.clone(),
         });
 
-        let download_url = format!(
-            "https://api.github.com/repos/ogkevin/cadmus/actions/artifacts/{}/zip",
-            artifact.id
+        Ok(download_path)
+    }
+
+    /// Downloads the latest build artifact from the default branch.
+    ///
+    /// This performs the complete download workflow for default branch builds:
+    /// 1. Verifies sufficient disk space (100MB required)
+    /// 2. Queries GitHub API for the latest successful `cargo.yml` workflow run on the default branch
+    /// 3. Locates artifacts matching "cadmus-kobo-{sha}" pattern (or "cadmus-kobo-test-{sha}" with `test` feature)
+    /// 4. Downloads the artifact ZIP file to `/tmp/cadmus-ota-{sha}.zip`
+    ///
+    /// # Arguments
+    ///
+    /// * `progress_callback` - Function called with progress updates during download
+    ///
+    /// # Returns
+    ///
+    /// The path to the downloaded ZIP file on success.
+    ///
+    /// # Errors
+    ///
+    /// * `OtaError::InsufficientSpace` - Less than 100MB available in /tmp
+    /// * `OtaError::NoDefaultBranchArtifacts` - No matching build artifacts found
+    /// * `OtaError::Api` - GitHub API request failed
+    /// * `OtaError::Request` - Network communication failed
+    /// * `OtaError::Io` - Failed to write downloaded file to disk
+    pub fn download_default_branch_artifact<F>(
+        &self,
+        mut progress_callback: F,
+    ) -> Result<PathBuf, OtaError>
+    where
+        F: FnMut(OtaProgress),
+    {
+        check_disk_space("/tmp")?;
+
+        progress_callback(OtaProgress::FindingLatestBuild);
+        tracing::debug!("Finding latest default branch build");
+
+        let default_branch = self.fetch_default_branch()?;
+
+        let runs_url = format!(
+            "https://api.github.com/repos/ogkevin/cadmus/actions/workflows/cargo.yml/runs?branch={}&event=push&status=success&per_page=1",
+            default_branch
         );
+        tracing::debug!(url = %runs_url, "Fetching Cargo workflow runs on default branch");
 
-        tracing::debug!(url = %download_url, "Downloading artifact");
-
-        let download_path = PathBuf::from(format!("/tmp/cadmus-ota-{}.zip", pr_number));
-        tracing::debug!(path = ?download_path, "Download destination");
-
-        let mut file = File::create(&download_path)?;
-
-        let mut downloaded = 0u64;
-        let total_size = artifact.size_in_bytes;
+        let response = self
+            .client
+            .get(runs_url)
+            .header(
+                "Authorization",
+                format!("Bearer {}", self.token.expose_secret()),
+            )
+            .send()?;
 
         tracing::debug!(
-            chunk_size_mb = CHUNK_SIZE / (1024 * 1024),
-            "Starting chunked download"
+            status = %response.status(),
+            headers = ?response.headers(),
+            "Cargo workflow runs response"
         );
 
-        while downloaded < total_size {
-            let chunk_start = downloaded;
-            let chunk_end = std::cmp::min(downloaded + CHUNK_SIZE as u64 - 1, total_size - 1);
-
-            tracing::debug!(chunk_start, chunk_end, total_size, "Downloading chunk");
-
-            let chunk_data =
-                self.download_chunk_with_retries(&download_url, chunk_start, chunk_end)?;
-
-            file.write_all(&chunk_data)?;
-            downloaded += chunk_data.len() as u64;
-
-            progress_callback(OtaProgress::DownloadingArtifact {
-                downloaded,
-                total: total_size,
-            });
-
-            tracing::debug!(
-                downloaded,
-                total_size,
-                progress_percent = (downloaded as f64 / total_size as f64) * 100.0,
-                "Download progress"
+        let response = response.error_for_status().map_err(|e| {
+            tracing::error!(
+                status = ?e.status(),
+                error = %e,
+                "Cargo workflow runs fetch failed"
             );
-        }
+            OtaError::Api(format!("Failed to fetch Cargo workflow runs: {}", e))
+        })?;
 
-        tracing::debug!(bytes = downloaded, "Download complete");
-        tracing::debug!(path = ?download_path, "Saved artifact");
+        let runs: WorkflowRunsResponse = response.json()?;
+        tracing::debug!(
+            count = runs.workflow_runs.len(),
+            "Found Cargo workflow runs"
+        );
+
+        let cargo_run = runs.workflow_runs.first().ok_or_else(|| {
+            tracing::error!("No successful Cargo workflow run found on default branch");
+            OtaError::NoDefaultBranchArtifacts
+        })?;
+
+        tracing::debug!(run_id = cargo_run.id, "Found Cargo workflow run");
+
+        let head_sha = cargo_run.head_sha.as_deref().ok_or_else(|| {
+            tracing::error!(run_id = cargo_run.id, "Workflow run missing head_sha");
+            OtaError::Api(format!("Workflow run {} missing head_sha", cargo_run.id))
+        })?;
+        let short_sha = &head_sha[..7.min(head_sha.len())];
+
+        #[cfg(feature = "test")]
+        let artifact_name_prefix = format!("cadmus-kobo-test-{}", short_sha);
+        #[cfg(not(feature = "test"))]
+        let artifact_name_prefix = format!("cadmus-kobo-{}", short_sha);
+
+        tracing::debug!(pattern = %artifact_name_prefix, "Looking for artifact");
+
+        progress_callback(OtaProgress::FindingWorkflow);
+
+        let artifact = self
+            .find_artifact_in_run(cargo_run.id, &artifact_name_prefix)
+            .map_err(|e| match e {
+                OtaError::ArtifactNotFound(pattern) => {
+                    tracing::error!(
+                        pattern = %pattern,
+                        "No matching artifact found on default branch"
+                    );
+                    OtaError::NoDefaultBranchArtifacts
+                }
+                other => other,
+            })?;
+
+        tracing::debug!(
+            name = %artifact.name,
+            id = artifact.id,
+            size_bytes = artifact.size_in_bytes,
+            "Found default branch artifact"
+        );
+
+        let download_path = PathBuf::from(format!("/tmp/cadmus-ota-{}.zip", short_sha));
+
+        self.download_artifact_to_path(&artifact, &download_path, &mut progress_callback)?;
 
         progress_callback(OtaProgress::Complete {
             path: download_path.clone(),
@@ -557,6 +596,164 @@ impl OtaClient {
         tracing::debug!(path = ?deploy_path, "Deployment complete");
 
         Ok(deploy_path)
+    }
+
+    /// Queries the GitHub API for the repository's default branch name.
+    fn fetch_default_branch(&self) -> Result<String, OtaError> {
+        let repo_url = "https://api.github.com/repos/ogkevin/cadmus";
+        tracing::debug!(url = %repo_url, "Fetching repository metadata");
+
+        let response = self
+            .client
+            .get(repo_url)
+            .header(
+                "Authorization",
+                format!("Bearer {}", self.token.expose_secret()),
+            )
+            .send()?;
+
+        let response = response.error_for_status().map_err(|e| {
+            tracing::error!(
+                status = ?e.status(),
+                error = %e,
+                "Repository metadata fetch failed"
+            );
+            OtaError::Api(format!("Failed to fetch repository metadata: {}", e))
+        })?;
+
+        let repo: Repository = response.json()?;
+        tracing::debug!(default_branch = %repo.default_branch, "Resolved default branch");
+
+        Ok(repo.default_branch)
+    }
+
+    /// Fetches artifacts for a workflow run and finds one matching the given prefix.
+    fn find_artifact_in_run(&self, run_id: u64, name_prefix: &str) -> Result<Artifact, OtaError> {
+        let artifacts_url = format!(
+            "https://api.github.com/repos/ogkevin/cadmus/actions/runs/{}/artifacts",
+            run_id
+        );
+        tracing::debug!(url = %artifacts_url, "Fetching artifacts");
+
+        let response = self
+            .client
+            .get(&artifacts_url)
+            .header(
+                "Authorization",
+                format!("Bearer {}", self.token.expose_secret()),
+            )
+            .send()?;
+
+        tracing::debug!(
+            status = %response.status(),
+            headers = ?response.headers(),
+            "Artifacts response"
+        );
+
+        let response = response.error_for_status().map_err(|e| {
+            tracing::error!(
+                run_id,
+                status = ?e.status(),
+                error = %e,
+                "Artifacts fetch failed"
+            );
+            OtaError::Api(format!("Failed to fetch artifacts: {}", e))
+        })?;
+
+        let artifacts: ArtifactsResponse = response.json()?;
+        tracing::debug!(count = artifacts.artifacts.len(), "Found artifacts");
+
+        #[cfg(feature = "otel")]
+        if tracing::enabled!(tracing::Level::DEBUG) {
+            for (idx, artifact) in artifacts.artifacts.iter().enumerate() {
+                tracing::debug!(
+                    index = idx,
+                    name = %artifact.name,
+                    id = artifact.id,
+                    size_bytes = artifact.size_in_bytes,
+                    "Artifact"
+                );
+            }
+        }
+
+        tracing::debug!(pattern = %name_prefix, "Looking for artifact");
+
+        artifacts
+            .artifacts
+            .into_iter()
+            .find(|a| a.name.starts_with(name_prefix))
+            .ok_or_else(|| {
+                tracing::error!(
+                    run_id,
+                    pattern = %name_prefix,
+                    "No matching artifact found"
+                );
+                OtaError::ArtifactNotFound(name_prefix.to_owned())
+            })
+    }
+
+    /// Downloads an artifact ZIP to the specified path with chunked transfer and progress reporting.
+    fn download_artifact_to_path<F>(
+        &self,
+        artifact: &Artifact,
+        download_path: &PathBuf,
+        progress_callback: &mut F,
+    ) -> Result<(), OtaError>
+    where
+        F: FnMut(OtaProgress),
+    {
+        progress_callback(OtaProgress::DownloadingArtifact {
+            downloaded: 0,
+            total: artifact.size_in_bytes,
+        });
+
+        let download_url = format!(
+            "https://api.github.com/repos/ogkevin/cadmus/actions/artifacts/{}/zip",
+            artifact.id
+        );
+
+        tracing::debug!(url = %download_url, "Downloading artifact");
+        tracing::debug!(path = ?download_path, "Download destination");
+
+        let mut file = File::create(download_path)?;
+
+        let mut downloaded = 0u64;
+        let total_size = artifact.size_in_bytes;
+
+        tracing::debug!(
+            chunk_size_mb = CHUNK_SIZE / (1024 * 1024),
+            "Starting chunked download"
+        );
+
+        while downloaded < total_size {
+            let chunk_start = downloaded;
+            let chunk_end = std::cmp::min(downloaded + CHUNK_SIZE as u64 - 1, total_size - 1);
+
+            tracing::debug!(chunk_start, chunk_end, total_size, "Downloading chunk");
+
+            let chunk_data =
+                self.download_chunk_with_retries(&download_url, chunk_start, chunk_end)?;
+
+            file.write_all(&chunk_data)?;
+            downloaded += chunk_data.len() as u64;
+
+            progress_callback(OtaProgress::DownloadingArtifact {
+                downloaded,
+                total: total_size,
+            });
+
+            tracing::debug!(
+                downloaded,
+                total_size,
+                progress_percent = (downloaded as f64 / total_size as f64) * 100.0,
+                "Download progress"
+            );
+        }
+
+        tracing::debug!(bytes = downloaded, "Download complete");
+        tracing::debug!(path = ?download_path, "Saved artifact");
+
+        Ok(())
     }
 
     /// Downloads a specific byte range of a file with automatic retry logic.
@@ -801,5 +998,68 @@ mod tests {
         } else {
             panic!("Expected DeploymentError");
         }
+    }
+
+    fn external_test_enabled() -> bool {
+        std::env::var("CADMUS_TEST_OTA_EXTERNAL").is_ok() && std::env::var("GH_TOKEN").is_ok()
+    }
+
+    fn create_external_client() -> OtaClient {
+        rustls::crypto::ring::default_provider()
+            .install_default()
+            .ok();
+
+        let token = std::env::var("GH_TOKEN").expect("GH_TOKEN must be set");
+        OtaClient::new(SecretString::from(token)).expect("Failed to create OtaClient")
+    }
+
+    #[test]
+    #[ignore]
+    fn test_external_download_default_branch_and_deploy() {
+        if !external_test_enabled() {
+            return;
+        }
+
+        let client = create_external_client();
+        let mut last_progress = None;
+
+        let download_result = client.download_default_branch_artifact(|progress| {
+            last_progress = Some(format!("{:?}", progress));
+        });
+
+        assert!(
+            download_result.is_ok(),
+            "Default branch artifact download should succeed: {:?}",
+            download_result.err()
+        );
+
+        let zip_path = download_result.unwrap();
+        assert!(
+            zip_path.exists(),
+            "Downloaded ZIP should exist at {:?}",
+            zip_path
+        );
+        assert!(
+            zip_path.metadata().unwrap().len() > 0,
+            "Downloaded ZIP should not be empty"
+        );
+
+        let deploy_result = client.extract_and_deploy(zip_path.clone());
+
+        assert!(
+            deploy_result.is_ok(),
+            "Deployment should succeed: {:?}",
+            deploy_result.err()
+        );
+
+        let deploy_path = deploy_result.unwrap();
+        assert!(
+            deploy_path.exists(),
+            "Deployed file should exist at {:?}",
+            deploy_path
+        );
+
+        std::fs::remove_file(&zip_path).ok();
+        std::fs::remove_file(&deploy_path).ok();
     }
 }
