@@ -35,6 +35,32 @@ jobs:
   clippy:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Workspace-level feature combinations
+          - features: default
+            cargo_args: "--workspace --all-targets"
+          - features: test
+            cargo_args: "--workspace --all-targets --features test"
+          - features: otel
+            cargo_args: "--workspace --all-targets --features otel"
+          - features: test + otel
+            cargo_args: "--workspace --all-targets --features test,otel"
+          # Emulator crate feature combinations
+          - features: emulator
+            cargo_args: "-p emulator --all-targets --features emulator"
+          - features: emulator + test
+            cargo_args: "-p emulator --all-targets --features emulator,test"
+          - features: emulator + otel
+            cargo_args: "-p emulator --all-targets --features emulator,otel"
+          - features: emulator + test + otel
+            cargo_args: "-p emulator --all-targets --features emulator,test,otel"
+
+    name: clippy (${{ matrix.features }})
+
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
@@ -61,13 +87,39 @@ jobs:
           tool: cargo-diff-tools
       - name: Fetch base ref
         run: git fetch origin ${{ github.base_ref }}
-      - name: Run cargo clippy
-        run: cargo-clippy-diff -o GitHub origin/${{ github.base_ref }} -- -q --workspace --all-targets --all-features
+      - name: Run cargo clippy (${{ matrix.features }})
+        run: cargo-clippy-diff -o GitHub origin/${{ github.base_ref }} -- -q ${{ matrix.cargo_args }}
 
   test:
     runs-on: ubuntu-latest
     env:
-     TEST_ROOT_DIR: ${{ github.workspace }}
+      TEST_ROOT_DIR: ${{ github.workspace }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Workspace-level feature combinations
+          - features: default
+            cargo_args: "--workspace"
+          - features: test
+            cargo_args: "--workspace --features test"
+          - features: otel
+            cargo_args: "--workspace --features otel"
+          - features: test + otel
+            cargo_args: "--workspace --features test,otel"
+          # Emulator crate feature combinations
+          - features: emulator
+            cargo_args: "-p emulator --features emulator"
+          - features: emulator + test
+            cargo_args: "-p emulator --features emulator,test"
+          - features: emulator + otel
+            cargo_args: "-p emulator --features emulator,otel"
+          - features: emulator + test + otel
+            cargo_args: "-p emulator --features emulator,test,otel"
+
+    name: test (${{ matrix.features }})
+
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
@@ -138,8 +190,8 @@ jobs:
             ar cr thirdparty/mupdf/build/release/libmupdf-third.a
           fi
           ln -sf "$(pwd)/thirdparty/mupdf/build/release/libmupdf-third.a" target/mupdf_wrapper/Linux/
-      - name: Run cargo test
-        run: cargo test --workspace
+      - name: Run cargo test (${{ matrix.features }})
+        run: cargo test ${{ matrix.cargo_args }}
 
   build-kobo:
     runs-on: ubuntu-latest
