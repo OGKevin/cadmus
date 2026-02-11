@@ -33,14 +33,23 @@ jobs:
         run: cargo fmt --all --check
 
   clippy:
-    runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
 
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest, macos-latest]
+        features:
+          - default
+          - test
+          - otel
+          - test + otel
+          - emulator
+          - emulator + test
+          - emulator + otel
+          - emulator + test + otel
+        # Map feature names to cargo arguments
         include:
-          # Workspace-level feature combinations
           - features: default
             cargo_args: "--workspace --all-targets"
           - features: test
@@ -49,7 +58,6 @@ jobs:
             cargo_args: "--workspace --all-targets --features otel"
           - features: test + otel
             cargo_args: "--workspace --all-targets --features test,otel"
-          # Emulator crate feature combinations
           - features: emulator
             cargo_args: "-p emulator --all-targets --features emulator"
           - features: emulator + test
@@ -58,8 +66,8 @@ jobs:
             cargo_args: "-p emulator --all-targets --features emulator,otel"
           - features: emulator + test + otel
             cargo_args: "-p emulator --all-targets --features emulator,test,otel"
-
-    name: clippy (${{ matrix.features }})
+    runs-on: ${{ matrix.os }}
+    name: clippy (${{ matrix.features }}, ${{ matrix.os }})
 
     steps:
       - uses: actions/checkout@v6
@@ -91,15 +99,26 @@ jobs:
         run: cargo-clippy-diff -o GitHub origin/${{ github.base_ref }} -- -q ${{ matrix.cargo_args }}
 
   test:
-    runs-on: ubuntu-latest
     env:
       TEST_ROOT_DIR: ${{ github.workspace }}
 
     strategy:
       fail-fast: false
       matrix:
+        # This does not work on MacOS yet.
+        # Setup native dependencies fails
+        os: [ubuntu-latest]
+        features:
+          - default
+          - test
+          - otel
+          - test + otel
+          - emulator
+          - emulator + test
+          - emulator + otel
+          - emulator + test + otel
+        # Map feature names to cargo arguments
         include:
-          # Workspace-level feature combinations
           - features: default
             cargo_args: "--workspace"
           - features: test
@@ -108,7 +127,6 @@ jobs:
             cargo_args: "--workspace --features otel"
           - features: test + otel
             cargo_args: "--workspace --features test,otel"
-          # Emulator crate feature combinations
           - features: emulator
             cargo_args: "-p emulator --features emulator"
           - features: emulator + test
@@ -118,13 +136,36 @@ jobs:
           - features: emulator + test + otel
             cargo_args: "-p emulator --features emulator,test,otel"
 
-    name: test (${{ matrix.features }})
+    runs-on: ${{ matrix.os }}
+    name: test (${{ matrix.features }}, ${{ matrix.os }})
 
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         id: rust-toolchain
       - *set-build-metadata
+
+      # --- Native dependency installation ---
+      - name: Install apt packages (Linux)
+        if: runner.os == 'Linux'
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: git wget curl pkg-config gcc g++ make cmake meson ninja-build autoconf automake libtool gperf python3 zlib1g-dev libbz2-dev libpng-dev libjpeg-dev libopenjp2-7-dev libjbig2dec0-dev libgumbo-dev libfreetype6-dev libharfbuzz-dev libdjvulibre-dev libsdl2-dev
+          version: 1.0
+      - name: Cache Homebrew packages (macOS)
+        if: runner.os == 'macOS'
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/Library/Caches/Homebrew/downloads
+            ~/Library/Caches/Homebrew/api
+          key: ${{ runner.os }}-brew-${{ hashFiles('.github/workflows/cargo.yml') }}
+          restore-keys: ${{ runner.os }}-brew-
+      - name: Install Homebrew packages (macOS)
+        if: runner.os == 'macOS'
+        run: brew install sdl2 freetype harfbuzz openjpeg jpeg-turbo libpng jbig2dec gumbo-parser djvulibre pkg-config
+
+      # --- Cargo and thirdparty caches ---
       - name: Cache
         uses: actions/cache@v5
         with:
@@ -142,10 +183,8 @@ jobs:
             thirdparty/mupdf
             mupdf_wrapper/
           key: ${{ runner.os }}-thirdparty-libs-native-${{ hashFiles('thirdparty/download.sh') }}
-      - uses: awalsh128/cache-apt-pkgs-action@latest
-        with:
-          packages: git wget curl pkg-config gcc g++ make cmake meson ninja-build autoconf automake libtool gperf python3 zlib1g-dev libbz2-dev libpng-dev libjpeg-dev libopenjp2-7-dev libjbig2dec0-dev libgumbo-dev libfreetype6-dev libharfbuzz-dev libdjvulibre-dev libsdl2-dev
-          version: 1.0
+
+      # --- Build mupdf and wrapper ---
       - name: Setup native dependencies
         run: |
           # Download mupdf sources if not cached
@@ -155,7 +194,7 @@ jobs:
             cd ..
           fi
 
-          # Build mupdf wrapper for Linux
+          # Build mupdf wrapper
           cd mupdf_wrapper
           ./build.sh
           cd ..
@@ -170,26 +209,41 @@ jobs:
           # Generate sources
           make verbose=yes generate
 
+          # On macOS, gather system library CFLAGS via pkg-config
+          SYS_CFLAGS=""
+          if [ "$(uname -s)" = "Darwin" ]; then
+            for lib in freetype2 harfbuzz libopenjp2 libjpeg zlib jbig2dec gumbo; do
+              SYS_CFLAGS="$SYS_CFLAGS $(pkg-config --cflags $lib 2>/dev/null || true)"
+            done
+          fi
+
           # Build MuPDF libraries using system libraries
           make verbose=yes \
             mujs=no tesseract=no extract=no archive=no brotli=no barcode=no commercial=no \
             USE_SYSTEM_LIBS=yes \
-            XCFLAGS="-DFZ_ENABLE_ICC=0 -DFZ_ENABLE_SPOT_RENDERING=0 -DFZ_ENABLE_ODT_OUTPUT=0 -DFZ_ENABLE_OCR_OUTPUT=0" \
+            XCFLAGS="-DFZ_ENABLE_ICC=0 -DFZ_ENABLE_SPOT_RENDERING=0 -DFZ_ENABLE_ODT_OUTPUT=0 -DFZ_ENABLE_OCR_OUTPUT=0 $SYS_CFLAGS" \
             libs
 
           cd ../..
 
+          # Determine platform directory (matches crates/core/build.rs)
+          case "$(uname -s)" in
+            Darwin) PLATFORM_DIR="Darwin" ;;
+            *)      PLATFORM_DIR="Linux" ;;
+          esac
+
           # Create target directory structure
-          mkdir -p target/mupdf_wrapper/Linux
+          mkdir -p "target/mupdf_wrapper/$PLATFORM_DIR"
 
           # Copy libmupdf.a
-          ln -sf "$(pwd)/thirdparty/mupdf/build/release/libmupdf.a" target/mupdf_wrapper/Linux/
+          ln -sf "$(pwd)/thirdparty/mupdf/build/release/libmupdf.a" "target/mupdf_wrapper/$PLATFORM_DIR/"
 
           # Create empty libmupdf-third.a (system libs used instead)
           if [ ! -e thirdparty/mupdf/build/release/libmupdf-third.a ]; then
             ar cr thirdparty/mupdf/build/release/libmupdf-third.a
           fi
-          ln -sf "$(pwd)/thirdparty/mupdf/build/release/libmupdf-third.a" target/mupdf_wrapper/Linux/
+          ln -sf "$(pwd)/thirdparty/mupdf/build/release/libmupdf-third.a" "target/mupdf_wrapper/$PLATFORM_DIR/"
+
       - name: Run cargo test (${{ matrix.features }})
         run: cargo test ${{ matrix.cargo_args }}
 

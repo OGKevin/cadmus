@@ -44,5 +44,10 @@ Feature combinations also matter because features can interact. For example,
    - features: <name> + <other>
      cargo_args: "-p <crate> --all-targets --features <name>,<other>"
    ```
-5. Only `default` and `test` features produce build artifacts. Other features
+5. All feature combinations run on **both** `ubuntu-latest` and `macos-latest`.
+   The `os` array in the matrix handles this automatically. macOS entries
+   install native dependencies via Homebrew; Linux entries use apt. Both
+   platforms build mupdf from source (matching `cadmus-setup-native` in
+   `devenv.nix`).
+6. Only `default` and `test` features produce build artifacts. Other features
    are checked for compilation and lint correctness only.
