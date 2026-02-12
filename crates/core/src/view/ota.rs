@@ -39,7 +39,6 @@ pub enum OtaEntryId {
 ///
 /// This function validates prerequisites before showing the OTA view:
 /// - Checks if WiFi is enabled
-/// - Verifies GitHub token is configured in settings
 ///
 /// If validation fails, a notification is added to the view hierarchy instead.
 ///
@@ -86,20 +85,7 @@ pub fn show_ota_view(
         return false;
     }
 
-    if context.settings.ota.github_token.is_none() {
-        let notif = Notification::new(
-            None,
-            "GitHub token not configured. Add [ota] github-token to Settings.toml".to_string(),
-            false,
-            hub,
-            rq,
-            context,
-        );
-        view.children_mut().push(Box::new(notif) as Box<dyn View>);
-        return false;
-    }
-
-    let ota_view = OtaView::new(context.settings.ota.github_token.clone().unwrap(), context);
+    let ota_view = OtaView::new(context.settings.ota.github_token.clone(), context);
     view.children_mut()
         .push(Box::new(ota_view) as Box<dyn View>);
     true
@@ -125,7 +111,7 @@ pub struct OtaView {
     rect: Rectangle,
     children: Vec<Box<dyn View>>,
     view_id: ViewId,
-    github_token: SecretString,
+    github_token: Option<SecretString>,
     keyboard_index: Option<usize>,
 }
 
@@ -137,11 +123,11 @@ impl OtaView {
     ///
     /// # Arguments
     ///
-    /// * `github_token` - GitHub personal access token wrapped in `SecretString`
-    ///   for secure handling
+    /// * `github_token` - Optional GitHub personal access token wrapped in `SecretString`
+    ///   for secure handling. Not required for stable release downloads.
     /// * `context` - Application context containing fonts and device information
     #[cfg_attr(feature = "otel", tracing::instrument(skip_all))]
-    pub fn new(github_token: SecretString, context: &mut Context) -> OtaView {
+    pub fn new(github_token: Option<SecretString>, context: &mut Context) -> OtaView {
         let id = ID_FEEDER.next();
         let view_id = ViewId::Ota(OtaViewId::Main);
         let (width, height) = CURRENT_DEVICE.dims;
@@ -285,7 +271,7 @@ impl OtaView {
                 pr_number
             ))))
             .ok();
-            self.start_download(pr_number, hub);
+            self.start_pr_download(pr_number, hub);
             hub.send(Event::Close(self.view_id)).ok();
         } else {
             hub.send(Event::Notification(NotificationEvent::Show(
@@ -313,6 +299,23 @@ impl OtaView {
         }
     }
 
+    /// Validates that a GitHub token is configured.
+    ///
+    /// Returns true if a token is present. If not, sends a notification
+    /// explaining that the token is required.
+    #[inline]
+    fn require_github_token(&self, hub: &Hub, check_source: &str) -> bool {
+        if self.github_token.is_none() {
+            hub.send(Event::Notification(NotificationEvent::Show(format!(
+                "GitHub token required for {}. Add [ota] github-token to Settings.toml",
+                check_source
+            ))))
+            .ok();
+            return false;
+        }
+        true
+    }
+
     /// Initiates the download process in a background thread.
     ///
     /// Spawns a thread that:
@@ -326,15 +329,19 @@ impl OtaView {
     /// * `pr_number` - The GitHub pull request number to download
     /// * `hub` - Event hub for sending notifications and status updates
     #[cfg_attr(feature = "otel", tracing::instrument(skip(self, hub)))]
-    fn start_download(&mut self, pr_number: u32, hub: &Hub) {
-        let github_token = self.github_token.clone();
+    fn start_pr_download(&mut self, pr_number: u32, hub: &Hub) {
+        let Some(github_token) = self.github_token.clone() else {
+            tracing::error!("GitHub token is missing when starting download, this code path should be unreachable due to prior validation");
+            return;
+        };
+
         let hub2 = hub.clone();
         let parent_span = tracing::Span::current();
 
         thread::spawn(move || {
             let _span =
                 tracing::info_span!(parent: &parent_span, "pr_download_async", pr_number).entered();
-            let client = match OtaClient::new(github_token) {
+            let client = match OtaClient::new(Some(github_token)) {
                 Ok(c) => c,
                 Err(e) => {
                     error!("[OTA] Failed to create github client {:?}", e);
@@ -416,14 +423,18 @@ impl OtaView {
     /// * `hub` - Event hub for sending notifications and status updates
     #[cfg_attr(feature = "otel", tracing::instrument(skip(self, hub)))]
     fn start_default_branch_download(&mut self, hub: &Hub) {
-        let github_token = self.github_token.clone();
+        let Some(github_token) = self.github_token.clone() else {
+            tracing::error!("GitHub token is missing when starting download, this code path should be unreachable due to prior validation");
+            return;
+        };
+
         let hub2 = hub.clone();
         let parent_span = tracing::Span::current();
 
         thread::spawn(move || {
             let _span = tracing::info_span!(parent: &parent_span, "default_branch_download_async")
                 .entered();
-            let client = match OtaClient::new(github_token) {
+            let client = match OtaClient::new(Some(github_token)) {
                 Ok(c) => c,
                 Err(e) => {
                     error!(error = %e, "Failed to create OTA client");
@@ -499,6 +510,8 @@ impl OtaView {
     /// 2. Downloads the latest stable release asset
     /// 3. Extracts and deploys KoboRoot.tgz
     /// 4. Sends notification events on success or failure
+    ///
+    /// GitHub authentication is not required for this operation.
     ///
     /// # Arguments
     ///
@@ -594,6 +607,10 @@ impl View for OtaView {
     ) -> bool {
         match *evt {
             Event::Select(EntryId::Ota(OtaEntryId::DefaultBranch)) => {
+                if !self.require_github_token(hub, "main branch builds") {
+                    return true;
+                }
+
                 hub.send(Event::Notification(NotificationEvent::Show(
                     "Downloading latest main branch build...".to_string(),
                 )))
@@ -612,6 +629,10 @@ impl View for OtaView {
                 true
             }
             Event::Show(ViewId::Ota(OtaViewId::PrInput)) => {
+                if !self.require_github_token(hub, "PR builds") {
+                    return true;
+                }
+
                 #[cfg(feature = "otel")]
                 tracing::trace!("Showing PR input screen");
 
@@ -681,7 +702,7 @@ mod tests {
     use std::sync::mpsc::channel;
 
     fn create_ota_view(context: &mut Context) -> OtaView {
-        OtaView::new(SecretString::from("test-token"), context)
+        OtaView::new(Some(SecretString::from("test-token")), context)
     }
 
     /// A minimal parent view that mimics Home/Reader keyboard behavior.

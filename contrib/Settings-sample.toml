@@ -227,5 +227,6 @@ warmth = 0.0
 
 # Over-The-Air (OTA) updates allow you to download and install
 # Cadmus builds directly from GitHub.
+# A token is required for main branch and PR builds, but not for stable releases.
 [ota]
 # github-token = "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
