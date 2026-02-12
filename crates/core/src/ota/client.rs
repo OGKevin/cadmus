@@ -593,11 +593,7 @@ impl OtaClient {
             );
         }
 
-        let asset_name = if cfg!(feature = "test") {
-            "KoboRoot-test.tgz"
-        } else {
-            "KoboRoot.tgz"
-        };
+        let asset_name = "KoboRoot.tgz";
 
         let asset = release
             .assets
@@ -608,7 +604,7 @@ impl OtaClient {
                     target_asset = asset_name,
                     "Asset not found in latest release"
                 );
-                OtaError::NoArtifacts(0)
+                OtaError::ArtifactNotFound(asset_name.to_owned())
             })?;
 
         tracing::debug!(
