@@ -43,6 +43,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+          fetch-depth: 20
+          fetch-tags: true
 
       - uses: dtolnay/rust-toolchain@stable
         id: rust-toolchain
@@ -98,7 +102,7 @@ jobs:
 
       - name: Setup Linaro toolchain
         run: |
-          echo "$HOME/linaro-toolchain/bin" >> $GITHUB_PATH
+          echo "${HOME}/linaro-toolchain/bin" >> "${GITHUB_PATH}"
 
       - name: Build for Kobo
         env:
@@ -124,11 +128,11 @@ jobs:
           cd dist
           tar czf ../cadmus-kobo.tar.gz .
           cd ..
-          
+
           # KoboRoot without NickelMenu
           ./bundle.sh --no-nickel
           cp bundle/KoboRoot.tgz KoboRoot.tgz
-          
+
           # KoboRoot with NickelMenu
           rm -rf bundle
           ./bundle.sh
