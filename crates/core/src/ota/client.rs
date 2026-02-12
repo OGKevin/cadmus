@@ -1,3 +1,4 @@
+use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use reqwest::blocking::Client;
 use rustls::RootCertStore;
 use secrecy::{ExposeSecret, SecretString};
@@ -152,6 +153,18 @@ struct Artifact {
     size_in_bytes: u64,
 }
 
+#[derive(Debug, Deserialize)]
+struct Release {
+    assets: Vec<ReleaseAsset>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ReleaseAsset {
+    name: String,
+    browser_download_url: String,
+    size: u64,
+}
+
 impl OtaClient {
     /// Creates a new OTA client with GitHub authentication.
     ///
@@ -239,6 +252,7 @@ impl OtaClient {
         check_disk_space("/tmp")?;
 
         progress_callback(OtaProgress::CheckingPr);
+        tracing::info!(pr_number, "Starting PR build download");
         tracing::debug!(pr_number, "Checking PR");
 
         let pr_url = format!(
@@ -369,6 +383,7 @@ impl OtaClient {
             path: download_path.clone(),
         });
 
+        tracing::info!(pr_number, "PR build download completed");
         Ok(download_path)
     }
 
@@ -405,13 +420,15 @@ impl OtaClient {
         check_disk_space("/tmp")?;
 
         progress_callback(OtaProgress::FindingLatestBuild);
+        tracing::info!("Starting main branch build download");
         tracing::debug!("Finding latest default branch build");
 
         let default_branch = self.fetch_default_branch()?;
 
+        let encoded_branch = utf8_percent_encode(&default_branch, NON_ALPHANUMERIC);
         let runs_url = format!(
             "https://api.github.com/repos/ogkevin/cadmus/actions/workflows/cargo.yml/runs?branch={}&event=push&status=success&per_page=1",
-            default_branch
+            encoded_branch
         );
         tracing::debug!(url = %runs_url, "Fetching Cargo workflow runs on default branch");
 
@@ -495,7 +512,205 @@ impl OtaClient {
             path: download_path.clone(),
         });
 
+        tracing::info!(sha = %short_sha, "Main branch build download completed");
         Ok(download_path)
+    }
+
+    /// Downloads the latest stable release artifact from GitHub releases.
+    ///
+    /// This performs the complete download workflow for stable releases:
+    /// 1. Verifies sufficient disk space (100MB required)
+    /// 2. Fetches the latest release from GitHub API
+    /// 3. Locates the `KoboRoot.tgz` asset in the release
+    /// 4. Downloads the file to `/tmp/cadmus-ota-stable-release.tgz`
+    ///
+    /// # Arguments
+    ///
+    /// * `progress_callback` - Function called with progress updates during download
+    ///
+    /// # Returns
+    ///
+    /// The path to the downloaded KoboRoot.tgz file on success.
+    ///
+    /// # Errors
+    ///
+    /// * `OtaError::InsufficientSpace` - Less than 100MB available in /tmp
+    /// * `OtaError::Api` - GitHub API request failed
+    /// * `OtaError::Request` - Network communication failed
+    /// * `OtaError::NoArtifacts` - KoboRoot.tgz not found in latest release
+    /// * `OtaError::Io` - Failed to write downloaded file to disk
+    #[cfg_attr(feature = "otel", tracing::instrument(skip_all))]
+    pub fn download_stable_release_artifact<F>(
+        &self,
+        mut progress_callback: F,
+    ) -> Result<PathBuf, OtaError>
+    where
+        F: FnMut(OtaProgress),
+    {
+        check_disk_space("/tmp")?;
+
+        progress_callback(OtaProgress::FindingLatestBuild);
+        tracing::info!("Starting stable release download");
+        tracing::debug!("Finding latest stable release");
+
+        let releases_url = "https://api.github.com/repos/ogkevin/cadmus/releases/latest";
+        tracing::debug!(url = %releases_url, "Fetching latest release");
+
+        let response = self
+            .client
+            .get(releases_url)
+            .header(
+                "Authorization",
+                format!("Bearer {}", self.token.expose_secret()),
+            )
+            .send()?;
+
+        tracing::debug!(
+            status = %response.status(),
+            headers = ?response.headers(),
+            "Latest release response"
+        );
+
+        let response = response.error_for_status().map_err(|e| {
+            tracing::error!(
+                status = ?e.status(),
+                error = %e,
+                "Latest release fetch failed"
+            );
+            OtaError::Api(format!("Failed to fetch latest release: {}", e))
+        })?;
+
+        let release: Release = response.json()?;
+        tracing::debug!(asset_count = release.assets.len(), "Found release assets");
+
+        #[cfg(feature = "otel")]
+        for (idx, asset) in release.assets.iter().enumerate() {
+            tracing::debug!(
+                index = idx,
+                name = %asset.name,
+                size_bytes = asset.size,
+                "Asset"
+            );
+        }
+
+        let asset_name = "KoboRoot.tgz";
+
+        let asset = release
+            .assets
+            .iter()
+            .find(|a| a.name == asset_name)
+            .ok_or_else(|| {
+                tracing::error!(
+                    target_asset = asset_name,
+                    "Asset not found in latest release"
+                );
+                OtaError::ArtifactNotFound(asset_name.to_owned())
+            })?;
+
+        tracing::debug!(
+            name = %asset.name,
+            url = %asset.browser_download_url,
+            size_bytes = asset.size,
+            "Found release asset"
+        );
+
+        let download_path = PathBuf::from("/tmp/cadmus-ota-stable-release.tgz");
+
+        self.download_release_asset(asset, &download_path, &mut progress_callback)?;
+
+        progress_callback(OtaProgress::Complete {
+            path: download_path.clone(),
+        });
+
+        tracing::info!("Stable release download completed");
+        Ok(download_path)
+    }
+
+    /// Deploys KoboRoot.tgz from the specified path directly without extraction.
+    ///
+    /// Used when the artifact is already in the correct format (e.g., stable releases
+    /// that are distributed as bare KoboRoot.tgz files).
+    ///
+    /// # Arguments
+    ///
+    /// * `kobo_root_path` - Path to the KoboRoot.tgz file to deploy
+    ///
+    /// # Returns
+    ///
+    /// The path where the file was deployed, or an error if deployment fails.
+    ///
+    /// # Errors
+    ///
+    /// * `OtaError::Io` - Failed to read or write files
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self)))]
+    pub fn deploy(&self, kobo_root_path: PathBuf) -> Result<PathBuf, OtaError> {
+        tracing::info!(path = ?kobo_root_path, "Deploying KoboRoot.tgz");
+
+        let mut kobo_root_data = Vec::new();
+        {
+            let mut file = File::open(&kobo_root_path)?;
+            file.read_to_end(&mut kobo_root_data)?;
+        }
+
+        tracing::debug!(
+            bytes = kobo_root_data.len(),
+            path = ?kobo_root_path,
+            "Read KoboRoot.tgz"
+        );
+
+        self.deploy_bytes(&kobo_root_data)
+    }
+
+    /// Deploys KoboRoot.tgz data to the appropriate location.
+    ///
+    /// Writes the provided data to the deployment path determined by the build configuration:
+    /// - Test builds: temp directory
+    /// - Emulator builds: /tmp/.kobo/KoboRoot.tgz
+    /// - Production builds: {INTERNAL_CARD_ROOT}/.kobo/KoboRoot.tgz
+    ///
+    /// # Arguments
+    ///
+    /// * `data` - The KoboRoot.tgz file contents to deploy
+    ///
+    /// # Returns
+    ///
+    /// The deployment path where KoboRoot.tgz was written.
+    ///
+    /// # Errors
+    ///
+    /// * `OtaError::Io` - Failed to create directories or write deployment file
+    fn deploy_bytes(&self, data: &[u8]) -> Result<PathBuf, OtaError> {
+        #[cfg(test)]
+        let deploy_path = {
+            std::env::temp_dir()
+                .join("test-kobo-deployment")
+                .join("KoboRoot.tgz")
+        };
+
+        #[cfg(all(feature = "emulator", not(test)))]
+        let deploy_path = PathBuf::from("/tmp/.kobo/KoboRoot.tgz");
+
+        #[cfg(all(not(feature = "emulator"), not(test)))]
+        let deploy_path = PathBuf::from(format!("{}/.kobo/KoboRoot.tgz", INTERNAL_CARD_ROOT));
+
+        tracing::debug!(path = ?deploy_path, "Deploy destination");
+
+        #[cfg(any(test, feature = "emulator"))]
+        {
+            if let Some(parent) = deploy_path.parent() {
+                tracing::debug!(directory = ?parent, "Creating parent directory");
+                std::fs::create_dir_all(parent)?;
+            }
+        }
+
+        tracing::debug!(bytes = data.len(), path = ?deploy_path, "Writing file");
+        let mut file = File::create(&deploy_path)?;
+        file.write_all(data)?;
+
+        tracing::debug!(path = ?deploy_path, "Deployment complete");
+        tracing::info!(path = ?deploy_path, "Update deployed successfully");
+
+        Ok(deploy_path)
     }
 
     /// Extracts KoboRoot.tgz from the artifact and deploys it for installation.
@@ -517,7 +732,9 @@ impl OtaClient {
     /// * `OtaError::ZipError` - Failed to open or read ZIP archive
     /// * `OtaError::DeploymentError` - KoboRoot.tgz not found in archive
     /// * `OtaError::Io` - Failed to write deployment file
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self)))]
     pub fn extract_and_deploy(&self, zip_path: PathBuf) -> Result<PathBuf, OtaError> {
+        tracing::info!(path = ?zip_path, "Extracting and deploying update");
         tracing::debug!(path = ?zip_path, "Starting extraction");
 
         let file = File::open(&zip_path)?;
@@ -566,36 +783,7 @@ impl OtaClient {
             "Extracted file"
         );
 
-        #[cfg(test)]
-        let deploy_path = {
-            std::env::temp_dir()
-                .join("test-kobo-deployment")
-                .join("KoboRoot.tgz")
-        };
-
-        #[cfg(all(feature = "emulator", not(test)))]
-        let deploy_path = PathBuf::from("/tmp/.kobo/KoboRoot.tgz");
-
-        #[cfg(all(not(feature = "emulator"), not(test)))]
-        let deploy_path = PathBuf::from(format!("{}/.kobo/KoboRoot.tgz", INTERNAL_CARD_ROOT));
-
-        tracing::debug!(path = ?deploy_path, "Deploy destination");
-
-        #[cfg(any(test, feature = "emulator"))]
-        {
-            if let Some(parent) = deploy_path.parent() {
-                tracing::debug!(directory = ?parent, "Creating parent directory");
-                std::fs::create_dir_all(parent)?;
-            }
-        }
-
-        tracing::debug!(bytes = kobo_root_data.len(), path = ?deploy_path, "Writing file");
-        let mut file = File::create(&deploy_path)?;
-        file.write_all(&kobo_root_data)?;
-
-        tracing::debug!(path = ?deploy_path, "Deployment complete");
-
-        Ok(deploy_path)
+        self.deploy_bytes(&kobo_root_data)
     }
 
     /// Queries the GitHub API for the repository's default branch name.
@@ -692,10 +880,26 @@ impl OtaClient {
             })
     }
 
-    /// Downloads an artifact ZIP to the specified path with chunked transfer and progress reporting.
-    fn download_artifact_to_path<F>(
+    /// Downloads a file from a URL with chunked transfer and progress reporting.
+    ///
+    /// Uses HTTP Range headers to request the file in chunks for resilience
+    /// against network interruptions.
+    ///
+    /// # Arguments
+    ///
+    /// * `url` - The complete download URL
+    /// * `total_size` - Total file size in bytes
+    /// * `download_path` - Path where the file should be saved
+    /// * `progress_callback` - Function called with progress updates
+    ///
+    /// # Returns
+    ///
+    /// Success if the file is written to disk, error otherwise.
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, progress_callback)))]
+    fn download_by_url_to_path<F>(
         &self,
-        artifact: &Artifact,
+        url: &str,
+        total_size: u64,
         download_path: &PathBuf,
         progress_callback: &mut F,
     ) -> Result<(), OtaError>
@@ -704,21 +908,15 @@ impl OtaClient {
     {
         progress_callback(OtaProgress::DownloadingArtifact {
             downloaded: 0,
-            total: artifact.size_in_bytes,
+            total: total_size,
         });
 
-        let download_url = format!(
-            "https://api.github.com/repos/ogkevin/cadmus/actions/artifacts/{}/zip",
-            artifact.id
-        );
-
-        tracing::debug!(url = %download_url, "Downloading artifact");
+        tracing::debug!(url = %url, "Downloading file");
         tracing::debug!(path = ?download_path, "Download destination");
 
         let mut file = File::create(download_path)?;
 
         let mut downloaded = 0u64;
-        let total_size = artifact.size_in_bytes;
 
         tracing::debug!(
             chunk_size_mb = CHUNK_SIZE / (1024 * 1024),
@@ -731,8 +929,7 @@ impl OtaClient {
 
             tracing::debug!(chunk_start, chunk_end, total_size, "Downloading chunk");
 
-            let chunk_data =
-                self.download_chunk_with_retries(&download_url, chunk_start, chunk_end)?;
+            let chunk_data = self.download_chunk_with_retries(url, chunk_start, chunk_end)?;
 
             file.write_all(&chunk_data)?;
             downloaded += chunk_data.len() as u64;
@@ -751,9 +948,32 @@ impl OtaClient {
         }
 
         tracing::debug!(bytes = downloaded, "Download complete");
-        tracing::debug!(path = ?download_path, "Saved artifact");
+        tracing::debug!(path = ?download_path, "Saved file");
 
         Ok(())
+    }
+
+    /// Downloads an artifact ZIP to the specified path with chunked transfer and progress reporting.
+    fn download_artifact_to_path<F>(
+        &self,
+        artifact: &Artifact,
+        download_path: &PathBuf,
+        progress_callback: &mut F,
+    ) -> Result<(), OtaError>
+    where
+        F: FnMut(OtaProgress),
+    {
+        let download_url = format!(
+            "https://api.github.com/repos/ogkevin/cadmus/actions/artifacts/{}/zip",
+            artifact.id
+        );
+
+        self.download_by_url_to_path(
+            &download_url,
+            artifact.size_in_bytes,
+            download_path,
+            progress_callback,
+        )
     }
 
     /// Downloads a specific byte range of a file with automatic retry logic.
@@ -849,6 +1069,26 @@ impl OtaClient {
 
         let bytes = response.bytes()?;
         Ok(bytes.to_vec())
+    }
+
+    /// Downloads a release asset to the specified path with chunked transfer and progress reporting.
+    #[inline]
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, progress_callback)))]
+    fn download_release_asset<F>(
+        &self,
+        asset: &ReleaseAsset,
+        download_path: &PathBuf,
+        progress_callback: &mut F,
+    ) -> Result<(), OtaError>
+    where
+        F: FnMut(OtaProgress),
+    {
+        self.download_by_url_to_path(
+            &asset.browser_download_url,
+            asset.size,
+            download_path,
+            progress_callback,
+        )
     }
 }
 
@@ -1060,6 +1300,56 @@ mod tests {
         );
 
         std::fs::remove_file(&zip_path).ok();
+        std::fs::remove_file(&deploy_path).ok();
+    }
+
+    #[test]
+    #[ignore]
+    fn test_external_download_stable_release_and_deploy() {
+        if !external_test_enabled() {
+            return;
+        }
+
+        let client = create_external_client();
+        let mut last_progress = None;
+
+        let download_result = client.download_stable_release_artifact(|progress| {
+            last_progress = Some(format!("{:?}", progress));
+        });
+
+        assert!(
+            download_result.is_ok(),
+            "Stable release artifact download should succeed: {:?}",
+            download_result.err()
+        );
+
+        let asset_path = download_result.unwrap();
+        assert!(
+            asset_path.exists(),
+            "Downloaded asset should exist at {:?}",
+            asset_path
+        );
+        assert!(
+            asset_path.metadata().unwrap().len() > 0,
+            "Downloaded asset should not be empty"
+        );
+
+        let deploy_result = client.deploy(asset_path.clone());
+
+        assert!(
+            deploy_result.is_ok(),
+            "Deployment should succeed: {:?}",
+            deploy_result.err()
+        );
+
+        let deploy_path = deploy_result.unwrap();
+        assert!(
+            deploy_path.exists(),
+            "Deployed file should exist at {:?}",
+            deploy_path
+        );
+
+        std::fs::remove_file(&asset_path).ok();
         std::fs::remove_file(&deploy_path).ok();
     }
 }

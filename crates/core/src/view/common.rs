@@ -158,50 +158,9 @@ pub fn toggle_main_menu(
                 "Settings".to_string(),
                 EntryId::Launch(AppCmd::SettingsEditor),
             ),
-            #[cfg(feature = "test")]
             EntryKind::Command("Check for Updates".to_string(), EntryId::CheckForUpdates),
             EntryKind::Separator,
-            EntryKind::CheckBox(
-                "Invert Colors".to_string(),
-                EntryId::ToggleInverted,
-                context.fb.inverted(),
-            ),
-            EntryKind::CheckBox(
-                "Enable WiFi".to_string(),
-                EntryId::ToggleWifi,
-                context.settings.wifi,
-            ),
-            EntryKind::Separator,
-            EntryKind::SubMenu("Rotate".to_string(), rotate),
-            EntryKind::Command("Take Screenshot".to_string(), EntryId::TakeScreenshot),
-            EntryKind::Separator,
-            EntryKind::SubMenu("Applications".to_string(), apps),
-            EntryKind::Separator,
         ];
-
-        entries.push(EntryKind::Command("Restart".to_string(), EntryId::Restart));
-        entries.push(EntryKind::Command("Reboot".to_string(), EntryId::Reboot));
-        entries.push(EntryKind::Command("Quit".to_string(), EntryId::Quit));
-
-        if CURRENT_DEVICE.has_page_turn_buttons() {
-            let button_scheme = context.settings.button_scheme;
-            let button_schemes = vec![
-                EntryKind::RadioButton(
-                    ButtonScheme::Natural.to_string(),
-                    EntryId::SetButtonScheme(ButtonScheme::Natural),
-                    button_scheme == ButtonScheme::Natural,
-                ),
-                EntryKind::RadioButton(
-                    ButtonScheme::Inverted.to_string(),
-                    EntryId::SetButtonScheme(ButtonScheme::Inverted),
-                    button_scheme == ButtonScheme::Inverted,
-                ),
-            ];
-            entries.insert(
-                5,
-                EntryKind::SubMenu("Button Scheme".to_string(), button_schemes),
-            );
-        }
 
         if CURRENT_DEVICE.has_gyroscope() {
             let rotation_lock = context.settings.rotation_lock;
@@ -228,8 +187,50 @@ pub fn toggle_main_menu(
                     rotation_lock == Some(RotationLock::Current),
                 ),
             ];
-            entries.insert(5, EntryKind::SubMenu("Gyroscope".to_string(), gyro));
+            entries.push(EntryKind::SubMenu("Gyroscope".to_string(), gyro));
         }
+
+        if CURRENT_DEVICE.has_page_turn_buttons() {
+            let button_scheme = context.settings.button_scheme;
+            let button_schemes = vec![
+                EntryKind::RadioButton(
+                    ButtonScheme::Natural.to_string(),
+                    EntryId::SetButtonScheme(ButtonScheme::Natural),
+                    button_scheme == ButtonScheme::Natural,
+                ),
+                EntryKind::RadioButton(
+                    ButtonScheme::Inverted.to_string(),
+                    EntryId::SetButtonScheme(ButtonScheme::Inverted),
+                    button_scheme == ButtonScheme::Inverted,
+                ),
+            ];
+            entries.push(EntryKind::SubMenu(
+                "Button Scheme".to_string(),
+                button_schemes,
+            ));
+        }
+
+        entries.extend(vec![
+            EntryKind::CheckBox(
+                "Invert Colors".to_string(),
+                EntryId::ToggleInverted,
+                context.fb.inverted(),
+            ),
+            EntryKind::CheckBox(
+                "Enable WiFi".to_string(),
+                EntryId::ToggleWifi,
+                context.settings.wifi,
+            ),
+            EntryKind::Separator,
+            EntryKind::SubMenu("Rotate".to_string(), rotate),
+            EntryKind::Command("Take Screenshot".to_string(), EntryId::TakeScreenshot),
+            EntryKind::Separator,
+            EntryKind::SubMenu("Applications".to_string(), apps),
+            EntryKind::Separator,
+            EntryKind::Command("Restart".to_string(), EntryId::Restart),
+            EntryKind::Command("Reboot".to_string(), EntryId::Reboot),
+            EntryKind::Command("Quit".to_string(), EntryId::Quit),
+        ]);
 
         let main_menu = Menu::new(rect, ViewId::MainMenu, MenuKind::DropDown, entries, context);
         rq.add(RenderData::new(

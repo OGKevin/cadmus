@@ -4,8 +4,8 @@ use super::label::Label;
 use super::notification::Notification;
 use super::toggleable_keyboard::ToggleableKeyboard;
 use super::{
-    Align, Bus, Event, Hub, Id, NotificationEvent, RenderData, RenderQueue, UpdateMode, View,
-    ViewId, ID_FEEDER,
+    Align, Bus, EntryId, Event, Hub, Id, NotificationEvent, RenderData, RenderQueue, UpdateMode,
+    View, ViewId, ID_FEEDER,
 };
 use crate::color::WHITE;
 use crate::context::Context;
@@ -27,7 +27,12 @@ pub enum OtaViewId {
     Main,
     SourceSelection,
     PrInput,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum OtaEntryId {
     DefaultBranch,
+    StableRelease,
 }
 
 /// Attempts to show the OTA update view with validation checks.
@@ -100,13 +105,16 @@ pub fn show_ota_view(
     true
 }
 
-/// UI view for downloading and installing OTA updates from GitHub pull requests.
+/// UI view for downloading and installing OTA updates from GitHub.
 ///
 /// Manages two screens:
-/// 1. Source selection dialog - asks where to download from (PR, Stable, etc.)
-/// 2. PR input screen - prompts for PR number input
+/// 1. Source selection dialog - asks where to download from
+///    (Stable Release, Main Branch, or PR Build)
+/// 2. PR input screen - prompts for PR number input (only for PR Build)
 ///
 /// The view transitions between screens based on user selections.
+/// Selecting Stable Release or Main Branch starts the download immediately,
+/// while PR Build first shows the input screen for a PR number.
 ///
 /// # Security
 ///
@@ -161,16 +169,29 @@ impl OtaView {
     /// Builds the source selection dialog.
     #[inline]
     fn build_source_selection_dialog(context: &mut Context) -> Dialog {
-        Dialog::builder(
+        let builder = Dialog::builder(
             ViewId::Ota(OtaViewId::SourceSelection),
             "Where to check for updates?".to_string(),
-        )
-        .add_button(
-            "Main Branch",
-            Event::Show(ViewId::Ota(OtaViewId::DefaultBranch)),
-        )
-        .add_button("PR Build", Event::Show(ViewId::Ota(OtaViewId::PrInput)))
-        .build(context)
+        );
+
+        #[cfg(not(feature = "test"))]
+        let mut builder = builder;
+
+        #[cfg(not(feature = "test"))]
+        {
+            builder = builder.add_button(
+                "Stable Release",
+                Event::Select(EntryId::Ota(OtaEntryId::StableRelease)),
+            );
+        }
+
+        builder
+            .add_button(
+                "Main Branch",
+                Event::Select(EntryId::Ota(OtaEntryId::DefaultBranch)),
+            )
+            .add_button("PR Build", Event::Show(ViewId::Ota(OtaViewId::PrInput)))
+            .build(context)
     }
 
     /// Builds the PR input screen with title, input field, and keyboard.
@@ -308,8 +329,11 @@ impl OtaView {
     fn start_download(&mut self, pr_number: u32, hub: &Hub) {
         let github_token = self.github_token.clone();
         let hub2 = hub.clone();
+        let parent_span = tracing::Span::current();
 
         thread::spawn(move || {
+            let _span =
+                tracing::info_span!(parent: &parent_span, "pr_download_async", pr_number).entered();
             let client = match OtaClient::new(github_token) {
                 Ok(c) => c,
                 Err(e) => {
@@ -394,8 +418,11 @@ impl OtaView {
     fn start_default_branch_download(&mut self, hub: &Hub) {
         let github_token = self.github_token.clone();
         let hub2 = hub.clone();
+        let parent_span = tracing::Span::current();
 
         thread::spawn(move || {
+            let _span = tracing::info_span!(parent: &parent_span, "default_branch_download_async")
+                .entered();
             let client = match OtaClient::new(github_token) {
                 Ok(c) => c,
                 Err(e) => {
@@ -464,6 +491,95 @@ impl OtaView {
             }
         });
     }
+
+    /// Initiates the stable release download in a background thread.
+    ///
+    /// Spawns a thread that:
+    /// 1. Creates an OTA client
+    /// 2. Downloads the latest stable release asset
+    /// 3. Extracts and deploys KoboRoot.tgz
+    /// 4. Sends notification events on success or failure
+    ///
+    /// # Arguments
+    ///
+    /// * `hub` - Event hub for sending notifications and status updates
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, hub)))]
+    fn start_stable_release_download(&mut self, hub: &Hub) {
+        let github_token = self.github_token.clone();
+        let hub2 = hub.clone();
+        let parent_span = tracing::Span::current();
+
+        thread::spawn(move || {
+            let _span = tracing::info_span!(parent: &parent_span, "stable_release_download_async")
+                .entered();
+            let client = match OtaClient::new(github_token) {
+                Ok(c) => c,
+                Err(e) => {
+                    error!(error = %e, "Failed to create OTA client");
+                    let error_msg = format!("Failed to create client: {}", e);
+                    hub2.send(Event::Notification(NotificationEvent::Show(error_msg)))
+                        .ok();
+                    return;
+                }
+            };
+
+            let notify_id = ViewId::MessageNotif(ID_FEEDER.next());
+            hub2.send(Event::Notification(NotificationEvent::ShowPinned(
+                notify_id,
+                "Starting stable release download".to_string(),
+            )))
+            .ok();
+            hub2.send(Event::Notification(NotificationEvent::UpdateProgress(
+                notify_id, 0,
+            )))
+            .ok();
+
+            let download_result = client.download_stable_release_artifact(|ota_progress| {
+                if let OtaProgress::DownloadingArtifact { downloaded, total } = ota_progress {
+                    let progress = (downloaded as f32 / total as f32) * 100.0;
+                    let msg = format!("Downloading update: {}%", progress as u8);
+                    hub2.send(Event::Notification(NotificationEvent::UpdateText(
+                        notify_id, msg,
+                    )))
+                    .ok();
+                    hub2.send(Event::Notification(NotificationEvent::UpdateProgress(
+                        notify_id,
+                        progress as u8,
+                    )))
+                    .ok();
+                }
+            });
+
+            hub2.send(Event::Close(notify_id)).ok();
+
+            match download_result {
+                Ok(asset_path) => {
+                    info!("Stable release download completed, deploying update");
+
+                    match client.deploy(asset_path) {
+                        Ok(_) => {
+                            hub2.send(Event::Notification(NotificationEvent::Show(
+                                "Update installed! Reboot to apply.".to_string(),
+                            )))
+                            .ok();
+                        }
+                        Err(e) => {
+                            error!(error = %e, "Deployment failed");
+                            let error_msg = format!("Deployment failed: {}", e);
+                            hub2.send(Event::Notification(NotificationEvent::Show(error_msg)))
+                                .ok();
+                        }
+                    }
+                }
+                Err(e) => {
+                    error!(error = %e, "Stable release download failed");
+                    let error_msg = format!("Download failed: {}", e);
+                    hub2.send(Event::Notification(NotificationEvent::Show(error_msg)))
+                        .ok();
+                }
+            }
+        });
+    }
 }
 
 impl View for OtaView {
@@ -477,12 +593,21 @@ impl View for OtaView {
         context: &mut Context,
     ) -> bool {
         match *evt {
-            Event::Show(ViewId::Ota(OtaViewId::DefaultBranch)) => {
+            Event::Select(EntryId::Ota(OtaEntryId::DefaultBranch)) => {
                 hub.send(Event::Notification(NotificationEvent::Show(
                     "Downloading latest main branch build...".to_string(),
                 )))
                 .ok();
                 self.start_default_branch_download(hub);
+                hub.send(Event::Close(self.view_id)).ok();
+                true
+            }
+            Event::Select(EntryId::Ota(OtaEntryId::StableRelease)) => {
+                hub.send(Event::Notification(NotificationEvent::Show(
+                    "Downloading latest stable release...".to_string(),
+                )))
+                .ok();
+                self.start_stable_release_download(hub);
                 hub.send(Event::Close(self.view_id)).ok();
                 true
             }
