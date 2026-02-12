@@ -29,7 +29,7 @@
 //! settings.otlp_endpoint = Some("http://localhost:4318".to_string());
 //!
 //! // Initialize telemetry (returns layer for tracing subscriber)
-//! let layer = telemetry::init_telemetry(&settings, get_run_id())?;
+//! let layer = telemetry::init_telemetry::<tracing_subscriber::Registry>(&settings, get_run_id())?;
 //!
 //! // ... application runs ...
 //!
@@ -97,7 +97,7 @@ static LOGGER_PROVIDER: OnceLock<SdkLoggerProvider> = OnceLock::new();
 ///     otlp_endpoint: Some("http://localhost:4318".to_string()),
 /// };
 ///
-/// let layer = init_telemetry(&settings, "run-123")?;
+/// let layer = init_telemetry::<tracing_subscriber::Registry>(&settings, "run-123")?;
 /// # Ok::<(), anyhow::Error>(())
 /// ```
 pub fn init_telemetry<S>(
