@@ -41,3 +41,4 @@ logs
 .workspaces/
 **/.fat32-epoch
 /node_modules
+docs/mermaid.min.js

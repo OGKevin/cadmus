@@ -6,6 +6,11 @@ language = "en"
 build-dir = "book"
 create-missing = true
 
+[preprocessor.mermaid]
+command = "mdbook-mermaid"
+
 [output.epub]
 
 [output.html]
+additional-js = ["mermaid.min.js", "mermaid-init.js"]
+additional-css = ["custom.css"]

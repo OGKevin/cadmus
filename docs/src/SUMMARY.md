@@ -12,5 +12,6 @@
 # Contributor Guide
 
 - [Development Environment](contributing/devenv-setup.md)
+- [Event System](contributing/event-system.md)
 - [OpenTelemetry Integration](contributing/telemetry.md)
 - [Documentation](contributing/documentation.md)

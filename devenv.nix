@@ -10,24 +10,25 @@ let
   inherit (pkgs.stdenv) isDarwin;
 
   # cargo-diff-tools with Rust 1.70 for clap v2 compatibility
-  cargo-diff-tools = let
-    rustPlatform170 = pkgs.makeRustPlatform {
-      rustc = pkgs.rust-bin.stable."1.70.0".default;
-      cargo = pkgs.rust-bin.stable."1.70.0".default;
-    };
-  in
-  rustPlatform170.buildRustPackage rec {
-    pname = "cargo-diff-tools";
-    version = "0.1.2";
+  cargo-diff-tools =
+    let
+      rustPlatform170 = pkgs.makeRustPlatform {
+        rustc = pkgs.rust-bin.stable."1.70.0".default;
+        cargo = pkgs.rust-bin.stable."1.70.0".default;
+      };
+    in
+    rustPlatform170.buildRustPackage rec {
+      pname = "cargo-diff-tools";
+      version = "0.1.2";
 
-    src = pkgs.fetchCrate {
-      inherit pname version;
-      sha256 = "1a6878v73zx9kx31jcyzf9gks8dfb1074xk4qhy3xr2gfx2pkmv4";
-    };
+      src = pkgs.fetchCrate {
+        inherit pname version;
+        sha256 = "1a6878v73zx9kx31jcyzf9gks8dfb1074xk4qhy3xr2gfx2pkmv4";
+      };
 
-    cargoHash = "sha256-sy1b/bIIsG5eyR0medE5Ztv39jI2HtWeiVc207ViYCA=";
-    doCheck = false;
-  };
+      cargoHash = "sha256-sy1b/bIIsG5eyR0medE5Ztv39jI2HtWeiVc207ViYCA=";
+      doCheck = false;
+    };
 
   # Linaro GCC toolchain for Kobo - same as used by Kobo Reader
   # https://github.com/kobolabs/Kobo-Reader/blob/master/toolchain/gcc-linaro-4.9.4-2017.01-x86_64_arm-linux-gnueabihf.tar.xz
@@ -139,6 +140,7 @@ in
     pkgs.mdbook
     mdbook-epub-custom
     pkgs.zola
+    pkgs.mdbook-mermaid
 
     cargo-diff-tools
 
@@ -464,6 +466,15 @@ in
 
   # Tasks for building components with proper dependencies
   tasks = {
+    # Install mdbook-mermaid assets (required for Mermaid diagram support)
+    # Only needs to run when mermaid-*.min.js is missing or outdated
+    "docs:install-mermaid" = {
+      exec = "mdbook-mermaid install docs";
+      execIfModified = [
+        "docs/book.toml"
+      ];
+    };
+
     # Build documentation EPUB (required for embedded assets)
     # Only rebuilds when docs files have changed (tracked via content hash)
     "docs:build" = {
@@ -473,6 +484,7 @@ in
         "docs/book.toml"
         "docs/book"
       ];
+      after = [ "docs:install-mermaid" ];
     };
 
     # Build complete documentation portal (mdBook + Cargo docs + Zola)

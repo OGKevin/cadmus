@@ -1,0 +1,14 @@
+/*
+// Source - https://stackoverflow.com/a/73617163
+// Posted by Sandman, modified by community. See post 'Timeline' for change history
+// Retrieved 2026-02-17, License - CC BY-SA 4.0
+*/
+:root {
+  --content-max-width: 1500px;
+}
+
+/* Align tables to the left */
+table {
+  margin-left: 0;
+  margin-right: auto;
+}

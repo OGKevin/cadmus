@@ -15,6 +15,19 @@ Preview URLs follow the pattern: `https://pr-{NUMBER}.cadmus-dt6.pages.dev/`
 
 ## Local Development
 
+### Prerequisites
+
+The documentation uses [mdbook-mermaid](https://github.com/badboy/mdbook-mermaid) for Mermaid diagram support. You need to install the Mermaid JavaScript assets before building:
+
+```bash
+# Install mdbook-mermaid assets (required for Mermaid diagrams)
+mdbook-mermaid install docs
+```
+
+This command downloads and installs the minified Mermaid JavaScript into the `docs/` directory. It only needs to be run once (or after updating the mdbook-mermaid version).
+
+### Building and Serving
+
 Build and serve documentation locally:
 
 ```bash
@@ -26,6 +39,10 @@ cadmus-docs-serve    # Serve at http://localhost:1111
 Or manually:
 
 ```bash
+# First, install mermaid assets (required)
+mdbook-mermaid install docs
+
+# Then build
 cd docs && mdbook build && cd ..
 cargo doc --no-deps --document-private-items
 cd docs-portal && zola serve --base-url http://localhost
