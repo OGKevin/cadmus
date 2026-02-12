@@ -156,7 +156,7 @@ impl OtaView {
     #[inline]
     fn build_source_selection_dialog(context: &mut Context) -> Dialog {
         let builder = Dialog::builder(
-            ViewId::Ota(OtaViewId::SourceSelection),
+            ViewId::Ota(OtaViewId::Main),
             "Where to check for updates?".to_string(),
         );
 
