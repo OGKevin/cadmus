@@ -1,4 +1,5 @@
 use cadmus_core::anyhow::{format_err, Context as ResultExt, Error};
+use cadmus_core::assets::open_documentation;
 use cadmus_core::battery::{Battery, KoboBattery};
 use cadmus_core::chrono::Local;
 use cadmus_core::context::Context;
@@ -1036,6 +1037,7 @@ pub fn run() -> Result<(), Error> {
 
                 let dialog = Dialog::builder(ViewId::AboutDialog, version_text)
                     .add_button("OK", Event::Close(ViewId::AboutDialog))
+                    .add_button("Docs", Event::Select(EntryId::OpenDocumentation))
                     .build(&mut context);
                 rq.add(RenderData::new(
                     dialog.id(),
@@ -1057,6 +1059,36 @@ pub fn run() -> Result<(), Error> {
                     dithered: context.fb.dithered(),
                 });
                 view = next_view;
+            }
+            Event::Select(EntryId::OpenDocumentation) => {
+                view.children_mut().retain(|child| !child.is::<Menu>());
+
+                if let Some(r) = open_documentation(context.fb.rect(), &tx, &mut context) {
+                    let mut next_view = Box::new(r) as Box<dyn View>;
+                    transfer_notifications(
+                        view.as_mut(),
+                        next_view.as_mut(),
+                        &mut rq,
+                        &mut context,
+                    );
+                    history.push(HistoryItem {
+                        view,
+                        rotation: context.display.rotation,
+                        monochrome: context.fb.monochrome(),
+                        dithered: context.fb.dithered(),
+                    });
+                    view = next_view;
+                } else {
+                    let notif = Notification::new(
+                        None,
+                        "Failed to open documentation".to_string(),
+                        false,
+                        &tx,
+                        &mut rq,
+                        &mut context,
+                    );
+                    view.children_mut().push(Box::new(notif) as Box<dyn View>);
+                }
             }
             Event::OpenHtml(ref html, ref link_uri) => {
                 view.children_mut().retain(|child| !child.is::<Menu>());

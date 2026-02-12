@@ -95,7 +95,8 @@ in
   # Overlays for platform-specific fixes
   overlays = [
     # macOS: Fix GDB 17.1 build failure with Clang (nixpkgs https://github.com/NixOS/nixpkgs/issues/483562)
-    (final: prev:
+    (
+      final: prev:
       prev.lib.optionalAttrs prev.stdenv.hostPlatform.isDarwin {
         gdb = prev.gdb.overrideAttrs (old: {
           configureFlags = builtins.filter (f: f != "--enable-werror") (old.configureFlags or [ ]);
@@ -434,123 +435,149 @@ in
     };
   };
 
-  scripts = {
-    # Script to build mupdf for native development
-    cadmus-setup-native.exec = ''
-      set -e
-      echo "Setting up native development environment..."
+  # Tasks for building components with proper dependencies
+  tasks = {
+    # Build documentation EPUB (required for embedded assets)
+    # Only rebuilds when docs files have changed (tracked via content hash)
+    "docs:build" = {
+      exec = "mdbook build docs";
+      execIfModified = [
+        "docs/**/*.md"
+        "docs/book.toml"
+        "docs/book"
+      ];
+    };
 
-      # Check mupdf version and re-download if needed
-      REQUIRED_MUPDF_VERSION="1.27.0"
-      CURRENT_MUPDF_VERSION=""
-      if [ -e thirdparty/mupdf/include/mupdf/fitz/version.h ]; then
-        CURRENT_MUPDF_VERSION=$(grep -o 'FZ_VERSION "[^"]*"' thirdparty/mupdf/include/mupdf/fitz/version.h | grep -o '"[^"]*"' | tr -d '"')
-      fi
+    # Build mupdf and wrapper for native development
+    "deps:native" = {
+      exec = ''
+        set -e
 
-      if [ "$CURRENT_MUPDF_VERSION" != "$REQUIRED_MUPDF_VERSION" ]; then
-        echo "MuPDF version mismatch: have '$CURRENT_MUPDF_VERSION', need '$REQUIRED_MUPDF_VERSION'"
-        echo "Downloading mupdf $REQUIRED_MUPDF_VERSION sources..."
-        # Remove old mupdf and re-download
-        rm -rf thirdparty/mupdf
-        cd thirdparty
-        ./download.sh mupdf
+        # Check mupdf version and re-download if needed
+        REQUIRED_MUPDF_VERSION="1.27.0"
+        CURRENT_MUPDF_VERSION=""
+        if [ -e thirdparty/mupdf/include/mupdf/fitz/version.h ]; then
+          CURRENT_MUPDF_VERSION=$(grep -o 'FZ_VERSION "[^"]*"' thirdparty/mupdf/include/mupdf/fitz/version.h | grep -o '"[^"]*"' | tr -d '"')
+        fi
+
+        if [ "$CURRENT_MUPDF_VERSION" != "$REQUIRED_MUPDF_VERSION" ]; then
+          echo "MuPDF version mismatch: have '$CURRENT_MUPDF_VERSION', need '$REQUIRED_MUPDF_VERSION'"
+          echo "Downloading mupdf $REQUIRED_MUPDF_VERSION sources..."
+          rm -rf thirdparty/mupdf
+          cd thirdparty
+          ./download.sh mupdf
+          cd ..
+        else
+          echo "MuPDF $CURRENT_MUPDF_VERSION already present."
+        fi
+
+        # Build mupdf wrapper
+        echo "Building mupdf wrapper..."
+        cd mupdf_wrapper
+        ./build.sh
         cd ..
-      else
-        echo "MuPDF $CURRENT_MUPDF_VERSION already present."
-      fi
 
-      # Build mupdf wrapper for Linux
-      echo "Building mupdf wrapper..."
-      cd mupdf_wrapper
-      ./build.sh
-      cd ..
+        # Build MuPDF for native development
+        echo "Building mupdf for native development..."
+        cd thirdparty/mupdf
+        [ -e .gitattributes ] && rm -rf .git*
+        make clean || true
+        make verbose=yes generate
 
-      # Build MuPDF for native development using system libraries from Nix
-      # We skip building cadmus/thirdparty/* and use pkg-config to find system libs
-      echo "Building mupdf for native development..."
-      cd thirdparty/mupdf
-      [ -e .gitattributes ] && rm -rf .git*
+        # On macOS, gather system library CFLAGS via pkg-config
+        SYS_CFLAGS=""
+        if [ "$(uname -s)" = "Darwin" ]; then
+          SYS_CFLAGS="$SYS_CFLAGS $(pkg-config --cflags freetype2 2>/dev/null || true)"
+          SYS_CFLAGS="$SYS_CFLAGS $(pkg-config --cflags harfbuzz 2>/dev/null || true)"
+          SYS_CFLAGS="$SYS_CFLAGS $(pkg-config --cflags libopenjp2 2>/dev/null || true)"
+          SYS_CFLAGS="$SYS_CFLAGS $(pkg-config --cflags libjpeg 2>/dev/null || true)"
+          SYS_CFLAGS="$SYS_CFLAGS $(pkg-config --cflags zlib 2>/dev/null || true)"
+          SYS_CFLAGS="$SYS_CFLAGS $(pkg-config --cflags jbig2dec 2>/dev/null || true)"
+          SYS_CFLAGS="$SYS_CFLAGS $(pkg-config --cflags gumbo 2>/dev/null || true)"
+        fi
 
-      # Clean any previous builds
-      make clean || true
+        make verbose=yes \
+          mujs=no tesseract=no extract=no archive=no brotli=no barcode=no commercial=no \
+          USE_SYSTEM_LIBS=yes \
+          XCFLAGS="-DFZ_ENABLE_ICC=0 -DFZ_ENABLE_SPOT_RENDERING=0 -DFZ_ENABLE_ODT_OUTPUT=0 -DFZ_ENABLE_OCR_OUTPUT=0 $SYS_CFLAGS" \
+          libs
 
-      # Generate sources
-      make verbose=yes generate
+        cd ../..
 
-      # On macOS, MuPDF's Makerules doesn't properly set up system library CFLAGS
-      # via pkg-config (the pkg-config checks are inside an `else` block after Darwin).
-      # We need to manually gather and pass them.
-      SYS_CFLAGS=""
-      if [ "$(uname -s)" = "Darwin" ]; then
-        SYS_CFLAGS="$SYS_CFLAGS $(pkg-config --cflags freetype2 2>/dev/null || true)"
-        SYS_CFLAGS="$SYS_CFLAGS $(pkg-config --cflags harfbuzz 2>/dev/null || true)"
-        SYS_CFLAGS="$SYS_CFLAGS $(pkg-config --cflags libopenjp2 2>/dev/null || true)"
-        SYS_CFLAGS="$SYS_CFLAGS $(pkg-config --cflags libjpeg 2>/dev/null || true)"
-        SYS_CFLAGS="$SYS_CFLAGS $(pkg-config --cflags zlib 2>/dev/null || true)"
-        SYS_CFLAGS="$SYS_CFLAGS $(pkg-config --cflags jbig2dec 2>/dev/null || true)"
-        SYS_CFLAGS="$SYS_CFLAGS $(pkg-config --cflags gumbo 2>/dev/null || true)"
-      fi
+        # Determine platform directory
+        case "$(uname -s)" in
+          Darwin) PLATFORM_DIR="Darwin" ;;
+          *)      PLATFORM_DIR="Linux" ;;
+        esac
 
-      # Build MuPDF libraries using system libraries (detected via pkg-config)
-      make verbose=yes \
-        mujs=no tesseract=no extract=no archive=no brotli=no barcode=no commercial=no \
-        USE_SYSTEM_LIBS=yes \
-        XCFLAGS="-DFZ_ENABLE_ICC=0 -DFZ_ENABLE_SPOT_RENDERING=0 -DFZ_ENABLE_ODT_OUTPUT=0 -DFZ_ENABLE_OCR_OUTPUT=0 $SYS_CFLAGS" \
-        libs
+        mkdir -p "target/mupdf_wrapper/$PLATFORM_DIR"
 
-      cd ../..
+        if [ -e thirdparty/mupdf/build/release/libmupdf.a ]; then
+          ln -sf "$(pwd)/thirdparty/mupdf/build/release/libmupdf.a" "target/mupdf_wrapper/$PLATFORM_DIR/"
+          echo "✓ Created libmupdf.a in target/mupdf_wrapper/$PLATFORM_DIR"
+        else
+          echo "✗ ERROR: libmupdf.a not found!"
+          exit 1
+        fi
 
-      # Determine platform directory (matches crates/core/build.rs expectations)
-      case "$(uname -s)" in
-        Darwin) PLATFORM_DIR="Darwin" ;;
-        *)      PLATFORM_DIR="Linux" ;;
-      esac
+        if [ ! -e thirdparty/mupdf/build/release/libmupdf-third.a ]; then
+          echo "Creating empty libmupdf-third.a (system libs used instead)..."
+          ar cr thirdparty/mupdf/build/release/libmupdf-third.a
+        fi
+        ln -sf "$(pwd)/thirdparty/mupdf/build/release/libmupdf-third.a" "target/mupdf_wrapper/$PLATFORM_DIR/"
+        echo "✓ Created libmupdf-third.a"
 
-      # Create target directory structure
-      mkdir -p "target/mupdf_wrapper/$PLATFORM_DIR"
+        echo ""
+        echo "Native setup complete!"
+      '';
+    };
 
-      # Copy/link libmupdf.a
-      if [ -e thirdparty/mupdf/build/release/libmupdf.a ]; then
-        ln -sf "$(pwd)/thirdparty/mupdf/build/release/libmupdf.a" "target/mupdf_wrapper/$PLATFORM_DIR/"
-        echo "✓ Created libmupdf.a in target/mupdf_wrapper/$PLATFORM_DIR"
-      else
-        echo "✗ ERROR: libmupdf.a not found!"
-        exit 1
-      fi
+    # Build for Kobo with cross-compilation
+    "build:kobo" = {
+      exec =
+        if isLinux then
+          ''
+            set -e
+            export CC=arm-linux-gnueabihf-gcc
+            export CXX=arm-linux-gnueabihf-g++
+            export AR=arm-linux-gnueabihf-ar
+            export LD=arm-linux-gnueabihf-ld
+            export RANLIB=arm-linux-gnueabihf-ranlib
+            export STRIP=arm-linux-gnueabihf-strip
+            ./build.sh slow
+          ''
+        else
+          ''
+            echo "Error: Kobo build is only available on Linux."
+            exit 1
+          '';
+      after = [ "docs:build" ];
+    };
 
-      # When using USE_SYSTEM_LIBS=yes, MuPDF doesn't create libmupdf-third.a
-      # because dependencies come from system libraries via pkg-config.
-      # Create an empty libmupdf-third.a to satisfy cargo's build requirements.
-      if [ ! -e thirdparty/mupdf/build/release/libmupdf-third.a ]; then
-        echo "Creating empty libmupdf-third.a (system libs used instead)..."
-        ar cr thirdparty/mupdf/build/release/libmupdf-third.a
-      fi
-      ln -sf "$(pwd)/thirdparty/mupdf/build/release/libmupdf-third.a" "target/mupdf_wrapper/$PLATFORM_DIR/"
-      echo "✓ Created libmupdf-third.a"
+  };
 
+  # Scripts are simple aliases that echo info and run tasks
+  scripts = {
+    # Build mupdf for native development (runs deps:native task)
+    cadmus-setup-native.exec = ''
+      echo "Setting up native development environment..."
+      echo "This will build mupdf and wrapper libraries."
       echo ""
-      echo "Native setup complete! You can now run:"
+      devenv tasks run deps:native
+      echo ""
+      echo "You can now run:"
       echo "  cargo test          - Run tests"
       echo "  ./run-emulator.sh   - Run the emulator"
     '';
 
-    # Script to build for Kobo with proper cross-compilation environment
-    # Only available on Linux where the Linaro toolchain can run
+    # Build for Kobo device (Linux only, runs build:kobo task)
     cadmus-build-kobo.exec =
       if isLinux then
         ''
-          set -e
-
-          # Set up cross-compilation environment
-          export CC=arm-linux-gnueabihf-gcc
-          export CXX=arm-linux-gnueabihf-g++
-          export AR=arm-linux-gnueabihf-ar
-          export LD=arm-linux-gnueabihf-ld
-          export RANLIB=arm-linux-gnueabihf-ranlib
-          export STRIP=arm-linux-gnueabihf-strip
-
-          # Run the build script
-          ./build.sh "$@" && ./dist.sh
+          echo "Building for Kobo device..."
+          echo ""
+          devenv tasks run build:kobo
+          ./dist.sh
         ''
       else
         ''
@@ -560,7 +587,8 @@ in
           exit 1
         '';
 
-    # Build and run emulator with OTEL instrumentation
+    # Run emulator with OTEL instrumentation
+    # Not using tasks to avoid log swallowing - runs docs:build task manually first
     cadmus-dev-otel.exec = ''
       set -e
 
@@ -572,13 +600,18 @@ in
       echo "  Prometheus: http://localhost:9090"
       echo "  OTLP:       http://localhost:4318"
       echo ""
+
+      # Build docs first (if needed) to ensure embedded EPUB is available
+      echo "Ensuring documentation is built..."
+      devenv tasks run docs:build
+      echo ""
+
       echo "Starting instrumented emulator..."
       echo "   Traces will be visible in Grafana → Explore → Tempo"
       echo ""
 
       export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4318"
       export RUST_LOG="trace"
-
       ./run-emulator.sh --features otel,test,emulator "$@"
     '';
   };
@@ -608,6 +641,11 @@ in
     echo ""
   ''
   + ''
+    echo "Tasks:"
+    echo "  devenv tasks run docs:build  - Build documentation (only if changed)"
+    echo "  devenv tasks run deps:native - Build mupdf for native development"
+    echo "  devenv tasks run build:kobo  - Build for Kobo device (Linux only)"
+    echo ""
     echo "Observability (OTEL):"
     echo "  devenv up            - Start all services (inc. observability stack)"
     echo "  cadmus-dev-otel      - Build & run emulator with OTEL enabled"

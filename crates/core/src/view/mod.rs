@@ -654,6 +654,7 @@ pub enum EntryKind {
 pub enum EntryId {
     About,
     SystemInfo,
+    OpenDocumentation,
     LoadLibrary(usize),
     Load(PathBuf),
     Flush,

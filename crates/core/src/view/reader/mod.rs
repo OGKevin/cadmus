@@ -13,6 +13,7 @@ use super::top_bar::{TopBar, TopBarVariant};
 use crate::color::{BLACK, WHITE};
 use crate::context::Context;
 use crate::device::CURRENT_DEVICE;
+use crate::document::epub::EpubDocumentStatic;
 use crate::document::html::HtmlDocument;
 use crate::document::{
     annotations_as_html, bookmarks_as_html, toc_as_html, SimpleTocEntry, TocEntry, TocLocation,
@@ -518,6 +519,64 @@ impl Reader {
             reflowable: true,
             finished: false,
         }
+    }
+
+    pub fn from_embedded_epub(
+        rect: Rectangle,
+        epub_bytes: &'static [u8],
+        hub: &Hub,
+        context: &mut Context,
+    ) -> Option<Reader> {
+        let id = ID_FEEDER.next();
+
+        let mut doc = EpubDocumentStatic::new_from_static(epub_bytes).ok()?;
+
+        let info = Info {
+            file: FileInfo {
+                path: PathBuf::from("mem:documentation.epub"),
+                kind: "epub".to_string(),
+                size: epub_bytes.len() as u64,
+            },
+            title: doc.title().unwrap_or_default(),
+            ..Default::default()
+        };
+
+        let (width, height) = context.display.dims;
+        doc.layout(width, height, 7.0, CURRENT_DEVICE.dpi);
+        doc.set_margin_width(mm_to_px(0.0, CURRENT_DEVICE.dpi) as i32);
+        let pages_count = doc.pages_count();
+
+        hub.send(Event::Update(UpdateMode::Partial)).ok();
+
+        Some(Reader {
+            id,
+            rect,
+            children: Vec::new(),
+            doc: Arc::new(Mutex::new(Box::new(doc))),
+            cache: BTreeMap::new(),
+            chunks: Vec::new(),
+            text: FxHashMap::default(),
+            annotations: FxHashMap::default(),
+            noninverted_regions: FxHashMap::default(),
+            focus: None,
+            search: None,
+            search_direction: LinearDir::Forward,
+            held_buttons: FxHashSet::default(),
+            selection: None,
+            target_annotation: None,
+            history: VecDeque::new(),
+            state: State::Idle,
+            info,
+            current_page: 0,
+            pages_count,
+            view_port: ViewPort::default(),
+            synthetic: true,
+            page_turns: 0,
+            contrast: Contrast::default(),
+            ephemeral: true,
+            reflowable: true,
+            finished: false,
+        })
     }
 
     fn load_pixmap(&mut self, location: usize) {
