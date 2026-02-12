@@ -1,19 +1,33 @@
 # Installation
 
-Cadmus ships as KoboRoot bundles. Each bundle targets a
-different setup, so pick the variant that matches your device and tooling.
+Cadmus comes in different packages. Pick the one that matches your needs.
 
-## Artifact variants
+## Available packages
 
-| Bundle                 | Includes                    | Cadmus path                     |
-| ---------------------- | --------------------------- | ------------------------------- |
-| `KoboRoot.tgz`         | Cadmus only (no NickelMenu) | `/mnt/onboard/.adds/cadmus`     |
-| `KoboRoot-nm.tgz`      | Cadmus + NickelMenu         | `/mnt/onboard/.adds/cadmus`     |
-| `KoboRoot-test.tgz`    | Test build only             | `/mnt/onboard/.adds/cadmus-tst` |
-| `KoboRoot-nm-test.tgz` | Test build + NickelMenu     | `/mnt/onboard/.adds/cadmus-tst` |
+| Package                | What's included         | Installs to                     |
+| ---------------------- | ----------------------- | ------------------------------- |
+| `KoboRoot.tgz`         | Cadmus only             | `/mnt/onboard/.adds/cadmus`     |
+| `KoboRoot-nm.tgz`      | Cadmus + NickelMenu     | `/mnt/onboard/.adds/cadmus`     |
+| `KoboRoot-test.tgz`    | Test build only         | `/mnt/onboard/.adds/cadmus-tst` |
+| `KoboRoot-nm-test.tgz` | Test build + NickelMenu | `/mnt/onboard/.adds/cadmus-tst` |
 
-## Pick the right bundle
+## Which one should I pick?
 
-- Use non-test bundles for normal installs.
-- Use test bundles when following a PR or CI test build.
-- Choose NickelMenu variants if you rely on NickelMenu integration.
+- **Normal installs**: Use `KoboRoot.tgz` or `KoboRoot-nm.tgz`
+- **If you use NickelMenu**: Pick a package that includes it (`-nm` versions)
+- **Testing a new feature**: Use test packages (`-test` versions) for trying
+  out changes that haven't been released yet
+
+## First-time setup
+
+1. Go to the [latest release](https://github.com/OGKevin/cadmus/releases/latest).
+2. Download the package you want from the table above.
+3. Connect your Kobo to your computer via USB.
+4. Copy the downloaded file to `/mnt/onboard/.kobo/KoboRoot.tgz` on the device.
+5. Eject the device and reboot.
+
+## Updating
+
+Once installed, you can update Cadmus directly through its built-in OTA feature
+
+- no computer required, just WiFi. See [OTA updates](./ota.md) for details.
