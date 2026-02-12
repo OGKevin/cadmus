@@ -5,9 +5,9 @@ applyTo: "crates/core/src/view/ota.rs"
 
 # OTA test build updates
 
-The OTA view lets users download and install test builds from GitHub pull
-requests directly on device. It checks for WiFi and a configured GitHub token
-before allowing a PR number submission.
+The OTA view lets users download and install builds directly on device. It
+checks for WiFi before allowing updates. A GitHub token is required only for
+main branch and PR builds, not for stable releases.
 
 ## Keep this instruction current
 

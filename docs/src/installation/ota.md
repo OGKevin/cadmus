@@ -6,15 +6,18 @@ computer. The OTA (Over-The-Air) feature downloads updates directly from GitHub.
 ## What you need
 
 - A WiFi connection
-- A GitHub personal access token in your `Settings.toml` file:
+
+For main branch or PR builds, you also need a GitHub personal access token in
+your `Settings.toml` file:
 
 ```toml
 [ota]
 github-token = "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 ```
 
-See the [OTA settings](../settings/index.md#otagithub-token) reference for
-details on getting a token.
+Stable releases do not require a token. See the
+[OTA settings](../settings/index.md#otagithub-token) reference for details on
+getting a token.
 
 ## How to update
 

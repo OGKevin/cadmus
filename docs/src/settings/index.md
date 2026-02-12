@@ -151,13 +151,12 @@ Image displayed when entering USB sharing mode.
 
 ## OTA
 
-The OTA feature downloads builds from GitHub CI artifacts.
+The OTA feature downloads builds from GitHub.
 
 ### `ota.github-token`
 
-🔑
-
-GitHub personal access token used to access CI artifacts.
+GitHub personal access token needed to download development and test builds.
+Not required for stable releases.
 
 - Configure it under the `[ota]` section.
 
@@ -165,6 +164,13 @@ GitHub personal access token used to access CI artifacts.
 [ota]
 github-token = "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 ```
+
+To create a token:
+
+1. Go to <https://github.com/settings/personal-access-tokens/new>
+2. Under **Repository access**, select **Public repositories**
+3. No additional permissions are required
+4. Generate and copy the token to your `Settings.toml`
 
 ## Logging
 

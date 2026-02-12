@@ -21,23 +21,30 @@ const CHUNK_TIMEOUT_SECS: u64 = 30;
 /// Maximum number of retry attempts for failed chunks
 const MAX_RETRIES: usize = 3;
 
-/// HTTP client for downloading GitHub Actions artifacts from pull requests.
+/// HTTP client for downloading OTA updates from GitHub.
 ///
 /// This client handles the complete OTA update workflow:
 /// - Fetching PR information from GitHub API
 /// - Finding associated workflow runs
-/// - Downloading build artifacts
+/// - Downloading build artifacts and stable releases
 /// - Extracting and deploying updates
 ///
 /// # Security
 ///
-/// The GitHub personal access token is wrapped in `SecretString` from the
-/// `secrecy` crate to prevent accidental exposure in logs, debug output, or
-/// error messages. The token is automatically wiped from memory when dropped.
+/// The GitHub personal access token is optional and wrapped in `SecretString`
+/// from the `secrecy` crate to prevent accidental exposure in logs, debug output,
+/// or error messages. The token is automatically wiped from memory when dropped.
 /// Access to the token value requires explicit use of `.expose_secret()`.
+///
+/// Token is required for:
+/// - PR build downloads
+/// - Default branch artifact downloads
+///
+/// Token is optional for:
+/// - Stable release downloads (public URLs)
 pub struct OtaClient {
     client: Client,
-    token: SecretString,
+    token: Option<SecretString>,
 }
 
 /// Error types that can occur during OTA operations.
@@ -166,15 +173,16 @@ struct ReleaseAsset {
 }
 
 impl OtaClient {
-    /// Creates a new OTA client with GitHub authentication.
+    /// Creates a new OTA client with optional GitHub authentication.
     ///
     /// Initializes an HTTP client with TLS configured using webpki-roots
     /// certificates for secure communication with GitHub's API.
     ///
     /// # Arguments
     ///
-    /// * `github_token` - Personal access token wrapped in `SecretString`
-    ///   for secure handling. The token requires workflow artifact read permissions.
+    /// * `github_token` - Optional personal access token wrapped in `SecretString`
+    ///   for secure handling. Required for artifact downloads, optional for
+    ///   stable release downloads.
     ///
     /// # Errors
     ///
@@ -185,7 +193,7 @@ impl OtaClient {
     ///
     /// The token is stored securely and will never appear in debug output or logs.
     /// It is only exposed when making authenticated API requests.
-    pub fn new(github_token: SecretString) -> Result<Self, OtaError> {
+    pub fn new(github_token: Option<SecretString>) -> Result<Self, OtaError> {
         tracing::debug!("Initializing OTA client with webpki-roots certificates");
 
         let root_store = create_webpki_root_store();
@@ -215,6 +223,15 @@ impl OtaClient {
         })
     }
 
+    /// Returns a reference to the GitHub token if available.
+    ///
+    /// # Errors
+    ///
+    /// Returns `OtaError::NoToken` if no token is configured.
+    fn get_token(&self) -> Result<&SecretString, OtaError> {
+        self.token.as_ref().ok_or_else(|| OtaError::NoToken)
+    }
+
     /// Downloads the build artifact from a GitHub pull request.
     ///
     /// This performs the complete download workflow:
@@ -223,6 +240,8 @@ impl OtaClient {
     /// 3. Finds the associated "Cargo" workflow run
     /// 4. Locates artifacts matching "cadmus-kobo-pr*" pattern
     /// 5. Downloads the artifact ZIP file to `/tmp/cadmus-ota-{pr_number}.zip`
+    ///
+    /// GitHub authentication is required for this operation.
     ///
     /// # Arguments
     ///
@@ -236,6 +255,7 @@ impl OtaClient {
     /// # Errors
     ///
     /// * `OtaError::InsufficientSpace` - Less than 100MB available in /tmp
+    /// * `OtaError::NoToken` - GitHub token not configured
     /// * `OtaError::PrNotFound` - PR number doesn't exist in repository
     /// * `OtaError::NoArtifacts` - No matching build artifacts found for the PR
     /// * `OtaError::Api` - GitHub API request failed
@@ -266,7 +286,7 @@ impl OtaClient {
             .get(&pr_url)
             .header(
                 "Authorization",
-                format!("Bearer {}", self.token.expose_secret()),
+                format!("Bearer {}", self.get_token()?.expose_secret()),
             )
             .send()?;
 
@@ -306,7 +326,7 @@ impl OtaClient {
             .get(&runs_url)
             .header(
                 "Authorization",
-                format!("Bearer {}", self.token.expose_secret()),
+                format!("Bearer {}", self.get_token()?.expose_secret()),
             )
             .send()?;
 
@@ -395,6 +415,8 @@ impl OtaClient {
     /// 3. Locates artifacts matching "cadmus-kobo-{sha}" pattern (or "cadmus-kobo-test-{sha}" with `test` feature)
     /// 4. Downloads the artifact ZIP file to `/tmp/cadmus-ota-{sha}.zip`
     ///
+    /// GitHub authentication is required for this operation.
+    ///
     /// # Arguments
     ///
     /// * `progress_callback` - Function called with progress updates during download
@@ -406,6 +428,7 @@ impl OtaClient {
     /// # Errors
     ///
     /// * `OtaError::InsufficientSpace` - Less than 100MB available in /tmp
+    /// * `OtaError::NoToken` - GitHub token not configured
     /// * `OtaError::NoDefaultBranchArtifacts` - No matching build artifacts found
     /// * `OtaError::Api` - GitHub API request failed
     /// * `OtaError::Request` - Network communication failed
@@ -437,7 +460,7 @@ impl OtaClient {
             .get(runs_url)
             .header(
                 "Authorization",
-                format!("Bearer {}", self.token.expose_secret()),
+                format!("Bearer {}", self.get_token()?.expose_secret()),
             )
             .send()?;
 
@@ -524,6 +547,9 @@ impl OtaClient {
     /// 3. Locates the `KoboRoot.tgz` asset in the release
     /// 4. Downloads the file to `/tmp/cadmus-ota-stable-release.tgz`
     ///
+    /// GitHub authentication is not required for this operation as release
+    /// assets are downloaded from public URLs without Authorization headers.
+    ///
     /// # Arguments
     ///
     /// * `progress_callback` - Function called with progress updates during download
@@ -556,14 +582,11 @@ impl OtaClient {
         let releases_url = "https://api.github.com/repos/ogkevin/cadmus/releases/latest";
         tracing::debug!(url = %releases_url, "Fetching latest release");
 
-        let response = self
-            .client
-            .get(releases_url)
-            .header(
-                "Authorization",
-                format!("Bearer {}", self.token.expose_secret()),
-            )
-            .send()?;
+        let mut request = self.client.get(releases_url);
+        if let Some(ref token) = self.token {
+            request = request.header("Authorization", format!("Bearer {}", token.expose_secret()));
+        }
+        let response = request.send()?;
 
         tracing::debug!(
             status = %response.status(),
@@ -796,7 +819,7 @@ impl OtaClient {
             .get(repo_url)
             .header(
                 "Authorization",
-                format!("Bearer {}", self.token.expose_secret()),
+                format!("Bearer {}", self.get_token()?.expose_secret()),
             )
             .send()?;
 
@@ -828,7 +851,7 @@ impl OtaClient {
             .get(&artifacts_url)
             .header(
                 "Authorization",
-                format!("Bearer {}", self.token.expose_secret()),
+                format!("Bearer {}", self.get_token()?.expose_secret()),
             )
             .send()?;
 
@@ -891,6 +914,7 @@ impl OtaClient {
     /// * `total_size` - Total file size in bytes
     /// * `download_path` - Path where the file should be saved
     /// * `progress_callback` - Function called with progress updates
+    /// * `use_auth` - Whether to include Authorization header in requests
     ///
     /// # Returns
     ///
@@ -902,6 +926,7 @@ impl OtaClient {
         total_size: u64,
         download_path: &PathBuf,
         progress_callback: &mut F,
+        use_auth: bool,
     ) -> Result<(), OtaError>
     where
         F: FnMut(OtaProgress),
@@ -929,7 +954,8 @@ impl OtaClient {
 
             tracing::debug!(chunk_start, chunk_end, total_size, "Downloading chunk");
 
-            let chunk_data = self.download_chunk_with_retries(url, chunk_start, chunk_end)?;
+            let chunk_data =
+                self.download_chunk_with_retries(url, chunk_start, chunk_end, use_auth)?;
 
             file.write_all(&chunk_data)?;
             downloaded += chunk_data.len() as u64;
@@ -954,6 +980,8 @@ impl OtaClient {
     }
 
     /// Downloads an artifact ZIP to the specified path with chunked transfer and progress reporting.
+    ///
+    /// GitHub authentication is required for this operation.
     fn download_artifact_to_path<F>(
         &self,
         artifact: &Artifact,
@@ -973,6 +1001,7 @@ impl OtaClient {
             artifact.size_in_bytes,
             download_path,
             progress_callback,
+            true,
         )
     }
 
@@ -999,11 +1028,12 @@ impl OtaClient {
         url: &str,
         start: u64,
         end: u64,
+        use_auth: bool,
     ) -> Result<Vec<u8>, OtaError> {
         let mut last_error = None;
 
         for attempt in 1..=MAX_RETRIES {
-            match self.download_chunk(url, start, end) {
+            match self.download_chunk(url, start, end, use_auth) {
                 Ok(data) => {
                     if attempt > 1 {
                         tracing::debug!(
@@ -1044,6 +1074,7 @@ impl OtaClient {
     /// * `url` - The download URL
     /// * `start` - Starting byte offset (inclusive)
     /// * `end` - Ending byte offset (inclusive)
+    /// * `use_auth` - Whether to include Authorization header
     ///
     /// # Returns
     ///
@@ -1052,17 +1083,28 @@ impl OtaClient {
     /// # Errors
     ///
     /// Returns an error if the download fails or times out.
-    fn download_chunk(&self, url: &str, start: u64, end: u64) -> Result<Vec<u8>, OtaError> {
+    fn download_chunk(
+        &self,
+        url: &str,
+        start: u64,
+        end: u64,
+        use_auth: bool,
+    ) -> Result<Vec<u8>, OtaError> {
         let range_header = format!("bytes={}-{}", start, end);
 
-        let response = self
-            .client
-            .get(url)
-            .header(
-                "Authorization",
-                format!("Bearer {}", self.token.expose_secret()),
-            )
-            .header("Range", range_header)
+        let mut request = self.client.get(url).header("Range", range_header);
+
+        if use_auth {
+            if let Some(ref token) = self.token {
+                request =
+                    request.header("Authorization", format!("Bearer {}", token.expose_secret()));
+            } else {
+                tracing::error!("Attempted authenticated download without token");
+                return Err(OtaError::NoToken);
+            }
+        }
+
+        let response = request
             .send()?
             .error_for_status()
             .map_err(|e| OtaError::Api(format!("Failed to download chunk: {}", e)))?;
@@ -1072,6 +1114,9 @@ impl OtaClient {
     }
 
     /// Downloads a release asset to the specified path with chunked transfer and progress reporting.
+    ///
+    /// GitHub authentication is not required for this operation as release
+    /// assets are downloaded from public URLs.
     #[inline]
     #[cfg_attr(feature = "otel", tracing::instrument(skip(self, progress_callback)))]
     fn download_release_asset<F>(
@@ -1088,6 +1133,7 @@ impl OtaClient {
             asset.size,
             download_path,
             progress_callback,
+            false,
         )
     }
 }
@@ -1189,7 +1235,7 @@ mod tests {
             .install_default()
             .ok();
 
-        let client = OtaClient::new(SecretString::from("test_token".to_string())).unwrap();
+        let client = OtaClient::new(Some(SecretString::from("test_token".to_string()))).unwrap();
         let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("src/ota/tests/fixtures/test_artifact.zip");
 
@@ -1223,7 +1269,7 @@ mod tests {
             .install_default()
             .ok();
 
-        let client = OtaClient::new(SecretString::from("test_token".to_string())).unwrap();
+        let client = OtaClient::new(Some(SecretString::from("test_token".to_string()))).unwrap();
         let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("src/ota/tests/fixtures/empty_artifact.zip");
 
@@ -1250,7 +1296,7 @@ mod tests {
             .ok();
 
         let token = std::env::var("GH_TOKEN").expect("GH_TOKEN must be set");
-        OtaClient::new(SecretString::from(token)).expect("Failed to create OtaClient")
+        OtaClient::new(Some(SecretString::from(token))).expect("Failed to create OtaClient")
     }
 
     #[test]
