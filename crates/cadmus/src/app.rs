@@ -12,7 +12,6 @@ use cadmus_core::frontlight::{
 };
 use cadmus_core::geom::{DiagDir, Rectangle, Region};
 use cadmus_core::gesture::{gesture_events, GestureEvent};
-use cadmus_core::helpers::{load_toml, save_toml};
 use cadmus_core::input::{
     button_scheme_event, device_events, display_rotate_event, raw_events, usb_events,
 };
@@ -22,7 +21,8 @@ use cadmus_core::input::{
 use cadmus_core::library::Library;
 use cadmus_core::lightsensor::{KoboLightSensor, LightSensor};
 use cadmus_core::rtc::Rtc;
-use cadmus_core::settings::{ButtonScheme, IntermKind, RotationLock, Settings, SETTINGS_PATH};
+use cadmus_core::settings::versioned::SettingsManager;
+use cadmus_core::settings::{ButtonScheme, IntermKind, RotationLock, Settings};
 use cadmus_core::view::calculator::Calculator;
 use cadmus_core::view::common::{
     find_notification_mut, locate, locate_by_id, overlapping_rectangle, transfer_notifications,
@@ -105,16 +105,11 @@ struct HistoryItem {
     dithered: bool,
 }
 
-fn build_context(fb: Box<dyn Framebuffer>) -> Result<Context, Error> {
+fn build_context(fb: Box<dyn Framebuffer>, settings: Settings) -> Result<Context, Error> {
     let rtc = Rtc::new(RTC_DEVICE)
         .map_err(|e| eprintln!("Can't open RTC device: {:#}.", e))
         .ok();
-    let path = Path::new(SETTINGS_PATH);
-    let mut settings = if path.exists() {
-        load_toml::<Settings, _>(path).context("can't load settings")?
-    } else {
-        Default::default()
-    };
+    let mut settings = settings;
 
     if let Err(e) = cadmus_core::logging::init_logging(&settings.logging) {
         eprintln!("Warning: Failed to initialize logging: {:#}", e);
@@ -287,7 +282,9 @@ pub fn run() -> Result<(), Error> {
         fb.set_rotation(startup_rotation).ok();
     }
 
-    let mut context = build_context(fb).context("can't build context")?;
+    let manager = SettingsManager::new(env!("GIT_VERSION").to_string());
+    let settings = manager.load();
+    let mut context = build_context(fb, settings).context("can't build context")?;
 
     context.plugged = context.battery.status().is_ok_and(|v| v[0].is_wired());
 
@@ -652,12 +649,8 @@ pub fn run() -> Result<(), Error> {
                                 )
                             })
                             .ok();
-                        let path = Path::new(SETTINGS_PATH);
-                        if let Ok(settings) = load_toml::<Settings, _>(path)
-                            .map_err(|e| error!("Can't load settings: {:#}.", e))
-                        {
-                            context.settings = settings;
-                        }
+                        let settings = manager.load();
+                        context.settings = settings;
                         if context.settings.wifi {
                             Command::new("scripts/wifi-enable.sh").status().ok();
                         }
@@ -773,8 +766,8 @@ pub fn run() -> Result<(), Error> {
             Event::PrepareSuspend => {
                 tasks.retain(|task| task.id != TaskId::PrepareSuspend);
                 wait_for_all(&mut updating, &mut context);
-                let path = Path::new(SETTINGS_PATH);
-                save_toml(&context.settings, path)
+                manager
+                    .save(&context.settings)
                     .map_err(|e| error!("Can't save settings: {:#}.", e))
                     .ok();
                 context.library.flush();
@@ -871,8 +864,8 @@ pub fn run() -> Result<(), Error> {
                     }
                     view = item.view;
                 }
-                let path = Path::new(SETTINGS_PATH);
-                save_toml(&context.settings, path)
+                manager
+                    .save(&context.settings)
                     .map_err(|e| error!("Can't save settings: {:#}.", e))
                     .ok();
                 context.library.flush();
@@ -1432,8 +1425,9 @@ pub fn run() -> Result<(), Error> {
 
     context.library.flush();
 
-    let path = Path::new(SETTINGS_PATH);
-    save_toml(&context.settings, path).context("can't save settings")?;
+    manager
+        .save(&context.settings)
+        .context("can't save settings")?;
 
     match exit_status {
         ExitStatus::Restart => {
