@@ -15,3 +15,6 @@ otel = ["cadmus-core/otel"]
 [dependencies]
 cadmus-core = { path = "../core" }
 tracing = "0.1"
+
+[build-dependencies]
+uuid = { version = "1.20.0", features = ["v7"] }

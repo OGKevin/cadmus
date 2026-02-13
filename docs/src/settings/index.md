@@ -1,8 +1,7 @@
 # Settings
 
-Cadmus reads settings from `Settings.toml`.
-
-Settings can be modified on-device through **Main Menu → Settings**, which opens the built-in settings editor.
+Cadmus reads settings from `Settings/Settings-*.toml`.
+Settings can be changed on your Kobo through **Main Menu → Settings**, which opens the built-in settings editor.
 
 **Legend:**
 
@@ -170,7 +169,7 @@ To create a token:
 1. Go to <https://github.com/settings/personal-access-tokens/new>
 2. Under **Repository access**, select **Public repositories**
 3. No additional permissions are required
-4. Generate and copy the token to your `Settings.toml`
+4. Generate and copy the token to the latest settings file in `Settings`
 
 ## Logging
 
@@ -191,3 +190,19 @@ directory = "logs"
 Environment overrides:
 
 - `OTEL_EXPORTER_OTLP_ENDPOINT` takes precedence over `logging.otlp-endpoint`.
+
+## Settings Retention
+
+Cadmus stores each version's settings in a separate file in the `Settings/` directory (for example, `Settings-v1.2.3.toml`).
+This ensures backward and forward compatibility when you upgrade.
+
+### `settings-retention`
+
+Number of old version settings files to keep. Files older than this count are deleted automatically.
+
+- Default: `3`
+- Set to `0` to keep all version files
+
+```toml
+settings-retention = 3
+```

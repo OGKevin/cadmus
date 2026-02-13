@@ -32,6 +32,7 @@ impl Category {
                 RowKind::ButtonScheme,
                 RowKind::KeyboardLayout,
                 RowKind::SleepCover,
+                RowKind::SettingsRetention,
             ],
             Category::Libraries => (0..context.settings.libraries.len())
                 .map(RowKind::Library)
