@@ -38,17 +38,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          fetch-tags: true
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Set build metadata
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "PR_NUMBER=${{ github.event.number }}" >> "$GITHUB_ENV"
-            echo "PR_HEAD_SHA=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_ENV"
-            echo "ZOLA_BASE_URL=https://pr-${{ github.event.number }}.cadmus-dt6.pages.dev/" >> "$GITHUB_ENV"
-          else
-            echo "ZOLA_BASE_URL=https://cadmus-dt6.pages.dev/" >> "$GITHUB_ENV"
-          fi
+          {
+            if [ "${{ github.event_name }}" = "pull_request" ]; then
+              echo "PR_NUMBER=${{ github.event.number }}"
+              echo "PR_HEAD_SHA=${{ github.event.pull_request.head.sha }}"
+              echo "ZOLA_BASE_URL=https://pr-${{ github.event.number }}.cadmus-dt6.pages.dev/"
+            else
+              echo "ZOLA_BASE_URL=https://cadmus-dt6.pages.dev/"
+            fi
+            echo "GIT_VERSION=$(git describe --tags --always)"
+          } >> "$GITHUB_ENV"
 
       - name: Cache Zola
         uses: actions/cache@v5
@@ -142,6 +148,15 @@ jobs:
 
       - name: Build Rust documentation
         run: cargo doc --no-deps --document-private-items
+
+      - name: Inject GIT_VERSION into Rust documentation
+        run: |
+          WORKSPACE_VERSION=$(grep '^version = ' crates/cadmus/Cargo.toml | sed 's/version = "\(.*\)"/\1/')
+          find target/doc -name "index.html" -type f | while read -r html_file; do
+            if grep -q "<span class=\"version\">$WORKSPACE_VERSION</span>" "$html_file"; then
+              sed -i "s|<span class=\"version\">$WORKSPACE_VERSION</span>|<span class=\"version\">${{ env.GIT_VERSION }}</span>|g" "$html_file"
+            fi
+          done
 
       - name: Create documentation symlinks
         run: |

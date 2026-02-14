@@ -458,6 +458,20 @@ in
       exec = "bash build-docs.sh";
     };
 
+    # Inject GIT_VERSION into Rust documentation
+    "docs:inject-version" = {
+      after = [ "docs:zola-build" ];
+      exec = ''
+        WORKSPACE_VERSION=$(cargo metadata --format-version 1 --no-deps | jq -r '.packages[] | select(.name == "cadmus") | .version' | head -1)
+        for html_file in $(find target/doc -name "index.html" -type f); do
+          if grep -q "<span class=\"version\">$WORKSPACE_VERSION</span>" "$html_file"; then
+            GIT_VERSION=$(git describe --tags --always --dirty)
+            sed -i "s|<span class=\"version\">$WORKSPACE_VERSION</span>|<span class=\"version\">$GIT_VERSION</span>|g" "$html_file"
+          fi
+        done
+      '';
+    };
+
     # Build mupdf and wrapper for native development
     "deps:native" = {
       exec = ''
@@ -573,6 +587,7 @@ in
       echo "Building Cadmus documentation portal..."
       echo ""
       devenv tasks run docs:zola-build
+      devenv tasks run docs:inject-version
       echo ""
       echo "Documentation built successfully!"
       echo "Output: docs-portal/public/"
