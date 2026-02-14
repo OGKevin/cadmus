@@ -153,7 +153,7 @@ jobs:
         run: zola build --base-url "$ZOLA_BASE_URL"
 
       - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: docs-build
           path: docs-portal/public
@@ -170,7 +170,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Download build artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: docs-build
           path: docs-portal/public
@@ -194,7 +194,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Download build artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: docs-build
           path: docs-portal/public
@@ -218,7 +218,7 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Download build artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: docs-build
           path: docs-portal/public
