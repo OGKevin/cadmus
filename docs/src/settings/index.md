@@ -198,7 +198,7 @@ This ensures backward and forward compatibility when you upgrade.
 
 ### `settings-retention`
 
-Number of old version settings files to keep. Files older than this count are deleted automatically.
+Number of recent version settings files to keep. Only the most recent N version files are kept. When a new version is saved, older versions beyond this limit are deleted automatically.
 
 - Default: `3`
 - Set to `0` to keep all version files
