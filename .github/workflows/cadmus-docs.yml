@@ -180,7 +180,7 @@ jobs:
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     environment:
       name: cloudflare-pages-production
-      url: ${{ steps.deploy.outputs.pages-deployment-alias-url }}
+      url: https://cadmus-dt6.pages.dev/
     steps:
       - uses: actions/checkout@v6
 
