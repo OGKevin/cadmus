@@ -51,6 +51,8 @@ pub enum Kind {
     IntermissionPowerOff,
     /// Intermission display setting for share screen
     IntermissionShare,
+    /// Settings retention setting (how many old versions to keep)
+    SettingsRetention,
 }
 
 impl Kind {
@@ -192,6 +194,7 @@ impl SettingValue {
             Kind::IntermissionShare => {
                 Self::fetch_intermission_data(crate::settings::IntermKind::Share, settings)
             }
+            Kind::SettingsRetention => Self::fetch_settings_retention_data(settings),
             Kind::Toggle(toggle) => match toggle {
                 ToggleSettings::SleepCover => Self::fetch_sleep_cover_data(settings),
                 ToggleSettings::AutoShare => Self::fetch_auto_share_data(settings),
@@ -267,6 +270,15 @@ impl SettingValue {
         } else {
             format!("{:.1}", settings.auto_power_off)
         };
+
+        (value, vec![], None)
+    }
+
+    #[inline]
+    fn fetch_settings_retention_data(
+        settings: &Settings,
+    ) -> (String, Vec<EntryKind>, Option<bool>) {
+        let value = settings.settings_retention.to_string();
 
         (value, vec![], None)
     }
@@ -446,6 +458,7 @@ impl SettingValue {
             Kind::LibraryPath(_) => Some(Event::Select(EntryId::EditLibraryPath)),
             Kind::AutoSuspend => Some(Event::Select(EntryId::EditAutoSuspend)),
             Kind::AutoPowerOff => Some(Event::Select(EntryId::EditAutoPowerOff)),
+            Kind::SettingsRetention => Some(Event::Select(EntryId::EditSettingsRetention)),
             Kind::Toggle(ref toggle) => {
                 Some(Event::NewToggle(ToggleEvent::Setting(toggle.clone())))
             }

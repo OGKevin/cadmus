@@ -11,13 +11,13 @@ use cadmus_core::framebuffer::{Framebuffer, UpdateMode};
 use cadmus_core::frontlight::{Frontlight, LightLevels};
 use cadmus_core::geom::{Axis, Rectangle};
 use cadmus_core::gesture::{gesture_events, GestureEvent};
-use cadmus_core::helpers::{load_toml, save_toml};
 use cadmus_core::input::{ButtonCode, ButtonStatus, DeviceEvent, FingerStatus};
 use cadmus_core::library::Library;
 use cadmus_core::lightsensor::LightSensor;
 use cadmus_core::png;
 use cadmus_core::pt;
-use cadmus_core::settings::{IntermKind, Settings, SETTINGS_PATH};
+use cadmus_core::settings::versioned::SettingsManager;
+use cadmus_core::settings::{IntermKind, Settings};
 use cadmus_core::view::calculator::Calculator;
 use cadmus_core::view::common::{
     find_notification_mut, locate, locate_by_id, overlapping_rectangle, transfer_notifications,
@@ -50,7 +50,6 @@ use sdl2::render::{BlendMode, WindowCanvas};
 use std::collections::VecDeque;
 use std::fs::File;
 use std::mem;
-use std::path::Path;
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
@@ -61,10 +60,9 @@ const DEFAULT_ROTATION: i8 = 1;
 
 const CLOCK_REFRESH_INTERVAL: Duration = Duration::from_secs(60);
 
-pub fn build_context(fb: Box<dyn Framebuffer>) -> Result<Context, Error> {
-    let mut settings = load_toml::<Settings, _>(SETTINGS_PATH)?;
+pub fn build_context(fb: Box<dyn Framebuffer>, settings: Settings) -> Result<Context, Error> {
+    let mut settings = settings;
     settings.wifi = true;
-    let settings = settings;
 
     // Initialize logging
     cadmus_core::logging::init_logging(&settings.logging)
@@ -283,7 +281,9 @@ fn main() -> Result<(), Error> {
     let mut fb = window.into_canvas().software().build().unwrap();
     fb.set_blend_mode(BlendMode::Blend);
 
-    let mut context = build_context(Box::new(FBCanvas(fb)))?;
+    let manager = SettingsManager::new(env!("GIT_VERSION").to_string());
+    let settings = manager.load();
+    let mut context = build_context(Box::new(FBCanvas(fb)), settings)?;
 
     if context.settings.import.startup_trigger {
         context.batch_import();
@@ -874,8 +874,9 @@ fn main() -> Result<(), Error> {
 
     context.library.flush();
 
-    let path = Path::new(SETTINGS_PATH);
-    save_toml(&context.settings, path).context("can't save settings")?;
+    manager
+        .save(&context.settings)
+        .context("can't save settings")?;
 
     cadmus_core::logging::shutdown_logging();
 

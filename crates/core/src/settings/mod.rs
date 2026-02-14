@@ -1,4 +1,5 @@
 mod preset;
+pub mod versioned;
 
 use crate::color::{Color, BLACK};
 use crate::device::CURRENT_DEVICE;
@@ -191,6 +192,7 @@ pub struct Settings {
     pub frontlight_levels: LightLevels,
     pub ota: OtaSettings,
     pub logging: LoggingSettings,
+    pub settings_retention: usize,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -491,7 +493,8 @@ impl Serialize for OtaSettings {
         use secrecy::ExposeSecret;
         use serde::ser::SerializeStruct;
 
-        let mut state = serializer.serialize_struct("OtaSettings", 1)?;
+        let field_count = if self.github_token.is_some() { 1 } else { 0 };
+        let mut state = serializer.serialize_struct("OtaSettings", field_count)?;
         if let Some(token) = &self.github_token {
             state.serialize_field("github-token", token.expose_secret())?;
         }
@@ -653,6 +656,13 @@ impl Default for Settings {
     fn default() -> Self {
         Settings {
             selected_library: 0,
+            #[cfg(feature = "emulator")]
+            libraries: vec![LibrarySettings {
+                name: "Cadmus Source".to_string(),
+                path: PathBuf::from("."),
+                ..Default::default()
+            }],
+            #[cfg(not(feature = "emulator"))]
             libraries: vec![
                 LibrarySettings {
                     name: "On Board".to_string(),
@@ -711,6 +721,7 @@ impl Default for Settings {
             frontlight_presets: Vec::new(),
             ota: OtaSettings::default(),
             logging: LoggingSettings::default(),
+            settings_retention: 3,
         }
     }
 }
@@ -817,7 +828,7 @@ mod tests {
 
     #[test]
     fn test_ota_settings_none_token() {
-        let settings = OtaSettings::default();
+        let settings = OtaSettings { github_token: None };
 
         let serialized = toml::to_string(&settings).expect("Failed to serialize");
 
@@ -826,11 +837,9 @@ mod tests {
             "Serialized output should not contain github-token field when None"
         );
 
-        let deserialized: OtaSettings = toml::from_str("").expect("Failed to deserialize empty");
-
         assert!(
-            deserialized.github_token.is_none(),
-            "Deserialized settings should have None token"
+            serialized.is_empty(),
+            "Serialized output should be empty when token is None"
         );
     }
 

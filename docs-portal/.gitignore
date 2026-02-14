@@ -1,0 +1,8 @@
+public/
+static/api
+static/guide
+target/
+*.swp
+*.swo
+*~
+.DS_Store

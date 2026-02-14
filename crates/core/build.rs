@@ -1,5 +1,6 @@
 use std::env::{self, VarError};
 use std::process::Command;
+use uuid::Uuid;
 
 fn main() {
     let target = env::var("TARGET").unwrap();
@@ -10,6 +11,9 @@ fn main() {
     if let Some(pr) = pr_info {
         println!("cargo:rustc-env=PR_INFO={}", pr);
     }
+
+    let build_uuid = Uuid::now_v7().to_string();
+    println!("cargo:rustc-env=BUILD_UUID={}", build_uuid);
 
     // Cross-compiling for Kobo.
     if target == "arm-unknown-linux-gnueabihf" {

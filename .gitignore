@@ -6,6 +6,7 @@
 /libs
 /bin
 /Settings.toml
+/Settings
 /.metadata.json
 /.reading-states
 /.fat32-epoch
@@ -39,3 +40,4 @@ devenv.local.yaml
 logs
 .workspaces/
 **/.fat32-epoch
+/node_modules

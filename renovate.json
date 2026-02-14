@@ -4,8 +4,7 @@
     {
       "customType": "regex",
       "managerFilePatterns": [
-        "/^\\.github\\/workflows\\/mdbook-pr\\.yml$/",
-        "/^\\.github\\/workflows\\/mdbook-pages\\.yml$/",
+        "/^\\.github\\/workflows\\/cadmus-docs\\.yml$/",
         "/^\\.github\\/workflows\\/cargo\\.yml$/",
         "/^\\.github\\/workflows\\/release\\.yml$/"
       ],
@@ -17,8 +16,7 @@
     {
       "customType": "regex",
       "managerFilePatterns": [
-        "/^\\.github\\/workflows\\/mdbook-pr\\.yml$/",
-        "/^\\.github\\/workflows\\/mdbook-pages\\.yml$/",
+        "/^\\.github\\/workflows\\/cadmus-docs\\.yml$/",
         "/^\\.github\\/workflows\\/cargo\\.yml$/",
         "/^\\.github\\/workflows\\/release\\.yml$/"
       ],
@@ -29,6 +27,14 @@
       "depNameTemplate": "Michael-F-Bryan/mdbook-epub",
       "packageNameTemplate": "https://github.com/Michael-F-Bryan/mdbook-epub",
       "versioningTemplate": "git"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/^\\.github\\/workflows\\/cadmus-docs\\.yml$/"],
+      "matchStrings": ["ZOLA_VERSION:\\s+\\\"(?<currentValue>[^\\\"]+)\\\""],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "getzola/zola",
+      "versioningTemplate": "semver"
     },
     {
       "customType": "regex",

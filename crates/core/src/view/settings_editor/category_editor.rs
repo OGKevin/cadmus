@@ -725,6 +725,53 @@ impl CategoryEditor {
         true
     }
 
+    #[inline]
+    fn handle_edit_settings_retention(
+        &mut self,
+        hub: &Hub,
+        rq: &mut RenderQueue,
+        context: &mut Context,
+    ) -> bool {
+        let mut retention_input = crate::view::named_input::NamedInput::new(
+            "Settings Retention".to_string(),
+            ViewId::SettingsRetentionInput,
+            ViewId::SettingsRetentionInput,
+            3,
+            context,
+        );
+        let text = context.settings.settings_retention.to_string();
+
+        retention_input.set_text(&text, rq, context);
+
+        self.children.push(Box::new(retention_input));
+        hub.send(Event::Focus(Some(ViewId::SettingsRetentionInput)))
+            .ok();
+
+        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+
+        true
+    }
+
+    #[inline]
+    fn handle_submit_settings_retention(
+        &mut self,
+        text: &str,
+        hub: &Hub,
+        rq: &mut RenderQueue,
+        context: &mut Context,
+    ) -> bool {
+        if let Ok(value) = text.parse::<usize>() {
+            context.settings.settings_retention = value;
+        }
+
+        self.refresh_setting_values(context, rq);
+        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+
+        hub.send(Event::Focus(None)).ok();
+
+        true
+    }
+
     /// Handles the `FileChooserClosed` event for intermission image selection.
     ///
     /// Updates `context.settings.intermissions` with the selected image path and schedules
@@ -782,6 +829,7 @@ impl CategoryEditor {
             ViewId::LibraryEditor
             | ViewId::AutoSuspendInput
             | ViewId::AutoPowerOffInput
+            | ViewId::SettingsRetentionInput
             | ViewId::SettingsValueMenu => {
                 if let Some(index) = locate_by_id(self, *view_id) {
                     self.children.remove(index);
@@ -872,6 +920,9 @@ impl View for CategoryEditor {
                 }
                 EntryId::EditAutoSuspend => self.handle_edit_auto_suspend(hub, rq, context),
                 EntryId::EditAutoPowerOff => self.handle_edit_auto_power_off(hub, rq, context),
+                EntryId::EditSettingsRetention => {
+                    self.handle_edit_settings_retention(hub, rq, context)
+                }
                 EntryId::SetButtonScheme(button_scheme) => {
                     self.handle_set_button_scheme(button_scheme, evt, hub, bus, rq, context)
                 }
@@ -894,6 +945,9 @@ impl View for CategoryEditor {
             }
             Event::Submit(ViewId::AutoPowerOffInput, ref text) => {
                 self.handle_submit_auto_power_off(text, hub, rq, context)
+            }
+            Event::Submit(ViewId::SettingsRetentionInput, ref text) => {
+                self.handle_submit_settings_retention(text, hub, rq, context)
             }
             Event::FileChooserClosed(ref path) => {
                 self.handle_file_chooser_closed(path, rq, context)
