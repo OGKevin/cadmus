@@ -17,7 +17,7 @@ use fxhash::FxHashMap;
 use percent_encoding::percent_decode_str;
 use std::collections::BTreeSet;
 use std::fs::{self, File};
-use std::io::Read;
+use std::io::{Cursor, Read, Seek};
 use std::path::{Path, PathBuf};
 use zip::ZipArchive;
 
@@ -26,7 +26,7 @@ const USER_STYLESHEET: &str = "css/epub-user.css";
 
 type UriCache = FxHashMap<String, usize>;
 
-impl ResourceFetcher for ZipArchive<File> {
+impl<R: Read + Seek> ResourceFetcher for ZipArchive<R> {
     fn fetch(&mut self, name: &str) -> Result<Vec<u8>, Error> {
         let mut file = self.by_name(name)?;
         let mut buf = Vec::new();
@@ -35,8 +35,9 @@ impl ResourceFetcher for ZipArchive<File> {
     }
 }
 
-pub struct EpubDocument {
-    archive: ZipArchive<File>,
+/// Generic EPUB document that works with any Read + Seek source.
+pub struct EpubDocument<R: Read + Seek> {
+    archive: ZipArchive<R>,
     info: XmlTree,
     parent: PathBuf,
     engine: Engine,
@@ -45,20 +46,23 @@ pub struct EpubDocument {
     ignore_document_css: bool,
 }
 
+/// Type alias for file-based EPUB documents (backward compatibility).
+pub type EpubDocumentFile = EpubDocument<File>;
+
+/// Type alias for static EPUB documents (zero-copy for embedded assets).
+pub type EpubDocumentStatic = EpubDocument<Cursor<&'static [u8]>>;
+
 #[derive(Debug)]
 struct Chunk {
     path: String,
     size: usize,
 }
 
-unsafe impl Send for EpubDocument {}
-unsafe impl Sync for EpubDocument {}
+unsafe impl<R: Read + Seek> Send for EpubDocument<R> {}
+unsafe impl<R: Read + Seek> Sync for EpubDocument<R> {}
 
-impl EpubDocument {
-    pub fn new<P: AsRef<Path>>(path: P) -> Result<EpubDocument, Error> {
-        let file = File::open(path)?;
-        let mut archive = ZipArchive::new(file)?;
-
+impl<R: Read + Seek> EpubDocument<R> {
+    fn from_archive(mut archive: ZipArchive<R>) -> Result<Self, Error> {
         let opf_path = {
             let mut zf = archive.by_name("META-INF/container.xml")?;
             let mut text = String::new();
@@ -704,7 +708,23 @@ impl EpubDocument {
     }
 }
 
-impl Document for EpubDocument {
+impl EpubDocumentFile {
+    pub fn new<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
+        let file = File::open(path)?;
+        let archive = ZipArchive::new(file)?;
+        Self::from_archive(archive)
+    }
+}
+
+impl EpubDocumentStatic {
+    pub fn new_from_static(bytes: &'static [u8]) -> Result<Self, Error> {
+        let cursor = Cursor::new(bytes);
+        let archive = ZipArchive::new(cursor)?;
+        Self::from_archive(archive)
+    }
+}
+
+impl<R: Read + Seek> Document for EpubDocument<R> {
     fn preview_pixmap(&mut self, width: f32, height: f32, samples: usize) -> Option<Pixmap> {
         let opener = PdfOpener::new()?;
         self.cover_image()

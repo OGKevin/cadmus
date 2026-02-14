@@ -1,6 +1,7 @@
 #[macro_use]
 pub mod geom;
 
+pub mod assets;
 pub mod battery;
 pub mod color;
 pub mod context;

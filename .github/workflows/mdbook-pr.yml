@@ -22,8 +22,6 @@ jobs:
           path: |
             ~/.cache/mdbook
             ~/.cache/mdbook-epub
-            ~/.cargo/registry
-            ~/.cargo/git
           key: ${{ runner.os }}-mdbook-${{ env.MDBOOK_VERSION }}-epub-${{ env.MDBOOK_EPUB_REV }}
       - name: Install mdBook tools
         run: |

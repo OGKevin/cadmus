@@ -5,7 +5,9 @@
       "customType": "regex",
       "managerFilePatterns": [
         "/^\\.github\\/workflows\\/mdbook-pr\\.yml$/",
-        "/^\\.github\\/workflows\\/mdbook-pages\\.yml$/"
+        "/^\\.github\\/workflows\\/mdbook-pages\\.yml$/",
+        "/^\\.github\\/workflows\\/cargo\\.yml$/",
+        "/^\\.github\\/workflows\\/release\\.yml$/"
       ],
       "matchStrings": ["MDBOOK_VERSION:\\s+\\\"(?<currentValue>[^\\\"]+)\\\""],
       "datasourceTemplate": "github-releases",
@@ -16,7 +18,9 @@
       "customType": "regex",
       "managerFilePatterns": [
         "/^\\.github\\/workflows\\/mdbook-pr\\.yml$/",
-        "/^\\.github\\/workflows\\/mdbook-pages\\.yml$/"
+        "/^\\.github\\/workflows\\/mdbook-pages\\.yml$/",
+        "/^\\.github\\/workflows\\/cargo\\.yml$/",
+        "/^\\.github\\/workflows\\/release\\.yml$/"
       ],
       "matchStrings": [
         "MDBOOK_EPUB_REV:\\s+\\\"(?<currentValue>[a-f0-9]{40})\\\""

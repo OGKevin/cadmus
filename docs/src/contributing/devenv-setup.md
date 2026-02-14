@@ -43,6 +43,30 @@ Once inside the devenv shell, these commands are available:
 | `cadmus-dev-otel`     | Run emulator with OpenTelemetry instrumentation  |
 | `devenv up`           | Start observability stack (Grafana, Tempo, Loki) |
 
+## Tasks
+
+The devenv environment uses [tasks](https://devenv.sh/tasks/) to manage build dependencies.
+Tasks are defined in `devenv.nix` and can be run with `devenv tasks run <task>`.
+
+### Available Tasks
+
+| Task          | Description                                               | Dependencies |
+| ------------- | --------------------------------------------------------- | ------------ |
+| `docs:build`  | Build documentation EPUB (only rebuilds if files changed) | None         |
+| `deps:native` | Build MuPDF and wrapper for native development            | None         |
+| `build:kobo`  | Build for Kobo device (Linux only)                        | `docs:build` |
+
+### How Tasks Work
+
+Tasks with dependencies automatically run their dependencies first. For example:
+
+```bash
+# This will first run docs:build (if needed), then build for Kobo
+devenv tasks run build:kobo
+```
+
+The `docs:build` task uses `execIfModified` to only rebuild when documentation files have actually changed.
+
 ## Running Tests
 
 Tests require the `TEST_ROOT_DIR` environment variable to be set:

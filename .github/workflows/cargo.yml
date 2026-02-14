@@ -1,5 +1,9 @@
 name: Cargo
 
+env:
+  MDBOOK_VERSION: "0.5.2"
+  MDBOOK_EPUB_REV: "21a1c8134134201a2d555313447c96e56e2a8996"
+
 on:
   push:
     branches: [main, master]
@@ -95,6 +99,74 @@ jobs:
           tool: cargo-diff-tools
       - name: Fetch base ref
         run: git fetch origin ${{ github.base_ref }}
+
+      - &cache-mdbook
+        name: Cache mdBook tools
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cache/mdbook
+            ~/.cache/mdbook-epub
+          key: ${{ runner.os }}-mdbook-${{ env.MDBOOK_VERSION }}-epub-${{ env.MDBOOK_EPUB_REV }}
+
+      - &install-mdbook
+        name: Install mdBook tools
+        run: |
+          set -e
+
+          mkdir -p ~/.cache/mdbook ~/.cache/mdbook-epub ~/.local/bin
+
+          if [ ! -x ~/.cache/mdbook/mdbook ]; then
+            if [ "$(uname)" = "Darwin" ]; then
+              MDBOOK_ARCH="aarch64-apple-darwin"
+            else
+              MDBOOK_ARCH="x86_64-unknown-linux-gnu"
+            fi
+            curl -sSL -o /tmp/mdbook.tar.gz \
+              https://github.com/rust-lang/mdBook/releases/download/v${MDBOOK_VERSION}/mdbook-v${MDBOOK_VERSION}-${MDBOOK_ARCH}.tar.gz
+            tar -xzf /tmp/mdbook.tar.gz -C ~/.cache/mdbook
+          fi
+
+          MDBOOK_EPUB_BIN=~/.cache/mdbook-epub/bin/mdbook-epub
+          MDBOOK_EPUB_REV_FILE=~/.cache/mdbook-epub/.rev
+          MDBOOK_EPUB_NEEDS_INSTALL=0
+
+          if [ ! -x "$MDBOOK_EPUB_BIN" ]; then
+            MDBOOK_EPUB_NEEDS_INSTALL=1
+          fi
+
+          if [ -f "$MDBOOK_EPUB_REV_FILE" ]; then
+            MDBOOK_EPUB_INSTALLED_REV=$(cat "$MDBOOK_EPUB_REV_FILE")
+            if [ "$MDBOOK_EPUB_INSTALLED_REV" != "$MDBOOK_EPUB_REV" ]; then
+              MDBOOK_EPUB_NEEDS_INSTALL=1
+            fi
+          else
+            MDBOOK_EPUB_NEEDS_INSTALL=1
+          fi
+
+          if [ "$MDBOOK_EPUB_NEEDS_INSTALL" -eq 1 ]; then
+            rm -rf ~/.cache/mdbook-epub
+            MDBOOK_EPUB_DIR=$(mktemp -d)
+            MDBOOK_EPUB_TARBALL="$MDBOOK_EPUB_DIR/mdbook-epub.tar.gz"
+            MDBOOK_EPUB_URL="https://github.com/Michael-F-Bryan/mdbook-epub/archive/${MDBOOK_EPUB_REV}.tar.gz"
+
+            curl -sSL -o "$MDBOOK_EPUB_TARBALL" "$MDBOOK_EPUB_URL"
+
+            tar -xzf "$MDBOOK_EPUB_TARBALL" -C "$MDBOOK_EPUB_DIR"
+            cargo install --path "$MDBOOK_EPUB_DIR/mdbook-epub-$MDBOOK_EPUB_REV" --locked --root ~/.cache/mdbook-epub
+            rm -rf "$MDBOOK_EPUB_DIR"
+
+            echo "$MDBOOK_EPUB_REV" > ~/.cache/mdbook-epub/.rev
+          fi
+
+          ln -sf ~/.cache/mdbook/mdbook ~/.local/bin/mdbook
+          ln -sf ~/.cache/mdbook-epub/bin/mdbook-epub ~/.local/bin/mdbook-epub
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - &build-docs
+        name: Build documentation
+        run: mdbook build docs
+
       - name: Run cargo clippy (${{ matrix.features }})
         run: cargo-clippy-diff -o GitHub origin/${{ github.base_ref }} -- -q ${{ matrix.cargo_args }}
 
@@ -144,6 +216,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         id: rust-toolchain
       - *set-build-metadata
+
+      - *cache-mdbook
+      - *install-mdbook
+      - *build-docs
 
       # --- Native dependency installation ---
       - name: Install apt packages (Linux)
@@ -326,6 +402,10 @@ jobs:
         run: |
           echo "$HOME/linaro-toolchain/bin" >> $GITHUB_PATH
 
+      - *cache-mdbook
+      - *install-mdbook
+      - *build-docs
+
       - name: Build for Kobo
         env:
           CC: arm-linux-gnueabihf-gcc
@@ -422,6 +502,9 @@ jobs:
       - *cache-nickelmenu
       - *install-deps
       - *setup-linaro
+      - *cache-mdbook
+      - *install-mdbook
+      - *build-docs
 
       - name: Build for Kobo (test build)
         env:

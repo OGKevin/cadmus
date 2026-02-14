@@ -42,6 +42,7 @@ fxhash = "0.2.1"
 rand_core = "0.10.0"
 rand_xoshiro = "0.8.0"
 percent-encoding = "2.3.2"
+rust-embed = { version = "8.11", features = ["include-exclude"] }
 chrono = { version = "0.4.42", features = [
     "serde",
     "clock",

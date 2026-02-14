@@ -1,4 +1,5 @@
 use cadmus_core::anyhow::{Context as ResultExt, Error};
+use cadmus_core::assets::open_documentation;
 use cadmus_core::battery::{Battery, FakeBattery};
 use cadmus_core::chrono::Local;
 use cadmus_core::color::Color;
@@ -686,6 +687,7 @@ fn main() -> Result<(), Error> {
                         format!("Cadmus {}", env!("GIT_VERSION")),
                     )
                     .add_button("OK", Event::Close(ViewId::AboutDialog))
+                    .add_button("Docs", Event::Select(EntryId::OpenDocumentation))
                     .build(&mut context);
                     rq.add(RenderData::new(
                         dialog.id(),
@@ -698,6 +700,22 @@ fn main() -> Result<(), Error> {
                     view.children_mut().retain(|child| !child.is::<Menu>());
                     let html = sys_info_as_html();
                     let r = Reader::from_html(context.fb.rect(), &html, None, &tx, &mut context);
+                    let mut next_view = Box::new(r) as Box<dyn View>;
+                    transfer_notifications(
+                        view.as_mut(),
+                        next_view.as_mut(),
+                        &mut rq,
+                        &mut context,
+                    );
+                    history.push(view as Box<dyn View>);
+                    view = next_view;
+                }
+                Event::Select(EntryId::OpenDocumentation) => {
+                    view.children_mut().retain(|child| !child.is::<Menu>());
+
+                    let r = open_documentation(context.fb.rect(), &tx, &mut context)
+                        .expect("Failed to open documentation");
+
                     let mut next_view = Box::new(r) as Box<dyn View>;
                     transfer_notifications(
                         view.as_mut(),
