@@ -174,7 +174,7 @@ dependencies = [
 
 [[package]]
 name = "cadmus"
-version = "0.9.46"
+version = "0.9.47"
 dependencies = [
  "cadmus-core",
  "tracing",
@@ -182,7 +182,7 @@ dependencies = [
 
 [[package]]
 name = "cadmus-core"
-version = "0.9.46"
+version = "0.9.47"
 dependencies = [
  "anyhow",
  "bitflags 2.11.0",
@@ -443,7 +443,7 @@ checksum = "48c757948c5ede0e46177b7add2e67155f70e33c07fea8284df6576da70b3719"
 
 [[package]]
 name = "emulator"
-version = "0.9.46"
+version = "0.9.47"
 dependencies = [
  "cadmus-core",
  "sdl2",
@@ -489,7 +489,7 @@ dependencies = [
 
 [[package]]
 name = "fetcher"
-version = "0.9.46"
+version = "0.9.47"
 dependencies = [
  "cadmus-core",
  "reqwest 0.13.2",
@@ -970,7 +970,7 @@ dependencies = [
 
 [[package]]
 name = "importer"
-version = "0.9.46"
+version = "0.9.47"
 dependencies = [
  "cadmus-core",
  "getopts",
