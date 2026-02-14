@@ -22,6 +22,7 @@ pub enum Kind {
     IntermissionSuspend,
     IntermissionPowerOff,
     IntermissionShare,
+    SettingsRetention,
 }
 
 impl Kind {
@@ -53,6 +54,7 @@ impl Kind {
             Kind::IntermissionSuspend => "Suspend Screen".to_string(),
             Kind::IntermissionPowerOff => "Power Off Screen".to_string(),
             Kind::IntermissionShare => "Share Screen".to_string(),
+            Kind::SettingsRetention => "Settings Retention".to_string(),
         }
     }
 
@@ -71,6 +73,7 @@ impl Kind {
             Kind::IntermissionSuspend => ValueKind::IntermissionSuspend,
             Kind::IntermissionPowerOff => ValueKind::IntermissionPowerOff,
             Kind::IntermissionShare => ValueKind::IntermissionShare,
+            Kind::SettingsRetention => ValueKind::SettingsRetention,
         }
     }
 }
