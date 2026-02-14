@@ -68,6 +68,16 @@
     {
       "customType": "regex",
       "managerFilePatterns": ["/^devenv\\.nix$/"],
+      "matchStrings": [
+        "pname = \\\"cargo-diff-tools\\\";\\s+version = \\\"(?<currentValue>[^\\\"]+)\\\""
+      ],
+      "datasourceTemplate": "crate",
+      "depNameTemplate": "cargo-diff-tools",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/^devenv\\.nix$/"],
       "matchStrings": ["rev = \\\"(?<currentValue>[a-f0-9]{40})\\\""],
       "datasourceTemplate": "git-refs",
       "depNameTemplate": "Michael-F-Bryan/mdbook-epub",
