@@ -50,13 +50,7 @@ fn main() {
 
 fn get_version_info() -> Result<(String, Option<String>), VarError> {
     let git_version = Command::new("git")
-        .args([
-            "describe",
-            "--tags",
-            "--always",
-            "--dirty",
-            "--first-parent",
-        ])
+        .args(["describe", "--tags", "--always", "--dirty"])
         .output()
         .ok()
         .and_then(|output| {
