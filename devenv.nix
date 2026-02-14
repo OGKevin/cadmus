@@ -9,6 +9,26 @@ let
   inherit (pkgs.stdenv) isLinux;
   inherit (pkgs.stdenv) isDarwin;
 
+  # cargo-diff-tools with Rust 1.70 for clap v2 compatibility
+  cargo-diff-tools = let
+    rustPlatform170 = pkgs.makeRustPlatform {
+      rustc = pkgs.rust-bin.stable."1.70.0".default;
+      cargo = pkgs.rust-bin.stable."1.70.0".default;
+    };
+  in
+  rustPlatform170.buildRustPackage rec {
+    pname = "cargo-diff-tools";
+    version = "0.1.2";
+
+    src = pkgs.fetchCrate {
+      inherit pname version;
+      sha256 = "1a6878v73zx9kx31jcyzf9gks8dfb1074xk4qhy3xr2gfx2pkmv4";
+    };
+
+    cargoHash = "sha256-sy1b/bIIsG5eyR0medE5Ztv39jI2HtWeiVc207ViYCA=";
+    doCheck = false;
+  };
+
   # Linaro GCC toolchain for Kobo - same as used by Kobo Reader
   # https://github.com/kobolabs/Kobo-Reader/blob/master/toolchain/gcc-linaro-4.9.4-2017.01-x86_64_arm-linux-gnueabihf.tar.xz
   # NOTE: This toolchain is x86_64 Linux-only (ELF binaries with autoPatchelfHook)
@@ -109,6 +129,7 @@ in
             system = prev.stdenv.system;
           });
         })
+    inputs.rust-overlay.overlays.default
   ];
 
   packages = [
@@ -123,6 +144,8 @@ in
     pkgs.mdbook
     mdbook-epub-custom
     pkgs.zola
+
+    cargo-diff-tools
 
     # C/C++ build tools for compiling thirdparty libraries
     pkgs.gnumake
