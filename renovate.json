@@ -4,8 +4,7 @@
     {
       "customType": "regex",
       "managerFilePatterns": [
-        "/^\\.github\\/workflows\\/mdbook-pr\\.yml$/",
-        "/^\\.github\\/workflows\\/mdbook-pages\\.yml$/",
+        "/^\\.github\\/workflows\\/cadmus-docs\\.yml$/",
         "/^\\.github\\/workflows\\/cargo\\.yml$/",
         "/^\\.github\\/workflows\\/release\\.yml$/"
       ],
@@ -17,14 +16,50 @@
     {
       "customType": "regex",
       "managerFilePatterns": [
-        "/^\\.github\\/workflows\\/mdbook-pr\\.yml$/",
-        "/^\\.github\\/workflows\\/mdbook-pages\\.yml$/",
+        "/^\\.github\\/workflows\\/cadmus-docs\\.yml$/",
         "/^\\.github\\/workflows\\/cargo\\.yml$/",
         "/^\\.github\\/workflows\\/release\\.yml$/"
       ],
       "matchStrings": [
         "MDBOOK_EPUB_REV:\\s+\\\"(?<currentValue>[a-f0-9]{40})\\\""
       ],
+      "datasourceTemplate": "git-refs",
+      "depNameTemplate": "Michael-F-Bryan/mdbook-epub",
+      "packageNameTemplate": "https://github.com/Michael-F-Bryan/mdbook-epub",
+      "versioningTemplate": "git"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/^\\.github\\/workflows\\/cadmus-docs\\.yml$/"],
+      "matchStrings": ["ZOLA_VERSION:\\s+\\\"(?<currentValue>[^\\\"]+)\\\""],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "getzola/zola",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/^build-docs\\.sh$/"],
+      "matchStrings": [
+        "ZOLA_VERSION=\"(?<currentValue>[^\"]+)\"",
+        "MDBOOK_VERSION=\"(?<currentValue>[^\"]+)\"",
+        "MDBOOK_EPUB_REV=\"(?<currentValue>[a-f0-9]{40})\""
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "getzola/zola",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/^build-docs\\.sh$/"],
+      "matchStrings": ["MDBOOK_VERSION=\"(?<currentValue>[^\"]+)\""],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "rust-lang/mdBook",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/^build-docs\\.sh$/"],
+      "matchStrings": ["MDBOOK_EPUB_REV=\"(?<currentValue>[a-f0-9]{40})\""],
       "datasourceTemplate": "git-refs",
       "depNameTemplate": "Michael-F-Bryan/mdbook-epub",
       "packageNameTemplate": "https://github.com/Michael-F-Bryan/mdbook-epub",

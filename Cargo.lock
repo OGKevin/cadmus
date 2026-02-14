@@ -178,6 +178,7 @@ version = "0.9.46"
 dependencies = [
  "cadmus-core",
  "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -448,6 +449,7 @@ dependencies = [
  "cadmus-core",
  "sdl2",
  "tracing",
+ "uuid",
 ]
 
 [[package]]

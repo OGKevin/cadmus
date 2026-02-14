@@ -1,6 +1,7 @@
 {
   pkgs,
   config,
+  inputs,
   ...
 }:
 
@@ -103,6 +104,11 @@ in
         });
       }
     )
+    (final: prev: {
+          unstable = (import inputs.nixpkgs-unstable {
+            system = prev.stdenv.system;
+          });
+        })
   ];
 
   packages = [
@@ -116,6 +122,7 @@ in
 
     pkgs.mdbook
     mdbook-epub-custom
+    pkgs.zola
 
     # C/C++ build tools for compiling thirdparty libraries
     pkgs.gnumake
@@ -149,6 +156,8 @@ in
     pkgs.grafana
     pkgs.tempo
     pkgs.grafana-loki
+
+    pkgs.unstable.wrangler
   ]
   # Linux-only packages
   ++ pkgs.lib.optionals isLinux [
@@ -448,6 +457,17 @@ in
       ];
     };
 
+    # Build complete documentation portal (mdBook + Cargo docs + Zola)
+    "docs:zola-build" = {
+      exec = "bash scripts/build-docs.sh";
+      execIfModified = [
+        "docs/**/*.md"
+        "docs/book.toml"
+        "docs-portal/**/*"
+        "crates/**/*.rs"
+      ];
+    };
+
     # Build mupdf and wrapper for native development
     "deps:native" = {
       exec = ''
@@ -558,6 +578,27 @@ in
 
   # Scripts are simple aliases that echo info and run tasks
   scripts = {
+    # Build complete documentation portal (mdBook + Cargo docs + Zola)
+    cadmus-docs-build.exec = ''
+      echo "Building Cadmus documentation portal..."
+      echo ""
+      devenv tasks run docs:zola-build
+      echo ""
+      echo "Documentation built successfully!"
+      echo "Output: docs-portal/public/"
+      echo ""
+      echo "To view the documentation:"
+      echo "  cadmus-docs-serve"
+    '';
+
+    # Serve documentation locally
+    cadmus-docs-serve.exec = ''
+      echo "Starting documentation server..."
+      echo ""
+      cd docs-portal
+      zola serve --base-url http://localhost
+    '';
+
     # Build mupdf for native development (runs deps:native task)
     cadmus-setup-native.exec = ''
       echo "Setting up native development environment..."
@@ -620,9 +661,11 @@ in
     echo "Cadmus development environment"
     echo ""
     echo "Available commands:"
-    echo "  cadmus-setup-native  - Build mupdf for native development (run once)"
-    echo "  cargo test           - Run tests (after setup)"
-    echo "  ./run-emulator.sh    - Run the emulator (after setup)"
+    echo "  cadmus-setup-native   - Build mupdf for native development (run once)"
+    echo "  cadmus-docs-build     - Build complete documentation portal"
+    echo "  cadmus-docs-serve     - Serve documentation locally (http://localhost:1024)"
+    echo "  cargo test            - Run tests (after setup)"
+    echo "  ./run-emulator.sh     - Run the emulator (after setup)"
     echo ""
   ''
   # Linux-specific shell setup

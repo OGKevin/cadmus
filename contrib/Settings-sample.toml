@@ -26,6 +26,11 @@ time-format = "%H:%M"
 date-format = "%A, %B %-d, %Y"
 # Appends the tapped external URLs to this file.
 external-urls-queue = "bin/article_fetcher/urls.txt"
+# The number of old versioned settings files to keep.
+# Cadmus stores each version's settings in a separate file (e.g., Settings-v0.1.0.toml)
+# for backward and forward compatibility across version upgrades.
+# Files older than this count are automatically removed. Set to 0 to keep all files.
+settings-retention = 3
 
 [logging]
 # Enable or disable structured JSON logging.

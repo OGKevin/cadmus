@@ -1,0 +1,20 @@
+{% extends "base.html" %} {% block content %}
+<section class="hero">
+  <div class="hero-container">
+    <h1>{{ section.title }}</h1>
+    <p class="hero-subtitle">{{ section.description }}</p>
+    <div class="hero-buttons">
+      {% for item in config.extra.nav_items %} {% if item.name != "Home" %}
+      <a
+        href="{{ config.base_url | trim_end_matches(pat='/') }}{{ item.url }}"
+        class="btn btn-primary"
+        >{{ item.name }}</a
+      >
+      {% endif %} {% endfor %}
+      <a href="{{ config.extra.github_url }}" class="btn btn-secondary"
+        >View on GitHub</a
+      >
+    </div>
+  </div>
+</section>
+{% endblock %}
