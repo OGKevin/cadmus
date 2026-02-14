@@ -40,3 +40,4 @@ devenv.local.yaml
 logs
 .workspaces/
 **/.fat32-epoch
+/node_modules

@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="{% if section %}{% if section.description %}{{ section.description }}{% else %}{{ config.description }}{% endif %}{% elif page %}{% if page.description %}{{ page.description }}{% else %}{{ config.description }}{% endif %}{% else %}{{ config.description }}{% endif %}"
+    />
+    <title>
+      {% if section %}{{ section.title }} - {% elif page %}{{ page.title }} - {%
+      endif %}{{ config.title }}
+    </title>
+    <link rel="stylesheet" href="{{ get_url(path='style.css') }}" />
+    {% block extra_head %}{% endblock %}
+  </head>
+  <body>
+    <main class="main-content">{% block content %}{% endblock %}</main>
+
+    <footer class="footer">
+      <div class="footer-container">
+        <p>
+          &copy; 2024 Cadmus. Documentation powered by
+          <a href="https://www.getzola.org/">Zola</a> and
+          <a href="https://rust-lang.github.io/mdBook/">mdBook</a>.
+        </p>
+        <p><a href="{{ config.extra.github_url }}">View on GitHub</a></p>
+      </div>
+    </footer>
+  </body>
+</html>

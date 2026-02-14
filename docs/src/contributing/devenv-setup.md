@@ -42,6 +42,8 @@ Once inside the devenv shell, these commands are available:
 | `cadmus-build-kobo`   | Build for Kobo device (Linux only)               |
 | `cadmus-dev-otel`     | Run emulator with OpenTelemetry instrumentation  |
 | `devenv up`           | Start observability stack (Grafana, Tempo, Loki) |
+| `cadmus-docs-build`   | Build documentation portal (mdBook + Cargo docs) |
+| `cadmus-docs-serve`   | Serve documentation portal locally on port 1111  |
 
 ## Tasks
 
@@ -50,11 +52,12 @@ Tasks are defined in `devenv.nix` and can be run with `devenv tasks run <task>`.
 
 ### Available Tasks
 
-| Task          | Description                                               | Dependencies |
-| ------------- | --------------------------------------------------------- | ------------ |
-| `docs:build`  | Build documentation EPUB (only rebuilds if files changed) | None         |
-| `deps:native` | Build MuPDF and wrapper for native development            | None         |
-| `build:kobo`  | Build for Kobo device (Linux only)                        | `docs:build` |
+| Task              | Description                                               | Dependencies |
+| ----------------- | --------------------------------------------------------- | ------------ |
+| `docs:build`      | Build documentation EPUB (only rebuilds if files changed) | None         |
+| `docs:zola-build` | Build documentation portal with mdBook and Cargo docs     | None         |
+| `deps:native`     | Build MuPDF and wrapper for native development            | None         |
+| `build:kobo`      | Build for Kobo device (Linux only)                        | `docs:build` |
 
 ### How Tasks Work
 
@@ -66,6 +69,54 @@ devenv tasks run build:kobo
 ```
 
 The `docs:build` task uses `execIfModified` to only rebuild when documentation files have actually changed.
+
+## Documentation Portal
+
+Cadmus provides a unified documentation portal that combines user guides, API reference, and
+contribution guides in one place.
+
+### Building and Serving Locally
+
+To build the documentation portal:
+
+```bash
+cadmus-docs-build
+```
+
+This runs the full build pipeline:
+
+1. Builds the mdBook user guide (`docs/book/html/`)
+2. Generates Rust API documentation (`target/doc/`)
+3. Builds the Zola landing page and integrates all documentation
+
+To serve the portal locally with live reload:
+
+```bash
+cadmus-docs-serve
+```
+
+The portal will be available at <http://localhost:1111> with automatic rebuilds when you change
+documentation files or Rust code.
+
+### Documentation Structure
+
+The portal provides three integrated sections:
+
+- **Landing Page** (`/`) - Overview and feature highlights
+- **User Guide** (`/guide/`) - User-facing documentation from mdBook
+- **API Reference** (`/api/`) - Auto-generated Rust API documentation
+
+All three sections are deployed as a single artifact to GitHub Pages at
+<https://ogkevin.github.io/cadmus/>.
+
+### Continuous Integration
+
+Documentation is automatically built and validated on every pull request and deployed on push
+to `main` or `master`. The CI pipeline checks:
+
+- mdBook documentation compiles
+- Rust code documentation is valid
+- Zola landing page builds successfully
 
 ## Running Tests
 

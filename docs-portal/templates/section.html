@@ -1,0 +1,28 @@
+{% extends "base.html" %} {% block content %}
+<article class="page-content">
+  <header class="page-header">
+    <h1>{{ section.title }}</h1>
+    {% if section.description %}
+    <p class="page-description">{{ section.description }}</p>
+    {% endif %}
+  </header>
+
+  <div class="page-body">{{ section.content | safe }}</div>
+
+  {% if section.pages %}
+  <section class="subsections">
+    <h2>Sections</h2>
+    <ul class="page-list">
+      {% for page in section.pages %}
+      <li>
+        <a href="{{ page.permalink }}">{{ page.title }}</a>
+        {% if page.description %}
+        <p>{{ page.description }}</p>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+</article>
+{% endblock %}

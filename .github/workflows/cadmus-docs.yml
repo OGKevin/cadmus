@@ -1,0 +1,231 @@
+name: Cadmus Documentation
+
+env:
+  ZOLA_VERSION: "0.22.1"
+  MDBOOK_VERSION: "0.5.2"
+  MDBOOK_EPUB_REV: "21a1c8134134201a2d555313447c96e56e2a8996"
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - docs/**
+      - docs-portal/**
+      - crates/**/*.rs
+      - .github/workflows/cadmus-docs.yml
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - docs/**
+      - docs-portal/**
+      - crates/**/*.rs
+      - .github/workflows/cadmus-docs.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "cadmus-docs-${{ github.event_name }}-${{ github.event.number || github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Set build metadata
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "PR_NUMBER=${{ github.event.number }}" >> "$GITHUB_ENV"
+            echo "PR_HEAD_SHA=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_ENV"
+            echo "ZOLA_BASE_URL=https://pr-${{ github.event.number }}.cadmus-dt6.pages.dev/" >> "$GITHUB_ENV"
+          else
+            echo "ZOLA_BASE_URL=https://cadmus-dt6.pages.dev/" >> "$GITHUB_ENV"
+          fi
+
+      - name: Cache Zola
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/zola
+          key: ${{ runner.os }}-zola-${{ env.ZOLA_VERSION }}
+
+      - name: Install Zola
+        run: |
+          set -e
+
+          mkdir -p ~/.cache/zola ~/.local/bin
+
+          if [ ! -x ~/.cache/zola/zola ]; then
+            curl -sSL -o /tmp/zola.tar.gz \
+              "https://github.com/getzola/zola/releases/download/v${ZOLA_VERSION}/zola-v${ZOLA_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+            tar -xzf /tmp/zola.tar.gz -C ~/.cache/zola
+          fi
+
+          ln -sf ~/.cache/zola/zola ~/.local/bin/zola
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          zola --version
+
+      - name: Cache mdBook tools
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cache/mdbook
+            ~/.cache/mdbook-epub
+          key: ${{ runner.os }}-mdbook-${{ env.MDBOOK_VERSION }}-epub-${{ env.MDBOOK_EPUB_REV }}
+
+      - name: Install mdBook tools
+        run: |
+          set -e
+
+          mkdir -p ~/.cache/mdbook ~/.cache/mdbook-epub ~/.local/bin
+
+          if [ ! -x ~/.cache/mdbook/mdbook ]; then
+            curl -sSL -o /tmp/mdbook.tar.gz \
+              "https://github.com/rust-lang/mdBook/releases/download/v${MDBOOK_VERSION}/mdbook-v${MDBOOK_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+            tar -xzf /tmp/mdbook.tar.gz -C ~/.cache/mdbook
+          fi
+
+          MDBOOK_EPUB_BIN=~/.cache/mdbook-epub/bin/mdbook-epub
+          MDBOOK_EPUB_REV_FILE=~/.cache/mdbook-epub/.rev
+          MDBOOK_EPUB_NEEDS_INSTALL=0
+
+          if [ ! -x "$MDBOOK_EPUB_BIN" ]; then
+            MDBOOK_EPUB_NEEDS_INSTALL=1
+          fi
+
+          if [ -f "$MDBOOK_EPUB_REV_FILE" ]; then
+            MDBOOK_EPUB_INSTALLED_REV=$(cat "$MDBOOK_EPUB_REV_FILE")
+            if [ "$MDBOOK_EPUB_INSTALLED_REV" != "$MDBOOK_EPUB_REV" ]; then
+              MDBOOK_EPUB_NEEDS_INSTALL=1
+            fi
+          else
+            MDBOOK_EPUB_NEEDS_INSTALL=1
+          fi
+
+          if [ "$MDBOOK_EPUB_NEEDS_INSTALL" -eq 1 ]; then
+            rm -rf ~/.cache/mdbook-epub
+            MDBOOK_EPUB_DIR=$(mktemp -d)
+            MDBOOK_EPUB_TARBALL="$MDBOOK_EPUB_DIR/mdbook-epub.tar.gz"
+            MDBOOK_EPUB_URL="https://github.com/Michael-F-Bryan/mdbook-epub/archive/${MDBOOK_EPUB_REV}.tar.gz"
+
+            curl -sSL -o "$MDBOOK_EPUB_TARBALL" "$MDBOOK_EPUB_URL"
+
+            tar -xzf "$MDBOOK_EPUB_TARBALL" -C "$MDBOOK_EPUB_DIR"
+            cargo install --path "$MDBOOK_EPUB_DIR/mdbook-epub-$MDBOOK_EPUB_REV" --locked --root ~/.cache/mdbook-epub
+            rm -rf "$MDBOOK_EPUB_DIR"
+
+            echo "$MDBOOK_EPUB_REV" > ~/.cache/mdbook-epub/.rev
+          fi
+
+          ln -sf ~/.cache/mdbook/mdbook ~/.local/bin/mdbook
+          ln -sf ~/.cache/mdbook-epub/bin/mdbook-epub ~/.local/bin/mdbook-epub
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Build mdBook
+        working-directory: docs
+        run: mdbook build
+
+      - name: Cache cargo doc
+        uses: actions/cache@v5
+        with:
+          path: target/doc
+          key: ${{ runner.os }}-cargo-doc-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-doc-
+
+      - name: Build Rust documentation
+        run: cargo doc --no-deps --document-private-items
+
+      - name: Create documentation symlinks
+        run: |
+          ln -sf "$(cargo metadata --format-version=1 --no-deps | jq -r '.target_directory')/doc" "docs-portal/static/api"
+          ln -sf "$(cargo metadata --format-version=1 --no-deps | jq -r '.workspace_root')/docs/book/html" "docs-portal/static/guide"
+
+      - name: Build Zola documentation portal
+        working-directory: docs-portal
+        run: zola build --base-url "$ZOLA_BASE_URL"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: docs-build
+          path: docs-portal/public
+          retention-days: 1
+
+  deploy-cloudflare-production:
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    environment:
+      name: cloudflare-pages-production
+      url: ${{ steps.deploy.outputs.deployment-url }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: docs-build
+          path: docs-portal/public
+
+      - name: Deploy to Cloudflare Pages (Production)
+        uses: cloudflare/wrangler-action@v3
+        id: deploy
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy --branch=main --commit-hash=${{ github.sha }} --commit-dirty=false docs-portal/public
+
+  deploy-cloudflare-preview:
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'pull_request'
+    environment:
+      name: cloudflare-pages-preview
+      url: ${{ steps.deploy.outputs.pages-deployment-alias-url }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: docs-build
+          path: docs-portal/public
+
+      - name: Deploy to Cloudflare Pages (Preview)
+        id: deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy --branch="pr-${{ github.event.number }}" --commit-hash="${{ github.sha }}" --commit-dirty=false --commit-message="${{ github.event.pull_request.title }}" docs-portal/public
+
+  deploy-github-pages:
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: docs-build
+          path: docs-portal/public
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: docs-portal/public
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

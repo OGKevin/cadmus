@@ -1,6 +1,8 @@
 inputs:
   nixpkgs:
     url: github:nixos/nixpkgs/nixpkgs-unstable
+  nixpkgs-unstable:
+    url: github:nixos/nixpkgs/nixpkgs-unstable
   rust-overlay:
     url: github:oxalica/rust-overlay
     inputs:
