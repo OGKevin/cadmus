@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                INSERT OR IGNORE INTO books (\n                    fingerprint, title, subtitle, year, language, publisher,\n                    series, edition, volume, number, identifier,\n                    file_path, file_kind, file_size, added_at\n                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\n                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 15
+    },
+    "nullable": []
+  },
+  "hash": "1c1c9d711c8a7d4ac57be90d63f30ca7ee9e0e95d4f5717cfe22c433667e572b"
+}

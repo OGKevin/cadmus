@@ -145,6 +145,7 @@ in
     cargo-diff-tools
     pkgs.cargo-nextest
     pkgs.reviewdog
+    pkgs.cargo-expand
 
     # C/C++ build tools for compiling thirdparty libraries
     pkgs.gnumake
@@ -178,6 +179,11 @@ in
     pkgs.grafana
     pkgs.tempo
     pkgs.grafana-loki
+
+    # SQLx CLI for database migrations and compile-time query verification
+    pkgs.sqlx-cli
+    pkgs.sqlite
+    pkgs.sqlitebrowser
 
     pkgs.wrangler
   ]
@@ -226,9 +232,10 @@ in
     RUST_BACKTRACE = "1";
     OTEL_EXPORTER_OTLP_ENDPOINT = "http://localhost:4318";
     NEXTEST_NO_TESTS = "pass";
-  }
-  # Linux-only environment variables for cross-compilation
-  // pkgs.lib.optionalAttrs isLinux {
+
+    # SQLx compile-time verification database
+    DATABASE_URL = "sqlite:crates/core/.sqlx-dev.db";
+  } // pkgs.lib.optionalAttrs isLinux {
     # pkg-config configuration for cross-compilation
     PKG_CONFIG_ALLOW_CROSS = "1";
 

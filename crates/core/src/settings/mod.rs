@@ -11,7 +11,7 @@ use fxhash::FxHashSet;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::env;
-use std::fmt::{self, Debug, Display};
+use std::fmt::{self, Debug};
 use std::ops::{Index, IndexMut};
 use std::path::PathBuf;
 
@@ -195,28 +195,11 @@ pub struct Settings {
     pub settings_retention: usize,
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum LibraryMode {
-    Database,
-    Filesystem,
-}
-
-impl Display for LibraryMode {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            LibraryMode::Database => write!(f, "Database"),
-            LibraryMode::Filesystem => write!(f, "Filesystem"),
-        }
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, rename_all = "kebab-case")]
 pub struct LibrarySettings {
     pub name: String,
     pub path: PathBuf,
-    pub mode: LibraryMode,
     pub sort_method: SortMethod,
     pub first_column: FirstColumn,
     pub second_column: SecondColumn,
@@ -232,7 +215,6 @@ impl Default for LibrarySettings {
             path: env::current_dir()
                 .ok()
                 .unwrap_or_else(|| PathBuf::from("/")),
-            mode: LibraryMode::Database,
             sort_method: SortMethod::Opened,
             first_column: FirstColumn::TitleAndAuthor,
             second_column: SecondColumn::Progress,

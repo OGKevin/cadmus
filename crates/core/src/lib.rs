@@ -5,6 +5,7 @@ pub mod assets;
 pub mod battery;
 pub mod color;
 pub mod context;
+pub mod db;
 pub mod device;
 mod dictionary;
 pub mod document;
@@ -29,6 +30,7 @@ pub mod view;
 
 pub use anyhow;
 pub use chrono;
+pub use ctor;
 pub use fxhash;
 pub use globset;
 pub use png;

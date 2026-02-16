@@ -1057,6 +1057,7 @@ impl<P: NavigationProvider + 'static> View for StackNavigationBar<P> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::context::test_helpers::create_test_context;
 
     #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
     struct Key(i32);
@@ -1155,46 +1156,9 @@ mod tests {
         assert!(find_closest_ancestor_by_provider(&provider, &last, &selected).is_none());
     }
 
-    fn create_test_context_for_nav_bar() -> Context {
-        use crate::battery::{Battery, FakeBattery};
-        use crate::framebuffer::Pixmap;
-        use crate::frontlight::{Frontlight, LightLevels};
-        use crate::lightsensor::LightSensor;
-        use std::env;
-        use std::path::Path;
-
-        let fb = Box::new(Pixmap::new(600, 800, 1)) as Box<dyn Framebuffer>;
-        let battery = Box::new(FakeBattery::new()) as Box<dyn Battery>;
-        let frontlight = Box::new(LightLevels::default()) as Box<dyn Frontlight>;
-        let lightsensor = Box::new(0u16) as Box<dyn LightSensor>;
-
-        let fonts = crate::font::Fonts::load_from(
-            Path::new(
-                &env::var("TEST_ROOT_DIR").expect("TEST_ROOT_DIR must be set for this test."),
-            )
-            .to_path_buf(),
-        )
-        .expect(
-            "Failed to load fonts. Tests require font files to be present. \
-             Run tests from the project root directory.",
-        );
-
-        Context::new(
-            fb,
-            None,
-            crate::library::Library::new(Path::new("/tmp"), crate::settings::LibraryMode::Database)
-                .unwrap(),
-            crate::settings::Settings::default(),
-            fonts,
-            battery,
-            frontlight,
-            lightsensor,
-        )
-    }
-
     #[test]
     fn set_selected_with_single_child_no_panic() {
-        let mut context = create_test_context_for_nav_bar();
+        let mut context = create_test_context();
 
         let provider = Provider;
         let rect = rect![0, 0, 600, 100];
@@ -1210,7 +1174,7 @@ mod tests {
 
     #[test]
     fn set_selected_from_empty_state() {
-        let mut context = create_test_context_for_nav_bar();
+        let mut context = create_test_context();
 
         let provider = Provider;
         let rect = rect![0, 0, 600, 100];
@@ -1227,7 +1191,7 @@ mod tests {
 
     #[test]
     fn set_selected_reuses_existing_bars() {
-        let mut context = create_test_context_for_nav_bar();
+        let mut context = create_test_context();
 
         let provider = Provider;
         let rect = rect![0, 0, 600, 200];
@@ -1245,7 +1209,7 @@ mod tests {
 
     #[test]
     fn set_selected_to_parent_reduces_bars() {
-        let mut context = create_test_context_for_nav_bar();
+        let mut context = create_test_context();
 
         let provider = Provider;
         let rect = rect![0, 0, 600, 200];
@@ -1263,7 +1227,7 @@ mod tests {
 
     #[test]
     fn set_selected_handles_max_levels() {
-        let mut context = create_test_context_for_nav_bar();
+        let mut context = create_test_context();
 
         let provider = Provider;
         let rect = rect![0, 0, 600, 200];
@@ -1278,7 +1242,7 @@ mod tests {
 
     #[test]
     fn resize_child_with_aggressive_north_swipe_maintains_minimum_height() {
-        let mut context = create_test_context_for_nav_bar();
+        let mut context = create_test_context();
 
         let provider = Provider;
         let rect = rect![0, 68, 600, 590];
@@ -1326,7 +1290,7 @@ mod tests {
 
     #[test]
     fn shrink_proportionally_distributes_across_multiple_bars() {
-        let mut context = create_test_context_for_nav_bar();
+        let mut context = create_test_context();
 
         let provider = Provider;
         let rect = rect![0, 0, 600, 400];
@@ -1366,7 +1330,7 @@ mod tests {
 
     #[test]
     fn shrink_removes_bars_when_exceeding_available_space() {
-        let mut context = create_test_context_for_nav_bar();
+        let mut context = create_test_context();
 
         let provider = Provider;
         let rect = rect![0, 0, 600, 300];
@@ -1391,7 +1355,7 @@ mod tests {
 
     #[test]
     fn shrink_handles_all_bars_at_minimum_height() {
-        let mut context = create_test_context_for_nav_bar();
+        let mut context = create_test_context();
 
         let provider = Provider;
         let rect = rect![0, 0, 600, 100];
@@ -1420,7 +1384,7 @@ mod tests {
 
     #[test]
     fn resize_child_expansion_respects_vertical_limit() {
-        let mut context = create_test_context_for_nav_bar();
+        let mut context = create_test_context();
 
         let provider = Provider;
         let rect = rect![0, 0, 600, 200];
@@ -1455,7 +1419,7 @@ mod tests {
 
     #[test]
     fn resize_child_expansion_shifts_subsequent_children() {
-        let mut context = create_test_context_for_nav_bar();
+        let mut context = create_test_context();
 
         let provider = Provider;
         let rect = rect![0, 0, 600, 300];
@@ -1497,7 +1461,7 @@ mod tests {
 
     #[test]
     fn shift_moves_all_children_and_container() {
-        let mut context = create_test_context_for_nav_bar();
+        let mut context = create_test_context();
 
         let provider = Provider;
         let rect = rect![0, 0, 600, 200];
@@ -1534,7 +1498,7 @@ mod tests {
     fn handle_event_north_swipe_resizes_bar() {
         use crate::gesture::GestureEvent;
 
-        let mut context = create_test_context_for_nav_bar();
+        let mut context = create_test_context();
 
         let provider = Provider;
         let rect = rect![0, 100, 600, 300];
@@ -1573,7 +1537,7 @@ mod tests {
     fn handle_event_south_swipe_resizes_bar() {
         use crate::gesture::GestureEvent;
 
-        let mut context = create_test_context_for_nav_bar();
+        let mut context = create_test_context();
 
         let provider = Provider;
         let rect = rect![0, 100, 600, 300];
@@ -1612,7 +1576,7 @@ mod tests {
     fn handle_event_ignores_swipe_outside_rect() {
         use crate::gesture::GestureEvent;
 
-        let mut context = create_test_context_for_nav_bar();
+        let mut context = create_test_context();
 
         let provider = Provider;
         let rect = rect![0, 100, 600, 300];
@@ -1646,7 +1610,7 @@ mod tests {
     fn handle_event_ignores_horizontal_swipe() {
         use crate::gesture::GestureEvent;
 
-        let mut context = create_test_context_for_nav_bar();
+        let mut context = create_test_context();
 
         let provider = Provider;
         let rect = rect![0, 100, 600, 300];
@@ -1675,7 +1639,7 @@ mod tests {
 
     #[test]
     fn set_selected_handles_vertical_limit_constraint() {
-        let mut context = create_test_context_for_nav_bar();
+        let mut context = create_test_context();
 
         let provider = Provider;
         let rect = rect![0, 0, 600, 50];

@@ -1,0 +1,56 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT id, parent_id, position, title, location_kind, location_exact, location_uri\n            FROM toc_entries\n            WHERE book_fingerprint = ?\n            ORDER BY id ASC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "parent_id",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "position",
+        "ordinal": 2,
+        "type_info": "Integer"
+      },
+      {
+        "name": "title",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "location_kind",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "location_exact",
+        "ordinal": 5,
+        "type_info": "Integer"
+      },
+      {
+        "name": "location_uri",
+        "ordinal": 6,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "4785baa7447d5424f443d23dba662b70ba9944559c147ce4e697b7d80dd0d10b"
+}

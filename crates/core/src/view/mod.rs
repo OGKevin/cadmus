@@ -50,6 +50,7 @@ pub mod search_bar;
 pub mod settings_editor;
 pub mod sketch;
 pub mod slider;
+pub mod startup;
 pub mod toggle;
 pub mod toggleable_keyboard;
 pub mod top_bar;
@@ -380,7 +381,7 @@ pub enum Event {
     OpenHtml(String, Option<String>),
     LoadPixmap(usize),
     Update(UpdateMode),
-    RefreshBookPreview(PathBuf, Option<PathBuf>),
+    RefreshBookPreview(PathBuf),
     Invalid(PathBuf),
     Notification(NotificationEvent),
     Page(CycleDir),
@@ -721,7 +722,6 @@ pub enum EntryId {
     // TODO(ogkevin): Make one entryId for settings editor
     EditLibraryName,
     EditLibraryPath,
-    SetLibraryMode(settings::LibraryMode),
     DeleteLibrary(usize),
     SetIntermission(settings::IntermKind, settings::IntermissionDisplay),
     EditIntermissionImage(settings::IntermKind),

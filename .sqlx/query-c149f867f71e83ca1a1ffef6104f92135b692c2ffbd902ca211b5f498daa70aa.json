@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM books WHERE fingerprint = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "c149f867f71e83ca1a1ffef6104f92135b692c2ffbd902ca211b5f498daa70aa"
+}

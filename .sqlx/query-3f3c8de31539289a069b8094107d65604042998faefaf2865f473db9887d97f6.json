@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                INSERT INTO thumbnails (fingerprint, thumbnail_data)\n                VALUES (?, ?)\n                ON CONFLICT(fingerprint) DO UPDATE SET\n                    thumbnail_data = excluded.thumbnail_data\n                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "3f3c8de31539289a069b8094107d65604042998faefaf2865f473db9887d97f6"
+}

@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT thumbnail_data FROM thumbnails WHERE fingerprint = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "thumbnail_data",
+        "ordinal": 0,
+        "type_info": "Blob"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "81919340fd0407a00a4b7e27efe0632bc8225bebc3505ddd373575a7c67f08e8"
+}

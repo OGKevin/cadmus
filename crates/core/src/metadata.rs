@@ -870,6 +870,7 @@ lazy_static! {
 }
 
 #[inline]
+#[cfg_attr(feature = "otel", tracing::instrument(skip(info)))]
 pub fn extract_metadata_from_document(prefix: &Path, info: &mut Info) {
     let path = prefix.join(&info.file.path);
 

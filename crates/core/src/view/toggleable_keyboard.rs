@@ -255,14 +255,7 @@ impl View for ToggleableKeyboard {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::battery::{Battery, FakeBattery};
-    use crate::framebuffer::Pixmap;
-    use crate::frontlight::{Frontlight, LightLevels};
-    use crate::library::Library;
-    use crate::lightsensor::LightSensor;
-    use crate::settings::{LibraryMode, Settings};
-    use std::env;
-    use std::path::Path;
+    use crate::context::test_helpers::create_test_context;
     use std::sync::mpsc::channel;
 
     fn create_test_keyboard() -> ToggleableKeyboard {
@@ -270,43 +263,11 @@ mod tests {
         ToggleableKeyboard::new(parent_rect, false)
     }
 
-    fn create_test_context() -> Context {
-        let fb = Box::new(Pixmap::new(600, 800, 1)) as Box<dyn Framebuffer>;
-        let battery = Box::new(FakeBattery::new()) as Box<dyn Battery>;
-        let frontlight = Box::new(LightLevels::default()) as Box<dyn Frontlight>;
-        let lightsensor = Box::new(0u16) as Box<dyn LightSensor>;
-        let settings = Settings::default();
-        let library = Library::new(Path::new("."), LibraryMode::Database).unwrap_or_else(|_| {
-            Library::new(Path::new("/tmp"), LibraryMode::Database).expect(
-                "Failed to create test library. \
-                 Ensure /tmp directory exists and is writable.",
-            )
-        });
-        let fonts = Fonts::load_from(
-            Path::new(
-                &env::var("TEST_ROOT_DIR").expect("TEST_ROOT_DIR must be set for this test."),
-            )
-            .to_path_buf(),
-        )
-        .expect(
-            "Failed to load fonts. Tests require font files to be present. \
-             Run tests from the project root directory.",
-        );
-
-        let mut ctx = Context::new(
-            fb,
-            None,
-            library,
-            settings,
-            fonts,
-            battery,
-            frontlight,
-            lightsensor,
-        );
-        ctx.load_keyboard_layouts();
-        ctx.load_dictionaries();
-
-        ctx
+    fn create_test_context_with_keyboard_data() -> Context {
+        let mut context = create_test_context();
+        context.load_keyboard_layouts();
+        context.load_dictionaries();
+        context
     }
 
     #[test]
@@ -370,7 +331,7 @@ mod tests {
         let mut keyboard = create_test_keyboard();
         let (hub, _receiver) = channel();
         let mut rq = RenderQueue::new();
-        let mut context = create_test_context();
+        let mut context = create_test_context_with_keyboard_data();
 
         assert!(!keyboard.is_visible());
         assert!(keyboard.children.is_empty());
@@ -388,7 +349,7 @@ mod tests {
         let mut keyboard = create_test_keyboard();
         let (hub, receiver) = channel();
         let mut rq = RenderQueue::new();
-        let mut context = create_test_context();
+        let mut context = create_test_context_with_keyboard_data();
 
         keyboard.toggle(&hub, &mut rq, &mut context);
         assert!(keyboard.is_visible());
@@ -411,7 +372,7 @@ mod tests {
         let mut keyboard = create_test_keyboard();
         let (hub, _receiver) = channel();
         let mut rq = RenderQueue::new();
-        let mut context = create_test_context();
+        let mut context = create_test_context_with_keyboard_data();
 
         keyboard.toggle(&hub, &mut rq, &mut context);
         keyboard.toggle(&hub, &mut rq, &mut context);
@@ -424,7 +385,7 @@ mod tests {
     fn test_toggle_adds_render_data_each_time() {
         let mut keyboard = create_test_keyboard();
         let (hub, _receiver) = channel();
-        let mut context = create_test_context();
+        let mut context = create_test_context_with_keyboard_data();
 
         let mut rq = RenderQueue::new();
         keyboard.toggle(&hub, &mut rq, &mut context);
@@ -440,7 +401,7 @@ mod tests {
         let mut keyboard = create_test_keyboard();
         let (hub, _receiver) = channel();
         let mut rq = RenderQueue::new();
-        let mut context = create_test_context();
+        let mut context = create_test_context_with_keyboard_data();
 
         assert!(!keyboard.is_visible());
         assert!(keyboard.children.is_empty());
@@ -457,7 +418,7 @@ mod tests {
         let mut keyboard = create_test_keyboard();
         let (hub, receiver) = channel();
         let mut rq = RenderQueue::new();
-        let mut context = create_test_context();
+        let mut context = create_test_context_with_keyboard_data();
 
         keyboard.set_visible(true, &hub, &mut rq, &mut context);
         assert!(keyboard.is_visible());
@@ -480,7 +441,7 @@ mod tests {
         let mut keyboard = create_test_keyboard();
         let (hub, _receiver) = channel();
         let mut rq = RenderQueue::new();
-        let mut context = create_test_context();
+        let mut context = create_test_context_with_keyboard_data();
 
         keyboard.set_visible(true, &hub, &mut rq, &mut context);
         assert!(keyboard.is_visible());
@@ -497,7 +458,7 @@ mod tests {
         let mut keyboard = create_test_keyboard();
         let (hub, _receiver) = channel();
         let mut rq = RenderQueue::new();
-        let mut context = create_test_context();
+        let mut context = create_test_context_with_keyboard_data();
 
         assert!(!keyboard.is_visible());
 

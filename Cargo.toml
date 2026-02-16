@@ -4,8 +4,8 @@ members = [
   "crates/core",
   "crates/cadmus",
   "crates/emulator",
-  "crates/importer",
   "crates/fetcher",
+  "crates/importer",
   "xtask",
 ]
 

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                    INSERT INTO reading_states (\n                        fingerprint, opened, current_page, pages_count, finished, dithered,\n                        zoom_mode, scroll_mode, page_offset_x, page_offset_y, rotation,\n                        cropping_margins_json, margin_width, screen_margin_width,\n                        font_family, font_size, text_align, line_height,\n                        contrast_exponent, contrast_gray,\n                        page_names_json, bookmarks_json, annotations_json\n                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\n                    ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 23
+    },
+    "nullable": []
+  },
+  "hash": "e6650e6d2171808b1c08b3f2f4d6fd96e3e829955b7e2c1dffe201a9d4a15fd3"
+}

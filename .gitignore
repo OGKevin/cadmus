@@ -46,3 +46,5 @@ logs
 /node_modules
 docs/mermaid.min.js
 docs/src/mermaid-images/
+crates/core/.sqlx-dev.db
+cadmus.sqlite

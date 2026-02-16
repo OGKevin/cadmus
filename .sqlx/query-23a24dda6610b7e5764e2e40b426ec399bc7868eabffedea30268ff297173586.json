@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO _cadmus_migrations (id, executed_at, status) VALUES (?, ?, ?)\n                 ON CONFLICT(id) DO UPDATE SET executed_at = excluded.executed_at, status = excluded.status",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "23a24dda6610b7e5764e2e40b426ec399bc7868eabffedea30268ff297173586"
+}

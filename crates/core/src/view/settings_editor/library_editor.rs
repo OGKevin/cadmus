@@ -163,17 +163,6 @@ impl LibraryEditor {
                 settings,
                 fonts,
             ));
-            current_y += row_height;
-        }
-
-        if current_y + row_height <= content_end_y {
-            let mode_row_rect = rect![rect.min.x, current_y, rect.max.x, current_y + row_height];
-            children.push(Self::build_mode_row(
-                mode_row_rect,
-                library_index,
-                settings,
-                fonts,
-            ));
         }
 
         children
@@ -202,21 +191,6 @@ impl LibraryEditor {
     ) -> Box<dyn View> {
         Box::new(SettingRow::new(
             RowKind::LibraryPath(library_index),
-            rect,
-            settings,
-            fonts,
-        )) as Box<dyn View>
-    }
-
-    #[inline]
-    fn build_mode_row(
-        rect: Rectangle,
-        library_index: usize,
-        settings: &Settings,
-        fonts: &mut crate::font::Fonts,
-    ) -> Box<dyn View> {
-        Box::new(SettingRow::new(
-            RowKind::LibraryMode(library_index),
             rect,
             settings,
             fonts,
@@ -387,17 +361,6 @@ impl LibraryEditor {
     }
 
     #[inline]
-    fn handle_set_mode_event(
-        &mut self,
-        mode: crate::settings::LibraryMode,
-        rq: &mut RenderQueue,
-    ) -> bool {
-        self.library.mode = mode;
-        self.update_row_value(rq);
-        false
-    }
-
-    #[inline]
     fn handle_submit_name_event(&mut self, text: &str, rq: &mut RenderQueue) -> bool {
         self.library.name = text.to_string();
         self.update_row_value(rq);
@@ -503,7 +466,6 @@ impl View for LibraryEditor {
             Event::Select(EntryId::EditLibraryPath) => {
                 self.handle_edit_path_event(hub, rq, context)
             }
-            Event::Select(EntryId::SetLibraryMode(mode)) => self.handle_set_mode_event(mode, rq),
             Event::Submit(ViewId::LibraryRenameInput, ref text) => {
                 self.handle_submit_name_event(text, rq)
             }
@@ -547,62 +509,14 @@ impl View for LibraryEditor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::battery::{Battery, FakeBattery};
-    use crate::font::Fonts;
-    use crate::framebuffer::Pixmap;
-    use crate::frontlight::{Frontlight, LightLevels};
-    use crate::library::Library;
-    use crate::lightsensor::LightSensor;
-    use crate::settings::LibraryMode;
+    use crate::context::test_helpers::create_test_context;
     use std::collections::VecDeque;
-    use std::env;
-    use std::path::Path;
     use std::sync::mpsc::channel;
-
-    fn create_test_context() -> Context {
-        let fb = Box::new(Pixmap::new(600, 800, 1)) as Box<dyn Framebuffer>;
-        let battery = Box::new(FakeBattery::new()) as Box<dyn Battery>;
-        let frontlight = Box::new(LightLevels::default()) as Box<dyn Frontlight>;
-        let lightsensor = Box::new(0u16) as Box<dyn LightSensor>;
-        let settings = Settings::default();
-        let library = Library::new(Path::new("."), LibraryMode::Database).unwrap_or_else(|_| {
-            Library::new(Path::new("/tmp"), LibraryMode::Database).expect(
-                "Failed to create test library. \
-                 Ensure /tmp directory exists and is writable.",
-            )
-        });
-        let fonts = Fonts::load_from(
-            Path::new(
-                &env::var("TEST_ROOT_DIR").expect("TEST_ROOT_DIR must be set for this test."),
-            )
-            .to_path_buf(),
-        )
-        .expect(
-            "Failed to load fonts. Tests require font files to be present. \
-             Run tests from the project root directory.",
-        );
-
-        let mut ctx = Context::new(
-            fb,
-            None,
-            library,
-            settings,
-            fonts,
-            battery,
-            frontlight,
-            lightsensor,
-        );
-        ctx.load_keyboard_layouts();
-        ctx.load_dictionaries();
-
-        ctx
-    }
 
     fn create_test_library() -> LibrarySettings {
         LibrarySettings {
             name: "Test Library".to_string(),
             path: std::path::PathBuf::from("/tmp"),
-            mode: LibraryMode::Filesystem,
             ..Default::default()
         }
     }
@@ -757,35 +671,6 @@ mod tests {
 
         assert!(handled);
         assert_eq!(editor.children.len(), initial_children_count + 1);
-        assert!(!rq.is_empty());
-    }
-
-    #[test]
-    fn test_set_library_mode_updates_library() {
-        let mut context = create_test_context();
-        let rect = rect![0, 0, 600, 800];
-        let (hub, _receiver) = channel();
-        let mut rq = RenderQueue::new();
-
-        let library = create_test_library();
-
-        let mut editor = LibraryEditor::new(rect, 0, library, &hub, &mut rq, &mut context);
-
-        assert_eq!(editor.library.mode, LibraryMode::Filesystem);
-
-        let mut bus = VecDeque::new();
-        rq = RenderQueue::new();
-
-        let handled = editor.handle_event(
-            &Event::Select(EntryId::SetLibraryMode(LibraryMode::Database)),
-            &hub,
-            &mut bus,
-            &mut rq,
-            &mut context,
-        );
-
-        assert!(!handled);
-        assert_eq!(editor.library.mode, LibraryMode::Database);
         assert!(!rq.is_empty());
     }
 

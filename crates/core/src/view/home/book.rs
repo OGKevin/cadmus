@@ -2,8 +2,7 @@ use crate::color::{BLACK, READING_PROGRESS, WHITE};
 use crate::color::{TEXT_INVERTED_HARD, TEXT_NORMAL};
 use crate::context::Context;
 use crate::device::CURRENT_DEVICE;
-use crate::document::pdf::PdfOpener;
-use crate::document::{Document, HumanSize, Location};
+use crate::document::HumanSize;
 use crate::font::{font_from_style, Fonts};
 use crate::font::{MD_AUTHOR, MD_KIND, MD_SIZE, MD_TITLE, MD_YEAR};
 use crate::framebuffer::{Framebuffer, UpdateMode};
@@ -13,7 +12,6 @@ use crate::metadata::{Info, Status};
 use crate::settings::{FirstColumn, SecondColumn};
 use crate::unit::scale_by_dpi;
 use crate::view::{Bus, Event, Hub, Id, RenderData, RenderQueue, View, ID_FEEDER, THICKNESS_SMALL};
-use std::path::PathBuf;
 
 const PROGRESS_HEIGHT: f32 = 13.0;
 
@@ -25,7 +23,7 @@ pub struct Book {
     index: usize,
     first_column: FirstColumn,
     second_column: SecondColumn,
-    preview_path: Option<PathBuf>,
+    preview: Option<crate::framebuffer::Pixmap>,
     active: bool,
 }
 
@@ -36,7 +34,7 @@ impl Book {
         index: usize,
         first_column: FirstColumn,
         second_column: SecondColumn,
-        preview_path: Option<PathBuf>,
+        preview: Option<crate::framebuffer::Pixmap>,
     ) -> Book {
         Book {
             id: ID_FEEDER.next(),
@@ -46,7 +44,7 @@ impl Book {
             index,
             first_column,
             second_column,
-            preview_path,
+            preview,
             active: false,
         }
     }
@@ -76,9 +74,9 @@ impl View for Book {
                 bus.push_back(Event::ToggleBookMenu(Rectangle::from_point(pt), self.index));
                 true
             }
-            Event::RefreshBookPreview(ref path, ref preview_path) => {
+            Event::RefreshBookPreview(ref path) => {
                 if self.info.file.path == *path {
-                    self.preview_path = preview_path.clone();
+                    self.preview = _context.library.thumbnail_preview(path);
                     rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
                     true
                 } else {
@@ -143,32 +141,20 @@ impl View for Book {
         let mut start_x = self.rect.min.x + padding;
 
         // Preview
-        if let Some(preview_path) = self.preview_path.as_ref() {
+        if let Some(preview) = self.preview.as_ref() {
             let th = self.rect.height() as i32 - x_height;
             let tw = 3 * th / 4;
 
-            if preview_path.exists() {
-                if let Some((pixmap, _)) = PdfOpener::new()
-                    .and_then(|opener| opener.open(preview_path))
-                    .and_then(|mut doc| {
-                        doc.dims(0).and_then(|dims| {
-                            let scale = (tw as f32 / dims.0).min(th as f32 / dims.1);
-                            doc.pixmap(Location::Exact(0), scale, CURRENT_DEVICE.color_samples())
-                        })
-                    })
-                {
-                    let dx = (tw - pixmap.width as i32) / 2;
-                    let dy = (th - pixmap.height as i32) / 2;
-                    let pt = pt!(
-                        self.rect.min.x + padding + dx,
-                        self.rect.min.y + x_height / 2 + dy
-                    );
-                    fb.draw_pixmap(&pixmap, pt);
-                    if fb.inverted() {
-                        let rect = pixmap.rect() + pt;
-                        fb.invert_region(&rect);
-                    }
-                }
+            let dx = (tw - preview.width as i32) / 2;
+            let dy = (th - preview.height as i32) / 2;
+            let pt = pt!(
+                self.rect.min.x + padding + dx,
+                self.rect.min.y + x_height / 2 + dy
+            );
+            fb.draw_pixmap(preview, pt);
+            if fb.inverted() {
+                let rect = preview.rect() + pt;
+                fb.invert_region(&rect);
             }
 
             width -= tw + padding;

@@ -1,13 +1,16 @@
 use cadmus_core::anyhow::{format_err, Context, Error};
 use cadmus_core::chrono::NaiveDateTime;
+use cadmus_core::db::Database;
 use cadmus_core::helpers::datetime_format;
 use cadmus_core::library::Library;
 use cadmus_core::metadata::{consolidate, rename_from_info};
 use cadmus_core::metadata::{extract_metadata_from_document, extract_metadata_from_filename};
-use cadmus_core::settings::{ImportSettings, LibraryMode};
+use cadmus_core::settings::ImportSettings;
 use getopts::Options;
 use std::env;
 use std::path::Path;
+
+const DB_FILENAME: &str = "cadmus.sqlite";
 
 fn main() -> Result<(), Error> {
     let args: Vec<String> = env::args().skip(1).collect();
@@ -105,17 +108,13 @@ fn main() -> Result<(), Error> {
         .as_ref()
         .and_then(|v| NaiveDateTime::parse_from_str(v, datetime_format::FORMAT).ok());
 
-    let mode = matches
-        .opt_str("m")
-        .as_ref()
-        .and_then(|v| match v.as_ref() {
-            "database" => Some(LibraryMode::Database),
-            "filesystem" => Some(LibraryMode::Filesystem),
-            _ => None,
-        })
-        .unwrap_or(LibraryMode::Database);
-
-    let mut library = Library::new(&library_path, mode)?;
+    let database = Database::new(DB_FILENAME)?;
+    let library_name = library_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("Imported Library")
+        .to_string();
+    let mut library = Library::new(&library_path, &database, &library_name)?;
 
     if matches.opt_present("I") {
         library.import(&import_settings);
