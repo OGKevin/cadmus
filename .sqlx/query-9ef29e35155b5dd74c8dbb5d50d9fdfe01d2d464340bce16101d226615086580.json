@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM thumbnails WHERE fingerprint = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "9ef29e35155b5dd74c8dbb5d50d9fdfe01d2d464340bce16101d226615086580"
+}

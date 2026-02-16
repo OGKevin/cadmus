@@ -3,6 +3,7 @@ use cadmus_core::assets::open_documentation;
 use cadmus_core::battery::{Battery, KoboBattery};
 use cadmus_core::chrono::Local;
 use cadmus_core::context::Context;
+use cadmus_core::db::Database;
 use cadmus_core::device::{FrontlightKind, Orientation, CURRENT_DEVICE};
 use cadmus_core::document::sys_info_as_html;
 use cadmus_core::font::Fonts;
@@ -40,6 +41,7 @@ use cadmus_core::view::reader::Reader;
 use cadmus_core::view::rotation_values::RotationValues;
 use cadmus_core::view::settings_editor::SettingsEditor;
 use cadmus_core::view::sketch::Sketch;
+use cadmus_core::view::startup::StartupScreen;
 use cadmus_core::view::touch_events::TouchEvents;
 use cadmus_core::view::{handle_event, process_render_queue, wait_for_all};
 use cadmus_core::view::{
@@ -57,6 +59,7 @@ use std::time::{Duration, Instant};
 use tracing::{debug, error, info};
 
 pub const APP_NAME: &str = "Cadmus";
+const DB_FILENAME: &str = "cadmus.sqlite";
 const FB_DEVICE: &str = "/dev/fb0";
 const RTC_DEVICE: &str = "/dev/rtc0";
 const TOUCH_INPUTS: [&str; 5] = [
@@ -105,16 +108,16 @@ struct HistoryItem {
     dithered: bool,
 }
 
-fn build_context(fb: Box<dyn Framebuffer>, settings: Settings) -> Result<Context, Error> {
+fn build_context(
+    fb: Box<dyn Framebuffer>,
+    settings: Settings,
+    fonts: Fonts,
+    database: Database,
+) -> Result<Context, Error> {
     let rtc = Rtc::new(RTC_DEVICE)
         .map_err(|e| eprintln!("Can't open RTC device: {:#}.", e))
         .ok();
     let mut settings = settings;
-
-    if let Err(e) = cadmus_core::logging::init_logging(&settings.logging) {
-        eprintln!("Warning: Failed to initialize logging: {:#}", e);
-        eprintln!("Continuing without logging...");
-    }
 
     if settings.libraries.is_empty() {
         return Err(format_err!("no libraries found"));
@@ -125,9 +128,7 @@ fn build_context(fb: Box<dyn Framebuffer>, settings: Settings) -> Result<Context
     }
 
     let library_settings = &settings.libraries[settings.selected_library];
-    let library = Library::new(&library_settings.path, library_settings.mode)?;
-
-    let fonts = Fonts::load().context("can't load fonts")?;
+    let library = Library::new(&library_settings.path, &database, &library_settings.name)?;
 
     let battery = Box::new(KoboBattery::new().context("can't create battery")?) as Box<dyn Battery>;
 
@@ -158,6 +159,7 @@ fn build_context(fb: Box<dyn Framebuffer>, settings: Settings) -> Result<Context
         fb,
         rtc,
         library,
+        database,
         settings,
         fonts,
         battery,
@@ -284,7 +286,26 @@ pub fn run() -> Result<(), Error> {
 
     let manager = SettingsManager::new(env!("GIT_VERSION").to_string());
     let settings = manager.load();
-    let mut context = build_context(fb, settings).context("can't build context")?;
+
+    if let Err(e) = cadmus_core::logging::init_logging(&settings.logging) {
+        eprintln!("Warning: Failed to initialize logging: {:#}", e);
+        eprintln!("Continuing without logging...");
+    }
+
+    let mut fonts = Fonts::load().context("can't load fonts")?;
+    let database = Database::new(DB_FILENAME).context("can't open database")?;
+
+    let startup = StartupScreen::new(fb.rect());
+    startup.render(fb.as_mut(), *startup.rect(), &mut fonts);
+    fb.update(startup.rect(), UpdateMode::Full).ok();
+
+    let db = database.clone();
+    if let Err(e) = db.migrate() {
+        error!(error = %e, "migrations failed");
+    }
+
+    let mut context =
+        build_context(fb, settings, fonts, database).context("can't build context")?;
 
     context.plugged = context.battery.status().is_ok_and(|v| v[0].is_wired());
 

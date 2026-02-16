@@ -279,6 +279,26 @@ impl From<TocLocation> for Location {
     }
 }
 
+impl From<&TocEntry> for SimpleTocEntry {
+    fn from(entry: &TocEntry) -> SimpleTocEntry {
+        let location = match &entry.location {
+            Location::Exact(n) => TocLocation::Exact(*n),
+            Location::Uri(uri) => TocLocation::Uri(uri.clone()),
+            // LocalUri and positional variants have no direct TocLocation equivalent;
+            // fall back to page 0 so the entry is still stored and navigable.
+            Location::LocalUri(n, _) => TocLocation::Exact(*n),
+            _ => TocLocation::Exact(0),
+        };
+
+        if entry.children.is_empty() {
+            SimpleTocEntry::Leaf(entry.title.clone(), location)
+        } else {
+            let children = entry.children.iter().map(SimpleTocEntry::from).collect();
+            SimpleTocEntry::Container(entry.title.clone(), location, children)
+        }
+    }
+}
+
 pub fn toc_as_html(toc: &[TocEntry], chap_index: usize) -> String {
     let mut buf = "<html>\n\t<head>\n\t\t<title>Table of Contents</title>\n\t\t\
                    <link rel=\"stylesheet\" type=\"text/css\" href=\"css/toc.css\"/>\n\t\

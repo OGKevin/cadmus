@@ -65,12 +65,6 @@ const BUILT_LIBRARY_COPIES: &[(&str, &str)] = &[
 ];
 
 const CROSS_ENV: &[(&str, &str)] = &[
-    ("CC", "arm-linux-gnueabihf-gcc"),
-    ("CXX", "arm-linux-gnueabihf-g++"),
-    ("AR", "arm-linux-gnueabihf-ar"),
-    ("LD", "arm-linux-gnueabihf-ld"),
-    ("RANLIB", "arm-linux-gnueabihf-ranlib"),
-    ("STRIP", "arm-linux-gnueabihf-strip"),
     ("PKG_CONFIG_ALLOW_CROSS", "1"),
     (
         "CARGO_TARGET_ARM_UNKNOWN_LINUX_GNUEABIHF_LINKER",

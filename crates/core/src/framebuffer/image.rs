@@ -4,6 +4,7 @@ use crate::geom::{lerp, Rectangle};
 use anyhow::{format_err, Context, Error};
 use std::fs::File;
 use std::io::BufReader;
+use std::io::Cursor;
 use std::path::Path;
 
 #[derive(Debug, Clone)]
@@ -63,6 +64,47 @@ impl Pixmap {
         let mut pixmap = Pixmap::new(info.width, info.height, info.color_type.samples());
         reader.next_frame(pixmap.data_mut())?;
         Ok(pixmap)
+    }
+
+    /// Decode a PNG-encoded buffer into a pixmap.
+    pub fn from_png_bytes(bytes: &[u8]) -> Result<Pixmap, Error> {
+        let cursor = Cursor::new(bytes);
+        let decoder = png::Decoder::new(cursor);
+        let mut reader = decoder.read_info()?;
+        let info = reader.info();
+        let mut pixmap = Pixmap::new(info.width, info.height, info.color_type.samples());
+        reader.next_frame(pixmap.data_mut())?;
+        Ok(pixmap)
+    }
+
+    /// Encode the pixmap as PNG bytes using the current pixel format.
+    ///
+    /// Returns an error when the pixmap has no pixel data.
+    pub fn to_png_bytes(&self) -> Result<Vec<u8>, Error> {
+        if self.data.is_empty() {
+            return Err(format_err!("nothing to encode"));
+        }
+
+        let (width, height) = self.dims();
+        let mut buffer = Vec::new();
+        {
+            let mut encoder = png::Encoder::new(&mut buffer, width, height);
+            encoder.set_depth(png::BitDepth::Eight);
+            encoder.set_color(if self.samples == 3 {
+                png::ColorType::Rgb
+            } else {
+                png::ColorType::Grayscale
+            });
+
+            let mut writer = encoder
+                .write_header()
+                .context("failed to write PNG header")?;
+            writer
+                .write_image_data(&self.data)
+                .context("failed to write PNG data")?;
+        }
+
+        Ok(buffer)
     }
 
     #[inline]

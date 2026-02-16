@@ -20,7 +20,7 @@ use crate::gesture::GestureEvent;
 use crate::input::{ButtonCode, ButtonStatus, DeviceEvent};
 use crate::library::Library;
 use crate::metadata::{sort, BookQuery, Info, Metadata, SimpleStatus, SortMethod};
-use crate::settings::{FirstColumn, Hook, LibraryMode, SecondColumn};
+use crate::settings::{FirstColumn, Hook, SecondColumn};
 use crate::unit::scale_by_dpi;
 use crate::view::common::{locate, locate_by_id, rlocate};
 use crate::view::common::{toggle_battery_menu, toggle_clock_menu, toggle_main_menu};
@@ -1421,39 +1421,16 @@ impl Home {
                 })
                 .collect();
 
-            let database = if library_settings.mode == LibraryMode::Database {
-                vec![
-                    EntryKind::Command("Import".to_string(), EntryId::Import),
-                    EntryKind::Command("Flush".to_string(), EntryId::Flush),
-                ]
-            } else {
-                Vec::new()
-            };
-
-            let filesystem = if library_settings.mode == LibraryMode::Filesystem {
-                vec![
-                    EntryKind::CheckBox(
-                        "Show Hidden".to_string(),
-                        EntryId::ToggleShowHidden,
-                        context.library.show_hidden,
-                    ),
-                    EntryKind::Separator,
-                    EntryKind::Command("Clean Up".to_string(), EntryId::CleanUp),
-                    EntryKind::Command("Flush".to_string(), EntryId::Flush),
-                ]
-            } else {
-                Vec::new()
-            };
-
-            let mut entries = vec![EntryKind::SubMenu("Library".to_string(), libraries)];
-
-            if !database.is_empty() {
-                entries.push(EntryKind::SubMenu("Database".to_string(), database));
-            }
-
-            if !filesystem.is_empty() {
-                entries.push(EntryKind::SubMenu("Filesystem".to_string(), filesystem));
-            }
+            let mut entries = vec![
+                EntryKind::SubMenu("Library".to_string(), libraries),
+                EntryKind::SubMenu(
+                    "Database".to_string(),
+                    vec![
+                        EntryKind::Command("Import".to_string(), EntryId::Import),
+                        EntryKind::Command("Flush".to_string(), EntryId::Flush),
+                    ],
+                ),
+            ];
 
             let hooks: Vec<EntryKind> = context.settings.libraries[selected_library]
                 .hooks
@@ -1513,7 +1490,7 @@ impl Home {
             ));
 
             let trash_path = context.library.home.join(TRASH_DIRNAME);
-            if let Ok(trash) = Library::new(trash_path, LibraryMode::Database)
+            if let Ok(trash) = Library::new(trash_path, &context.database, "Trash")
                 .map_err(|e| error!("Can't inspect trash: {:#?}.", e))
             {
                 if trash.is_empty() == Some(false) {
@@ -1568,7 +1545,7 @@ impl Home {
     fn empty_trash(&mut self, hub: &Hub, rq: &mut RenderQueue, context: &mut Context) {
         let trash_path = context.library.home.join(TRASH_DIRNAME);
 
-        let trash = Library::new(trash_path, LibraryMode::Database)
+        let trash = Library::new(trash_path, &context.database, "Trash")
             .map_err(|e| error!("Can't load trash: {:#}.", e));
         if trash.is_err() {
             return;
@@ -1624,7 +1601,7 @@ impl Home {
             if !trash_path.is_dir() {
                 fs::create_dir(&trash_path)?;
             }
-            let mut trash = Library::new(trash_path, LibraryMode::Database)?;
+            let mut trash = Library::new(trash_path, &context.database, "Trash")?;
             context.library.move_to(path, &mut trash)?;
             let (mut files, _) = trash.list(&trash.home, None, false);
             let mut size = files.iter().map(|info| info.file.size).sum::<u64>();
@@ -1649,7 +1626,11 @@ impl Home {
 
     fn copy_to(&mut self, path: &Path, index: usize, context: &mut Context) -> Result<(), Error> {
         let library_settings = &context.settings.libraries[index];
-        let mut library = Library::new(&library_settings.path, library_settings.mode)?;
+        let mut library = Library::new(
+            &library_settings.path,
+            &context.database,
+            &library_settings.name,
+        )?;
         context.library.copy_to(path, &mut library)?;
         library.flush();
         Ok(())
@@ -1664,7 +1645,11 @@ impl Home {
         context: &mut Context,
     ) -> Result<(), Error> {
         let library_settings = &context.settings.libraries[index];
-        let mut library = Library::new(&library_settings.path, library_settings.mode)?;
+        let mut library = Library::new(
+            &library_settings.path,
+            &context.database,
+            &library_settings.name,
+        )?;
         context.library.move_to(path, &mut library)?;
         library.flush();
         self.refresh_visibles(true, false, hub, rq, context);
@@ -1735,8 +1720,12 @@ impl Home {
         }
 
         let library_settings = context.settings.libraries[index].clone();
-        let library = Library::new(&library_settings.path, library_settings.mode)
-            .map_err(|e| error!("Can't load library: {:#}.", e));
+        let library = Library::new(
+            &library_settings.path,
+            &context.database,
+            &library_settings.name,
+        )
+        .map_err(|e| error!("Can't load library: {:#}.", e));
 
         if library.is_err() {
             return;
@@ -2631,42 +2620,7 @@ impl View for Home {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::battery::{Battery, FakeBattery};
-    use crate::framebuffer::Pixmap;
-    use crate::frontlight::{Frontlight, LightLevels};
-    use crate::lightsensor::LightSensor;
-    use std::env;
-    use std::path::Path;
-
-    fn create_test_context() -> Context {
-        let fb = Box::new(Pixmap::new(600, 800, 1)) as Box<dyn Framebuffer>;
-        let battery = Box::new(FakeBattery::new()) as Box<dyn Battery>;
-        let frontlight = Box::new(LightLevels::default()) as Box<dyn Frontlight>;
-        let lightsensor = Box::new(0u16) as Box<dyn LightSensor>;
-
-        let fonts = crate::font::Fonts::load_from(
-            Path::new(
-                &env::var("TEST_ROOT_DIR").expect("TEST_ROOT_DIR must be set for this test."),
-            )
-            .to_path_buf(),
-        )
-        .expect(
-            "Failed to load fonts. Tests require font files to be present. \
-             Run tests from the project root directory.",
-        );
-
-        Context::new(
-            fb,
-            None,
-            crate::library::Library::new(Path::new("/tmp"), crate::settings::LibraryMode::Database)
-                .unwrap(),
-            crate::settings::Settings::default(),
-            fonts,
-            battery,
-            frontlight,
-            lightsensor,
-        )
-    }
+    use crate::context::test_helpers::create_test_context;
 
     #[test]
     fn test_toggle_address_bar_with_navigation_bar_maintains_separator_alignment() {

@@ -415,6 +415,17 @@ impl Reader {
             let synthetic = doc.has_synthetic_page_numbers();
             let reflowable = doc.is_reflowable();
 
+            if info.toc.is_none() {
+                if let Some(toc) = doc.toc() {
+                    let simple_toc: Vec<SimpleTocEntry> =
+                        toc.iter().map(SimpleTocEntry::from).collect();
+                    context
+                        .library
+                        .sync_toc(&info.file.path, simple_toc.clone());
+                    info.toc = Some(simple_toc);
+                }
+            }
+
             info!("{}", info.file.path.display());
 
             hub.send(Event::Update(UpdateMode::Partial)).ok();

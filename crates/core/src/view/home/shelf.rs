@@ -8,6 +8,7 @@ use crate::framebuffer::{Framebuffer, UpdateMode};
 use crate::geom::divide;
 use crate::geom::{halves, CycleDir, Dir, Rectangle};
 use crate::gesture::GestureEvent;
+use crate::helpers::Fingerprint;
 use crate::metadata::Info;
 use crate::settings::{FirstColumn, SecondColumn};
 use crate::unit::scale_by_dpi;
@@ -15,7 +16,6 @@ use crate::view::filler::Filler;
 use crate::view::{Bus, Event, Hub, Id, RenderData, RenderQueue, View, ID_FEEDER};
 use crate::view::{BIG_BAR_HEIGHT, THICKNESS_MEDIUM};
 use lazy_static::lazy_static;
-use std::path::PathBuf;
 use std::sync::Mutex;
 use std::thread;
 
@@ -94,39 +94,38 @@ impl Shelf {
                     0
                 };
 
-            let preview_path: Option<PathBuf> = if self.thumbnail_previews {
-                let thumb_path = context.library.thumbnail_preview(&info.file.path);
-                if !thumb_path.exists() {
+            let preview = if self.thumbnail_previews {
+                let existing = context.library.thumbnail_preview(&info.file.path);
+                if existing.is_none() {
                     let hub2 = hub.clone();
-                    let thumb_path2 = thumb_path.to_string_lossy().into_owned();
                     let path = info.file.path.clone();
                     let full_path = context.library.home.join(&info.file.path);
-                    thread::spawn(move || {
-                        // This is a hack to circumvent a segfault (EXC_BAD_ACCESS)
-                        // triggered by loading multiple jp2 pixmaps in parallel.
-                        let _guard = EXCLUSIVE_ACCESS.lock().unwrap();
-                        open(full_path)
-                            .and_then(|mut doc| {
-                                doc.preview_pixmap(
-                                    tw as f32,
-                                    th as f32,
-                                    CURRENT_DEVICE.color_samples(),
-                                )
-                            })
-                            .map(|pixmap| {
-                                if pixmap.save(&thumb_path2).is_ok() {
-                                    hub2.send(Event::RefreshBookPreview(
-                                        path,
-                                        Some(PathBuf::from(thumb_path2)),
-                                    ))
-                                    .ok();
-                                }
-                            })
-                    });
-                    Some(PathBuf::default())
-                } else {
-                    Some(thumb_path)
+                    let database = context.library.db.clone();
+                    let fp = full_path
+                        .metadata()
+                        .ok()
+                        .and_then(|md| md.fingerprint(context.library.fat32_epoch).ok());
+
+                    if let Some(fp) = fp {
+                        thread::spawn(move || {
+                            let _guard = EXCLUSIVE_ACCESS.lock().unwrap();
+                            if let Some(bytes) = open(full_path)
+                                .and_then(|mut doc| {
+                                    doc.preview_pixmap(
+                                        tw as f32,
+                                        th as f32,
+                                        CURRENT_DEVICE.color_samples(),
+                                    )
+                                })
+                                .and_then(|pixmap| pixmap.to_png_bytes().ok())
+                            {
+                                database.save_thumbnail(fp, &bytes).ok();
+                                hub2.send(Event::RefreshBookPreview(path)).ok();
+                            }
+                        });
+                    }
                 }
+                existing
             } else {
                 None
             };
@@ -137,7 +136,7 @@ impl Shelf {
                 index,
                 self.first_column,
                 self.second_column,
-                preview_path,
+                preview,
             );
             self.children.push(Box::new(book) as Box<dyn View>);
 

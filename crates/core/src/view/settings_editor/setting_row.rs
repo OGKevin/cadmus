@@ -18,7 +18,6 @@ pub enum Kind {
     Library(usize),
     LibraryName(usize),
     LibraryPath(usize),
-    LibraryMode(usize),
     IntermissionSuspend,
     IntermissionPowerOff,
     IntermissionShare,
@@ -50,7 +49,6 @@ impl Kind {
                 .unwrap_or_else(|| "Unknown".to_string()),
             Kind::LibraryName(_) => "Name".to_string(),
             Kind::LibraryPath(_) => "Path".to_string(),
-            Kind::LibraryMode(_) => "Mode".to_string(),
             Kind::IntermissionSuspend => "Suspend Screen".to_string(),
             Kind::IntermissionPowerOff => "Power Off Screen".to_string(),
             Kind::IntermissionShare => "Share Screen".to_string(),
@@ -69,7 +67,6 @@ impl Kind {
             Kind::Library(index) => ValueKind::LibraryInfo(*index),
             Kind::LibraryName(index) => ValueKind::LibraryName(*index),
             Kind::LibraryPath(index) => ValueKind::LibraryPath(*index),
-            Kind::LibraryMode(index) => ValueKind::LibraryMode(*index),
             Kind::IntermissionSuspend => ValueKind::IntermissionSuspend,
             Kind::IntermissionPowerOff => ValueKind::IntermissionPowerOff,
             Kind::IntermissionShare => ValueKind::IntermissionShare,
@@ -185,7 +182,7 @@ impl View for SettingRow {
 mod tests {
     use super::*;
     use crate::context::test_helpers::create_test_context;
-    use crate::settings::{LibraryMode, LibrarySettings};
+    use crate::settings::LibrarySettings;
     use std::collections::VecDeque;
     use std::path::PathBuf;
     use std::sync::mpsc::channel;
@@ -196,13 +193,11 @@ mod tests {
         settings.libraries.push(LibrarySettings {
             name: "Test Library 0".to_string(),
             path: PathBuf::from("/tmp/lib0"),
-            mode: LibraryMode::Filesystem,
             ..Default::default()
         });
         settings.libraries.push(LibrarySettings {
             name: "Test Library 1".to_string(),
             path: PathBuf::from("/tmp/lib1"),
-            mode: LibraryMode::Database,
             ..Default::default()
         });
         settings
@@ -223,7 +218,6 @@ mod tests {
         let updated_library = LibrarySettings {
             name: "Updated Library Name".to_string(),
             path: PathBuf::from("/tmp/updated"),
-            mode: LibraryMode::Database,
             ..Default::default()
         };
 
@@ -249,7 +243,6 @@ mod tests {
         let updated_library = LibrarySettings {
             name: "Updated Library 1".to_string(),
             path: PathBuf::from("/tmp/lib1_updated"),
-            mode: LibraryMode::Database,
             ..Default::default()
         };
 

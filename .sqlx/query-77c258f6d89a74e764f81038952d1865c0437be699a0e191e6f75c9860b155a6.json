@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                INSERT INTO reading_states (\n                    fingerprint, opened, current_page, pages_count, finished, dithered,\n                    zoom_mode, scroll_mode, page_offset_x, page_offset_y, rotation,\n                    cropping_margins_json, margin_width, screen_margin_width,\n                    font_family, font_size, text_align, line_height,\n                    contrast_exponent, contrast_gray,\n                    page_names_json, bookmarks_json, annotations_json\n                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\n                ON CONFLICT(fingerprint) DO UPDATE SET\n                    opened = excluded.opened,\n                    current_page = excluded.current_page,\n                    pages_count = excluded.pages_count,\n                    finished = excluded.finished,\n                    dithered = excluded.dithered,\n                    zoom_mode = excluded.zoom_mode,\n                    scroll_mode = excluded.scroll_mode,\n                    page_offset_x = excluded.page_offset_x,\n                    page_offset_y = excluded.page_offset_y,\n                    rotation = excluded.rotation,\n                    cropping_margins_json = excluded.cropping_margins_json,\n                    margin_width = excluded.margin_width,\n                    screen_margin_width = excluded.screen_margin_width,\n                    font_family = excluded.font_family,\n                    font_size = excluded.font_size,\n                    text_align = excluded.text_align,\n                    line_height = excluded.line_height,\n                    contrast_exponent = excluded.contrast_exponent,\n                    contrast_gray = excluded.contrast_gray,\n                    page_names_json = excluded.page_names_json,\n                    bookmarks_json = excluded.bookmarks_json,\n                    annotations_json = excluded.annotations_json\n                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 23
+    },
+    "nullable": []
+  },
+  "hash": "77c258f6d89a74e764f81038952d1865c0437be699a0e191e6f75c9860b155a6"
+}

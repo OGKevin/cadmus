@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM toc_entries WHERE book_fingerprint = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "96c2a092d6e468a7f34d36c003fc9f40c95d60aedc2b01b8aaf8cec4fb880612"
+}

@@ -1,4 +1,5 @@
 use crate::battery::Battery;
+use crate::db::Database;
 use crate::device::CURRENT_DEVICE;
 use crate::dictionary::{load_dictionary_from_file, Dictionary};
 use crate::font::Fonts;
@@ -35,6 +36,7 @@ pub struct Context {
     pub display: Display,
     pub settings: Settings,
     pub library: Library,
+    pub database: Database,
     pub fonts: Fonts,
     pub dictionaries: BTreeMap<String, Dictionary>,
     pub keyboard_layouts: BTreeMap<String, Layout>,
@@ -56,6 +58,7 @@ impl Context {
         fb: Box<dyn Framebuffer>,
         rtc: Option<Rtc>,
         library: Library,
+        database: Database,
         settings: Settings,
         fonts: Fonts,
         battery: Box<dyn Battery>,
@@ -70,6 +73,7 @@ impl Context {
             rtc,
             display: Display { dims, rotation },
             library,
+            database,
             settings,
             fonts,
             dictionaries: BTreeMap::new(),
@@ -95,8 +99,12 @@ impl Context {
             if index == selected_library {
                 continue;
             }
-            if let Ok(mut library) = Library::new(&library_settings.path, library_settings.mode)
-                .map_err(|e| error!("{:#?}", e))
+            if let Ok(mut library) = Library::new(
+                &library_settings.path,
+                &self.database,
+                &library_settings.name,
+            )
+            .map_err(|e| error!("{:#?}", e))
             {
                 library.import(&self.settings.import);
                 library.flush();
@@ -217,14 +225,18 @@ impl Context {
 pub mod test_helpers {
     use super::*;
     use crate::battery::FakeBattery;
+    use crate::db::Database;
     use crate::framebuffer::Pixmap;
     use crate::frontlight::LightLevels;
 
     pub fn create_test_context() -> Context {
+        let database = Database::new(":memory:").expect("failed to create in-memory database");
+        database.migrate().expect("failed to run migrations");
         Context::new(
             Box::new(Pixmap::new(600, 800, 1)),
             None,
-            Library::new(Path::new("/tmp"), crate::settings::LibraryMode::Database).unwrap(),
+            Library::new(Path::new("/tmp"), &database, "test").unwrap(),
+            database,
             Settings::default(),
             Fonts::load_from(
                 Path::new(

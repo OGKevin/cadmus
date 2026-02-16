@@ -43,8 +43,6 @@ pub enum Kind {
     LibraryName(usize),
     /// Library path setting for the library at the given index
     LibraryPath(usize),
-    /// Library mode setting (database or filesystem) for the library at the given index
-    LibraryMode(usize),
     /// Intermission display setting for suspend screen
     IntermissionSuspend,
     /// Intermission display setting for power-off screen
@@ -184,7 +182,6 @@ impl SettingValue {
             Kind::LibraryInfo(index) => Self::fetch_library_info_data(*index, settings),
             Kind::LibraryName(index) => Self::fetch_library_name_data(*index, settings),
             Kind::LibraryPath(index) => Self::fetch_library_path_data(*index, settings),
-            Kind::LibraryMode(index) => Self::fetch_library_mode_data(*index, settings),
             Kind::IntermissionSuspend => {
                 Self::fetch_intermission_data(crate::settings::IntermKind::Suspend, settings)
             }
@@ -318,32 +315,6 @@ impl SettingValue {
         }
     }
 
-    fn fetch_library_mode_data(
-        index: usize,
-        settings: &Settings,
-    ) -> (String, Vec<EntryKind>, Option<bool>) {
-        use crate::settings::LibraryMode;
-        let mut mode = LibraryMode::Filesystem;
-
-        if let Some(library) = settings.libraries.get(index) {
-            mode = library.mode;
-        }
-
-        let entries = vec![
-            EntryKind::RadioButton(
-                LibraryMode::Database.to_string(),
-                EntryId::SetLibraryMode(LibraryMode::Database),
-                mode == LibraryMode::Database,
-            ),
-            EntryKind::RadioButton(
-                LibraryMode::Filesystem.to_string(),
-                EntryId::SetLibraryMode(LibraryMode::Filesystem),
-                mode == LibraryMode::Filesystem,
-            ),
-        ];
-        (mode.to_string(), entries, None)
-    }
-
     fn get_available_layouts() -> Result<Vec<String>, Error> {
         let layouts_dir = Path::new("keyboard-layouts");
         let mut layouts = Vec::new();
@@ -440,7 +411,7 @@ impl SettingValue {
     /// The behavior varies by setting type:
     /// - **Direct edit settings** (LibraryInfo, LibraryName, LibraryPath, AutoSuspend, AutoPowerOff):
     ///   Return specific edit events that trigger their corresponding input dialogs.
-    /// - **Settings with multiple options** (KeyboardLayout, SleepCover, AutoShare, ButtonScheme, LibraryMode, Intermission*):
+    /// - **Settings with multiple options** (KeyboardLayout, SleepCover, AutoShare, ButtonScheme, Intermission*):
     ///   Return a SubMenu event that displays all available entries as radio buttons or checkboxes.
     ///
     /// # Returns
@@ -624,34 +595,6 @@ mod tests {
     }
 
     #[test]
-    fn test_library_mode_select_updates_value() {
-        use crate::settings::{LibraryMode, LibrarySettings};
-        let mut settings = Settings::default();
-        settings.libraries.clear();
-        let library = LibrarySettings {
-            name: "Test Library".to_string(),
-            path: PathBuf::from("/tmp"),
-            mode: LibraryMode::Filesystem,
-            ..Default::default()
-        };
-        settings.libraries.push(library);
-        let rect = rect![0, 0, 200, 50];
-
-        let mut context = create_test_context();
-        let mut value =
-            SettingValue::new(Kind::LibraryMode(0), rect, &settings, &mut context.fonts);
-        let mut rq = RenderQueue::new();
-
-        assert_eq!(value.value(), "Filesystem");
-
-        context.settings.libraries[0].mode = LibraryMode::Database;
-        value.refresh_from_context(&context, &mut rq);
-
-        assert_eq!(value.value(), "Database");
-        assert!(!rq.is_empty());
-    }
-
-    #[test]
     fn test_auto_suspend_submit_updates_value() {
         let mut context = create_test_context();
         let settings = Settings::default();
@@ -690,7 +633,6 @@ mod tests {
         settings.libraries.push(LibrarySettings {
             name: "Old Name".to_string(),
             path: PathBuf::from("/tmp"),
-            mode: crate::settings::LibraryMode::Filesystem,
             ..Default::default()
         });
         let rect = rect![0, 0, 200, 50];
@@ -714,7 +656,6 @@ mod tests {
         settings.libraries.push(LibrarySettings {
             name: "Test Library".to_string(),
             path: PathBuf::from("/tmp"),
-            mode: crate::settings::LibraryMode::Filesystem,
             ..Default::default()
         });
         let rect = rect![0, 0, 200, 50];
@@ -739,7 +680,6 @@ mod tests {
         settings.libraries.push(LibrarySettings {
             name: "Test Library".to_string(),
             path: PathBuf::from("/tmp"),
-            mode: crate::settings::LibraryMode::Filesystem,
             ..Default::default()
         });
         let rect = rect![0, 0, 200, 50];

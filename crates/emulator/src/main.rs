@@ -4,6 +4,7 @@ use cadmus_core::battery::{Battery, FakeBattery};
 use cadmus_core::chrono::Local;
 use cadmus_core::color::Color;
 use cadmus_core::context::Context;
+use cadmus_core::db::Database;
 use cadmus_core::device::CURRENT_DEVICE;
 use cadmus_core::document::sys_info_as_html;
 use cadmus_core::font::Fonts;
@@ -35,6 +36,7 @@ use cadmus_core::view::reader::Reader;
 use cadmus_core::view::rotation_values::RotationValues;
 use cadmus_core::view::settings_editor::SettingsEditor;
 use cadmus_core::view::sketch::Sketch;
+use cadmus_core::view::startup::StartupScreen;
 use cadmus_core::view::touch_events::TouchEvents;
 use cadmus_core::view::{
     handle_event, process_render_queue, wait_for_all, RenderData, RenderQueue,
@@ -56,32 +58,34 @@ use std::time::Duration;
 use tracing::info;
 
 pub const APP_NAME: &str = "Cadmus";
+const DB_FILENAME: &str = "cadmus.sqlite";
 const DEFAULT_ROTATION: i8 = 1;
 
 const CLOCK_REFRESH_INTERVAL: Duration = Duration::from_secs(60);
 
-pub fn build_context(fb: Box<dyn Framebuffer>, settings: Settings) -> Result<Context, Error> {
+pub fn build_context(
+    fb: Box<dyn Framebuffer>,
+    settings: Settings,
+    fonts: Fonts,
+    database: Database,
+) -> Result<Context, Error> {
     let mut settings = settings;
     settings.wifi = true;
-
-    // Initialize logging
-    cadmus_core::logging::init_logging(&settings.logging)
-        .context("Failed to initialize logging")?;
 
     info!("Starting Cadmus emulator");
 
     let library_settings = &settings.libraries[settings.selected_library];
-    let library = Library::new(&library_settings.path, library_settings.mode)?;
+    let library = Library::new(&library_settings.path, &database, &library_settings.name)?;
 
     let battery = Box::new(FakeBattery::new()) as Box<dyn Battery>;
     let frontlight = Box::new(LightLevels::default()) as Box<dyn Frontlight>;
     let lightsensor = Box::new(0u16) as Box<dyn LightSensor>;
-    let fonts = Fonts::load()?;
 
     Ok(Context::new(
         fb,
         None,
         library,
+        database,
         settings,
         fonts,
         battery,
@@ -283,13 +287,29 @@ fn main() -> Result<(), Error> {
 
     let manager = SettingsManager::new(env!("GIT_VERSION").to_string());
     let settings = manager.load();
-    let mut context = build_context(Box::new(FBCanvas(fb)), settings)?;
+
+    cadmus_core::logging::init_logging(&settings.logging)
+        .context("Failed to initialize logging")?;
+
+    let mut fonts = Fonts::load().context("can't load fonts")?;
+    let database = Database::new(DB_FILENAME).context("can't open database")?;
+
+    let mut fb = Box::new(FBCanvas(fb));
+
+    let startup = StartupScreen::new(fb.rect());
+    startup.render(fb.as_mut(), *startup.rect(), &mut fonts);
+    fb.update(startup.rect(), UpdateMode::Full).ok();
+
+    let db = database.clone();
+    if let Err(e) = db.migrate() {
+        panic!("migrations failed: {e}");
+    }
+
+    let mut context = build_context(fb, settings, fonts, database)?;
 
     if context.settings.import.startup_trigger {
         context.batch_import();
     }
-
-    context.load_dictionaries();
     context.load_keyboard_layouts();
 
     let (tx, rx) = mpsc::channel();

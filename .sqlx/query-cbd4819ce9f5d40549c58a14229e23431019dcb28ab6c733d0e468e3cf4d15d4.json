@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT OR IGNORE INTO authors (name) VALUES (?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "cbd4819ce9f5d40549c58a14229e23431019dcb28ab6c733d0e468e3cf4d15d4"
+}

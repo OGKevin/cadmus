@@ -4,7 +4,7 @@ use crate::device::CURRENT_DEVICE;
 use crate::framebuffer::{Framebuffer, UpdateMode};
 use crate::geom::{halves, Rectangle};
 use crate::gesture::GestureEvent;
-use crate::settings::{ButtonScheme, LibraryMode, LibrarySettings, Settings};
+use crate::settings::{ButtonScheme, LibrarySettings, Settings};
 use crate::unit::scale_by_dpi;
 use crate::view::common::locate_by_id;
 use crate::view::filler::Filler;
@@ -637,7 +637,6 @@ impl CategoryEditor {
         let library = LibrarySettings {
             name: "untitled".to_string(),
             path: PathBuf::from("/mnt/onboard"),
-            mode: LibraryMode::Filesystem,
             ..Default::default()
         };
 
@@ -999,7 +998,7 @@ mod tests {
     use super::*;
     use crate::context::test_helpers::create_test_context;
     use crate::geom::Point;
-    use crate::settings::{LibraryMode, Settings};
+    use crate::settings::Settings;
     use std::collections::VecDeque;
     use std::sync::mpsc::channel;
 
@@ -1010,7 +1009,6 @@ mod tests {
             settings.libraries.push(LibrarySettings {
                 name: format!("Library {}", i),
                 path: PathBuf::from(format!("/mnt/onboard/lib{}", i)),
-                mode: LibraryMode::Filesystem,
                 ..Default::default()
             });
         }
@@ -1154,7 +1152,6 @@ mod tests {
         let updated_library = LibrarySettings {
             name: "Updated Library".to_string(),
             path: PathBuf::from("/mnt/onboard/updated"),
-            mode: LibraryMode::Database,
             ..Default::default()
         };
 
@@ -1173,7 +1170,6 @@ mod tests {
             context.settings.libraries[0].path,
             PathBuf::from("/mnt/onboard/updated")
         );
-        assert_eq!(context.settings.libraries[0].mode, LibraryMode::Database);
         assert!(!rq.is_empty());
     }
 

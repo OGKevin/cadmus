@@ -146,33 +146,10 @@ impl View for ActionLabel {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::context::test_helpers::create_test_context;
     use crate::geom::Point;
     use std::collections::VecDeque;
     use std::sync::mpsc::channel;
-
-    fn create_test_context() -> Context {
-        Context::new(
-            Box::new(crate::framebuffer::Pixmap::new(600, 800, 1)),
-            None,
-            crate::library::Library::new(
-                std::path::Path::new("/tmp"),
-                crate::settings::LibraryMode::Database,
-            )
-            .unwrap(),
-            crate::settings::Settings::default(),
-            crate::font::Fonts::load_from(
-                std::path::Path::new(
-                    &std::env::var("TEST_ROOT_DIR")
-                        .expect("TEST_ROOT_DIR must be set for this test."),
-                )
-                .to_path_buf(),
-            )
-            .expect("Failed to load fonts"),
-            Box::new(crate::battery::FakeBattery::new()),
-            Box::new(crate::frontlight::LightLevels::default()),
-            Box::new(0u16),
-        )
-    }
 
     #[test]
     fn test_new_creates_with_label_child() {

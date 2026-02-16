@@ -2,6 +2,7 @@ name: Cargo
 
 env:
   NODE_VERSION: "24"
+  SQLX_OFFLINE: true
 
 on:
   push:
