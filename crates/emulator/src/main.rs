@@ -832,6 +832,10 @@ fn main() -> Result<(), Error> {
                 Event::Device(DeviceEvent::RotateScreen(n)) => {
                     tx.send(Event::Select(EntryId::Rotate(n))).ok();
                 }
+                Event::Select(EntryId::Reboot) => {
+                    thread::sleep(Duration::from_secs(3));
+                    break 'outer;
+                }
                 Event::Select(EntryId::Quit) => {
                     break 'outer;
                 }

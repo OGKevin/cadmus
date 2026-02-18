@@ -7,17 +7,9 @@ computer. The OTA (Over-The-Air) feature downloads updates directly from GitHub.
 
 - A WiFi connection
 
-For main branch or PR builds, you also need a GitHub personal access token in
-your `Settings.toml` file:
-
-```toml
-[ota]
-github-token = "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-```
-
-Stable releases do not require a token. See the
-[OTA settings](../settings/index.md#otagithub-token) reference for details on
-getting a token.
+Stable releases are public and require no authentication. Main branch and PR
+builds require a GitHub account — Cadmus will guide you through a one-time
+sign-in the first time you request one.
 
 ## How to update
 
@@ -37,16 +29,24 @@ update from:
 Select **Main Branch** to get the most recent development build. This includes
 changes that have been merged but not yet released officially.
 
-The update downloads from GitHub, installs automatically, and prompts you to
-reboot to finish.
+If this is your first time, Cadmus will show a screen with a URL and a short
+code. On any device with a browser:
+
+1. Go to the URL shown on screen
+2. Enter the code shown on your Device
+3. Sign in to GitHub and approve the request
+
+Cadmus will detect the approval automatically and start the download. The token
+is saved to disk so you won't need to sign in again.
+
+The update downloads from GitHub, installs automatically, and reboots the device
+to finish.
 
 ## Testing a pull request
 
 Select **PR Build** to try out a specific change before it's released. Enter the
-PR number when prompted.
-
-This downloads the update from that pull request, installs it, and asks you to
-reboot.
+PR number when prompted. The same one-time GitHub sign-in applies if you haven't
+authenticated before.
 
 > **Tip:** Find the PR number in the GitHub URL. For example, in
 > `github.com/OGKevin/cadmus/pull/42` the PR number is **42**.

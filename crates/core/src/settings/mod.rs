@@ -7,7 +7,7 @@ use crate::frontlight::LightLevels;
 use crate::metadata::{SortMethod, TextAlign};
 use crate::unit::mm_to_px;
 use fxhash::FxHashSet;
-use secrecy::SecretString;
+
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::env;
@@ -458,49 +458,14 @@ pub struct LoggingSettings {
     pub otlp_endpoint: Option<String>,
 }
 
-/// Configuration for Over-the-Air (OTA) update feature.
+/// OTA update settings.
 ///
-/// Stores the GitHub personal access token required for downloading
-/// build artifacts from pull requests.
-///
-/// # Security
-///
-/// The GitHub token is stored using `SecretString` from the `secrecy` crate,
-/// which prevents accidental exposure in logs or debug output. The token is
-/// automatically wrapped when loaded from the configuration file and unwrapped
-/// only when needed for API authentication.
-#[derive(Debug, Clone, Deserialize)]
+/// Authentication is handled via GitHub device auth flow — no token configuration
+/// is required in `Settings.toml`. The token is obtained interactively and
+/// persisted to disk by the application.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default, rename_all = "kebab-case")]
-pub struct OtaSettings {
-    /// GitHub personal access token with workflow artifact read permissions.
-    /// Required for authenticated API access to download build artifacts.
-    ///
-    /// When serialized, the token is stored as plain text in the configuration
-    /// file. However, once loaded into memory, it is wrapped in `SecretString`
-    /// to prevent accidental exposure.
-    ///
-    /// For development, you can set the `GH_TOKEN` environment variable to have it automatically
-    /// loaded into the default settings.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub github_token: Option<SecretString>,
-}
-
-impl Serialize for OtaSettings {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        use secrecy::ExposeSecret;
-        use serde::ser::SerializeStruct;
-
-        let field_count = if self.github_token.is_some() { 1 } else { 0 };
-        let mut state = serializer.serialize_struct("OtaSettings", field_count)?;
-        if let Some(token) = &self.github_token {
-            state.serialize_field("github-token", token.expose_secret())?;
-        }
-        state.end()
-    }
-}
+pub struct OtaSettings {}
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -726,120 +691,17 @@ impl Default for Settings {
     }
 }
 
-impl Default for OtaSettings {
-    /// Creates a default `OtaSettings` instance, attempting to read the GitHub token
-    /// from the `GH_TOKEN` environment variable. If the variable is set, its value is wrapped
-    /// in a `SecretString` and used as the default token.
-    fn default() -> Self {
-        env::var("GH_TOKEN")
-            .ok()
-            .map(|token| OtaSettings {
-                github_token: Some(SecretString::from(token)),
-            })
-            .unwrap_or(OtaSettings { github_token: None })
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use secrecy::ExposeSecret;
 
     #[test]
-    fn test_ota_settings_secret_serialization() {
-        let test_token = "ghp_test1234567890abcdefghijklmnopqrstuvwxyz";
-
-        let mut settings = OtaSettings::default();
-        settings.github_token = Some(SecretString::from(test_token.to_string()));
-
+    fn test_ota_settings_serializes_empty() {
+        let settings = OtaSettings::default();
         let serialized = toml::to_string(&settings).expect("Failed to serialize");
-
-        assert!(
-            serialized.contains("github-token"),
-            "Serialized output should contain github-token field"
-        );
-        assert!(
-            serialized.contains(test_token),
-            "Serialized output should contain the actual token value for file storage"
-        );
-        assert!(
-            !serialized.contains("REDACTED"),
-            "Serialized output should not contain REDACTED placeholder"
-        );
-    }
-
-    #[test]
-    fn test_ota_settings_secret_deserialization() {
-        let test_token = "ghp_test1234567890abcdefghijklmnopqrstuvwxyz";
-        let toml_str = format!(r#"github-token = "{}""#, test_token);
-
-        let settings: OtaSettings = toml::from_str(&toml_str).expect("Failed to deserialize");
-
-        assert!(
-            settings.github_token.is_some(),
-            "Token should be present after deserialization"
-        );
-
-        let token = settings.github_token.as_ref().unwrap();
-        assert_eq!(
-            token.expose_secret(),
-            test_token,
-            "Deserialized token should match original"
-        );
-    }
-
-    #[test]
-    fn test_ota_settings_secret_round_trip() {
-        let test_token = "ghp_roundtrip_test_token_1234567890";
-
-        let mut original = OtaSettings::default();
-        original.github_token = Some(SecretString::from(test_token.to_string()));
-
-        let serialized = toml::to_string(&original).expect("Failed to serialize");
-        let deserialized: OtaSettings = toml::from_str(&serialized).expect("Failed to deserialize");
-
-        assert!(
-            deserialized.github_token.is_some(),
-            "Token should survive round trip"
-        );
-
-        assert_eq!(
-            deserialized.github_token.as_ref().unwrap().expose_secret(),
-            original.github_token.as_ref().unwrap().expose_secret(),
-            "Token value should be identical after round trip"
-        );
-    }
-
-    #[test]
-    fn test_ota_settings_secret_not_in_debug() {
-        let test_token = "ghp_secret_should_not_appear_in_debug";
-
-        let mut settings = OtaSettings::default();
-        settings.github_token = Some(SecretString::from(test_token.to_string()));
-
-        let debug_output = format!("{:?}", settings);
-
-        assert!(
-            !debug_output.contains(test_token),
-            "Debug output should NOT contain the actual token value. Got: {}",
-            debug_output
-        );
-    }
-
-    #[test]
-    fn test_ota_settings_none_token() {
-        let settings = OtaSettings { github_token: None };
-
-        let serialized = toml::to_string(&settings).expect("Failed to serialize");
-
-        assert!(
-            !serialized.contains("github-token"),
-            "Serialized output should not contain github-token field when None"
-        );
-
         assert!(
             serialized.is_empty(),
-            "Serialized output should be empty when token is None"
+            "OtaSettings should serialize to an empty string"
         );
     }
 
@@ -918,27 +780,5 @@ share = "/path/to/custom.png"
             original.share, deserialized.share,
             "share should survive round trip"
         );
-    }
-
-    #[test]
-    fn test_ota_default_from_env() {
-        let test_token = "ghp_env_default_test_token_1234567890";
-        env::set_var("GH_TOKEN", test_token);
-
-        let settings = OtaSettings::default();
-
-        assert!(
-            settings.github_token.is_some(),
-            "Default OtaSettings should read GH_TOKEN from environment"
-        );
-
-        let token = settings.github_token.as_ref().unwrap();
-        assert_eq!(
-            token.expose_secret(),
-            test_token,
-            "Token from environment should match expected value"
-        );
-
-        env::remove_var("GH_TOKEN");
     }
 }

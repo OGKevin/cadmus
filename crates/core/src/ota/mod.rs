@@ -5,9 +5,9 @@
 //! - Extract and deploy KoboRoot.tgz packages
 //! - Track download progress with callbacks
 //!
-//! The OTA client requires a GitHub personal access token with permissions to
-//! read workflow artifacts from the ogkevin/cadmus repository.
+//! Authentication is handled via GitHub device auth flow — see [`crate::github`].
 
 mod client;
 
-pub use client::{OtaClient, OtaError, OtaProgress};
+pub use crate::github::OtaProgress;
+pub use client::{ArtifactSource, OtaClient, OtaError};

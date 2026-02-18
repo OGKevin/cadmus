@@ -1,8 +1,8 @@
+use crate::github::types::{
+    Artifact, ArtifactsResponse, Release, ReleaseAsset, Repository, WorkflowRunsResponse,
+};
+use crate::github::{GithubClient, OtaProgress};
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
-use reqwest::blocking::Client;
-use rustls::RootCertStore;
-use secrecy::{ExposeSecret, SecretString};
-use serde::Deserialize;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::PathBuf;
@@ -15,36 +15,48 @@ use crate::settings::INTERNAL_CARD_ROOT;
 /// Size of each download chunk in bytes (10 MB)
 const CHUNK_SIZE: usize = 10 * 1024 * 1024;
 
-/// Timeout for each chunk download attempt in seconds
-const CHUNK_TIMEOUT_SECS: u64 = 30;
-
 /// Maximum number of retry attempts for failed chunks
 const MAX_RETRIES: usize = 3;
 
-/// HTTP client for downloading OTA updates from GitHub.
+/// Downloads and deploys OTA updates from GitHub.
 ///
-/// This client handles the complete OTA update workflow:
-/// - Fetching PR information from GitHub API
-/// - Finding associated workflow runs
-/// - Downloading build artifacts and stable releases
-/// - Extracting and deploying updates
-///
-/// # Security
-///
-/// The GitHub personal access token is optional and wrapped in `SecretString`
-/// from the `secrecy` crate to prevent accidental exposure in logs, debug output,
-/// or error messages. The token is automatically wiped from memory when dropped.
-/// Access to the token value requires explicit use of `.expose_secret()`.
-///
-/// Token is required for:
-/// - PR build downloads
-/// - Default branch artifact downloads
-///
-/// Token is optional for:
-/// - Stable release downloads (public URLs)
+/// Delegates all HTTP communication to [`GithubClient`] and focuses solely on
+/// the OTA-specific workflow: finding artifacts, chunked downloading, ZIP
+/// extraction, and deploying `KoboRoot.tgz` to the Kobo device.
 pub struct OtaClient {
-    client: Client,
-    token: Option<SecretString>,
+    github: GithubClient,
+}
+
+/// Indicates where artifacts were expected but not found.
+#[derive(Debug, Clone)]
+pub enum ArtifactSource {
+    /// No artifacts found for a specific pull request
+    PullRequest(u32),
+    /// No artifacts found for the default branch
+    DefaultBranch,
+    /// No artifact matching the expected name pattern in a workflow run
+    WorkflowRun(String),
+    /// No release asset found with the expected name
+    ReleaseAsset(String),
+}
+
+impl std::fmt::Display for ArtifactSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ArtifactSource::PullRequest(pr) => write!(f, "No build artifacts found for PR #{}", pr),
+            ArtifactSource::DefaultBranch => {
+                write!(f, "No build artifacts found for default branch")
+            }
+            ArtifactSource::WorkflowRun(pattern) => {
+                write!(
+                    f,
+                    "No artifact matching '{}' found in workflow run",
+                    pattern
+                )
+            }
+            ArtifactSource::ReleaseAsset(name) => write!(f, "No release asset '{}' found", name),
+        }
+    }
 }
 
 /// Error types that can occur during OTA operations.
@@ -62,21 +74,24 @@ pub enum OtaError {
     #[error("PR #{0} not found")]
     PrNotFound(u32),
 
-    /// No build artifacts matching the expected pattern were found for the PR
-    #[error("No build artifacts found for PR #{0}")]
-    NoArtifacts(u32),
+    /// No build artifacts found for the specified source
+    #[error("{0}")]
+    ArtifactsNotFound(ArtifactSource),
 
-    /// No build artifacts found for the default branch
-    #[error("No build artifacts found for default branch")]
-    NoDefaultBranchArtifacts,
-
-    /// No artifact matching the expected name prefix was found in a workflow run
-    #[error("No artifact matching '{0}' found in workflow run")]
-    ArtifactNotFound(String),
-
-    /// GitHub token was not provided in configuration
+    /// GitHub token was not provided
     #[error("GitHub token not configured")]
     NoToken,
+
+    /// GitHub token is invalid or has been revoked — re-authentication required
+    #[error("GitHub token is invalid or revoked")]
+    Unauthorized,
+
+    /// GitHub token is missing one or more required OAuth scopes
+    ///
+    /// The token was accepted by GitHub but lacks the permissions needed for
+    /// OTA operations. Re-authentication with the correct scopes is required.
+    #[error(transparent)]
+    InsufficientScopes(#[from] crate::github::ScopeError),
 
     /// Insufficient disk space available for download (requires 100MB minimum)
     #[error("Insufficient disk space: need 100MB, have {0}MB")]
@@ -103,133 +118,14 @@ pub enum OtaError {
     DeploymentError(String),
 }
 
-/// Progress states during an OTA download operation.
-///
-/// Used with progress callbacks to track download status.
-#[derive(Debug, Clone)]
-pub enum OtaProgress {
-    /// Verifying the pull request exists and fetching its metadata
-    CheckingPr,
-    /// Searching for the latest successful build on the default branch
-    FindingLatestBuild,
-    /// Searching for the associated GitHub Actions workflow run
-    FindingWorkflow,
-    /// Actively downloading the artifact with optional progress tracking
-    DownloadingArtifact { downloaded: u64, total: u64 },
-    /// Download completed successfully, artifact saved to disk
-    Complete { path: PathBuf },
-}
-
-#[derive(Debug, Deserialize)]
-struct PullRequest {
-    head: PrHead,
-}
-
-#[derive(Debug, Deserialize)]
-struct PrHead {
-    sha: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct WorkflowRunsResponse {
-    workflow_runs: Vec<WorkflowRun>,
-}
-
-#[derive(Debug, Deserialize)]
-struct WorkflowRun {
-    name: String,
-    id: u64,
-    #[serde(default)]
-    head_sha: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct Repository {
-    default_branch: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct ArtifactsResponse {
-    artifacts: Vec<Artifact>,
-}
-
-#[derive(Debug, Deserialize)]
-struct Artifact {
-    name: String,
-    id: u64,
-    size_in_bytes: u64,
-}
-
-#[derive(Debug, Deserialize)]
-struct Release {
-    assets: Vec<ReleaseAsset>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ReleaseAsset {
-    name: String,
-    browser_download_url: String,
-    size: u64,
-}
-
 impl OtaClient {
-    /// Creates a new OTA client with optional GitHub authentication.
-    ///
-    /// Initializes an HTTP client with TLS configured using webpki-roots
-    /// certificates for secure communication with GitHub's API.
-    ///
-    /// # Arguments
-    ///
-    /// * `github_token` - Optional personal access token wrapped in `SecretString`
-    ///   for secure handling. Required for artifact downloads, optional for
-    ///   stable release downloads.
+    /// Creates a new OTA client wrapping the provided GitHub client.
     ///
     /// # Errors
     ///
-    /// Returns `OtaError::TlsConfig` if the HTTP client fails to initialize
-    /// with the provided TLS configuration.
-    ///
-    /// # Security
-    ///
-    /// The token is stored securely and will never appear in debug output or logs.
-    /// It is only exposed when making authenticated API requests.
-    pub fn new(github_token: Option<SecretString>) -> Result<Self, OtaError> {
-        tracing::debug!("Initializing OTA client with webpki-roots certificates");
-
-        let root_store = create_webpki_root_store();
-        tracing::debug!(
-            certificate_count = root_store.len(),
-            "Created root certificate store"
-        );
-
-        let tls_config = rustls::ClientConfig::builder()
-            .with_root_certificates(root_store)
-            .with_no_client_auth();
-
-        tracing::debug!("Built TLS configuration");
-
-        let client = Client::builder()
-            .use_preconfigured_tls(tls_config)
-            .user_agent("cadmus-ota")
-            .timeout(Duration::from_secs(CHUNK_TIMEOUT_SECS))
-            .build()
-            .map_err(|e| OtaError::TlsConfig(format!("Failed to build HTTP client: {}", e)))?;
-
-        tracing::debug!("Successfully initialized OTA client");
-
-        Ok(Self {
-            client,
-            token: github_token,
-        })
-    }
-
-    /// Returns a reference to the GitHub token if available.
-    ///
-    /// # Errors
-    ///
-    /// Returns `OtaError::NoToken` if no token is configured.
-    fn get_token(&self) -> Result<&SecretString, OtaError> {
-        self.token.as_ref().ok_or_else(|| OtaError::NoToken)
+    /// Returns `OtaError::TlsConfig` if the underlying HTTP client fails to build.
+    pub fn new(github: GithubClient) -> Self {
+        Self { github }
     }
 
     /// Downloads the build artifact from a GitHub pull request.
@@ -257,7 +153,7 @@ impl OtaClient {
     /// * `OtaError::InsufficientSpace` - Less than 100MB available in /tmp
     /// * `OtaError::NoToken` - GitHub token not configured
     /// * `OtaError::PrNotFound` - PR number doesn't exist in repository
-    /// * `OtaError::NoArtifacts` - No matching build artifacts found for the PR
+    /// * `OtaError::ArtifactsNotFound` - No matching build artifacts found for the PR
     /// * `OtaError::Api` - GitHub API request failed
     /// * `OtaError::Request` - Network communication failed
     /// * `OtaError::Io` - Failed to write downloaded file to disk
@@ -270,6 +166,7 @@ impl OtaClient {
         F: FnMut(OtaProgress),
     {
         check_disk_space("/tmp")?;
+        verify_scopes(&self.github)?;
 
         progress_callback(OtaProgress::CheckingPr);
         tracing::info!(pr_number, "Starting PR build download");
@@ -282,33 +179,21 @@ impl OtaClient {
         tracing::debug!(url = %pr_url, "Fetching PR");
 
         let response = self
-            .client
+            .github
             .get(&pr_url)
-            .header(
-                "Authorization",
-                format!("Bearer {}", self.get_token()?.expose_secret()),
-            )
-            .send()?;
+            .send()?
+            .error_for_status()
+            .map_err(|e| {
+                tracing::error!(pr_number, status = ?e.status(), error = %e, "PR fetch failed");
+                if e.status() == Some(reqwest::StatusCode::UNAUTHORIZED) {
+                    OtaError::Unauthorized
+                } else {
+                    OtaError::PrNotFound(pr_number)
+                }
+            })?;
 
-        tracing::debug!(
-            status = %response.status(),
-            headers = ?response.headers(),
-            "PR fetch response"
-        );
-
-        let response = response.error_for_status().map_err(|e| {
-            tracing::error!(
-                pr_number,
-                status = ?e.status(),
-                error = %e,
-                "PR fetch failed"
-            );
-            OtaError::PrNotFound(pr_number)
-        })?;
-
-        let pr: PullRequest = response.json()?;
+        let pr: crate::github::types::PullRequest = response.json()?;
         tracing::debug!("Successfully parsed PR response");
-
         let head_sha = pr.head.sha;
         tracing::debug!(pr_number, head_sha = %head_sha, "Retrieved PR head SHA");
 
@@ -321,32 +206,17 @@ impl OtaClient {
         );
         tracing::debug!(url = %runs_url, "Fetching workflow runs");
 
-        let response = self
-            .client
+        let runs: WorkflowRunsResponse = self
+            .github
             .get(&runs_url)
-            .header(
-                "Authorization",
-                format!("Bearer {}", self.get_token()?.expose_secret()),
-            )
-            .send()?;
+            .send()?
+            .error_for_status()
+            .map_err(|e| {
+                tracing::error!(head_sha = %head_sha, status = ?e.status(), error = %e, "Workflow runs fetch failed");
+                api_error(e)
+            })?
+            .json()?;
 
-        tracing::debug!(
-            status = %response.status(),
-            headers = ?response.headers(),
-            "Workflow runs response"
-        );
-
-        let response = response.error_for_status().map_err(|e| {
-            tracing::error!(
-                head_sha = %head_sha,
-                status = ?e.status(),
-                error = %e,
-                "Workflow runs fetch failed"
-            );
-            OtaError::Api(format!("Failed to fetch workflow runs: {}", e))
-        })?;
-
-        let runs: WorkflowRunsResponse = response.json()?;
         tracing::debug!(count = runs.workflow_runs.len(), "Found workflow runs");
 
         #[cfg(feature = "otel")]
@@ -366,12 +236,8 @@ impl OtaClient {
             .iter()
             .find(|r| r.name == "Cargo")
             .ok_or_else(|| {
-                tracing::error!(
-                    pr_number,
-                    workflow_name = "Cargo",
-                    "No matching workflow run found"
-                );
-                OtaError::NoArtifacts(pr_number)
+                tracing::error!(pr_number, "No Cargo workflow run found");
+                OtaError::ArtifactsNotFound(ArtifactSource::PullRequest(pr_number))
             })?;
 
         tracing::debug!(run_id = run.id, "Found Cargo workflow run");
@@ -384,7 +250,9 @@ impl OtaClient {
         let artifact = self
             .find_artifact_in_run(run.id, &artifact_name_pattern)
             .map_err(|e| match e {
-                OtaError::ArtifactNotFound(_) => OtaError::NoArtifacts(pr_number),
+                OtaError::ArtifactsNotFound(ArtifactSource::WorkflowRun(_)) => {
+                    OtaError::ArtifactsNotFound(ArtifactSource::PullRequest(pr_number))
+                }
                 other => other,
             })?;
 
@@ -429,7 +297,7 @@ impl OtaClient {
     ///
     /// * `OtaError::InsufficientSpace` - Less than 100MB available in /tmp
     /// * `OtaError::NoToken` - GitHub token not configured
-    /// * `OtaError::NoDefaultBranchArtifacts` - No matching build artifacts found
+    /// * `OtaError::ArtifactsNotFound` - No matching build artifacts found for default branch
     /// * `OtaError::Api` - GitHub API request failed
     /// * `OtaError::Request` - Network communication failed
     /// * `OtaError::Io` - Failed to write downloaded file to disk
@@ -441,6 +309,7 @@ impl OtaClient {
         F: FnMut(OtaProgress),
     {
         check_disk_space("/tmp")?;
+        verify_scopes(&self.github)?;
 
         progress_callback(OtaProgress::FindingLatestBuild);
         tracing::info!("Starting main branch build download");
@@ -455,39 +324,20 @@ impl OtaClient {
         );
         tracing::debug!(url = %runs_url, "Fetching Cargo workflow runs on default branch");
 
-        let response = self
-            .client
-            .get(runs_url)
-            .header(
-                "Authorization",
-                format!("Bearer {}", self.get_token()?.expose_secret()),
-            )
-            .send()?;
-
-        tracing::debug!(
-            status = %response.status(),
-            headers = ?response.headers(),
-            "Cargo workflow runs response"
-        );
-
-        let response = response.error_for_status().map_err(|e| {
-            tracing::error!(
-                status = ?e.status(),
-                error = %e,
-                "Cargo workflow runs fetch failed"
-            );
-            OtaError::Api(format!("Failed to fetch Cargo workflow runs: {}", e))
-        })?;
-
-        let runs: WorkflowRunsResponse = response.json()?;
-        tracing::debug!(
-            count = runs.workflow_runs.len(),
-            "Found Cargo workflow runs"
-        );
+        let runs: WorkflowRunsResponse = self
+            .github
+            .get(&runs_url)
+            .send()?
+            .error_for_status()
+            .map_err(|e| {
+                tracing::error!(status = ?e.status(), error = %e, "Cargo workflow runs fetch failed");
+                api_error(e)
+            })?
+            .json()?;
 
         let cargo_run = runs.workflow_runs.first().ok_or_else(|| {
             tracing::error!("No successful Cargo workflow run found on default branch");
-            OtaError::NoDefaultBranchArtifacts
+            OtaError::ArtifactsNotFound(ArtifactSource::DefaultBranch)
         })?;
 
         tracing::debug!(run_id = cargo_run.id, "Found Cargo workflow run");
@@ -510,12 +360,9 @@ impl OtaClient {
         let artifact = self
             .find_artifact_in_run(cargo_run.id, &artifact_name_prefix)
             .map_err(|e| match e {
-                OtaError::ArtifactNotFound(pattern) => {
-                    tracing::error!(
-                        pattern = %pattern,
-                        "No matching artifact found on default branch"
-                    );
-                    OtaError::NoDefaultBranchArtifacts
+                OtaError::ArtifactsNotFound(ArtifactSource::WorkflowRun(pattern)) => {
+                    tracing::error!(pattern = %pattern, "No matching artifact found on default branch");
+                    OtaError::ArtifactsNotFound(ArtifactSource::DefaultBranch)
                 }
                 other => other,
             })?;
@@ -563,7 +410,7 @@ impl OtaClient {
     /// * `OtaError::InsufficientSpace` - Less than 100MB available in /tmp
     /// * `OtaError::Api` - GitHub API request failed
     /// * `OtaError::Request` - Network communication failed
-    /// * `OtaError::NoArtifacts` - KoboRoot.tgz not found in latest release
+    /// * `OtaError::ArtifactsNotFound` - KoboRoot.tgz not found in latest release
     /// * `OtaError::Io` - Failed to write downloaded file to disk
     #[cfg_attr(feature = "otel", tracing::instrument(skip_all))]
     pub fn download_stable_release_artifact<F>(
@@ -582,28 +429,17 @@ impl OtaClient {
         let releases_url = "https://api.github.com/repos/ogkevin/cadmus/releases/latest";
         tracing::debug!(url = %releases_url, "Fetching latest release");
 
-        let mut request = self.client.get(releases_url);
-        if let Some(ref token) = self.token {
-            request = request.header("Authorization", format!("Bearer {}", token.expose_secret()));
-        }
-        let response = request.send()?;
+        let release: Release = self
+            .github
+            .get_unauthenticated(releases_url)
+            .send()?
+            .error_for_status()
+            .map_err(|e| {
+                tracing::error!(status = ?e.status(), error = %e, "Latest release fetch failed");
+                api_error(e)
+            })?
+            .json()?;
 
-        tracing::debug!(
-            status = %response.status(),
-            headers = ?response.headers(),
-            "Latest release response"
-        );
-
-        let response = response.error_for_status().map_err(|e| {
-            tracing::error!(
-                status = ?e.status(),
-                error = %e,
-                "Latest release fetch failed"
-            );
-            OtaError::Api(format!("Failed to fetch latest release: {}", e))
-        })?;
-
-        let release: Release = response.json()?;
         tracing::debug!(asset_count = release.assets.len(), "Found release assets");
 
         #[cfg(feature = "otel")]
@@ -627,7 +463,7 @@ impl OtaClient {
                     target_asset = asset_name,
                     "Asset not found in latest release"
                 );
-                OtaError::ArtifactNotFound(asset_name.to_owned())
+                OtaError::ArtifactsNotFound(ArtifactSource::ReleaseAsset(asset_name.to_owned()))
             })?;
 
         tracing::debug!(
@@ -814,27 +650,18 @@ impl OtaClient {
         let repo_url = "https://api.github.com/repos/ogkevin/cadmus";
         tracing::debug!(url = %repo_url, "Fetching repository metadata");
 
-        let response = self
-            .client
+        let repo: Repository = self
+            .github
             .get(repo_url)
-            .header(
-                "Authorization",
-                format!("Bearer {}", self.get_token()?.expose_secret()),
-            )
-            .send()?;
+            .send()?
+            .error_for_status()
+            .map_err(|e| {
+                tracing::error!(status = ?e.status(), error = %e, "Repository metadata fetch failed");
+                api_error(e)
+            })?
+            .json()?;
 
-        let response = response.error_for_status().map_err(|e| {
-            tracing::error!(
-                status = ?e.status(),
-                error = %e,
-                "Repository metadata fetch failed"
-            );
-            OtaError::Api(format!("Failed to fetch repository metadata: {}", e))
-        })?;
-
-        let repo: Repository = response.json()?;
         tracing::debug!(default_branch = %repo.default_branch, "Resolved default branch");
-
         Ok(repo.default_branch)
     }
 
@@ -846,32 +673,17 @@ impl OtaClient {
         );
         tracing::debug!(url = %artifacts_url, "Fetching artifacts");
 
-        let response = self
-            .client
+        let artifacts: ArtifactsResponse = self
+            .github
             .get(&artifacts_url)
-            .header(
-                "Authorization",
-                format!("Bearer {}", self.get_token()?.expose_secret()),
-            )
-            .send()?;
+            .send()?
+            .error_for_status()
+            .map_err(|e| {
+                tracing::error!(run_id, status = ?e.status(), error = %e, "Artifacts fetch failed");
+                api_error(e)
+            })?
+            .json()?;
 
-        tracing::debug!(
-            status = %response.status(),
-            headers = ?response.headers(),
-            "Artifacts response"
-        );
-
-        let response = response.error_for_status().map_err(|e| {
-            tracing::error!(
-                run_id,
-                status = ?e.status(),
-                error = %e,
-                "Artifacts fetch failed"
-            );
-            OtaError::Api(format!("Failed to fetch artifacts: {}", e))
-        })?;
-
-        let artifacts: ArtifactsResponse = response.json()?;
         tracing::debug!(count = artifacts.artifacts.len(), "Found artifacts");
 
         #[cfg(feature = "otel")]
@@ -894,12 +706,8 @@ impl OtaClient {
             .into_iter()
             .find(|a| a.name.starts_with(name_prefix))
             .ok_or_else(|| {
-                tracing::error!(
-                    run_id,
-                    pattern = %name_prefix,
-                    "No matching artifact found"
-                );
-                OtaError::ArtifactNotFound(name_prefix.to_owned())
+                tracing::error!(run_id, pattern = %name_prefix, "No matching artifact found");
+                OtaError::ArtifactsNotFound(ArtifactSource::WorkflowRun(name_prefix.to_owned()))
             })
     }
 
@@ -1092,24 +900,19 @@ impl OtaClient {
     ) -> Result<Vec<u8>, OtaError> {
         let range_header = format!("bytes={}-{}", start, end);
 
-        let mut request = self.client.get(url).header("Range", range_header);
+        let builder = if use_auth {
+            self.github.get(url)
+        } else {
+            self.github.get_unauthenticated(url)
+        };
 
-        if use_auth {
-            if let Some(ref token) = self.token {
-                request =
-                    request.header("Authorization", format!("Bearer {}", token.expose_secret()));
-            } else {
-                tracing::error!("Attempted authenticated download without token");
-                return Err(OtaError::NoToken);
-            }
-        }
-
-        let response = request
+        let bytes = builder
+            .header("Range", range_header)
             .send()?
             .error_for_status()
-            .map_err(|e| OtaError::Api(format!("Failed to download chunk: {}", e)))?;
+            .map_err(api_error)?
+            .bytes()?;
 
-        let bytes = response.bytes()?;
         Ok(bytes.to_vec())
     }
 
@@ -1138,17 +941,36 @@ impl OtaClient {
     }
 }
 
-/// Verifies sufficient disk space is available in the specified path for download.
+/// Verifies that the GitHub token has all scopes required for OTA operations.
 ///
-/// Requires at least 100MB of free space for artifact download and extraction.
+/// Delegates to [`GithubClient::verify_token_scopes`], which reads the
+/// `X-OAuth-Scopes` header from a lightweight `/user` request and compares
+/// against [`crate::github::REQUIRED_SCOPES`].
 ///
-/// # Arguments
+/// Returns `Ok(())` if all scopes are present, or an `OtaError` that is
+/// either a transport failure or missing scopes, so the caller can trigger
+/// re-authentication.
+fn verify_scopes(github: &crate::github::GithubClient) -> Result<(), OtaError> {
+    github.verify_token_scopes().map_err(|e| match e {
+        crate::github::VerifyScopesError::Request(e) => api_error(e),
+        crate::github::VerifyScopesError::InsufficientScopes(e) => OtaError::InsufficientScopes(e),
+    })
+}
+
+/// Maps a failed `reqwest` response to the appropriate `OtaError`.
 ///
-/// * `path` - The path to check for available disk space
-///
-/// # Errors
-///
-/// Returns `OtaError::InsufficientSpace` if less than 100MB is available.
+/// A 401 Unauthorized response means the saved token has been revoked or
+/// expired — the caller should re-authenticate via device flow rather than
+/// treating this as a generic API error.
+fn api_error(e: reqwest::Error) -> OtaError {
+    if e.status() == Some(reqwest::StatusCode::UNAUTHORIZED) {
+        tracing::warn!("GitHub API returned 401 — token invalid or revoked");
+        OtaError::Unauthorized
+    } else {
+        OtaError::Api(e.to_string())
+    }
+}
+
 fn check_disk_space(path: &str) -> Result<(), OtaError> {
     use nix::sys::statvfs::statvfs;
 
@@ -1163,79 +985,29 @@ fn check_disk_space(path: &str) -> Result<(), OtaError> {
             required_mb = 100,
             "Insufficient disk space"
         );
-        return Err(OtaError::InsufficientSpace(available_mb as u64));
+        return Err(OtaError::InsufficientSpace(available_mb));
     }
     Ok(())
-}
-
-/// Creates a root certificate store with Mozilla's trusted CA certificates.
-///
-/// Uses the webpki-roots crate which embeds Mozilla's CA certificate bundle
-/// for verifying HTTPS connections to GitHub's API.
-fn create_webpki_root_store() -> RootCertStore {
-    tracing::debug!("Loading Mozilla root certificates from webpki-roots");
-    let mut root_store = RootCertStore::empty();
-
-    root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
-
-    tracing::debug!(
-        certificate_count = root_store.len(),
-        "Loaded root certificates from webpki-roots"
-    );
-    root_store
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
+    use crate::github::GithubClient;
+    use secrecy::SecretString;
 
-    #[test]
-    fn test_create_webpki_root_store() {
-        let root_store = create_webpki_root_store();
-        assert!(
-            !root_store.is_empty(),
-            "Root certificate store should not be empty"
-        );
-    }
-
-    #[test]
-    fn test_create_webpki_root_store_has_certificates() {
-        let root_store = create_webpki_root_store();
-        assert!(
-            root_store.len() > 50,
-            "Expected at least 50 root certificates, got {}",
-            root_store.len()
-        );
-    }
-
-    #[test]
-    fn test_ota_error_from_reqwest_error() {
-        let reqwest_error = reqwest::blocking::Client::new()
-            .get("http://invalid-url-that-does-not-exist-12345.com")
-            .send()
-            .unwrap_err();
-        let ota_error: OtaError = reqwest_error.into();
-        assert!(matches!(ota_error, OtaError::Request(_)));
-    }
-
-    #[test]
-    fn test_check_disk_space_sufficient() {
-        let temp_dir = TempDir::new().unwrap();
-        let result = check_disk_space(temp_dir.path().to_str().unwrap());
-        assert!(
-            result.is_ok(),
-            "Should have sufficient disk space in temp directory"
-        );
+    fn make_client() -> OtaClient {
+        rustls::crypto::ring::default_provider()
+            .install_default()
+            .ok();
+        let github =
+            GithubClient::new(Some(SecretString::from("test_token"))).expect("client build");
+        OtaClient::new(github)
     }
 
     #[test]
     fn test_extract_and_deploy_success() {
-        rustls::crypto::ring::default_provider()
-            .install_default()
-            .ok();
-
-        let client = OtaClient::new(Some(SecretString::from("test_token".to_string()))).unwrap();
+        let client = make_client();
         let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("src/ota/tests/fixtures/test_artifact.zip");
 
@@ -1265,11 +1037,7 @@ mod tests {
 
     #[test]
     fn test_extract_and_deploy_missing_koboroot() {
-        rustls::crypto::ring::default_provider()
-            .install_default()
-            .ok();
-
-        let client = OtaClient::new(Some(SecretString::from("test_token".to_string()))).unwrap();
+        let client = make_client();
         let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("src/ota/tests/fixtures/empty_artifact.zip");
 
@@ -1286,6 +1054,17 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_check_disk_space_sufficient() {
+        use tempfile::TempDir;
+        let temp_dir = TempDir::new().unwrap();
+        let result = check_disk_space(temp_dir.path().to_str().unwrap());
+        assert!(
+            result.is_ok(),
+            "Should have sufficient disk space in temp directory"
+        );
+    }
+
     fn external_test_enabled() -> bool {
         std::env::var("CADMUS_TEST_OTA_EXTERNAL").is_ok() && std::env::var("GH_TOKEN").is_ok()
     }
@@ -1294,9 +1073,9 @@ mod tests {
         rustls::crypto::ring::default_provider()
             .install_default()
             .ok();
-
         let token = std::env::var("GH_TOKEN").expect("GH_TOKEN must be set");
-        OtaClient::new(Some(SecretString::from(token))).expect("Failed to create OtaClient")
+        let github = GithubClient::new(Some(SecretString::from(token))).expect("client build");
+        OtaClient::new(github)
     }
 
     #[test]
@@ -1357,11 +1136,7 @@ mod tests {
         }
 
         let client = create_external_client();
-        let mut last_progress = None;
-
-        let download_result = client.download_stable_release_artifact(|progress| {
-            last_progress = Some(format!("{:?}", progress));
-        });
+        let download_result = client.download_stable_release_artifact(|_| {});
 
         assert!(
             download_result.is_ok(),

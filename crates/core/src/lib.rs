@@ -12,6 +12,7 @@ pub mod font;
 pub mod framebuffer;
 pub mod frontlight;
 pub mod gesture;
+pub mod github;
 pub mod helpers;
 pub mod input;
 pub mod library;

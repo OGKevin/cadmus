@@ -1,7 +1,9 @@
+use super::device_auth::DeviceAuthView;
 use super::dialog::Dialog;
 use super::input_field::InputField;
 use super::label::Label;
 use super::notification::Notification;
+use super::progress_bar::ProgressBar;
 use super::toggleable_keyboard::ToggleableKeyboard;
 use super::{
     Align, Bus, EntryId, Event, Hub, Id, NotificationEvent, RenderData, RenderQueue, UpdateMode,
@@ -14,7 +16,9 @@ use crate::font::{font_from_style, Fonts, NORMAL_STYLE};
 use crate::framebuffer::Framebuffer;
 use crate::geom::Rectangle;
 use crate::gesture::GestureEvent;
-use crate::ota::{OtaClient, OtaProgress};
+use crate::github::device_flow;
+use crate::github::GithubClient;
+use crate::ota::{OtaClient, OtaError, OtaProgress};
 use crate::unit::scale_by_dpi;
 use crate::view::filler::Filler;
 use crate::view::BIG_BAR_HEIGHT;
@@ -27,6 +31,7 @@ pub enum OtaViewId {
     Main,
     SourceSelection,
     PrInput,
+    DeviceAuth,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -85,10 +90,18 @@ pub fn show_ota_view(
         return false;
     }
 
-    let ota_view = OtaView::new(context.settings.ota.github_token.clone(), context);
+    let ota_view = OtaView::new(context);
     view.children_mut()
         .push(Box::new(ota_view) as Box<dyn View>);
     true
+}
+
+/// Which download to resume after device flow authentication completes.
+#[derive(Debug, Clone)]
+enum PendingDownload {
+    DefaultBranch,
+    PrInputPending,
+    Pr(u32),
 }
 
 /// UI view for downloading and installing OTA updates from GitHub.
@@ -98,9 +111,14 @@ pub fn show_ota_view(
 ///    (Stable Release, Main Branch, or PR Build)
 /// 2. PR input screen - prompts for PR number input (only for PR Build)
 ///
-/// The view transitions between screens based on user selections.
-/// Selecting Stable Release or Main Branch starts the download immediately,
-/// while PR Build first shows the input screen for a PR number.
+/// Once a download starts, the view transitions to a full-screen progress
+/// screen showing a status label and a [`ProgressBar`]. On successful
+/// deployment the label updates to "Rebooting…" and the app reboots
+/// automatically via [`Event::Select(EntryId::Reboot)`].
+///
+/// When a GitHub token is required but not present, the view pushes a
+/// [`DeviceAuthView`] child to guide the user through device flow
+/// authentication. Once authorized, the pending download resumes automatically.
 ///
 /// # Security
 ///
@@ -113,24 +131,39 @@ pub struct OtaView {
     view_id: ViewId,
     github_token: Option<SecretString>,
     keyboard_index: Option<usize>,
+    pending_download: Option<PendingDownload>,
+    /// Index into `children` of the status `Label` shown during download.
+    status_label_index: Option<usize>,
+    /// Index into `children` of the `ProgressBar` shown during download.
+    progress_bar_index: Option<usize>,
 }
 
 impl OtaView {
-    /// Creates a new OTA view with the configured GitHub token.
+    /// Creates a new OTA view.
+    ///
+    /// Attempts to load a previously saved GitHub token from disk. If none is
+    /// found the view will prompt for device flow authentication when a
+    /// token-gated download is requested.
     ///
     /// Initially displays the source selection dialog asking where to
     /// download updates from.
     ///
     /// # Arguments
     ///
-    /// * `github_token` - Optional GitHub personal access token wrapped in `SecretString`
-    ///   for secure handling. Not required for stable release downloads.
     /// * `context` - Application context containing fonts and device information
     #[cfg_attr(feature = "otel", tracing::instrument(skip_all))]
-    pub fn new(github_token: Option<SecretString>, context: &mut Context) -> OtaView {
+    pub fn new(context: &mut Context) -> OtaView {
         let id = ID_FEEDER.next();
         let view_id = ViewId::Ota(OtaViewId::Main);
         let (width, height) = CURRENT_DEVICE.dims;
+
+        let github_token = match device_flow::load_token() {
+            Ok(token) => token,
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to load saved GitHub token");
+                None
+            }
+        };
 
         let mut children: Vec<Box<dyn View>> = Vec::new();
 
@@ -149,6 +182,9 @@ impl OtaView {
             view_id,
             github_token,
             keyboard_index: None,
+            pending_download: None,
+            status_label_index: None,
+            progress_bar_index: None,
         }
     }
 
@@ -186,6 +222,9 @@ impl OtaView {
         let (width, height) = CURRENT_DEVICE.dims;
 
         self.children.clear();
+        self.status_label_index = None;
+        self.progress_bar_index = None;
+        self.keyboard_index = None;
 
         self.children.push(Box::new(Filler::new(
             rect![0, 0, width as i32, height as i32],
@@ -232,14 +271,63 @@ impl OtaView {
         self.rect = rect![0, 0, width as i32, height as i32];
     }
 
+    /// Builds the full-screen progress screen shown during download/deployment.
+    ///
+    /// Clears all existing children and adds:
+    /// 1. A white full-screen [`Filler`] background
+    /// 2. A centered [`Label`] with the given status text
+    /// 3. A centered [`ProgressBar`] below the label
+    ///
+    /// The indices of the label and progress bar are stored so they can be
+    /// updated incrementally as progress events arrive.
+    fn build_progress_screen(&mut self, status: &str, context: &mut Context) {
+        let dpi = CURRENT_DEVICE.dpi;
+        let (width, height) = CURRENT_DEVICE.dims;
+
+        self.children.clear();
+        self.status_label_index = None;
+        self.progress_bar_index = None;
+        self.keyboard_index = None;
+
+        self.children.push(Box::new(Filler::new(
+            rect![0, 0, width as i32, height as i32],
+            WHITE,
+        )));
+
+        let font = font_from_style(&mut context.fonts, &NORMAL_STYLE, dpi);
+        let label_height = font.x_heights.0 as i32 * 3;
+        let bar_height = scale_by_dpi(40.0, dpi) as i32;
+        let bar_width = (width as f32 * 0.6) as i32;
+        let center_y = height as i32 / 2;
+        let gap = scale_by_dpi(24.0, dpi) as i32;
+
+        let label_rect = rect![
+            0,
+            center_y - label_height - gap / 2,
+            width as i32,
+            center_y - gap / 2
+        ];
+        self.children.push(Box::new(Label::new(
+            label_rect,
+            status.to_string(),
+            Align::Center,
+        )));
+        self.status_label_index = Some(self.children.len() - 1);
+
+        let bar_x = (width as i32 - bar_width) / 2;
+        let bar_rect = rect![
+            bar_x,
+            center_y + gap / 2,
+            bar_x + bar_width,
+            center_y + gap / 2 + bar_height
+        ];
+        self.children.push(Box::new(ProgressBar::new(bar_rect, 0)));
+        self.progress_bar_index = Some(self.children.len() - 1);
+
+        self.rect = rect![0, 0, width as i32, height as i32];
+    }
+
     /// Toggles keyboard visibility based on focus state.
-    ///
-    /// # Arguments
-    ///
-    /// * `visible` - Whether the keyboard should be visible
-    /// * `hub` - Event hub for sending events
-    /// * `rq` - Render queue for UI updates
-    /// * `context` - Application context
     fn toggle_keyboard(
         &mut self,
         visible: bool,
@@ -258,21 +346,21 @@ impl OtaView {
 
     /// Handles submission of PR number from input field.
     ///
-    /// Validates the input, initiates download if valid, and closes the view.
-    ///
-    /// # Arguments
-    ///
-    /// * `text` - The input text to parse as PR number
-    /// * `hub` - Event hub for sending notifications
-    fn handle_pr_submission(&mut self, text: &str, hub: &Hub) {
+    /// Validates the input, transitions to the progress screen, and initiates
+    /// the download. The view stays alive so it can receive progress events and
+    /// handle token-invalid errors.
+    fn handle_pr_submission(
+        &mut self,
+        text: &str,
+        hub: &Hub,
+        rq: &mut RenderQueue,
+        context: &mut Context,
+    ) {
         if let Ok(pr_number) = text.trim().parse::<u32>() {
-            hub.send(Event::Notification(NotificationEvent::Show(format!(
-                "Downloading PR #{} build...",
-                pr_number
-            ))))
-            .ok();
+            self.pending_download = Some(PendingDownload::Pr(pr_number));
+            self.build_progress_screen(&format!("Downloading PR #{} build…", pr_number), context);
+            rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
             self.start_pr_download(pr_number, hub);
-            hub.send(Event::Close(self.view_id)).ok();
         } else {
             hub.send(Event::Notification(NotificationEvent::Show(
                 "Invalid PR number".to_string(),
@@ -299,35 +387,37 @@ impl OtaView {
         }
     }
 
-    /// Validates that a GitHub token is configured.
+    /// Checks that a GitHub token is available.
     ///
-    /// Returns true if a token is present. If not, sends a notification
-    /// explaining that the token is required.
-    #[inline]
-    fn require_github_token(&self, hub: &Hub, check_source: &str) -> bool {
-        if self.github_token.is_none() {
-            hub.send(Event::Notification(NotificationEvent::Show(format!(
-                "GitHub token required for {}. Add [ota] github-token to Settings.toml",
-                check_source
-            ))))
-            .ok();
-            return false;
+    /// Returns `true` if a token is present and the caller may proceed.
+    /// If no token is found, pushes a [`DeviceAuthView`] child to guide the
+    /// user through device flow authentication and returns `false`.
+    fn require_github_token(
+        &mut self,
+        pending: PendingDownload,
+        hub: &Hub,
+        rq: &mut RenderQueue,
+        context: &mut Context,
+    ) -> bool {
+        if self.github_token.is_some() {
+            return true;
         }
-        true
+
+        tracing::info!("No GitHub token found, starting device flow");
+        self.pending_download = Some(pending);
+        let auth_view = DeviceAuthView::new(hub, context);
+        self.children.push(Box::new(auth_view) as Box<dyn View>);
+        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+        false
     }
 
-    /// Initiates the download process in a background thread.
+    /// Initiates the PR artifact download in a background thread.
     ///
-    /// Spawns a thread that:
-    /// 1. Creates an OTA client
-    /// 2. Downloads the artifact for the specified PR
-    /// 3. Extracts and deploys KoboRoot.tgz
-    /// 4. Sends notification events on success or failure
-    ///
-    /// # Arguments
-    ///
-    /// * `pr_number` - The GitHub pull request number to download
-    /// * `hub` - Event hub for sending notifications and status updates
+    /// Sends [`Event::OtaDownloadProgress`] during the download. On success,
+    /// updates the status label to "Rebooting…" and sends
+    /// [`Event::Select(EntryId::Reboot)`] to trigger an automatic reboot.
+    /// On a 401 response, sends [`Event::GithubTokenInvalid`] without closing
+    /// the view so re-authentication can proceed.
     #[cfg_attr(feature = "otel", tracing::instrument(skip(self, hub)))]
     fn start_pr_download(&mut self, pr_number: u32, hub: &Hub) {
         let Some(github_token) = self.github_token.clone() else {
@@ -337,74 +427,78 @@ impl OtaView {
 
         let hub2 = hub.clone();
         let parent_span = tracing::Span::current();
+        let ota_view_id = self.view_id;
 
         thread::spawn(move || {
             let _span =
                 tracing::info_span!(parent: &parent_span, "pr_download_async", pr_number).entered();
-            let client = match OtaClient::new(Some(github_token)) {
+            let github = match GithubClient::new(Some(github_token)) {
                 Ok(c) => c,
                 Err(e) => {
-                    error!("[OTA] Failed to create github client {:?}", e);
-                    let error_msg = format!("Failed to create client: {}", e);
-                    hub2.send(Event::Notification(NotificationEvent::Show(error_msg)))
-                        .ok();
+                    error!(error = %e, "Failed to create GitHub client");
+                    hub2.send(Event::Close(ota_view_id)).ok();
+                    hub2.send(Event::Notification(NotificationEvent::Show(format!(
+                        "Failed to create client: {}",
+                        e
+                    ))))
+                    .ok();
                     return;
                 }
             };
+            let client = OtaClient::new(github);
 
-            let notify_id = ViewId::MessageNotif(ID_FEEDER.next());
-            hub2.send(Event::Notification(NotificationEvent::ShowPinned(
-                notify_id,
-                "Starting update download".to_string(),
-            )))
-            .ok();
-            hub2.send(Event::Notification(NotificationEvent::UpdateProgress(
-                notify_id, 0,
-            )))
+            hub2.send(Event::OtaDownloadProgress {
+                label: format!("Downloading PR #{} build… 0%", pr_number),
+                percent: 0,
+            })
             .ok();
 
             let download_result = client.download_pr_artifact(pr_number, |ota_progress| {
                 if let OtaProgress::DownloadingArtifact { downloaded, total } = ota_progress {
-                    let progress = (downloaded as f32 / total as f32) * 100.0;
-                    let msg = format!("Downloading update: {}%", progress as u8);
-                    hub2.send(Event::Notification(NotificationEvent::UpdateText(
-                        notify_id, msg,
-                    )))
-                    .ok();
-                    hub2.send(Event::Notification(NotificationEvent::UpdateProgress(
-                        notify_id,
-                        progress as u8,
-                    )))
+                    let percent = (downloaded as f32 / total as f32 * 100.0) as u8;
+                    hub2.send(Event::OtaDownloadProgress {
+                        label: format!("Downloading PR #{} build… {}%", pr_number, percent),
+                        percent,
+                    })
                     .ok();
                 }
             });
 
-            hub2.send(Event::Close(notify_id)).ok();
-
             match download_result {
                 Ok(zip_path) => {
-                    info!("[OTA] Download completed, starting extraction...");
-
+                    info!(pr_number, "Download completed, starting extraction");
                     match client.extract_and_deploy(zip_path) {
                         Ok(_) => {
-                            hub2.send(Event::Notification(NotificationEvent::Show(
-                                "Update installed! Reboot to apply.".to_string(),
-                            )))
+                            hub2.send(Event::OtaDownloadProgress {
+                                label: "Installing and rebooting…".to_string(),
+                                percent: 100,
+                            })
                             .ok();
+                            send_reboot_after_delay(hub2.clone());
                         }
                         Err(e) => {
-                            error!("[OTA] Deployment error: {:?}", e);
-                            let error_msg = format!("Deployment failed: {}", e);
-                            hub2.send(Event::Notification(NotificationEvent::Show(error_msg)))
-                                .ok();
+                            error!(error = %e, "Deployment failed");
+                            hub2.send(Event::Close(ota_view_id)).ok();
+                            hub2.send(Event::Notification(NotificationEvent::Show(format!(
+                                "Deployment failed: {}",
+                                e
+                            ))))
+                            .ok();
                         }
                     }
                 }
+                Err(OtaError::Unauthorized) | Err(OtaError::InsufficientScopes(_)) => {
+                    tracing::warn!(pr_number, "GitHub token rejected — triggering re-auth");
+                    hub2.send(Event::GithubTokenInvalid).ok();
+                }
                 Err(e) => {
-                    error!("[OTA] Download error: {:?}", e);
-                    let error_msg = format!("Download failed: {}", e);
-                    hub2.send(Event::Notification(NotificationEvent::Show(error_msg)))
-                        .ok();
+                    error!(error = %e, "PR download failed");
+                    hub2.send(Event::Close(ota_view_id)).ok();
+                    hub2.send(Event::Notification(NotificationEvent::Show(format!(
+                        "Download failed: {}",
+                        e
+                    ))))
+                    .ok();
                 }
             }
         });
@@ -412,15 +506,11 @@ impl OtaView {
 
     /// Initiates the default branch download in a background thread.
     ///
-    /// Spawns a thread that:
-    /// 1. Creates an OTA client
-    /// 2. Downloads the latest artifact from the default branch
-    /// 3. Extracts and deploys KoboRoot.tgz
-    /// 4. Sends notification events on success or failure
-    ///
-    /// # Arguments
-    ///
-    /// * `hub` - Event hub for sending notifications and status updates
+    /// Sends [`Event::OtaDownloadProgress`] during the download. On success,
+    /// updates the status label to "Rebooting…" and sends
+    /// [`Event::Select(EntryId::Reboot)`] to trigger an automatic reboot.
+    /// On a 401 response, sends [`Event::GithubTokenInvalid`] without closing
+    /// the view so re-authentication can proceed.
     #[cfg_attr(feature = "otel", tracing::instrument(skip(self, hub)))]
     fn start_default_branch_download(&mut self, hub: &Hub) {
         let Some(github_token) = self.github_token.clone() else {
@@ -430,74 +520,78 @@ impl OtaView {
 
         let hub2 = hub.clone();
         let parent_span = tracing::Span::current();
+        let ota_view_id = self.view_id;
 
         thread::spawn(move || {
             let _span = tracing::info_span!(parent: &parent_span, "default_branch_download_async")
                 .entered();
-            let client = match OtaClient::new(Some(github_token)) {
+            let github = match GithubClient::new(Some(github_token)) {
                 Ok(c) => c,
                 Err(e) => {
-                    error!(error = %e, "Failed to create OTA client");
-                    let error_msg = format!("Failed to create client: {}", e);
-                    hub2.send(Event::Notification(NotificationEvent::Show(error_msg)))
-                        .ok();
+                    error!(error = %e, "Failed to create GitHub client");
+                    hub2.send(Event::Close(ota_view_id)).ok();
+                    hub2.send(Event::Notification(NotificationEvent::Show(format!(
+                        "Failed to create client: {}",
+                        e
+                    ))))
+                    .ok();
                     return;
                 }
             };
+            let client = OtaClient::new(github);
 
-            let notify_id = ViewId::MessageNotif(ID_FEEDER.next());
-            hub2.send(Event::Notification(NotificationEvent::ShowPinned(
-                notify_id,
-                "Starting main branch download".to_string(),
-            )))
-            .ok();
-            hub2.send(Event::Notification(NotificationEvent::UpdateProgress(
-                notify_id, 0,
-            )))
+            hub2.send(Event::OtaDownloadProgress {
+                label: "Downloading main branch build… 0%".to_string(),
+                percent: 0,
+            })
             .ok();
 
             let download_result = client.download_default_branch_artifact(|ota_progress| {
                 if let OtaProgress::DownloadingArtifact { downloaded, total } = ota_progress {
-                    let progress = (downloaded as f32 / total as f32) * 100.0;
-                    let msg = format!("Downloading update: {}%", progress as u8);
-                    hub2.send(Event::Notification(NotificationEvent::UpdateText(
-                        notify_id, msg,
-                    )))
-                    .ok();
-                    hub2.send(Event::Notification(NotificationEvent::UpdateProgress(
-                        notify_id,
-                        progress as u8,
-                    )))
+                    let percent = (downloaded as f32 / total as f32 * 100.0) as u8;
+                    hub2.send(Event::OtaDownloadProgress {
+                        label: format!("Downloading main branch build… {}%", percent),
+                        percent,
+                    })
                     .ok();
                 }
             });
 
-            hub2.send(Event::Close(notify_id)).ok();
-
             match download_result {
                 Ok(zip_path) => {
                     info!("Main branch download completed, starting extraction");
-
                     match client.extract_and_deploy(zip_path) {
                         Ok(_) => {
-                            hub2.send(Event::Notification(NotificationEvent::Show(
-                                "Update installed! Reboot to apply.".to_string(),
-                            )))
+                            hub2.send(Event::OtaDownloadProgress {
+                                label: "Installing and rebooting…".to_string(),
+                                percent: 100,
+                            })
                             .ok();
+                            send_reboot_after_delay(hub2.clone());
                         }
                         Err(e) => {
                             error!(error = %e, "Deployment failed");
-                            let error_msg = format!("Deployment failed: {}", e);
-                            hub2.send(Event::Notification(NotificationEvent::Show(error_msg)))
-                                .ok();
+                            hub2.send(Event::Close(ota_view_id)).ok();
+                            hub2.send(Event::Notification(NotificationEvent::Show(format!(
+                                "Deployment failed: {}",
+                                e
+                            ))))
+                            .ok();
                         }
                     }
                 }
+                Err(OtaError::Unauthorized) | Err(OtaError::InsufficientScopes(_)) => {
+                    tracing::warn!("GitHub token rejected — triggering re-auth");
+                    hub2.send(Event::GithubTokenInvalid).ok();
+                }
                 Err(e) => {
                     error!(error = %e, "Main branch download failed");
-                    let error_msg = format!("Download failed: {}", e);
-                    hub2.send(Event::Notification(NotificationEvent::Show(error_msg)))
-                        .ok();
+                    hub2.send(Event::Close(ota_view_id)).ok();
+                    hub2.send(Event::Notification(NotificationEvent::Show(format!(
+                        "Download failed: {}",
+                        e
+                    ))))
+                    .ok();
                 }
             }
         });
@@ -505,11 +599,11 @@ impl OtaView {
 
     /// Initiates the stable release download in a background thread.
     ///
-    /// Spawns a thread that:
-    /// 1. Creates an OTA client
-    /// 2. Downloads the latest stable release asset
-    /// 3. Extracts and deploys KoboRoot.tgz
-    /// 4. Sends notification events on success or failure
+    /// Sends [`Event::OtaDownloadProgress`] during the download. On success,
+    /// updates the status label to "Rebooting…" and sends
+    /// [`Event::Select(EntryId::Reboot)`] to trigger an automatic reboot.
+    /// On a 401 response, sends [`Event::GithubTokenInvalid`] without closing
+    /// the view so re-authentication can proceed.
     ///
     /// GitHub authentication is not required for this operation.
     ///
@@ -521,77 +615,248 @@ impl OtaView {
         let github_token = self.github_token.clone();
         let hub2 = hub.clone();
         let parent_span = tracing::Span::current();
+        let ota_view_id = self.view_id;
 
         thread::spawn(move || {
             let _span = tracing::info_span!(parent: &parent_span, "stable_release_download_async")
                 .entered();
-            let client = match OtaClient::new(github_token) {
+            let github = match GithubClient::new(github_token) {
                 Ok(c) => c,
                 Err(e) => {
-                    error!(error = %e, "Failed to create OTA client");
-                    let error_msg = format!("Failed to create client: {}", e);
-                    hub2.send(Event::Notification(NotificationEvent::Show(error_msg)))
-                        .ok();
+                    error!(error = %e, "Failed to create GitHub client");
+                    hub2.send(Event::Close(ota_view_id)).ok();
+                    hub2.send(Event::Notification(NotificationEvent::Show(format!(
+                        "Failed to create client: {}",
+                        e
+                    ))))
+                    .ok();
                     return;
                 }
             };
+            let client = OtaClient::new(github);
 
-            let notify_id = ViewId::MessageNotif(ID_FEEDER.next());
-            hub2.send(Event::Notification(NotificationEvent::ShowPinned(
-                notify_id,
-                "Starting stable release download".to_string(),
-            )))
-            .ok();
-            hub2.send(Event::Notification(NotificationEvent::UpdateProgress(
-                notify_id, 0,
-            )))
+            hub2.send(Event::OtaDownloadProgress {
+                label: "Downloading stable release… 0%".to_string(),
+                percent: 0,
+            })
             .ok();
 
             let download_result = client.download_stable_release_artifact(|ota_progress| {
                 if let OtaProgress::DownloadingArtifact { downloaded, total } = ota_progress {
-                    let progress = (downloaded as f32 / total as f32) * 100.0;
-                    let msg = format!("Downloading update: {}%", progress as u8);
-                    hub2.send(Event::Notification(NotificationEvent::UpdateText(
-                        notify_id, msg,
-                    )))
-                    .ok();
-                    hub2.send(Event::Notification(NotificationEvent::UpdateProgress(
-                        notify_id,
-                        progress as u8,
-                    )))
+                    let percent = (downloaded as f32 / total as f32 * 100.0) as u8;
+                    hub2.send(Event::OtaDownloadProgress {
+                        label: format!("Downloading stable release… {}%", percent),
+                        percent,
+                    })
                     .ok();
                 }
             });
 
-            hub2.send(Event::Close(notify_id)).ok();
-
             match download_result {
                 Ok(asset_path) => {
                     info!("Stable release download completed, deploying update");
-
                     match client.deploy(asset_path) {
                         Ok(_) => {
-                            hub2.send(Event::Notification(NotificationEvent::Show(
-                                "Update installed! Reboot to apply.".to_string(),
-                            )))
+                            hub2.send(Event::OtaDownloadProgress {
+                                label: "Installing and rebooting…".to_string(),
+                                percent: 100,
+                            })
                             .ok();
+                            send_reboot_after_delay(hub2.clone());
                         }
                         Err(e) => {
                             error!(error = %e, "Deployment failed");
-                            let error_msg = format!("Deployment failed: {}", e);
-                            hub2.send(Event::Notification(NotificationEvent::Show(error_msg)))
-                                .ok();
+                            hub2.send(Event::Close(ota_view_id)).ok();
+                            hub2.send(Event::Notification(NotificationEvent::Show(format!(
+                                "Deployment failed: {}",
+                                e
+                            ))))
+                            .ok();
                         }
                     }
                 }
+                Err(OtaError::Unauthorized) | Err(OtaError::InsufficientScopes(_)) => {
+                    tracing::warn!("GitHub token rejected on stable release — triggering re-auth");
+                    hub2.send(Event::GithubTokenInvalid).ok();
+                }
                 Err(e) => {
                     error!(error = %e, "Stable release download failed");
-                    let error_msg = format!("Download failed: {}", e);
-                    hub2.send(Event::Notification(NotificationEvent::Show(error_msg)))
-                        .ok();
+                    hub2.send(Event::Close(ota_view_id)).ok();
+                    hub2.send(Event::Notification(NotificationEvent::Show(format!(
+                        "Download failed: {}",
+                        e
+                    ))))
+                    .ok();
                 }
             }
         });
+    }
+}
+
+/// Spawns a thread that sleeps for 1 second then sends `Event::Select(EntryId::Reboot)`.
+///
+/// The delay gives the render loop time to process the final
+/// `OtaDownloadProgress` label update before the event loop exits.
+fn send_reboot_after_delay(hub: Hub) {
+    thread::spawn(move || {
+        thread::sleep(std::time::Duration::from_secs(1));
+        hub.send(Event::Select(EntryId::Reboot)).ok();
+    });
+}
+
+impl OtaView {
+    #[inline]
+    fn on_select_default_branch(
+        &mut self,
+        hub: &Hub,
+        rq: &mut RenderQueue,
+        context: &mut Context,
+    ) -> bool {
+        if !self.require_github_token(PendingDownload::DefaultBranch, hub, rq, context) {
+            return true;
+        }
+        self.pending_download = Some(PendingDownload::DefaultBranch);
+        self.build_progress_screen("Downloading main branch build… 0%", context);
+        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+        self.start_default_branch_download(hub);
+        true
+    }
+
+    #[inline]
+    fn on_select_stable_release(
+        &mut self,
+        hub: &Hub,
+        rq: &mut RenderQueue,
+        context: &mut Context,
+    ) -> bool {
+        self.build_progress_screen("Downloading stable release… 0%", context);
+        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+        self.start_stable_release_download(hub);
+        true
+    }
+
+    #[inline]
+    fn on_show_pr_input(&mut self, hub: &Hub, rq: &mut RenderQueue, context: &mut Context) -> bool {
+        if !self.require_github_token(PendingDownload::PrInputPending, hub, rq, context) {
+            return true;
+        }
+        self.build_pr_input_screen(context);
+        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+        self.toggle_keyboard(true, hub, rq, context);
+        hub.send(Event::Focus(Some(ViewId::Ota(OtaViewId::PrInput))))
+            .ok();
+        true
+    }
+
+    #[inline]
+    fn on_download_progress(&mut self, label: &str, percent: u8, rq: &mut RenderQueue) -> bool {
+        if let Some(idx) = self.status_label_index {
+            if let Some(child) = self.children.get_mut(idx) {
+                if let Some(lbl) = child.downcast_mut::<Label>() {
+                    lbl.update(label, rq);
+                }
+            }
+        }
+
+        if percent == 100 {
+            if let Some(idx) = self.progress_bar_index.take() {
+                let bar_rect = *self.children[idx].rect();
+                self.children.remove(idx);
+                rq.add(RenderData::expose(bar_rect, UpdateMode::Gui));
+            }
+        } else if let Some(idx) = self.progress_bar_index {
+            if let Some(child) = self.children.get_mut(idx) {
+                if let Some(bar) = child.downcast_mut::<ProgressBar>() {
+                    bar.update(percent, rq);
+                }
+            }
+        }
+
+        true
+    }
+
+    #[inline]
+    fn on_device_auth_complete(
+        &mut self,
+        token: &secrecy::SecretString,
+        hub: &Hub,
+        rq: &mut RenderQueue,
+        context: &mut Context,
+    ) -> bool {
+        tracing::info!("Device auth complete, saving token");
+
+        if let Err(e) = device_flow::save_token(token) {
+            tracing::error!(error = %e, "Failed to save GitHub token");
+        }
+
+        self.github_token = Some(token.clone());
+
+        match self.pending_download.take() {
+            Some(PendingDownload::DefaultBranch) => {
+                self.build_progress_screen("Downloading main branch build… 0%", context);
+                rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+                self.start_default_branch_download(hub);
+            }
+            Some(PendingDownload::PrInputPending) => {
+                self.build_pr_input_screen(context);
+                rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+                self.toggle_keyboard(true, hub, rq, context);
+                hub.send(Event::Focus(Some(ViewId::Ota(OtaViewId::PrInput))))
+                    .ok();
+            }
+            Some(PendingDownload::Pr(pr_number)) => {
+                self.build_progress_screen(
+                    &format!("Downloading PR #{} build… 0%", pr_number),
+                    context,
+                );
+                rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+                self.start_pr_download(pr_number, hub);
+            }
+            None => {}
+        }
+
+        true
+    }
+
+    #[inline]
+    fn on_token_invalid(&mut self, hub: &Hub, rq: &mut RenderQueue, context: &mut Context) -> bool {
+        tracing::warn!("Saved GitHub token is invalid — clearing and re-authenticating");
+
+        if let Err(e) = device_flow::delete_token() {
+            tracing::error!(error = %e, "Failed to delete stale token");
+        }
+
+        self.github_token = None;
+
+        let auth_view = DeviceAuthView::new(hub, context);
+        self.children.push(Box::new(auth_view) as Box<dyn View>);
+        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+        true
+    }
+
+    #[inline]
+    fn on_device_auth_expired(&mut self, hub: &Hub) -> bool {
+        tracing::warn!("Device flow code expired");
+        self.pending_download = None;
+        hub.send(Event::Notification(NotificationEvent::Show(
+            "GitHub authorization timed out. Please try again.".to_string(),
+        )))
+        .ok();
+        hub.send(Event::Close(self.view_id)).ok();
+        true
+    }
+
+    #[inline]
+    fn on_device_auth_error(&mut self, msg: &str, hub: &Hub) -> bool {
+        tracing::error!(error = %msg, "Device flow error");
+        self.pending_download = None;
+        hub.send(Event::Notification(NotificationEvent::Show(format!(
+            "GitHub auth error: {}",
+            msg
+        ))))
+        .ok();
+        hub.send(Event::Close(self.view_id)).ok();
+        true
     }
 }
 
@@ -605,44 +870,14 @@ impl View for OtaView {
         rq: &mut RenderQueue,
         context: &mut Context,
     ) -> bool {
-        match *evt {
+        match evt {
             Event::Select(EntryId::Ota(OtaEntryId::DefaultBranch)) => {
-                if !self.require_github_token(hub, "main branch builds") {
-                    return true;
-                }
-
-                hub.send(Event::Notification(NotificationEvent::Show(
-                    "Downloading latest main branch build...".to_string(),
-                )))
-                .ok();
-                self.start_default_branch_download(hub);
-                hub.send(Event::Close(self.view_id)).ok();
-                true
+                self.on_select_default_branch(hub, rq, context)
             }
             Event::Select(EntryId::Ota(OtaEntryId::StableRelease)) => {
-                hub.send(Event::Notification(NotificationEvent::Show(
-                    "Downloading latest stable release...".to_string(),
-                )))
-                .ok();
-                self.start_stable_release_download(hub);
-                hub.send(Event::Close(self.view_id)).ok();
-                true
+                self.on_select_stable_release(hub, rq, context)
             }
-            Event::Show(ViewId::Ota(OtaViewId::PrInput)) => {
-                if !self.require_github_token(hub, "PR builds") {
-                    return true;
-                }
-
-                #[cfg(feature = "otel")]
-                tracing::trace!("Showing PR input screen");
-
-                self.build_pr_input_screen(context);
-                rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
-                self.toggle_keyboard(true, hub, rq, context);
-                hub.send(Event::Focus(Some(ViewId::Ota(OtaViewId::PrInput))))
-                    .ok();
-                true
-            }
+            Event::Show(ViewId::Ota(OtaViewId::PrInput)) => self.on_show_pr_input(hub, rq, context),
             Event::Focus(None) => {
                 self.toggle_keyboard(false, hub, rq, context);
                 true
@@ -650,34 +885,50 @@ impl View for OtaView {
             Event::Focus(Some(ViewId::Ota(_))) => true,
             Event::Submit(ViewId::Ota(OtaViewId::PrInput), ref text) => {
                 self.toggle_keyboard(false, hub, rq, context);
-                self.handle_pr_submission(text, hub);
+                let text = text.clone();
+                self.handle_pr_submission(&text, hub, rq, context);
                 true
             }
             Event::Gesture(GestureEvent::Tap(center)) => {
-                self.handle_outside_tap(center, context, hub);
+                self.handle_outside_tap(*center, context, hub);
                 true
             }
+            Event::OtaDownloadProgress { label, percent } => {
+                self.on_download_progress(label, *percent, rq)
+            }
+            Event::GithubDeviceAuthComplete(ref token) => {
+                self.on_device_auth_complete(token, hub, rq, context)
+            }
+            Event::GithubTokenInvalid => self.on_token_invalid(hub, rq, context),
+            Event::GithubDeviceAuthExpired => self.on_device_auth_expired(hub),
+            Event::GithubDeviceAuthError(ref msg) => self.on_device_auth_error(msg, hub),
             _ => false,
         }
     }
+
     #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _fb, _fonts, _rect), fields(rect = ?_rect)))]
     fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {}
 
     fn rect(&self) -> &Rectangle {
         &self.rect
     }
+
     fn rect_mut(&mut self) -> &mut Rectangle {
         &mut self.rect
     }
+
     fn children(&self) -> &Vec<Box<dyn View>> {
         &self.children
     }
+
     fn children_mut(&mut self) -> &mut Vec<Box<dyn View>> {
         &mut self.children
     }
+
     fn id(&self) -> Id {
         self.id
     }
+
     fn view_id(&self) -> Option<ViewId> {
         Some(self.view_id)
     }
@@ -702,7 +953,7 @@ mod tests {
     use std::sync::mpsc::channel;
 
     fn create_ota_view(context: &mut Context) -> OtaView {
-        OtaView::new(Some(SecretString::from("test-token")), context)
+        OtaView::new(context)
     }
 
     /// A minimal parent view that mimics Home/Reader keyboard behavior.

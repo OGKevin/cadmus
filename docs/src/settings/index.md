@@ -152,24 +152,14 @@ Image displayed when entering USB sharing mode.
 
 The OTA feature downloads builds from GitHub.
 
-### `ota.github-token`
+Authentication for main branch and PR builds uses **GitHub device auth flow**.
+When you select a build that requires authentication,
+Cadmus will display a short code and a URL. Visit
+`github.com/login/device` on any device, enter the code, and Cadmus will
+automatically continue the download once you authorize.
 
-GitHub personal access token needed to download development and test builds.
-Not required for stable releases.
-
-- Configure it under the `[ota]` section.
-
-```toml
-[ota]
-github-token = "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-```
-
-To create a token:
-
-1. Go to <https://github.com/settings/personal-access-tokens/new>
-2. Under **Repository access**, select **Public repositories**
-3. No additional permissions are required
-4. Generate and copy the token to the latest settings file in `Settings`
+The token is saved to disk after the first authorization so you will not be
+prompted again on subsequent downloads.
 
 ## Logging
 

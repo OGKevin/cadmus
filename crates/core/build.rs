@@ -15,6 +15,12 @@ fn main() {
     let build_uuid = Uuid::now_v7().to_string();
     println!("cargo:rustc-env=BUILD_UUID={}", build_uuid);
 
+    // GitHub OAuth App client ID for device flow authentication.
+    println!("cargo:rerun-if-env-changed=GH_OAUTH_CLIENT_ID");
+    let client_id =
+        env::var("GH_OAUTH_CLIENT_ID").unwrap_or_else(|_| "GH_OAUTH_CLIENT_ID_NOT_SET".to_string());
+    println!("cargo:rustc-env=GH_OAUTH_CLIENT_ID={}", client_id);
+
     // Cross-compiling for Kobo.
     if target == "arm-unknown-linux-gnueabihf" {
         println!("cargo:rustc-env=PKG_CONFIG_ALLOW_CROSS=1");

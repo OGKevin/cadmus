@@ -6,8 +6,12 @@ applyTo: "crates/core/src/view/ota.rs"
 # OTA test build updates
 
 The OTA view lets users download and install builds directly on device. It
-checks for WiFi before allowing updates. A GitHub token is required only for
-main branch and PR builds, not for stable releases.
+checks for WiFi before allowing updates. Main branch and PR builds require
+GitHub authentication, which is handled via device flow. When authentication is needed, a
+`DeviceAuthView` child is pushed that displays the user code and polls GitHub
+in a background thread. On success the token is saved to disk and the pending
+download resumes automatically. Stable releases are public and require no
+authentication.
 
 ## Keep this instruction current
 
