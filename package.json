@@ -1,8 +1,13 @@
 {
   "name": "cadmus",
   "private": true,
+  "scripts": {
+    "postinstall": "puppeteer browsers install chrome-headless-shell"
+  },
   "devDependencies": {
+    "@mermaid-js/mermaid-cli": "^11.4.1",
     "markdownlint-cli": "^0.47.0",
-    "prettier": "^3.6.2"
+    "prettier": "^3.6.2",
+    "puppeteer": "^23.11.1"
   }
 }

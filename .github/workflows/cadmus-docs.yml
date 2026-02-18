@@ -5,6 +5,7 @@ env:
   MDBOOK_VERSION: "0.5.2"
   MDBOOK_EPUB_REV: "21a1c8134134201a2d555313447c96e56e2a8996"
   MDBOOK_MERMAID_VERSION: "0.17.0"
+  NODE_VERSION: "24"
 
 on:
   push:
@@ -43,6 +44,20 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
       - uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+
+      - name: Install npm dependencies
+        run: npm ci
 
       - name: Set build metadata
         run: |
@@ -165,7 +180,7 @@ jobs:
       - name: Install mdbook-mermaid assets
         run: mdbook-mermaid install docs
 
-      - name: Build mdBook
+      - name: Build mdBook (HTML + EPUB with mermaid diagrams)
         working-directory: docs
         run: mdbook build
 

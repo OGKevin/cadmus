@@ -42,3 +42,4 @@ logs
 **/.fat32-epoch
 /node_modules
 docs/mermaid.min.js
+docs/src/mermaid-images/

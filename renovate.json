@@ -49,7 +49,7 @@
     {
       "customType": "regex",
       "managerFilePatterns": ["/^devenv\\.nix$/"],
-      "matchStrings": ["rev = \"(?<currentValue>[a-f0-9]{40})\""],
+      "matchStrings": ["rev = \\\"(?<currentValue>[a-f0-9]{40})\\\""],
       "datasourceTemplate": "git-refs",
       "depNameTemplate": "Michael-F-Bryan/mdbook-epub",
       "packageNameTemplate": "https://github.com/Michael-F-Bryan/mdbook-epub",
@@ -60,7 +60,8 @@
       "managerFilePatterns": [
         "/^\\.github\\/workflows\\/cadmus-docs\\.yml$/",
         "/^\\.github\\/workflows\\/cargo\\.yml$/",
-        "/^\\.github\\/workflows\\/release\\.yml$/"
+        "/^\\.github\\/workflows\\/release\\.yml$/",
+        "/^\\.github\\/workflows\\/copilot-setup-steps\\.yml$/"
       ],
       "matchStrings": [
         "MDBOOK_MERMAID_VERSION:\\s+\\\"(?<currentValue>[^\\\"]+)\\\""
@@ -68,6 +69,19 @@
       "datasourceTemplate": "github-releases",
       "depNameTemplate": "badboy/mdbook-mermaid",
       "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^\\.github\\/workflows\\/cadmus-docs\\.yml$/",
+        "/^\\.github\\/workflows\\/cargo\\.yml$/",
+        "/^\\.github\\/workflows\\/release\\.yml$/",
+        "/^\\.github\\/workflows\\/copilot-setup-steps\\.yml$/"
+      ],
+      "matchStrings": ["NODE_VERSION:\\s+\\\"(?<currentValue>[^\\\"]+)\\\""],
+      "datasourceTemplate": "node-version",
+      "depNameTemplate": "node",
+      "versioningTemplate": "node"
     }
   ]
 }

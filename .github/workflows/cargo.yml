@@ -4,6 +4,7 @@ env:
   MDBOOK_VERSION: "0.5.2"
   MDBOOK_EPUB_REV: "21a1c8134134201a2d555313447c96e56e2a8996"
   MDBOOK_MERMAID_VERSION: "0.17.0"
+  NODE_VERSION: "24"
 
 on:
   push:
@@ -101,6 +102,23 @@ jobs:
           tool: cargo-diff-tools
       - name: Fetch base ref
         run: git fetch origin ${{ github.base_ref }}
+
+      - &setup-node
+        name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - &setup-python
+        name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+
+      - &install-npm-deps
+        name: Install npm dependencies
+        run: npm ci
 
       - &cache-mdbook
         name: Cache mdBook tools
@@ -249,6 +267,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         id: rust-toolchain
       - *set-build-metadata
+
+      - *setup-node
+      - *setup-python
+      - *install-npm-deps
 
       - *cache-mdbook
       - *install-mdbook
@@ -436,6 +458,10 @@ jobs:
         run: |
           echo "$HOME/linaro-toolchain/bin" >> $GITHUB_PATH
 
+      - *setup-node
+      - *setup-python
+      - *install-npm-deps
+
       - *cache-mdbook
       - *install-mdbook
       - *install-mermaid-assets
@@ -537,6 +563,11 @@ jobs:
       - *cache-nickelmenu
       - *install-deps
       - *setup-linaro
+
+      - *setup-node
+      - *setup-python
+      - *install-npm-deps
+
       - *cache-mdbook
       - *install-mdbook
       - *install-mermaid-assets

@@ -4,6 +4,7 @@ env:
   MDBOOK_VERSION: "0.5.2"
   MDBOOK_EPUB_REV: "21a1c8134134201a2d555313447c96e56e2a8996"
   MDBOOK_MERMAID_VERSION: "0.17.0"
+  NODE_VERSION: "24"
 
 on:
   push:
@@ -108,6 +109,20 @@ jobs:
       - name: Setup Linaro toolchain
         run: |
           echo "${HOME}/linaro-toolchain/bin" >> "${GITHUB_PATH}"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+
+      - name: Install npm dependencies
+        run: npm ci
 
       - name: Cache mdBook tools
         uses: actions/cache@v5
