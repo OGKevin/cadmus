@@ -21,6 +21,7 @@ pub mod dictionary;
 pub mod file_chooser;
 pub mod filler;
 pub mod frontlight;
+pub mod github;
 pub mod home;
 pub mod icon;
 pub mod image;
@@ -55,6 +56,7 @@ pub mod top_bar;
 pub mod touch_events;
 
 use self::calculator::LineOrigin;
+use self::github::GithubEvent;
 use self::key::KeyKind;
 use crate::color::Color;
 use crate::context::Context;
@@ -500,18 +502,8 @@ pub enum Event {
     /// The file chooser was closed.
     ///  The `Option<PathBuf>` contains the selected path, if any.
     FileChooserClosed(Option<PathBuf>),
-    /// GitHub device flow completed successfully; carries the new access token.
-    GithubDeviceAuthComplete(secrecy::SecretString),
-    /// GitHub device flow code expired before the user authorized.
-    GithubDeviceAuthExpired,
-    /// GitHub device flow failed with an error message.
-    GithubDeviceAuthError(String),
-    /// A GitHub API call returned 401 or 403 — the saved token is invalid,
-    /// revoked, or missing required scopes.
-    ///
-    /// `OtaView` handles this by deleting the stale token, clearing its
-    /// in-memory token, and re-triggering device flow for the pending download.
-    GithubTokenInvalid,
+    /// GitHub authentication and API interaction events.
+    Github(GithubEvent),
     /// Progress update from a background OTA download thread.
     ///
     /// `OtaView` handles this by updating the status label text and the

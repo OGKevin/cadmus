@@ -21,6 +21,7 @@ use crate::github::GithubClient;
 use crate::ota::{OtaClient, OtaError, OtaProgress};
 use crate::unit::scale_by_dpi;
 use crate::view::filler::Filler;
+use crate::view::github::GithubEvent;
 use crate::view::BIG_BAR_HEIGHT;
 use secrecy::SecretString;
 use std::thread;
@@ -416,7 +417,7 @@ impl OtaView {
     /// Sends [`Event::OtaDownloadProgress`] during the download. On success,
     /// updates the status label to "Rebooting…" and sends
     /// [`Event::Select(EntryId::Reboot)`] to trigger an automatic reboot.
-    /// On a 401 response, sends [`Event::GithubTokenInvalid`] without closing
+    /// On a 401 response, sends [`Event::Github(GithubEvent::TokenInvalid)`] without closing
     /// the view so re-authentication can proceed.
     #[cfg_attr(feature = "otel", tracing::instrument(skip(self, hub)))]
     fn start_pr_download(&mut self, pr_number: u32, hub: &Hub) {
@@ -489,7 +490,7 @@ impl OtaView {
                 }
                 Err(OtaError::Unauthorized) | Err(OtaError::InsufficientScopes(_)) => {
                     tracing::warn!(pr_number, "GitHub token rejected — triggering re-auth");
-                    hub2.send(Event::GithubTokenInvalid).ok();
+                    hub2.send(Event::Github(GithubEvent::TokenInvalid)).ok();
                 }
                 Err(e) => {
                     error!(error = %e, "PR download failed");
@@ -509,7 +510,7 @@ impl OtaView {
     /// Sends [`Event::OtaDownloadProgress`] during the download. On success,
     /// updates the status label to "Rebooting…" and sends
     /// [`Event::Select(EntryId::Reboot)`] to trigger an automatic reboot.
-    /// On a 401 response, sends [`Event::GithubTokenInvalid`] without closing
+    /// On a 401 response, sends [`Event::Github(GithubEvent::TokenInvalid)`] without closing
     /// the view so re-authentication can proceed.
     #[cfg_attr(feature = "otel", tracing::instrument(skip(self, hub)))]
     fn start_default_branch_download(&mut self, hub: &Hub) {
@@ -582,7 +583,7 @@ impl OtaView {
                 }
                 Err(OtaError::Unauthorized) | Err(OtaError::InsufficientScopes(_)) => {
                     tracing::warn!("GitHub token rejected — triggering re-auth");
-                    hub2.send(Event::GithubTokenInvalid).ok();
+                    hub2.send(Event::Github(GithubEvent::TokenInvalid)).ok();
                 }
                 Err(e) => {
                     error!(error = %e, "Main branch download failed");
@@ -602,7 +603,7 @@ impl OtaView {
     /// Sends [`Event::OtaDownloadProgress`] during the download. On success,
     /// updates the status label to "Rebooting…" and sends
     /// [`Event::Select(EntryId::Reboot)`] to trigger an automatic reboot.
-    /// On a 401 response, sends [`Event::GithubTokenInvalid`] without closing
+    /// On a 401 response, sends [`Event::Github(GithubEvent::TokenInvalid)`] without closing
     /// the view so re-authentication can proceed.
     ///
     /// GitHub authentication is not required for this operation.
@@ -677,7 +678,7 @@ impl OtaView {
                 }
                 Err(OtaError::Unauthorized) | Err(OtaError::InsufficientScopes(_)) => {
                     tracing::warn!("GitHub token rejected on stable release — triggering re-auth");
-                    hub2.send(Event::GithubTokenInvalid).ok();
+                    hub2.send(Event::Github(GithubEvent::TokenInvalid)).ok();
                 }
                 Err(e) => {
                     error!(error = %e, "Stable release download failed");
@@ -896,12 +897,14 @@ impl View for OtaView {
             Event::OtaDownloadProgress { label, percent } => {
                 self.on_download_progress(label, *percent, rq)
             }
-            Event::GithubDeviceAuthComplete(ref token) => {
+            Event::Github(GithubEvent::DeviceAuthComplete(ref token)) => {
                 self.on_device_auth_complete(token, hub, rq, context)
             }
-            Event::GithubTokenInvalid => self.on_token_invalid(hub, rq, context),
-            Event::GithubDeviceAuthExpired => self.on_device_auth_expired(hub),
-            Event::GithubDeviceAuthError(ref msg) => self.on_device_auth_error(msg, hub),
+            Event::Github(GithubEvent::TokenInvalid) => self.on_token_invalid(hub, rq, context),
+            Event::Github(GithubEvent::DeviceAuthExpired) => self.on_device_auth_expired(hub),
+            Event::Github(GithubEvent::DeviceAuthError(ref msg)) => {
+                self.on_device_auth_error(msg, hub)
+            }
             _ => false,
         }
     }
