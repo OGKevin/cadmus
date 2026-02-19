@@ -159,7 +159,7 @@ impl Home {
         }
 
         if context.settings.home.navigation_bar {
-            let provider = DirectoryNavigationProvider;
+            let provider = DirectoryNavigationProvider::library(context.library.home.clone());
             let mut nav_bar = StackNavigationBar::new(
                 rect![
                     rect.min.x,
@@ -869,7 +869,7 @@ impl Home {
             self.children
                 .insert(sep_index + 1, Box::new(separator) as Box<dyn View>);
 
-            let provider = DirectoryNavigationProvider;
+            let provider = DirectoryNavigationProvider::library(context.library.home.clone());
             let mut nav_bar = StackNavigationBar::new(
                 rect![
                     self.rect.min.x,

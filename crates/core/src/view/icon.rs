@@ -19,7 +19,13 @@ lazy_static! {
     pub static ref ICONS_PIXMAPS: FxHashMap<&'static str, Pixmap> = {
         let mut m = FxHashMap::default();
         let scale = scale_by_dpi_raw(ICON_SCALE, CURRENT_DEVICE.dpi);
-        let dir = Path::new("icons");
+        #[cfg(test)]
+        let dir = Path::new(
+            &std::env::var("TEST_ROOT_DIR").expect("TEST_ROOT_DIR must be set for tests."),
+        )
+        .join("icons");
+        #[cfg(not(test))]
+        let dir = Path::new("icons").to_path_buf();
         for name in [
             "home",
             "search",
@@ -70,8 +76,8 @@ lazy_static! {
         .iter()
         .cloned()
         {
-            let path = dir.join(&format!("{}.svg", name));
-            let doc = PdfOpener::new().and_then(|o| o.open(path)).unwrap();
+            let path = dir.join(format!("{}.svg", name));
+            let doc = PdfOpener::new().and_then(|o| o.open(&path)).unwrap();
             let pixmap = doc.page(0).and_then(|p| p.pixmap(scale, 1)).unwrap();
             m.insert(name, pixmap);
         }

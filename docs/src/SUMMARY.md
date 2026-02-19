@@ -6,6 +6,8 @@
   - [Test builds](installation/test-builds.md)
   - [OTA updates](installation/ota.md)
 - [Settings](settings/index.md)
+- [User Interface](ui/index.md)
+  - [File Chooser](ui/filechooser.md)
 
 ---
 

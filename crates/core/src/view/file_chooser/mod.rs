@@ -1,7 +1,5 @@
-mod breadcrumb;
 mod file_entry;
 
-use self::breadcrumb::Breadcrumb;
 pub use self::file_entry::FileEntry;
 
 use crate::color::{BLACK, WHITE};
@@ -15,6 +13,8 @@ use crate::unit::scale_by_dpi;
 use crate::view::filler::Filler;
 use crate::view::icon::Icon;
 use crate::view::label::Label;
+use crate::view::navigation::providers::directory::DirectoryNavigationProvider;
+use crate::view::navigation::StackNavigationBar;
 use crate::view::page_label::PageLabel;
 use crate::view::top_bar::{TopBar, TopBarVariant};
 use crate::view::{Bus, EntryId, Event, Hub, Id, RenderData, RenderQueue, View, ViewId, ID_FEEDER};
@@ -22,6 +22,9 @@ use crate::view::{SMALL_BAR_HEIGHT, THICKNESS_MEDIUM};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
+
+/// The text displayed for the "Select Current Folder" entry
+const SELECT_CURRENT_FOLDER_TEXT: &str = "Select this folder";
 
 #[derive(Debug, Clone)]
 pub struct FileEntryData {
@@ -81,7 +84,7 @@ impl FileChooserLayout {
         ]
     }
 
-    fn breadcrumb_rect(&self, rect: &Rectangle) -> Rectangle {
+    fn nav_bar_rect(&self, rect: &Rectangle) -> Rectangle {
         rect![
             rect.min.x,
             rect.min.y + self.small_height + self.big_thickness,
@@ -110,7 +113,7 @@ pub struct FileChooser {
     current_page: usize,
     pages_count: usize,
     mode: SelectionMode,
-    breadcrumb_index: usize,
+    nav_bar_index: usize,
     entries_start_index: usize,
     error_message: Option<String>,
 
@@ -158,13 +161,20 @@ impl FileChooser {
 
         children.push(Self::create_separator(layout.first_separator_rect(&rect)));
 
-        let breadcrumb_index = children.len();
-        let breadcrumb = Breadcrumb::new(layout.breadcrumb_rect(&rect), initial_path);
-        children.push(Box::new(breadcrumb) as Box<dyn View>);
+        let nav_bar_index = children.len();
+        let provider = DirectoryNavigationProvider::filesystem(PathBuf::from("/"));
+        let nav_bar = StackNavigationBar::new(
+            layout.nav_bar_rect(&rect),
+            rect.max.y - layout.small_height - layout.thickness,
+            3,
+            provider,
+            initial_path.to_path_buf(),
+        );
 
+        children.push(Box::new(nav_bar) as Box<dyn View>);
         children.push(Self::create_separator(layout.second_separator_rect(&rect)));
 
-        (children, breadcrumb_index)
+        (children, nav_bar_index)
     }
 
     pub fn new(
@@ -179,7 +189,7 @@ impl FileChooser {
         let dpi = CURRENT_DEVICE.dpi;
         let layout = FileChooserLayout::new(dpi);
 
-        let (children, breadcrumb_index) =
+        let (children, nav_bar_index) =
             Self::build_children(rect, &initial_path, mode, &layout, context);
         let entries_start_index = children.len();
 
@@ -189,23 +199,28 @@ impl FileChooser {
             id,
             rect,
             children,
-            current_path: initial_path,
+            current_path: initial_path.clone(),
             entries: Vec::new(),
             current_page: 0,
             pages_count: 1,
             mode,
-            breadcrumb_index,
+            nav_bar_index,
             entries_start_index,
             error_message: None,
             selected_path: None,
             bottom_bar_rect: Rectangle::default(),
         };
 
-        file_chooser.navigate_to(file_chooser.current_path.clone(), rq, context);
+        file_chooser.navigate_to(initial_path, rq, context);
 
         file_chooser
     }
 
+    /// Lists files in the given directory.
+    ///
+    /// In Directory mode, returns an empty list since directories are navigated
+    /// via the navigation bar and only the "Select Current Folder" special entry
+    /// is shown in the content area.
     fn list_directory(&self, path: &Path) -> Result<Vec<FileEntryData>, String> {
         let mut entries = Vec::new();
 
@@ -217,15 +232,19 @@ impl FileChooser {
             return Err("Path is not a directory".to_string());
         }
 
+        if self.mode == SelectionMode::Directory {
+            return Ok(entries);
+        }
+
         match fs::read_dir(path) {
             Ok(read_dir) => {
                 for entry in read_dir.flatten() {
                     if let Ok(metadata) = entry.metadata() {
-                        let path = entry.path();
-
-                        if self.mode == SelectionMode::Directory && !metadata.is_dir() {
+                        if metadata.is_dir() {
                             continue;
                         }
+
+                        let path = entry.path();
 
                         let name = path
                             .file_name()
@@ -233,12 +252,7 @@ impl FileChooser {
                             .to_string_lossy()
                             .into_owned();
 
-                        let size = if metadata.is_file() {
-                            Some(metadata.len())
-                        } else {
-                            None
-                        };
-
+                        let size = Some(metadata.len());
                         let modified = metadata.modified().ok();
 
                         entries.push(FileEntryData {
@@ -256,11 +270,7 @@ impl FileChooser {
             }
         }
 
-        entries.sort_by(|a, b| match (a.is_dir, b.is_dir) {
-            (true, false) => std::cmp::Ordering::Less,
-            (false, true) => std::cmp::Ordering::Greater,
-            _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
-        });
+        entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
 
         Ok(entries)
     }
@@ -277,18 +287,44 @@ impl FileChooser {
                 self.error_message = Some(err);
             }
         }
+
+        if self.error_message.is_none() {
+            if let Some(select_current_entry) = self.create_select_current_entry() {
+                self.entries.insert(0, select_current_entry);
+            }
+        }
+
         self.current_page = 0;
 
-        self.update_breadcrumb(context);
-        self.update_entries_list(rq, context);
+        let nav_bar = self.children[self.nav_bar_index]
+            .as_mut()
+            .downcast_mut::<StackNavigationBar<DirectoryNavigationProvider>>()
+            .unwrap();
+        nav_bar.set_selected(self.current_path.clone(), rq, context);
+
+        self.update_nav_bar_separator();
+        self.update_entries_list(context);
+
+        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
     }
 
-    fn update_breadcrumb(&mut self, context: &mut Context) {
-        let breadcrumb = self.children[self.breadcrumb_index]
+    #[inline]
+    fn update_nav_bar_separator(&mut self) {
+        let nav_bar_bottom = self.children[self.nav_bar_index].rect().max.y;
+        let thickness = scale_by_dpi(THICKNESS_MEDIUM, CURRENT_DEVICE.dpi) as i32;
+        let separator_rect = rect![
+            self.rect.min.x,
+            nav_bar_bottom,
+            self.rect.max.x,
+            nav_bar_bottom + thickness
+        ];
+
+        if let Some(separator) = self.children[self.nav_bar_index + 1]
             .as_mut()
-            .downcast_mut::<Breadcrumb>()
-            .unwrap();
-        breadcrumb.set_path(&self.current_path, &mut context.fonts);
+            .downcast_mut::<Filler>()
+        {
+            *separator.rect_mut() = separator_rect;
+        }
     }
 
     fn calculate_entry_rect(
@@ -311,14 +347,14 @@ impl FileChooser {
         rect![self.rect.min.x, y_min, self.rect.max.x, y_max]
     }
 
-    fn add_error_label(&mut self, breadcrumb_bottom: i32, thickness: i32, big_height: i32) {
+    fn add_error_label(&mut self, nav_bar_bottom: i32, thickness: i32, big_height: i32) {
         if let Some(error_msg) = &self.error_message {
             let label = Label::new(
                 rect![
                     self.rect.min.x,
-                    breadcrumb_bottom + thickness,
+                    nav_bar_bottom + thickness,
                     self.rect.max.x,
-                    breadcrumb_bottom + thickness + big_height * 2
+                    nav_bar_bottom + thickness + big_height * 2
                 ],
                 format!("Error: {}", error_msg),
                 crate::view::Align::Center,
@@ -327,13 +363,13 @@ impl FileChooser {
         }
     }
 
-    fn add_empty_label(&mut self, breadcrumb_bottom: i32, thickness: i32, big_height: i32) {
+    fn add_empty_label(&mut self, nav_bar_bottom: i32, thickness: i32, big_height: i32) {
         let label = Label::new(
             rect![
                 self.rect.min.x,
-                breadcrumb_bottom + thickness,
+                nav_bar_bottom + thickness,
                 self.rect.max.x,
-                breadcrumb_bottom + thickness + big_height
+                nav_bar_bottom + thickness + big_height
             ],
             "Empty directory".to_string(),
             crate::view::Align::Center,
@@ -356,7 +392,7 @@ impl FileChooser {
     /// # Arguments
     /// * `start_idx` - The starting index of the entries to display.
     /// * `end_idx` - The ending index (exclusive) of the entries to display.
-    /// * `breadcrumb_bottom` - The y-coordinate below the breadcrumb bar.
+    /// * `nav_bar_bottom` - The y-coordinate below the breadcrumb bar.
     /// * `thickness` - The thickness of the separator lines.
     /// * `big_height` - The height of each file entry row.
     /// * `big_thickness` - The thickness of the separator between entries.
@@ -367,7 +403,7 @@ impl FileChooser {
         &mut self,
         start_idx: usize,
         end_idx: usize,
-        breadcrumb_bottom: i32,
+        nav_bar_bottom: i32,
         thickness: i32,
         big_height: i32,
         big_thickness: i32,
@@ -375,7 +411,7 @@ impl FileChooser {
         max_lines: usize,
         context: &mut Context,
     ) {
-        let mut y_pos = breadcrumb_bottom + thickness;
+        let mut y_pos = nav_bar_bottom + thickness;
 
         for (i, entry_data) in self.entries[start_idx..end_idx].iter().enumerate() {
             let entry_rect = self.calculate_entry_rect(
@@ -398,13 +434,13 @@ impl FileChooser {
         }
     }
 
-    fn update_entries_list(&mut self, rq: &mut RenderQueue, context: &mut Context) {
+    fn update_entries_list(&mut self, context: &mut Context) {
         self.children.drain(self.entries_start_index..);
 
         let layout = FileChooserLayout::new(CURRENT_DEVICE.dpi);
-        let breadcrumb_bottom = self.children[self.breadcrumb_index].rect().max.y;
+        let nav_bar_bottom = self.children[self.nav_bar_index].rect().max.y;
         let available_height =
-            self.rect.max.y - breadcrumb_bottom - layout.thickness - layout.small_height;
+            self.rect.max.y - nav_bar_bottom - layout.thickness - layout.small_height;
         let max_lines = (available_height / layout.big_height).max(1) as usize;
 
         self.pages_count = (self.entries.len() as f32 / max_lines as f32).ceil() as usize;
@@ -416,18 +452,14 @@ impl FileChooser {
         let end_idx = (start_idx + max_lines).min(self.entries.len());
 
         if self.error_message.is_some() {
-            self.add_error_label(breadcrumb_bottom, layout.thickness, layout.big_height);
+            self.add_error_label(nav_bar_bottom, layout.thickness, layout.big_height);
         } else if self.entries.is_empty() {
-            if self.mode == SelectionMode::Directory {
-                // don't show "Empty directory" when selecting directories
-            } else {
-                self.add_empty_label(breadcrumb_bottom, layout.thickness, layout.big_height);
-            }
+            self.add_empty_label(nav_bar_bottom, layout.thickness, layout.big_height);
         } else {
             self.add_file_entries(
                 start_idx,
                 end_idx,
-                breadcrumb_bottom,
+                nav_bar_bottom,
                 layout.thickness,
                 layout.big_height,
                 layout.big_thickness,
@@ -446,8 +478,6 @@ impl FileChooser {
         self.children.push(Self::create_separator(separator_rect));
 
         self.create_bottom_bar();
-
-        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Partial));
     }
 
     fn create_bottom_bar(&mut self) {
@@ -501,6 +531,22 @@ impl FileChooser {
         }
     }
 
+    /// Creates a special "Select Current Folder" entry when in Directory or Both mode.
+    /// This entry allows the user to select the current directory rather than navigating into it.
+    #[inline]
+    fn create_select_current_entry(&self) -> Option<FileEntryData> {
+        match self.mode {
+            SelectionMode::File => None,
+            SelectionMode::Directory | SelectionMode::Both => Some(FileEntryData {
+                path: self.current_path.clone(),
+                name: SELECT_CURRENT_FOLDER_TEXT.to_string(),
+                size: None,
+                modified: None,
+                is_dir: true,
+            }),
+        }
+    }
+
     /// Selects the given item if it matches the selection mode.
     /// Sends FileChooserClosed event with the selected path to the bus.
     fn select_item(&mut self, path: PathBuf, bus: &mut Bus) {
@@ -532,7 +578,7 @@ impl FileChooser {
                 }
             }
         }
-        self.update_entries_list(rq, context);
+        self.update_entries_list(context);
     }
 }
 
@@ -547,7 +593,7 @@ impl View for FileChooser {
         context: &mut Context,
     ) -> bool {
         match evt {
-            Event::SelectDirectory(path) => {
+            Event::ToggleSelectDirectory(path) => {
                 self.navigate_to(path.clone(), rq, context);
                 true
             }
@@ -555,12 +601,19 @@ impl View for FileChooser {
                 self.select_item(path.clone(), bus);
                 true
             }
-            Event::Hold(EntryId::FileEntry(path)) => {
-                self.select_item(path.clone(), bus);
-                true
-            }
             Event::Page(dir) => {
                 self.go_to_page(*dir, rq, context);
+
+                rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+
+                true
+            }
+            Event::NavigationBarResized(_) => {
+                self.update_nav_bar_separator();
+                self.update_entries_list(context);
+
+                rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+
                 true
             }
             Event::Gesture(GestureEvent::Tap(center)) if self.bottom_bar_rect.includes(*center) => {
@@ -618,6 +671,17 @@ mod tests {
         let path = PathBuf::from("/tmp");
         let (hub, _receiver) = channel();
         FileChooser::new(rect, path, SelectionMode::File, &hub, rq, context)
+    }
+
+    fn create_test_file_chooser_with_path(
+        rq: &mut RenderQueue,
+        context: &mut Context,
+        path: PathBuf,
+        mode: SelectionMode,
+    ) -> FileChooser {
+        let rect = rect![0, 0, 600, 800];
+        let (hub, _receiver) = channel();
+        FileChooser::new(rect, path, mode, &hub, rq, context)
     }
 
     #[test]
@@ -730,5 +794,635 @@ mod tests {
         let consumed = file_chooser.handle_event(&tap_event, &hub, &mut bus, &mut rq, &mut context);
 
         assert!(consumed, "Tap event on bottom bar edge should be consumed");
+    }
+
+    // Tests for list_directory returning only files
+
+    #[test]
+    fn test_list_directory_returns_only_files() {
+        let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
+        let temp_path = temp_dir.path();
+
+        fs::write(temp_path.join("alpha.txt"), "content").unwrap();
+        fs::write(temp_path.join("beta.txt"), "content").unwrap();
+        fs::write(temp_path.join("gamma.txt"), "content").unwrap();
+
+        fs::create_dir(temp_path.join("subdir1")).unwrap();
+        fs::create_dir(temp_path.join("subdir2")).unwrap();
+
+        let mut rq = RenderQueue::new();
+        let mut context = create_test_context();
+        let file_chooser = create_test_file_chooser_with_path(
+            &mut rq,
+            &mut context,
+            temp_path.to_path_buf(),
+            SelectionMode::File,
+        );
+
+        let entries = file_chooser.list_directory(temp_path).unwrap();
+
+        assert_eq!(
+            entries.len(),
+            3,
+            "Should only return files, not directories"
+        );
+        for entry in &entries {
+            assert!(
+                !entry.is_dir,
+                "Entry {} should not be a directory",
+                entry.name
+            );
+        }
+
+        assert_eq!(entries[0].name, "alpha.txt");
+        assert_eq!(entries[1].name, "beta.txt");
+        assert_eq!(entries[2].name, "gamma.txt");
+    }
+
+    #[test]
+    fn test_list_directory_returns_empty_for_empty_directory() {
+        let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
+        let temp_path = temp_dir.path();
+
+        let mut rq = RenderQueue::new();
+        let mut context = create_test_context();
+        let file_chooser = create_test_file_chooser_with_path(
+            &mut rq,
+            &mut context,
+            temp_path.to_path_buf(),
+            SelectionMode::File,
+        );
+
+        let entries = file_chooser.list_directory(temp_path).unwrap();
+
+        assert!(
+            entries.is_empty(),
+            "Empty directory should return empty list"
+        );
+    }
+
+    #[test]
+    fn test_list_directory_returns_error_for_nonexistent_path() {
+        let mut rq = RenderQueue::new();
+        let mut context = create_test_context();
+        let file_chooser = create_test_file_chooser(&mut rq, &mut context);
+
+        let result =
+            file_chooser.list_directory(Path::new("/nonexistent/path/that/does/not/exist"));
+
+        assert!(result.is_err(), "Should return error for nonexistent path");
+        assert!(
+            result.unwrap_err().contains("does not exist"),
+            "Error should mention path does not exist"
+        );
+    }
+
+    #[test]
+    fn test_list_directory_returns_error_for_file_path() {
+        let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
+        let temp_path = temp_dir.path();
+        let file_path = temp_path.join("test_file.txt");
+        fs::write(&file_path, "content").unwrap();
+
+        let mut rq = RenderQueue::new();
+        let mut context = create_test_context();
+        let file_chooser = create_test_file_chooser(&mut rq, &mut context);
+
+        let result = file_chooser.list_directory(&file_path);
+
+        assert!(result.is_err(), "Should return error when path is a file");
+        assert!(
+            result.unwrap_err().contains("not a directory"),
+            "Error should mention path is not a directory"
+        );
+    }
+
+    #[test]
+    fn test_list_directory_sorts_alphabetically_case_insensitive() {
+        let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
+        let temp_path = temp_dir.path();
+
+        fs::write(temp_path.join("Zebra.txt"), "content").unwrap();
+        fs::write(temp_path.join("alpha.txt"), "content").unwrap();
+        fs::write(temp_path.join("BETA.txt"), "content").unwrap();
+
+        let mut rq = RenderQueue::new();
+        let mut context = create_test_context();
+        let file_chooser = create_test_file_chooser_with_path(
+            &mut rq,
+            &mut context,
+            temp_path.to_path_buf(),
+            SelectionMode::File,
+        );
+
+        let entries = file_chooser.list_directory(temp_path).unwrap();
+
+        assert_eq!(entries.len(), 3);
+        assert_eq!(entries[0].name, "alpha.txt");
+        assert_eq!(entries[1].name, "BETA.txt");
+        assert_eq!(entries[2].name, "Zebra.txt");
+    }
+
+    #[test]
+    fn test_list_directory_returns_no_files_in_directory_mode() {
+        let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
+        let temp_path = temp_dir.path();
+
+        fs::write(temp_path.join("file1.txt"), "content").unwrap();
+        fs::write(temp_path.join("file2.txt"), "content").unwrap();
+        fs::create_dir(temp_path.join("subdir")).unwrap();
+
+        let mut rq = RenderQueue::new();
+        let mut context = create_test_context();
+        let file_chooser = create_test_file_chooser_with_path(
+            &mut rq,
+            &mut context,
+            temp_path.to_path_buf(),
+            SelectionMode::Directory,
+        );
+
+        let entries = file_chooser.list_directory(temp_path).unwrap();
+
+        assert_eq!(
+            entries.len(),
+            0,
+            "Directory mode should return no files - only navigation bar shows directories"
+        );
+    }
+
+    // Tests for "Select Current Folder" entry
+
+    #[test]
+    fn test_select_current_folder_entry_in_directory_mode() {
+        let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
+        let temp_path = temp_dir.path();
+
+        let mut rq = RenderQueue::new();
+        let mut context = create_test_context();
+        let file_chooser = create_test_file_chooser_with_path(
+            &mut rq,
+            &mut context,
+            temp_path.to_path_buf(),
+            SelectionMode::Directory,
+        );
+
+        assert!(
+            !file_chooser.entries.is_empty(),
+            "Should have at least one entry (Select Current Folder)"
+        );
+        assert_eq!(
+            file_chooser.entries[0].name, SELECT_CURRENT_FOLDER_TEXT,
+            "Select Current Folder entry should be at index 0"
+        );
+        assert!(
+            file_chooser.entries[0].is_dir,
+            "Select Current Folder entry should be marked as directory"
+        );
+    }
+
+    #[test]
+    fn test_select_current_folder_entry_in_both_mode() {
+        let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
+        let temp_path = temp_dir.path();
+
+        let mut rq = RenderQueue::new();
+        let mut context = create_test_context();
+        let file_chooser = create_test_file_chooser_with_path(
+            &mut rq,
+            &mut context,
+            temp_path.to_path_buf(),
+            SelectionMode::Both,
+        );
+
+        assert!(
+            !file_chooser.entries.is_empty(),
+            "Should have at least one entry (Select Current Folder)"
+        );
+        assert_eq!(
+            file_chooser.entries[0].name, SELECT_CURRENT_FOLDER_TEXT,
+            "Select Current Folder entry should be at index 0"
+        );
+    }
+
+    #[test]
+    fn test_no_select_current_folder_entry_in_file_mode() {
+        let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
+        let temp_path = temp_dir.path();
+
+        fs::write(temp_path.join("test.txt"), "content").unwrap();
+
+        let mut rq = RenderQueue::new();
+        let mut context = create_test_context();
+        let file_chooser = create_test_file_chooser_with_path(
+            &mut rq,
+            &mut context,
+            temp_path.to_path_buf(),
+            SelectionMode::File,
+        );
+
+        for entry in &file_chooser.entries {
+            assert_ne!(
+                entry.name, SELECT_CURRENT_FOLDER_TEXT,
+                "File mode should not contain Select Current Folder text"
+            );
+        }
+    }
+
+    #[test]
+    fn test_select_current_folder_entry_path_is_current_directory() {
+        let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
+        let temp_path = temp_dir.path();
+
+        let mut rq = RenderQueue::new();
+        let mut context = create_test_context();
+        let file_chooser = create_test_file_chooser_with_path(
+            &mut rq,
+            &mut context,
+            temp_path.to_path_buf(),
+            SelectionMode::Directory,
+        );
+
+        assert_eq!(
+            file_chooser.entries[0].path, temp_path,
+            "Select Current Folder entry should point to current directory"
+        );
+    }
+
+    // Tests for selecting the current folder
+
+    #[test]
+    fn test_select_current_folder_selects_directory() {
+        let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
+        let temp_path = temp_dir.path();
+
+        let mut rq = RenderQueue::new();
+        let mut context = create_test_context();
+        let mut file_chooser = create_test_file_chooser_with_path(
+            &mut rq,
+            &mut context,
+            temp_path.to_path_buf(),
+            SelectionMode::Directory,
+        );
+
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+
+        let select_event = Event::Select(EntryId::FileEntry(temp_path.to_path_buf()));
+        let consumed =
+            file_chooser.handle_event(&select_event, &hub, &mut bus, &mut rq, &mut context);
+
+        assert!(
+            consumed,
+            "Select event for current folder should be consumed"
+        );
+
+        let mut found_close_event = false;
+        let mut found_file_chooser_closed = false;
+
+        for event in &bus {
+            match event {
+                Event::FileChooserClosed(Some(path)) => {
+                    found_file_chooser_closed = true;
+                    assert_eq!(
+                        path, &temp_path,
+                        "FileChooserClosed should contain the selected directory path"
+                    );
+                }
+                Event::Close(ViewId::FileChooser) => {
+                    found_close_event = true;
+                }
+                _ => {}
+            }
+        }
+
+        assert!(
+            found_file_chooser_closed,
+            "FileChooserClosed event should be in bus"
+        );
+        assert!(
+            found_close_event,
+            "Close FileChooser event should be in bus"
+        );
+    }
+
+    #[test]
+    fn test_select_current_folder_in_both_mode() {
+        let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
+        let temp_path = temp_dir.path();
+
+        let mut rq = RenderQueue::new();
+        let mut context = create_test_context();
+        let mut file_chooser = create_test_file_chooser_with_path(
+            &mut rq,
+            &mut context,
+            temp_path.to_path_buf(),
+            SelectionMode::Both,
+        );
+
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+
+        let select_event = Event::Select(EntryId::FileEntry(temp_path.to_path_buf()));
+        let consumed =
+            file_chooser.handle_event(&select_event, &hub, &mut bus, &mut rq, &mut context);
+
+        assert!(
+            consumed,
+            "Select event for current folder should be consumed in Both mode"
+        );
+
+        let found_close = bus
+            .iter()
+            .any(|e| matches!(e, Event::Close(ViewId::FileChooser)));
+        assert!(
+            found_close,
+            "Close event should be sent when selecting current folder in Both mode"
+        );
+    }
+
+    // Tests for mode-specific selection behavior
+
+    #[test]
+    fn test_file_mode_rejects_directory_selection() {
+        let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
+        let temp_path = temp_dir.path();
+
+        let mut rq = RenderQueue::new();
+        let mut context = create_test_context();
+        let mut file_chooser = create_test_file_chooser_with_path(
+            &mut rq,
+            &mut context,
+            temp_path.to_path_buf(),
+            SelectionMode::File,
+        );
+
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+
+        let subdir_path = temp_path.join("subdir");
+        fs::create_dir(&subdir_path).unwrap();
+        let select_event = Event::Select(EntryId::FileEntry(subdir_path));
+
+        let consumed =
+            file_chooser.handle_event(&select_event, &hub, &mut bus, &mut rq, &mut context);
+
+        assert!(consumed, "Select event should be consumed");
+        assert!(
+            bus.is_empty(),
+            "No events should be sent when rejecting directory in File mode"
+        );
+    }
+
+    #[test]
+    fn test_directory_mode_accepts_directory_selection() {
+        let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
+        let temp_path = temp_dir.path();
+
+        let mut rq = RenderQueue::new();
+        let mut context = create_test_context();
+        let mut file_chooser = create_test_file_chooser_with_path(
+            &mut rq,
+            &mut context,
+            temp_path.to_path_buf(),
+            SelectionMode::Directory,
+        );
+
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+
+        let select_event = Event::Select(EntryId::FileEntry(temp_path.to_path_buf()));
+        let consumed =
+            file_chooser.handle_event(&select_event, &hub, &mut bus, &mut rq, &mut context);
+
+        assert!(consumed, "Select event should be consumed");
+
+        let found_close = bus
+            .iter()
+            .any(|e| matches!(e, Event::Close(ViewId::FileChooser)));
+        assert!(
+            found_close,
+            "Close event should be sent when selecting directory in Directory mode"
+        );
+    }
+
+    #[test]
+    fn test_directory_mode_rejects_file_selection() {
+        let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
+        let temp_path = temp_dir.path();
+
+        let file_path = temp_path.join("test.txt");
+        fs::write(&file_path, "content").unwrap();
+
+        let mut rq = RenderQueue::new();
+        let mut context = create_test_context();
+        let mut file_chooser = create_test_file_chooser_with_path(
+            &mut rq,
+            &mut context,
+            temp_path.to_path_buf(),
+            SelectionMode::Directory,
+        );
+
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+
+        let select_event = Event::Select(EntryId::FileEntry(file_path));
+
+        let consumed =
+            file_chooser.handle_event(&select_event, &hub, &mut bus, &mut rq, &mut context);
+
+        assert!(consumed, "Select event should be consumed");
+        assert!(
+            bus.is_empty(),
+            "No events should be sent when rejecting file in Directory mode"
+        );
+    }
+
+    #[test]
+    fn test_both_mode_accepts_file_selection() {
+        let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
+        let temp_path = temp_dir.path();
+
+        let file_path = temp_path.join("test.txt");
+        fs::write(&file_path, "content").unwrap();
+
+        let mut rq = RenderQueue::new();
+        let mut context = create_test_context();
+        let mut file_chooser = create_test_file_chooser_with_path(
+            &mut rq,
+            &mut context,
+            temp_path.to_path_buf(),
+            SelectionMode::Both,
+        );
+
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+
+        let select_event = Event::Select(EntryId::FileEntry(file_path.clone()));
+        let consumed =
+            file_chooser.handle_event(&select_event, &hub, &mut bus, &mut rq, &mut context);
+
+        assert!(consumed, "Select event should be consumed");
+
+        let found_file_chooser_closed = bus
+            .iter()
+            .any(|e| matches!(e, Event::FileChooserClosed(Some(path)) if path == &file_path));
+        assert!(
+            found_file_chooser_closed,
+            "FileChooserClosed should be sent with file path in Both mode"
+        );
+    }
+
+    #[test]
+    fn test_both_mode_accepts_directory_selection() {
+        let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
+        let temp_path = temp_dir.path();
+
+        let mut rq = RenderQueue::new();
+        let mut context = create_test_context();
+        let mut file_chooser = create_test_file_chooser_with_path(
+            &mut rq,
+            &mut context,
+            temp_path.to_path_buf(),
+            SelectionMode::Both,
+        );
+
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+
+        let select_event = Event::Select(EntryId::FileEntry(temp_path.to_path_buf()));
+        let consumed =
+            file_chooser.handle_event(&select_event, &hub, &mut bus, &mut rq, &mut context);
+
+        assert!(consumed, "Select event should be consumed");
+
+        let found_file_chooser_closed = bus
+            .iter()
+            .any(|e| matches!(e, Event::FileChooserClosed(Some(path)) if path == temp_path));
+        assert!(
+            found_file_chooser_closed,
+            "FileChooserClosed should be sent with directory path in Both mode"
+        );
+    }
+
+    // Tests for navigation bar integration
+
+    #[test]
+    fn test_navigation_bar_is_initialized() {
+        let mut rq = RenderQueue::new();
+        let mut context = create_test_context();
+        let file_chooser = create_test_file_chooser(&mut rq, &mut context);
+
+        let nav_bar_child = file_chooser.children.get(file_chooser.nav_bar_index);
+        assert!(
+            nav_bar_child.is_some(),
+            "Navigation bar should be present at nav_bar_index"
+        );
+
+        let can_downcast = nav_bar_child
+            .unwrap()
+            .as_any()
+            .downcast_ref::<StackNavigationBar<DirectoryNavigationProvider>>()
+            .is_some();
+        assert!(
+            can_downcast,
+            "Child at nav_bar_index should be StackNavigationBar"
+        );
+    }
+
+    #[test]
+    fn test_navigate_to_updates_navigation_bar() {
+        let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
+        let temp_path = temp_dir.path();
+
+        let mut rq = RenderQueue::new();
+        let mut context = create_test_context();
+        let mut file_chooser = create_test_file_chooser_with_path(
+            &mut rq,
+            &mut context,
+            temp_path.to_path_buf(),
+            SelectionMode::File,
+        );
+
+        let initial_path = file_chooser.current_path.clone();
+
+        let subdir_path = temp_path.join("subdir");
+        fs::create_dir(&subdir_path).unwrap();
+
+        file_chooser.navigate_to(subdir_path.clone(), &mut rq, &mut context);
+
+        assert_eq!(
+            file_chooser.current_path, subdir_path,
+            "Current path should be updated after navigation"
+        );
+        assert_ne!(
+            file_chooser.current_path, initial_path,
+            "Current path should have changed"
+        );
+    }
+
+    #[test]
+    fn test_toggle_select_directory_event_navigates() {
+        let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
+        let temp_path = temp_dir.path();
+
+        let subdir_path = temp_path.join("navtarget");
+        fs::create_dir(&subdir_path).unwrap();
+
+        let mut rq = RenderQueue::new();
+        let mut context = create_test_context();
+        let mut file_chooser = create_test_file_chooser_with_path(
+            &mut rq,
+            &mut context,
+            temp_path.to_path_buf(),
+            SelectionMode::File,
+        );
+
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+
+        let initial_path = file_chooser.current_path.clone();
+
+        let toggle_event = Event::ToggleSelectDirectory(subdir_path.clone());
+        let consumed =
+            file_chooser.handle_event(&toggle_event, &hub, &mut bus, &mut rq, &mut context);
+
+        assert!(consumed, "ToggleSelectDirectory event should be consumed");
+        assert_eq!(
+            file_chooser.current_path, subdir_path,
+            "Current path should be updated to subdirectory"
+        );
+        assert_ne!(
+            file_chooser.current_path, initial_path,
+            "Current path should have changed"
+        );
+    }
+
+    #[test]
+    fn test_navigation_bar_resized_event_consumed() {
+        let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
+        let temp_path = temp_dir.path();
+
+        fs::write(temp_path.join("test.txt"), "content").unwrap();
+
+        let mut rq = RenderQueue::new();
+        let mut context = create_test_context();
+        let mut file_chooser = create_test_file_chooser_with_path(
+            &mut rq,
+            &mut context,
+            temp_path.to_path_buf(),
+            SelectionMode::File,
+        );
+
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+
+        let resized_event = Event::NavigationBarResized(50);
+        let consumed =
+            file_chooser.handle_event(&resized_event, &hub, &mut bus, &mut rq, &mut context);
+
+        assert!(
+            consumed,
+            "NavigationBarResized event should be consumed by FileChooser"
+        );
     }
 }

@@ -54,17 +54,7 @@ impl FileEntry {
         let font = font_from_style(&mut context.fonts, &NORMAL_STYLE, dpi);
         let padding = font.em() as i32;
 
-        let event = if data.is_dir {
-            Some(Event::SelectDirectory(data.path.clone()))
-        } else {
-            Some(Event::Select(EntryId::FileEntry(data.path.clone())))
-        };
-        let hold_event = if data.is_dir {
-            Some(Event::Hold(EntryId::FileEntry(data.path.clone())))
-        } else {
-            None
-        };
-
+        let event = Some(Event::Select(EntryId::FileEntry(data.path.clone())));
         let icon = if data.is_dir { "📁" } else { "📄" };
         let size_text = data
             .size
@@ -95,8 +85,7 @@ impl FileEntry {
         children.push(Box::new(
             Label::new(icon_rect, icon.to_string(), Align::Left(0))
                 .scheme([WHITE, TEXT_NORMAL[1], TEXT_NORMAL[2]])
-                .event(event.clone())
-                .hold_event(hold_event.clone()),
+                .event(event.clone()),
         ));
         x += icon_width;
 
@@ -104,8 +93,7 @@ impl FileEntry {
         children.push(Box::new(
             Label::new(name_rect, data.name.clone(), Align::Left(0))
                 .scheme([WHITE, TEXT_NORMAL[1], TEXT_NORMAL[2]])
-                .event(event.clone())
-                .hold_event(hold_event.clone()),
+                .event(event.clone()),
         ));
 
         let size_x = rect.max.x - date_plan.width - size_plan.width - 2 * padding;
@@ -118,8 +106,7 @@ impl FileEntry {
         children.push(Box::new(
             Label::new(size_rect, size_text, Align::Left(0))
                 .scheme([WHITE, TEXT_NORMAL[1], TEXT_NORMAL[2]])
-                .event(event.clone())
-                .hold_event(hold_event.clone()),
+                .event(event.clone()),
         ));
 
         let date_x = rect.max.x - date_plan.width - padding;
@@ -127,8 +114,7 @@ impl FileEntry {
         children.push(Box::new(
             Label::new(date_rect, date_text, Align::Left(0))
                 .scheme([WHITE, TEXT_NORMAL[1], TEXT_NORMAL[2]])
-                .event(event.clone())
-                .hold_event(hold_event.clone()),
+                .event(event.clone()),
         ));
 
         FileEntry {
@@ -165,10 +151,8 @@ impl View for FileEntry {
     /// Handles events for the file entry.
     ///
     /// This method processes user interactions with the file entry:
-    /// - **Tap gesture**: If the tap is within the entry's bounds, it pushes either a
-    ///   `SelectDirectory` event (for directories) or a `Select` event (for files) to the bus.
-    /// - **Hold gesture** (short): If the hold is within the entry's bounds and the entry
-    ///   represents a directory, it pushes a `Hold` event to the bus.
+    /// - **Tap gesture**: If the tap is within the entry's bounds, it pushes a
+    ///   `Select(EntryId::FileEntry)` event with the file's path to the bus.
     /// - **Other events**: Returns `false` and does not process other event types.
     ///
     /// # Arguments
@@ -193,17 +177,7 @@ impl View for FileEntry {
     ) -> bool {
         match evt {
             Event::Gesture(GestureEvent::Tap(center)) if self.rect.includes(*center) => {
-                if self.data.is_dir {
-                    bus.push_back(Event::SelectDirectory(self.data.path.clone()));
-                } else {
-                    bus.push_back(Event::Select(EntryId::FileEntry(self.data.path.clone())));
-                }
-                true
-            }
-            Event::Gesture(GestureEvent::HoldFingerShort(center, _id))
-                if self.rect.includes(*center) && self.data.is_dir =>
-            {
-                bus.push_back(Event::Hold(EntryId::FileEntry(self.data.path.clone())));
+                bus.push_back(Event::Select(EntryId::FileEntry(self.data.path.clone())));
                 true
             }
             _ => false,
