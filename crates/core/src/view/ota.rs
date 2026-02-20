@@ -359,7 +359,7 @@ impl OtaView {
         if let Ok(pr_number) = text.trim().parse::<u32>() {
             self.pending_download = Some(PendingDownload::Pr(pr_number));
             self.build_progress_screen(&format!("Downloading PR #{} build…", pr_number), context);
-            rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+            rq.add(RenderData::new(self.id, self.rect, UpdateMode::Full));
             self.start_pr_download(pr_number, hub);
         } else {
             hub.send(Event::Notification(NotificationEvent::Show(
@@ -717,7 +717,7 @@ impl OtaView {
         }
         self.pending_download = Some(PendingDownload::DefaultBranch);
         self.build_progress_screen("Downloading main branch build… 0%", context);
-        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Full));
         self.start_default_branch_download(hub);
         true
     }
@@ -730,7 +730,7 @@ impl OtaView {
         context: &mut Context,
     ) -> bool {
         self.build_progress_screen("Downloading stable release… 0%", context);
-        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Full));
         self.start_stable_release_download(hub);
         true
     }
@@ -794,7 +794,7 @@ impl OtaView {
         match self.pending_download.take() {
             Some(PendingDownload::DefaultBranch) => {
                 self.build_progress_screen("Downloading main branch build… 0%", context);
-                rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+                rq.add(RenderData::new(self.id, self.rect, UpdateMode::Full));
                 self.start_default_branch_download(hub);
             }
             Some(PendingDownload::PrInputPending) => {
@@ -809,7 +809,7 @@ impl OtaView {
                     &format!("Downloading PR #{} build… 0%", pr_number),
                     context,
                 );
-                rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+                rq.add(RenderData::new(self.id, self.rect, UpdateMode::Full));
                 self.start_pr_download(pr_number, hub);
             }
             None => {}
