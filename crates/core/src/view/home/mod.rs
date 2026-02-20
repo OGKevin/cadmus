@@ -33,7 +33,7 @@ use crate::view::navigation::providers::directory::DirectoryNavigationProvider;
 use crate::view::navigation::StackNavigationBar;
 use crate::view::notification::Notification;
 use crate::view::search_bar::SearchBar;
-use crate::view::{Bus, Event, Hub, RenderData, RenderQueue, View};
+use crate::view::{Bus, Event, Hub, NotificationEvent, RenderData, RenderQueue, ToggleEvent, View};
 use crate::view::{EntryId, EntryKind, Id, ViewId, ID_FEEDER};
 use crate::view::{BIG_BAR_HEIGHT, SMALL_BAR_HEIGHT, THICKNESS_MEDIUM};
 use anyhow::{format_err, Error};
@@ -104,7 +104,7 @@ impl Home {
 
         context.library.sort(sort_method, reverse_order);
 
-        let (visible_books, dirs) = context.library.list(&current_directory, None, false);
+        let (visible_books, _dirs) = context.library.list(&current_directory, None, false);
         let count = visible_books.len();
         let current_page = 0;
         let mut shelf_index = 2;
@@ -116,7 +116,7 @@ impl Home {
                 rect.max.x,
                 rect.min.y + small_height - small_thickness
             ],
-            TopBarVariant::Search(Event::Toggle(ViewId::SearchBar)),
+            TopBarVariant::Search(Event::Toggle(ToggleEvent::View(ViewId::SearchBar))),
             sort_method.title(),
             context,
         );
@@ -283,7 +283,7 @@ impl Home {
             }
         }
 
-        let (files, dirs) =
+        let (files, _dirs) =
             context
                 .library
                 .list(&self.current_directory, self.query.as_ref(), false);
@@ -1918,7 +1918,10 @@ impl Home {
                             Some("notify") => {
                                 if let Some(msg) = event.get("message").and_then(JsonValue::as_str)
                                 {
-                                    hub2.send(Event::Notify(msg.to_string())).ok();
+                                    hub2.send(Event::Notification(NotificationEvent::Show(
+                                        msg.to_string(),
+                                    )))
+                                    .ok();
                                 }
                             }
                             Some("setWifi") => {
@@ -2076,11 +2079,11 @@ impl View for Home {
                 self.toggle_keyboard(true, true, None, hub, rq, context);
                 true
             }
-            Event::Toggle(ViewId::GoToPage) => {
+            Event::Toggle(ToggleEvent::View(ViewId::GoToPage)) => {
                 self.toggle_go_to_page(None, hub, rq, context);
                 true
             }
-            Event::Toggle(ViewId::SearchBar) => {
+            Event::Toggle(ToggleEvent::View(ViewId::SearchBar)) => {
                 self.toggle_search_bar(None, true, hub, rq, context);
                 true
             }

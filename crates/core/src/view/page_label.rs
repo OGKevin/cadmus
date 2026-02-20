@@ -1,4 +1,4 @@
-use super::{Bus, Event, Hub, Id, RenderData, RenderQueue, View, ViewId, ID_FEEDER};
+use super::{Bus, Event, Hub, Id, RenderData, RenderQueue, ToggleEvent, View, ViewId, ID_FEEDER};
 use crate::color::{BLACK, WHITE};
 use crate::context::Context;
 use crate::device::CURRENT_DEVICE;
@@ -94,7 +94,7 @@ impl View for PageLabel {
     ) -> bool {
         match *evt {
             Event::Gesture(GestureEvent::Tap(center)) if self.rect.includes(center) => {
-                bus.push_back(Event::Toggle(ViewId::GoToPage));
+                bus.push_back(Event::Toggle(ToggleEvent::View(ViewId::GoToPage)));
                 true
             }
             Event::Gesture(GestureEvent::HoldFingerShort(center, ..))

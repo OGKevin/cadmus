@@ -911,7 +911,7 @@ impl View for CategoryEditor {
             Event::SubMenu(rect, ref entries) => {
                 self.handle_submenu_event(rect, entries, rq, context)
             }
-            Event::NewToggle(ref toggle) if matches!(toggle, ToggleEvent::Setting(_)) => {
+            Event::Toggle(ref toggle) if matches!(toggle, ToggleEvent::Setting(_)) => {
                 self.handle_toggle_event(evt, hub, bus, rq, context, toggle)
             }
             Event::Select(ref id) => match id {

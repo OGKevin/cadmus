@@ -53,7 +53,7 @@ use crate::view::menu_entry::MenuEntry;
 use crate::view::named_input::NamedInput;
 use crate::view::notification::Notification;
 use crate::view::search_bar::SearchBar;
-use crate::view::{AppCmd, Bus, Event, Hub, RenderData, RenderQueue, View};
+use crate::view::{AppCmd, Bus, Event, Hub, RenderData, RenderQueue, ToggleEvent, View};
 use crate::view::{EntryId, EntryKind, Id, SliderId, ViewId, ID_FEEDER};
 use crate::view::{BIG_BAR_HEIGHT, SMALL_BAR_HEIGHT, THICKNESS_MEDIUM};
 use chrono::Local;
@@ -4407,7 +4407,10 @@ impl View for Reader {
                             if self.search.is_none() {
                                 match context.settings.reader.south_east_corner {
                                     SouthEastCornerAction::GoToPage => {
-                                        hub.send(Event::Toggle(ViewId::GoToPage)).ok();
+                                        hub.send(Event::Toggle(ToggleEvent::View(
+                                            ViewId::GoToPage,
+                                        )))
+                                        .ok();
                                     }
                                     SouthEastCornerAction::NextPage => {
                                         self.go_to_neighbor(CycleDir::Next, hub, rq, context);
@@ -4719,15 +4722,15 @@ impl View for Reader {
                 self.crop_margins(current_page, margin.as_ref(), hub, rq, context);
                 true
             }
-            Event::Toggle(ViewId::TopBottomBars) => {
+            Event::Toggle(ToggleEvent::View(ViewId::TopBottomBars)) => {
                 self.toggle_bars(None, hub, rq, context);
                 true
             }
-            Event::Toggle(ViewId::GoToPage) => {
+            Event::Toggle(ToggleEvent::View(ViewId::GoToPage)) => {
                 self.toggle_go_to_page(None, ViewId::GoToPage, hub, rq, context);
                 true
             }
-            Event::Toggle(ViewId::GoToResultsPage) => {
+            Event::Toggle(ToggleEvent::View(ViewId::GoToResultsPage)) => {
                 self.toggle_go_to_page(None, ViewId::GoToResultsPage, hub, rq, context);
                 true
             }

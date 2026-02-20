@@ -459,9 +459,7 @@ impl SettingValue {
             Kind::AutoSuspend => Some(Event::Select(EntryId::EditAutoSuspend)),
             Kind::AutoPowerOff => Some(Event::Select(EntryId::EditAutoPowerOff)),
             Kind::SettingsRetention => Some(Event::Select(EntryId::EditSettingsRetention)),
-            Kind::Toggle(ref toggle) => {
-                Some(Event::NewToggle(ToggleEvent::Setting(toggle.clone())))
-            }
+            Kind::Toggle(ref toggle) => Some(Event::Toggle(ToggleEvent::Setting(toggle.clone()))),
             _ if !self.entries.is_empty() => Some(Event::SubMenu(self.rect, self.entries.clone())),
             _ => None,
         }

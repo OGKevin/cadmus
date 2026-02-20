@@ -381,8 +381,6 @@ pub enum Event {
     RefreshBookPreview(PathBuf, Option<PathBuf>),
     Invalid(PathBuf),
     Notification(NotificationEvent),
-    #[deprecated(note = "Use Event::Notification(NotificationEvent::Show) instead")]
-    Notify(String),
     Page(CycleDir),
     ResultsPage(CycleDir),
     GoTo(usize),
@@ -455,10 +453,7 @@ pub enum Event {
     DeleteLibrary(usize),
     ProcessLine(LineOrigin, String),
     History(CycleDir, bool),
-    #[deprecated(note = "Use Event::NewToggle(ToggleEvent::View(ViewID)) instead")]
-    Toggle(ViewId),
-    // TODO(ogkevin): remove Toggle variant above and rename this to Toggle
-    NewToggle(ToggleEvent),
+    Toggle(ToggleEvent),
     Show(ViewId),
     Close(ViewId),
     CloseSub(ViewId),
