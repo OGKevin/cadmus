@@ -362,7 +362,7 @@ pub fn wait_for_all(updating: &mut Vec<UpdateData>, context: &mut Context) {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ToggleEvent {
     View(ViewId),
     Setting(settings_editor::ToggleSettings),

@@ -11,7 +11,7 @@ use anyhow::Error;
 use std::fs;
 use std::path::Path;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ToggleSettings {
     /// Sleep cover enable/disable setting
     SleepCover,

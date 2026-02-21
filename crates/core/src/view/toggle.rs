@@ -348,11 +348,14 @@ impl View for Toggle {
         rq: &mut RenderQueue,
         _context: &mut Context,
     ) -> bool {
-        if std::mem::discriminant(evt) == std::mem::discriminant(&self.event) {
-            self.enabled = !self.enabled;
-            self.update_selection_box(rq);
-            bus.push_back(evt.clone());
-            return true;
+        if let (Event::Toggle(incoming), Event::Toggle(stored)) = (evt, &self.event) {
+            if incoming == stored {
+                self.enabled = !self.enabled;
+                self.update_selection_box(rq);
+                bus.push_back(evt.clone());
+
+                return true;
+            }
         }
 
         false
