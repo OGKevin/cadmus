@@ -1,14 +1,16 @@
-/*
-// Source - https://stackoverflow.com/a/73617163
-// Posted by Sandman, modified by community. See post 'Timeline' for change history
-// Retrieved 2026-02-17, License - CC BY-SA 4.0
-*/
-:root {
-  --content-max-width: 1500px;
+.mermaid {
+  display: flex;
+  justify-content: center;
+  width: 100vw;
+  max-width: 100vw;
+  margin-left: 50%;
+  transform: translateX(-50%);
+  overflow-x: auto;
+  padding: 1rem 0;
 }
 
-/* Align tables to the left */
-table {
-  margin-left: 0;
-  margin-right: auto;
+.mermaid svg {
+  width: 100%;
+  max-width: 1600px;
+  height: auto;
 }
