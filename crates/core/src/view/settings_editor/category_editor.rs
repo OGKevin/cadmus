@@ -587,7 +587,15 @@ impl CategoryEditor {
 
         self.active_intermission_edit = Some(*kind);
 
+        #[cfg(not(test))]
         let initial_path = PathBuf::from("/mnt/onboard");
+        #[cfg(test)]
+        let initial_path = PathBuf::from(
+            tempfile::tempdir()
+                .expect("failed to crete temp dir for test")
+                .path(),
+        );
+
         let file_chooser = FileChooser::new(
             rect!(
                 0,
