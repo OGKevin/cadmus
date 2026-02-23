@@ -1,14 +1,17 @@
 name: Build Release Candidate
 
+env:
+  NODE_VERSION: "24"
+
 on:
   workflow_dispatch:
     inputs:
       pr_number:
-        description: 'PR number to build (typically the release PR)'
+        description: "PR number to build (typically the release PR)"
         required: true
         type: number
       issue_number:
-        description: 'Optional issue number to comment on (if not set, comments on PR)'
+        description: "Optional issue number to comment on (if not set, comments on PR)"
         required: false
         type: number
 
@@ -30,9 +33,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          pr_data=$(gh pr view ${{ inputs.pr_number }} --repo ${{ github.repository }} --json headRefName,headRepository,headRepositoryOwner)
-          echo "branch=$(echo $pr_data | jq -r '.headRefName')" >> $GITHUB_OUTPUT
-          echo "repo=$(echo $pr_data | jq -r '.headRepositoryOwner.login + "/" + .headRepository.name')" >> $GITHUB_OUTPUT
+          pr_data=$(gh pr view "${{ inputs.pr_number }}" --repo "${{ github.repository }}" --json headRefName,headRepository,headRepositoryOwner)
+          echo "branch=$(echo "$pr_data" | jq -r '.headRefName')" >> "$GITHUB_OUTPUT"
+          echo "repo=$(echo "$pr_data" | jq -r '.headRepositoryOwner.login + "/" + .headRepository.name')" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@v6
         with:
@@ -40,100 +43,17 @@ jobs:
           ref: ${{ steps.pr.outputs.branch }}
 
       - uses: dtolnay/rust-toolchain@stable
-        id: rust-toolchain
         with:
           targets: arm-unknown-linux-gnueabihf
 
-      - name: Cache Cargo registry
-        uses: actions/cache@v5
+      - name: Build Kobo artifacts
+        uses: ./.github/actions/build-kobo
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ steps.rust-toolchain.outputs.cachekey }}-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Cache Linaro toolchain
-        id: cache-linaro
-        uses: actions/cache@v5
-        with:
-          path: ~/linaro-toolchain
-          key: linaro-gcc-4.9.4-2017.01
-
-      - name: Download Linaro toolchain
-        if: steps.cache-linaro.outputs.cache-hit != 'true'
-        run: |
-          mkdir -p ~/linaro-toolchain
-          cd ~/linaro-toolchain
-          wget -q https://releases.linaro.org/components/toolchain/binaries/4.9-2017.01/arm-linux-gnueabihf/gcc-linaro-4.9.4-2017.01-x86_64_arm-linux-gnueabihf.tar.xz
-          tar xf gcc-linaro-4.9.4-2017.01-x86_64_arm-linux-gnueabihf.tar.xz --strip-components=1
-          rm gcc-linaro-4.9.4-2017.01-x86_64_arm-linux-gnueabihf.tar.xz
-
-      - name: Cache thirdparty libraries
-        uses: actions/cache@v5
-        with:
-          path: |
-            libs/
-            thirdparty/
-            mupdf_wrapper/
-          key: ${{ runner.os }}-thirdparty-libs-kobo-${{ hashFiles('thirdparty/download.sh', 'thirdparty/**/build-kobo.sh', 'thirdparty/**/*.patch') }}
-
-      - uses: awalsh128/cache-apt-pkgs-action@latest
-        with:
-          packages: git wget curl pkg-config unzip jq patchelf gcc g++ make cmake meson ninja-build autoconf automake libtool gperf python3 zlib1g-dev libbz2-dev libpng-dev libjpeg-dev libopenjp2-7-dev libjbig2dec0-dev libgumbo-dev libfreetype6-dev libharfbuzz-dev libdjvulibre-dev
-          version: 1.0
-
-      - name: Cache NickelMenu
-        uses: actions/cache@v5
-        with:
-          path: .cache/
-          key: ${{ runner.os }}-nickelmenu-${{ hashFiles('bundle.sh') }}
-
-      - name: Setup Linaro toolchain
-        run: |
-          echo "$HOME/linaro-toolchain/bin" >> $GITHUB_PATH
-
-      - name: Build for Kobo
-        env:
-          CC: arm-linux-gnueabihf-gcc
-          CXX: arm-linux-gnueabihf-g++
-          AR: arm-linux-gnueabihf-ar
-          LD: arm-linux-gnueabihf-ld
-          RANLIB: arm-linux-gnueabihf-ranlib
-          STRIP: arm-linux-gnueabihf-strip
-          PKG_CONFIG_ALLOW_CROSS: "1"
-          CARGO_TARGET_ARM_UNKNOWN_LINUX_GNUEABIHF_LINKER: arm-linux-gnueabihf-gcc
-          CC_arm_unknown_linux_gnueabihf: arm-linux-gnueabihf-gcc
-          AR_arm_unknown_linux_gnueabihf: arm-linux-gnueabihf-ar
-        run: |
-          ./build.sh slow
-
-      - name: Create distribution
-        run: ./dist.sh
+          gh-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Get commit hash
         id: commit
-        run: echo "short_sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
-
-      - name: Build release artifacts
-        run: |
-          mkdir -p release-artifacts
-
-          # Raw dist folder
-          cd dist
-          tar czf ../release-artifacts/cadmus-kobo.tar.gz .
-          cd ..
-
-          # KoboRoot without NickelMenu
-          ./bundle.sh --no-nickel
-          cp bundle/KoboRoot.tgz release-artifacts/KoboRoot.tgz
-
-          # KoboRoot with NickelMenu
-          rm -rf bundle
-          ./bundle.sh
-          cp bundle/KoboRoot-nm.tgz release-artifacts/KoboRoot-nm.tgz
+        run: echo "short_sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Generate artifact attestation
         uses: actions/attest-build-provenance@v3

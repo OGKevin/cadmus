@@ -1,0 +1,14 @@
+name: Cache Plato static assets
+description: >
+  Restore or save the Plato static asset cache. The cache key is derived from
+  the PLATO_VERSION constant in download_assets.rs so a version bump
+  automatically invalidates the cache and triggers a fresh download.
+
+runs:
+  using: composite
+  steps:
+    - name: Cache Plato static assets
+      uses: actions/cache@v5
+      with:
+        path: .cache/plato-assets/
+        key: ${{ runner.os }}-plato-assets-${{ hashFiles('xtask/src/tasks/download_assets.rs') }}

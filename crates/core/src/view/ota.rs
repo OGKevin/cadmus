@@ -115,7 +115,7 @@ enum PendingDownload {
 /// Once a download starts, the view transitions to a full-screen progress
 /// screen showing a status label and a [`ProgressBar`]. On successful
 /// deployment the label updates to "Rebooting…" and the app reboots
-/// automatically via [`Event::Select(EntryId::Reboot)`].
+/// automatically via [`Event::Select`] with [`EntryId::Reboot`].
 ///
 /// When a GitHub token is required but not present, the view pushes a
 /// [`DeviceAuthView`] child to guide the user through device flow

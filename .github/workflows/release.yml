@@ -1,9 +1,6 @@
 name: Release
 
 env:
-  MDBOOK_VERSION: "0.5.2"
-  MDBOOK_EPUB_REV: "21a1c8134134201a2d555313447c96e56e2a8996"
-  MDBOOK_MERMAID_VERSION: "0.17.0"
   NODE_VERSION: "24"
 
 on:
@@ -55,197 +52,13 @@ jobs:
           fetch-tags: true
 
       - uses: dtolnay/rust-toolchain@stable
-        id: rust-toolchain
         with:
           targets: arm-unknown-linux-gnueabihf
 
-      - name: Cache Cargo registry
-        uses: actions/cache@v5
+      - name: Build Kobo artifacts
+        uses: ./.github/actions/build-kobo
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ steps.rust-toolchain.outputs.cachekey }}-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Cache Linaro toolchain
-        id: cache-linaro
-        uses: actions/cache@v5
-        with:
-          path: ~/linaro-toolchain
-          key: linaro-gcc-4.9.4-2017.01
-
-      - name: Download Linaro toolchain
-        if: steps.cache-linaro.outputs.cache-hit != 'true'
-        run: |
-          mkdir -p ~/linaro-toolchain
-          cd ~/linaro-toolchain
-          wget -q https://releases.linaro.org/components/toolchain/binaries/4.9-2017.01/arm-linux-gnueabihf/gcc-linaro-4.9.4-2017.01-x86_64_arm-linux-gnueabihf.tar.xz
-          tar xf gcc-linaro-4.9.4-2017.01-x86_64_arm-linux-gnueabihf.tar.xz --strip-components=1
-          rm gcc-linaro-4.9.4-2017.01-x86_64_arm-linux-gnueabihf.tar.xz
-
-      - name: Cache thirdparty libraries
-        uses: actions/cache@v5
-        with:
-          path: |
-            libs/
-            thirdparty/
-            mupdf_wrapper/
-          key: ${{ runner.os }}-thirdparty-libs-kobo-${{ hashFiles('thirdparty/download.sh', 'thirdparty/**/build-kobo.sh', 'thirdparty/**/*.patch') }}
-
-      - uses: awalsh128/cache-apt-pkgs-action@latest
-        with:
-          packages: git wget curl pkg-config unzip jq patchelf gcc g++ make cmake meson ninja-build autoconf automake libtool gperf python3 zlib1g-dev libbz2-dev libpng-dev libjpeg-dev libopenjp2-7-dev libjbig2dec0-dev libgumbo-dev libfreetype6-dev libharfbuzz-dev libdjvulibre-dev
-          version: 1.0
-
-      - name: Cache NickelMenu
-        uses: actions/cache@v5
-        with:
-          path: .cache/
-          key: ${{ runner.os }}-nickelmenu-${{ hashFiles('bundle.sh') }}
-
-      - name: Setup Linaro toolchain
-        run: |
-          echo "${HOME}/linaro-toolchain/bin" >> "${GITHUB_PATH}"
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: "npm"
-
-      - name: Setup Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.x"
-
-      - name: Install npm dependencies
-        run: npm ci
-
-      - name: Cache mdBook tools
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/.cache/mdbook
-            ~/.cache/mdbook-epub
-            ~/.cache/mdbook-mermaid
-          key: ${{ runner.os }}-mdbook-${{ env.MDBOOK_VERSION }}-epub-${{ env.MDBOOK_EPUB_REV }}-mermaid-${{ env.MDBOOK_MERMAID_VERSION }}
-
-      - name: Install mdBook tools
-        run: |
-          set -e
-
-          mkdir -p ~/.cache/mdbook ~/.cache/mdbook-epub ~/.local/bin
-
-          if [ ! -x ~/.cache/mdbook/mdbook ]; then
-            curl -sSL -o /tmp/mdbook.tar.gz \
-              https://github.com/rust-lang/mdBook/releases/download/v${MDBOOK_VERSION}/mdbook-v${MDBOOK_VERSION}-x86_64-unknown-linux-gnu.tar.gz
-            tar -xzf /tmp/mdbook.tar.gz -C ~/.cache/mdbook
-          fi
-
-          MDBOOK_EPUB_BIN=~/.cache/mdbook-epub/bin/mdbook-epub
-          MDBOOK_EPUB_REV_FILE=~/.cache/mdbook-epub/.rev
-          MDBOOK_EPUB_NEEDS_INSTALL=0
-
-          if [ ! -x "$MDBOOK_EPUB_BIN" ]; then
-            MDBOOK_EPUB_NEEDS_INSTALL=1
-          fi
-
-          if [ -f "$MDBOOK_EPUB_REV_FILE" ]; then
-            MDBOOK_EPUB_INSTALLED_REV=$(cat "$MDBOOK_EPUB_REV_FILE")
-            if [ "$MDBOOK_EPUB_INSTALLED_REV" != "$MDBOOK_EPUB_REV" ]; then
-              MDBOOK_EPUB_NEEDS_INSTALL=1
-            fi
-          else
-            MDBOOK_EPUB_NEEDS_INSTALL=1
-          fi
-
-          if [ "$MDBOOK_EPUB_NEEDS_INSTALL" -eq 1 ]; then
-            rm -rf ~/.cache/mdbook-epub
-            MDBOOK_EPUB_DIR=$(mktemp -d)
-            MDBOOK_EPUB_TARBALL="$MDBOOK_EPUB_DIR/mdbook-epub.tar.gz"
-            MDBOOK_EPUB_URL="https://github.com/Michael-F-Bryan/mdbook-epub/archive/${MDBOOK_EPUB_REV}.tar.gz"
-
-            curl -sSL -o "$MDBOOK_EPUB_TARBALL" "$MDBOOK_EPUB_URL"
-
-            tar -xzf "$MDBOOK_EPUB_TARBALL" -C "$MDBOOK_EPUB_DIR"
-            cargo install --path "$MDBOOK_EPUB_DIR/mdbook-epub-$MDBOOK_EPUB_REV" --locked --root ~/.cache/mdbook-epub
-            rm -rf "$MDBOOK_EPUB_DIR"
-
-            echo "$MDBOOK_EPUB_REV" > ~/.cache/mdbook-epub/.rev
-          fi
-
-          # Install mdbook-mermaid
-          MDBOOK_MERMAID_BIN=~/.cache/mdbook-mermaid/bin/mdbook-mermaid
-          MDBOOK_MERMAID_VERSION_FILE=~/.cache/mdbook-mermaid/.version
-          MDBOOK_MERMAID_NEEDS_INSTALL=0
-
-          if [ ! -x "$MDBOOK_MERMAID_BIN" ]; then
-            MDBOOK_MERMAID_NEEDS_INSTALL=1
-          fi
-
-          if [ -f "$MDBOOK_MERMAID_VERSION_FILE" ]; then
-            MDBOOK_MERMAID_INSTALLED_VERSION=$(cat "$MDBOOK_MERMAID_VERSION_FILE")
-            if [ "$MDBOOK_MERMAID_INSTALLED_VERSION" != "$MDBOOK_MERMAID_VERSION" ]; then
-              MDBOOK_MERMAID_NEEDS_INSTALL=1
-            fi
-          else
-            MDBOOK_MERMAID_NEEDS_INSTALL=1
-          fi
-
-          if [ "$MDBOOK_MERMAID_NEEDS_INSTALL" -eq 1 ]; then
-            rm -rf ~/.cache/mdbook-mermaid
-            mkdir -p ~/.cache/mdbook-mermaid/bin
-            cargo install mdbook-mermaid --version "$MDBOOK_MERMAID_VERSION" --root ~/.cache/mdbook-mermaid
-            echo "$MDBOOK_MERMAID_VERSION" > ~/.cache/mdbook-mermaid/.version
-          fi
-
-          ln -sf ~/.cache/mdbook/mdbook ~/.local/bin/mdbook
-          ln -sf ~/.cache/mdbook-epub/bin/mdbook-epub ~/.local/bin/mdbook-epub
-          ln -sf ~/.cache/mdbook-mermaid/bin/mdbook-mermaid ~/.local/bin/mdbook-mermaid
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
-
-      - name: Install mdbook-mermaid assets
-        run: mdbook-mermaid install docs
-
-      - name: Build documentation
-        run: mdbook build docs
-
-      - name: Build for Kobo
-        env:
-          CC: arm-linux-gnueabihf-gcc
-          CXX: arm-linux-gnueabihf-g++
-          AR: arm-linux-gnueabihf-ar
-          LD: arm-linux-gnueabihf-ld
-          RANLIB: arm-linux-gnueabihf-ranlib
-          STRIP: arm-linux-gnueabihf-strip
-          PKG_CONFIG_ALLOW_CROSS: "1"
-          CARGO_TARGET_ARM_UNKNOWN_LINUX_GNUEABIHF_LINKER: arm-linux-gnueabihf-gcc
-          CC_arm_unknown_linux_gnueabihf: arm-linux-gnueabihf-gcc
-          AR_arm_unknown_linux_gnueabihf: arm-linux-gnueabihf-ar
-        run: |
-          ./build.sh slow
-
-      - name: Create distribution
-        run: ./dist.sh
-
-      - name: Build release artifacts
-        run: |
-          # Raw dist folder
-          cd dist
-          tar czf ../cadmus-kobo.tar.gz .
-          cd ..
-
-          # KoboRoot without NickelMenu
-          ./bundle.sh --no-nickel
-          cp bundle/KoboRoot.tgz KoboRoot.tgz
-
-          # KoboRoot with NickelMenu
-          rm -rf bundle
-          ./bundle.sh
-          cp bundle/KoboRoot-nm.tgz KoboRoot-nm.tgz
+          gh-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate artifact attestation
         uses: actions/attest-build-provenance@v3
@@ -256,15 +69,14 @@ jobs:
             dist/scripts/*
             dist/libs/*.so*
             dist/bin/*
-            KoboRoot.tgz
-            KoboRoot-nm.tgz
+            release-artifacts/*.tgz
 
       - name: Upload release assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release upload ${{ needs.release-please.outputs.tag_name }} \
-            cadmus-kobo.tar.gz \
-            KoboRoot.tgz \
-            KoboRoot-nm.tgz \
+            release-artifacts/cadmus-kobo.tar.gz \
+            release-artifacts/KoboRoot.tgz \
+            release-artifacts/KoboRoot-nm.tgz \
             --repo ${{ github.repository }}

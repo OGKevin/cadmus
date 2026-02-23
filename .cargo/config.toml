@@ -1,3 +1,6 @@
+[alias]
+xtask = "run --package xtask --"
+
 [target.arm-unknown-linux-gnueabihf]
 linker = "arm-linux-gnueabihf-gcc"
 rustflags = ["-C", "target-feature=+v7,+vfp3,+neon"]

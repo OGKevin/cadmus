@@ -1,9 +1,6 @@
 name: Cargo
 
 env:
-  MDBOOK_VERSION: "0.5.2"
-  MDBOOK_EPUB_REV: "21a1c8134134201a2d555313447c96e56e2a8996"
-  MDBOOK_MERMAID_VERSION: "0.17.0"
   NODE_VERSION: "24"
 
 on:
@@ -36,57 +33,17 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-${{ steps.rust-toolchain.outputs.cachekey }}-${{ hashFiles('**/Cargo.lock') }}
       - name: Check formatting
-        run: cargo fmt --all --check
+        run: cargo xtask fmt
 
-  clippy:
-    if: github.event_name == 'pull_request'
-
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-        features:
-          - default
-          - test
-          - otel
-          - test + otel
-          - emulator
-          - emulator + test
-          - emulator + otel
-          - emulator + test + otel
-        # Map feature names to cargo arguments
-        include:
-          - features: default
-            cargo_args: "--workspace --all-targets"
-          - features: test
-            cargo_args: "--workspace --all-targets --features test"
-          - features: otel
-            cargo_args: "--workspace --all-targets --features otel"
-          - features: test + otel
-            cargo_args: "--workspace --all-targets --features test,otel"
-          - features: emulator
-            cargo_args: "-p emulator --all-targets --features emulator"
-          - features: emulator + test
-            cargo_args: "-p emulator --all-targets --features emulator,test"
-          - features: emulator + otel
-            cargo_args: "-p emulator --all-targets --features emulator,otel"
-          - features: emulator + test + otel
-            cargo_args: "-p emulator --all-targets --features emulator,test,otel"
-    runs-on: ${{ matrix.os }}
-    name: clippy (${{ matrix.features }}, ${{ matrix.os }})
-
+  generate-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      test-matrix: ${{ steps.matrix.outputs.test-matrix }}
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         id: rust-toolchain
-      - &set-build-metadata
-        name: Set build metadata
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "PR_NUMBER=${{ github.event.pull_request.number }}" >> $GITHUB_ENV
-            echo "PR_HEAD_SHA=${{ github.event.pull_request.head.sha }}" >> $GITHUB_ENV
-          fi
-          echo "GIT_VERSION=$(git describe --tags --dirty --always)" >> $GITHUB_ENV
       - name: Cache
         uses: actions/cache@v5
         with:
@@ -97,12 +54,45 @@ jobs:
             ~/.cargo/git/db/
             target/
           key: ${{ runner.os }}-cargo-${{ steps.rust-toolchain.outputs.cachekey }}-${{ hashFiles('**/Cargo.lock') }}
-      - uses: taiki-e/cache-cargo-install-action@v3
-        with:
-          tool: cargo-diff-tools
-      - name: Fetch base ref
-        run: git fetch origin ${{ github.base_ref }}
+      - name: Generate feature matrix
+        id: matrix
+        run: cargo xtask ci matrix
 
+  clippy:
+    needs: generate-matrix
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.generate-matrix.outputs.matrix).include }}
+
+    runs-on: ${{ matrix.os }}
+    name: clippy (${{ matrix.label }}, ${{ matrix.os }})
+
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        id: rust-toolchain
+        with:
+          components: clippy
+      - &set-build-metadata
+        name: Set build metadata
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "PR_NUMBER=${{ github.event.pull_request.number }}" >> "$GITHUB_ENV"
+            echo "PR_HEAD_SHA=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_ENV"
+          fi
+          echo "GIT_VERSION=$(git describe --tags --dirty --always)" >> "$GITHUB_ENV"
+      - name: Cache
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ steps.rust-toolchain.outputs.cachekey }}-${{ hashFiles('**/Cargo.lock') }}
       - &setup-node
         name: Setup Node.js
         uses: actions/setup-node@v6
@@ -120,147 +110,90 @@ jobs:
         name: Install npm dependencies
         run: npm ci
 
-      - &cache-mdbook
-        name: Cache mdBook tools
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/.cache/mdbook
-            ~/.cache/mdbook-epub
-            ~/.cache/mdbook-mermaid
-          key: ${{ runner.os }}-mdbook-${{ env.MDBOOK_VERSION }}-epub-${{ env.MDBOOK_EPUB_REV }}-mermaid-${{ env.MDBOOK_MERMAID_VERSION }}
-
       - &install-mdbook
         name: Install mdBook tools
-        run: |
-          set -e
-
-          mkdir -p ~/.cache/mdbook ~/.cache/mdbook-epub ~/.local/bin
-
-          if [ ! -x ~/.cache/mdbook/mdbook ]; then
-            if [ "$(uname)" = "Darwin" ]; then
-              MDBOOK_ARCH="aarch64-apple-darwin"
-            else
-              MDBOOK_ARCH="x86_64-unknown-linux-gnu"
-            fi
-            curl -sSL -o /tmp/mdbook.tar.gz \
-              https://github.com/rust-lang/mdBook/releases/download/v${MDBOOK_VERSION}/mdbook-v${MDBOOK_VERSION}-${MDBOOK_ARCH}.tar.gz
-            tar -xzf /tmp/mdbook.tar.gz -C ~/.cache/mdbook
-          fi
-
-          MDBOOK_EPUB_BIN=~/.cache/mdbook-epub/bin/mdbook-epub
-          MDBOOK_EPUB_REV_FILE=~/.cache/mdbook-epub/.rev
-          MDBOOK_EPUB_NEEDS_INSTALL=0
-
-          if [ ! -x "$MDBOOK_EPUB_BIN" ]; then
-            MDBOOK_EPUB_NEEDS_INSTALL=1
-          fi
-
-          if [ -f "$MDBOOK_EPUB_REV_FILE" ]; then
-            MDBOOK_EPUB_INSTALLED_REV=$(cat "$MDBOOK_EPUB_REV_FILE")
-            if [ "$MDBOOK_EPUB_INSTALLED_REV" != "$MDBOOK_EPUB_REV" ]; then
-              MDBOOK_EPUB_NEEDS_INSTALL=1
-            fi
-          else
-            MDBOOK_EPUB_NEEDS_INSTALL=1
-          fi
-
-          if [ "$MDBOOK_EPUB_NEEDS_INSTALL" -eq 1 ]; then
-            rm -rf ~/.cache/mdbook-epub
-            MDBOOK_EPUB_DIR=$(mktemp -d)
-            MDBOOK_EPUB_TARBALL="$MDBOOK_EPUB_DIR/mdbook-epub.tar.gz"
-            MDBOOK_EPUB_URL="https://github.com/Michael-F-Bryan/mdbook-epub/archive/${MDBOOK_EPUB_REV}.tar.gz"
-
-            curl -sSL -o "$MDBOOK_EPUB_TARBALL" "$MDBOOK_EPUB_URL"
-
-            tar -xzf "$MDBOOK_EPUB_TARBALL" -C "$MDBOOK_EPUB_DIR"
-            cargo install --path "$MDBOOK_EPUB_DIR/mdbook-epub-$MDBOOK_EPUB_REV" --locked --root ~/.cache/mdbook-epub
-            rm -rf "$MDBOOK_EPUB_DIR"
-
-            echo "$MDBOOK_EPUB_REV" > ~/.cache/mdbook-epub/.rev
-          fi
-
-          # Install mdbook-mermaid
-          MDBOOK_MERMAID_BIN=~/.cache/mdbook-mermaid/bin/mdbook-mermaid
-          MDBOOK_MERMAID_VERSION_FILE=~/.cache/mdbook-mermaid/.version
-          MDBOOK_MERMAID_NEEDS_INSTALL=0
-
-          if [ ! -x "$MDBOOK_MERMAID_BIN" ]; then
-            MDBOOK_MERMAID_NEEDS_INSTALL=1
-          fi
-
-          if [ -f "$MDBOOK_MERMAID_VERSION_FILE" ]; then
-            MDBOOK_MERMAID_INSTALLED_VERSION=$(cat "$MDBOOK_MERMAID_VERSION_FILE")
-            if [ "$MDBOOK_MERMAID_INSTALLED_VERSION" != "$MDBOOK_MERMAID_VERSION" ]; then
-              MDBOOK_MERMAID_NEEDS_INSTALL=1
-            fi
-          else
-            MDBOOK_MERMAID_NEEDS_INSTALL=1
-          fi
-
-          if [ "$MDBOOK_MERMAID_NEEDS_INSTALL" -eq 1 ]; then
-            rm -rf ~/.cache/mdbook-mermaid
-            mkdir -p ~/.cache/mdbook-mermaid/bin
-            cargo install mdbook-mermaid --version "$MDBOOK_MERMAID_VERSION" --root ~/.cache/mdbook-mermaid
-            echo "$MDBOOK_MERMAID_VERSION" > ~/.cache/mdbook-mermaid/.version
-          fi
-
-          ln -sf ~/.cache/mdbook/mdbook ~/.local/bin/mdbook
-          ln -sf ~/.cache/mdbook-epub/bin/mdbook-epub ~/.local/bin/mdbook-epub
-          ln -sf ~/.cache/mdbook-mermaid/bin/mdbook-mermaid ~/.local/bin/mdbook-mermaid
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
-
-      - &install-mermaid-assets
-        name: Install mdbook-mermaid assets
-        run: mdbook-mermaid install docs
+        uses: ./.github/actions/install-doc-tools
 
       - &build-docs
         name: Build documentation
-        run: mdbook build docs
+        run: cargo xtask docs --mdbook-only
+        env:
+          RUSTDOCFLAGS: "-D warnings"
 
-      - name: Run cargo clippy (${{ matrix.features }})
-        run: cargo-clippy-diff -o GitHub origin/${{ github.base_ref }} -- -q ${{ matrix.cargo_args }}
+      - name: Run cargo clippy (${{ matrix.label }})
+        run: cargo xtask clippy --features "${{ matrix.label }}"
+
+      - name: Save clippy JSON artifact (ubuntu only)
+        if: runner.os == 'Linux' && github.event_name == 'pull_request'
+        run: |
+          slug="${{ matrix.features }}"
+          slug="${slug:-default}"
+          cargo xtask clippy --features "${{ matrix.label }}" --save-json "clippy-json/${slug}.json"
+
+      - name: Upload clippy JSON artifact
+        if: runner.os == 'Linux' && github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v6
+        with:
+          name: clippy-json-${{ matrix.features || 'default' }}
+          path: clippy-json/
+          retention-days: 1
+
+  clippy-report:
+    if: github.event_name == 'pull_request'
+    needs: clippy
+
+    permissions:
+      contents: read
+      pull-requests: write
+
+    runs-on: ubuntu-latest
+    name: clippy-report
+
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        id: rust-toolchain
+        with:
+          components: clippy
+      - *set-build-metadata
+      - name: Cache
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ steps.rust-toolchain.outputs.cachekey }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Download all clippy JSON artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: clippy-json-*
+          path: clippy-json
+          merge-multiple: true
+
+      - name: Install reviewdog
+        uses: reviewdog/action-setup@v1
+
+      - name: Run clippy-report
+        run: cargo xtask ci clippy-report --artifacts-dir clippy-json
+        env:
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   test:
+    needs: generate-matrix
     env:
       TEST_ROOT_DIR: ${{ github.workspace }}
 
     strategy:
       fail-fast: false
       matrix:
-        # This does not work on MacOS yet.
-        # Setup native dependencies fails
-        os: [ubuntu-latest]
-        features:
-          - default
-          - test
-          - otel
-          - test + otel
-          - emulator
-          - emulator + test
-          - emulator + otel
-          - emulator + test + otel
-        # Map feature names to cargo arguments
-        include:
-          - features: default
-            cargo_args: "--workspace"
-          - features: test
-            cargo_args: "--workspace --features test"
-          - features: otel
-            cargo_args: "--workspace --features otel"
-          - features: test + otel
-            cargo_args: "--workspace --features test,otel"
-          - features: emulator
-            cargo_args: "-p emulator --features emulator"
-          - features: emulator + test
-            cargo_args: "-p emulator --features emulator,test"
-          - features: emulator + otel
-            cargo_args: "-p emulator --features emulator,otel"
-          - features: emulator + test + otel
-            cargo_args: "-p emulator --features emulator,test,otel"
+        include: ${{ fromJson(needs.generate-matrix.outputs.test-matrix).include }}
 
     runs-on: ${{ matrix.os }}
-    name: test (${{ matrix.features }}, ${{ matrix.os }})
+    name: test (${{ matrix.label }}, ${{ matrix.os }})
 
     steps:
       - uses: actions/checkout@v6
@@ -272,12 +205,9 @@ jobs:
       - *setup-python
       - *install-npm-deps
 
-      - *cache-mdbook
       - *install-mdbook
-      - *install-mermaid-assets
       - *build-docs
 
-      # --- Native dependency installation ---
       - name: Install apt packages (Linux)
         if: runner.os == 'Linux'
         uses: awalsh128/cache-apt-pkgs-action@latest
@@ -297,7 +227,6 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install sdl2 freetype harfbuzz openjpeg jpeg-turbo libpng jbig2dec gumbo-parser djvulibre pkg-config
 
-      # --- Cargo and thirdparty caches ---
       - name: Cache
         uses: actions/cache@v5
         with:
@@ -309,75 +238,31 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-${{ steps.rust-toolchain.outputs.cachekey }}-${{ hashFiles('**/Cargo.lock') }}
       - name: Cache thirdparty libraries
+        uses: ./.github/actions/cache-thirdparty
+        with:
+          kind: native
+
+      - name: Set nextest version
+        shell: bash
+        run: echo "NEXTEST_VERSION=0.9.94" >> "$GITHUB_ENV"
+
+      - name: Cache cargo-nextest
         uses: actions/cache@v5
         with:
-          path: |
-            thirdparty/mupdf
-            mupdf_wrapper/
-          key: ${{ runner.os }}-thirdparty-libs-native-${{ hashFiles('thirdparty/download.sh') }}
+          path: ~/.cargo/bin/cargo-nextest
+          key: ${{ runner.os }}-nextest-${{ env.NEXTEST_VERSION }}
 
-      # --- Build mupdf and wrapper ---
-      - name: Setup native dependencies
+      - name: Install cargo-nextest
         run: |
-          # Download mupdf sources if not cached
-          if [ ! -d thirdparty/mupdf/include ]; then
-            cd thirdparty
-            ./download.sh mupdf
-            cd ..
+          if ! cargo nextest --version 2>/dev/null | grep -q "$NEXTEST_VERSION"; then
+            cargo install cargo-nextest --version "$NEXTEST_VERSION" --locked
           fi
 
-          # Build mupdf wrapper
-          cd mupdf_wrapper
-          ./build.sh
-          cd ..
+      - name: Setup native dependencies
+        run: cargo xtask setup-native
 
-          # Build MuPDF for native development using system libraries
-          cd thirdparty/mupdf
-          [ -e .gitattributes ] && rm -rf .git*
-
-          # Clean any previous builds
-          make clean || true
-
-          # Generate sources
-          make verbose=yes generate
-
-          # On macOS, gather system library CFLAGS via pkg-config
-          SYS_CFLAGS=""
-          if [ "$(uname -s)" = "Darwin" ]; then
-            for lib in freetype2 harfbuzz libopenjp2 libjpeg zlib jbig2dec gumbo; do
-              SYS_CFLAGS="$SYS_CFLAGS $(pkg-config --cflags $lib 2>/dev/null || true)"
-            done
-          fi
-
-          # Build MuPDF libraries using system libraries
-          make verbose=yes \
-            mujs=no tesseract=no extract=no archive=no brotli=no barcode=no commercial=no \
-            USE_SYSTEM_LIBS=yes \
-            XCFLAGS="-DFZ_ENABLE_ICC=0 -DFZ_ENABLE_SPOT_RENDERING=0 -DFZ_ENABLE_ODT_OUTPUT=0 -DFZ_ENABLE_OCR_OUTPUT=0 $SYS_CFLAGS" \
-            libs
-
-          cd ../..
-
-          # Determine platform directory (matches crates/core/build.rs)
-          case "$(uname -s)" in
-            Darwin) PLATFORM_DIR="Darwin" ;;
-            *)      PLATFORM_DIR="Linux" ;;
-          esac
-
-          # Create target directory structure
-          mkdir -p "target/mupdf_wrapper/$PLATFORM_DIR"
-
-          # Copy libmupdf.a
-          ln -sf "$(pwd)/thirdparty/mupdf/build/release/libmupdf.a" "target/mupdf_wrapper/$PLATFORM_DIR/"
-
-          # Create empty libmupdf-third.a (system libs used instead)
-          if [ ! -e thirdparty/mupdf/build/release/libmupdf-third.a ]; then
-            ar cr thirdparty/mupdf/build/release/libmupdf-third.a
-          fi
-          ln -sf "$(pwd)/thirdparty/mupdf/build/release/libmupdf-third.a" "target/mupdf_wrapper/$PLATFORM_DIR/"
-
-      - name: Run cargo test (${{ matrix.features }})
-        run: cargo test ${{ matrix.cargo_args }}
+      - name: Run cargo test (${{ matrix.label }})
+        run: cargo xtask test --features "${{ matrix.label }}"
 
   build-kobo:
     runs-on: ubuntu-latest
@@ -396,128 +281,28 @@ jobs:
       - *set-build-metadata
 
       - uses: dtolnay/rust-toolchain@stable
-        id: rust-toolchain
         with:
           targets: arm-unknown-linux-gnueabihf
 
-      - &cache-cargo
-        name: Cache Cargo registry
-        uses: actions/cache@v5
+      - name: Build Kobo artifacts
+        uses: ./.github/actions/build-kobo
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ steps.rust-toolchain.outputs.cachekey }}-${{ hashFiles('**/Cargo.lock') }}
-
-      - &cache-linaro
-        name: Cache Linaro toolchain
-        id: cache-linaro
-        uses: actions/cache@v5
-        with:
-          path: ~/linaro-toolchain
-          key: linaro-gcc-4.9.4-2017.01
-
-      - &download-linaro
-        name: Download Linaro toolchain
-        if: steps.cache-linaro.outputs.cache-hit != 'true'
-        run: |
-          mkdir -p ~/linaro-toolchain
-          cd ~/linaro-toolchain
-          wget -q https://releases.linaro.org/components/toolchain/binaries/4.9-2017.01/arm-linux-gnueabihf/gcc-linaro-4.9.4-2017.01-x86_64_arm-linux-gnueabihf.tar.xz
-          tar xf gcc-linaro-4.9.4-2017.01-x86_64_arm-linux-gnueabihf.tar.xz --strip-components=1
-          rm gcc-linaro-4.9.4-2017.01-x86_64_arm-linux-gnueabihf.tar.xz
-
-      - &cache-thirdparty
-        name: Cache thirdparty libraries
-        uses: actions/cache@v5
-        with:
-          path: |
-            libs/
-            thirdparty/
-            mupdf_wrapper/
-          key: ${{ runner.os }}-thirdparty-libs-kobo-${{ hashFiles('thirdparty/download.sh', 'thirdparty/**/build-kobo.sh', 'thirdparty/**/*.patch') }}
-
-      - &cache-nickelmenu
-        name: Cache NickelMenu downloads
-        uses: actions/cache@v5
-        with:
-          path: .cache/
-          key: ${{ runner.os }}-nickelmenu-${{ hashFiles('bundle.sh') }}
-
-      - &install-deps
-        uses: awalsh128/cache-apt-pkgs-action@latest
-        with:
-          packages: git wget curl pkg-config unzip jq patchelf gcc g++ make cmake meson ninja-build autoconf automake libtool gperf python3 zlib1g-dev libbz2-dev libpng-dev libjpeg-dev libopenjp2-7-dev libjbig2dec0-dev libgumbo-dev libfreetype6-dev libharfbuzz-dev libdjvulibre-dev libsdl2-dev
-          version: 1.0
-
-      - &setup-linaro
-        name: Setup Linaro toolchain
-        run: |
-          echo "$HOME/linaro-toolchain/bin" >> $GITHUB_PATH
-
-      - *setup-node
-      - *setup-python
-      - *install-npm-deps
-
-      - *cache-mdbook
-      - *install-mdbook
-      - *install-mermaid-assets
-      - *build-docs
-
-      - name: Build for Kobo
-        env:
-          CC: arm-linux-gnueabihf-gcc
-          CXX: arm-linux-gnueabihf-g++
-          AR: arm-linux-gnueabihf-ar
-          LD: arm-linux-gnueabihf-ld
-          RANLIB: arm-linux-gnueabihf-ranlib
-          STRIP: arm-linux-gnueabihf-strip
-          PKG_CONFIG_ALLOW_CROSS: "1"
-          CARGO_TARGET_ARM_UNKNOWN_LINUX_GNUEABIHF_LINKER: arm-linux-gnueabihf-gcc
-          CC_arm_unknown_linux_gnueabihf: arm-linux-gnueabihf-gcc
-          AR_arm_unknown_linux_gnueabihf: arm-linux-gnueabihf-ar
-        run: |
-          ./build.sh slow
-
-      - &create-dist
-        name: Create distribution
-        run: ./dist.sh
+          gh-token: ${{ secrets.GITHUB_TOKEN }}
 
       - &get-commit
         name: Get commit hash
         id: commit
-        run: echo "short_sha=$(echo '${{ github.event.pull_request.head.sha || github.sha }}' | cut -c1-7)" >> $GITHUB_OUTPUT
+        run: echo "short_sha=$(echo '${{ github.event.pull_request.head.sha || github.sha }}' | cut -c1-7)" >> "$GITHUB_OUTPUT"
 
       - &determine-suffix
         name: Determine artifact suffix
         id: artifact
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "suffix=pr${{ github.event.pull_request.number }}-${{ steps.commit.outputs.short_sha }}" >> $GITHUB_OUTPUT
+            echo "suffix=pr${{ github.event.pull_request.number }}-${{ steps.commit.outputs.short_sha }}" >> "$GITHUB_OUTPUT"
           else
-            echo "suffix=${{ steps.commit.outputs.short_sha }}" >> $GITHUB_OUTPUT
+            echo "suffix=${{ steps.commit.outputs.short_sha }}" >> "$GITHUB_OUTPUT"
           fi
-
-      - name: Build release artifacts
-        run: |
-          mkdir -p release-artifacts
-
-          # Raw dist folder
-          cd dist
-          tar czf ../release-artifacts/cadmus-kobo.tar.gz .
-          cd ..
-
-          # KoboRoot without NickelMenu
-          ./bundle.sh --no-nickel
-          cp bundle/KoboRoot.tgz release-artifacts/KoboRoot.tgz
-
-          # KoboRoot with NickelMenu
-          rm -rf bundle
-          ./bundle.sh
-          cp bundle/KoboRoot-nm.tgz release-artifacts/KoboRoot-nm.tgz
 
       - &generate-attestation
         name: Generate artifact attestation
@@ -553,63 +338,17 @@ jobs:
       - *set-build-metadata
 
       - uses: dtolnay/rust-toolchain@stable
-        id: rust-toolchain
         with:
           targets: arm-unknown-linux-gnueabihf
-      - *cache-cargo
-      - *cache-linaro
-      - *download-linaro
-      - *cache-thirdparty
-      - *cache-nickelmenu
-      - *install-deps
-      - *setup-linaro
 
-      - *setup-node
-      - *setup-python
-      - *install-npm-deps
+      - name: Build Kobo test artifacts
+        uses: ./.github/actions/build-kobo
+        with:
+          gh-token: ${{ secrets.GITHUB_TOKEN }}
+          test: "true"
 
-      - *cache-mdbook
-      - *install-mdbook
-      - *install-mermaid-assets
-      - *build-docs
-
-      - name: Build for Kobo (test build)
-        env:
-          CC: arm-linux-gnueabihf-gcc
-          CXX: arm-linux-gnueabihf-g++
-          AR: arm-linux-gnueabihf-ar
-          LD: arm-linux-gnueabihf-ld
-          RANLIB: arm-linux-gnueabihf-ranlib
-          STRIP: arm-linux-gnueabihf-strip
-          PKG_CONFIG_ALLOW_CROSS: "1"
-          CARGO_TARGET_ARM_UNKNOWN_LINUX_GNUEABIHF_LINKER: arm-linux-gnueabihf-gcc
-          CC_arm_unknown_linux_gnueabihf: arm-linux-gnueabihf-gcc
-          AR_arm_unknown_linux_gnueabihf: arm-linux-gnueabihf-ar
-          CARGO_FEATURES: test
-        run: |
-          ./build.sh slow
-
-      - *create-dist
       - *get-commit
       - *determine-suffix
-
-      - name: Build release artifacts
-        run: |
-          mkdir -p release-artifacts
-
-          # Raw dist folder
-          cd dist
-          tar czf ../release-artifacts/cadmus-kobo-test.tar.gz .
-          cd ..
-
-          # KoboRoot without NickelMenu
-          ./bundle.sh --no-nickel --test
-          cp bundle/KoboRoot-test.tgz release-artifacts/KoboRoot-test.tgz
-
-          # KoboRoot with NickelMenu
-          rm -rf bundle
-          ./bundle.sh --test
-          cp bundle/KoboRoot-nm-test.tgz release-artifacts/KoboRoot-nm-test.tgz
 
       - *generate-attestation
 

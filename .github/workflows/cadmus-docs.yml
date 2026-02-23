@@ -1,10 +1,6 @@
 name: Cadmus Documentation
 
 env:
-  ZOLA_VERSION: "0.22.1"
-  MDBOOK_VERSION: "0.5.2"
-  MDBOOK_EPUB_REV: "21a1c8134134201a2d555313447c96e56e2a8996"
-  MDBOOK_MERMAID_VERSION: "0.17.0"
   NODE_VERSION: "24"
 
 on:
@@ -72,117 +68,8 @@ jobs:
             echo "GIT_VERSION=$(git describe --tags --always)"
           } >> "$GITHUB_ENV"
 
-      - name: Cache Zola
-        uses: actions/cache@v5
-        with:
-          path: ~/.cache/zola
-          key: ${{ runner.os }}-zola-${{ env.ZOLA_VERSION }}
-
-      - name: Install Zola
-        run: |
-          set -e
-
-          mkdir -p ~/.cache/zola ~/.local/bin
-
-          if [ ! -x ~/.cache/zola/zola ]; then
-            curl -sSL -o /tmp/zola.tar.gz \
-              "https://github.com/getzola/zola/releases/download/v${ZOLA_VERSION}/zola-v${ZOLA_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
-            tar -xzf /tmp/zola.tar.gz -C ~/.cache/zola
-          fi
-
-          ln -sf ~/.cache/zola/zola ~/.local/bin/zola
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          zola --version
-
-      - name: Cache mdBook tools
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/.cache/mdbook
-            ~/.cache/mdbook-epub
-            ~/.cache/mdbook-mermaid
-          key: ${{ runner.os }}-mdbook-${{ env.MDBOOK_VERSION }}-epub-${{ env.MDBOOK_EPUB_REV }}-mermaid-${{ env.MDBOOK_MERMAID_VERSION }}
-
-      - name: Install mdBook tools
-        run: |
-          set -e
-
-          mkdir -p ~/.cache/mdbook ~/.cache/mdbook-epub ~/.local/bin
-
-          if [ ! -x ~/.cache/mdbook/mdbook ]; then
-            curl -sSL -o /tmp/mdbook.tar.gz \
-              "https://github.com/rust-lang/mdBook/releases/download/v${MDBOOK_VERSION}/mdbook-v${MDBOOK_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
-            tar -xzf /tmp/mdbook.tar.gz -C ~/.cache/mdbook
-          fi
-
-          MDBOOK_EPUB_BIN=~/.cache/mdbook-epub/bin/mdbook-epub
-          MDBOOK_EPUB_REV_FILE=~/.cache/mdbook-epub/.rev
-          MDBOOK_EPUB_NEEDS_INSTALL=0
-
-          if [ ! -x "$MDBOOK_EPUB_BIN" ]; then
-            MDBOOK_EPUB_NEEDS_INSTALL=1
-          fi
-
-          if [ -f "$MDBOOK_EPUB_REV_FILE" ]; then
-            MDBOOK_EPUB_INSTALLED_REV=$(cat "$MDBOOK_EPUB_REV_FILE")
-            if [ "$MDBOOK_EPUB_INSTALLED_REV" != "$MDBOOK_EPUB_REV" ]; then
-              MDBOOK_EPUB_NEEDS_INSTALL=1
-            fi
-          else
-            MDBOOK_EPUB_NEEDS_INSTALL=1
-          fi
-
-          if [ "$MDBOOK_EPUB_NEEDS_INSTALL" -eq 1 ]; then
-            rm -rf ~/.cache/mdbook-epub
-            MDBOOK_EPUB_DIR=$(mktemp -d)
-            MDBOOK_EPUB_TARBALL="$MDBOOK_EPUB_DIR/mdbook-epub.tar.gz"
-            MDBOOK_EPUB_URL="https://github.com/Michael-F-Bryan/mdbook-epub/archive/${MDBOOK_EPUB_REV}.tar.gz"
-
-            curl -sSL -o "$MDBOOK_EPUB_TARBALL" "$MDBOOK_EPUB_URL"
-
-            tar -xzf "$MDBOOK_EPUB_TARBALL" -C "$MDBOOK_EPUB_DIR"
-            cargo install --path "$MDBOOK_EPUB_DIR/mdbook-epub-$MDBOOK_EPUB_REV" --locked --root ~/.cache/mdbook-epub
-            rm -rf "$MDBOOK_EPUB_DIR"
-
-            echo "$MDBOOK_EPUB_REV" > ~/.cache/mdbook-epub/.rev
-          fi
-
-          # Install mdbook-mermaid
-          MDBOOK_MERMAID_BIN=~/.cache/mdbook-mermaid/bin/mdbook-mermaid
-          MDBOOK_MERMAID_VERSION_FILE=~/.cache/mdbook-mermaid/.version
-          MDBOOK_MERMAID_NEEDS_INSTALL=0
-
-          if [ ! -x "$MDBOOK_MERMAID_BIN" ]; then
-            MDBOOK_MERMAID_NEEDS_INSTALL=1
-          fi
-
-          if [ -f "$MDBOOK_MERMAID_VERSION_FILE" ]; then
-            MDBOOK_MERMAID_INSTALLED_VERSION=$(cat "$MDBOOK_MERMAID_VERSION_FILE")
-            if [ "$MDBOOK_MERMAID_INSTALLED_VERSION" != "$MDBOOK_MERMAID_VERSION" ]; then
-              MDBOOK_MERMAID_NEEDS_INSTALL=1
-            fi
-          else
-            MDBOOK_MERMAID_NEEDS_INSTALL=1
-          fi
-
-          if [ "$MDBOOK_MERMAID_NEEDS_INSTALL" -eq 1 ]; then
-            rm -rf ~/.cache/mdbook-mermaid
-            mkdir -p ~/.cache/mdbook-mermaid/bin
-            cargo install mdbook-mermaid --version "$MDBOOK_MERMAID_VERSION" --root ~/.cache/mdbook-mermaid
-            echo "$MDBOOK_MERMAID_VERSION" > ~/.cache/mdbook-mermaid/.version
-          fi
-
-          ln -sf ~/.cache/mdbook/mdbook ~/.local/bin/mdbook
-          ln -sf ~/.cache/mdbook-epub/bin/mdbook-epub ~/.local/bin/mdbook-epub
-          ln -sf ~/.cache/mdbook-mermaid/bin/mdbook-mermaid ~/.local/bin/mdbook-mermaid
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
-      - name: Install mdbook-mermaid assets
-        run: mdbook-mermaid install docs
-
-      - name: Build mdBook (HTML + EPUB with mermaid diagrams)
-        working-directory: docs
-        run: mdbook build
+      - name: Install doc tools
+        uses: ./.github/actions/install-doc-tools
 
       - name: Cache cargo doc
         uses: actions/cache@v5
@@ -192,26 +79,8 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-doc-
 
-      - name: Build Rust documentation
-        run: cargo doc --no-deps --document-private-items
-
-      - name: Inject GIT_VERSION into Rust documentation
-        run: |
-          WORKSPACE_VERSION=$(grep '^version = ' crates/cadmus/Cargo.toml | sed 's/version = "\(.*\)"/\1/')
-          find target/doc -name "index.html" -type f | while read -r html_file; do
-            if grep -q "<span class=\"version\">$WORKSPACE_VERSION</span>" "$html_file"; then
-              sed -i "s|<span class=\"version\">$WORKSPACE_VERSION</span>|<span class=\"version\">${{ env.GIT_VERSION }}</span>|g" "$html_file"
-            fi
-          done
-
-      - name: Create documentation symlinks
-        run: |
-          ln -sf "$(cargo metadata --format-version=1 --no-deps | jq -r '.target_directory')/doc" "docs-portal/static/api"
-          ln -sf "$(cargo metadata --format-version=1 --no-deps | jq -r '.workspace_root')/docs/book/html" "docs-portal/static/guide"
-
-      - name: Build Zola documentation portal
-        working-directory: docs-portal
-        run: zola build --base-url "$ZOLA_BASE_URL"
+      - name: Build documentation portal
+        run: cargo xtask docs --base-url "$ZOLA_BASE_URL"
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v6

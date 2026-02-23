@@ -188,7 +188,7 @@ impl SettingsManager {
     /// Saves settings to a versioned file and updates the manifest.
     ///
     /// This function:
-    /// 1. Creates a new Settings-<version>.toml file
+    /// 1. Creates a new `Settings-<version>.toml` file
     /// 2. Updates the manifest with new entry
     /// 3. Removes old files exceeding retention limit
     ///

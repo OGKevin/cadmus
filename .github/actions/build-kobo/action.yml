@@ -1,0 +1,141 @@
+name: Build Kobo
+description: >
+  Full Kobo build pipeline: restore caches, install dependencies, build
+  thirdparty libraries, compile Cadmus for ARM, download static assets,
+  create the distribution, and produce release artifacts in release-artifacts/.
+
+  Attestation and artifact upload are left to the caller because they require
+  job-level permissions (id-token: write) and differ between workflows.
+
+inputs:
+  gh-token:
+    description: "GitHub token for downloading assets and authenticating API calls"
+    required: true
+  test:
+    description: "Build the test variant (installs to .adds/cadmus-tst)"
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: Cache Cargo registry
+      id: rust-toolchain-cache
+      uses: actions/cache@v5
+      with:
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+        key: ${{ runner.os }}-cargo-build-kobo-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Cache Linaro toolchain
+      id: cache-linaro
+      uses: actions/cache@v5
+      with:
+        path: ~/linaro-toolchain
+        key: linaro-gcc-4.9.4-2017.01
+
+    - name: Download Linaro toolchain
+      if: steps.cache-linaro.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        mkdir -p ~/linaro-toolchain
+        cd ~/linaro-toolchain
+        wget -q https://releases.linaro.org/components/toolchain/binaries/4.9-2017.01/arm-linux-gnueabihf/gcc-linaro-4.9.4-2017.01-x86_64_arm-linux-gnueabihf.tar.xz
+        tar xf gcc-linaro-4.9.4-2017.01-x86_64_arm-linux-gnueabihf.tar.xz --strip-components=1
+        rm gcc-linaro-4.9.4-2017.01-x86_64_arm-linux-gnueabihf.tar.xz
+
+    - name: Cache thirdparty libraries
+      uses: ./.github/actions/cache-thirdparty
+      with:
+        kind: kobo-build
+
+    - name: Cache NickelMenu downloads
+      uses: actions/cache@v5
+      with:
+        path: .cache/nickelmenu/
+        key: ${{ runner.os }}-nickelmenu-${{ hashFiles('xtask/src/tasks/bundle.rs') }}
+
+    - name: Cache Plato static assets
+      uses: ./.github/actions/cache-assets
+
+    - name: Install system packages
+      uses: awalsh128/cache-apt-pkgs-action@latest
+      with:
+        packages: git wget curl pkg-config unzip jq patchelf gcc g++ make cmake meson ninja-build autoconf automake libtool gperf python3 zlib1g-dev libbz2-dev libpng-dev libjpeg-dev libopenjp2-7-dev libjbig2dec0-dev libgumbo-dev libfreetype6-dev libharfbuzz-dev libdjvulibre-dev libsdl2-dev
+        version: 1.0
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v6
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: npm
+
+    - name: Install npm dependencies
+      shell: bash
+      run: npm ci
+
+    - name: Setup Linaro toolchain
+      shell: bash
+      run: echo "$HOME/linaro-toolchain/bin" >> "$GITHUB_PATH"
+
+    - name: Install mdBook tools
+      uses: ./.github/actions/install-doc-tools
+
+    - name: Build documentation
+      shell: bash
+      run: cargo xtask docs --mdbook-only
+
+    - name: Build for Kobo
+      shell: bash
+      run: |
+        if [ "${{ inputs.test }}" = "true" ]; then
+          cargo xtask build-kobo --slow --features test
+        else
+          cargo xtask build-kobo --slow
+        fi
+
+    - name: Download static assets
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.gh-token }}
+      run: cargo xtask download-assets
+
+    - name: Create distribution
+      shell: bash
+      run: |
+        if [ "${{ inputs.test }}" = "true" ]; then
+          cargo xtask dist --test
+        else
+          cargo xtask dist
+        fi
+
+    - name: Build release artifacts
+      shell: bash
+      run: |
+        mkdir -p release-artifacts
+
+        if [ "${{ inputs.test }}" = "true" ]; then
+          cd dist
+          tar czf ../release-artifacts/cadmus-kobo-test.tar.gz .
+          cd ..
+
+          cargo xtask bundle --no-nickel --test
+          cp bundle/KoboRoot-test.tgz release-artifacts/KoboRoot-test.tgz
+
+          cargo xtask bundle --test
+          cp bundle/KoboRoot-nm-test.tgz release-artifacts/KoboRoot-nm-test.tgz
+        else
+          cd dist
+          tar czf ../release-artifacts/cadmus-kobo.tar.gz .
+          cd ..
+
+          cargo xtask bundle --no-nickel
+          cp bundle/KoboRoot.tgz release-artifacts/KoboRoot.tgz
+
+          cargo xtask bundle
+          cp bundle/KoboRoot-nm.tgz release-artifacts/KoboRoot-nm.tgz
+        fi
