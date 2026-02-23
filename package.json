@@ -8,6 +8,6 @@
     "@mermaid-js/mermaid-cli": "^11.4.1",
     "markdownlint-cli": "^0.47.0",
     "prettier": "^3.6.2",
-    "puppeteer": "^23.11.1"
+    "puppeteer": "^24.37.5"
   }
 }
