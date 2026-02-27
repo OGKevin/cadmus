@@ -24,7 +24,7 @@ use toml;
 /// ```no_run
 /// # use std::path::PathBuf;
 /// // Note: requires running inside the Cadmus workspace.
-/// let root = xtask::tasks::workspace::root().unwrap();
+/// let root = crate::tasks::workspace::root().unwrap();
 /// assert!(root.join("Cargo.toml").exists());
 /// ```
 pub fn root() -> Result<PathBuf> {

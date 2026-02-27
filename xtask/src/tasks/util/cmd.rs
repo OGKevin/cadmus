@@ -33,7 +33,7 @@ use anyhow::{bail, Context, Result};
 ///
 /// ```no_run
 /// use std::path::Path;
-/// use xtask::tasks::cmd::run;
+/// use crate::tasks::cmd::run;
 ///
 /// // Run `cargo fmt --check` in the workspace root.
 /// run("cargo", &["fmt", "--check"], Path::new("."), &[])?;
@@ -61,7 +61,7 @@ pub fn run(program: &str, args: &[&str], dir: &Path, env: &[(&str, &str)]) -> Re
 ///
 /// ```no_run
 /// use std::path::Path;
-/// use xtask::tasks::cmd::output;
+/// use crate::tasks::cmd::output;
 ///
 /// let version = output("cargo", &["--version"], Path::new("."), &[])?;
 /// assert!(version.starts_with("cargo "));

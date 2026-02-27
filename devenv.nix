@@ -578,7 +578,7 @@ in
     echo "  cadmus-docs-build     - Build complete documentation portal"
     echo "  cadmus-docs-serve     - Serve documentation locally (http://localhost:1111)"
     echo "  cargo test            - Run tests (after setup)"
-    echo "  ./run-emulator.sh     - Run the emulator (after setup)"
+    echo "  cargo xtask run-emulator - Run the emulator (after setup)"
     echo ""
     echo "xtask commands (cargo xtask <cmd> --help for options):"
     echo "  cargo xtask fmt           - Check formatting"

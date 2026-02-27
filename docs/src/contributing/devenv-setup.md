@@ -27,7 +27,7 @@ This guide covers setup on both Linux and macOS.
 3. Run the emulator:
 
    ```bash
-   ./run-emulator.sh
+   cargo xtask run-emulator
    ```
 
 ## Available Commands
@@ -38,7 +38,7 @@ Once inside the devenv shell, these commands are available:
 | -------------------------- | ------------------------------------------------ |
 | `cargo xtask setup-native` | Build MuPDF for native development (run once)    |
 | `cargo xtask test`         | Run the test suite across the feature matrix     |
-| `./run-emulator.sh`        | Run the emulator                                 |
+| `cargo xtask run-emulator` | Run the emulator                                 |
 | `cargo xtask build-kobo`   | Cross-compile for Kobo device (Linux only)       |
 | `cargo xtask dist`         | Assemble the Kobo distribution directory         |
 | `cargo xtask bundle`       | Package KoboRoot.tgz for installation            |

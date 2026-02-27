@@ -299,7 +299,9 @@ pub fn build_libraries(thirdparty_dir: &Path, names: &[&str]) -> Result<()> {
         let lib_dir = thirdparty_dir.join(name);
 
         if !lib_dir.exists() {
-            bail!("thirdparty/{name} not found — run `cargo xtask thirdparty download` first");
+            bail!(
+                "thirdparty/{name} not found — run `cargo xtask build-kobo --download-only` first"
+            );
         }
 
         if is_built(&lib_dir) {
