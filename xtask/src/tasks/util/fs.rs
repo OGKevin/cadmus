@@ -158,6 +158,71 @@ pub fn extract_tarball_strip_one(src: &Path, dest_dir: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Extracts only entries from a `.tar.gz` archive whose paths start with one
+/// of the given `prefixes`, placing them under `dest_dir`.
+///
+/// Path components beginning with `./` are normalised before matching.
+///
+/// # Errors
+///
+/// Returns an error if the archive cannot be opened, decompressed, or
+/// extracted.
+pub fn extract_tarball_paths(src: &Path, dest_dir: &Path, prefixes: &[&str]) -> Result<()> {
+    std::fs::create_dir_all(dest_dir).with_context(|| {
+        format!(
+            "failed to create destination directory {}",
+            dest_dir.display()
+        )
+    })?;
+
+    let file = std::fs::File::open(src)
+        .with_context(|| format!("failed to open archive {}", src.display()))?;
+
+    let gz = flate2::read::GzDecoder::new(file);
+    let mut archive = tar::Archive::new(gz);
+
+    for entry in archive
+        .entries()
+        .with_context(|| format!("failed to read entries from {}", src.display()))?
+    {
+        let mut entry =
+            entry.with_context(|| format!("failed to read entry from {}", src.display()))?;
+
+        let entry_path = entry
+            .path()
+            .with_context(|| format!("entry in {} has no path", src.display()))?
+            .into_owned();
+
+        let normalised = entry_path
+            .strip_prefix("./")
+            .unwrap_or(&entry_path)
+            .to_string_lossy();
+
+        let matches = prefixes.iter().any(|prefix| {
+            normalised == *prefix
+                || normalised.starts_with(&format!("{prefix}/"))
+                || normalised.starts_with(&format!("{prefix}\\"))
+        });
+
+        if !matches {
+            continue;
+        }
+
+        let dest = dest_dir.join(normalised.as_ref());
+
+        if let Some(parent) = dest.parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create directory {}", parent.display()))?;
+        }
+
+        entry
+            .unpack(&dest)
+            .with_context(|| format!("failed to unpack entry to {}", dest.display()))?;
+    }
+
+    Ok(())
+}
+
 /// Extracts only entries from a `.zip` archive whose paths start with one of
 /// the given `prefixes`, placing them under `dest_dir`.
 ///
@@ -320,5 +385,26 @@ mod tests {
         extract_tarball_strip_one(&archive, &extract_dir).unwrap();
 
         assert!(extract_dir.join("file.txt").exists());
+    }
+
+    #[test]
+    fn extract_tarball_paths_extracts_only_matching_prefixes() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        let libs_dir = tmp.path().join("libs");
+        let other_dir = tmp.path().join("other");
+        fs::create_dir_all(&libs_dir).unwrap();
+        fs::create_dir_all(&other_dir).unwrap();
+        fs::write(libs_dir.join("libfoo.so"), b"lib").unwrap();
+        fs::write(other_dir.join("skip.txt"), b"skip").unwrap();
+
+        let archive = tmp.path().join("out.tar.gz");
+        create_tarball(&archive, tmp.path(), &["libs", "other"]).unwrap();
+
+        let extract_dir = tmp.path().join("extracted");
+        extract_tarball_paths(&archive, &extract_dir, &["libs"]).unwrap();
+
+        assert!(extract_dir.join("libs/libfoo.so").exists());
+        assert!(!extract_dir.join("other/skip.txt").exists());
     }
 }

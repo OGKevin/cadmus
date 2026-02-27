@@ -231,6 +231,11 @@ fn download_release_libs(root: &std::path::Path) -> Result<()> {
     let archive_name = "cadmus-kobo.tar.gz";
 
     let libs_dir = root.join("libs");
+    if libs_dir.exists() {
+        println!("libs/ directory already exists; skipping download of pre-built libraries.");
+        return Ok(());
+    }
+
     std::fs::create_dir_all(&libs_dir)?;
 
     let asset = github::fetch_release_asset("ogkevin/cadmus", &tag, archive_name)?;
@@ -246,7 +251,7 @@ fn download_release_libs(root: &std::path::Path) -> Result<()> {
         }
     }
 
-    fs::extract_tarball(&archive, root)?;
+    fs::extract_tarball_paths(&archive, root, &["libs"])?;
     std::fs::remove_file(&archive).ok();
 
     Ok(())
