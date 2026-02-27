@@ -67,6 +67,15 @@
     },
     {
       "customType": "regex",
+      "managerFilePatterns": ["/^\\.github\\/workflows\\/cargo\\.yml$/"],
+      "matchStrings": ["NEXTEST_VERSION=(?<currentValue>[^\\n]+)"],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "nextest-rs/nextest",
+      "extractVersionTemplate": "^cargo-nextest-(?<version>.+)$",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
       "managerFilePatterns": ["/^xtask\\/src\\/tasks\\/bundle\\.rs$/"],
       "matchStrings": [
         "NICKEL_VERSION: &str = \\\"(?<currentValue>[^\\\"]+)\\\""
