@@ -17,18 +17,18 @@
 //!
 //! | Command | Description |
 //! |---------|-------------|
-//! | `fmt` | Check (or apply) `rustfmt` formatting |
-//! | `clippy` | Run `cargo clippy` across the feature matrix |
-//! | `test` | Run `cargo test` across the feature matrix |
-//! | `build-kobo` | Cross-compile for Kobo (ARM, Linux only) |
-//! | `setup-native` | Build MuPDF and the C wrapper for native dev |
-//! | `run-emulator` | Run the Cadmus emulator (ensures prereqs are built) |
-//! | `install-importer` | Install the Cadmus importer crate |
-//! | `docs` | Build the full documentation portal |
-//! | `download-assets` | Download static asset dirs from the latest release |
-//! | `dist` | Assemble the Kobo distribution directory |
-//! | `bundle` | Package a `KoboRoot.tgz` ready for device installation |
-//! | `ci` | CI-specific setup tasks (e.g. `install-doc-tools`) |
+//! | [`fmt`](tasks::fmt) | Check (or apply) `rustfmt` formatting |
+//! | [`clippy`](tasks::clippy) | Run `cargo clippy` across the feature matrix |
+//! | [`test`](tasks::test) | Run `cargo test` across the feature matrix |
+//! | [`build-kobo`](tasks::build_kobo) | Cross-compile for Kobo (ARM, Linux only) |
+//! | [`setup-native`](tasks::setup_native) | Build MuPDF and the C wrapper for native dev |
+//! | [`run-emulator`](tasks::run_emulator) | Run the Cadmus emulator (ensures prereqs are built) |
+//! | [`install-importer`](tasks::install_importer) | Install the Cadmus importer crate |
+//! | [`docs`](tasks::docs) | Build the full documentation portal |
+//! | [`download-assets`](tasks::download_assets) | Download static asset dirs from the latest release |
+//! | [`dist`](tasks::dist) | Assemble the Kobo distribution directory |
+//! | [`bundle`](tasks::bundle) | Package a `KoboRoot.tgz` ready for device installation |
+//! | [`ci`](tasks::ci) | CI-specific setup tasks (e.g. `install-doc-tools`) |
 //!
 //! ## Design
 //!

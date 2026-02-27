@@ -80,6 +80,8 @@ jobs:
             ${{ runner.os }}-cargo-doc-
 
       - name: Build documentation portal
+        env:
+          RUSTDOCFLAGS: -D warnings
         run: cargo xtask docs --base-url "$ZOLA_BASE_URL"
 
       - name: Upload build artifact

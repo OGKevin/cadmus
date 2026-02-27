@@ -50,6 +50,8 @@ Once inside the devenv shell, these commands are available:
 Run `cargo xtask --help` to see all available subcommands, or `cargo xtask <cmd> --help` for
 options on a specific command.
 
+Or have a look at the rustdocs for `xtask` <a href="/api/xtask/">here</a>.
+
 ## Tasks
 
 The devenv environment uses [tasks](https://devenv.sh/tasks/) to manage build dependencies.

@@ -416,8 +416,8 @@ impl OtaView {
     ///
     /// Sends [`Event::OtaDownloadProgress`] during the download. On success,
     /// updates the status label to "Rebooting…" and sends
-    /// [`Event::Select(EntryId::Reboot)`] to trigger an automatic reboot.
-    /// On a 401 response, sends [`Event::Github(GithubEvent::TokenInvalid)`] without closing
+    /// [`Event::Select`] with [`EntryId::Reboot`] to trigger an automatic reboot.
+    /// On a 401 response, sends [`Event::Github`] with [`GithubEvent::TokenInvalid`] without closing
     /// the view so re-authentication can proceed.
     #[cfg_attr(feature = "otel", tracing::instrument(skip(self, hub)))]
     fn start_pr_download(&mut self, pr_number: u32, hub: &Hub) {
@@ -509,8 +509,8 @@ impl OtaView {
     ///
     /// Sends [`Event::OtaDownloadProgress`] during the download. On success,
     /// updates the status label to "Rebooting…" and sends
-    /// [`Event::Select(EntryId::Reboot)`] to trigger an automatic reboot.
-    /// On a 401 response, sends [`Event::Github(GithubEvent::TokenInvalid)`] without closing
+    /// [`Event::Select`] with [`EntryId::Reboot`] to trigger an automatic reboot.
+    /// On a 401 response, sends [`Event::Github`] with [`GithubEvent::TokenInvalid`] without closing
     /// the view so re-authentication can proceed.
     #[cfg_attr(feature = "otel", tracing::instrument(skip(self, hub)))]
     fn start_default_branch_download(&mut self, hub: &Hub) {
@@ -602,8 +602,8 @@ impl OtaView {
     ///
     /// Sends [`Event::OtaDownloadProgress`] during the download. On success,
     /// updates the status label to "Rebooting…" and sends
-    /// [`Event::Select(EntryId::Reboot)`] to trigger an automatic reboot.
-    /// On a 401 response, sends [`Event::Github(GithubEvent::TokenInvalid)`] without closing
+    /// [`Event::Select`] with [`EntryId::Reboot`] to trigger an automatic reboot.
+    /// On a 401 response, sends [`Event::Github`] with [`GithubEvent::TokenInvalid`] without closing
     /// the view so re-authentication can proceed.
     ///
     /// GitHub authentication is not required for this operation.

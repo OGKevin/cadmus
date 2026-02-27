@@ -36,7 +36,7 @@ use std::time::Duration;
 ///
 /// A Cancel button stops the background polling thread and closes the view.
 /// A background thread polls GitHub at the required interval. When the user
-/// authorizes, [`Event::Github(GithubEvent::DeviceAuthComplete)`] is sent through the hub.
+/// authorizes, [`Event::Github`] with [`GithubEvent::DeviceAuthComplete`] is sent through the hub.
 pub struct DeviceAuthView {
     id: Id,
     rect: Rectangle,
@@ -59,7 +59,7 @@ impl DeviceAuthView {
     ///
     /// # Errors
     ///
-    /// If the device flow initiation fails, sends [`Event::Github(GithubEvent::DeviceAuthError)`]
+    /// If the device flow initiation fails, sends [`Event::Github`] with [`GithubEvent::DeviceAuthError`]
     /// immediately and returns a view with an error message.
     #[cfg_attr(feature = "otel", tracing::instrument(skip_all))]
     pub fn new(hub: &Hub, context: &mut Context) -> Self {

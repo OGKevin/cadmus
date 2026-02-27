@@ -26,7 +26,7 @@ use super::{cmd, fs, http};
 /// Version strings for thirdparty libraries tracked by Renovate.
 ///
 /// Each version constant is the single source of truth — the download URL is
-/// derived from it at call time in [`library_url`].  A Renovate regex manager
+/// derived from it at call time in [`library_source`].  A Renovate regex manager
 /// in `renovate.json` matches these constants and opens PRs when new releases
 /// are available.
 ///
