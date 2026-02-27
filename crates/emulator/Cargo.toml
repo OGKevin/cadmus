@@ -14,7 +14,7 @@ sdl2 = "0.38.0"
 tracing = "0.1"
 
 [features]
-default = []
+default = ["emulator"]
 emulator = ["cadmus-core/emulator"]
 otel = ["cadmus-core/otel"]
 test = ["cadmus-core/test"]
