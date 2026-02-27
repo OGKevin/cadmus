@@ -114,7 +114,7 @@ pub fn run(args: ClippyArgs) -> Result<()> {
             run_with_reviewdog(&root, &entry.cargo_args(), args.diff_branch.as_deref())?;
         } else {
             let mut clippy_args = vec!["clippy", "--all-targets"];
-            clippy_args.extend_from_slice(&entry.cargo_args()[1..]);
+            clippy_args.extend_from_slice(&entry.cargo_args());
             cmd::run("cargo", &clippy_args, &root, &[])?;
         }
     }
@@ -138,7 +138,7 @@ pub(crate) fn save_json(
     dest: &std::path::Path,
 ) -> Result<()> {
     let mut clippy_args = vec!["clippy", "--all-targets", "--message-format=json"];
-    clippy_args.extend_from_slice(&cargo_args[1..]);
+    clippy_args.extend_from_slice(cargo_args);
 
     println!("$ cargo {}", clippy_args.join(" "));
 
@@ -192,7 +192,7 @@ fn run_with_reviewdog(
     diff_branch: Option<&str>,
 ) -> Result<()> {
     let mut clippy_args = vec!["clippy", "--all-targets", "--message-format=json"];
-    clippy_args.extend_from_slice(&cargo_args[1..]);
+    clippy_args.extend_from_slice(cargo_args);
 
     let mut reviewdog_args = vec![
         "-f=clippy".to_owned(),

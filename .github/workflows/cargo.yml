@@ -59,6 +59,7 @@ jobs:
         run: cargo xtask ci matrix
 
   clippy:
+    if: github.event_name == 'pull_request'
     needs: generate-matrix
 
     strategy:
