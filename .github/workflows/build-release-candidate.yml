@@ -50,6 +50,7 @@ jobs:
         uses: ./.github/actions/build-kobo
         with:
           gh-token: ${{ secrets.GITHUB_TOKEN }}
+          gh-oauth-client-id: ${{ secrets.GH_OAUTH_CLIENT_ID }}
 
       - name: Get commit hash
         id: commit

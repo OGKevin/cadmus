@@ -11,6 +11,10 @@ inputs:
   gh-token:
     description: "GitHub token for downloading assets and authenticating API calls"
     required: true
+  gh-oauth-client-id:
+    description: "GitHub OAuth client ID for device flow authentication"
+    required: false
+    default: ""
   test:
     description: "Build the test variant (installs to .adds/cadmus-tst)"
     required: false
@@ -91,6 +95,8 @@ runs:
 
     - name: Build for Kobo
       shell: bash
+      env:
+        GH_OAUTH_CLIENT_ID: ${{ inputs.gh-oauth-client-id }}
       run: |
         if [ "${{ inputs.test }}" = "true" ]; then
           cargo xtask build-kobo --slow --features test
