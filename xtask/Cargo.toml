@@ -25,7 +25,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
 tar = "0.4"
-toml = { version = "0.8", default-features = false, features = ["parse"] }
+toml = { version = "0.9", default-features = false, features = ["parse"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
 walkdir = "2"
 wildmatch = "2"
