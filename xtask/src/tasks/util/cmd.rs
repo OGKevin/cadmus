@@ -10,7 +10,7 @@ use std::{
     process::{Command, ExitStatus},
 };
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 
 /// Runs an external command, streaming its output to the terminal.
 ///
@@ -33,7 +33,7 @@ use anyhow::{bail, Context, Result};
 ///
 /// ```no_run
 /// use std::path::Path;
-/// use crate::tasks::cmd::run;
+/// use xtask_lib::tasks::util::cmd::run;
 ///
 /// // Run `cargo fmt --check` in the workspace root.
 /// run("cargo", &["fmt", "--check"], Path::new("."), &[])?;
@@ -61,7 +61,7 @@ pub fn run(program: &str, args: &[&str], dir: &Path, env: &[(&str, &str)]) -> Re
 ///
 /// ```no_run
 /// use std::path::Path;
-/// use crate::tasks::cmd::output;
+/// use xtask_lib::tasks::util::cmd::output;
 ///
 /// let version = output("cargo", &["--version"], Path::new("."), &[])?;
 /// assert!(version.starts_with("cargo "));

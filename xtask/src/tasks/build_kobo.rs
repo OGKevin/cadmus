@@ -20,7 +20,7 @@
 //! | slow + download-only | Downloads all thirdparty sources without building |
 //! | skip | Assumes `libs/` already exists; skips download entirely |
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use clap::Args;
 
 use super::util::{cmd, fs, github, http, mupdf_wrapper, thirdparty, workspace};

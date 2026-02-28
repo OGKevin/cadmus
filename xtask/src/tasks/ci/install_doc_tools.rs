@@ -346,7 +346,7 @@ mod tests {
 
     #[test]
     fn append_to_github_path_is_noop_when_env_unset() {
-        std::env::remove_var("GITHUB_PATH");
+        unsafe { std::env::remove_var("GITHUB_PATH") };
         let result = append_to_github_path(Path::new("/some/bin"));
         assert!(result.is_ok());
     }
@@ -357,9 +357,9 @@ mod tests {
         let path_file = tmp.path().join("GITHUB_PATH");
         fs::write(&path_file, "").unwrap();
 
-        std::env::set_var("GITHUB_PATH", path_file.to_str().unwrap());
+        unsafe { std::env::set_var("GITHUB_PATH", path_file.to_str().unwrap()) };
         append_to_github_path(Path::new("/usr/local/bin")).unwrap();
-        std::env::remove_var("GITHUB_PATH");
+        unsafe { std::env::remove_var("GITHUB_PATH") };
 
         let content = fs::read_to_string(&path_file).unwrap();
         assert!(content.contains("/usr/local/bin"));

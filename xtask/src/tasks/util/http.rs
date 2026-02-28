@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use sha2::{Digest, Sha256};
 
 /// Downloads `url` to `dest`, following redirects.

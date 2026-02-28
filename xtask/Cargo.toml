@@ -1,9 +1,12 @@
 [package]
 name = "xtask"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 description = "Build, test, and release automation for Cadmus"
-license = "AGPL-3.0-only"
+
+[lib]
+name = "xtask_lib"
+path = "src/lib.rs"
 
 [[bin]]
 name = "xtask"

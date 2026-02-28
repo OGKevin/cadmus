@@ -21,7 +21,7 @@
 
 use std::path::Path;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use clap::Args;
 
 use super::util::{fs, github, http, workspace};

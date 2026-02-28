@@ -6,7 +6,7 @@
       "managerFilePatterns": [
         "/^\\.github\\/actions\\/install-doc-tools\\/action\\.yml$/"
       ],
-      "matchStrings": ["MDBOOK_VERSION=(?<currentValue>[^\\n]+)"],
+      "matchStrings": ["MDBOOK_VERSION=(?<currentValue>[^\"]+)"],
       "datasourceTemplate": "github-releases",
       "depNameTemplate": "rust-lang/mdBook",
       "versioningTemplate": "semver"
@@ -27,7 +27,7 @@
       "managerFilePatterns": [
         "/^\\.github\\/actions\\/install-doc-tools\\/action\\.yml$/"
       ],
-      "matchStrings": ["MDBOOK_MERMAID_VERSION=(?<currentValue>[^\\n]+)"],
+      "matchStrings": ["MDBOOK_MERMAID_VERSION=(?<currentValue>[^\"]+)"],
       "datasourceTemplate": "github-releases",
       "depNameTemplate": "badboy/mdbook-mermaid",
       "versioningTemplate": "semver"
@@ -37,7 +37,7 @@
       "managerFilePatterns": [
         "/^\\.github\\/actions\\/install-doc-tools\\/action\\.yml$/"
       ],
-      "matchStrings": ["ZOLA_VERSION=(?<currentValue>[^\\n]+)"],
+      "matchStrings": ["ZOLA_VERSION=(?<currentValue>[^\"]+)"],
       "datasourceTemplate": "github-releases",
       "depNameTemplate": "getzola/zola",
       "versioningTemplate": "semver"
