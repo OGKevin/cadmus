@@ -34,7 +34,7 @@ use super::{cmd, fs, http};
 ///
 /// Add Renovate regex managers for the remaining URL constants below so that
 /// all thirdparty dependency updates are tracked automatically.
-pub const ZLIB_VERSION: &str = "1.3.1";
+pub const ZLIB_VERSION: &str = "1.3.2";
 pub const LIBPNG_VERSION: &str = "1.6.53";
 pub const DJVULIBRE_VERSION: &str = "3.5.29";
 /// IJG libjpeg version tracked via the libjpeg-turbo `jpeg-<version>` tag mirror.
