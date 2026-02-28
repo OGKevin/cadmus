@@ -1354,10 +1354,6 @@ pub fn run() -> Result<(), Error> {
                     }
                 }
             },
-            Event::Notify(msg) => {
-                let notif = Notification::new(None, msg, false, &tx, &mut rq, &mut context);
-                view.children_mut().push(Box::new(notif) as Box<dyn View>);
-            }
             Event::Select(EntryId::Restart) => {
                 exit_status = ExitStatus::Restart;
                 break;

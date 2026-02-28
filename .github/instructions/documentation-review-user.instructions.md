@@ -35,3 +35,26 @@ Assume the reader is using Cadmus on their Kobo e-reader and needs clear, simple
 
 - Format Markdown with Prettier
 - Ensure Markdown passes markdownlint
+
+## Tips and Notes etc
+
+When a document includes tips, notes, warnings, etc, ensure they are formatted according to:
+
+```
+> [!NOTE]
+> General information or additional context.
+
+> [!TIP]
+> A helpful suggestion or best practice.
+
+> [!IMPORTANT]
+> Key information that shouldn't be missed.
+
+> [!WARNING]
+> Critical information that highlights a potential risk.
+
+> [!CAUTION]
+> Information about potential issues that require caution.
+```
+
+Source: https://rust-lang.github.io/mdBook/format/markdown.html?highlight=note#admonitions

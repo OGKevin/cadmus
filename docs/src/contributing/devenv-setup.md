@@ -21,29 +21,36 @@ This guide covers setup on both Linux and macOS.
 2. Run the one-time setup to build native dependencies:
 
    ```bash
-   cadmus-setup-native
+   cargo xtask setup-native
    ```
 
 3. Run the emulator:
 
    ```bash
-   ./run-emulator.sh
+   cargo xtask run-emulator
    ```
 
 ## Available Commands
 
 Once inside the devenv shell, these commands are available:
 
-| Command               | Description                                      |
-| --------------------- | ------------------------------------------------ |
-| `cadmus-setup-native` | Build MuPDF for native development (run once)    |
-| `cargo test`          | Run the test suite                               |
-| `./run-emulator.sh`   | Run the emulator                                 |
-| `cadmus-build-kobo`   | Build for Kobo device (Linux only)               |
-| `cadmus-dev-otel`     | Run emulator with OpenTelemetry instrumentation  |
-| `devenv up`           | Start observability stack (Grafana, Tempo, Loki) |
-| `cadmus-docs-build`   | Build documentation portal (mdBook + Cargo docs) |
-| `cadmus-docs-serve`   | Serve documentation portal locally on port 1111  |
+| Command                    | Description                                      |
+| -------------------------- | ------------------------------------------------ |
+| `cargo xtask setup-native` | Build MuPDF for native development (run once)    |
+| `cargo xtask test`         | Run the test suite across the feature matrix     |
+| `cargo xtask run-emulator` | Run the emulator                                 |
+| `cargo xtask build-kobo`   | Cross-compile for Kobo device (Linux only)       |
+| `cargo xtask dist`         | Assemble the Kobo distribution directory         |
+| `cargo xtask bundle`       | Package KoboRoot.tgz for installation            |
+| `cadmus-dev-otel`          | Run emulator with OpenTelemetry instrumentation  |
+| `devenv up`                | Start observability stack (Grafana, Tempo, Loki) |
+| `cargo xtask docs`         | Build documentation portal (mdBook + Cargo docs) |
+| `cadmus-docs-serve`        | Serve documentation portal locally on port 1111  |
+
+Run `cargo xtask --help` to see all available subcommands, or `cargo xtask <cmd> --help` for
+options on a specific command.
+
+Or have a look at the rustdocs for `xtask` <a href="/api/xtask/">here</a>.
 
 ## Tasks
 
@@ -52,12 +59,13 @@ Tasks are defined in `devenv.nix` and can be run with `devenv tasks run <task>`.
 
 ### Available Tasks
 
-| Task              | Description                                               | Dependencies |
-| ----------------- | --------------------------------------------------------- | ------------ |
-| `docs:build`      | Build documentation EPUB (only rebuilds if files changed) | None         |
-| `docs:zola-build` | Build documentation portal with mdBook and Cargo docs     | None         |
-| `deps:native`     | Build MuPDF and wrapper for native development            | None         |
-| `build:kobo`      | Build for Kobo device (Linux only)                        | `docs:build` |
+| Task          | Description                                               | Dependencies |
+| ------------- | --------------------------------------------------------- | ------------ |
+| `docs:build`  | Build documentation EPUB (only rebuilds if files changed) | None         |
+| `deps:native` | Build MuPDF and wrapper for native development            | None         |
+| `build:kobo`  | Build for Kobo device (Linux only)                        | `docs:build` |
+
+All tasks delegate to `cargo xtask` under the hood.
 
 ### How Tasks Work
 
@@ -80,7 +88,7 @@ contribution guides in one place.
 To build the documentation portal:
 
 ```bash
-cadmus-docs-build
+cargo xtask docs
 ```
 
 This runs the full build pipeline:
@@ -120,13 +128,28 @@ to `main` or `master`. The CI pipeline checks:
 
 ## Running Tests
 
-Tests require the `TEST_ROOT_DIR` environment variable to be set:
+Tests require the `TEST_ROOT_DIR` environment variable to be set. The easiest way to run the
+full test matrix is:
+
+```bash
+cargo xtask test
+```
+
+This sets `TEST_ROOT_DIR` automatically and runs tests across all feature combinations. To run
+a single feature combination:
+
+```bash
+cargo xtask test --features "emulator + test"
+```
+
+Or to run tests manually without xtask:
 
 ```bash
 TEST_ROOT_DIR=$(pwd) cargo test
 ```
 
-This is automatically configured in CI but must be set manually for local testing.
+`TEST_ROOT_DIR` is automatically configured in CI but must be set manually when running
+`cargo test` directly.
 
 ## Platform Support
 

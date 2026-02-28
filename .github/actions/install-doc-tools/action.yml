@@ -1,0 +1,41 @@
+name: Install doc tools
+description: >
+  Install and cache mdBook, mdbook-epub, mdbook-mermaid, and Zola.
+  Versions are pinned here so Renovate tracks them in one place.
+
+runs:
+  using: composite
+  steps:
+    - name: Set doc tool versions
+      shell: bash
+      run: |
+        {
+          echo "MDBOOK_VERSION=0.5.2"
+          echo "MDBOOK_EPUB_REV=21a1c8134134201a2d555313447c96e56e2a8996"
+          echo "MDBOOK_MERMAID_VERSION=0.17.0"
+          echo "ZOLA_VERSION=0.22.1"
+        } >> "$GITHUB_ENV"
+
+    - name: Cache mdBook tools
+      uses: actions/cache@v5
+      with:
+        path: |
+          ~/.cache/mdbook
+          ~/.cache/mdbook-epub
+          ~/.cache/mdbook-mermaid
+        key: ${{ runner.os }}-mdbook-${{ env.MDBOOK_VERSION }}-epub-${{ env.MDBOOK_EPUB_REV }}-mermaid-${{ env.MDBOOK_MERMAID_VERSION }}
+
+    - name: Cache Zola
+      uses: actions/cache@v5
+      with:
+        path: ~/.cache/zola
+        key: ${{ runner.os }}-zola-${{ env.ZOLA_VERSION }}
+
+    - name: Install doc tools
+      shell: bash
+      run: |
+        cargo xtask ci install-doc-tools \
+          --mdbook-version "$MDBOOK_VERSION" \
+          --mdbook-epub-rev "$MDBOOK_EPUB_REV" \
+          --mdbook-mermaid-version "$MDBOOK_MERMAID_VERSION" \
+          --zola-version "$ZOLA_VERSION"

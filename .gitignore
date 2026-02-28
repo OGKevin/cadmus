@@ -24,6 +24,9 @@ docs/book/
 /plato-*.zip
 /thirdparty/*/*
 !/thirdparty/*/*kobo*
+/thirdparty/**/.source-ready
+/thirdparty/**/.built-kobo
+/thirdparty/**/.built-native
 
 # Devenv
 .devenv*

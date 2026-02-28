@@ -4,11 +4,9 @@
     {
       "customType": "regex",
       "managerFilePatterns": [
-        "/^\\.github\\/workflows\\/cadmus-docs\\.yml$/",
-        "/^\\.github\\/workflows\\/cargo\\.yml$/",
-        "/^\\.github\\/workflows\\/release\\.yml$/"
+        "/^\\.github\\/actions\\/install-doc-tools\\/action\\.yml$/"
       ],
-      "matchStrings": ["MDBOOK_VERSION:\\s+\\\"(?<currentValue>[^\\\"]+)\\\""],
+      "matchStrings": ["MDBOOK_VERSION=(?<currentValue>[^\"]+)"],
       "datasourceTemplate": "github-releases",
       "depNameTemplate": "rust-lang/mdBook",
       "versioningTemplate": "semver"
@@ -16,13 +14,9 @@
     {
       "customType": "regex",
       "managerFilePatterns": [
-        "/^\\.github\\/workflows\\/cadmus-docs\\.yml$/",
-        "/^\\.github\\/workflows\\/cargo\\.yml$/",
-        "/^\\.github\\/workflows\\/release\\.yml$/"
+        "/^\\.github\\/actions\\/install-doc-tools\\/action\\.yml$/"
       ],
-      "matchStrings": [
-        "MDBOOK_EPUB_REV:\\s+\\\"(?<currentValue>[a-f0-9]{40})\\\""
-      ],
+      "matchStrings": ["MDBOOK_EPUB_REV=(?<currentValue>[a-f0-9]{40})"],
       "datasourceTemplate": "git-refs",
       "depNameTemplate": "Michael-F-Bryan/mdbook-epub",
       "packageNameTemplate": "https://github.com/Michael-F-Bryan/mdbook-epub",
@@ -30,20 +24,22 @@
     },
     {
       "customType": "regex",
-      "managerFilePatterns": ["/^\\.github\\/workflows\\/cadmus-docs\\.yml$/"],
-      "matchStrings": ["ZOLA_VERSION:\\s+\\\"(?<currentValue>[^\\\"]+)\\\""],
+      "managerFilePatterns": [
+        "/^\\.github\\/actions\\/install-doc-tools\\/action\\.yml$/"
+      ],
+      "matchStrings": ["MDBOOK_MERMAID_VERSION=(?<currentValue>[^\"]+)"],
       "datasourceTemplate": "github-releases",
-      "depNameTemplate": "getzola/zola",
+      "depNameTemplate": "badboy/mdbook-mermaid",
       "versioningTemplate": "semver"
     },
     {
       "customType": "regex",
-      "managerFilePatterns": ["/^devenv\\.nix$/"],
-      "matchStrings": [
-        "pname = \\\"cargo-diff-tools\\\";\\s+version = \\\"(?<currentValue>[^\\\"]+)\\\""
+      "managerFilePatterns": [
+        "/^\\.github\\/actions\\/install-doc-tools\\/action\\.yml$/"
       ],
-      "datasourceTemplate": "crate",
-      "depNameTemplate": "cargo-diff-tools",
+      "matchStrings": ["ZOLA_VERSION=(?<currentValue>[^\"]+)"],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "getzola/zola",
       "versioningTemplate": "semver"
     },
     {
@@ -61,27 +57,105 @@
         "/^\\.github\\/workflows\\/cadmus-docs\\.yml$/",
         "/^\\.github\\/workflows\\/cargo\\.yml$/",
         "/^\\.github\\/workflows\\/release\\.yml$/",
-        "/^\\.github\\/workflows\\/copilot-setup-steps\\.yml$/"
-      ],
-      "matchStrings": [
-        "MDBOOK_MERMAID_VERSION:\\s+\\\"(?<currentValue>[^\\\"]+)\\\""
-      ],
-      "datasourceTemplate": "github-releases",
-      "depNameTemplate": "badboy/mdbook-mermaid",
-      "versioningTemplate": "semver"
-    },
-    {
-      "customType": "regex",
-      "managerFilePatterns": [
-        "/^\\.github\\/workflows\\/cadmus-docs\\.yml$/",
-        "/^\\.github\\/workflows\\/cargo\\.yml$/",
-        "/^\\.github\\/workflows\\/release\\.yml$/",
+        "/^\\.github\\/workflows\\/build-release-candidate\\.yml$/",
         "/^\\.github\\/workflows\\/copilot-setup-steps\\.yml$/"
       ],
       "matchStrings": ["NODE_VERSION:\\s+\\\"(?<currentValue>[^\\\"]+)\\\""],
       "datasourceTemplate": "node-version",
       "depNameTemplate": "node",
       "versioningTemplate": "node"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/^\\.github\\/workflows\\/cargo\\.yml$/"],
+      "matchStrings": ["NEXTEST_VERSION=(?<currentValue>[^\\n]+)"],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "nextest-rs/nextest",
+      "extractVersionTemplate": "^cargo-nextest-(?<version>.+)$",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/^xtask\\/src\\/tasks\\/bundle\\.rs$/"],
+      "matchStrings": [
+        "NICKEL_VERSION: &str = \\\"(?<currentValue>[^\\\"]+)\\\""
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "pgaskin/NickelMenu",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/^xtask\\/src\\/tasks\\/download_assets\\.rs$/"],
+      "matchStrings": [
+        "PLATO_VERSION: &str = \\\"(?<currentValue>[^\\\"]+)\\\""
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "baskerville/plato",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^xtask\\/src\\/tasks\\/util\\/thirdparty\\.rs$/"
+      ],
+      "matchStrings": [
+        "ZLIB_VERSION: &str = \\\"(?<currentValue>[^\\\"]+)\\\""
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "madler/zlib",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^xtask\\/src\\/tasks\\/util\\/thirdparty\\.rs$/"
+      ],
+      "matchStrings": [
+        "LIBPNG_VERSION: &str = \\\"(?<currentValue>[^\\\"]+)\\\""
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "pnggroup/libpng",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^xtask\\/src\\/tasks\\/util\\/thirdparty\\.rs$/"
+      ],
+      "matchStrings": [
+        "DJVULIBRE_VERSION: &str = \\\"(?<currentValue>[^\\\"]+)\\\""
+      ],
+      "datasourceTemplate": "github-tags",
+      "depNameTemplate": "barak/djvulibre",
+      "extractVersionTemplate": "^release\\.(?<version>.+)$",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^xtask\\/src\\/tasks\\/util\\/thirdparty\\.rs$/"
+      ],
+      "matchStrings": [
+        "LIBJPEG_VERSION: &str = \\\"(?<currentValue>[^\\\"]+)\\\""
+      ],
+      "datasourceTemplate": "github-tags",
+      "depNameTemplate": "libjpeg-turbo/libjpeg-turbo",
+      "extractVersionTemplate": "^jpeg-(?<version>.+)$",
+      "versioningTemplate": "regex:^(?<major>\\d+)(?<minor>[a-z]?)$"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^xtask\\/src\\/tasks\\/util\\/thirdparty\\.rs$/"
+      ],
+      "matchStrings": [
+        "FREETYPE2_VERSION: &str = \\\"(?<currentValue>[^\\\"]+)\\\""
+      ],
+      "datasourceTemplate": "github-tags",
+      "depNameTemplate": "freetype/freetype",
+      "extractVersionTemplate": "^VER-(?<major>\\d+)-(?<minor>\\d+)-(?<patch>\\d+)$",
+      "versioningTemplate": "semver"
     }
   ]
 }

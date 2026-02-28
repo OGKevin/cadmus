@@ -22,7 +22,8 @@ update from:
 | **Main Branch**    | Latest development build (most recent changes) |
 | **PR Build**       | Test a specific pull request                   |
 
-> **Note:** The _Stable Release_ option is not shown in test builds.
+> [!NOTE]
+> The _Stable Release_ option is not shown in test builds.
 
 ## Updating from the main branch
 
@@ -48,7 +49,8 @@ Select **PR Build** to try out a specific change before it's released. Enter the
 PR number when prompted. The same one-time GitHub sign-in applies if you haven't
 authenticated before.
 
-> **Tip:** Find the PR number in the GitHub URL. For example, in
+> [!TIP]
+> Find the PR number in the GitHub URL. For example, in
 > `github.com/OGKevin/cadmus/pull/42` the PR number is **42**.
 
 ## Normal vs test builds

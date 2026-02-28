@@ -143,6 +143,8 @@ in
     pkgs.mdbook-mermaid
 
     cargo-diff-tools
+    pkgs.cargo-nextest
+    pkgs.reviewdog
 
     # C/C++ build tools for compiling thirdparty libraries
     pkgs.gnumake
@@ -223,6 +225,7 @@ in
     RUST_LOG = "debug";
     RUST_BACKTRACE = "1";
     OTEL_EXPORTER_OTLP_ENDPOINT = "http://localhost:4318";
+    NEXTEST_NO_TESTS = "pass";
   }
   # Linux-only environment variables for cross-compilation
   // pkgs.lib.optionalAttrs isLinux {
@@ -467,144 +470,27 @@ in
 
   # Tasks for building components with proper dependencies
   tasks = {
-    # Install mdbook-mermaid assets (required for Mermaid diagram support)
-    # Only needs to run when mermaid-*.min.js is missing or outdated
-    "docs:install-mermaid" = {
-      exec = "mdbook-mermaid install docs";
-      execIfModified = [
-        "docs/book.toml"
-      ];
-    };
-
     # Build documentation EPUB (required for embedded assets)
     # Only rebuilds when docs files have changed (tracked via content hash)
     "docs:build" = {
-      exec = "mdbook build docs";
+      exec = "cargo xtask docs --mdbook-only";
       execIfModified = [
         "docs/**/*.md"
         "docs/book.toml"
         "docs/book"
       ];
-      after = [ "docs:install-mermaid" ];
-    };
-
-    # Build complete documentation portal (mdBook + Cargo docs + Zola)
-    "docs:zola-build" = {
-      exec = "bash build-docs.sh";
-    };
-
-    # Inject GIT_VERSION into Rust documentation
-    "docs:inject-version" = {
-      after = [ "docs:zola-build" ];
-      exec = ''
-        WORKSPACE_VERSION=$(cargo metadata --format-version 1 --no-deps | jq -r '.packages[] | select(.name == "cadmus") | .version' | head -1)
-        for html_file in $(find target/doc -name "index.html" -type f); do
-          if grep -q "<span class=\"version\">$WORKSPACE_VERSION</span>" "$html_file"; then
-            GIT_VERSION=$(git describe --tags --always --dirty)
-            sed -i "s|<span class=\"version\">$WORKSPACE_VERSION</span>|<span class=\"version\">$GIT_VERSION</span>|g" "$html_file"
-          fi
-        done
-      '';
     };
 
     # Build mupdf and wrapper for native development
     "deps:native" = {
-      exec = ''
-        set -e
-
-        # Check mupdf version and re-download if needed
-        REQUIRED_MUPDF_VERSION="1.27.0"
-        CURRENT_MUPDF_VERSION=""
-        if [ -e thirdparty/mupdf/include/mupdf/fitz/version.h ]; then
-          CURRENT_MUPDF_VERSION=$(grep -o 'FZ_VERSION "[^"]*"' thirdparty/mupdf/include/mupdf/fitz/version.h | grep -o '"[^"]*"' | tr -d '"')
-        fi
-
-        if [ "$CURRENT_MUPDF_VERSION" != "$REQUIRED_MUPDF_VERSION" ]; then
-          echo "MuPDF version mismatch: have '$CURRENT_MUPDF_VERSION', need '$REQUIRED_MUPDF_VERSION'"
-          echo "Downloading mupdf $REQUIRED_MUPDF_VERSION sources..."
-          rm -rf thirdparty/mupdf
-          cd thirdparty
-          ./download.sh mupdf
-          cd ..
-        else
-          echo "MuPDF $CURRENT_MUPDF_VERSION already present."
-        fi
-
-        # Build mupdf wrapper
-        echo "Building mupdf wrapper..."
-        cd mupdf_wrapper
-        ./build.sh
-        cd ..
-
-        # Build MuPDF for native development
-        echo "Building mupdf for native development..."
-        cd thirdparty/mupdf
-        [ -e .gitattributes ] && rm -rf .git*
-        make clean || true
-        make verbose=yes generate
-
-        # On macOS, gather system library CFLAGS via pkg-config
-        SYS_CFLAGS=""
-        if [ "$(uname -s)" = "Darwin" ]; then
-          SYS_CFLAGS="$SYS_CFLAGS $(pkg-config --cflags freetype2 2>/dev/null || true)"
-          SYS_CFLAGS="$SYS_CFLAGS $(pkg-config --cflags harfbuzz 2>/dev/null || true)"
-          SYS_CFLAGS="$SYS_CFLAGS $(pkg-config --cflags libopenjp2 2>/dev/null || true)"
-          SYS_CFLAGS="$SYS_CFLAGS $(pkg-config --cflags libjpeg 2>/dev/null || true)"
-          SYS_CFLAGS="$SYS_CFLAGS $(pkg-config --cflags zlib 2>/dev/null || true)"
-          SYS_CFLAGS="$SYS_CFLAGS $(pkg-config --cflags jbig2dec 2>/dev/null || true)"
-          SYS_CFLAGS="$SYS_CFLAGS $(pkg-config --cflags gumbo 2>/dev/null || true)"
-        fi
-
-        make verbose=yes \
-          mujs=no tesseract=no extract=no archive=no brotli=no barcode=no commercial=no \
-          USE_SYSTEM_LIBS=yes \
-          XCFLAGS="-DFZ_ENABLE_ICC=0 -DFZ_ENABLE_SPOT_RENDERING=0 -DFZ_ENABLE_ODT_OUTPUT=0 -DFZ_ENABLE_OCR_OUTPUT=0 $SYS_CFLAGS" \
-          libs
-
-        cd ../..
-
-        # Determine platform directory
-        case "$(uname -s)" in
-          Darwin) PLATFORM_DIR="Darwin" ;;
-          *)      PLATFORM_DIR="Linux" ;;
-        esac
-
-        mkdir -p "target/mupdf_wrapper/$PLATFORM_DIR"
-
-        if [ -e thirdparty/mupdf/build/release/libmupdf.a ]; then
-          ln -sf "$(pwd)/thirdparty/mupdf/build/release/libmupdf.a" "target/mupdf_wrapper/$PLATFORM_DIR/"
-          echo "✓ Created libmupdf.a in target/mupdf_wrapper/$PLATFORM_DIR"
-        else
-          echo "✗ ERROR: libmupdf.a not found!"
-          exit 1
-        fi
-
-        if [ ! -e thirdparty/mupdf/build/release/libmupdf-third.a ]; then
-          echo "Creating empty libmupdf-third.a (system libs used instead)..."
-          ar cr thirdparty/mupdf/build/release/libmupdf-third.a
-        fi
-        ln -sf "$(pwd)/thirdparty/mupdf/build/release/libmupdf-third.a" "target/mupdf_wrapper/$PLATFORM_DIR/"
-        echo "✓ Created libmupdf-third.a"
-
-        echo ""
-        echo "Native setup complete!"
-      '';
+      exec = "cargo xtask setup-native";
     };
 
-    # Build for Kobo with cross-compilation
+    # Build for Kobo with cross-compilation (Linux only)
     "build:kobo" = {
       exec =
         if isLinux then
-          ''
-            set -e
-            export CC=arm-linux-gnueabihf-gcc
-            export CXX=arm-linux-gnueabihf-g++
-            export AR=arm-linux-gnueabihf-ar
-            export LD=arm-linux-gnueabihf-ld
-            export RANLIB=arm-linux-gnueabihf-ranlib
-            export STRIP=arm-linux-gnueabihf-strip
-            ./build.sh slow
-          ''
+          "cargo xtask build-kobo --slow"
         else
           ''
             echo "Error: Kobo build is only available on Linux."
@@ -615,20 +501,11 @@ in
 
   };
 
-  # Scripts are simple aliases that echo info and run tasks
+  # Scripts are simple aliases that invoke xtask commands
   scripts = {
     # Build complete documentation portal (mdBook + Cargo docs + Zola)
     cadmus-docs-build.exec = ''
-      echo "Building Cadmus documentation portal..."
-      echo ""
-      devenv tasks run docs:zola-build
-      devenv tasks run docs:inject-version
-      echo ""
-      echo "Documentation built successfully!"
-      echo "Output: docs-portal/public/"
-      echo ""
-      echo "To view the documentation:"
-      echo "  cadmus-docs-serve"
+      cargo xtask docs
     '';
 
     # Serve documentation locally
@@ -639,26 +516,17 @@ in
       zola serve --base-url http://localhost
     '';
 
-    # Build mupdf for native development (runs deps:native task)
+    # Build mupdf for native development
     cadmus-setup-native.exec = ''
-      echo "Setting up native development environment..."
-      echo "This will build mupdf and wrapper libraries."
-      echo ""
-      devenv tasks run deps:native
-      echo ""
-      echo "You can now run:"
-      echo "  cargo test          - Run tests"
-      echo "  ./run-emulator.sh   - Run the emulator"
+      cargo xtask setup-native
     '';
 
-    # Build for Kobo device (Linux only, runs build:kobo task)
+    # Build for Kobo device (Linux only)
     cadmus-build-kobo.exec =
       if isLinux then
         ''
-          echo "Building for Kobo device..."
-          echo ""
-          devenv tasks run build:kobo
-          ./dist.sh
+          cargo xtask build-kobo --slow
+          cargo xtask dist
         ''
       else
         ''
@@ -668,8 +536,12 @@ in
           exit 1
         '';
 
+    # Run clippy filtered to lines changed relative to master
+    cadmus-clippy.exec = ''
+      cargo xtask clippy --github-report --diff-branch master "$@"
+    '';
+
     # Run emulator with OTEL instrumentation
-    # Not using tasks to avoid log swallowing - runs docs:build task manually first
     cadmus-dev-otel.exec = ''
       set -e
 
@@ -682,7 +554,6 @@ in
       echo "  OTLP:       http://localhost:4318"
       echo ""
 
-      # Build docs first (if needed) to ensure embedded EPUB is available
       echo "Ensuring documentation is built..."
       devenv tasks run docs:build
       echo ""
@@ -693,11 +564,13 @@ in
 
       export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4318"
       export RUST_LOG="trace"
-      ./run-emulator.sh --features otel,test,emulator "$@"
+      cargo xtask run-emulator --features otel,test,emulator
     '';
   };
 
   enterShell = ''
+    export RUSTDOCFLAGS="''${RUSTDOCFLAGS:+''$RUSTDOCFLAGS }-D warnings"
+
     echo "Cadmus development environment"
     echo ""
     echo "Available commands:"
@@ -705,7 +578,17 @@ in
     echo "  cadmus-docs-build     - Build complete documentation portal"
     echo "  cadmus-docs-serve     - Serve documentation locally (http://localhost:1111)"
     echo "  cargo test            - Run tests (after setup)"
-    echo "  ./run-emulator.sh     - Run the emulator (after setup)"
+    echo "  cargo xtask run-emulator - Run the emulator (after setup)"
+    echo ""
+    echo "xtask commands (cargo xtask <cmd> --help for options):"
+    echo "  cargo xtask fmt           - Check formatting"
+    echo "  cadmus-clippy             - Lint lines changed vs master (reviewdog)"
+    echo "  cargo xtask clippy        - Lint across feature matrix"
+    echo "  cargo xtask test          - Test across feature matrix"
+    echo "  cargo xtask setup-native  - Build MuPDF for native development"
+    echo "  cargo xtask docs          - Build documentation portal"
+    echo "  cargo xtask dist          - Assemble Kobo distribution"
+    echo "  cargo xtask bundle        - Package KoboRoot.tgz"
     echo ""
   ''
   # Linux-specific shell setup
@@ -714,7 +597,8 @@ in
     export PATH="${linaroToolchain}/bin:$PATH"
 
     echo "Cross-compilation (Linux only):"
-    echo "  cadmus-build-kobo    - Build for Kobo (sets up cross-compilation env)"
+    echo "  cadmus-build-kobo         - Build for Kobo (cross-compile + dist)"
+    echo "  cargo xtask build-kobo    - Cross-compile Cadmus for Kobo"
     echo "  Linaro toolchain: $(which arm-linux-gnueabihf-gcc 2>/dev/null || echo 'not found')"
     echo ""
   ''
@@ -724,18 +608,12 @@ in
     echo ""
   ''
   + ''
-    echo "Tasks:"
-    echo "  devenv tasks run docs:build  - Build documentation (only if changed)"
-    echo "  devenv tasks run deps:native - Build mupdf for native development"
-    echo "  devenv tasks run build:kobo  - Build for Kobo device (Linux only)"
-    echo ""
     echo "Observability (OTEL):"
     echo "  devenv up            - Start all services (inc. observability stack)"
     echo "  cadmus-dev-otel      - Build & run emulator with OTEL enabled"
     echo ""
     echo "  After 'devenv up', visit http://localhost:3000 for Grafana"
     echo ""
-    echo "Linaro toolchain: $(which arm-linux-gnueabihf-gcc 2>/dev/null || echo 'not found')"
 
      echo "Linking rust source for stable access"
      ln -fs ${config.env.RUST_SRC_PATH} ${config.env.DEVENV_STATE}/rust-lib-src

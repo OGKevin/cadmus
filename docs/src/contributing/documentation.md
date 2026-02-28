@@ -15,36 +15,23 @@ Preview URLs follow the pattern: `https://pr-{NUMBER}.cadmus-dt6.pages.dev/`
 
 ## Local Development
 
-### Prerequisites
-
-The documentation uses [mdbook-mermaid](https://github.com/badboy/mdbook-mermaid) for Mermaid diagram support. You need to install the Mermaid JavaScript assets before building:
-
-```bash
-# Install mdbook-mermaid assets (required for Mermaid diagrams)
-mdbook-mermaid install docs
-```
-
-This command downloads and installs the minified Mermaid JavaScript into the `docs/` directory. It only needs to be run once (or after updating the mdbook-mermaid version).
-
 ### Building and Serving
 
 Build and serve documentation locally:
 
 ```bash
 devenv shell
-cadmus-docs-build    # Build all documentation
-cadmus-docs-serve    # Serve at http://localhost:1111
+cargo xtask docs        # Build all documentation
+cadmus-docs-serve       # Serve at http://localhost:1111
 ```
 
-Or manually:
+`cargo xtask docs` handles the full pipeline: installing Mermaid assets, building mdBook,
+generating Rust API docs, and assembling the Zola portal. Pass `--mdbook-only` to skip the
+Zola step when you only need to check the mdBook output.
+
+To serve with live reload after building:
 
 ```bash
-# First, install mermaid assets (required)
-mdbook-mermaid install docs
-
-# Then build
-cd docs && mdbook build && cd ..
-cargo doc --no-deps --document-private-items
 cd docs-portal && zola serve --base-url http://localhost
 ```
 
@@ -56,4 +43,6 @@ Documentation is built from three sources:
 2. **Cargo doc** (`crates/`) - Rust API documentation
 3. **Zola** (`docs-portal/`) - Documentation portal that combines everything
 
-The GitHub Actions workflow (`.github/workflows/cadmus-docs.yml`) handles building and deploying automatically on every push to `main` and for every pull request.
+The build is orchestrated by `cargo xtask docs` (see `xtask/src/tasks/docs.rs`). The GitHub
+Actions workflow (`.github/workflows/cadmus-docs.yml`) runs this command automatically on every
+push to `main` and for every pull request.

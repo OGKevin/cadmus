@@ -9,7 +9,9 @@ use crate::input::DeviceEvent;
 use crate::view::filler::Filler;
 use crate::view::icon::Icon;
 use crate::view::page_label::PageLabel;
-use crate::view::{Bus, Event, Hub, Id, RenderData, RenderQueue, View, ViewId, ID_FEEDER};
+use crate::view::{
+    Bus, Event, Hub, Id, RenderData, RenderQueue, ToggleEvent, View, ViewId, ID_FEEDER,
+};
 
 pub struct ResultsBar {
     id: Id,
@@ -164,8 +166,8 @@ impl View for ResultsBar {
         _context: &mut Context,
     ) -> bool {
         match *evt {
-            Event::Toggle(ViewId::GoToPage) => {
-                bus.push_back(Event::Toggle(ViewId::GoToResultsPage));
+            Event::Toggle(ToggleEvent::View(ViewId::GoToPage)) => {
+                bus.push_back(Event::Toggle(ToggleEvent::View(ViewId::GoToResultsPage)));
                 true
             }
             Event::ToggleNear(ViewId::PageMenu, _) => true,

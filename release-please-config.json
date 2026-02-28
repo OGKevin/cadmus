@@ -40,6 +40,12 @@
       "component": "fetcher",
       "skip-github-release": true,
       "skip-changelog": true
+    },
+    "xtask": {
+      "release-type": "rust",
+      "component": "xtask",
+      "skip-github-release": true,
+      "skip-changelog": true
     }
   },
   "plugins": [
@@ -53,7 +59,8 @@
         "cadmus-bin",
         "emulator",
         "importer",
-        "fetcher"
+        "fetcher",
+        "xtask"
       ]
     }
   ]

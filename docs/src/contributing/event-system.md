@@ -4,6 +4,13 @@ Cadmus uses a tree-based event system where views are organized hierarchically a
 through two distinct channels: the **Hub** and the **Bus**. Understanding the difference between
 these channels is essential for implementing correct event handling in views.
 
+> [!TIP]
+> CSS is hard, this page might render better on 80% zoom on smaller screens.
+> I tried to make the mermaid diagrams as big as possible to make them easier to read,
+> which made them overflow a bit.
+>
+> You might also want to hide the sidebar.
+
 ## Overview
 
 The UI is a tree of `View` objects. Each view can have children, forming a hierarchy like:

@@ -166,7 +166,7 @@ impl View for SelectionBox {
 ///     "On",       // First option text
 ///     "Off",      // Second option text
 ///     true,       // Initial state (On selected)
-///     Event::NewToggle(ToggleEvent::View(ViewId::SettingsMenu)),
+///     Event::Toggle(ToggleEvent::View(ViewId::SettingsMenu)),
 ///     fonts,
 ///     Align::Right(10)
 /// );
@@ -348,11 +348,14 @@ impl View for Toggle {
         rq: &mut RenderQueue,
         _context: &mut Context,
     ) -> bool {
-        if std::mem::discriminant(evt) == std::mem::discriminant(&self.event) {
-            self.enabled = !self.enabled;
-            self.update_selection_box(rq);
-            bus.push_back(evt.clone());
-            return true;
+        if let (Event::Toggle(incoming), Event::Toggle(stored)) = (evt, &self.event) {
+            if incoming == stored {
+                self.enabled = !self.enabled;
+                self.update_selection_box(rq);
+                bus.push_back(evt.clone());
+
+                return true;
+            }
         }
 
         false
@@ -394,7 +397,7 @@ mod tests {
     fn test_toggle_starts_in_enabled_state() {
         let mut context = create_test_context();
         let rect = rect![0, 0, 200, 50];
-        let toggle_event = Event::NewToggle(ToggleEvent::View(ViewId::SettingsMenu));
+        let toggle_event = Event::Toggle(ToggleEvent::View(ViewId::SettingsMenu));
         let toggle = Toggle::new(
             rect,
             "On",
@@ -411,7 +414,7 @@ mod tests {
     fn test_toggle_starts_in_disabled_state() {
         let mut context = create_test_context();
         let rect = rect![0, 0, 200, 50];
-        let toggle_event = Event::NewToggle(ToggleEvent::View(ViewId::SettingsMenu));
+        let toggle_event = Event::Toggle(ToggleEvent::View(ViewId::SettingsMenu));
         let toggle = Toggle::new(
             rect,
             "On",
@@ -428,7 +431,7 @@ mod tests {
     fn test_toggle_event_intercepted_and_state_flipped() {
         let mut context = create_test_context();
         let rect = rect![0, 0, 200, 50];
-        let toggle_event = Event::NewToggle(ToggleEvent::View(ViewId::SettingsMenu));
+        let toggle_event = Event::Toggle(ToggleEvent::View(ViewId::SettingsMenu));
         let mut toggle = Toggle::new(
             rect,
             "On",
@@ -451,7 +454,7 @@ mod tests {
         assert_eq!(bus.len(), 1);
         assert!(matches!(
             bus.pop_front(),
-            Some(Event::NewToggle(ToggleEvent::View(ViewId::SettingsMenu)))
+            Some(Event::Toggle(ToggleEvent::View(ViewId::SettingsMenu)))
         ));
 
         assert!(!rq.is_empty());
@@ -461,7 +464,7 @@ mod tests {
     fn test_labels_have_correct_events_configured() {
         let mut context = create_test_context();
         let rect = rect![0, 0, 200, 50];
-        let toggle_event = Event::NewToggle(ToggleEvent::View(ViewId::SettingsMenu));
+        let toggle_event = Event::Toggle(ToggleEvent::View(ViewId::SettingsMenu));
         let toggle = Toggle::new(
             rect,
             "On",
@@ -483,7 +486,7 @@ mod tests {
     fn test_labels_use_normal_scheme() {
         let mut context = create_test_context();
         let rect = rect![0, 0, 200, 50];
-        let toggle_event = Event::NewToggle(ToggleEvent::View(ViewId::SettingsMenu));
+        let toggle_event = Event::Toggle(ToggleEvent::View(ViewId::SettingsMenu));
         let toggle = Toggle::new(
             rect,
             "On",
@@ -505,7 +508,7 @@ mod tests {
     fn test_filler_separator_is_present() {
         let mut context = create_test_context();
         let rect = rect![0, 0, 200, 50];
-        let toggle_event = Event::NewToggle(ToggleEvent::View(ViewId::SettingsMenu));
+        let toggle_event = Event::Toggle(ToggleEvent::View(ViewId::SettingsMenu));
         let toggle = Toggle::new(
             rect,
             "On",
@@ -523,7 +526,7 @@ mod tests {
     fn test_multiple_toggles_flips_state_multiple_times() {
         let mut context = create_test_context();
         let rect = rect![0, 0, 200, 50];
-        let toggle_event = Event::NewToggle(ToggleEvent::View(ViewId::SettingsMenu));
+        let toggle_event = Event::Toggle(ToggleEvent::View(ViewId::SettingsMenu));
         let mut toggle = Toggle::new(
             rect,
             "On",
@@ -552,7 +555,7 @@ mod tests {
     fn test_non_toggle_events_are_ignored() {
         let mut context = create_test_context();
         let rect = rect![0, 0, 200, 50];
-        let toggle_event = Event::NewToggle(ToggleEvent::View(ViewId::SettingsMenu));
+        let toggle_event = Event::Toggle(ToggleEvent::View(ViewId::SettingsMenu));
         let mut toggle = Toggle::new(
             rect,
             "On",
@@ -579,7 +582,7 @@ mod tests {
     fn test_event_bubbling_continues_after_toggle() {
         let mut context = create_test_context();
         let rect = rect![0, 0, 200, 50];
-        let toggle_event = Event::NewToggle(ToggleEvent::View(ViewId::SettingsMenu));
+        let toggle_event = Event::Toggle(ToggleEvent::View(ViewId::SettingsMenu));
         let mut toggle = Toggle::new(
             rect,
             "On",
@@ -600,7 +603,7 @@ mod tests {
         let emitted_event = bus.pop_front().unwrap();
         assert!(matches!(
             emitted_event,
-            Event::NewToggle(ToggleEvent::View(ViewId::SettingsMenu))
+            Event::Toggle(ToggleEvent::View(ViewId::SettingsMenu))
         ));
     }
 
@@ -608,7 +611,7 @@ mod tests {
     fn test_has_four_children() {
         let mut context = create_test_context();
         let rect = rect![0, 0, 200, 50];
-        let toggle_event = Event::NewToggle(ToggleEvent::View(ViewId::SettingsMenu));
+        let toggle_event = Event::Toggle(ToggleEvent::View(ViewId::SettingsMenu));
         let toggle = Toggle::new(
             rect,
             "On",
