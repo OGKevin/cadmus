@@ -41,6 +41,12 @@
       "skip-github-release": true,
       "skip-changelog": true
     }
+    "xtask": {
+      "release-type": "rust",
+      "component": "xtask",
+      "skip-github-release": true,
+      "skip-changelog": true
+    }
   },
   "plugins": [
     "cargo-workspace",
@@ -54,6 +60,7 @@
         "emulator",
         "importer",
         "fetcher"
+        "xtask"
       ]
     }
   ]
