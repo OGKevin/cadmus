@@ -23,6 +23,6 @@ jobs:
           key: ${{ runner.os }}-npx-renovate
 
       - name: Validate Renovate config
-        uses: suzuki-shunsuke/github-action-renovate-config-validator@v2.0.0
+        uses: suzuki-shunsuke/github-action-renovate-config-validator@v2.1.0
         with:
           config_file_path: renovate.json
