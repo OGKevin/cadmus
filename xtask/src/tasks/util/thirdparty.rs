@@ -72,7 +72,7 @@ const LIBRARY_NAMES: &[&str] = &[
 ];
 
 /// Describes how a thirdparty library's source is obtained.
-enum LibrarySource {
+pub enum LibrarySource {
     /// Download a tarball and extract it with the top-level directory stripped.
     Tarball(String),
     /// Clone a git repository at a specific tag, recursing into submodules.
@@ -84,7 +84,7 @@ enum LibrarySource {
 /// # Errors
 ///
 /// Returns an error if `name` is not a known library.
-fn library_source(name: &str) -> Result<LibrarySource> {
+pub fn library_source(name: &str) -> Result<LibrarySource> {
     match name {
         "zlib" => Ok(LibrarySource::Tarball(format!(
             "https://github.com/madler/zlib/releases/download/v{v}/zlib-{v}.tar.gz",
@@ -252,13 +252,13 @@ fn git_clone_tag(repo: &str, tag: &str, dest: &Path) -> Result<()> {
 /// Sentinel file written inside a library directory after source extraction.
 ///
 /// Its presence means the source tree was fetched and unpacked successfully.
-const SOURCE_READY_MARKER: &str = ".source-ready";
+pub const SOURCE_READY_MARKER: &str = ".source-ready";
 
 /// Sentinel file written inside a library directory after a successful build.
 ///
 /// Its presence means the library was already compiled and cached — both the
 /// patch and the build step can be skipped on the next run.
-const BUILT_MARKER: &str = ".built-kobo";
+pub const BUILT_MARKER: &str = ".built-kobo";
 
 /// Returns `true` if `dir` already has a completed source download marker.
 fn is_source_ready(dir: &Path) -> bool {
