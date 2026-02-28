@@ -44,7 +44,7 @@ pub fn run(args: TestArgs) -> Result<()> {
     for entry in entries {
         println!("\n==> nextest ({})", entry.label);
 
-        let mut nextest_args = vec!["nextest", "run"];
+        let mut nextest_args = vec!["nextest", "run", "--all-targets"];
         nextest_args.extend_from_slice(&entry.cargo_args());
         cmd::run("cargo", &nextest_args, &root, &env)?;
 
