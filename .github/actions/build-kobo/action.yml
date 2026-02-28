@@ -13,7 +13,7 @@ inputs:
     required: true
   gh-oauth-client-id:
     description: "GitHub OAuth client ID for device flow authentication"
-    required: false
+    required: true
     default: ""
   test:
     description: "Build the test variant (installs to .adds/cadmus-tst)"
