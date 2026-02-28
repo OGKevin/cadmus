@@ -18,9 +18,26 @@ permissions:
   pull-requests: write
 
 jobs:
+  validate-config:
+    name: Validate release-please-config.json
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Validate JSON
+        run: |
+          if ! jq empty release-please-config.json 2>/dev/null; then
+            echo "Error: release-please-config.json is not valid JSON"
+            exit 1
+          fi
+          echo "release-please-config.json is valid JSON"
+
   release-please:
     name: Release Please
     runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
