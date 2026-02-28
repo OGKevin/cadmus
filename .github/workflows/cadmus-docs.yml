@@ -13,6 +13,8 @@ on:
       - docs-portal/**
       - crates/**/*.rs
       - .github/workflows/cadmus-docs.yml
+      - package.json
+      - package-lock.json
   pull_request:
     types: [opened, synchronize, reopened]
     paths:
@@ -20,6 +22,8 @@ on:
       - docs-portal/**
       - crates/**/*.rs
       - .github/workflows/cadmus-docs.yml
+      - package.json
+      - package-lock.json
   workflow_dispatch:
 
 permissions:
