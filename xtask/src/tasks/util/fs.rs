@@ -208,7 +208,7 @@ pub fn extract_tarball_paths(src: &Path, dest_dir: &Path, prefixes: &[&str]) -> 
             continue;
         }
 
-        let dest = dest_dir.join(normalised.as_ref());
+        let dest = dest_dir.join(&*normalised);
 
         if let Some(parent) = dest.parent() {
             std::fs::create_dir_all(parent)
