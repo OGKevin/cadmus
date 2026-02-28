@@ -67,7 +67,7 @@ jobs:
             release-artifacts/*.tgz
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: cadmus-kobo-pr${{ inputs.pr_number }}-${{ steps.commit.outputs.short_sha }}
           path: release-artifacts/*

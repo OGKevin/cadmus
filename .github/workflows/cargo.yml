@@ -133,7 +133,7 @@ jobs:
 
       - name: Upload clippy JSON artifact
         if: runner.os == 'Linux' && github.event_name == 'pull_request'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: clippy-json-${{ matrix.features || 'default' }}
           path: clippy-json/
@@ -169,7 +169,7 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ steps.rust-toolchain.outputs.cachekey }}-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Download all clippy JSON artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: clippy-json-*
           path: clippy-json
@@ -319,7 +319,7 @@ jobs:
             release-artifacts/*.tgz
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: cadmus-kobo-${{ steps.artifact.outputs.suffix }}
           path: release-artifacts/*
@@ -354,7 +354,7 @@ jobs:
       - *generate-attestation
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: cadmus-kobo-test-${{ steps.artifact.outputs.suffix }}
           path: release-artifacts/*
