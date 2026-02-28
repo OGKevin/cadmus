@@ -33,7 +33,6 @@ static DOCUMENTATION_CACHE: OnceLock<&'static [u8]> = OnceLock::new();
 #[derive(Embed)]
 #[folder = "../../docs/book/epub/"]
 #[include = "Cadmus Documentation.epub"]
-#[allow_missing = true]
 pub struct DocumentationAssets;
 
 impl DocumentationAssets {
