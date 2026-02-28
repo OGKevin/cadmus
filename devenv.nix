@@ -222,7 +222,7 @@ in
     # override this in devenv.local.nix to the right place for your test cadmus root dir
     # TEST_ROOT_DIR = "$DEVENV_ROOT" ;
 
-    RUST_LOG = "debug";
+    RUST_LOG = "emulator=debug,cadmus_core=debug";
     RUST_BACKTRACE = "1";
     OTEL_EXPORTER_OTLP_ENDPOINT = "http://localhost:4318";
     NEXTEST_NO_TESTS = "pass";
@@ -563,7 +563,7 @@ in
       echo ""
 
       export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4318"
-      export RUST_LOG="trace"
+      export RUST_LOG="emulator=trace,cadmus_core=trace"
       cargo xtask run-emulator --features otel,test,emulator
     '';
   };
