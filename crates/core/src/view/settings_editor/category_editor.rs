@@ -686,11 +686,14 @@ impl CategoryEditor {
     ) -> bool {
         if index < context.settings.libraries.len() {
             context.settings.libraries[index] = library.clone();
-
-            self.rebuild_library_rows(rq, context, None);
+        } else if index == context.settings.libraries.len() {
+            context.settings.libraries.push(library.clone());
+        } else {
+            return true;
         }
 
-        false
+        self.rebuild_library_rows(rq, context, None);
+        true
     }
 
     #[inline]
@@ -1163,7 +1166,7 @@ mod tests {
             &mut context,
         );
 
-        assert!(!handled);
+        assert!(handled);
         assert_eq!(context.settings.libraries.len(), 1);
         assert_eq!(context.settings.libraries[0].name, "Updated Library");
         assert_eq!(

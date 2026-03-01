@@ -51,7 +51,7 @@ mod library_editor;
 mod setting_row;
 mod setting_value;
 
-pub use setting_value::ToggleSettings;
+pub use setting_value::{SettingsEvent, ToggleSettings};
 
 pub use self::bottom_bar::{BottomBarVariant, SettingsEditorBottomBar};
 pub use self::category::Category;

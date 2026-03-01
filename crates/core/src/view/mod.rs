@@ -500,6 +500,8 @@ pub enum Event {
     FileChooserClosed(Option<PathBuf>),
     /// GitHub authentication and API interaction events.
     Github(GithubEvent),
+    /// Settings-specific events
+    Settings(settings_editor::SettingsEvent),
     /// Progress update from a background OTA download thread.
     ///
     /// `OtaView` handles this by updating the status label text and the

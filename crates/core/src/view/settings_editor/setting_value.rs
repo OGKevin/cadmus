@@ -11,6 +11,21 @@ use anyhow::Error;
 use std::fs;
 use std::path::Path;
 
+#[derive(Debug, Clone)]
+pub enum SettingsEvent {
+    /// Updates a SettingValue view by its Kind with a new value.
+    ///
+    /// Each SettingValue checks if the kind matches its own kind, and updates
+    /// itself if there's a match. This allows targeted updates without needing
+    /// to know the specific view ID.
+    UpdateValue {
+        /// The Kind of SettingValue to update (matches against self.kind)
+        kind: Kind,
+        /// The new value to display
+        value: String,
+    },
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ToggleSettings {
     /// Sleep cover enable/disable setting
@@ -25,7 +40,7 @@ pub enum ToggleSettings {
 ///
 /// This enum categorizes different settings that can be configured in the application,
 /// including keyboard layout, power management, button schemes, and library settings.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Kind {
     /// Keyboard layout selection setting
     KeyboardLayout,
@@ -157,6 +172,12 @@ impl SettingValue {
     ///
     /// This method updates the ActionLabel text to reflect the current state of the setting
     /// in context.settings. It should be called whenever the underlying setting changes.
+    ///
+    /// # Deprecated
+    /// This method relies on context.settings which may not reflect the current
+    /// editing state. Use `Event::Settings(SettingsEvent::UpdateValue { kind, value })`
+    /// instead to directly update SettingValue views during editing.
+    #[deprecated(note = "use Event::Settings(SettingsEvent::UpdateValue { kind, value }) instead")]
     pub fn refresh_from_context(&mut self, context: &Context, rq: &mut RenderQueue) {
         let (value, entries, _enabled_toggle) =
             Self::fetch_data_for_kind(&self.kind, &context.settings);
@@ -438,16 +459,26 @@ impl SettingValue {
 }
 
 impl View for SettingValue {
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _hub, _bus, _rq, _context), fields(event = ?_evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _hub, _bus, rq, _context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
-        _evt: &Event,
+        evt: &Event,
         _hub: &Hub,
         _bus: &mut Bus,
-        _rq: &mut RenderQueue,
+        rq: &mut RenderQueue,
         _context: &mut Context,
     ) -> bool {
-        false
+        match evt {
+            Event::Settings(SettingsEvent::UpdateValue { kind, value }) => {
+                if self.kind == *kind {
+                    self.update(value.clone(), rq);
+                    true
+                } else {
+                    false
+                }
+            }
+            _ => false,
+        }
     }
 
     #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _fb, _fonts), fields(rect = ?_rect)))]
@@ -709,5 +740,256 @@ mod tests {
         } else {
             panic!("Expected EditLibrary event");
         }
+    }
+
+    #[test]
+    fn test_update_value_event_updates_library_name_display() {
+        use crate::settings::LibrarySettings;
+        let mut context = create_test_context();
+        context.settings.libraries.clear();
+        context.settings.libraries.push(LibrarySettings {
+            name: "Old Name".to_string(),
+            path: PathBuf::from("/tmp"),
+            ..Default::default()
+        });
+        let rect = rect![0, 0, 200, 50];
+
+        let mut value = SettingValue::new(
+            Kind::LibraryName(0),
+            rect,
+            &context.settings,
+            &mut context.fonts,
+        );
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+        let mut rq = RenderQueue::new();
+
+        assert_eq!(value.value(), "Old Name");
+
+        let update_event = Event::Settings(SettingsEvent::UpdateValue {
+            kind: Kind::LibraryName(0),
+            value: "New Name".to_string(),
+        });
+        let handled = value.handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context);
+
+        assert!(
+            handled,
+            "UpdateValue event should be handled when kind matches"
+        );
+        assert_eq!(value.value(), "New Name");
+    }
+
+    #[test]
+    fn test_update_value_event_updates_library_path_display() {
+        use crate::settings::LibrarySettings;
+        let mut context = create_test_context();
+        context.settings.libraries.clear();
+        context.settings.libraries.push(LibrarySettings {
+            name: "Test Library".to_string(),
+            path: PathBuf::from("/old/path"),
+            ..Default::default()
+        });
+        let rect = rect![0, 0, 200, 50];
+
+        let mut value = SettingValue::new(
+            Kind::LibraryPath(0),
+            rect,
+            &context.settings,
+            &mut context.fonts,
+        );
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+        let mut rq = RenderQueue::new();
+
+        assert_eq!(value.value(), "/old/path");
+
+        let update_event = Event::Settings(SettingsEvent::UpdateValue {
+            kind: Kind::LibraryPath(0),
+            value: "/new/path".to_string(),
+        });
+        let handled = value.handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context);
+
+        assert!(
+            handled,
+            "UpdateValue event should be handled when kind matches"
+        );
+        assert_eq!(value.value(), "/new/path");
+    }
+
+    #[test]
+    fn test_update_value_event_ignores_wrong_kind() {
+        use crate::settings::LibrarySettings;
+        let mut context = create_test_context();
+        context.settings.libraries.clear();
+        context.settings.libraries.push(LibrarySettings {
+            name: "Test Library".to_string(),
+            path: PathBuf::from("/tmp"),
+            ..Default::default()
+        });
+        let rect = rect![0, 0, 200, 50];
+
+        let mut value = SettingValue::new(
+            Kind::LibraryName(0),
+            rect,
+            &context.settings,
+            &mut context.fonts,
+        );
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+        let mut rq = RenderQueue::new();
+
+        assert_eq!(value.value(), "Test Library");
+
+        let update_event = Event::Settings(SettingsEvent::UpdateValue {
+            kind: Kind::LibraryPath(0),
+            value: "Some Path".to_string(),
+        });
+        let handled = value.handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context);
+
+        assert!(
+            !handled,
+            "UpdateValue event should not be handled when kind does not match"
+        );
+        assert_eq!(
+            value.value(),
+            "Test Library",
+            "Value should not change when kind mismatches"
+        );
+    }
+
+    #[test]
+    fn test_update_value_event_ignores_wrong_index() {
+        use crate::settings::LibrarySettings;
+        let mut context = create_test_context();
+        context.settings.libraries.clear();
+        context.settings.libraries.push(LibrarySettings {
+            name: "Library 0".to_string(),
+            path: PathBuf::from("/path0"),
+            ..Default::default()
+        });
+        context.settings.libraries.push(LibrarySettings {
+            name: "Library 1".to_string(),
+            path: PathBuf::from("/path1"),
+            ..Default::default()
+        });
+        let rect = rect![0, 0, 200, 50];
+
+        let mut value = SettingValue::new(
+            Kind::LibraryName(0),
+            rect,
+            &context.settings,
+            &mut context.fonts,
+        );
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+        let mut rq = RenderQueue::new();
+
+        assert_eq!(value.value(), "Library 0");
+
+        let update_event = Event::Settings(SettingsEvent::UpdateValue {
+            kind: Kind::LibraryName(1),
+            value: "Updated Library 1".to_string(),
+        });
+        let handled = value.handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context);
+
+        assert!(
+            !handled,
+            "UpdateValue event should not be handled when index does not match"
+        );
+        assert_eq!(
+            value.value(),
+            "Library 0",
+            "Value should not change when index mismatches"
+        );
+    }
+
+    #[test]
+    fn test_update_value_event_updates_auto_suspend() {
+        let rect = rect![0, 0, 200, 50];
+
+        let mut context = create_test_context();
+        let mut value = SettingValue::new(
+            Kind::AutoSuspend,
+            rect,
+            &context.settings,
+            &mut context.fonts,
+        );
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+        let mut rq = RenderQueue::new();
+
+        assert_eq!(value.value(), "30.0");
+
+        let update_event = Event::Settings(SettingsEvent::UpdateValue {
+            kind: Kind::AutoSuspend,
+            value: "60.0".to_string(),
+        });
+        let handled = value.handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context);
+
+        assert!(
+            handled,
+            "UpdateValue event should be handled when kind matches"
+        );
+        assert_eq!(value.value(), "60.0");
+    }
+
+    #[test]
+    fn test_update_value_event_updates_auto_power_off() {
+        let rect = rect![0, 0, 200, 50];
+
+        let mut context = create_test_context();
+        let mut value = SettingValue::new(
+            Kind::AutoPowerOff,
+            rect,
+            &context.settings,
+            &mut context.fonts,
+        );
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+        let mut rq = RenderQueue::new();
+
+        assert_eq!(value.value(), "3.0");
+
+        let update_event = Event::Settings(SettingsEvent::UpdateValue {
+            kind: Kind::AutoPowerOff,
+            value: "60.0".to_string(),
+        });
+        let handled = value.handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context);
+
+        assert!(
+            handled,
+            "UpdateValue event should be handled when kind matches"
+        );
+        assert_eq!(value.value(), "60.0");
+    }
+
+    #[test]
+    fn test_update_value_event_updates_settings_retention() {
+        let rect = rect![0, 0, 200, 50];
+
+        let mut context = create_test_context();
+        let mut value = SettingValue::new(
+            Kind::SettingsRetention,
+            rect,
+            &context.settings,
+            &mut context.fonts,
+        );
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+        let mut rq = RenderQueue::new();
+
+        assert_eq!(value.value(), "3");
+
+        let update_event = Event::Settings(SettingsEvent::UpdateValue {
+            kind: Kind::SettingsRetention,
+            value: "5".to_string(),
+        });
+        let handled = value.handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context);
+
+        assert!(
+            handled,
+            "UpdateValue event should be handled when kind matches"
+        );
+        assert_eq!(value.value(), "5");
     }
 }

@@ -1,5 +1,6 @@
 use super::bottom_bar::{BottomBarVariant, SettingsEditorBottomBar};
 use super::setting_row::{Kind as RowKind, SettingRow};
+use super::setting_value::{Kind as ValueKind, SettingsEvent};
 use crate::color::{BLACK, WHITE};
 use crate::context::Context;
 use crate::device::CURRENT_DEVICE;
@@ -242,12 +243,6 @@ impl LibraryEditor {
     }
 
     #[inline]
-    fn update_row_value(&mut self, rq: &mut RenderQueue) {
-        // Event propagation via UpdateLibrary will handle updating the SettingValue widgets
-        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
-    }
-
-    #[inline]
     fn toggle_keyboard(
         &mut self,
         visible: bool,
@@ -361,9 +356,12 @@ impl LibraryEditor {
     }
 
     #[inline]
-    fn handle_submit_name_event(&mut self, text: &str, rq: &mut RenderQueue) -> bool {
+    fn handle_submit_name_event(&mut self, text: &str, bus: &mut Bus) -> bool {
         self.library.name = text.to_string();
-        self.update_row_value(rq);
+        bus.push_back(Event::Settings(SettingsEvent::UpdateValue {
+            kind: ValueKind::LibraryName(self.library_index),
+            value: text.to_string(),
+        }));
         false
     }
 
@@ -371,11 +369,14 @@ impl LibraryEditor {
     fn handle_file_chooser_closed_event(
         &mut self,
         path: &Option<std::path::PathBuf>,
-        rq: &mut RenderQueue,
+        bus: &mut Bus,
     ) -> bool {
         if let Some(path) = path {
             self.library.path = path.clone();
-            self.update_row_value(rq);
+            bus.push_back(Event::Settings(SettingsEvent::UpdateValue {
+                kind: ValueKind::LibraryPath(self.library_index),
+                value: path.display().to_string(),
+            }));
         }
         false
     }
@@ -467,9 +468,9 @@ impl View for LibraryEditor {
                 self.handle_edit_path_event(hub, rq, context)
             }
             Event::Submit(ViewId::LibraryRenameInput, ref text) => {
-                self.handle_submit_name_event(text, rq)
+                self.handle_submit_name_event(text, bus)
             }
-            Event::FileChooserClosed(ref path) => self.handle_file_chooser_closed_event(path, rq),
+            Event::FileChooserClosed(ref path) => self.handle_file_chooser_closed_event(path, bus),
             Event::SubMenu(rect, ref entries) => {
                 self.handle_submenu_event(rect, entries, rq, context)
             }
@@ -702,7 +703,7 @@ mod tests {
         assert!(!handled);
         assert_ne!(editor.library.path, original_path);
         assert_eq!(editor.library.path, new_path);
-        assert!(!rq.is_empty());
+        assert!(rq.is_empty());
     }
 
     #[test]
@@ -733,6 +734,6 @@ mod tests {
         assert!(!handled);
         assert_ne!(editor.library.name, original_name);
         assert_eq!(editor.library.name, new_name);
-        assert!(!rq.is_empty());
+        assert!(rq.is_empty());
     }
 }
