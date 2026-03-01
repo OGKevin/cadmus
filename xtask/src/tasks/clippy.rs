@@ -172,7 +172,7 @@ pub(crate) fn save_json(
     Ok(())
 }
 
-/// Runs `cargo clippy --message-format=json` and pipes the output through
+/// Runs `cargo clippy --message-format=short` and pipes the output through
 /// `reviewdog`.
 ///
 /// When `diff_branch` is `Some`, reviewdog uses `git diff <branch>` as the
@@ -191,7 +191,12 @@ fn run_with_reviewdog(
     cargo_args: &[&str],
     diff_branch: Option<&str>,
 ) -> Result<()> {
-    let mut clippy_args = vec!["clippy", "--all-targets", "--message-format=json"];
+    let mut clippy_args = vec![
+        "clippy",
+        "--all-targets",
+        "--message-format=short",
+        "--quiet",
+    ];
     clippy_args.extend_from_slice(cargo_args);
 
     let mut reviewdog_args = vec![
@@ -202,7 +207,7 @@ fn run_with_reviewdog(
 
     if let Some(branch) = diff_branch {
         reviewdog_args.push("-reporter=local".to_owned());
-        reviewdog_args.push(format!("-diff=git diff {branch}"));
+        reviewdog_args.push(format!("-diff=git diff --no-ext-diff {branch}"));
     } else {
         reviewdog_args.push("-reporter=github-pr-review".to_owned());
     }
@@ -210,8 +215,8 @@ fn run_with_reviewdog(
     println!("$ cargo {}", clippy_args.join(" "));
     println!("$ reviewdog {}", reviewdog_args.join(" "));
 
-    let mut clippy = Command::new("cargo")
-        .args(&clippy_args)
+    let mut clippy = Command::new("sh")
+        .args(["-c", &format!("cargo {} 2>&1", clippy_args.join(" "))])
         .current_dir(root)
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())

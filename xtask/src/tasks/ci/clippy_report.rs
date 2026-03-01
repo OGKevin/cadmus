@@ -173,8 +173,51 @@ fn diagnostic_key(line: &str) -> DiagnosticKey {
     }
 }
 
+/// Converts a clippy JSON line to short format for reviewdog.
+fn json_to_short(line: &str) -> String {
+    let Ok(value) = serde_json::from_str::<Value>(line) else {
+        return line.to_string();
+    };
+
+    let file = value
+        .pointer("/message/spans/0/file_name")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+
+    let line_start = value
+        .pointer("/message/spans/0/line_start")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+
+    let column_start = value
+        .pointer("/message/spans/0/column_start")
+        .and_then(Value::as_u64)
+        .unwrap_or(1);
+
+    let level = value
+        .pointer("/message/level")
+        .and_then(Value::as_str)
+        .unwrap_or("warning");
+
+    let message = value
+        .pointer("/message/message")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+
+    let code = value.pointer("/message/code/code").and_then(Value::as_str);
+
+    if let Some(code) = code {
+        format!("{file}:{line_start}:{column_start}: {level}: {message} [{code}]")
+    } else {
+        format!("{file}:{line_start}:{column_start}: {level}: {message}")
+    }
+}
+
 /// Spawns `reviewdog` with the `github-pr-review` reporter and writes `lines`
 /// to its stdin.
+///
+/// JSON lines are converted to short format for compatibility with reviewdog's
+/// clippy parser.
 ///
 /// # Errors
 ///
@@ -203,7 +246,8 @@ fn pipe_to_reviewdog(lines: &[String]) -> Result<()> {
         .context("reviewdog stdin not captured")?;
 
     for line in lines {
-        writeln!(stdin, "{line}").context("failed to write to reviewdog stdin")?;
+        let short_line = json_to_short(line);
+        writeln!(stdin, "{short_line}").context("failed to write to reviewdog stdin")?;
     }
 
     drop(stdin);
@@ -365,5 +409,126 @@ mod tests {
         let lines = collect_unique_lines(dir.path()).unwrap();
 
         assert_eq!(lines.len(), 1);
+    }
+
+    #[test]
+    fn json_to_short_converts_clippy_json_to_short_format() {
+        let json_line = serde_json::json!({
+            "reason": "compiler-message",
+            "message": {
+                "message": "deref which would be done by auto-deref",
+                "level": "warning",
+                "spans": [
+                    {
+                        "file_name": "crates/core/src/library/db/mod.rs",
+                        "line_start": 895,
+                        "column_start": 32,
+                        "line_end": 895,
+                        "column_end": 36,
+                        "text": "    let y: &str = &x;"
+                    }
+                ],
+                "code": {
+                    "code": "clippy::ptr_arg",
+                    "explanation": "..."
+                }
+            }
+        })
+        .to_string();
+
+        let result = json_to_short(&json_line);
+
+        assert_eq!(
+            result,
+            "crates/core/src/library/db/mod.rs:895:32: warning: deref which would be done by auto-deref [clippy::ptr_arg]"
+        );
+    }
+
+    #[test]
+    fn json_to_short_handles_missing_code_field() {
+        let json_line = serde_json::json!({
+            "reason": "compiler-message",
+            "message": {
+                "message": "unused variable: `x`",
+                "level": "warning",
+                "spans": [
+                    {
+                        "file_name": "src/lib.rs",
+                        "line_start": 10,
+                        "column_start": 5,
+                        "line_end": 10,
+                        "column_end": 6,
+                        "text": "let x = 1;"
+                    }
+                ]
+            }
+        })
+        .to_string();
+
+        let result = json_to_short(&json_line);
+
+        assert_eq!(result, "src/lib.rs:10:5: warning: unused variable: `x`");
+    }
+
+    #[test]
+    fn json_to_short_handles_error_level() {
+        let json_line = serde_json::json!({
+            "reason": "compiler-message",
+            "message": {
+                "message": "expected `,`, found `{`",
+                "level": "error",
+                "spans": [
+                    {
+                        "file_name": "src/main.rs",
+                        "line_start": 1,
+                        "column_start": 1,
+                        "line_end": 1,
+                        "column_end": 1,
+                        "text": "fn main() {"
+                    }
+                ],
+                "code": {
+                    "code": "E0789"
+                }
+            }
+        })
+        .to_string();
+
+        let result = json_to_short(&json_line);
+
+        assert_eq!(
+            result,
+            "src/main.rs:1:1: error: expected `,`, found `{` [E0789]"
+        );
+    }
+
+    #[test]
+    fn json_to_short_returns_raw_line_for_invalid_json() {
+        let invalid_json = "not valid json";
+
+        let result = json_to_short(invalid_json);
+
+        assert_eq!(result, invalid_json);
+    }
+
+    #[test]
+    fn json_to_short_handles_missing_span_fields() {
+        let json_line = serde_json::json!({
+            "reason": "compiler-message",
+            "message": {
+                "message": "some warning",
+                "level": "warning",
+                "spans": [
+                    {
+                        "file_name": "src/lib.rs"
+                    }
+                ]
+            }
+        })
+        .to_string();
+
+        let result = json_to_short(&json_line);
+
+        assert_eq!(result, "src/lib.rs:0:1: warning: some warning");
     }
 }
