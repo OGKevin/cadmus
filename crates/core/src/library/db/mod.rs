@@ -1583,6 +1583,7 @@ mod tests {
         assert_eq!(retrieved_reader.current_page, 50);
         assert_eq!(retrieved_reader.pages_count, 200);
         assert!(!retrieved_reader.finished);
+        reader_info.current_page = 100;
         reader_info.finished = true;
 
         libdb
