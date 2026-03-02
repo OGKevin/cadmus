@@ -139,7 +139,7 @@ impl Library {
                 if skip_files {
                     continue;
                 }
-                if query.map_or(true, |q| q.is_match(info)) {
+                if query.is_none_or(|q| q.is_match(info)) {
                     files.push(info.clone());
                 }
             }
@@ -262,7 +262,7 @@ impl Library {
                         books_to_update.push(fp);
                     }
                 } else {
-                    let kind = file_kind(&path).unwrap_or_default();
+                    let kind = file_kind(path).unwrap_or_default();
                     if !settings.allowed_kinds.contains(&kind) {
                         continue;
                     }

@@ -48,26 +48,22 @@ pub fn reader_info_to_reading_state_row(fp: Fp, reader_info: &ReaderInfo) -> Rea
     let cropping_margins_json = reader_info
         .cropping_margins
         .as_ref()
-        .map(|cm| serde_json::to_string(cm).ok())
-        .flatten();
+        .and_then(|cm| serde_json::to_string(cm).ok());
 
     let zoom_mode = reader_info
         .zoom_mode
         .as_ref()
-        .map(|zm| serde_json::to_string(zm).ok())
-        .flatten();
+        .and_then(|zm| serde_json::to_string(zm).ok());
 
     let scroll_mode = reader_info
         .scroll_mode
         .as_ref()
-        .map(|sm| serde_json::to_string(sm).ok())
-        .flatten();
+        .and_then(|sm| serde_json::to_string(sm).ok());
 
     let text_align = reader_info
         .text_align
         .as_ref()
-        .map(|ta| serde_json::to_string(ta).ok())
-        .flatten();
+        .and_then(|ta| serde_json::to_string(ta).ok());
 
     let page_names_json = if !reader_info.page_names.is_empty() {
         serde_json::to_string(&reader_info.page_names).ok()
@@ -229,6 +225,7 @@ mod tests {
     use super::*;
     use crate::db::types::{OptionalUuid7, Uuid7};
     use crate::document::TocLocation;
+    use crate::metadata::FileInfo;
     use std::path::PathBuf;
     use std::str::FromStr;
 
@@ -245,12 +242,16 @@ mod tests {
     #[test]
     fn test_info_to_book_row_roundtrip() {
         let fp = Fp::from_str("0000000000000001").unwrap();
-        let mut info = Info::default();
-        info.title = "Test Book".to_string();
-        info.author = "Test Author".to_string();
-        info.file.path = PathBuf::from("/tmp/test.pdf");
-        info.file.kind = "pdf".to_string();
-        info.file.size = 1024;
+        let info = Info {
+            title: "Test Book".to_string(),
+            author: "Test Author".to_string(),
+            file: FileInfo {
+                path: PathBuf::from("/tmp/test.pdf"),
+                kind: "pdf".to_string(),
+                size: 1024,
+            },
+            ..Default::default()
+        };
 
         let row = info_to_book_row(fp, &info);
 

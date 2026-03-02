@@ -895,7 +895,7 @@ impl Db {
                 .execute(&mut *tx)
                 .await?;
 
-            insert_toc_entries(&mut *tx, &fp_str, toc, None).await?;
+            insert_toc_entries(&mut tx, &fp_str, toc, None).await?;
 
             tx.commit().await?;
 
@@ -1060,7 +1060,7 @@ impl Db {
                     sqlx::query!("DELETE FROM toc_entries WHERE book_fingerprint = ?", fp_str)
                         .execute(&mut *tx)
                         .await?;
-                    insert_toc_entries(&mut *tx, &fp_str, toc, None).await?;
+                    insert_toc_entries(&mut tx, &fp_str, toc, None).await?;
                 }
             }
 
@@ -1189,7 +1189,7 @@ impl Db {
                     sqlx::query!("DELETE FROM toc_entries WHERE book_fingerprint = ?", fp_str)
                         .execute(&mut *tx)
                         .await?;
-                    insert_toc_entries(&mut *tx, &fp_str, toc, None).await?;
+                    insert_toc_entries(&mut tx, &fp_str, toc, None).await?;
                 } else {
                     sqlx::query!("DELETE FROM toc_entries WHERE book_fingerprint = ?", fp_str)
                         .execute(&mut *tx)
@@ -1279,22 +1279,26 @@ mod tests {
         let (_db, libdb) = create_test_db();
         let fp = Fp::from_str("0000000000000001").unwrap();
 
-        let mut info = Info::default();
-        info.title = "Test Book".to_string();
-        info.subtitle = "A Test".to_string();
-        info.author = "John Doe, Jane Smith".to_string();
-        info.year = "2024".to_string();
-        info.language = "en".to_string();
-        info.publisher = "Test Press".to_string();
-        info.series = "Test Series".to_string();
-        info.number = "1".to_string();
-        info.categories = vec!["Fiction".to_string(), "Science".to_string()]
-            .into_iter()
-            .collect();
-        info.file.path = PathBuf::from("/tmp/test.pdf");
-        info.file.kind = "pdf".to_string();
-        info.file.size = 1024;
-        info.added = Local::now().naive_local();
+        let info = Info {
+            title: "Test Book".to_string(),
+            subtitle: "A Test".to_string(),
+            author: "John Doe, Jane Smith".to_string(),
+            year: "2024".to_string(),
+            language: "en".to_string(),
+            publisher: "Test Press".to_string(),
+            series: "Test Series".to_string(),
+            number: "1".to_string(),
+            categories: vec!["Fiction".to_string(), "Science".to_string()]
+                .into_iter()
+                .collect(),
+            file: FileInfo {
+                path: PathBuf::from("/tmp/test.pdf"),
+                kind: "pdf".to_string(),
+                size: 1024,
+            },
+            added: Local::now().naive_local(),
+            ..Default::default()
+        };
 
         let library_id = libdb
             .register_library("/tmp/test_library", "Test Library")
@@ -1328,19 +1332,22 @@ mod tests {
         let (_db, libdb) = create_test_db();
         let fp = Fp::from_str("0000000000000002").unwrap();
 
-        let mut info = Info::default();
-        info.title = "Book with Reading State".to_string();
-        info.author = "Test Author".to_string();
-        info.file.path = PathBuf::from("/tmp/test2.pdf");
-        info.file.kind = "pdf".to_string();
-        info.file.size = 2048;
-
-        let mut reader_info = ReaderInfo::default();
-        reader_info.current_page = 42;
-        reader_info.pages_count = 100;
-        reader_info.finished = false;
-
-        info.reader_info = Some(reader_info.clone());
+        let reader_info = ReaderInfo {
+            current_page: 42,
+            pages_count: 100,
+            ..Default::default()
+        };
+        let info = Info {
+            title: "Book with Reading State".to_string(),
+            author: "Test Author".to_string(),
+            file: FileInfo {
+                path: PathBuf::from("/tmp/test2.pdf"),
+                kind: "pdf".to_string(),
+                size: 2048,
+            },
+            reader_info: Some(reader_info.clone()),
+            ..Default::default()
+        };
 
         let library_id = libdb
             .register_library("/tmp/test_library2", "Test Library 2")
@@ -1366,20 +1373,20 @@ mod tests {
         let retrieved_reader = retrieved.reader_info.unwrap();
         assert_eq!(retrieved_reader.current_page, 42);
         assert_eq!(retrieved_reader.pages_count, 100);
-        assert_eq!(retrieved_reader.finished, false);
-    }
-
-    #[test]
-    fn test_delete_book() {
+        assert!(!retrieved_reader.finished);
         let (_db, libdb) = create_test_db();
         let fp = Fp::from_str("0000000000000003").unwrap();
 
-        let mut info = Info::default();
-        info.title = "Book to Delete".to_string();
-        info.author = "Delete Author".to_string();
-        info.file.path = PathBuf::from("/tmp/delete.pdf");
-        info.file.kind = "pdf".to_string();
-        info.file.size = 512;
+        let info = Info {
+            title: "Book to Delete".to_string(),
+            author: "Delete Author".to_string(),
+            file: FileInfo {
+                path: PathBuf::from("/tmp/delete.pdf"),
+                kind: "pdf".to_string(),
+                size: 512,
+            },
+            ..Default::default()
+        };
 
         let library_id = libdb
             .register_library("/tmp/test_library3", "Test Library 3")
@@ -1418,12 +1425,16 @@ mod tests {
 
         for i in 1..=5 {
             let fp = Fp::from_str(&format!("{:016X}", i)).unwrap();
-            let mut info = Info::default();
-            info.title = format!("Book {}", i);
-            info.author = format!("Author {}", i);
-            info.file.path = PathBuf::from(format!("/tmp/book{}.pdf", i));
-            info.file.kind = "pdf".to_string();
-            info.file.size = (i * 100) as u64;
+            let info = Info {
+                title: format!("Book {}", i),
+                author: format!("Author {}", i),
+                file: FileInfo {
+                    path: PathBuf::from(format!("/tmp/book{}.pdf", i)),
+                    kind: "pdf".to_string(),
+                    size: (i * 100) as u64,
+                },
+                ..Default::default()
+            };
 
             libdb
                 .insert_book(library_id, fp, &info)
@@ -1450,12 +1461,16 @@ mod tests {
         let (_db, libdb) = create_test_db();
         let fp = Fp::from_str("0000000000000004").unwrap();
 
-        let mut info = Info::default();
-        info.title = "Original Title".to_string();
-        info.author = "Original Author".to_string();
-        info.file.path = PathBuf::from("/tmp/update.pdf");
-        info.file.kind = "pdf".to_string();
-        info.file.size = 1024;
+        let mut info = Info {
+            title: "Original Title".to_string(),
+            author: "Original Author".to_string(),
+            file: FileInfo {
+                path: PathBuf::from("/tmp/update.pdf"),
+                kind: "pdf".to_string(),
+                size: 1024,
+            },
+            ..Default::default()
+        };
 
         let library_id = libdb
             .register_library("/tmp/test_library5", "Test Library 5")
@@ -1492,12 +1507,16 @@ mod tests {
 
         for i in 1..=3 {
             let fp = Fp::from_str(&format!("{:016X}", i)).unwrap();
-            let mut info = Info::default();
-            info.title = format!("Book {}", i);
-            info.author = format!("Author {}", i);
-            info.file.path = PathBuf::from(format!("/tmp/book{}.pdf", i));
-            info.file.kind = "pdf".to_string();
-            info.file.size = (i * 100) as u64;
+            let info = Info {
+                title: format!("Book {}", i),
+                author: format!("Author {}", i),
+                file: FileInfo {
+                    path: PathBuf::from(format!("/tmp/book{}.pdf", i)),
+                    kind: "pdf".to_string(),
+                    size: (i * 100) as u64,
+                },
+                ..Default::default()
+            };
 
             libdb
                 .insert_book(library_id, fp, &info)
@@ -1523,12 +1542,16 @@ mod tests {
         let (_db, libdb) = create_test_db();
         let fp = Fp::from_str("0000000000000005").unwrap();
 
-        let mut info = Info::default();
-        info.title = "Book with State".to_string();
-        info.author = "State Author".to_string();
-        info.file.path = PathBuf::from("/tmp/state.pdf");
-        info.file.kind = "pdf".to_string();
-        info.file.size = 1024;
+        let info = Info {
+            title: "Book with State".to_string(),
+            author: "State Author".to_string(),
+            file: FileInfo {
+                path: PathBuf::from("/tmp/state.pdf"),
+                kind: "pdf".to_string(),
+                size: 1024,
+            },
+            ..Default::default()
+        };
 
         let library_id = libdb
             .register_library("/tmp/test_library7", "Test Library 7")
@@ -1537,10 +1560,11 @@ mod tests {
             .insert_book(library_id, fp, &info)
             .expect("failed to insert book");
 
-        let mut reader_info = ReaderInfo::default();
-        reader_info.current_page = 50;
-        reader_info.pages_count = 200;
-        reader_info.finished = false;
+        let mut reader_info = ReaderInfo {
+            current_page: 50,
+            pages_count: 200,
+            ..Default::default()
+        };
 
         libdb
             .save_reading_state(fp, &reader_info)
@@ -1558,9 +1582,7 @@ mod tests {
 
         assert_eq!(retrieved_reader.current_page, 50);
         assert_eq!(retrieved_reader.pages_count, 200);
-        assert_eq!(retrieved_reader.finished, false);
-
-        reader_info.current_page = 100;
+        assert!(!retrieved_reader.finished);
         reader_info.finished = true;
 
         libdb
@@ -1578,7 +1600,7 @@ mod tests {
         let updated_reader = updated.reader_info.unwrap();
 
         assert_eq!(updated_reader.current_page, 100);
-        assert_eq!(updated_reader.finished, true);
+        assert!(updated_reader.finished);
     }
 
     #[test]
@@ -1591,13 +1613,17 @@ mod tests {
         let mut books = Vec::new();
         for i in 1..=5 {
             let fp = Fp::from_str(&format!("{:016X}", i + 100)).unwrap();
-            let mut info = Info::default();
-            info.title = format!("Batch Book {}", i);
-            info.author = format!("Batch Author {}, Co-Author {}", i, i + 1);
-            info.year = format!("{}", 2020 + i);
-            info.file.path = PathBuf::from(format!("/tmp/batch{}.pdf", i));
-            info.file.kind = "pdf".to_string();
-            info.file.size = (i * 100) as u64;
+            let info = Info {
+                title: format!("Batch Book {}", i),
+                author: format!("Batch Author {}, Co-Author {}", i, i + 1),
+                year: format!("{}", 2020 + i),
+                file: FileInfo {
+                    path: PathBuf::from(format!("/tmp/batch{}.pdf", i)),
+                    kind: "pdf".to_string(),
+                    size: (i * 100) as u64,
+                },
+                ..Default::default()
+            };
             books.push((fp, info));
         }
 
@@ -1637,12 +1663,16 @@ mod tests {
         let mut books = Vec::new();
         for i in 1..=3 {
             let fp = Fp::from_str(&format!("{:016X}", i + 200)).unwrap();
-            let mut info = Info::default();
-            info.title = format!("Original Book {}", i);
-            info.author = format!("Original Author {}", i);
-            info.file.path = PathBuf::from(format!("/tmp/update{}.pdf", i));
-            info.file.kind = "pdf".to_string();
-            info.file.size = (i * 100) as u64;
+            let mut info = Info {
+                title: format!("Original Book {}", i),
+                author: format!("Original Author {}", i),
+                file: FileInfo {
+                    path: PathBuf::from(format!("/tmp/update{}.pdf", i)),
+                    kind: "pdf".to_string(),
+                    size: (i * 100) as u64,
+                },
+                ..Default::default()
+            };
             libdb
                 .insert_book(library_id, fp, &info)
                 .expect("failed to insert book");
@@ -1684,12 +1714,16 @@ mod tests {
         let mut fps = Vec::new();
         for i in 1..=4 {
             let fp = Fp::from_str(&format!("{:016X}", i + 300)).unwrap();
-            let mut info = Info::default();
-            info.title = format!("Delete Book {}", i);
-            info.author = format!("Delete Author {}", i);
-            info.file.path = PathBuf::from(format!("/tmp/delete{}.pdf", i));
-            info.file.kind = "pdf".to_string();
-            info.file.size = (i * 100) as u64;
+            let info = Info {
+                title: format!("Delete Book {}", i),
+                author: format!("Delete Author {}", i),
+                file: FileInfo {
+                    path: PathBuf::from(format!("/tmp/delete{}.pdf", i)),
+                    kind: "pdf".to_string(),
+                    size: (i * 100) as u64,
+                },
+                ..Default::default()
+            };
             libdb
                 .insert_book(library_id, fp, &info)
                 .expect("failed to insert book");
@@ -1737,16 +1771,20 @@ mod tests {
         let (_db, libdb) = create_test_db();
         let fp = Fp::from_str("0000000000000099").unwrap();
 
-        let mut info = Info::default();
-        info.title = "Categorized Book".to_string();
-        info.author = "Cat Author".to_string();
-        info.file.path = PathBuf::from("/tmp/cat.pdf");
-        info.file.kind = "pdf".to_string();
-        info.file.size = 512;
-        info.categories = ["Fiction", "Science", "History"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
+        let info = Info {
+            title: "Categorized Book".to_string(),
+            author: "Cat Author".to_string(),
+            file: FileInfo {
+                path: PathBuf::from("/tmp/cat.pdf"),
+                kind: "pdf".to_string(),
+                size: 512,
+            },
+            categories: ["Fiction", "Science", "History"]
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+            ..Default::default()
+        };
 
         let library_id = libdb
             .register_library("/tmp/test_library_cat", "Cat Library")
@@ -1772,13 +1810,17 @@ mod tests {
         let (_db, libdb) = create_test_db();
         let fp = Fp::from_str("000000000000009A").unwrap();
 
-        let mut info = Info::default();
-        info.title = "Updateable Book".to_string();
-        info.author = "Update Author".to_string();
-        info.file.path = PathBuf::from("/tmp/upd_cat.pdf");
-        info.file.kind = "pdf".to_string();
-        info.file.size = 512;
-        info.categories = ["OldCat"].iter().map(|s| s.to_string()).collect();
+        let mut info = Info {
+            title: "Updateable Book".to_string(),
+            author: "Update Author".to_string(),
+            file: FileInfo {
+                path: PathBuf::from("/tmp/upd_cat.pdf"),
+                kind: "pdf".to_string(),
+                size: 512,
+            },
+            categories: ["OldCat"].iter().map(|s| s.to_string()).collect(),
+            ..Default::default()
+        };
 
         let library_id = libdb
             .register_library("/tmp/test_library_upd_cat", "Upd Cat Library")
@@ -1815,18 +1857,23 @@ mod tests {
         let mut books = Vec::new();
         for i in 1..=3 {
             let fp = Fp::from_str(&format!("{:016X}", i + 400)).unwrap();
-            let mut info = Info::default();
-            info.title = format!("Book with State {}", i);
-            info.author = format!("State Author {}", i);
-            info.file.path = PathBuf::from(format!("/tmp/state{}.pdf", i));
-            info.file.kind = "pdf".to_string();
-            info.file.size = (i * 100) as u64;
-
-            let mut reader_info = ReaderInfo::default();
-            reader_info.current_page = i * 10;
-            reader_info.pages_count = i * 100;
-            reader_info.finished = i % 2 == 0;
-            info.reader_info = Some(reader_info);
+            let reader_info = ReaderInfo {
+                current_page: i * 10,
+                pages_count: i * 100,
+                finished: i % 2 == 0,
+                ..Default::default()
+            };
+            let info = Info {
+                title: format!("Book with State {}", i),
+                author: format!("State Author {}", i),
+                file: FileInfo {
+                    path: PathBuf::from(format!("/tmp/state{}.pdf", i)),
+                    kind: "pdf".to_string(),
+                    size: (i * 100) as u64,
+                },
+                reader_info: Some(reader_info),
+                ..Default::default()
+            };
 
             books.push((fp, info));
         }
