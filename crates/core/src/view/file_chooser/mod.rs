@@ -565,7 +565,7 @@ impl FileChooser {
         }
     }
 
-    fn go_to_page(&mut self, dir: CycleDir, rq: &mut RenderQueue, context: &mut Context) {
+    fn go_to_page(&mut self, dir: CycleDir, context: &mut Context) {
         match dir {
             CycleDir::Next => {
                 if self.current_page < self.pages_count - 1 {
@@ -602,7 +602,7 @@ impl View for FileChooser {
                 true
             }
             Event::Page(dir) => {
-                self.go_to_page(*dir, rq, context);
+                self.go_to_page(*dir, context);
 
                 rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
 
