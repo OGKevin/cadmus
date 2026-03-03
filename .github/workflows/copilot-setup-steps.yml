@@ -2,6 +2,7 @@ name: Copilot Setup Steps
 
 env:
   NODE_VERSION: "24"
+  SQLX_OFFLINE: true
 
 on:
   workflow_call:
@@ -97,6 +98,9 @@ jobs:
       - name: Setup native dependencies for testing
         run: cargo xtask setup-native
 
+      - name: Install reviewdog
+        uses: reviewdog/action-setup@v1
+
       - name: Verify installation
         run: |
           rustc --version || true
@@ -110,5 +114,6 @@ jobs:
           mdbook --version || true
           mdbook-epub --version || true
           mdbook-mermaid --version || true
+          reviewdog --version || true
           # Verify native test setup
           ls -la target/mupdf_wrapper/Linux/ || true
