@@ -19,10 +19,6 @@ types that SQLx inferred from the live database schema at the time
 └── …
 ```
 
-These files are committed to the repository so that CI can verify queries
-**without a running database**. Never edit them by hand — they are regenerated
-by the `cargo sqlx prepare` command.
-
 ### Regenerating query metadata
 
 After adding or changing any SQL query, regenerate the metadata:
@@ -52,6 +48,10 @@ compile time using the metadata in `.sqlx/`. This means:
 The macros require the `DATABASE_URL` environment variable to point at a live
 database when running `cargo sqlx prepare`, but **not** during regular `cargo
 build` or `cargo check` — those use the pre-generated `.sqlx/` files.
+
+> [!IMPORTANT]
+> `.sqlx/` is only used when the `SQLX_OFFLINE=true` field is set which is
+> the default if you're using devenv.nix.
 
 ## Review rules
 

@@ -97,7 +97,7 @@ erDiagram
 
 ### Key design choices
 
-- **`books` is the master table.** Every other per-book table references
+- **`books` is the main table.** Every other per-book table references
   `books.fingerprint` with `ON DELETE CASCADE`, so deleting a book row removes
   all associated data automatically.
 - **Authors are normalised.** `authors` holds unique author names;

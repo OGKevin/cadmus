@@ -10,9 +10,6 @@ Cadmus has two distinct migration pipelines:
    columns, importing legacy files, cleaning up obsolete rows, or any procedural
    work that goes beyond SQL DDL.
 
-This page covers runtime migrations. For the overall database architecture, see
-[Library Database](library-database.md).
-
 ## How runtime migrations work
 
 ```mermaid
@@ -120,17 +117,7 @@ cadmus_core::migration!(
 );
 ```
 
-### 3. Declare the module
-
-Add `pub mod migrations;` (or `mod migrations;`) to the feature's `mod.rs` so
-the file is compiled and the `#[ctor]` registration runs:
-
-```rust
-// crates/core/src/my_feature/mod.rs
-mod migrations;
-```
-
-### 4. Use SQLx typed macros
+### 3. Use SQLx typed macros
 
 All SQL inside a migration must use the typed macros for compile-time
 verification (see [SQLite & SQLx](sqlite-sqlx.md)):
@@ -148,21 +135,12 @@ sqlx::query("DELETE FROM books WHERE file_path = ?")
     .await?;
 ```
 
-When executing against a transaction, pass `&mut **tx` (double deref) to satisfy
-the `Executor` trait bound:
-
-```rust
-sqlx::query!("INSERT INTO books (...) VALUES (...)", ...)
-    .execute(&mut **tx)
-    .await?;
-```
-
-### 5. Make it idempotent
+### 4. Make it idempotent
 
 Use `INSERT OR IGNORE`, `ON CONFLICT DO NOTHING`, or guard with a `WHERE` clause
 so the migration is safe to re-run without corrupting data.
 
-### 6. Regenerate `.sqlx` metadata
+### 5. Regenerate `.sqlx` metadata
 
 After adding or changing any query in the migration, regenerate the compile-time
 metadata:
@@ -182,23 +160,6 @@ DELETE FROM _cadmus_migrations WHERE id = 'v1_my_migration';
 ```
 
 The next startup will treat the migration as pending and run it again.
-
-## Testing migrations
-
-Use an in-memory SQLite database so tests stay fast and isolated:
-
-```rust
-#[cfg(test)]
-mod tests {
-    use cadmus_core::db::Database;
-
-    #[test]
-    fn migration_runs_cleanly() {
-        let db = Database::new(":memory:").expect("in-memory db");
-        db.migrate().expect("migrations should succeed");
-    }
-}
-```
 
 ## API reference
 
