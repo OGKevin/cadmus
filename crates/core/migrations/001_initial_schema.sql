@@ -16,8 +16,6 @@ CREATE TABLE IF NOT EXISTS books (
     added_at INTEGER NOT NULL
 ) STRICT;
 
-
-
 CREATE TABLE IF NOT EXISTS authors (
     id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
     name TEXT UNIQUE NOT NULL
@@ -80,8 +78,6 @@ CREATE TABLE IF NOT EXISTS reading_states (
     annotations_json TEXT,
     FOREIGN KEY (fingerprint) REFERENCES books(fingerprint) ON DELETE CASCADE
 ) STRICT;
-
-
 
 CREATE TABLE IF NOT EXISTS thumbnails (
     fingerprint TEXT PRIMARY KEY NOT NULL,

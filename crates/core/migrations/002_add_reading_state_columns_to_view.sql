@@ -46,7 +46,7 @@ SELECT
     GROUP_CONCAT(DISTINCT a.name ORDER BY ba.position) AS authors,
     GROUP_CONCAT(DISTINCT c.name)                      AS categories
 FROM library_books lb
-INNER JOIN books b          ON lb.book_fingerprint  = b.fingerprint
+INNER JOIN books b          ON lb.book_fingerprint   = b.fingerprint
 LEFT JOIN reading_states   rs ON b.fingerprint       = rs.fingerprint
 LEFT JOIN book_authors     ba ON b.fingerprint       = ba.book_fingerprint
 LEFT JOIN authors           a ON ba.author_id        = a.id

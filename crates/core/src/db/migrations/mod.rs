@@ -61,7 +61,6 @@ static REGISTRY: Lazy<Mutex<HashMap<&'static str, MigrationFn>>> =
 ///
 /// # Example
 ///
-///
 /// ```rust
 /// mod my_migrations {
 ///     use cadmus_core::db::migrations::{MigrationToken, pool_from_token};

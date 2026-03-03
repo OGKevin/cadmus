@@ -1,7 +1,7 @@
 ---
 name: clippy-resolver
 description: Resolves Clippy warnings in PRs by fixing idiomatic Rust issues without using `allow` blocks, ensuring full build and test compliance
-tools: ["read", "edit", "execute", "search", "github"]
+tools: [execute, read, agent, github.vscode-pull-request-github/activePullRequest, github.vscode-pull-request-github/openPullRequest, todo]
 ---
 
 # Rust Clippy Warning Resolver

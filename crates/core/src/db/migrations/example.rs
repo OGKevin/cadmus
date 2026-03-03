@@ -1,9 +1,6 @@
 //! Example migration included only in test builds.
 //!
-//! Demonstrates the minimal migration shape. A real migration — such as
-//! backfilling reading state from a legacy storage format — would call
-//! `pool_from_token` and execute SQL instead of printing.
-
+//! Demonstrates the minimal migration shape.
 crate::migration!(
     /// A minimal example migration that prints to stdout.
     ///

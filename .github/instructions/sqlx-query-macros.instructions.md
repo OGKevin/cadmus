@@ -21,8 +21,6 @@ compile time, catching mistakes before they reach runtime.
 - Use `sqlx::query_as!` when mapping results directly into a named struct
 - Use `sqlx::query_scalar!` for single-column results; call `.flatten()` on the
   result when the column is nullable (`Option<Option<T>>` → `Option<T>`)
-- Pass `&mut **tx` (double deref) when executing against a
-  `&mut Transaction<'_, Sqlite>`
 
 ## Examples
 
