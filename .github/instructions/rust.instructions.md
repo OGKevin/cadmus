@@ -57,6 +57,22 @@ These instructions are based on [The Rust Book](https://doc.rust-lang.org/book/)
 - Don't overuse `clone()`, use borrowing instead of cloning unless ownership transfer is needed.
 - Avoid premature `collect()`, keep iterators lazy until you actually need the collection.
 - Avoid unnecessary allocations—prefer borrowing and zero-copy operations.
+- Avoid assigning intermediate variables solely to pass them into a struct literal—inline
+  expressions directly into the struct fields instead.
+
+  ```rust
+  // Bad: unnecessary intermediate bindings
+  let author = extract_authors(row.authors);
+  let categories = extract_categories(row.categories);
+  let info = Info { author, categories, .. };
+
+  // Good: inline directly
+  let info = Info {
+      author: extract_authors(row.authors),
+      categories: extract_categories(row.categories),
+      ..
+  };
+  ```
 
 ## Code Style and Formatting
 

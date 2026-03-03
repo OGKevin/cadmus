@@ -9,7 +9,6 @@
 //! |---|---|
 //! | [`import_legacy_filesystem_data::MIGRATION_ID`] | `v1_import_legacy_filesystem_data` |
 
-use crate::db::migrations::pool_from_token;
 use crate::db::types::UnixTimestamp;
 use crate::helpers::Fp;
 use crate::library::db::conversion::{
@@ -41,15 +40,13 @@ crate::migration!(
     ///
     /// The migration is idempotent (all inserts use `ON CONFLICT … DO NOTHING`).
     "v1_import_legacy_filesystem_data",
-    async fn import_legacy_filesystem_data(token: &MigrationToken) {
+    async fn import_legacy_filesystem_data(pool: &SqlitePool) {
         let settings = SettingsManager::new(env!("GIT_VERSION").to_string()).load();
 
         if settings.libraries.is_empty() {
             info!("no libraries in settings, skipping legacy data import");
             return Ok(());
         }
-
-        let pool = pool_from_token(token);
 
         for lib in &settings.libraries {
             let library_path = &lib.path;

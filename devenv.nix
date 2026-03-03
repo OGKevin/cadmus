@@ -224,6 +224,8 @@ in
     };
   };
 
+  dotenv.enable = true;
+
   env = {
     # override this in devenv.local.nix to the right place for your test cadmus root dir
     # TEST_ROOT_DIR = "$DEVENV_ROOT" ;
@@ -232,9 +234,6 @@ in
     RUST_BACKTRACE = "1";
     OTEL_EXPORTER_OTLP_ENDPOINT = "http://localhost:4318";
     NEXTEST_NO_TESTS = "pass";
-
-    # SQLx compile-time verification database
-    DATABASE_URL = "sqlite:crates/core/.sqlx-dev.db";
   } // pkgs.lib.optionalAttrs isLinux {
     # pkg-config configuration for cross-compilation
     PKG_CONFIG_ALLOW_CROSS = "1";

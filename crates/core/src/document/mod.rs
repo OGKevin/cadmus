@@ -280,12 +280,12 @@ impl From<TocLocation> for Location {
 }
 
 impl From<&TocEntry> for SimpleTocEntry {
+    /// `LocalUri` and positional variants have no direct [`TocLocation`] equivalent;
+    /// they fall back to page 0 so the entry is still stored and navigable.
     fn from(entry: &TocEntry) -> SimpleTocEntry {
         let location = match &entry.location {
             Location::Exact(n) => TocLocation::Exact(*n),
             Location::Uri(uri) => TocLocation::Uri(uri.clone()),
-            // LocalUri and positional variants have no direct TocLocation equivalent;
-            // fall back to page 0 so the entry is still stored and navigable.
             Location::LocalUri(n, _) => TocLocation::Exact(*n),
             _ => TocLocation::Exact(0),
         };

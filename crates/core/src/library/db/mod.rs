@@ -11,7 +11,6 @@ use crate::metadata::{
     CroppingMargins, FileInfo, Info, ReaderInfo, ScrollMode, TextAlign, ZoomMode,
 };
 use anyhow::Error;
-use chrono::NaiveDateTime;
 use conversion::{
     extract_authors, info_to_book_row, reader_info_to_reading_state_row, rows_to_toc_entries,
 };
@@ -20,55 +19,6 @@ use sqlx::sqlite::SqlitePool;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use std::str::FromStr;
-
-#[cfg_attr(feature = "otel", tracing::instrument(skip(conn, entries), fields(book_fingerprint = %book_fingerprint, parent_id = ?parent_id)))]
-async fn insert_toc_entries(
-    conn: &mut sqlx::SqliteConnection,
-    book_fingerprint: &str,
-    entries: &[SimpleTocEntry],
-    parent_id: Option<Uuid7>,
-) -> Result<(), Error> {
-    for (position, entry) in entries.iter().enumerate() {
-        let (title, location, children) = match entry {
-            SimpleTocEntry::Leaf(t, loc) => (t.as_str(), loc, [].as_slice()),
-            SimpleTocEntry::Container(t, loc, ch) => (t.as_str(), loc, ch.as_slice()),
-        };
-
-        let (location_kind, location_exact, location_uri) = conversion::encode_location(location);
-        let pos = position as i64;
-        let id = Uuid7::now();
-        let parent_id_str = parent_id.as_ref().map(|p| p.to_string());
-
-        sqlx::query!(
-            r#"
-            INSERT INTO toc_entries (id, book_fingerprint, parent_id, position, title, location_kind, location_exact, location_uri)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            "#,
-            id,
-            book_fingerprint,
-            parent_id_str,
-            pos,
-            title,
-            location_kind,
-            location_exact,
-            location_uri,
-        )
-        .execute(&mut *conn)
-        .await?;
-
-        if !children.is_empty() {
-            Box::pin(insert_toc_entries(
-                conn,
-                book_fingerprint,
-                children,
-                Some(id),
-            ))
-            .await?;
-        }
-    }
-
-    Ok(())
-}
 
 #[derive(Clone)]
 pub struct Db {
@@ -244,6 +194,56 @@ impl Db {
             .collect()
     }
 
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(conn, entries), fields(book_fingerprint = %book_fingerprint, parent_id = ?parent_id)))]
+    async fn insert_toc_entries(
+        conn: &mut sqlx::SqliteConnection,
+        book_fingerprint: &str,
+        entries: &[SimpleTocEntry],
+        parent_id: Option<Uuid7>,
+    ) -> Result<(), Error> {
+        for (position, entry) in entries.iter().enumerate() {
+            let (title, location, children) = match entry {
+                SimpleTocEntry::Leaf(t, loc) => (t.as_str(), loc, [].as_slice()),
+                SimpleTocEntry::Container(t, loc, ch) => (t.as_str(), loc, ch.as_slice()),
+            };
+
+            let (location_kind, location_exact, location_uri) =
+                conversion::encode_location(location);
+            let pos = position as i64;
+            let id = Uuid7::now();
+            let parent_id_str = parent_id.as_ref().map(|p| p.to_string());
+
+            sqlx::query!(
+                r#"
+                INSERT INTO toc_entries (id, book_fingerprint, parent_id, position, title, location_kind, location_exact, location_uri)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                "#,
+                id,
+                book_fingerprint,
+                parent_id_str,
+                pos,
+                title,
+                location_kind,
+                location_exact,
+                location_uri,
+            )
+            .execute(&mut *conn)
+            .await?;
+
+            if !children.is_empty() {
+                Box::pin(Self::insert_toc_entries(
+                    conn,
+                    book_fingerprint,
+                    children,
+                    Some(id),
+                ))
+                .await?;
+            }
+        }
+
+        Ok(())
+    }
+
     #[inline]
     async fn fetch_toc_entries(
         pool: &SqlitePool,
@@ -271,8 +271,6 @@ impl Db {
 
     #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(library_id)))]
     pub fn get_all_books(&self, library_id: i64) -> Result<Vec<(Fp, Info)>, Error> {
-        use std::collections::{BTreeMap, BTreeSet};
-
         tracing::debug!(library_id, "fetching all books from database");
 
         RUNTIME.block_on(async {
@@ -293,31 +291,31 @@ impl Db {
                     file_path,
                     file_kind,
                     file_size,
-                    added_at     as "added_at: UnixTimestamp",
-                    opened       as "opened?: UnixTimestamp",
-                    current_page as "current_page?: i64",
-                    pages_count  as "pages_count?: i64",
-                    finished     as "finished?: i64",
-                    dithered    as "dithered?: i64",
-                    zoom_mode    as "zoom_mode?: String",
-                    scroll_mode  as "scroll_mode?: String",
-                    page_offset_x as "page_offset_x?: i64",
-                    page_offset_y as "page_offset_y?: i64",
-                    rotation     as "rotation?: i64",
+                    added_at              as "added_at: UnixTimestamp",
+                    opened                as "opened?: UnixTimestamp",
+                    current_page          as "current_page?: i64",
+                    pages_count           as "pages_count?: i64",
+                    finished              as "finished?: i64",
+                    dithered              as "dithered?: i64",
+                    zoom_mode             as "zoom_mode?: String",
+                    scroll_mode           as "scroll_mode?: String",
+                    page_offset_x         as "page_offset_x?: i64",
+                    page_offset_y         as "page_offset_y?: i64",
+                    rotation              as "rotation?: i64",
                     cropping_margins_json as "cropping_margins_json?: String",
-                    margin_width as "margin_width?: i64",
-                    screen_margin_width as "screen_margin_width?: i64",
-                    font_family  as "font_family?: String",
-                    font_size    as "font_size?: f64",
-                    text_align   as "text_align?: String",
-                    line_height  as "line_height?: f64",
-                    contrast_exponent as "contrast_exponent?: f64",
-                    contrast_gray as "contrast_gray?: f64",
-                    page_names_json as "page_names_json?: String",
-                    bookmarks_json as "bookmarks_json?: String",
-                    annotations_json as "annotations_json?: String",
-                    authors      as "authors?: String",
-                    categories   as "categories?: String"
+                    margin_width          as "margin_width?: i64",
+                    screen_margin_width   as "screen_margin_width?: i64",
+                    font_family           as "font_family?: String",
+                    font_size             as "font_size?: f64",
+                    text_align            as "text_align?: String",
+                    line_height           as "line_height?: f64",
+                    contrast_exponent     as "contrast_exponent?: f64",
+                    contrast_gray         as "contrast_gray?: f64",
+                    page_names_json       as "page_names_json?: String",
+                    bookmarks_json        as "bookmarks_json?: String",
+                    annotations_json      as "annotations_json?: String",
+                    authors               as "authors?: String",
+                    categories            as "categories?: String"
                 FROM library_books_full_info
                 WHERE library_id = ?
                 ORDER BY added_at DESC
@@ -332,22 +330,10 @@ impl Db {
             for row in book_rows {
                 let fp = Fp::from_str(&row.fingerprint)?;
 
-                let file = FileInfo {
-                    path: PathBuf::from(row.file_path),
-                    kind: row.file_kind,
-                    size: row.file_size as u64,
-                };
-
-                let added: NaiveDateTime = row.added_at.into();
-
-                let author_string = Self::extract_authors(row.authors);
-
-                let categories: BTreeSet<String> = Self::extract_categories(row.categories);
-
                 let mut info = Info {
                     title: row.title,
                     subtitle: row.subtitle,
-                    author: author_string,
+                    author: Self::extract_authors(row.authors),
                     year: row.year,
                     language: row.language,
                     publisher: row.publisher,
@@ -356,59 +342,43 @@ impl Db {
                     volume: row.volume,
                     number: row.number,
                     identifier: row.identifier,
-                    categories,
-                    file,
+                    categories: Self::extract_categories(row.categories),
+                    file: FileInfo {
+                        path: PathBuf::from(row.file_path),
+                        kind: row.file_kind,
+                        size: row.file_size as u64,
+                    },
                     reader: None,
                     reader_info: None,
                     toc: None,
-                    added,
+                    added: row.added_at.into(),
                 };
 
                 if let Some(opened_ts) = row.opened {
-                    let zoom_mode = Self::parse_zoom_mode(row.zoom_mode.as_ref());
-                    let scroll_mode = Self::parse_scroll_mode(row.scroll_mode.as_ref());
-                    let page_offset = Self::parse_page_offset(row.page_offset_x, row.page_offset_y);
-                    let rotation = row.rotation.map(|r| r as i8);
-                    let cropping_margins =
-                        Self::parse_cropping_margins(row.cropping_margins_json.as_ref());
-                    let margin_width = row.margin_width.map(|m| m as i32);
-                    let screen_margin_width = row.screen_margin_width.map(|m| m as i32);
-                    let font_family = row.font_family.clone();
-                    let font_size = row.font_size.map(|f| f as f32);
-                    let text_align = Self::parse_text_align(row.text_align.as_ref());
-                    let line_height = row.line_height.map(|l| l as f32);
-                    let contrast_exponent = row.contrast_exponent.map(|c| c as f32);
-                    let contrast_gray = row.contrast_gray.map(|c| c as f32);
-
-                    let page_names: BTreeMap<usize, String> =
-                        Self::parse_page_names(row.page_names_json.as_ref());
-                    let bookmarks: BTreeSet<usize> =
-                        Self::parse_bookmarks(row.bookmarks_json.as_ref());
-                    let annotations: Vec<crate::metadata::Annotation> =
-                        Self::parse_annotations(row.annotations_json.as_ref());
-
                     let reader_info = ReaderInfo {
                         opened: opened_ts.into(),
                         current_page: row.current_page.unwrap_or(0) as usize,
                         pages_count: row.pages_count.unwrap_or(0) as usize,
                         finished: row.finished.unwrap_or(0) == 1,
                         dithered: row.dithered.unwrap_or(0) == 1,
-                        zoom_mode,
-                        scroll_mode,
-                        page_offset,
-                        rotation,
-                        cropping_margins,
-                        margin_width,
-                        screen_margin_width,
-                        font_family,
-                        font_size,
-                        text_align,
-                        line_height,
-                        contrast_exponent,
-                        contrast_gray,
-                        page_names,
-                        bookmarks,
-                        annotations,
+                        zoom_mode: Self::parse_zoom_mode(row.zoom_mode.as_ref()),
+                        scroll_mode: Self::parse_scroll_mode(row.scroll_mode.as_ref()),
+                        page_offset: Self::parse_page_offset(row.page_offset_x, row.page_offset_y),
+                        rotation: row.rotation.map(|r| r as i8),
+                        cropping_margins: Self::parse_cropping_margins(
+                            row.cropping_margins_json.as_ref(),
+                        ),
+                        margin_width: row.margin_width.map(|m| m as i32),
+                        screen_margin_width: row.screen_margin_width.map(|m| m as i32),
+                        font_family: row.font_family.clone(),
+                        font_size: row.font_size.map(|f| f as f32),
+                        text_align: Self::parse_text_align(row.text_align.as_ref()),
+                        line_height: row.line_height.map(|l| l as f32),
+                        contrast_exponent: row.contrast_exponent.map(|c| c as f32),
+                        contrast_gray: row.contrast_gray.map(|c| c as f32),
+                        page_names: Self::parse_page_names(row.page_names_json.as_ref()),
+                        bookmarks: Self::parse_bookmarks(row.bookmarks_json.as_ref()),
+                        annotations: Self::parse_annotations(row.annotations_json.as_ref()),
                     };
                     info.reader = Some(reader_info.clone());
                     info.reader_info = Some(reader_info);
@@ -895,7 +865,7 @@ impl Db {
                 .execute(&mut *tx)
                 .await?;
 
-            insert_toc_entries(&mut tx, &fp_str, toc, None).await?;
+            Self::insert_toc_entries(&mut tx, &fp_str, toc, None).await?;
 
             tx.commit().await?;
 
@@ -1060,7 +1030,7 @@ impl Db {
                     sqlx::query!("DELETE FROM toc_entries WHERE book_fingerprint = ?", fp_str)
                         .execute(&mut *tx)
                         .await?;
-                    insert_toc_entries(&mut tx, &fp_str, toc, None).await?;
+                    Self::insert_toc_entries(&mut tx, &fp_str, toc, None).await?;
                 }
             }
 
@@ -1189,7 +1159,7 @@ impl Db {
                     sqlx::query!("DELETE FROM toc_entries WHERE book_fingerprint = ?", fp_str)
                         .execute(&mut *tx)
                         .await?;
-                    insert_toc_entries(&mut tx, &fp_str, toc, None).await?;
+                    Self::insert_toc_entries(&mut tx, &fp_str, toc, None).await?;
                 } else {
                     sqlx::query!("DELETE FROM toc_entries WHERE book_fingerprint = ?", fp_str)
                         .execute(&mut *tx)

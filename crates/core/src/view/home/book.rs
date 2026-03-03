@@ -51,14 +51,14 @@ impl Book {
 }
 
 impl View for Book {
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, hub, bus, rq, _context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, hub, bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
         hub: &Hub,
         bus: &mut Bus,
         rq: &mut RenderQueue,
-        _context: &mut Context,
+        context: &mut Context,
     ) -> bool {
         match *evt {
             Event::Gesture(GestureEvent::Tap(center)) if self.rect.includes(center) => {
@@ -76,7 +76,7 @@ impl View for Book {
             }
             Event::RefreshBookPreview(ref path) => {
                 if self.info.file.path == *path {
-                    self.preview = _context.library.thumbnail_preview(path);
+                    self.preview = context.library.thumbnail_preview(path);
                     rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
                     true
                 } else {

@@ -578,9 +578,8 @@ impl Library {
         Ok(())
     }
 
-    pub fn clean_up(&mut self) {
-        // Database mode: nothing to clean up (database handles consistency)
-    }
+    /// No-op for the database-backed library: the database maintains its own consistency.
+    pub fn clean_up(&mut self) {}
 
     pub fn sort(&mut self, sort_method: SortMethod, reverse_order: bool) {
         self.sort_method = sort_method;
@@ -715,9 +714,8 @@ impl Library {
         }
     }
 
-    pub fn flush(&mut self) {
-        // Database writes are immediate - this is a no-op
-    }
+    /// No-op: database writes are immediate and do not require an explicit flush.
+    pub fn flush(&mut self) {}
 
     pub fn is_empty(&self) -> Option<bool> {
         Some(self.books.is_empty())

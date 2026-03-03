@@ -7,7 +7,7 @@ use std::pin::Pin;
 use std::sync::Mutex;
 
 type MigrationFn =
-    for<'a> fn(&'a MigrationToken) -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send + 'a>>;
+    for<'a> fn(&'a SqlitePool) -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send + 'a>>;
 
 static REGISTRY: Lazy<Mutex<HashMap<&'static str, MigrationFn>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
@@ -30,7 +30,7 @@ static REGISTRY: Lazy<Mutex<HashMap<&'static str, MigrationFn>>> =
 ///
 /// * `$id` — Stable string literal identifying this migration in
 ///   `_cadmus_migrations`. Never change after deployment.
-/// * The `async fn` — Must accept `&MigrationToken` and return
+/// * The `async fn` — Must accept `&SqlitePool` and return
 ///   `Result<(), anyhow::Error>`.
 ///
 /// The generated inner module is named after `$name`, so `$name` must be
@@ -63,14 +63,13 @@ static REGISTRY: Lazy<Mutex<HashMap<&'static str, MigrationFn>>> =
 ///
 /// ```rust
 /// mod my_migrations {
-///     use cadmus_core::db::migrations::{MigrationToken, pool_from_token};
+///     use sqlx::SqlitePool;
 ///
 ///     cadmus_core::migration!(
 ///         /// Backfills metadata from legacy storage.
 ///         "v1_backfill_metadata",
-///         async fn backfill_metadata(token: &MigrationToken) {
-///             let _pool = pool_from_token(token);
-///             // sqlx::query!(...).execute(_pool).await?;
+///         async fn backfill_metadata(pool: &SqlitePool) {
+///             // sqlx::query!(...).execute(pool).await?;
 ///             Ok(())
 ///         }
 ///     );
@@ -78,21 +77,18 @@ static REGISTRY: Lazy<Mutex<HashMap<&'static str, MigrationFn>>> =
 /// ```
 #[macro_export]
 macro_rules! migration {
-    ($(#[$attr:meta])* $id:literal, async fn $name:ident($token:ident : &MigrationToken) $body:block) => {
-        $crate::migration!(@internal $(#[$attr])* $id, $name, $token, $body);
+    ($(#[$attr:meta])* $id:literal, async fn $name:ident($pool:ident : &$pool_ty:ty) $body:block) => {
+        $crate::migration!(@internal $(#[$attr])* $id, $name, $pool, $body);
     };
-    ($(#[$attr:meta])* $id:literal, async fn $name:ident($token:ident : &$token_ty:ty) $body:block) => {
-        $crate::migration!(@internal $(#[$attr])* $id, $name, $token, $body);
-    };
-    (@internal $(#[$attr:meta])* $id:literal, $name:ident, $token:ident, $body:block) => {
+    (@internal $(#[$attr:meta])* $id:literal, $name:ident, $pool:ident, $body:block) => {
         $(#[$attr])*
         #[doc = ""]
         #[doc = concat!("**Migration ID:** `", $id, "`")]
         #[doc = ""]
         #[doc = "To re-run this migration, delete its tracking row:"]
         #[doc = concat!("```sql\nDELETE FROM _cadmus_migrations WHERE id = '", $id, "';\n```")]
-        #[cfg_attr(feature = "otel", tracing::instrument(skip($token), fields(migration_id = $id)))]
-        async fn $name($token: &$crate::db::migrations::MigrationToken) -> ::std::result::Result<(), ::anyhow::Error> {
+        #[cfg_attr(feature = "otel", tracing::instrument(skip($pool), fields(migration_id = $id)))]
+        async fn $name($pool: &::sqlx::SqlitePool) -> ::std::result::Result<(), ::anyhow::Error> {
             $body
         }
 
@@ -112,7 +108,7 @@ macro_rules! migration {
             #[$crate::ctor::ctor]
             fn __register() {
                 fn __boxed(
-                    token: &$crate::db::migrations::MigrationToken,
+                    pool: &::sqlx::SqlitePool,
                 ) -> ::std::pin::Pin<
                     ::std::boxed::Box<
                         dyn ::std::future::Future<
@@ -121,7 +117,7 @@ macro_rules! migration {
                         + '_,
                     >,
                 > {
-                    ::std::boxed::Box::pin(super::$name(token))
+                    ::std::boxed::Box::pin(super::$name(pool))
                 }
                 $crate::db::migrations::register($id, __boxed);
             }
@@ -131,29 +127,6 @@ macro_rules! migration {
 
 #[cfg(feature = "test")]
 mod example;
-
-/// Opaque token granting access to the raw `SqlitePool` within a migration.
-///
-/// The private field prevents construction outside this module, ensuring only
-/// `MigrationRunner::run_all` can authorize pool access.
-pub struct MigrationToken {
-    pool: SqlitePool,
-}
-
-impl std::fmt::Debug for MigrationToken {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("MigrationToken").finish_non_exhaustive()
-    }
-}
-
-/// Extracts the `SqlitePool` from a `MigrationToken`.
-///
-/// Only callable from within a registered migration function. The token
-/// is constructed exclusively by `MigrationRunner::run_all`, which enforces
-/// that pool access never leaks outside the migration execution context.
-pub fn pool_from_token(token: &MigrationToken) -> &SqlitePool {
-    &token.pool
-}
 
 /// Registers a migration function under the given stable `id`.
 ///
@@ -219,11 +192,7 @@ impl MigrationRunner {
         for (id, migration_fn) in pending {
             tracing::info!(migration_id = id, "running migration");
 
-            let token = MigrationToken {
-                pool: self.pool.clone(),
-            };
-
-            let result = migration_fn(&token).await;
+            let result = migration_fn(&self.pool).await;
             let status = match &result {
                 Ok(_) => "success",
                 Err(_) => "failed",
