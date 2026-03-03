@@ -24,6 +24,7 @@ use walkdir::WalkDir;
 const METADATA_FILENAME: &str = ".metadata.json";
 const FAT32_EPOCH_FILENAME: &str = ".fat32-epoch";
 const READING_STATES_DIRNAME: &str = ".reading-states";
+#[cfg(not(feature = "test"))]
 const THUMBNAIL_PREVIEWS_DIRNAME: &str = ".thumbnail-previews";
 
 pub struct Library {
@@ -703,7 +704,6 @@ impl Library {
         match self.db.get_all_books(self.library_id) {
             Err(e) => {
                 error!(error = %e, "failed to reload books from database");
-                return;
             }
             Ok(books) => {
                 debug!(count = books.len(), "reloaded books from database");

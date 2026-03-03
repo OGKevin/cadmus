@@ -114,7 +114,7 @@ fn main() -> Result<(), Error> {
         .and_then(|n| n.to_str())
         .unwrap_or("Imported Library")
         .to_string();
-    let mut library = Library::new(&library_path, &database, &library_name)?;
+    let mut library = Library::new(library_path, &database, &library_name)?;
 
     if matches.opt_present("I") {
         library.import(&import_settings);
