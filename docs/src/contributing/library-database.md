@@ -145,16 +145,16 @@ the rest of the codebase call database methods without needing to be async.
 
 Key methods on `Db`:
 
-| Method                                                                                                 | Purpose                                              |
-| ------------------------------------------------------------------------------------------------------ | ---------------------------------------------------- |
-| <a href="/api/cadmus_core/library/db/struct.Db#method.register_library">`register_library`</a>         | Insert a new library row and return its id           |
-| <a href="/api/cadmus_core/library/db/struct.Db#method.get_library_by_path">`get_library_by_path`</a>   | Look up a library id by filesystem path              |
-| <a href="/api/cadmus_core/library/db/struct.Db#method.get_all_books">`get_all_books`</a>               | Fetch every book in a library via the full-info view |
-| <a href="/api/cadmus_core/library/db/struct.Db#method.insert_book">`insert_book`</a>                   | Write a new book and its authors/categories          |
-| <a href="/api/cadmus_core/library/db/struct.Db#method.upsert_reading_state">`upsert_reading_state`</a> | Save or update reading progress for a book           |
-| <a href="/api/cadmus_core/library/db/struct.Db#method.insert_toc_entries">`insert_toc_entries`</a>     | Bulk-write a book's table of contents                |
-| <a href="/api/cadmus_core/library/db/struct.Db#method.get_thumbnail">`get_thumbnail`</a>               | Retrieve the stored cover thumbnail BLOB             |
-| <a href="/api/cadmus_core/library/db/struct.Db#method.upsert_thumbnail">`upsert_thumbnail`</a>         | Save or replace a cover thumbnail                    |
+| Method                                                                                               | Purpose                                              |
+| ---------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| <a href="/api/cadmus_core/library/db/struct.Db#method.register_library">`register_library`</a>       | Insert a new library row and return its id           |
+| <a href="/api/cadmus_core/library/db/struct.Db#method.get_library_by_path">`get_library_by_path`</a> | Look up a library id by filesystem path              |
+| <a href="/api/cadmus_core/library/db/struct.Db#method.get_all_books">`get_all_books`</a>             | Fetch every book in a library via the full-info view |
+| <a href="/api/cadmus_core/library/db/struct.Db#method.insert_book">`insert_book`</a>                 | Write a new book and its authors/categories          |
+| <a href="/api/cadmus_core/library/db/struct.Db#method.save_reading_state">`save_reading_state`</a>   | Save or update reading progress for a book           |
+| <a href="/api/cadmus_core/library/db/struct.Db#method.save_toc">`save_toc`</a>                       | Bulk-write a book's table of contents                |
+| <a href="/api/cadmus_core/library/db/struct.Db#method.get_thumbnail">`get_thumbnail`</a>             | Retrieve the stored cover thumbnail BLOB             |
+| <a href="/api/cadmus_core/library/db/struct.Db#method.save_thumbnail">`save_thumbnail`</a>           | Save or replace a cover thumbnail                    |
 
 ## How a book scan flows into the database
 
@@ -179,12 +179,12 @@ sequenceDiagram
     end
 
     loop for each book with reading progress
-        Scanner->>Db: upsert_reading_state(fp, reader_info)
+        Scanner->>Db: save_reading_state(fp, reader_info)
         Db->>SQLite: INSERT OR REPLACE INTO reading_states
     end
 
     loop for each book with a TOC
-        Scanner->>Db: insert_toc_entries(fp, entries)
+        Scanner->>Db: save_toc(fp, entries)
         Db->>SQLite: INSERT INTO toc_entries
     end
 ```
