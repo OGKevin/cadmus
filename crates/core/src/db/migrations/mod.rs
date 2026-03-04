@@ -1,3 +1,4 @@
+use crate::db::types::UnixTimestamp;
 use anyhow::Error;
 use once_cell::sync::Lazy;
 use sqlx::SqlitePool;
@@ -198,7 +199,7 @@ impl MigrationRunner {
                 Err(_) => "failed",
             };
 
-            let executed_at = chrono::Utc::now().to_rfc3339();
+            let executed_at = UnixTimestamp::now();
 
             sqlx::query!(
                 "INSERT INTO _cadmus_migrations (id, executed_at, status) VALUES (?, ?, ?)
