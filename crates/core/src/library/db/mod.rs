@@ -688,28 +688,31 @@ impl Db {
 
         RUNTIME.block_on(async {
             let fp_str = fp.to_string();
+            let mut tx = self.pool.begin().await?;
 
             sqlx::query!(
                 r#"DELETE FROM library_books WHERE library_id = ? AND book_fingerprint = ?"#,
                 library_id,
                 fp_str
             )
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await?;
 
             let remaining: i64 = sqlx::query_scalar!(
                 r#"SELECT COUNT(*) FROM library_books WHERE book_fingerprint = ?"#,
                 fp_str
             )
-            .fetch_one(&self.pool)
+            .fetch_one(&mut *tx)
             .await?;
 
             if remaining == 0 {
                 tracing::debug!(fp = %fp, "book not in any library, deleting completely");
                 sqlx::query!(r#"DELETE FROM books WHERE fingerprint = ?"#, fp_str)
-                    .execute(&self.pool)
+                    .execute(&mut *tx)
                     .await?;
             }
+
+            tx.commit().await?;
 
             tracing::debug!(fp = %fp, library_id, "book delete complete");
             Ok(())
