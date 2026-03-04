@@ -310,6 +310,7 @@ fn main() -> Result<(), Error> {
     if context.settings.import.startup_trigger {
         context.batch_import();
     }
+    context.load_dictionaries();
     context.load_keyboard_layouts();
 
     let (tx, rx) = mpsc::channel();

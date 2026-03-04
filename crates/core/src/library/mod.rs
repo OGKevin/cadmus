@@ -677,7 +677,7 @@ impl Library {
                     info.reader = None;
                 }
 
-                if let Err(e) = self.db.delete_book(self.library_id, fp) {
+                if let Err(e) = self.db.delete_reading_state(fp) {
                     error!(fp = %fp, error = %e, "failed to delete reading state from database");
                 }
             }

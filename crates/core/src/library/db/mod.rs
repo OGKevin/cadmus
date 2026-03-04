@@ -664,6 +664,24 @@ impl Db {
         })
     }
 
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(fp = %fp)))]
+    pub fn delete_reading_state(&self, fp: Fp) -> Result<(), Error> {
+        tracing::debug!(fp = %fp, "deleting reading state from database");
+
+        RUNTIME.block_on(async {
+            let fp_str = fp.to_string();
+
+            sqlx::query!(
+                r#"DELETE FROM reading_states WHERE fingerprint = ?"#,
+                fp_str
+            )
+            .execute(&self.pool)
+            .await?;
+
+            Ok(())
+        })
+    }
+
     #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(fp = %fp, library_id)))]
     pub fn delete_book(&self, library_id: i64, fp: Fp) -> Result<(), Error> {
         tracing::debug!(fp = %fp, library_id, "deleting book from library");
@@ -918,11 +936,12 @@ impl Db {
 
                 sqlx::query!(
                     r#"
-                    INSERT OR IGNORE INTO library_books (library_id, book_fingerprint)
-                    VALUES (?, ?)
+                    INSERT OR IGNORE INTO library_books (library_id, book_fingerprint, added_to_library_at)
+                    VALUES (?, ?, ?)
                     "#,
                     library_id,
                     fp_str,
+                    book_row.added_at,
                 )
                 .execute(&mut *tx)
                 .await?;
