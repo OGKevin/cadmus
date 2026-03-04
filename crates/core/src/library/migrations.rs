@@ -23,9 +23,9 @@ use fxhash::FxBuildHasher;
 use indexmap::IndexMap;
 use sqlx::{Sqlite, Transaction};
 use std::collections::HashSet;
-use std::fs;
 use std::path::Path;
 use std::str::FromStr;
+use tokio::fs;
 use tracing::{error, info, warn};
 
 crate::migration!(
@@ -131,7 +131,7 @@ async fn import_library(
     };
 
     let metadata_path = library_path.join(METADATA_FILENAME);
-    let metadata = load_metadata(&metadata_path);
+    let metadata = load_metadata(&metadata_path).await;
 
     let (books_imported, states_from_metadata, metadata_fps) =
         import_metadata_entries(&mut tx, library_id, metadata).await;
@@ -147,8 +147,8 @@ async fn import_library(
 
     #[cfg(not(feature = "test"))]
     {
-        mark_library_imported(library_path);
-        delete_thumbnail_previews(library_path);
+        mark_library_imported(library_path).await;
+        delete_thumbnail_previews(library_path).await;
     }
 
     (books_imported, states_from_metadata + states_from_dir)
@@ -216,7 +216,7 @@ async fn import_orphan_reading_states(
         return 0;
     }
 
-    let dir_entries = match fs::read_dir(reading_states_dir) {
+    let mut dir_entries = match fs::read_dir(reading_states_dir).await {
         Ok(d) => d,
         Err(e) => {
             error!(path = ?reading_states_dir, error = %e, "failed to read .reading-states dir");
@@ -226,7 +226,16 @@ async fn import_orphan_reading_states(
 
     let mut states_imported: usize = 0;
 
-    for entry in dir_entries.flatten() {
+    loop {
+        let entry = match dir_entries.next_entry().await {
+            Ok(Some(e)) => e,
+            Ok(None) => break,
+            Err(e) => {
+                error!(path = ?reading_states_dir, error = %e, "failed to read directory entry");
+                break;
+            }
+        };
+
         let path = entry.path();
 
         let fp = match path
@@ -245,7 +254,7 @@ async fn import_orphan_reading_states(
             continue;
         }
 
-        let content = match fs::read_to_string(&path) {
+        let content = match fs::read_to_string(&path).await {
             Ok(c) => c,
             Err(e) => {
                 error!(fp = %fp, path = ?path, error = %e, "failed to read reading-state file");
@@ -322,12 +331,12 @@ async fn ensure_stub_book(
 /// equivalents so that subsequent runs of the migration skip this library.
 #[cfg(not(feature = "test"))]
 #[cfg_attr(feature = "otel", tracing::instrument(fields(path = ?library_path)))]
-fn mark_library_imported(library_path: &Path) {
+async fn mark_library_imported(library_path: &Path) {
     let metadata_src = library_path.join(METADATA_FILENAME);
     let metadata_dst = library_path.join(format!("{}.imported", METADATA_FILENAME));
 
     if metadata_src.exists() {
-        if let Err(e) = fs::rename(&metadata_src, &metadata_dst) {
+        if let Err(e) = fs::rename(&metadata_src, &metadata_dst).await {
             warn!(path = ?metadata_src, error = %e, "failed to rename .metadata.json after import");
         }
     }
@@ -336,7 +345,7 @@ fn mark_library_imported(library_path: &Path) {
     let states_dst = library_path.join(format!("{}.imported", READING_STATES_DIRNAME));
 
     if states_src.exists() {
-        if let Err(e) = fs::rename(&states_src, &states_dst) {
+        if let Err(e) = fs::rename(&states_src, &states_dst).await {
             warn!(path = ?states_src, error = %e, "failed to rename .reading-states after import");
         }
     }
@@ -348,25 +357,25 @@ fn mark_library_imported(library_path: &Path) {
 /// directory is no longer needed after migration.
 #[cfg(not(feature = "test"))]
 #[cfg_attr(feature = "otel", tracing::instrument(fields(path = ?library_path)))]
-fn delete_thumbnail_previews(library_path: &Path) {
+async fn delete_thumbnail_previews(library_path: &Path) {
     let previews_dir = library_path.join(THUMBNAIL_PREVIEWS_DIRNAME);
 
     if !previews_dir.exists() {
         return;
     }
 
-    if let Err(e) = fs::remove_dir_all(&previews_dir) {
+    if let Err(e) = fs::remove_dir_all(&previews_dir).await {
         warn!(path = ?previews_dir, error = %e, "failed to delete .thumbnail-previews after import");
     }
 }
 
 #[cfg_attr(feature = "otel", tracing::instrument(fields(path = ?path), ret(level = tracing::Level::TRACE)))]
-fn load_metadata(path: &Path) -> Option<IndexMap<Fp, Info, FxBuildHasher>> {
+async fn load_metadata(path: &Path) -> Option<IndexMap<Fp, Info, FxBuildHasher>> {
     if !path.exists() {
         return None;
     }
 
-    let content = match fs::read_to_string(path) {
+    let content = match fs::read_to_string(path).await {
         Ok(c) => c,
         Err(e) => {
             error!(path = ?path, error = %e, "failed to read .metadata.json");
