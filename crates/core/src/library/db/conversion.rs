@@ -289,6 +289,7 @@ mod tests {
     fn test_rows_to_toc_entries_flat() {
         let rows = vec![
             TocEntryRow {
+                book_fingerprint: "fp1".to_string(),
                 id: Uuid7::from_str("00000000-0000-7000-8000-000000000001").unwrap(),
                 parent_id: OptionalUuid7(None),
                 position: 0,
@@ -298,6 +299,7 @@ mod tests {
                 location_uri: None,
             },
             TocEntryRow {
+                book_fingerprint: "fp1".to_string(),
                 id: Uuid7::from_str("00000000-0000-7000-8000-000000000002").unwrap(),
                 parent_id: OptionalUuid7(None),
                 position: 1,
@@ -319,6 +321,7 @@ mod tests {
         // Parent at id=1, two children at id=2 and id=3
         let rows = vec![
             TocEntryRow {
+                book_fingerprint: "fp1".to_string(),
                 id: Uuid7::from_str("00000000-0000-7000-8000-000000000001").unwrap(),
                 parent_id: OptionalUuid7(None),
                 position: 0,
@@ -328,6 +331,7 @@ mod tests {
                 location_uri: None,
             },
             TocEntryRow {
+                book_fingerprint: "fp1".to_string(),
                 id: Uuid7::from_str("00000000-0000-7000-8000-000000000002").unwrap(),
                 parent_id: OptionalUuid7(Some(
                     Uuid7::from_str("00000000-0000-7000-8000-000000000001").unwrap(),
@@ -339,6 +343,7 @@ mod tests {
                 location_uri: None,
             },
             TocEntryRow {
+                book_fingerprint: "fp1".to_string(),
                 id: Uuid7::from_str("00000000-0000-7000-8000-000000000003").unwrap(),
                 parent_id: OptionalUuid7(Some(
                     Uuid7::from_str("00000000-0000-7000-8000-000000000001").unwrap(),

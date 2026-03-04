@@ -2,7 +2,7 @@ pub mod conversion;
 pub mod models;
 
 use crate::db::runtime::RUNTIME;
-use crate::db::types::{UnixTimestamp, Uuid7};
+use crate::db::types::{OptionalUuid7, UnixTimestamp, Uuid7};
 use crate::db::Database;
 use crate::document::SimpleTocEntry;
 use crate::geom::Point;
@@ -16,7 +16,7 @@ use conversion::{
 };
 use models::TocEntryRow;
 use sqlx::sqlite::SqlitePool;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::PathBuf;
 use std::str::FromStr;
 
@@ -244,29 +244,41 @@ impl Db {
         Ok(())
     }
 
-    #[inline]
-    async fn fetch_toc_entries(
+    async fn fetch_all_toc_entries(
         pool: &SqlitePool,
-        book_fingerprint: &str,
-    ) -> Result<Option<Vec<SimpleTocEntry>>, Error> {
+        library_id: i64,
+    ) -> Result<HashMap<String, Vec<TocEntryRow>>, Error> {
         let toc_rows: Vec<TocEntryRow> = sqlx::query_as!(
             TocEntryRow,
             r#"
-            SELECT id, parent_id, position, title, location_kind, location_exact, location_uri
-            FROM toc_entries
-            WHERE book_fingerprint = ?
-            ORDER BY id ASC
+            SELECT
+                te.book_fingerprint,
+                te.id                as "id: Uuid7",
+                te.parent_id         as "parent_id!: OptionalUuid7",
+                te.position,
+                te.title,
+                te.location_kind,
+                te.location_exact,
+                te.location_uri
+            FROM toc_entries te
+            INNER JOIN library_books lb ON lb.book_fingerprint = te.book_fingerprint
+            WHERE lb.library_id = ?
+            ORDER BY te.book_fingerprint, te.id ASC
             "#,
-            book_fingerprint
+            library_id
         )
         .fetch_all(pool)
         .await?;
 
-        if toc_rows.is_empty() {
-            return Ok(None);
+        let mut map: HashMap<String, Vec<TocEntryRow>> = HashMap::new();
+
+        for row in toc_rows {
+            map.entry(row.book_fingerprint.clone())
+                .or_default()
+                .push(row);
         }
 
-        rows_to_toc_entries(&toc_rows).map(Some)
+        Ok(map)
     }
 
     #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(library_id)))]
@@ -325,10 +337,18 @@ impl Db {
             .fetch_all(&self.pool)
             .await?;
 
+            let mut toc_by_fingerprint =
+                Self::fetch_all_toc_entries(&self.pool, library_id).await?;
+
             let mut result = Vec::new();
 
             for row in book_rows {
                 let fp = Fp::from_str(&row.fingerprint)?;
+
+                let toc = toc_by_fingerprint
+                    .remove(&row.fingerprint)
+                    .map(|rows| rows_to_toc_entries(&rows))
+                    .transpose()?;
 
                 let mut info = Info {
                     title: row.title,
@@ -350,7 +370,7 @@ impl Db {
                     },
                     reader: None,
                     reader_info: None,
-                    toc: None,
+                    toc,
                     added: row.added_at.into(),
                 };
 
@@ -382,10 +402,6 @@ impl Db {
                     };
                     info.reader = Some(reader_info.clone());
                     info.reader_info = Some(reader_info);
-                }
-
-                if let Ok(Some(toc)) = Self::fetch_toc_entries(&self.pool, &row.fingerprint).await {
-                    info.toc = Some(toc);
                 }
 
                 result.push((fp, info));

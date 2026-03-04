@@ -52,6 +52,7 @@ pub struct ReadingStateRow {
 /// Database row for the toc_entries table
 #[derive(Debug, Clone, FromRow)]
 pub struct TocEntryRow {
+    pub book_fingerprint: String,
     pub id: Uuid7,
     pub parent_id: OptionalUuid7,
     pub position: i64,
