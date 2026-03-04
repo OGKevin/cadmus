@@ -15,11 +15,11 @@ Cadmus has two distinct migration pipelines:
 ```mermaid
 flowchart TD
     ctor["#[ctor] runs at process start"]
-    registry["Global REGISTRY HashMap\n(migration id → async fn)"]
+    registry["Global REGISTRY HashMap<br>(migration id → async fn)"]
     startup["Database::migrate() called on startup"]
     schema["sqlx::migrate!() — applies .sql files"]
     runner["MigrationRunner::run_all()"]
-    table["_cadmus_migrations table\n(id, executed_at, status)"]
+    table["_cadmus_migrations table<br>(id, executed_at, status)"]
     pending["Filter: id NOT IN already-succeeded rows"]
     exec["Execute each pending migration in id order"]
     record["Record success or failure in _cadmus_migrations"]

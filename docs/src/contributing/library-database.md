@@ -145,16 +145,16 @@ the rest of the codebase call database methods without needing to be async.
 
 Key methods on `Db`:
 
-| Method                 | Purpose                                              |
-| ---------------------- | ---------------------------------------------------- |
-| `register_library`     | Insert a new library row and return its id           |
-| `get_library_by_path`  | Look up a library id by filesystem path              |
-| `get_all_books`        | Fetch every book in a library via the full-info view |
-| `insert_book`          | Write a new book and its authors/categories          |
-| `upsert_reading_state` | Save or update reading progress for a book           |
-| `insert_toc_entries`   | Bulk-write a book's table of contents                |
-| `get_thumbnail`        | Retrieve the stored cover thumbnail BLOB             |
-| `upsert_thumbnail`     | Save or replace a cover thumbnail                    |
+| Method                                                                                                 | Purpose                                              |
+| ------------------------------------------------------------------------------------------------------ | ---------------------------------------------------- |
+| <a href="/api/cadmus_core/library/db/struct.Db#method.register_library">`register_library`</a>         | Insert a new library row and return its id           |
+| <a href="/api/cadmus_core/library/db/struct.Db#method.get_library_by_path">`get_library_by_path`</a>   | Look up a library id by filesystem path              |
+| <a href="/api/cadmus_core/library/db/struct.Db#method.get_all_books">`get_all_books`</a>               | Fetch every book in a library via the full-info view |
+| <a href="/api/cadmus_core/library/db/struct.Db#method.insert_book">`insert_book`</a>                   | Write a new book and its authors/categories          |
+| <a href="/api/cadmus_core/library/db/struct.Db#method.upsert_reading_state">`upsert_reading_state`</a> | Save or update reading progress for a book           |
+| <a href="/api/cadmus_core/library/db/struct.Db#method.insert_toc_entries">`insert_toc_entries`</a>     | Bulk-write a book's table of contents                |
+| <a href="/api/cadmus_core/library/db/struct.Db#method.get_thumbnail">`get_thumbnail`</a>               | Retrieve the stored cover thumbnail BLOB             |
+| <a href="/api/cadmus_core/library/db/struct.Db#method.upsert_thumbnail">`upsert_thumbnail`</a>         | Save or replace a cover thumbnail                    |
 
 ## How a book scan flows into the database
 
