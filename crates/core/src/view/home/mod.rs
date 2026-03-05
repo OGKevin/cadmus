@@ -1771,6 +1771,16 @@ impl Home {
         }
 
         let home = context.library.home.clone();
+
+        if context.settings.home.navigation_bar {
+            let nav_bar = self.children[self.shelf_index - 2]
+                .as_mut()
+                .downcast_mut::<StackNavigationBar<DirectoryNavigationProvider>>()
+                .unwrap();
+            nav_bar.provider_mut().set_root(home.clone());
+            nav_bar.clear();
+        }
+
         self.select_directory(&home, hub, rq, context);
     }
 

@@ -313,6 +313,11 @@ impl<P: NavigationProvider + 'static> StackNavigationBar<P> {
         &self.selected
     }
 
+    /// Returns a mutable reference to the navigation provider.
+    pub fn provider_mut(&mut self) -> &mut P {
+        &mut self.provider
+    }
+
     /// Updates the selected level and rebuilds the navigation bar hierarchy.
     ///
     /// This method reuses existing bars when navigating to related

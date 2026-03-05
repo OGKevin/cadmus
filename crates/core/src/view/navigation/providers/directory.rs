@@ -92,6 +92,11 @@ impl DirectoryNavigationProvider {
         }
     }
 
+    /// Updates the root directory for this provider.
+    pub fn set_root(&mut self, root: PathBuf) {
+        self.root = root;
+    }
+
     /// Lists directories using the configured source.
     #[inline]
     fn list_directories(&self, path: &Path, context: &Context) -> BTreeSet<PathBuf> {
