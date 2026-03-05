@@ -6,6 +6,8 @@ use crate::context::Context;
 pub enum Category {
     /// General device settings (auto-suspend, keyboard layout, etc.)
     General,
+    /// Reader behavior settings (finished action, etc.)
+    Reader,
     /// Library management settings
     Libraries,
     /// Intermission screen display settings
@@ -17,6 +19,7 @@ impl Category {
     pub fn label(&self) -> String {
         match self {
             Category::General => "General".to_string(),
+            Category::Reader => "Reader".to_string(),
             Category::Libraries => "Libraries".to_string(),
             Category::Intermissions => "Intermission Screens".to_string(),
         }
@@ -34,6 +37,7 @@ impl Category {
                 RowKind::SleepCover,
                 RowKind::SettingsRetention,
             ],
+            Category::Reader => vec![RowKind::FinishedAction],
             Category::Libraries => (0..context.settings.libraries.len())
                 .map(RowKind::Library)
                 .collect(),
@@ -49,6 +53,7 @@ impl Category {
     pub fn all() -> Vec<Category> {
         vec![
             Category::General,
+            Category::Reader,
             Category::Libraries,
             Category::Intermissions,
         ]

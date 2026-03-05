@@ -4,7 +4,7 @@ use crate::device::CURRENT_DEVICE;
 use crate::framebuffer::{Framebuffer, UpdateMode};
 use crate::geom::{halves, Rectangle};
 use crate::gesture::GestureEvent;
-use crate::settings::{ButtonScheme, LibrarySettings, Settings};
+use crate::settings::{ButtonScheme, FinishedAction, LibrarySettings, Settings};
 use crate::unit::scale_by_dpi;
 use crate::view::common::locate_by_id;
 use crate::view::filler::Filler;
@@ -540,6 +540,19 @@ impl CategoryEditor {
     }
 
     #[inline]
+    fn handle_set_finished_action(
+        &mut self,
+        action: FinishedAction,
+        rq: &mut RenderQueue,
+        context: &mut Context,
+    ) -> bool {
+        context.settings.reader.finished = action;
+        self.refresh_setting_values(context, rq);
+        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+        true
+    }
+
+    #[inline]
     fn handle_delete_library(
         &mut self,
         index: usize,
@@ -935,6 +948,9 @@ impl View for CategoryEditor {
                 }
                 EntryId::SetButtonScheme(button_scheme) => {
                     self.handle_set_button_scheme(button_scheme, evt, hub, bus, rq, context)
+                }
+                EntryId::SetFinishedAction(action) => {
+                    self.handle_set_finished_action(*action, rq, context)
                 }
                 EntryId::DeleteLibrary(index) => self.handle_delete_library(*index, rq, context),
                 EntryId::SetIntermission(kind, display) => {

@@ -82,6 +82,7 @@ path = "/mnt/onboard/.kobo/dropbox"
 [[libraries]]
 name = "KePub"
 path = "/mnt/onboard/.kobo/kepub"
+# finished = "go-to-next"  # Optional: overrides reader.finished for this library
 
 # Defines the images displayed when entering an intermission.
 # Possible values: "logo:", "cover:", "/path/to/image/file".
@@ -105,7 +106,7 @@ max-trash-size = 33_554_432
 
 [reader]
 # How to react when a book is finished.
-# Possible values: "notify", "close".
+# Possible values: "notify", "close", "go-to-next".
 finished = "close"
 # The action triggered when tapping the south-east corner.
 # Possible values: "go-to-page", "next-page".

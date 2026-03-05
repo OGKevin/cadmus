@@ -8,14 +8,13 @@ use crate::metadata::{SortMethod, TextAlign};
 use crate::unit::mm_to_px;
 use fxhash::FxHashSet;
 
+pub use self::preset::{guess_frontlight, LightPreset};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::env;
 use std::fmt::{self, Debug};
 use std::ops::{Index, IndexMut};
 use std::path::PathBuf;
-
-pub use self::preset::{guess_frontlight, LightPreset};
 
 pub const SETTINGS_PATH: &str = "Settings.toml";
 pub const DEFAULT_FONT_PATH: &str = "/mnt/onboard/fonts";
@@ -206,6 +205,8 @@ pub struct LibrarySettings {
     pub thumbnail_previews: bool,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub hooks: Vec<Hook>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub finished: Option<FinishedAction>,
 }
 
 impl Default for LibrarySettings {
@@ -220,6 +221,7 @@ impl Default for LibrarySettings {
             second_column: SecondColumn::Progress,
             thumbnail_previews: true,
             hooks: Vec::new(),
+            finished: None,
         }
     }
 }
@@ -449,11 +451,22 @@ pub struct LoggingSettings {
 #[serde(default, rename_all = "kebab-case")]
 pub struct OtaSettings {}
 
-#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum FinishedAction {
     Notify,
     Close,
+    GoToNext,
+}
+
+impl fmt::Display for FinishedAction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        match self {
+            FinishedAction::Notify => write!(f, "Notify"),
+            FinishedAction::Close => write!(f, "Close"),
+            FinishedAction::GoToNext => write!(f, "Go to Next"),
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]

@@ -1091,7 +1091,12 @@ impl Reader {
                     let action = if self.ephemeral {
                         FinishedAction::Notify
                     } else {
-                        context.settings.reader.finished
+                        context
+                            .settings
+                            .libraries
+                            .get(context.settings.selected_library)
+                            .and_then(|lib| lib.finished)
+                            .unwrap_or(context.settings.reader.finished)
                     };
                     match action {
                         FinishedAction::Notify => {
@@ -1108,6 +1113,27 @@ impl Reader {
                         FinishedAction::Close => {
                             self.quit(context);
                             hub.send(Event::Back).ok();
+                        }
+                        FinishedAction::GoToNext => {
+                            let current_path = self.info.file.path.clone();
+                            let books: Vec<crate::metadata::Info> =
+                                context.library.books.values().cloned().collect();
+                            let next = books
+                                .iter()
+                                .position(|b| b.file.path == current_path)
+                                .and_then(|i| books.get(i + 1))
+                                .cloned();
+
+                            self.quit(context);
+
+                            match next {
+                                Some(next_info) => {
+                                    hub.send(Event::Open(Box::new(next_info))).ok();
+                                }
+                                None => {
+                                    hub.send(Event::Back).ok();
+                                }
+                            }
                         }
                     }
                 }

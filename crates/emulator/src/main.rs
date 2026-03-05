@@ -530,8 +530,12 @@ fn main() -> Result<(), Error> {
                             &mut rq,
                             &mut context,
                         );
-                        history.push(view as Box<dyn View>);
-                        view = next_view;
+                        if view.is::<Reader>() {
+                            view = next_view;
+                        } else {
+                            history.push(view as Box<dyn View>);
+                            view = next_view;
+                        }
                     } else {
                         if context.display.rotation != rotation {
                             if let Ok(dims) = context.fb.set_rotation(rotation) {

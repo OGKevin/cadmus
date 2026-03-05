@@ -83,6 +83,27 @@ Defines how the back and forward buttons are mapped to page forward and page bac
 button-scheme = "natural"
 ```
 
+## Reader
+
+Settings that control the reading experience.
+
+### `reader.finished`
+
+✏️
+
+What to do when you finish reading a book.
+
+Possible values:
+
+- `"notify"` (show a notification)
+- `"close"` (close the book and go back)
+- `"go-to-next"` (open the next book in the library).
+
+```toml
+[reader]
+finished = "close"
+```
+
 ## Libraries
 
 ✏️
@@ -115,6 +136,27 @@ Directory path containing documents.
 Library indexing mode.
 
 - Possible values: `"database"`, `"filesystem"`.
+
+### `libraries.finished`
+
+✏️
+
+Override the `reader.finished` setting for this specific library.
+When set, this takes precedence over the global reader setting.
+
+Possible values:
+
+- `"notify"`
+- `"close"`
+- `"go-to-next"`.
+- Leave unset to inherit the global `reader.finished` setting.
+
+```toml
+[[libraries]]
+name = "KePub"
+path = "/mnt/onboard/.kobo/kepub"
+finished = "go-to-next"
+```
 
 ## Intermissions
 

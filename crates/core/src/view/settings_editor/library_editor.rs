@@ -8,7 +8,7 @@ use crate::font::Fonts;
 use crate::framebuffer::{Framebuffer, UpdateMode};
 use crate::geom::{halves, Rectangle};
 use crate::gesture::GestureEvent;
-use crate::settings::{LibrarySettings, Settings};
+use crate::settings::{FinishedAction, LibrarySettings, Settings};
 use crate::unit::scale_by_dpi;
 use crate::view::common::locate_by_id;
 use crate::view::file_chooser::{FileChooser, SelectionMode};
@@ -164,6 +164,18 @@ impl LibraryEditor {
                 settings,
                 fonts,
             ));
+            current_y += row_height;
+        }
+
+        if current_y + row_height <= content_end_y {
+            let finished_row_rect =
+                rect![rect.min.x, current_y, rect.max.x, current_y + row_height];
+            children.push(Self::build_finished_action_row(
+                finished_row_rect,
+                library_index,
+                settings,
+                fonts,
+            ));
         }
 
         children
@@ -192,6 +204,21 @@ impl LibraryEditor {
     ) -> Box<dyn View> {
         Box::new(SettingRow::new(
             RowKind::LibraryPath(library_index),
+            rect,
+            settings,
+            fonts,
+        )) as Box<dyn View>
+    }
+
+    #[inline]
+    fn build_finished_action_row(
+        rect: Rectangle,
+        library_index: usize,
+        settings: &Settings,
+        fonts: &mut crate::font::Fonts,
+    ) -> Box<dyn View> {
+        Box::new(SettingRow::new(
+            RowKind::LibraryFinishedAction(library_index),
             rect,
             settings,
             fonts,
@@ -366,6 +393,37 @@ impl LibraryEditor {
     }
 
     #[inline]
+    fn handle_set_library_finished_action(
+        &mut self,
+        index: usize,
+        action: FinishedAction,
+        bus: &mut Bus,
+    ) -> bool {
+        if index != self.library_index {
+            return false;
+        }
+        self.library.finished = Some(action);
+        bus.push_back(Event::Settings(SettingsEvent::UpdateValue {
+            kind: ValueKind::LibraryFinishedAction(self.library_index),
+            value: action.to_string(),
+        }));
+        true
+    }
+
+    #[inline]
+    fn handle_clear_library_finished_action(&mut self, index: usize, bus: &mut Bus) -> bool {
+        if index != self.library_index {
+            return false;
+        }
+        self.library.finished = None;
+        bus.push_back(Event::Settings(SettingsEvent::UpdateValue {
+            kind: ValueKind::LibraryFinishedAction(self.library_index),
+            value: "Inherit".to_string(),
+        }));
+        true
+    }
+
+    #[inline]
     fn handle_file_chooser_closed_event(
         &mut self,
         path: &Option<std::path::PathBuf>,
@@ -466,6 +524,12 @@ impl View for LibraryEditor {
             }
             Event::Select(EntryId::EditLibraryPath) => {
                 self.handle_edit_path_event(hub, rq, context)
+            }
+            Event::Select(EntryId::SetLibraryFinishedAction(index, action)) => {
+                self.handle_set_library_finished_action(index, action, bus)
+            }
+            Event::Select(EntryId::ClearLibraryFinishedAction(index)) => {
+                self.handle_clear_library_finished_action(index, bus)
             }
             Event::Submit(ViewId::LibraryRenameInput, ref text) => {
                 self.handle_submit_name_event(text, bus)

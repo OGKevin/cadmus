@@ -4,7 +4,7 @@ use super::super::{Align, Bus, Event, Hub, Id, RenderQueue, View, ID_FEEDER};
 use crate::context::Context;
 use crate::framebuffer::Framebuffer;
 use crate::geom::Rectangle;
-use crate::settings::{ButtonScheme, IntermKind, Settings};
+use crate::settings::{ButtonScheme, FinishedAction, IntermKind, Settings};
 use crate::view::toggle::Toggle;
 use crate::view::{EntryId, ToggleEvent};
 use anyhow::Error;
@@ -52,12 +52,16 @@ pub enum Kind {
     /// Generic toggle setting
     Toggle(ToggleSettings),
 
+    /// Global finished action setting (what to do when a book is finished)
+    FinishedAction,
     /// Library info display for the library at the given index
     LibraryInfo(usize),
     /// Library name setting for the library at the given index
     LibraryName(usize),
     /// Library path setting for the library at the given index
     LibraryPath(usize),
+    /// Per-library finished action override for the library at the given index
+    LibraryFinishedAction(usize),
     /// Intermission display setting for suspend screen
     IntermissionSuspend,
     /// Intermission display setting for power-off screen
@@ -200,9 +204,13 @@ impl SettingValue {
             Kind::KeyboardLayout => Self::fetch_keyboard_layout_data(settings),
             Kind::AutoSuspend => Self::fetch_auto_suspend_data(settings),
             Kind::AutoPowerOff => Self::fetch_auto_power_off_data(settings),
+            Kind::FinishedAction => Self::fetch_finished_action_data(settings),
             Kind::LibraryInfo(index) => Self::fetch_library_info_data(*index, settings),
             Kind::LibraryName(index) => Self::fetch_library_name_data(*index, settings),
             Kind::LibraryPath(index) => Self::fetch_library_path_data(*index, settings),
+            Kind::LibraryFinishedAction(index) => {
+                Self::fetch_library_finished_action_data(*index, settings)
+            }
             Kind::IntermissionSuspend => {
                 Self::fetch_intermission_data(crate::settings::IntermKind::Suspend, settings)
             }
@@ -299,6 +307,70 @@ impl SettingValue {
         let value = settings.settings_retention.to_string();
 
         (value, vec![], None)
+    }
+
+    #[inline]
+    fn fetch_finished_action_data(settings: &Settings) -> (String, Vec<EntryKind>, Option<bool>) {
+        let current = settings.reader.finished;
+
+        let value = current.to_string();
+
+        let entries = vec![
+            EntryKind::RadioButton(
+                FinishedAction::Notify.to_string(),
+                EntryId::SetFinishedAction(FinishedAction::Notify),
+                current == FinishedAction::Notify,
+            ),
+            EntryKind::RadioButton(
+                FinishedAction::Close.to_string(),
+                EntryId::SetFinishedAction(FinishedAction::Close),
+                current == FinishedAction::Close,
+            ),
+            EntryKind::RadioButton(
+                FinishedAction::GoToNext.to_string(),
+                EntryId::SetFinishedAction(FinishedAction::GoToNext),
+                current == FinishedAction::GoToNext,
+            ),
+        ];
+
+        (value, entries, None)
+    }
+
+    #[inline]
+    fn fetch_library_finished_action_data(
+        index: usize,
+        settings: &Settings,
+    ) -> (String, Vec<EntryKind>, Option<bool>) {
+        let current = settings.libraries.get(index).and_then(|lib| lib.finished);
+
+        let value = current
+            .map(|action| action.to_string())
+            .unwrap_or_else(|| "Inherit".to_string());
+
+        let entries = vec![
+            EntryKind::RadioButton(
+                "Inherit".to_string(),
+                EntryId::ClearLibraryFinishedAction(index),
+                current.is_none(),
+            ),
+            EntryKind::RadioButton(
+                FinishedAction::Notify.to_string(),
+                EntryId::SetLibraryFinishedAction(index, FinishedAction::Notify),
+                current == Some(FinishedAction::Notify),
+            ),
+            EntryKind::RadioButton(
+                FinishedAction::Close.to_string(),
+                EntryId::SetLibraryFinishedAction(index, FinishedAction::Close),
+                current == Some(FinishedAction::Close),
+            ),
+            EntryKind::RadioButton(
+                FinishedAction::GoToNext.to_string(),
+                EntryId::SetLibraryFinishedAction(index, FinishedAction::GoToNext),
+                current == Some(FinishedAction::GoToNext),
+            ),
+        ];
+
+        (value, entries, None)
     }
 
     fn fetch_library_info_data(

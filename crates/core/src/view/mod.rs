@@ -70,7 +70,9 @@ use crate::input::{DeviceEvent, FingerStatus};
 use crate::metadata::{
     Info, Margin, PageScheme, ScrollMode, SimpleStatus, SortMethod, TextAlign, ZoomMode,
 };
-use crate::settings::{self, ButtonScheme, FirstColumn, RotationLock, SecondColumn};
+use crate::settings::{
+    self, ButtonScheme, FinishedAction, FirstColumn, RotationLock, SecondColumn,
+};
 use crate::view::ota::OtaEntryId;
 use downcast_rs::{impl_downcast, Downcast};
 use fxhash::FxHashMap;
@@ -725,6 +727,9 @@ pub enum EntryId {
     EditLibraryName,
     EditLibraryPath,
     DeleteLibrary(usize),
+    SetFinishedAction(FinishedAction),
+    SetLibraryFinishedAction(usize, FinishedAction),
+    ClearLibraryFinishedAction(usize),
     SetIntermission(settings::IntermKind, settings::IntermissionDisplay),
     EditIntermissionImage(settings::IntermKind),
     ToggleShowHidden,

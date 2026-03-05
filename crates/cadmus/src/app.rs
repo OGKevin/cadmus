@@ -1094,13 +1094,17 @@ pub fn run() -> Result<(), Error> {
                         &mut rq,
                         &mut context,
                     );
-                    history.push(HistoryItem {
-                        view,
-                        rotation,
-                        monochrome: context.fb.monochrome(),
-                        dithered,
-                    });
-                    view = next_view;
+                    if view.is::<Reader>() {
+                        view = next_view;
+                    } else {
+                        history.push(HistoryItem {
+                            view,
+                            rotation,
+                            monochrome: context.fb.monochrome(),
+                            dithered,
+                        });
+                        view = next_view;
+                    }
                 } else {
                     if context.display.rotation != rotation {
                         if let Ok(dims) = context.fb.set_rotation(rotation) {
