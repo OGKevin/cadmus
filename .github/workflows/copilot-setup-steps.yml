@@ -92,6 +92,9 @@ jobs:
       - name: Install mdbook-mermaid assets
         run: mdbook-mermaid install docs
 
+      - name: Build documentation
+        run: cargo xtask docs --mdbook-only
+
       - name: Download thirdparty dependencies
         run: cargo xtask build-kobo --slow --download-only
 
