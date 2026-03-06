@@ -12,8 +12,11 @@ use zip::ZipArchive;
 #[cfg(all(not(test), not(feature = "emulator")))]
 use crate::settings::INTERNAL_CARD_ROOT;
 
-/// Size of each download chunk in bytes (10 MB)
-const CHUNK_SIZE: usize = 10 * 1024 * 1024;
+const MIN_CHUNK_SIZE: usize = 256 * 1024;
+const MAX_CHUNK_SIZE: usize = 10 * 1024 * 1024;
+const INITIAL_CHUNK_SIZE: usize = 1024 * 1024;
+/// Target 80% of the HTTP timeout to leave headroom for throughput variance.
+const TARGET_CHUNK_SECS: f64 = crate::github::CLIENT_TIMEOUT_SECS as f64 * 0.8;
 
 /// Maximum number of retry attempts for failed chunks
 const MAX_RETRIES: usize = 3;
@@ -750,23 +753,44 @@ impl OtaClient {
         let mut file = File::create(download_path)?;
 
         let mut downloaded = 0u64;
+        let mut chunk_size = INITIAL_CHUNK_SIZE;
 
         tracing::debug!(
-            chunk_size_mb = CHUNK_SIZE / (1024 * 1024),
+            initial_chunk_size = INITIAL_CHUNK_SIZE,
             "Starting chunked download"
         );
 
         while downloaded < total_size {
             let chunk_start = downloaded;
-            let chunk_end = std::cmp::min(downloaded + CHUNK_SIZE as u64 - 1, total_size - 1);
+            let chunk_end = std::cmp::min(downloaded + chunk_size as u64 - 1, total_size - 1);
 
-            tracing::debug!(chunk_start, chunk_end, total_size, "Downloading chunk");
+            tracing::debug!(
+                chunk_start,
+                chunk_end,
+                chunk_size,
+                total_size,
+                "Downloading chunk"
+            );
 
+            let start = std::time::Instant::now();
             let chunk_data =
                 self.download_chunk_with_retries(url, chunk_start, chunk_end, use_auth)?;
+            let elapsed_secs = start.elapsed().as_secs_f64();
 
             file.write_all(&chunk_data)?;
             downloaded += chunk_data.len() as u64;
+
+            if elapsed_secs > 0.0 {
+                let throughput = chunk_data.len() as f64 / elapsed_secs;
+                chunk_size = ((throughput * TARGET_CHUNK_SECS) as usize)
+                    .clamp(MIN_CHUNK_SIZE, MAX_CHUNK_SIZE);
+                tracing::debug!(
+                    elapsed_secs,
+                    throughput_bytes_per_sec = throughput as u64,
+                    next_chunk_size = chunk_size,
+                    "Adjusted chunk size"
+                );
+            }
 
             progress_callback(OtaProgress::DownloadingArtifact {
                 downloaded,

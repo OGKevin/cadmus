@@ -6,7 +6,7 @@ use rustls::RootCertStore;
 use secrecy::{ExposeSecret, SecretString};
 use std::time::Duration;
 
-const CHUNK_TIMEOUT_SECS: u64 = 30;
+pub const CLIENT_TIMEOUT_SECS: u64 = 30;
 
 /// GitHub OAuth App client ID, baked in at build time via `GH_OAUTH_CLIENT_ID` env var.
 ///
@@ -82,7 +82,7 @@ impl GithubClient {
         let client = Client::builder()
             .use_preconfigured_tls(tls_config)
             .user_agent("github.com/OGKevin/cadmus")
-            .timeout(Duration::from_secs(CHUNK_TIMEOUT_SECS))
+            .timeout(Duration::from_secs(CLIENT_TIMEOUT_SECS))
             .build()
             .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
 
