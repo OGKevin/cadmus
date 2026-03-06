@@ -36,7 +36,12 @@ sleep-cover = true
 
 ✏️
 
-Automatically enter shared mode when connected to a computer.
+Automatically enter shared mode when connected to a computer, skipping the
+"Share storage via USB?" prompt.
+
+> [!TIP]
+> Turn this on if you update Cadmus via USB often — you won't have to
+> confirm the sharing dialog each time you plug in.
 
 ```toml
 auto-share = false

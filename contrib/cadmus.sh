@@ -109,6 +109,7 @@ while true; do
 
 	if [ -f /tmp/restart ]; then
 		rm /tmp/restart
+		cd "$WORKDIR" || exit 1
 	else
 		break
 	fi

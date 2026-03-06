@@ -9,6 +9,7 @@ use crate::geom::Rectangle;
 use crate::metadata::{sort, BookQuery, SortMethod};
 use crate::settings::{IntermKind, IntermissionDisplay};
 use std::path::PathBuf;
+use tracing::warn;
 
 pub struct Intermission {
     id: Id,
@@ -102,15 +103,24 @@ impl View for Intermission {
 
                 font.render(fb, scheme[1], &plan, pt!(dx, dy));
 
-                let mut doc = open("icons/dodecahedron.svg").unwrap();
-                let (width, height) = doc.dims(0).unwrap();
-                let scale = (plan.width as f32 / width.max(height) as f32) / 4.0;
-                let (pixmap, _) = doc.pixmap(Location::Exact(0), scale, 1).unwrap();
-                let dx = (self.rect.width() as i32 - pixmap.width as i32) / 2;
-                let dy = dy + 2 * x_height;
-                let pt = self.rect.min + pt!(dx, dy);
-
-                fb.draw_blended_pixmap(&pixmap, pt, scheme[1]);
+                match open("icons/dodecahedron.svg") {
+                    None => warn!("failed to open icons/dodecahedron.svg"),
+                    Some(mut doc) => match doc.dims(0) {
+                        None => warn!("failed to read dimensions from dodecahedron.svg"),
+                        Some((width, height)) => {
+                            let scale = (plan.width as f32 / width.max(height)) / 4.0;
+                            match doc.pixmap(Location::Exact(0), scale, 1) {
+                                None => warn!("failed to render pixmap from dodecahedron.svg"),
+                                Some((pixmap, _)) => {
+                                    let dx = (self.rect.width() as i32 - pixmap.width as i32) / 2;
+                                    let dy = dy + 2 * x_height;
+                                    let pt = self.rect.min + pt!(dx, dy);
+                                    fb.draw_blended_pixmap(&pixmap, pt, scheme[1]);
+                                }
+                            }
+                        }
+                    },
+                }
             }
             Message::Image(ref path) => {
                 if let Some(mut doc) = open(path) {

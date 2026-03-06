@@ -54,6 +54,19 @@ impl Database {
         })
     }
 
+    /// Close all connections in the pool, checkpointing WAL and releasing file handles.
+    ///
+    /// After calling this, no further database operations should be performed.
+    /// This must be called before unmounting the filesystem that contains the database file,
+    /// to ensure SQLite releases all file descriptors and flushes any pending WAL data.
+    pub fn close(&self) {
+        tracing::info!("closing database connection pool");
+        RUNTIME.block_on(async {
+            self.pool.close().await;
+        });
+        tracing::info!("database connection pool closed");
+    }
+
     /// Returns a reference to the SQLite connection pool.
     pub fn pool(&self) -> &SqlitePool {
         &self.pool

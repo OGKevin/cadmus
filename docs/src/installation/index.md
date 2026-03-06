@@ -28,6 +28,28 @@ Cadmus comes in different packages. Pick the one that matches your needs.
 
 ## Updating
 
-Once installed, you can update Cadmus directly through its built-in OTA feature
+There are two ways to update Cadmus once it's installed.
 
-- no computer required, just WiFi. See [OTA updates](./ota.md) for details.
+### Wirelessly (OTA)
+
+The easiest way — no computer needed, just WiFi. Open
+**Main Menu → Check for Updates** and follow the prompts. See
+[OTA updates](./ota.md) for details.
+
+### Via USB
+
+You can also update by copying a new package over USB, the same way you did the
+first-time install.
+
+1. Connect your Kobo to your computer via USB.
+2. When Cadmus asks "Share storage via USB?", tap **Share**.
+3. Download the package you want from the [latest release](https://github.com/OGKevin/cadmus/releases/latest).
+4. Copy it to `/mnt/onboard/.kobo/KoboRoot.tgz` on your Kobo.
+5. Eject and disconnect the USB cable.
+
+> [!NOTE]
+> Always name the file `KoboRoot.tgz` on the device, regardless of which
+> package you downloaded (e.g. `KoboRoot-nm.tgz` must be renamed).
+
+Cadmus detects the file automatically and reboots your Kobo to install the
+update. You don't need to do anything else.

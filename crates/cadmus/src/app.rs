@@ -14,7 +14,7 @@ use cadmus_core::frontlight::{
 use cadmus_core::geom::{DiagDir, Rectangle, Region};
 use cadmus_core::gesture::{gesture_events, GestureEvent};
 use cadmus_core::input::{
-    button_scheme_event, device_events, display_rotate_event, raw_events, usb_events,
+    button_scheme_event, device_events, display_rotate_event, raw_events, usb_events, InputEvent,
 };
 use cadmus_core::input::{
     ButtonCode, ButtonStatus, DeviceEvent, PowerSource, VAL_PRESS, VAL_RELEASE,
@@ -49,13 +49,13 @@ use cadmus_core::view::{
     View, ViewId,
 };
 use std::collections::VecDeque;
-use std::env;
 use std::fs::File;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
 use std::time::{Duration, Instant};
+use std::{env, fs};
 use tracing::{debug, error, info};
 
 pub const APP_NAME: &str = "Cadmus";
@@ -260,6 +260,141 @@ fn set_wifi(enable: bool, context: &mut Context) {
     }
 }
 
+/// Closes the database, flushes library state, saves settings, and disables
+/// power-consuming features in preparation for USB sharing.
+///
+/// The database is closed to release file handles before `/mnt/onboard` is
+/// unmounted during USB sharing. The library is flushed and settings are saved
+/// to persist state before the share begins. Frontlight and wifi are disabled
+/// to conserve power during the share session.
+#[inline]
+#[allow(clippy::too_many_arguments)] // This requires a greater device architecture refactor
+fn prepare_share_for_usb(
+    view: &mut Box<dyn View>,
+    history: &mut Vec<HistoryItem>,
+    tasks: &mut Vec<Task>,
+    manager: &SettingsManager,
+    context: &mut Context,
+    raw_sender: &Sender<InputEvent>,
+    updating: &mut Vec<UpdateData>,
+    bus: &mut VecDeque<Event>,
+    tx: &Sender<Event>,
+    rq: &mut RenderQueue,
+) {
+    tasks.clear();
+    view.handle_event(&Event::Back, tx, bus, rq, context);
+    while let Some(mut item) = history.pop() {
+        item.view.handle_event(&Event::Back, tx, bus, rq, context);
+        if item.rotation != context.display.rotation {
+            wait_for_all(updating, context);
+            if let Ok(dims) = context.fb.set_rotation(item.rotation) {
+                raw_sender.send(display_rotate_event(item.rotation)).ok();
+                context.display.rotation = item.rotation;
+                context.display.dims = dims;
+            }
+        }
+        *view = item.view;
+    }
+    manager
+        .save(&context.settings)
+        .map_err(|e| error!("Can't save settings: {:#}.", e))
+        .ok();
+    context.library.flush();
+    context.database.close();
+
+    if context.settings.frontlight {
+        context.settings.frontlight_levels = context.frontlight.levels();
+        context.frontlight.set_intensity(0.0);
+        context.frontlight.set_warmth(0.0);
+    }
+    if context.settings.wifi {
+        Command::new("scripts/wifi-disable.sh").status().ok();
+        context.online = false;
+    }
+
+    let interm = Intermission::new(context.fb.rect(), IntermKind::Share, context);
+    rq.add(RenderData::new(
+        interm.id(),
+        *interm.rect(),
+        UpdateMode::Full,
+    ));
+    view.children_mut().push(Box::new(interm) as Box<dyn View>);
+    tx.send(Event::Share).ok();
+}
+
+/// Changes the working directory to `/tmp` and enables USB sharing.
+///
+/// Copy the disable script to the `/tmp` working directory so that
+/// it can be found when stopping the share.
+///
+/// The `/mnt/onboard` filesystem is unmounted when USB sharing starts.
+/// Setting the working directory to `/tmp` ensures it remains valid throughout
+/// the share session, preventing file operation failures.
+#[inline]
+fn start_usb_share(context: &mut Context) {
+    context.shared = true;
+
+    match fs::create_dir_all("/tmp/scripts/") {
+        Ok(_) => match fs::copy("scripts/usb-disable.sh", "/tmp/scripts/usb-disable.sh") {
+            Ok(_) => {}
+            Err(e) => {
+                error!({error = ?e}, "failed to copy usb disable script")
+            }
+        },
+        Err(e) => {
+            error!({error = ?e}, "failed to create /tmp/scripts dir")
+        }
+    }
+
+    Command::new("scripts/usb-enable.sh").status().ok();
+    if let Err(e) = env::set_current_dir("/tmp") {
+        error!(error = %e, "failed to set working directory to /tmp before USB share");
+    }
+}
+
+/// Runs `usb-disable.sh` to remount `/mnt/onboard`, restores the working
+/// directory, reloads settings, and triggers reboot or restart.
+///
+/// The `usb-disable.sh` script remounts `/mnt/onboard`. The working directory
+/// is restored to the original path (now valid again).
+///
+/// `context.shared` is not set back to false, as the app is going to be restarted
+/// anyway. Leaving this to false, helps the exit logic to not save settings after usb share.
+/// Ensuring that if there were any manual edits during the share, that these
+/// are not lost.
+///
+/// Finally, checks for `KoboRoot.tgz` to determine whether to reboot (update pending) or restart the app.
+#[inline]
+fn handle_usb_unshare(startup_cwd: &Option<PathBuf>, tx: &Sender<Event>) {
+    info!("USB unplugged after sharing; running usb-disable.sh");
+    let usb_disable_status = Command::new("scripts/usb-disable.sh").status();
+    debug!(status = ?usb_disable_status, "usb-disable.sh exited");
+
+    if let Some(cwd) = startup_cwd.as_ref() {
+        if let Err(e) = env::set_current_dir(cwd) {
+            error!(error = %e, original_cwd = %cwd.display(), "failed to restore working directory after USB share");
+        }
+    }
+
+    let onboard_mounted = std::fs::read_to_string("/proc/mounts")
+        .map(|m| m.contains(" /mnt/onboard "))
+        .unwrap_or(false);
+    let db_exists = Path::new(DB_FILENAME).exists();
+    let update_bundle_exists = Path::new(KOBO_UPDATE_BUNDLE).exists();
+    info!(
+        onboard_mounted,
+        db_exists, update_bundle_exists, "filesystem state after usb-disable.sh"
+    );
+
+    if update_bundle_exists {
+        info!("KoboRoot.tgz detected; triggering reboot");
+        tx.send(Event::Select(EntryId::Reboot)).ok();
+    } else {
+        info!("triggering app restart");
+        tx.send(Event::Select(EntryId::Restart)).ok();
+    }
+}
+
 #[derive(PartialEq)]
 enum ExitStatus {
     Quit,
@@ -292,8 +427,17 @@ pub fn run() -> Result<(), Error> {
         eprintln!("Continuing without logging...");
     }
 
+    let startup_cwd = env::current_dir().ok();
+    let startup_db_exists = Path::new(DB_FILENAME).exists();
+    info!(cwd = ?startup_cwd, db_exists = startup_db_exists, "startup diagnostics");
+
     let mut fonts = Fonts::load().context("can't load fonts")?;
-    let database = Database::new(DB_FILENAME).context("can't open database")?;
+    let database = Database::new(DB_FILENAME)
+        .map_err(|e| {
+            error!(error = %e, "can't open database");
+            e
+        })
+        .context("can't open database")?;
 
     let startup = StartupScreen::new(fb.rect());
     startup.render(fb.as_mut(), *startup.rect(), &mut fonts);
@@ -403,7 +547,6 @@ pub fn run() -> Result<(), Error> {
         Box::new(Home::new(context.fb.rect(), &tx, &mut rq, &mut context)?);
 
     let mut updating = Vec::new();
-    let current_dir = env::current_dir()?;
 
     info!(
         "{} {} {} is running on a Kobo {}.",
@@ -659,40 +802,7 @@ pub fn run() -> Result<(), Error> {
                     }
 
                     if context.shared {
-                        context.shared = false;
-                        Command::new("scripts/usb-disable.sh").status().ok();
-                        env::set_current_dir(&current_dir)
-                            .map_err(|e| {
-                                error!(
-                                    "Can't set current directory to {}: {:#}.",
-                                    current_dir.display(),
-                                    e
-                                )
-                            })
-                            .ok();
-                        let settings = manager.load();
-                        context.settings = settings;
-                        if context.settings.wifi {
-                            Command::new("scripts/wifi-enable.sh").status().ok();
-                        }
-                        if context.settings.frontlight {
-                            let levels = context.settings.frontlight_levels;
-                            context.frontlight.set_warmth(levels.warmth);
-                            context.frontlight.set_intensity(levels.intensity);
-                        }
-                        if let Some(index) = locate::<Intermission>(view.as_ref()) {
-                            let rect = *view.child(index).rect();
-                            view.children_mut().remove(index);
-                            rq.add(RenderData::expose(rect, UpdateMode::Full));
-                        }
-                        if Path::new(KOBO_UPDATE_BUNDLE).exists() {
-                            tx.send(Event::Select(EntryId::Reboot)).ok();
-                        }
-                        context.library.reload();
-                        if context.settings.import.unshare_trigger {
-                            context.batch_import();
-                        }
-                        view.handle_event(&Event::Reseed, &tx, &mut bus, &mut rq, &mut context);
+                        handle_usb_unshare(&startup_cwd, &tx);
                     } else {
                         context.plugged = false;
                         schedule_task(
@@ -870,53 +980,25 @@ pub fn run() -> Result<(), Error> {
                     continue;
                 }
 
-                tasks.clear();
-                view.handle_event(&Event::Back, &tx, &mut bus, &mut rq, &mut context);
-                while let Some(mut item) = history.pop() {
-                    item.view
-                        .handle_event(&Event::Back, &tx, &mut bus, &mut rq, &mut context);
-                    if item.rotation != context.display.rotation {
-                        wait_for_all(&mut updating, &mut context);
-                        if let Ok(dims) = context.fb.set_rotation(item.rotation) {
-                            raw_sender.send(display_rotate_event(item.rotation)).ok();
-                            context.display.rotation = item.rotation;
-                            context.display.dims = dims;
-                        }
-                    }
-                    view = item.view;
-                }
-                manager
-                    .save(&context.settings)
-                    .map_err(|e| error!("Can't save settings: {:#}.", e))
-                    .ok();
-                context.library.flush();
-
-                if context.settings.frontlight {
-                    context.settings.frontlight_levels = context.frontlight.levels();
-                    context.frontlight.set_intensity(0.0);
-                    context.frontlight.set_warmth(0.0);
-                }
-                if context.settings.wifi {
-                    Command::new("scripts/wifi-disable.sh").status().ok();
-                    context.online = false;
-                }
-
-                let interm = Intermission::new(context.fb.rect(), IntermKind::Share, &context);
-                rq.add(RenderData::new(
-                    interm.id(),
-                    *interm.rect(),
-                    UpdateMode::Full,
-                ));
-                view.children_mut().push(Box::new(interm) as Box<dyn View>);
-                tx.send(Event::Share).ok();
+                prepare_share_for_usb(
+                    &mut view,
+                    &mut history,
+                    &mut tasks,
+                    &manager,
+                    &mut context,
+                    &raw_sender,
+                    &mut updating,
+                    &mut bus,
+                    &tx,
+                    &mut rq,
+                );
             }
             Event::Share => {
                 if context.shared {
                     continue;
                 }
 
-                context.shared = true;
-                Command::new("scripts/usb-enable.sh").status().ok();
+                start_usb_share(&mut context);
             }
             Event::Gesture(ge) => match ge {
                 GestureEvent::HoldButtonLong(ButtonCode::Power) => {
@@ -1442,9 +1524,16 @@ pub fn run() -> Result<(), Error> {
 
     context.library.flush();
 
-    manager
-        .save(&context.settings)
-        .context("can't save settings")?;
+    let save_settings = match exit_status {
+        ExitStatus::Restart | ExitStatus::Reboot => !context.shared,
+        _ => true,
+    };
+
+    if save_settings {
+        manager
+            .save(&context.settings)
+            .context("can't save settings")?;
+    }
 
     match exit_status {
         ExitStatus::Restart => {
