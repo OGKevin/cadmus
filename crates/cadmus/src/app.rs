@@ -359,7 +359,8 @@ fn start_usb_share(context: &mut Context) {
 /// is restored to the original path (now valid again).
 ///
 /// `context.shared` is not set back to false, as the app is going to be restarted
-/// anyway. Leaving this to false, helps the exit logic to not save settings after usb share.
+/// `context.shared` is not set back to false, as the app is going to be restarted
+/// anyway. Leaving this as true helps the exit logic to not save settings after usb share.
 /// Ensuring that if there were any manual edits during the share, that these
 /// are not lost.
 ///
