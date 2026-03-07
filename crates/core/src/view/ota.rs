@@ -75,13 +75,10 @@ pub fn show_ota_view(
     #[cfg(feature = "otel")]
     tracing::trace!("showing ota view");
 
-    // TODO(ogkevin): This only checks if WiFi is enabled in settings, not if there's an actual
-    // connection or internet access. Should verify actual network connectivity.
-    // See: https://github.com/OGKevin/cadmus/issues/69
-    if !context.settings.wifi {
+    if !context.online {
         let notif = Notification::new(
             None,
-            "WiFi must be enabled to check for updates.".to_string(),
+            "WiFi must be connected to check for updates.".to_string(),
             false,
             hub,
             rq,
