@@ -24,6 +24,10 @@ pub enum Kind {
     IntermissionPowerOff,
     IntermissionShare,
     SettingsRetention,
+    LoggingEnabled,
+    LogLevel,
+    #[cfg(feature = "otel")]
+    OtlpEndpoint,
 }
 
 impl Kind {
@@ -57,6 +61,10 @@ impl Kind {
             Kind::IntermissionPowerOff => "Power Off Screen".to_string(),
             Kind::IntermissionShare => "Share Screen".to_string(),
             Kind::SettingsRetention => "Settings Retention".to_string(),
+            Kind::LoggingEnabled => "Enable Logging".to_string(),
+            Kind::LogLevel => "Log Level".to_string(),
+            #[cfg(feature = "otel")]
+            Kind::OtlpEndpoint => "OTLP Endpoint".to_string(),
         }
     }
 
@@ -77,6 +85,10 @@ impl Kind {
             Kind::IntermissionPowerOff => ValueKind::IntermissionPowerOff,
             Kind::IntermissionShare => ValueKind::IntermissionShare,
             Kind::SettingsRetention => ValueKind::SettingsRetention,
+            Kind::LoggingEnabled => ValueKind::Toggle(ToggleSettings::LoggingEnabled),
+            Kind::LogLevel => ValueKind::LogLevel,
+            #[cfg(feature = "otel")]
+            Kind::OtlpEndpoint => ValueKind::OtlpEndpoint,
         }
     }
 }

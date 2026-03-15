@@ -208,10 +208,16 @@ automatically continue the download once you authorize.
 The token is saved to disk after the first authorization so you will not be
 prompted again on subsequent downloads.
 
-## Logging
+## Telemetry
 
 Cadmus writes JSON logs to disk. When the build enables the `otel` feature, it
 can also export logs to an OpenTelemetry endpoint.
+
+These settings are available in the **Settings → Telemetry** menu.
+
+> [!IMPORTANT]
+> Changes to these settings only take effect after
+> restarting Cadmus. The application initializes telemetry on startup.
 
 ### `logging`
 
@@ -224,7 +230,42 @@ directory = "logs"
 # otlp-endpoint = "https://otel.example.com:4318"
 ```
 
-Environment overrides:
+### `logging.enabled`
+
+✏️
+
+Enable or disable structured JSON logging.
+
+```toml
+[logging]
+enabled = true
+```
+
+### `logging.level`
+
+✏️
+
+Minimum log level to record.
+
+- Possible values: `"trace"`, `"debug"`, `"info"`, `"warn"`, `"error"`.
+
+```toml
+[logging]
+level = "info"
+```
+
+### `logging.otlp-endpoint`
+
+✏️ (only when the `otel` feature is enabled)
+
+Optional OTLP endpoint for exporting logs to an OpenTelemetry collector.
+
+```toml
+[logging]
+otlp-endpoint = "https://otel.example.com:4318"
+```
+
+Environment override:
 
 - `OTEL_EXPORTER_OTLP_ENDPOINT` takes precedence over `logging.otlp-endpoint`.
 

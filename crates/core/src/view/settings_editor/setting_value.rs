@@ -5,13 +5,13 @@ use crate::context::Context;
 use crate::framebuffer::Framebuffer;
 use crate::geom::Rectangle;
 use crate::settings::{ButtonScheme, FinishedAction, IntermKind, Settings};
-use crate::view::toggle::Toggle;
-use crate::view::{EntryId, ToggleEvent};
+use crate::view::{toggle::Toggle, EntryId, ToggleEvent};
 use anyhow::Error;
 use std::fs;
 use std::path::Path;
+use std::str::FromStr;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SettingsEvent {
     /// Updates a SettingValue view by its Kind with a new value.
     ///
@@ -34,13 +34,15 @@ pub enum ToggleSettings {
     AutoShare,
     /// Button scheme selection (natural or inverted)
     ButtonScheme,
+    /// Logging enabled setting
+    LoggingEnabled,
 }
 
 /// Represents the type of setting value being displayed.
 ///
 /// This enum categorizes different settings that can be configured in the application,
 /// including keyboard layout, power management, button schemes, and library settings.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Kind {
     /// Keyboard layout selection setting
     KeyboardLayout,
@@ -70,6 +72,11 @@ pub enum Kind {
     IntermissionShare,
     /// Settings retention setting (how many old versions to keep)
     SettingsRetention,
+    /// Log level setting
+    LogLevel,
+    /// OTLP endpoint setting (only available with otel feature)
+    #[cfg(feature = "otel")]
+    OtlpEndpoint,
 }
 
 impl Kind {
@@ -167,6 +174,15 @@ impl SettingValue {
                     fonts,
                     Align::Right(10),
                 )),
+                ToggleSettings::LoggingEnabled => Box::new(Toggle::new(
+                    self.rect,
+                    "on",
+                    "off",
+                    enabled_toggle.expect("enabled bool should be Some for toggle settings"),
+                    event.expect("Event should not be None for toggle"),
+                    fonts,
+                    Align::Right(10),
+                )),
             },
             _ => Box::new(ActionLabel::new(self.rect, value, Align::Right(10)).event(event)),
         }
@@ -221,10 +237,14 @@ impl SettingValue {
                 Self::fetch_intermission_data(crate::settings::IntermKind::Share, settings)
             }
             Kind::SettingsRetention => Self::fetch_settings_retention_data(settings),
+            Kind::LogLevel => Self::fetch_log_level_data(settings),
+            #[cfg(feature = "otel")]
+            Kind::OtlpEndpoint => Self::fetch_otlp_endpoint_data(settings),
             Kind::Toggle(toggle) => match toggle {
                 ToggleSettings::SleepCover => Self::fetch_sleep_cover_data(settings),
                 ToggleSettings::AutoShare => Self::fetch_auto_share_data(settings),
                 ToggleSettings::ButtonScheme => Self::fetch_button_scheme_data(settings),
+                ToggleSettings::LoggingEnabled => Self::fetch_logging_enabled_data(settings),
             },
         }
     }
@@ -305,6 +325,60 @@ impl SettingValue {
         settings: &Settings,
     ) -> (String, Vec<EntryKind>, Option<bool>) {
         let value = settings.settings_retention.to_string();
+
+        (value, vec![], None)
+    }
+
+    #[inline]
+    fn fetch_logging_enabled_data(settings: &Settings) -> (String, Vec<EntryKind>, Option<bool>) {
+        let toggle = settings.logging.enabled;
+        (toggle.to_string(), vec![], Some(settings.logging.enabled))
+    }
+
+    #[inline]
+    fn fetch_log_level_data(settings: &Settings) -> (String, Vec<EntryKind>, Option<bool>) {
+        let current = tracing::Level::from_str(settings.logging.level.as_str())
+            .unwrap_or(tracing::Level::INFO);
+
+        let entries = vec![
+            EntryKind::RadioButton(
+                tracing::Level::TRACE.to_string(),
+                EntryId::SetLogLevel(tracing::Level::TRACE),
+                current == tracing::Level::TRACE,
+            ),
+            EntryKind::RadioButton(
+                tracing::Level::DEBUG.to_string(),
+                EntryId::SetLogLevel(tracing::Level::DEBUG),
+                current == tracing::Level::DEBUG,
+            ),
+            EntryKind::RadioButton(
+                tracing::Level::INFO.to_string(),
+                EntryId::SetLogLevel(tracing::Level::INFO),
+                current == tracing::Level::INFO,
+            ),
+            EntryKind::RadioButton(
+                tracing::Level::WARN.to_string(),
+                EntryId::SetLogLevel(tracing::Level::WARN),
+                current == tracing::Level::WARN,
+            ),
+            EntryKind::RadioButton(
+                tracing::Level::ERROR.to_string(),
+                EntryId::SetLogLevel(tracing::Level::ERROR),
+                current == tracing::Level::ERROR,
+            ),
+        ];
+
+        (current.to_string(), entries, None)
+    }
+
+    #[cfg(feature = "otel")]
+    #[inline]
+    fn fetch_otlp_endpoint_data(settings: &Settings) -> (String, Vec<EntryKind>, Option<bool>) {
+        let value = settings
+            .logging
+            .otlp_endpoint
+            .clone()
+            .unwrap_or_else(|| "Not set".to_string());
 
         (value, vec![], None)
     }
@@ -523,6 +597,8 @@ impl SettingValue {
             Kind::AutoSuspend => Some(Event::Select(EntryId::EditAutoSuspend)),
             Kind::AutoPowerOff => Some(Event::Select(EntryId::EditAutoPowerOff)),
             Kind::SettingsRetention => Some(Event::Select(EntryId::EditSettingsRetention)),
+            #[cfg(feature = "otel")]
+            Kind::OtlpEndpoint => Some(Event::Select(EntryId::EditOtlpEndpoint)),
             Kind::Toggle(ref toggle) => Some(Event::Toggle(ToggleEvent::Setting(toggle.clone()))),
             _ if !self.entries.is_empty() => Some(Event::SubMenu(self.rect, self.entries.clone())),
             _ => None,

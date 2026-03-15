@@ -2,7 +2,7 @@
 //!
 //! This module provides logging functionality for Cadmus, including:
 //! - JSON-structured logs written to rotating files
-//! - Configurable log levels and filtering  
+//! - Configurable log levels and filtering
 //! - Automatic log file cleanup based on retention policies
 //! - Optional OpenTelemetry export (when `otel` feature is enabled)
 //! - Unique run ID for correlating logs across a session

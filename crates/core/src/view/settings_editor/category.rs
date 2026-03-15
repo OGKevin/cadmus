@@ -12,6 +12,8 @@ pub enum Category {
     Libraries,
     /// Intermission screen display settings
     Intermissions,
+    /// Telemetry and logging settings
+    Telemetry,
 }
 
 impl Category {
@@ -22,6 +24,7 @@ impl Category {
             Category::Reader => "Reader".to_string(),
             Category::Libraries => "Libraries".to_string(),
             Category::Intermissions => "Intermission Screens".to_string(),
+            Category::Telemetry => "Telemetry".to_string(),
         }
     }
 
@@ -46,6 +49,21 @@ impl Category {
                 RowKind::IntermissionPowerOff,
                 RowKind::IntermissionShare,
             ],
+            Category::Telemetry => {
+                #[cfg(feature = "otel")]
+                {
+                    let rows = vec![
+                        RowKind::LoggingEnabled,
+                        RowKind::LogLevel,
+                        RowKind::OtlpEndpoint,
+                    ];
+                    rows
+                }
+                #[cfg(not(feature = "otel"))]
+                {
+                    vec![RowKind::LoggingEnabled, RowKind::LogLevel]
+                }
+            }
         }
     }
 
@@ -56,6 +74,7 @@ impl Category {
             Category::Reader,
             Category::Libraries,
             Category::Intermissions,
+            Category::Telemetry,
         ]
     }
 

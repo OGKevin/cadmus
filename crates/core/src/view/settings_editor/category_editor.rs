@@ -19,6 +19,7 @@ use super::bottom_bar::{BottomBarVariant, SettingsEditorBottomBar};
 use super::category::Category;
 use super::library_editor::LibraryEditor;
 use super::setting_row::{Kind as RowKind, SettingRow};
+use super::setting_value::{Kind, SettingsEvent};
 use crate::view::file_chooser::{FileChooser, SelectionMode};
 use crate::view::settings_editor::ToggleSettings;
 use std::path::PathBuf;
@@ -321,6 +322,7 @@ impl CategoryEditor {
     /// children, calling their refresh_from_context method to update displayed values.
     /// Should be called after any setting is modified to ensure UI reflects the changes.
     #[inline]
+    #[deprecated(note = "use Event::Settings(SettingsEvent::UpdateValue { kind, value }) instead")]
     fn refresh_setting_values(&mut self, context: &Context, rq: &mut RenderQueue) {
         use super::setting_row::SettingRow;
         use super::setting_value::SettingValue;
@@ -459,6 +461,25 @@ impl CategoryEditor {
     ) -> bool {
         context.settings.auto_share = !context.settings.auto_share;
         self.refresh_setting_values(context, rq);
+        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+        true
+    }
+
+    #[inline]
+    fn handle_toggle_logging_enabled(
+        &mut self,
+        hub: &Hub,
+        rq: &mut RenderQueue,
+        context: &mut Context,
+    ) -> bool {
+        context.settings.logging.enabled = !context.settings.logging.enabled;
+
+        hub.send(Event::Settings(SettingsEvent::UpdateValue {
+            kind: Kind::Toggle(ToggleSettings::LoggingEnabled),
+            value: context.settings.logging.enabled.to_string(),
+        }))
+        .ok();
+
         rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
         true
     }
@@ -795,6 +816,89 @@ impl CategoryEditor {
         true
     }
 
+    #[inline]
+    fn handle_set_log_level(
+        &mut self,
+        level: &tracing::Level,
+        hub: &Hub,
+        rq: &mut RenderQueue,
+        context: &mut Context,
+    ) -> bool {
+        context.settings.logging.level = level.to_string();
+        hub.send(Event::Settings(SettingsEvent::UpdateValue {
+            kind: Kind::LogLevel,
+            value: level.to_string(),
+        }))
+        .ok();
+        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+        true
+    }
+
+    #[inline]
+    fn handle_edit_otlp_endpoint(
+        &mut self,
+        hub: &Hub,
+        rq: &mut RenderQueue,
+        context: &mut Context,
+    ) -> bool {
+        let mut otlp_input = crate::view::named_input::NamedInput::new(
+            "OTLP Endpoint".to_string(),
+            ViewId::OtlpEndpointInput,
+            ViewId::OtlpEndpointInput,
+            50,
+            context,
+        );
+
+        let text = context
+            .settings
+            .logging
+            .otlp_endpoint
+            .clone()
+            .unwrap_or_default();
+        otlp_input.set_text(&text, rq, context);
+
+        self.children.push(Box::new(otlp_input));
+        hub.send(Event::Focus(Some(ViewId::OtlpEndpointInput))).ok();
+
+        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+
+        true
+    }
+
+    #[cfg(feature = "otel")]
+    #[inline]
+    fn handle_submit_otlp_endpoint(
+        &mut self,
+        text: &str,
+        hub: &Hub,
+        rq: &mut RenderQueue,
+        context: &mut Context,
+    ) -> bool {
+        let trimmed = text.trim();
+        context.settings.logging.otlp_endpoint = if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        };
+
+        hub.send(Event::Settings(SettingsEvent::UpdateValue {
+            kind: Kind::OtlpEndpoint,
+            value: context
+                .settings
+                .logging
+                .otlp_endpoint
+                .clone()
+                .unwrap_or_else(|| "Not set".to_string()),
+        }))
+        .ok();
+
+        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+
+        hub.send(Event::Focus(None)).ok();
+
+        true
+    }
+
     /// Handles the `FileChooserClosed` event for intermission image selection.
     ///
     /// Updates `context.settings.intermissions` with the selected image path and schedules
@@ -853,6 +957,7 @@ impl CategoryEditor {
             | ViewId::AutoSuspendInput
             | ViewId::AutoPowerOffInput
             | ViewId::SettingsRetentionInput
+            | ViewId::OtlpEndpointInput
             | ViewId::SettingsValueMenu => {
                 if let Some(index) = locate_by_id(self, *view_id) {
                     self.children.remove(index);
@@ -910,6 +1015,9 @@ impl CategoryEditor {
                         context,
                     ),
                 },
+                ToggleSettings::LoggingEnabled => {
+                    self.handle_toggle_logging_enabled(hub, rq, context)
+                }
             },
             _ => unreachable!("mismatched toggle event"),
         }
@@ -946,6 +1054,10 @@ impl View for CategoryEditor {
                 EntryId::EditSettingsRetention => {
                     self.handle_edit_settings_retention(hub, rq, context)
                 }
+                EntryId::SetLogLevel(ref level) => {
+                    self.handle_set_log_level(level, hub, rq, context)
+                }
+                EntryId::EditOtlpEndpoint => self.handle_edit_otlp_endpoint(hub, rq, context),
                 EntryId::SetButtonScheme(button_scheme) => {
                     self.handle_set_button_scheme(button_scheme, evt, hub, bus, rq, context)
                 }
@@ -974,6 +1086,10 @@ impl View for CategoryEditor {
             }
             Event::Submit(ViewId::SettingsRetentionInput, ref text) => {
                 self.handle_submit_settings_retention(text, hub, rq, context)
+            }
+            #[cfg(feature = "otel")]
+            Event::Submit(ViewId::OtlpEndpointInput, ref text) => {
+                self.handle_submit_otlp_endpoint(text, hub, rq, context)
             }
             Event::FileChooserClosed(ref path) => {
                 self.handle_file_chooser_closed(path, rq, context)
