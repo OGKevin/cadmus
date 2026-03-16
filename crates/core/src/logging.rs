@@ -59,6 +59,7 @@
 //!     max_files: 3,
 //!     directory: "logs".into(),
 //!     otlp_endpoint: None,
+//!     enable_kern_log: false,
 //! };
 //!
 //! // Initialize at application startup
@@ -87,6 +88,8 @@ use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
 use uuid::Uuid;
+
+mod kern;
 
 const GIT_VERSION: &str = env!("GIT_VERSION");
 const LOG_FILE_PREFIX: &str = "cadmus-";
@@ -259,6 +262,7 @@ fn is_run_log_entry(entry: &DirEntry) -> bool {
 ///     max_files: 5,
 ///     directory: "logs".into(),
 ///     otlp_endpoint: Some("http://localhost:4318".to_string()),
+///     enable_kern_log: false,
 /// };
 ///
 /// init_logging(&settings)?;
@@ -322,6 +326,11 @@ pub fn init_logging(settings: &LoggingSettings) -> Result<(), Error> {
         get_run_id(),
         GIT_VERSION
     );
+
+    #[cfg(feature = "test")]
+    if settings.enable_kern_log {
+        kern::spawn_kern_log_thread();
+    }
 
     Ok(())
 }

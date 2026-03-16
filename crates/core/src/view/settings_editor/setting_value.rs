@@ -36,6 +36,9 @@ pub enum ToggleSettings {
     ButtonScheme,
     /// Logging enabled setting
     LoggingEnabled,
+    /// Kernel logging enabled setting (test builds only)
+    #[cfg(feature = "test")]
+    EnableKernLog,
 }
 
 /// Represents the type of setting value being displayed.
@@ -183,6 +186,16 @@ impl SettingValue {
                     fonts,
                     Align::Right(10),
                 )),
+                #[cfg(feature = "test")]
+                ToggleSettings::EnableKernLog => Box::new(Toggle::new(
+                    self.rect,
+                    "on",
+                    "off",
+                    enabled_toggle.expect("enabled bool should be Some for toggle settings"),
+                    event.expect("Event should not be None for toggle"),
+                    fonts,
+                    Align::Right(10),
+                )),
             },
             _ => Box::new(ActionLabel::new(self.rect, value, Align::Right(10)).event(event)),
         }
@@ -245,6 +258,8 @@ impl SettingValue {
                 ToggleSettings::AutoShare => Self::fetch_auto_share_data(settings),
                 ToggleSettings::ButtonScheme => Self::fetch_button_scheme_data(settings),
                 ToggleSettings::LoggingEnabled => Self::fetch_logging_enabled_data(settings),
+                #[cfg(feature = "test")]
+                ToggleSettings::EnableKernLog => Self::fetch_enable_kern_log_data(settings),
             },
         }
     }
@@ -333,6 +348,17 @@ impl SettingValue {
     fn fetch_logging_enabled_data(settings: &Settings) -> (String, Vec<EntryKind>, Option<bool>) {
         let toggle = settings.logging.enabled;
         (toggle.to_string(), vec![], Some(settings.logging.enabled))
+    }
+
+    #[cfg(feature = "test")]
+    #[inline]
+    fn fetch_enable_kern_log_data(settings: &Settings) -> (String, Vec<EntryKind>, Option<bool>) {
+        let toggle = settings.logging.enable_kern_log;
+        (
+            toggle.to_string(),
+            vec![],
+            Some(settings.logging.enable_kern_log),
+        )
     }
 
     #[inline]

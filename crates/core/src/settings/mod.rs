@@ -440,6 +440,8 @@ pub struct LoggingSettings {
     /// Optional OTLP endpoint; env vars override this value.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub otlp_endpoint: Option<String>,
+    /// Captures kernel logs via logread if kernel log capture is supported.
+    pub enable_kern_log: bool,
 }
 
 /// OTA update settings.
@@ -608,6 +610,7 @@ impl Default for LoggingSettings {
             max_files: 3,
             directory: PathBuf::from("logs"),
             otlp_endpoint: None,
+            enable_kern_log: false,
         }
     }
 }

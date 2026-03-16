@@ -9,8 +9,10 @@ name = "cadmus"
 path = "src/main.rs"
 
 [features]
+default = ["kobo"]
 test = ["cadmus-core/test"]
 otel = ["cadmus-core/otel"]
+kobo = ["cadmus-core/kobo"]
 
 [dependencies]
 cadmus-core = { path = "../core" }

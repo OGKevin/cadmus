@@ -56,12 +56,19 @@ impl Category {
                         RowKind::LoggingEnabled,
                         RowKind::LogLevel,
                         RowKind::OtlpEndpoint,
+                        #[cfg(feature = "test")]
+                        RowKind::EnableKernLog,
                     ];
                     rows
                 }
                 #[cfg(not(feature = "otel"))]
                 {
-                    vec![RowKind::LoggingEnabled, RowKind::LogLevel]
+                    vec![
+                        RowKind::LoggingEnabled,
+                        RowKind::LogLevel,
+                        #[cfg(feature = "test")]
+                        RowKind::EnableKernLog,
+                    ]
                 }
             }
         }

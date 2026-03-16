@@ -1005,9 +1005,18 @@ impl CategoryEditor {
                     ),
                 },
                 ToggleSettings::LoggingEnabled => self.handle_toggle_logging_enabled(context),
+                #[cfg(feature = "test")]
+                ToggleSettings::EnableKernLog => self.handle_toggle_enable_kern_log(context),
             },
             _ => unreachable!("mismatched toggle event"),
         }
+    }
+
+    #[cfg(feature = "test")]
+    #[inline]
+    fn handle_toggle_enable_kern_log(&mut self, context: &mut Context) -> bool {
+        context.settings.logging.enable_kern_log = !context.settings.logging.enable_kern_log;
+        true
     }
 }
 

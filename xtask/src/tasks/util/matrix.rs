@@ -281,8 +281,8 @@ mod tests {
         assert!(labels.contains(&"test"));
         assert_eq!(
             entries.len(),
-            16,
-            "3 features → 2³ = 8 combos × 2 OSes = 16 entries"
+            32,
+            "4 features → 2⁴ = 16 combos × 2 OSes = 32 entries"
         );
     }
 }

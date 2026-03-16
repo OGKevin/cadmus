@@ -1,12 +1,14 @@
 # Settings
 
 Cadmus reads settings from `Settings/Settings-*.toml`.
-Settings can be changed on your Kobo through **Main Menu → Settings**, which opens the built-in settings editor.
+Settings can be changed via **Main Menu → Settings**, which opens the built-in settings editor.
 
 **Legend:**
 
 - ✏️ Editable in the settings editor
 - 🔑 Required for feature to work
+- 🧪 Only available in test builds
+- 📱 Kobo
 
 ## General Settings
 
@@ -268,6 +270,18 @@ otlp-endpoint = "https://otel.example.com:4318"
 Environment override:
 
 - `OTEL_EXPORTER_OTLP_ENDPOINT` takes precedence over `logging.otlp-endpoint`.
+
+### `logging.enable-kern-log`
+
+🧪 📱 ✏️
+
+Captures kernel logs via `logread -F` and forwards them to structured logging
+with the target `cadmus_core::logging:kern`.
+
+```toml
+[logging]
+enable-kern-log = false
+```
 
 ## Settings Retention
 

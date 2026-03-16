@@ -95,6 +95,7 @@ static LOGGER_PROVIDER: OnceLock<SdkLoggerProvider> = OnceLock::new();
 ///     max_files: 3,
 ///     directory: "logs".into(),
 ///     otlp_endpoint: Some("http://localhost:4318".to_string()),
+///     enable_kern_log: false,
 /// };
 ///
 /// let layer = init_telemetry::<tracing_subscriber::Registry>(&settings, "run-123")?;

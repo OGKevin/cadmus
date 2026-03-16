@@ -88,8 +88,9 @@ tempfile = "3.14"
 uuid = { version = "1.20.0", features = ["v7"] }
 
 [features]
-default = []
+default = ["kobo"]
 emulator = []
+kobo = []
 test = []
 otel = [
     "tracing-opentelemetry",

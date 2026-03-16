@@ -43,6 +43,8 @@ max-files = 3
 directory = "logs"
 # Optional OTLP endpoint for exporting logs when the build enables the otel feature.
 # otlp-endpoint = "https://otel.example.com:4318"
+# Capture kernel logs (requires test build).
+# enable-kern-log = false
 
 # You can create libraries by adding further [[libraries]] entries.
 [[libraries]]

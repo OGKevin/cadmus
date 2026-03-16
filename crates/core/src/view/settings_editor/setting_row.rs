@@ -28,6 +28,8 @@ pub enum Kind {
     LogLevel,
     #[cfg(feature = "otel")]
     OtlpEndpoint,
+    #[cfg(feature = "test")]
+    EnableKernLog,
 }
 
 impl Kind {
@@ -65,6 +67,8 @@ impl Kind {
             Kind::LogLevel => "Log Level".to_string(),
             #[cfg(feature = "otel")]
             Kind::OtlpEndpoint => "OTLP Endpoint".to_string(),
+            #[cfg(feature = "test")]
+            Kind::EnableKernLog => "Enable Kernel Log".to_string(),
         }
     }
 
@@ -89,6 +93,8 @@ impl Kind {
             Kind::LogLevel => ValueKind::LogLevel,
             #[cfg(feature = "otel")]
             Kind::OtlpEndpoint => ValueKind::OtlpEndpoint,
+            #[cfg(feature = "test")]
+            Kind::EnableKernLog => ValueKind::Toggle(ToggleSettings::EnableKernLog),
         }
     }
 }
