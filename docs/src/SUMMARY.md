@@ -8,6 +8,7 @@
 - [Settings](settings/index.md)
 - [User Interface](ui/index.md)
   - [File Chooser](ui/filechooser.md)
+- [Troubleshooting](troubleshooting/index.md)
 
 ---
 
