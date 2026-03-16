@@ -555,9 +555,20 @@ impl SettingValue {
         (value, entries, None)
     }
 
-    pub fn update(&mut self, value: String, rq: &mut RenderQueue) {
+    pub fn update(&mut self, value: String, context: &Context, rq: &mut RenderQueue) {
         if let Some(action_label) = self.children[0].downcast_mut::<ActionLabel>() {
             action_label.update(&value, rq);
+        }
+
+        if !self.entries.is_empty() {
+            let (_, entries, _) = Self::fetch_data_for_kind(&self.kind, &context.settings);
+            self.entries = entries;
+
+            if let Some(event) = self.create_tap_event() {
+                if let Some(action_label) = self.children[0].downcast_mut::<ActionLabel>() {
+                    action_label.set_event(Some(event));
+                }
+            }
         }
     }
 
@@ -619,7 +630,7 @@ impl View for SettingValue {
         match evt {
             Event::Settings(SettingsEvent::UpdateValue { kind, value }) => {
                 if self.kind == *kind {
-                    self.update(value.clone(), rq);
+                    self.update(value.clone(), _context, rq);
                     true
                 } else {
                     false
@@ -1139,5 +1150,72 @@ mod tests {
             "UpdateValue event should be handled when kind matches"
         );
         assert_eq!(value.value(), "5");
+    }
+
+    #[test]
+    fn test_update_value_event_regenerates_log_level_radio_buttons() {
+        let rect = rect![0, 0, 200, 50];
+
+        let mut context = create_test_context();
+        context.settings.logging.level = "INFO".to_string();
+
+        let mut value =
+            SettingValue::new(Kind::LogLevel, rect, &context.settings, &mut context.fonts);
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+        let mut rq = RenderQueue::new();
+
+        let initial_entries = value.entries.clone();
+        assert_eq!(initial_entries.len(), 5);
+
+        let info_entry = initial_entries.iter().find(|e| {
+            if let EntryKind::RadioButton(label, _, _) = e {
+                label == "INFO"
+            } else {
+                false
+            }
+        });
+        assert!(
+            matches!(info_entry, Some(EntryKind::RadioButton(_, _, true))),
+            "INFO should be initially checked"
+        );
+
+        context.settings.logging.level = "DEBUG".to_string();
+        let update_event = Event::Settings(SettingsEvent::UpdateValue {
+            kind: Kind::LogLevel,
+            value: "DEBUG".to_string(),
+        });
+        let handled = value.handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context);
+
+        assert!(
+            handled,
+            "UpdateValue event should be handled when kind matches"
+        );
+        assert_eq!(value.value(), "DEBUG");
+
+        let updated_entries = &value.entries;
+        let debug_entry = updated_entries.iter().find(|e| {
+            if let EntryKind::RadioButton(label, _, _) = e {
+                label == "DEBUG"
+            } else {
+                false
+            }
+        });
+        assert!(
+            matches!(debug_entry, Some(EntryKind::RadioButton(_, _, true))),
+            "DEBUG should be checked after update"
+        );
+
+        let info_entry_after = updated_entries.iter().find(|e| {
+            if let EntryKind::RadioButton(label, _, _) = e {
+                label == "INFO"
+            } else {
+                false
+            }
+        });
+        assert!(
+            matches!(info_entry_after, Some(EntryKind::RadioButton(_, _, false))),
+            "INFO should be unchecked after update"
+        );
     }
 }

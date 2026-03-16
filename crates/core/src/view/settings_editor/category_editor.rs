@@ -466,21 +466,9 @@ impl CategoryEditor {
     }
 
     #[inline]
-    fn handle_toggle_logging_enabled(
-        &mut self,
-        hub: &Hub,
-        rq: &mut RenderQueue,
-        context: &mut Context,
-    ) -> bool {
+    fn handle_toggle_logging_enabled(&mut self, context: &mut Context) -> bool {
         context.settings.logging.enabled = !context.settings.logging.enabled;
 
-        hub.send(Event::Settings(SettingsEvent::UpdateValue {
-            kind: Kind::Toggle(ToggleSettings::LoggingEnabled),
-            value: context.settings.logging.enabled.to_string(),
-        }))
-        .ok();
-
-        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
         true
     }
 
@@ -834,6 +822,7 @@ impl CategoryEditor {
         true
     }
 
+    #[cfg(feature = "otel")]
     #[inline]
     fn handle_edit_otlp_endpoint(
         &mut self,
@@ -1015,9 +1004,7 @@ impl CategoryEditor {
                         context,
                     ),
                 },
-                ToggleSettings::LoggingEnabled => {
-                    self.handle_toggle_logging_enabled(hub, rq, context)
-                }
+                ToggleSettings::LoggingEnabled => self.handle_toggle_logging_enabled(context),
             },
             _ => unreachable!("mismatched toggle event"),
         }
@@ -1057,6 +1044,7 @@ impl View for CategoryEditor {
                 EntryId::SetLogLevel(ref level) => {
                     self.handle_set_log_level(level, hub, rq, context)
                 }
+                #[cfg(feature = "otel")]
                 EntryId::EditOtlpEndpoint => self.handle_edit_otlp_endpoint(hub, rq, context),
                 EntryId::SetButtonScheme(button_scheme) => {
                     self.handle_set_button_scheme(button_scheme, evt, hub, bus, rq, context)
