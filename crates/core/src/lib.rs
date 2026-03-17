@@ -5,6 +5,7 @@ pub mod assets;
 pub mod battery;
 pub mod color;
 pub mod context;
+pub mod crypto;
 pub mod db;
 pub mod device;
 mod dictionary;

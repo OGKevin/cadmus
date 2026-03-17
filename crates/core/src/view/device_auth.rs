@@ -143,10 +143,6 @@ impl DeviceAuthView {
         hub: &Hub,
         cancelled: Arc<AtomicBool>,
     ) -> Result<(String, String), String> {
-        rustls::crypto::ring::default_provider()
-            .install_default()
-            .ok();
-
         let client = GithubClient::new(None)?;
         let device_code_response = client.initiate_device_flow()?;
 
