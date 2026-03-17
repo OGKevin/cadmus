@@ -1166,9 +1166,12 @@ mod tests {
     /// parent never inserts a keyboard child.
     #[test]
     fn test_parent_keyboard_not_shown_when_ota_focuses_input() {
+        crate::crypto::init_crypto_provider();
+
         let mut context = create_test_context();
         context.load_keyboard_layouts();
         context.load_dictionaries();
+
         let (hub, rx) = channel();
         let mut bus: Bus = VecDeque::new();
         let mut rq = RenderQueue::new();
