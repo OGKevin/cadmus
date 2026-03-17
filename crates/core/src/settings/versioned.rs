@@ -28,6 +28,7 @@
 //! 2. Update manifest metadata
 //! 3. Remove old files exceeding retention limit
 use crate::settings::Settings;
+use crate::version::GitVersion;
 use anyhow::{Context, Error};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -40,8 +41,8 @@ const LEGACY_SETTINGS_FILE: &str = "Settings.toml";
 /// Metadata for a settings file version in the manifest.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SettingsEntry {
-    /// The version string (e.g., "v0.1.2" or "v0.1.3-5-gabc123").
-    pub version: String,
+    /// The version (e.g., v0.1.2 or v0.1.3-5-gabc123).
+    pub version: GitVersion,
     /// UUID v7 from the build that created this entry (timestamp-sortable).
     pub uuid: String,
     /// Path to the settings file (relative to Settings directory).
@@ -64,7 +65,7 @@ pub struct SettingsManifest {
 pub struct SettingsManager {
     settings_dir: PathBuf,
     manifest_path: PathBuf,
-    current_version: String,
+    current_version: GitVersion,
     build_uuid: String,
     root_dir: PathBuf,
 }
@@ -74,7 +75,7 @@ impl SettingsManager {
     ///
     /// # Arguments
     ///
-    /// * `current_version` - The current application version (e.g., from `GIT_VERSION`)
+    /// * `current_version` - The current application version (from `get_current_version()`)
     ///
     /// The build UUID is automatically obtained from the compile-time `BUILD_UUID`
     /// environment variable set by the core crate's build script.
@@ -83,10 +84,11 @@ impl SettingsManager {
     ///
     /// ```no_run
     /// use cadmus_core::settings::versioned::SettingsManager;
+    /// use cadmus_core::version::get_current_version;
     ///
-    /// let manager = SettingsManager::new(env!("GIT_VERSION").to_string());
+    /// let manager = SettingsManager::new(get_current_version());
     /// ```
-    pub fn new(current_version: String) -> Self {
+    pub fn new(current_version: GitVersion) -> Self {
         let root_dir = PathBuf::from(".");
         let settings_dir = root_dir.join(SETTINGS_DIR);
         let manifest_path = settings_dir.join(MANIFEST_FILE);
@@ -490,7 +492,7 @@ mod tests {
     use tempfile::TempDir;
 
     impl SettingsManager {
-        fn clone_with_version(&self, version: String) -> Self {
+        fn clone_with_version(&self, version: GitVersion) -> Self {
             SettingsManager {
                 settings_dir: self.settings_dir.clone(),
                 manifest_path: self.manifest_path.clone(),
@@ -509,7 +511,7 @@ mod tests {
         SettingsManager {
             settings_dir,
             manifest_path,
-            current_version: "v0.1.0".to_string(),
+            current_version: "v0.1.0".parse::<GitVersion>().unwrap(),
             build_uuid: "018e1234567890abcdef".to_string(),
             root_dir,
         }
@@ -542,7 +544,7 @@ mod tests {
 
         let manifest = manager.read_manifest().unwrap();
         assert_eq!(manifest.entries.len(), 1);
-        assert_eq!(manifest.entries[0].version, "v0.1.0");
+        assert_eq!(manifest.entries[0].version.to_string(), "v0.1.0");
     }
 
     #[test]
@@ -586,7 +588,7 @@ mod tests {
 
         let settings = manager.load();
 
-        manager.current_version = "v0.1.1".to_string();
+        manager.current_version = "v0.1.1".parse::<GitVersion>().unwrap();
         manager.save(&settings).unwrap();
 
         let loaded = manager.load();
@@ -623,7 +625,7 @@ mod tests {
             1,
             "Manifest should have 1 entry after first save"
         );
-        assert_eq!(manifest.entries[0].version, "v0.1.0");
+        assert_eq!(manifest.entries[0].version.to_string(), "v0.1.0");
 
         settings.selected_library = 2;
         manager.save(&settings).unwrap();
@@ -639,7 +641,7 @@ mod tests {
             1,
             "Manifest should still have 1 entry (same version replaces previous)"
         );
-        assert_eq!(manifest.entries[0].version, "v0.1.0");
+        assert_eq!(manifest.entries[0].version.to_string(), "v0.1.0");
 
         // Verify the settings were updated by loading
         let loaded = manager.load();
@@ -660,7 +662,7 @@ mod tests {
         let manager_v1 = SettingsManager {
             settings_dir: settings_dir.clone(),
             manifest_path: manifest_path.clone(),
-            current_version: "v0.1.0".to_string(),
+            current_version: "v0.1.0".parse::<GitVersion>().unwrap(),
             build_uuid: "018e0000000000000000".to_string(), // Older UUID
             root_dir: root_dir.clone(),
         };
@@ -675,7 +677,7 @@ mod tests {
         let manager_v2 = SettingsManager {
             settings_dir: settings_dir.clone(),
             manifest_path: manifest_path.clone(),
-            current_version: "v0.2.0".to_string(),
+            current_version: "v0.2.0".parse::<GitVersion>().unwrap(),
             build_uuid: "018effffffffffffffff".to_string(), // Newer UUID
             root_dir: root_dir.clone(),
         };
@@ -691,7 +693,7 @@ mod tests {
         let manager_v3 = SettingsManager {
             settings_dir,
             manifest_path,
-            current_version: "v0.3.0".to_string(),
+            current_version: "v0.3.0".parse::<GitVersion>().unwrap(),
             build_uuid: "018eaaaaaaaaaaaaaaaa".to_string(), // Different UUID
             root_dir,
         };
@@ -717,7 +719,7 @@ mod tests {
         manager.save(&settings_v1).unwrap();
 
         // Create a new manager simulating v0.2.0 with a newer UUID and different settings
-        let manager_v2 = manager.clone_with_version("v0.2.0".to_string());
+        let manager_v2 = manager.clone_with_version("v0.2.0".parse::<GitVersion>().unwrap());
         let settings_v2 = Settings {
             selected_library: 2,
             ..Settings::default()
@@ -725,7 +727,7 @@ mod tests {
         manager_v2.save(&settings_v2).unwrap();
 
         // Load as v0.1.0 - should find exact match and use v0.1.0 settings
-        let manager_v1_reload = manager.clone_with_version("v0.1.0".to_string());
+        let manager_v1_reload = manager.clone_with_version("v0.1.0".parse::<GitVersion>().unwrap());
         let loaded = manager_v1_reload.load();
 
         assert_eq!(
@@ -767,7 +769,7 @@ mod tests {
             1,
             "Manifest should have migrated entry"
         );
-        assert_eq!(manifest.entries[0].version, "v0.1.0");
+        assert_eq!(manifest.entries[0].version.to_string(), "v0.1.0");
     }
 
     #[test]
@@ -860,7 +862,7 @@ mod tests {
             let mgr = SettingsManager {
                 settings_dir: manager.settings_dir.clone(),
                 manifest_path: manager.manifest_path.clone(),
-                current_version: version.to_string(),
+                current_version: version.parse::<GitVersion>().unwrap(),
                 build_uuid: uuid.to_string(),
                 root_dir: root.clone(),
             };
@@ -904,7 +906,7 @@ mod tests {
             let mgr = SettingsManager {
                 settings_dir: manager.settings_dir.clone(),
                 manifest_path: manager.manifest_path.clone(),
-                current_version: version.to_string(),
+                current_version: version.parse::<GitVersion>().unwrap(),
                 build_uuid: uuid.to_string(),
                 root_dir: root.clone(),
             };
@@ -915,7 +917,7 @@ mod tests {
         let downgrade_mgr = SettingsManager {
             settings_dir: manager.settings_dir.clone(),
             manifest_path: manager.manifest_path.clone(),
-            current_version: "v0.1.0".to_string(),
+            current_version: "v0.1.0".parse::<GitVersion>().unwrap(),
             build_uuid: "018e0000000000000000".to_string(),
             root_dir: root.clone(),
         };
@@ -933,27 +935,27 @@ mod tests {
         let current_entry = manifest
             .entries
             .iter()
-            .find(|e| e.version == "v0.1.0")
+            .find(|e| e.version.to_string() == "v0.1.0")
             .expect("Current version v0.1.0 must be in manifest");
 
         assert_eq!(current_entry.uuid, "018e0000000000000000");
 
-        let remaining_versions: Vec<&str> = manifest
+        let remaining_versions: Vec<String> = manifest
             .entries
             .iter()
-            .map(|e| e.version.as_str())
+            .map(|e| e.version.to_string())
             .collect();
 
         assert!(
-            remaining_versions.contains(&"v0.1.0"),
+            remaining_versions.contains(&"v0.1.0".to_string()),
             "Current version v0.1.0 must be protected from deletion"
         );
         assert!(
-            remaining_versions.contains(&"v0.3.0"),
+            remaining_versions.contains(&"v0.3.0".to_string()),
             "Newer version v0.3.0 should be kept (less old than v0.2.0)"
         );
         assert!(
-            !remaining_versions.contains(&"v0.2.0"),
+            !remaining_versions.contains(&"v0.2.0".to_string()),
             "Oldest non-current version v0.2.0 should be removed"
         );
 
@@ -990,7 +992,7 @@ mod tests {
             let mgr = SettingsManager {
                 settings_dir: manager.settings_dir.clone(),
                 manifest_path: manager.manifest_path.clone(),
-                current_version: version.to_string(),
+                current_version: version.parse::<GitVersion>().unwrap(),
                 build_uuid: uuid.to_string(),
                 root_dir: root.clone(),
             };
@@ -1006,22 +1008,22 @@ mod tests {
             "Manifest should have 2 entries (retention=2)"
         );
 
-        let versions: Vec<&str> = manifest
+        let versions: Vec<String> = manifest
             .entries
             .iter()
-            .map(|e| e.version.as_str())
+            .map(|e| e.version.to_string())
             .collect();
 
         assert!(
-            versions.contains(&"v0.1.1"),
+            versions.contains(&"v0.1.1".to_string()),
             "Entry for v0.1.1 should be in manifest"
         );
         assert!(
-            versions.contains(&"v0.1.2"),
+            versions.contains(&"v0.1.2".to_string()),
             "Entry for v0.1.2 should be in manifest"
         );
         assert!(
-            !versions.contains(&"v0.1.0"),
+            !versions.contains(&"v0.1.0".to_string()),
             "Entry for v0.1.0 should be removed"
         );
     }
@@ -1039,7 +1041,7 @@ mod tests {
         let v1_mgr = SettingsManager {
             settings_dir: manager.settings_dir.clone(),
             manifest_path: manager.manifest_path.clone(),
-            current_version: "v0.1.0".to_string(),
+            current_version: "v0.1.0".parse::<GitVersion>().unwrap(),
             build_uuid: "018e0000000000000000".to_string(),
             root_dir: root.clone(),
         };
@@ -1049,7 +1051,7 @@ mod tests {
         let v2_mgr = SettingsManager {
             settings_dir: manager.settings_dir.clone(),
             manifest_path: manager.manifest_path.clone(),
-            current_version: "v0.1.1".to_string(),
+            current_version: "v0.1.1".parse::<GitVersion>().unwrap(),
             build_uuid: "018e5555555555555555".to_string(),
             root_dir: root.clone(),
         };
@@ -1063,14 +1065,15 @@ mod tests {
             "Should keep only 1 entry with retention=1"
         );
         assert_eq!(
-            manifest.entries[0].version, "v0.1.1",
+            manifest.entries[0].version.to_string(),
+            "v0.1.1",
             "Should keep the current (newest) version"
         );
 
         let v3_mgr = SettingsManager {
             settings_dir: manager.settings_dir.clone(),
             manifest_path: manager.manifest_path.clone(),
-            current_version: "v0.1.2".to_string(),
+            current_version: "v0.1.2".parse::<GitVersion>().unwrap(),
             build_uuid: "018effffffffffffffff".to_string(),
             root_dir: root.clone(),
         };
@@ -1089,7 +1092,8 @@ mod tests {
             "Manifest should be updated and written"
         );
         assert_eq!(
-            manifest_final.entries[0].version, "v0.1.2",
+            manifest_final.entries[0].version.to_string(),
+            "v0.1.2",
             "Current version should be in manifest"
         );
     }

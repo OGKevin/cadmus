@@ -1,0 +1,629 @@
+//! Version comparison utility for git describe format version strings.
+//!
+//! Supports comparing versions like:
+//! - `v0.9.46` (tagged releases)
+//! - `v0.9.46-5-gabc123` (development builds with commits ahead)
+//! - `v0.9.46-5-gabc123-dirty` (dirty working tree)
+//!
+//! When versions contain different git hashes, GitHub API is used to check
+//! ancestry relationships. The API client is created internally with no
+//! authentication for public repository access.
+
+use crate::github::GithubClient;
+use serde::{de::Visitor, Deserialize, Deserializer, Serialize, Serializer};
+
+/// Result of comparing two versions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VersionComparison {
+    /// The local version is newer than the remote.
+    Newer,
+    /// The local version is older than the remote.
+    Older,
+    /// Both versions are equal.
+    Equal,
+    /// Cannot determine order (divergent branches).
+    Incomparable,
+}
+
+/// Errors that can occur during version parsing or comparison.
+#[derive(Debug, thiserror::Error)]
+pub enum VersionError {
+    /// Invalid version format.
+    #[error("invalid version format: {0}")]
+    InvalidFormat(String),
+    /// GitHub API error.
+    #[error("GitHub API error: {0}")]
+    GitHubApi(String),
+    /// Inconsistent version data (e.g., same hash but different commit counts).
+    #[error("inconsistent version data: {0}")]
+    InconsistentData(String),
+}
+
+/// Response from GitHub's compare API.
+#[derive(Debug, Deserialize)]
+struct CompareResponse {
+    status: String,
+}
+
+/// A parsed git describe version string.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GitVersion {
+    major: u64,
+    minor: u64,
+    patch: u64,
+    commits_ahead: u64,
+    hash: Option<String>,
+    dirty: bool,
+}
+
+impl std::fmt::Display for GitVersion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "v{}.{}.{}", self.major, self.minor, self.patch)?;
+
+        if self.commits_ahead > 0 {
+            if let Some(ref hash) = self.hash {
+                write!(f, "-{}-g{}", self.commits_ahead, hash)?;
+            }
+        }
+
+        if self.dirty {
+            write!(f, "-dirty")?;
+        }
+
+        Ok(())
+    }
+}
+
+impl std::str::FromStr for GitVersion {
+    type Err = VersionError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::parse(s)
+    }
+}
+
+impl GitVersion {
+    /// Parses a version string in git describe format.
+    ///
+    /// Supported formats:
+    /// - `v0.9.46` - Tagged release
+    /// - `v0.9.46-5-gabc123` - Development build with commits ahead
+    /// - `v0.9.46-5-gabc123-dirty` - Dirty working tree
+    ///
+    /// # Errors
+    ///
+    /// Returns `VersionError::InvalidFormat` if the version string cannot be parsed.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cadmus_core::version::GitVersion;
+    ///
+    /// let v = GitVersion::parse("v0.9.46").unwrap();
+    /// assert_eq!(v.major(), 0);
+    /// assert_eq!(v.minor(), 9);
+    /// assert_eq!(v.patch(), 46);
+    /// ```
+    pub fn parse(version: &str) -> Result<Self, VersionError> {
+        let original = version.to_string();
+        let (version, dirty) = version
+            .strip_suffix("-dirty")
+            .map_or((version, false), |v| (v, true));
+
+        let parts: Vec<&str> = version.split('-').collect();
+
+        if parts.is_empty() {
+            return Err(VersionError::InvalidFormat(original));
+        }
+
+        let semver = parts[0];
+        let (major, minor, patch) = parse_semver(semver)?;
+
+        let (commits_ahead, hash) = if parts.len() == 3 {
+            let ahead = parts[1]
+                .parse::<u64>()
+                .map_err(|_| VersionError::InvalidFormat(original.clone()))?;
+            let hash = parts[2]
+                .strip_prefix('g')
+                .ok_or_else(|| VersionError::InvalidFormat(original.clone()))?
+                .to_string();
+            (ahead, Some(hash))
+        } else if parts.len() == 1 {
+            (0, None)
+        } else {
+            return Err(VersionError::InvalidFormat(original));
+        };
+
+        Ok(GitVersion {
+            major,
+            minor,
+            patch,
+            commits_ahead,
+            hash,
+            dirty,
+        })
+    }
+
+    /// Returns the major version number.
+    pub fn major(&self) -> u64 {
+        self.major
+    }
+
+    /// Returns the minor version number.
+    pub fn minor(&self) -> u64 {
+        self.minor
+    }
+
+    /// Returns the patch version number.
+    pub fn patch(&self) -> u64 {
+        self.patch
+    }
+
+    /// Returns the number of commits ahead of the tag.
+    pub fn commits_ahead(&self) -> u64 {
+        self.commits_ahead
+    }
+
+    /// Returns the git hash if present.
+    pub fn hash(&self) -> Option<&str> {
+        self.hash.as_deref()
+    }
+
+    /// Returns true if the working tree was dirty.
+    pub fn is_dirty(&self) -> bool {
+        self.dirty
+    }
+
+    /// Returns true if this is a tagged release (no commits ahead).
+    pub fn is_tagged_release(&self) -> bool {
+        self.commits_ahead == 0
+    }
+
+    /// Compares this version with another.
+    ///
+    /// If both versions contain different git hashes, this method will
+    /// use the GitHub API to check ancestry relationships.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use cadmus_core::version::{GitVersion, VersionComparison};
+    ///
+    /// // Local is newer than remote (higher semver)
+    /// let local: GitVersion = "v0.9.46".parse().unwrap();
+    /// let remote: GitVersion = "v0.9.45".parse().unwrap();
+    /// let result = local.compare(&remote).unwrap();
+    /// assert_eq!(result, VersionComparison::Newer);
+    ///
+    /// // Local is older than remote (lower semver)
+    /// let local: GitVersion = "v0.9.44".parse().unwrap();
+    /// let remote: GitVersion = "v0.9.45".parse().unwrap();
+    /// let result = local.compare(&remote).unwrap();
+    /// assert_eq!(result, VersionComparison::Older);
+    ///
+    /// // Local equals remote (same version)
+    /// let local: GitVersion = "v0.9.46".parse().unwrap();
+    /// let remote: GitVersion = "v0.9.46".parse().unwrap();
+    /// let result = local.compare(&remote).unwrap();
+    /// assert_eq!(result, VersionComparison::Equal);
+    /// ```
+    #[cfg_attr(
+        feature = "otel",
+        tracing::instrument(skip(self, other), fields(local = %self, remote = %other))
+    )]
+    pub fn compare(&self, other: &GitVersion) -> Result<VersionComparison, VersionError> {
+        tracing::debug!(local = %self, remote = %other, "Comparing versions");
+
+        let semver_cmp = compare_semver(self, other);
+        if semver_cmp != std::cmp::Ordering::Equal {
+            tracing::debug!(result = ?semver_cmp, "Semver comparison determined order");
+            return Ok(match semver_cmp {
+                std::cmp::Ordering::Greater => VersionComparison::Newer,
+                std::cmp::Ordering::Less => VersionComparison::Older,
+                std::cmp::Ordering::Equal => unreachable!(),
+            });
+        }
+
+        match (
+            self.commits_ahead(),
+            other.commits_ahead(),
+            self.hash(),
+            other.hash(),
+        ) {
+            (0, 0, _, _) => {
+                tracing::debug!("Both versions are tagged releases with same semver");
+                Ok(VersionComparison::Equal)
+            }
+
+            (0, remote_ahead, _, Some(_)) => {
+                tracing::debug!(
+                    remote_ahead,
+                    "Local is tagged release, remote has commits ahead"
+                );
+                Ok(VersionComparison::Older)
+            }
+
+            (local_ahead, 0, Some(_), _) => {
+                tracing::debug!(
+                    local_ahead,
+                    "Local has commits ahead, remote is tagged release"
+                );
+                Ok(VersionComparison::Newer)
+            }
+
+            (local_ahead, remote_ahead, Some(local_hash), Some(remote_hash)) => {
+                tracing::debug!(
+                    local_ahead,
+                    remote_ahead,
+                    local_hash,
+                    remote_hash,
+                    "Both versions have commits ahead, checking ancestry"
+                );
+
+                if local_hash == remote_hash {
+                    if local_ahead != remote_ahead {
+                        return Err(VersionError::InconsistentData(format!(
+                            "same hash '{}' but different commits ahead: {} vs {}",
+                            local_hash, local_ahead, remote_ahead
+                        )));
+                    }
+                    tracing::debug!("Same hash and same commit count");
+                    return Ok(VersionComparison::Equal);
+                }
+
+                let github =
+                    GithubClient::new(None).map_err(|e| VersionError::GitHubApi(e.to_string()))?;
+                check_ancestry(&github, local_hash, remote_hash)
+            }
+
+            _ => {
+                tracing::warn!("Unexpected version comparison state");
+                Ok(VersionComparison::Incomparable)
+            }
+        }
+    }
+}
+
+impl Serialize for GitVersion {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+impl<'de> Deserialize<'de> for GitVersion {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct GitVersionVisitor;
+
+        impl Visitor<'_> for GitVersionVisitor {
+            type Value = GitVersion;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a git version string (e.g., 'v1.2.3' or 'v1.2.3-5-gabc123')")
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                GitVersion::parse(value).map_err(serde::de::Error::custom)
+            }
+        }
+
+        deserializer.deserialize_str(GitVersionVisitor)
+    }
+}
+
+/// Returns the current application version from compile-time environment.
+pub fn get_current_version() -> GitVersion {
+    env!("GIT_VERSION")
+        .parse()
+        .expect("compile-time version should always be valid")
+}
+
+fn parse_semver(semver: &str) -> Result<(u64, u64, u64), VersionError> {
+    let without_v = semver.strip_prefix('v').unwrap_or(semver);
+    let nums: Vec<&str> = without_v.split('.').collect();
+
+    if nums.len() != 3 {
+        return Err(VersionError::InvalidFormat(semver.to_string()));
+    }
+
+    let major = nums[0]
+        .parse::<u64>()
+        .map_err(|_| VersionError::InvalidFormat(semver.to_string()))?;
+    let minor = nums[1]
+        .parse::<u64>()
+        .map_err(|_| VersionError::InvalidFormat(semver.to_string()))?;
+    let patch = nums[2]
+        .parse::<u64>()
+        .map_err(|_| VersionError::InvalidFormat(semver.to_string()))?;
+
+    Ok((major, minor, patch))
+}
+
+/// Compares semantic versions (major, minor, patch) between two versions.
+///
+/// Returns `Ordering::Greater` if local has a higher semantic version,
+/// `Ordering::Less` if remote has a higher semantic version,
+/// or `Ordering::Equal` if both have the same semantic version.
+///
+/// # Examples
+///
+/// ```
+/// use cadmus_core::version::{GitVersion, compare_semver};
+/// use std::cmp::Ordering;
+///
+/// let v1: GitVersion = "v0.9.46".parse().unwrap();
+/// let v2: GitVersion = "v0.9.45".parse().unwrap();
+/// assert_eq!(compare_semver(&v1, &v2), Ordering::Greater);
+///
+/// let v1: GitVersion = "v0.9.44".parse().unwrap();
+/// let v2: GitVersion = "v0.9.45".parse().unwrap();
+/// assert_eq!(compare_semver(&v1, &v2), Ordering::Less);
+///
+/// let v1: GitVersion = "v0.9.46".parse().unwrap();
+/// let v2: GitVersion = "v0.9.46".parse().unwrap();
+/// assert_eq!(compare_semver(&v1, &v2), Ordering::Equal);
+/// ```
+pub fn compare_semver(local: &GitVersion, remote: &GitVersion) -> std::cmp::Ordering {
+    local
+        .major()
+        .cmp(&remote.major())
+        .then_with(|| local.minor().cmp(&remote.minor()))
+        .then_with(|| local.patch().cmp(&remote.patch()))
+}
+
+/// Checks commit ancestry using GitHub's compare API.
+///
+/// Makes a request to GitHub's compare endpoint to determine if `local_hash`
+/// is ahead of, behind, or diverged from `remote_hash`.
+///
+/// # Arguments
+///
+/// * `github` - GitHub client for making API requests
+/// * `local_hash` - The local commit hash to compare
+/// * `remote_hash` - The remote commit hash to compare against
+///
+/// # Errors
+///
+/// Returns `VersionError::GitHubApi` if:
+/// - The HTTP request fails
+/// - GitHub returns a non-success status code
+/// - The response cannot be parsed
+fn check_ancestry(
+    github: &GithubClient,
+    local_hash: &str,
+    remote_hash: &str,
+) -> Result<VersionComparison, VersionError> {
+    let url = format!(
+        "https://api.github.com/repos/ogkevin/cadmus/compare/{}...{}",
+        remote_hash, local_hash
+    );
+
+    tracing::debug!(url = %url, "Checking commit ancestry via GitHub API");
+
+    let response = github
+        .get(&url)
+        .header("Accept", "application/vnd.github+json")
+        .send()
+        .map_err(|e| {
+            tracing::error!(error = %e, "GitHub API request failed");
+            VersionError::GitHubApi(e.to_string())
+        })?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        tracing::error!(status = ?status, "GitHub API returned error");
+        return Err(VersionError::GitHubApi(format!(
+            "HTTP {}",
+            response.status()
+        )));
+    }
+
+    let compare: CompareResponse = response.json().map_err(|e| {
+        tracing::error!(error = %e, "Failed to parse GitHub response");
+        VersionError::GitHubApi(e.to_string())
+    })?;
+
+    tracing::debug!(status = %compare.status, "GitHub compare result received");
+
+    match compare.status.as_str() {
+        "ahead" => Ok(VersionComparison::Newer),
+        "behind" => Ok(VersionComparison::Older),
+        "identical" => Ok(VersionComparison::Equal),
+        "diverged" => Ok(VersionComparison::Incomparable),
+        other => {
+            tracing::warn!(status = other, "Unknown compare status from GitHub");
+            Err(VersionError::GitHubApi(format!(
+                "Unknown compare status: {}",
+                other
+            )))
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_release_version() {
+        let v = GitVersion::parse("v0.9.46").unwrap();
+        assert_eq!(v.major(), 0);
+        assert_eq!(v.minor(), 9);
+        assert_eq!(v.patch(), 46);
+        assert_eq!(v.commits_ahead(), 0);
+        assert!(v.hash().is_none());
+        assert!(!v.is_dirty());
+        assert!(v.is_tagged_release());
+    }
+
+    #[test]
+    fn test_parse_development_version() {
+        let v = GitVersion::parse("v0.9.46-5-gabc123").unwrap();
+        assert_eq!(v.major(), 0);
+        assert_eq!(v.minor(), 9);
+        assert_eq!(v.patch(), 46);
+        assert_eq!(v.commits_ahead(), 5);
+        assert_eq!(v.hash(), Some("abc123"));
+        assert!(!v.is_dirty());
+        assert!(!v.is_tagged_release());
+    }
+
+    #[test]
+    fn test_parse_dirty_version() {
+        let v = GitVersion::parse("v0.9.46-5-gabc123-dirty").unwrap();
+        assert_eq!(v.major(), 0);
+        assert_eq!(v.minor(), 9);
+        assert_eq!(v.patch(), 46);
+        assert_eq!(v.commits_ahead(), 5);
+        assert_eq!(v.hash(), Some("abc123"));
+        assert!(v.is_dirty());
+    }
+
+    #[test]
+    fn test_parse_without_v_prefix() {
+        let v = GitVersion::parse("0.9.46").unwrap();
+        assert_eq!(v.major(), 0);
+        assert_eq!(v.minor(), 9);
+        assert_eq!(v.patch(), 46);
+    }
+
+    #[test]
+    fn test_parse_invalid_version() {
+        assert!(GitVersion::parse("invalid").is_err());
+        assert!(GitVersion::parse("v1.2").is_err());
+        assert!(GitVersion::parse("v1.2.3.4").is_err());
+        assert!(GitVersion::parse("v1.2.3-abc").is_err());
+    }
+
+    #[test]
+    fn test_compare_different_semver() {
+        let local1: GitVersion = "v0.9.46".parse().unwrap();
+        let remote1: GitVersion = "v0.9.45".parse().unwrap();
+        assert_eq!(local1.compare(&remote1).unwrap(), VersionComparison::Newer);
+
+        let local2: GitVersion = "v0.9.45".parse().unwrap();
+        let remote2: GitVersion = "v0.9.46".parse().unwrap();
+        assert_eq!(local2.compare(&remote2).unwrap(), VersionComparison::Older);
+
+        let local3: GitVersion = "v0.9.46".parse().unwrap();
+        let remote3: GitVersion = "v0.9.46".parse().unwrap();
+        assert_eq!(local3.compare(&remote3).unwrap(), VersionComparison::Equal);
+
+        let local4: GitVersion = "v0.10.0".parse().unwrap();
+        let remote4: GitVersion = "v0.9.46".parse().unwrap();
+        assert_eq!(local4.compare(&remote4).unwrap(), VersionComparison::Newer);
+
+        let local5: GitVersion = "v1.0.0".parse().unwrap();
+        let remote5: GitVersion = "v0.9.46".parse().unwrap();
+        assert_eq!(local5.compare(&remote5).unwrap(), VersionComparison::Newer);
+    }
+
+    #[test]
+    fn test_compare_tagged_vs_development() {
+        let local1: GitVersion = "v0.9.46".parse().unwrap();
+        let remote1: GitVersion = "v0.9.46-5-gabc123".parse().unwrap();
+        assert_eq!(local1.compare(&remote1).unwrap(), VersionComparison::Older);
+
+        let local2: GitVersion = "v0.9.46-5-gabc123".parse().unwrap();
+        let remote2: GitVersion = "v0.9.46".parse().unwrap();
+        assert_eq!(local2.compare(&remote2).unwrap(), VersionComparison::Newer);
+    }
+
+    #[test]
+    fn test_compare_same_hash_different_ahead() {
+        let local: GitVersion = "v0.9.46-5-gabc123".parse().unwrap();
+        let remote: GitVersion = "v0.9.46-3-gabc123".parse().unwrap();
+        let result = local.compare(&remote);
+        assert!(matches!(result, Err(VersionError::InconsistentData(_))));
+    }
+
+    #[test]
+    fn test_compare_same_hash_same_ahead() {
+        let local: GitVersion = "v0.9.46-5-gabc123".parse().unwrap();
+        let remote: GitVersion = "v0.9.46-5-gabc123".parse().unwrap();
+        assert_eq!(local.compare(&remote).unwrap(), VersionComparison::Equal);
+    }
+
+    #[test]
+    #[ignore = "requires network access to GitHub API"]
+    fn test_compare_different_hashes_needs_github() {
+        let local: GitVersion = "v0.9.46-5-gabc123".parse().unwrap();
+        let remote: GitVersion = "v0.9.46-3-gdef456".parse().unwrap();
+        // This will attempt to create a GitHub client and call the API
+        // Since abc123 and def456 are not real commits, it will fail
+        let result = local.compare(&remote);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_git_version_serde_roundtrip() {
+        let versions = vec!["v0.9.46", "v0.9.46-5-gabc123", "v0.9.46-5-gabc123-dirty"];
+
+        for version_str in versions {
+            let version: GitVersion = version_str.parse().unwrap();
+            let serialized = serde_json::to_string(&version).unwrap();
+            let deserialized: GitVersion = serde_json::from_str(&serialized).unwrap();
+            assert_eq!(version, deserialized);
+            assert_eq!(serialized, format!("\"{}\"", version_str));
+        }
+    }
+
+    #[test]
+    fn test_git_version_deserialize_from_string() {
+        let json = "\"v0.9.46-5-gabc123\"";
+        let version: GitVersion = serde_json::from_str(json).unwrap();
+        assert_eq!(version.major(), 0);
+        assert_eq!(version.minor(), 9);
+        assert_eq!(version.patch(), 46);
+        assert_eq!(version.commits_ahead(), 5);
+        assert_eq!(version.hash(), Some("abc123"));
+    }
+
+    #[test]
+    #[ignore = "requires network access to GitHub API"]
+    fn test_check_ancestry_ahead() {
+        rustls::crypto::ring::default_provider()
+            .install_default()
+            .ok();
+        let github = GithubClient::new(None).expect("client build");
+
+        let result = check_ancestry(&github, "HEAD", "v0.9.46");
+        assert!(
+            result.is_ok(),
+            "Ancestry check should succeed: {:?}",
+            result.err()
+        );
+
+        let comparison = result.unwrap();
+        assert_eq!(
+            comparison,
+            VersionComparison::Newer,
+            "HEAD should be ahead of v0.9.46"
+        );
+    }
+
+    #[test]
+    #[ignore = "requires network access to GitHub API"]
+    fn test_check_ancestry_same_commit() {
+        rustls::crypto::ring::default_provider()
+            .install_default()
+            .ok();
+        let github = GithubClient::new(None).expect("client build");
+
+        let result = check_ancestry(&github, "HEAD", "HEAD");
+        assert!(
+            result.is_ok(),
+            "Same commit comparison should succeed: {:?}",
+            result.err()
+        );
+        assert_eq!(result.unwrap(), VersionComparison::Equal);
+    }
+}

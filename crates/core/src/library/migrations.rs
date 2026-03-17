@@ -19,6 +19,7 @@ use crate::library::THUMBNAIL_PREVIEWS_DIRNAME;
 use crate::library::{METADATA_FILENAME, READING_STATES_DIRNAME};
 use crate::metadata::Info;
 use crate::settings::versioned::SettingsManager;
+use crate::version::get_current_version;
 use fxhash::FxBuildHasher;
 use indexmap::IndexMap;
 use sqlx::{Sqlite, Transaction};
@@ -41,7 +42,7 @@ crate::migration!(
     /// The migration is idempotent (all inserts use `ON CONFLICT … DO NOTHING`).
     "v1_import_legacy_filesystem_data",
     async fn import_legacy_filesystem_data(pool: &SqlitePool) {
-        let settings = SettingsManager::new(env!("GIT_VERSION").to_string()).load();
+        let settings = SettingsManager::new(get_current_version()).load();
 
         if settings.libraries.is_empty() {
             info!("no libraries in settings, skipping legacy data import");

@@ -19,6 +19,7 @@ use cadmus_core::png;
 use cadmus_core::pt;
 use cadmus_core::settings::versioned::SettingsManager;
 use cadmus_core::settings::{IntermKind, Settings};
+use cadmus_core::version::get_current_version;
 use cadmus_core::view::calculator::Calculator;
 use cadmus_core::view::common::{
     find_notification_mut, locate, locate_by_id, overlapping_rectangle, transfer_notifications,
@@ -285,7 +286,7 @@ fn main() -> Result<(), Error> {
     let mut fb = window.into_canvas().software().build().unwrap();
     fb.set_blend_mode(BlendMode::Blend);
 
-    let manager = SettingsManager::new(env!("GIT_VERSION").to_string());
+    let manager = SettingsManager::new(get_current_version());
     let settings = manager.load();
 
     cadmus_core::logging::init_logging(&settings.logging)
@@ -709,7 +710,7 @@ fn main() -> Result<(), Error> {
                 Event::Select(EntryId::About) => {
                     let dialog = Dialog::builder(
                         ViewId::AboutDialog,
-                        format!("Cadmus {}", env!("GIT_VERSION")),
+                        format!("Cadmus {}", get_current_version()),
                     )
                     .add_button("OK", Event::Close(ViewId::AboutDialog))
                     .add_button("Docs", Event::Select(EntryId::OpenDocumentation))
