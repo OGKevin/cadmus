@@ -24,6 +24,7 @@ use cadmus_core::lightsensor::{KoboLightSensor, LightSensor};
 use cadmus_core::rtc::Rtc;
 use cadmus_core::settings::versioned::SettingsManager;
 use cadmus_core::settings::{ButtonScheme, IntermKind, LoggingSettings, RotationLock, Settings};
+use cadmus_core::version::get_current_version;
 use cadmus_core::view::calculator::Calculator;
 use cadmus_core::view::common::{
     find_notification_mut, locate, locate_by_id, overlapping_rectangle, transfer_notifications,
@@ -494,7 +495,7 @@ pub fn run() -> Result<(), Error> {
         fb.set_rotation(startup_rotation).ok();
     }
 
-    let manager = SettingsManager::new(env!("GIT_VERSION").to_string());
+    let manager = SettingsManager::new(get_current_version());
     let settings = manager.load();
 
     if let Err(e) = cadmus_core::logging::init_logging(&settings.logging) {
@@ -626,7 +627,7 @@ pub fn run() -> Result<(), Error> {
     info!(
         "{} {} {} is running on a Kobo {}.",
         APP_NAME,
-        env!("GIT_VERSION"),
+        get_current_version(),
         option_env!("PR_INFO").unwrap_or(""),
         CURRENT_DEVICE.model
     );
@@ -1201,13 +1202,13 @@ pub fn run() -> Result<(), Error> {
             Event::Select(EntryId::About) => {
                 #[cfg(feature = "test")]
                 let version_text = match option_env!("PR_INFO") {
-                    Some(pr_info) => format!("Cadmus Test {}\n{}", env!("GIT_VERSION"), pr_info),
-                    None => format!("Cadmus {} (Test)", env!("GIT_VERSION")),
+                    Some(pr_info) => format!("Cadmus Test {}\n{}", get_current_version(), pr_info),
+                    None => format!("Cadmus {} (Test)", get_current_version()),
                 };
                 #[cfg(not(feature = "test"))]
                 let version_text = match option_env!("PR_INFO") {
-                    Some(pr_info) => format!("Cadmus {}\n{}", env!("GIT_VERSION"), pr_info),
-                    None => format!("Cadmus {}", env!("GIT_VERSION")),
+                    Some(pr_info) => format!("Cadmus {}\n{}", get_current_version(), pr_info),
+                    None => format!("Cadmus {}", get_current_version()),
                 };
 
                 let dialog = Dialog::builder(ViewId::AboutDialog, version_text)

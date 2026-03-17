@@ -26,6 +26,7 @@ pub mod settings;
 #[cfg(feature = "otel")]
 pub mod telemetry;
 mod unit;
+pub mod version;
 pub mod view;
 
 pub use anyhow;

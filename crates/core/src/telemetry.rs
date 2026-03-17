@@ -39,6 +39,7 @@
 //! ```
 
 use crate::settings::LoggingSettings;
+use crate::version::get_current_version;
 use anyhow::{Context, Error};
 use gethostname::gethostname;
 use opentelemetry::trace::TracerProvider;
@@ -52,7 +53,6 @@ use std::thread;
 use std::time::Duration;
 use tracing_subscriber::Layer;
 
-const GIT_VERSION: &str = env!("GIT_VERSION");
 const SERVICE_NAME: &str = "cadmus";
 static TRACER_PROVIDER: OnceLock<SdkTracerProvider> = OnceLock::new();
 static LOGGER_PROVIDER: OnceLock<SdkLoggerProvider> = OnceLock::new();
@@ -118,7 +118,7 @@ where
     let resource = Resource::builder()
         .with_service_name(SERVICE_NAME)
         .with_attributes([
-            KeyValue::new("service.version", GIT_VERSION),
+            KeyValue::new("service.version", get_current_version().to_string()),
             KeyValue::new("cadmus.run_id", run_id.to_string()),
             KeyValue::new("hostname", hostname),
         ])

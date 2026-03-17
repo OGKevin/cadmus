@@ -77,6 +77,7 @@
 use crate::settings::LoggingSettings;
 #[cfg(feature = "otel")]
 use crate::telemetry;
+use crate::version::get_current_version;
 use anyhow::{Context, Error};
 use arc_swap::ArcSwap;
 use std::fs;
@@ -93,7 +94,6 @@ use uuid::Uuid;
 
 mod kern;
 
-const GIT_VERSION: &str = env!("GIT_VERSION");
 const LOG_FILE_PREFIX: &str = "cadmus-";
 const LOG_FILE_SUFFIX: &str = "json";
 
@@ -345,7 +345,7 @@ pub fn init_logging(settings: &LoggingSettings) -> Result<(), Error> {
     eprintln!(
         "Cadmus run started with ID: {} (version {})",
         get_run_id(),
-        GIT_VERSION
+        get_current_version()
     );
 
     #[cfg(feature = "test")]
