@@ -81,7 +81,7 @@ pub fn build_context(
     let frontlight = Box::new(LightLevels::default()) as Box<dyn Frontlight>;
     let lightsensor = Box::new(0u16) as Box<dyn LightSensor>;
 
-    Ok(Context::new(
+    let mut ctx = Context::new(
         fb,
         None,
         library,
@@ -91,7 +91,11 @@ pub fn build_context(
         battery,
         frontlight,
         lightsensor,
-    ))
+    );
+
+    ctx.online = true;
+
+    Ok(ctx)
 }
 
 #[inline]
