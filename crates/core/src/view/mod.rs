@@ -512,6 +512,11 @@ pub enum Event {
         label: String,
         percent: u8,
     },
+    /// Signal to start downloading the stable release after version check.
+    ///
+    /// This event is sent from the version check thread when the remote version
+    /// is newer than the current version, triggering the actual download to begin.
+    StartStableReleaseDownload,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]

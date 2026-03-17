@@ -104,6 +104,7 @@ pub(crate) struct Artifact {
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct Release {
+    pub tag_name: String,
     pub assets: Vec<ReleaseAsset>,
 }
 

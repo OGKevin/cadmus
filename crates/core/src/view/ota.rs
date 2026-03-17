@@ -20,6 +20,7 @@ use crate::github::device_flow;
 use crate::github::GithubClient;
 use crate::ota::{OtaClient, OtaError, OtaProgress};
 use crate::unit::scale_by_dpi;
+use crate::version::{get_current_version, VersionComparison};
 use crate::view::filler::Filler;
 use crate::view::github::GithubEvent;
 use crate::view::BIG_BAR_HEIGHT;
@@ -724,12 +725,100 @@ impl OtaView {
     fn on_select_stable_release(
         &mut self,
         hub: &Hub,
-        rq: &mut RenderQueue,
-        context: &mut Context,
+        _rq: &mut RenderQueue,
+        _context: &mut Context,
     ) -> bool {
-        self.build_progress_screen("Downloading stable release… 0%", context);
-        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Full));
-        self.start_stable_release_download(hub);
+        hub.send(Event::Notification(NotificationEvent::Show(
+            "Checking for updates...".to_string(),
+        )))
+        .ok();
+
+        let github_token = self.github_token.clone();
+        let hub2 = hub.clone();
+        let ota_view_id = self.view_id;
+        let parent_span = tracing::Span::current();
+
+        thread::spawn(move || {
+            let _span = tracing::info_span!(parent: &parent_span, "version_check_async").entered();
+
+            let github = match GithubClient::new(github_token) {
+                Ok(c) => c,
+                Err(e) => {
+                    tracing::error!(error = %e, "Failed to create GitHub client");
+                    hub2.send(Event::Close(ota_view_id)).ok();
+                    hub2.send(Event::Notification(NotificationEvent::Show(format!(
+                        "Failed to create client: {}",
+                        e
+                    ))))
+                    .ok();
+                    return;
+                }
+            };
+
+            let client = OtaClient::new(github);
+            let remote_version = match client.fetch_latest_release_version() {
+                Ok(version) => version,
+                Err(e) => {
+                    tracing::error!(error = %e, "Failed to fetch or parse latest release version");
+                    hub2.send(Event::Close(ota_view_id)).ok();
+                    hub2.send(Event::Notification(NotificationEvent::Show(format!(
+                        "Failed to check for updates: {}",
+                        e
+                    ))))
+                    .ok();
+                    return;
+                }
+            };
+
+            let current_version = get_current_version();
+
+            tracing::info!(
+                current_version = %current_version,
+                remote_version = %remote_version,
+                "Comparing versions"
+            );
+
+            match current_version.compare(&remote_version) {
+                Ok(VersionComparison::Equal) => {
+                    tracing::info!("Current version equals remote version - already latest");
+                    hub2.send(Event::Close(ota_view_id)).ok();
+                    hub2.send(Event::Notification(NotificationEvent::Show(
+                        "You already have the latest version".to_string(),
+                    )))
+                    .ok();
+                }
+                Ok(VersionComparison::Newer) => {
+                    tracing::info!("Current version is newer than remote version");
+                    hub2.send(Event::Close(ota_view_id)).ok();
+                    hub2.send(Event::Notification(NotificationEvent::Show(
+                        "Your version is newer than the latest release".to_string(),
+                    )))
+                    .ok();
+                }
+                Ok(VersionComparison::Older) => {
+                    tracing::info!("Remote version is newer - proceeding with download");
+                    hub2.send(Event::StartStableReleaseDownload).ok();
+                }
+                Ok(VersionComparison::Incomparable) => {
+                    tracing::warn!("Cannot compare versions - divergent branches");
+                    hub2.send(Event::Close(ota_view_id)).ok();
+                    hub2.send(Event::Notification(NotificationEvent::Show(
+                        "Cannot compare versions - divergent branches".to_string(),
+                    )))
+                    .ok();
+                }
+                Err(e) => {
+                    tracing::error!(error = %e, "Version comparison error");
+                    hub2.send(Event::Close(ota_view_id)).ok();
+                    hub2.send(Event::Notification(NotificationEvent::Show(format!(
+                        "Version comparison error: {}",
+                        e
+                    ))))
+                    .ok();
+                }
+            }
+        });
+
         true
     }
 
@@ -901,6 +990,12 @@ impl View for OtaView {
             Event::Github(GithubEvent::DeviceAuthExpired) => self.on_device_auth_expired(hub),
             Event::Github(GithubEvent::DeviceAuthError(ref msg)) => {
                 self.on_device_auth_error(msg, hub)
+            }
+            Event::StartStableReleaseDownload => {
+                self.build_progress_screen("Downloading stable release… 0%", context);
+                rq.add(RenderData::new(self.id, self.rect, UpdateMode::Full));
+                self.start_stable_release_download(hub);
+                true
             }
             _ => false,
         }

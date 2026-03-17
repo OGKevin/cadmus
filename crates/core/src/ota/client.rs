@@ -2,6 +2,7 @@ use crate::github::types::{
     Artifact, ArtifactsResponse, Release, ReleaseAsset, Repository, WorkflowRunsResponse,
 };
 use crate::github::{GithubClient, OtaProgress};
+use crate::version::GitVersion;
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use std::fs::File;
 use std::io::{Read, Write};
@@ -119,6 +120,10 @@ pub enum OtaError {
     /// Deployment process failed after successful download
     #[error("Deployment error: {0}")]
     DeploymentError(String),
+
+    /// Failed to parse version string
+    #[error(transparent)]
+    VersionParse(#[from] crate::version::VersionError),
 }
 
 impl OtaClient {
@@ -486,6 +491,56 @@ impl OtaClient {
 
         tracing::info!("Stable release download completed");
         Ok(download_path)
+    }
+
+    /// Fetches the latest stable release version from GitHub.
+    ///
+    /// Retrieves and parses the version from the most recent release
+    /// in. Returns the version as a `GitVersion` struct for easy comparison and display.
+    ///
+    /// GitHub authentication is not required for this operation as releases are public.
+    ///
+    /// # Errors
+    ///
+    /// * `OtaError::Api` - GitHub API request failed
+    /// * `OtaError::Request` - Network communication failed
+    /// * `OtaError::VersionParse` - Failed to parse the release tag as a valid version
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use cadmus_core::github::GithubClient;
+    /// use cadmus_core::ota::OtaClient;
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// # rustls::crypto::ring::default_provider().install_default().ok();
+    /// # let github = GithubClient::new(None)?;
+    /// # let client = OtaClient::new(github);
+    /// let version = client.fetch_latest_release_version()?;
+    /// println!("Latest version: {}", version);
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self)))]
+    pub fn fetch_latest_release_version(&self) -> Result<GitVersion, OtaError> {
+        let releases_url = "https://api.github.com/repos/ogkevin/cadmus/releases/latest";
+        tracing::debug!(url = %releases_url, "Fetching latest release version");
+
+        let release: Release = self
+            .github
+            .get_unauthenticated(releases_url)
+            .send()?
+            .error_for_status()
+            .map_err(|e| {
+                tracing::error!(status = ?e.status(), error = %e, "Latest release fetch failed");
+                api_error(e)
+            })?
+            .json()?;
+
+        tracing::info!(version = %release.tag_name, "Fetched latest release version");
+
+        let version: GitVersion = release.tag_name.parse()?;
+        Ok(version)
     }
 
     /// Deploys KoboRoot.tgz from the specified path directly without extraction.

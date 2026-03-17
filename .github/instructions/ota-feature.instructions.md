@@ -13,8 +13,7 @@ in a background thread. On success the token is saved to disk and the pending
 download resumes automatically. Stable releases are public and require no
 authentication.
 
-## Keep this instruction current
+## Esnure user documentation remains current
 
-- Update this file when `crates/core/src/view/ota.rs` changes.
 - If `ota.rs` changes, review user-facing docs to confirm they still match the
   implementation.
