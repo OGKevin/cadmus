@@ -495,8 +495,8 @@ impl OtaClient {
 
     /// Fetches the latest stable release version from GitHub.
     ///
-    /// Retrieves and parses the version from the most recent release
-    /// in. Returns the version as a `GitVersion` struct for easy comparison and display.
+    /// Retrieves and parses the version from the most recent stable release.
+    /// Returns the version as a `GitVersion` struct for easy comparison and display.
     ///
     /// GitHub authentication is not required for this operation as releases are public.
     ///
