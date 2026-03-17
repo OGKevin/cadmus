@@ -503,6 +503,8 @@ pub fn run() -> Result<(), Error> {
         eprintln!("Continuing without logging...");
     }
 
+    cadmus_core::crypto::init_crypto_provider();
+
     let startup_cwd = env::current_dir().ok();
     let startup_db_exists = Path::new(DB_FILENAME).exists();
     info!(cwd = ?startup_cwd, db_exists = startup_db_exists, "startup diagnostics");

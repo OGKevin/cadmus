@@ -590,9 +590,7 @@ mod tests {
     #[test]
     #[ignore = "requires network access to GitHub API"]
     fn test_check_ancestry_ahead() {
-        rustls::crypto::ring::default_provider()
-            .install_default()
-            .ok();
+        crate::crypto::init_crypto_provider();
         let github = GithubClient::new(None).expect("client build");
 
         let result = check_ancestry(&github, "HEAD", "v0.9.46");
@@ -613,9 +611,7 @@ mod tests {
     #[test]
     #[ignore = "requires network access to GitHub API"]
     fn test_check_ancestry_same_commit() {
-        rustls::crypto::ring::default_provider()
-            .install_default()
-            .ok();
+        crate::crypto::init_crypto_provider();
         let github = GithubClient::new(None).expect("client build");
 
         let result = check_ancestry(&github, "HEAD", "HEAD");

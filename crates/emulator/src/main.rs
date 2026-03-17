@@ -296,6 +296,8 @@ fn main() -> Result<(), Error> {
     cadmus_core::logging::init_logging(&settings.logging)
         .context("Failed to initialize logging")?;
 
+    cadmus_core::crypto::init_crypto_provider();
+
     let mut fonts = Fonts::load().context("can't load fonts")?;
     let database = Database::new(DB_FILENAME).context("can't open database")?;
 

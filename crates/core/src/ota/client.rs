@@ -1076,9 +1076,7 @@ mod tests {
     use secrecy::SecretString;
 
     fn make_client() -> OtaClient {
-        rustls::crypto::ring::default_provider()
-            .install_default()
-            .ok();
+        crate::crypto::init_crypto_provider();
         let github =
             GithubClient::new(Some(SecretString::from("test_token"))).expect("client build");
         OtaClient::new(github)
@@ -1149,9 +1147,7 @@ mod tests {
     }
 
     fn create_external_client() -> OtaClient {
-        rustls::crypto::ring::default_provider()
-            .install_default()
-            .ok();
+        crate::crypto::init_crypto_provider();
         let token = std::env::var("GH_TOKEN").expect("GH_TOKEN must be set");
         let github = GithubClient::new(Some(SecretString::from(token))).expect("client build");
         OtaClient::new(github)
