@@ -13,7 +13,7 @@ in a background thread. On success the token is saved to disk and the pending
 download resumes automatically. Stable releases are public and require no
 authentication.
 
-## Esnure user documentation remains current
+## Ensure user documentation remains current
 
 - If `ota.rs` changes, review user-facing docs to confirm they still match the
   implementation.

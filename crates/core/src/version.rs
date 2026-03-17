@@ -320,10 +320,32 @@ impl<'de> Deserialize<'de> for GitVersion {
 }
 
 /// Returns the current application version from compile-time environment.
+///
+/// On the emulator path this function panics if the version string cannot be parsed,
+/// catching build issues early during development. On the app path it logs a warning
+/// and falls back to `v0.0.0` so a bad build descriptor does not crash the device.
 pub fn get_current_version() -> GitVersion {
-    env!("GIT_VERSION")
-        .parse()
-        .expect("compile-time version should always be valid")
+    let version_str = env!("GIT_VERSION");
+
+    match version_str.parse() {
+        Ok(version) => version,
+        Err(e) => {
+            #[cfg(feature = "emulator")]
+            panic!("compile-time GIT_VERSION is not a valid git-describe string: {e}");
+
+            #[cfg(not(feature = "emulator"))]
+            {
+                tracing::warn!(
+                    error = %e,
+                    version = version_str,
+                    "Failed to parse compile-time GIT_VERSION; falling back to v0.0.0"
+                );
+                "v0.0.0"
+                    .parse()
+                    .expect("v0.0.0 is always a valid version string")
+            }
+        }
+    }
 }
 
 fn parse_semver(semver: &str) -> Result<(u64, u64, u64), VersionError> {
@@ -409,7 +431,7 @@ fn check_ancestry(
     tracing::debug!(url = %url, "Checking commit ancestry via GitHub API");
 
     let response = github
-        .get(&url)
+        .get_unauthenticated(&url)
         .header("Accept", "application/vnd.github+json")
         .send()
         .map_err(|e| {
