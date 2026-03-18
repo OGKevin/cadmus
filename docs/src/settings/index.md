@@ -256,6 +256,19 @@ Minimum log level to record.
 level = "info"
 ```
 
+### `logging.max-files`
+
+Number of log files to keep. Only the most recent N files are kept — older ones
+are deleted automatically when Cadmus starts.
+
+- Default: `3`
+- Set to `0` to keep all log files.
+
+```toml
+[logging]
+max-files = 3
+```
+
 ### `logging.otlp-endpoint`
 
 ✏️ (only when the `otel` feature is enabled)

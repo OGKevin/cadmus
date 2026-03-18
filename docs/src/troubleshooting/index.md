@@ -14,7 +14,10 @@ Cadmus saves logs in a `logs` folder. Here's where to find it on each platform:
 | -------- | -------------------------------- | ------------------------------------ |
 | Kobo     | `/mnt/onboard/.adds/cadmus/logs` | `/mnt/onboard/.adds/cadmus-tst/logs` |
 
-Each time you start Cadmus, it creates a new log file with a unique ID.
+Each time you start Cadmus, it creates a new log file with a unique ID. By
+default, only the 3 most recent log files are kept — older ones are deleted
+automatically. You can change this with the
+[`logging.max-files`](../settings/index.md#loggingmax-files) setting.
 
 The log files look like this:
 
