@@ -46,43 +46,12 @@ fi
 # Remount the SD card read-write if it's mounted read-only
 grep -q ' /mnt/sd .*[ ,]ro[ ,]' /proc/mounts && mount -o remount,rw /mnt/sd
 
-# Define environment variables used by `scripts/usb-*.sh`
+# Define model number used for device detection
 KOBO_TAG=/mnt/onboard/.kobo/version
 if [ -e "$KOBO_TAG" ]; then
-	SERIAL_NUMBER=$(cut -f 1 -d ',' "$KOBO_TAG")
-	FIRMWARE_VERSION=$(cut -f 3 -d ',' "$KOBO_TAG")
 	MODEL_NUMBER=$(cut -f 6 -d ',' "$KOBO_TAG" | sed -e 's/^[0-]*//')
 
-	# This is a combination of the information given in `FBInk/fbink_device_id.c`
-	# and `calibre/src/calibre/devices/kobo/driver.py`.
-	case "$MODEL_NUMBER" in
-	3[12]0) PRODUCT_ID=0x4163 ;;    # Touch A/B, Touch C
-	330) PRODUCT_ID=0x4173 ;;       # Glo
-	340) PRODUCT_ID=0x4183 ;;       # Mini
-	350) PRODUCT_ID=0x4193 ;;       # Aura HD
-	360) PRODUCT_ID=0x4203 ;;       # Aura
-	370) PRODUCT_ID=0x4213 ;;       # Aura H₂O
-	371) PRODUCT_ID=0x4223 ;;       # Glo HD
-	372) PRODUCT_ID=0x4224 ;;       # Touch 2.0
-	373 | 381) PRODUCT_ID=0x4225 ;; # Aura ONE, Aura ONE Limited Edition
-	374) PRODUCT_ID=0x4227 ;;       # Aura H₂O Edition 2
-	375) PRODUCT_ID=0x4226 ;;       # Aura Edition 2
-	376) PRODUCT_ID=0x4228 ;;       # Clara HD
-	377 | 380) PRODUCT_ID=0x4229 ;; # Forma, Forma 32GB
-	384) PRODUCT_ID=0x4232 ;;       # Libra H₂O
-	382) PRODUCT_ID=0x4230 ;;       # Nia
-	387) PRODUCT_ID=0x4233 ;;       # Elipsa
-	383) PRODUCT_ID=0x4231 ;;       # Sage
-	388) PRODUCT_ID=0x4234 ;;       # Libra 2
-	386) PRODUCT_ID=0x4235 ;;       # Clara 2E
-	389) PRODUCT_ID=0x4236 ;;       # Elipsa 2E
-	390) PRODUCT_ID=0x4237 ;;       # Libra Colour
-	393) PRODUCT_ID=0x4238 ;;       # Clara Colour
-	391 | 395) PRODUCT_ID=0x4239 ;; # Clara BW
-	*) PRODUCT_ID=0x6666 ;;
-	esac
-
-	export SERIAL_NUMBER FIRMWARE_VERSION MODEL_NUMBER PRODUCT_ID
+	export MODEL_NUMBER
 fi
 
 export LD_LIBRARY_PATH="libs:${LD_LIBRARY_PATH}"

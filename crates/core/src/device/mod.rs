@@ -1,140 +1,82 @@
+//! Device detection and management.
+
+use crate::device::error::DeviceError;
+use crate::device::metadata::DeviceMetadata;
 use crate::input::TouchProto;
 use lazy_static::lazy_static;
+use once_cell::sync::OnceCell;
 use std::env;
-use std::fmt;
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub enum Model {
-    LibraColour,
-    ClaraColour,
-    ClaraBW,
-    Elipsa2E,
-    Clara2E,
-    Libra2,
-    Sage,
-    Elipsa,
-    Nia,
-    LibraH2O,
-    Forma32GB,
-    Forma,
-    ClaraHD,
-    AuraH2OEd2V2,
-    AuraH2OEd2V1,
-    AuraEd2V2,
-    AuraEd2V1,
-    AuraONELimEd,
-    AuraONE,
-    Touch2,
-    GloHD,
-    AuraH2O,
-    Aura,
-    AuraHD,
-    Mini,
-    Glo,
-    TouchC,
-    TouchAB,
-}
+mod error;
+mod metadata;
+mod model;
+mod types;
+mod usb;
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub enum Orientation {
-    Portrait,
-    Landscape,
-}
+pub use model::Model;
+pub use types::{FrontlightKind, Orientation};
 
-impl fmt::Display for Model {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            Model::LibraColour => write!(f, "Libra Colour"),
-            Model::ClaraColour => write!(f, "Clara Colour"),
-            Model::ClaraBW => write!(f, "Clara BW"),
-            Model::Elipsa2E => write!(f, "Elipsa 2E"),
-            Model::Clara2E => write!(f, "Clara 2E"),
-            Model::Libra2 => write!(f, "Libra 2"),
-            Model::Sage => write!(f, "Sage"),
-            Model::Elipsa => write!(f, "Elipsa"),
-            Model::Nia => write!(f, "Nia"),
-            Model::LibraH2O => write!(f, "Libra H₂O"),
-            Model::Forma32GB => write!(f, "Forma 32GB"),
-            Model::Forma => write!(f, "Forma"),
-            Model::ClaraHD => write!(f, "Clara HD"),
-            Model::AuraH2OEd2V1 => write!(f, "Aura H₂O Edition 2 Version 1"),
-            Model::AuraH2OEd2V2 => write!(f, "Aura H₂O Edition 2 Version 2"),
-            Model::AuraEd2V1 => write!(f, "Aura Edition 2 Version 1"),
-            Model::AuraEd2V2 => write!(f, "Aura Edition 2 Version 2"),
-            Model::AuraONELimEd => write!(f, "Aura ONE Limited Edition"),
-            Model::AuraONE => write!(f, "Aura ONE"),
-            Model::Touch2 => write!(f, "Touch 2.0"),
-            Model::GloHD => write!(f, "Glo HD"),
-            Model::AuraH2O => write!(f, "Aura H₂O"),
-            Model::Aura => write!(f, "Aura"),
-            Model::AuraHD => write!(f, "Aura HD"),
-            Model::Mini => write!(f, "Mini"),
-            Model::Glo => write!(f, "Glo"),
-            Model::TouchC => write!(f, "Touch C"),
-            Model::TouchAB => write!(f, "Touch A/B"),
-        }
-    }
-}
-
-#[derive(Debug)]
+/// Device information and capabilities.
 pub struct Device {
     pub model: Model,
     pub proto: TouchProto,
     pub dims: (u32, u32),
     pub dpi: u16,
-}
-
-#[derive(Debug, Copy, Clone, PartialEq)]
-pub enum FrontlightKind {
-    Standard,
-    Natural,
-    Premixed,
+    metadata: OnceCell<DeviceMetadata>,
 }
 
 impl Device {
-    pub fn new(product: &str, model_number: &str) -> Device {
+    /// Creates a new device from product and model number strings.
+    fn new(product: &str, model_number: &str) -> Device {
         match product {
             "kraken" => Device {
                 model: Model::Glo,
                 proto: TouchProto::Single,
                 dims: (758, 1024),
                 dpi: 212,
+                metadata: OnceCell::new(),
             },
             "pixie" => Device {
                 model: Model::Mini,
                 proto: TouchProto::Single,
                 dims: (600, 800),
                 dpi: 200,
+                metadata: OnceCell::new(),
             },
             "dragon" => Device {
                 model: Model::AuraHD,
                 proto: TouchProto::Single,
                 dims: (1080, 1440),
                 dpi: 265,
+                metadata: OnceCell::new(),
             },
             "phoenix" => Device {
                 model: Model::Aura,
                 proto: TouchProto::MultiA,
                 dims: (758, 1024),
                 dpi: 212,
+                metadata: OnceCell::new(),
             },
             "dahlia" => Device {
                 model: Model::AuraH2O,
                 proto: TouchProto::MultiA,
                 dims: (1080, 1440),
                 dpi: 265,
+                metadata: OnceCell::new(),
             },
             "alyssum" => Device {
                 model: Model::GloHD,
                 proto: TouchProto::MultiA,
                 dims: (1072, 1448),
                 dpi: 300,
+                metadata: OnceCell::new(),
             },
             "pika" => Device {
                 model: Model::Touch2,
                 proto: TouchProto::MultiA,
                 dims: (600, 800),
                 dpi: 167,
+                metadata: OnceCell::new(),
             },
             "daylight" => Device {
                 model: if model_number == "381" {
@@ -145,6 +87,7 @@ impl Device {
                 proto: TouchProto::MultiA,
                 dims: (1404, 1872),
                 dpi: 300,
+                metadata: OnceCell::new(),
             },
             "star" => Device {
                 model: if model_number == "379" {
@@ -155,6 +98,7 @@ impl Device {
                 proto: TouchProto::MultiA,
                 dims: (758, 1024),
                 dpi: 212,
+                metadata: OnceCell::new(),
             },
             "snow" => Device {
                 model: if model_number == "378" {
@@ -165,12 +109,14 @@ impl Device {
                 proto: TouchProto::MultiB,
                 dims: (1080, 1440),
                 dpi: 265,
+                metadata: OnceCell::new(),
             },
             "nova" => Device {
                 model: Model::ClaraHD,
                 proto: TouchProto::MultiB,
                 dims: (1072, 1448),
                 dpi: 300,
+                metadata: OnceCell::new(),
             },
             "frost" => Device {
                 model: if model_number == "380" {
@@ -181,66 +127,77 @@ impl Device {
                 proto: TouchProto::MultiB,
                 dims: (1440, 1920),
                 dpi: 300,
+                metadata: OnceCell::new(),
             },
             "storm" => Device {
                 model: Model::LibraH2O,
                 proto: TouchProto::MultiB,
                 dims: (1264, 1680),
                 dpi: 300,
+                metadata: OnceCell::new(),
             },
             "luna" => Device {
                 model: Model::Nia,
                 proto: TouchProto::MultiA,
                 dims: (758, 1024),
                 dpi: 212,
+                metadata: OnceCell::new(),
             },
             "europa" => Device {
                 model: Model::Elipsa,
                 proto: TouchProto::MultiC,
                 dims: (1404, 1872),
                 dpi: 227,
+                metadata: OnceCell::new(),
             },
             "cadmus" => Device {
                 model: Model::Sage,
                 proto: TouchProto::MultiC,
                 dims: (1440, 1920),
                 dpi: 300,
+                metadata: OnceCell::new(),
             },
             "io" => Device {
                 model: Model::Libra2,
                 proto: TouchProto::MultiC,
                 dims: (1264, 1680),
                 dpi: 300,
+                metadata: OnceCell::new(),
             },
             "goldfinch" => Device {
                 model: Model::Clara2E,
                 proto: TouchProto::MultiB,
                 dims: (1072, 1448),
                 dpi: 300,
+                metadata: OnceCell::new(),
             },
             "condor" => Device {
                 model: Model::Elipsa2E,
                 proto: TouchProto::MultiC,
                 dims: (1404, 1872),
                 dpi: 227,
+                metadata: OnceCell::new(),
             },
             "spaBW" | "spaBWTPV" => Device {
                 model: Model::ClaraBW,
                 proto: TouchProto::MultiB,
                 dims: (1072, 1448),
                 dpi: 300,
+                metadata: OnceCell::new(),
             },
             "spaColour" => Device {
                 model: Model::ClaraColour,
                 proto: TouchProto::MultiB,
                 dims: (1072, 1448),
                 dpi: 300,
+                metadata: OnceCell::new(),
             },
             "monza" => Device {
                 model: Model::LibraColour,
                 proto: TouchProto::MultiB,
                 dims: (1264, 1680),
                 dpi: 300,
+                metadata: OnceCell::new(),
             },
             _ => Device {
                 model: if model_number == "320" {
@@ -251,10 +208,37 @@ impl Device {
                 proto: TouchProto::Single,
                 dims: (600, 800),
                 dpi: 167,
+                metadata: OnceCell::new(),
             },
         }
     }
 
+    /// Gets device metadata (lazy initialization).
+    pub fn metadata(&self) -> Result<&DeviceMetadata, DeviceError> {
+        self.metadata.get_or_try_init(DeviceMetadata::read)
+    }
+
+    /// Creates USB manager for this device.
+    #[cfg(feature = "kobo")]
+    pub fn usb_manager(
+        &self,
+    ) -> Result<Box<dyn crate::device::usb::UsbManager>, crate::device::usb::UsbError> {
+        let metadata = self
+            .metadata()
+            .map_err(|e| crate::device::usb::UsbError::DeviceInfo(e.to_string()))?
+            .clone();
+        Ok(crate::device::usb::create_usb_manager(metadata))
+    }
+
+    /// Creates stub USB manager (non-kobo builds).
+    #[cfg(not(feature = "kobo"))]
+    pub fn usb_manager(
+        &self,
+    ) -> Result<Box<dyn crate::device::usb::UsbManager>, crate::device::usb::UsbError> {
+        Ok(Box::new(crate::device::usb::StubUsbManager))
+    }
+
+    /// Returns the number of color samples for the device screen.
     pub fn color_samples(&self) -> usize {
         match self.model {
             Model::ClaraColour | Model::LibraColour => 3,
@@ -262,6 +246,7 @@ impl Device {
         }
     }
 
+    /// Returns the frontlight kind for this device.
     pub fn frontlight_kind(&self) -> FrontlightKind {
         match self.model {
             Model::ClaraHD
@@ -282,14 +267,17 @@ impl Device {
         }
     }
 
+    /// Returns true if the device has natural light capability.
     pub fn has_natural_light(&self) -> bool {
         self.frontlight_kind() != FrontlightKind::Standard
     }
 
+    /// Returns true if the device has a light sensor.
     pub fn has_lightsensor(&self) -> bool {
         matches!(self.model, Model::AuraONE | Model::AuraONELimEd)
     }
 
+    /// Returns true if the device has a gyroscope.
     pub fn has_gyroscope(&self) -> bool {
         matches!(
             self.model,
@@ -304,6 +292,7 @@ impl Device {
         )
     }
 
+    /// Returns true if the device has page turn buttons.
     pub fn has_page_turn_buttons(&self) -> bool {
         matches!(
             self.model,
@@ -316,10 +305,12 @@ impl Device {
         )
     }
 
+    /// Returns true if the device supports a power cover.
     pub fn has_power_cover(&self) -> bool {
         matches!(self.model, Model::Sage)
     }
 
+    /// Returns true if the device has removable storage.
     pub fn has_removable_storage(&self) -> bool {
         matches!(
             self.model,
@@ -332,6 +323,7 @@ impl Device {
         )
     }
 
+    /// Returns true if buttons should be inverted for the given rotation.
     pub fn should_invert_buttons(&self, rotation: i8) -> bool {
         let sr = self.startup_rotation();
         let (_, dir) = self.mirroring_scheme();
@@ -339,6 +331,7 @@ impl Device {
         rotation == (4 + sr - dir) % 4 || rotation == (4 + sr - 2 * dir) % 4
     }
 
+    /// Returns the orientation for the given rotation.
     pub fn orientation(&self, rotation: i8) -> Orientation {
         if self.should_swap_axes(rotation) {
             Orientation::Portrait
@@ -347,6 +340,7 @@ impl Device {
         }
     }
 
+    /// Returns the device mark value.
     pub fn mark(&self) -> u8 {
         match self.model {
             Model::LibraColour => 13,
@@ -374,6 +368,7 @@ impl Device {
         }
     }
 
+    /// Returns whether axes should be mirrored for the given rotation.
     pub fn should_mirror_axes(&self, rotation: i8) -> (bool, bool) {
         let (mxy, dir) = self.mirroring_scheme();
         let mx = (4 + (mxy + dir)) % 4;
@@ -383,7 +378,7 @@ impl Device {
         (mirror_x, mirror_y)
     }
 
-    // Returns the center and direction of the mirroring pattern.
+    /// Returns the center and direction of the mirroring pattern.
     pub fn mirroring_scheme(&self) -> (i8, i8) {
         match self.model {
             Model::AuraH2OEd2V1 | Model::LibraH2O | Model::Libra2 => (3, 1),
@@ -394,19 +389,20 @@ impl Device {
         }
     }
 
+    /// Returns true if axes should be swapped for the given rotation.
     pub fn should_swap_axes(&self, rotation: i8) -> bool {
         rotation % 2 == self.swapping_scheme()
     }
 
-    pub fn swapping_scheme(&self) -> i8 {
+    /// Returns the swapping scheme value.
+    fn swapping_scheme(&self) -> i8 {
         match self.model {
             Model::LibraH2O => 0,
             _ => 1,
         }
     }
 
-    // The written rotation that makes the screen be in portrait mode
-    // with the Kobo logo at the bottom.
+    /// Returns the startup rotation value.
     pub fn startup_rotation(&self) -> i8 {
         match self.model {
             Model::LibraH2O => 0,
@@ -421,22 +417,19 @@ impl Device {
         }
     }
 
-    // Return a device independent rotation value given
-    // the device dependent written rotation value *n*.
+    /// Returns a device independent rotation value.
     pub fn to_canonical(&self, n: i8) -> i8 {
         let (_, dir) = self.mirroring_scheme();
         (4 + dir * (n - self.startup_rotation())) % 4
     }
 
-    // Return a device dependent written rotation value given
-    // the device independent rotation value *n*.
+    /// Returns a device dependent rotation value from canonical.
     pub fn from_canonical(&self, n: i8) -> i8 {
         let (_, dir) = self.mirroring_scheme();
         (self.startup_rotation() + (4 + dir * n) % 4) % 4
     }
 
-    // Return a device dependent written rotation value given
-    // the device dependent read rotation value *n*.
+    /// Returns the transformed rotation value.
     pub fn transformed_rotation(&self, n: i8) -> i8 {
         match self.model {
             Model::AuraHD | Model::AuraH2O => n ^ 2,
@@ -445,6 +438,7 @@ impl Device {
         }
     }
 
+    /// Returns the transformed gyroscope rotation value.
     pub fn transformed_gyroscope_rotation(&self, n: i8) -> i8 {
         match self.model {
             Model::LibraH2O => n ^ 1,
@@ -456,6 +450,9 @@ impl Device {
 }
 
 lazy_static! {
+    // TODO(OGKevin): we shan't rely on these env variables to construct the device, and instead
+    //                do discovery here instead of in the bash script.
+    /// Global singleton for the current device.
     pub static ref CURRENT_DEVICE: Device = {
         let product = env::var("PRODUCT").unwrap_or_default();
         let model_number = env::var("MODEL_NUMBER").unwrap_or_default();
