@@ -5,6 +5,7 @@
 - [Installation](installation/index.md)
   - [Test builds](installation/test-builds.md)
   - [OTA updates](installation/ota.md)
+  - [Migrating from Plato](installation/migration.md)
 - [Settings](settings/index.md)
 - [User Interface](ui/index.md)
   - [File Chooser](ui/filechooser.md)
