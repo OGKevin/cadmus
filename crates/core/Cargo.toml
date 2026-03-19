@@ -33,6 +33,7 @@ flate2 = "1.1.5"
 levenshtein = "1.0.5"
 nix = { version = "0.31.0", features = ["fs", "ioctl", "mount"] }
 indexmap = { version = "2.13.0", features = ["serde"] }
+arc-swap = "1"
 anyhow = "1.0.100"
 thiserror = "2.0.17"
 secrecy = { version = "0.10", features = ["serde"] }

@@ -78,13 +78,15 @@ use crate::settings::LoggingSettings;
 #[cfg(feature = "otel")]
 use crate::telemetry;
 use anyhow::{Context, Error};
+use arc_swap::ArcSwap;
 use std::fs;
 use std::fs::DirEntry;
+use std::path::Path;
 use std::sync::mpsc;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
-use tracing_appender::non_blocking::WorkerGuard;
+use tracing_appender::non_blocking::{NonBlocking, WorkerGuard};
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
 use uuid::Uuid;
@@ -97,6 +99,20 @@ const LOG_FILE_SUFFIX: &str = "json";
 
 static LOG_GUARD: OnceLock<Mutex<Option<WorkerGuard>>> = OnceLock::new();
 static RUN_ID: OnceLock<String> = OnceLock::new();
+static WRITER_INNER: OnceLock<ArcSwap<NonBlocking>> = OnceLock::new();
+
+struct SwappableWriter {
+    inner: &'static ArcSwap<NonBlocking>,
+}
+
+impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for SwappableWriter {
+    type Writer = NonBlocking;
+
+    /// Performs a lock-free atomic load of the current writer.
+    fn make_writer(&'a self) -> Self::Writer {
+        self.inner.load().as_ref().clone()
+    }
+}
 
 /// Returns the unique run ID for this application session.
 ///
@@ -291,13 +307,18 @@ pub fn init_logging(settings: &LoggingSettings) -> Result<(), Error> {
 
     let (non_blocking, guard) = tracing_appender::non_blocking(appender);
     let _ = LOG_GUARD.set(Mutex::new(Some(guard)));
+    let _ = WRITER_INNER.set(ArcSwap::new(Arc::new(non_blocking)));
+
+    let swappable = SwappableWriter {
+        inner: WRITER_INNER.get().expect("WRITER_INNER just set"),
+    };
 
     let filter = build_filter(settings)?;
 
     let fmt_layer = tracing_subscriber::fmt::layer()
         .json()
         .with_ansi(false)
-        .with_writer(non_blocking)
+        .with_writer(swappable)
         .with_current_span(true);
 
     #[cfg(feature = "otel")]
@@ -382,6 +403,47 @@ pub fn shutdown_logging() {
     telemetry::shutdown_telemetry();
 }
 
+/// Redirects log output to `dir`, flushing the current file first.
+///
+/// Used to keep logging alive across USB share when /mnt/onboard is unmounted.
+///
+/// This function creates a new rolling file appender in the specified directory and updates the
+/// logging system to use it. The old appender is dropped, which flushes any buffered data to disk
+/// after the new appender is in place to avoid log loss.
+pub fn redirect_log_to_dir(dir: &Path, settings: &LoggingSettings) -> Result<(), Error> {
+    let (Some(writer_swap), Some(guard_mutex)) = (WRITER_INNER.get(), LOG_GUARD.get()) else {
+        return Ok(());
+    };
+
+    fs::create_dir_all(dir)
+        .with_context(|| format!("can't create log directory {}", dir.display()))?;
+
+    let appender = tracing_appender::rolling::Builder::new()
+        .rotation(tracing_appender::rolling::Rotation::NEVER)
+        .filename_prefix(format!("{}{}", LOG_FILE_PREFIX, get_run_id()))
+        .filename_suffix(LOG_FILE_SUFFIX)
+        .max_log_files(settings.max_files)
+        .build(dir)
+        .context("can't build log appender for redirect")?;
+
+    let (non_blocking, new_guard) = tracing_appender::non_blocking(appender);
+
+    writer_swap.store(Arc::new(non_blocking));
+
+    let old_guard = {
+        let mut guard_opt = guard_mutex
+            .lock()
+            .map_err(|e| anyhow::anyhow!("failed to get lock for guard during redirect: {e}"))?;
+        let old = guard_opt.take();
+        *guard_opt = Some(new_guard);
+        old
+    };
+
+    drop(old_guard);
+
+    Ok(())
+}
+
 /// Builds an `EnvFilter` from settings or environment variables.
 ///
 /// The function checks for the `RUST_LOG` environment variable first, which
@@ -428,7 +490,37 @@ fn build_filter(settings: &LoggingSettings) -> Result<EnvFilter, Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::OnceLock;
     use tempfile::TempDir;
+
+    /// Guard that ensures `init_logging` is called at most once per test binary.
+    ///
+    /// `init_logging` registers a global tracing subscriber via `try_init()`, which
+    /// panics (or returns an error) on a second call within the same process. All
+    /// tests that need the logging statics populated must go through this helper.
+    static LOGGING_INIT: OnceLock<TempDir> = OnceLock::new();
+
+    /// Initialise logging once for the whole test binary and return the log dir.
+    ///
+    /// Subsequent calls return the already-initialised directory, so the test can
+    /// be run together with other tests without conflicts.
+    fn ensure_logging_init() -> &'static std::path::Path {
+        LOGGING_INIT
+            .get_or_init(|| {
+                let dir = TempDir::new().expect("failed to create temp dir for logging init");
+                let settings = LoggingSettings {
+                    enabled: true,
+                    level: "info".to_string(),
+                    max_files: 5,
+                    directory: dir.path().to_path_buf(),
+                    otlp_endpoint: None,
+                    enable_kern_log: false,
+                };
+                init_logging(&settings).expect("failed to initialize logging for tests");
+                dir
+            })
+            .path()
+    }
 
     fn create_log_file(dir: &std::path::Path, index: usize) -> Result<(), Error> {
         let file_name = format!("{}{:04}.{}", LOG_FILE_PREFIX, index, LOG_FILE_SUFFIX);
@@ -479,6 +571,75 @@ mod tests {
 
         let remaining = collect_log_file_names(temp_dir.path())?;
         assert_eq!(remaining.len(), 3);
+
+        Ok(())
+    }
+
+    /// Verify that `redirect_log_to_dir` creates a log file in the new target
+    /// directory and that the file name matches the expected `cadmus-<run_id>.json`
+    /// pattern.
+    ///
+    /// # Why this test needs `init_logging`
+    ///
+    /// `redirect_log_to_dir` is a no-op when the global `WRITER_INNER` / `LOG_GUARD`
+    /// statics are unset. Those statics are populated only by `init_logging`, so we
+    /// must call it (once, via `ensure_logging_init`) before exercising the redirect
+    /// path. The `ensure_logging_init` helper uses a `OnceLock` so that the global
+    /// tracing subscriber is registered at most once per test binary, avoiding the
+    /// "subscriber already set" error that `try_init()` would otherwise produce.
+    #[test]
+    fn test_redirect_log_to_dir_creates_log_file_in_new_dir() -> Result<(), Error> {
+        ensure_logging_init();
+
+        let redirect_dir = TempDir::new()?;
+
+        let settings = LoggingSettings {
+            enabled: true,
+            level: "info".to_string(),
+            max_files: 5,
+            directory: redirect_dir.path().to_path_buf(),
+            otlp_endpoint: None,
+            enable_kern_log: false,
+        };
+
+        redirect_log_to_dir(redirect_dir.path(), &settings)?;
+
+        // After redirect a non-blocking appender is set up for `redirect_dir`.
+        // The underlying file is created lazily on the first write; emit one log
+        // event so the file is flushed to disk before we inspect the directory.
+        tracing::info!("test redirect log event");
+
+        let expected_file_name = format!("{}{}.{}", LOG_FILE_PREFIX, get_run_id(), LOG_FILE_SUFFIX);
+
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        #[allow(unused_assignments)]
+        let mut log_files = Vec::new();
+
+        loop {
+            log_files = collect_log_file_names(redirect_dir.path())?;
+
+            if !log_files.is_empty() && log_files.iter().any(|name| name == &expected_file_name) {
+                break;
+            }
+
+            if std::time::Instant::now() >= deadline {
+                break;
+            }
+
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+
+        assert!(
+            !log_files.is_empty(),
+            "expected at least one log file in the redirect directory, but found none"
+        );
+
+        assert!(
+            log_files.iter().any(|name| name == &expected_file_name),
+            "expected a log file named '{}' in redirect dir, but found: {:?}",
+            expected_file_name,
+            log_files,
+        );
 
         Ok(())
     }

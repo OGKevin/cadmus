@@ -23,7 +23,7 @@ use cadmus_core::library::Library;
 use cadmus_core::lightsensor::{KoboLightSensor, LightSensor};
 use cadmus_core::rtc::Rtc;
 use cadmus_core::settings::versioned::SettingsManager;
-use cadmus_core::settings::{ButtonScheme, IntermKind, RotationLock, Settings};
+use cadmus_core::settings::{ButtonScheme, IntermKind, LoggingSettings, RotationLock, Settings};
 use cadmus_core::view::calculator::Calculator;
 use cadmus_core::view::common::{
     find_notification_mut, locate, locate_by_id, overlapping_rectangle, transfer_notifications,
@@ -327,14 +327,43 @@ fn prepare_share_for_usb(
 /// Changes the working directory to `/tmp` and enables USB sharing.
 ///
 /// The `/mnt/onboard` filesystem is unmounted when USB sharing starts.
+/// Logging is redirected to `/tmp/cadmus-logs` before unmounting so log
+/// writes during the share window do not fail on an unmounted filesystem.
 /// Setting the working directory to `/tmp` ensures it remains valid throughout
 /// the share session, preventing file operation failures.
 ///
 /// Sets `context.shared = true` only when `enable()` succeeds. On failure,
 /// shows a transient notification and schedules a device reboot after 3 seconds.
 /// The share screen remains visible during the reboot window.
+///
+/// ## Logging and Corruption Risk
+///
+/// If log redirection fails, shows a transient notification and schedules an app restart after 3
+/// seconds. This is done because if log redirection fails and the app tries to write logs while
+/// the mount is unmounted, it can lead to corruption. See [#246](https://github.com/OGKevin/cadmus/issues/246).
 #[inline]
 fn start_usb_share(tx: &Sender<Event>, tasks: &mut Vec<Task>, context: &mut Context) {
+    if let Err(e) = cadmus_core::logging::redirect_log_to_dir(
+        std::path::Path::new("/tmp/cadmus-logs"),
+        &context.settings.logging,
+    ) {
+        eprintln!("Failed to redirect logging to /tmp: {e}");
+
+        tx.send(Event::Notification(NotificationEvent::Show(
+            "Failed to start USB session".to_string(),
+        )))
+        .ok();
+        schedule_task(
+            TaskId::Exit,
+            Event::Select(EntryId::Restart),
+            Duration::from_secs(3),
+            tx,
+            tasks,
+        );
+
+        return;
+    }
+
     match CURRENT_DEVICE.usb_manager() {
         Ok(usb_manager) => match usb_manager.enable() {
             Ok(()) => {
@@ -378,8 +407,9 @@ fn start_usb_share(tx: &Sender<Event>, tasks: &mut Vec<Task>, context: &mut Cont
 /// Disables USB sharing, restores the working directory, and triggers
 /// reboot or restart.
 ///
-/// Disables USB mass storage mode. The working directory is restored to the
-/// original path (now valid again after remounting).
+/// Disables USB mass storage mode. After the filesystem is remounted, logging
+/// is restored to the configured path before the working directory is changed
+/// so the log path resolves against the startup CWD rather than `/tmp`.
 ///
 /// `context.shared` is not set back to false, as the app is going to be
 /// restarted anyway. Leaving this as true helps the exit logic to not save
@@ -389,13 +419,25 @@ fn start_usb_share(tx: &Sender<Event>, tasks: &mut Vec<Task>, context: &mut Cont
 /// Finally, checks for `KoboRoot.tgz` to determine whether to reboot
 /// (update pending) or restart the app.
 #[inline]
-fn handle_usb_unshare(startup_cwd: &Option<PathBuf>, tx: &Sender<Event>) {
+fn handle_usb_unshare(
+    startup_cwd: &Option<PathBuf>,
+    logging_settings: &LoggingSettings,
+    tx: &Sender<Event>,
+) {
     info!("USB unplugged after sharing; disabling USB mass storage");
 
     match CURRENT_DEVICE.usb_manager() {
         Ok(usb_manager) => match usb_manager.disable() {
             Ok(()) => {
                 info!("USB mass storage disabled successfully");
+                if let Some(cwd) = startup_cwd.as_ref() {
+                    let log_dir = cwd.join(&logging_settings.directory);
+                    if let Err(e) =
+                        cadmus_core::logging::redirect_log_to_dir(&log_dir, logging_settings)
+                    {
+                        eprintln!("Failed to restore logging after USB unshare: {e}");
+                    }
+                }
             }
             Err(e) => {
                 error!(error = %e, "Failed to disable USB sharing, triggering reboot");
@@ -835,7 +877,7 @@ pub fn run() -> Result<(), Error> {
                     }
 
                     if context.shared {
-                        handle_usb_unshare(&startup_cwd, &tx);
+                        handle_usb_unshare(&startup_cwd, &context.settings.logging, &tx);
                     } else {
                         context.plugged = false;
                         schedule_task(
