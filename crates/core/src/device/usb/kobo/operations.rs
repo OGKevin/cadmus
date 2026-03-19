@@ -197,10 +197,19 @@ pub trait KoboUsbOperations {
     ///
     /// # Errors
     ///
+    /// Returns [`UsbError::Partition`] if `/mnt/onboard` is still mounted,
+    /// to prevent running dosfsck on a live filesystem.
     /// Returns [`UsbError::Filesystem`] if filesystem corruption is detected
     /// and cannot be repaired. Returns [`UsbError::Io`] if the command fails
     /// to execute.
     fn check_filesystem(&self) -> Result<(), UsbError> {
+        if self.is_mounted("/mnt/onboard") {
+            error!("Refusing to run filesystem check: /mnt/onboard is still mounted");
+            return Err(UsbError::Partition(
+                "/mnt/onboard is still mounted; filesystem check aborted".to_string(),
+            ));
+        }
+
         let partition = &self.metadata().partition;
 
         info!(partition = %partition, "Running filesystem check");

@@ -328,33 +328,49 @@ fn prepare_share_for_usb(
 /// Setting the working directory to `/tmp` ensures it remains valid throughout
 /// the share session, preventing file operation failures.
 ///
-/// Enables USB mass storage mode. Shows a transient notification if the USB
-/// session cannot be started.
+/// Sets `context.shared = true` only when `enable()` succeeds. On failure,
+/// shows a transient notification and removes the share screen from the view
+/// tree, returning the user to the normal home screen.
 #[inline]
-fn start_usb_share(tx: &Sender<Event>, context: &mut Context) {
-    context.shared = true;
-
+fn start_usb_share(
+    view: &mut dyn View,
+    tx: &Sender<Event>,
+    rq: &mut RenderQueue,
+    context: &mut Context,
+) {
     match CURRENT_DEVICE.usb_manager() {
-        Ok(usb_manager) => {
-            if let Err(e) = usb_manager.enable() {
+        Ok(usb_manager) => match usb_manager.enable() {
+            Ok(()) => {
+                context.shared = true;
+                if let Err(e) = env::set_current_dir("/tmp") {
+                    error!(error = %e, "failed to set working directory to /tmp before USB share");
+                }
+            }
+            Err(e) => {
                 error!(error = %e, "Failed to enable USB sharing");
                 tx.send(Event::Notification(NotificationEvent::Show(
                     "Failed to start USB session".to_string(),
                 )))
                 .ok();
+                if let Some(index) = locate::<Intermission>(view) {
+                    let rect = *view.child(index).rect();
+                    view.children_mut().remove(index);
+                    rq.add(RenderData::expose(rect, UpdateMode::Full));
+                }
             }
-        }
+        },
         Err(e) => {
             error!(error = %e, "Failed to create USB manager");
             tx.send(Event::Notification(NotificationEvent::Show(
                 "Failed to start USB session".to_string(),
             )))
             .ok();
+            if let Some(index) = locate::<Intermission>(view) {
+                let rect = *view.child(index).rect();
+                view.children_mut().remove(index);
+                rq.add(RenderData::expose(rect, UpdateMode::Full));
+            }
         }
-    }
-
-    if let Err(e) = env::set_current_dir("/tmp") {
-        error!(error = %e, "failed to set working directory to /tmp before USB share");
     }
 }
 
@@ -399,15 +415,8 @@ fn handle_usb_unshare(startup_cwd: &Option<PathBuf>, tx: &Sender<Event>) {
         }
     }
 
-    let onboard_mounted = std::fs::read_to_string("/proc/mounts")
-        .map(|m| m.contains(" /mnt/onboard "))
-        .unwrap_or(false);
-    let db_exists = Path::new(DB_FILENAME).exists();
     let update_bundle_exists = Path::new(KOBO_UPDATE_BUNDLE).exists();
-    info!(
-        onboard_mounted,
-        db_exists, update_bundle_exists, "filesystem state after USB disable"
-    );
+    info!(update_bundle_exists, "filesystem state after USB disable");
 
     if update_bundle_exists {
         info!("KoboRoot.tgz detected; triggering reboot");
@@ -1021,7 +1030,7 @@ pub fn run() -> Result<(), Error> {
                     continue;
                 }
 
-                start_usb_share(&tx, &mut context);
+                start_usb_share(view.as_mut(), &tx, &mut rq, &mut context);
             }
             Event::Gesture(ge) => match ge {
                 GestureEvent::HoldButtonLong(ButtonCode::Power) => {

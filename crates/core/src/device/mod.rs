@@ -17,6 +17,7 @@ pub use model::Model;
 pub use types::{FrontlightKind, Orientation};
 
 /// Device information and capabilities.
+#[derive(Debug)]
 pub struct Device {
     pub model: Model,
     pub proto: TouchProto,
