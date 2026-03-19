@@ -20,18 +20,17 @@
 //! # }
 //! ```
 
-use crate::device::metadata::DeviceMetadata;
+use crate::device::metadata::{detect_platform, DeviceMetadata, Platform};
+use crate::device::usb::error::UsbError;
 use crate::device::usb::manager::UsbManager;
 
 mod operations;
-mod platform;
 
 mod legacy;
 mod mtk;
 
 use legacy::LegacyUsbManager;
 use mtk::MtkUsbManager;
-use platform::detect_platform;
 
 /// Creates a USB manager appropriate for the current platform.
 ///
@@ -41,9 +40,11 @@ use platform::detect_platform;
 /// - `mt8113t-ntx` → MTK ConfigFS-based manager
 /// - All others → Legacy kernel module-based manager
 ///
-/// # Panics
+/// # Errors
 ///
-/// Panics if the PLATFORM environment variable is not set (see [`detect_platform()`]).
+/// Returns [`UsbError`] if:
+/// - the `PLATFORM` environment variable is not set, or
+/// - the MTK UDC cannot be discovered.
 ///
 /// # Example
 ///
@@ -55,12 +56,11 @@ use platform::detect_platform;
 /// # Ok(())
 /// # }
 /// ```
-pub fn create_usb_manager(metadata: DeviceMetadata) -> Box<dyn UsbManager> {
-    let platform = detect_platform();
+pub fn create_usb_manager(metadata: DeviceMetadata) -> Result<Box<dyn UsbManager>, UsbError> {
+    let platform = detect_platform().map_err(|e| UsbError::DeviceInfo(e.to_string()))?;
 
-    if platform == "mt8113t-ntx" {
-        Box::new(MtkUsbManager::new(metadata))
-    } else {
-        Box::new(LegacyUsbManager::new(metadata))
+    match platform {
+        Platform::MT8113TNTX => Ok(Box::new(MtkUsbManager::new(metadata)?)),
+        _ => Ok(Box::new(LegacyUsbManager::new(metadata, platform))),
     }
 }

@@ -227,7 +227,7 @@ impl Device {
             .metadata()
             .map_err(|e| crate::device::usb::UsbError::DeviceInfo(e.to_string()))?
             .clone();
-        Ok(crate::device::usb::create_usb_manager(metadata))
+        crate::device::usb::create_usb_manager(metadata)
     }
 
     /// Creates stub USB manager (non-kobo builds).

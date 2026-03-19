@@ -54,6 +54,45 @@ use std::env;
 use std::fs;
 use tracing::{debug, error, info, warn};
 
+/// Represents the hardware platform of the device.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Platform {
+    /// MediaTek MT8113T NTX platform (e.g. Kobo Libra Colour).
+    MT8113TNTX,
+    /// Freescale i.MX 6SLL NTX platform.
+    MX6SLLNTX,
+    /// Freescale i.MX 6UL NTX platform.
+    MX6SULNTX,
+    /// Freescale i.MX 6SL NTX platform.
+    MX6SLNTX,
+    /// Any other platform, with the raw identifier string preserved.
+    Other(String),
+}
+
+impl From<String> for Platform {
+    fn from(s: String) -> Self {
+        match s.as_str() {
+            "mt8113t-ntx" => Platform::MT8113TNTX,
+            "mx6sll-ntx" => Platform::MX6SLLNTX,
+            "mx6sul-ntx" => Platform::MX6SULNTX,
+            "mx6sl-ntx" => Platform::MX6SLNTX,
+            _ => Platform::Other(s),
+        }
+    }
+}
+
+impl std::fmt::Display for Platform {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Platform::MT8113TNTX => write!(f, "mt8113t-ntx"),
+            Platform::MX6SLLNTX => write!(f, "mx6sll-ntx"),
+            Platform::MX6SULNTX => write!(f, "mx6sul-ntx"),
+            Platform::MX6SLNTX => write!(f, "mx6sl-ntx"),
+            Platform::Other(s) => write!(f, "{}", s),
+        }
+    }
+}
+
 const VERSION_PATH: &str = "/mnt/onboard/.kobo/version";
 const VENDOR_ID: u16 = 0x2237;
 
@@ -90,18 +129,20 @@ impl DeviceMetadata {
     ///
     /// # Errors
     ///
-    /// Returns [`DeviceError`] if the file cannot be read or has fewer than 6 fields.
+    /// Returns [`DeviceError`] if:
+    /// - the version file cannot be read or has fewer than 6 fields, or
+    /// - the `PLATFORM` environment variable is not set.
     pub fn read() -> Result<Self, DeviceError> {
         let content = fs::read_to_string(VERSION_PATH).map_err(|e| {
             error!(path = VERSION_PATH, error = %e, "Failed to read Kobo version file");
             DeviceError::Metadata(format!("Cannot read version file: {}", e))
         })?;
 
-        let platform = detect_platform();
+        let platform = detect_platform()?;
         Self::parse(&content, &platform)
     }
 
-    fn parse(content: &str, platform: &str) -> Result<Self, DeviceError> {
+    fn parse(content: &str, platform: &Platform) -> Result<Self, DeviceError> {
         let fields: Vec<&str> = content.trim().split(',').collect();
 
         if fields.len() < 6 {
@@ -125,7 +166,7 @@ impl DeviceMetadata {
             .trim_start_matches('0');
 
         let product_id = model_to_product_id(model_number);
-        let partition = platform_to_partition(platform);
+        let partition = platform_to_partition(platform).to_string();
         let product = format!("eReader-{}", firmware_version);
 
         info!(
@@ -188,15 +229,16 @@ fn model_to_product_id(model_number: &str) -> u16 {
 }
 
 /// Detects the platform type from the PLATFORM environment variable.
-fn detect_platform() -> String {
-    env::var("PLATFORM").expect("PLATFORM environment variable not set")
+pub(crate) fn detect_platform() -> Result<Platform, DeviceError> {
+    env::var("PLATFORM")
+        .map(Platform::from)
+        .map_err(|_| DeviceError::Metadata("PLATFORM environment variable not set".to_string()))
 }
 
-fn platform_to_partition(platform: &str) -> String {
-    if platform == "mt8113t-ntx" {
-        "/dev/mmcblk0p12".to_string()
-    } else {
-        "/dev/mmcblk0p3".to_string()
+fn platform_to_partition(platform: &Platform) -> &'static str {
+    match platform {
+        Platform::MT8113TNTX => "/dev/mmcblk0p12",
+        _ => "/dev/mmcblk0p3",
     }
 }
 
@@ -215,21 +257,33 @@ mod tests {
 
     #[test]
     fn test_platform_to_partition() {
-        assert_eq!(platform_to_partition("mt8113t-ntx"), "/dev/mmcblk0p12");
-        assert_eq!(platform_to_partition("mx6sll-ntx"), "/dev/mmcblk0p3");
-        assert_eq!(platform_to_partition("mx6sul-ntx"), "/dev/mmcblk0p3");
-        assert_eq!(platform_to_partition("freescale"), "/dev/mmcblk0p3");
+        assert_eq!(
+            platform_to_partition(&Platform::MT8113TNTX),
+            "/dev/mmcblk0p12"
+        );
+        assert_eq!(
+            platform_to_partition(&Platform::MX6SLLNTX),
+            "/dev/mmcblk0p3"
+        );
+        assert_eq!(
+            platform_to_partition(&Platform::MX6SULNTX),
+            "/dev/mmcblk0p3"
+        );
+        assert_eq!(
+            platform_to_partition(&Platform::Other("freescale".to_string())),
+            "/dev/mmcblk0p3"
+        );
     }
 
     #[test]
     fn test_parse_libra_colour() {
         let content =
             "SERIALPLACEHOLDER,4.9.77,4.45.23640,4.9.77,4.9.77,00000000-0000-0000-0000-000000000390";
-        let metadata = DeviceMetadata::parse(content, "mt8113t-ntx").expect("parse failed");
+        let metadata = DeviceMetadata::parse(content, &Platform::MT8113TNTX).expect("parse failed");
 
         assert_eq!(metadata.serial_number, "SERIALPLACEHOLDER");
         assert_eq!(metadata.firmware_version, "4.45.23640");
-        assert_eq!(metadata.product_id, 0x4237); // Libra Colour = model 390
+        assert_eq!(metadata.product_id, 0x4237);
         assert_eq!(metadata.partition, "/dev/mmcblk0p12");
         assert_eq!(metadata.manufacturer, "Kobo");
         assert_eq!(metadata.product, "eReader-4.45.23640");
@@ -238,7 +292,7 @@ mod tests {
 
     #[test]
     fn test_parse_insufficient_fields() {
-        let result = DeviceMetadata::parse("field1,field2", "mt8113t-ntx");
+        let result = DeviceMetadata::parse("field1,field2", &Platform::MT8113TNTX);
         assert!(result.is_err());
     }
 }

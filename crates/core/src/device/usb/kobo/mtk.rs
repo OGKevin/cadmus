@@ -69,12 +69,13 @@ impl MtkUsbManager {
     /// Discovers the UDC and prepares for gadget setup. No USB operations
     /// are performed until [`enable`](UsbManager::enable) is called.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if no UDC is available.
-    pub fn new(metadata: DeviceMetadata) -> Self {
-        let udc = discover_udc().expect("Failed to discover UDC");
-        Self { metadata, udc }
+    /// Returns [`UsbError::Udc`] if no UDC is available or the UDC
+    /// directory cannot be read.
+    pub fn new(metadata: DeviceMetadata) -> Result<Self, UsbError> {
+        let udc = discover_udc()?;
+        Ok(Self { metadata, udc })
     }
 
     /// Creates the ConfigFS gadget directory structure.

@@ -328,18 +328,29 @@ fn prepare_share_for_usb(
 /// Setting the working directory to `/tmp` ensures it remains valid throughout
 /// the share session, preventing file operation failures.
 ///
-/// Enables USB mass storage mode.
+/// Enables USB mass storage mode. Shows a transient notification if the USB
+/// session cannot be started.
 #[inline]
-fn start_usb_share(context: &mut Context) {
+fn start_usb_share(tx: &Sender<Event>, context: &mut Context) {
     context.shared = true;
 
     match CURRENT_DEVICE.usb_manager() {
         Ok(usb_manager) => {
             if let Err(e) = usb_manager.enable() {
                 error!(error = %e, "Failed to enable USB sharing");
+                tx.send(Event::Notification(NotificationEvent::Show(
+                    "Failed to start USB session".to_string(),
+                )))
+                .ok();
             }
         }
-        Err(e) => error!(error = %e, "Failed to create USB manager"),
+        Err(e) => {
+            error!(error = %e, "Failed to create USB manager");
+            tx.send(Event::Notification(NotificationEvent::Show(
+                "Failed to start USB session".to_string(),
+            )))
+            .ok();
+        }
     }
 
     if let Err(e) = env::set_current_dir("/tmp") {
@@ -1010,7 +1021,7 @@ pub fn run() -> Result<(), Error> {
                     continue;
                 }
 
-                start_usb_share(&mut context);
+                start_usb_share(&tx, &mut context);
             }
             Event::Gesture(ge) => match ge {
                 GestureEvent::HoldButtonLong(ButtonCode::Power) => {

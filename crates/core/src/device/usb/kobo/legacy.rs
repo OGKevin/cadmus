@@ -5,10 +5,9 @@
 //! `g_file_storage`). It handles the platform-specific module loading and
 //! unloading sequences.
 
-use crate::device::metadata::DeviceMetadata;
+use crate::device::metadata::{DeviceMetadata, Platform};
 use crate::device::usb::error::UsbError;
 use crate::device::usb::kobo::operations::KoboUsbOperations;
-use crate::device::usb::kobo::platform::detect_platform;
 use crate::device::usb::manager::UsbManager;
 use std::fs;
 use std::path::Path;
@@ -29,29 +28,20 @@ const DRIVERS_DIR: &str = "/drivers";
 /// - **Other platforms**: Uses `g_file_storage.ko` with dependencies
 pub struct LegacyUsbManager {
     metadata: DeviceMetadata,
-    platform: String,
+    platform: Platform,
 }
 
 impl LegacyUsbManager {
     /// Creates a new legacy USB manager.
     ///
-    /// Detects the platform type. No USB operations are performed until
-    /// [`enable`](UsbManager::enable) is called.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the PLATFORM environment variable is not set.
-    pub fn new(metadata: DeviceMetadata) -> Self {
-        let platform = detect_platform();
+    /// Accepts the platform detected by the caller. No USB operations
+    /// are performed until [`enable`](UsbManager::enable) is called.
+    pub fn new(metadata: DeviceMetadata, platform: Platform) -> Self {
         Self { metadata, platform }
     }
 
-    fn platform(&self) -> &str {
-        &self.platform
-    }
-
     fn drivers_path(&self) -> String {
-        format!("{}/{}", DRIVERS_DIR, self.platform())
+        format!("{}/{}", DRIVERS_DIR, self.platform)
     }
 
     fn has_g_mass_storage(&self) -> bool {
@@ -73,10 +63,8 @@ impl LegacyUsbManager {
     }
 
     fn build_file_storage_params(&self) -> Vec<String> {
-        let platform = self.platform();
-
-        match platform {
-            "mx6sll-ntx" | "mx6sul-ntx" => self.build_mass_storage_params(),
+        match self.platform {
+            Platform::MX6SLLNTX | Platform::MX6SULNTX => self.build_mass_storage_params(),
             _ => {
                 vec![
                     format!("vendor=0x{:04X}", self.metadata.vendor_id),
@@ -125,11 +113,10 @@ impl LegacyUsbManager {
     fn load_g_file_storage(&self) -> Result<(), UsbError> {
         info!("Loading g_file_storage module with dependencies");
 
-        let platform = self.platform();
-        let gadgets_path = format!("{}/{}/usb/gadget", DRIVERS_DIR, platform);
+        let gadgets_path = format!("{}/{}/usb/gadget", DRIVERS_DIR, self.platform);
 
-        match platform {
-            "mx6sll-ntx" | "mx6sul-ntx" => {
+        match self.platform {
+            Platform::MX6SLLNTX | Platform::MX6SULNTX => {
                 for module in ["configfs.ko", "libcomposite.ko", "usb_f_mass_storage.ko"] {
                     let path = format!("{}/{}", gadgets_path, module);
                     if Path::new(&path).exists() {
@@ -138,8 +125,8 @@ impl LegacyUsbManager {
                     }
                 }
             }
-            "mx6sl-ntx" => {
-                // mx6sl-ntx doesn't need arcotg_udc due to it being part of the kernel
+            Platform::MX6SLNTX => {
+                // mx6sl-ntx doesn't have arcotg_udc due to it being part of the kernel
             }
             _ => {
                 let arcotg_path = format!("{}/arcotg_udc.ko", gadgets_path);
@@ -226,16 +213,14 @@ impl LegacyUsbManager {
             )));
         }
 
-        let platform = self.platform();
-
         if module == "g_file_storage" {
-            match platform {
-                "mx6sll-ntx" | "mx6sul-ntx" => {
+            match self.platform {
+                Platform::MX6SLLNTX | Platform::MX6SULNTX => {
                     for mod_name in ["usb_f_mass_storage", "libcomposite", "configfs"] {
                         let _ = Command::new("rmmod").arg(mod_name).output();
                     }
                 }
-                "mx6sl-ntx" => {
+                Platform::MX6SLNTX => {
                     // mx6sl-ntx doesn't have arcotg_udc due to it being part of the kernel
                 }
                 _ => {
