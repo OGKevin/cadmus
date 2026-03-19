@@ -307,6 +307,7 @@ fn prepare_share_for_usb(
         context.frontlight.set_intensity(0.0);
         context.frontlight.set_warmth(0.0);
     }
+    #[cfg(not(feature = "test"))]
     if context.settings.wifi {
         Command::new("scripts/wifi-disable.sh").status().ok();
         context.online = false;
