@@ -17,15 +17,19 @@ use tracing::{debug, error, info, warn};
 /// Base path for platform-specific kernel modules.
 const DRIVERS_DIR: &str = "/drivers";
 
+/// SD card block device partition, present only when a card is inserted.
+const SD_CARD_PARTITION: &str = "/dev/mmcblk1p1";
+
 /// USB mass storage manager for legacy platforms.
 ///
 /// This implementation loads kernel modules to enable USB mass storage on
-/// older Kobo devices. It handles different module combinations based on
-/// the platform type:
+/// older Kobo devices. For each platform it first tries `g_mass_storage.ko`;
+/// if that is absent it falls back to `g_file_storage.ko` with
+/// platform-specific dependencies:
 ///
-/// - **mx6sll-ntx, mx6sul-ntx**: Uses `g_mass_storage.ko`
-/// - **mx6sl-ntx**: Uses `g_file_storage.ko` without arcotg_udc
-/// - **Other platforms**: Uses `g_file_storage.ko` with dependencies
+/// - **mx6sll-ntx, mx6ull-ntx**: loads configfs, libcomposite, usb_f_mass_storage deps
+/// - **mx6sl-ntx**: no extra dependencies (arcotg_udc is built into the kernel)
+/// - **other platforms**: loads arcotg_udc before g_file_storage
 pub struct LegacyUsbManager {
     metadata: DeviceMetadata,
     platform: Platform,
@@ -49,6 +53,20 @@ impl LegacyUsbManager {
         Path::new(&path).exists()
     }
 
+    /// Builds the `file=` parameter value for `insmod`, including the SD card
+    /// partition when one is present (matching the original `usb-enable.sh` behavior).
+    fn build_file_param(&self) -> String {
+        if Path::new(SD_CARD_PARTITION).exists() {
+            debug!(
+                sd_partition = SD_CARD_PARTITION,
+                "SD card detected, including in USB export"
+            );
+            format!("{},{}", self.metadata.partition, SD_CARD_PARTITION)
+        } else {
+            self.metadata.partition.clone()
+        }
+    }
+
     fn build_mass_storage_params(&self) -> Vec<String> {
         vec![
             format!("idVendor=0x{:04X}", self.metadata.vendor_id),
@@ -56,7 +74,7 @@ impl LegacyUsbManager {
             "iManufacturer=Kobo".to_string(),
             format!("iProduct=eReader-{}", self.metadata.firmware_version),
             format!("iSerialNumber={}", self.metadata.serial_number),
-            format!("file={}", self.metadata.partition),
+            format!("file={}", self.build_file_param()),
             "stall=1".to_string(),
             "removable=1".to_string(),
         ]
@@ -64,7 +82,7 @@ impl LegacyUsbManager {
 
     fn build_file_storage_params(&self) -> Vec<String> {
         match self.platform {
-            Platform::MX6SLLNTX | Platform::MX6SULNTX => self.build_mass_storage_params(),
+            Platform::MX6SLLNTX | Platform::MX6ULLNTX => self.build_mass_storage_params(),
             _ => {
                 vec![
                     format!("vendor=0x{:04X}", self.metadata.vendor_id),
@@ -72,7 +90,7 @@ impl LegacyUsbManager {
                     "vendor_id=Kobo".to_string(),
                     format!("product_id=eReader-{}", self.metadata.firmware_version),
                     format!("SN={}", self.metadata.serial_number),
-                    format!("file={}", self.metadata.partition),
+                    format!("file={}", self.build_file_param()),
                     "stall=1".to_string(),
                     "removable=1".to_string(),
                 ]
@@ -116,7 +134,7 @@ impl LegacyUsbManager {
         let gadgets_path = format!("{}/{}/usb/gadget", DRIVERS_DIR, self.platform);
 
         match self.platform {
-            Platform::MX6SLLNTX | Platform::MX6SULNTX => {
+            Platform::MX6SLLNTX | Platform::MX6ULLNTX => {
                 for module in ["configfs.ko", "libcomposite.ko", "usb_f_mass_storage.ko"] {
                     let path = format!("{}/{}", gadgets_path, module);
                     if Path::new(&path).exists() {
@@ -125,9 +143,7 @@ impl LegacyUsbManager {
                     }
                 }
             }
-            Platform::MX6SLNTX => {
-                // mx6sl-ntx doesn't have arcotg_udc due to it being part of the kernel
-            }
+            Platform::MX6SLNTX => {}
             _ => {
                 let arcotg_path = format!("{}/arcotg_udc.ko", gadgets_path);
                 if Path::new(&arcotg_path).exists() {
@@ -215,14 +231,12 @@ impl LegacyUsbManager {
 
         if module == "g_file_storage" {
             match self.platform {
-                Platform::MX6SLLNTX | Platform::MX6SULNTX => {
+                Platform::MX6SLLNTX | Platform::MX6ULLNTX => {
                     for mod_name in ["usb_f_mass_storage", "libcomposite", "configfs"] {
                         let _ = Command::new("rmmod").arg(mod_name).output();
                     }
                 }
-                Platform::MX6SLNTX => {
-                    // mx6sl-ntx doesn't have arcotg_udc due to it being part of the kernel
-                }
+                Platform::MX6SLNTX => {}
                 _ => {
                     let _ = Command::new("rmmod").arg("arcotg_udc").output();
                 }

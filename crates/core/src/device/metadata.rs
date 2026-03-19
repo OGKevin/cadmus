@@ -61,6 +61,8 @@ pub(crate) enum Platform {
     MT8113TNTX,
     /// Freescale i.MX 6SLL NTX platform.
     MX6SLLNTX,
+    /// Freescale i.MX 6ULL NTX platform.
+    MX6ULLNTX,
     /// Freescale i.MX 6UL NTX platform.
     MX6SULNTX,
     /// Freescale i.MX 6SL NTX platform.
@@ -74,6 +76,7 @@ impl From<String> for Platform {
         match s.as_str() {
             "mt8113t-ntx" => Platform::MT8113TNTX,
             "mx6sll-ntx" => Platform::MX6SLLNTX,
+            "mx6ull-ntx" => Platform::MX6ULLNTX,
             "mx6sul-ntx" => Platform::MX6SULNTX,
             "mx6sl-ntx" => Platform::MX6SLNTX,
             _ => Platform::Other(s),
@@ -86,6 +89,7 @@ impl std::fmt::Display for Platform {
         match self {
             Platform::MT8113TNTX => write!(f, "mt8113t-ntx"),
             Platform::MX6SLLNTX => write!(f, "mx6sll-ntx"),
+            Platform::MX6ULLNTX => write!(f, "mx6ull-ntx"),
             Platform::MX6SULNTX => write!(f, "mx6sul-ntx"),
             Platform::MX6SLNTX => write!(f, "mx6sl-ntx"),
             Platform::Other(s) => write!(f, "{}", s),
