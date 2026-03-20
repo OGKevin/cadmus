@@ -98,6 +98,7 @@ struct Task {
 enum TaskId {
     CheckBattery,
     PrepareSuspend,
+    Exit,
     Suspend,
 }
 
@@ -329,15 +330,10 @@ fn prepare_share_for_usb(
 /// the share session, preventing file operation failures.
 ///
 /// Sets `context.shared = true` only when `enable()` succeeds. On failure,
-/// shows a transient notification and removes the share screen from the view
-/// tree, returning the user to the normal home screen.
+/// shows a transient notification and schedules an app restart after 3 seconds.
+/// The share screen remains visible during the restart window.
 #[inline]
-fn start_usb_share(
-    view: &mut dyn View,
-    tx: &Sender<Event>,
-    rq: &mut RenderQueue,
-    context: &mut Context,
-) {
+fn start_usb_share(tx: &Sender<Event>, tasks: &mut Vec<Task>, context: &mut Context) {
     match CURRENT_DEVICE.usb_manager() {
         Ok(usb_manager) => match usb_manager.enable() {
             Ok(()) => {
@@ -352,11 +348,13 @@ fn start_usb_share(
                     "Failed to start USB session".to_string(),
                 )))
                 .ok();
-                if let Some(index) = locate::<Intermission>(view) {
-                    let rect = *view.child(index).rect();
-                    view.children_mut().remove(index);
-                    rq.add(RenderData::expose(rect, UpdateMode::Full));
-                }
+                schedule_task(
+                    TaskId::Exit,
+                    Event::Select(EntryId::Reboot),
+                    Duration::from_secs(3),
+                    tx,
+                    tasks,
+                );
             }
         },
         Err(e) => {
@@ -365,11 +363,13 @@ fn start_usb_share(
                 "Failed to start USB session".to_string(),
             )))
             .ok();
-            if let Some(index) = locate::<Intermission>(view) {
-                let rect = *view.child(index).rect();
-                view.children_mut().remove(index);
-                rq.add(RenderData::expose(rect, UpdateMode::Full));
-            }
+            schedule_task(
+                TaskId::Exit,
+                Event::Select(EntryId::Restart),
+                Duration::from_secs(3),
+                tx,
+                tasks,
+            );
         }
     }
 }
@@ -1030,7 +1030,7 @@ pub fn run() -> Result<(), Error> {
                     continue;
                 }
 
-                start_usb_share(view.as_mut(), &tx, &mut rq, &mut context);
+                start_usb_share(&tx, &mut tasks, &mut context);
             }
             Event::Gesture(ge) => match ge {
                 GestureEvent::HoldButtonLong(ButtonCode::Power) => {
@@ -1566,9 +1566,9 @@ pub fn run() -> Result<(), Error> {
     };
 
     if save_settings {
-        manager
-            .save(&context.settings)
-            .context("can't save settings")?;
+        if let Err(e) = manager.save(&context.settings) {
+            tracing::error!(error = ?e, "failed to save settings");
+        }
     }
 
     match exit_status {
