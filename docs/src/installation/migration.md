@@ -5,14 +5,14 @@ migrating is mostly a matter of copying your settings file across.
 
 ## Copy your settings
 
-| Build  | Plato settings                           | Cadmus settings                                        |
-| ------ | ---------------------------------------- | ------------------------------------------------------ |
-| Stable | `/mnt/onboard/.adds/plato/Settings.toml` | `/mnt/onboard/.adds/cadmus/Settings/Settings.toml`     |
-| Test   | `/mnt/onboard/.adds/plato/Settings.toml` | `/mnt/onboard/.adds/cadmus-tst/Settings/Settings.toml` |
+| Build  | Plato settings                           | Cadmus settings                               |
+| ------ | ---------------------------------------- | --------------------------------------------- |
+| Stable | `/mnt/onboard/.adds/plato/Settings.toml` | `/mnt/onboard/.adds/cadmus/Settings.toml`     |
+| Test   | `/mnt/onboard/.adds/plato/Settings.toml` | `/mnt/onboard/.adds/cadmus-tst/Settings.toml` |
 
-Copy the file as-is. The `[[libraries]]` section is the most important part,
-it tells Cadmus where your books live and drives the reading-progress import on
-first launch.
+Copy the file as-is into the Cadmus folder so it is named `Settings.toml` (for example, `/mnt/onboard/.adds/cadmus/Settings.toml` or `/mnt/onboard/.adds/cadmus-tst/Settings.toml`).
+The `[[libraries]]` section is the most important part, it tells Cadmus where your books live and drives the reading-progress import on
+first launch. On first launch, Cadmus will move this file into its `Settings/` folder automatically.
 
 ```toml
 [[libraries]]
@@ -62,10 +62,10 @@ settings), you can start it fresh:
    directory.
 2. Delete the Cadmus SQLite database:
 
-   | Build  | Database path                                |
-   | ------ | -------------------------------------------- |
-   | Stable | `/mnt/onboard/.adds/cadmus/db/cadmus.db`     |
-   | Test   | `/mnt/onboard/.adds/cadmus-tst/db/cadmus.db` |
+   | Build  | Database path                                 |
+   | ------ | --------------------------------------------- |
+   | Stable | `/mnt/onboard/.adds/cadmus/cadmus.sqlite`     |
+   | Test   | `/mnt/onboard/.adds/cadmus-tst/cadmus.sqlite` |
 
 3. Restart Cadmus — the import will run again from scratch.
 
