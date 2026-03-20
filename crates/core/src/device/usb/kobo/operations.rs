@@ -74,20 +74,28 @@ pub trait KoboUsbOperations {
     ///
     /// Uses procfs to read mount information and checks if the
     /// mount_point appears in the list.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`UsbError::Io`] if mount information cannot be read.
+    /// Callers should treat a read failure as an error rather than assuming
+    /// the filesystem is unmounted.
     #[cfg(target_os = "linux")]
-    fn is_mounted(&self, mount_point: &str) -> bool {
-        match procfs::mounts() {
-            Ok(mounts) => mounts.iter().any(|m| m.fs_file == mount_point),
-            Err(e) => {
-                warn!(error = %e, "Failed to read mounts");
-                false
-            }
-        }
+    fn is_mounted(&self, mount_point: &str) -> Result<bool, UsbError> {
+        procfs::mounts()
+            .map(|mounts| mounts.iter().any(|m| m.fs_file == mount_point))
+            .map_err(|e| {
+                warn!(error = %e, mount_point = %mount_point, "Failed to read mounts");
+                UsbError::Io(std::io::Error::other(format!(
+                    "Failed to read mount info: {}",
+                    e
+                )))
+            })
     }
 
     #[cfg(not(target_os = "linux"))]
-    fn is_mounted(&self, _mount_point: &str) -> bool {
-        false
+    fn is_mounted(&self, _mount_point: &str) -> Result<bool, UsbError> {
+        Ok(false)
     }
 
     /// Unmounts a partition lazily.
@@ -132,7 +140,7 @@ pub trait KoboUsbOperations {
 
         for name in ["onboard", "sd"] {
             let mount_point = format!("/mnt/{}", name);
-            if self.is_mounted(&mount_point) {
+            if self.is_mounted(&mount_point)? {
                 self.unmount_partition(&mount_point)?;
             }
         }
@@ -192,8 +200,23 @@ pub trait KoboUsbOperations {
 
     /// Runs filesystem check and repair.
     ///
-    /// Runs dosfsck twice on the partition. Returns error if corruption
-    /// cannot be repaired.
+    /// Runs `dosfsck -a -w` on the partition up to twice. The first run
+    /// attempts automatic repair. If it exits with a non-zero status
+    /// (exit code 1 means recoverable errors were found; see
+    /// [`fsck.fat(8)`](https://man7.org/linux/man-pages/man8/fsck.fat.8.html)),
+    /// a second run is performed to verify the repairs. Only after both
+    /// runs fail is the filesystem considered unrecoverable.
+    ///
+    /// ## `dosfsck` exit codes
+    ///
+    /// | Code | Meaning |
+    /// |------|---------|
+    /// | `0`  | No errors found |
+    /// | `1`  | Recoverable errors found (or internal inconsistency) |
+    /// | `2`  | Usage error – filesystem was not accessed |
+    ///
+    /// The two-pass approach mirrors the original shell script behaviour:
+    /// the first pass repairs, and the second pass confirms the result.
     ///
     /// # Errors
     ///
@@ -203,7 +226,7 @@ pub trait KoboUsbOperations {
     /// and cannot be repaired. Returns [`UsbError::Io`] if the command fails
     /// to execute.
     fn check_filesystem(&self) -> Result<(), UsbError> {
-        if self.is_mounted("/mnt/onboard") {
+        if self.is_mounted("/mnt/onboard")? {
             error!("Refusing to run filesystem check: /mnt/onboard is still mounted");
             return Err(UsbError::Partition(
                 "/mnt/onboard is still mounted; filesystem check aborted".to_string(),

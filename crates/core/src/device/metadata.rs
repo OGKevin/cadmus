@@ -38,6 +38,8 @@
 //! | 375             | `0x4226`   | [`AuraEd2V1`](crate::device::Model::AuraEd2V1), [`AuraEd2V2`](crate::device::Model::AuraEd2V2) |
 //! | 376             | `0x4228`   | [`ClaraHD`](crate::device::Model::ClaraHD)                             |
 //! | 377, 380        | `0x4229`   | [`Forma`](crate::device::Model::Forma), [`Forma32GB`](crate::device::Model::Forma32GB) |
+//! | 378             | `0x4227`   | [`AuraH2OEd2V2`](crate::device::Model::AuraH2OEd2V2) (V2 hardware)    |
+//! | 379             | `0x4226`   | [`AuraEd2V2`](crate::device::Model::AuraEd2V2) (V2 hardware)          |
 //! | 382             | `0x4230`   | [`Nia`](crate::device::Model::Nia)                                     |
 //! | 383             | `0x4231`   | [`Sage`](crate::device::Model::Sage)                                   |
 //! | 384             | `0x4232`   | [`LibraH2O`](crate::device::Model::LibraH2O)                           |
@@ -177,7 +179,8 @@ impl DeviceMetadata {
             serial_number = %serial_number,
             firmware_version = %firmware_version,
             model_number = %model_number,
-            product_id = format!("0x{:04X}", product_id),
+            product_id,
+            product_id_hex = %format_args!("{product_id:#06X}"),
             partition = %partition,
             "Device metadata read successfully"
         );
@@ -210,6 +213,8 @@ fn model_to_product_id(model_number: &str) -> u16 {
         "375" => 0x4226,
         "376" => 0x4228,
         "377" | "380" => 0x4229,
+        "378" => 0x4227,
+        "379" => 0x4226,
         "384" => 0x4232,
         "382" => 0x4230,
         "387" => 0x4233,
@@ -226,7 +231,7 @@ fn model_to_product_id(model_number: &str) -> u16 {
     if product_id == 0x6666 {
         warn!(model_number = %model_number, "Unknown model number, using default Product ID");
     } else {
-        debug!(model_number = %model_number, product_id = format!("0x{:04X}", product_id), "Mapped model to Product ID");
+        debug!(model_number = %model_number, product_id, "Mapped model to Product ID");
     }
 
     product_id
@@ -254,6 +259,8 @@ mod tests {
     fn test_model_to_product_id() {
         assert_eq!(model_to_product_id("376"), 0x4228);
         assert_eq!(model_to_product_id("377"), 0x4229);
+        assert_eq!(model_to_product_id("378"), 0x4227);
+        assert_eq!(model_to_product_id("379"), 0x4226);
         assert_eq!(model_to_product_id("380"), 0x4229);
         assert_eq!(model_to_product_id("390"), 0x4237);
         assert_eq!(model_to_product_id("999"), 0x6666);

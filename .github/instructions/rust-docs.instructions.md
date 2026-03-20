@@ -17,7 +17,7 @@ Writing high-quality documentation examples is critical for API usability and ma
 
 ## Example Patterns
 
-### ❌ Avoid: Using `ignore` attribute
+### ❌ Avoid: Using `ignore` attribute (except for private APIs)
 
 ````rust
 /// ```ignore  // Don't just ignore compilation
@@ -25,7 +25,8 @@ Writing high-quality documentation examples is critical for API usability and ma
 /// ```
 ````
 
-This hides compilation issues and makes examples unreliable.
+This hides compilation issues and makes examples unreliable. The only
+acceptable use of `ignore` is for **private API** examples — see below.
 
 ### ✅ Good: Using `compile_fail` for intentional errors
 
@@ -37,7 +38,38 @@ This hides compilation issues and makes examples unreliable.
 
 Use this when you want to show code that intentionally fails to compile (e.g., demonstrating type safety).
 
-### ✅ Good: Using `no_run` for I/O operations
+### ✅ Acceptable: Using `ignore` for private API examples
+
+````rust
+/// ```ignore
+/// use my_crate::internal::MyPrivateType;
+///
+/// let value = MyPrivateType::new();
+/// value.internal_method();
+/// ```
+````
+
+Use `ignore` **only** when the example is on a **private** or `pub(crate)` item
+whose type is not publicly exported. `cargo test --doc` cannot compile such
+examples because the items are inaccessible to the test harness.
+
+Add a comment explaining the reason:
+
+````rust
+/// ```ignore
+/// // This example uses private API; doc tests cannot access non-public items.
+/// use my_crate::internal::MyPrivateManager;
+///
+/// let manager = MyPrivateManager::new(metadata);
+/// manager.prepare_for_usb_share()?;
+/// ```
+````
+
+**When NOT to use `ignore`:** if the item is `pub` or `pub(crate)` within the
+same crate and reachable via the crate root, prefer `no_run` (or a fully
+compilable example) instead so the test harness can validate syntax.
+
+
 
 ````rust
 /// ```no_run
@@ -113,6 +145,7 @@ Before committing rustdoc examples:
 | Can't run in test environment | Use `no_run` attribute and document why |
 | Example is pseudocode         | Rewrite to be actual, working code      |
 | Example confuses API usage    | Simplify or add explanatory comments    |
+| Private API, can't export     | Use `ignore` with a comment explaining  |
 
 ## Quality Checklist
 
