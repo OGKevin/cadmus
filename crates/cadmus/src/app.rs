@@ -330,8 +330,8 @@ fn prepare_share_for_usb(
 /// the share session, preventing file operation failures.
 ///
 /// Sets `context.shared = true` only when `enable()` succeeds. On failure,
-/// shows a transient notification and schedules an app restart after 3 seconds.
-/// The share screen remains visible during the restart window.
+/// shows a transient notification and schedules a device reboot after 3 seconds.
+/// The share screen remains visible during the reboot window.
 #[inline]
 fn start_usb_share(tx: &Sender<Event>, tasks: &mut Vec<Task>, context: &mut Context) {
     match CURRENT_DEVICE.usb_manager() {

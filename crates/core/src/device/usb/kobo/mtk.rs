@@ -135,8 +135,8 @@ impl MtkUsbManager {
             .map_err(|e| UsbError::GadgetConfig(format!("Cannot write LUN file: {}", e)))?;
 
         info!(
-            vendor_id = format!("0x{:04X}", self.metadata.vendor_id),
-            product_id = format!("0x{:04X}", self.metadata.product_id),
+            vendor_id = self.metadata.vendor_id,
+            product_id = self.metadata.product_id,
             partition = %self.metadata.partition,
             "Gadget configuration written"
         );
