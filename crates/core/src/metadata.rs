@@ -67,6 +67,8 @@ pub struct Info {
 #[serde(default, rename_all = "camelCase")]
 pub struct FileInfo {
     pub path: PathBuf,
+    #[serde(skip)]
+    pub absolute_path: PathBuf,
     pub kind: String,
     pub size: u64,
 }
@@ -75,6 +77,7 @@ impl Default for FileInfo {
     fn default() -> Self {
         FileInfo {
             path: PathBuf::default(),
+            absolute_path: PathBuf::default(),
             kind: String::default(),
             size: u64::default(),
         }

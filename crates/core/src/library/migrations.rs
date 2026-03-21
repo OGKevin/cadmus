@@ -304,7 +304,7 @@ async fn ensure_stub_book(
 
     sqlx::query!(
         r#"
-        INSERT OR IGNORE INTO books (fingerprint, file_path, file_kind, file_size, added_at)
+        INSERT OR IGNORE INTO books (fingerprint, absolute_path, file_kind, file_size, added_at)
         VALUES (?, '', '', 0, ?)
         "#,
         fp_str,
@@ -408,7 +408,7 @@ async fn insert_book(
         INSERT OR IGNORE INTO books (
             fingerprint, title, subtitle, year, language, publisher,
             series, edition, volume, number, identifier,
-            file_path, file_kind, file_size, added_at
+            absolute_path, file_kind, file_size, added_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
         book_row.fingerprint,
@@ -422,7 +422,7 @@ async fn insert_book(
         book_row.volume,
         book_row.number,
         book_row.identifier,
-        book_row.file_path,
+        book_row.absolute_path,
         book_row.file_kind,
         book_row.file_size,
         book_row.added_at,
@@ -432,12 +432,13 @@ async fn insert_book(
 
     sqlx::query!(
         r#"
-        INSERT OR IGNORE INTO library_books (library_id, book_fingerprint, added_to_library_at)
-        VALUES (?, ?, ?)
+        INSERT OR IGNORE INTO library_books (library_id, book_fingerprint, added_to_library_at, file_path)
+        VALUES (?, ?, ?, ?)
         "#,
         library_id,
         fp_str,
         book_row.added_at,
+        book_row.file_path,
     )
     .execute(&mut **tx)
     .await?;

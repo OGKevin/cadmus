@@ -20,6 +20,7 @@ pub fn info_to_book_row(fp: Fp, info: &Info) -> BookRow {
         number: info.number.clone(),
         identifier: info.identifier.clone(),
         file_path: info.file.path.display().to_string(),
+        absolute_path: info.file.absolute_path.display().to_string(),
         file_kind: info.file.kind.clone(),
         file_size: info.file.size as i64,
         added_at: info.added.into(),
@@ -247,6 +248,7 @@ mod tests {
             author: "Test Author".to_string(),
             file: FileInfo {
                 path: PathBuf::from("/tmp/test.pdf"),
+                absolute_path: PathBuf::from("/mnt/onboard/tmp/test.pdf"),
                 kind: "pdf".to_string(),
                 size: 1024,
             },
@@ -258,6 +260,7 @@ mod tests {
         assert_eq!(row.fingerprint, "0000000000000001");
         assert_eq!(row.title, "Test Book");
         assert_eq!(row.file_path, "/tmp/test.pdf");
+        assert_eq!(row.absolute_path, "/mnt/onboard/tmp/test.pdf");
         assert_eq!(row.file_size, 1024);
     }
 

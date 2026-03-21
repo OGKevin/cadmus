@@ -190,6 +190,7 @@ impl Library {
                     self.paths.remove(&self.books[&fp].file.path);
                     self.paths.insert(relat.to_path_buf(), fp);
                     self.books[&fp].file.path = relat.to_path_buf();
+                    self.books[&fp].file.absolute_path = path.to_path_buf();
                     books_to_update.push(fp);
                 }
             } else if let Some(fp2) = self.paths.get(relat).cloned() {
@@ -260,6 +261,7 @@ impl Library {
                         self.paths.remove(&self.books[&fp].file.path);
                         self.paths.insert(relat.to_path_buf(), fp);
                         self.books[&fp].file.path = relat.to_path_buf();
+                        self.books[&fp].file.absolute_path = path.to_path_buf();
                         books_to_update.push(fp);
                     }
                 } else {
@@ -271,6 +273,7 @@ impl Library {
                     let size = md.len();
                     let file = FileInfo {
                         path: relat.to_path_buf(),
+                        absolute_path: path.to_path_buf(),
                         kind,
                         size,
                     };
@@ -343,7 +346,7 @@ impl Library {
                 .filter_map(|fp| self.books.get(fp).map(|info| (*fp, info)))
                 .collect();
 
-            if let Err(e) = self.db.batch_update_books(&book_refs) {
+            if let Err(e) = self.db.batch_update_books(self.library_id, &book_refs) {
                 error!(
                     error = %e,
                     count = book_refs.len(),
@@ -402,8 +405,9 @@ impl Library {
         self.paths.insert(new_path.to_path_buf(), fp);
         if let Some(info) = self.books.get_mut(&fp) {
             info.file.path = new_path.to_path_buf();
+            info.file.absolute_path = dest.clone();
 
-            if let Err(e) = self.db.update_book(fp, info) {
+            if let Err(e) = self.db.update_book(self.library_id, fp, info) {
                 error!(fp = %fp, error = %e, "failed to update book path in database");
             } else {
                 debug!(fp = %fp, new_path = %new_path.display(), "book path updated in database");

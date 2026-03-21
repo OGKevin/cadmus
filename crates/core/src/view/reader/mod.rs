@@ -281,13 +281,15 @@ impl Reader {
     ) -> Option<Reader> {
         let id = ID_FEEDER.next();
         let settings = &context.settings;
-        let path = context.library.home.join(&info.file.path);
+        let path = if !info.file.absolute_path.as_os_str().is_empty() {
+            info.file.absolute_path.clone()
+        } else {
+            context.library.home.join(&info.file.path)
+        };
 
         debug!(
             resolved_path = %path.display(),
             file_exists = path.exists(),
-            library_home = %context.library.home.display(),
-            relative_path = %info.file.path.display(),
             "Opening document"
         );
 
@@ -499,6 +501,7 @@ impl Reader {
                 path: PathBuf::from(MEM_SCHEME),
                 kind: "html".to_string(),
                 size: html.len() as u64,
+                ..Default::default()
             },
             ..Default::default()
         };
@@ -570,6 +573,7 @@ impl Reader {
                 path: PathBuf::from("mem:documentation.epub"),
                 kind: "epub".to_string(),
                 size: epub_bytes.len() as u64,
+                ..Default::default()
             },
             title: doc.title().unwrap_or_default(),
             ..Default::default()

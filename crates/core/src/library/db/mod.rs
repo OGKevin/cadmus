@@ -301,6 +301,7 @@ impl Db {
                     number,
                     identifier,
                     file_path,
+                    absolute_path,
                     file_kind,
                     file_size,
                     added_at              as "added_at: UnixTimestamp",
@@ -364,7 +365,8 @@ impl Db {
                     identifier: row.identifier,
                     categories: Self::extract_categories(row.categories),
                     file: FileInfo {
-                        path: PathBuf::from(row.file_path),
+                        path: PathBuf::from(&row.file_path),
+                        absolute_path: PathBuf::from(&row.absolute_path),
                         kind: row.file_kind,
                         size: row.file_size as u64,
                     },
@@ -427,7 +429,7 @@ impl Db {
                 INSERT OR IGNORE INTO books (
                     fingerprint, title, subtitle, year, language, publisher,
                     series, edition, volume, number, identifier,
-                    file_path, file_kind, file_size, added_at
+                    absolute_path, file_kind, file_size, added_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 "#,
                 book_row.fingerprint,
@@ -441,7 +443,7 @@ impl Db {
                 book_row.volume,
                 book_row.number,
                 book_row.identifier,
-                book_row.file_path,
+                book_row.absolute_path,
                 book_row.file_kind,
                 book_row.file_size,
                 book_row.added_at,
@@ -451,12 +453,13 @@ impl Db {
 
             sqlx::query!(
                 r#"
-                INSERT OR IGNORE INTO library_books (library_id, book_fingerprint, added_to_library_at)
-                VALUES (?, ?, ?)
+                INSERT OR IGNORE INTO library_books (library_id, book_fingerprint, added_to_library_at, file_path)
+                VALUES (?, ?, ?, ?)
                 "#,
                 library_id,
                 fp_str,
-                book_row.added_at
+                book_row.added_at,
+                book_row.file_path,
             )
             .execute(&mut *tx)
             .await?;
@@ -567,9 +570,9 @@ impl Db {
         })
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, info), fields(fp = %fp)))]
-    pub fn update_book(&self, fp: Fp, info: &Info) -> Result<(), Error> {
-        tracing::debug!(fp = %fp, "updating book in database");
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, info), fields(fp = %fp, library_id)))]
+    pub fn update_book(&self, library_id: i64, fp: Fp, info: &Info) -> Result<(), Error> {
+        tracing::debug!(fp = %fp, library_id, "updating book in database");
         let fp_str = fp.to_string();
 
         RUNTIME.block_on(async {
@@ -582,7 +585,7 @@ impl Db {
                 UPDATE books SET
                     title = ?, subtitle = ?, year = ?, language = ?, publisher = ?,
                     series = ?, edition = ?, volume = ?, number = ?, identifier = ?,
-                    file_path = ?, file_kind = ?, file_size = ?, added_at = ?
+                    absolute_path = ?, file_kind = ?, file_size = ?, added_at = ?
                 WHERE fingerprint = ?
                 "#,
                 book_row.title,
@@ -595,10 +598,22 @@ impl Db {
                 book_row.volume,
                 book_row.number,
                 book_row.identifier,
-                book_row.file_path,
+                book_row.absolute_path,
                 book_row.file_kind,
                 book_row.file_size,
                 book_row.added_at,
+                fp_str,
+            )
+            .execute(&mut *tx)
+            .await?;
+
+            sqlx::query!(
+                r#"
+                UPDATE library_books SET file_path = ?
+                WHERE library_id = ? AND book_fingerprint = ?
+                "#,
+                book_row.file_path,
+                library_id,
                 fp_str,
             )
             .execute(&mut *tx)
@@ -931,7 +946,7 @@ impl Db {
                     INSERT OR IGNORE INTO books (
                         fingerprint, title, subtitle, year, language, publisher,
                         series, edition, volume, number, identifier,
-                        file_path, file_kind, file_size, added_at
+                        absolute_path, file_kind, file_size, added_at
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     "#,
                     book_row.fingerprint,
@@ -945,7 +960,7 @@ impl Db {
                     book_row.volume,
                     book_row.number,
                     book_row.identifier,
-                    book_row.file_path,
+                    book_row.absolute_path,
                     book_row.file_kind,
                     book_row.file_size,
                     book_row.added_at,
@@ -955,12 +970,13 @@ impl Db {
 
                 sqlx::query!(
                     r#"
-                    INSERT OR IGNORE INTO library_books (library_id, book_fingerprint, added_to_library_at)
-                    VALUES (?, ?, ?)
+                    INSERT OR IGNORE INTO library_books (library_id, book_fingerprint, added_to_library_at, file_path)
+                    VALUES (?, ?, ?, ?)
                     "#,
                     library_id,
                     fp_str,
                     book_row.added_at,
+                    book_row.file_path,
                 )
                 .execute(&mut *tx)
                 .await?;
@@ -1079,13 +1095,13 @@ impl Db {
         })
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, books), fields(count = books.len())))]
-    pub fn batch_update_books(&self, books: &[(Fp, &Info)]) -> Result<(), Error> {
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, books), fields(library_id, count = books.len())))]
+    pub fn batch_update_books(&self, library_id: i64, books: &[(Fp, &Info)]) -> Result<(), Error> {
         if books.is_empty() {
             return Ok(());
         }
 
-        tracing::debug!(count = books.len(), "batch updating books");
+        tracing::debug!(library_id, count = books.len(), "batch updating books");
 
         RUNTIME.block_on(async {
             let mut tx = self.pool.begin().await?;
@@ -1100,7 +1116,7 @@ impl Db {
                     UPDATE books SET
                         title = ?, subtitle = ?, year = ?, language = ?, publisher = ?,
                         series = ?, edition = ?, volume = ?, number = ?, identifier = ?,
-                        file_path = ?, file_kind = ?, file_size = ?, added_at = ?
+                        absolute_path = ?, file_kind = ?, file_size = ?, added_at = ?
                     WHERE fingerprint = ?
                     "#,
                     book_row.title,
@@ -1113,10 +1129,22 @@ impl Db {
                     book_row.volume,
                     book_row.number,
                     book_row.identifier,
-                    book_row.file_path,
+                    book_row.absolute_path,
                     book_row.file_kind,
                     book_row.file_size,
                     book_row.added_at,
+                    fp_str,
+                )
+                .execute(&mut *tx)
+                .await?;
+
+                sqlx::query!(
+                    r#"
+                    UPDATE library_books SET file_path = ?
+                    WHERE library_id = ? AND book_fingerprint = ?
+                    "#,
+                    book_row.file_path,
+                    library_id,
                     fp_str,
                 )
                 .execute(&mut *tx)
@@ -1303,6 +1331,7 @@ mod tests {
                 path: PathBuf::from("/tmp/test.pdf"),
                 kind: "pdf".to_string(),
                 size: 1024,
+                ..Default::default()
             },
             added: Local::now().naive_local(),
             ..Default::default()
@@ -1352,6 +1381,7 @@ mod tests {
                 path: PathBuf::from("/tmp/test2.pdf"),
                 kind: "pdf".to_string(),
                 size: 2048,
+                ..Default::default()
             },
             reader_info: Some(reader_info.clone()),
             ..Default::default()
@@ -1392,6 +1422,7 @@ mod tests {
                 path: PathBuf::from("/tmp/delete.pdf"),
                 kind: "pdf".to_string(),
                 size: 512,
+                ..Default::default()
             },
             ..Default::default()
         };
@@ -1440,6 +1471,7 @@ mod tests {
                     path: PathBuf::from(format!("/tmp/book{}.pdf", i)),
                     kind: "pdf".to_string(),
                     size: (i * 100) as u64,
+                    ..Default::default()
                 },
                 ..Default::default()
             };
@@ -1476,6 +1508,7 @@ mod tests {
                 path: PathBuf::from("/tmp/update.pdf"),
                 kind: "pdf".to_string(),
                 size: 1024,
+                ..Default::default()
             },
             ..Default::default()
         };
@@ -1491,7 +1524,9 @@ mod tests {
         info.author = "Updated Author".to_string();
         info.year = "2025".to_string();
 
-        libdb.update_book(fp, &info).expect("failed to update book");
+        libdb
+            .update_book(library_id, fp, &info)
+            .expect("failed to update book");
 
         let books = libdb
             .get_all_books(library_id)
@@ -1522,6 +1557,7 @@ mod tests {
                     path: PathBuf::from(format!("/tmp/book{}.pdf", i)),
                     kind: "pdf".to_string(),
                     size: (i * 100) as u64,
+                    ..Default::default()
                 },
                 ..Default::default()
             };
@@ -1557,6 +1593,7 @@ mod tests {
                 path: PathBuf::from("/tmp/state.pdf"),
                 kind: "pdf".to_string(),
                 size: 1024,
+                ..Default::default()
             },
             ..Default::default()
         };
@@ -1630,6 +1667,7 @@ mod tests {
                     path: PathBuf::from(format!("/tmp/batch{}.pdf", i)),
                     kind: "pdf".to_string(),
                     size: (i * 100) as u64,
+                    ..Default::default()
                 },
                 ..Default::default()
             };
@@ -1679,6 +1717,7 @@ mod tests {
                     path: PathBuf::from(format!("/tmp/update{}.pdf", i)),
                     kind: "pdf".to_string(),
                     size: (i * 100) as u64,
+                    ..Default::default()
                 },
                 ..Default::default()
             };
@@ -1695,7 +1734,7 @@ mod tests {
         let book_refs: Vec<(Fp, &Info)> = books.iter().map(|(fp, info)| (*fp, info)).collect();
 
         libdb
-            .batch_update_books(&book_refs)
+            .batch_update_books(library_id, &book_refs)
             .expect("failed to batch update books");
 
         let all_books = libdb
@@ -1730,6 +1769,7 @@ mod tests {
                     path: PathBuf::from(format!("/tmp/delete{}.pdf", i)),
                     kind: "pdf".to_string(),
                     size: (i * 100) as u64,
+                    ..Default::default()
                 },
                 ..Default::default()
             };
@@ -1768,7 +1808,7 @@ mod tests {
             .batch_insert_books(library_id, &empty_books)
             .expect("empty batch insert should succeed");
         libdb
-            .batch_update_books(&empty_books)
+            .batch_update_books(library_id, &empty_books)
             .expect("empty batch update should succeed");
         libdb
             .batch_delete_books(library_id, &empty_fps)
@@ -1787,6 +1827,7 @@ mod tests {
                 path: PathBuf::from("/tmp/cat.pdf"),
                 kind: "pdf".to_string(),
                 size: 512,
+                ..Default::default()
             },
             categories: ["Fiction", "Science", "History"]
                 .iter()
@@ -1826,6 +1867,7 @@ mod tests {
                 path: PathBuf::from("/tmp/upd_cat.pdf"),
                 kind: "pdf".to_string(),
                 size: 512,
+                ..Default::default()
             },
             categories: ["OldCat"].iter().map(|s| s.to_string()).collect(),
             ..Default::default()
@@ -1842,7 +1884,9 @@ mod tests {
             .iter()
             .map(|s| s.to_string())
             .collect();
-        libdb.update_book(fp, &info).expect("failed to update book");
+        libdb
+            .update_book(library_id, fp, &info)
+            .expect("failed to update book");
 
         let books = libdb
             .get_all_books(library_id)
@@ -1879,6 +1923,7 @@ mod tests {
                     path: PathBuf::from(format!("/tmp/state{}.pdf", i)),
                     kind: "pdf".to_string(),
                     size: (i * 100) as u64,
+                    ..Default::default()
                 },
                 reader_info: Some(reader_info),
                 ..Default::default()

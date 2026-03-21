@@ -16,6 +16,7 @@ pub struct BookRow {
     pub number: String,
     pub identifier: String,
     pub file_path: String,
+    pub absolute_path: String,
     pub file_kind: String,
     pub file_size: i64,
     pub added_at: UnixTimestamp,
