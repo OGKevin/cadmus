@@ -2,10 +2,12 @@
 //!
 //! 1. Installs mdbook-mermaid JavaScript assets into `docs/`.
 //! 2. Builds the mdBook user guide (`docs/book/html/`).
-//! 3. Generates Rust API documentation (`target/doc/`).
-//! 4. Optionally injects the git version string into the generated HTML.
-//! 5. Creates symlinks so Zola can find the mdBook and cargo-doc outputs.
-//! 6. Builds the Zola documentation portal (`docs-portal/public/`).
+//! 3. Builds translated mdBook books for each locale found in `docs/po/`.
+//! 4. Generates Rust API documentation (`target/doc/`).
+//! 5. Optionally injects the git version string into the generated HTML.
+//! 6. Writes `locales.json` with available locales.
+//! 7. Creates symlinks so Zola can find the mdBook and cargo-doc outputs.
+//! 8. Builds the Zola documentation portal (`docs-portal/public/`).
 //!
 //! ## Output
 //!
@@ -20,6 +22,13 @@ use serde::Deserialize;
 use walkdir::WalkDir;
 
 use super::util::{cmd, workspace};
+
+/// Represents a locale entry in the locales.json file.
+#[derive(Debug, serde::Serialize)]
+struct LocaleEntry {
+    code: String,
+    label: String,
+}
 
 /// Arguments for `cargo xtask docs`.
 #[derive(Debug, Args)]
@@ -59,6 +68,7 @@ pub fn run(args: DocsArgs) -> Result<()> {
 
     install_mermaid_assets(&root)?;
     build_mdbook(&root)?;
+    build_translated_books(&root)?;
 
     if args.mdbook_only {
         return Ok(());
@@ -66,6 +76,7 @@ pub fn run(args: DocsArgs) -> Result<()> {
 
     build_cargo_doc(&root)?;
     inject_git_version(&root)?;
+    write_locales_json(&root)?;
     create_portal_symlinks(&root)?;
     build_zola(&root, &args.base_url)?;
 
@@ -176,23 +187,6 @@ fn replace_version_in_html(
     Ok(())
 }
 
-/// Creates symlinks in `docs-portal/static/` so Zola can serve the mdBook
-/// and cargo-doc outputs as static assets.
-fn create_portal_symlinks(root: &Path) -> Result<()> {
-    let metadata = cargo_metadata(root)?;
-
-    let api_link = root.join("docs-portal/static/api");
-    let guide_link = root.join("docs-portal/static/guide");
-
-    symlink_force(
-        Path::new(&format!("{}/doc", metadata.target_directory)),
-        &api_link,
-    )?;
-    symlink_force(&root.join("docs/book/html"), &guide_link)?;
-
-    Ok(())
-}
-
 /// Builds the Zola documentation portal.
 fn build_zola(root: &Path, base_url: &str) -> Result<()> {
     println!("Building Zola documentation portal…");
@@ -237,4 +231,224 @@ fn symlink_force(target: &Path, link: &Path) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Builds translated mdBook books for each locale found in `docs/po/`.
+fn build_translated_books(root: &Path) -> Result<()> {
+    let po_dir = root.join("docs/po");
+    if !po_dir.exists() {
+        println!("No PO directory found, skipping translated books.");
+        return Ok(());
+    }
+
+    println!("Building translated books…");
+    for entry in WalkDir::new(&po_dir)
+        .min_depth(1)
+        .max_depth(1)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        let path = entry.path();
+        if path.extension().is_some_and(|ext| ext == "po") {
+            let lang = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .context("Invalid locale filename")?;
+
+            println!("Building {lang} translation…");
+            cmd::run(
+                "mdbook",
+                &["build", "-d", &format!("book/{lang}")],
+                &root.join("docs"),
+                &[("MDBOOK_BOOK__LANGUAGE", lang)],
+            )?;
+        }
+    }
+
+    Ok(())
+}
+
+/// Writes `docs/book/html/locales.json` with available locales and their display names.
+fn write_locales_json(root: &Path) -> Result<()> {
+    let po_dir = root.join("docs/po");
+    if !po_dir.exists() {
+        return Ok(());
+    }
+
+    let mut locales = Vec::new();
+    for entry in WalkDir::new(&po_dir)
+        .min_depth(1)
+        .max_depth(1)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        let path = entry.path();
+        if path.extension().is_some_and(|ext| ext == "po") {
+            let lang = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .context("Invalid locale filename")?;
+
+            let label = extract_lang_name(path).unwrap_or_else(|| lang.to_string());
+            locales.push(LocaleEntry {
+                code: lang.to_string(),
+                label,
+            });
+        }
+    }
+
+    // Sort locales by code for deterministic output
+    locales.sort_by(|a, b| a.code.cmp(&b.code));
+
+    let output_path = root.join("docs/book/html/locales.json");
+    std::fs::create_dir_all(output_path.parent().context("no parent dir")?)?;
+    let json = serde_json::to_string_pretty(&locales)?;
+    std::fs::write(&output_path, json).context("failed to write locales.json")?;
+
+    println!(
+        "Wrote {} locales to {}",
+        locales.len(),
+        output_path.display()
+    );
+    Ok(())
+}
+
+/// Extracts the display name from the PO file header.
+fn extract_lang_name(po_path: &Path) -> Option<String> {
+    let content = std::fs::read_to_string(po_path).ok()?;
+    for line in content.lines() {
+        let line = line.trim_start();
+        if let Some(rest) = line.strip_prefix("Language-Name:") {
+            let name = rest.trim();
+            if name.is_empty() {
+                return None;
+            } else {
+                return Some(name.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Creates symlinks in `docs-portal/static/` so Zola can serve the mdBook
+/// and cargo-doc outputs as static assets.
+fn create_portal_symlinks(root: &Path) -> Result<()> {
+    let metadata = cargo_metadata(root)?;
+
+    let api_link = root.join("docs-portal/static/api");
+    let guide_link = root.join("docs-portal/static/guide");
+
+    symlink_force(
+        Path::new(&format!("{}/doc", metadata.target_directory)),
+        &api_link,
+    )?;
+    symlink_force(&root.join("docs/book/html"), &guide_link)?;
+
+    // Create locale symlinks
+    let po_dir = root.join("docs/po");
+    if po_dir.exists() {
+        for entry in WalkDir::new(&po_dir)
+            .min_depth(1)
+            .max_depth(1)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
+            let path = entry.path();
+            if path.extension().is_some_and(|ext| ext == "po") {
+                let lang = path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .context("Invalid locale filename")?;
+
+                let target = root.join("docs/book").join(lang).join("html");
+                let link = root.join("docs-portal/static/guide").join(lang);
+                symlink_force(&target, &link)?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[test]
+    fn extract_lang_name_with_valid_header() {
+        let temp_dir = TempDir::new().unwrap();
+        let po_file = temp_dir.path().join("test.po");
+        fs::write(
+            &po_file,
+            r#"msgid ""
+msgstr ""
+Language-Name: Español
+
+msgid "hello"
+msgstr "hola"
+"#,
+        )
+        .unwrap();
+
+        let result = extract_lang_name(&po_file);
+        assert_eq!(result, Some("Español".to_string()));
+    }
+
+    #[test]
+    fn extract_lang_name_with_leading_whitespace() {
+        let temp_dir = TempDir::new().unwrap();
+        let po_file = temp_dir.path().join("test.po");
+        fs::write(
+            &po_file,
+            r#"msgid ""
+msgstr ""
+Language-Name:   Français
+
+msgid "hello"
+msgstr "bonjour"
+"#,
+        )
+        .unwrap();
+
+        let result = extract_lang_name(&po_file);
+        assert_eq!(result, Some("Français".to_string()));
+    }
+
+    #[test]
+    fn extract_lang_name_missing_header() {
+        let temp_dir = TempDir::new().unwrap();
+        let po_file = temp_dir.path().join("test.po");
+        fs::write(
+            &po_file,
+            r#"msgid "hello"
+msgstr "hola"
+"#,
+        )
+        .unwrap();
+
+        let result = extract_lang_name(&po_file);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn extract_lang_name_empty_language_name() {
+        let temp_dir = TempDir::new().unwrap();
+        let po_file = temp_dir.path().join("test.po");
+        fs::write(
+            &po_file,
+            r#"msgid ""
+msgstr ""
+Language-Name:
+
+msgid "hello"
+msgstr "hola"
+"#,
+        )
+        .unwrap();
+
+        let result = extract_lang_name(&po_file);
+        assert_eq!(result, None);
+    }
 }

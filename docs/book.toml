@@ -5,6 +5,10 @@ language = "en"
 [build]
 build-dir = "book"
 create-missing = true
+extra-watch-dirs = ["po"]
+
+[preprocessor.gettext]
+after = ["links"]
 
 [preprocessor.mermaid]
 command = "mdbook-mermaid"
@@ -16,5 +20,5 @@ renderer = ["epub"]
 [output.epub]
 
 [output.html]
-additional-js = ["mermaid.min.js", "mermaid-init.js"]
+additional-js = ["mermaid.min.js", "mermaid-init.js", "lang-picker.js"]
 additional-css = ["custom.css"]

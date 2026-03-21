@@ -44,6 +44,17 @@
     },
     {
       "customType": "regex",
+      "managerFilePatterns": [
+        "/^\\.github\\/actions\\/install-doc-tools\\/action\\.yml$/"
+      ],
+      "matchStrings": ["MDBOOK_I18N_HELPERS_VERSION=(?<currentValue>[^\"]+)"],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "google/mdbook-i18n-helpers",
+      "extractVersionTemplate": "^mdbook-i18n-helpers-(?<version>.+)$",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
       "managerFilePatterns": ["/^devenv\\.nix$/"],
       "matchStrings": ["rev = \\\"(?<currentValue>[a-f0-9]{40})\\\""],
       "datasourceTemplate": "git-refs",

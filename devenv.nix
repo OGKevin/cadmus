@@ -87,6 +87,8 @@ let
     doCheck = false;
   };
 
+  poedit-fixed = pkgs.poedit.override { boost = pkgs.boost186; };
+
   # Grafana datasource provisioning
   grafanaDatasources = pkgs.writeText "datasources.yaml" ''
     apiVersion: 1
@@ -141,6 +143,8 @@ in
     mdbook-epub-custom
     pkgs.zola
     pkgs.mdbook-mermaid
+    pkgs.mdbook-i18n-helpers
+    pkgs.gettext
 
     cargo-diff-tools
     pkgs.cargo-nextest
@@ -198,6 +202,10 @@ in
     # Linaro ARM cross-compilation toolchain (provides arm-linux-gnueabihf-* commands)
     # This is x86_64 Linux ELF binaries - cannot run on macOS
     linaroToolchain
+
+    # This seems to be borken on macos
+    # https://github.com/NixOS/nixpkgs/blob/ed142ab1b3a092c4d149245d0c4126a5d7ea00b0/pkgs/by-name/po/poedit/package.nix#L88
+    poedit-fixed
   ]
   # macOS-specific packages
   ++ pkgs.lib.optionals isDarwin [
@@ -234,7 +242,8 @@ in
     RUST_BACKTRACE = "1";
     OTEL_EXPORTER_OTLP_ENDPOINT = "http://localhost:4318";
     NEXTEST_NO_TESTS = "pass";
-  } // pkgs.lib.optionalAttrs isLinux {
+  }
+  // pkgs.lib.optionalAttrs isLinux {
     # pkg-config configuration for cross-compilation
     PKG_CONFIG_ALLOW_CROSS = "1";
 
@@ -484,6 +493,7 @@ in
         "docs/**/*.md"
         "docs/book.toml"
         "docs/book"
+        "docs/po"
       ];
     };
 
@@ -572,6 +582,16 @@ in
       export RUST_LOG="emulator=trace,cadmus_core=trace"
       cargo xtask run-emulator --features otel,test,emulator
     '';
+
+    # Extract translatable strings from documentation
+    cadmus-translate.exec = ''
+      echo "Extracting translatable strings from documentation..."
+      MDBOOK_OUTPUT='{"xgettext": {}}' mdbook build -d po $DEVENV_ROOT/docs
+      echo ""
+      echo "Translation files generated in docs/po/"
+      echo "Use Poedit or any gettext editor to translate"
+      echo "Then run 'devenv tasks run docs:build' to build translated books"
+    '';
   };
 
   enterShell = ''
@@ -585,6 +605,12 @@ in
     echo "  cadmus-docs-serve     - Serve documentation locally (http://localhost:1111)"
     echo "  cargo test            - Run tests (after setup)"
     echo "  cargo xtask run-emulator - Run the emulator (after setup)"
+    echo "  cadmus-translate      - Extract translatable strings from documentation"
+    echo ""
+    echo "Translation workflow:"
+    echo "  1. Run 'cadmus-translate' to extract strings into docs/po/"
+    echo "  2. Edit .po files with Poedit or any gettext editor"
+    echo "  3. Run 'devenv tasks run docs:build' to build translated books"
     echo ""
     echo "xtask commands (cargo xtask <cmd> --help for options):"
     echo "  cargo xtask fmt           - Check formatting"

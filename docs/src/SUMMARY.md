@@ -19,6 +19,7 @@
 - [Event System](contributing/event-system.md)
 - [OpenTelemetry Integration](contributing/telemetry.md)
 - [Documentation](contributing/documentation.md)
+  - [Translations](contributing/translations.md)
 - [SQLite & SQLx](contributing/sqlite-sqlx.md)
   - [Library Database](contributing/library-database.md)
   - [Runtime Migrations](contributing/runtime-migrations.md)

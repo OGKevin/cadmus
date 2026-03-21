@@ -1,5 +1,5 @@
 //! `cargo xtask ci install-doc-tools` — install mdBook, mdbook-epub,
-//! mdbook-mermaid, and optionally Zola into `~/.cache/` with version pinning.
+//! mdbook-mermaid, mdbook-i18n-helpers, and optionally Zola into `~/.cache/` with version pinning.
 //!
 //! This task is the Rust replacement for the bash install script that previously
 //! lived in `.github/actions/install-doc-tools/action.yml`.  It is designed to
@@ -13,6 +13,7 @@
 //! | mdBook | `~/.cache/mdbook/` | binary presence |
 //! | mdbook-epub | `~/.cache/mdbook-epub/` | `~/.cache/mdbook-epub/.rev` |
 //! | mdbook-mermaid | `~/.cache/mdbook-mermaid/` | `~/.cache/mdbook-mermaid/.version` |
+//! | mdbook-i18n-helpers | `~/.cache/mdbook-i18n-helpers/` | `~/.cache/mdbook-i18n-helpers/.version` |
 //! | Zola | `~/.cache/zola/` | binary presence |
 //!
 //! ## PATH update
@@ -43,6 +44,10 @@ pub struct InstallDocToolsArgs {
     #[arg(long)]
     pub mdbook_mermaid_version: String,
 
+    /// mdbook-i18n-helpers release version to install (e.g. `"0.3.0"`).
+    #[arg(long)]
+    pub mdbook_i18n_helpers_version: String,
+
     /// Zola release version to install (e.g. `"0.22.1"`).
     ///
     /// When omitted, Zola installation is skipped.
@@ -65,6 +70,7 @@ pub fn run(args: InstallDocToolsArgs) -> Result<()> {
     install_mdbook(&cache, &local_bin, &args.mdbook_version)?;
     install_mdbook_epub(&cache, &local_bin, &args.mdbook_epub_rev)?;
     install_mdbook_mermaid(&cache, &local_bin, &args.mdbook_mermaid_version)?;
+    install_mdbook_i18n_helpers(&cache, &local_bin, &args.mdbook_i18n_helpers_version)?;
 
     if let Some(ref version) = args.zola_version {
         install_zola(&cache, &local_bin, version)?;
@@ -187,6 +193,58 @@ fn install_mdbook_mermaid(cache: &Path, local_bin: &Path, version: &str) -> Resu
     }
 
     symlink_bin(&mermaid_bin, &local_bin.join("mdbook-mermaid"))
+}
+
+/// Installs mdbook-i18n-helpers via `cargo install` if the cached version is stale.
+///
+/// The binaries are placed at `~/.cache/mdbook-i18n-helpers/bin/` and
+/// symlinked into `~/.local/bin/`.  A `.version` file records the installed
+/// version.
+fn install_mdbook_i18n_helpers(cache: &Path, local_bin: &Path, version: &str) -> Result<()> {
+    let i18n_dir = cache.join("mdbook-i18n-helpers");
+    let i18n_bin_dir = i18n_dir.join("bin");
+    let version_file = i18n_dir.join(".version");
+
+    let binaries = ["mdbook-gettext", "mdbook-xgettext", "mdbook-i18n-normalize"];
+
+    // Check if all binaries exist and version matches
+    let all_exist = binaries.iter().all(|b| i18n_bin_dir.join(b).exists());
+    let version_matches = is_current(&i18n_bin_dir.join("mdbook-gettext"), &version_file, version);
+
+    if all_exist && version_matches {
+        println!("mdbook-i18n-helpers {version} already cached, skipping install.");
+    } else {
+        println!("Installing mdbook-i18n-helpers {version}…");
+        std::fs::remove_dir_all(&i18n_dir).ok();
+        std::fs::create_dir_all(&i18n_bin_dir)
+            .context("failed to create ~/.cache/mdbook-i18n-helpers/bin")?;
+
+        cmd::run(
+            "cargo",
+            &[
+                "install",
+                "mdbook-i18n-helpers",
+                "--version",
+                version,
+                "--root",
+                i18n_dir.to_str().context("non-UTF-8 path")?,
+            ],
+            Path::new("."),
+            &[],
+        )?;
+
+        std::fs::write(&version_file, version)
+            .context("failed to write mdbook-i18n-helpers .version")?;
+    }
+
+    // Symlink all binaries
+    for bin in &binaries {
+        let target = i18n_bin_dir.join(bin);
+        let link = local_bin.join(*bin);
+        symlink_bin(&target, &link)?;
+    }
+
+    Ok(())
 }
 
 /// Downloads and extracts the Zola binary if not already cached.

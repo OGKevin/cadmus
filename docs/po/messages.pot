@@ -1,0 +1,3959 @@
+
+msgid ""
+msgstr ""
+"Project-Id-Version: Cadmus Documentation\n"
+"POT-Creation-Date: 2026-03-21T19:49:27+01:00\n"
+"PO-Revision-Date: \n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: en\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+#: src/SUMMARY.md:1 src/contributing/event-system.md:14
+#: src/contributing/telemetry.md:5
+msgid "Overview"
+msgstr ""
+
+#: src/SUMMARY.md:3
+msgid "User Guide"
+msgstr ""
+
+#: src/SUMMARY.md:5 src/installation/index.md:1
+msgid "Installation"
+msgstr ""
+
+#: src/SUMMARY.md:6 src/installation/test-builds.md:1
+msgid "Test builds"
+msgstr ""
+
+#: src/SUMMARY.md:7 src/installation/ota.md:1
+msgid "OTA updates"
+msgstr ""
+
+#: src/SUMMARY.md:8 src/installation/migration.md:1
+msgid "Migrating from Plato"
+msgstr ""
+
+#: src/SUMMARY.md:9 src/settings/index.md:1
+msgid "Settings"
+msgstr ""
+
+#: src/SUMMARY.md:10 src/ui/index.md:1
+msgid "User Interface"
+msgstr ""
+
+#: src/SUMMARY.md:11 src/ui/filechooser.md:1
+msgid "File Chooser"
+msgstr ""
+
+#: src/SUMMARY.md:12 src/troubleshooting/index.md:1
+#: src/contributing/devenv-setup.md:208
+msgid "Troubleshooting"
+msgstr ""
+
+#: src/SUMMARY.md:16
+msgid "Contributor Guide"
+msgstr ""
+
+#: src/SUMMARY.md:18
+msgid "Development Environment"
+msgstr ""
+
+#: src/SUMMARY.md:19 src/contributing/event-system.md:1
+msgid "Event System"
+msgstr ""
+
+#: src/SUMMARY.md:20 src/contributing/telemetry.md:1
+msgid "OpenTelemetry Integration"
+msgstr ""
+
+#: src/SUMMARY.md:21 src/index.md:9
+msgid "Documentation"
+msgstr ""
+
+#: src/SUMMARY.md:22
+msgid "Translations"
+msgstr ""
+
+#: src/SUMMARY.md:23 src/contributing/sqlite-sqlx.md:1
+msgid "SQLite & SQLx"
+msgstr ""
+
+#: src/SUMMARY.md:24 src/contributing/library-database.md:1
+msgid "Library Database"
+msgstr ""
+
+#: src/SUMMARY.md:25 src/contributing/runtime-migrations.md:1
+msgid "Runtime Migrations"
+msgstr ""
+
+#: src/index.md:3
+msgid "Cadmus"
+msgstr ""
+
+#: src/index.md:5
+msgid "_Cadmus_ is a document reader for _Kobo_'s e-readers."
+msgstr ""
+
+#: src/index.md:11
+msgid ""
+"This site is the primary source of documentation for Cadmus. Use the sidebar "
+"to navigate, or start at the overview for installation, usage, and workflows."
+msgstr ""
+
+#: src/index.md:14
+msgid "Supported firmwares"
+msgstr ""
+
+#: src/index.md:16
+msgid "Any 4._X_._Y_ firmware, with _X_ ≥ 6, will do."
+msgstr ""
+
+#: src/index.md:18
+msgid "Supported devices"
+msgstr ""
+
+#: src/index.md:20
+msgid "_Libra Colour_."
+msgstr ""
+
+#: src/index.md:21
+msgid "_Clara Colour_."
+msgstr ""
+
+#: src/index.md:22
+msgid "_Clara BW_."
+msgstr ""
+
+#: src/index.md:23
+msgid "_Elipsa 2E_."
+msgstr ""
+
+#: src/index.md:24
+msgid "_Clara 2E_."
+msgstr ""
+
+#: src/index.md:25
+msgid "_Libra 2_."
+msgstr ""
+
+#: src/index.md:26
+msgid "_Sage_."
+msgstr ""
+
+#: src/index.md:27
+msgid "_Elipsa_."
+msgstr ""
+
+#: src/index.md:28
+msgid "_Nia_."
+msgstr ""
+
+#: src/index.md:29
+msgid "_Libra H₂O_."
+msgstr ""
+
+#: src/index.md:30
+msgid "_Forma_."
+msgstr ""
+
+#: src/index.md:31
+msgid "_Clara HD_."
+msgstr ""
+
+#: src/index.md:32
+msgid "_Aura H₂O Edition 2_."
+msgstr ""
+
+#: src/index.md:33
+msgid "_Aura Edition 2_."
+msgstr ""
+
+#: src/index.md:34
+msgid "_Aura ONE_."
+msgstr ""
+
+#: src/index.md:35
+msgid "_Glo HD_."
+msgstr ""
+
+#: src/index.md:36
+msgid "_Aura H₂O_."
+msgstr ""
+
+#: src/index.md:37
+msgid "_Aura_."
+msgstr ""
+
+#: src/index.md:38
+msgid "_Glo_."
+msgstr ""
+
+#: src/index.md:39
+msgid "_Touch C_."
+msgstr ""
+
+#: src/index.md:40
+msgid "_Touch B_."
+msgstr ""
+
+#: src/index.md:42
+msgid "Supported formats"
+msgstr ""
+
+#: src/index.md:44
+msgid ""
+"PDF, CBZ, FB2, MOBI, XPS and TXT via [MuPDF](https://mupdf.com/index.html)."
+msgstr ""
+
+#: src/index.md:45
+msgid "ePUB through a built-in renderer."
+msgstr ""
+
+#: src/index.md:46
+msgid "DJVU via [DjVuLibre](http://djvu.sourceforge.net/index.html)."
+msgstr ""
+
+#: src/index.md:48
+msgid "Features"
+msgstr ""
+
+#: src/index.md:50
+msgid "Crop the margins."
+msgstr ""
+
+#: src/index.md:51
+msgid "Continuous fit-to-width zoom mode with line preserving cuts."
+msgstr ""
+
+#: src/index.md:52
+msgid "Rotate the screen (portrait ↔ landscape)."
+msgstr ""
+
+#: src/index.md:53
+msgid "Adjust the contrast."
+msgstr ""
+
+#: src/index.md:54
+msgid "Define words using _dictd_ dictionaries."
+msgstr ""
+
+#: src/index.md:55
+msgid "Annotations, highlights and bookmarks."
+msgstr ""
+
+#: src/index.md:56
+msgid "Retrieve articles from online sources through hooks."
+msgstr ""
+
+#: src/index.md:58
+msgid "Screenshots"
+msgstr ""
+
+#: src/index.md:60
+msgid ""
+"![Tn01](artworks/thumbnail01.png) ![Tn02](artworks/thumbnail02.png) "
+"![Tn03](artworks/thumbnail03.png) ![Tn04](artworks/thumbnail04.png)"
+msgstr ""
+
+#: src/index.md:65
+msgid "Acknowledgments"
+msgstr ""
+
+#: src/index.md:67
+msgid ""
+"Cadmus is a fork of [Plato](https://github.com/baskerville/plato), a "
+"document reader created by Bastien Dejean."
+msgstr ""
+
+#: src/installation/index.md:3
+msgid "Cadmus comes in different packages. Pick the one that matches your needs."
+msgstr ""
+
+#: src/installation/index.md:5
+msgid "Available packages"
+msgstr ""
+
+#: src/installation/index.md:7
+msgid "Package"
+msgstr ""
+
+#: src/installation/index.md:7
+msgid "What's included"
+msgstr ""
+
+#: src/installation/index.md:7
+msgid "Installs to"
+msgstr ""
+
+#: src/installation/index.md:9
+msgid "`KoboRoot.tgz`"
+msgstr ""
+
+#: src/installation/index.md:9
+msgid "Cadmus only"
+msgstr ""
+
+#: src/installation/index.md:9 src/installation/index.md:10
+msgid "`/mnt/onboard/.adds/cadmus`"
+msgstr ""
+
+#: src/installation/index.md:10
+msgid "`KoboRoot-nm.tgz`"
+msgstr ""
+
+#: src/installation/index.md:10
+msgid "Cadmus + NickelMenu"
+msgstr ""
+
+#: src/installation/index.md:11
+msgid "`KoboRoot-test.tgz`"
+msgstr ""
+
+#: src/installation/index.md:11
+msgid "Test build only"
+msgstr ""
+
+#: src/installation/index.md:11 src/installation/index.md:12
+msgid "`/mnt/onboard/.adds/cadmus-tst`"
+msgstr ""
+
+#: src/installation/index.md:12
+msgid "`KoboRoot-nm-test.tgz`"
+msgstr ""
+
+#: src/installation/index.md:12
+msgid "Test build + NickelMenu"
+msgstr ""
+
+#: src/installation/index.md:14
+msgid "Which one should I pick?"
+msgstr ""
+
+#: src/installation/index.md:16
+msgid "**Normal installs**: Use `KoboRoot.tgz` or `KoboRoot-nm.tgz`"
+msgstr ""
+
+#: src/installation/index.md:17
+msgid ""
+"**If you use NickelMenu**: Pick a package that includes it (`-nm` versions)"
+msgstr ""
+
+#: src/installation/index.md:18
+msgid ""
+"**Testing a new feature**: Use test packages (`-test` versions) for trying "
+"out changes that haven't been released yet"
+msgstr ""
+
+#: src/installation/index.md:21 src/installation/ota.md:67
+msgid "First-time setup"
+msgstr ""
+
+#: src/installation/index.md:23
+msgid ""
+"Go to the [latest "
+"release](https://github.com/OGKevin/cadmus/releases/latest)."
+msgstr ""
+
+#: src/installation/index.md:24
+msgid "Download the package you want from the table above."
+msgstr ""
+
+#: src/installation/index.md:25 src/installation/index.md:44
+msgid "Connect your Kobo to your computer via USB."
+msgstr ""
+
+#: src/installation/index.md:26
+msgid ""
+"Copy the downloaded file to `/mnt/onboard/.kobo/KoboRoot.tgz` on the device."
+msgstr ""
+
+#: src/installation/index.md:27 src/installation/test-builds.md:12
+msgid "Eject the device and reboot."
+msgstr ""
+
+#: src/installation/index.md:29
+msgid "Updating"
+msgstr ""
+
+#: src/installation/index.md:31
+msgid "There are two ways to update Cadmus once it's installed."
+msgstr ""
+
+#: src/installation/index.md:33
+msgid "Wirelessly (OTA)"
+msgstr ""
+
+#: src/installation/index.md:35
+msgid ""
+"The easiest way — no computer needed, just WiFi. Open **Main Menu → Check "
+"for Updates** and follow the prompts. See [OTA updates](./ota.md) for "
+"details."
+msgstr ""
+
+#: src/installation/index.md:39
+msgid "Via USB"
+msgstr ""
+
+#: src/installation/index.md:41
+msgid ""
+"You can also update by copying a new package over USB, the same way you did "
+"the first-time install."
+msgstr ""
+
+#: src/installation/index.md:45
+msgid "When Cadmus asks \"Share storage via USB?\", tap **Share**."
+msgstr ""
+
+#: src/installation/index.md:46
+msgid ""
+"Download the package you want from the [latest "
+"release](https://github.com/OGKevin/cadmus/releases/latest)."
+msgstr ""
+
+#: src/installation/index.md:47
+msgid "Copy it to `/mnt/onboard/.kobo/KoboRoot.tgz` on your Kobo."
+msgstr ""
+
+#: src/installation/index.md:48
+msgid "Eject and disconnect the USB cable."
+msgstr ""
+
+#: src/installation/index.md:50
+msgid ""
+"\\[!NOTE\\] Always name the file `KoboRoot.tgz` on the device, regardless of "
+"which package you downloaded (e.g. `KoboRoot-nm.tgz` must be renamed)."
+msgstr ""
+
+#: src/installation/index.md:54
+msgid ""
+"Cadmus detects the file automatically and reboots your Kobo to install the "
+"update. You don't need to do anything else."
+msgstr ""
+
+#: src/installation/test-builds.md:3
+msgid "First-time install"
+msgstr ""
+
+#: src/installation/test-builds.md:5
+msgid ""
+"Open the [Cadmus GitHub Actions "
+"page](https://github.com/OGKevin/cadmus/actions/workflows/cargo.yml)."
+msgstr ""
+
+#: src/installation/test-builds.md:6
+msgid "Select the run for the change you want to test."
+msgstr ""
+
+#: src/installation/test-builds.md:7
+msgid ""
+"Download the `cadmus-kobo-test-<suffix>` file. ![Download from GitHub "
+"Actions](./screenshots/artifacts.png)"
+msgstr ""
+
+#: src/installation/test-builds.md:9
+msgid "Extract it and pick the [package](./index.md) that matches your setup."
+msgstr ""
+
+#: src/installation/test-builds.md:10
+msgid "Copy the selected KoboRoot file to: `/mnt/onboard/.kobo/KoboRoot.tgz`"
+msgstr ""
+
+#: src/installation/test-builds.md:14
+msgid "Updating an existing test build"
+msgstr ""
+
+#: src/installation/test-builds.md:16
+msgid ""
+"Use the OTA feature to download updates from a PR number directly on your "
+"device. This lets you test changes without connecting to a computer."
+msgstr ""
+
+#: src/installation/ota.md:3
+msgid ""
+"Once Cadmus is installed, you can update it wirelessly without connecting to "
+"a computer. The OTA (Over-The-Air) feature downloads updates directly from "
+"GitHub."
+msgstr ""
+
+#: src/installation/ota.md:6
+msgid "What you need"
+msgstr ""
+
+#: src/installation/ota.md:8
+msgid "A WiFi connection"
+msgstr ""
+
+#: src/installation/ota.md:10
+msgid ""
+"Stable releases are public and require no authentication. Main branch and PR "
+"builds require a GitHub account — Cadmus will guide you through a one-time "
+"sign-in the first time you request one."
+msgstr ""
+
+#: src/installation/ota.md:14
+msgid "How to update"
+msgstr ""
+
+#: src/installation/ota.md:16
+msgid ""
+"Open **Main Menu → Check for Updates**. You'll see options for where to get "
+"the update from:"
+msgstr ""
+
+#: src/installation/ota.md:19 src/installation/migration.md:33
+msgid "Source"
+msgstr ""
+
+#: src/installation/ota.md:19 src/contributing/devenv-setup.md:37
+#: src/contributing/devenv-setup.md:62
+msgid "Description"
+msgstr ""
+
+#: src/installation/ota.md:21
+msgid "**Stable Release**"
+msgstr ""
+
+#: src/installation/ota.md:21
+msgid "Latest official release from GitHub"
+msgstr ""
+
+#: src/installation/ota.md:22
+msgid "**Main Branch**"
+msgstr ""
+
+#: src/installation/ota.md:22
+msgid "Latest development build (most recent changes)"
+msgstr ""
+
+#: src/installation/ota.md:23
+msgid "**PR Build**"
+msgstr ""
+
+#: src/installation/ota.md:23
+msgid "Test a specific pull request"
+msgstr ""
+
+#: src/installation/ota.md:25
+msgid "\\[!NOTE\\] The _Stable Release_ option is not shown in test builds."
+msgstr ""
+
+#: src/installation/ota.md:28
+msgid "Updating from the main branch"
+msgstr ""
+
+#: src/installation/ota.md:30
+msgid ""
+"Select **Main Branch** to get the most recent development build. This "
+"includes changes that have been merged but not yet released officially."
+msgstr ""
+
+#: src/installation/ota.md:33
+msgid ""
+"If this is your first time, Cadmus will show a screen with a URL and a short "
+"code. On any device with a browser:"
+msgstr ""
+
+#: src/installation/ota.md:36
+msgid "Go to the URL shown on screen"
+msgstr ""
+
+#: src/installation/ota.md:37
+msgid "Enter the code shown on your Device"
+msgstr ""
+
+#: src/installation/ota.md:38
+msgid "Sign in to GitHub and approve the request"
+msgstr ""
+
+#: src/installation/ota.md:40
+msgid ""
+"Cadmus will detect the approval automatically and start the download. The "
+"token is saved to disk so you won't need to sign in again."
+msgstr ""
+
+#: src/installation/ota.md:43
+msgid ""
+"The update downloads from GitHub, installs automatically, and reboots the "
+"device to finish."
+msgstr ""
+
+#: src/installation/ota.md:46
+msgid "Testing a pull request"
+msgstr ""
+
+#: src/installation/ota.md:48
+msgid ""
+"Select **PR Build** to try out a specific change before it's released. Enter "
+"the PR number when prompted. The same one-time GitHub sign-in applies if you "
+"haven't authenticated before."
+msgstr ""
+
+#: src/installation/ota.md:52
+msgid ""
+"\\[!TIP\\] Find the PR number in the GitHub URL. For example, in "
+"`github.com/OGKevin/cadmus/pull/42` the PR number is **42**."
+msgstr ""
+
+#: src/installation/ota.md:56
+msgid "Normal vs test builds"
+msgstr ""
+
+#: src/installation/ota.md:58
+msgid ""
+"OTA works for both types of builds. The type you're currently using "
+"determines what gets downloaded:"
+msgstr ""
+
+#: src/installation/ota.md:61
+msgid "**Normal builds** update to `KoboRoot.tgz` in `/mnt/onboard/.adds/cadmus`"
+msgstr ""
+
+#: src/installation/ota.md:62
+msgid ""
+"**Test builds** update to `KoboRoot-test.tgz` in "
+"`/mnt/onboard/.adds/cadmus-tst`"
+msgstr ""
+
+#: src/installation/ota.md:64
+msgid ""
+"See the [available packages](./index.md#available-packages) table for all "
+"options."
+msgstr ""
+
+#: src/installation/ota.md:69
+msgid ""
+"OTA only works for updating an existing installation. To install Cadmus for "
+"the first time, follow the [installation guide](./index.md) or the [test "
+"builds guide](./test-builds.md) to copy a KoboRoot file via USB."
+msgstr ""
+
+#: src/installation/migration.md:3
+msgid ""
+"Cadmus is a fork of Plato and uses the same `Settings.toml` format, so "
+"migrating is mostly a matter of copying your settings file across."
+msgstr ""
+
+#: src/installation/migration.md:6
+msgid "Copy your settings"
+msgstr ""
+
+#: src/installation/migration.md:8 src/installation/migration.md:65
+msgid "Build"
+msgstr ""
+
+#: src/installation/migration.md:8
+msgid "Plato settings"
+msgstr ""
+
+#: src/installation/migration.md:8
+msgid "Cadmus settings"
+msgstr ""
+
+#: src/installation/migration.md:10 src/installation/migration.md:67
+msgid "Stable"
+msgstr ""
+
+#: src/installation/migration.md:10 src/installation/migration.md:11
+msgid "`/mnt/onboard/.adds/plato/Settings.toml`"
+msgstr ""
+
+#: src/installation/migration.md:10
+msgid "`/mnt/onboard/.adds/cadmus/Settings.toml`"
+msgstr ""
+
+#: src/installation/migration.md:11 src/installation/migration.md:68
+msgid "Test"
+msgstr ""
+
+#: src/installation/migration.md:11
+msgid "`/mnt/onboard/.adds/cadmus-tst/Settings.toml`"
+msgstr ""
+
+#: src/installation/migration.md:13
+msgid ""
+"Copy the file as-is into the Cadmus folder so it is named `Settings.toml` "
+"(for example, `/mnt/onboard/.adds/cadmus/Settings.toml` or "
+"`/mnt/onboard/.adds/cadmus-tst/Settings.toml`). The `[[libraries]]` section "
+"is the most important part, it tells Cadmus where your books live and drives "
+"the reading-progress import on first launch. On first launch, Cadmus will "
+"move this file into its `Settings/` folder automatically."
+msgstr ""
+
+#: src/installation/migration.md:17 src/settings/index.md:115
+msgid ""
+"```toml\n"
+"[[libraries]]\n"
+"name = \"On Board\"\n"
+"path = \"/mnt/onboard\"\n"
+"mode = \"database\"\n"
+"```"
+msgstr ""
+
+#: src/installation/migration.md:24
+msgid ""
+"\\[!IMPORTANT\\] Make sure each `[[libraries]]` entry has the correct `path` "
+"and `name`. If a path doesn't match what's on disk, Cadmus skips that "
+"library's import."
+msgstr ""
+
+#: src/installation/migration.md:28
+msgid "What happens on first launch"
+msgstr ""
+
+#: src/installation/migration.md:30
+msgid ""
+"When Cadmus starts for the first time it automatically imports your data "
+"from each library listed in settings:"
+msgstr ""
+
+#: src/installation/migration.md:33
+msgid "What's imported"
+msgstr ""
+
+#: src/installation/migration.md:35
+msgid "`.metadata.json`"
+msgstr ""
+
+#: src/installation/migration.md:35
+msgid "Book metadata (title, author, …) and reading progress"
+msgstr ""
+
+#: src/installation/migration.md:36
+msgid "`.reading-states/<fp>.json`"
+msgstr ""
+
+#: src/installation/migration.md:36
+msgid "Reading progress for books not already covered by the above"
+msgstr ""
+
+#: src/installation/migration.md:38
+msgid ""
+"Both database mode and filesystem mode libraries are handled. Cadmus reads "
+"`.reading-states/` in all cases, so current page, bookmarks, and annotations "
+"carry over regardless of which mode you used in Plato."
+msgstr ""
+
+#: src/installation/migration.md:42
+msgid "\\[!NOTE\\] After a successful import the original files are renamed:"
+msgstr ""
+
+#: src/installation/migration.md:45
+msgid "`.metadata.json` → `.metadata.json.imported`"
+msgstr ""
+
+#: src/installation/migration.md:46
+msgid "`.reading-states/` → `.reading-states.imported`"
+msgstr ""
+
+#: src/installation/migration.md:48
+msgid ""
+"These renamed files are just a safety backup. Once you've confirmed "
+"everything looks right you can delete them."
+msgstr ""
+
+#: src/installation/migration.md:51
+msgid ""
+"\\[!NOTE\\] Cadmus also removes the `.thumbnail-previews/` folder and "
+"regenerates thumbnails itself."
+msgstr ""
+
+#: src/installation/migration.md:55
+msgid "Re-running the import"
+msgstr ""
+
+#: src/installation/migration.md:57
+msgid ""
+"If the import went wrong (for example, the library path was incorrect in "
+"settings), you can start it fresh:"
+msgstr ""
+
+#: src/installation/migration.md:60
+msgid ""
+"Rename `.metadata.json.imported` back to `.metadata.json` and "
+"`.reading-states.imported` back to `.reading-states/` in each library "
+"directory."
+msgstr ""
+
+#: src/installation/migration.md:63
+msgid "Delete the Cadmus SQLite database:"
+msgstr ""
+
+#: src/installation/migration.md:65
+msgid "Database path"
+msgstr ""
+
+#: src/installation/migration.md:67
+msgid "`/mnt/onboard/.adds/cadmus/cadmus.sqlite`"
+msgstr ""
+
+#: src/installation/migration.md:68
+msgid "`/mnt/onboard/.adds/cadmus-tst/cadmus.sqlite`"
+msgstr ""
+
+#: src/installation/migration.md:70
+msgid "Restart Cadmus — the import will run again from scratch."
+msgstr ""
+
+#: src/installation/migration.md:72
+msgid ""
+"If something still looks wrong after re-running, check the logs for details. "
+"See [Troubleshooting](../troubleshooting/index.md) for where to find them."
+msgstr ""
+
+#: src/settings/index.md:3
+msgid ""
+"Cadmus reads settings from `Settings/Settings-*.toml`. Settings can be "
+"changed via **Main Menu → Settings**, which opens the built-in settings "
+"editor."
+msgstr ""
+
+#: src/settings/index.md:6
+msgid "**Legend:**"
+msgstr ""
+
+#: src/settings/index.md:8
+msgid "✏️ Editable in the settings editor"
+msgstr ""
+
+#: src/settings/index.md:9
+msgid "🔑 Required for feature to work"
+msgstr ""
+
+#: src/settings/index.md:10
+msgid "🧪 Only available in test builds"
+msgstr ""
+
+#: src/settings/index.md:11
+msgid "📱 Kobo"
+msgstr ""
+
+#: src/settings/index.md:13
+msgid "General Settings"
+msgstr ""
+
+#: src/settings/index.md:15
+msgid "`keyboard-layout`"
+msgstr ""
+
+#: src/settings/index.md:17 src/settings/index.md:29 src/settings/index.md:39
+#: src/settings/index.md:54 src/settings/index.md:66 src/settings/index.md:78
+#: src/settings/index.md:94 src/settings/index.md:111 src/settings/index.md:124
+#: src/settings/index.md:130 src/settings/index.md:136
+#: src/settings/index.md:144 src/settings/index.md:165
+#: src/settings/index.md:178 src/settings/index.md:186
+#: src/settings/index.md:194 src/settings/index.md:237
+#: src/settings/index.md:248
+msgid "✏️"
+msgstr ""
+
+#: src/settings/index.md:19
+msgid "Keyboard layout to use for text input."
+msgstr ""
+
+#: src/settings/index.md:21
+msgid "Possible values: `\"English\"`, `\"Russian\"`."
+msgstr ""
+
+#: src/settings/index.md:23
+msgid ""
+"```toml\n"
+"keyboard-layout = \"English\"\n"
+"```"
+msgstr ""
+
+#: src/settings/index.md:27
+msgid "`sleep-cover`"
+msgstr ""
+
+#: src/settings/index.md:31
+msgid "Handle the magnetic sleep cover event."
+msgstr ""
+
+#: src/settings/index.md:37
+msgid "`auto-share`"
+msgstr ""
+
+#: src/settings/index.md:41
+msgid ""
+"Automatically enter shared mode when connected to a computer, skipping the "
+"\"Share storage via USB?\" prompt."
+msgstr ""
+
+#: src/settings/index.md:44
+msgid ""
+"\\[!TIP\\] Turn this on if you update Cadmus via USB often — you won't have "
+"to confirm the sharing dialog each time you plug in."
+msgstr ""
+
+#: src/settings/index.md:52
+msgid "`auto-suspend`"
+msgstr ""
+
+#: src/settings/index.md:56
+msgid ""
+"Number of minutes of inactivity after which the device will automatically go "
+"to sleep."
+msgstr ""
+
+#: src/settings/index.md:58 src/settings/index.md:70
+msgid "Zero means never."
+msgstr ""
+
+#: src/settings/index.md:64
+msgid "`auto-power-off`"
+msgstr ""
+
+#: src/settings/index.md:68
+msgid "Delay in days after which a suspended device will power off."
+msgstr ""
+
+#: src/settings/index.md:76
+msgid "`button-scheme`"
+msgstr ""
+
+#: src/settings/index.md:80
+msgid ""
+"Defines how the back and forward buttons are mapped to page forward and page "
+"backward actions."
+msgstr ""
+
+#: src/settings/index.md:82
+msgid "Possible values: `\"natural\"`, `\"inverted\"`."
+msgstr ""
+
+#: src/settings/index.md:84
+msgid ""
+"```toml\n"
+"button-scheme = \"natural\"\n"
+"```"
+msgstr ""
+
+#: src/settings/index.md:88
+msgid "Reader"
+msgstr ""
+
+#: src/settings/index.md:90
+msgid "Settings that control the reading experience."
+msgstr ""
+
+#: src/settings/index.md:92
+msgid "`reader.finished`"
+msgstr ""
+
+#: src/settings/index.md:96
+msgid "What to do when you finish reading a book."
+msgstr ""
+
+#: src/settings/index.md:98 src/settings/index.md:149
+msgid "Possible values:"
+msgstr ""
+
+#: src/settings/index.md:100
+msgid "`\"notify\"` (show a notification)"
+msgstr ""
+
+#: src/settings/index.md:101
+msgid "`\"close\"` (close the book and go back)"
+msgstr ""
+
+#: src/settings/index.md:102
+msgid "`\"go-to-next\"` (open the next book in the library)."
+msgstr ""
+
+#: src/settings/index.md:104
+msgid ""
+"```toml\n"
+"[reader]\n"
+"finished = \"close\"\n"
+"```"
+msgstr ""
+
+#: src/settings/index.md:109
+msgid "Libraries"
+msgstr ""
+
+#: src/settings/index.md:113
+msgid "Document library configuration. Each library has a name, path, and mode."
+msgstr ""
+
+#: src/settings/index.md:122
+msgid "`libraries.name`"
+msgstr ""
+
+#: src/settings/index.md:126
+msgid "Display name for the library."
+msgstr ""
+
+#: src/settings/index.md:128
+msgid "`libraries.path`"
+msgstr ""
+
+#: src/settings/index.md:132
+msgid "Directory path containing documents."
+msgstr ""
+
+#: src/settings/index.md:134
+msgid "`libraries.mode`"
+msgstr ""
+
+#: src/settings/index.md:138
+msgid "Library indexing mode."
+msgstr ""
+
+#: src/settings/index.md:140
+msgid "Possible values: `\"database\"`, `\"filesystem\"`."
+msgstr ""
+
+#: src/settings/index.md:142
+msgid "`libraries.finished`"
+msgstr ""
+
+#: src/settings/index.md:146
+msgid ""
+"Override the `reader.finished` setting for this specific library. When set, "
+"this takes precedence over the global reader setting."
+msgstr ""
+
+#: src/settings/index.md:151
+msgid "`\"notify\"`"
+msgstr ""
+
+#: src/settings/index.md:152
+msgid "`\"close\"`"
+msgstr ""
+
+#: src/settings/index.md:153
+msgid "`\"go-to-next\"`."
+msgstr ""
+
+#: src/settings/index.md:154
+msgid "Leave unset to inherit the global `reader.finished` setting."
+msgstr ""
+
+#: src/settings/index.md:156
+msgid ""
+"```toml\n"
+"[[libraries]]\n"
+"name = \"KePub\"\n"
+"path = \"/mnt/onboard/.kobo/kepub\"\n"
+"finished = \"go-to-next\"\n"
+"```"
+msgstr ""
+
+#: src/settings/index.md:163
+msgid "Intermissions"
+msgstr ""
+
+#: src/settings/index.md:167
+msgid "Defines the images displayed when entering an intermission state."
+msgstr ""
+
+#: src/settings/index.md:169
+msgid ""
+"```toml\n"
+"[intermissions]\n"
+"suspend = \"logo:\"\n"
+"power-off = \"logo:\"\n"
+"share = \"logo:\"\n"
+"```"
+msgstr ""
+
+#: src/settings/index.md:176
+msgid "`intermissions.suspend`"
+msgstr ""
+
+#: src/settings/index.md:180
+msgid "Image displayed when the device enters sleep mode."
+msgstr ""
+
+#: src/settings/index.md:182 src/settings/index.md:190
+#: src/settings/index.md:198
+msgid ""
+"Possible values: `\"logo:\"` (built-in logo), `\"cover:\"` (current book "
+"cover), or a path to a custom image file."
+msgstr ""
+
+#: src/settings/index.md:184
+msgid "`intermissions.power-off`"
+msgstr ""
+
+#: src/settings/index.md:188
+msgid "Image displayed when the device powers off."
+msgstr ""
+
+#: src/settings/index.md:192
+msgid "`intermissions.share`"
+msgstr ""
+
+#: src/settings/index.md:196
+msgid "Image displayed when entering USB sharing mode."
+msgstr ""
+
+#: src/settings/index.md:200
+msgid "OTA"
+msgstr ""
+
+#: src/settings/index.md:202
+msgid "The OTA feature downloads builds from GitHub."
+msgstr ""
+
+#: src/settings/index.md:204
+msgid ""
+"Authentication for main branch and PR builds uses **GitHub device auth "
+"flow**. When you select a build that requires authentication, Cadmus will "
+"display a short code and a URL. Visit `github.com/login/device` on any "
+"device, enter the code, and Cadmus will automatically continue the download "
+"once you authorize."
+msgstr ""
+
+#: src/settings/index.md:210
+msgid ""
+"The token is saved to disk after the first authorization so you will not be "
+"prompted again on subsequent downloads."
+msgstr ""
+
+#: src/settings/index.md:213
+msgid "Telemetry"
+msgstr ""
+
+#: src/settings/index.md:215
+msgid ""
+"Cadmus writes JSON logs to disk. When the build enables the `otel` feature, "
+"it can also export logs to an OpenTelemetry endpoint."
+msgstr ""
+
+#: src/settings/index.md:218
+msgid "These settings are available in the **Settings → Telemetry** menu."
+msgstr ""
+
+#: src/settings/index.md:220
+msgid ""
+"\\[!IMPORTANT\\] Changes to these settings only take effect after restarting "
+"Cadmus. The application initializes telemetry on startup."
+msgstr ""
+
+#: src/settings/index.md:224
+msgid "`logging`"
+msgstr ""
+
+#: src/settings/index.md:226
+msgid ""
+"```toml\n"
+"[logging]\n"
+"enabled = true\n"
+"level = \"info\"\n"
+"max-files = 3\n"
+"directory = \"logs\"\n"
+"# otlp-endpoint = \"https://otel.example.com:4318\"\n"
+"```"
+msgstr ""
+
+#: src/settings/index.md:235
+msgid "`logging.enabled`"
+msgstr ""
+
+#: src/settings/index.md:239
+msgid "Enable or disable structured JSON logging."
+msgstr ""
+
+#: src/settings/index.md:246
+msgid "`logging.level`"
+msgstr ""
+
+#: src/settings/index.md:250
+msgid "Minimum log level to record."
+msgstr ""
+
+#: src/settings/index.md:252
+msgid ""
+"Possible values: `\"trace\"`, `\"debug\"`, `\"info\"`, `\"warn\"`, "
+"`\"error\"`."
+msgstr ""
+
+#: src/settings/index.md:254
+msgid ""
+"```toml\n"
+"[logging]\n"
+"level = \"info\"\n"
+"```"
+msgstr ""
+
+#: src/settings/index.md:259
+msgid "`logging.max-files`"
+msgstr ""
+
+#: src/settings/index.md:261
+msgid ""
+"Number of log files to keep. Only the most recent N files are kept — older "
+"ones are deleted automatically when Cadmus starts."
+msgstr ""
+
+#: src/settings/index.md:264 src/settings/index.md:308
+msgid "Default: `3`"
+msgstr ""
+
+#: src/settings/index.md:265
+msgid "Set to `0` to keep all log files."
+msgstr ""
+
+#: src/settings/index.md:272
+msgid "`logging.otlp-endpoint`"
+msgstr ""
+
+#: src/settings/index.md:274
+msgid "✏️ (only when the `otel` feature is enabled)"
+msgstr ""
+
+#: src/settings/index.md:276
+msgid "Optional OTLP endpoint for exporting logs to an OpenTelemetry collector."
+msgstr ""
+
+#: src/settings/index.md:278
+msgid ""
+"```toml\n"
+"[logging]\n"
+"otlp-endpoint = \"https://otel.example.com:4318\"\n"
+"```"
+msgstr ""
+
+#: src/settings/index.md:283
+msgid "Environment override:"
+msgstr ""
+
+#: src/settings/index.md:285
+msgid ""
+"`OTEL_EXPORTER_OTLP_ENDPOINT` takes precedence over `logging.otlp-endpoint`."
+msgstr ""
+
+#: src/settings/index.md:287
+msgid "`logging.enable-kern-log`"
+msgstr ""
+
+#: src/settings/index.md:289
+msgid "🧪 📱 ✏️"
+msgstr ""
+
+#: src/settings/index.md:291
+msgid ""
+"Captures kernel logs via `logread -F` and forwards them to structured "
+"logging with the target `cadmus_core::logging:kern`."
+msgstr ""
+
+#: src/settings/index.md:299
+msgid "Settings Retention"
+msgstr ""
+
+#: src/settings/index.md:301
+msgid ""
+"Cadmus stores each version's settings in a separate file in the `Settings/` "
+"directory (for example, `Settings-v1.2.3.toml`). This ensures backward and "
+"forward compatibility when you upgrade."
+msgstr ""
+
+#: src/settings/index.md:304
+msgid "`settings-retention`"
+msgstr ""
+
+#: src/settings/index.md:306
+msgid ""
+"Number of recent version settings files to keep. Only the most recent N "
+"version files are kept. When a new version is saved, older versions beyond "
+"this limit are deleted automatically."
+msgstr ""
+
+#: src/settings/index.md:309
+msgid "Set to `0` to keep all version files"
+msgstr ""
+
+#: src/ui/index.md:3
+msgid ""
+"This section explains the different parts of Cadmus you interact with while "
+"reading and managing your books."
+msgstr ""
+
+#: src/ui/index.md:6
+msgid "[File Chooser](filechooser.md)"
+msgstr ""
+
+#: src/ui/filechooser.md:3
+msgid ""
+"The file chooser helps you pick files or folders. It appears when you need "
+"to select a file or folder. e.g to pick a screen saver."
+msgstr ""
+
+#: src/ui/filechooser.md:6
+msgid "![File chooser](./screenshots/filechooser.png)"
+msgstr ""
+
+#: src/ui/filechooser.md:8
+msgid "How It Works"
+msgstr ""
+
+#: src/ui/filechooser.md:10
+msgid "The file chooser has three main parts:"
+msgstr ""
+
+#: src/ui/filechooser.md:12
+msgid ""
+"**Top Bar** - Shows what you're selecting (\"Select File\", \"Select "
+"Folder\", etc.) and a close button"
+msgstr ""
+
+#: src/ui/filechooser.md:13
+msgid "**Navigation Bar** - Shows folders you can tap to browse deeper"
+msgstr ""
+
+#: src/ui/filechooser.md:14
+msgid ""
+"**File List** - Shows files in the current folder (or a special \"Select "
+"this folder\" option)"
+msgstr ""
+
+#: src/ui/filechooser.md:16
+msgid "Navigation"
+msgstr ""
+
+#: src/ui/filechooser.md:18
+msgid ""
+"Tap any folder name in the navigation bar to open it. The bar expands "
+"automatically if there are many folders. Tap and drag the separator line "
+"below the folders to resize the navigation area."
+msgstr ""
+
+#: src/ui/filechooser.md:22
+msgid "Selection Modes"
+msgstr ""
+
+#: src/ui/filechooser.md:24
+msgid "The file chooser adapts based on what you need:"
+msgstr ""
+
+#: src/ui/filechooser.md:26
+msgid "File selection mode"
+msgstr ""
+
+#: src/ui/filechooser.md:27
+msgid "Folder selection mode"
+msgstr ""
+
+#: src/ui/filechooser.md:28
+msgid "File or folder selection mode"
+msgstr ""
+
+#: src/ui/filechooser.md:30
+msgid "The title will indicate the mode."
+msgstr ""
+
+#: src/troubleshooting/index.md:3
+msgid "Logs"
+msgstr ""
+
+#: src/troubleshooting/index.md:5
+msgid ""
+"When something isn't working right, logs will help with figuring out what "
+"went wrong. If you're reporting an issue, sharing your logs makes it much "
+"easier to debug."
+msgstr ""
+
+#: src/troubleshooting/index.md:9
+msgid "Where to find Cadmus logs"
+msgstr ""
+
+#: src/troubleshooting/index.md:11
+msgid ""
+"Cadmus saves logs in a `logs` folder. Here's where to find it on each "
+"platform:"
+msgstr ""
+
+#: src/troubleshooting/index.md:13
+msgid "Platform"
+msgstr ""
+
+#: src/troubleshooting/index.md:13
+msgid "Stable build"
+msgstr ""
+
+#: src/troubleshooting/index.md:13
+msgid "Test build"
+msgstr ""
+
+#: src/troubleshooting/index.md:15
+msgid "Kobo"
+msgstr ""
+
+#: src/troubleshooting/index.md:15
+msgid "`/mnt/onboard/.adds/cadmus/logs`"
+msgstr ""
+
+#: src/troubleshooting/index.md:15
+msgid "`/mnt/onboard/.adds/cadmus-tst/logs`"
+msgstr ""
+
+#: src/troubleshooting/index.md:17
+msgid ""
+"Each time you start Cadmus, it creates a new log file with a unique ID. By "
+"default, only the 3 most recent log files are kept — older ones are deleted "
+"automatically. You can change this with the "
+"[`logging.max-files`](../settings/index.md#loggingmax-files) setting."
+msgstr ""
+
+#: src/troubleshooting/index.md:22
+msgid "The log files look like this:"
+msgstr ""
+
+#: src/troubleshooting/index.md:28
+msgid "Finding your run ID"
+msgstr ""
+
+#: src/troubleshooting/index.md:30
+msgid ""
+"Every time Cadmus starts, it prints a run ID to help you identify which log "
+"file belongs to that session. You can find this in:"
+msgstr ""
+
+#: src/troubleshooting/index.md:34
+msgid ""
+"**info.log** - The startup log in the Cadmus folder. Look for the line that "
+"says `Cadmus run started with ID:` followed by a string of letters and "
+"numbers."
+msgstr ""
+
+#: src/troubleshooting/index.md:37
+msgid "For example:"
+msgstr ""
+
+#: src/troubleshooting/index.md:43
+msgid ""
+"Copy only the UUID part — the string of letters and numbers between `ID:` "
+"and the `(version` text."
+msgstr ""
+
+#: src/troubleshooting/index.md:46
+msgid ""
+"**Console output** - If you're running Cadmus from a terminal, the same run "
+"ID is printed when it starts."
+msgstr ""
+
+#: src/troubleshooting/index.md:49
+msgid "Kernel logs"
+msgstr ""
+
+#: src/troubleshooting/index.md:51
+msgid ""
+"Kernel logs can be useful to debug lower level system issues, for example a "
+"kernel panic, which triggers a device reboot."
+msgstr ""
+
+#: src/troubleshooting/index.md:54
+msgid ""
+"Kernel logs are only available in [test "
+"builds](../installation/test-builds.md). If you're using a test build and "
+"want to include kernel logs:"
+msgstr ""
+
+#: src/troubleshooting/index.md:57
+msgid "Open **Main Menu → Settings**"
+msgstr ""
+
+#: src/troubleshooting/index.md:58
+msgid "Go to `Telemetry`"
+msgstr ""
+
+#: src/troubleshooting/index.md:59
+msgid "Enable kernel logs"
+msgstr ""
+
+#: src/troubleshooting/index.md:60
+msgid "Restart Cadmus"
+msgstr ""
+
+#: src/troubleshooting/index.md:62
+msgid "Kernel logs will then be saved in the same log file as your Cadmus logs."
+msgstr ""
+
+#: src/troubleshooting/index.md:64
+msgid ""
+"\\[!NOTE\\] Kernel logs will use more disk space, so don't forget to turn it "
+"back off."
+msgstr ""
+
+#: src/contributing/devenv-setup.md:1
+msgid "Development Environment Setup"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:3
+msgid ""
+"Cadmus uses [devenv](https://devenv.sh/) with Nix to provide a reproducible "
+"development environment. This guide covers setup on both Linux and macOS."
+msgstr ""
+
+#: src/contributing/devenv-setup.md:6 src/contributing/translations.md:6
+msgid "Prerequisites"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:8
+msgid ""
+"Install Nix with flakes enabled. The easiest way is using the [Determinate "
+"Nix Installer](https://github.com/DeterminateSystems/nix-installer)."
+msgstr ""
+
+#: src/contributing/devenv-setup.md:9
+msgid "Install [devenv](https://devenv.sh/getting-started)."
+msgstr ""
+
+#: src/contributing/devenv-setup.md:11
+msgid "Quick Start"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:13
+msgid "Clone the repository and enter the devenv shell:"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:21
+msgid "Run the one-time setup to build native dependencies:"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:27
+msgid "Run the emulator:"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:33
+msgid "Available Commands"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:35
+msgid "Once inside the devenv shell, these commands are available:"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:37
+msgid "Command"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:39
+msgid "`cargo xtask setup-native`"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:39
+msgid "Build MuPDF for native development (run once)"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:40
+msgid "`cargo xtask test`"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:40
+msgid "Run the test suite across the feature matrix"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:41
+msgid "`cargo xtask run-emulator`"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:41
+msgid "Run the emulator"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:42
+msgid "`cargo xtask build-kobo`"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:42
+msgid "Cross-compile for Kobo device (Linux only)"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:43
+msgid "`cargo xtask dist`"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:43
+msgid "Assemble the Kobo distribution directory"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:44
+msgid "`cargo xtask bundle`"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:44
+msgid "Package KoboRoot.tgz for installation"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:45
+msgid "`cadmus-dev-otel`"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:45
+msgid "Run emulator with OpenTelemetry instrumentation"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:46
+msgid "`devenv up`"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:46
+msgid "Start observability stack (Grafana, Tempo, Loki)"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:47
+msgid "`cargo xtask docs`"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:47
+msgid "Build documentation portal (mdBook + Cargo docs)"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:48
+msgid "`cadmus-docs-serve`"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:48
+msgid "Serve documentation portal locally on port 1111"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:50
+msgid ""
+"Run `cargo xtask --help` to see all available subcommands, or `cargo xtask "
+"<cmd> --help` for options on a specific command."
+msgstr ""
+
+#: src/contributing/devenv-setup.md:53
+msgid ""
+"Or have a look at the rustdocs for `xtask` <a href=\"/api/xtask/\">here</a>."
+msgstr ""
+
+#: src/contributing/devenv-setup.md:55
+msgid "Tasks"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:57
+msgid ""
+"The devenv environment uses [tasks](https://devenv.sh/tasks/) to manage "
+"build dependencies. Tasks are defined in `devenv.nix` and can be run with "
+"`devenv tasks run <task>`."
+msgstr ""
+
+#: src/contributing/devenv-setup.md:60
+msgid "Available Tasks"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:62
+msgid "Task"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:62
+msgid "Dependencies"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:64 src/contributing/devenv-setup.md:66
+msgid "`docs:build`"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:64
+msgid "Build documentation EPUB (only rebuilds if files changed)"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:64 src/contributing/devenv-setup.md:65
+msgid "None"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:65
+msgid "`deps:native`"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:65
+msgid "Build MuPDF and wrapper for native development"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:66
+msgid "`build:kobo`"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:66
+msgid "Build for Kobo device (Linux only)"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:68
+msgid "All tasks delegate to `cargo xtask` under the hood."
+msgstr ""
+
+#: src/contributing/devenv-setup.md:70
+msgid "How Tasks Work"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:72
+msgid ""
+"Tasks with dependencies automatically run their dependencies first. For "
+"example:"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:75
+msgid "# This will first run docs:build (if needed), then build for Kobo\n"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:79
+msgid ""
+"The `docs:build` task uses `execIfModified` to only rebuild when "
+"documentation files have actually changed."
+msgstr ""
+
+#: src/contributing/devenv-setup.md:81
+msgid "Documentation Portal"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:83
+msgid ""
+"Cadmus provides a unified documentation portal that combines user guides, "
+"API reference, and contribution guides in one place."
+msgstr ""
+
+#: src/contributing/devenv-setup.md:86
+msgid "Building and Serving Locally"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:88
+msgid "To build the documentation portal:"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:94
+msgid "This runs the full build pipeline:"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:96
+msgid "Builds the mdBook user guide (`docs/book/html/`)"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:97
+msgid "Generates Rust API documentation (`target/doc/`)"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:98
+msgid "Builds the Zola landing page and integrates all documentation"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:100
+msgid "To serve the portal locally with live reload:"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:106
+msgid ""
+"The portal will be available at <http://localhost:1111> with automatic "
+"rebuilds when you change documentation files or Rust code."
+msgstr ""
+
+#: src/contributing/devenv-setup.md:109
+msgid "Documentation Structure"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:111
+msgid "The portal provides three integrated sections:"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:113
+msgid "**Landing Page** (`/`) - Overview and feature highlights"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:114
+msgid "**User Guide** (`/guide/`) - User-facing documentation from mdBook"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:115
+msgid "**API Reference** (`/api/`) - Auto-generated Rust API documentation"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:117
+msgid ""
+"All three sections are deployed as a single artifact to GitHub Pages at "
+"<https://ogkevin.github.io/cadmus/>."
+msgstr ""
+
+#: src/contributing/devenv-setup.md:120
+msgid "Continuous Integration"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:122
+msgid ""
+"Documentation is automatically built and validated on every pull request and "
+"deployed on push to `main` or `master`. The CI pipeline checks:"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:125
+msgid "mdBook documentation compiles"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:126
+msgid "Rust code documentation is valid"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:127
+msgid "Zola landing page builds successfully"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:129
+msgid "Running Tests"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:131
+msgid ""
+"Tests require the `TEST_ROOT_DIR` environment variable to be set. The "
+"easiest way to run the full test matrix is:"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:138
+msgid ""
+"This sets `TEST_ROOT_DIR` automatically and runs tests across all feature "
+"combinations. To run a single feature combination:"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:142
+msgid "\"emulator + test\""
+msgstr ""
+
+#: src/contributing/devenv-setup.md:145
+msgid "Or to run tests manually without xtask:"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:148 src/contributing/devenv-setup.md:220
+msgid "$(pwd)"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:151
+msgid ""
+"`TEST_ROOT_DIR` is automatically configured in CI but must be set manually "
+"when running `cargo test` directly."
+msgstr ""
+
+#: src/contributing/devenv-setup.md:154
+msgid "Platform Support"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:156
+msgid "Linux (Full Support)"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:158
+msgid "Linux provides full development capabilities including:"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:160
+msgid "Native development (emulator, tests)"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:161
+msgid "Cross-compilation for Kobo devices using the Linaro ARM toolchain"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:162
+msgid "Git hooks (actionlint, shellcheck, shfmt, markdownlint, prettier)"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:164
+msgid ""
+"The Linaro toolchain is automatically added to `PATH` and provides "
+"`arm-linux-gnueabihf-*` commands."
+msgstr ""
+
+#: src/contributing/devenv-setup.md:166
+msgid "macOS (Native Development Only)"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:168
+msgid "macOS supports native development but has some limitations:"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:170
+msgid "Feature"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:170
+msgid "Status"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:170
+msgid "Notes"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:172
+msgid "Native builds"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:172
+msgid "Supported"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:172
+msgid "Emulator and tests work"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:173
+msgid "Cross-compilation"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:173
+msgid "Not supported"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:173
+msgid "Linaro toolchain is Linux-only"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:175
+msgid "macOS-Specific Notes"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:177
+msgid ""
+"**Cross-compilation for Kobo**: The Linaro ARM cross-compilation toolchain "
+"consists of x86_64 Linux ELF binaries that cannot run on macOS. To build for "
+"Kobo devices on macOS, use Docker with a Linux container or a Linux VM."
+msgstr ""
+
+#: src/contributing/devenv-setup.md:181
+msgid ""
+"**MuPDF build**: On macOS, the native setup script manually gathers "
+"pkg-config CFLAGS for system libraries because MuPDF's build system doesn't "
+"properly detect them on Darwin."
+msgstr ""
+
+#: src/contributing/devenv-setup.md:184
+msgid "Observability Stack"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:186
+msgid "The devenv includes a full observability stack for development:"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:189
+msgid "# Start all services\n"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:191
+msgid "# In another terminal, run the instrumented emulator\n"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:196
+msgid "Services available after `devenv up`:"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:198
+msgid "Service"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:198
+msgid "URL"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:198
+#: src/contributing/library-database.md:148
+msgid "Purpose"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:200
+msgid "Grafana"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:200
+msgid "<http://localhost:3000>"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:200
+msgid "Dashboards and exploration"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:201
+msgid "Tempo"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:201
+msgid "<http://localhost:3200>"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:201
+msgid "Distributed tracing"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:202
+msgid "Loki"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:202
+msgid "<http://localhost:3100>"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:202
+msgid "Log aggregation"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:203
+msgid "Prometheus"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:203
+msgid "<http://localhost:9090>"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:203
+msgid "Metrics"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:204
+msgid "OTLP Collector"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:204
+msgid "<http://localhost:4318>"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:204
+msgid "Telemetry ingestion"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:206
+msgid ""
+"For more details on telemetry, see [OpenTelemetry Integration](telemetry.md)."
+msgstr ""
+
+#: src/contributing/devenv-setup.md:210
+msgid "Shell takes a long time to start"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:212
+msgid ""
+"The first `devenv shell` invocation downloads and builds dependencies, which "
+"can take several minutes. Subsequent invocations are cached and should be "
+"fast."
+msgstr ""
+
+#: src/contributing/devenv-setup.md:215
+msgid "Tests fail with \"TEST_ROOT_DIR must be set\""
+msgstr ""
+
+#: src/contributing/devenv-setup.md:217
+msgid "Set the environment variable before running tests:"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:223
+msgid "Local Configuration"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:225
+msgid ""
+"Create `devenv.local.nix` to override settings without modifying the tracked "
+"configuration:"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:227
+msgid ""
+"```nix\n"
+"{ pkgs, ... }:\n"
+"\n"
+"{\n"
+"  env = {\n"
+"    # Example: Set TEST_ROOT_DIR automatically\n"
+"    TEST_ROOT_DIR = builtins.getEnv \"PWD\";\n"
+"  };\n"
+"}\n"
+"```"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:238
+msgid "This file is gitignored and won't affect other contributors."
+msgstr ""
+
+#: src/contributing/event-system.md:3
+msgid ""
+"Cadmus uses a tree-based event system where views are organized "
+"hierarchically and events flow through two distinct channels: the **Hub** "
+"and the **Bus**. Understanding the difference between these channels is "
+"essential for implementing correct event handling in views."
+msgstr ""
+
+#: src/contributing/event-system.md:7
+msgid ""
+"\\[!TIP\\] CSS is hard, this page might render better on 80% zoom on smaller "
+"screens. I tried to make the mermaid diagrams as big as possible to make "
+"them easier to read, which made them overflow a bit."
+msgstr ""
+
+#: src/contributing/event-system.md:12
+msgid "You might also want to hide the sidebar."
+msgstr ""
+
+#: src/contributing/event-system.md:16
+msgid ""
+"The UI is a tree of `View` objects. Each view can have children, forming a "
+"hierarchy like:"
+msgstr ""
+
+#: src/contributing/event-system.md:18
+msgid ""
+"```mermaid\n"
+"flowchart TD\n"
+"    Home[\"Home (root view)\"]\n"
+"    TopBar[\"TopBar\"]\n"
+"    Shelf[\"Shelf\"]\n"
+"    Book1[\"Book\"]\n"
+"    Book2[\"Book\"]\n"
+"    BottomBar[\"BottomBar\"]\n"
+"    Dialog[\"Dialog ← overlay child\"]\n"
+"    Label[\"Label\"]\n"
+"    Button[\"Button\"]\n"
+"\n"
+"    Home --> TopBar\n"
+"    Home --> Shelf\n"
+"    Home --> BottomBar\n"
+"    Home --> Dialog\n"
+"    Shelf --> Book1\n"
+"    Shelf --> Book2\n"
+"    Dialog --> Label\n"
+"    Dialog --> Button\n"
+"```"
+msgstr ""
+
+#: src/contributing/event-system.md:40
+msgid ""
+"Events enter the tree from the main loop and travel **top-down** (root to "
+"leaves), with the highest z-level children checked first. Views can "
+"communicate back **up** the tree via the bus, or **globally** via the hub."
+msgstr ""
+
+#: src/contributing/event-system.md:44
+msgid "Hub vs Bus"
+msgstr ""
+
+#: src/contributing/event-system.md:46
+msgid "The two channels serve fundamentally different purposes:"
+msgstr ""
+
+#: src/contributing/event-system.md:48
+msgid ""
+"```mermaid\n"
+"flowchart TB\n"
+"    subgraph MainLoop[\"Main Loop\"]\n"
+"        rx[\"rx.recv()\"]\n"
+"        match[\"match evt { ... }\"]\n"
+"        handle[\"handle_event(root, &evt, &tx, &bus, ...)\"]\n"
+"        Hub[\"Hub (tx)\"]\n"
+"        Bus[\"Bus (VecDeque)\"]\n"
+"\n"
+"        rx --> match\n"
+"        match -->|dispatches to view tree| handle\n"
+"        handle --> Hub\n"
+"        handle --> Bus\n"
+"        Bus -->|unhandled bus events forwarded to hub| Hub\n"
+"    end\n"
+"```"
+msgstr ""
+
+#: src/contributing/event-system.md:65
+msgid "Hub (`Sender<Event>`)"
+msgstr ""
+
+#: src/contributing/event-system.md:67
+msgid ""
+"The hub is an `mpsc::Sender<Event>` — a global channel that sends events to "
+"the **main loop**. Events sent to the hub are processed in the **next "
+"iteration** of the main loop, not immediately."
+msgstr ""
+
+#: src/contributing/event-system.md:70
+msgid "**Use the hub when:**"
+msgstr ""
+
+#: src/contributing/event-system.md:72
+msgid ""
+"The event needs to be handled by the main loop directly (e.g., "
+"`Event::Close`, `Event::Open`, `Event::Notification`)"
+msgstr ""
+
+#: src/contributing/event-system.md:74
+msgid ""
+"The event should reach all views in a future dispatch cycle (e.g., "
+"`Event::Focus`)"
+msgstr ""
+
+#: src/contributing/event-system.md:75
+msgid "You need to communicate across unrelated parts of the view tree"
+msgstr ""
+
+#: src/contributing/event-system.md:78
+msgid "// Close a view — handled by the main loop's match statement\n"
+msgstr ""
+
+#: src/contributing/event-system.md:80
+msgid "// Show a notification — main loop creates the Notification view\n"
+msgstr ""
+
+#: src/contributing/event-system.md:83
+msgid "// Set focus — dispatched to all views in the next loop iteration\n"
+msgstr ""
+
+#: src/contributing/event-system.md:88
+msgid "Bus (`VecDeque<Event>`)"
+msgstr ""
+
+#: src/contributing/event-system.md:90
+msgid ""
+"The bus is a local `VecDeque<Event>` that passes events **from a child to "
+"its parent**. Events placed on the bus are handled synchronously during the "
+"current dispatch cycle."
+msgstr ""
+
+#: src/contributing/event-system.md:93
+msgid "**Use the bus when:**"
+msgstr ""
+
+#: src/contributing/event-system.md:95
+msgid "A child needs to communicate with its direct parent"
+msgstr ""
+
+#: src/contributing/event-system.md:96
+msgid ""
+"The parent is expected to handle the event (e.g., a button telling its "
+"parent dialog it was pressed)"
+msgstr ""
+
+#: src/contributing/event-system.md:98
+msgid "The event should bubble up through the view hierarchy"
+msgstr ""
+
+#: src/contributing/event-system.md:101
+msgid "// Child tells parent about a submission\n"
+msgstr ""
+
+#: src/contributing/event-system.md:103
+msgid "// Child requests parent to close it\n"
+msgstr ""
+
+#: src/contributing/event-system.md:108
+msgid "Bus Bubbling"
+msgstr ""
+
+#: src/contributing/event-system.md:110
+msgid ""
+"When a bus event is not handled by any ancestor view, it reaches the root "
+"and gets **forwarded to the hub** for processing in the next main loop "
+"iteration:"
+msgstr ""
+
+#: src/contributing/event-system.md:114
+msgid "// End of main loop iteration — unhandled bus events become hub events\n"
+msgstr ""
+
+#: src/contributing/event-system.md:120
+msgid "Event Dispatch"
+msgstr ""
+
+#: src/contributing/event-system.md:122
+msgid ""
+"The core dispatch function in `view/mod.rs` controls how events flow through "
+"the tree:"
+msgstr ""
+
+#: src/contributing/event-system.md:124
+msgid ""
+"```mermaid\n"
+"flowchart TD\n"
+"    Start[\"handle_event(view, event)\"] --> CheckLeaf{\"Is view a "
+"leaf<br/>(no children)?\"}\n"
+"\n"
+"    CheckLeaf -->|YES| HandleDirect[\"call view.handle_event()<br/>return "
+"result\"]\n"
+"    CheckLeaf -->|NO| ReverseIter[\"Step 1 - Iterate children in REVERSE "
+"order<br/>(highest z-level first)\"]\n"
+"\n"
+"    ReverseIter --> CheckChildren[\"For each child:<br/>call "
+"handle_event(child, event)\"]\n"
+"    CheckChildren --> Captured{\"Child returns true?\"}\n"
+"    Captured -->|YES| SetCaptured[\"captured = true<br/>BREAK\"]\n"
+"    Captured -->|NO| NextChild[\"Next child\"]\n"
+"    NextChild --> CheckChildren\n"
+"\n"
+"    SetCaptured --> ProcessBus[\"Step 2 - Process child_bus events\"]\n"
+"    CheckChildren -->|No more children| ProcessBus\n"
+"\n"
+"    ProcessBus --> BusEvent{\"For each event<br/>on child_bus\"}\n"
+"    BusEvent --> HandleBus[\"call view.handle_event(child_evt)\"]\n"
+"    HandleBus --> ViewHandles{\"View handles it?\"}\n"
+"    ViewHandles -->|YES| RemoveBus[\"remove from bus\"]\n"
+"    ViewHandles -->|NO| KeepBus[\"keep on bus<br/>(bubbles up)\"]\n"
+"    RemoveBus --> BusEvent\n"
+"    KeepBus --> BusEvent\n"
+"\n"
+"    BusEvent -->|No more bus events| CheckCaptured{\"NOT captured<br/>by any "
+"child?\"}\n"
+"    CheckCaptured -->|YES| HandleParent[\"Step 3 - call "
+"view.handle_event(event)<br/>return captured || view's result\"]\n"
+"    CheckCaptured -->|NO| ReturnCaptured[\"return captured\"]\n"
+"```"
+msgstr ""
+
+#: src/contributing/event-system.md:153
+msgid "Key Rules"
+msgstr ""
+
+#: src/contributing/event-system.md:155
+msgid ""
+"**Reverse iteration**: Children are checked from last to first (highest "
+"z-level first). This ensures overlays like dialogs and menus receive events "
+"before the views beneath them."
+msgstr ""
+
+#: src/contributing/event-system.md:158
+msgid ""
+"**Short-circuit on capture**: Once a child returns `true`, no other children "
+"or the parent view receive the event. This is why the Dialog's outside-tap "
+"handler works — it returns `true` to prevent the event from reaching views "
+"behind it."
+msgstr ""
+
+#: src/contributing/event-system.md:162
+msgid ""
+"**Parent only runs if uncaptured**: The parent's `handle_event` is only "
+"called if no child captured the event (`captured || "
+"view.handle_event(...)`). If `captured` is `true`, the parent is "
+"short-circuited."
+msgstr ""
+
+#: src/contributing/event-system.md:166
+msgid "Main Loop Event Handling"
+msgstr ""
+
+#: src/contributing/event-system.md:168
+msgid ""
+"The main loop (`app.rs`) receives events from the hub and handles them in a "
+"large `match` statement. Some events are dispatched into the view tree, "
+"while others are handled directly:"
+msgstr ""
+
+#: src/contributing/event-system.md:171
+msgid ""
+"```mermaid\n"
+"flowchart TB\n"
+"    subgraph MainLoop[\"Main Loop\"]\n"
+"        direction TB\n"
+"\n"
+"        Gesture[\"Event::Gesture(Tap/Swipe/...)\"]\n"
+"        GestureAction[\"Dispatched into view tree via handle_event()\"]\n"
+"\n"
+"        Close[\"Event::Close(id)\"]\n"
+"        CloseAction[\"Handled directly:<br/>locate_by_id() + remove\"]\n"
+"\n"
+"        Notification[\"Event::Notification(...)\"]\n"
+"        NotificationAction[\"Handled directly:<br/>create/update "
+"Notification\"]\n"
+"\n"
+"        Open[\"Event::Open(info)\"]\n"
+"        OpenAction[\"Handled directly:<br/>push Reader onto history\"]\n"
+"\n"
+"        Focus[\"Event::Focus(...)\"]\n"
+"        FocusAction[\"Dispatched into view tree via handle_event()\"]\n"
+"\n"
+"        Select[\"Event::Select(...)\"]\n"
+"        SelectAction[\"Some handled directly,<br/>some dispatched\"]\n"
+"\n"
+"        Gesture --> GestureAction\n"
+"        Close --> CloseAction\n"
+"        Notification --> NotificationAction\n"
+"        Open --> OpenAction\n"
+"        Focus --> FocusAction\n"
+"        Select --> SelectAction\n"
+"    end\n"
+"```"
+msgstr ""
+
+#: src/contributing/event-system.md:203
+msgid "Event::Close"
+msgstr ""
+
+#: src/contributing/event-system.md:205
+msgid ""
+"`Event::Close(ViewId)` is handled **directly** by the main loop using "
+"`locate_by_id()`, which searches only the **top-level children** of the root "
+"view:"
+msgstr ""
+
+#: src/contributing/event-system.md:218
+msgid ""
+"**Key limitation**: The main loop can only remove **direct children of the "
+"root**. To close nested views, either:"
+msgstr ""
+
+#: src/contributing/event-system.md:221
+msgid ""
+"**Use the parent's ViewId** (via hub): Removes the entire parent container"
+msgstr ""
+
+#: src/contributing/event-system.md:222
+msgid ""
+"**Use the bus**: Parent handles the close and removes just the specific child"
+msgstr ""
+
+#: src/contributing/event-system.md:224
+msgid ""
+"See [Why ViewId Matters for Close](#why-viewid-matters-for-close) and "
+"[Closing Nested Views via the Bus](#closing-nested-views-via-the-bus) for "
+"details."
+msgstr ""
+
+#: src/contributing/event-system.md:227
+msgid "Practical Example: Dialog Outside-Tap"
+msgstr ""
+
+#: src/contributing/event-system.md:229
+msgid ""
+"When a `Dialog` is tapped outside its bounds, the following sequence occurs:"
+msgstr ""
+
+#: src/contributing/event-system.md:258
+msgid "Why ViewId Matters for Close"
+msgstr ""
+
+#: src/contributing/event-system.md:260
+msgid ""
+"When using the **hub** to close views, `locate_by_id()` only finds top-level "
+"children. If a dialog is nested inside a parent, you must use the "
+"**parent's** `ViewId` — this removes the entire parent:"
+msgstr ""
+
+#: src/contributing/event-system.md:264
+msgid ""
+"```mermaid\n"
+"flowchart TD\n"
+"    Root[\"Root View\"]\n"
+"    Home[\"Home\"]\n"
+"    OtaView[\"OtaView (top-level)\"]\n"
+"    Dialog[\"Dialog (nested)\"]\n"
+"\n"
+"    Root --> Home\n"
+"    Root --> OtaView\n"
+"    OtaView --> Dialog\n"
+"\n"
+"    Note[\"hub.send(Event::Close(ViewId::Ota(Main)))<br/>→ Removes OtaView + "
+"Dialog\"]\n"
+"```"
+msgstr ""
+
+#: src/contributing/event-system.md:278
+msgid ""
+"To close just the nested view without affecting siblings, use the **bus** "
+"instead (see below)."
+msgstr ""
+
+#: src/contributing/event-system.md:280
+msgid "Closing Nested Views via the Bus"
+msgstr ""
+
+#: src/contributing/event-system.md:282
+msgid ""
+"Send `Event::Close` via the **bus** to close nested views. Parents handle "
+"bus events synchronously and can remove any child directly:"
+msgstr ""
+
+#: src/contributing/event-system.md:286
+msgid "// Child sends close via bus\n"
+msgstr ""
+
+#: src/contributing/event-system.md:303
+msgid "**Comparison:**"
+msgstr ""
+
+#: src/contributing/event-system.md:305
+#: src/contributing/library-database.md:148
+msgid "Method"
+msgstr ""
+
+#: src/contributing/event-system.md:305
+msgid "Code"
+msgstr ""
+
+#: src/contributing/event-system.md:305
+msgid "Handler"
+msgstr ""
+
+#: src/contributing/event-system.md:305 src/contributing/event-system.md:329
+msgid "Scope"
+msgstr ""
+
+#: src/contributing/event-system.md:307
+msgid "Hub close"
+msgstr ""
+
+#: src/contributing/event-system.md:307
+msgid "`hub.send(Event::Close(id))`"
+msgstr ""
+
+#: src/contributing/event-system.md:307
+msgid "Main loop"
+msgstr ""
+
+#: src/contributing/event-system.md:307
+msgid "Top-level children only"
+msgstr ""
+
+#: src/contributing/event-system.md:308
+msgid "Bus close"
+msgstr ""
+
+#: src/contributing/event-system.md:308
+msgid "`bus.push_back(Event::Close(id))`"
+msgstr ""
+
+#: src/contributing/event-system.md:308
+msgid "Parent view"
+msgstr ""
+
+#: src/contributing/event-system.md:308
+msgid "Any child"
+msgstr ""
+
+#: src/contributing/event-system.md:310
+msgid "**Example implementation:**"
+msgstr ""
+
+#: src/contributing/event-system.md:316
+msgid "// Return false to bubble up so grandparent removes us\n"
+msgstr ""
+
+#: src/contributing/event-system.md:324
+msgid "Summary"
+msgstr ""
+
+#: src/contributing/event-system.md:326
+msgid "Aspect"
+msgstr ""
+
+#: src/contributing/event-system.md:326
+msgid "Hub"
+msgstr ""
+
+#: src/contributing/event-system.md:326
+msgid "Bus"
+msgstr ""
+
+#: src/contributing/event-system.md:328
+msgid "Type"
+msgstr ""
+
+#: src/contributing/event-system.md:328
+msgid "`mpsc::Sender<Event>`"
+msgstr ""
+
+#: src/contributing/event-system.md:328
+msgid "`VecDeque<Event>`"
+msgstr ""
+
+#: src/contributing/event-system.md:329
+msgid "Global (main loop)"
+msgstr ""
+
+#: src/contributing/event-system.md:329
+msgid "Local (parent-child)"
+msgstr ""
+
+#: src/contributing/event-system.md:330
+msgid "Timing"
+msgstr ""
+
+#: src/contributing/event-system.md:330
+msgid "Next loop iteration"
+msgstr ""
+
+#: src/contributing/event-system.md:330
+msgid "Current dispatch cycle"
+msgstr ""
+
+#: src/contributing/event-system.md:331
+msgid "Direction"
+msgstr ""
+
+#: src/contributing/event-system.md:331
+msgid "View → Main loop"
+msgstr ""
+
+#: src/contributing/event-system.md:331
+msgid "Child → Parent"
+msgstr ""
+
+#: src/contributing/event-system.md:332
+msgid "Unhandled events"
+msgstr ""
+
+#: src/contributing/event-system.md:332
+msgid "Processed by main loop `match`"
+msgstr ""
+
+#: src/contributing/event-system.md:332
+msgid "Forwarded to hub"
+msgstr ""
+
+#: src/contributing/event-system.md:333
+msgid "Use for"
+msgstr ""
+
+#: src/contributing/event-system.md:333
+msgid "Close, Focus, Notifications"
+msgstr ""
+
+#: src/contributing/event-system.md:333
+msgid "Submit, child-to-parent signals"
+msgstr ""
+
+#: src/contributing/telemetry.md:3
+msgid ""
+"Cadmus supports exporting logs and traces to OpenTelemetry-compatible "
+"backends when built with the `otel` feature flag."
+msgstr ""
+
+#: src/contributing/telemetry.md:7
+msgid ""
+"The OpenTelemetry (OTEL) integration allows Cadmus to export both "
+"**structured logs** and **distributed traces** to observability platforms "
+"like Grafana Loki/Tempo, Jaeger, or any OTLP-compatible service. Both logs "
+"and traces are first-class features that work together to provide "
+"comprehensive observability for monitoring application behavior, debugging "
+"issues, and analyzing performance."
+msgstr ""
+
+#: src/contributing/telemetry.md:12
+msgid "Architecture"
+msgstr ""
+
+#: src/contributing/telemetry.md:14
+msgid "The telemetry system consists of three main components:"
+msgstr ""
+
+#: src/contributing/telemetry.md:16
+msgid ""
+"**Logging**: JSON-structured logs written to disk via `tracing_subscriber`"
+msgstr ""
+
+#: src/contributing/telemetry.md:17
+msgid "**Tracing**: Distributed traces capturing execution flow and timing"
+msgstr ""
+
+#: src/contributing/telemetry.md:18
+msgid ""
+"**OTLP Export**: Optional export of both logs and traces to a remote OTLP "
+"endpoint"
+msgstr ""
+
+#: src/contributing/telemetry.md:20
+msgid "When the `otel` feature is enabled, Cadmus initializes:"
+msgstr ""
+
+#: src/contributing/telemetry.md:22
+msgid ""
+"**Tracer Provider**: Exports distributed traces to `<endpoint>/v1/traces` "
+"using batch span processors for async delivery"
+msgstr ""
+
+#: src/contributing/telemetry.md:23
+msgid ""
+"**Logger Provider**: Exports structured logs to `<endpoint>/v1/logs` using "
+"batch log processors"
+msgstr ""
+
+#: src/contributing/telemetry.md:25
+msgid ""
+"Each Cadmus run is assigned a unique Run ID (UUID v7) that ties together all "
+"logs and traces for that session, enabling correlation between trace spans "
+"and log events."
+msgstr ""
+
+#: src/contributing/telemetry.md:28
+msgid "Building with OTEL Support"
+msgstr ""
+
+#: src/contributing/telemetry.md:30
+msgid "To enable OpenTelemetry, build Cadmus with the `otel` feature:"
+msgstr ""
+
+#: src/contributing/telemetry.md:36
+msgid "Configuration"
+msgstr ""
+
+#: src/contributing/telemetry.md:38
+msgid "Settings File"
+msgstr ""
+
+#: src/contributing/telemetry.md:40
+msgid "Configure OpenTelemetry in your `Settings.toml`:"
+msgstr ""
+
+#: src/contributing/telemetry.md:42
+msgid ""
+"```toml\n"
+"[logging]\n"
+"enabled = true\n"
+"level = \"info\"\n"
+"max-files = 3\n"
+"directory = \"logs\"\n"
+"otlp-endpoint = \"https://otel.example.com:4318\"\n"
+"```"
+msgstr ""
+
+#: src/contributing/telemetry.md:51
+msgid "Configuration Options"
+msgstr ""
+
+#: src/contributing/telemetry.md:53
+msgid "**enabled**: Enable or disable logging entirely"
+msgstr ""
+
+#: src/contributing/telemetry.md:54
+msgid "**level**: Minimum log level (`trace`, `debug`, `info`, `warn`, `error`)"
+msgstr ""
+
+#: src/contributing/telemetry.md:55
+msgid "**max-files**: Number of log files to retain (0 = keep all)"
+msgstr ""
+
+#: src/contributing/telemetry.md:56
+msgid "**directory**: Path to log directory (relative to installation directory)"
+msgstr ""
+
+#: src/contributing/telemetry.md:57
+msgid "**otlp-endpoint**: OTLP HTTP endpoint URL (optional)"
+msgstr ""
+
+#: src/contributing/telemetry.md:59
+msgid "Environment Variables"
+msgstr ""
+
+#: src/contributing/telemetry.md:61
+msgid "You can override the OTLP endpoint using an environment variable:"
+msgstr ""
+
+#: src/contributing/telemetry.md:64
+msgid "\"https://otel.example.com:4318\""
+msgstr ""
+
+#: src/contributing/telemetry.md:68
+msgid "Environment variables take precedence over `Settings.toml` configuration."
+msgstr ""
+
+#: src/contributing/telemetry.md:70
+msgid "Log Level Control"
+msgstr ""
+
+#: src/contributing/telemetry.md:72
+msgid ""
+"The log level can be controlled via the `RUST_LOG` environment variable, "
+"which overrides the `level` setting:"
+msgstr ""
+
+#: src/contributing/telemetry.md:75
+msgid "# Enable debug logs for all modules\n"
+msgstr ""
+
+#: src/contributing/telemetry.md:76
+msgid "debug"
+msgstr ""
+
+#: src/contributing/telemetry.md:78
+msgid "# Enable trace logs only for specific modules\n"
+msgstr ""
+
+#: src/contributing/telemetry.md:84
+msgid "Distributed Tracing"
+msgstr ""
+
+#: src/contributing/telemetry.md:86
+msgid ""
+"Distributed tracing captures the execution flow of operations through the "
+"application, providing timing information and context about how different "
+"components interact."
+msgstr ""
+
+#: src/contributing/telemetry.md:89
+msgid "How Tracing Works in Cadmus"
+msgstr ""
+
+#: src/contributing/telemetry.md:91
+msgid ""
+"When the `otel` feature is enabled, Cadmus automatically instruments key "
+"operations using the `tracing` crate. Each instrumented function creates a "
+"**span** that records:"
+msgstr ""
+
+#: src/contributing/telemetry.md:94
+msgid "Function name and module path"
+msgstr ""
+
+#: src/contributing/telemetry.md:95
+msgid "Input parameters (selectively captured)"
+msgstr ""
+
+#: src/contributing/telemetry.md:96
+msgid "Execution duration"
+msgstr ""
+
+#: src/contributing/telemetry.md:97
+msgid "Return values (at TRACE level)"
+msgstr ""
+
+#: src/contributing/telemetry.md:98
+msgid "Hierarchical relationships between spans"
+msgstr ""
+
+#: src/contributing/telemetry.md:100
+msgid ""
+"Spans are organized hierarchically, showing which operations triggered which "
+"other operations, making it easier to understand execution flow and identify "
+"performance bottlenecks."
+msgstr ""
+
+#: src/contributing/telemetry.md:103
+msgid "Instrumentation"
+msgstr ""
+
+#: src/contributing/telemetry.md:105
+msgid "View components in Cadmus are instrumented at critical chokepoints:"
+msgstr ""
+
+#: src/contributing/telemetry.md:107
+msgid ""
+"**`handle_event` methods**: Capture event flow through the UI hierarchy with "
+"event type and return value"
+msgstr ""
+
+#: src/contributing/telemetry.md:108
+msgid ""
+"**`render` methods**: Capture rendering operations with rectangle dimensions "
+"for layout debugging"
+msgstr ""
+
+#: src/contributing/telemetry.md:110
+msgid ""
+"All instrumentation uses conditional compilation (`#[cfg_attr(feature = "
+"\"otel\", ...)]`) to ensure zero runtime overhead when the feature is "
+"disabled."
+msgstr ""
+
+#: src/contributing/telemetry.md:113
+msgid ""
+"For detailed instrumentation guidelines and examples, see "
+"`.github/instructions/rust-instrumentation.instructions.md`."
+msgstr ""
+
+#: src/contributing/telemetry.md:115
+msgid "Resource Attributes"
+msgstr ""
+
+#: src/contributing/telemetry.md:117
+msgid ""
+"Each telemetry export (both logs and traces) includes the following resource "
+"attributes:"
+msgstr ""
+
+#: src/contributing/telemetry.md:119
+msgid "**service.name**: Always `cadmus`"
+msgstr ""
+
+#: src/contributing/telemetry.md:120
+msgid "**service.version**: Git version from build metadata"
+msgstr ""
+
+#: src/contributing/telemetry.md:121
+msgid "**cadmus.run_id**: Unique identifier for the application run"
+msgstr ""
+
+#: src/contributing/telemetry.md:122
+msgid "**hostname**: System hostname"
+msgstr ""
+
+#: src/contributing/telemetry.md:124
+msgid "Log File Format"
+msgstr ""
+
+#: src/contributing/telemetry.md:126
+msgid "Logs are written as newline-delimited JSON to files named:"
+msgstr ""
+
+#: src/contributing/telemetry.md:132
+msgid "Each log entry includes:"
+msgstr ""
+
+#: src/contributing/telemetry.md:134
+msgid "**timestamp**: ISO 8601 formatted timestamp"
+msgstr ""
+
+#: src/contributing/telemetry.md:135
+msgid "**level**: Log level (TRACE, DEBUG, INFO, WARN, ERROR)"
+msgstr ""
+
+#: src/contributing/telemetry.md:136
+msgid "**target**: Module path where the log originated"
+msgstr ""
+
+#: src/contributing/telemetry.md:137
+msgid "**fields**: Structured log data"
+msgstr ""
+
+#: src/contributing/telemetry.md:138
+msgid "**spans**: Active tracing spans providing context"
+msgstr ""
+
+#: src/contributing/documentation.md:1
+msgid "Documentation Deployment"
+msgstr ""
+
+#: src/contributing/documentation.md:3
+msgid "Cadmus documentation is deployed to Cloudflare Pages."
+msgstr ""
+
+#: src/contributing/documentation.md:5
+msgid "URLs"
+msgstr ""
+
+#: src/contributing/documentation.md:7
+msgid "**Production**: <https://cadmus-dt6.pages.dev/>"
+msgstr ""
+
+#: src/contributing/documentation.md:8
+msgid "**PR Preview**: `https://pr-{NUMBER}.cadmus-dt6.pages.dev/`"
+msgstr ""
+
+#: src/contributing/documentation.md:10
+msgid "Reviewing Documentation Changes"
+msgstr ""
+
+#: src/contributing/documentation.md:12
+msgid ""
+"When you open a pull request that modifies documentation files, a preview "
+"deployment is automatically created. The PR will show a deployment status "
+"with a link to the preview URL."
+msgstr ""
+
+#: src/contributing/documentation.md:14
+msgid ""
+"Preview URLs follow the pattern: `https://pr-{NUMBER}.cadmus-dt6.pages.dev/`"
+msgstr ""
+
+#: src/contributing/documentation.md:16
+msgid "Local Development"
+msgstr ""
+
+#: src/contributing/documentation.md:18
+msgid "Building and Serving"
+msgstr ""
+
+#: src/contributing/documentation.md:20
+msgid "Build and serve documentation locally:"
+msgstr ""
+
+#: src/contributing/documentation.md:24
+msgid "# Build all documentation\n"
+msgstr ""
+
+#: src/contributing/documentation.md:25
+msgid "# Serve at http://localhost:1111\n"
+msgstr ""
+
+#: src/contributing/documentation.md:28
+msgid ""
+"`cargo xtask docs` handles the full pipeline: installing Mermaid assets, "
+"building mdBook, generating Rust API docs, and assembling the Zola portal. "
+"Pass `--mdbook-only` to skip the Zola step when you only need to check the "
+"mdBook output."
+msgstr ""
+
+#: src/contributing/documentation.md:32
+msgid "To serve with live reload after building:"
+msgstr ""
+
+#: src/contributing/documentation.md:38
+msgid "Build Process"
+msgstr ""
+
+#: src/contributing/documentation.md:40
+msgid "Documentation is built from three sources:"
+msgstr ""
+
+#: src/contributing/documentation.md:42
+msgid "**mdBook** (`docs/`) - User and contributor guides"
+msgstr ""
+
+#: src/contributing/documentation.md:43
+msgid "**Cargo doc** (`crates/`) - Rust API documentation"
+msgstr ""
+
+#: src/contributing/documentation.md:44
+msgid "**Zola** (`docs-portal/`) - Documentation portal that combines everything"
+msgstr ""
+
+#: src/contributing/documentation.md:46
+msgid ""
+"The build is orchestrated by `cargo xtask docs` (see "
+"`xtask/src/tasks/docs.rs`). The GitHub Actions workflow "
+"(`.github/workflows/cadmus-docs.yml`) runs this command automatically on "
+"every push to `main` and for every pull request."
+msgstr ""
+
+#: src/contributing/translations.md:1
+msgid "Translating Cadmus Documentation"
+msgstr ""
+
+#: src/contributing/translations.md:3
+msgid ""
+"This guide explains how to translate the Cadmus documentation into other "
+"languages. Translations live in `docs/po/` as standard GNU gettext PO files."
+msgstr ""
+
+#: src/contributing/translations.md:8
+msgid ""
+"If you are using the `devenv` environment, all required tools are already "
+"available:"
+msgstr ""
+
+#: src/contributing/translations.md:11
+msgid ""
+"`mdbook-xgettext` / `mdbook-gettext` — string extraction and preprocessing"
+msgstr ""
+
+#: src/contributing/translations.md:12
+msgid "`msginit` / `msgmerge` / `msgfmt` — gettext utilities (from `gettext`)"
+msgstr ""
+
+#: src/contributing/translations.md:13
+msgid "`poedit` — graphical PO editor"
+msgstr ""
+
+#: src/contributing/translations.md:15
+msgid ""
+"Install them outside devenv with `cargo install mdbook-i18n-helpers` and "
+"your system's `gettext` package."
+msgstr ""
+
+#: src/contributing/translations.md:18
+msgid "Adding a new language"
+msgstr ""
+
+#: src/contributing/translations.md:20
+msgid "1. Extract the POT template"
+msgstr ""
+
+#: src/contributing/translations.md:22
+msgid "Run the `cadmus-translate` script (devenv) or the equivalent command:"
+msgstr ""
+
+#: src/contributing/translations.md:28
+msgid ""
+"This writes `docs/po/messages.pot` — the source template every translation "
+"derives from. Commit this file whenever the English source changes so "
+"translators have an up-to-date starting point."
+msgstr ""
+
+#: src/contributing/translations.md:32
+msgid "2. Create a PO file for your locale"
+msgstr ""
+
+#: src/contributing/translations.md:35
+msgid "# Replace 'fr' with the BCP 47 language tag you are adding.\n"
+msgstr ""
+
+#: src/contributing/translations.md:41
+msgid ""
+"Open `docs/po/fr.po` and set the `Language-Name` header so the language "
+"picker displays a readable label:"
+msgstr ""
+
+#: src/contributing/translations.md:44
+msgid ""
+"```po\n"
+"\"Language-Name: Français\\n"
+"\"\n"
+"```"
+msgstr ""
+
+#: src/contributing/translations.md:48
+msgid ""
+"The xtask reads this header when generating `locales.json`; without it the "
+"locale code (e.g. `fr`) is shown instead."
+msgstr ""
+
+#: src/contributing/translations.md:51
+msgid "3. Translate the strings"
+msgstr ""
+
+#: src/contributing/translations.md:53
+msgid "Open the PO file in Poedit or any text editor and fill in each `msgstr`:"
+msgstr ""
+
+#: src/contributing/translations.md:55
+msgid ""
+"```po\n"
+"msgid \"Welcome to Cadmus!\"\n"
+"msgstr \"Bienvenue dans Cadmus !\"\n"
+"```"
+msgstr ""
+
+#: src/contributing/translations.md:60
+msgid ""
+"Preserve Markdown formatting — bold, code spans, links — exactly as in the "
+"`msgid`. Untranslated or _fuzzy_ entries fall back to the English source."
+msgstr ""
+
+#: src/contributing/translations.md:63
+msgid "4. Build and preview"
+msgstr ""
+
+#: src/contributing/translations.md:66
+msgid "# Build everything including translated books\n"
+msgstr ""
+
+#: src/contributing/translations.md:68
+msgid "# Serve\n"
+msgstr ""
+
+#: src/contributing/translations.md:74
+msgid ""
+"Navigate to `http://localhost:1111/guide/` and use the language picker in "
+"the sidebar to switch to your locale."
+msgstr ""
+
+#: src/contributing/translations.md:77
+msgid "Keeping translations up to date"
+msgstr ""
+
+#: src/contributing/translations.md:79
+msgid ""
+"When English source files change, regenerate the template and merge new "
+"strings into existing PO files:"
+msgstr ""
+
+#: src/contributing/translations.md:83
+msgid "# regenerate docs/po/messages.pot\n"
+msgstr ""
+
+#: src/contributing/translations.md:87
+msgid ""
+"\\[!IMPORTANT\\] CI fails if `docs/po/messages.pot` is out of date with the "
+"English source. Always run `cadmus-translate` and commit the result when "
+"editing docs."
+msgstr ""
+
+#: src/contributing/translations.md:91
+msgid "Excluding content from extraction"
+msgstr ""
+
+#: src/contributing/translations.md:93
+msgid ""
+"Wrap any block you want to keep in English with `<!-- i18n:skip -->` "
+"comments:"
+msgstr ""
+
+#: src/contributing/translations.md:103
+msgid "How the build works"
+msgstr ""
+
+#: src/contributing/translations.md:105
+msgid ""
+"`cargo xtask docs` calls `mdbook build -d book/<lang>` for each `.po` file "
+"found in `docs/po/`, passing `MDBOOK_BOOK__LANGUAGE=<lang>`."
+msgstr ""
+
+#: src/contributing/translations.md:107
+msgid ""
+"The `[preprocessor.gettext]` in `docs/book.toml` substitutes translated "
+"strings at build time."
+msgstr ""
+
+#: src/contributing/translations.md:109
+msgid ""
+"`locales.json` is written to `docs/book/html/` with the available locales; "
+"`lang-picker.js` fetches it at runtime to populate the language dropdown."
+msgstr ""
+
+#: src/contributing/translations.md:111
+msgid ""
+"Symlinks under `docs-portal/static/guide/<lang>/` expose each locale build "
+"to Zola so it is served at `/guide/<lang>/`."
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:3
+msgid ""
+"Cadmus uses [SQLite](https://sqlite.org) as its embedded database and "
+"[SQLx](https://github.com/launchbadge/sqlx) as the Rust database library. "
+"SQLx provides **compile-time SQL verification** — every query is checked "
+"against the real schema before the code ships."
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:8
+msgid "The `.sqlx` directory"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:10
+msgid ""
+"The `.sqlx/` directory at the repository root contains one JSON metadata "
+"file per SQL query. Each file stores the resolved column names, types, and "
+"parameter types that SQLx inferred from the live database schema at the time "
+"`cargo sqlx prepare` was last run."
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:22
+msgid "Regenerating query metadata"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:24
+msgid "After adding or changing any SQL query, regenerate the metadata:"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:30
+msgid ""
+"This connects to the database, re-introspects every query macro in the "
+"workspace, and rewrites the `.sqlx/` JSON files. Commit the updated files "
+"alongside your code change."
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:34
+msgid ""
+"\\[!IMPORTANT\\] If you forget to run `cargo sqlx prepare`, the CI `check` "
+"job will fail because the cached metadata will be out of date with your "
+"query changes."
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:38
+msgid "Compile-time SQL checking"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:40
+msgid ""
+"SQLx's typed query macros (`query!`, `query_as!`, `query_scalar!`) verify "
+"SQL at compile time using the metadata in `.sqlx/`. This means:"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:43
+msgid "Typos in column names are **compiler errors**, not runtime panics."
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:44
+msgid "Binding the wrong type to a `?` placeholder is a **type error**."
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:45
+msgid ""
+"Adding or removing a column in a migration without updating queries is "
+"caught **before deployment**."
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:48
+msgid ""
+"The macros require the `DATABASE_URL` environment variable to point at a "
+"live database when running `cargo sqlx prepare`, but **not** during regular "
+"`cargo build` or `cargo check` — those use the pre-generated `.sqlx/` files."
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:52
+msgid ""
+"\\[!IMPORTANT\\] `.sqlx/` is only used when the `SQLX_OFFLINE=true` field is "
+"set which is the default if you're using devenv.nix."
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:56
+msgid "Review rules"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:58
+msgid "The following rules are enforced during code review for all SQLx queries."
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:60
+msgid "Use typed macros only"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:62
+msgid ""
+"Always use the typed macros. Never call the untyped `query()`, `query_as()`, "
+"or `query_scalar()` functions:"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:65
+msgid "Goal"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:65
+msgid "Use"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:67
+msgid "`INSERT`, `UPDATE`, `DELETE`, raw `SELECT`"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:67
+msgid "`sqlx::query!`"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:68
+msgid "`SELECT` mapped into a named struct"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:68
+msgid "`sqlx::query_as!`"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:69
+msgid "Single-column `SELECT`"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:69
+msgid "`sqlx::query_scalar!`"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:71
+msgid ""
+"When the column is nullable, call `.flatten()` on the result to collapse "
+"`Option<Option<T>>` into `Option<T>`:"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:76
+msgid "\"SELECT id FROM libraries WHERE path = ?\""
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:82
+msgid "List explicit column names"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:84
+msgid "Never use `SELECT *`. Always name every column you need:"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:87 src/contributing/sqlite-sqlx.md:100
+msgid "-- ✅ Good\n"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:89 src/contributing/sqlite-sqlx.md:102
+msgid "-- ❌ Bad\n"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:94
+msgid "Store timestamps as Unix epoch integers"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:96
+msgid ""
+"All date/time values must be stored as `INTEGER NOT NULL` (Unix epoch "
+"seconds). Do not use `TEXT` columns for timestamps:"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:104
+msgid "'now'"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:107
+msgid "Add only indexes that are actively used"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:109
+msgid ""
+"Every index must be used by at least one query in the codebase. Unused "
+"indexes waste write performance and storage without any read benefit. Before "
+"adding an index, verify a query filters, sorts, or joins on the indexed "
+"column(s)."
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:113
+#: src/contributing/runtime-migrations.md:164
+msgid "API reference"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:115
+msgid "The primary database types live in the `cadmus_core::db` module:"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:117
+msgid ""
+"<a "
+"href=\"/api/cadmus_core/db/struct.Database\">`cadmus_core::db::Database`</a> "
+"— the top-level sync/async bridge that owns the connection pool"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:119
+msgid ""
+"<a "
+"href=\"/api/cadmus_core/db/migrations/struct.MigrationRunner\">`cadmus_core::db::migrations::MigrationRunner`</a> "
+"— executes all pending runtime migrations"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:121
+msgid ""
+"<a href=\"/api/cadmus_core/macro.migration\">`cadmus_core::migration!`</a> — "
+"macro for declaring one-time runtime migrations"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:124
+msgid ""
+"See [Library Database](library-database.md) for how the library subsystem "
+"uses the database, and [Runtime Migrations](runtime-migrations.md) for how "
+"to write one-time data migrations."
+msgstr ""
+
+#: src/contributing/library-database.md:3
+msgid ""
+"The library subsystem stores all book metadata, reading progress, and "
+"table-of-contents data in SQLite. This page explains the schema, the key "
+"database types, and how data flows from disk into the database."
+msgstr ""
+
+#: src/contributing/library-database.md:7
+msgid "Schema overview"
+msgstr ""
+
+#: src/contributing/library-database.md:9
+msgid ""
+"The database is created and versioned by the SQL migration files in "
+"`crates/core/migrations/`. The initial schema defines eleven tables plus one "
+"aggregating view:"
+msgstr ""
+
+#: src/contributing/library-database.md:13
+msgid ""
+"```mermaid\n"
+"erDiagram\n"
+"    books {\n"
+"        TEXT fingerprint PK\n"
+"        TEXT title\n"
+"        TEXT file_path\n"
+"        TEXT file_kind\n"
+"        INTEGER file_size\n"
+"        INTEGER added_at\n"
+"    }\n"
+"\n"
+"    authors {\n"
+"        INTEGER id PK\n"
+"        TEXT name\n"
+"    }\n"
+"\n"
+"    book_authors {\n"
+"        TEXT book_fingerprint FK\n"
+"        INTEGER author_id FK\n"
+"        INTEGER position\n"
+"    }\n"
+"\n"
+"    categories {\n"
+"        INTEGER id PK\n"
+"        TEXT name\n"
+"    }\n"
+"\n"
+"    book_categories {\n"
+"        TEXT book_fingerprint FK\n"
+"        INTEGER category_id FK\n"
+"    }\n"
+"\n"
+"    reading_states {\n"
+"        TEXT fingerprint PK\n"
+"        INTEGER opened\n"
+"        INTEGER current_page\n"
+"        INTEGER pages_count\n"
+"        INTEGER finished\n"
+"    }\n"
+"\n"
+"    thumbnails {\n"
+"        TEXT fingerprint PK\n"
+"        BLOB thumbnail_data\n"
+"    }\n"
+"\n"
+"    toc_entries {\n"
+"        TEXT id PK\n"
+"        TEXT book_fingerprint FK\n"
+"        TEXT parent_id FK\n"
+"        INTEGER position\n"
+"        TEXT title\n"
+"        TEXT location_kind\n"
+"    }\n"
+"\n"
+"    libraries {\n"
+"        INTEGER id PK\n"
+"        TEXT path\n"
+"        TEXT name\n"
+"        INTEGER created_at\n"
+"    }\n"
+"\n"
+"    library_books {\n"
+"        INTEGER library_id FK\n"
+"        TEXT book_fingerprint FK\n"
+"        INTEGER added_to_library_at\n"
+"    }\n"
+"\n"
+"    _cadmus_migrations {\n"
+"        TEXT id PK\n"
+"        INTEGER executed_at\n"
+"        TEXT status\n"
+"    }\n"
+"\n"
+"    books ||--o{ book_authors : \"\"\n"
+"    authors ||--o{ book_authors : \"\"\n"
+"    books ||--o{ book_categories : \"\"\n"
+"    categories ||--o{ book_categories : \"\"\n"
+"    books ||--o| reading_states : \"\"\n"
+"    books ||--o| thumbnails : \"\"\n"
+"    books ||--o{ toc_entries : \"\"\n"
+"    toc_entries ||--o{ toc_entries : \"parent_id\"\n"
+"    libraries ||--o{ library_books : \"\"\n"
+"    books ||--o{ library_books : \"\"\n"
+"```"
+msgstr ""
+
+#: src/contributing/library-database.md:98
+msgid "Key design choices"
+msgstr ""
+
+#: src/contributing/library-database.md:100
+msgid ""
+"**`books` is the main table.** Every other per-book table references "
+"`books.fingerprint` with `ON DELETE CASCADE`, so deleting a book row removes "
+"all associated data automatically."
+msgstr ""
+
+#: src/contributing/library-database.md:103
+msgid ""
+"**Authors are normalised.** `authors` holds unique author names; "
+"`book_authors` is the join table and carries a `position` column that "
+"preserves display order."
+msgstr ""
+
+#: src/contributing/library-database.md:106
+msgid ""
+"**All tables use `STRICT` mode.** SQLite's `STRICT` pragma enforces column "
+"type constraints at the storage layer, catching type mismatches early."
+msgstr ""
+
+#: src/contributing/library-database.md:108
+msgid ""
+"**Timestamps are Unix epoch integers.** `added_at`, `created_at`, and "
+"similar columns are `INTEGER NOT NULL`; never `TEXT`."
+msgstr ""
+
+#: src/contributing/library-database.md:110
+msgid ""
+"**TOC tree via adjacency list.** `toc_entries.parent_id` is a "
+"self-reference; `position` preserves sibling order. The `id` is a UUID7 "
+"(generated in Rust) so `ORDER BY id ASC` gives stable insertion order "
+"without a growing rowid."
+msgstr ""
+
+#: src/contributing/library-database.md:113
+msgid ""
+"**`library_books_full_info` view.** An aggregating view joins `books`, "
+"`reading_states`, `book_authors`, `authors`, `book_categories`, and "
+"`categories` in one query. The `library_id` column from `library_books` is "
+"exposed so callers can filter with a plain `WHERE library_id = ?`."
+msgstr ""
+
+#: src/contributing/library-database.md:118
+msgid "Data access layer"
+msgstr ""
+
+#: src/contributing/library-database.md:120
+msgid ""
+"The <a "
+"href=\"/api/cadmus_core/library/db/struct.Db\">`cadmus_core::library::db::Db`</a> "
+"struct is the entry point for all library database operations. It wraps the "
+"shared `SqlitePool` and exposes a **synchronous** API by bridging every "
+"async SQLx call through the global Tokio runtime:"
+msgstr ""
+
+#: src/contributing/library-database.md:126
+msgid ""
+"```mermaid\n"
+"flowchart LR\n"
+"    caller[\"Caller (sync event loop)\"]\n"
+"    Db[\"library::db::Db\"]\n"
+"    RUNTIME[\"RUNTIME.block_on()\"]\n"
+"    SQLx[\"SQLx async query\"]\n"
+"    SQLite[(\"SQLite\")]\n"
+"\n"
+"    caller -->|sync call| Db\n"
+"    Db -->|wraps in| RUNTIME\n"
+"    RUNTIME -->|awaits| SQLx\n"
+"    SQLx -->|reads/writes| SQLite\n"
+"    SQLx -->|result| RUNTIME\n"
+"    RUNTIME -->|returns| caller\n"
+"```"
+msgstr ""
+
+#: src/contributing/library-database.md:142
+msgid ""
+"The sync bridge exists because Cadmus's UI event loop is single-threaded and "
+"synchronous. The global `RUNTIME` (a `tokio::runtime::Runtime` singleton) "
+"lets the rest of the codebase call database methods without needing to be "
+"async."
+msgstr ""
+
+#: src/contributing/library-database.md:146
+msgid "Key methods on `Db`:"
+msgstr ""
+
+#: src/contributing/library-database.md:150
+msgid ""
+"<a "
+"href=\"/api/cadmus_core/library/db/struct.Db#method.register_library\">`register_library`</a>"
+msgstr ""
+
+#: src/contributing/library-database.md:150
+msgid "Insert a new library row and return its id"
+msgstr ""
+
+#: src/contributing/library-database.md:151
+msgid ""
+"<a "
+"href=\"/api/cadmus_core/library/db/struct.Db#method.get_library_by_path\">`get_library_by_path`</a>"
+msgstr ""
+
+#: src/contributing/library-database.md:151
+msgid "Look up a library id by filesystem path"
+msgstr ""
+
+#: src/contributing/library-database.md:152
+msgid ""
+"<a "
+"href=\"/api/cadmus_core/library/db/struct.Db#method.get_all_books\">`get_all_books`</a>"
+msgstr ""
+
+#: src/contributing/library-database.md:152
+msgid "Fetch every book in a library via the full-info view"
+msgstr ""
+
+#: src/contributing/library-database.md:153
+msgid ""
+"<a "
+"href=\"/api/cadmus_core/library/db/struct.Db#method.insert_book\">`insert_book`</a>"
+msgstr ""
+
+#: src/contributing/library-database.md:153
+msgid "Write a new book and its authors/categories"
+msgstr ""
+
+#: src/contributing/library-database.md:154
+msgid ""
+"<a "
+"href=\"/api/cadmus_core/library/db/struct.Db#method.save_reading_state\">`save_reading_state`</a>"
+msgstr ""
+
+#: src/contributing/library-database.md:154
+msgid "Save or update reading progress for a book"
+msgstr ""
+
+#: src/contributing/library-database.md:155
+msgid ""
+"<a "
+"href=\"/api/cadmus_core/library/db/struct.Db#method.save_toc\">`save_toc`</a>"
+msgstr ""
+
+#: src/contributing/library-database.md:155
+msgid "Bulk-write a book's table of contents"
+msgstr ""
+
+#: src/contributing/library-database.md:156
+msgid ""
+"<a "
+"href=\"/api/cadmus_core/library/db/struct.Db#method.get_thumbnail\">`get_thumbnail`</a>"
+msgstr ""
+
+#: src/contributing/library-database.md:156
+msgid "Retrieve the stored cover thumbnail BLOB"
+msgstr ""
+
+#: src/contributing/library-database.md:157
+msgid ""
+"<a "
+"href=\"/api/cadmus_core/library/db/struct.Db#method.save_thumbnail\">`save_thumbnail`</a>"
+msgstr ""
+
+#: src/contributing/library-database.md:157
+msgid "Save or replace a cover thumbnail"
+msgstr ""
+
+#: src/contributing/library-database.md:159
+msgid "How a book scan flows into the database"
+msgstr ""
+
+#: src/contributing/library-database.md:161
+msgid "When a library directory is scanned, Cadmus follows this sequence:"
+msgstr ""
+
+#: src/contributing/library-database.md:192
+msgid "Related pages"
+msgstr ""
+
+#: src/contributing/library-database.md:194
+msgid ""
+"[SQLite & SQLx](sqlite-sqlx.md) — compile-time query verification, review "
+"rules"
+msgstr ""
+
+#: src/contributing/library-database.md:195
+msgid ""
+"[Runtime Migrations](runtime-migrations.md) — one-time data migrations using "
+"the `migration!` macro"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:3
+msgid "Cadmus has two distinct migration pipelines:"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:5
+msgid ""
+"**Schema migrations** — plain `.sql` files in `crates/core/migrations/`, "
+"applied by SQLx's `migrate!` macro at startup. Use these for `CREATE TABLE`, "
+"`ALTER TABLE`, and similar DDL changes."
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:8
+msgid ""
+"**Runtime migrations** — Rust `async fn` blocks declared with the "
+"`migration!` macro. Use these for one-time **data** operations: backfilling "
+"columns, importing legacy files, cleaning up obsolete rows, or any "
+"procedural work that goes beyond SQL DDL."
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:13
+msgid "How runtime migrations work"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:15
+msgid ""
+"```mermaid\n"
+"flowchart TD\n"
+"    ctor[\"#[ctor] runs at process start\"]\n"
+"    registry[\"Global REGISTRY HashMap<br>(migration id → async fn)\"]\n"
+"    startup[\"Database::migrate() called on startup\"]\n"
+"    schema[\"sqlx::migrate!() — applies .sql files\"]\n"
+"    runner[\"MigrationRunner::run_all()\"]\n"
+"    table[\"_cadmus_migrations table<br>(id, executed_at, status)\"]\n"
+"    pending[\"Filter: id NOT IN already-succeeded rows\"]\n"
+"    exec[\"Execute each pending migration in id order\"]\n"
+"    record[\"Record success or failure in _cadmus_migrations\"]\n"
+"\n"
+"    ctor --> registry\n"
+"    startup --> schema\n"
+"    schema --> runner\n"
+"    runner --> table\n"
+"    table --> pending\n"
+"    pending --> exec\n"
+"    exec --> record\n"
+"```"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:36
+msgid ""
+"At process start the `#[ctor]` attribute runs for every `migration!` call "
+"and inserts the migration function into a global `HashMap`. When "
+"`Database::migrate` is called during application startup, it first applies "
+"all pending SQL schema migrations, then calls `MigrationRunner::run_all()`, "
+"which:"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:41
+msgid "Reads `_cadmus_migrations` and collects IDs that already succeeded."
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:42
+msgid "Skips those; runs the remaining ones sorted by ID."
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:43
+msgid "Records each result (`success` or `failed`) before moving on."
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:44
+msgid "Continues past failures so one broken migration does not block others."
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:46
+msgid ""
+"A failed migration can be retried by deleting its tracking row (see "
+"[Re-running a migration](#re-running-a-migration))."
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:49
+msgid "The `migration!` macro"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:51
+msgid ""
+"<a href=\"/api/cadmus_core/macro.migration\">`cadmus_core::migration!`</a> "
+"takes a stable string ID and an `async fn` definition:"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:56
+msgid "/// One-line doc comment forwarded to rustdoc.\n    \"v1_my_migration\""
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:59
+msgid "\"UPDATE books SET title = TRIM(title)\""
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:67
+msgid "The macro:"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:69
+msgid "Generates the `async fn` with the provided body."
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:70
+msgid ""
+"Creates a public submodule named after the function that exposes a "
+"`MIGRATION_ID` constant — useful for tests and cross-references."
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:72
+msgid ""
+"Registers the function in the global `REGISTRY` via `#[ctor]` so it runs "
+"automatically without any manual wiring."
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:74
+msgid "Forwards doc comments onto the generated items so rustdoc picks them up."
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:75
+msgid "Appends the migration ID and a re-run SQL snippet to the generated docs."
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:77
+msgid "Where to put migration code"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:79
+msgid ""
+"Co-locate migrations with the feature they belong to. The library "
+"subsystem's migrations live in `crates/core/src/library/migrations.rs`; a "
+"hypothetical reader subsystem would put its migrations in "
+"`crates/core/src/reader/migrations.rs`."
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:84
+msgid ""
+"The module only needs to be declared once so the `#[ctor]` registration "
+"runs. There is no central registry file to update."
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:87
+msgid "Writing a migration step by step"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:89
+msgid "1. Choose a stable ID"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:91
+msgid ""
+"The ID is the primary key in `_cadmus_migrations`. Once a migration has been "
+"deployed it must never be renamed, because existing installations track it "
+"by this string."
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:95
+msgid ""
+"Convention: `v<N>_<short_description>`, for example "
+"`v1_backfill_book_language`."
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:97
+msgid "2. Create the migration file (or add to an existing one)"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:100
+msgid "// crates/core/src/my_feature/migrations.rs\n"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:105
+msgid ""
+"/// Backfills the `language` column for books that were imported before\n"
+"    /// language detection was added.\n"
+"    \"v1_backfill_book_language\""
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:110
+msgid ""
+"\"UPDATE books SET language = 'en' WHERE language = '' OR language IS NULL\""
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:120
+msgid "3. Use SQLx typed macros"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:122
+msgid ""
+"All SQL inside a migration must use the typed macros for compile-time "
+"verification (see [SQLite & SQLx](sqlite-sqlx.md)):"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:126
+msgid "// ✅ Good — compile-time checked\n"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:127
+#: src/contributing/runtime-migrations.md:132
+msgid "\"DELETE FROM books WHERE file_path = ?\""
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:130
+msgid "// ❌ Bad — untyped, bypasses verification\n"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:138
+msgid "4. Make it idempotent"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:140
+msgid ""
+"Use `INSERT OR IGNORE`, `ON CONFLICT DO NOTHING`, or guard with a `WHERE` "
+"clause so the migration is safe to re-run without corrupting data."
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:143
+msgid "5. Regenerate `.sqlx` metadata"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:145
+msgid ""
+"After adding or changing any query in the migration, regenerate the "
+"compile-time metadata:"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:152
+msgid "Commit the updated `.sqlx/` files alongside your migration code."
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:154
+msgid "Re-running a migration"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:156
+msgid "Delete the tracking row, then restart the application:"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:159
+msgid "'v1_my_migration'"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:162
+msgid "The next startup will treat the migration as pending and run it again."
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:166
+msgid ""
+"<a href=\"/api/cadmus_core/macro.migration\">`cadmus_core::migration!`</a> — "
+"macro for declaring runtime migrations"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:168
+msgid ""
+"<a "
+"href=\"/api/cadmus_core/db/migrations/struct.MigrationRunner\">`cadmus_core::db::migrations::MigrationRunner`</a> "
+"— executes all pending registered migrations"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:170
+msgid ""
+"<a "
+"href=\"/api/cadmus_core/db/struct.Database\">`cadmus_core::db::Database`</a> "
+"— owns the connection pool and orchestrates both migration stages"
+msgstr ""
+
