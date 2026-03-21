@@ -503,6 +503,7 @@ impl Library {
         if let Some(mut info) = info {
             let dest_path = dest.strip_prefix(&other.home)?;
             info.file.path = dest_path.to_path_buf();
+            info.file.absolute_path = dest.clone();
 
             if let Err(e) = other.db.insert_book(other.library_id, fp, &info) {
                 error!(fp = %fp, error = %e, "failed to insert copied book into target database");
@@ -559,6 +560,7 @@ impl Library {
         if let Some(mut info) = info {
             let dest_path = dest.strip_prefix(&other.home)?;
             info.file.path = dest_path.to_path_buf();
+            info.file.absolute_path = dest.clone();
 
             if let Err(e) = other.db.insert_book(other.library_id, fp, &info) {
                 error!(fp = %fp, error = %e, "failed to insert moved book into target database");
@@ -733,5 +735,105 @@ impl Library {
                 .ok()
                 .and_then(|md| md.fingerprint(self.fat32_epoch).ok())
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::Database;
+    use crate::settings::ImportSettings;
+
+    fn setup_library_with_book(
+        dir: &Path,
+        db: &Database,
+        name: &str,
+        filename: &str,
+    ) -> (Library, PathBuf) {
+        let mut lib = Library::new(dir, db, name).expect("failed to create library");
+        fs::write(dir.join(filename), b"dummy book content").expect("failed to write test file");
+        lib.import(&ImportSettings::default());
+        (lib, PathBuf::from(filename))
+    }
+
+    #[test]
+    fn copy_to_sets_absolute_path_in_destination() {
+        let src_dir = tempfile::tempdir().expect("failed to create src temp dir");
+        let dst_dir = tempfile::tempdir().expect("failed to create dst temp dir");
+        let db = Database::new(":memory:").expect("failed to create in-memory database");
+        db.migrate().expect("failed to run migrations");
+
+        let (mut src_lib, rel_path) =
+            setup_library_with_book(src_dir.path(), &db, "Source", "book.epub");
+        let mut dst_lib =
+            Library::new(dst_dir.path(), &db, "Destination").expect("failed to create dst lib");
+
+        assert!(
+            src_lib.books.values().next().is_some(),
+            "source library should contain the book"
+        );
+
+        src_lib
+            .copy_to(&rel_path, &mut dst_lib)
+            .expect("copy_to failed");
+
+        let dst_info = dst_lib
+            .books
+            .values()
+            .next()
+            .expect("destination library should contain the copied book");
+
+        let expected_abs = dst_dir.path().join(&dst_info.file.path);
+        assert_eq!(
+            dst_info.file.absolute_path, expected_abs,
+            "absolute_path should point to the destination file after copy_to"
+        );
+        assert!(
+            dst_info.file.absolute_path.exists(),
+            "absolute_path should point to an existing file"
+        );
+    }
+
+    #[test]
+    fn move_to_sets_absolute_path_in_destination() {
+        let src_dir = tempfile::tempdir().expect("failed to create src temp dir");
+        let dst_dir = tempfile::tempdir().expect("failed to create dst temp dir");
+        let db = Database::new(":memory:").expect("failed to create in-memory database");
+        db.migrate().expect("failed to run migrations");
+
+        let (mut src_lib, rel_path) =
+            setup_library_with_book(src_dir.path(), &db, "Source", "book.epub");
+        let mut dst_lib =
+            Library::new(dst_dir.path(), &db, "Destination").expect("failed to create dst lib");
+
+        assert!(
+            src_lib.books.values().next().is_some(),
+            "source library should contain the book"
+        );
+
+        src_lib
+            .move_to(&rel_path, &mut dst_lib)
+            .expect("move_to failed");
+
+        assert!(
+            src_lib.books.is_empty(),
+            "source library should no longer contain the book after move"
+        );
+
+        let dst_info = dst_lib
+            .books
+            .values()
+            .next()
+            .expect("destination library should contain the moved book");
+
+        let expected_abs = dst_dir.path().join(&dst_info.file.path);
+        assert_eq!(
+            dst_info.file.absolute_path, expected_abs,
+            "absolute_path should point to the destination file after move_to"
+        );
+        assert!(
+            dst_info.file.absolute_path.exists(),
+            "absolute_path should point to an existing file"
+        );
     }
 }
