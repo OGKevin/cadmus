@@ -32,6 +32,7 @@ impl Category {
     pub fn settings(&self, context: &Context) -> Vec<RowKind> {
         match self {
             Category::General => vec![
+                RowKind::Locale,
                 RowKind::AutoShare,
                 RowKind::AutoSuspend,
                 RowKind::AutoPowerOff,

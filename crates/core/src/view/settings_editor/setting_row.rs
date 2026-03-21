@@ -9,6 +9,7 @@ use crate::settings::Settings;
 use crate::view::settings_editor::ToggleSettings;
 
 pub enum Kind {
+    Locale,
     KeyboardLayout,
     SleepCover,
     AutoShare,
@@ -44,6 +45,7 @@ impl Kind {
     /// A `String` containing the display label for this setting
     pub fn label(&self, settings: &Settings) -> String {
         match self {
+            Kind::Locale => "Language".to_string(),
             Kind::KeyboardLayout => "Keyboard Layout".to_string(),
             Kind::SleepCover => "Enable Sleep Cover".to_string(),
             Kind::AutoShare => "Enable Auto Share".to_string(),
@@ -74,6 +76,7 @@ impl Kind {
 
     fn value_kind(&self) -> ValueKind {
         match self {
+            Kind::Locale => ValueKind::Locale,
             Kind::KeyboardLayout => ValueKind::KeyboardLayout,
             Kind::SleepCover => ValueKind::Toggle(ToggleSettings::SleepCover),
             Kind::AutoShare => ValueKind::Toggle(ToggleSettings::AutoShare),

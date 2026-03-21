@@ -4,6 +4,7 @@ use super::super::{Align, Bus, Event, Hub, Id, RenderQueue, View, ID_FEEDER};
 use crate::context::Context;
 use crate::framebuffer::Framebuffer;
 use crate::geom::Rectangle;
+use crate::i18n;
 use crate::settings::{ButtonScheme, FinishedAction, IntermKind, Settings};
 use crate::view::{toggle::Toggle, EntryId, ToggleEvent};
 use anyhow::Error;
@@ -49,6 +50,8 @@ pub enum ToggleSettings {
 pub enum Kind {
     /// Keyboard layout selection setting
     KeyboardLayout,
+    /// Locale selection setting
+    Locale,
     /// Auto-suspend timeout setting (in minutes)
     AutoSuspend,
     /// Auto power-off timeout setting (in minutes)
@@ -231,6 +234,7 @@ impl SettingValue {
     ) -> (String, Vec<EntryKind>, Option<bool>) {
         match kind {
             Kind::KeyboardLayout => Self::fetch_keyboard_layout_data(settings),
+            Kind::Locale => Self::fetch_locale_data(settings),
             Kind::AutoSuspend => Self::fetch_auto_suspend_data(settings),
             Kind::AutoPowerOff => Self::fetch_auto_power_off_data(settings),
             Kind::FinishedAction => Self::fetch_finished_action_data(settings),
@@ -262,6 +266,29 @@ impl SettingValue {
                 ToggleSettings::EnableKernLog => Self::fetch_enable_kern_log_data(settings),
             },
         }
+    }
+
+    fn fetch_locale_data(settings: &Settings) -> (String, Vec<EntryKind>, Option<bool>) {
+        let current = settings.locale.as_ref().map(|l| l.to_string());
+
+        let display = current
+            .as_deref()
+            .unwrap_or(i18n::DEFAULT_LOCALE)
+            .to_string();
+
+        let entries = crate::i18n::AVAILABLE_LOCALES
+            .iter()
+            .map(|&tag| {
+                let lang_id: Option<unic_langid::LanguageIdentifier> = tag.parse().ok();
+                EntryKind::RadioButton(
+                    tag.to_string(),
+                    EntryId::SetLocale(lang_id),
+                    current.as_deref() == Some(tag),
+                )
+            })
+            .collect();
+
+        (display, entries, None)
     }
 
     fn fetch_keyboard_layout_data(settings: &Settings) -> (String, Vec<EntryKind>, Option<bool>) {

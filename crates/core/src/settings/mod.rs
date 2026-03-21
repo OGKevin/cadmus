@@ -7,6 +7,7 @@ use crate::frontlight::LightLevels;
 use crate::metadata::{SortMethod, TextAlign};
 use crate::unit::mm_to_px;
 use fxhash::FxHashSet;
+use unic_langid::LanguageIdentifier;
 
 pub use self::preset::{guess_frontlight, LightPreset};
 use serde::{Deserialize, Serialize};
@@ -192,6 +193,8 @@ pub struct Settings {
     pub ota: OtaSettings,
     pub logging: LoggingSettings,
     pub settings_retention: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub locale: Option<LanguageIdentifier>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -685,6 +688,7 @@ impl Default for Settings {
             ota: OtaSettings::default(),
             logging: LoggingSettings::default(),
             settings_retention: 3,
+            locale: None,
         }
     }
 }

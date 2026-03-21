@@ -52,6 +52,29 @@ fn main() {
     println!("cargo:rustc-link-lib=gumbo");
     println!("cargo:rustc-link-lib=openjp2");
     println!("cargo:rustc-link-lib=jbig2dec");
+
+    generate_locales();
+}
+
+fn generate_locales() {
+    println!("cargo:rerun-if-changed=i18n/");
+    let out_dir = env::var("OUT_DIR").expect("OUT_DIR not set");
+    let mut locales: Vec<String> = std::fs::read_dir("i18n/")
+        .expect("i18n/ directory not found")
+        .filter_map(|entry| {
+            let entry = entry.ok()?;
+            if entry.file_type().ok()?.is_dir() {
+                entry.file_name().into_string().ok()
+            } else {
+                None
+            }
+        })
+        .collect();
+    locales.sort();
+    let entries: String = locales.iter().map(|l| format!("    \"{l}\",\n")).collect();
+    let generated = format!("pub const AVAILABLE_LOCALES: &[&str] = &[\n{entries}];\n");
+    std::fs::write(std::path::Path::new(&out_dir).join("locales.rs"), generated)
+        .expect("failed to write locales.rs");
 }
 
 fn get_version_info() -> Result<(String, Option<String>), VarError> {

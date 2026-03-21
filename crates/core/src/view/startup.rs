@@ -2,11 +2,10 @@ use super::{Bus, Event, Hub, Id, RenderQueue, View, ID_FEEDER};
 use crate::color::TEXT_NORMAL;
 use crate::context::Context;
 use crate::device::CURRENT_DEVICE;
+use crate::fl;
 use crate::font::{font_from_style, Fonts, DISPLAY_FONT_SIZE, DISPLAY_STYLE};
 use crate::framebuffer::Framebuffer;
 use crate::geom::Rectangle;
-
-const LABEL: &str = "Cadmus starting up…";
 
 /// Full-screen startup view shown while the app initialises.
 ///
@@ -53,13 +52,15 @@ impl View for StartupScreen {
         let padding = font.em() as i32;
         let max_width = self.rect.width() as i32 - 3 * padding;
 
-        let mut plan = font.plan(LABEL, None, None);
+        let label = fl!("startup-loading");
+
+        let mut plan = font.plan(label.as_str(), None, None);
 
         if plan.width > max_width {
             let scale = max_width as f32 / plan.width as f32;
             let size = (scale * (DISPLAY_FONT_SIZE / 2) as f32) as u32;
             font.set_size(size, dpi);
-            plan = font.plan(LABEL, None, None);
+            plan = font.plan(label, None, None);
         }
 
         let dx = (self.rect.width() as i32 - plan.width) / 2;

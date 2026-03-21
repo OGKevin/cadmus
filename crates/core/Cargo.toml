@@ -44,6 +44,9 @@ rand_core = "0.10.0"
 rand_xoshiro = "0.8.0"
 percent-encoding = "2.3.2"
 rust-embed = { version = "8.11", features = ["include-exclude"] }
+i18n-embed = { version = "0.16", features = ["fluent-system", "rust-embed"] }
+i18n-embed-fl = "0.10"
+unic-langid = { version = "0.9", features = ["macros", "serde"] }
 chrono = { version = "0.4.42", features = [
     "serde",
     "clock",

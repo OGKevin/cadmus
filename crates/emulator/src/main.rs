@@ -15,7 +15,6 @@ use cadmus_core::gesture::{gesture_events, GestureEvent};
 use cadmus_core::input::{ButtonCode, ButtonStatus, DeviceEvent, FingerStatus};
 use cadmus_core::library::Library;
 use cadmus_core::lightsensor::LightSensor;
-use cadmus_core::png;
 use cadmus_core::pt;
 use cadmus_core::settings::versioned::SettingsManager;
 use cadmus_core::settings::{IntermKind, Settings};
@@ -43,6 +42,7 @@ use cadmus_core::view::{
     handle_event, process_render_queue, wait_for_all, RenderData, RenderQueue,
 };
 use cadmus_core::view::{AppCmd, EntryId, EntryKind, Event, NotificationEvent, View, ViewId};
+use cadmus_core::{i18n, png};
 use sdl2::event::Event as SdlEvent;
 use sdl2::keyboard::{Keycode, Mod, Scancode};
 use sdl2::mouse::MouseState;
@@ -297,6 +297,8 @@ fn main() -> Result<(), Error> {
         .context("Failed to initialize logging")?;
 
     cadmus_core::crypto::init_crypto_provider();
+
+    i18n::init(settings.locale.as_ref());
 
     let mut fonts = Fonts::load().context("can't load fonts")?;
     let database = Database::new(DB_FILENAME).context("can't open database")?;

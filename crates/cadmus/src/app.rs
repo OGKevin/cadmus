@@ -13,6 +13,7 @@ use cadmus_core::frontlight::{
 };
 use cadmus_core::geom::{DiagDir, Rectangle, Region};
 use cadmus_core::gesture::{gesture_events, GestureEvent};
+use cadmus_core::i18n;
 use cadmus_core::input::{
     button_scheme_event, device_events, display_rotate_event, raw_events, usb_events, InputEvent,
 };
@@ -505,6 +506,8 @@ pub fn run() -> Result<(), Error> {
     }
 
     cadmus_core::crypto::init_crypto_provider();
+
+    i18n::init(settings.locale.as_ref());
 
     let startup_cwd = env::current_dir().ok();
     let startup_db_exists = Path::new(DB_FILENAME).exists();

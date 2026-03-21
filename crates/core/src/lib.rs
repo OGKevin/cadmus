@@ -16,6 +16,7 @@ pub mod frontlight;
 pub mod gesture;
 pub mod github;
 pub mod helpers;
+pub mod i18n;
 pub mod input;
 pub mod library;
 pub mod lightsensor;

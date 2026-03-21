@@ -85,6 +85,18 @@ Defines how the back and forward buttons are mapped to page forward and page bac
 button-scheme = "natural"
 ```
 
+### `locale`
+
+✏️
+
+The preferred language for the user interface, using BCP 47 format (e.g., `"en-US"`, `"de-DE"`).
+
+This setting is optional. When not set, `en-GB` is used.
+
+```toml
+locale = "en-GB"
+```
+
 ## Reader
 
 Settings that control the reading experience.

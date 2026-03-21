@@ -586,7 +586,7 @@ in
     # Extract translatable strings from documentation
     cadmus-translate.exec = ''
       echo "Extracting translatable strings from documentation..."
-      MDBOOK_OUTPUT='{"xgettext": {}}' mdbook build -d po $DEVENV_ROOT/docs
+      MDBOOK_OUTPUT='{"xgettext": {}}' mdbook build -d $DEVENV_ROOT/docs/po $DEVENV_ROOT/docs
       echo ""
       echo "Translation files generated in docs/po/"
       echo "Use Poedit or any gettext editor to translate"

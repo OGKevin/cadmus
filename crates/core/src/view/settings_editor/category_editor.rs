@@ -4,6 +4,7 @@ use crate::device::CURRENT_DEVICE;
 use crate::framebuffer::{Framebuffer, UpdateMode};
 use crate::geom::{halves, Rectangle};
 use crate::gesture::GestureEvent;
+use crate::i18n;
 use crate::settings::{ButtonScheme, FinishedAction, LibrarySettings, Settings};
 use crate::unit::scale_by_dpi;
 use crate::view::common::locate_by_id;
@@ -316,28 +317,6 @@ impl CategoryEditor {
         keyboard.set_visible(visible, hub, rq, context);
     }
 
-    /// Refreshes all SettingValue views to reflect current state in context.settings.
-    ///
-    /// This method iterates through all child SettingRow views and their nested SettingValue
-    /// children, calling their refresh_from_context method to update displayed values.
-    /// Should be called after any setting is modified to ensure UI reflects the changes.
-    #[inline]
-    #[deprecated(note = "use Event::Settings(SettingsEvent::UpdateValue { kind, value }) instead")]
-    fn refresh_setting_values(&mut self, context: &Context, rq: &mut RenderQueue) {
-        use super::setting_row::SettingRow;
-        use super::setting_value::SettingValue;
-
-        for child in &mut self.children {
-            if let Some(row) = child.as_any_mut().downcast_mut::<SettingRow>() {
-                for grandchild in row.children_mut() {
-                    if let Some(value) = grandchild.as_any_mut().downcast_mut::<SettingValue>() {
-                        value.refresh_from_context(context, rq);
-                    }
-                }
-            }
-        }
-    }
-
     #[inline]
     fn handle_focus_event(
         &mut self,
@@ -423,45 +402,27 @@ impl CategoryEditor {
     fn handle_set_keyboard_layout(
         &mut self,
         layout: &str,
-        _evt: &Event,
-        _hub: &Hub,
-        _bus: &mut Bus,
-        rq: &mut RenderQueue,
+        hub: &Hub,
         context: &mut Context,
     ) -> bool {
         context.settings.keyboard_layout = layout.to_string();
-        self.refresh_setting_values(context, rq);
-        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+        hub.send(Event::Settings(SettingsEvent::UpdateValue {
+            kind: Kind::KeyboardLayout,
+            value: layout.to_string(),
+        }))
+        .ok();
         true
     }
 
     #[inline]
-    fn handle_toggle_sleep_cover(
-        &mut self,
-        _evt: &Event,
-        _hub: &Hub,
-        _bus: &mut Bus,
-        rq: &mut RenderQueue,
-        context: &mut Context,
-    ) -> bool {
+    fn handle_toggle_sleep_cover(&mut self, context: &mut Context) -> bool {
         context.settings.sleep_cover = !context.settings.sleep_cover;
-        self.refresh_setting_values(context, rq);
-        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
         true
     }
 
     #[inline]
-    fn handle_toggle_auto_share(
-        &mut self,
-        _evt: &Event,
-        _hub: &Hub,
-        _bus: &mut Bus,
-        rq: &mut RenderQueue,
-        context: &mut Context,
-    ) -> bool {
+    fn handle_toggle_auto_share(&mut self, context: &mut Context) -> bool {
         context.settings.auto_share = !context.settings.auto_share;
-        self.refresh_setting_values(context, rq);
-        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
         true
     }
 
@@ -534,17 +495,12 @@ impl CategoryEditor {
     #[inline]
     fn handle_set_button_scheme(
         &mut self,
-        button_scheme: &crate::settings::ButtonScheme,
-        _evt: &Event,
-        _hub: &Hub,
+        button_scheme: &ButtonScheme,
         bus: &mut Bus,
-        rq: &mut RenderQueue,
         context: &mut Context,
     ) -> bool {
         context.settings.button_scheme = *button_scheme;
         bus.push_back(Event::Select(EntryId::SetButtonScheme(*button_scheme)));
-        self.refresh_setting_values(context, rq);
-        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
         true
     }
 
@@ -552,12 +508,15 @@ impl CategoryEditor {
     fn handle_set_finished_action(
         &mut self,
         action: FinishedAction,
-        rq: &mut RenderQueue,
+        hub: &Hub,
         context: &mut Context,
     ) -> bool {
         context.settings.reader.finished = action;
-        self.refresh_setting_values(context, rq);
-        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+        hub.send(Event::Settings(SettingsEvent::UpdateValue {
+            kind: Kind::FinishedAction,
+            value: action.to_string(),
+        }))
+        .ok();
         true
     }
 
@@ -588,12 +547,34 @@ impl CategoryEditor {
         &mut self,
         kind: &crate::settings::IntermKind,
         display: &crate::settings::IntermissionDisplay,
-        rq: &mut RenderQueue,
+        hub: &Hub,
         context: &mut Context,
     ) -> bool {
+        use crate::settings::{IntermKind, IntermissionDisplay};
+
         context.settings.intermissions[*kind] = display.clone();
-        self.refresh_setting_values(context, rq);
-        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+
+        let value = match display {
+            IntermissionDisplay::Image(path) => path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("Custom")
+                .to_string(),
+            _ => display.to_string(),
+        };
+
+        let update_kind = match kind {
+            IntermKind::Suspend => Kind::IntermissionSuspend,
+            IntermKind::PowerOff => Kind::IntermissionPowerOff,
+            IntermKind::Share => Kind::IntermissionShare,
+        };
+
+        hub.send(Event::Settings(SettingsEvent::UpdateValue {
+            kind: update_kind,
+            value,
+        }))
+        .ok();
+
         true
     }
 
@@ -719,18 +700,22 @@ impl CategoryEditor {
     }
 
     #[inline]
-    fn handle_submit_auto_suspend(
-        &mut self,
-        text: &str,
-        hub: &Hub,
-        rq: &mut RenderQueue,
-        context: &mut Context,
-    ) -> bool {
+    fn handle_submit_auto_suspend(&mut self, text: &str, hub: &Hub, context: &mut Context) -> bool {
         if let Ok(value) = text.parse::<f32>() {
             context.settings.auto_suspend = value;
         }
-        self.refresh_setting_values(context, rq);
-        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+
+        let display = if context.settings.auto_suspend == 0.0 {
+            "Never".to_string()
+        } else {
+            format!("{:.1}", context.settings.auto_suspend)
+        };
+
+        hub.send(Event::Settings(SettingsEvent::UpdateValue {
+            kind: Kind::AutoSuspend,
+            value: display,
+        }))
+        .ok();
 
         hub.send(Event::Focus(None)).ok();
 
@@ -742,15 +727,23 @@ impl CategoryEditor {
         &mut self,
         text: &str,
         hub: &Hub,
-        rq: &mut RenderQueue,
         context: &mut Context,
     ) -> bool {
         if let Ok(value) = text.parse::<f32>() {
             context.settings.auto_power_off = value;
         }
 
-        self.refresh_setting_values(context, rq);
-        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+        let display = if context.settings.auto_power_off == 0.0 {
+            "Never".to_string()
+        } else {
+            format!("{:.1}", context.settings.auto_power_off)
+        };
+
+        hub.send(Event::Settings(SettingsEvent::UpdateValue {
+            kind: Kind::AutoPowerOff,
+            value: display,
+        }))
+        .ok();
 
         hub.send(Event::Focus(None)).ok();
 
@@ -789,17 +782,43 @@ impl CategoryEditor {
         &mut self,
         text: &str,
         hub: &Hub,
-        rq: &mut RenderQueue,
         context: &mut Context,
     ) -> bool {
         if let Ok(value) = text.parse::<usize>() {
             context.settings.settings_retention = value;
         }
 
-        self.refresh_setting_values(context, rq);
-        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+        hub.send(Event::Settings(SettingsEvent::UpdateValue {
+            kind: Kind::SettingsRetention,
+            value: context.settings.settings_retention.to_string(),
+        }))
+        .ok();
 
         hub.send(Event::Focus(None)).ok();
+
+        true
+    }
+
+    #[inline]
+    fn handle_set_locale(
+        &mut self,
+        locale: &Option<unic_langid::LanguageIdentifier>,
+        hub: &Hub,
+        context: &mut Context,
+    ) -> bool {
+        context.settings.locale = locale.clone();
+        crate::i18n::init(locale.as_ref());
+
+        let display = locale
+            .as_ref()
+            .map(|l| l.to_string())
+            .unwrap_or_else(|| i18n::DEFAULT_LOCALE.to_string());
+
+        hub.send(Event::Settings(SettingsEvent::UpdateValue {
+            kind: Kind::Locale,
+            value: display,
+        }))
+        .ok();
 
         true
     }
@@ -902,16 +921,33 @@ impl CategoryEditor {
     fn handle_file_chooser_closed(
         &mut self,
         path: &Option<PathBuf>,
-        rq: &mut RenderQueue,
+        hub: &Hub,
+        _rq: &mut RenderQueue,
         context: &mut Context,
     ) -> bool {
         if let Some(kind) = self.active_intermission_edit.take() {
             if let Some(ref selected_path) = *path {
-                use crate::settings::IntermissionDisplay;
+                use crate::settings::{IntermKind, IntermissionDisplay};
                 context.settings.intermissions[kind] =
                     IntermissionDisplay::Image(selected_path.clone());
 
-                self.refresh_setting_values(context, rq);
+                let value = selected_path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("Custom")
+                    .to_string();
+
+                let update_kind = match kind {
+                    IntermKind::Suspend => Kind::IntermissionSuspend,
+                    IntermKind::PowerOff => Kind::IntermissionPowerOff,
+                    IntermKind::Share => Kind::IntermissionShare,
+                };
+
+                hub.send(Event::Settings(SettingsEvent::UpdateValue {
+                    kind: update_kind,
+                    value,
+                }))
+                .ok();
             }
         }
 
@@ -970,39 +1006,22 @@ impl CategoryEditor {
     #[allow(clippy::too_many_arguments)]
     fn handle_toggle_event(
         &mut self,
-        evt: &Event,
-        hub: &Hub,
         bus: &mut Bus,
-        rq: &mut RenderQueue,
         context: &mut Context,
         toggle: &ToggleEvent,
     ) -> bool {
         match toggle {
             ToggleEvent::Setting(ref setting) => match setting {
-                ToggleSettings::SleepCover => {
-                    self.handle_toggle_sleep_cover(evt, hub, bus, rq, context)
-                }
+                ToggleSettings::SleepCover => self.handle_toggle_sleep_cover(context),
 
-                ToggleSettings::AutoShare => {
-                    self.handle_toggle_auto_share(evt, hub, bus, rq, context)
-                }
+                ToggleSettings::AutoShare => self.handle_toggle_auto_share(context),
                 ToggleSettings::ButtonScheme => match context.settings.button_scheme {
-                    ButtonScheme::Natural => self.handle_set_button_scheme(
-                        &ButtonScheme::Inverted,
-                        evt,
-                        hub,
-                        bus,
-                        rq,
-                        context,
-                    ),
-                    ButtonScheme::Inverted => self.handle_set_button_scheme(
-                        &ButtonScheme::Natural,
-                        evt,
-                        hub,
-                        bus,
-                        rq,
-                        context,
-                    ),
+                    ButtonScheme::Natural => {
+                        self.handle_set_button_scheme(&ButtonScheme::Inverted, bus, context)
+                    }
+                    ButtonScheme::Inverted => {
+                        self.handle_set_button_scheme(&ButtonScheme::Natural, bus, context)
+                    }
                 },
                 ToggleSettings::LoggingEnabled => self.handle_toggle_logging_enabled(context),
                 #[cfg(feature = "test")]
@@ -1039,12 +1058,13 @@ impl View for CategoryEditor {
                 self.handle_submenu_event(rect, entries, rq, context)
             }
             Event::Toggle(ref toggle) if matches!(toggle, ToggleEvent::Setting(_)) => {
-                self.handle_toggle_event(evt, hub, bus, rq, context, toggle)
+                self.handle_toggle_event(bus, context, toggle)
             }
             Event::Select(ref id) => match id {
                 EntryId::SetKeyboardLayout(ref layout) => {
-                    self.handle_set_keyboard_layout(layout, evt, hub, bus, rq, context)
+                    self.handle_set_keyboard_layout(layout, hub, context)
                 }
+                EntryId::SetLocale(ref locale) => self.handle_set_locale(locale, hub, context),
                 EntryId::EditAutoSuspend => self.handle_edit_auto_suspend(hub, rq, context),
                 EntryId::EditAutoPowerOff => self.handle_edit_auto_power_off(hub, rq, context),
                 EntryId::EditSettingsRetention => {
@@ -1056,14 +1076,14 @@ impl View for CategoryEditor {
                 #[cfg(feature = "otel")]
                 EntryId::EditOtlpEndpoint => self.handle_edit_otlp_endpoint(hub, rq, context),
                 EntryId::SetButtonScheme(button_scheme) => {
-                    self.handle_set_button_scheme(button_scheme, evt, hub, bus, rq, context)
+                    self.handle_set_button_scheme(button_scheme, bus, context)
                 }
                 EntryId::SetFinishedAction(action) => {
-                    self.handle_set_finished_action(*action, rq, context)
+                    self.handle_set_finished_action(*action, hub, context)
                 }
                 EntryId::DeleteLibrary(index) => self.handle_delete_library(*index, rq, context),
                 EntryId::SetIntermission(kind, display) => {
-                    self.handle_set_intermission(kind, display, rq, context)
+                    self.handle_set_intermission(kind, display, hub, context)
                 }
                 EntryId::EditIntermissionImage(kind) => {
                     self.handle_edit_intermission_image(kind, hub, rq, context)
@@ -1076,20 +1096,20 @@ impl View for CategoryEditor {
                 self.handle_update_library_event(*index, library, rq, context)
             }
             Event::Submit(ViewId::AutoSuspendInput, ref text) => {
-                self.handle_submit_auto_suspend(text, hub, rq, context)
+                self.handle_submit_auto_suspend(text, hub, context)
             }
             Event::Submit(ViewId::AutoPowerOffInput, ref text) => {
-                self.handle_submit_auto_power_off(text, hub, rq, context)
+                self.handle_submit_auto_power_off(text, hub, context)
             }
             Event::Submit(ViewId::SettingsRetentionInput, ref text) => {
-                self.handle_submit_settings_retention(text, hub, rq, context)
+                self.handle_submit_settings_retention(text, hub, context)
             }
             #[cfg(feature = "otel")]
             Event::Submit(ViewId::OtlpEndpointInput, ref text) => {
                 self.handle_submit_otlp_endpoint(text, hub, rq, context)
             }
             Event::FileChooserClosed(ref path) => {
-                self.handle_file_chooser_closed(path, rq, context)
+                self.handle_file_chooser_closed(path, hub, rq, context)
             }
             Event::Close(view_id) => self.handle_close_view_event(view_id, rq),
             _ => false,

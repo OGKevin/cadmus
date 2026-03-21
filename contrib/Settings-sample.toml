@@ -31,6 +31,8 @@ external-urls-queue = "bin/article_fetcher/urls.txt"
 # for backward and forward compatibility across version upgrades.
 # Files older than this count are automatically removed. Set to 0 to keep all files.
 settings-retention = 3
+# The preferred language for the user interface, using BCP 47 format.
+locale = "en-US"
 
 [logging]
 # Enable or disable structured JSON logging.

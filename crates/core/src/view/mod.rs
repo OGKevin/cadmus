@@ -84,6 +84,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::Sender;
 use std::time::{Duration, Instant};
 use tracing::error;
+use unic_langid::LanguageIdentifier;
 
 // Border thicknesses in pixels, at 300 DPI.
 pub const THICKNESS_SMALL: f32 = 1.0;
@@ -729,6 +730,7 @@ pub enum EntryId {
     SetSearchTarget(Option<String>),
     SetInputText(ViewId, String),
     SetKeyboardLayout(String),
+    SetLocale(Option<LanguageIdentifier>),
     // TODO(ogkevin): Make one entryId for settings editor
     EditLibraryName,
     EditLibraryPath,

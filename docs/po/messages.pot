@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Cadmus Documentation\n"
-"POT-Creation-Date: 2026-03-21T19:49:27+01:00\n"
+"POT-Creation-Date: 2026-03-22T21:26:28+01:00\n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -50,7 +50,7 @@ msgid "File Chooser"
 msgstr ""
 
 #: src/SUMMARY.md:12 src/troubleshooting/index.md:1
-#: src/contributing/devenv-setup.md:208
+#: src/contributing/devenv-setup.md:209
 msgid "Troubleshooting"
 msgstr ""
 
@@ -74,19 +74,27 @@ msgstr ""
 msgid "Documentation"
 msgstr ""
 
-#: src/SUMMARY.md:22
+#: src/SUMMARY.md:22 src/contributing/translations/index.md:1
 msgid "Translations"
 msgstr ""
 
-#: src/SUMMARY.md:23 src/contributing/sqlite-sqlx.md:1
+#: src/SUMMARY.md:23
+msgid "UI Strings"
+msgstr ""
+
+#: src/SUMMARY.md:24
+msgid "Guide"
+msgstr ""
+
+#: src/SUMMARY.md:25 src/contributing/sqlite-sqlx.md:1
 msgid "SQLite & SQLx"
 msgstr ""
 
-#: src/SUMMARY.md:24 src/contributing/library-database.md:1
+#: src/SUMMARY.md:26 src/contributing/library-database.md:1
 msgid "Library Database"
 msgstr ""
 
-#: src/SUMMARY.md:25 src/contributing/runtime-migrations.md:1
+#: src/SUMMARY.md:27 src/contributing/runtime-migrations.md:1
 msgid "Runtime Migrations"
 msgstr ""
 
@@ -509,7 +517,7 @@ msgid "Source"
 msgstr ""
 
 #: src/installation/ota.md:19 src/contributing/devenv-setup.md:37
-#: src/contributing/devenv-setup.md:62
+#: src/contributing/devenv-setup.md:63
 msgid "Description"
 msgstr ""
 
@@ -683,7 +691,7 @@ msgid ""
 "move this file into its `Settings/` folder automatically."
 msgstr ""
 
-#: src/installation/migration.md:17 src/settings/index.md:115
+#: src/installation/migration.md:17 src/settings/index.md:127
 msgid ""
 "```toml\n"
 "[[libraries]]\n"
@@ -841,12 +849,12 @@ msgstr ""
 
 #: src/settings/index.md:17 src/settings/index.md:29 src/settings/index.md:39
 #: src/settings/index.md:54 src/settings/index.md:66 src/settings/index.md:78
-#: src/settings/index.md:94 src/settings/index.md:111 src/settings/index.md:124
-#: src/settings/index.md:130 src/settings/index.md:136
-#: src/settings/index.md:144 src/settings/index.md:165
-#: src/settings/index.md:178 src/settings/index.md:186
-#: src/settings/index.md:194 src/settings/index.md:237
-#: src/settings/index.md:248
+#: src/settings/index.md:90 src/settings/index.md:106 src/settings/index.md:123
+#: src/settings/index.md:136 src/settings/index.md:142
+#: src/settings/index.md:148 src/settings/index.md:156
+#: src/settings/index.md:177 src/settings/index.md:190
+#: src/settings/index.md:198 src/settings/index.md:206
+#: src/settings/index.md:249 src/settings/index.md:260
 msgid "✏️"
 msgstr ""
 
@@ -933,38 +941,59 @@ msgid ""
 msgstr ""
 
 #: src/settings/index.md:88
-msgid "Reader"
-msgstr ""
-
-#: src/settings/index.md:90
-msgid "Settings that control the reading experience."
+msgid "`locale`"
 msgstr ""
 
 #: src/settings/index.md:92
-msgid "`reader.finished`"
+msgid ""
+"The preferred language for the user interface, using BCP 47 format (e.g., "
+"`\"en-US\"`, `\"de-DE\"`)."
+msgstr ""
+
+#: src/settings/index.md:94
+msgid "This setting is optional. When not set, `en-GB` is used."
 msgstr ""
 
 #: src/settings/index.md:96
-msgid "What to do when you finish reading a book."
-msgstr ""
-
-#: src/settings/index.md:98 src/settings/index.md:149
-msgid "Possible values:"
+msgid ""
+"```toml\n"
+"locale = \"en-GB\"\n"
+"```"
 msgstr ""
 
 #: src/settings/index.md:100
-msgid "`\"notify\"` (show a notification)"
-msgstr ""
-
-#: src/settings/index.md:101
-msgid "`\"close\"` (close the book and go back)"
+msgid "Reader"
 msgstr ""
 
 #: src/settings/index.md:102
-msgid "`\"go-to-next\"` (open the next book in the library)."
+msgid "Settings that control the reading experience."
 msgstr ""
 
 #: src/settings/index.md:104
+msgid "`reader.finished`"
+msgstr ""
+
+#: src/settings/index.md:108
+msgid "What to do when you finish reading a book."
+msgstr ""
+
+#: src/settings/index.md:110 src/settings/index.md:161
+msgid "Possible values:"
+msgstr ""
+
+#: src/settings/index.md:112
+msgid "`\"notify\"` (show a notification)"
+msgstr ""
+
+#: src/settings/index.md:113
+msgid "`\"close\"` (close the book and go back)"
+msgstr ""
+
+#: src/settings/index.md:114
+msgid "`\"go-to-next\"` (open the next book in the library)."
+msgstr ""
+
+#: src/settings/index.md:116
 msgid ""
 "```toml\n"
 "[reader]\n"
@@ -972,69 +1001,69 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:109
+#: src/settings/index.md:121
 msgid "Libraries"
 msgstr ""
 
-#: src/settings/index.md:113
+#: src/settings/index.md:125
 msgid "Document library configuration. Each library has a name, path, and mode."
 msgstr ""
 
-#: src/settings/index.md:122
+#: src/settings/index.md:134
 msgid "`libraries.name`"
 msgstr ""
 
-#: src/settings/index.md:126
+#: src/settings/index.md:138
 msgid "Display name for the library."
 msgstr ""
 
-#: src/settings/index.md:128
+#: src/settings/index.md:140
 msgid "`libraries.path`"
 msgstr ""
 
-#: src/settings/index.md:132
+#: src/settings/index.md:144
 msgid "Directory path containing documents."
 msgstr ""
 
-#: src/settings/index.md:134
+#: src/settings/index.md:146
 msgid "`libraries.mode`"
 msgstr ""
 
-#: src/settings/index.md:138
+#: src/settings/index.md:150
 msgid "Library indexing mode."
 msgstr ""
 
-#: src/settings/index.md:140
+#: src/settings/index.md:152
 msgid "Possible values: `\"database\"`, `\"filesystem\"`."
 msgstr ""
 
-#: src/settings/index.md:142
+#: src/settings/index.md:154
 msgid "`libraries.finished`"
 msgstr ""
 
-#: src/settings/index.md:146
+#: src/settings/index.md:158
 msgid ""
 "Override the `reader.finished` setting for this specific library. When set, "
 "this takes precedence over the global reader setting."
 msgstr ""
 
-#: src/settings/index.md:151
+#: src/settings/index.md:163
 msgid "`\"notify\"`"
 msgstr ""
 
-#: src/settings/index.md:152
+#: src/settings/index.md:164
 msgid "`\"close\"`"
 msgstr ""
 
-#: src/settings/index.md:153
+#: src/settings/index.md:165
 msgid "`\"go-to-next\"`."
 msgstr ""
 
-#: src/settings/index.md:154
+#: src/settings/index.md:166
 msgid "Leave unset to inherit the global `reader.finished` setting."
 msgstr ""
 
-#: src/settings/index.md:156
+#: src/settings/index.md:168
 msgid ""
 "```toml\n"
 "[[libraries]]\n"
@@ -1044,15 +1073,15 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:163
+#: src/settings/index.md:175
 msgid "Intermissions"
 msgstr ""
 
-#: src/settings/index.md:167
+#: src/settings/index.md:179
 msgid "Defines the images displayed when entering an intermission state."
 msgstr ""
 
-#: src/settings/index.md:169
+#: src/settings/index.md:181
 msgid ""
 "```toml\n"
 "[intermissions]\n"
@@ -1062,46 +1091,46 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:176
+#: src/settings/index.md:188
 msgid "`intermissions.suspend`"
 msgstr ""
 
-#: src/settings/index.md:180
+#: src/settings/index.md:192
 msgid "Image displayed when the device enters sleep mode."
 msgstr ""
 
-#: src/settings/index.md:182 src/settings/index.md:190
-#: src/settings/index.md:198
+#: src/settings/index.md:194 src/settings/index.md:202
+#: src/settings/index.md:210
 msgid ""
 "Possible values: `\"logo:\"` (built-in logo), `\"cover:\"` (current book "
 "cover), or a path to a custom image file."
 msgstr ""
 
-#: src/settings/index.md:184
+#: src/settings/index.md:196
 msgid "`intermissions.power-off`"
 msgstr ""
 
-#: src/settings/index.md:188
+#: src/settings/index.md:200
 msgid "Image displayed when the device powers off."
 msgstr ""
 
-#: src/settings/index.md:192
+#: src/settings/index.md:204
 msgid "`intermissions.share`"
 msgstr ""
 
-#: src/settings/index.md:196
+#: src/settings/index.md:208
 msgid "Image displayed when entering USB sharing mode."
 msgstr ""
 
-#: src/settings/index.md:200
+#: src/settings/index.md:212
 msgid "OTA"
 msgstr ""
 
-#: src/settings/index.md:202
+#: src/settings/index.md:214
 msgid "The OTA feature downloads builds from GitHub."
 msgstr ""
 
-#: src/settings/index.md:204
+#: src/settings/index.md:216
 msgid ""
 "Authentication for main branch and PR builds uses **GitHub device auth "
 "flow**. When you select a build that requires authentication, Cadmus will "
@@ -1110,37 +1139,37 @@ msgid ""
 "once you authorize."
 msgstr ""
 
-#: src/settings/index.md:210
+#: src/settings/index.md:222
 msgid ""
 "The token is saved to disk after the first authorization so you will not be "
 "prompted again on subsequent downloads."
 msgstr ""
 
-#: src/settings/index.md:213
+#: src/settings/index.md:225
 msgid "Telemetry"
 msgstr ""
 
-#: src/settings/index.md:215
+#: src/settings/index.md:227
 msgid ""
 "Cadmus writes JSON logs to disk. When the build enables the `otel` feature, "
 "it can also export logs to an OpenTelemetry endpoint."
 msgstr ""
 
-#: src/settings/index.md:218
+#: src/settings/index.md:230
 msgid "These settings are available in the **Settings → Telemetry** menu."
 msgstr ""
 
-#: src/settings/index.md:220
+#: src/settings/index.md:232
 msgid ""
 "\\[!IMPORTANT\\] Changes to these settings only take effect after restarting "
 "Cadmus. The application initializes telemetry on startup."
 msgstr ""
 
-#: src/settings/index.md:224
+#: src/settings/index.md:236
 msgid "`logging`"
 msgstr ""
 
-#: src/settings/index.md:226
+#: src/settings/index.md:238
 msgid ""
 "```toml\n"
 "[logging]\n"
@@ -1152,29 +1181,29 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:235
+#: src/settings/index.md:247
 msgid "`logging.enabled`"
 msgstr ""
 
-#: src/settings/index.md:239
+#: src/settings/index.md:251
 msgid "Enable or disable structured JSON logging."
 msgstr ""
 
-#: src/settings/index.md:246
+#: src/settings/index.md:258
 msgid "`logging.level`"
 msgstr ""
 
-#: src/settings/index.md:250
+#: src/settings/index.md:262
 msgid "Minimum log level to record."
 msgstr ""
 
-#: src/settings/index.md:252
+#: src/settings/index.md:264
 msgid ""
 "Possible values: `\"trace\"`, `\"debug\"`, `\"info\"`, `\"warn\"`, "
 "`\"error\"`."
 msgstr ""
 
-#: src/settings/index.md:254
+#: src/settings/index.md:266
 msgid ""
 "```toml\n"
 "[logging]\n"
@@ -1182,37 +1211,37 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:259
+#: src/settings/index.md:271
 msgid "`logging.max-files`"
 msgstr ""
 
-#: src/settings/index.md:261
+#: src/settings/index.md:273
 msgid ""
 "Number of log files to keep. Only the most recent N files are kept — older "
 "ones are deleted automatically when Cadmus starts."
 msgstr ""
 
-#: src/settings/index.md:264 src/settings/index.md:308
+#: src/settings/index.md:276 src/settings/index.md:320
 msgid "Default: `3`"
 msgstr ""
 
-#: src/settings/index.md:265
+#: src/settings/index.md:277
 msgid "Set to `0` to keep all log files."
 msgstr ""
 
-#: src/settings/index.md:272
+#: src/settings/index.md:284
 msgid "`logging.otlp-endpoint`"
 msgstr ""
 
-#: src/settings/index.md:274
+#: src/settings/index.md:286
 msgid "✏️ (only when the `otel` feature is enabled)"
 msgstr ""
 
-#: src/settings/index.md:276
+#: src/settings/index.md:288
 msgid "Optional OTLP endpoint for exporting logs to an OpenTelemetry collector."
 msgstr ""
 
-#: src/settings/index.md:278
+#: src/settings/index.md:290
 msgid ""
 "```toml\n"
 "[logging]\n"
@@ -1220,52 +1249,52 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:283
+#: src/settings/index.md:295
 msgid "Environment override:"
 msgstr ""
 
-#: src/settings/index.md:285
+#: src/settings/index.md:297
 msgid ""
 "`OTEL_EXPORTER_OTLP_ENDPOINT` takes precedence over `logging.otlp-endpoint`."
 msgstr ""
 
-#: src/settings/index.md:287
+#: src/settings/index.md:299
 msgid "`logging.enable-kern-log`"
 msgstr ""
 
-#: src/settings/index.md:289
+#: src/settings/index.md:301
 msgid "🧪 📱 ✏️"
 msgstr ""
 
-#: src/settings/index.md:291
+#: src/settings/index.md:303
 msgid ""
 "Captures kernel logs via `logread -F` and forwards them to structured "
 "logging with the target `cadmus_core::logging:kern`."
 msgstr ""
 
-#: src/settings/index.md:299
+#: src/settings/index.md:311
 msgid "Settings Retention"
 msgstr ""
 
-#: src/settings/index.md:301
+#: src/settings/index.md:313
 msgid ""
 "Cadmus stores each version's settings in a separate file in the `Settings/` "
 "directory (for example, `Settings-v1.2.3.toml`). This ensures backward and "
 "forward compatibility when you upgrade."
 msgstr ""
 
-#: src/settings/index.md:304
+#: src/settings/index.md:316
 msgid "`settings-retention`"
 msgstr ""
 
-#: src/settings/index.md:306
+#: src/settings/index.md:318
 msgid ""
 "Number of recent version settings files to keep. Only the most recent N "
 "version files are kept. When a new version is saved, older versions beyond "
 "this limit are deleted automatically."
 msgstr ""
 
-#: src/settings/index.md:309
+#: src/settings/index.md:321
 msgid "Set to `0` to keep all version files"
 msgstr ""
 
@@ -1491,7 +1520,7 @@ msgid ""
 "development environment. This guide covers setup on both Linux and macOS."
 msgstr ""
 
-#: src/contributing/devenv-setup.md:6 src/contributing/translations.md:6
+#: src/contributing/devenv-setup.md:6 src/contributing/translations/docs.md:6
 msgid "Prerequisites"
 msgstr ""
 
@@ -1613,438 +1642,446 @@ msgstr ""
 msgid "Serve documentation portal locally on port 1111"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:50
+#: src/contributing/devenv-setup.md:49
+msgid "`cadmus-translate`"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:49
+msgid "Generates the template .pot file for the docs"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:51
 msgid ""
 "Run `cargo xtask --help` to see all available subcommands, or `cargo xtask "
 "<cmd> --help` for options on a specific command."
 msgstr ""
 
-#: src/contributing/devenv-setup.md:53
+#: src/contributing/devenv-setup.md:54
 msgid ""
 "Or have a look at the rustdocs for `xtask` <a href=\"/api/xtask/\">here</a>."
 msgstr ""
 
-#: src/contributing/devenv-setup.md:55
+#: src/contributing/devenv-setup.md:56
 msgid "Tasks"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:57
+#: src/contributing/devenv-setup.md:58
 msgid ""
 "The devenv environment uses [tasks](https://devenv.sh/tasks/) to manage "
 "build dependencies. Tasks are defined in `devenv.nix` and can be run with "
 "`devenv tasks run <task>`."
 msgstr ""
 
-#: src/contributing/devenv-setup.md:60
+#: src/contributing/devenv-setup.md:61
 msgid "Available Tasks"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:62
+#: src/contributing/devenv-setup.md:63
 msgid "Task"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:62
+#: src/contributing/devenv-setup.md:63
 msgid "Dependencies"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:64 src/contributing/devenv-setup.md:66
+#: src/contributing/devenv-setup.md:65 src/contributing/devenv-setup.md:67
 msgid "`docs:build`"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:64
+#: src/contributing/devenv-setup.md:65
 msgid "Build documentation EPUB (only rebuilds if files changed)"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:64 src/contributing/devenv-setup.md:65
+#: src/contributing/devenv-setup.md:65 src/contributing/devenv-setup.md:66
 msgid "None"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:65
+#: src/contributing/devenv-setup.md:66
 msgid "`deps:native`"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:65
+#: src/contributing/devenv-setup.md:66
 msgid "Build MuPDF and wrapper for native development"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:66
+#: src/contributing/devenv-setup.md:67
 msgid "`build:kobo`"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:66
+#: src/contributing/devenv-setup.md:67
 msgid "Build for Kobo device (Linux only)"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:68
+#: src/contributing/devenv-setup.md:69
 msgid "All tasks delegate to `cargo xtask` under the hood."
 msgstr ""
 
-#: src/contributing/devenv-setup.md:70
+#: src/contributing/devenv-setup.md:71
 msgid "How Tasks Work"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:72
+#: src/contributing/devenv-setup.md:73
 msgid ""
 "Tasks with dependencies automatically run their dependencies first. For "
 "example:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:75
+#: src/contributing/devenv-setup.md:76
 msgid "# This will first run docs:build (if needed), then build for Kobo\n"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:79
+#: src/contributing/devenv-setup.md:80
 msgid ""
 "The `docs:build` task uses `execIfModified` to only rebuild when "
 "documentation files have actually changed."
 msgstr ""
 
-#: src/contributing/devenv-setup.md:81
+#: src/contributing/devenv-setup.md:82
 msgid "Documentation Portal"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:83
+#: src/contributing/devenv-setup.md:84
 msgid ""
 "Cadmus provides a unified documentation portal that combines user guides, "
 "API reference, and contribution guides in one place."
 msgstr ""
 
-#: src/contributing/devenv-setup.md:86
+#: src/contributing/devenv-setup.md:87
 msgid "Building and Serving Locally"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:88
+#: src/contributing/devenv-setup.md:89
 msgid "To build the documentation portal:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:94
+#: src/contributing/devenv-setup.md:95
 msgid "This runs the full build pipeline:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:96
+#: src/contributing/devenv-setup.md:97
 msgid "Builds the mdBook user guide (`docs/book/html/`)"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:97
+#: src/contributing/devenv-setup.md:98
 msgid "Generates Rust API documentation (`target/doc/`)"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:98
+#: src/contributing/devenv-setup.md:99
 msgid "Builds the Zola landing page and integrates all documentation"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:100
+#: src/contributing/devenv-setup.md:101
 msgid "To serve the portal locally with live reload:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:106
+#: src/contributing/devenv-setup.md:107
 msgid ""
 "The portal will be available at <http://localhost:1111> with automatic "
 "rebuilds when you change documentation files or Rust code."
 msgstr ""
 
-#: src/contributing/devenv-setup.md:109
+#: src/contributing/devenv-setup.md:110
 msgid "Documentation Structure"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:111
+#: src/contributing/devenv-setup.md:112
 msgid "The portal provides three integrated sections:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:113
+#: src/contributing/devenv-setup.md:114
 msgid "**Landing Page** (`/`) - Overview and feature highlights"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:114
+#: src/contributing/devenv-setup.md:115
 msgid "**User Guide** (`/guide/`) - User-facing documentation from mdBook"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:115
+#: src/contributing/devenv-setup.md:116
 msgid "**API Reference** (`/api/`) - Auto-generated Rust API documentation"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:117
+#: src/contributing/devenv-setup.md:118
 msgid ""
 "All three sections are deployed as a single artifact to GitHub Pages at "
 "<https://ogkevin.github.io/cadmus/>."
 msgstr ""
 
-#: src/contributing/devenv-setup.md:120
+#: src/contributing/devenv-setup.md:121
 msgid "Continuous Integration"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:122
+#: src/contributing/devenv-setup.md:123
 msgid ""
 "Documentation is automatically built and validated on every pull request and "
 "deployed on push to `main` or `master`. The CI pipeline checks:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:125
+#: src/contributing/devenv-setup.md:126
 msgid "mdBook documentation compiles"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:126
+#: src/contributing/devenv-setup.md:127
 msgid "Rust code documentation is valid"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:127
+#: src/contributing/devenv-setup.md:128
 msgid "Zola landing page builds successfully"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:129
+#: src/contributing/devenv-setup.md:130
 msgid "Running Tests"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:131
+#: src/contributing/devenv-setup.md:132
 msgid ""
 "Tests require the `TEST_ROOT_DIR` environment variable to be set. The "
 "easiest way to run the full test matrix is:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:138
+#: src/contributing/devenv-setup.md:139
 msgid ""
 "This sets `TEST_ROOT_DIR` automatically and runs tests across all feature "
 "combinations. To run a single feature combination:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:142
+#: src/contributing/devenv-setup.md:143
 msgid "\"emulator + test\""
 msgstr ""
 
-#: src/contributing/devenv-setup.md:145
+#: src/contributing/devenv-setup.md:146
 msgid "Or to run tests manually without xtask:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:148 src/contributing/devenv-setup.md:220
+#: src/contributing/devenv-setup.md:149 src/contributing/devenv-setup.md:221
 msgid "$(pwd)"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:151
+#: src/contributing/devenv-setup.md:152
 msgid ""
 "`TEST_ROOT_DIR` is automatically configured in CI but must be set manually "
 "when running `cargo test` directly."
 msgstr ""
 
-#: src/contributing/devenv-setup.md:154
+#: src/contributing/devenv-setup.md:155
 msgid "Platform Support"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:156
+#: src/contributing/devenv-setup.md:157
 msgid "Linux (Full Support)"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:158
+#: src/contributing/devenv-setup.md:159
 msgid "Linux provides full development capabilities including:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:160
+#: src/contributing/devenv-setup.md:161
 msgid "Native development (emulator, tests)"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:161
+#: src/contributing/devenv-setup.md:162
 msgid "Cross-compilation for Kobo devices using the Linaro ARM toolchain"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:162
+#: src/contributing/devenv-setup.md:163
 msgid "Git hooks (actionlint, shellcheck, shfmt, markdownlint, prettier)"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:164
+#: src/contributing/devenv-setup.md:165
 msgid ""
 "The Linaro toolchain is automatically added to `PATH` and provides "
 "`arm-linux-gnueabihf-*` commands."
 msgstr ""
 
-#: src/contributing/devenv-setup.md:166
+#: src/contributing/devenv-setup.md:167
 msgid "macOS (Native Development Only)"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:168
+#: src/contributing/devenv-setup.md:169
 msgid "macOS supports native development but has some limitations:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:170
+#: src/contributing/devenv-setup.md:171
 msgid "Feature"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:170
+#: src/contributing/devenv-setup.md:171
 msgid "Status"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:170
+#: src/contributing/devenv-setup.md:171
 msgid "Notes"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:172
+#: src/contributing/devenv-setup.md:173
 msgid "Native builds"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:172
+#: src/contributing/devenv-setup.md:173
 msgid "Supported"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:172
+#: src/contributing/devenv-setup.md:173
 msgid "Emulator and tests work"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:173
+#: src/contributing/devenv-setup.md:174
 msgid "Cross-compilation"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:173
+#: src/contributing/devenv-setup.md:174
 msgid "Not supported"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:173
+#: src/contributing/devenv-setup.md:174
 msgid "Linaro toolchain is Linux-only"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:175
+#: src/contributing/devenv-setup.md:176
 msgid "macOS-Specific Notes"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:177
+#: src/contributing/devenv-setup.md:178
 msgid ""
 "**Cross-compilation for Kobo**: The Linaro ARM cross-compilation toolchain "
 "consists of x86_64 Linux ELF binaries that cannot run on macOS. To build for "
 "Kobo devices on macOS, use Docker with a Linux container or a Linux VM."
 msgstr ""
 
-#: src/contributing/devenv-setup.md:181
+#: src/contributing/devenv-setup.md:182
 msgid ""
 "**MuPDF build**: On macOS, the native setup script manually gathers "
 "pkg-config CFLAGS for system libraries because MuPDF's build system doesn't "
 "properly detect them on Darwin."
 msgstr ""
 
-#: src/contributing/devenv-setup.md:184
+#: src/contributing/devenv-setup.md:185
 msgid "Observability Stack"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:186
+#: src/contributing/devenv-setup.md:187
 msgid "The devenv includes a full observability stack for development:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:189
+#: src/contributing/devenv-setup.md:190
 msgid "# Start all services\n"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:191
+#: src/contributing/devenv-setup.md:192
 msgid "# In another terminal, run the instrumented emulator\n"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:196
+#: src/contributing/devenv-setup.md:197
 msgid "Services available after `devenv up`:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:198
+#: src/contributing/devenv-setup.md:199
 msgid "Service"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:198
+#: src/contributing/devenv-setup.md:199
 msgid "URL"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:198
+#: src/contributing/devenv-setup.md:199
 #: src/contributing/library-database.md:148
 msgid "Purpose"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:200
+#: src/contributing/devenv-setup.md:201
 msgid "Grafana"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:200
+#: src/contributing/devenv-setup.md:201
 msgid "<http://localhost:3000>"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:200
+#: src/contributing/devenv-setup.md:201
 msgid "Dashboards and exploration"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:201
+#: src/contributing/devenv-setup.md:202
 msgid "Tempo"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:201
+#: src/contributing/devenv-setup.md:202
 msgid "<http://localhost:3200>"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:201
+#: src/contributing/devenv-setup.md:202
 msgid "Distributed tracing"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:202
+#: src/contributing/devenv-setup.md:203
 msgid "Loki"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:202
+#: src/contributing/devenv-setup.md:203
 msgid "<http://localhost:3100>"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:202
+#: src/contributing/devenv-setup.md:203
 msgid "Log aggregation"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:203
+#: src/contributing/devenv-setup.md:204
 msgid "Prometheus"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:203
+#: src/contributing/devenv-setup.md:204
 msgid "<http://localhost:9090>"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:203
+#: src/contributing/devenv-setup.md:204
 msgid "Metrics"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:204
+#: src/contributing/devenv-setup.md:205
 msgid "OTLP Collector"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:204
+#: src/contributing/devenv-setup.md:205
 msgid "<http://localhost:4318>"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:204
+#: src/contributing/devenv-setup.md:205
 msgid "Telemetry ingestion"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:206
+#: src/contributing/devenv-setup.md:207
 msgid ""
 "For more details on telemetry, see [OpenTelemetry Integration](telemetry.md)."
 msgstr ""
 
-#: src/contributing/devenv-setup.md:210
+#: src/contributing/devenv-setup.md:211
 msgid "Shell takes a long time to start"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:212
+#: src/contributing/devenv-setup.md:213
 msgid ""
 "The first `devenv shell` invocation downloads and builds dependencies, which "
 "can take several minutes. Subsequent invocations are cached and should be "
 "fast."
 msgstr ""
 
-#: src/contributing/devenv-setup.md:215
+#: src/contributing/devenv-setup.md:216
 msgid "Tests fail with \"TEST_ROOT_DIR must be set\""
 msgstr ""
 
-#: src/contributing/devenv-setup.md:217
+#: src/contributing/devenv-setup.md:218
 msgid "Set the environment variable before running tests:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:223
+#: src/contributing/devenv-setup.md:224
 msgid "Local Configuration"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:225
+#: src/contributing/devenv-setup.md:226
 msgid ""
 "Create `devenv.local.nix` to override settings without modifying the tracked "
 "configuration:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:227
+#: src/contributing/devenv-setup.md:228
 msgid ""
 "```nix\n"
 "{ pkgs, ... }:\n"
@@ -2058,7 +2095,7 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:238
+#: src/contributing/devenv-setup.md:239
 msgid "This file is gitignored and won't affect other contributors."
 msgstr ""
 
@@ -2993,75 +3030,271 @@ msgid ""
 "every push to `main` and for every pull request."
 msgstr ""
 
-#: src/contributing/translations.md:1
+#: src/contributing/translations/index.md:3
+msgid ""
+"Cadmus has two separate translation systems, each covering a different part "
+"of the project."
+msgstr ""
+
+#: src/contributing/translations/index.md:6
+msgid "What"
+msgstr ""
+
+#: src/contributing/translations/index.md:6
+msgid "System"
+msgstr ""
+
+#: src/contributing/translations/index.md:6
+msgid "Files"
+msgstr ""
+
+#: src/contributing/translations/index.md:8
+msgid "[Documentation](docs.md)"
+msgstr ""
+
+#: src/contributing/translations/index.md:8
+msgid "GNU gettext / PO"
+msgstr ""
+
+#: src/contributing/translations/index.md:8
+msgid "`docs/po/*.po`"
+msgstr ""
+
+#: src/contributing/translations/index.md:9
+msgid "[UI strings](source-code.md)"
+msgstr ""
+
+#: src/contributing/translations/index.md:9
+msgid "Fluent (FTL)"
+msgstr ""
+
+#: src/contributing/translations/index.md:9
+msgid "`crates/core/i18n/**/*.ftl`"
+msgstr ""
+
+#: src/contributing/translations/index.md:11
+msgid "Pick the guide that matches what you want to translate."
+msgstr ""
+
+#: src/contributing/translations/source-code.md:1
+msgid "Translating Source Strings"
+msgstr ""
+
+#: src/contributing/translations/source-code.md:3
+msgid ""
+"The Cadmus UI uses [Fluent](https://projectfluent.org) for all user-visible "
+"strings. Translations are embedded directly into the binary at compile time "
+"— no external files are needed on the device."
+msgstr ""
+
+#: src/contributing/translations/source-code.md:7
+msgid "How it works"
+msgstr ""
+
+#: src/contributing/translations/source-code.md:9
+msgid "FTL files live under `crates/core/i18n/<lang-tag>/cadmus_core.ftl`."
+msgstr ""
+
+#: src/contributing/translations/source-code.md:10
+msgid ""
+"The fallback language is **en-GB**; any string missing from a translation "
+"falls back to the English text automatically."
+msgstr ""
+
+#: src/contributing/translations/source-code.md:12
+msgid ""
+"`crates/core/src/i18n.rs` loads the correct language at startup based on "
+"`settings.locale`."
+msgstr ""
+
+#: src/contributing/translations/source-code.md:14
+msgid "The `fl!(\"message-id\")` macro resolves message IDs at **compile time**."
+msgstr ""
+
+#: src/contributing/translations/source-code.md:16
+#: src/contributing/translations/docs.md:18
+msgid "Adding a new language"
+msgstr ""
+
+#: src/contributing/translations/source-code.md:18
+msgid "1. Create the FTL file"
+msgstr ""
+
+#: src/contributing/translations/source-code.md:20
+msgid "Create a new file at the path matching the BCP 47 tag for your language:"
+msgstr ""
+
+#: src/contributing/translations/source-code.md:26
+msgid "For example, for French:"
+msgstr ""
+
+#: src/contributing/translations/source-code.md:32
+msgid "2. Copy and translate the English strings"
+msgstr ""
+
+#: src/contributing/translations/source-code.md:34
+msgid "Use the English fallback file as your starting point:"
+msgstr ""
+
+#: src/contributing/translations/source-code.md:40
+msgid ""
+"Translate each message value. The message ID (left of `=`) must stay "
+"unchanged — only the value (right of `=`) changes:"
+msgstr ""
+
+#: src/contributing/translations/source-code.md:51
+msgid "3. Set the locale in Settings"
+msgstr ""
+
+#: src/contributing/translations/source-code.md:53
+msgid ""
+"To activate the new language locally during development, add a `locale` key "
+"to your `Settings.toml`:"
+msgstr ""
+
+#: src/contributing/translations/source-code.md:56
+msgid ""
+"```toml\n"
+"locale = \"fr\"\n"
+"```"
+msgstr ""
+
+#: src/contributing/translations/source-code.md:60
+msgid "4. Build and verify"
+msgstr ""
+
+#: src/contributing/translations/source-code.md:66
+msgid ""
+"The `fl!()` macro validates all message IDs at compile time. A successful "
+"build confirms the FTL file is well-formed and all IDs referenced in code "
+"are present."
+msgstr ""
+
+#: src/contributing/translations/source-code.md:69
+msgid "Adding a string to the source code"
+msgstr ""
+
+#: src/contributing/translations/source-code.md:71
+msgid "When you add a new UI string:"
+msgstr ""
+
+#: src/contributing/translations/source-code.md:73
+msgid ""
+"Add the message to `en-GB`, and any other languages you know how to "
+"translate it into."
+msgstr ""
+
+#: src/contributing/translations/source-code.md:75
+msgid "Use the `fl!()` macro in the Rust source:"
+msgstr ""
+
+#: src/contributing/translations/source-code.md:78
+msgid "\"my-new-message\""
+msgstr ""
+
+#: src/contributing/translations/source-code.md:81
+msgid "For messages with variables, use named arguments:"
+msgstr ""
+
+#: src/contributing/translations/source-code.md:89
+msgid "\"books-loaded\""
+msgstr ""
+
+#: src/contributing/translations/source-code.md:92
+msgid "FTL file format"
+msgstr ""
+
+#: src/contributing/translations/source-code.md:94
+msgid "Fluent uses a straightforward syntax. A few rules to keep in mind:"
+msgstr ""
+
+#: src/contributing/translations/source-code.md:96
+msgid "Message IDs use `kebab-case`."
+msgstr ""
+
+#: src/contributing/translations/source-code.md:97
+msgid "Values can span multiple lines by indenting continuation lines."
+msgstr ""
+
+#: src/contributing/translations/source-code.md:98
+msgid "Use Unicode characters directly — no escaping needed."
+msgstr ""
+
+#: src/contributing/translations/source-code.md:99
+msgid "Comments start with `#`."
+msgstr ""
+
+#: src/contributing/translations/source-code.md:101
+msgid ""
+"For the full syntax reference see the [Fluent syntax "
+"guide](https://projectfluent.org/fluent/guide/)."
+msgstr ""
+
+#: src/contributing/translations/docs.md:1
 msgid "Translating Cadmus Documentation"
 msgstr ""
 
-#: src/contributing/translations.md:3
+#: src/contributing/translations/docs.md:3
 msgid ""
 "This guide explains how to translate the Cadmus documentation into other "
 "languages. Translations live in `docs/po/` as standard GNU gettext PO files."
 msgstr ""
 
-#: src/contributing/translations.md:8
+#: src/contributing/translations/docs.md:8
 msgid ""
 "If you are using the `devenv` environment, all required tools are already "
 "available:"
 msgstr ""
 
-#: src/contributing/translations.md:11
+#: src/contributing/translations/docs.md:11
 msgid ""
 "`mdbook-xgettext` / `mdbook-gettext` — string extraction and preprocessing"
 msgstr ""
 
-#: src/contributing/translations.md:12
+#: src/contributing/translations/docs.md:12
 msgid "`msginit` / `msgmerge` / `msgfmt` — gettext utilities (from `gettext`)"
 msgstr ""
 
-#: src/contributing/translations.md:13
+#: src/contributing/translations/docs.md:13
 msgid "`poedit` — graphical PO editor"
 msgstr ""
 
-#: src/contributing/translations.md:15
+#: src/contributing/translations/docs.md:15
 msgid ""
 "Install them outside devenv with `cargo install mdbook-i18n-helpers` and "
 "your system's `gettext` package."
 msgstr ""
 
-#: src/contributing/translations.md:18
-msgid "Adding a new language"
-msgstr ""
-
-#: src/contributing/translations.md:20
+#: src/contributing/translations/docs.md:20
 msgid "1. Extract the POT template"
 msgstr ""
 
-#: src/contributing/translations.md:22
+#: src/contributing/translations/docs.md:22
 msgid "Run the `cadmus-translate` script (devenv) or the equivalent command:"
 msgstr ""
 
-#: src/contributing/translations.md:28
+#: src/contributing/translations/docs.md:28
 msgid ""
 "This writes `docs/po/messages.pot` — the source template every translation "
 "derives from. Commit this file whenever the English source changes so "
 "translators have an up-to-date starting point."
 msgstr ""
 
-#: src/contributing/translations.md:32
+#: src/contributing/translations/docs.md:32
 msgid "2. Create a PO file for your locale"
 msgstr ""
 
-#: src/contributing/translations.md:35
+#: src/contributing/translations/docs.md:35
 msgid "# Replace 'fr' with the BCP 47 language tag you are adding.\n"
 msgstr ""
 
-#: src/contributing/translations.md:41
+#: src/contributing/translations/docs.md:41
 msgid ""
 "Open `docs/po/fr.po` and set the `Language-Name` header so the language "
 "picker displays a readable label:"
 msgstr ""
 
-#: src/contributing/translations.md:44
+#: src/contributing/translations/docs.md:44
 msgid ""
 "```po\n"
 "\"Language-Name: Français\\n"
@@ -3069,21 +3302,21 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/contributing/translations.md:48
+#: src/contributing/translations/docs.md:48
 msgid ""
 "The xtask reads this header when generating `locales.json`; without it the "
 "locale code (e.g. `fr`) is shown instead."
 msgstr ""
 
-#: src/contributing/translations.md:51
+#: src/contributing/translations/docs.md:51
 msgid "3. Translate the strings"
 msgstr ""
 
-#: src/contributing/translations.md:53
+#: src/contributing/translations/docs.md:53
 msgid "Open the PO file in Poedit or any text editor and fill in each `msgstr`:"
 msgstr ""
 
-#: src/contributing/translations.md:55
+#: src/contributing/translations/docs.md:55
 msgid ""
 "```po\n"
 "msgid \"Welcome to Cadmus!\"\n"
@@ -3091,84 +3324,77 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/contributing/translations.md:60
+#: src/contributing/translations/docs.md:60
 msgid ""
 "Preserve Markdown formatting — bold, code spans, links — exactly as in the "
 "`msgid`. Untranslated or _fuzzy_ entries fall back to the English source."
 msgstr ""
 
-#: src/contributing/translations.md:63
+#: src/contributing/translations/docs.md:63
 msgid "4. Build and preview"
 msgstr ""
 
-#: src/contributing/translations.md:66
+#: src/contributing/translations/docs.md:66
 msgid "# Build everything including translated books\n"
 msgstr ""
 
-#: src/contributing/translations.md:68
+#: src/contributing/translations/docs.md:68
 msgid "# Serve\n"
 msgstr ""
 
-#: src/contributing/translations.md:74
+#: src/contributing/translations/docs.md:74
 msgid ""
 "Navigate to `http://localhost:1111/guide/` and use the language picker in "
 "the sidebar to switch to your locale."
 msgstr ""
 
-#: src/contributing/translations.md:77
+#: src/contributing/translations/docs.md:77
 msgid "Keeping translations up to date"
 msgstr ""
 
-#: src/contributing/translations.md:79
+#: src/contributing/translations/docs.md:79
 msgid ""
 "When English source files change, regenerate the template and merge new "
 "strings into existing PO files:"
 msgstr ""
 
-#: src/contributing/translations.md:83
+#: src/contributing/translations/docs.md:83
 msgid "# regenerate docs/po/messages.pot\n"
 msgstr ""
 
-#: src/contributing/translations.md:87
-msgid ""
-"\\[!IMPORTANT\\] CI fails if `docs/po/messages.pot` is out of date with the "
-"English source. Always run `cadmus-translate` and commit the result when "
-"editing docs."
-msgstr ""
-
-#: src/contributing/translations.md:91
+#: src/contributing/translations/docs.md:87
 msgid "Excluding content from extraction"
 msgstr ""
 
-#: src/contributing/translations.md:93
+#: src/contributing/translations/docs.md:89
 msgid ""
 "Wrap any block you want to keep in English with `<!-- i18n:skip -->` "
 "comments:"
 msgstr ""
 
-#: src/contributing/translations.md:103
+#: src/contributing/translations/docs.md:99
 msgid "How the build works"
 msgstr ""
 
-#: src/contributing/translations.md:105
+#: src/contributing/translations/docs.md:101
 msgid ""
 "`cargo xtask docs` calls `mdbook build -d book/<lang>` for each `.po` file "
 "found in `docs/po/`, passing `MDBOOK_BOOK__LANGUAGE=<lang>`."
 msgstr ""
 
-#: src/contributing/translations.md:107
+#: src/contributing/translations/docs.md:103
 msgid ""
 "The `[preprocessor.gettext]` in `docs/book.toml` substitutes translated "
 "strings at build time."
 msgstr ""
 
-#: src/contributing/translations.md:109
+#: src/contributing/translations/docs.md:105
 msgid ""
 "`locales.json` is written to `docs/book/html/` with the available locales; "
 "`lang-picker.js` fetches it at runtime to populate the language dropdown."
 msgstr ""
 
-#: src/contributing/translations.md:111
+#: src/contributing/translations/docs.md:107
 msgid ""
 "Symlinks under `docs-portal/static/guide/<lang>/` expose each locale build "
 "to Zola so it is served at `/guide/<lang>/`."
