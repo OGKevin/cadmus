@@ -56,7 +56,7 @@ use std::mem;
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
-use tracing::info;
+use tracing::{info, warn};
 
 pub const APP_NAME: &str = "Cadmus";
 const DB_FILENAME: &str = "cadmus.sqlite";
@@ -550,6 +550,11 @@ fn main() -> Result<(), Error> {
                                 context.display.dims = dims;
                             }
                         }
+                        warn!(
+                            path = %path.display(),
+                            library_home = %context.library.home.display(),
+                            "Reader::new returned None, dispatching Event::Invalid"
+                        );
                         handle_event(
                             view.as_mut(),
                             &Event::Invalid(path),

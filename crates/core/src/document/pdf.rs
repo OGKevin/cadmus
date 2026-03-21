@@ -15,9 +15,19 @@ use std::path::Path;
 use std::ptr;
 use std::rc::Rc;
 use std::slice;
+use thiserror::Error;
 use tracing::error;
 
 const USER_STYLESHEET: &str = "css/html-user.css";
+
+/// Error returned when MuPDF fails to open a document.
+#[derive(Debug, Error)]
+pub enum PdfOpenError {
+    #[error("MuPDF error: {0}")]
+    MuPdf(String),
+    #[error("MuPDF returned no error message")]
+    Unknown,
+}
 
 impl Into<Boundary> for FzRect {
     fn into(self) -> Boundary {
@@ -45,6 +55,7 @@ pub struct PdfPage<'a> {
 }
 
 impl PdfOpener {
+    #[cfg_attr(feature = "otel", tracing::instrument)]
     pub fn new() -> Option<PdfOpener> {
         unsafe {
             let version = CString::new(FZ_VERSION).unwrap();
@@ -59,14 +70,28 @@ impl PdfOpener {
         }
     }
 
-    pub fn open<P: AsRef<Path>>(&self, path: P) -> Option<PdfDocument> {
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, path), fields(path = %path.as_ref().display())))]
+    pub fn open<P: AsRef<Path>>(&self, path: P) -> Result<PdfDocument, PdfOpenError> {
         unsafe {
             let c_path = CString::new(path.as_ref().as_os_str().as_bytes()).unwrap();
-            let doc = mp_open_document((self.0).0, c_path.as_ptr());
+            let mut err_buf: [libc::c_char; 256] = [0; 256];
+            let doc = mp_open_document_with_error(
+                (self.0).0,
+                c_path.as_ptr(),
+                err_buf.as_mut_ptr(),
+                err_buf.len() as libc::c_int,
+            );
             if doc.is_null() {
-                None
+                let msg = CStr::from_ptr(err_buf.as_ptr())
+                    .to_string_lossy()
+                    .into_owned();
+                Err(if msg.is_empty() {
+                    PdfOpenError::Unknown
+                } else {
+                    PdfOpenError::MuPdf(msg)
+                })
             } else {
-                Some(PdfDocument {
+                Ok(PdfDocument {
                     ctx: self.0.clone(),
                     doc,
                 })

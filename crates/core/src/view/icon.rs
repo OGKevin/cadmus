@@ -77,7 +77,7 @@ lazy_static! {
         .cloned()
         {
             let path = dir.join(format!("{}.svg", name));
-            let doc = PdfOpener::new().and_then(|o| o.open(&path)).unwrap();
+            let doc = PdfOpener::new().and_then(|o| o.open(&path).ok()).unwrap();
             let pixmap = doc.page(0).and_then(|p| p.pixmap(scale, 1)).unwrap();
             m.insert(name, pixmap);
         }

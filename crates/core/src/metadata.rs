@@ -898,7 +898,7 @@ pub fn extract_metadata_from_document(prefix: &Path, info: &mut Info) {
             }
             Err(e) => error!("Can't open {}: {:#}.", info.file.path.display(), e),
         },
-        "pdf" => match PdfOpener::new().and_then(|o| o.open(path)) {
+        "pdf" => match PdfOpener::new().and_then(|o| o.open(path).ok()) {
             Some(doc) => {
                 info.title = doc.title().unwrap_or_default();
                 info.author = doc.author().unwrap_or_default();

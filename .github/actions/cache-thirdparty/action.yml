@@ -20,7 +20,7 @@ runs:
           libs/
           thirdparty/
           mupdf_wrapper/
-        key: ${{ runner.os }}-thirdparty-libs-${{ inputs.kind }}-${{ hashFiles('thirdparty/**/build-kobo.sh', 'thirdparty/**/*.patch', 'xtask/src/tasks/util/thirdparty.rs') }}
+        key: ${{ runner.os }}-thirdparty-libs-${{ inputs.kind }}-${{ hashFiles('thirdparty/**/build-kobo.sh', 'thirdparty/**/*.patch', 'xtask/src/tasks/util/thirdparty.rs', 'mupdf_wrapper/mupdf_wrapper.c') }}
 
     - name: Cache thirdparty libraries (native)
       if: inputs.kind == 'native'
@@ -29,4 +29,4 @@ runs:
         path: |
           thirdparty/mupdf
           mupdf_wrapper/
-        key: ${{ runner.os }}-thirdparty-libs-native-${{ hashFiles('xtask/src/tasks/util/thirdparty.rs', 'xtask/src/tasks/setup_native.rs') }}
+        key: ${{ runner.os }}-thirdparty-libs-native-${{ hashFiles('xtask/src/tasks/util/thirdparty.rs', 'xtask/src/tasks/setup_native.rs', 'mupdf_wrapper/mupdf_wrapper.c') }}

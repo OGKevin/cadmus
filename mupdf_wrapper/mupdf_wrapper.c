@@ -10,6 +10,18 @@
 
 WRAP(open_document, fz_document*, NULL, fz_open_document(ctx, path), char *path)
 WRAP(open_document_with_stream, fz_document*, NULL, fz_open_document_with_stream(ctx, kind, stream), const char *kind, fz_stream *stream)
+
+fz_document* mp_open_document_with_error(fz_context *ctx, char *path,
+                                          char *err_buf, int err_buf_len) {
+    fz_document* ret = NULL;
+    fz_try (ctx) { ret = fz_open_document(ctx, path); }
+    fz_catch (ctx) {
+        const char *msg = fz_caught_message(ctx);
+        strncpy(err_buf, msg, err_buf_len - 1);
+        err_buf[err_buf_len - 1] = '\0';
+    }
+    return ret;
+}
 WRAP(load_page, fz_page*, NULL, fz_load_page(ctx, doc, pageno), fz_document *doc, int pageno)
 WRAP(load_outline, fz_outline*, NULL, fz_load_outline(ctx, doc), fz_document *doc)
 WRAP(load_links, fz_link*, NULL, fz_load_links(ctx, page), fz_page *page)

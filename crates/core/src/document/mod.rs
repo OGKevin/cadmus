@@ -29,7 +29,7 @@ use std::fs::{self, File};
 use std::os::unix::fs::FileExt;
 use std::path::Path;
 use std::process::Command;
-use tracing::error;
+use tracing::{error, warn};
 use unicode_normalization::char::is_combining_mark;
 use unicode_normalization::UnicodeNormalization;
 
@@ -234,25 +234,54 @@ pub fn asciify(name: &str) -> String {
         .replace('’', "'")
 }
 
+#[cfg_attr(feature = "otel", tracing::instrument(skip(path), fields(path = %path.as_ref().display())))]
 pub fn open<P: AsRef<Path>>(path: P) -> Option<Box<dyn Document>> {
-    file_kind(path.as_ref()).and_then(|k| match k.as_ref() {
+    let kind = file_kind(path.as_ref());
+    if kind.is_none() {
+        warn!(path = %path.as_ref().display(), "Failed to determine file kind");
+    }
+    kind.and_then(|k| match k.as_ref() {
         "epub" => EpubDocument::new(&path)
-            .map_err(|e| error!("{}: {:#}.", path.as_ref().display(), e))
+            .map_err(|e| error!(path = %path.as_ref().display(), error = %e, "Failed to open epub document"))
             .map(|d| Box::new(d) as Box<dyn Document>)
             .ok(),
         "html" | "htm" => HtmlDocument::new(&path)
-            .map_err(|e| error!("{}: {:#}.", path.as_ref().display(), e))
+            .map_err(|e| error!(path = %path.as_ref().display(), error = %e, "Failed to open html document"))
             .map(|d| Box::new(d) as Box<dyn Document>)
             .ok(),
         "djvu" | "djv" => {
-            DjvuOpener::new().and_then(|o| o.open(path).map(|d| Box::new(d) as Box<dyn Document>))
-        }
-        _ => PdfOpener::new().and_then(|mut o| {
-            if matches!(k.as_ref(), "mobi" | "fb2" | "xps" | "txt") {
-                o.load_user_stylesheet();
+            let opener = DjvuOpener::new();
+            if opener.is_none() {
+                warn!(path = %path.as_ref().display(), "Failed to create DjvuOpener");
             }
-            o.open(path).map(|d| Box::new(d) as Box<dyn Document>)
-        }),
+            opener.and_then(|o| {
+                let doc = o.open(&path).map(|d| Box::new(d) as Box<dyn Document>);
+                if doc.is_none() {
+                    warn!(path = %path.as_ref().display(), "DjvuOpener failed to open document");
+                }
+                doc
+            })
+        }
+        _ => {
+            let opener = PdfOpener::new();
+            if opener.is_none() {
+                warn!(path = %path.as_ref().display(), "Failed to create PdfOpener");
+            }
+            opener.and_then(|mut o| {
+                if matches!(k.as_ref(), "mobi" | "fb2" | "xps" | "txt") {
+                    o.load_user_stylesheet();
+                }
+                o.open(&path)
+                    .map_err(|e| warn!(
+                        path = %path.as_ref().display(),
+                        kind = %k,
+                        error = %e,
+                        "PdfOpener failed to open document"
+                    ))
+                    .ok()
+                    .map(|d| Box::new(d) as Box<dyn Document>)
+            })
+        }
     })
 }
 

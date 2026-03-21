@@ -57,7 +57,7 @@ use std::process::Command;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
 use std::time::{Duration, Instant};
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 pub const APP_NAME: &str = "Cadmus";
 const DB_FILENAME: &str = "cadmus.sqlite";
@@ -1191,6 +1191,11 @@ pub fn run() -> Result<(), Error> {
                         }
                     }
                     context.fb.set_dithered(dithered);
+                    warn!(
+                        path = %path.display(),
+                        library_home = %context.library.home.display(),
+                        "Reader::new returned None, dispatching Event::Invalid"
+                    );
                     handle_event(
                         view.as_mut(),
                         &Event::Invalid(path),

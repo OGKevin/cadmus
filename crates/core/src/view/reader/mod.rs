@@ -70,7 +70,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering as AtomicOrdering;
 use std::sync::{Arc, Mutex};
 use std::thread;
-use tracing::{error, info};
+use tracing::{debug, error, info, warn};
 
 const HISTORY_SIZE: usize = 32;
 const RECT_DIST_JITTER: f32 = 24.0;
@@ -283,7 +283,23 @@ impl Reader {
         let settings = &context.settings;
         let path = context.library.home.join(&info.file.path);
 
-        open(&path).and_then(|mut doc| {
+        debug!(
+            resolved_path = %path.display(),
+            file_exists = path.exists(),
+            library_home = %context.library.home.display(),
+            relative_path = %info.file.path.display(),
+            "Opening document"
+        );
+
+        let doc = open(&path);
+        if doc.is_none() {
+            warn!(
+                resolved_path = %path.display(),
+                file_exists = path.exists(),
+                "Failed to open document: open() returned None"
+            );
+        }
+        doc.and_then(|mut doc| {
             let (width, height) = context.display.dims;
             let font_size = info
                 .reader
@@ -349,7 +365,14 @@ impl Reader {
                 doc.set_ignore_document_css(true);
             }
 
-            let first_location = doc.resolve_location(Location::Exact(0))?;
+            let first_location = doc.resolve_location(Location::Exact(0));
+            if first_location.is_none() {
+                warn!(
+                    resolved_path = %path.display(),
+                    "Document opened but resolve_location(Exact(0)) returned None"
+                );
+            }
+            let first_location = first_location?;
 
             let mut view_port = ViewPort::default();
             let mut contrast = Contrast::default();

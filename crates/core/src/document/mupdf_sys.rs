@@ -74,6 +74,12 @@ extern "C" {
     pub fn fz_set_user_css(ctx: *mut FzContext, user_css: *const libc::c_char);
     pub fn fz_set_use_document_css(ctx: *mut FzContext, should_use: libc::c_int);
     pub fn mp_open_document(ctx: *mut FzContext, path: *const libc::c_char) -> *mut FzDocument;
+    pub fn mp_open_document_with_error(
+        ctx: *mut FzContext,
+        path: *const libc::c_char,
+        err_buf: *mut libc::c_char,
+        err_buf_len: libc::c_int,
+    ) -> *mut FzDocument;
     pub fn mp_open_document_with_stream(
         ctx: *mut FzContext,
         kind: *const libc::c_char,
