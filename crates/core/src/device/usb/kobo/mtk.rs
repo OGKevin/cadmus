@@ -3,6 +3,14 @@
 //! This module provides USB mass storage support for MTK-based Kobo devices
 //! (platform `mt8113t-ntx`). It uses ConfigFS to configure the USB gadget
 //! instead of shell commands.
+//!
+//! # ConfigFS write convention
+//!
+//! All values are written with a trailing `\n` to match the behaviour of the
+//! `echo` shell command used in the [Linux kernel ConfigFS gadget documentation](https://www.kernel.org/doc/html/latest/usb/gadget_configfs.html)
+//! examples. The kernel docs do not explicitly require a newline, but omitting
+//! it caused the UDC bind to silently fail on the Libra Colour (MTK platform)
+//! in practice.
 
 use crate::device::metadata::DeviceMetadata;
 use crate::device::usb::error::UsbError;
@@ -108,6 +116,9 @@ impl MtkUsbManager {
     }
 
     /// Writes gadget configuration to ConfigFS.
+    ///
+    /// All values are written with a trailing `\n` to match `echo` behaviour from
+    /// the kernel documentation examples.
     fn write_gadget_config(&self) -> Result<(), UsbError> {
         debug!("Writing gadget configuration to ConfigFS");
 
@@ -115,32 +126,41 @@ impl MtkUsbManager {
 
         fs::write(
             base.join("idVendor"),
-            format!("0x{:04X}", self.metadata.vendor_id),
+            format!("0x{:04X}\n", self.metadata.vendor_id),
         )
         .map_err(|e| UsbError::GadgetConfig(format!("Cannot write idVendor: {}", e)))?;
 
         fs::write(
             base.join("idProduct"),
-            format!("0x{:04X}", self.metadata.product_id),
+            format!("0x{:04X}\n", self.metadata.product_id),
         )
         .map_err(|e| UsbError::GadgetConfig(format!("Cannot write idProduct: {}", e)))?;
 
         let strings = base.join("strings/0x409");
-        fs::write(strings.join("serialnumber"), &self.metadata.serial_number)
-            .map_err(|e| UsbError::GadgetConfig(format!("Cannot write serialnumber: {}", e)))?;
+        fs::write(
+            strings.join("serialnumber"),
+            format!("{}\n", self.metadata.serial_number),
+        )
+        .map_err(|e| UsbError::GadgetConfig(format!("Cannot write serialnumber: {}", e)))?;
 
-        fs::write(strings.join("manufacturer"), &self.metadata.manufacturer)
-            .map_err(|e| UsbError::GadgetConfig(format!("Cannot write manufacturer: {}", e)))?;
+        fs::write(
+            strings.join("manufacturer"),
+            format!("{}\n", self.metadata.manufacturer),
+        )
+        .map_err(|e| UsbError::GadgetConfig(format!("Cannot write manufacturer: {}", e)))?;
 
-        fs::write(strings.join("product"), &self.metadata.product)
-            .map_err(|e| UsbError::GadgetConfig(format!("Cannot write product: {}", e)))?;
+        fs::write(
+            strings.join("product"),
+            format!("{}\n", self.metadata.product),
+        )
+        .map_err(|e| UsbError::GadgetConfig(format!("Cannot write product: {}", e)))?;
 
         let config_strings = base.join("configs/c.1/strings/0x409");
-        fs::write(config_strings.join("configuration"), "KOBOeReader")
+        fs::write(config_strings.join("configuration"), "KOBOeReader\n")
             .map_err(|e| UsbError::GadgetConfig(format!("Cannot write configuration: {}", e)))?;
 
         let lun = base.join("functions/mass_storage.0/lun.0");
-        fs::write(lun.join("file"), &self.metadata.partition)
+        fs::write(lun.join("file"), format!("{}\n", self.metadata.partition))
             .map_err(|e| UsbError::GadgetConfig(format!("Cannot write LUN file: {}", e)))?;
 
         info!(
@@ -169,11 +189,14 @@ impl MtkUsbManager {
     }
 
     /// Binds the gadget to the UDC to enable USB.
+    ///
+    /// The UDC name is written with a trailing `\n` to match `echo` behaviour from
+    /// the kernel documentation examples.
     fn bind_udc(&self) -> Result<(), UsbError> {
         debug!(udc = %self.udc, "Binding to UDC");
 
         let udc_path = format!("{}/UDC", CONFIGFS_GADGET_DIR);
-        fs::write(&udc_path, &self.udc).map_err(|e| {
+        fs::write(&udc_path, format!("{}\n", self.udc)).map_err(|e| {
             error!(udc = %self.udc, error = %e, "Failed to bind UDC");
             UsbError::Udc(format!("Cannot bind UDC: {}", e))
         })?;
@@ -183,11 +206,14 @@ impl MtkUsbManager {
     }
 
     /// Unbinds the gadget from the UDC.
+    ///
+    /// Writes a bare newline to the UDC attribute, which the kernel interprets
+    /// as clearing the binding.
     fn unbind_udc(&self) -> Result<(), UsbError> {
         debug!("Unbinding UDC");
 
         let udc_path = format!("{}/UDC", CONFIGFS_GADGET_DIR);
-        fs::write(&udc_path, "").map_err(|e| {
+        fs::write(&udc_path, "\n").map_err(|e| {
             error!(error = %e, "Failed to unbind UDC");
             UsbError::Udc(format!("Cannot unbind UDC: {}", e))
         })?;
