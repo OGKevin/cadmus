@@ -1,8 +1,9 @@
 {
-  ".": "0.9.46",
-  "crates/core": "0.9.46",
-  "crates/cadmus": "0.9.46",
-  "crates/emulator": "0.9.46",
-  "crates/importer": "0.9.46",
-  "crates/fetcher": "0.9.46"
+  ".": "0.10.0",
+  "crates/core": "0.10.0",
+  "crates/cadmus": "0.10.0",
+  "crates/emulator": "0.10.0",
+  "crates/importer": "0.10.0",
+  "crates/fetcher": "0.10.0",
+  "xtask": "0.10.0"
 }
