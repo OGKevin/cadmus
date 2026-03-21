@@ -73,8 +73,17 @@ impl MtkUsbManager {
     ///
     /// Returns [`UsbError::Udc`] if no UDC is available or the UDC
     /// directory cannot be read.
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(metadata)))]
     pub fn new(metadata: DeviceMetadata) -> Result<Self, UsbError> {
         let udc = discover_udc()?;
+        info!(
+            vendor_id = metadata.vendor_id,
+            product_id = metadata.product_id,
+            serial_number = %metadata.serial_number,
+            partition = %metadata.partition,
+            udc = %udc,
+            "MtkUsbManager constructed"
+        );
         Ok(Self { metadata, udc })
     }
 

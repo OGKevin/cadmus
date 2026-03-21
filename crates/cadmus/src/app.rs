@@ -343,6 +343,7 @@ fn prepare_share_for_usb(
 /// seconds. This is done because if log redirection fails and the app tries to write logs while
 /// the mount is unmounted, it can lead to corruption. See [#246](https://github.com/OGKevin/cadmus/issues/246).
 #[inline]
+#[cfg_attr(feature = "otel", tracing::instrument(skip(tx, tasks, context)))]
 fn start_usb_share(tx: &Sender<Event>, tasks: &mut Vec<Task>, context: &mut Context) {
     if let Err(e) = cadmus_core::logging::redirect_log_to_dir(
         std::path::Path::new("/tmp/cadmus-logs"),

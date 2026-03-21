@@ -56,6 +56,7 @@ use mtk::MtkUsbManager;
 /// # Ok(())
 /// # }
 /// ```
+#[cfg_attr(feature = "otel", tracing::instrument(skip(metadata)))]
 pub fn create_usb_manager(metadata: DeviceMetadata) -> Result<Box<dyn UsbManager>, UsbError> {
     let platform = detect_platform().map_err(|e| UsbError::DeviceInfo(e.to_string()))?;
 
