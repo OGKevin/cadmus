@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Cadmus Documentation\n"
-"POT-Creation-Date: 2026-03-22T21:26:28+01:00\n"
+"POT-Creation-Date: 2026-03-22T22:48:20+01:00\n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -1508,6 +1508,31 @@ msgstr ""
 msgid ""
 "\\[!NOTE\\] Kernel logs will use more disk space, so don't forget to turn it "
 "back off."
+msgstr ""
+
+#: src/troubleshooting/index.md:67
+msgid "Crashloop recovery"
+msgstr ""
+
+#: src/troubleshooting/index.md:69
+msgid ""
+"If Cadmus crashes 3 times in a row, it will exit back to Nickel instead of "
+"restarting. This prevents the device from getting stuck in an infinite loop "
+"of crashes."
+msgstr ""
+
+#: src/troubleshooting/index.md:73
+msgid "When this happens:"
+msgstr ""
+
+#: src/troubleshooting/index.md:75
+msgid "Check `info.log` in the Cadmus folder for the panic error"
+msgstr ""
+
+#: src/troubleshooting/index.md:76
+msgid ""
+"The crash counter resets when you start Cadmus manually (using the restart "
+"option in the menu or rebooting)"
 msgstr ""
 
 #: src/contributing/devenv-setup.md:1

@@ -660,7 +660,13 @@ in
   git-hooks.hooks = {
     actionlint.enable = true;
     shellcheck.enable = true;
-    shfmt.enable = true;
+    shfmt = {
+      enable = true;
+      settings = {
+        indent = 2;
+        case-indent = true;
+      };
+    };
     markdownlint.enable = true;
     prettier.enable = true;
   };

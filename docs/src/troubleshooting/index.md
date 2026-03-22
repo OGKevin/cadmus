@@ -63,3 +63,15 @@ Kernel logs will then be saved in the same log file as your Cadmus logs.
 
 > [!NOTE]
 > Kernel logs will use more disk space, so don't forget to turn it back off.
+
+## Crashloop recovery
+
+If Cadmus crashes 3 times in a row, it will exit back to Nickel instead of
+restarting. This prevents the device from getting stuck in an infinite loop of
+crashes.
+
+When this happens:
+
+1. Check `info.log` in the Cadmus folder for the panic error
+2. The crash counter resets when you start Cadmus manually (using the restart
+   option in the menu or rebooting)
