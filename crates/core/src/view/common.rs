@@ -3,6 +3,7 @@ use super::notification::Notification;
 use super::{AppCmd, EntryId, EntryKind, RenderData, RenderQueue, View, ViewId};
 use crate::context::Context;
 use crate::device::CURRENT_DEVICE;
+use crate::fl;
 use crate::framebuffer::UpdateMode;
 use crate::geom::{Point, Rectangle};
 use crate::settings::{ButtonScheme, RotationLock};
@@ -227,8 +228,8 @@ pub fn toggle_main_menu(
             EntryKind::Separator,
             EntryKind::SubMenu("Applications".to_string(), apps),
             EntryKind::Separator,
-            EntryKind::Command("Restart".to_string(), EntryId::Restart),
-            EntryKind::Command("Reboot".to_string(), EntryId::Reboot),
+            EntryKind::Command(fl!("top-menu-restart-app").to_string(), EntryId::Restart),
+            EntryKind::Command(fl!("top-menu-reboot-device").to_string(), EntryId::Reboot),
             EntryKind::Command("Quit".to_string(), EntryId::Quit),
         ]);
 
