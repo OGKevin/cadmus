@@ -207,7 +207,13 @@ fn resume(
             context.frontlight.set_intensity(levels.intensity);
         }
         if context.settings.wifi {
-            Command::new("scripts/wifi-enable.sh").status().ok();
+            if let Ok(wifi) = CURRENT_DEVICE.wifi_manager() {
+                thread::spawn(move || {
+                    if let Err(e) = wifi.enable() {
+                        tracing::error!(error = %e, "Failed to enable WiFi on resume");
+                    }
+                });
+            }
         }
     }
     if id == TaskId::Suspend || id == TaskId::PrepareSuspend {
@@ -281,11 +287,21 @@ fn set_wifi(enable: bool, context: &mut Context) {
         return;
     }
     context.settings.wifi = enable;
-    if context.settings.wifi {
-        Command::new("scripts/wifi-enable.sh").status().ok();
-    } else {
-        Command::new("scripts/wifi-disable.sh").status().ok();
-        context.online = false;
+    if let Ok(wifi) = CURRENT_DEVICE.wifi_manager() {
+        if context.settings.wifi {
+            thread::spawn(move || {
+                if let Err(e) = wifi.enable() {
+                    tracing::error!(error = %e, "Failed to enable WiFi");
+                }
+            });
+        } else {
+            thread::spawn(move || {
+                if let Err(e) = wifi.disable() {
+                    tracing::error!(error = %e, "Failed to disable WiFi");
+                }
+            });
+            context.online = false;
+        }
     }
 }
 
@@ -338,7 +354,11 @@ fn prepare_share_for_usb(
     }
     #[cfg(not(feature = "test"))]
     if context.settings.wifi {
-        Command::new("scripts/wifi-disable.sh").status().ok();
+        if let Ok(wifi) = CURRENT_DEVICE.wifi_manager() {
+            if let Err(e) = wifi.disable() {
+                tracing::error!(error = %e, "Failed to disable WiFi for USB share");
+            }
+        }
         context.online = false;
     }
 
@@ -633,10 +653,30 @@ pub fn run() -> Result<(), Error> {
 
     context.fb.set_inverted(context.settings.inverted);
 
-    if context.settings.wifi {
-        Command::new("scripts/wifi-enable.sh").status().ok();
-    } else {
-        Command::new("scripts/wifi-disable.sh").status().ok();
+    {
+        debug!("starting startup wifi management");
+
+        match CURRENT_DEVICE.wifi_manager() {
+            Ok(wifi) => {
+                let wifi_enabled = context.settings.wifi;
+                debug!(wifi_enabled, "wifi status");
+
+                thread::spawn(move || {
+                    if wifi_enabled {
+                        if let Err(e) = wifi.enable() {
+                            tracing::error!(error = %e, "Failed to enable WiFi on startup");
+                        }
+                    } else {
+                        if let Err(e) = wifi.disable() {
+                            tracing::error!(error = %e, "Failed to disable WiFi on startup");
+                        }
+                    }
+                });
+            }
+            Err(e) => {
+                tracing::error!(error = %e, "failed to create wifi manager")
+            }
+        }
     }
 
     if context.settings.frontlight {
@@ -685,6 +725,13 @@ pub fn run() -> Result<(), Error> {
     tx.send(Event::WakeUp).ok();
 
     while let Ok(evt) = rx.recv() {
+        #[cfg(feature = "otel")]
+        let span = tracing::trace_span!("main-event-loop", event = ?evt);
+        #[cfg(feature = "otel")]
+        let _enter = span.enter();
+        #[cfg(feature = "otel")]
+        tracing::trace!(event = ?evt, "handling event");
+
         match evt {
             Event::Device(de) => match de {
                 DeviceEvent::Button {
@@ -792,6 +839,7 @@ pub fn run() -> Result<(), Error> {
                     if tasks
                         .iter()
                         .any(|task| task.id == TaskId::PrepareSuspend || task.id == TaskId::Suspend)
+                        || context.online
                     {
                         continue;
                     }
@@ -1005,7 +1053,11 @@ pub fn run() -> Result<(), Error> {
                     context.frontlight.set_warmth(0.0);
                 }
                 if context.settings.wifi {
-                    Command::new("scripts/wifi-disable.sh").status().ok();
+                    if let Ok(wifi) = CURRENT_DEVICE.wifi_manager() {
+                        if let Err(e) = wifi.disable() {
+                            tracing::error!(error = %e, "Failed to disable WiFi on suspend");
+                        }
+                    }
                     context.online = false;
                 }
                 // https://github.com/koreader/koreader/commit/71afe36
@@ -1657,7 +1709,14 @@ pub fn run() -> Result<(), Error> {
         ExitStatus::PowerOff => {
             File::create("/tmp/power_off").ok();
         }
-        _ => (),
+        _ => {
+            // nickel.sh killed wifi before starting nickel, so we're doing the same here.
+            if let Ok(wifi) = CURRENT_DEVICE.wifi_manager() {
+                if let Err(e) = wifi.disable() {
+                    tracing::error!(error = %e, "Failed to disable WiFi on exit");
+                }
+            }
+        }
     }
 
     cadmus_core::logging::shutdown_logging();

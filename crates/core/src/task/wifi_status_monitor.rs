@@ -165,7 +165,11 @@ fn check_interfaces(interfaces: &HashMap<String, HashMap<String, String>>, hub: 
                 "WpaStatus received"
             );
 
-            if wpa_state == "COMPLETED" {
+            let has_ip = properties
+                .get("ip_address")
+                .is_some_and(|ip| !ip.is_empty());
+
+            if wpa_state == "COMPLETED" && has_ip {
                 tracing::info!("network up detected via dhcpcd-dbus");
                 hub.send(Event::Device(DeviceEvent::NetUp)).ok();
             }
@@ -214,17 +218,38 @@ mod tests {
     }
 
     #[test]
-    fn check_interfaces_handles_missing_properties() {
-        let (tx, _rx) = mpsc::channel();
+    fn check_interfaces_does_not_send_netup_without_ip_address() {
+        let (tx, rx) = mpsc::channel();
 
-        // Interface with only wpa_state, no ip_address
+        // WPA association complete but DHCP not yet negotiated — no ip_address
         let mut interfaces = HashMap::new();
         let mut properties = HashMap::new();
         properties.insert("wpa_state".to_string(), "COMPLETED".to_string());
-        // No ip_address
         interfaces.insert("wlan0".to_string(), properties);
 
-        // Should not panic and should still send NetUp
         check_interfaces(&interfaces, &tx);
+
+        assert!(
+            rx.try_recv().is_err(),
+            "should not send NetUp before DHCP binding"
+        );
+    }
+
+    #[test]
+    fn check_interfaces_does_not_send_netup_with_empty_ip_address() {
+        let (tx, rx) = mpsc::channel();
+
+        let mut interfaces = HashMap::new();
+        let mut properties = HashMap::new();
+        properties.insert("wpa_state".to_string(), "COMPLETED".to_string());
+        properties.insert("ip_address".to_string(), "".to_string());
+        interfaces.insert("wlan0".to_string(), properties);
+
+        check_interfaces(&interfaces, &tx);
+
+        assert!(
+            rx.try_recv().is_err(),
+            "should not send NetUp with empty ip_address"
+        );
     }
 }

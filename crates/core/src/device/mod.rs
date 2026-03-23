@@ -6,26 +6,37 @@ use crate::input::TouchProto;
 use lazy_static::lazy_static;
 use once_cell::sync::OnceCell;
 use std::env;
+use std::fmt::Debug;
 
 mod error;
 mod metadata;
 mod model;
 mod types;
 mod usb;
+mod wifi;
 
 pub use model::Model;
 pub use types::{FrontlightKind, Orientation};
 
-/// Device information and capabilities.
-#[derive(Debug)]
 pub struct Device {
     pub model: Model,
     pub proto: TouchProto,
     pub dims: (u32, u32),
     pub dpi: u16,
     metadata: OnceCell<DeviceMetadata>,
+    wifi_manager: OnceCell<Box<dyn crate::device::wifi::WifiManager>>,
 }
 
+impl Debug for Device {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Device")
+            .field("model", &self.model)
+            .field("proto", &self.proto)
+            .field("dims", &self.dims)
+            .field("dpi", &self.dpi)
+            .finish()
+    }
+}
 impl Device {
     /// Creates a new device from product and model number strings.
     fn new(product: &str, model_number: &str) -> Device {
@@ -36,6 +47,7 @@ impl Device {
                 dims: (758, 1024),
                 dpi: 212,
                 metadata: OnceCell::new(),
+                wifi_manager: OnceCell::new(),
             },
             "pixie" => Device {
                 model: Model::Mini,
@@ -43,6 +55,7 @@ impl Device {
                 dims: (600, 800),
                 dpi: 200,
                 metadata: OnceCell::new(),
+                wifi_manager: OnceCell::new(),
             },
             "dragon" => Device {
                 model: Model::AuraHD,
@@ -50,6 +63,7 @@ impl Device {
                 dims: (1080, 1440),
                 dpi: 265,
                 metadata: OnceCell::new(),
+                wifi_manager: OnceCell::new(),
             },
             "phoenix" => Device {
                 model: Model::Aura,
@@ -57,6 +71,7 @@ impl Device {
                 dims: (758, 1024),
                 dpi: 212,
                 metadata: OnceCell::new(),
+                wifi_manager: OnceCell::new(),
             },
             "dahlia" => Device {
                 model: Model::AuraH2O,
@@ -64,6 +79,7 @@ impl Device {
                 dims: (1080, 1440),
                 dpi: 265,
                 metadata: OnceCell::new(),
+                wifi_manager: OnceCell::new(),
             },
             "alyssum" => Device {
                 model: Model::GloHD,
@@ -71,6 +87,7 @@ impl Device {
                 dims: (1072, 1448),
                 dpi: 300,
                 metadata: OnceCell::new(),
+                wifi_manager: OnceCell::new(),
             },
             "pika" => Device {
                 model: Model::Touch2,
@@ -78,6 +95,7 @@ impl Device {
                 dims: (600, 800),
                 dpi: 167,
                 metadata: OnceCell::new(),
+                wifi_manager: OnceCell::new(),
             },
             "daylight" => Device {
                 model: if model_number == "381" {
@@ -89,6 +107,7 @@ impl Device {
                 dims: (1404, 1872),
                 dpi: 300,
                 metadata: OnceCell::new(),
+                wifi_manager: OnceCell::new(),
             },
             "star" => Device {
                 model: if model_number == "379" {
@@ -100,6 +119,7 @@ impl Device {
                 dims: (758, 1024),
                 dpi: 212,
                 metadata: OnceCell::new(),
+                wifi_manager: OnceCell::new(),
             },
             "snow" => Device {
                 model: if model_number == "378" {
@@ -111,6 +131,7 @@ impl Device {
                 dims: (1080, 1440),
                 dpi: 265,
                 metadata: OnceCell::new(),
+                wifi_manager: OnceCell::new(),
             },
             "nova" => Device {
                 model: Model::ClaraHD,
@@ -118,6 +139,7 @@ impl Device {
                 dims: (1072, 1448),
                 dpi: 300,
                 metadata: OnceCell::new(),
+                wifi_manager: OnceCell::new(),
             },
             "frost" => Device {
                 model: if model_number == "380" {
@@ -129,6 +151,7 @@ impl Device {
                 dims: (1440, 1920),
                 dpi: 300,
                 metadata: OnceCell::new(),
+                wifi_manager: OnceCell::new(),
             },
             "storm" => Device {
                 model: Model::LibraH2O,
@@ -136,6 +159,7 @@ impl Device {
                 dims: (1264, 1680),
                 dpi: 300,
                 metadata: OnceCell::new(),
+                wifi_manager: OnceCell::new(),
             },
             "luna" => Device {
                 model: Model::Nia,
@@ -143,6 +167,7 @@ impl Device {
                 dims: (758, 1024),
                 dpi: 212,
                 metadata: OnceCell::new(),
+                wifi_manager: OnceCell::new(),
             },
             "europa" => Device {
                 model: Model::Elipsa,
@@ -150,6 +175,7 @@ impl Device {
                 dims: (1404, 1872),
                 dpi: 227,
                 metadata: OnceCell::new(),
+                wifi_manager: OnceCell::new(),
             },
             "cadmus" => Device {
                 model: Model::Sage,
@@ -157,6 +183,7 @@ impl Device {
                 dims: (1440, 1920),
                 dpi: 300,
                 metadata: OnceCell::new(),
+                wifi_manager: OnceCell::new(),
             },
             "io" => Device {
                 model: Model::Libra2,
@@ -164,6 +191,7 @@ impl Device {
                 dims: (1264, 1680),
                 dpi: 300,
                 metadata: OnceCell::new(),
+                wifi_manager: OnceCell::new(),
             },
             "goldfinch" => Device {
                 model: Model::Clara2E,
@@ -171,6 +199,7 @@ impl Device {
                 dims: (1072, 1448),
                 dpi: 300,
                 metadata: OnceCell::new(),
+                wifi_manager: OnceCell::new(),
             },
             "condor" => Device {
                 model: Model::Elipsa2E,
@@ -178,6 +207,7 @@ impl Device {
                 dims: (1404, 1872),
                 dpi: 227,
                 metadata: OnceCell::new(),
+                wifi_manager: OnceCell::new(),
             },
             "spaBW" | "spaBWTPV" => Device {
                 model: Model::ClaraBW,
@@ -185,6 +215,7 @@ impl Device {
                 dims: (1072, 1448),
                 dpi: 300,
                 metadata: OnceCell::new(),
+                wifi_manager: OnceCell::new(),
             },
             "spaColour" => Device {
                 model: Model::ClaraColour,
@@ -192,6 +223,7 @@ impl Device {
                 dims: (1072, 1448),
                 dpi: 300,
                 metadata: OnceCell::new(),
+                wifi_manager: OnceCell::new(),
             },
             "monza" => Device {
                 model: Model::LibraColour,
@@ -199,6 +231,7 @@ impl Device {
                 dims: (1264, 1680),
                 dpi: 300,
                 metadata: OnceCell::new(),
+                wifi_manager: OnceCell::new(),
             },
             _ => Device {
                 model: if model_number == "320" {
@@ -210,6 +243,7 @@ impl Device {
                 dims: (600, 800),
                 dpi: 167,
                 metadata: OnceCell::new(),
+                wifi_manager: OnceCell::new(),
             },
         }
     }
@@ -237,6 +271,15 @@ impl Device {
         &self,
     ) -> Result<Box<dyn crate::device::usb::UsbManager>, crate::device::usb::UsbError> {
         Ok(Box::new(crate::device::usb::StubUsbManager))
+    }
+
+    /// Returns the WiFi manager for this device.
+    pub fn wifi_manager(
+        &self,
+    ) -> Result<&dyn crate::device::wifi::WifiManager, crate::device::wifi::WifiError> {
+        self.wifi_manager
+            .get_or_try_init(crate::device::wifi::create_wifi_manager)
+            .map(|b| b.as_ref())
     }
 
     /// Returns the number of color samples for the device screen.

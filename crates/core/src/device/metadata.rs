@@ -288,8 +288,7 @@ mod tests {
 
     #[test]
     fn test_parse_libra_colour() {
-        let content =
-            "SERIALPLACEHOLDER,4.9.77,4.45.23640,4.9.77,4.9.77,00000000-0000-0000-0000-000000000390";
+        let content = "SERIALPLACEHOLDER,4.9.77,4.45.23640,4.9.77,4.9.77,00000000-0000-0000-0000-000000000390";
         let metadata = DeviceMetadata::parse(content, &Platform::MT8113TNTX).expect("parse failed");
 
         assert_eq!(metadata.serial_number, "SERIALPLACEHOLDER");
