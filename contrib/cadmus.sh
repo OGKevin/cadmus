@@ -17,7 +17,7 @@ CADMUS_CONVERT_DICTIONARIES=1
 # shellcheck disable=SC2046
 export $(grep -sE '^(INTERFACE|WIFI_MODULE|DBUS_SESSION_BUS_ADDRESS|NICKEL_HOME|LANG)=' /proc/"$(pidof -s nickel)"/environ)
 sync
-killall -TERM nickel hindenburg sickel fickel adobehost foxitpdf iink dhcpcd-dbus dhcpcd fmon >/dev/null 2>&1
+killall -TERM nickel hindenburg sickel fickel adobehost foxitpdf iink fmon >/dev/null 2>&1
 
 if [ -e /sys/class/leds/LED ]; then
   LEDS_INTERFACE=/sys/class/leds/LED/brightness

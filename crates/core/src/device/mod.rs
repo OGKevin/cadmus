@@ -12,6 +12,7 @@ mod metadata;
 mod model;
 mod types;
 mod usb;
+mod wifi;
 
 pub use model::Model;
 pub use types::{FrontlightKind, Orientation};
@@ -237,6 +238,13 @@ impl Device {
         &self,
     ) -> Result<Box<dyn crate::device::usb::UsbManager>, crate::device::usb::UsbError> {
         Ok(Box::new(crate::device::usb::StubUsbManager))
+    }
+
+    /// Creates WiFi manager for this device.
+    pub fn wifi_manager(
+        &self,
+    ) -> Result<Box<dyn crate::device::wifi::WifiManager>, crate::device::wifi::WifiError> {
+        crate::device::wifi::create_wifi_manager()
     }
 
     /// Returns the number of color samples for the device screen.
