@@ -1,9 +1,12 @@
 use super::bottom_bar::{BottomBarVariant, SettingsEditorBottomBar};
-use super::setting_row::{Kind as RowKind, SettingRow};
-use super::setting_value::{Kind as ValueKind, SettingsEvent};
+use super::kinds::library::{LibraryFinishedAction, LibraryName, LibraryPath};
+use super::kinds::SettingIdentity;
+use super::setting_row::SettingRow;
+use super::setting_value::SettingsEvent;
 use crate::color::{BLACK, WHITE};
 use crate::context::Context;
 use crate::device::CURRENT_DEVICE;
+use crate::fl;
 use crate::font::Fonts;
 use crate::framebuffer::{Framebuffer, UpdateMode};
 use crate::geom::{halves, Rectangle};
@@ -189,7 +192,7 @@ impl LibraryEditor {
         fonts: &mut crate::font::Fonts,
     ) -> Box<dyn View> {
         Box::new(SettingRow::new(
-            RowKind::LibraryName(library_index),
+            Box::new(LibraryName(library_index)),
             rect,
             settings,
             fonts,
@@ -203,7 +206,7 @@ impl LibraryEditor {
         fonts: &mut crate::font::Fonts,
     ) -> Box<dyn View> {
         Box::new(SettingRow::new(
-            RowKind::LibraryPath(library_index),
+            Box::new(LibraryPath(library_index)),
             rect,
             settings,
             fonts,
@@ -218,7 +221,7 @@ impl LibraryEditor {
         fonts: &mut crate::font::Fonts,
     ) -> Box<dyn View> {
         Box::new(SettingRow::new(
-            RowKind::LibraryFinishedAction(library_index),
+            Box::new(LibraryFinishedAction(library_index)),
             rect,
             settings,
             fonts,
@@ -386,7 +389,7 @@ impl LibraryEditor {
     fn handle_submit_name_event(&mut self, text: &str, bus: &mut Bus) -> bool {
         self.library.name = text.to_string();
         bus.push_back(Event::Settings(SettingsEvent::UpdateValue {
-            kind: ValueKind::LibraryName(self.library_index),
+            kind: SettingIdentity::LibraryName(self.library_index),
             value: text.to_string(),
         }));
         false
@@ -404,7 +407,7 @@ impl LibraryEditor {
         }
         self.library.finished = Some(action);
         bus.push_back(Event::Settings(SettingsEvent::UpdateValue {
-            kind: ValueKind::LibraryFinishedAction(self.library_index),
+            kind: SettingIdentity::LibraryFinishedAction(self.library_index),
             value: action.to_string(),
         }));
         true
@@ -417,8 +420,8 @@ impl LibraryEditor {
         }
         self.library.finished = None;
         bus.push_back(Event::Settings(SettingsEvent::UpdateValue {
-            kind: ValueKind::LibraryFinishedAction(self.library_index),
-            value: "Inherit".to_string(),
+            kind: SettingIdentity::LibraryFinishedAction(self.library_index),
+            value: fl!("settings-library-inherit"),
         }));
         true
     }
@@ -432,7 +435,7 @@ impl LibraryEditor {
         if let Some(path) = path {
             self.library.path = path.clone();
             bus.push_back(Event::Settings(SettingsEvent::UpdateValue {
-                kind: ValueKind::LibraryPath(self.library_index),
+                kind: SettingIdentity::LibraryPath(self.library_index),
                 value: path.display().to_string(),
             }));
         }

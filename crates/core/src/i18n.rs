@@ -14,6 +14,12 @@ pub const DEFAULT_LOCALE: &str = "en-GB";
 #[folder = "i18n/"]
 struct Localizations;
 
+/// Trait for types that can provide localized string representations
+pub trait I18nDisplay {
+    /// Returns a localized string representation
+    fn to_i18n_string(&self) -> String;
+}
+
 /// Returns the global [`FluentLanguageLoader`], initialising it on first call.
 ///
 /// The fallback language ([DEFAULT_LOCALE]) is loaded automatically, so the loader is

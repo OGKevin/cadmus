@@ -3,7 +3,9 @@ pub mod versioned;
 
 use crate::color::{Color, BLACK};
 use crate::device::CURRENT_DEVICE;
+use crate::fl;
 use crate::frontlight::LightLevels;
+use crate::i18n::I18nDisplay;
 use crate::metadata::{SortMethod, TextAlign};
 use crate::unit::mm_to_px;
 use fxhash::FxHashSet;
@@ -106,6 +108,15 @@ pub enum ButtonScheme {
 impl fmt::Display for ButtonScheme {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         Debug::fmt(self, f)
+    }
+}
+
+impl I18nDisplay for ButtonScheme {
+    fn to_i18n_string(&self) -> String {
+        match self {
+            ButtonScheme::Natural => fl!("settings-button-scheme-natural"),
+            ButtonScheme::Inverted => fl!("settings-button-scheme-inverted"),
+        }
     }
 }
 
@@ -470,6 +481,16 @@ impl fmt::Display for FinishedAction {
             FinishedAction::Notify => write!(f, "Notify"),
             FinishedAction::Close => write!(f, "Close"),
             FinishedAction::GoToNext => write!(f, "Go to Next"),
+        }
+    }
+}
+
+impl I18nDisplay for FinishedAction {
+    fn to_i18n_string(&self) -> String {
+        match self {
+            FinishedAction::Notify => fl!("settings-finished-action-notify"),
+            FinishedAction::Close => fl!("settings-finished-action-close"),
+            FinishedAction::GoToNext => fl!("settings-finished-action-goto-next"),
         }
     }
 }

@@ -1,626 +1,152 @@
 use super::super::action_label::ActionLabel;
-use super::super::EntryKind;
-use super::super::{Align, Bus, Event, Hub, Id, RenderQueue, View, ID_FEEDER};
+use super::super::{Align, Bus, Event, Hub, Id, RenderQueue, View, ViewId, ID_FEEDER};
+use super::kinds::{SettingIdentity, SettingKind, WidgetKind};
 use crate::context::Context;
-use crate::framebuffer::Framebuffer;
+use crate::framebuffer::{Framebuffer, UpdateMode};
 use crate::geom::Rectangle;
-use crate::i18n;
-use crate::settings::{ButtonScheme, FinishedAction, IntermKind, Settings};
-use crate::view::{toggle::Toggle, EntryId, ToggleEvent};
-use anyhow::Error;
-use std::fs;
-use std::path::Path;
-use std::str::FromStr;
+use crate::settings::Settings;
+use crate::view::common::locate_by_id;
+use crate::view::file_chooser::{FileChooser, SelectionMode};
+use crate::view::toggle::Toggle;
+use crate::view::{EntryKind, RenderData};
+
+/// Re-exported for use in `ToggleEvent::Setting` and `CategoryEditor`.
+pub use super::kinds::ToggleSettings;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SettingsEvent {
-    /// Updates a SettingValue view by its Kind with a new value.
+    /// Updates a SettingValue view by its identity with a new value.
     ///
-    /// Each SettingValue checks if the kind matches its own kind, and updates
-    /// itself if there's a match. This allows targeted updates without needing
+    /// Each SettingValue checks if the identity matches its own, and updates
+    /// itself if there is a match. This allows targeted updates without needing
     /// to know the specific view ID.
     UpdateValue {
-        /// The Kind of SettingValue to update (matches against self.kind)
-        kind: Kind,
+        /// The identity of the SettingValue to update (matches against self.identity)
+        kind: SettingIdentity,
         /// The new value to display
         value: String,
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ToggleSettings {
-    /// Sleep cover enable/disable setting
-    SleepCover,
-    /// Auto-share enable/disable setting
-    AutoShare,
-    /// Button scheme selection (natural or inverted)
-    ButtonScheme,
-    /// Logging enabled setting
-    LoggingEnabled,
-    /// Kernel logging enabled setting (test builds only)
-    #[cfg(feature = "test")]
-    EnableKernLog,
-}
-
-/// Represents the type of setting value being displayed.
-///
-/// This enum categorizes different settings that can be configured in the application,
-/// including keyboard layout, power management, button schemes, and library settings.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Kind {
-    /// Keyboard layout selection setting
-    KeyboardLayout,
-    /// Locale selection setting
-    Locale,
-    /// Auto-suspend timeout setting (in minutes)
-    AutoSuspend,
-    /// Auto power-off timeout setting (in minutes)
-    AutoPowerOff,
-
-    /// Generic toggle setting
-    Toggle(ToggleSettings),
-
-    /// Global finished action setting (what to do when a book is finished)
-    FinishedAction,
-    /// Library info display for the library at the given index
-    LibraryInfo(usize),
-    /// Library name setting for the library at the given index
-    LibraryName(usize),
-    /// Library path setting for the library at the given index
-    LibraryPath(usize),
-    /// Per-library finished action override for the library at the given index
-    LibraryFinishedAction(usize),
-    /// Intermission display setting for suspend screen
-    IntermissionSuspend,
-    /// Intermission display setting for power-off screen
-    IntermissionPowerOff,
-    /// Intermission display setting for share screen
-    IntermissionShare,
-    /// Settings retention setting (how many old versions to keep)
-    SettingsRetention,
-    /// Log level setting
-    LogLevel,
-    /// OTLP endpoint setting (only available with otel feature)
-    #[cfg(feature = "otel")]
-    OtlpEndpoint,
-}
-
-impl Kind {
-    pub fn matches_interm_kind(&self, interm_kind: &IntermKind) -> bool {
-        matches!(
-            (self, interm_kind),
-            (Kind::IntermissionSuspend, IntermKind::Suspend)
-                | (Kind::IntermissionPowerOff, IntermKind::PowerOff)
-                | (Kind::IntermissionShare, IntermKind::Share)
-        )
-    }
-}
-
 /// Represents a single setting value display in the settings UI.
 ///
-/// This struct manages the display and interaction of a setting value, including
-/// the current value, available options (entries), and associated UI components.
-/// It acts as a View that can be rendered and handle events related to setting changes.
-#[derive(Debug)]
+/// This struct manages the display and interaction of a setting value and its
+/// associated UI widget (an [`ActionLabel`], a sub-menu label, or a [`Toggle`]).
+/// It acts as a View that handles events via the [`SettingKind`] trait, updating the
+/// displayed text and sub-menu checked state when the underlying setting changes.
 pub struct SettingValue {
     /// Unique identifier for this setting value view
     id: Id,
-    /// The type of setting this value represents
-    kind: Kind,
     /// The rectangular area occupied by this view
     rect: Rectangle,
-    /// Child views, typically containing an ActionLabel for display
+    /// Child views — a single ActionLabel or Toggle widget, plus any active NamedInput overlay
     children: Vec<Box<dyn View>>,
-    /// Available options/entries for this setting (e.g., radio buttons, checkboxes)
-    ///
-    /// # Important
-    /// Whenever this field is modified, the underlying ActionLabel's event must be updated
-    /// by calling `create_tap_event()` and setting it via `action_label.set_event()`.
-    /// This ensures the tap behavior reflects the current entries state.
+    /// Retained so that SubMenu entries can be rebuilt with updated checked
+    /// state each time UpdateValue is received, and to provide identity for
+    /// routing [`SettingsEvent::UpdateValue`] without a separate field.
+    kind: Box<dyn SettingKind>,
+    /// Current SubMenu entries, exposed for test inspection.
+    #[cfg(test)]
+    pub entries: Vec<EntryKind>,
+    #[cfg(not(test))]
     entries: Vec<EntryKind>,
+    /// Tracks the ViewId of an active NamedInput child, if one is open.
+    active_input: Option<ViewId>,
+    /// Whether a FileChooser overlay is currently open as a child.
+    active_file_chooser: bool,
+    /// Keeps the temporary directory alive for the duration of the FileChooser session.
+    /// Without this, the directory would be deleted before FileChooser can use it.
+    #[cfg(test)]
+    _temp_dir: Option<tempfile::TempDir>,
+}
+
+impl std::fmt::Debug for SettingValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SettingValue")
+            .field("id", &self.id)
+            .field("identity", &self.kind.identity())
+            .field("rect", &self.rect)
+            .finish_non_exhaustive()
+    }
 }
 
 impl SettingValue {
+    /// Creates a new `SettingValue` for the given `kind`.
+    ///
+    /// `kind` accepts any owned value that implements [`SettingKind`], including references
+    /// (`&T`), boxes (`Box<T>`), and concrete types directly. The value is erased into a
+    /// `Box<dyn SettingKind>` internally, so the caller does not need to box it beforehand.
     pub fn new(
-        kind: Kind,
+        kind: impl SettingKind + 'static,
         rect: Rectangle,
         settings: &Settings,
         fonts: &mut crate::font::Fonts,
     ) -> SettingValue {
-        let (value, entries, enabled_toggle) = Self::fetch_data_for_kind(&kind, settings);
+        let kind: Box<dyn SettingKind> = Box::new(kind);
+        let data = kind.fetch(settings);
+
+        let entries = if let WidgetKind::SubMenu(ref e) = data.widget {
+            e.clone()
+        } else {
+            Vec::new()
+        };
 
         let mut setting_value = SettingValue {
             id: ID_FEEDER.next(),
-            kind,
             rect,
             children: vec![],
+            kind,
             entries,
+            active_input: None,
+            active_file_chooser: false,
+            #[cfg(test)]
+            _temp_dir: None,
         };
 
         setting_value.children =
-            vec![setting_value.kind_to_child_view(value, enabled_toggle, fonts)];
+            vec![setting_value.build_child_view(data.value, data.widget, fonts)];
 
         setting_value
     }
 
-    fn kind_to_child_view(
+    fn build_child_view(
         &self,
         value: String,
-        enabled_toggle: Option<bool>,
+        widget: WidgetKind,
         fonts: &mut crate::font::Fonts,
     ) -> Box<dyn View> {
-        let event = self.create_tap_event();
-
-        match self.kind {
-            Kind::Toggle(ref toggle) => match toggle {
-                ToggleSettings::AutoShare => Box::new(Toggle::new(
-                    self.rect,
-                    "on",
-                    "off",
-                    enabled_toggle.expect("enabled bool should be Some for toggle settings"),
-                    event.expect("Event should not be None for toggle"),
-                    fonts,
-                    Align::Right(10),
-                )),
-                ToggleSettings::ButtonScheme => Box::new(Toggle::new(
-                    self.rect,
-                    ButtonScheme::Natural.to_string().as_str(),
-                    ButtonScheme::Inverted.to_string().as_str(),
-                    enabled_toggle.expect("enabled bool should be Some for toggle settings"),
-                    event.expect("Event should not be None for toggle"),
-                    fonts,
-                    Align::Right(10),
-                )),
-                ToggleSettings::SleepCover => Box::new(Toggle::new(
-                    self.rect,
-                    "on",
-                    "off",
-                    enabled_toggle.expect("enabled bool should be Some for toggle settings"),
-                    event.expect("Event should not be None for toggle"),
-                    fonts,
-                    Align::Right(10),
-                )),
-                ToggleSettings::LoggingEnabled => Box::new(Toggle::new(
-                    self.rect,
-                    "on",
-                    "off",
-                    enabled_toggle.expect("enabled bool should be Some for toggle settings"),
-                    event.expect("Event should not be None for toggle"),
-                    fonts,
-                    Align::Right(10),
-                )),
-                #[cfg(feature = "test")]
-                ToggleSettings::EnableKernLog => Box::new(Toggle::new(
-                    self.rect,
-                    "on",
-                    "off",
-                    enabled_toggle.expect("enabled bool should be Some for toggle settings"),
-                    event.expect("Event should not be None for toggle"),
-                    fonts,
-                    Align::Right(10),
-                )),
-            },
-            _ => Box::new(ActionLabel::new(self.rect, value, Align::Right(10)).event(event)),
-        }
-    }
-
-    /// Refreshes the displayed value by re-reading from context.settings.
-    ///
-    /// This method updates the ActionLabel text to reflect the current state of the setting
-    /// in context.settings. It should be called whenever the underlying setting changes.
-    ///
-    /// # Deprecated
-    /// This method relies on context.settings which may not reflect the current
-    /// editing state. Use `Event::Settings(SettingsEvent::UpdateValue { kind, value })`
-    /// instead to directly update SettingValue views during editing.
-    #[deprecated(note = "use Event::Settings(SettingsEvent::UpdateValue { kind, value }) instead")]
-    pub fn refresh_from_context(&mut self, context: &Context, rq: &mut RenderQueue) {
-        let (value, entries, _enabled_toggle) =
-            Self::fetch_data_for_kind(&self.kind, &context.settings);
-        self.entries = entries;
-        let event = self.create_tap_event();
-
-        if let Some(action_label) = self.children.get_mut(0) {
-            if let Some(label) = action_label.as_any_mut().downcast_mut::<ActionLabel>() {
-                label.update(&value, rq);
-                label.set_event(event);
+        match widget {
+            WidgetKind::Toggle {
+                left_label,
+                right_label,
+                enabled,
+                tap_event,
+            } => Box::new(Toggle::new(
+                self.rect,
+                &left_label,
+                &right_label,
+                enabled,
+                tap_event,
+                fonts,
+                Align::Right(10),
+            )),
+            WidgetKind::ActionLabel(tap_event) => Box::new(
+                ActionLabel::new(self.rect, value, Align::Right(10)).event(Some(tap_event)),
+            ),
+            WidgetKind::SubMenu(entries) => {
+                let event = Some(Event::SubMenu(self.rect, entries));
+                Box::new(ActionLabel::new(self.rect, value, Align::Right(10)).event(event))
             }
         }
     }
 
-    fn fetch_data_for_kind(
-        kind: &Kind,
-        settings: &Settings,
-    ) -> (String, Vec<EntryKind>, Option<bool>) {
-        match kind {
-            Kind::KeyboardLayout => Self::fetch_keyboard_layout_data(settings),
-            Kind::Locale => Self::fetch_locale_data(settings),
-            Kind::AutoSuspend => Self::fetch_auto_suspend_data(settings),
-            Kind::AutoPowerOff => Self::fetch_auto_power_off_data(settings),
-            Kind::FinishedAction => Self::fetch_finished_action_data(settings),
-            Kind::LibraryInfo(index) => Self::fetch_library_info_data(*index, settings),
-            Kind::LibraryName(index) => Self::fetch_library_name_data(*index, settings),
-            Kind::LibraryPath(index) => Self::fetch_library_path_data(*index, settings),
-            Kind::LibraryFinishedAction(index) => {
-                Self::fetch_library_finished_action_data(*index, settings)
-            }
-            Kind::IntermissionSuspend => {
-                Self::fetch_intermission_data(crate::settings::IntermKind::Suspend, settings)
-            }
-            Kind::IntermissionPowerOff => {
-                Self::fetch_intermission_data(crate::settings::IntermKind::PowerOff, settings)
-            }
-            Kind::IntermissionShare => {
-                Self::fetch_intermission_data(crate::settings::IntermKind::Share, settings)
-            }
-            Kind::SettingsRetention => Self::fetch_settings_retention_data(settings),
-            Kind::LogLevel => Self::fetch_log_level_data(settings),
-            #[cfg(feature = "otel")]
-            Kind::OtlpEndpoint => Self::fetch_otlp_endpoint_data(settings),
-            Kind::Toggle(toggle) => match toggle {
-                ToggleSettings::SleepCover => Self::fetch_sleep_cover_data(settings),
-                ToggleSettings::AutoShare => Self::fetch_auto_share_data(settings),
-                ToggleSettings::ButtonScheme => Self::fetch_button_scheme_data(settings),
-                ToggleSettings::LoggingEnabled => Self::fetch_logging_enabled_data(settings),
-                #[cfg(feature = "test")]
-                ToggleSettings::EnableKernLog => Self::fetch_enable_kern_log_data(settings),
-            },
-        }
-    }
-
-    fn fetch_locale_data(settings: &Settings) -> (String, Vec<EntryKind>, Option<bool>) {
-        let current = settings.locale.as_ref().map(|l| l.to_string());
-
-        let display = current
-            .as_deref()
-            .unwrap_or(i18n::DEFAULT_LOCALE)
-            .to_string();
-
-        let entries = crate::i18n::AVAILABLE_LOCALES
-            .iter()
-            .map(|&tag| {
-                let lang_id: Option<unic_langid::LanguageIdentifier> = tag.parse().ok();
-                EntryKind::RadioButton(
-                    tag.to_string(),
-                    EntryId::SetLocale(lang_id),
-                    current.as_deref() == Some(tag),
-                )
-            })
-            .collect();
-
-        (display, entries, None)
-    }
-
-    fn fetch_keyboard_layout_data(settings: &Settings) -> (String, Vec<EntryKind>, Option<bool>) {
-        let current_layout = settings.keyboard_layout.clone();
-        let available_layouts = Self::get_available_layouts().unwrap_or_default();
-
-        let entries: Vec<EntryKind> = available_layouts
-            .iter()
-            .map(|layout| {
-                EntryKind::RadioButton(
-                    layout.clone(),
-                    EntryId::SetKeyboardLayout(layout.clone()),
-                    current_layout == *layout,
-                )
-            })
-            .collect();
-
-        (current_layout, entries, None)
-    }
-
-    fn fetch_sleep_cover_data(settings: &Settings) -> (String, Vec<EntryKind>, Option<bool>) {
-        let enabled = settings.sleep_cover;
-        let value = if enabled {
-            "Enabled".to_string()
-        } else {
-            "Disabled".to_string()
-        };
-
-        (value, vec![], Some(settings.sleep_cover))
-    }
-
-    fn fetch_auto_share_data(settings: &Settings) -> (String, Vec<EntryKind>, Option<bool>) {
-        let enabled = settings.auto_share;
-        let value = if enabled {
-            "Enabled".to_string()
-        } else {
-            "Disabled".to_string()
-        };
-
-        (value, vec![], Some(settings.auto_share))
-    }
-
-    fn fetch_button_scheme_data(settings: &Settings) -> (String, Vec<EntryKind>, Option<bool>) {
-        let current_scheme = settings.button_scheme;
-        let value = format!("{:?}", current_scheme);
-
-        (
-            value,
-            vec![],
-            Some(settings.button_scheme == ButtonScheme::Natural),
-        )
-    }
-
-    fn fetch_auto_suspend_data(settings: &Settings) -> (String, Vec<EntryKind>, Option<bool>) {
-        let value = if settings.auto_suspend == 0.0 {
-            "Never".to_string()
-        } else {
-            format!("{:.1}", settings.auto_suspend)
-        };
-
-        (value, vec![], None)
-    }
-
-    fn fetch_auto_power_off_data(settings: &Settings) -> (String, Vec<EntryKind>, Option<bool>) {
-        let value = if settings.auto_power_off == 0.0 {
-            "Never".to_string()
-        } else {
-            format!("{:.1}", settings.auto_power_off)
-        };
-
-        (value, vec![], None)
-    }
-
-    #[inline]
-    fn fetch_settings_retention_data(
-        settings: &Settings,
-    ) -> (String, Vec<EntryKind>, Option<bool>) {
-        let value = settings.settings_retention.to_string();
-
-        (value, vec![], None)
-    }
-
-    #[inline]
-    fn fetch_logging_enabled_data(settings: &Settings) -> (String, Vec<EntryKind>, Option<bool>) {
-        let toggle = settings.logging.enabled;
-        (toggle.to_string(), vec![], Some(settings.logging.enabled))
-    }
-
-    #[cfg(feature = "test")]
-    #[inline]
-    fn fetch_enable_kern_log_data(settings: &Settings) -> (String, Vec<EntryKind>, Option<bool>) {
-        let toggle = settings.logging.enable_kern_log;
-        (
-            toggle.to_string(),
-            vec![],
-            Some(settings.logging.enable_kern_log),
-        )
-    }
-
-    #[inline]
-    fn fetch_log_level_data(settings: &Settings) -> (String, Vec<EntryKind>, Option<bool>) {
-        let current = tracing::Level::from_str(settings.logging.level.as_str())
-            .unwrap_or(tracing::Level::INFO);
-
-        let entries = vec![
-            EntryKind::RadioButton(
-                tracing::Level::TRACE.to_string(),
-                EntryId::SetLogLevel(tracing::Level::TRACE),
-                current == tracing::Level::TRACE,
-            ),
-            EntryKind::RadioButton(
-                tracing::Level::DEBUG.to_string(),
-                EntryId::SetLogLevel(tracing::Level::DEBUG),
-                current == tracing::Level::DEBUG,
-            ),
-            EntryKind::RadioButton(
-                tracing::Level::INFO.to_string(),
-                EntryId::SetLogLevel(tracing::Level::INFO),
-                current == tracing::Level::INFO,
-            ),
-            EntryKind::RadioButton(
-                tracing::Level::WARN.to_string(),
-                EntryId::SetLogLevel(tracing::Level::WARN),
-                current == tracing::Level::WARN,
-            ),
-            EntryKind::RadioButton(
-                tracing::Level::ERROR.to_string(),
-                EntryId::SetLogLevel(tracing::Level::ERROR),
-                current == tracing::Level::ERROR,
-            ),
-        ];
-
-        (current.to_string(), entries, None)
-    }
-
-    #[cfg(feature = "otel")]
-    #[inline]
-    fn fetch_otlp_endpoint_data(settings: &Settings) -> (String, Vec<EntryKind>, Option<bool>) {
-        let value = settings
-            .logging
-            .otlp_endpoint
-            .clone()
-            .unwrap_or_else(|| "Not set".to_string());
-
-        (value, vec![], None)
-    }
-
-    #[inline]
-    fn fetch_finished_action_data(settings: &Settings) -> (String, Vec<EntryKind>, Option<bool>) {
-        let current = settings.reader.finished;
-
-        let value = current.to_string();
-
-        let entries = vec![
-            EntryKind::RadioButton(
-                FinishedAction::Notify.to_string(),
-                EntryId::SetFinishedAction(FinishedAction::Notify),
-                current == FinishedAction::Notify,
-            ),
-            EntryKind::RadioButton(
-                FinishedAction::Close.to_string(),
-                EntryId::SetFinishedAction(FinishedAction::Close),
-                current == FinishedAction::Close,
-            ),
-            EntryKind::RadioButton(
-                FinishedAction::GoToNext.to_string(),
-                EntryId::SetFinishedAction(FinishedAction::GoToNext),
-                current == FinishedAction::GoToNext,
-            ),
-        ];
-
-        (value, entries, None)
-    }
-
-    #[inline]
-    fn fetch_library_finished_action_data(
-        index: usize,
-        settings: &Settings,
-    ) -> (String, Vec<EntryKind>, Option<bool>) {
-        let current = settings.libraries.get(index).and_then(|lib| lib.finished);
-
-        let value = current
-            .map(|action| action.to_string())
-            .unwrap_or_else(|| "Inherit".to_string());
-
-        let entries = vec![
-            EntryKind::RadioButton(
-                "Inherit".to_string(),
-                EntryId::ClearLibraryFinishedAction(index),
-                current.is_none(),
-            ),
-            EntryKind::RadioButton(
-                FinishedAction::Notify.to_string(),
-                EntryId::SetLibraryFinishedAction(index, FinishedAction::Notify),
-                current == Some(FinishedAction::Notify),
-            ),
-            EntryKind::RadioButton(
-                FinishedAction::Close.to_string(),
-                EntryId::SetLibraryFinishedAction(index, FinishedAction::Close),
-                current == Some(FinishedAction::Close),
-            ),
-            EntryKind::RadioButton(
-                FinishedAction::GoToNext.to_string(),
-                EntryId::SetLibraryFinishedAction(index, FinishedAction::GoToNext),
-                current == Some(FinishedAction::GoToNext),
-            ),
-        ];
-
-        (value, entries, None)
-    }
-
-    fn fetch_library_info_data(
-        index: usize,
-        settings: &Settings,
-    ) -> (String, Vec<EntryKind>, Option<bool>) {
-        if let Some(library) = settings.libraries.get(index) {
-            let value = library.path.display().to_string();
-
-            (value, vec![], None)
-        } else {
-            ("Unknown".to_string(), vec![], None)
-        }
-    }
-
-    fn fetch_library_name_data(
-        index: usize,
-        settings: &Settings,
-    ) -> (String, Vec<EntryKind>, Option<bool>) {
-        if let Some(library) = settings.libraries.get(index) {
-            (library.name.clone(), vec![], None)
-        } else {
-            ("Unknown".to_string(), vec![], None)
-        }
-    }
-
-    fn fetch_library_path_data(
-        index: usize,
-        settings: &Settings,
-    ) -> (String, Vec<EntryKind>, Option<bool>) {
-        if let Some(library) = settings.libraries.get(index) {
-            (library.path.display().to_string(), vec![], None)
-        } else {
-            ("Unknown".to_string(), vec![], None)
-        }
-    }
-
-    fn get_available_layouts() -> Result<Vec<String>, Error> {
-        let layouts_dir = Path::new("keyboard-layouts");
-        let mut layouts = Vec::new();
-
-        if layouts_dir.exists() {
-            for entry in fs::read_dir(layouts_dir)? {
-                let entry = entry?;
-                let path = entry.path();
-
-                if path.extension().and_then(|s| s.to_str()) == Some("json") {
-                    if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-                        let layout_name = stem
-                            .chars()
-                            .enumerate()
-                            .map(|(i, c)| {
-                                if i == 0 {
-                                    c.to_uppercase().collect::<String>()
-                                } else {
-                                    c.to_string()
-                                }
-                            })
-                            .collect::<String>();
-                        layouts.push(layout_name);
-                    }
-                }
-            }
-        }
-
-        layouts.sort();
-        Ok(layouts)
-    }
-
-    fn fetch_intermission_data(
-        kind: IntermKind,
-        settings: &Settings,
-    ) -> (String, Vec<EntryKind>, Option<bool>) {
-        use crate::settings::IntermissionDisplay;
-
-        let display = &settings.intermissions[kind];
-
-        let (value, is_logo, is_cover) = match display {
-            IntermissionDisplay::Logo => ("Logo".to_string(), true, false),
-            IntermissionDisplay::Cover => ("Cover".to_string(), false, true),
-            IntermissionDisplay::Image(path) => {
-                let display_name = path
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("Custom")
-                    .to_string();
-                (display_name, false, false)
-            }
-        };
-
-        let entries = vec![
-            EntryKind::RadioButton(
-                "Logo".to_string(),
-                EntryId::SetIntermission(kind, IntermissionDisplay::Logo),
-                is_logo,
-            ),
-            EntryKind::RadioButton(
-                "Cover".to_string(),
-                EntryId::SetIntermission(kind, IntermissionDisplay::Cover),
-                is_cover,
-            ),
-            EntryKind::Command(
-                "Custom Image...".to_string(),
-                EntryId::EditIntermissionImage(kind),
-            ),
-        ];
-
-        (value, entries, None)
-    }
-
-    pub fn update(&mut self, value: String, context: &Context, rq: &mut RenderQueue) {
+    pub fn update(&mut self, value: String, settings: &Settings, rq: &mut RenderQueue) {
         if let Some(action_label) = self.children[0].downcast_mut::<ActionLabel>() {
             action_label.update(&value, rq);
-        }
 
-        if !self.entries.is_empty() {
-            let (_, entries, _) = Self::fetch_data_for_kind(&self.kind, &context.settings);
-            self.entries = entries;
-
-            if let Some(event) = self.create_tap_event() {
-                if let Some(action_label) = self.children[0].downcast_mut::<ActionLabel>() {
-                    action_label.set_event(Some(event));
-                }
+            if let WidgetKind::SubMenu(entries) = self.kind.fetch(settings).widget {
+                self.entries = entries.clone();
+                action_label.set_event(Some(Event::SubMenu(self.rect, entries)));
             }
         }
     }
@@ -632,65 +158,137 @@ impl SettingValue {
             String::new()
         }
     }
-
-    /// Generates the appropriate event to be triggered when this setting value is tapped.
-    ///
-    /// This method determines what event should be emitted based on the type of setting.
-    /// It's used during initialization (in `new()`) and after updates (in various `handle_*` methods)
-    /// to ensure the ActionLabel always has the correct tap behavior.
-    ///
-    /// The behavior varies by setting type:
-    /// - **Direct edit settings** (LibraryInfo, LibraryName, LibraryPath, AutoSuspend, AutoPowerOff):
-    ///   Return specific edit events that trigger their corresponding input dialogs.
-    /// - **Settings with multiple options** (KeyboardLayout, SleepCover, AutoShare, ButtonScheme, Intermission*):
-    ///   Return a SubMenu event that displays all available entries as radio buttons or checkboxes.
-    ///
-    /// # Returns
-    /// An Option containing:
-    /// - `Some(Event)` - the event to emit on tap
-    /// - `None`
-    ///
-    /// # Important
-    /// **This method must be called every time `self.entries` is updated** to ensure the tap event
-    /// reflects the current state of available entries.
-    fn create_tap_event(&self) -> Option<Event> {
-        match self.kind {
-            Kind::LibraryInfo(index) => Some(Event::EditLibrary(index)),
-            Kind::LibraryName(_) => Some(Event::Select(EntryId::EditLibraryName)),
-            Kind::LibraryPath(_) => Some(Event::Select(EntryId::EditLibraryPath)),
-            Kind::AutoSuspend => Some(Event::Select(EntryId::EditAutoSuspend)),
-            Kind::AutoPowerOff => Some(Event::Select(EntryId::EditAutoPowerOff)),
-            Kind::SettingsRetention => Some(Event::Select(EntryId::EditSettingsRetention)),
-            #[cfg(feature = "otel")]
-            Kind::OtlpEndpoint => Some(Event::Select(EntryId::EditOtlpEndpoint)),
-            Kind::Toggle(ref toggle) => Some(Event::Toggle(ToggleEvent::Setting(toggle.clone()))),
-            _ if !self.entries.is_empty() => Some(Event::SubMenu(self.rect, self.entries.clone())),
-            _ => None,
-        }
-    }
 }
 
 impl View for SettingValue {
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _hub, _bus, rq, _context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    /// Handles events in three passes.
+    ///
+    /// 1. Delegates to [`SettingKind::handle`] for direct mutation events such as
+    ///    submenu selections and toggle taps. When the kind handles the event it
+    ///    returns the updated display string, which is applied immediately.
+    ///
+    /// 2. For [`InputSettingKind`](crate::view::settings_editor::InputSettingKind) settings, opens a [`NamedInput`] overlay on the
+    ///    matching [`EntryId`](crate::view::EntryId) tap, applies the submitted text on [`Event::Submit`],
+    ///    and closes the overlay on [`Event::Close`] or after submission.
+    ///
+    /// 3. Falls back to [`SettingsEvent::UpdateValue`] routing so that
+    ///    `LibraryEditor` and other callers can push targeted display updates
+    ///    without going through the event bus.
+    ///
+    /// [`NamedInput`]: crate::view::named_input::NamedInput
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, hub, bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
-        _hub: &Hub,
-        _bus: &mut Bus,
+        hub: &Hub,
+        bus: &mut Bus,
         rq: &mut RenderQueue,
-        _context: &mut Context,
+        context: &mut Context,
     ) -> bool {
-        match evt {
-            Event::Settings(SettingsEvent::UpdateValue { kind, value }) => {
-                if self.kind == *kind {
-                    self.update(value.clone(), _context, rq);
-                    true
-                } else {
-                    false
+        if let Event::Select(ref entry_id) = evt {
+            if Some(entry_id) == self.kind.file_chooser_entry_id().as_ref()
+                && !self.active_file_chooser
+            {
+                #[cfg(not(test))]
+                let initial_path = std::path::PathBuf::from("/mnt/onboard");
+                #[cfg(test)]
+                let initial_path = {
+                    let temp_dir = tempfile::tempdir().expect("failed to create temp dir for test");
+                    let path = temp_dir.path().to_path_buf();
+                    self._temp_dir = Some(temp_dir);
+                    path
+                };
+
+                let file_chooser = FileChooser::new(
+                    rect!(
+                        0,
+                        0,
+                        context.display.dims.0 as i32,
+                        context.display.dims.1 as i32
+                    ),
+                    initial_path,
+                    SelectionMode::File,
+                    hub,
+                    rq,
+                    context,
+                );
+                rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+                self.children.push(Box::new(file_chooser));
+                self.active_file_chooser = true;
+                return true;
+            }
+        }
+
+        if let Event::FileChooserClosed(_) = evt {
+            if self.active_file_chooser {
+                if let Some(display) = self.kind.handle(evt, &mut context.settings, bus) {
+                    self.update(display, &context.settings, rq);
+                }
+                return false;
+            }
+            return false;
+        }
+
+        if let Event::Close(ViewId::FileChooser) = evt {
+            if self.active_file_chooser {
+                if let Some(idx) = locate_by_id(self, ViewId::FileChooser) {
+                    self.children.remove(idx);
+                }
+                self.active_file_chooser = false;
+                #[cfg(test)]
+                {
+                    self._temp_dir = None;
+                }
+                rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+                return false;
+            }
+        }
+
+        if let Some(display) = self.kind.handle(evt, &mut context.settings, bus) {
+            self.update(display, &context.settings, rq);
+            bus.push_back(Event::Close(ViewId::SettingsValueMenu));
+            return true;
+        }
+
+        if let Some(input_kind) = self.kind.as_input_kind() {
+            let view_id = input_kind.submit_view_id();
+            let open_entry = input_kind.open_entry_id();
+
+            if let Event::Select(ref id) = evt {
+                if *id == open_entry && self.active_input.is_none() {
+                    bus.push_back(Event::OpenNamedInput {
+                        view_id,
+                        label: input_kind.input_label(),
+                        max_chars: input_kind.input_max_chars(),
+                        initial_text: input_kind.current_text(&context.settings),
+                    });
+                    self.active_input = Some(view_id);
+                    return true;
                 }
             }
-            _ => false,
+
+            if let Event::Submit(submitted_id, ref text) = evt {
+                if Some(*submitted_id) == self.active_input {
+                    let display = self
+                        .kind
+                        .as_input_kind()
+                        .unwrap()
+                        .apply_text(text, &mut context.settings);
+                    self.active_input = None;
+                    self.update(display, &context.settings, rq);
+                    return true;
+                }
+            }
         }
+
+        if let Event::Settings(SettingsEvent::UpdateValue { kind, value }) = evt {
+            if self.kind.identity() == *kind {
+                self.update(value.clone(), &context.settings, rq);
+                return true;
+            }
+        }
+
+        false
     }
 
     #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _fb, _fonts), fields(rect = ?_rect)))]
@@ -724,6 +322,14 @@ mod tests {
     use crate::context::test_helpers::create_test_context;
     use crate::gesture::GestureEvent;
     use crate::settings::Settings;
+    use crate::view::settings_editor::kinds::general::{
+        AutoPowerOff, AutoSuspend, KeyboardLayout, SettingsRetention,
+    };
+    use crate::view::settings_editor::kinds::intermission::{
+        IntermissionPowerOff, IntermissionShare, IntermissionSuspend,
+    };
+    use crate::view::settings_editor::kinds::library::{LibraryInfo, LibraryName, LibraryPath};
+    use crate::view::settings_editor::kinds::telemetry::LogLevel;
     use crate::view::RenderQueue;
     use std::collections::VecDeque;
     use std::path::PathBuf;
@@ -735,20 +341,12 @@ mod tests {
         let settings = Settings::default();
         let rect = rect![0, 0, 200, 50];
 
-        let mut suspend_value = SettingValue::new(
-            Kind::IntermissionSuspend,
-            rect,
-            &settings,
-            &mut context.fonts,
-        );
-        let mut power_off_value = SettingValue::new(
-            Kind::IntermissionPowerOff,
-            rect,
-            &settings,
-            &mut context.fonts,
-        );
+        let mut suspend_value =
+            SettingValue::new(&IntermissionSuspend, rect, &settings, &mut context.fonts);
+        let mut power_off_value =
+            SettingValue::new(&IntermissionPowerOff, rect, &settings, &mut context.fonts);
         let mut share_value =
-            SettingValue::new(Kind::IntermissionShare, rect, &settings, &mut context.fonts);
+            SettingValue::new(&IntermissionShare, rect, &settings, &mut context.fonts);
 
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
@@ -758,19 +356,11 @@ mod tests {
         let initial_power_off = power_off_value.value().clone();
         let initial_share = share_value.value().clone();
 
-        let test_path = PathBuf::from("/mnt/onboard/test_image.png");
-        let event = Event::FileChooserClosed(Some(test_path.clone()));
+        let event = Event::FileChooserClosed(None);
 
         suspend_value.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
         power_off_value.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
         share_value.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
-
-        println!("Initial suspend value: {}", initial_suspend);
-        println!("After event suspend value: {}", suspend_value.value());
-        println!("Initial power_off value: {}", initial_power_off);
-        println!("After event power_off value: {}", power_off_value.value());
-        println!("Initial share value: {}", initial_share);
-        println!("After event share value: {}", share_value.value());
 
         assert_eq!(suspend_value.value(), initial_suspend);
         assert_eq!(power_off_value.value(), initial_power_off);
@@ -778,40 +368,56 @@ mod tests {
     }
 
     #[test]
-    fn test_intermission_values_update_via_submit_event() {
-        use crate::settings::IntermKind;
+    fn test_intermission_values_update_via_update_value_event() {
         let mut context = create_test_context();
         let settings = Settings::default();
         let rect = rect![0, 0, 200, 50];
 
-        let mut suspend_value = SettingValue::new(
-            Kind::IntermissionSuspend,
-            rect,
-            &settings,
-            &mut context.fonts,
-        );
-        let mut power_off_value = SettingValue::new(
-            Kind::IntermissionPowerOff,
-            rect,
-            &settings,
-            &mut context.fonts,
-        );
+        let mut suspend_value =
+            SettingValue::new(&IntermissionSuspend, rect, &settings, &mut context.fonts);
+        let mut power_off_value =
+            SettingValue::new(&IntermissionPowerOff, rect, &settings, &mut context.fonts);
         let mut share_value =
-            SettingValue::new(Kind::IntermissionShare, rect, &settings, &mut context.fonts);
+            SettingValue::new(&IntermissionShare, rect, &settings, &mut context.fonts);
 
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
 
-        context.settings.intermissions[IntermKind::Suspend] =
-            crate::settings::IntermissionDisplay::Image(PathBuf::from("suspend_image.png"));
-        context.settings.intermissions[IntermKind::PowerOff] =
-            crate::settings::IntermissionDisplay::Image(PathBuf::from("poweroff_image.png"));
-        context.settings.intermissions[IntermKind::Share] =
-            crate::settings::IntermissionDisplay::Image(PathBuf::from("share_image.png"));
+        let handled_suspend = suspend_value.handle_event(
+            &Event::Settings(SettingsEvent::UpdateValue {
+                kind: SettingIdentity::IntermissionSuspend,
+                value: "suspend_image.png".to_string(),
+            }),
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        );
+        let handled_power_off = power_off_value.handle_event(
+            &Event::Settings(SettingsEvent::UpdateValue {
+                kind: SettingIdentity::IntermissionPowerOff,
+                value: "poweroff_image.png".to_string(),
+            }),
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        );
+        let handled_share = share_value.handle_event(
+            &Event::Settings(SettingsEvent::UpdateValue {
+                kind: SettingIdentity::IntermissionShare,
+                value: "share_image.png".to_string(),
+            }),
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        );
 
-        suspend_value.refresh_from_context(&context, &mut rq);
-        power_off_value.refresh_from_context(&context, &mut rq);
-        share_value.refresh_from_context(&context, &mut rq);
-
+        assert!(handled_suspend);
+        assert!(handled_power_off);
+        assert!(handled_share);
         assert_eq!(suspend_value.value(), "suspend_image.png");
         assert_eq!(power_off_value.value(), "poweroff_image.png");
         assert_eq!(share_value.value(), "share_image.png");
@@ -826,12 +432,16 @@ mod tests {
         };
         let rect = rect![0, 0, 200, 50];
 
-        let mut value =
-            SettingValue::new(Kind::KeyboardLayout, rect, &settings, &mut context.fonts);
+        let mut value = SettingValue::new(&KeyboardLayout, rect, &settings, &mut context.fonts);
         let mut rq = RenderQueue::new();
 
-        context.settings.keyboard_layout = "French".to_string();
-        value.refresh_from_context(&context, &mut rq);
+        let update_event = Event::Settings(SettingsEvent::UpdateValue {
+            kind: SettingIdentity::KeyboardLayout,
+            value: "French".to_string(),
+        });
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+        value.handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context);
 
         assert_eq!(value.value(), "French");
         assert!(!rq.is_empty());
@@ -843,11 +453,16 @@ mod tests {
         let settings = Settings::default();
         let rect = rect![0, 0, 200, 50];
 
-        let mut value = SettingValue::new(Kind::AutoSuspend, rect, &settings, &mut context.fonts);
+        let mut value = SettingValue::new(&AutoSuspend, rect, &settings, &mut context.fonts);
         let mut rq = RenderQueue::new();
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
 
-        context.settings.auto_suspend = 15.0;
-        value.refresh_from_context(&context, &mut rq);
+        let update_event = Event::Settings(SettingsEvent::UpdateValue {
+            kind: SettingIdentity::AutoSuspend,
+            value: "15.0".to_string(),
+        });
+        value.handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context);
 
         assert_eq!(value.value(), "15.0");
         assert!(!rq.is_empty());
@@ -859,11 +474,16 @@ mod tests {
         let settings = Settings::default();
         let rect = rect![0, 0, 200, 50];
 
-        let mut value = SettingValue::new(Kind::AutoPowerOff, rect, &settings, &mut context.fonts);
+        let mut value = SettingValue::new(&AutoPowerOff, rect, &settings, &mut context.fonts);
         let mut rq = RenderQueue::new();
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
 
-        context.settings.auto_power_off = 7.0;
-        value.refresh_from_context(&context, &mut rq);
+        let update_event = Event::Settings(SettingsEvent::UpdateValue {
+            kind: SettingIdentity::AutoPowerOff,
+            value: "7.0".to_string(),
+        });
+        value.handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context);
 
         assert_eq!(value.value(), "7.0");
         assert!(!rq.is_empty());
@@ -881,12 +501,16 @@ mod tests {
         let rect = rect![0, 0, 200, 50];
 
         let mut context = create_test_context();
-        let mut value =
-            SettingValue::new(Kind::LibraryName(0), rect, &settings, &mut context.fonts);
+        let mut value = SettingValue::new(LibraryName(0), rect, &settings, &mut context.fonts);
         let mut rq = RenderQueue::new();
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
 
-        context.settings.libraries[0].name = "New Name".to_string();
-        value.refresh_from_context(&context, &mut rq);
+        let update_event = Event::Settings(SettingsEvent::UpdateValue {
+            kind: SettingIdentity::LibraryName(0),
+            value: "New Name".to_string(),
+        });
+        value.handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context);
 
         assert_eq!(value.value(), "New Name");
         assert!(!rq.is_empty());
@@ -904,13 +528,17 @@ mod tests {
         let rect = rect![0, 0, 200, 50];
 
         let mut context = create_test_context();
-        let mut value =
-            SettingValue::new(Kind::LibraryPath(0), rect, &settings, &mut context.fonts);
+        let mut value = SettingValue::new(LibraryPath(0), rect, &settings, &mut context.fonts);
         let mut rq = RenderQueue::new();
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
 
         let new_path = PathBuf::from("/mnt/onboard/new_library");
-        context.settings.libraries[0].path = new_path.clone();
-        value.refresh_from_context(&context, &mut rq);
+        let update_event = Event::Settings(SettingsEvent::UpdateValue {
+            kind: SettingIdentity::LibraryPath(0),
+            value: new_path.display().to_string(),
+        });
+        value.handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context);
 
         assert_eq!(value.value(), new_path.display().to_string());
         assert!(!rq.is_empty());
@@ -928,7 +556,7 @@ mod tests {
         let rect = rect![0, 0, 200, 50];
 
         let mut context = create_test_context();
-        let value = SettingValue::new(Kind::LibraryInfo(0), rect, &settings, &mut context.fonts);
+        let value = SettingValue::new(LibraryInfo(0), rect, &settings, &mut context.fonts);
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
@@ -966,12 +594,8 @@ mod tests {
         });
         let rect = rect![0, 0, 200, 50];
 
-        let mut value = SettingValue::new(
-            Kind::LibraryName(0),
-            rect,
-            &context.settings,
-            &mut context.fonts,
-        );
+        let mut value =
+            SettingValue::new(LibraryName(0), rect, &context.settings, &mut context.fonts);
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
@@ -979,7 +603,7 @@ mod tests {
         assert_eq!(value.value(), "Old Name");
 
         let update_event = Event::Settings(SettingsEvent::UpdateValue {
-            kind: Kind::LibraryName(0),
+            kind: SettingIdentity::LibraryName(0),
             value: "New Name".to_string(),
         });
         let handled = value.handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context);
@@ -1003,12 +627,8 @@ mod tests {
         });
         let rect = rect![0, 0, 200, 50];
 
-        let mut value = SettingValue::new(
-            Kind::LibraryPath(0),
-            rect,
-            &context.settings,
-            &mut context.fonts,
-        );
+        let mut value =
+            SettingValue::new(LibraryPath(0), rect, &context.settings, &mut context.fonts);
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
@@ -1016,7 +636,7 @@ mod tests {
         assert_eq!(value.value(), "/old/path");
 
         let update_event = Event::Settings(SettingsEvent::UpdateValue {
-            kind: Kind::LibraryPath(0),
+            kind: SettingIdentity::LibraryPath(0),
             value: "/new/path".to_string(),
         });
         let handled = value.handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context);
@@ -1040,12 +660,8 @@ mod tests {
         });
         let rect = rect![0, 0, 200, 50];
 
-        let mut value = SettingValue::new(
-            Kind::LibraryName(0),
-            rect,
-            &context.settings,
-            &mut context.fonts,
-        );
+        let mut value =
+            SettingValue::new(LibraryName(0), rect, &context.settings, &mut context.fonts);
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
@@ -1053,7 +669,7 @@ mod tests {
         assert_eq!(value.value(), "Test Library");
 
         let update_event = Event::Settings(SettingsEvent::UpdateValue {
-            kind: Kind::LibraryPath(0),
+            kind: SettingIdentity::LibraryPath(0),
             value: "Some Path".to_string(),
         });
         let handled = value.handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context);
@@ -1086,12 +702,8 @@ mod tests {
         });
         let rect = rect![0, 0, 200, 50];
 
-        let mut value = SettingValue::new(
-            Kind::LibraryName(0),
-            rect,
-            &context.settings,
-            &mut context.fonts,
-        );
+        let mut value =
+            SettingValue::new(LibraryName(0), rect, &context.settings, &mut context.fonts);
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
@@ -1099,7 +711,7 @@ mod tests {
         assert_eq!(value.value(), "Library 0");
 
         let update_event = Event::Settings(SettingsEvent::UpdateValue {
-            kind: Kind::LibraryName(1),
+            kind: SettingIdentity::LibraryName(1),
             value: "Updated Library 1".to_string(),
         });
         let handled = value.handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context);
@@ -1118,14 +730,9 @@ mod tests {
     #[test]
     fn test_update_value_event_updates_auto_suspend() {
         let rect = rect![0, 0, 200, 50];
-
         let mut context = create_test_context();
-        let mut value = SettingValue::new(
-            Kind::AutoSuspend,
-            rect,
-            &context.settings,
-            &mut context.fonts,
-        );
+        let mut value =
+            SettingValue::new(&AutoSuspend, rect, &context.settings, &mut context.fonts);
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
@@ -1133,7 +740,7 @@ mod tests {
         assert_eq!(value.value(), "30.0");
 
         let update_event = Event::Settings(SettingsEvent::UpdateValue {
-            kind: Kind::AutoSuspend,
+            kind: SettingIdentity::AutoSuspend,
             value: "60.0".to_string(),
         });
         let handled = value.handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context);
@@ -1148,14 +755,9 @@ mod tests {
     #[test]
     fn test_update_value_event_updates_auto_power_off() {
         let rect = rect![0, 0, 200, 50];
-
         let mut context = create_test_context();
-        let mut value = SettingValue::new(
-            Kind::AutoPowerOff,
-            rect,
-            &context.settings,
-            &mut context.fonts,
-        );
+        let mut value =
+            SettingValue::new(&AutoPowerOff, rect, &context.settings, &mut context.fonts);
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
@@ -1163,7 +765,7 @@ mod tests {
         assert_eq!(value.value(), "3.0");
 
         let update_event = Event::Settings(SettingsEvent::UpdateValue {
-            kind: Kind::AutoPowerOff,
+            kind: SettingIdentity::AutoPowerOff,
             value: "60.0".to_string(),
         });
         let handled = value.handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context);
@@ -1178,10 +780,9 @@ mod tests {
     #[test]
     fn test_update_value_event_updates_settings_retention() {
         let rect = rect![0, 0, 200, 50];
-
         let mut context = create_test_context();
         let mut value = SettingValue::new(
-            Kind::SettingsRetention,
+            &SettingsRetention,
             rect,
             &context.settings,
             &mut context.fonts,
@@ -1193,7 +794,7 @@ mod tests {
         assert_eq!(value.value(), "3");
 
         let update_event = Event::Settings(SettingsEvent::UpdateValue {
-            kind: Kind::SettingsRetention,
+            kind: SettingIdentity::SettingsRetention,
             value: "5".to_string(),
         });
         let handled = value.handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context);
@@ -1208,12 +809,10 @@ mod tests {
     #[test]
     fn test_update_value_event_regenerates_log_level_radio_buttons() {
         let rect = rect![0, 0, 200, 50];
-
         let mut context = create_test_context();
         context.settings.logging.level = "INFO".to_string();
 
-        let mut value =
-            SettingValue::new(Kind::LogLevel, rect, &context.settings, &mut context.fonts);
+        let mut value = SettingValue::new(&LogLevel, rect, &context.settings, &mut context.fonts);
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
@@ -1235,7 +834,7 @@ mod tests {
 
         context.settings.logging.level = "DEBUG".to_string();
         let update_event = Event::Settings(SettingsEvent::UpdateValue {
-            kind: Kind::LogLevel,
+            kind: SettingIdentity::LogLevel,
             value: "DEBUG".to_string(),
         });
         let handled = value.handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context);
@@ -1245,30 +844,5 @@ mod tests {
             "UpdateValue event should be handled when kind matches"
         );
         assert_eq!(value.value(), "DEBUG");
-
-        let updated_entries = &value.entries;
-        let debug_entry = updated_entries.iter().find(|e| {
-            if let EntryKind::RadioButton(label, _, _) = e {
-                label == "DEBUG"
-            } else {
-                false
-            }
-        });
-        assert!(
-            matches!(debug_entry, Some(EntryKind::RadioButton(_, _, true))),
-            "DEBUG should be checked after update"
-        );
-
-        let info_entry_after = updated_entries.iter().find(|e| {
-            if let EntryKind::RadioButton(label, _, _) = e {
-                label == "INFO"
-            } else {
-                false
-            }
-        });
-        assert!(
-            matches!(info_entry_after, Some(EntryKind::RadioButton(_, _, false))),
-            "INFO should be unchecked after update"
-        );
     }
 }

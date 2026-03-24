@@ -505,6 +505,20 @@ pub enum Event {
     Github(GithubEvent),
     /// Settings-specific events
     Settings(settings_editor::SettingsEvent),
+    /// Request to open a [`NamedInput`](named_input::NamedInput) text overlay.
+    ///
+    /// The handler is responsible for creating the overlay and placing it at the
+    /// correct position in the view hierarchy so it sits at the top of the z-order.
+    OpenNamedInput {
+        /// The `ViewId` used for both the overlay and the resulting `Submit` event.
+        view_id: ViewId,
+        /// Label text displayed inside the input dialog.
+        label: String,
+        /// Maximum number of characters the input field accepts.
+        max_chars: usize,
+        /// Current value pre-populated into the input field.
+        initial_text: String,
+    },
     /// Progress update from a background OTA download thread.
     ///
     /// `OtaView` handles this by updating the status label text and the

@@ -1,8 +1,16 @@
-use super::setting_row::Kind as RowKind;
+use super::kinds::general::{
+    AutoPowerOff, AutoShare, AutoSuspend, ButtonScheme, KeyboardLayout, Locale, SettingsRetention,
+    SleepCover,
+};
+use super::kinds::intermission::{IntermissionPowerOff, IntermissionShare, IntermissionSuspend};
+use super::kinds::library::LibraryInfo;
+use super::kinds::reader::FinishedActionSetting;
+use super::kinds::telemetry::{LogLevel, LoggingEnabled};
+use super::kinds::SettingKind;
 use crate::context::Context;
 
 /// Categories of settings available in the settings editor.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Category {
     /// General device settings (auto-suspend, keyboard layout, etc.)
     General,
@@ -28,48 +36,63 @@ impl Category {
         }
     }
 
-    /// Returns the list of setting rows for this category.
-    pub fn settings(&self, context: &Context) -> Vec<RowKind> {
+    /// Returns the list of setting kinds for this category.
+    ///
+    /// Each element is a heap-allocated [`SettingKind`] that fully describes
+    /// the label, current value, widget type, and tap event for one row.
+    pub fn settings(&self, context: &Context) -> Vec<Box<dyn SettingKind>> {
         match self {
             Category::General => vec![
-                RowKind::Locale,
-                RowKind::AutoShare,
-                RowKind::AutoSuspend,
-                RowKind::AutoPowerOff,
-                RowKind::ButtonScheme,
-                RowKind::KeyboardLayout,
-                RowKind::SleepCover,
-                RowKind::SettingsRetention,
+                Box::new(Locale),
+                Box::new(AutoShare),
+                Box::new(AutoSuspend),
+                Box::new(AutoPowerOff),
+                Box::new(ButtonScheme),
+                Box::new(KeyboardLayout),
+                Box::new(SleepCover),
+                Box::new(SettingsRetention),
             ],
-            Category::Reader => vec![RowKind::FinishedAction],
+            Category::Reader => vec![Box::new(FinishedActionSetting)],
             Category::Libraries => (0..context.settings.libraries.len())
-                .map(RowKind::Library)
+                .map(|i| Box::new(LibraryInfo(i)) as Box<dyn SettingKind>)
                 .collect(),
             Category::Intermissions => vec![
-                RowKind::IntermissionSuspend,
-                RowKind::IntermissionPowerOff,
-                RowKind::IntermissionShare,
+                Box::new(IntermissionSuspend),
+                Box::new(IntermissionPowerOff),
+                Box::new(IntermissionShare),
             ],
             Category::Telemetry => {
                 #[cfg(feature = "otel")]
                 {
-                    let rows = vec![
-                        RowKind::LoggingEnabled,
-                        RowKind::LogLevel,
-                        RowKind::OtlpEndpoint,
-                        #[cfg(feature = "test")]
-                        RowKind::EnableKernLog,
+                    use super::kinds::telemetry::OtlpEndpoint;
+                    let rows: Vec<Box<dyn SettingKind>> = vec![
+                        Box::new(LoggingEnabled),
+                        Box::new(LogLevel),
+                        Box::new(OtlpEndpoint),
                     ];
+
+                    #[cfg(feature = "test")]
+                    let mut rows = rows;
+                    #[cfg(feature = "test")]
+                    {
+                        use super::kinds::telemetry::EnableKernLog;
+                        rows.push(Box::new(EnableKernLog));
+                    }
                     rows
                 }
                 #[cfg(not(feature = "otel"))]
                 {
-                    vec![
-                        RowKind::LoggingEnabled,
-                        RowKind::LogLevel,
-                        #[cfg(feature = "test")]
-                        RowKind::EnableKernLog,
-                    ]
+                    let rows: Vec<Box<dyn SettingKind>> =
+                        vec![Box::new(LoggingEnabled), Box::new(LogLevel)];
+
+                    #[cfg(feature = "test")]
+                    let mut rows = rows;
+                    #[cfg(feature = "test")]
+                    {
+                        use super::kinds::telemetry::EnableKernLog;
+                        rows.push(Box::new(EnableKernLog));
+                    }
+                    rows
                 }
             }
         }

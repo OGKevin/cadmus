@@ -27,6 +27,102 @@
 //! When a setting is modified, the CategoryEditor directly updates `context.settings`,
 //! providing immediate feedback. Settings are persisted to disk when the settings editor
 //! is closed.
+//!
+//! ## Adding a new setting
+//!
+//! Each setting is a small self-contained struct that implements [`SettingKind`].
+//! The trait carries everything the UI needs.
+//!
+//! ### 1. Add a variant to `SettingIdentity`
+//!
+//! Open `kinds/identity.rs` and add a variant for the new setting:
+//!
+//! ```rust,no_run
+//! pub enum SettingIdentity {
+//!     // ... existing variants
+//!     MyNewSetting,
+//! }
+//! ```
+//!
+//! ### 2. Implement `SettingKind`
+//!
+//! Add a struct in the appropriate `kinds/*.rs` file and implement the trait:
+//!
+//! ```rust,ignore
+//! // This example uses hypothetical types (MyNewSetting, EntryId::EditMyNewSetting)
+//! // that do not exist in the codebase — it illustrates the pattern to follow.
+//! pub struct MyNewSetting;
+//!
+//! impl SettingKind for MyNewSetting {
+//!     fn identity(&self) -> SettingIdentity {
+//!         SettingIdentity::MyNewSetting
+//!     }
+//!
+//!     fn label(&self, _settings: &Settings) -> String {
+//!         "My New Setting".to_string()
+//!     }
+//!
+//!     fn fetch(&self, settings: &Settings) -> SettingData {
+//!         SettingData {
+//!             value: settings.my_new_setting.to_string(),
+//!             widget: WidgetKind::ActionLabel(Event::Select(EntryId::EditMyNewSetting)),
+//!         }
+//!     }
+//! }
+//! ```
+//!
+//! For a **toggle** widget, use `WidgetKind::Toggle { ..., tap_event }` where
+//! `tap_event` is `Event::Toggle(ToggleEvent::Setting(ToggleSettings::MyNewSetting))`
+//! (adding the corresponding `ToggleSettings` variant in `kinds/mod.rs`).
+//!
+//! For a **sub-menu** (radio buttons), use `WidgetKind::SubMenu(entries)` where
+//! `entries` is a `Vec<`[`EntryKind`](crate::view::EntryKind)`>` — the sub-menu
+//! event is built automatically from the entries when the row is tapped.
+//!
+//! ### 3. Register the setting in `Category::settings()`
+//!
+//! Open `category.rs` and add the new kind to the relevant category arm:
+//!
+//! ```rust,ignore
+//! // This example shows a match arm inside Category::settings() — it is a
+//! // partial snippet and cannot compile standalone.
+//! Category::General => vec![
+//!     // ... existing kinds
+//!     Box::new(MyNewSetting),
+//! ],
+//! ```
+//!
+//! ### 4. Handle mutations (usually automatic)
+//!
+//! Most settings do **not** require any changes to `CategoryEditor`. The framework
+//! handles mutations automatically:
+//!
+//! - **Sub-menu / toggle / file-chooser settings**: [`SettingKind::handle`] is called
+//!   when the user makes a selection. Implement `handle` on your struct to mutate
+//!   `context.settings` and return the updated display string.
+//! - **Text-input settings**: Implement [`InputSettingKind`] and its `apply_text`
+//!   method. The overlay and submission flow are handled by [`SettingValue`].
+//!
+//! A `CategoryEditor` handler is only needed for settings with **custom event flows**
+//! not covered by the traits above — for example, library management actions that
+//! must coordinate multiple views or emit side-effect events. In that case, add a
+//! handler method in `category_editor.rs` and dispatch it from `handle_event`. After
+//! mutating `context.settings`, send `SettingsEvent::UpdateValue` so the corresponding
+//! [`SettingValue`] view refreshes its displayed text:
+//!
+//! ```rust,ignore
+//! // This example shows a method inside a CategoryEditor impl block — it is a
+//! // partial snippet and cannot compile standalone.
+//! fn handle_my_new_setting(&mut self, value: f32, hub: &Hub, context: &mut Context) -> bool {
+//!     context.settings.my_new_setting = value;
+//!     hub.send(Event::Settings(SettingsEvent::UpdateValue {
+//!         kind: SettingIdentity::MyNewSetting,
+//!         value: value.to_string(),
+//!     }))
+//!     .ok();
+//!     true
+//! }
+//! ```
 
 use crate::color::BLACK;
 use crate::context::Context;
@@ -40,6 +136,9 @@ use crate::view::navigation::stack_navigation_bar::StackNavigationBar;
 use crate::view::top_bar::{TopBar, TopBarVariant};
 use crate::view::{Bus, Event, Hub, Id, RenderData, RenderQueue, View, ViewId, ID_FEEDER};
 use crate::view::{SMALL_BAR_HEIGHT, THICKNESS_MEDIUM};
+use fxhash::FxHashMap;
+
+pub mod kinds;
 
 mod bottom_bar;
 mod category;
@@ -59,7 +158,8 @@ pub use self::category_button::CategoryButton;
 pub use self::category_editor::CategoryEditor;
 pub use self::category_navigation_bar::CategoryNavigationBar;
 pub use self::category_provider::SettingsCategoryProvider;
-pub use self::setting_row::{Kind as RowKind, SettingRow};
+pub use self::kinds::{InputSettingKind, SettingIdentity, SettingKind};
+pub use self::setting_row::SettingRow;
 pub use self::setting_value::SettingValue;
 
 /// Main settings editor view.
@@ -75,12 +175,18 @@ pub use self::setting_value::SettingValue;
 /// - `children`: Child views including the top bar, separators, navigation bar, and category editor
 /// - `nav_bar_index`: Index of the StackNavigationBar in the children vector
 /// - `editor_index`: Index of the CategoryEditor in the children vector
+/// - `editors`: Pre-built [`CategoryEditor`] instances for all inactive categories, keyed by
+///   [`Category`]. On tab switch the active editor is returned here and the target is pulled
+///   out, avoiding a full view-tree rebuild on every navigation. The [`Category::Libraries`]
+///   editor is included and stays current because every library mutation calls
+///   `rebuild_library_rows` before returning.
 pub struct SettingsEditor {
     id: Id,
     rect: Rectangle,
     children: Vec<Box<dyn View>>,
     nav_bar_index: usize,
     editor_index: usize,
+    editors: FxHashMap<Category, Box<dyn View>>,
 }
 
 impl SettingsEditor {
@@ -133,6 +239,17 @@ impl SettingsEditor {
         let editor_index = children.len();
         children.push(Box::new(category_editor));
 
+        let mut editors: FxHashMap<Category, Box<dyn View>> = FxHashMap::default();
+
+        for category in Category::all() {
+            if category == Category::General {
+                continue;
+            }
+
+            let editor = CategoryEditor::new(content_rect, category, rq, context);
+            editors.insert(category, Box::new(editor));
+        }
+
         rq.add(RenderData::new(id, rect, UpdateMode::Gui));
 
         SettingsEditor {
@@ -141,6 +258,7 @@ impl SettingsEditor {
             children,
             nav_bar_index,
             editor_index,
+            editors,
         }
     }
 
@@ -218,12 +336,19 @@ impl View for SettingsEditor {
                     let nav_bar = self.children[self.nav_bar_index]
                         .downcast_mut::<StackNavigationBar<SettingsCategoryProvider>>()
                         .unwrap();
-
                     nav_bar.set_selected(*category, rq, context);
                     nav_bar.rect.max.y
                 };
 
-                self.children.remove(self.editor_index);
+                let current_category = self.children[self.editor_index]
+                    .downcast_ref::<CategoryEditor>()
+                    .map(|e| e.category());
+
+                let outgoing = self.children.remove(self.editor_index);
+
+                if let Some(cat) = current_category {
+                    self.editors.insert(cat, outgoing);
+                }
 
                 let content_rect = rect![
                     self.rect.min.x,
@@ -232,12 +357,14 @@ impl View for SettingsEditor {
                     self.rect.max.y
                 ];
 
-                let new_editor = CategoryEditor::new(content_rect, *category, rq, context);
-                self.children
-                    .insert(self.editor_index, Box::new(new_editor));
+                let incoming = self.editors.remove(category).unwrap_or_else(|| {
+                    Box::new(CategoryEditor::new(content_rect, *category, rq, context))
+                        as Box<dyn View>
+                });
+
+                self.children.insert(self.editor_index, incoming);
 
                 rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
-
                 true
             }
             Event::NavigationBarResized(_) => {

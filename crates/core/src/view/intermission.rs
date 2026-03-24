@@ -3,9 +3,11 @@ use crate::color::{TEXT_INVERTED_HARD, TEXT_NORMAL};
 use crate::context::Context;
 use crate::device::CURRENT_DEVICE;
 use crate::document::{open, Location};
+use crate::fl;
 use crate::font::{font_from_style, Fonts, DISPLAY_STYLE};
 use crate::framebuffer::Framebuffer;
 use crate::geom::Rectangle;
+use crate::i18n::I18nDisplay;
 use crate::metadata::{sort, BookQuery, SortMethod};
 use crate::settings::{IntermKind, IntermissionDisplay};
 use std::path::PathBuf;
@@ -53,6 +55,16 @@ impl Intermission {
             children: Vec::new(),
             message,
             halt: kind == IntermKind::PowerOff,
+        }
+    }
+}
+
+impl I18nDisplay for IntermissionDisplay {
+    fn to_i18n_string(&self) -> String {
+        match self {
+            IntermissionDisplay::Logo => fl!("settings-intermission-logo"),
+            IntermissionDisplay::Cover => fl!("settings-intermission-cover"),
+            IntermissionDisplay::Image(_) => fl!("settings-intermission-custom"),
         }
     }
 }

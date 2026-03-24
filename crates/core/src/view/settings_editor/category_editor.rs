@@ -4,32 +4,29 @@ use crate::device::CURRENT_DEVICE;
 use crate::framebuffer::{Framebuffer, UpdateMode};
 use crate::geom::{halves, Rectangle};
 use crate::gesture::GestureEvent;
-use crate::i18n;
-use crate::settings::{ButtonScheme, FinishedAction, LibrarySettings, Settings};
+use crate::settings::{LibrarySettings, Settings};
 use crate::unit::scale_by_dpi;
 use crate::view::common::locate_by_id;
 use crate::view::filler::Filler;
 use crate::view::menu::{Menu, MenuKind};
 use crate::view::toggleable_keyboard::ToggleableKeyboard;
 use crate::view::{
-    Bus, EntryId, EntryKind, Event, Hub, Id, RenderData, RenderQueue, ToggleEvent, View, ViewId,
-    ID_FEEDER, SMALL_BAR_HEIGHT, THICKNESS_MEDIUM,
+    Bus, EntryId, EntryKind, Event, Hub, Id, RenderData, RenderQueue, View, ViewId, ID_FEEDER,
+    SMALL_BAR_HEIGHT, THICKNESS_MEDIUM,
 };
 
 use super::bottom_bar::{BottomBarVariant, SettingsEditorBottomBar};
 use super::category::Category;
+use super::kinds::library::LibraryInfo;
 use super::library_editor::LibraryEditor;
-use super::setting_row::{Kind as RowKind, SettingRow};
-use super::setting_value::{Kind, SettingsEvent};
-use crate::view::file_chooser::{FileChooser, SelectionMode};
-use crate::view::settings_editor::ToggleSettings;
+use super::setting_row::SettingRow;
 use std::path::PathBuf;
 
 /// A view for editing category-specific settings.
 ///
 /// The `CategoryEditor` manages the UI for editing settings within a specific category
 /// (e.g., Libraries, Intermissions, etc.). It displays setting rows, handles user interactions,
-/// and manages child views such as keyboards, input fields, and file choosers.
+/// and manages child views such as keyboards and input fields.
 ///
 /// All settings changes are applied immediately to `context.settings`, providing instant
 /// feedback without requiring explicit validation.
@@ -44,14 +41,13 @@ use std::path::PathBuf;
 ///   3. BottomSeparator (variable index, only for Libraries category)
 ///   4. BottomBar (variable index, only for Libraries category)
 ///   5. ToggleableKeyboard (at index `keyboard_index`)
-///   6. Plus optional overlay views like LibraryEditor, FileChooser, Menu, and NamedInput fields
+///   6. Plus optional overlay views like LibraryEditor and NamedInput fields
 /// * `category` - The settings category being edited
 /// * `content_rect` - The rectangular area where setting rows are displayed
 /// * `row_height` - The height of each setting row
 /// * `focus` - Currently focused child view, if any
 /// * `first_row_index` - Index in the children vector where setting rows begin (after structural elements)
 /// * `keyboard_index` - Index of the keyboard child view in the children vector
-/// * `active_intermission_edit` - Tracks which intermission type is currently being edited via file chooser
 pub struct CategoryEditor {
     id: Id,
     rect: Rectangle,
@@ -62,7 +58,6 @@ pub struct CategoryEditor {
     focus: Option<ViewId>,
     first_row_index: usize,
     keyboard_index: usize,
-    active_intermission_edit: Option<crate::settings::IntermKind>,
 }
 
 impl CategoryEditor {
@@ -148,8 +143,11 @@ impl CategoryEditor {
             focus: None,
             first_row_index,
             keyboard_index,
-            active_intermission_edit: None,
         }
+    }
+
+    pub fn category(&self) -> Category {
+        self.category
     }
 
     #[inline]
@@ -166,7 +164,7 @@ impl CategoryEditor {
 
     #[inline]
     fn build_setting_row(
-        kind: RowKind,
+        kind: Box<dyn super::kinds::SettingKind>,
         row_rect: Rectangle,
         settings: &Settings,
         fonts: &mut crate::font::Fonts,
@@ -283,7 +281,7 @@ impl CategoryEditor {
             ];
 
             let setting_row = SettingRow::new(
-                RowKind::Library(i),
+                Box::new(LibraryInfo(i)),
                 row_rect,
                 &context.settings,
                 &mut context.fonts,
@@ -399,128 +397,6 @@ impl CategoryEditor {
     }
 
     #[inline]
-    fn handle_set_keyboard_layout(
-        &mut self,
-        layout: &str,
-        hub: &Hub,
-        context: &mut Context,
-    ) -> bool {
-        context.settings.keyboard_layout = layout.to_string();
-        hub.send(Event::Settings(SettingsEvent::UpdateValue {
-            kind: Kind::KeyboardLayout,
-            value: layout.to_string(),
-        }))
-        .ok();
-        true
-    }
-
-    #[inline]
-    fn handle_toggle_sleep_cover(&mut self, context: &mut Context) -> bool {
-        context.settings.sleep_cover = !context.settings.sleep_cover;
-        true
-    }
-
-    #[inline]
-    fn handle_toggle_auto_share(&mut self, context: &mut Context) -> bool {
-        context.settings.auto_share = !context.settings.auto_share;
-        true
-    }
-
-    #[inline]
-    fn handle_toggle_logging_enabled(&mut self, context: &mut Context) -> bool {
-        context.settings.logging.enabled = !context.settings.logging.enabled;
-
-        true
-    }
-
-    #[inline]
-    fn handle_edit_auto_suspend(
-        &mut self,
-        hub: &Hub,
-        rq: &mut RenderQueue,
-        context: &mut Context,
-    ) -> bool {
-        let mut suspend_input = crate::view::named_input::NamedInput::new(
-            "Auto Suspend (minutes, 0 = never)".to_string(),
-            ViewId::AutoSuspendInput,
-            ViewId::AutoSuspendInput,
-            10,
-            context,
-        );
-        let text = if context.settings.auto_suspend == 0.0 {
-            "0".to_string()
-        } else {
-            format!("{:.1}", context.settings.auto_suspend)
-        };
-
-        suspend_input.set_text(&text, rq, context);
-
-        self.children.push(Box::new(suspend_input));
-        hub.send(Event::Focus(Some(ViewId::AutoSuspendInput))).ok();
-
-        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
-
-        true
-    }
-
-    #[inline]
-    fn handle_edit_auto_power_off(
-        &mut self,
-        hub: &Hub,
-        rq: &mut RenderQueue,
-        context: &mut Context,
-    ) -> bool {
-        let mut power_off_input = crate::view::named_input::NamedInput::new(
-            "Auto Power Off (days, 0 = never)".to_string(),
-            ViewId::AutoPowerOffInput,
-            ViewId::AutoPowerOffInput,
-            10,
-            context,
-        );
-        let text = if context.settings.auto_power_off == 0.0 {
-            "0".to_string()
-        } else {
-            format!("{:.1}", context.settings.auto_power_off)
-        };
-
-        power_off_input.set_text(&text, rq, context);
-
-        self.children.push(Box::new(power_off_input));
-        hub.send(Event::Focus(Some(ViewId::AutoPowerOffInput))).ok();
-        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
-
-        true
-    }
-
-    #[inline]
-    fn handle_set_button_scheme(
-        &mut self,
-        button_scheme: &ButtonScheme,
-        bus: &mut Bus,
-        context: &mut Context,
-    ) -> bool {
-        context.settings.button_scheme = *button_scheme;
-        bus.push_back(Event::Select(EntryId::SetButtonScheme(*button_scheme)));
-        true
-    }
-
-    #[inline]
-    fn handle_set_finished_action(
-        &mut self,
-        action: FinishedAction,
-        hub: &Hub,
-        context: &mut Context,
-    ) -> bool {
-        context.settings.reader.finished = action;
-        hub.send(Event::Settings(SettingsEvent::UpdateValue {
-            kind: Kind::FinishedAction,
-            value: action.to_string(),
-        }))
-        .ok();
-        true
-    }
-
-    #[inline]
     fn handle_delete_library(
         &mut self,
         index: usize,
@@ -538,83 +414,6 @@ impl CategoryEditor {
             self.children.remove(menu_index);
             rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
         }
-
-        true
-    }
-
-    #[inline]
-    fn handle_set_intermission(
-        &mut self,
-        kind: &crate::settings::IntermKind,
-        display: &crate::settings::IntermissionDisplay,
-        hub: &Hub,
-        context: &mut Context,
-    ) -> bool {
-        use crate::settings::{IntermKind, IntermissionDisplay};
-
-        context.settings.intermissions[*kind] = display.clone();
-
-        let value = match display {
-            IntermissionDisplay::Image(path) => path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("Custom")
-                .to_string(),
-            _ => display.to_string(),
-        };
-
-        let update_kind = match kind {
-            IntermKind::Suspend => Kind::IntermissionSuspend,
-            IntermKind::PowerOff => Kind::IntermissionPowerOff,
-            IntermKind::Share => Kind::IntermissionShare,
-        };
-
-        hub.send(Event::Settings(SettingsEvent::UpdateValue {
-            kind: update_kind,
-            value,
-        }))
-        .ok();
-
-        true
-    }
-
-    #[inline]
-    fn handle_edit_intermission_image(
-        &mut self,
-        kind: &crate::settings::IntermKind,
-        hub: &Hub,
-        rq: &mut RenderQueue,
-        context: &mut Context,
-    ) -> bool {
-        self.handle_close_view_event(&ViewId::SettingsValueMenu, rq);
-
-        self.active_intermission_edit = Some(*kind);
-
-        #[cfg(not(test))]
-        let initial_path = PathBuf::from("/mnt/onboard");
-        #[cfg(test)]
-        let initial_path = PathBuf::from(
-            tempfile::tempdir()
-                .expect("failed to crete temp dir for test")
-                .path(),
-        );
-
-        let file_chooser = FileChooser::new(
-            rect!(
-                0,
-                0,
-                context.display.dims.0 as i32,
-                context.display.dims.1 as i32
-            ),
-            initial_path,
-            SelectionMode::File,
-            hub,
-            rq,
-            context,
-        );
-
-        self.children.push(Box::new(file_chooser));
-        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
 
         true
     }
@@ -700,342 +499,59 @@ impl CategoryEditor {
     }
 
     #[inline]
-    fn handle_submit_auto_suspend(&mut self, text: &str, hub: &Hub, context: &mut Context) -> bool {
-        if let Ok(value) = text.parse::<f32>() {
-            context.settings.auto_suspend = value;
-        }
-
-        let display = if context.settings.auto_suspend == 0.0 {
-            "Never".to_string()
-        } else {
-            format!("{:.1}", context.settings.auto_suspend)
-        };
-
-        hub.send(Event::Settings(SettingsEvent::UpdateValue {
-            kind: Kind::AutoSuspend,
-            value: display,
-        }))
-        .ok();
-
-        hub.send(Event::Focus(None)).ok();
-
-        true
-    }
-
-    #[inline]
-    fn handle_submit_auto_power_off(
+    #[allow(clippy::too_many_arguments)]
+    fn handle_open_named_input(
         &mut self,
-        text: &str,
-        hub: &Hub,
-        context: &mut Context,
-    ) -> bool {
-        if let Ok(value) = text.parse::<f32>() {
-            context.settings.auto_power_off = value;
-        }
-
-        let display = if context.settings.auto_power_off == 0.0 {
-            "Never".to_string()
-        } else {
-            format!("{:.1}", context.settings.auto_power_off)
-        };
-
-        hub.send(Event::Settings(SettingsEvent::UpdateValue {
-            kind: Kind::AutoPowerOff,
-            value: display,
-        }))
-        .ok();
-
-        hub.send(Event::Focus(None)).ok();
-
-        true
-    }
-
-    #[inline]
-    fn handle_edit_settings_retention(
-        &mut self,
+        view_id: ViewId,
+        label: String,
+        max_chars: usize,
+        initial_text: String,
         hub: &Hub,
         rq: &mut RenderQueue,
         context: &mut Context,
     ) -> bool {
-        let mut retention_input = crate::view::named_input::NamedInput::new(
-            "Settings Retention".to_string(),
-            ViewId::SettingsRetentionInput,
-            ViewId::SettingsRetentionInput,
-            3,
-            context,
-        );
-        let text = context.settings.settings_retention.to_string();
-
-        retention_input.set_text(&text, rq, context);
-
-        self.children.push(Box::new(retention_input));
-        hub.send(Event::Focus(Some(ViewId::SettingsRetentionInput)))
-            .ok();
-
+        let mut named_input =
+            crate::view::named_input::NamedInput::new(label, view_id, view_id, max_chars, context);
+        named_input.set_text(&initial_text, rq, context);
+        self.children.push(Box::new(named_input));
+        hub.send(Event::Focus(Some(view_id))).ok();
         rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
-
         true
     }
 
     #[inline]
-    fn handle_submit_settings_retention(
+    fn handle_close_view_event(
         &mut self,
-        text: &str,
-        hub: &Hub,
-        context: &mut Context,
-    ) -> bool {
-        if let Ok(value) = text.parse::<usize>() {
-            context.settings.settings_retention = value;
-        }
-
-        hub.send(Event::Settings(SettingsEvent::UpdateValue {
-            kind: Kind::SettingsRetention,
-            value: context.settings.settings_retention.to_string(),
-        }))
-        .ok();
-
-        hub.send(Event::Focus(None)).ok();
-
-        true
-    }
-
-    #[inline]
-    fn handle_set_locale(
-        &mut self,
-        locale: &Option<unic_langid::LanguageIdentifier>,
-        hub: &Hub,
-        context: &mut Context,
-    ) -> bool {
-        context.settings.locale = locale.clone();
-        crate::i18n::init(locale.as_ref());
-
-        let display = locale
-            .as_ref()
-            .map(|l| l.to_string())
-            .unwrap_or_else(|| i18n::DEFAULT_LOCALE.to_string());
-
-        hub.send(Event::Settings(SettingsEvent::UpdateValue {
-            kind: Kind::Locale,
-            value: display,
-        }))
-        .ok();
-
-        true
-    }
-
-    #[inline]
-    fn handle_set_log_level(
-        &mut self,
-        level: &tracing::Level,
+        view_id: &ViewId,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
     ) -> bool {
-        context.settings.logging.level = level.to_string();
-        hub.send(Event::Settings(SettingsEvent::UpdateValue {
-            kind: Kind::LogLevel,
-            value: level.to_string(),
-        }))
-        .ok();
-        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
-        true
-    }
-
-    #[cfg(feature = "otel")]
-    #[inline]
-    fn handle_edit_otlp_endpoint(
-        &mut self,
-        hub: &Hub,
-        rq: &mut RenderQueue,
-        context: &mut Context,
-    ) -> bool {
-        let mut otlp_input = crate::view::named_input::NamedInput::new(
-            "OTLP Endpoint".to_string(),
-            ViewId::OtlpEndpointInput,
-            ViewId::OtlpEndpointInput,
-            50,
-            context,
-        );
-
-        let text = context
-            .settings
-            .logging
-            .otlp_endpoint
-            .clone()
-            .unwrap_or_default();
-        otlp_input.set_text(&text, rq, context);
-
-        self.children.push(Box::new(otlp_input));
-        hub.send(Event::Focus(Some(ViewId::OtlpEndpointInput))).ok();
-
-        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
-
-        true
-    }
-
-    #[cfg(feature = "otel")]
-    #[inline]
-    fn handle_submit_otlp_endpoint(
-        &mut self,
-        text: &str,
-        hub: &Hub,
-        rq: &mut RenderQueue,
-        context: &mut Context,
-    ) -> bool {
-        let trimmed = text.trim();
-        context.settings.logging.otlp_endpoint = if trimmed.is_empty() {
-            None
-        } else {
-            Some(trimmed.to_string())
-        };
-
-        hub.send(Event::Settings(SettingsEvent::UpdateValue {
-            kind: Kind::OtlpEndpoint,
-            value: context
-                .settings
-                .logging
-                .otlp_endpoint
-                .clone()
-                .unwrap_or_else(|| "Not set".to_string()),
-        }))
-        .ok();
-
-        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
-
-        hub.send(Event::Focus(None)).ok();
-
-        true
-    }
-
-    /// Handles the `FileChooserClosed` event for intermission image selection.
-    ///
-    /// Updates `context.settings.intermissions` with the selected image path and schedules
-    /// a GUI refresh to reflect the change.
-    ///
-    /// # Returns
-    ///
-    /// Always returns `false` to allow the event to propagate through the view hierarchy.
-    /// Other views in the chain (LibraryEditor, SettingValue) may also need to handle this
-    /// event for their own path selection needs.
-    #[inline]
-    fn handle_file_chooser_closed(
-        &mut self,
-        path: &Option<PathBuf>,
-        hub: &Hub,
-        _rq: &mut RenderQueue,
-        context: &mut Context,
-    ) -> bool {
-        if let Some(kind) = self.active_intermission_edit.take() {
-            if let Some(ref selected_path) = *path {
-                use crate::settings::{IntermKind, IntermissionDisplay};
-                context.settings.intermissions[kind] =
-                    IntermissionDisplay::Image(selected_path.clone());
-
-                let value = selected_path
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("Custom")
-                    .to_string();
-
-                let update_kind = match kind {
-                    IntermKind::Suspend => Kind::IntermissionSuspend,
-                    IntermKind::PowerOff => Kind::IntermissionPowerOff,
-                    IntermKind::Share => Kind::IntermissionShare,
-                };
-
-                hub.send(Event::Settings(SettingsEvent::UpdateValue {
-                    kind: update_kind,
-                    value,
-                }))
-                .ok();
-            }
-        }
-
-        false
-    }
-
-    /// Handles the `Close` event for various child views within the category editor.
-    ///
-    /// This method manages the closure of different overlay and child views:
-    ///
-    /// - **LibraryEditor, AutoSuspendInput, AutoPowerOffInput, SettingsValueMenu**: These overlay
-    ///   views are removed from the children list and a GUI update is scheduled. The event is
-    ///   considered handled.
-    ///
-    /// - **FileChooser**: The file chooser is removed from the children list, the active
-    ///   intermission edit state is cleared, and a GUI update is scheduled.
-    ///
-    /// - **Other view IDs**: Return false as they are not handled by this method.
-    ///
-    /// # Arguments
-    ///
-    /// * `view_id` - The ID of the view being closed
-    /// * `rq` - The render queue for scheduling UI updates
-    ///
-    /// # Returns
-    ///
-    /// `true` if the event was handled, `false` otherwise.
-    #[inline]
-    fn handle_close_view_event(&mut self, view_id: &ViewId, rq: &mut RenderQueue) -> bool {
         match view_id {
-            ViewId::LibraryEditor
-            | ViewId::AutoSuspendInput
+            ViewId::AutoSuspendInput
             | ViewId::AutoPowerOffInput
             | ViewId::SettingsRetentionInput
-            | ViewId::OtlpEndpointInput
-            | ViewId::SettingsValueMenu => {
+            | ViewId::SettingsValueMenu
+            | ViewId::LibraryEditor => {
                 if let Some(index) = locate_by_id(self, *view_id) {
+                    let input_rect = *self.children[index].rect();
                     self.children.remove(index);
-                    rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+                    rq.add(RenderData::expose(input_rect, UpdateMode::Gui));
                 }
+                hub.send(Event::Focus(None)).ok();
                 true
             }
-            ViewId::FileChooser => {
-                if let Some(index) = locate_by_id(self, ViewId::FileChooser) {
+            #[cfg(feature = "otel")]
+            ViewId::OtlpEndpointInput => {
+                if let Some(index) = locate_by_id(self, *view_id) {
+                    let input_rect = *self.children[index].rect();
                     self.children.remove(index);
-                    rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+                    rq.add(RenderData::expose(input_rect, UpdateMode::Gui));
                 }
-                self.active_intermission_edit = None;
-                false
+                hub.send(Event::Focus(None)).ok();
+                true
             }
             _ => false,
         }
-    }
-
-    #[inline]
-    #[allow(clippy::too_many_arguments)]
-    fn handle_toggle_event(
-        &mut self,
-        bus: &mut Bus,
-        context: &mut Context,
-        toggle: &ToggleEvent,
-    ) -> bool {
-        match toggle {
-            ToggleEvent::Setting(ref setting) => match setting {
-                ToggleSettings::SleepCover => self.handle_toggle_sleep_cover(context),
-
-                ToggleSettings::AutoShare => self.handle_toggle_auto_share(context),
-                ToggleSettings::ButtonScheme => match context.settings.button_scheme {
-                    ButtonScheme::Natural => {
-                        self.handle_set_button_scheme(&ButtonScheme::Inverted, bus, context)
-                    }
-                    ButtonScheme::Inverted => {
-                        self.handle_set_button_scheme(&ButtonScheme::Natural, bus, context)
-                    }
-                },
-                ToggleSettings::LoggingEnabled => self.handle_toggle_logging_enabled(context),
-                #[cfg(feature = "test")]
-                ToggleSettings::EnableKernLog => self.handle_toggle_enable_kern_log(context),
-            },
-            _ => unreachable!("mismatched toggle event"),
-        }
-    }
-
-    #[cfg(feature = "test")]
-    #[inline]
-    fn handle_toggle_enable_kern_log(&mut self, context: &mut Context) -> bool {
-        context.settings.logging.enable_kern_log = !context.settings.logging.enable_kern_log;
-        true
     }
 }
 
@@ -1057,61 +573,29 @@ impl View for CategoryEditor {
             Event::SubMenu(rect, ref entries) => {
                 self.handle_submenu_event(rect, entries, rq, context)
             }
-            Event::Toggle(ref toggle) if matches!(toggle, ToggleEvent::Setting(_)) => {
-                self.handle_toggle_event(bus, context, toggle)
+            Event::Select(EntryId::DeleteLibrary(index)) => {
+                self.handle_delete_library(*index, rq, context)
             }
-            Event::Select(ref id) => match id {
-                EntryId::SetKeyboardLayout(ref layout) => {
-                    self.handle_set_keyboard_layout(layout, hub, context)
-                }
-                EntryId::SetLocale(ref locale) => self.handle_set_locale(locale, hub, context),
-                EntryId::EditAutoSuspend => self.handle_edit_auto_suspend(hub, rq, context),
-                EntryId::EditAutoPowerOff => self.handle_edit_auto_power_off(hub, rq, context),
-                EntryId::EditSettingsRetention => {
-                    self.handle_edit_settings_retention(hub, rq, context)
-                }
-                EntryId::SetLogLevel(ref level) => {
-                    self.handle_set_log_level(level, hub, rq, context)
-                }
-                #[cfg(feature = "otel")]
-                EntryId::EditOtlpEndpoint => self.handle_edit_otlp_endpoint(hub, rq, context),
-                EntryId::SetButtonScheme(button_scheme) => {
-                    self.handle_set_button_scheme(button_scheme, bus, context)
-                }
-                EntryId::SetFinishedAction(action) => {
-                    self.handle_set_finished_action(*action, hub, context)
-                }
-                EntryId::DeleteLibrary(index) => self.handle_delete_library(*index, rq, context),
-                EntryId::SetIntermission(kind, display) => {
-                    self.handle_set_intermission(kind, display, hub, context)
-                }
-                EntryId::EditIntermissionImage(kind) => {
-                    self.handle_edit_intermission_image(kind, hub, rq, context)
-                }
-                _ => false,
-            },
             Event::AddLibrary => self.handle_add_library_event(hub, rq, context),
             Event::EditLibrary(index) => self.handle_edit_library_event(*index, hub, rq, context),
             Event::UpdateLibrary(index, ref library) => {
                 self.handle_update_library_event(*index, library, rq, context)
             }
-            Event::Submit(ViewId::AutoSuspendInput, ref text) => {
-                self.handle_submit_auto_suspend(text, hub, context)
-            }
-            Event::Submit(ViewId::AutoPowerOffInput, ref text) => {
-                self.handle_submit_auto_power_off(text, hub, context)
-            }
-            Event::Submit(ViewId::SettingsRetentionInput, ref text) => {
-                self.handle_submit_settings_retention(text, hub, context)
-            }
-            #[cfg(feature = "otel")]
-            Event::Submit(ViewId::OtlpEndpointInput, ref text) => {
-                self.handle_submit_otlp_endpoint(text, hub, rq, context)
-            }
-            Event::FileChooserClosed(ref path) => {
-                self.handle_file_chooser_closed(path, hub, rq, context)
-            }
-            Event::Close(view_id) => self.handle_close_view_event(view_id, rq),
+            Event::OpenNamedInput {
+                view_id,
+                ref label,
+                max_chars,
+                ref initial_text,
+            } => self.handle_open_named_input(
+                *view_id,
+                label.clone(),
+                *max_chars,
+                initial_text.clone(),
+                hub,
+                rq,
+                context,
+            ),
+            Event::Close(view_id) => self.handle_close_view_event(view_id, hub, rq),
             _ => false,
         }
     }
@@ -1416,7 +900,8 @@ mod tests {
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
 
-        let handled = editor.handle_event(
+        let handled = crate::view::handle_event(
+            &mut editor,
             &Event::Select(EntryId::SetIntermission(
                 IntermKind::Suspend,
                 IntermissionDisplay::Logo,
@@ -1444,7 +929,8 @@ mod tests {
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
 
-        let handled = editor.handle_event(
+        let handled = crate::view::handle_event(
+            &mut editor,
             &Event::Select(EntryId::SetIntermission(
                 IntermKind::PowerOff,
                 IntermissionDisplay::Cover,
@@ -1460,117 +946,5 @@ mod tests {
             context.settings.intermissions[IntermKind::PowerOff],
             IntermissionDisplay::Cover
         ));
-    }
-
-    #[test]
-    fn test_edit_intermission_image_opens_file_chooser() {
-        use crate::settings::IntermKind;
-
-        let mut context = create_test_context();
-        let mut editor = create_test_intermissions_category_editor(&mut context);
-        let (hub, _receiver) = channel();
-        let mut bus = VecDeque::new();
-        let mut rq = RenderQueue::new();
-
-        let initial_children_count = editor.children.len();
-
-        let handled = editor.handle_event(
-            &Event::Select(EntryId::EditIntermissionImage(IntermKind::Share)),
-            &hub,
-            &mut bus,
-            &mut rq,
-            &mut context,
-        );
-
-        assert!(handled);
-        assert_eq!(editor.children.len(), initial_children_count + 1);
-        assert!(editor.active_intermission_edit.is_some());
-        assert_eq!(editor.active_intermission_edit.unwrap(), IntermKind::Share);
-        assert!(!rq.is_empty());
-    }
-
-    #[test]
-    fn test_file_chooser_closed_sets_custom_image() {
-        use crate::settings::{IntermKind, IntermissionDisplay};
-
-        let mut context = create_test_context();
-        let mut editor = create_test_intermissions_category_editor(&mut context);
-        let (hub, _receiver) = channel();
-        let mut bus = VecDeque::new();
-        let mut rq = RenderQueue::new();
-
-        editor.active_intermission_edit = Some(IntermKind::Suspend);
-
-        let test_path = PathBuf::from("/mnt/onboard/test.png");
-        let handled = editor.handle_event(
-            &Event::FileChooserClosed(Some(test_path.clone())),
-            &hub,
-            &mut bus,
-            &mut rq,
-            &mut context,
-        );
-
-        assert!(!handled);
-        assert!(editor.active_intermission_edit.is_none());
-        assert!(matches!(
-            &context.settings.intermissions[IntermKind::Suspend],
-            IntermissionDisplay::Image(path) if path == &test_path
-        ));
-    }
-
-    #[test]
-    fn test_file_chooser_cancelled_clears_active_edit() {
-        use crate::settings::IntermKind;
-
-        let mut context = create_test_context();
-        let mut editor = create_test_intermissions_category_editor(&mut context);
-        let (hub, _receiver) = channel();
-        let mut bus = VecDeque::new();
-        let mut rq = RenderQueue::new();
-
-        editor.active_intermission_edit = Some(IntermKind::Share);
-
-        let handled = editor.handle_event(
-            &Event::FileChooserClosed(None),
-            &hub,
-            &mut bus,
-            &mut rq,
-            &mut context,
-        );
-
-        assert!(!handled);
-        assert!(editor.active_intermission_edit.is_none());
-    }
-
-    #[test]
-    fn test_close_file_chooser_clears_active_edit() {
-        use crate::settings::IntermKind;
-
-        let mut context = create_test_context();
-        let mut editor = create_test_intermissions_category_editor(&mut context);
-        let (hub, _receiver) = channel();
-        let mut bus = VecDeque::new();
-        let mut rq = RenderQueue::new();
-
-        editor.active_intermission_edit = Some(IntermKind::PowerOff);
-        editor
-            .children
-            .push(Box::new(crate::view::filler::Filler::new(
-                rect![0, 0, 100, 100],
-                crate::color::WHITE,
-            )));
-
-        let handled = editor.handle_event(
-            &Event::Close(ViewId::FileChooser),
-            &hub,
-            &mut bus,
-            &mut rq,
-            &mut context,
-        );
-
-        assert!(
-            !handled,
-            "Close event for FileChooser should not capture the event so that settings editor can refresh the whole screen.");
-        assert!(editor.active_intermission_edit.is_none());
     }
 }
