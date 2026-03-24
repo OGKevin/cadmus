@@ -25,3 +25,10 @@
 - [SQLite & SQLx](contributing/sqlite-sqlx.md)
   - [Library Database](contributing/library-database.md)
   - [Runtime Migrations](contributing/runtime-migrations.md)
+
+---
+
+# Investigations
+
+- [Intro](investigations/index.md)
+  - [DHCP IP Address Changes on WiFi Toggle](investigations/kobo/issue-51-dhcp-investigation.md)
