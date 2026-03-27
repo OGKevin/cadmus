@@ -137,18 +137,21 @@ pub fn to_github_matrix_json(entries: &[MatrixEntry]) -> Result<String> {
 /// assert_eq!(normalize_features_arg("otel + test"), "otel + test");
 /// assert_eq!(normalize_features_arg("test,otel"), "otel + test");
 /// assert_eq!(normalize_features_arg(""), "default");
+/// assert_eq!(normalize_features_arg("  "), "default");
+/// assert_eq!(normalize_features_arg(",,"), "default");
+/// assert_eq!(normalize_features_arg("+"), "default");
 /// assert_eq!(normalize_features_arg("otel"), "otel");
 /// ```
 pub fn normalize_features_arg(input: &str) -> String {
-    if input.is_empty() {
-        return "default".to_owned();
-    }
-
     let mut parts: Vec<&str> = input
         .split([',', '+'])
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .collect();
+
+    if parts.is_empty() {
+        return "default".to_owned();
+    }
 
     parts.sort_unstable();
     parts.join(" + ")
