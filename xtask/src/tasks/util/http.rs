@@ -49,7 +49,11 @@ pub fn verify_sha256(file: &Path, expected: &str) -> Result<()> {
 
     let mut hasher = Sha256::new();
     hasher.update(&bytes);
-    let actual = format!("{:x}", hasher.finalize());
+    let actual: String = hasher
+        .finalize()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
 
     if actual != expected {
         bail!(
@@ -95,7 +99,11 @@ mod tests {
 
         let mut hasher = Sha256::new();
         hasher.update(b"hello world");
-        let real_hash = format!("{:x}", hasher.finalize());
+        let real_hash: String = hasher
+            .finalize()
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
 
         assert!(verify_sha256(&file, &real_hash).is_ok());
     }
