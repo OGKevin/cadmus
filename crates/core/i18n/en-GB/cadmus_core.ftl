@@ -66,3 +66,4 @@ settings-telemetry-enable-logging = Enable Logging
 settings-telemetry-log-level = Log Level
 settings-telemetry-otlp-endpoint = OTLP Endpoint
 settings-telemetry-enable-kernel-log = Enable Kernel Log
+settings-telemetry-enable-dbus-log = Enable D-Bus Log

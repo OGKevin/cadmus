@@ -60,6 +60,7 @@
 //!     directory: "logs".into(),
 //!     otlp_endpoint: None,
 //!     enable_kern_log: false,
+//!     enable_dbus_log: false,
 //! };
 //!
 //! // Initialize at application startup
@@ -279,6 +280,7 @@ fn is_run_log_entry(entry: &DirEntry) -> bool {
 ///     directory: "logs".into(),
 ///     otlp_endpoint: Some("http://localhost:4318".to_string()),
 ///     enable_kern_log: false,
+///     enable_dbus_log: false,
 /// };
 ///
 /// init_logging(&settings)?;
@@ -489,7 +491,8 @@ fn build_filter(settings: &LoggingSettings) -> Result<EnvFilter, Error> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::default::Default;
+use super::*;
     use std::sync::OnceLock;
     use tempfile::TempDir;
 
@@ -515,6 +518,7 @@ mod tests {
                     directory: dir.path().to_path_buf(),
                     otlp_endpoint: None,
                     enable_kern_log: false,
+                    ..Default::default()
                 };
                 init_logging(&settings).expect("failed to initialize logging for tests");
                 dir
@@ -600,6 +604,7 @@ mod tests {
             directory: redirect_dir.path().to_path_buf(),
             otlp_endpoint: None,
             enable_kern_log: false,
+            ..Default::default()
         };
 
         redirect_log_to_dir(redirect_dir.path(), &settings)?;

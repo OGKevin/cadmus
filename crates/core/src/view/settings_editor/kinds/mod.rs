@@ -36,9 +36,12 @@ pub enum ToggleSettings {
     ButtonScheme,
     /// Logging enabled setting
     LoggingEnabled,
-    /// Kernel logging enabled setting (test builds only)
-    #[cfg(feature = "test")]
+    /// Kernel logging enabled setting (test + kobo builds only)
+    #[cfg(all(feature = "test", feature = "kobo"))]
     EnableKernLog,
+    /// D-Bus logging enabled setting (test + kobo builds only)
+    #[cfg(all(feature = "test", feature = "kobo"))]
+    EnableDbusLog,
 }
 
 /// Describes how the value side of a setting row should be rendered.

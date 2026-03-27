@@ -71,12 +71,14 @@ impl Category {
                         Box::new(OtlpEndpoint),
                     ];
 
-                    #[cfg(feature = "test")]
+                    #[cfg(all(feature = "test", feature = "kobo"))]
                     let mut rows = rows;
-                    #[cfg(feature = "test")]
+                    #[cfg(all(feature = "test", feature = "kobo"))]
                     {
+                        use super::kinds::telemetry::EnableDbusLog;
                         use super::kinds::telemetry::EnableKernLog;
                         rows.push(Box::new(EnableKernLog));
+                        rows.push(Box::new(EnableDbusLog));
                     }
                     rows
                 }
@@ -85,12 +87,14 @@ impl Category {
                     let rows: Vec<Box<dyn SettingKind>> =
                         vec![Box::new(LoggingEnabled), Box::new(LogLevel)];
 
-                    #[cfg(feature = "test")]
+                    #[cfg(all(feature = "test", feature = "kobo"))]
                     let mut rows = rows;
-                    #[cfg(feature = "test")]
+                    #[cfg(all(feature = "test", feature = "kobo"))]
                     {
+                        use super::kinds::telemetry::EnableDbusLog;
                         use super::kinds::telemetry::EnableKernLog;
                         rows.push(Box::new(EnableKernLog));
+                        rows.push(Box::new(EnableDbusLog));
                     }
                     rows
                 }

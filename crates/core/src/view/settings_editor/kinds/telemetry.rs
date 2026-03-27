@@ -184,11 +184,11 @@ impl InputSettingKind for OtlpEndpoint {
     }
 }
 
-/// Kernel logging toggle setting (test feature)
-#[cfg(feature = "test")]
+/// Kernel logging toggle setting (test + kobo features)
+#[cfg(all(feature = "test", feature = "kobo"))]
 pub struct EnableKernLog;
 
-#[cfg(feature = "test")]
+#[cfg(all(feature = "test", feature = "kobo"))]
 impl SettingKind for EnableKernLog {
     fn identity(&self) -> SettingIdentity {
         SettingIdentity::EnableKernLog
@@ -214,6 +214,41 @@ impl SettingKind for EnableKernLog {
         if let Event::Toggle(ToggleEvent::Setting(ToggleSettings::EnableKernLog)) = evt {
             settings.logging.enable_kern_log = !settings.logging.enable_kern_log;
             return Some(settings.logging.enable_kern_log.to_string());
+        }
+        None
+    }
+}
+
+/// D-Bus logging toggle setting (test + kobo features)
+#[cfg(all(feature = "test", feature = "kobo"))]
+pub struct EnableDbusLog;
+
+#[cfg(all(feature = "test", feature = "kobo"))]
+impl SettingKind for EnableDbusLog {
+    fn identity(&self) -> SettingIdentity {
+        SettingIdentity::EnableDbusLog
+    }
+
+    fn label(&self, _settings: &Settings) -> String {
+        fl!("settings-telemetry-enable-dbus-log")
+    }
+
+    fn fetch(&self, settings: &Settings) -> SettingData {
+        SettingData {
+            value: settings.logging.enable_dbus_log.to_string(),
+            widget: WidgetKind::Toggle {
+                left_label: fl!("settings-general-toggle-on"),
+                right_label: fl!("settings-general-toggle-off"),
+                enabled: settings.logging.enable_dbus_log,
+                tap_event: Event::Toggle(ToggleEvent::Setting(ToggleSettings::EnableDbusLog)),
+            },
+        }
+    }
+
+    fn handle(&self, evt: &Event, settings: &mut Settings, _bus: &mut Bus) -> Option<String> {
+        if let Event::Toggle(ToggleEvent::Setting(ToggleSettings::EnableDbusLog)) = evt {
+            settings.logging.enable_dbus_log = !settings.logging.enable_dbus_log;
+            return Some(settings.logging.enable_dbus_log.to_string());
         }
         None
     }
@@ -437,6 +472,65 @@ mod tests {
         #[test]
         fn handle_returns_none_for_wrong_toggle() {
             let setting = EnableKernLog;
+            let mut settings = Settings::default();
+            let mut bus: Bus = VecDeque::new();
+
+            let result = setting.handle(
+                &Event::Toggle(ToggleEvent::Setting(ToggleSettings::LoggingEnabled)),
+                &mut settings,
+                &mut bus,
+            );
+
+            assert!(result.is_none());
+        }
+    }
+
+    #[cfg(all(feature = "test", feature = "kobo"))]
+    mod enable_dbus_log {
+        use super::*;
+
+        #[test]
+        fn handle_toggle_enables_when_disabled() {
+            let setting = EnableDbusLog;
+            let mut settings = Settings::default();
+            settings.logging.enable_dbus_log = false;
+            let mut bus: Bus = VecDeque::new();
+            let event = Event::Toggle(ToggleEvent::Setting(ToggleSettings::EnableDbusLog));
+
+            let result = setting.handle(&event, &mut settings, &mut bus);
+
+            assert!(result.is_some());
+            assert!(settings.logging.enable_dbus_log);
+        }
+
+        #[test]
+        fn handle_toggle_disables_when_enabled() {
+            let setting = EnableDbusLog;
+            let mut settings = Settings::default();
+            settings.logging.enable_dbus_log = true;
+            let mut bus: Bus = VecDeque::new();
+            let event = Event::Toggle(ToggleEvent::Setting(ToggleSettings::EnableDbusLog));
+
+            let result = setting.handle(&event, &mut settings, &mut bus);
+
+            assert!(result.is_some());
+            assert!(!settings.logging.enable_dbus_log);
+        }
+
+        #[test]
+        fn handle_returns_none_for_wrong_event() {
+            let setting = EnableDbusLog;
+            let mut settings = Settings::default();
+            let mut bus: Bus = VecDeque::new();
+
+            let result = setting.handle(&Event::Select(EntryId::About), &mut settings, &mut bus);
+
+            assert!(result.is_none());
+        }
+
+        #[test]
+        fn handle_returns_none_for_wrong_toggle() {
+            let setting = EnableDbusLog;
             let mut settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
 

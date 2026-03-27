@@ -34,6 +34,8 @@ pub enum SettingIdentity {
     LogLevel,
     #[cfg(feature = "otel")]
     OtlpEndpoint,
-    #[cfg(feature = "test")]
+    #[cfg(all(feature = "test", feature = "kobo"))]
     EnableKernLog,
+    #[cfg(all(feature = "test", feature = "kobo"))]
+    EnableDbusLog,
 }

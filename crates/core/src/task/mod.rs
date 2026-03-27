@@ -34,6 +34,8 @@
 //! }
 //! ```
 
+#[cfg(all(feature = "test", feature = "kobo"))]
+mod dbus_monitor;
 #[cfg(feature = "test")]
 mod hello_world;
 
@@ -45,6 +47,8 @@ use std::time::Duration;
 
 use thiserror::Error;
 
+#[cfg(feature = "test")]
+use crate::settings::Settings;
 use crate::view::Event;
 
 /// Errors that can occur during task management operations.
@@ -67,6 +71,9 @@ pub enum TaskId {
     /// The example task that prints periodically (test builds only).
     #[cfg(feature = "test")]
     HelloWorld,
+    /// D-Bus system bus monitor (test + kobo builds only).
+    #[cfg(all(feature = "test", feature = "kobo"))]
+    DbusMonitor,
     /// Test-only task for unit tests.
     #[cfg(test)]
     TestTask,
@@ -81,6 +88,8 @@ impl std::fmt::Display for TaskId {
             TaskId::Placeholder => write!(f, "placeholder"),
             #[cfg(feature = "test")]
             TaskId::HelloWorld => write!(f, "hello_world"),
+            #[cfg(all(feature = "test", feature = "kobo"))]
+            TaskId::DbusMonitor => write!(f, "dbus_monitor"),
             #[cfg(test)]
             TaskId::TestTask => write!(f, "test_task"),
             #[cfg(test)]
@@ -306,13 +315,22 @@ impl Drop for TaskManager {
 /// Registers example tasks for testing.
 ///
 /// Call this during startup to add test-only background tasks.
-/// Currently registers:
-/// - [`hello_world::HelloWorldTask`] - prints "Hello world!" every minute
+/// Currently, registers:
+/// - [`hello_world::HelloWorldTask`] - prints "Hello world!" every minute (always)
+/// - [`dbus_monitor::DbusMonitorTask`] - monitors D-Bus signals (when `settings.logging.enable_dbus_log` is true)
 #[cfg(feature = "test")]
-pub fn register_test_tasks(manager: &mut TaskManager, hub: Sender<Event>) {
+pub fn register_test_tasks(manager: &mut TaskManager, hub: Sender<Event>, settings: &Settings) {
     let task = Box::new(hello_world::HelloWorldTask);
-    if let Err(e) = manager.start(task, hub) {
+    if let Err(e) = manager.start(task, hub.clone()) {
         tracing::warn!(error = %e, "failed to start hello_world task");
+    }
+
+    #[cfg(all(feature = "test", feature = "kobo"))]
+    if settings.logging.enable_dbus_log {
+        let task = Box::new(dbus_monitor::DbusMonitorTask);
+        if let Err(e) = manager.start(task, hub) {
+            tracing::warn!(error = %e, "failed to start dbus_monitor task");
+        }
     }
 }
 
