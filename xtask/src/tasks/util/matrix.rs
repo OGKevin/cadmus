@@ -121,6 +121,39 @@ pub fn to_github_matrix_json(entries: &[MatrixEntry]) -> Result<String> {
         .context("failed to serialise matrix to JSON")
 }
 
+/// Normalises a `--features` argument to the label format used by the matrix.
+///
+/// Accepts both the comma-separated cargo format (`"otel,test"`) and the
+/// human-readable label format (`"otel + test"`), sorts the parts
+/// alphabetically, and joins them with `" + "`.  An empty input returns
+/// `"default"`.
+///
+/// # Examples
+///
+/// ```
+/// use xtask_lib::tasks::util::matrix::normalize_features_arg;
+///
+/// assert_eq!(normalize_features_arg("otel,test"), "otel + test");
+/// assert_eq!(normalize_features_arg("otel + test"), "otel + test");
+/// assert_eq!(normalize_features_arg("test,otel"), "otel + test");
+/// assert_eq!(normalize_features_arg(""), "default");
+/// assert_eq!(normalize_features_arg("otel"), "otel");
+/// ```
+pub fn normalize_features_arg(input: &str) -> String {
+    if input.is_empty() {
+        return "default".to_owned();
+    }
+
+    let mut parts: Vec<&str> = input
+        .split([',', '+'])
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    parts.sort_unstable();
+    parts.join(" + ")
+}
+
 fn collect_workspace_features(root: &Path) -> Result<BTreeSet<String>> {
     let mut features = BTreeSet::new();
 
@@ -267,6 +300,31 @@ mod tests {
         assert!(json.contains("\"include\""));
         assert!(json.contains("\"default\""));
         assert!(json.contains("\"ubuntu-latest\""));
+    }
+
+    #[test]
+    fn normalize_single_feature() {
+        assert_eq!(normalize_features_arg("otel"), "otel");
+    }
+
+    #[test]
+    fn normalize_comma_separated_two_features() {
+        assert_eq!(normalize_features_arg("otel,test"), "otel + test");
+    }
+
+    #[test]
+    fn normalize_label_format_round_trips() {
+        assert_eq!(normalize_features_arg("otel + test"), "otel + test");
+    }
+
+    #[test]
+    fn normalize_out_of_order_comma_separated_sorts() {
+        assert_eq!(normalize_features_arg("test,otel"), "otel + test");
+    }
+
+    #[test]
+    fn normalize_empty_string_returns_default() {
+        assert_eq!(normalize_features_arg(""), "default");
     }
 
     #[test]

@@ -103,7 +103,7 @@ pub struct ClippyArgs {
 pub fn run(args: ClippyArgs) -> Result<()> {
     let root = workspace::root()?;
     let entries = matrix::scan(&root, &["local"])?;
-    let entries = filter(&entries, args.features.as_deref());
+    let entries = filter(&entries, args.features.as_deref())?;
 
     for entry in entries {
         println!("\n==> clippy ({})", entry.label);
@@ -250,14 +250,40 @@ fn run_with_reviewdog(
 /// Returns the matrix entries to run, optionally filtered by label.
 ///
 /// When `label` is `None` all entries are returned.  When a label is
-/// provided, only the matching entry is returned.  An unknown label returns
-/// an empty slice so the caller can decide how to handle it.
+/// provided it is normalised via [`matrix::normalize_features_arg`] before
+/// matching, so both `"otel,test"` and `"otel + test"` resolve to the same
+/// entry.  An unknown label after normalisation is an error.
+///
+/// # Errors
+///
+/// Returns an error when a label is provided but no matrix entry matches,
+/// listing all available labels.
 fn filter<'a>(
     entries: &'a [matrix::MatrixEntry],
     label: Option<&str>,
-) -> Vec<&'a matrix::MatrixEntry> {
-    match label {
-        None => entries.iter().collect(),
-        Some(l) => entries.iter().filter(|e| e.label == l).collect(),
+) -> Result<Vec<&'a matrix::MatrixEntry>> {
+    let Some(raw) = label else {
+        return Ok(entries.iter().collect());
+    };
+
+    let normalised = matrix::normalize_features_arg(raw);
+    let matched: Vec<&matrix::MatrixEntry> =
+        entries.iter().filter(|e| e.label == normalised).collect();
+
+    if matched.is_empty() {
+        let available: Vec<&str> = entries
+            .iter()
+            .map(|e| e.label.as_str())
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        bail!(
+            "unknown feature combination {:?} (normalised to {:?})\n\nAvailable labels:\n  {}",
+            raw,
+            normalised,
+            available.join("\n  ")
+        );
     }
+
+    Ok(matched)
 }

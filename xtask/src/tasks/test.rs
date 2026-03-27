@@ -8,7 +8,7 @@
 //! 1. `cargo nextest run` — parallel test execution with per-test output.
 //! 2. `cargo test --doc` — doctests, which nextest does not execute.
 
-use anyhow::Result;
+use anyhow::{Result, bail};
 use clap::Args;
 
 use super::util::{cmd, matrix, workspace};
@@ -39,7 +39,7 @@ pub fn run(args: TestArgs) -> Result<()> {
     let env = [("TEST_ROOT_DIR", root_str.as_str())];
 
     let entries = matrix::scan(&root, &["local"])?;
-    let entries = filter(&entries, args.features.as_deref());
+    let entries = filter(&entries, args.features.as_deref())?;
 
     for entry in entries {
         println!("\n==> nextest ({})", entry.label);
@@ -59,12 +59,42 @@ pub fn run(args: TestArgs) -> Result<()> {
 }
 
 /// Returns the matrix entries to run, optionally filtered by label.
+///
+/// When `label` is `None` all entries are returned.  When a label is
+/// provided it is normalised via [`matrix::normalize_features_arg`] before
+/// matching, so both `"otel,test"` and `"otel + test"` resolve to the same
+/// entry.  An unknown label after normalisation is an error.
+///
+/// # Errors
+///
+/// Returns an error when a label is provided but no matrix entry matches,
+/// listing all available labels.
 fn filter<'a>(
     entries: &'a [matrix::MatrixEntry],
     label: Option<&str>,
-) -> Vec<&'a matrix::MatrixEntry> {
-    match label {
-        None => entries.iter().collect(),
-        Some(l) => entries.iter().filter(|e| e.label == l).collect(),
+) -> Result<Vec<&'a matrix::MatrixEntry>> {
+    let Some(raw) = label else {
+        return Ok(entries.iter().collect());
+    };
+
+    let normalised = matrix::normalize_features_arg(raw);
+    let matched: Vec<&matrix::MatrixEntry> =
+        entries.iter().filter(|e| e.label == normalised).collect();
+
+    if matched.is_empty() {
+        let available: Vec<&str> = entries
+            .iter()
+            .map(|e| e.label.as_str())
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        bail!(
+            "unknown feature combination {:?} (normalised to {:?})\n\nAvailable labels:\n  {}",
+            raw,
+            normalised,
+            available.join("\n  ")
+        );
     }
+
+    Ok(matched)
 }
