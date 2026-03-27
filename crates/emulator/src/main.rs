@@ -18,6 +18,7 @@ use cadmus_core::lightsensor::LightSensor;
 use cadmus_core::pt;
 use cadmus_core::settings::versioned::SettingsManager;
 use cadmus_core::settings::{IntermKind, Settings};
+use cadmus_core::task::TaskManager;
 use cadmus_core::version::get_current_version;
 use cadmus_core::view::calculator::Calculator;
 use cadmus_core::view::common::{
@@ -338,6 +339,11 @@ fn main() -> Result<(), Error> {
         thread::sleep(CLOCK_REFRESH_INTERVAL);
         tx3.send(Event::ClockTick).ok();
     });
+
+    let mut background_tasks = TaskManager::new();
+
+    #[cfg(feature = "test")]
+    cadmus_core::task::register_test_tasks(&mut background_tasks, tx.clone());
 
     let mut history: Vec<Box<dyn View>> = Vec::new();
     let mut rq = RenderQueue::new();
@@ -906,6 +912,8 @@ fn main() -> Result<(), Error> {
             );
         }
     }
+
+    background_tasks.stop_all();
 
     if context.settings.frontlight {
         context.settings.frontlight_levels = context.frontlight.levels();

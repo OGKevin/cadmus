@@ -25,6 +25,7 @@ pub mod metadata;
 pub mod ota;
 pub mod rtc;
 pub mod settings;
+pub mod task;
 #[cfg(feature = "otel")]
 pub mod telemetry;
 mod unit;

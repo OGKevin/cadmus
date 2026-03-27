@@ -25,6 +25,7 @@ use cadmus_core::lightsensor::{KoboLightSensor, LightSensor};
 use cadmus_core::rtc::Rtc;
 use cadmus_core::settings::versioned::SettingsManager;
 use cadmus_core::settings::{ButtonScheme, IntermKind, LoggingSettings, RotationLock, Settings};
+use cadmus_core::task::TaskManager;
 use cadmus_core::version::get_current_version;
 use cadmus_core::view::calculator::Calculator;
 use cadmus_core::view::common::{
@@ -623,6 +624,11 @@ pub fn run() -> Result<(), Error> {
     }
 
     let mut tasks: Vec<Task> = Vec::new();
+    let mut background_tasks = TaskManager::new();
+
+    #[cfg(feature = "test")]
+    cadmus_core::task::register_test_tasks(&mut background_tasks, tx.clone());
+
     let mut history: Vec<HistoryItem> = Vec::new();
     let mut rq = RenderQueue::new();
     let mut view: Box<dyn View> =
@@ -1606,6 +1612,8 @@ pub fn run() -> Result<(), Error> {
     {
         context.fb.set_rotation(initial_rotation).ok();
     }
+
+    background_tasks.stop_all();
 
     if tasks.iter().all(|task| task.id != TaskId::Suspend) {
         if context.settings.frontlight {
