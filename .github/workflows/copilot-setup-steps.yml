@@ -1,8 +1,7 @@
-name: Copilot Setup Steps
-
 env:
   NODE_VERSION: "24"
   SQLX_OFFLINE: true
+  TEST_ROOT_DIR: ${{ github.workspace }}
 
 on:
   workflow_call:
