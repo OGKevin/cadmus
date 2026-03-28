@@ -38,6 +38,7 @@
 mod hello_world;
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
@@ -61,7 +62,7 @@ pub enum TaskError {
 /// Unique identifier for a background task.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TaskId {
-    /// A tmp placoholder until there is a Task always available.
+    /// A tmp placeholder until there is a Task always available.
     Placeholder,
     /// The example task that prints periodically (test builds only).
     #[cfg(feature = "test")]
@@ -77,7 +78,7 @@ pub enum TaskId {
 impl std::fmt::Display for TaskId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TaskId::Placeholder => unreachable!(),
+            TaskId::Placeholder => write!(f, "placeholder"),
             #[cfg(feature = "test")]
             TaskId::HelloWorld => write!(f, "hello_world"),
             #[cfg(test)]
@@ -94,18 +95,31 @@ impl std::fmt::Display for TaskId {
 /// [`wait`](Self::wait) to interrupt sleep when shutdown is requested.
 pub struct ShutdownSignal {
     receiver: Receiver<()>,
+    stopped: AtomicBool,
 }
 
 impl ShutdownSignal {
     fn new(receiver: Receiver<()>) -> Self {
-        Self { receiver }
+        Self {
+            receiver,
+            stopped: AtomicBool::new(false),
+        }
     }
 
     /// Returns `true` if shutdown has been requested.
     ///
-    /// This is non-blocking and suitable for polling in tight loops.
+    /// Once `true` is returned, all subsequent calls also return `true`
+    /// (the shutdown state is latched). This is non-blocking and suitable
+    /// for polling in tight loops.
     pub fn should_stop(&self) -> bool {
-        self.receiver.try_recv().is_ok()
+        if self.stopped.load(Ordering::Acquire) {
+            return true;
+        }
+        if self.receiver.try_recv().is_ok() {
+            self.stopped.store(true, Ordering::Release);
+            return true;
+        }
+        false
     }
 
     /// Waits for the given duration or until shutdown is requested.
@@ -114,10 +128,15 @@ impl ShutdownSignal {
     ///
     /// This is the preferred method for tasks that sleep between work cycles.
     pub fn wait(&self, duration: Duration) -> bool {
+        if self.stopped.load(Ordering::Acquire) {
+            return true;
+        }
         match self.receiver.recv_timeout(duration) {
-            Ok(()) => true,
+            Ok(()) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                self.stopped.store(true, Ordering::Release);
+                true
+            }
             Err(std::sync::mpsc::RecvTimeoutError::Timeout) => false,
-            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => true,
         }
     }
 }
@@ -217,8 +236,12 @@ impl TaskManager {
         self.cleanup_finished();
         if let Some(task) = self.tasks.remove(id) {
             tracing::info!("sending shutdown signal");
-            task.shutdown.send(()).ok();
-            task.handle.join().ok();
+            if let Err(e) = task.shutdown.send(()) {
+                tracing::error!(error = %e, "failed to send shutdown signal");
+            }
+            if task.handle.join().is_err() {
+                tracing::error!("task thread panicked");
+            }
             Ok(())
         } else {
             Err(TaskError::NotRunning(id.clone()))
@@ -239,8 +262,12 @@ impl TaskManager {
             tracing::info!("stopping all tasks");
         }
         for (_, task) in tasks {
-            task.shutdown.send(()).ok();
-            task.handle.join().ok();
+            if let Err(e) = task.shutdown.send(()) {
+                tracing::error!(error = %e, "failed to send shutdown signal");
+            }
+            if task.handle.join().is_err() {
+                tracing::error!("task thread panicked");
+            }
         }
     }
 
@@ -291,7 +318,18 @@ pub fn register_test_tasks(manager: &mut TaskManager, hub: Sender<Event>) {
 mod tests {
     use super::*;
     use std::sync::mpsc;
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
+
+    fn wait_until_not_running(manager: &mut TaskManager, id: &TaskId) {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline {
+            if !manager.is_running(id) {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        panic!("task '{id}' did not finish within timeout");
+    }
 
     struct InstantTask;
 
@@ -345,7 +383,7 @@ mod tests {
 
         let id = manager.start(Box::new(InstantTask), hub).unwrap();
 
-        std::thread::sleep(Duration::from_millis(50));
+        wait_until_not_running(&mut manager, &id);
         assert!(!manager.is_running(&id));
     }
 
@@ -356,7 +394,7 @@ mod tests {
 
         let id = manager.start(Box::new(InstantTask), hub).unwrap();
 
-        std::thread::sleep(Duration::from_millis(50));
+        wait_until_not_running(&mut manager, &id);
         let err = manager.stop(&id).unwrap_err();
 
         assert!(matches!(err, TaskError::NotRunning(TaskId::TestTask2)));
@@ -368,9 +406,9 @@ mod tests {
         let (hub, _rx) = mpsc::channel();
 
         manager.start(Box::new(WaitingTask), hub.clone()).unwrap();
-        manager.start(Box::new(InstantTask), hub).unwrap();
+        let instant_id = manager.start(Box::new(InstantTask), hub).unwrap();
 
-        std::thread::sleep(Duration::from_millis(50));
+        wait_until_not_running(&mut manager, &instant_id);
         let running = manager.running_tasks();
 
         assert_eq!(running.len(), 1);
