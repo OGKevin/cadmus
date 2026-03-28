@@ -62,7 +62,7 @@ pub enum TaskError {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TaskId {
     /// A tmp placoholder until there is a Task always available.
-    Placeholder(),
+    Placeholder,
     /// The example task that prints periodically (test builds only).
     #[cfg(feature = "test")]
     HelloWorld,
