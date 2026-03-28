@@ -1559,6 +1559,27 @@ pub fn run() -> Result<(), Error> {
             Event::Select(EntryId::Quit) => {
                 break;
             }
+            Event::Select(EntryId::PowerOff) => {
+                exit_status = ExitStatus::PowerOff;
+                break;
+            }
+            Event::Select(EntryId::Suspend) => {
+                view.handle_event(&Event::Suspend, &tx, &mut bus, &mut rq, &mut context);
+                let interm = Intermission::new(context.fb.rect(), IntermKind::Suspend, &context);
+                rq.add(RenderData::new(
+                    interm.id(),
+                    *interm.rect(),
+                    UpdateMode::Full,
+                ));
+                schedule_task(
+                    TaskId::PrepareSuspend,
+                    Event::PrepareSuspend,
+                    PREPARE_SUSPEND_WAIT_DELAY,
+                    &tx,
+                    &mut tasks,
+                );
+                view.children_mut().push(Box::new(interm) as Box<dyn View>);
+            }
             Event::MightSuspend if context.settings.auto_suspend > 0.0 => {
                 if context.shared
                     || tasks

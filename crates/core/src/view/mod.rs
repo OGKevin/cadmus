@@ -780,6 +780,8 @@ pub enum EntryId {
     Restart,
     Reboot,
     Quit,
+    Suspend,
+    PowerOff,
     CheckForUpdates,
     FileEntry(PathBuf),
     Ota(OtaEntryId),

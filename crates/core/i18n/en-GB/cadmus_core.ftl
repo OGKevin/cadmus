@@ -7,8 +7,12 @@ english = English
 startup-loading = Cadmus starting up…
 
 # Top Menu Strings
+top-menu-exit = Exit
 top-menu-reboot-device = Reboot Device
 top-menu-restart-app = Restart {-app-name}
+top-menu-suspend = Suspend
+top-menu-quit = Quit
+top-menu-power-off = Power Off
 
 # Settings - Button Scheme
 settings-button-scheme-natural = Natural

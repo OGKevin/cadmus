@@ -228,9 +228,16 @@ pub fn toggle_main_menu(
             EntryKind::Separator,
             EntryKind::SubMenu("Applications".to_string(), apps),
             EntryKind::Separator,
-            EntryKind::Command(fl!("top-menu-restart-app").to_string(), EntryId::Restart),
-            EntryKind::Command(fl!("top-menu-reboot-device").to_string(), EntryId::Reboot),
-            EntryKind::Command("Quit".to_string(), EntryId::Quit),
+            EntryKind::SubMenu(
+                fl!("top-menu-exit").to_string(),
+                vec![
+                    EntryKind::Command(fl!("top-menu-suspend").to_string(), EntryId::Suspend),
+                    EntryKind::Command(fl!("top-menu-restart-app").to_string(), EntryId::Restart),
+                    EntryKind::Command(fl!("top-menu-reboot-device").to_string(), EntryId::Reboot),
+                    EntryKind::Command(fl!("top-menu-power-off").to_string(), EntryId::PowerOff),
+                    EntryKind::Command(fl!("top-menu-quit").to_string(), EntryId::Quit),
+                ],
+            ),
         ]);
 
         let main_menu = Menu::new(rect, ViewId::MainMenu, MenuKind::DropDown, entries, context);
