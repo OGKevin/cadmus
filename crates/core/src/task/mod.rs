@@ -261,10 +261,12 @@ impl TaskManager {
         if !tasks.is_empty() {
             tracing::info!("stopping all tasks");
         }
-        for (_, task) in tasks {
+        for (_, task) in &tasks {
             if let Err(e) = task.shutdown.send(()) {
                 tracing::error!(error = %e, "failed to send shutdown signal");
             }
+        }
+        for (_, task) in tasks {
             if task.handle.join().is_err() {
                 tracing::error!("task thread panicked");
             }
