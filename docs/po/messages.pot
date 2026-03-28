@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Cadmus Documentation\n"
-"POT-Creation-Date: 2026-03-22T22:48:20+01:00\n"
+"POT-Creation-Date: 2026-03-28T15:28:22+01:00\n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -96,6 +96,18 @@ msgstr ""
 
 #: src/SUMMARY.md:27 src/contributing/runtime-migrations.md:1
 msgid "Runtime Migrations"
+msgstr ""
+
+#: src/SUMMARY.md:31 src/investigations/index.md:1
+msgid "Investigations"
+msgstr ""
+
+#: src/SUMMARY.md:33
+msgid "Intro"
+msgstr ""
+
+#: src/SUMMARY.md:34
+msgid "Kobo DHCP lease renewal"
 msgstr ""
 
 #: src/index.md:3
@@ -356,7 +368,7 @@ msgid ""
 "out changes that haven't been released yet"
 msgstr ""
 
-#: src/installation/index.md:21 src/installation/ota.md:67
+#: src/installation/index.md:21 src/installation/ota.md:76
 msgid "First-time setup"
 msgstr ""
 
@@ -496,143 +508,161 @@ msgid "A WiFi connection"
 msgstr ""
 
 #: src/installation/ota.md:10
-msgid ""
-"Stable releases are public and require no authentication. Main branch and PR "
-"builds require a GitHub account — Cadmus will guide you through a one-time "
-"sign-in the first time you request one."
+msgid "Authentication"
 msgstr ""
 
-#: src/installation/ota.md:14
+#: src/installation/ota.md:12
+msgid ""
+"Main branch and PR builds require a GitHub account. Stable releases are "
+"public and need no authentication."
+msgstr ""
+
+#: src/installation/ota.md:15
+msgid ""
+"The first time you request a main branch or PR build, Cadmus will show a "
+"screen with a URL and a short code:"
+msgstr ""
+
+#: src/installation/ota.md:18
+msgid "Go to the URL shown on screen"
+msgstr ""
+
+#: src/installation/ota.md:19
+msgid "Enter the code shown on your device"
+msgstr ""
+
+#: src/installation/ota.md:20
+msgid "Sign in to GitHub and approve the request"
+msgstr ""
+
+#: src/installation/ota.md:22
+msgid ""
+"Cadmus detects the approval automatically and starts the download. The token "
+"is saved to disk so you won't need to sign in again."
+msgstr ""
+
+#: src/installation/ota.md:27
+msgid "![ota-pick](./screenshots/ota-pick.png)"
+msgstr ""
+
+#: src/installation/ota.md:27
+msgid "![auth](./screenshots/device-auth.png)"
+msgstr ""
+
+#: src/installation/ota.md:29
 msgid "How to update"
 msgstr ""
 
-#: src/installation/ota.md:16
+#: src/installation/ota.md:31
 msgid ""
 "Open **Main Menu → Check for Updates**. You'll see options for where to get "
 "the update from:"
 msgstr ""
 
-#: src/installation/ota.md:19 src/installation/migration.md:33
+#: src/installation/ota.md:34 src/installation/migration.md:33
 msgid "Source"
 msgstr ""
 
-#: src/installation/ota.md:19 src/contributing/devenv-setup.md:37
+#: src/installation/ota.md:34 src/contributing/devenv-setup.md:37
 #: src/contributing/devenv-setup.md:63
 msgid "Description"
 msgstr ""
 
-#: src/installation/ota.md:21
+#: src/installation/ota.md:36
 msgid "**Stable Release**"
 msgstr ""
 
-#: src/installation/ota.md:21
+#: src/installation/ota.md:36
 msgid "Latest official release from GitHub"
 msgstr ""
 
-#: src/installation/ota.md:22
+#: src/installation/ota.md:37
 msgid "**Main Branch**"
 msgstr ""
 
-#: src/installation/ota.md:22
+#: src/installation/ota.md:37
 msgid "Latest development build (most recent changes)"
 msgstr ""
 
-#: src/installation/ota.md:23
+#: src/installation/ota.md:38
 msgid "**PR Build**"
 msgstr ""
 
-#: src/installation/ota.md:23
+#: src/installation/ota.md:38
 msgid "Test a specific pull request"
 msgstr ""
 
-#: src/installation/ota.md:25
+#: src/installation/ota.md:40
 msgid "\\[!NOTE\\] The _Stable Release_ option is not shown in test builds."
 msgstr ""
 
-#: src/installation/ota.md:28
+#: src/installation/ota.md:43
 msgid "Updating from the main branch"
 msgstr ""
 
-#: src/installation/ota.md:30
+#: src/installation/ota.md:45
 msgid ""
 "Select **Main Branch** to get the most recent development build. This "
 "includes changes that have been merged but not yet released officially."
 msgstr ""
 
-#: src/installation/ota.md:33
+#: src/installation/ota.md:48
 msgid ""
-"If this is your first time, Cadmus will show a screen with a URL and a short "
-"code. On any device with a browser:"
+"If you haven't authenticated before, Cadmus will guide you through the "
+"GitHub sign-in process. See [Authentication](#authentication) for details."
 msgstr ""
 
-#: src/installation/ota.md:36
-msgid "Go to the URL shown on screen"
-msgstr ""
-
-#: src/installation/ota.md:37
-msgid "Enter the code shown on your Device"
-msgstr ""
-
-#: src/installation/ota.md:38
-msgid "Sign in to GitHub and approve the request"
-msgstr ""
-
-#: src/installation/ota.md:40
-msgid ""
-"Cadmus will detect the approval automatically and start the download. The "
-"token is saved to disk so you won't need to sign in again."
-msgstr ""
-
-#: src/installation/ota.md:43
+#: src/installation/ota.md:51
 msgid ""
 "The update downloads from GitHub, installs automatically, and reboots the "
 "device to finish."
 msgstr ""
 
-#: src/installation/ota.md:46
+#: src/installation/ota.md:54
 msgid "Testing a pull request"
 msgstr ""
 
-#: src/installation/ota.md:48
+#: src/installation/ota.md:56
 msgid ""
 "Select **PR Build** to try out a specific change before it's released. Enter "
-"the PR number when prompted. The same one-time GitHub sign-in applies if you "
-"haven't authenticated before."
+"the PR number when prompted. If you haven't authenticated before, Cadmus "
+"will guide you through the GitHub sign-in process. See "
+"[Authentication](#authentication) for details."
 msgstr ""
 
-#: src/installation/ota.md:52
+#: src/installation/ota.md:61
 msgid ""
 "\\[!TIP\\] Find the PR number in the GitHub URL. For example, in "
 "`github.com/OGKevin/cadmus/pull/42` the PR number is **42**."
 msgstr ""
 
-#: src/installation/ota.md:56
+#: src/installation/ota.md:65
 msgid "Normal vs test builds"
 msgstr ""
 
-#: src/installation/ota.md:58
+#: src/installation/ota.md:67
 msgid ""
 "OTA works for both types of builds. The type you're currently using "
 "determines what gets downloaded:"
 msgstr ""
 
-#: src/installation/ota.md:61
+#: src/installation/ota.md:70
 msgid "**Normal builds** update to `KoboRoot.tgz` in `/mnt/onboard/.adds/cadmus`"
 msgstr ""
 
-#: src/installation/ota.md:62
+#: src/installation/ota.md:71
 msgid ""
 "**Test builds** update to `KoboRoot-test.tgz` in "
 "`/mnt/onboard/.adds/cadmus-tst`"
 msgstr ""
 
-#: src/installation/ota.md:64
+#: src/installation/ota.md:73
 msgid ""
 "See the [available packages](./index.md#available-packages) table for all "
 "options."
 msgstr ""
 
-#: src/installation/ota.md:69
+#: src/installation/ota.md:78
 msgid ""
 "OTA only works for updating an existing installation. To install Cadmus for "
 "the first time, follow the [installation guide](./index.md) or the [test "
@@ -854,7 +884,7 @@ msgstr ""
 #: src/settings/index.md:148 src/settings/index.md:156
 #: src/settings/index.md:177 src/settings/index.md:190
 #: src/settings/index.md:198 src/settings/index.md:206
-#: src/settings/index.md:249 src/settings/index.md:260
+#: src/settings/index.md:252 src/settings/index.md:263
 msgid "✏️"
 msgstr ""
 
@@ -1146,30 +1176,36 @@ msgid ""
 msgstr ""
 
 #: src/settings/index.md:225
+msgid ""
+"For step-by-step instructions with screenshots, see the [OTA "
+"updates](../installation/ota.md) guide."
+msgstr ""
+
+#: src/settings/index.md:228
 msgid "Telemetry"
 msgstr ""
 
-#: src/settings/index.md:227
+#: src/settings/index.md:230
 msgid ""
 "Cadmus writes JSON logs to disk. When the build enables the `otel` feature, "
 "it can also export logs to an OpenTelemetry endpoint."
 msgstr ""
 
-#: src/settings/index.md:230
+#: src/settings/index.md:233
 msgid "These settings are available in the **Settings → Telemetry** menu."
 msgstr ""
 
-#: src/settings/index.md:232
+#: src/settings/index.md:235
 msgid ""
 "\\[!IMPORTANT\\] Changes to these settings only take effect after restarting "
 "Cadmus. The application initializes telemetry on startup."
 msgstr ""
 
-#: src/settings/index.md:236
+#: src/settings/index.md:239
 msgid "`logging`"
 msgstr ""
 
-#: src/settings/index.md:238
+#: src/settings/index.md:241
 msgid ""
 "```toml\n"
 "[logging]\n"
@@ -1181,29 +1217,29 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:247
+#: src/settings/index.md:250
 msgid "`logging.enabled`"
 msgstr ""
 
-#: src/settings/index.md:251
+#: src/settings/index.md:254
 msgid "Enable or disable structured JSON logging."
 msgstr ""
 
-#: src/settings/index.md:258
+#: src/settings/index.md:261
 msgid "`logging.level`"
 msgstr ""
 
-#: src/settings/index.md:262
+#: src/settings/index.md:265
 msgid "Minimum log level to record."
 msgstr ""
 
-#: src/settings/index.md:264
+#: src/settings/index.md:267
 msgid ""
 "Possible values: `\"trace\"`, `\"debug\"`, `\"info\"`, `\"warn\"`, "
 "`\"error\"`."
 msgstr ""
 
-#: src/settings/index.md:266
+#: src/settings/index.md:269
 msgid ""
 "```toml\n"
 "[logging]\n"
@@ -1211,37 +1247,37 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:271
+#: src/settings/index.md:274
 msgid "`logging.max-files`"
 msgstr ""
 
-#: src/settings/index.md:273
+#: src/settings/index.md:276
 msgid ""
 "Number of log files to keep. Only the most recent N files are kept — older "
 "ones are deleted automatically when Cadmus starts."
 msgstr ""
 
-#: src/settings/index.md:276 src/settings/index.md:320
+#: src/settings/index.md:279 src/settings/index.md:323
 msgid "Default: `3`"
 msgstr ""
 
-#: src/settings/index.md:277
+#: src/settings/index.md:280
 msgid "Set to `0` to keep all log files."
 msgstr ""
 
-#: src/settings/index.md:284
+#: src/settings/index.md:287
 msgid "`logging.otlp-endpoint`"
 msgstr ""
 
-#: src/settings/index.md:286
+#: src/settings/index.md:289
 msgid "✏️ (only when the `otel` feature is enabled)"
 msgstr ""
 
-#: src/settings/index.md:288
+#: src/settings/index.md:291
 msgid "Optional OTLP endpoint for exporting logs to an OpenTelemetry collector."
 msgstr ""
 
-#: src/settings/index.md:290
+#: src/settings/index.md:293
 msgid ""
 "```toml\n"
 "[logging]\n"
@@ -1249,52 +1285,52 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:295
+#: src/settings/index.md:298
 msgid "Environment override:"
 msgstr ""
 
-#: src/settings/index.md:297
+#: src/settings/index.md:300
 msgid ""
 "`OTEL_EXPORTER_OTLP_ENDPOINT` takes precedence over `logging.otlp-endpoint`."
 msgstr ""
 
-#: src/settings/index.md:299
+#: src/settings/index.md:302
 msgid "`logging.enable-kern-log`"
 msgstr ""
 
-#: src/settings/index.md:301
+#: src/settings/index.md:304
 msgid "🧪 📱 ✏️"
 msgstr ""
 
-#: src/settings/index.md:303
+#: src/settings/index.md:306
 msgid ""
 "Captures kernel logs via `logread -F` and forwards them to structured "
 "logging with the target `cadmus_core::logging:kern`."
 msgstr ""
 
-#: src/settings/index.md:311
+#: src/settings/index.md:314
 msgid "Settings Retention"
 msgstr ""
 
-#: src/settings/index.md:313
+#: src/settings/index.md:316
 msgid ""
 "Cadmus stores each version's settings in a separate file in the `Settings/` "
 "directory (for example, `Settings-v1.2.3.toml`). This ensures backward and "
 "forward compatibility when you upgrade."
 msgstr ""
 
-#: src/settings/index.md:316
+#: src/settings/index.md:319
 msgid "`settings-retention`"
 msgstr ""
 
-#: src/settings/index.md:318
+#: src/settings/index.md:321
 msgid ""
 "Number of recent version settings files to keep. Only the most recent N "
 "version files are kept. When a new version is saved, older versions beyond "
 "this limit are deleted automatically."
 msgstr ""
 
-#: src/settings/index.md:321
+#: src/settings/index.md:324
 msgid "Set to `0` to keep all version files"
 msgstr ""
 
@@ -1398,7 +1434,7 @@ msgid ""
 "platform:"
 msgstr ""
 
-#: src/troubleshooting/index.md:13
+#: src/troubleshooting/index.md:13 src/investigations/index.md:7
 msgid "Platform"
 msgstr ""
 
@@ -1410,7 +1446,7 @@ msgstr ""
 msgid "Test build"
 msgstr ""
 
-#: src/troubleshooting/index.md:15
+#: src/troubleshooting/index.md:15 src/investigations/index.md:9
 msgid "Kobo"
 msgstr ""
 
@@ -2580,6 +2616,7 @@ msgid "// Return false to bubble up so grandparent removes us\n"
 msgstr ""
 
 #: src/contributing/event-system.md:324
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:10
 msgid "Summary"
 msgstr ""
 
@@ -2596,6 +2633,7 @@ msgid "Bus"
 msgstr ""
 
 #: src/contributing/event-system.md:328
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:147
 msgid "Type"
 msgstr ""
 
@@ -4206,5 +4244,381 @@ msgid ""
 "<a "
 "href=\"/api/cadmus_core/db/struct.Database\">`cadmus_core::db::Database`</a> "
 "— owns the connection pool and orchestrates both migration stages"
+msgstr ""
+
+#: src/investigations/index.md:3
+msgid ""
+"When something needs investigating, the investigation and its results are "
+"documented here. This is to ensure that the investigation is not lost and "
+"can be referred to in the future if needed."
+msgstr ""
+
+#: src/investigations/index.md:7
+msgid "Date"
+msgstr ""
+
+#: src/investigations/index.md:7
+msgid "Title"
+msgstr ""
+
+#: src/investigations/index.md:9
+msgid "2026-03-24"
+msgstr ""
+
+#: src/investigations/index.md:9
+msgid ""
+"[DHCP IP Address Changes on WiFi "
+"Toggle](./kobo/issue-51-dhcp-investigation.md)"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:1
+msgid "DHCP IP Address Changes on WiFi Toggle"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:3
+msgid ""
+"After identifying that killing the original `dhcpcd` and replacing it with "
+"`udhcpc` caused the issue reported in "
+"[\\#51](https://github.com/OGKevin/cadmus/issues/51), I confirmed the fix "
+"works in testing but wanted to understand the root cause before finalising "
+"PR [\\#299](https://github.com/OGKevin/cadmus/pull/299)."
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:12
+msgid ""
+"Investigated the DHCP behaviour by inspecting the running device alongside "
+"the KOReader source tree and the original Plato shell scripts."
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:15
+msgid "What is actually running on the device"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:23
+msgid ""
+"Nickel uses **`dhcpcd`**, not `udhcpc`. There is no `udhcpc` on this device "
+"at all under normal operation."
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:25
+msgid "Why the old script caused a new IP every toggle"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:27
+msgid ""
+"The original "
+"[`scripts/wifi-enable.sh`](https://github.com/OGKevin/cadmus/blob/253edbe8958a44d108676d57b85942f21bb7c899/scripts/wifi-enable.sh#L92-L93) "
+"(inherited from Plato) always spawned a fresh `udhcpc`:"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:53
+msgid ""
+"'t request any options (unless -O is given)\n"
+" -O OPT  Request option OPT from server (cumulative)\n"
+" -x OPT:VAL Include option OPT in sent packets (cumulative)\n"
+"   Examples of string, numeric, and hex byte opts:\n"
+"   -x hostname:bbox - option 12\n"
+"   -x lease:3600 - option 51 (lease time)\n"
+"   -x 0x3d:0100BEEFC0FFEE - option 61 (client id)\n"
+"   -x 14:'\"dumpfile\"' - option 14 (shell-quoted)\n"
+" -F NAME  Ask server to update DNS mapping for NAME\n"
+" -V VENDOR Vendor identifier (default '"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:62
+msgid "')\n -C  Don'"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:71
+msgid "\"$INTERFACE\""
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:74
+msgid ""
+"The `-q` flag is the core issue. It tells `udhcpc` to **quit immediately "
+"after obtaining a lease**. The full lifecycle on every WiFi toggle was:"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:77
+msgid ""
+"`udhcpc` spawned → sends `DISCOVER` → gets `OFFER` → sends `REQUEST` → gets "
+"`ACK` → runs `default.script bound` (sets IP, rewrites `resolv.conf`) → "
+"**process exits**"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:79
+msgid ""
+"WiFi disabled → `killall udhcpc default.script` → nothing to kill anyway, "
+"already exited"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:80
+msgid ""
+"WiFi enabled again → repeat from step 1 with **zero memory of the previous "
+"lease**"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:82
+msgid ""
+"Because the process exits after getting the lease, there is no daemon to "
+"renew it and no lease file written anywhere. Busybox's `udhcpc` has no lease "
+"persistence mechanism. On the next cycle it sends a bare `DISCOVER` with no "
+"preferred-IP hint (no DHCP Option 50), so the DHCP server is free to hand "
+"out any address from its pool."
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:87
+msgid ""
+"Additionally, "
+"[`cadmus.sh`](https://github.com/OGKevin/cadmus/blob/253edbe8958a44d108676d57b85942f21bb7c899/contrib/cadmus.sh#L18-L20) "
+"(previously `plato.sh`) was killing Nickel's already-running `dhcpcd` at "
+"startup:"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:93
+msgid ""
+"So even the stateful daemon that Nickel had set up (which _would_ have "
+"requested the same IP again) was torn down before Cadmus replaced it with a "
+"stateless `udhcpc -q`."
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:96
+msgid "What `default.script` does"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:98
+msgid ""
+"`/etc/udhcpc.d/default.script` is a minimal Busybox hook called by `udhcpc` "
+"on lease events. The relevant part:"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:102
+msgid "\"$1\""
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:105
+msgid "# ... deletes all default routes, adds new ones from $router ...\n"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:106
+msgid "# ← truncates resolv.conf to zero\n"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:112
+msgid "\"$ip\""
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:115
+msgid "Notable behaviours:"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:117
+msgid ""
+"**Wipes `resolv.conf` on every `bound` event.** This is why KOReader's "
+"[`disable-wifi.sh`](https://github.com/koreader/koreader/blob/d98dd9f244c5697c08a3bb9ac068f381d70b42c4/platform/kobo/disable-wifi.sh#L3-L6) "
+"saves and restores `resolv.conf` with an md5 check. This is a safety net "
+"against `udhcpc`'s script wiping DNS on lease release."
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:120
+msgid ""
+"**Writes to `/tmp/nickel-hardware-status`**, which is a FIFO Nickel listens "
+"on for network events. [KOReader explicitly removes this "
+"FIFO](https://github.com/koreader/koreader/blob/d98dd9f244c5697c08a3bb9ac068f381d70b42c4/platform/kobo/koreader.sh#L232-L233) "
+"(`rm -f /tmp/nickel-hardware-status`) to prevent scripts hanging when Nickel "
+"is not running."
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:124
+msgid "Why `dhcpcd` produces stable IPs"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:126
+msgid "`dhcpcd` writes a per-SSID lease file to **`/var/db/`**:"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:135
+msgid ""
+"`/var/db` lives on the root eMMC partition (`/dev/mmcblk0p10`), not a tmpfs. "
+"It survives reboots."
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:137
+msgid ""
+"When reconnecting to a known SSID, `dhcpcd` reads the matching `.lease` "
+"file, parses the previously-held IP, and sends a DHCP `REQUEST` directly for "
+"that IP (DHCP Option 50: Requested IP Address), skipping `DISCOVER` entirely "
+"if the lease has not expired. The DHCP server sees a familiar MAC + familiar "
+"IP request and simply ACKs it."
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:142
+msgid ""
+"The lease file for the current network encodes `192.x.x.x` in the `yiaddr` "
+"field of the saved BOOTREPLY, which is exactly the IP the device is using "
+"right now."
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:145
+msgid "Filesystem layout: what is ephemeral vs persistent"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:147
+msgid "Path"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:147
+msgid "Persistent?"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:149
+msgid "`/tmp`"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:149
+msgid "`tmpfs`"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:149
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:150
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:151
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:152
+msgid "No"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:150
+msgid "`/var/lib`"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:150
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:152
+msgid "`tmpfs` (16 KiB)"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:151
+msgid "`/var/run`"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:151
+msgid "`tmpfs` (128 KiB)"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:152
+msgid "`/var/log`"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:153
+msgid "`/var/db`"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:153
+msgid "eMMC (`mmcblk0p10`)"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:153
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:154
+msgid "**Yes**"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:154
+msgid "`/etc`"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:154
+msgid "eMMC"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:156
+msgid ""
+"`dhcpcd`'s runtime state (`/var/run/dhcpcd.pid`, `/var/run/dhcpcd.sock`) is "
+"ephemeral as expected, but the lease database in `/var/db/` persists. That "
+"is the architectural key."
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:159
+msgid ""
+"Why KOReader kills `dhcpcd` in its startup script but still gets stable IPs"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:161
+msgid ""
+"From "
+"[`koreader.sh`](https://github.com/koreader/koreader/blob/d98dd9f244c5697c08a3bb9ac068f381d70b42c4/platform/kobo/koreader.sh#L216-L220):"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:164
+msgid "# NOTE: We kill Nickel's master dhcpcd daemon on purpose,\n"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:165
+msgid ""
+"#       A SIGTERM does not break anything, it'll just prevent automatic "
+"lease renewal\n"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:167
+msgid ""
+"'ll do)...\n"
+"killall -q -TERM nickel ... dhcpcd-dbus dhcpcd ...\n"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:171
+msgid ""
+"KOReader kills Nickel's `dhcpcd` because it wants to start its own instance "
+"with custom arguments later via "
+"[`obtain-ip.sh`](https://github.com/koreader/koreader/blob/d98dd9f244c5697c08a3bb9ac068f381d70b42c4/platform/kobo/obtain-ip.sh#L54-L60). "
+"Crucially, `obtain-ip.sh` prefers `dhcpcd` over `udhcpc`:"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:175
+msgid ""
+"# NOTE: Prefer dhcpcd over udhcpc if available. That's what Nickel uses,\n"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:177
+msgid "\"/sbin/dhcpcd\""
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:178
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:180
+msgid "\"${INTERFACE}\""
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:184
+msgid ""
+"The new `dhcpcd` instance KOReader starts reads the same `/var/db/*.lease` "
+"files and requests the same IP. Stable address despite the kill/restart "
+"cycle."
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:187
+msgid ""
+"Why the fix in PR [\\#299](https://github.com/OGKevin/cadmus/pull/299) works"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:189
+msgid "The fix is twofold:"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:191
+msgid ""
+"**Remove `dhcpcd` from the kill list in "
+"[`cadmus.sh`](https://github.com/OGKevin/cadmus/blob/253edbe8958a44d108676d57b85942f21bb7c899/contrib/cadmus.sh#L18-L20)**. "
+"Nickel's running `dhcpcd -d -z wlan0` instance survives into the Cadmus "
+"session, continuously managing the lease."
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:194
+msgid ""
+"**Do not start `udhcpc` at all in the native Rust WiFi implementation**. No "
+"new DHCP client is spawned on toggle, so the already-running `dhcpcd` is "
+"never displaced."
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:197
+msgid ""
+"The result: one long-lived `dhcpcd` daemon manages the lease for the entire "
+"session, renews it in the background, and requests the same IP on every "
+"reconnect using the persisted `/var/db/*.lease` file."
 msgstr ""
 

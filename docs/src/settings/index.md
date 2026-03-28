@@ -222,6 +222,9 @@ automatically continue the download once you authorize.
 The token is saved to disk after the first authorization so you will not be
 prompted again on subsequent downloads.
 
+For step-by-step instructions with screenshots, see the
+[OTA updates](../installation/ota.md) guide.
+
 ## Telemetry
 
 Cadmus writes JSON logs to disk. When the build enables the `otel` feature, it

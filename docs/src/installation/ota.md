@@ -7,9 +7,24 @@ computer. The OTA (Over-The-Air) feature downloads updates directly from GitHub.
 
 - A WiFi connection
 
-Stable releases are public and require no authentication. Main branch and PR
-builds require a GitHub account — Cadmus will guide you through a one-time
-sign-in the first time you request one.
+## Authentication
+
+Main branch and PR builds require a GitHub account. Stable releases are public
+and need no authentication.
+
+The first time you request a main branch or PR build, Cadmus will show a screen
+with a URL and a short code:
+
+1. Go to the URL shown on screen
+2. Enter the code shown on your device
+3. Sign in to GitHub and approve the request
+
+Cadmus detects the approval automatically and starts the download. The token is
+saved to disk so you won't need to sign in again.
+
+|                                         |                                        |
+| --------------------------------------- | -------------------------------------- |
+| ![ota-pick](./screenshots/ota-pick.png) | ![auth](./screenshots/device-auth.png) |
 
 ## How to update
 
@@ -30,15 +45,8 @@ update from:
 Select **Main Branch** to get the most recent development build. This includes
 changes that have been merged but not yet released officially.
 
-If this is your first time, Cadmus will show a screen with a URL and a short
-code. On any device with a browser:
-
-1. Go to the URL shown on screen
-2. Enter the code shown on your Device
-3. Sign in to GitHub and approve the request
-
-Cadmus will detect the approval automatically and start the download. The token
-is saved to disk so you won't need to sign in again.
+If you haven't authenticated before, Cadmus will guide you through the GitHub
+sign-in process. See [Authentication](#authentication) for details.
 
 The update downloads from GitHub, installs automatically, and reboots the device
 to finish.
@@ -46,8 +54,9 @@ to finish.
 ## Testing a pull request
 
 Select **PR Build** to try out a specific change before it's released. Enter the
-PR number when prompted. The same one-time GitHub sign-in applies if you haven't
-authenticated before.
+PR number when prompted. If you haven't authenticated before, Cadmus will guide
+you through the GitHub sign-in process. See [Authentication](#authentication)
+for details.
 
 > [!TIP]
 > Find the PR number in the GitHub URL. For example, in
