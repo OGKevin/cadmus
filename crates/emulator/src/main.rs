@@ -645,12 +645,10 @@ fn main() -> Result<(), Error> {
                 Event::Back => {
                     if let Some(v) = history.pop() {
                         view = v;
-                        if view.is::<Home>() {
-                            if context.display.rotation % 2 != 1 {
-                                if let Ok(dims) = context.fb.set_rotation(DEFAULT_ROTATION) {
-                                    context.display.rotation = DEFAULT_ROTATION;
-                                    context.display.dims = dims;
-                                }
+                        if view.is::<Home>() && context.display.rotation % 2 != 1 {
+                            if let Ok(dims) = context.fb.set_rotation(DEFAULT_ROTATION) {
+                                context.display.rotation = DEFAULT_ROTATION;
+                                context.display.dims = dims;
                             }
                         }
                         view.handle_event(&Event::Reseed, &tx, &mut bus, &mut rq, &mut context);

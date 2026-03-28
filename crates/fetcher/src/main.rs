@@ -117,7 +117,7 @@ fn is_detail_available(client: &Client, settings: &Settings) -> bool {
     client
         .get(&url)
         .send()
-        .map_or(false, |response| response.status().is_success())
+        .is_ok_and(|response| response.status().is_success())
 }
 
 fn main() -> Result<(), Error> {
@@ -458,7 +458,7 @@ fn main() -> Result<(), Error> {
 
                 session.since = updated_at.timestamp();
 
-                let epub_path = save_path.join(&format!("{}.epub", id));
+                let epub_path = save_path.join(format!("{}.epub", id));
                 if epub_path.exists() {
                     continue;
                 }

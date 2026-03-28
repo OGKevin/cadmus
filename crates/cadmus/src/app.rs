@@ -1615,10 +1615,8 @@ pub fn run() -> Result<(), Error> {
 
     background_tasks.stop_all();
 
-    if tasks.iter().all(|task| task.id != TaskId::Suspend) {
-        if context.settings.frontlight {
-            context.settings.frontlight_levels = context.frontlight.levels();
-        }
+    if tasks.iter().all(|task| task.id != TaskId::Suspend) && context.settings.frontlight {
+        context.settings.frontlight_levels = context.frontlight.levels();
     }
 
     context.library.flush();
