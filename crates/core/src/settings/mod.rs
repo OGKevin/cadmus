@@ -456,7 +456,7 @@ pub struct LoggingSettings {
     pub otlp_endpoint: Option<String>,
     /// Captures kernel logs via logread if kernel log capture is supported.
     pub enable_kern_log: bool,
-    /// Captures D-Bus signals via dbus-monitor if dbus-monitor capture is supported.
+    /// Captures D-Bus signals via the in-process zbus DbusMonitorTask when D-Bus log capture is supported.
     pub enable_dbus_log: bool,
 }
 

@@ -47,7 +47,8 @@ directory = "logs"
 # otlp-endpoint = "https://otel.example.com:4318"
 # Capture kernel logs (requires test build with kobo feature).
 # enable-kern-log = false
-# Capture D-Bus signals (requires test build with kobo feature).
+# Capture D-Bus signals via the built-in zbus-based DbusMonitorTask (requires test build with
+# kobo feature; no external dbus-monitor tool is needed).
 # enable-dbus-log = false
 
 # You can create libraries by adding further [[libraries]] entries.

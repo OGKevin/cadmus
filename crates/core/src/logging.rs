@@ -491,8 +491,8 @@ fn build_filter(settings: &LoggingSettings) -> Result<EnvFilter, Error> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use std::default::Default;
-use super::*;
     use std::sync::OnceLock;
     use tempfile::TempDir;
 
