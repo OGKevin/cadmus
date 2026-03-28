@@ -127,7 +127,7 @@ fn main() -> Result<(), Error> {
         let opt_rename_from_info = matches.opt_present("N");
 
         library.apply(|path, info| {
-            if added_after.map_or(true, |added| info.added >= added) {
+            if added_after.is_none_or(|added| info.added >= added) {
                 if opt_extract_metadata_document
                     && import_settings.metadata_kinds.contains(&info.file.kind)
                 {

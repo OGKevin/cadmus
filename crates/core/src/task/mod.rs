@@ -61,6 +61,8 @@ pub enum TaskError {
 /// Unique identifier for a background task.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TaskId {
+    /// A tmp placoholder until there is a Task always available.
+    Placeholder,
     /// The example task that prints periodically (test builds only).
     #[cfg(feature = "test")]
     HelloWorld,
@@ -75,13 +77,13 @@ pub enum TaskId {
 impl std::fmt::Display for TaskId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            TaskId::Placeholder => unreachable!(),
             #[cfg(feature = "test")]
             TaskId::HelloWorld => write!(f, "hello_world"),
             #[cfg(test)]
             TaskId::TestTask => write!(f, "test_task"),
             #[cfg(test)]
             TaskId::TestTask2 => write!(f, "test_task_2"),
-            _ => unimplemented!()
         }
     }
 }
@@ -171,7 +173,7 @@ impl TaskManager {
     #[cfg_attr(feature = "otel", tracing::instrument(skip(self, task, hub), fields(task_id = tracing::field::Empty), ret))]
     pub fn start(
         &mut self,
-        mut task: Box<dyn BackgroundTask>,
+        task: Box<dyn BackgroundTask>,
         hub: Sender<Event>,
     ) -> Result<TaskId, TaskError> {
         let id = task.id();
@@ -187,6 +189,7 @@ impl TaskManager {
         let shutdown_signal = ShutdownSignal::new(shutdown_rx);
 
         let handle = thread::spawn(move || {
+            let mut task = task;
             tracing::info!("task started");
             task.run(&hub, &shutdown_signal);
             task.stop();
