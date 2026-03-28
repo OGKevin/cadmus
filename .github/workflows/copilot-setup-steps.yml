@@ -16,6 +16,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -119,3 +121,4 @@ jobs:
           reviewdog --version || true
           # Verify native test setup
           ls -la target/mupdf_wrapper/Linux/ || true
+          cargo xtask --help || true
