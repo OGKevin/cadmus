@@ -109,3 +109,6 @@ otel = [
     "opentelemetry-semantic-conventions",
     "gethostname",
 ]
+
+[lints.rustdoc]
+private_intra_doc_links = "allow"

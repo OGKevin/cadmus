@@ -34,10 +34,12 @@
 //! }
 //! ```
 
-#[cfg(all(feature = "test", feature = "kobo"))]
+#[cfg(any(all(feature = "test", feature = "kobo"), doc))]
 mod dbus_monitor;
-#[cfg(feature = "test")]
+#[cfg(any(feature = "test", doc))]
 mod hello_world;
+#[cfg(any(feature = "kobo", doc))]
+mod wifi_status_monitor;
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -47,7 +49,6 @@ use std::time::Duration;
 
 use thiserror::Error;
 
-#[cfg(feature = "test")]
 use crate::settings::Settings;
 use crate::view::Event;
 
@@ -69,11 +70,14 @@ pub enum TaskId {
     /// A tmp placeholder until there is a Task always available.
     Placeholder,
     /// The example task that prints periodically (test builds only).
-    #[cfg(feature = "test")]
+    #[cfg(any(feature = "test", doc))]
     HelloWorld,
     /// D-Bus system bus monitor (test + kobo builds only).
-    #[cfg(all(feature = "test", feature = "kobo"))]
+    #[cfg(any(all(feature = "test", feature = "kobo"), doc))]
     DbusMonitor,
+    /// WiFi status monitor using dhcpcd-dbus (kobo builds only).
+    #[cfg(any(feature = "kobo", doc))]
+    WifiStatusMonitor,
     /// Test-only task for unit tests.
     #[cfg(test)]
     TestTask,
@@ -90,6 +94,8 @@ impl std::fmt::Display for TaskId {
             TaskId::HelloWorld => write!(f, "hello_world"),
             #[cfg(all(feature = "test", feature = "kobo"))]
             TaskId::DbusMonitor => write!(f, "dbus_monitor"),
+            #[cfg(feature = "kobo")]
+            TaskId::WifiStatusMonitor => write!(f, "wifi_status_monitor"),
             #[cfg(test)]
             TaskId::TestTask => write!(f, "test_task"),
             #[cfg(test)]
@@ -312,24 +318,37 @@ impl Drop for TaskManager {
     }
 }
 
-/// Registers example tasks for testing.
+/// Registers background tasks that run at startup.
 ///
-/// Call this during startup to add test-only background tasks.
-/// Currently, registers:
-/// - [`hello_world::HelloWorldTask`] - prints "Hello world!" every minute (always)
-/// - [`dbus_monitor::DbusMonitorTask`] - monitors D-Bus signals (when `settings.logging.enable_dbus_log` is true)
-#[cfg(feature = "test")]
-pub fn register_test_tasks(manager: &mut TaskManager, hub: Sender<Event>, settings: &Settings) {
-    let task = Box::new(hello_world::HelloWorldTask);
-    if let Err(e) = manager.start(task, hub.clone()) {
-        tracing::warn!(error = %e, "failed to start hello_world task");
+/// Call this during startup to add background tasks.
+/// Currently registers:
+/// - [`wifi_status_monitor::WifiStatusMonitorTask`] - monitors WiFi status via dhcpcd-dbus (kobo only)
+/// - [`hello_world::HelloWorldTask`] - prints "Hello world!" every minute (test only)
+/// - [`dbus_monitor::DbusMonitorTask`] - monitors D-Bus signals (test + kobo only, when `settings.logging.enable_dbus_log` is true)
+pub fn register_startup_tasks(manager: &mut TaskManager, hub: Sender<Event>, _settings: &Settings) {
+    #[cfg(feature = "kobo")]
+    {
+        let task = Box::new(wifi_status_monitor::WifiStatusMonitorTask);
+        if let Err(e) = manager.start(task, hub.clone()) {
+            tracing::warn!(error = %e, "failed to start wifi_status_monitor task");
+        }
     }
 
-    #[cfg(all(feature = "test", feature = "kobo"))]
-    if settings.logging.enable_dbus_log {
-        let task = Box::new(dbus_monitor::DbusMonitorTask);
-        if let Err(e) = manager.start(task, hub) {
-            tracing::warn!(error = %e, "failed to start dbus_monitor task");
+    #[cfg(feature = "test")]
+    {
+        let settings = _settings;
+
+        let task = Box::new(hello_world::HelloWorldTask);
+        if let Err(e) = manager.start(task, hub.clone()) {
+            tracing::warn!(error = %e, "failed to start hello_world task");
+        }
+
+        #[cfg(feature = "kobo")]
+        if settings.logging.enable_dbus_log {
+            let task = Box::new(dbus_monitor::DbusMonitorTask);
+            if let Err(e) = manager.start(task, hub) {
+                tracing::warn!(error = %e, "failed to start dbus_monitor task");
+            }
         }
     }
 }

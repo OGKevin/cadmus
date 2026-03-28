@@ -492,7 +492,6 @@ fn build_filter(settings: &LoggingSettings) -> Result<EnvFilter, Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::default::Default;
     use std::sync::OnceLock;
     use tempfile::TempDir;
 
@@ -518,7 +517,7 @@ mod tests {
                     directory: dir.path().to_path_buf(),
                     otlp_endpoint: None,
                     enable_kern_log: false,
-                    ..Default::default()
+                    enable_dbus_log: false,
                 };
                 init_logging(&settings).expect("failed to initialize logging for tests");
                 dir
@@ -604,7 +603,7 @@ mod tests {
             directory: redirect_dir.path().to_path_buf(),
             otlp_endpoint: None,
             enable_kern_log: false,
-            ..Default::default()
+            enable_dbus_log: false,
         };
 
         redirect_log_to_dir(redirect_dir.path(), &settings)?;

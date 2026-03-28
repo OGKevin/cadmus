@@ -342,8 +342,7 @@ fn main() -> Result<(), Error> {
 
     let mut background_tasks = TaskManager::new();
 
-    #[cfg(feature = "test")]
-    cadmus_core::task::register_test_tasks(&mut background_tasks, tx.clone(), &context.settings);
+    cadmus_core::task::register_startup_tasks(&mut background_tasks, tx.clone(), &context.settings);
 
     let mut history: Vec<Box<dyn View>> = Vec::new();
     let mut rq = RenderQueue::new();
