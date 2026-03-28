@@ -61,8 +61,8 @@ pub enum TaskError {
 /// Unique identifier for a background task.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TaskId {
-    /// A custom task identifier for user-defined tasks.
-    Custom(std::sync::Arc<str>),
+    /// A tmp placoholder until there is a Task always available.
+    Placeholder(),
     /// The example task that prints periodically (test builds only).
     #[cfg(feature = "test")]
     HelloWorld,
@@ -77,7 +77,7 @@ pub enum TaskId {
 impl std::fmt::Display for TaskId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TaskId::Custom(s) => write!(f, "{s}"),
+            TaskId::Placeholder => unreachable!(),
             #[cfg(feature = "test")]
             TaskId::HelloWorld => write!(f, "hello_world"),
             #[cfg(test)]
