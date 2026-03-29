@@ -23,6 +23,75 @@ use anyhow::{Context, Result, bail};
 
 use super::{cmd, fs, http};
 
+/// Base names of all thirdparty shared libraries.
+///
+/// SONAMEs are discovered at runtime via `readelf -d` because upstream
+/// libraries do not follow a consistent ABI versioning scheme.
+pub const SONAMES: &[&str] = &[
+    "libz.so",
+    "libbz2.so",
+    "libpng16.so",
+    "libjpeg.so",
+    "libopenjp2.so",
+    "libjbig2dec.so",
+    "libfreetype.so",
+    "libharfbuzz.so",
+    "libgumbo.so",
+    "libdjvulibre.so",
+    "libmupdf.so",
+];
+
+/// Returns the SONAME of `lib` in `libs_dir`.
+///
+/// When the library file exists, `readelf -d` is used to extract the SONAME
+/// from the binary. When only a versioned file exists (e.g. `libz.so.1.2.13`
+/// without `libz.so`), the versioned filename is returned directly.
+///
+/// # Errors
+///
+/// Returns an error if `readelf` fails or the SONAME cannot be determined.
+pub fn soname(libs_dir: &Path, lib: &str) -> Result<String> {
+    let so_path = libs_dir.join(lib);
+    if so_path.exists() {
+        let so_path_str = so_path
+            .to_str()
+            .with_context(|| format!("shared library path is not valid UTF-8: {so_path:?}"))?;
+        let output = cmd::output("readelf", &["-d", so_path_str], libs_dir, &[])?;
+        let soname = output
+            .lines()
+            .find(|line| line.contains("SONAME"))
+            .and_then(|line| line.split_whitespace().last())
+            .map(|token| {
+                token
+                    .trim_start_matches('[')
+                    .trim_end_matches(']')
+                    .to_string()
+            })
+            .with_context(|| format!("failed to find SONAME in readelf output for {lib}"))?;
+        Ok(soname)
+    } else {
+        let prefix = format!("{}.", lib);
+        let matching: Vec<_> = std::fs::read_dir(libs_dir)?
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().starts_with(&prefix))
+            .collect();
+
+        match matching.len() {
+            1 => Ok(matching[0].file_name().to_string_lossy().into_owned()),
+            0 => bail!(
+                "no versioned file found for {} in {}",
+                lib,
+                libs_dir.display()
+            ),
+            _ => bail!(
+                "multiple versioned files found for {} in {}",
+                lib,
+                libs_dir.display()
+            ),
+        }
+    }
+}
+
 /// Version strings for thirdparty libraries tracked by Renovate.
 ///
 /// Each version constant is the single source of truth — the download URL is
@@ -33,7 +102,10 @@ use super::{cmd, fs, http};
 /// # TODO
 ///
 /// Add Renovate regex managers for the remaining URL constants below so that
-/// all thirdparty dependency updates are tracked automatically.
+/// all thirdparty dependency updates are tracked automatically.  The
+/// following are now tracked via VERSION constants: openjpeg, harfbuzz, gumbo.
+/// Their SONAMEs are discovered at build time via `readelf -d` rather than
+/// hardcoded.  Remaining: bzip2, jbig2dec, mupdf.
 pub const ZLIB_VERSION: &str = "1.3.2";
 pub const LIBPNG_VERSION: &str = "1.6.53";
 pub const DJVULIBRE_VERSION: &str = "3.5.29";
@@ -41,7 +113,8 @@ pub const DJVULIBRE_VERSION: &str = "3.5.29";
 pub const LIBJPEG_VERSION: &str = "9f";
 
 pub const BZIP2_URL: &str = "https://sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz";
-pub const OPENJPEG_URL: &str = "https://github.com/uclouvain/openjpeg/archive/v2.5.4.tar.gz";
+/// OpenJPEG version, derived from the archive URL.
+pub const OPENJPEG_VERSION: &str = "2.5.4";
 pub const JBIG2DEC_URL: &str =
     "https://github.com/ArtifexSoftware/jbig2dec/releases/download/0.20/jbig2dec-0.20.tar.gz";
 /// FreeType version, cloned from `freetype/freetype` at tag `VER-X-Y-Z`.
@@ -51,8 +124,10 @@ pub const JBIG2DEC_URL: &str =
 /// rather than downloaded as a tarball because its build system requires the
 /// `nyorain/dlg` git submodule, which is absent from archive tarballs.
 pub const FREETYPE2_VERSION: &str = "2.14.1";
-pub const HARFBUZZ_URL: &str = "https://github.com/harfbuzz/harfbuzz/archive/12.3.0.tar.gz";
-pub const GUMBO_URL: &str = "https://github.com/google/gumbo-parser/archive/v0.10.1.tar.gz";
+/// HarfBuzz version, derived from the archive URL.
+pub const HARFBUZZ_VERSION: &str = "12.3.0";
+/// Gumbo version, derived from the archive URL.
+pub const GUMBO_VERSION: &str = "0.10.1";
 
 pub const MUPDF_URL: &str = "https://casper.mupdf.com/downloads/archive/mupdf-1.27.0-source.tar.gz";
 
@@ -99,14 +174,23 @@ pub fn library_source(name: &str) -> Result<LibrarySource> {
             "https://github.com/libjpeg-turbo/libjpeg-turbo/archive/refs/tags/jpeg-{v}.tar.gz",
             v = LIBJPEG_VERSION
         ))),
-        "openjpeg" => Ok(LibrarySource::Tarball(OPENJPEG_URL.to_owned())),
+        "openjpeg" => Ok(LibrarySource::Tarball(format!(
+            "https://github.com/uclouvain/openjpeg/archive/v{v}.tar.gz",
+            v = OPENJPEG_VERSION
+        ))),
         "jbig2dec" => Ok(LibrarySource::Tarball(JBIG2DEC_URL.to_owned())),
         "freetype2" => Ok(LibrarySource::Git {
             repo: "https://github.com/freetype/freetype".to_owned(),
             tag: format!("VER-{}", FREETYPE2_VERSION.replace('.', "-")),
         }),
-        "harfbuzz" => Ok(LibrarySource::Tarball(HARFBUZZ_URL.to_owned())),
-        "gumbo" => Ok(LibrarySource::Tarball(GUMBO_URL.to_owned())),
+        "harfbuzz" => Ok(LibrarySource::Tarball(format!(
+            "https://github.com/harfbuzz/harfbuzz/archive/{v}.tar.gz",
+            v = HARFBUZZ_VERSION
+        ))),
+        "gumbo" => Ok(LibrarySource::Tarball(format!(
+            "https://github.com/google/gumbo-parser/archive/v{v}.tar.gz",
+            v = GUMBO_VERSION
+        ))),
         "djvulibre" => Ok(LibrarySource::Tarball(format!(
             "https://github.com/barak/djvulibre/archive/refs/tags/release.{v}.tar.gz",
             v = DJVULIBRE_VERSION

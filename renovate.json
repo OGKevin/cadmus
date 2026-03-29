@@ -168,6 +168,45 @@
       "depNameTemplate": "freetype/freetype",
       "extractVersionTemplate": "^VER-(?<major>\\d+)-(?<minor>\\d+)-(?<patch>\\d+)$",
       "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^xtask\\/src\\/tasks\\/util\\/thirdparty\\.rs$/"
+      ],
+      "matchStrings": [
+        "OPENJPEG_VERSION: &str = \\\"(?<currentValue>[^\\\"]+)\\\""
+      ],
+      "datasourceTemplate": "github-tags",
+      "depNameTemplate": "uclouvain/openjpeg",
+      "extractVersionTemplate": "^v(?<version>.+)$",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^xtask\\/src\\/tasks\\/util\\/thirdparty\\.rs$/"
+      ],
+      "matchStrings": [
+        "HARFBUZZ_VERSION: &str = \\\"(?<currentValue>[^\\\"]+)\\\""
+      ],
+      "datasourceTemplate": "github-tags",
+      "depNameTemplate": "harfbuzz/harfbuzz",
+      "extractVersionTemplate": "^(?<version>.+)$",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^xtask\\/src\\/tasks\\/util\\/thirdparty\\.rs$/"
+      ],
+      "matchStrings": [
+        "GUMBO_VERSION: &str = \\\"(?<currentValue>[^\\\"]+)\\\""
+      ],
+      "datasourceTemplate": "github-tags",
+      "depNameTemplate": "google/gumbo-parser",
+      "extractVersionTemplate": "^v(?<version>.+)$",
+      "versioningTemplate": "semver"
     }
   ]
 }

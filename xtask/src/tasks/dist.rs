@@ -35,7 +35,7 @@ use anyhow::{Context, Result, bail};
 use clap::Args;
 use wildmatch::WildMatch;
 
-use super::util::{cmd, fs, workspace};
+use super::util::{cmd, fs, thirdparty, workspace};
 
 /// Arguments for `cargo xtask dist`.
 #[derive(Debug, Args)]
@@ -91,23 +91,10 @@ fn copy_libraries(root: &Path, dist_dir: &Path) -> Result<()> {
     let libs_dir = root.join("libs");
     let dist_libs = dist_dir.join("libs");
 
-    let copies: &[(&str, &str)] = &[
-        ("libz.so", "libz.so.1"),
-        ("libbz2.so", "libbz2.so.1.0"),
-        ("libpng16.so", "libpng16.so.16"),
-        ("libjpeg.so", "libjpeg.so.9"),
-        ("libopenjp2.so", "libopenjp2.so.7"),
-        ("libjbig2dec.so", "libjbig2dec.so.0"),
-        ("libfreetype.so", "libfreetype.so.6"),
-        ("libharfbuzz.so", "libharfbuzz.so.0"),
-        ("libgumbo.so", "libgumbo.so.1"),
-        ("libdjvulibre.so", "libdjvulibre.so.21"),
-        ("libmupdf.so", "libmupdf.so"),
-    ];
-
-    for (src_name, dest_name) in copies {
-        let src = libs_dir.join(src_name);
-        let dest = dist_libs.join(dest_name);
+    for &lib in thirdparty::SONAMES {
+        let soname = thirdparty::soname(&libs_dir, lib)?;
+        let src = libs_dir.join(lib);
+        let dest = dist_libs.join(&soname);
         std::fs::copy(&src, &dest).with_context(|| {
             format!(
                 "failed to copy {} → {}\n\

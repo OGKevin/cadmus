@@ -25,19 +25,9 @@ use clap::Args;
 
 use super::util::{cmd, fs, github, http, mupdf_wrapper, thirdparty, workspace};
 
-const SYMLINKS: &[(&str, &str)] = &[
-    ("libz.so.1", "libz.so"),
-    ("libbz2.so.1.0", "libbz2.so"),
-    ("libpng16.so.16", "libpng16.so"),
-    ("libjpeg.so.9", "libjpeg.so"),
-    ("libopenjp2.so.7", "libopenjp2.so"),
-    ("libjbig2dec.so.0", "libjbig2dec.so"),
-    ("libfreetype.so.6", "libfreetype.so"),
-    ("libharfbuzz.so.0", "libharfbuzz.so"),
-    ("libgumbo.so.1", "libgumbo.so"),
-    ("libdjvulibre.so.21", "libdjvulibre.so"),
-];
-
+/// BUILT_LIBRARY_COPIES maps built `.so` paths to their destination names in
+/// `libs/`.  The destination names here are the *base* names (e.g. `libz.so`);
+/// the actual SONAME is discovered at runtime via [`thirdparty::soname`].
 const BUILT_LIBRARY_COPIES: &[(&str, &str)] = &[
     ("thirdparty/zlib/libz.so", "libz.so"),
     ("thirdparty/bzip2/libbz2.so", "libbz2.so"),
@@ -188,16 +178,18 @@ fn build_thirdparty_slow(root: &std::path::Path) -> Result<()> {
     let libs_dir = root.join("libs");
     std::fs::create_dir_all(&libs_dir)?;
 
-    copy_built_libs(root, &libs_dir)
+    copy_built_libs(root, &libs_dir)?;
+    create_symlinks(&libs_dir)
 }
 
 /// Creates the `.so` version symlinks expected by the Cadmus runtime.
 fn create_symlinks(libs_dir: &std::path::Path) -> Result<()> {
-    for (target, link_name) in SYMLINKS {
-        let link_path = libs_dir.join(link_name);
+    for &lib in thirdparty::SONAMES {
+        let target = thirdparty::soname(libs_dir, lib)?;
+        let link_path = libs_dir.join(lib);
         if !link_path.exists() {
             #[cfg(unix)]
-            std::os::unix::fs::symlink(target, &link_path)?;
+            std::os::unix::fs::symlink(&target, &link_path)?;
         }
     }
 
@@ -282,7 +274,7 @@ mod tests {
 
     #[test]
     fn symlink_list_has_no_duplicates() {
-        let mut link_names: Vec<&str> = SYMLINKS.iter().map(|(_, link)| *link).collect();
+        let mut link_names: Vec<&str> = thirdparty::SONAMES.to_vec();
         link_names.sort_unstable();
         let original_len = link_names.len();
         link_names.dedup();
