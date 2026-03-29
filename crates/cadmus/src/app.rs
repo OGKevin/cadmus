@@ -250,6 +250,31 @@ fn power_off(
     context.fb.update(interm.rect(), UpdateMode::Full).ok();
 }
 
+fn initiate_suspend(
+    view: &mut dyn View,
+    hub: &Sender<Event>,
+    bus: &mut VecDeque<Event>,
+    rq: &mut RenderQueue,
+    tasks: &mut Vec<Task>,
+    context: &mut Context,
+) {
+    view.handle_event(&Event::Suspend, hub, bus, rq, context);
+    let interm = Intermission::new(context.fb.rect(), IntermKind::Suspend, context);
+    rq.add(RenderData::new(
+        interm.id(),
+        *interm.rect(),
+        UpdateMode::Full,
+    ));
+    schedule_task(
+        TaskId::PrepareSuspend,
+        Event::PrepareSuspend,
+        PREPARE_SUSPEND_WAIT_DELAY,
+        hub,
+        tasks,
+    );
+    view.children_mut().push(Box::new(interm) as Box<dyn View>);
+}
+
 fn set_wifi(enable: bool, context: &mut Context) {
     if context.settings.wifi == enable {
         return;
@@ -685,22 +710,14 @@ pub fn run() -> Result<(), Error> {
                             &mut context,
                         );
                     } else {
-                        view.handle_event(&Event::Suspend, &tx, &mut bus, &mut rq, &mut context);
-                        let interm =
-                            Intermission::new(context.fb.rect(), IntermKind::Suspend, &context);
-                        rq.add(RenderData::new(
-                            interm.id(),
-                            *interm.rect(),
-                            UpdateMode::Full,
-                        ));
-                        schedule_task(
-                            TaskId::PrepareSuspend,
-                            Event::PrepareSuspend,
-                            PREPARE_SUSPEND_WAIT_DELAY,
+                        initiate_suspend(
+                            view.as_mut(),
                             &tx,
+                            &mut bus,
+                            &mut rq,
                             &mut tasks,
+                            &mut context,
                         );
-                        view.children_mut().push(Box::new(interm) as Box<dyn View>);
                     }
                 }
                 DeviceEvent::Button {
@@ -726,22 +743,14 @@ pub fn run() -> Result<(), Error> {
                         continue;
                     }
 
-                    view.handle_event(&Event::Suspend, &tx, &mut bus, &mut rq, &mut context);
-                    let interm =
-                        Intermission::new(context.fb.rect(), IntermKind::Suspend, &context);
-                    rq.add(RenderData::new(
-                        interm.id(),
-                        *interm.rect(),
-                        UpdateMode::Full,
-                    ));
-                    schedule_task(
-                        TaskId::PrepareSuspend,
-                        Event::PrepareSuspend,
-                        PREPARE_SUSPEND_WAIT_DELAY,
+                    initiate_suspend(
+                        view.as_mut(),
                         &tx,
+                        &mut bus,
+                        &mut rq,
                         &mut tasks,
+                        &mut context,
                     );
-                    view.children_mut().push(Box::new(interm) as Box<dyn View>);
                 }
                 DeviceEvent::CoverOff => {
                     if !context.covered {
@@ -1560,25 +1569,19 @@ pub fn run() -> Result<(), Error> {
                 break;
             }
             Event::Select(EntryId::PowerOff) => {
+                power_off(view.as_mut(), &mut history, &mut updating, &mut context);
                 exit_status = ExitStatus::PowerOff;
                 break;
             }
             Event::Select(EntryId::Suspend) => {
-                view.handle_event(&Event::Suspend, &tx, &mut bus, &mut rq, &mut context);
-                let interm = Intermission::new(context.fb.rect(), IntermKind::Suspend, &context);
-                rq.add(RenderData::new(
-                    interm.id(),
-                    *interm.rect(),
-                    UpdateMode::Full,
-                ));
-                schedule_task(
-                    TaskId::PrepareSuspend,
-                    Event::PrepareSuspend,
-                    PREPARE_SUSPEND_WAIT_DELAY,
+                initiate_suspend(
+                    view.as_mut(),
                     &tx,
+                    &mut bus,
+                    &mut rq,
                     &mut tasks,
+                    &mut context,
                 );
-                view.children_mut().push(Box::new(interm) as Box<dyn View>);
             }
             Event::MightSuspend if context.settings.auto_suspend > 0.0 => {
                 if context.shared
@@ -1591,22 +1594,14 @@ pub fn run() -> Result<(), Error> {
                 }
                 let seconds = 60.0 * context.settings.auto_suspend;
                 if inactive_since.elapsed() > Duration::from_secs_f32(seconds) {
-                    view.handle_event(&Event::Suspend, &tx, &mut bus, &mut rq, &mut context);
-                    let interm =
-                        Intermission::new(context.fb.rect(), IntermKind::Suspend, &context);
-                    rq.add(RenderData::new(
-                        interm.id(),
-                        *interm.rect(),
-                        UpdateMode::Full,
-                    ));
-                    schedule_task(
-                        TaskId::PrepareSuspend,
-                        Event::PrepareSuspend,
-                        PREPARE_SUSPEND_WAIT_DELAY,
+                    initiate_suspend(
+                        view.as_mut(),
                         &tx,
+                        &mut bus,
+                        &mut rq,
                         &mut tasks,
+                        &mut context,
                     );
-                    view.children_mut().push(Box::new(interm) as Box<dyn View>);
                 }
             }
             _ => {
