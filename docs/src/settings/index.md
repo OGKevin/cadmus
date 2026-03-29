@@ -311,6 +311,18 @@ with the target `cadmus_core::logging:kern`.
 enable-kern-log = false
 ```
 
+### `logging.enable-dbus-log`
+
+🧪 📱 ✏️
+
+Captures D-Bus signals via the built-in zbus-based DbusMonitorTask and forwards
+them to structured logging.
+
+```toml
+[logging]
+enable-dbus-log = false
+```
+
 ## Settings Retention
 
 Cadmus stores each version's settings in a separate file in the `Settings/` directory (for example, `Settings-v1.2.3.toml`).
