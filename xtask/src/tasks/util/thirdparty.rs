@@ -110,7 +110,7 @@ pub const ZLIB_VERSION: &str = "1.3.2";
 pub const LIBPNG_VERSION: &str = "1.6.53";
 pub const DJVULIBRE_VERSION: &str = "3.5.29";
 /// IJG libjpeg version tracked via the libjpeg-turbo `jpeg-<version>` tag mirror.
-pub const LIBJPEG_VERSION: &str = "9f";
+pub const LIBJPEG_VERSION: &str = "10";
 
 pub const BZIP2_URL: &str = "https://sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz";
 /// OpenJPEG version, derived from the archive URL.
