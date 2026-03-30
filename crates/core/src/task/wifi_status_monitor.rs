@@ -145,8 +145,6 @@ fn process_wpa_status(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let body = msg.body();
 
-    // The WpaStatus signal body has signature a{sa{ss}}:
-    // Dict { interface_name -> Dict { property -> value } }
     let interfaces: HashMap<String, HashMap<String, String>> = body.deserialize()?;
 
     check_interfaces(&interfaces, hub);
