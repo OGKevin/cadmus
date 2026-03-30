@@ -1,4 +1,8 @@
 #! /bin/sh
 
 echo 0 > /sys/power/state-extended
-# echo a > /sys/devices/virtual/input/input1/neocmd
+case "$PRODUCT" in
+	alyssum|dahlia)
+		echo a > /sys/devices/virtual/input/input1/neocmd
+		;;
+esac
