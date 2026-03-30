@@ -46,6 +46,7 @@ pub trait IndexReader {
     fn find(&self, headword: &str, fuzzy: bool) -> Vec<Entry>;
 }
 
+#[cfg_attr(feature = "otel", tracing::instrument(skip_all))]
 fn normalize(entries: &[Entry], metadata: &Metadata) -> Vec<Entry> {
     let mut result: Vec<Entry> = Vec::with_capacity(entries.len());
 
@@ -90,6 +91,7 @@ fn normalize(entries: &[Entry], metadata: &Metadata) -> Vec<Entry> {
 }
 
 impl<R: BufRead> IndexReader for Index<R> {
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, metadata), fields(headword = %headword, fuzzy)))]
     fn load_and_find(&mut self, headword: &str, fuzzy: bool, metadata: &Metadata) -> Vec<Entry> {
         if let Some(br) = self.state.take() {
             let has_dictfmt = self.entries.iter().any(|e| e.headword.contains("dictfmt"));
@@ -103,6 +105,7 @@ impl<R: BufRead> IndexReader for Index<R> {
         self.find(headword, fuzzy)
     }
 
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(headword = %headword, fuzzy, entry_count = self.entries.len())))]
     fn find(&self, headword: &str, fuzzy: bool) -> Vec<Entry> {
         if fuzzy {
             self.entries
@@ -191,6 +194,7 @@ fn parse_line(line: &str, line_number: usize) -> Result<(&str, u64, u64, Option<
 
 /// Parse the index for a dictionary from a given BufRead compatible object.
 /// When `lazy` is `true`, the loop stops once all the metadata entries are parsed.
+#[cfg_attr(feature = "otel", tracing::instrument(skip_all))]
 pub fn parse_index<B: BufRead>(mut br: B, lazy: bool) -> Result<Index<B>, DictError> {
     let mut info = false;
     let mut entries = Vec::new();
@@ -231,6 +235,7 @@ pub fn parse_index<B: BufRead>(mut br: B, lazy: bool) -> Result<Index<B>, DictEr
 }
 
 /// Parse the index for a dictionary from a given path.
+#[cfg_attr(feature = "otel", tracing::instrument(skip_all))]
 pub fn parse_index_from_file<P: AsRef<Path>>(
     path: P,
     lazy: bool,

@@ -146,6 +146,7 @@ impl Context {
         }
     }
 
+    #[cfg_attr(feature = "otel", tracing::instrument(skip_all))]
     pub fn load_dictionaries(&mut self) {
         let glob = Glob::new("**/*.index").unwrap().compile_matcher();
 

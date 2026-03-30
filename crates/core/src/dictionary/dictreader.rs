@@ -52,6 +52,7 @@ pub struct DictReaderRaw<B: Read + Seek> {
 
 impl<B: Read + Seek> DictReaderRaw<B> {
     /// Get a new DictReader from a Reader.
+    #[cfg_attr(feature = "otel", tracing::instrument(skip_all))]
     pub fn new(mut dict_data: B) -> Result<DictReaderRaw<B>, DictError> {
         let end = dict_data.seek(SeekFrom::End(0))?;
         Ok(DictReaderRaw {
@@ -63,6 +64,10 @@ impl<B: Read + Seek> DictReaderRaw<B> {
 
 impl<B: Read + Seek> DictReader for DictReaderRaw<B> {
     /// Fetch definition from dictionary.
+    #[cfg_attr(
+        feature = "otel",
+        tracing::instrument(skip(self), fields(start_offset, length))
+    )]
     fn fetch_definition(&mut self, start_offset: u64, length: u64) -> Result<String, DictError> {
         if length > MAX_BYTES_FOR_BUFFER {
             return Err(DictError::MemoryError);
@@ -100,6 +105,7 @@ impl<B: Read + Seek> DictReader for DictReaderRaw<B> {
 ///
 /// The function can return a `DictError`, which can either occur if a I/O error occurs, or when
 /// the GZ compressed file is invalid.
+#[cfg_attr(feature = "otel", tracing::instrument(skip_all))]
 pub fn load_dict<P: AsRef<Path>>(path: P) -> Result<Box<dyn DictReader>, DictError> {
     if path.as_ref().extension() == Some(OsStr::new("dz")) {
         let reader = File::open(path)?;
@@ -137,6 +143,7 @@ struct Chunk {
 
 impl<B: Read + Seek> DictReaderDz<B> {
     /// Get a new DictReader from a Reader.
+    #[cfg_attr(feature = "otel", tracing::instrument(skip_all))]
     pub fn new(dzdict: B) -> Result<DictReaderDz<B>, DictError> {
         let mut buffered_dzdict = BufReader::new(dzdict);
         let mut header = vec![0u8; 12];
@@ -272,6 +279,10 @@ impl<B: Read + Seek> DictReaderDz<B> {
         })
     }
 
+    #[cfg_attr(
+        feature = "otel",
+        tracing::instrument(skip(self), fields(start_offset, length))
+    )]
     fn get_chunks_for(&self, start_offset: u64, length: u64) -> Vec<Chunk> {
         let mut chunks = Vec::new();
         let start_chunk = start_offset as usize / self.uchunk_length;
@@ -291,6 +302,7 @@ impl<B: Read + Seek> DictReaderDz<B> {
     }
 
     // Inflate a dictdz chunk.
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(data_len = data.len())))]
     fn inflate(&self, data: Vec<u8>) -> Result<Vec<u8>, DictError> {
         let mut decoder = flate2::Decompress::new(false);
         let mut decoded = vec![0u8; self.uchunk_length];
@@ -305,6 +317,10 @@ impl<B: Read + Seek> DictReaderDz<B> {
 
 impl<B: Read + Seek> DictReader for DictReaderDz<B> {
     // Fetch definition from the dictionary.
+    #[cfg_attr(
+        feature = "otel",
+        tracing::instrument(skip(self), fields(start_offset, length))
+    )]
     fn fetch_definition(&mut self, start_offset: u64, length: u64) -> Result<String, DictError> {
         if length > MAX_BYTES_FOR_BUFFER {
             return Err(DictError::MemoryError);

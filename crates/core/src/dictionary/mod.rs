@@ -37,6 +37,7 @@ impl Dictionary {
     ///
     /// Words are looked up in the index and then retrieved from the dict file. If no word was
     /// found, the returned vector is empty. Errors result from the parsing of the underlying files.
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(word = %word, fuzzy)))]
     pub fn lookup(
         &mut self,
         word: &str,
@@ -66,6 +67,7 @@ impl Dictionary {
     /// Retreive metadata from the dictionaries.
     ///
     /// The metadata headwords start with `00-database-` or `00database`.
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(name = %name)))]
     pub fn metadata(&mut self, name: &str) -> Result<String, errors::DictError> {
         let mut query = format!("00-database-{}", name);
         if !self.metadata.all_chars {
@@ -90,6 +92,7 @@ impl Dictionary {
     ///
     /// This returns the short name of a dictionary. This corresponds to the
     /// value passed to the `-s` option of `dictfmt`.
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self)))]
     pub fn short_name(&mut self) -> Result<String, errors::DictError> {
         self.metadata("short")
     }
@@ -98,6 +101,7 @@ impl Dictionary {
     ///
     /// This returns the URL of a dictionary. This corresponds to the
     /// value passed to the `-u` option of `dictfmt`.
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self)))]
     pub fn url(&mut self) -> Result<String, errors::DictError> {
         self.metadata("url")
     }
@@ -107,6 +111,7 @@ impl Dictionary {
 ///
 /// A dictionary is made of an index and a dictionary (data) file, both are opened from the given
 /// input file names. Gzipped files with the suffix `.dz` will be handled automatically.
+#[cfg_attr(feature = "otel", tracing::instrument(skip_all))]
 pub fn load_dictionary_from_file<P: AsRef<Path>>(
     content_path: P,
     index_path: P,
@@ -122,6 +127,7 @@ pub fn load_dictionary_from_file<P: AsRef<Path>>(
 /// function allows abstraction from the underlying source by only requiring a
 /// `dictReader` as trait object. This way, dictionaries from RAM or similar can be
 /// implemented.
+#[cfg_attr(feature = "otel", tracing::instrument(skip_all))]
 pub fn load_dictionary(content: Box<dyn DictReader>, index: Box<dyn IndexReader>) -> Dictionary {
     let all_chars = !index.find("00-database-allchars", false).is_empty();
     let word = if all_chars {

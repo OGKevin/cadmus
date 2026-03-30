@@ -43,6 +43,7 @@ pub struct Dictionary {
     focus: Option<ViewId>,
 }
 
+#[cfg_attr(feature = "otel", tracing::instrument(skip_all))]
 fn query_to_content(
     query: &str,
     language: &String,
@@ -64,6 +65,10 @@ fn query_to_content(
         {
             continue;
         }
+
+        #[cfg(feature = "otel")]
+        let _dict_span =
+            tracing::info_span!("dictionary_lookup", dictionary_name = %name).entered();
 
         if let Some(results) = dict
             .lookup(query, fuzzy)
@@ -108,6 +113,7 @@ fn query_to_content(
 }
 
 impl Dictionary {
+    #[cfg_attr(feature = "otel", tracing::instrument(skip_all))]
     pub fn new(
         rect: Rectangle,
         query: &str,
@@ -256,6 +262,7 @@ impl Dictionary {
         }
     }
 
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, rq, context)))]
     pub fn toggle_title_menu(
         &mut self,
         rect: Rectangle,
@@ -297,6 +304,7 @@ impl Dictionary {
         }
     }
 
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, rq, context)))]
     fn toggle_search_menu(
         &mut self,
         rect: Rectangle,
@@ -339,6 +347,7 @@ impl Dictionary {
         }
     }
 
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, rq, context)))]
     fn toggle_search_target_menu(
         &mut self,
         rect: Rectangle,
@@ -396,6 +405,7 @@ impl Dictionary {
         }
     }
 
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, hub, rq, context)))]
     fn toggle_keyboard(
         &mut self,
         enable: bool,
@@ -465,6 +475,7 @@ impl Dictionary {
         }
     }
 
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, hub, rq, context)))]
     fn toggle_edit_languages(
         &mut self,
         enable: Option<bool>,
@@ -524,6 +535,7 @@ impl Dictionary {
         }
     }
 
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, rq, context)))]
     fn reseed(&mut self, rq: &mut RenderQueue, context: &mut Context) {
         if let Some(top_bar) = self.child_mut(0).downcast_mut::<TopBar>() {
             top_bar.reseed(rq, context);
@@ -532,6 +544,7 @@ impl Dictionary {
         rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
     }
 
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, rq), fields(dir = ?dir)))]
     fn go_to_neighbor(&mut self, dir: CycleDir, rq: &mut RenderQueue) {
         let location = match dir {
             CycleDir::Previous => Location::Previous(self.location),
@@ -559,6 +572,7 @@ impl Dictionary {
         }
     }
 
+    #[cfg_attr(feature = "otel", tracing::instrument(skip_all))]
     fn define(&mut self, text: Option<&str>, rq: &mut RenderQueue, context: &mut Context) {
         if let Some(query) = text {
             self.query = query.to_string();
@@ -594,6 +608,7 @@ impl Dictionary {
         }
     }
 
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(pt = ?pt)))]
     fn underlying_word(&mut self, pt: Point) -> Option<String> {
         let dpi = CURRENT_DEVICE.dpi;
         let small_height = scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32;
@@ -616,6 +631,7 @@ impl Dictionary {
         None
     }
 
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, rq, context), fields(pt = ?pt)))]
     fn follow_link(&mut self, pt: Point, rq: &mut RenderQueue, context: &mut Context) {
         let dpi = CURRENT_DEVICE.dpi;
         let small_height = scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32;
@@ -818,6 +834,7 @@ impl View for Dictionary {
     #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _fb, _fonts, _rect), fields(rect = ?_rect)))]
     fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {}
 
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, hub, rq, context), fields(rect = ?rect)))]
     fn resize(&mut self, rect: Rectangle, hub: &Hub, rq: &mut RenderQueue, context: &mut Context) {
         let dpi = CURRENT_DEVICE.dpi;
         let (small_height, big_height) = (
