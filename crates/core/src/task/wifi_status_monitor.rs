@@ -160,21 +160,15 @@ fn process_wpa_status(
 /// a full zbus::Message.
 fn check_interfaces(interfaces: &HashMap<String, HashMap<String, String>>, hub: &Sender<Event>) {
     for (interface_name, properties) in interfaces {
-        if let (Some(wpa_state), Some(ip_address)) =
-            (properties.get("wpa_state"), properties.get("ip_address"))
-        {
+        if let Some(wpa_state) = properties.get("wpa_state") {
             tracing::debug!(
                 interface = %interface_name,
                 status = %wpa_state,
-                ip_address = %ip_address,
                 "WpaStatus received"
             );
 
             if wpa_state == "COMPLETED" {
-                tracing::info!(
-                    ip_address = %ip_address,
-                    "network up detected via dhcpcd-dbus"
-                );
+                tracing::info!("network up detected via dhcpcd-dbus");
                 hub.send(Event::Device(DeviceEvent::NetUp)).ok();
             }
         }
