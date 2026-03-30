@@ -243,7 +243,6 @@ impl Default for LibrarySettings {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, rename_all = "kebab-case")]
 pub struct ImportSettings {
-    pub unshare_trigger: bool,
     pub startup_trigger: bool,
     pub sync_metadata: bool,
     pub metadata_kinds: FxHashSet<String>,
@@ -602,7 +601,6 @@ impl Default for ReaderSettings {
 impl Default for ImportSettings {
     fn default() -> Self {
         ImportSettings {
-            unshare_trigger: true,
             startup_trigger: true,
             sync_metadata: true,
             metadata_kinds: ["epub", "pdf", "djvu"]

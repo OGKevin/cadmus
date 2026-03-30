@@ -2,6 +2,7 @@ use super::kinds::general::{
     AutoPowerOff, AutoShare, AutoSuspend, ButtonScheme, KeyboardLayout, Locale, SettingsRetention,
     SleepCover,
 };
+use super::kinds::import::{ImportStartupTrigger, ImportSyncMetadata};
 use super::kinds::intermission::{IntermissionPowerOff, IntermissionShare, IntermissionSuspend};
 use super::kinds::library::LibraryInfo;
 use super::kinds::reader::FinishedActionSetting;
@@ -20,6 +21,8 @@ pub enum Category {
     Libraries,
     /// Intermission screen display settings
     Intermissions,
+    /// Import behavior settings
+    Import,
     /// Telemetry and logging settings
     Telemetry,
 }
@@ -32,6 +35,7 @@ impl Category {
             Category::Reader => "Reader".to_string(),
             Category::Libraries => "Libraries".to_string(),
             Category::Intermissions => "Intermission Screens".to_string(),
+            Category::Import => "Import".to_string(),
             Category::Telemetry => "Telemetry".to_string(),
         }
     }
@@ -61,6 +65,7 @@ impl Category {
                 Box::new(IntermissionPowerOff),
                 Box::new(IntermissionShare),
             ],
+            Category::Import => vec![Box::new(ImportStartupTrigger), Box::new(ImportSyncMetadata)],
             Category::Telemetry => {
                 #[cfg(feature = "otel")]
                 {
@@ -109,6 +114,7 @@ impl Category {
             Category::Reader,
             Category::Libraries,
             Category::Intermissions,
+            Category::Import,
             Category::Telemetry,
         ]
     }

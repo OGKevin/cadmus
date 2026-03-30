@@ -209,6 +209,55 @@ Image displayed when entering USB sharing mode.
 
 - Possible values: `"logo:"` (built-in logo), `"cover:"` (current book cover), or a path to a custom image file.
 
+## Import
+
+These settings control how Cadmus imports documents from your device.
+They are available in the **Settings → Import** menu.
+
+### `import.startup-trigger`
+
+✏️
+
+Automatically import new books when Cadmus starts.
+
+```toml
+[import]
+startup-trigger = true
+```
+
+> [!TIP]
+> If this is turned off, you can still trigger an import manually from the home
+> screen: tap the **database icon** (bottom-left corner) and choose **Import**.
+
+### `import.sync-metadata`
+
+✏️
+
+Re-extract metadata (title, author, etc.) whenever a document changes.
+
+```toml
+[import]
+sync-metadata = true
+```
+
+### `import.metadata-kinds`
+
+File extensions of documents whose metadata is extracted during import.
+
+```toml
+[import]
+metadata-kinds = ["epub", "pdf", "djvu"]
+```
+
+### `import.allowed-kinds`
+
+File extensions of documents considered during the import process.
+
+```toml
+[import]
+allowed-kinds = ["djvu", "xps", "fb2", "txt", "pdf", "oxps", "cbz", "epub"]
+```
+
 ## OTA
 
 The OTA feature downloads builds from GitHub.

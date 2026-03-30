@@ -32,6 +32,8 @@ pub enum SettingIdentity {
     IntermissionShare,
     SettingsRetention,
     LogLevel,
+    ImportStartupTrigger,
+    ImportSyncMetadata,
     #[cfg(feature = "otel")]
     OtlpEndpoint,
     #[cfg(all(feature = "test", feature = "kobo"))]

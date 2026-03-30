@@ -58,6 +58,10 @@ settings-library-path = Path
 settings-library-end-of-book-action = End of Book Action
 settings-library-inherit = Inherit
 
+# Settings - Import
+settings-import-startup-trigger = Import on Startup
+settings-import-sync-metadata = Sync Metadata
+
 # Settings - Log Level
 settings-log-level-trace = TRACE
 settings-log-level-debug = DEBUG

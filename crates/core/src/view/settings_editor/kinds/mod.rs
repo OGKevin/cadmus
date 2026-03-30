@@ -11,6 +11,7 @@
 
 pub mod general;
 pub mod identity;
+pub mod import;
 pub mod intermission;
 pub mod library;
 pub mod reader;
@@ -36,6 +37,10 @@ pub enum ToggleSettings {
     ButtonScheme,
     /// Logging enabled setting
     LoggingEnabled,
+    /// Import on startup enable/disable setting
+    ImportStartupTrigger,
+    /// Sync metadata enable/disable setting
+    ImportSyncMetadata,
     /// Kernel logging enabled setting (test + kobo builds only)
     #[cfg(all(feature = "test", feature = "kobo"))]
     EnableKernLog,
