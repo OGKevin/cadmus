@@ -125,7 +125,7 @@ pub const JBIG2DEC_URL: &str =
 /// `nyorain/dlg` git submodule, which is absent from archive tarballs.
 pub const FREETYPE2_VERSION: &str = "2.14.1";
 /// HarfBuzz version, derived from the archive URL.
-pub const HARFBUZZ_VERSION: &str = "12.3.2";
+pub const HARFBUZZ_VERSION: &str = "14.0.0";
 /// Gumbo version, derived from the archive URL.
 pub const GUMBO_VERSION: &str = "0.10.1";
 
