@@ -90,7 +90,13 @@ impl Engine {
     #[inline]
     pub fn load_fonts(&mut self) {
         if self.fonts.is_none() {
-            self.fonts = default_fonts().ok();
+            self.fonts = build_fonts(None).ok();
+        }
+    }
+
+    pub fn load_fonts_from(&mut self, root_dir: std::path::PathBuf) {
+        if self.fonts.is_none() {
+            self.fonts = build_fonts(Some(root_dir)).ok();
         }
     }
 
@@ -2439,29 +2445,35 @@ fn format_list_prefix(kind: ListStyleType, index: usize) -> Option<String> {
     }
 }
 
-fn default_fonts() -> Result<Fonts, Error> {
+fn build_fonts(root_dir: Option<std::path::PathBuf>) -> Result<Fonts, Error> {
     let opener = FontOpener::new()?;
+    let font_path = |name: &str| -> std::path::PathBuf {
+        match &root_dir {
+            Some(root) => root.join("fonts").join(name),
+            None => std::path::PathBuf::from("fonts").join(name),
+        }
+    };
     let mut fonts = Fonts {
         serif: FontFamily {
-            regular: opener.open("fonts/LibertinusSerif-Regular.otf")?,
-            italic: opener.open("fonts/LibertinusSerif-Italic.otf")?,
-            bold: opener.open("fonts/LibertinusSerif-Bold.otf")?,
-            bold_italic: opener.open("fonts/LibertinusSerif-BoldItalic.otf")?,
+            regular: opener.open(font_path("LibertinusSerif-Regular.otf").as_path())?,
+            italic: opener.open(font_path("LibertinusSerif-Italic.otf").as_path())?,
+            bold: opener.open(font_path("LibertinusSerif-Bold.otf").as_path())?,
+            bold_italic: opener.open(font_path("LibertinusSerif-BoldItalic.otf").as_path())?,
         },
         sans_serif: FontFamily {
-            regular: opener.open("fonts/NotoSans-Regular.ttf")?,
-            italic: opener.open("fonts/NotoSans-Italic.ttf")?,
-            bold: opener.open("fonts/NotoSans-Bold.ttf")?,
-            bold_italic: opener.open("fonts/NotoSans-BoldItalic.ttf")?,
+            regular: opener.open(font_path("NotoSans-Regular.ttf").as_path())?,
+            italic: opener.open(font_path("NotoSans-Italic.ttf").as_path())?,
+            bold: opener.open(font_path("NotoSans-Bold.ttf").as_path())?,
+            bold_italic: opener.open(font_path("NotoSans-BoldItalic.ttf").as_path())?,
         },
         monospace: FontFamily {
-            regular: opener.open("fonts/SourceCodeVariable-Roman.otf")?,
-            italic: opener.open("fonts/SourceCodeVariable-Italic.otf")?,
-            bold: opener.open("fonts/SourceCodeVariable-Roman.otf")?,
-            bold_italic: opener.open("fonts/SourceCodeVariable-Italic.otf")?,
+            regular: opener.open(font_path("SourceCodeVariable-Roman.otf").as_path())?,
+            italic: opener.open(font_path("SourceCodeVariable-Italic.otf").as_path())?,
+            bold: opener.open(font_path("SourceCodeVariable-Roman.otf").as_path())?,
+            bold_italic: opener.open(font_path("SourceCodeVariable-Italic.otf").as_path())?,
         },
-        cursive: opener.open("fonts/Parisienne-Regular.ttf")?,
-        fantasy: opener.open("fonts/Delius-Regular.ttf")?,
+        cursive: opener.open(font_path("Parisienne-Regular.ttf").as_path())?,
+        fantasy: opener.open(font_path("Delius-Regular.ttf").as_path())?,
     };
     fonts.monospace.bold.set_variations(&["wght=600"]);
     fonts.monospace.bold_italic.set_variations(&["wght=600"]);

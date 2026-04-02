@@ -212,6 +212,100 @@ impl XmlTree {
         self.get_mut(NodeId::from_index(0))
     }
 
+    pub fn push_node(&mut self, data: NodeData) -> NodeId {
+        let id = NodeId::from_index(self.nodes.len());
+        let node = Node {
+            data,
+            parent: None,
+            previous_sibling: None,
+            next_sibling: None,
+            first_child: None,
+            last_child: None,
+        };
+        self.nodes.push(node);
+        id
+    }
+
+    pub fn attach_child(&mut self, parent_id: NodeId, child_id: NodeId) {
+        let last_child = self.node(parent_id).last_child;
+
+        let child = self.node_mut(child_id);
+        child.parent = Some(parent_id);
+        child.previous_sibling = last_child;
+        child.next_sibling = None;
+
+        if let Some(last) = last_child {
+            self.node_mut(last).next_sibling = Some(child_id);
+        }
+
+        self.node_mut(parent_id).last_child = Some(child_id);
+
+        if self.node(parent_id).first_child.is_none() {
+            self.node_mut(parent_id).first_child = Some(child_id);
+        }
+    }
+
+    pub fn insert_before(&mut self, sibling_id: NodeId, new_id: NodeId) {
+        let parent_id = self.node(sibling_id).parent;
+        let prev_sibling = self.node(sibling_id).previous_sibling;
+
+        self.node_mut(new_id).parent = parent_id;
+        self.node_mut(new_id).previous_sibling = prev_sibling;
+        self.node_mut(new_id).next_sibling = Some(sibling_id);
+
+        self.node_mut(sibling_id).previous_sibling = Some(new_id);
+
+        if let Some(prev) = prev_sibling {
+            self.node_mut(prev).next_sibling = Some(new_id);
+        } else if let Some(parent) = parent_id {
+            self.node_mut(parent).first_child = Some(new_id);
+        }
+    }
+
+    pub fn detach(&mut self, id: NodeId) {
+        let node = self.node(id);
+        let parent_id = node.parent;
+        let prev_sibling = node.previous_sibling;
+        let next_sibling = node.next_sibling;
+
+        if let Some(prev) = prev_sibling {
+            self.node_mut(prev).next_sibling = next_sibling;
+        } else if let Some(parent) = parent_id {
+            self.node_mut(parent).first_child = next_sibling;
+        }
+
+        if let Some(next) = next_sibling {
+            self.node_mut(next).previous_sibling = prev_sibling;
+        } else if let Some(parent) = parent_id {
+            self.node_mut(parent).last_child = prev_sibling;
+        }
+
+        self.node_mut(id).parent = None;
+        self.node_mut(id).previous_sibling = None;
+        self.node_mut(id).next_sibling = None;
+    }
+
+    pub fn append_text_to(&mut self, id: NodeId, extra: &str) {
+        match &mut self.node_mut(id).data {
+            NodeData::Text(TextData { ref mut text, .. })
+            | NodeData::Whitespace(TextData { ref mut text, .. }) => {
+                text.push_str(extra);
+            }
+            _ => {}
+        }
+    }
+
+    pub fn add_attr_if_missing(&mut self, id: NodeId, name: &str, value: &str) {
+        if let NodeData::Element(ElementData {
+            ref mut attributes, ..
+        }) = self.node_mut(id).data
+        {
+            if !attributes.contains_key(name) {
+                attributes.insert(name.to_string(), value.to_string());
+            }
+        }
+    }
+
     pub fn wrap_lost_inlines(&mut self) {
         let mut ids = Vec::new();
         let mut known_ids = FxHashSet::default();

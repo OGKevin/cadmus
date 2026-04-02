@@ -4,7 +4,7 @@ use self::bottom_bar::BottomBar;
 use crate::color::BLACK;
 use crate::context::Context;
 use crate::device::CURRENT_DEVICE;
-use crate::document::html::HtmlDocument;
+use crate::document::html::Html5Document;
 use crate::document::{Document, Location};
 use crate::font::Fonts;
 use crate::framebuffer::{Framebuffer, Pixmap, UpdateMode};
@@ -34,13 +34,34 @@ pub struct Dictionary {
     id: Id,
     rect: Rectangle,
     children: Vec<Box<dyn View>>,
-    doc: HtmlDocument,
+    doc: Html5Document,
     location: usize,
     fuzzy: bool,
     query: String,
     language: String,
     target: Option<String>,
     focus: Option<ViewId>,
+}
+
+fn format_body(body: &str) -> String {
+    let body = body.trim_end_matches('\n').trim_end_matches("</html>");
+    if let Some(html_start) = body.find('<') {
+        let prefix = body[..html_start].trim();
+        let mut out = String::new();
+        if !prefix.is_empty() {
+            out.push_str(&format!(
+                "<p>{}</p>\n",
+                prefix.replace('<', "&lt;").replace('>', "&gt;")
+            ));
+        }
+        out.push_str(&body[html_start..]);
+        out
+    } else {
+        format!(
+            "<pre>{}</pre>",
+            body.replace('<', "&lt;").replace('>', "&gt;")
+        )
+    }
 }
 
 #[cfg_attr(feature = "otel", tracing::instrument(skip_all))]
@@ -89,14 +110,8 @@ fn query_to_content(
                         head.replace('<', "&lt;").replace('>', "&gt;")
                     ));
                 }
-                if body.trim_start().starts_with('<') {
-                    content.push_str(&body);
-                } else {
-                    content.push_str(&format!(
-                        "<pre>{}</pre>",
-                        body.replace('<', "&lt;").replace('>', "&gt;")
-                    ));
-                }
+                content.push_str(&format_body(&body));
+                content.push('\n');
             }
         }
     }
@@ -204,7 +219,7 @@ impl Dictionary {
         let image = Image::new(image_rect, Pixmap::new(1, 1, 1));
         children.push(Box::new(image) as Box<dyn View>);
 
-        let mut doc = HtmlDocument::new_from_memory("");
+        let mut doc = Html5Document::new_from_memory("");
         doc.layout(
             image_rect.width(),
             image_rect.height(),
@@ -1002,5 +1017,68 @@ impl View for Dictionary {
 
     fn id(&self) -> Id {
         self.id
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::format_body;
+
+    #[test]
+    fn plain_text_prefix_before_html_is_wrapped_in_paragraph() {
+        let body = "/ˈdɑkjʊmənt/\n<p><b>Noun</b></p><ol><li>A paper.</li></ol></html>";
+        let result = format_body(body);
+        assert!(
+            result.starts_with("<p>/ˈdɑkjʊmənt/</p>"),
+            "expected plain-text prefix wrapped in <p>, got: {}",
+            result
+        );
+        assert!(
+            result.contains("<p><b>Noun</b></p>"),
+            "expected HTML body preserved, got: {}",
+            result
+        );
+        assert!(
+            !result.contains("</html>"),
+            "trailing </html> should be stripped"
+        );
+    }
+
+    #[test]
+    fn html_only_body_is_passed_through() {
+        let body = "<p><b>Verb</b></p><ol><li>To record.</li></ol></html>";
+        let result = format_body(body);
+        assert!(result.starts_with("<p><b>Verb</b></p>"));
+        assert!(!result.contains("</html>"));
+    }
+
+    #[test]
+    fn plain_text_only_body_is_wrapped_in_pre() {
+        let body = "A plain text definition with no HTML.";
+        let result = format_body(body);
+        assert!(result.starts_with("<pre>"));
+        assert!(result.ends_with("</pre>"));
+    }
+
+    #[test]
+    fn body_with_no_prefix_and_no_html_suffix() {
+        let body = "/prəˌnʌnsiˈeɪʃən/\n<p>Content.</p>";
+        let result = format_body(body);
+        assert!(result.contains("<p>/prəˌnʌnsiˈeɪʃən/</p>"));
+        assert!(result.contains("<p>Content.</p>"));
+    }
+
+    #[test]
+    fn html_suffix_followed_by_newline_has_no_remaining_html() {
+        let body = "/ˈdɑkjʊmənt/\n<p><b>Noun</b></p><ol><li>A paper.</li></ol></html>\n";
+        let result = format_body(body);
+        assert!(
+            !result.contains("</html>"),
+            "trailing </html> should be stripped even when followed by newline"
+        );
+        assert!(
+            result.ends_with("</ol>"),
+            "content after </html> newline should be preserved"
+        );
     }
 }

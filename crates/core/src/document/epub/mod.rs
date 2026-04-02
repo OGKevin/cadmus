@@ -62,6 +62,7 @@ unsafe impl<R: Read + Seek> Send for EpubDocument<R> {}
 unsafe impl<R: Read + Seek> Sync for EpubDocument<R> {}
 
 impl<R: Read + Seek> EpubDocument<R> {
+    #[cfg_attr(feature = "otel", tracing::instrument(skip_all))]
     fn from_archive(mut archive: ZipArchive<R>) -> Result<Self, Error> {
         let opf_path = {
             let mut zf = archive.by_name("META-INF/container.xml")?;
@@ -717,6 +718,7 @@ impl EpubDocumentFile {
 }
 
 impl EpubDocumentStatic {
+    #[cfg_attr(feature = "otel", tracing::instrument(skip_all))]
     pub fn new_from_static(bytes: &'static [u8]) -> Result<Self, Error> {
         let cursor = Cursor::new(bytes);
         let archive = ZipArchive::new(cursor)?;
@@ -1148,5 +1150,109 @@ impl<R: Read + Seek> Document for EpubDocument<R> {
 
     fn has_synthetic_page_numbers(&self) -> bool {
         true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::document::html::layout::DrawCommand;
+    use std::path::PathBuf;
+    fn setup_epub() -> EpubDocumentFile {
+        let root_dir = PathBuf::from(
+            std::env::var("TEST_ROOT_DIR").expect("TEST_ROOT_DIR must be set for epub tests"),
+        );
+        let epub_path = root_dir.join("docs/book/epub/Cadmus Documentation.epub");
+        let mut doc = EpubDocumentFile::new(&epub_path).expect("failed to open test epub");
+        doc.engine.layout(600, 800, 12.0, 265);
+        doc.engine.set_margin_width(3);
+        doc.engine.load_fonts_from(root_dir);
+        doc
+    }
+
+    #[test]
+    fn next_location_advances_to_next_spine_chapter() {
+        let mut doc = setup_epub();
+
+        let first_offset = doc
+            .resolve_location(Location::Exact(0))
+            .expect("should resolve offset 0");
+
+        let last_page_offset = doc
+            .cache
+            .get(&0)
+            .and_then(|dl| dl.last())
+            .and_then(|page| page.first())
+            .map(|dc| dc.offset())
+            .expect("spine[0] last page has offset");
+
+        let next_offset = doc
+            .resolve_location(Location::Next(last_page_offset))
+            .expect("navigating past last page of spine[0] should return Some");
+
+        let (next_index, _) = doc
+            .vertebra_coordinates(next_offset)
+            .expect("next offset maps to spine");
+
+        assert_eq!(
+            next_index, 1,
+            "navigating next from last page of spine[0] (offset={}) should land on spine[1], got spine[{}] offset={}",
+            first_offset, next_index, next_offset
+        );
+    }
+
+    #[test]
+    fn first_spine_chapter_produces_pages_with_text() {
+        let mut doc = setup_epub();
+
+        let display_list = doc.build_display_list(0, 0);
+
+        assert!(
+            display_list.len() > 1,
+            "expected multiple pages, got {}",
+            display_list.len()
+        );
+
+        let has_text = display_list.iter().any(|page| {
+            page.iter()
+                .any(|cmd| matches!(cmd, DrawCommand::Text(_) | DrawCommand::ExtraText(_)))
+        });
+        assert!(has_text, "no text draw commands found across all pages");
+    }
+
+    #[test]
+    fn next_page_exists_from_start() {
+        let mut doc = setup_epub();
+
+        let display_list = doc.build_display_list(0, 0);
+        doc.cache.insert(0, display_list);
+
+        let page_count = doc.cache.get(&0).map(|dl| dl.len()).unwrap_or(0);
+
+        assert!(
+            page_count > 1,
+            "expected more than one page so next-page navigation works"
+        );
+    }
+
+    #[test]
+    fn all_spine_chapters_produce_content() {
+        let mut doc = setup_epub();
+
+        let spine_len = doc.spine.len();
+        assert!(spine_len > 0, "spine is empty");
+
+        let mut start_offset = 0;
+        for i in 0..spine_len {
+            let display_list = doc.build_display_list(i, start_offset);
+            assert!(
+                !display_list.is_empty(),
+                "spine chapter {} produced zero pages",
+                i
+            );
+            let has_content = display_list.iter().any(|page| !page.is_empty());
+            assert!(has_content, "spine chapter {} has only empty pages", i);
+            start_offset += doc.spine[i].size;
+        }
     }
 }

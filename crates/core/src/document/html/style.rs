@@ -231,6 +231,20 @@ mod tests {
     use super::specified_values;
 
     #[test]
+    fn comma_selector_matches_ol() {
+        let xml = XmlParser::new("<ol><li>item</li></ol>").parse();
+        let mut css = CssParser::new("ul, ol { margin-left: 1.5em }").parse();
+        css.sort();
+        let ol = xml.root().find("ol").unwrap();
+        let props = specified_values(ol, &css);
+        assert_eq!(
+            props.get("margin-left").map(String::as_str),
+            Some("1.5em"),
+            "ol should match 'ul, ol' selector"
+        );
+    }
+
+    #[test]
     fn simple_style() {
         let xml1 = XmlParser::new("<a class='c x y' style='c: 7'/>").parse();
         let xml2 = XmlParser::new("<a id='e' class='x y'/>").parse();
@@ -242,8 +256,8 @@ mod tests {
         )
         .parse();
         css.sort();
-        let n1 = xml1.root().first_child().unwrap();
-        let n2 = xml2.root().first_child().unwrap();
+        let n1 = xml1.root().find("a").unwrap();
+        let n2 = xml2.root().find("a").unwrap();
         assert_eq!(
             specified_values(n1, &css),
             [
