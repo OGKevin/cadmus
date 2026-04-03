@@ -558,6 +558,7 @@ impl Reader {
         }
     }
 
+    #[cfg_attr(feature = "otel", tracing::instrument(skip_all))]
     pub fn from_embedded_epub(
         rect: Rectangle,
         epub_bytes: &'static [u8],

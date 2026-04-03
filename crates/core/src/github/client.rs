@@ -1,12 +1,9 @@
 use super::types::{
     AccessTokenResponse, DeviceCodeResponse, ScopeError, TokenPollResult, VerifyScopesError,
 };
-use reqwest::blocking::{Client, RequestBuilder};
-use rustls::RootCertStore;
+use crate::{github::GithubError, http::Client};
+use reqwest::blocking::RequestBuilder;
 use secrecy::{ExposeSecret, SecretString};
-use std::time::Duration;
-
-pub const CLIENT_TIMEOUT_SECS: u64 = 30;
 
 /// GitHub OAuth App client ID, baked in at build time via `GH_OAUTH_CLIENT_ID` env var.
 ///
@@ -48,7 +45,7 @@ pub const REQUIRED_SCOPES: &[&str] = &["public_repo"];
 /// let client = GithubClient::new(Some(token)).expect("failed to build client");
 /// ```
 pub struct GithubClient {
-    client: Client,
+    http: Client,
     token: Option<SecretString>,
 }
 
@@ -60,7 +57,7 @@ impl GithubClient {
     ///
     /// # Errors
     ///
-    /// Returns an error string if the underlying HTTP client fails to build.
+    /// Returns an error if the underlying HTTP client fails to build.
     ///
     /// # Examples
     ///
@@ -70,36 +67,25 @@ impl GithubClient {
     /// let client = GithubClient::new(None).expect("failed to build client");
     /// ```
     #[cfg_attr(feature = "otel", tracing::instrument(skip_all))]
-    pub fn new(token: Option<SecretString>) -> Result<Self, String> {
+    pub fn new(token: Option<SecretString>) -> Result<Self, GithubError> {
         tracing::debug!(token_provided = token.is_some(), "Building GitHub client");
 
-        let root_store = build_root_store();
-
-        let tls_config = rustls::ClientConfig::builder()
-            .with_root_certificates(root_store)
-            .with_no_client_auth();
-
-        let client = Client::builder()
-            .use_preconfigured_tls(tls_config)
-            .user_agent("github.com/OGKevin/cadmus")
-            .timeout(Duration::from_secs(CLIENT_TIMEOUT_SECS))
-            .build()
-            .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
+        let http = Client::new()?;
 
         tracing::debug!("GitHub client built successfully");
-        Ok(Self { client, token })
+        Ok(Self { http, token })
     }
 
     /// Returns a GET request builder with the `Authorization` header set if a
     /// token is present.
     pub fn get(&self, url: &str) -> RequestBuilder {
-        self.with_auth(self.client.get(url))
+        self.with_auth(self.http.get(url))
     }
 
     /// Returns a POST request builder with the `Authorization` header set if a
     /// token is present.
     pub fn post(&self, url: &str) -> RequestBuilder {
-        self.with_auth(self.client.post(url))
+        self.with_auth(self.http.post(url))
     }
 
     /// Returns a GET request builder **without** any `Authorization` header.
@@ -107,7 +93,7 @@ impl GithubClient {
     /// Used for public URLs (e.g. release asset downloads) where sending a
     /// token would cause GitHub to reject the request with a 401.
     pub fn get_unauthenticated(&self, url: &str) -> RequestBuilder {
-        self.client.get(url)
+        self.http.get(url)
     }
 
     fn with_auth(&self, builder: RequestBuilder) -> RequestBuilder {
@@ -158,7 +144,7 @@ impl GithubClient {
         tracing::debug!(scope = %scope, "Requesting device code with scopes");
 
         let response = self
-            .client
+            .http
             .post("https://github.com/login/device/code")
             .header("Accept", "application/json")
             .form(&[("client_id", GITHUB_OAUTH_CLIENT_ID), ("scope", &scope)])
@@ -284,7 +270,7 @@ impl GithubClient {
         tracing::debug!("Polling GitHub for device token");
 
         let response = self
-            .client
+            .http
             .post("https://github.com/login/oauth/access_token")
             .header("Accept", "application/json")
             .form(&[
@@ -333,10 +319,4 @@ impl GithubClient {
             }
         }
     }
-}
-
-fn build_root_store() -> RootCertStore {
-    let mut store = RootCertStore::empty();
-    store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
-    store
 }

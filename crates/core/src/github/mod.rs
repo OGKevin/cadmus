@@ -9,6 +9,9 @@ mod client;
 pub mod device_flow;
 pub(crate) mod types;
 
-pub use client::CLIENT_TIMEOUT_SECS;
-pub use client::{GithubClient, REQUIRED_SCOPES};
-pub use types::{DeviceCodeResponse, OtaProgress, ScopeError, TokenPollResult, VerifyScopesError};
+pub use crate::http::CLIENT_TIMEOUT_SECS;
+pub use client::GithubClient;
+pub use client::REQUIRED_SCOPES;
+pub use types::{
+    DeviceCodeResponse, GithubError, OtaProgress, ScopeError, TokenPollResult, VerifyScopesError,
+};

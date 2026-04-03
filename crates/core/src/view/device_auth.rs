@@ -19,7 +19,7 @@ use crate::font::{font_from_style, Fonts, NORMAL_STYLE};
 use crate::framebuffer::Framebuffer;
 use crate::geom::Rectangle;
 use crate::gesture::GestureEvent;
-use crate::github::{GithubClient, TokenPollResult};
+use crate::github::{GithubClient, GithubError, TokenPollResult};
 use crate::unit::scale_by_dpi;
 use crate::view::github::GithubEvent;
 use crate::view::ota::OtaViewId;
@@ -76,7 +76,7 @@ impl DeviceAuthView {
             Ok((url, code)) => (format!("Go to: {}", url), format!("Enter code: {}", code)),
             Err(e) => {
                 tracing::error!(error = %e, "Device flow initiation failed");
-                hub.send(Event::Github(GithubEvent::DeviceAuthError(e)))
+                hub.send(Event::Github(GithubEvent::DeviceAuthError(e.to_string())))
                     .ok();
                 (
                     "GitHub auth failed".to_owned(),
@@ -142,9 +142,9 @@ impl DeviceAuthView {
     fn initiate_and_spawn(
         hub: &Hub,
         cancelled: Arc<AtomicBool>,
-    ) -> Result<(String, String), String> {
+    ) -> Result<(String, String), crate::github::GithubError> {
         let client = GithubClient::new(None)?;
-        let device_code_response = client.initiate_device_flow()?;
+        let device_code_response = client.initiate_device_flow().map_err(GithubError::Api)?;
 
         let verification_uri = device_code_response.verification_uri.clone();
         let user_code = device_code_response.user_code.clone();
@@ -167,7 +167,7 @@ impl DeviceAuthView {
                 Ok(c) => c,
                 Err(e) => {
                     tracing::error!(error = %e, "Failed to create poll client");
-                    hub2.send(Event::Github(GithubEvent::DeviceAuthError(e)))
+                    hub2.send(Event::Github(GithubEvent::DeviceAuthError(e.to_string())))
                         .ok();
                     return;
                 }

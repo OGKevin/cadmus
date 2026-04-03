@@ -2,6 +2,14 @@ use secrecy::SecretString;
 use serde::Deserialize;
 use std::path::PathBuf;
 
+#[derive(Debug, thiserror::Error)]
+pub enum GithubError {
+    #[error("Failed to build HTTP client: {0}")]
+    Http(#[from] crate::http::HttpError),
+    #[error("GitHub API error: {0}")]
+    Api(String),
+}
+
 /// Error returned when a GitHub token lacks required OAuth scopes.
 ///
 /// OAuth scopes are required for certain GitHub API operations. When a token
