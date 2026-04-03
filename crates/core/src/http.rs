@@ -14,7 +14,7 @@
 //!
 //! fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     let client = Client::new()?;
-//!     let _response = client.get("https://example.com").send()?;
+//!     client.get("https://example.com").send()?;
 //!     Ok(())
 //! }
 //! ```
@@ -49,7 +49,7 @@ pub enum HttpError {
 ///
 /// fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///     let client = Client::new()?;
-///     let _response = client.get("https://api.github.com").send()?;
+///     client.get("https://api.github.com").send()?;
 ///     Ok(())
 /// }
 /// ```
