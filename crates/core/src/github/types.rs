@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 #[derive(Debug, thiserror::Error)]
 pub enum GithubError {
-    #[error("Failed to build HTTP client: {0}")]
+    #[error(transparent)]
     Http(#[from] crate::http::HttpError),
     #[error("GitHub API error: {0}")]
     Api(String),

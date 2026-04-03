@@ -12,8 +12,11 @@
 //! ```no_run
 //! use cadmus_core::http::Client;
 //!
-//! let client = Client::new().expect("failed to build client");
-//! let response = client.get("https://example.com").send().expect("request failed");
+//! fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     let client = Client::new()?;
+//!     let _response = client.get("https://example.com").send()?;
+//!     Ok(())
+//! }
 //! ```
 
 use reqwest::blocking::{Client as ReqwestClient, RequestBuilder};
@@ -44,8 +47,11 @@ pub enum HttpError {
 /// ```no_run
 /// use cadmus_core::http::Client;
 ///
-/// let client = Client::new().expect("failed to build client");
-/// let response = client.get("https://api.github.com").send().expect("request failed");
+/// fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     let client = Client::new()?;
+///     let _response = client.get("https://api.github.com").send()?;
+///     Ok(())
+/// }
 /// ```
 pub struct Client {
     client: ReqwestClient,
