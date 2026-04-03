@@ -153,6 +153,42 @@ chore(deps): resolve {package} {old_version} -> {new_version} update
 Resolves version constraint conflict with {explanation}
 ```
 
+## Known Renovate Bugs
+
+### Cargo workspace packages with `+metadata` version strings
+
+**Affects:** Packages that use build metadata in their version (e.g. `toml@1.1.0+spec-1.1.0`),
+when those packages are declared in **multiple** `Cargo.toml` files within the same workspace.
+
+**Symptom:** Renovate runs `cargo update --manifest-path <crate>/Cargo.toml --package pkg@old+meta --precise new`
+once per manifest file. The first run succeeds and rewrites `Cargo.lock`. The second run then fails:
+
+```
+error: package ID specification `pkg@old+meta` did not match any packages
+```
+
+because `old+meta` no longer exists after the first run.
+
+See: https://github.com/renovatebot/renovate/discussions/42208
+
+**Fix:** When you encounter this failure pattern, run `cargo update` from the workspace root,
+targeting the *new* version that was already written into `Cargo.lock` by the first run:
+
+```bash
+cargo update -p pkg@<new-version>+<meta> --precise <new-version>
+```
+
+Also ensure that the minimum version constraint in every affected `Cargo.toml` is bumped to
+the new version so the intent is explicit, e.g.:
+
+```toml
+# Before (old Renovate-generated constraints)
+toml = "1.0.6"
+
+# After (updated to match the lock-file target)
+toml = "1.1.2"
+```
+
 ## Important Guidelines
 
 1. **Never downgrade security updates** - Find forward-compatible solutions
