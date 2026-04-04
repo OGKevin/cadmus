@@ -1,7 +1,8 @@
-diff -ru a/meson.build b/meson.build
---- a/meson.build	2026-01-10 14:25:18
-+++ b/meson.build	2026-01-10 14:25:43
-@@ -107,7 +107,11 @@
+diff --git a/meson.build b/meson.build
+index ce76aa769..0dac7ac18 100644
+--- a/meson.build
++++ b/meson.build
+@@ -108,7 +108,11 @@ check_funcs = [
  
  m_dep = cpp.find_library('m', required: false)
  
@@ -14,3 +15,16 @@ diff -ru a/meson.build b/meson.build
  glib_dep = dependency('glib-2.0', version: glib_min_version, required: get_option('glib'))
  gobject_dep = dependency('gobject-2.0', version: glib_min_version, required: get_option('gobject'))
  graphite2_dep = dependency('graphite2', version: graphite2_min_version, required: get_option('graphite2'))
+@@ -159,8 +163,10 @@ if not get_option('cairo').disabled()
+ endif
+ 
+ chafa_dep = dependency('chafa', version: chafa_min_version, required: get_option('chafa'))
+-png_dep = dependency('libpng', required: get_option('png'))
+-zlib_dep = dependency('zlib', required: get_option('zlib'))
++png_dep = declare_dependency(include_directories: include_directories('../libpng'),
++                            dependencies: [cpp.find_library('png16', dirs: [meson.current_source_dir() / '..' / 'libpng/.libs'])])
++zlib_dep = declare_dependency(include_directories: include_directories('../zlib'),
++                            dependencies: [cpp.find_library('z', dirs: [meson.current_source_dir() / '..' / 'zlib'])])
+ 
+ fontations_dep_found = false
+ if get_option('fontations').enabled()
