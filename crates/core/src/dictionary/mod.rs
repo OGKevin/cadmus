@@ -5,6 +5,9 @@
 
 mod dictreader;
 mod errors;
+#[cfg(feature = "bench")]
+pub mod indexing;
+#[cfg(not(feature = "bench"))]
 mod indexing;
 
 use std::path::Path;

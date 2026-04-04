@@ -46,60 +46,95 @@ pub trait IndexReader {
     fn find(&self, headword: &str, fuzzy: bool) -> Vec<Entry>;
 }
 
-#[cfg_attr(feature = "otel", tracing::instrument(skip_all))]
-fn normalize(entries: &[Entry], metadata: &Metadata) -> Vec<Entry> {
-    let mut result: Vec<Entry> = Vec::with_capacity(entries.len());
+fn normalize_internal(entries: &[Entry], metadata: &Metadata) -> Vec<Entry> {
+    let needs_char_filter = !metadata.all_chars;
+    let needs_lowercase = !metadata.case_sensitive;
 
-    for entry in entries.iter() {
-        let mut headword = entry.headword.clone();
+    if !needs_char_filter && !needs_lowercase && is_sorted(entries) {
+        return entries.to_vec();
+    }
 
-        if !metadata.all_chars {
-            headword = headword
-                .chars()
-                .filter(|c| c.is_alphanumeric() || c.is_whitespace())
-                .collect();
-        }
+    let mut result: Vec<Entry> = entries
+        .iter()
+        .map(|entry| {
+            let transformed = apply_transform(&entry.headword, needs_char_filter, needs_lowercase);
 
-        if !metadata.case_sensitive {
-            headword = headword.to_lowercase();
-        }
+            let original = if transformed != entry.headword {
+                Some(entry.headword.clone())
+            } else {
+                None
+            };
 
-        let mut i = result.len();
-
-        while i > 0 && headword < result[i - 1].headword {
-            i -= 1;
-        }
-
-        let original = if headword != entry.headword {
-            Some(entry.headword.clone())
-        } else {
-            None
-        };
-
-        result.insert(
-            i,
             Entry {
-                headword,
+                headword: transformed,
                 offset: entry.offset,
                 size: entry.size,
                 original,
-            },
-        );
+            }
+        })
+        .collect();
+
+    {
+        #[cfg(feature = "otel")]
+        let _span = tracing::info_span!("checking if already sorted").entered();
+        if is_sorted(&result) {
+            return result;
+        }
     }
 
+    #[cfg(feature = "otel")]
+    tracing::info_span!("sorting").in_scope(|| {
+        result.sort_by_cached_key(|e| e.headword.clone());
+    });
+
+    #[cfg(not(feature = "otel"))]
+    result.sort_by_cached_key(|e| e.headword.clone());
+
     result
+}
+
+#[cfg(feature = "bench")]
+pub fn normalize(entries: &[Entry], metadata: &Metadata) -> Vec<Entry> {
+    normalize_internal(entries, metadata)
+}
+
+/// Normalize the entries based on the metadata. If no normalization is needed and the entries are
+/// already sorted, the original entries are returned. Otherwise, a new vector of entries is
+/// returned, with the headwords transformed as needed and sorted by headword.
+#[cfg_attr(feature = "otel", tracing::instrument(skip_all, fields(entry_count = entries.len())))]
+#[cfg(not(feature = "bench"))]
+fn normalize(entries: &[Entry], metadata: &Metadata) -> Vec<Entry> {
+    normalize_internal(entries, metadata)
+}
+
+fn is_sorted(entries: &[Entry]) -> bool {
+    entries.windows(2).all(|w| w[0].headword <= w[1].headword)
+}
+
+fn apply_transform(headword: &str, needs_char_filter: bool, needs_lowercase: bool) -> String {
+    let filtered: String = if needs_char_filter {
+        headword
+            .chars()
+            .filter(|c| c.is_alphanumeric() || c.is_whitespace())
+            .collect()
+    } else {
+        headword.to_owned()
+    };
+
+    if needs_lowercase {
+        return filtered.to_lowercase();
+    }
+
+    filtered
 }
 
 impl<R: BufRead> IndexReader for Index<R> {
     #[cfg_attr(feature = "otel", tracing::instrument(skip(self, metadata), fields(headword = %headword, fuzzy)))]
     fn load_and_find(&mut self, headword: &str, fuzzy: bool, metadata: &Metadata) -> Vec<Entry> {
         if let Some(br) = self.state.take() {
-            let has_dictfmt = self.entries.iter().any(|e| e.headword.contains("dictfmt"));
             if let Ok(mut index) = parse_index(br, false) {
                 self.entries.append(&mut index.entries);
-                if !has_dictfmt {
-                    self.entries = normalize(&self.entries, metadata)
-                }
+                self.entries = normalize(&self.entries, metadata);
             }
         }
         self.find(headword, fuzzy)
@@ -368,5 +403,115 @@ mod tests {
         let r = index.find("Bar", false);
         assert!(!r.is_empty());
         assert_eq!(r.first().unwrap().headword, "Bar");
+    }
+
+    fn make_entry(headword: &str) -> Entry {
+        Entry {
+            headword: headword.to_string(),
+            offset: 0,
+            size: 0,
+            original: None,
+        }
+    }
+
+    #[test]
+    fn test_is_sorted_empty() {
+        assert!(is_sorted(&[]));
+    }
+
+    #[test]
+    fn test_is_sorted_single() {
+        assert!(is_sorted(&[make_entry("a")]));
+    }
+
+    #[test]
+    fn test_is_sorted_sorted() {
+        assert!(is_sorted(&[
+            make_entry("apple"),
+            make_entry("banana"),
+            make_entry("cherry")
+        ]));
+    }
+
+    #[test]
+    fn test_is_sorted_unsorted() {
+        assert!(!is_sorted(&[make_entry("banana"), make_entry("apple")]));
+    }
+
+    #[test]
+    fn test_apply_transform_identity() {
+        assert_eq!(apply_transform("hello world", false, false), "hello world");
+    }
+
+    #[test]
+    fn test_apply_transform_char_filter() {
+        assert_eq!(
+            apply_transform("he!llo, world.", true, false),
+            "hello world"
+        );
+    }
+
+    #[test]
+    fn test_apply_transform_lowercase() {
+        assert_eq!(apply_transform("Hello World", false, true), "hello world");
+    }
+
+    #[test]
+    fn test_apply_transform_char_filter_and_lowercase() {
+        assert_eq!(apply_transform("Hello, World!", true, true), "hello world");
+    }
+
+    #[test]
+    fn test_normalize_no_transform_already_sorted() {
+        let entries = vec![
+            make_entry("apple"),
+            make_entry("banana"),
+            make_entry("cherry"),
+        ];
+        let metadata = Metadata {
+            all_chars: true,
+            case_sensitive: true,
+        };
+        let result = normalize(&entries, &metadata);
+        assert_eq!(
+            result.iter().map(|e| &e.headword).collect::<Vec<_>>(),
+            vec!["apple", "banana", "cherry"]
+        );
+    }
+
+    #[test]
+    fn test_normalize_transform_already_sorted() {
+        let entries = vec![
+            make_entry("apple"),
+            make_entry("banana"),
+            make_entry("cherry"),
+        ];
+        let metadata = Metadata {
+            all_chars: false,
+            case_sensitive: false,
+        };
+        let result = normalize(&entries, &metadata);
+        assert_eq!(
+            result.iter().map(|e| &e.headword).collect::<Vec<_>>(),
+            vec!["apple", "banana", "cherry"]
+        );
+    }
+
+    #[test]
+    fn test_normalize_transform_needs_sort() {
+        let entries = vec![
+            make_entry("Cherry"),
+            make_entry("Apple!"),
+            make_entry("banana"),
+        ];
+        let metadata = Metadata {
+            all_chars: false,
+            case_sensitive: false,
+        };
+        let result = normalize(&entries, &metadata);
+        assert_eq!(
+            result.iter().map(|e| &e.headword).collect::<Vec<_>>(),
+            vec!["apple", "banana", "cherry"]
+        );
     }
 }

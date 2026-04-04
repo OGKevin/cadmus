@@ -150,6 +150,7 @@ in
     pkgs.cargo-nextest
     pkgs.reviewdog
     pkgs.cargo-expand
+    pkgs.gnuplot
 
     # C/C++ build tools for compiling thirdparty libraries
     pkgs.gnumake
