@@ -36,13 +36,17 @@ impl SettingRow {
         let half_width = rect.width() as i32 / 2;
         let label_rect = rect![rect.min.x, rect.min.y, rect.min.x + half_width, rect.max.y];
         let value_rect = rect![rect.min.x + half_width, rect.min.y, rect.max.x, rect.max.y];
+        let hold_event = kind.hold_event(rect);
 
         let label_text = kind.label(settings);
         let identity = kind.identity();
-        let label = Label::new(label_rect, label_text, Align::Left(50));
+
+        let label =
+            Label::new(label_rect, label_text, Align::Left(50)).hold_event(hold_event.clone());
         children.push(Box::new(label) as Box<dyn View>);
 
-        let setting_value = SettingValue::new(kind, value_rect, settings, fonts);
+        let setting_value =
+            SettingValue::new(kind, value_rect, settings, fonts).hold_event(hold_event);
         children.push(Box::new(setting_value) as Box<dyn View>);
 
         SettingRow {
@@ -112,8 +116,11 @@ impl View for SettingRow {
 mod tests {
     use super::*;
     use crate::context::test_helpers::create_test_context;
+    use crate::gesture::GestureEvent;
     use crate::settings::LibrarySettings;
     use crate::view::settings_editor::kinds::library::LibraryInfo;
+    use crate::view::EntryId;
+    use crate::view::EntryKind;
     use std::collections::VecDeque;
     use std::path::PathBuf;
     use std::sync::mpsc::channel;
@@ -182,5 +189,34 @@ mod tests {
 
         assert!(!handled);
         assert!(rq.is_empty());
+    }
+
+    #[test]
+    fn test_hold_finger_short_outside_label_rect_is_not_handled() {
+        let mut context = create_test_context();
+        let settings = create_test_settings();
+        let rect = rect![0, 0, 400, 60];
+
+        let mut row: Box<dyn View> = Box::new(SettingRow::new(
+            LibraryInfo(0),
+            rect,
+            &settings,
+            &mut context.fonts,
+        ));
+
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+        let mut rq = RenderQueue::new();
+
+        // Point outside the row entirely
+        let point = crate::geom::Point::new(500, 100);
+        let event = Event::Gesture(GestureEvent::HoldFingerShort(point, 0));
+
+        crate::view::handle_event(row.as_mut(), &event, &hub, &mut bus, &mut rq, &mut context);
+
+        assert!(
+            bus.is_empty(),
+            "No event should be pushed for out-of-bounds hold"
+        );
     }
 }

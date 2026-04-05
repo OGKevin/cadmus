@@ -2,6 +2,7 @@
 
 use super::{SettingData, SettingIdentity, SettingKind, WidgetKind};
 use crate::fl;
+use crate::geom::Rectangle;
 use crate::i18n::I18nDisplay;
 use crate::settings::{FinishedAction, Settings};
 use crate::view::{EntryId, EntryKind, Event};
@@ -33,6 +34,15 @@ impl SettingKind for LibraryInfo {
             value,
             widget: WidgetKind::ActionLabel(Event::EditLibrary(self.0)),
         }
+    }
+
+    fn hold_event(&self, rect: Rectangle) -> Option<Event> {
+        let entries = vec![EntryKind::Command(
+            fl!("delete"),
+            EntryId::DeleteLibrary(self.0),
+        )];
+
+        Some(Event::SubMenu(rect, entries))
     }
 }
 

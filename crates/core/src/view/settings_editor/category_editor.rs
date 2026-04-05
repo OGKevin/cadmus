@@ -334,46 +334,6 @@ impl CategoryEditor {
         true
     }
 
-    /// Handles a short hold finger gesture to show a context menu for deleting libraries.
-    #[inline]
-    fn handle_hold_finger_short(
-        &mut self,
-        point: &crate::geom::Point,
-        bus: &mut Bus,
-        context: &Context,
-    ) -> bool {
-        if self.category != Category::Libraries {
-            return false;
-        }
-
-        if !self.content_rect.includes(*point) {
-            return false;
-        }
-
-        let row_index = (point.y - self.content_rect.min.y) / self.row_height;
-        let library_index = row_index as usize;
-
-        if library_index < context.settings.libraries.len() {
-            let row_y = self.content_rect.min.y + (row_index * self.row_height);
-            let row_rect = rect![
-                self.content_rect.min.x,
-                row_y,
-                self.content_rect.max.x,
-                row_y + self.row_height
-            ];
-
-            let entries = vec![EntryKind::Command(
-                "Delete".to_string(),
-                EntryId::DeleteLibrary(library_index),
-            )];
-
-            bus.push_back(Event::SubMenu(row_rect, entries));
-            return true;
-        }
-
-        false
-    }
-
     #[inline]
     fn handle_submenu_event(
         &mut self,
@@ -567,9 +527,6 @@ impl View for CategoryEditor {
     ) -> bool {
         match evt {
             Event::Focus(view_id) => self.handle_focus_event(view_id, hub, rq, context),
-            Event::Gesture(GestureEvent::HoldFingerShort(point, _)) => {
-                self.handle_hold_finger_short(point, bus, context)
-            }
             Event::SubMenu(rect, ref entries) => {
                 self.handle_submenu_event(rect, entries, rq, context)
             }
@@ -831,56 +788,6 @@ mod tests {
         assert!(handled);
         assert_eq!(editor.children.len(), initial_children_count + 1);
         assert!(!rq.is_empty());
-    }
-
-    #[test]
-    fn test_hold_finger_shows_delete_menu() {
-        let mut context = create_test_context();
-        context.settings = create_test_settings_with_libraries(1);
-        let mut editor = create_test_category_editor_with_context(&mut context);
-        let (hub, _receiver) = channel();
-        let mut bus = VecDeque::new();
-        let mut rq = RenderQueue::new();
-
-        let initial_children_count = editor.children.len();
-
-        let row_y = editor.content_rect.min.y + (editor.row_height / 2);
-        let point = Point::new(editor.content_rect.min.x + 10, row_y);
-
-        let handled = editor.handle_event(
-            &Event::Gesture(GestureEvent::HoldFingerShort(point, 0)),
-            &hub,
-            &mut bus,
-            &mut rq,
-            &mut context,
-        );
-
-        assert!(handled);
-        assert_eq!(bus.len(), 1);
-
-        if let Some(Event::SubMenu(rect, entries)) = bus.pop_front() {
-            assert_eq!(entries.len(), 1);
-            match &entries[0] {
-                EntryKind::Command(label, entry_id) => {
-                    assert_eq!(label, "Delete");
-                    assert_eq!(*entry_id, EntryId::DeleteLibrary(0));
-                }
-                _ => panic!("Expected Command entry"),
-            }
-
-            editor.handle_event(
-                &Event::SubMenu(rect, entries),
-                &hub,
-                &mut bus,
-                &mut rq,
-                &mut context,
-            );
-
-            assert_eq!(editor.children.len(), initial_children_count + 1);
-            assert!(!rq.is_empty());
-        } else {
-            panic!("Expected SubMenu event in bus");
-        }
     }
 
     fn create_test_intermissions_category_editor(context: &mut Context) -> CategoryEditor {

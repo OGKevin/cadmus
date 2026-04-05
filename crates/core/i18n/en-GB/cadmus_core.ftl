@@ -6,6 +6,9 @@ english = English
 
 startup-loading = Cadmus starting up…
 
+# Common
+delete = Delete
+
 # Top Menu Strings
 top-menu-exit = Exit
 top-menu-reboot-device = Reboot Device

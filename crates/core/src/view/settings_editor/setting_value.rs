@@ -158,6 +158,15 @@ impl SettingValue {
             String::new()
         }
     }
+
+    /// Propagates a hold event to the child `ActionLabel`.
+    pub fn hold_event(mut self, event: Option<Event>) -> Self {
+        if let Some(action_label) = self.children[0].downcast_mut::<ActionLabel>() {
+            action_label.set_hold_event(event);
+        }
+
+        self
+    }
 }
 
 impl View for SettingValue {

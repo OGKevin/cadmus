@@ -19,6 +19,7 @@ pub mod telemetry;
 
 pub use identity::SettingIdentity;
 
+use crate::geom::Rectangle;
 use crate::settings::Settings;
 use crate::view::{Bus, EntryId, EntryKind, Event, ViewId};
 
@@ -124,6 +125,11 @@ pub trait SettingKind {
     fn file_chooser_entry_id(&self) -> Option<EntryId> {
         None
     }
+
+    /// The event that should be emitted if the settings is held.
+    fn hold_event(&self, _rect: Rectangle) -> Option<Event> {
+        None
+    }
 }
 
 impl<T: SettingKind + ?Sized> SettingKind for &T {
@@ -150,6 +156,10 @@ impl<T: SettingKind + ?Sized> SettingKind for &T {
     fn file_chooser_entry_id(&self) -> Option<EntryId> {
         (**self).file_chooser_entry_id()
     }
+
+    fn hold_event(&self, rect: Rectangle) -> Option<Event> {
+        (**self).hold_event(rect)
+    }
 }
 
 impl<T: SettingKind + ?Sized> SettingKind for Box<T> {
@@ -175,6 +185,10 @@ impl<T: SettingKind + ?Sized> SettingKind for Box<T> {
 
     fn file_chooser_entry_id(&self) -> Option<EntryId> {
         (**self).file_chooser_entry_id()
+    }
+
+    fn hold_event(&self, rect: Rectangle) -> Option<Event> {
+        (**self).hold_event(rect)
     }
 }
 

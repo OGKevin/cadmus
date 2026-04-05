@@ -86,6 +86,11 @@ impl Label {
         self.event = event;
     }
 
+    /// Set the hold event for the label (mutable version).
+    pub fn set_hold_event(&mut self, event: Option<Event>) {
+        self.hold_event = event;
+    }
+
     /// Get the current text of the label.
     pub fn text(&self) -> &str {
         &self.text

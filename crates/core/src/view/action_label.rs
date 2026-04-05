@@ -46,6 +46,21 @@ impl ActionLabel {
         }
     }
 
+    /// Sets the event to be emitted when the label is held (builder style).
+    pub fn hold_event(mut self, event: Option<Event>) -> ActionLabel {
+        if let Some(label) = self.children[0].downcast_mut::<Label>() {
+            label.set_hold_event(event);
+        }
+        self
+    }
+
+    /// Sets the event to be emitted when the label is held.
+    pub fn set_hold_event(&mut self, event: Option<Event>) {
+        if let Some(label) = self.children[0].downcast_mut::<Label>() {
+            label.set_hold_event(event);
+        }
+    }
+
     /// Updates the label's text.
     pub fn update(&mut self, text: &str, rq: &mut RenderQueue) {
         if let Some(label) = self.children[0].downcast_mut::<Label>() {
