@@ -1,9 +1,9 @@
 //! Feature matrix generation for `cargo xtask test` and `cargo xtask clippy`.
 //!
 //! Scans every `Cargo.toml` in the workspace, collects the union of all
-//! non-`default` feature names, and produces every power-set combination
-//! crossed with a list of target operating systems.  Each combination becomes
-//! one [`MatrixEntry`] that maps to a single CI job.
+//! non-excluded feature names (see [`is_excluded_feature`]), and produces every
+//! power-set combination crossed with a list of target operating systems.  Each
+//! combination becomes one [`MatrixEntry`] that maps to a single CI job.
 //!
 //! The same entries are used locally (by `test` and `clippy` tasks) and in CI
 //! (by `cargo xtask ci matrix`, which serialises them to GitHub Actions JSON).
@@ -45,7 +45,9 @@ impl MatrixEntry {
 
 /// Scans the workspace and returns the full feature × OS matrix.
 ///
-/// Features named `default` are excluded — Cargo enables them automatically.
+/// Features excluded from the matrix (see [`is_excluded_feature`]) are
+/// skipped — for example `default` (enabled by Cargo automatically) and
+/// `bench` (only affects module visibility for benchmarks).
 /// The matrix always starts with the default (no explicit features) entry,
 /// followed by every non-empty power-set combination in a stable order.
 /// Each feature combination is repeated once per OS in `os_list`.
@@ -177,7 +179,7 @@ fn collect_workspace_features(root: &Path) -> Result<BTreeSet<String>> {
 
         if let Some(toml::Value::Table(feat_table)) = doc.get("features") {
             for key in feat_table.keys() {
-                if key != "default" {
+                if !is_excluded_feature(key) {
                     features.insert(key.clone());
                 }
             }
@@ -190,6 +192,15 @@ fn collect_workspace_features(root: &Path) -> Result<BTreeSet<String>> {
 fn is_ignored(entry: &walkdir::DirEntry) -> bool {
     let name = entry.file_name().to_string_lossy();
     matches!(name.as_ref(), "target" | ".git" | "thirdparty" | "xtask")
+}
+
+/// Returns `true` for feature names that must not appear in the CI matrix.
+///
+/// - `default` is always enabled by Cargo automatically.
+/// - `bench` only changes module visibility for micro-benchmarks and does not
+///   need its own power-set of CI jobs.
+fn is_excluded_feature(name: &str) -> bool {
+    matches!(name, "default" | "bench")
 }
 
 fn build_matrix(features: BTreeSet<String>, os_list: &[&str]) -> Vec<MatrixEntry> {
@@ -343,7 +354,7 @@ mod tests {
         assert_eq!(
             entries.len(),
             32,
-            "4 features → 2⁴ = 16 combos × 2 OSes = 32 entries"
+            "4 CI features (bench excluded) → 2⁴ = 16 combos × 2 OSes = 32 entries"
         );
     }
 }
