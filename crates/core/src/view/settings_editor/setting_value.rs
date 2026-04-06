@@ -230,7 +230,7 @@ impl View for SettingValue {
 
         if let Event::FileChooserClosed(_) = evt {
             if self.active_file_chooser {
-                if let Some(display) = self.kind.handle(evt, &mut context.settings, bus) {
+                if let (Some(display), _) = self.kind.handle(evt, &mut context.settings, bus) {
                     self.update(display, &context.settings, rq);
                 }
                 return false;
@@ -253,10 +253,10 @@ impl View for SettingValue {
             }
         }
 
-        if let Some(display) = self.kind.handle(evt, &mut context.settings, bus) {
+        if let (Some(display), handled) = self.kind.handle(evt, &mut context.settings, bus) {
             self.update(display, &context.settings, rq);
             bus.push_back(Event::Close(ViewId::SettingsValueMenu));
-            return true;
+            return handled;
         }
 
         if let Some(input_kind) = self.kind.as_input_kind() {

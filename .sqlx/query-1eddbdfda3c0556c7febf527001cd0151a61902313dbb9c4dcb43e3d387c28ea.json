@@ -1,0 +1,28 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT formats, updated as \"updated: UnixTimestamp\", words\n                   FROM dictionary_monolingual_metadata\n                   WHERE lang = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "formats",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated: UnixTimestamp",
+        "ordinal": 1,
+        "type_info": "Integer"
+      },
+      {
+        "name": "words",
+        "ordinal": 2,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [false, false, false]
+  },
+  "hash": "1eddbdfda3c0556c7febf527001cd0151a61902313dbb9c4dcb43e3d387c28ea"
+}

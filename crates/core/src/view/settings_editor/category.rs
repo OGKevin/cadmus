@@ -1,3 +1,4 @@
+use super::kinds::dictionary::DictionaryInfo;
 use super::kinds::general::{
     AutoPowerOff, AutoShare, AutoSuspend, ButtonScheme, KeyboardLayout, Locale, SettingsRetention,
     SleepCover,
@@ -9,6 +10,8 @@ use super::kinds::reader::FinishedActionSetting;
 use super::kinds::telemetry::{LogLevel, LoggingEnabled};
 use super::kinds::SettingKind;
 use crate::context::Context;
+use crate::dictionary::MonolingualDictionaryService;
+use std::collections::BTreeSet;
 
 /// Categories of settings available in the settings editor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -25,6 +28,8 @@ pub enum Category {
     Import,
     /// Telemetry and logging settings
     Telemetry,
+    /// Monolingual dictionary download and management
+    Dictionaries,
 }
 
 impl Category {
@@ -37,6 +42,7 @@ impl Category {
             Category::Intermissions => "Intermission Screens".to_string(),
             Category::Import => "Import".to_string(),
             Category::Telemetry => "Telemetry".to_string(),
+            Category::Dictionaries => "Dictionaries".to_string(),
         }
     }
 
@@ -44,7 +50,16 @@ impl Category {
     ///
     /// Each element is a heap-allocated [`SettingKind`] that fully describes
     /// the label, current value, widget type, and tap event for one row.
-    pub fn settings(&self, context: &Context) -> Vec<Box<dyn SettingKind>> {
+    ///
+    /// `dict_service` is used only by the [`Category::Dictionaries`] variant.
+    /// All other categories ignore it. Passing `None` for a `Dictionaries`
+    /// category produces an empty list and logs a warning.
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(context, dict_service)))]
+    pub fn settings(
+        &self,
+        context: &Context,
+        dict_service: Option<&MonolingualDictionaryService>,
+    ) -> Vec<Box<dyn SettingKind>> {
         match self {
             Category::General => vec![
                 Box::new(Locale),
@@ -104,6 +119,42 @@ impl Category {
                     rows
                 }
             }
+            Category::Dictionaries => {
+                let Some(service) = dict_service else {
+                    tracing::warn!(
+                        "No MonolingualDictionaryService provided for Dictionaries category"
+                    );
+                    return Vec::new();
+                };
+
+                let available: BTreeSet<String> = if context.online {
+                    service
+                        .get_available_dictionaries()
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|(lang, _)| lang)
+                        .collect()
+                } else {
+                    BTreeSet::new()
+                };
+
+                let installed: BTreeSet<String> = service
+                    .get_installed_dictionaries()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .collect();
+
+                let mut all_langs: Vec<String> = available.union(&installed).cloned().collect();
+                all_langs.sort();
+
+                all_langs
+                    .into_iter()
+                    .map(|lang| {
+                        let is_installed = installed.contains(&lang);
+                        Box::new(DictionaryInfo { lang, is_installed }) as Box<dyn SettingKind>
+                    })
+                    .collect()
+            }
         }
     }
 
@@ -112,6 +163,7 @@ impl Category {
         vec![
             Category::General,
             Category::Reader,
+            Category::Dictionaries,
             Category::Libraries,
             Category::Intermissions,
             Category::Import,

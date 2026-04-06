@@ -35,12 +35,17 @@ impl SettingKind for LoggingEnabled {
         }
     }
 
-    fn handle(&self, evt: &Event, settings: &mut Settings, _bus: &mut Bus) -> Option<String> {
+    fn handle(
+        &self,
+        evt: &Event,
+        settings: &mut Settings,
+        _bus: &mut Bus,
+    ) -> (Option<String>, bool) {
         if let Event::Toggle(ToggleEvent::Setting(ToggleSettings::LoggingEnabled)) = evt {
             settings.logging.enabled = !settings.logging.enabled;
-            return Some(settings.logging.enabled.to_string());
+            return (Some(settings.logging.enabled.to_string()), true);
         }
-        None
+        (None, false)
     }
 }
 
@@ -106,12 +111,17 @@ impl SettingKind for LogLevel {
         }
     }
 
-    fn handle(&self, evt: &Event, settings: &mut Settings, _bus: &mut Bus) -> Option<String> {
+    fn handle(
+        &self,
+        evt: &Event,
+        settings: &mut Settings,
+        _bus: &mut Bus,
+    ) -> (Option<String>, bool) {
         if let Event::Select(EntryId::SetLogLevel(ref level)) = evt {
             settings.logging.level = level.to_string();
-            return Some(Self::level_to_i18n(level));
+            return (Some(Self::level_to_i18n(level)), true);
         }
-        None
+        (None, false)
     }
 }
 
@@ -210,12 +220,17 @@ impl SettingKind for EnableKernLog {
         }
     }
 
-    fn handle(&self, evt: &Event, settings: &mut Settings, _bus: &mut Bus) -> Option<String> {
+    fn handle(
+        &self,
+        evt: &Event,
+        settings: &mut Settings,
+        _bus: &mut Bus,
+    ) -> (Option<String>, bool) {
         if let Event::Toggle(ToggleEvent::Setting(ToggleSettings::EnableKernLog)) = evt {
             settings.logging.enable_kern_log = !settings.logging.enable_kern_log;
-            return Some(settings.logging.enable_kern_log.to_string());
+            return (Some(settings.logging.enable_kern_log.to_string()), true);
         }
-        None
+        (None, false)
     }
 }
 
@@ -245,12 +260,17 @@ impl SettingKind for EnableDbusLog {
         }
     }
 
-    fn handle(&self, evt: &Event, settings: &mut Settings, _bus: &mut Bus) -> Option<String> {
+    fn handle(
+        &self,
+        evt: &Event,
+        settings: &mut Settings,
+        _bus: &mut Bus,
+    ) -> (Option<String>, bool) {
         if let Event::Toggle(ToggleEvent::Setting(ToggleSettings::EnableDbusLog)) = evt {
             settings.logging.enable_dbus_log = !settings.logging.enable_dbus_log;
-            return Some(settings.logging.enable_dbus_log.to_string());
+            return (Some(settings.logging.enable_dbus_log.to_string()), true);
         }
-        None
+        (None, false)
     }
 }
 
@@ -275,7 +295,7 @@ mod tests {
 
             let result = setting.handle(&event, &mut settings, &mut bus);
 
-            assert!(result.is_some());
+            assert!(result.0.is_some());
             assert!(!settings.logging.enabled);
         }
 
@@ -289,7 +309,7 @@ mod tests {
 
             let result = setting.handle(&event, &mut settings, &mut bus);
 
-            assert!(result.is_some());
+            assert!(result.0.is_some());
             assert!(settings.logging.enabled);
         }
 
@@ -301,7 +321,7 @@ mod tests {
 
             let result = setting.handle(&Event::Select(EntryId::About), &mut settings, &mut bus);
 
-            assert!(result.is_none());
+            assert!(result.0.is_none());
         }
 
         #[test]
@@ -316,7 +336,7 @@ mod tests {
                 &mut bus,
             );
 
-            assert!(result.is_none());
+            assert!(result.0.is_none());
         }
     }
 
@@ -333,7 +353,7 @@ mod tests {
 
             let result = setting.handle(&event, &mut settings, &mut bus);
 
-            assert!(result.is_some());
+            assert!(result.0.is_some());
             assert_eq!(settings.logging.level, "WARN");
         }
 
@@ -364,7 +384,7 @@ mod tests {
 
             let result = setting.handle(&Event::Select(EntryId::About), &mut settings, &mut bus);
 
-            assert!(result.is_none());
+            assert!(result.0.is_none());
         }
     }
 
@@ -440,7 +460,7 @@ mod tests {
 
             let result = setting.handle(&event, &mut settings, &mut bus);
 
-            assert!(result.is_some());
+            assert!(result.0.is_some());
             assert!(settings.logging.enable_kern_log);
         }
 
@@ -454,7 +474,7 @@ mod tests {
 
             let result = setting.handle(&event, &mut settings, &mut bus);
 
-            assert!(result.is_some());
+            assert!(result.0.is_some());
             assert!(!settings.logging.enable_kern_log);
         }
 
@@ -466,7 +486,7 @@ mod tests {
 
             let result = setting.handle(&Event::Select(EntryId::About), &mut settings, &mut bus);
 
-            assert!(result.is_none());
+            assert!(result.0.is_none());
         }
 
         #[test]
@@ -481,7 +501,7 @@ mod tests {
                 &mut bus,
             );
 
-            assert!(result.is_none());
+            assert!(result.0.is_none());
         }
     }
 
@@ -499,7 +519,7 @@ mod tests {
 
             let result = setting.handle(&event, &mut settings, &mut bus);
 
-            assert!(result.is_some());
+            assert!(result.0.is_some());
             assert!(settings.logging.enable_dbus_log);
         }
 
@@ -513,7 +533,7 @@ mod tests {
 
             let result = setting.handle(&event, &mut settings, &mut bus);
 
-            assert!(result.is_some());
+            assert!(result.0.is_some());
             assert!(!settings.logging.enable_dbus_log);
         }
 
@@ -525,7 +545,7 @@ mod tests {
 
             let result = setting.handle(&Event::Select(EntryId::About), &mut settings, &mut bus);
 
-            assert!(result.is_none());
+            assert!(result.0.is_none());
         }
 
         #[test]
@@ -540,7 +560,7 @@ mod tests {
                 &mut bus,
             );
 
-            assert!(result.is_none());
+            assert!(result.0.is_none());
         }
     }
 }

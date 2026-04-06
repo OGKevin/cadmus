@@ -80,19 +80,24 @@ impl SettingKind for IntermissionSuspend {
         fetch_intermission(IntermKind::Suspend, settings)
     }
 
-    fn handle(&self, evt: &Event, settings: &mut Settings, _bus: &mut Bus) -> Option<String> {
+    fn handle(
+        &self,
+        evt: &Event,
+        settings: &mut Settings,
+        _bus: &mut Bus,
+    ) -> (Option<String>, bool) {
         if let Event::Select(EntryId::SetIntermission(IntermKind::Suspend, ref display)) = evt {
             settings.intermissions[IntermKind::Suspend] = display.clone();
-            return Some(intermission_display_name(display));
+            return (Some(intermission_display_name(display)), true);
         }
 
         if let Event::FileChooserClosed(Some(ref path)) = evt {
             let display = IntermissionDisplay::Image(path.clone());
             settings.intermissions[IntermKind::Suspend] = display.clone();
-            return Some(intermission_display_name(&display));
+            return (Some(intermission_display_name(&display)), true);
         }
 
-        None
+        (None, false)
     }
 
     fn file_chooser_entry_id(&self) -> Option<EntryId> {
@@ -116,19 +121,24 @@ impl SettingKind for IntermissionPowerOff {
         fetch_intermission(IntermKind::PowerOff, settings)
     }
 
-    fn handle(&self, evt: &Event, settings: &mut Settings, _bus: &mut Bus) -> Option<String> {
+    fn handle(
+        &self,
+        evt: &Event,
+        settings: &mut Settings,
+        _bus: &mut Bus,
+    ) -> (Option<String>, bool) {
         if let Event::Select(EntryId::SetIntermission(IntermKind::PowerOff, ref display)) = evt {
             settings.intermissions[IntermKind::PowerOff] = display.clone();
-            return Some(intermission_display_name(display));
+            return (Some(intermission_display_name(display)), true);
         }
 
         if let Event::FileChooserClosed(Some(ref path)) = evt {
             let display = IntermissionDisplay::Image(path.clone());
             settings.intermissions[IntermKind::PowerOff] = display.clone();
-            return Some(intermission_display_name(&display));
+            return (Some(intermission_display_name(&display)), true);
         }
 
-        None
+        (None, false)
     }
 
     fn file_chooser_entry_id(&self) -> Option<EntryId> {
@@ -152,19 +162,24 @@ impl SettingKind for IntermissionShare {
         fetch_intermission(IntermKind::Share, settings)
     }
 
-    fn handle(&self, evt: &Event, settings: &mut Settings, _bus: &mut Bus) -> Option<String> {
+    fn handle(
+        &self,
+        evt: &Event,
+        settings: &mut Settings,
+        _bus: &mut Bus,
+    ) -> (Option<String>, bool) {
         if let Event::Select(EntryId::SetIntermission(IntermKind::Share, ref display)) = evt {
             settings.intermissions[IntermKind::Share] = display.clone();
-            return Some(intermission_display_name(display));
+            return (Some(intermission_display_name(display)), true);
         }
 
         if let Event::FileChooserClosed(Some(ref path)) = evt {
             let display = IntermissionDisplay::Image(path.clone());
             settings.intermissions[IntermKind::Share] = display.clone();
-            return Some(intermission_display_name(&display));
+            return (Some(intermission_display_name(&display)), true);
         }
 
-        None
+        (None, false)
     }
 
     fn file_chooser_entry_id(&self) -> Option<EntryId> {
@@ -195,7 +210,7 @@ mod tests {
 
             let result = setting.handle(&event, &mut settings, &mut bus);
 
-            assert!(result.is_some());
+            assert!(result.0.is_some());
             assert_eq!(
                 settings.intermissions[IntermKind::Suspend],
                 IntermissionDisplay::Cover
@@ -212,7 +227,7 @@ mod tests {
 
             let result = setting.handle(&event, &mut settings, &mut bus);
 
-            assert!(result.is_some());
+            assert!(result.0.is_some());
             assert_eq!(
                 settings.intermissions[IntermKind::Suspend],
                 IntermissionDisplay::Image(PathBuf::from("/selected/image.jpg"))
@@ -231,7 +246,7 @@ mod tests {
 
             let result = setting.handle(&event, &mut settings, &mut bus);
 
-            assert!(result.is_none());
+            assert!(result.0.is_none());
         }
 
         #[test]
@@ -242,7 +257,7 @@ mod tests {
 
             let result = setting.handle(&Event::FileChooserClosed(None), &mut settings, &mut bus);
 
-            assert!(result.is_none());
+            assert!(result.0.is_none());
         }
     }
 
@@ -261,7 +276,7 @@ mod tests {
 
             let result = setting.handle(&event, &mut settings, &mut bus);
 
-            assert!(result.is_some());
+            assert!(result.0.is_some());
             assert_eq!(
                 settings.intermissions[IntermKind::PowerOff],
                 IntermissionDisplay::Cover
@@ -278,7 +293,7 @@ mod tests {
 
             let result = setting.handle(&event, &mut settings, &mut bus);
 
-            assert!(result.is_some());
+            assert!(result.0.is_some());
             assert_eq!(
                 settings.intermissions[IntermKind::PowerOff],
                 IntermissionDisplay::Image(PathBuf::from("/selected/poweroff.png"))
@@ -297,7 +312,7 @@ mod tests {
 
             let result = setting.handle(&event, &mut settings, &mut bus);
 
-            assert!(result.is_none());
+            assert!(result.0.is_none());
         }
 
         #[test]
@@ -308,7 +323,7 @@ mod tests {
 
             let result = setting.handle(&Event::FileChooserClosed(None), &mut settings, &mut bus);
 
-            assert!(result.is_none());
+            assert!(result.0.is_none());
         }
     }
 
@@ -327,7 +342,7 @@ mod tests {
 
             let result = setting.handle(&event, &mut settings, &mut bus);
 
-            assert!(result.is_some());
+            assert!(result.0.is_some());
             assert_eq!(
                 settings.intermissions[IntermKind::Share],
                 IntermissionDisplay::Cover
@@ -344,7 +359,7 @@ mod tests {
 
             let result = setting.handle(&event, &mut settings, &mut bus);
 
-            assert!(result.is_some());
+            assert!(result.0.is_some());
             assert_eq!(
                 settings.intermissions[IntermKind::Share],
                 IntermissionDisplay::Image(PathBuf::from("/selected/share.jpg"))
@@ -363,7 +378,7 @@ mod tests {
 
             let result = setting.handle(&event, &mut settings, &mut bus);
 
-            assert!(result.is_none());
+            assert!(result.0.is_none());
         }
 
         #[test]
@@ -374,7 +389,7 @@ mod tests {
 
             let result = setting.handle(&Event::FileChooserClosed(None), &mut settings, &mut bus);
 
-            assert!(result.is_none());
+            assert!(result.0.is_none());
         }
     }
 }

@@ -12,6 +12,7 @@ use super::{
 use crate::color::WHITE;
 use crate::context::Context;
 use crate::device::CURRENT_DEVICE;
+use crate::fl;
 use crate::font::{font_from_style, Fonts, NORMAL_STYLE};
 use crate::framebuffer::Framebuffer;
 use crate::geom::Rectangle;
@@ -79,7 +80,7 @@ pub fn show_ota_view(
     if !context.online {
         let notif = Notification::new(
             None,
-            "WiFi must be connected to check for updates.".to_string(),
+            fl!("notification-not-online"),
             false,
             hub,
             rq,

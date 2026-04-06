@@ -1,6 +1,8 @@
 use crate::color::{BLACK, WHITE};
-use crate::context::Context;
+use crate::context::{Context, DICTIONARIES_DIRNAME};
 use crate::device::CURRENT_DEVICE;
+use crate::dictionary::MonolingualDictionaryService;
+use crate::fl;
 use crate::framebuffer::{Framebuffer, UpdateMode};
 use crate::geom::{halves, CycleDir, Rectangle};
 use crate::settings::{LibrarySettings, Settings};
@@ -10,15 +12,16 @@ use crate::view::filler::Filler;
 use crate::view::menu::{Menu, MenuKind};
 use crate::view::toggleable_keyboard::ToggleableKeyboard;
 use crate::view::{
-    Bus, EntryId, EntryKind, Event, Hub, Id, RenderData, RenderQueue, View, ViewId, ID_FEEDER,
-    SMALL_BAR_HEIGHT, THICKNESS_MEDIUM,
+    Bus, EntryId, EntryKind, Event, Hub, Id, NotificationEvent, RenderData, RenderQueue, View,
+    ViewId, ID_FEEDER, SMALL_BAR_HEIGHT, THICKNESS_MEDIUM,
 };
 
 use super::bottom_bar::{BottomBarVariant, SettingsEditorBottomBar};
 use super::category::Category;
 use super::library_editor::LibraryEditor;
 use super::setting_row::SettingRow;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::thread;
 
 /// A view for editing category-specific settings.
 ///
@@ -62,6 +65,7 @@ pub struct CategoryEditor {
     keyboard_index: usize,
     current_page: usize,
     pages_count: usize,
+    dict_service: Option<MonolingualDictionaryService>,
 }
 
 impl CategoryEditor {
@@ -112,6 +116,21 @@ impl CategoryEditor {
         let separator_index = first_row_index;
         let keyboard_index = children.len() - 1;
 
+        let dict_service = if category == Category::Dictionaries {
+            match MonolingualDictionaryService::new(
+                &context.database,
+                std::path::Path::new(DICTIONARIES_DIRNAME),
+            ) {
+                Ok(service) => Some(service),
+                Err(e) => {
+                    tracing::warn!(error = %e, "Failed to create MonolingualDictionaryService");
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
         let mut editor = CategoryEditor {
             id,
             rect,
@@ -125,6 +144,7 @@ impl CategoryEditor {
             keyboard_index,
             current_page: 0,
             pages_count: 1,
+            dict_service,
         };
 
         editor.update_rows_list(rq, context);
@@ -235,7 +255,7 @@ impl CategoryEditor {
         let available_height = self.content_rect.height() as i32;
         let max_rows = (available_height / self.row_height).max(1) as usize;
 
-        let all_kinds = self.category.settings(context);
+        let all_kinds = self.category.settings(context, self.dict_service.as_ref());
         let total_rows = all_kinds.len();
 
         self.pages_count = total_rows.div_ceil(max_rows).max(1);
@@ -484,6 +504,90 @@ impl CategoryEditor {
         true
     }
 
+    /// Spawns a background thread to download and install a dictionary for the
+    /// given language code.
+    ///
+    /// Uses `include_etymologies = false` to prefer the smaller no-etymology
+    /// variant. On completion the thread sends `Event::DictionaryInstallComplete`
+    /// via the hub so the UI can rebuild the rows on the main thread.
+    ///
+    /// If a download is already in progress for `lang` the request is silently
+    /// ignored to prevent duplicate background threads racing to write the same
+    /// files.
+    #[inline]
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, hub)))]
+    fn handle_download_dictionary(&mut self, lang: &str, hub: &Hub) -> bool {
+        let Some(service) = self.dict_service.clone() else {
+            tracing::warn!(
+                lang,
+                "No MonolingualDictionaryService available to download dictionary"
+            );
+            return true;
+        };
+
+        if service.is_installing(lang) {
+            return true;
+        }
+
+        let lang_owned = lang.to_string();
+        let hub2 = hub.clone();
+        let parent_span = tracing::Span::current();
+
+        hub.send(crate::view::Event::Notification(NotificationEvent::Show(
+            fl!("notification-downloading-dictionary", lang = lang),
+        )))
+        .ok();
+
+        thread::spawn(move || {
+            let _span =
+                tracing::info_span!(parent: &parent_span, "dictionary_install_async").entered();
+
+            let result = service
+                .install_dictionary(&lang_owned, false)
+                .map_err(|e| e.to_string());
+
+            hub2.send(crate::view::Event::DictionaryInstallComplete {
+                lang: lang_owned,
+                result,
+            })
+            .ok();
+        });
+
+        true
+    }
+
+    /// Removes the installed dictionary directory for the given language code, then rebuilds the rows.
+    ///
+    /// The directory `<DICTIONARIES_DIRNAME>/reader-dict/<lang>/` is removed. Any open
+    /// `SettingsValueMenu` is closed before rebuilding. Logs a warning on failure.
+    #[inline]
+    fn handle_delete_dictionary(
+        &mut self,
+        lang: &str,
+        rq: &mut RenderQueue,
+        context: &mut Context,
+    ) -> bool {
+        let lang_dir = Path::new(DICTIONARIES_DIRNAME)
+            .join("reader-dict")
+            .join(lang);
+
+        if lang_dir.exists() {
+            if let Err(e) = std::fs::remove_dir_all(&lang_dir) {
+                tracing::warn!(lang, error = %e, "Failed to delete dictionary directory");
+            }
+        }
+
+        if let Some(menu_index) = locate_by_id(self, ViewId::SettingsValueMenu) {
+            self.children.remove(menu_index);
+            rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+        }
+
+        self.current_page = 0;
+        self.update_rows_list(rq, context);
+        context.load_dictionaries();
+        true
+    }
+
     #[inline]
     fn handle_close_view_event(
         &mut self,
@@ -538,6 +642,21 @@ impl View for CategoryEditor {
             Event::Select(EntryId::DeleteLibrary(index)) => {
                 self.handle_delete_library(*index, rq, context)
             }
+            Event::Select(EntryId::DownloadDictionary(lang))
+            | Event::Select(EntryId::RedownloadDictionary(lang)) => {
+                if !context.online {
+                    hub.send(Event::Notification(NotificationEvent::Show(fl!(
+                        "notification-not-online"
+                    ))))
+                    .ok();
+
+                    return true;
+                }
+                self.handle_download_dictionary(lang, hub)
+            }
+            Event::Select(EntryId::DeleteDictionary(lang)) => {
+                self.handle_delete_dictionary(lang, rq, context)
+            }
             Event::AddLibrary => self.handle_add_library_event(hub, rq, context),
             Event::EditLibrary(index) => self.handle_edit_library_event(*index, hub, rq, context),
             Event::UpdateLibrary(index, ref library) => {
@@ -558,6 +677,26 @@ impl View for CategoryEditor {
                 context,
             ),
             Event::Close(view_id) => self.handle_close_view_event(view_id, hub, rq),
+            Event::DictionaryInstallComplete { lang, result } => {
+                match result {
+                    Ok(()) => {
+                        tracing::info!(lang, "Dictionary installed");
+
+                        self.current_page = 0;
+                        self.update_rows_list(rq, context);
+                        context.load_dictionaries();
+
+                        hub.send(Event::Notification(NotificationEvent::Show(fl!(
+                            "notification-downloading-dictionary-completed",
+                            lang = lang
+                        ))))
+                        .ok();
+                    }
+                    Err(e) => tracing::warn!(lang, error = %e, "Failed to install dictionary"),
+                }
+
+                true
+            }
             Event::Page(dir) => {
                 let new_page = match dir {
                     CycleDir::Previous => self.current_page.saturating_sub(1),

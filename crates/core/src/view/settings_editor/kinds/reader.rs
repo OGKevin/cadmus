@@ -45,12 +45,17 @@ impl SettingKind for FinishedActionSetting {
         }
     }
 
-    fn handle(&self, evt: &Event, settings: &mut Settings, _bus: &mut Bus) -> Option<String> {
+    fn handle(
+        &self,
+        evt: &Event,
+        settings: &mut Settings,
+        _bus: &mut Bus,
+    ) -> (Option<String>, bool) {
         if let Event::Select(EntryId::SetFinishedAction(action)) = evt {
             settings.reader.finished = *action;
-            return Some(action.to_i18n_string());
+            return (Some(action.to_i18n_string()), true);
         }
-        None
+        (None, false)
     }
 }
 
@@ -74,7 +79,7 @@ mod tests {
 
             let result = setting.handle(&event, &mut settings, &mut bus);
 
-            assert!(result.is_some());
+            assert!(result.0.is_some());
             assert_eq!(settings.reader.finished, FinishedAction::GoToNext);
         }
 
@@ -103,7 +108,7 @@ mod tests {
 
             let result = setting.handle(&Event::Select(EntryId::About), &mut settings, &mut bus);
 
-            assert!(result.is_none());
+            assert!(result.0.is_none());
         }
 
         #[test]
@@ -115,7 +120,7 @@ mod tests {
 
             let result = setting.handle(&event, &mut settings, &mut bus);
 
-            assert!(result.is_none());
+            assert!(result.0.is_none());
         }
     }
 }

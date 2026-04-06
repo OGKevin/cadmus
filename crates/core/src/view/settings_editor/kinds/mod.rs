@@ -9,6 +9,7 @@
 //! [`SettingsEvent::UpdateValue`](crate::view::settings_editor::SettingsEvent) to
 //! target the correct [`SettingValue`](crate::view::settings_editor::SettingValue) view.
 
+pub mod dictionary;
 pub mod general;
 pub mod identity;
 pub mod import;
@@ -106,8 +107,13 @@ pub trait SettingKind {
     /// Mutates `settings` if the event is relevant and returns the updated
     /// display string. Returns `None` if this event does not apply to this setting.
     /// `bus` is available for settings that need to propagate side-effects.
-    fn handle(&self, _evt: &Event, _settings: &mut Settings, _bus: &mut Bus) -> Option<String> {
-        None
+    fn handle(
+        &self,
+        _evt: &Event,
+        _settings: &mut Settings,
+        _bus: &mut Bus,
+    ) -> (Option<String>, bool) {
+        (None, false)
     }
 
     /// Returns this setting as an [`InputSettingKind`] if it supports text input.
@@ -145,7 +151,12 @@ impl<T: SettingKind + ?Sized> SettingKind for &T {
         (**self).fetch(settings)
     }
 
-    fn handle(&self, evt: &Event, settings: &mut Settings, bus: &mut Bus) -> Option<String> {
+    fn handle(
+        &self,
+        evt: &Event,
+        settings: &mut Settings,
+        bus: &mut Bus,
+    ) -> (Option<String>, bool) {
         (**self).handle(evt, settings, bus)
     }
 
@@ -175,7 +186,12 @@ impl<T: SettingKind + ?Sized> SettingKind for Box<T> {
         (**self).fetch(settings)
     }
 
-    fn handle(&self, evt: &Event, settings: &mut Settings, bus: &mut Bus) -> Option<String> {
+    fn handle(
+        &self,
+        evt: &Event,
+        settings: &mut Settings,
+        bus: &mut Bus,
+    ) -> (Option<String>, bool) {
         (**self).handle(evt, settings, bus)
     }
 

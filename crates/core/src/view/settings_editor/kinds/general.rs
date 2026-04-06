@@ -48,7 +48,12 @@ impl SettingKind for Locale {
         }
     }
 
-    fn handle(&self, evt: &Event, settings: &mut Settings, _bus: &mut Bus) -> Option<String> {
+    fn handle(
+        &self,
+        evt: &Event,
+        settings: &mut Settings,
+        _bus: &mut Bus,
+    ) -> (Option<String>, bool) {
         if let Event::Select(EntryId::SetLocale(ref locale)) = evt {
             settings.locale = locale.clone();
             crate::i18n::init(locale.as_ref());
@@ -56,9 +61,9 @@ impl SettingKind for Locale {
                 .as_ref()
                 .map(|l| l.to_string())
                 .unwrap_or_else(|| crate::i18n::DEFAULT_LOCALE.to_string());
-            return Some(display);
+            return (Some(display), true);
         }
-        None
+        (None, false)
     }
 }
 
@@ -95,12 +100,17 @@ impl SettingKind for KeyboardLayout {
         }
     }
 
-    fn handle(&self, evt: &Event, settings: &mut Settings, _bus: &mut Bus) -> Option<String> {
+    fn handle(
+        &self,
+        evt: &Event,
+        settings: &mut Settings,
+        _bus: &mut Bus,
+    ) -> (Option<String>, bool) {
         if let Event::Select(EntryId::SetKeyboardLayout(ref layout)) = evt {
             settings.keyboard_layout = layout.clone();
-            return Some(layout.clone());
+            return (Some(layout.clone()), true);
         }
-        None
+        (None, false)
     }
 }
 
@@ -262,12 +272,17 @@ impl SettingKind for SleepCover {
         }
     }
 
-    fn handle(&self, evt: &Event, settings: &mut Settings, _bus: &mut Bus) -> Option<String> {
+    fn handle(
+        &self,
+        evt: &Event,
+        settings: &mut Settings,
+        _bus: &mut Bus,
+    ) -> (Option<String>, bool) {
         if let Event::Toggle(ToggleEvent::Setting(ToggleSettings::SleepCover)) = evt {
             settings.sleep_cover = !settings.sleep_cover;
-            return Some(settings.sleep_cover.to_string());
+            return (Some(settings.sleep_cover.to_string()), true);
         }
-        None
+        (None, false)
     }
 }
 
@@ -295,12 +310,17 @@ impl SettingKind for AutoShare {
         }
     }
 
-    fn handle(&self, evt: &Event, settings: &mut Settings, _bus: &mut Bus) -> Option<String> {
+    fn handle(
+        &self,
+        evt: &Event,
+        settings: &mut Settings,
+        _bus: &mut Bus,
+    ) -> (Option<String>, bool) {
         if let Event::Toggle(ToggleEvent::Setting(ToggleSettings::AutoShare)) = evt {
             settings.auto_share = !settings.auto_share;
-            return Some(settings.auto_share.to_string());
+            return (Some(settings.auto_share.to_string()), true);
         }
-        None
+        (None, false)
     }
 }
 
@@ -329,7 +349,12 @@ impl SettingKind for ButtonScheme {
         }
     }
 
-    fn handle(&self, evt: &Event, settings: &mut Settings, bus: &mut Bus) -> Option<String> {
+    fn handle(
+        &self,
+        evt: &Event,
+        settings: &mut Settings,
+        bus: &mut Bus,
+    ) -> (Option<String>, bool) {
         let new_scheme = match evt {
             Event::Toggle(ToggleEvent::Setting(ToggleSettings::ButtonScheme)) => {
                 match settings.button_scheme {
@@ -348,9 +373,9 @@ impl SettingKind for ButtonScheme {
         if let Some(scheme) = new_scheme {
             settings.button_scheme = scheme;
             bus.push_back(Event::Select(EntryId::SetButtonScheme(scheme)));
-            return Some(settings.button_scheme.to_i18n_string());
+            return (Some(settings.button_scheme.to_i18n_string()), true);
         }
-        None
+        (None, false)
     }
 }
 
@@ -461,8 +486,8 @@ mod tests {
 
             let result = setting.handle(&event, &mut settings, &mut bus);
 
-            assert!(result.is_some());
-            assert_eq!(result.unwrap(), "de-DE");
+            assert!(result.0.is_some());
+            assert_eq!(result.0.unwrap(), "de-DE");
             assert_eq!(settings.locale, locale);
         }
 
@@ -474,7 +499,7 @@ mod tests {
 
             let result = setting.handle(&Event::Select(EntryId::About), &mut settings, &mut bus);
 
-            assert!(result.is_none());
+            assert!(result.0.is_none());
         }
     }
 
@@ -490,8 +515,8 @@ mod tests {
 
             let result = setting.handle(&event, &mut settings, &mut bus);
 
-            assert!(result.is_some());
-            assert_eq!(result.unwrap(), "German");
+            assert!(result.0.is_some());
+            assert_eq!(result.0.unwrap(), "German");
             assert_eq!(settings.keyboard_layout, "German");
         }
 
@@ -503,7 +528,7 @@ mod tests {
 
             let result = setting.handle(&Event::Select(EntryId::About), &mut settings, &mut bus);
 
-            assert!(result.is_none());
+            assert!(result.0.is_none());
         }
     }
 
@@ -602,8 +627,8 @@ mod tests {
 
             let result = setting.handle(&event, &mut settings, &mut bus);
 
-            assert!(result.is_some());
-            assert_eq!(result.unwrap(), "false");
+            assert!(result.0.is_some());
+            assert_eq!(result.0.unwrap(), "false");
             assert!(!settings.sleep_cover);
         }
 
@@ -615,7 +640,7 @@ mod tests {
 
             let result = setting.handle(&Event::Select(EntryId::About), &mut settings, &mut bus);
 
-            assert!(result.is_none());
+            assert!(result.0.is_none());
         }
     }
 
@@ -634,8 +659,8 @@ mod tests {
 
             let result = setting.handle(&event, &mut settings, &mut bus);
 
-            assert!(result.is_some());
-            assert_eq!(result.unwrap(), "true");
+            assert!(result.0.is_some());
+            assert_eq!(result.0.unwrap(), "true");
             assert!(settings.auto_share);
         }
 
@@ -647,7 +672,7 @@ mod tests {
 
             let result = setting.handle(&Event::Select(EntryId::About), &mut settings, &mut bus);
 
-            assert!(result.is_none());
+            assert!(result.0.is_none());
         }
     }
 
@@ -669,7 +694,7 @@ mod tests {
 
             assert_eq!(settings.button_scheme, ButtonScheme::Inverted);
             assert_eq!(bus.len(), 1);
-            assert!(result.is_some());
+            assert!(result.0.is_some());
         }
 
         #[test]
@@ -686,7 +711,7 @@ mod tests {
 
             assert_eq!(settings.button_scheme, ButtonScheme::Natural);
             assert_eq!(bus.len(), 1);
-            assert!(result.is_some());
+            assert!(result.0.is_some());
         }
 
         #[test]
@@ -702,7 +727,7 @@ mod tests {
             let result = setting.handle(&event, &mut settings, &mut bus);
 
             assert_eq!(settings.button_scheme, ButtonScheme::Inverted);
-            assert!(result.is_some());
+            assert!(result.0.is_some());
         }
 
         #[test]
@@ -713,7 +738,7 @@ mod tests {
 
             let result = setting.handle(&Event::Select(EntryId::About), &mut settings, &mut bus);
 
-            assert!(result.is_none());
+            assert!(result.0.is_none());
         }
     }
 

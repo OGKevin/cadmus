@@ -532,6 +532,15 @@ pub enum Event {
     /// This event is sent from the version check thread when the remote version
     /// is newer than the current version, triggering the actual download to begin.
     StartStableReleaseDownload,
+    /// Result of a background dictionary install spawned by `CategoryEditor`.
+    ///
+    /// Sent from the download thread when the install completes (success or
+    /// failure). `CategoryEditor` handles this by rebuilding the rows list so
+    /// the newly-installed dictionary appears immediately.
+    DictionaryInstallComplete {
+        lang: String,
+        result: Result<(), String>,
+    },
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -774,6 +783,9 @@ pub enum EntryId {
     SetPenColor(Color),
     TogglePenDynamism,
     ReloadDictionaries,
+    DownloadDictionary(String),
+    RedownloadDictionary(String),
+    DeleteDictionary(String),
     New,
     Refresh,
     TakeScreenshot,

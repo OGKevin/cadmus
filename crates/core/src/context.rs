@@ -27,7 +27,7 @@ use tracing::error;
 use walkdir::WalkDir;
 
 const KEYBOARD_LAYOUTS_DIRNAME: &str = "keyboard-layouts";
-const DICTIONARIES_DIRNAME: &str = "dictionaries";
+pub(crate) const DICTIONARIES_DIRNAME: &str = "dictionaries";
 const INPUT_HISTORY_SIZE: usize = 32;
 
 pub struct Context {
@@ -148,6 +148,8 @@ impl Context {
 
     #[cfg_attr(feature = "otel", tracing::instrument(skip_all))]
     pub fn load_dictionaries(&mut self) {
+        self.dictionaries.clear();
+
         let glob = Glob::new("**/*.index").unwrap().compile_matcher();
 
         #[cfg(test)]

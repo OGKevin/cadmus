@@ -6,6 +6,12 @@ english = English
 
 startup-loading = Cadmus starting up…
 
+# Notifications
+
+notification-downloading-dictionary = Downloading dictionary for "{ $lang }"
+notification-downloading-dictionary-completed = Downloading dictionary for "{ $lang }" completed
+notification-not-online = WiFi must be connected for this action.
+
 # Common
 delete = Delete
 
@@ -78,3 +84,10 @@ settings-telemetry-log-level = Log Level
 settings-telemetry-otlp-endpoint = OTLP Endpoint
 settings-telemetry-enable-kernel-log = Enable Kernel Log
 settings-telemetry-enable-dbus-log = Enable D-Bus Log
+
+# Settings - Dictionaries
+settings-dictionaries-downloading = Downloading
+settings-dictionaries-re-download = Re-download
+settings-dictionaries-delete = {delete}
+settings-dictionaries-installed = Installed
+settings-dictionaries-download = Download

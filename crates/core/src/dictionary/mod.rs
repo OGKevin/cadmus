@@ -2,6 +2,8 @@
 //!
 //! This crate can read dictionaries in the dict format, as used by dictd. It supports both
 //! uncompressed and compressed dictionaries.
+//!
+//! It also provides support for downloading dictionaries from the monolingual project.
 
 mod dictreader;
 mod errors;
@@ -9,6 +11,10 @@ mod errors;
 pub mod indexing;
 #[cfg(not(feature = "bench"))]
 mod indexing;
+
+mod monolingual;
+
+pub(crate) use monolingual::MonolingualDictionaryService;
 
 use std::path::Path;
 

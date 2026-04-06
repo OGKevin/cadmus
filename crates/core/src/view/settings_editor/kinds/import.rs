@@ -31,12 +31,17 @@ impl SettingKind for ImportStartupTrigger {
         }
     }
 
-    fn handle(&self, evt: &Event, settings: &mut Settings, _bus: &mut Bus) -> Option<String> {
+    fn handle(
+        &self,
+        evt: &Event,
+        settings: &mut Settings,
+        _bus: &mut Bus,
+    ) -> (Option<String>, bool) {
         if let Event::Toggle(ToggleEvent::Setting(ToggleSettings::ImportStartupTrigger)) = evt {
             settings.import.startup_trigger = !settings.import.startup_trigger;
-            return Some(settings.import.startup_trigger.to_string());
+            return (Some(settings.import.startup_trigger.to_string()), true);
         }
-        None
+        (None, false)
     }
 }
 
@@ -64,12 +69,17 @@ impl SettingKind for ImportSyncMetadata {
         }
     }
 
-    fn handle(&self, evt: &Event, settings: &mut Settings, _bus: &mut Bus) -> Option<String> {
+    fn handle(
+        &self,
+        evt: &Event,
+        settings: &mut Settings,
+        _bus: &mut Bus,
+    ) -> (Option<String>, bool) {
         if let Event::Toggle(ToggleEvent::Setting(ToggleSettings::ImportSyncMetadata)) = evt {
             settings.import.sync_metadata = !settings.import.sync_metadata;
-            return Some(settings.import.sync_metadata.to_string());
+            return (Some(settings.import.sync_metadata.to_string()), true);
         }
-        None
+        (None, false)
     }
 }
 
@@ -94,7 +104,7 @@ mod tests {
 
             let result = setting.handle(&event, &mut settings, &mut bus);
 
-            assert!(result.is_some());
+            assert!(result.0.is_some());
             assert!(!settings.import.startup_trigger);
         }
 
@@ -108,7 +118,7 @@ mod tests {
 
             let result = setting.handle(&event, &mut settings, &mut bus);
 
-            assert!(result.is_some());
+            assert!(result.0.is_some());
             assert!(settings.import.startup_trigger);
         }
 
@@ -121,7 +131,7 @@ mod tests {
 
             let result = setting.handle(&Event::Select(EntryId::About), &mut settings, &mut bus);
 
-            assert!(result.is_none());
+            assert!(result.0.is_none());
         }
 
         #[test]
@@ -136,7 +146,7 @@ mod tests {
                 &mut bus,
             );
 
-            assert!(result.is_none());
+            assert!(result.0.is_none());
         }
     }
 
@@ -153,7 +163,7 @@ mod tests {
 
             let result = setting.handle(&event, &mut settings, &mut bus);
 
-            assert!(result.is_some());
+            assert!(result.0.is_some());
             assert!(!settings.import.sync_metadata);
         }
 
@@ -167,7 +177,7 @@ mod tests {
 
             let result = setting.handle(&event, &mut settings, &mut bus);
 
-            assert!(result.is_some());
+            assert!(result.0.is_some());
             assert!(settings.import.sync_metadata);
         }
 
@@ -180,7 +190,7 @@ mod tests {
 
             let result = setting.handle(&Event::Select(EntryId::About), &mut settings, &mut bus);
 
-            assert!(result.is_none());
+            assert!(result.0.is_none());
         }
 
         #[test]
@@ -195,7 +205,7 @@ mod tests {
                 &mut bus,
             );
 
-            assert!(result.is_none());
+            assert!(result.0.is_none());
         }
     }
 }

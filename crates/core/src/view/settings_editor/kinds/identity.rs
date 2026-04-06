@@ -40,4 +40,6 @@ pub enum SettingIdentity {
     EnableKernLog,
     #[cfg(all(feature = "test", feature = "kobo"))]
     EnableDbusLog,
+    /// Identity for a monolingual dictionary row, keyed by ISO 639-1 language code.
+    DictionaryInfo(String),
 }
