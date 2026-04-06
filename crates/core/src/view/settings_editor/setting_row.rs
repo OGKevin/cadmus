@@ -119,8 +119,6 @@ mod tests {
     use crate::gesture::GestureEvent;
     use crate::settings::LibrarySettings;
     use crate::view::settings_editor::kinds::library::LibraryInfo;
-    use crate::view::EntryId;
-    use crate::view::EntryKind;
     use std::collections::VecDeque;
     use std::path::PathBuf;
     use std::sync::mpsc::channel;

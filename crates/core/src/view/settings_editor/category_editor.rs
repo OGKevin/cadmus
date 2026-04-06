@@ -3,7 +3,6 @@ use crate::context::Context;
 use crate::device::CURRENT_DEVICE;
 use crate::framebuffer::{Framebuffer, UpdateMode};
 use crate::geom::{halves, Rectangle};
-use crate::gesture::GestureEvent;
 use crate::settings::{LibrarySettings, Settings};
 use crate::unit::scale_by_dpi;
 use crate::view::common::locate_by_id;
@@ -516,12 +515,12 @@ impl CategoryEditor {
 }
 
 impl View for CategoryEditor {
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, hub, bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, hub, _bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
         hub: &Hub,
-        bus: &mut Bus,
+        _bus: &mut Bus,
         rq: &mut RenderQueue,
         context: &mut Context,
     ) -> bool {
@@ -591,6 +590,7 @@ mod tests {
     use super::*;
     use crate::context::test_helpers::create_test_context;
     use crate::geom::Point;
+    use crate::gesture::GestureEvent;
     use crate::settings::Settings;
     use std::collections::VecDeque;
     use std::sync::mpsc::channel;
