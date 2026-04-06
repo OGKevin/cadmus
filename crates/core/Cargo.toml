@@ -91,7 +91,7 @@ futures-util = { version = "0.3", optional = true }
 procfs = { version = "0.18", optional = true }
 
 [dev-dependencies]
-criterion = { version = "0.5", features = ["html_reports"] }
+criterion = { version = "0.8", features = ["html_reports"] }
 tempfile = "3.14"
 cadmus-core = { path = ".", features = ["bench"] } 
 
