@@ -797,7 +797,7 @@ pub fn sort_author(i1: &Info, i2: &Info) -> Ordering {
 }
 
 pub fn sort_title(i1: &Info, i2: &Info) -> Ordering {
-    i1.alphabetic_title().cmp(i2.alphabetic_title())
+    natural_cmp(i1.alphabetic_title(), i2.alphabetic_title())
 }
 
 pub fn sort_status(i1: &Info, i2: &Info) -> Ordering {
@@ -853,11 +853,123 @@ pub fn sort_series(i1: &Info, i2: &Info) -> Ordering {
 }
 
 pub fn sort_filename(i1: &Info, i2: &Info) -> Ordering {
-    i1.file.path.file_name().cmp(&i2.file.path.file_name())
+    let n1 = i1.file.path.file_name().map(OsStr::to_string_lossy);
+    let n2 = i2.file.path.file_name().map(OsStr::to_string_lossy);
+    match (n1, n2) {
+        (Some(a), Some(b)) => natural_cmp(&a, &b),
+        (a, b) => a.map(|s| s.into_owned()).cmp(&b.map(|s| s.into_owned())),
+    }
 }
 
 pub fn sort_filepath(i1: &Info, i2: &Info) -> Ordering {
-    i1.file.path.cmp(&i2.file.path)
+    natural_cmp(
+        &i1.file.path.to_string_lossy(),
+        &i2.file.path.to_string_lossy(),
+    )
+}
+
+/// Compares two strings using natural sort order so that embedded numbers sort
+/// by value rather than by their string representation ("9" < "10" < "100").
+///
+/// Each string is split into alternating runs of numeric and non-numeric
+/// characters. A numeric token is an integer optionally followed by a decimal
+/// part (`.<digits>`), so `"4.5"` is treated as a single number rather than
+/// the three segments `4`, `.`, `5`. Numeric tokens are compared as `f64`
+/// values, which means leading zeros are ignored ("01" == "1") and fractional
+/// parts are respected ("4" < "4.5" < "5"). Non-numeric runs are compared
+/// lexicographically. When one run is numeric and the other is text, the
+/// numeric segment sorts first.
+///
+/// # Examples
+///
+/// ```ignore
+/// // This example uses private API; doc tests cannot access non-public items.
+/// use std::cmp::Ordering;
+///
+/// // Numeric runs compare by value, not string length.
+/// assert_eq!(natural_cmp("9", "10"), Ordering::Less);
+/// assert_eq!(natural_cmp("100", "99"), Ordering::Greater);
+///
+/// // Fractional numbers are supported.
+/// assert_eq!(natural_cmp("Vol 4", "Vol 4.5"), Ordering::Less);
+/// assert_eq!(natural_cmp("Vol 4.5", "Vol 5"), Ordering::Less);
+///
+/// // Leading zeros are ignored: "01" and "1" are numerically equal.
+/// assert_eq!(natural_cmp("01", "1"), Ordering::Equal);
+///
+/// // Mixed strings compare segment by segment.
+/// assert_eq!(natural_cmp("Chapter 9", "Chapter 10"), Ordering::Less);
+/// ```
+#[cfg_attr(feature = "otel", tracing::instrument(ret(level=tracing::Level::TRACE)))]
+fn natural_cmp(a: &str, b: &str) -> Ordering {
+    let mut a_rest = a;
+    let mut b_rest = b;
+
+    loop {
+        if a_rest.is_empty() && b_rest.is_empty() {
+            return Ordering::Equal;
+        }
+        if a_rest.is_empty() {
+            return Ordering::Less;
+        }
+        if b_rest.is_empty() {
+            return Ordering::Greater;
+        }
+
+        let a_digit = a_rest.starts_with(|c: char| c.is_ascii_digit());
+        let b_digit = b_rest.starts_with(|c: char| c.is_ascii_digit());
+
+        match (a_digit, b_digit) {
+            (true, true) => {
+                let a_num_len = numeric_token_len(a_rest);
+                let b_num_len = numeric_token_len(b_rest);
+                let a_num: f64 = a_rest[..a_num_len].parse().unwrap_or(f64::MAX);
+                let b_num: f64 = b_rest[..b_num_len].parse().unwrap_or(f64::MAX);
+                let ord = a_num.partial_cmp(&b_num).unwrap_or(Ordering::Equal);
+                if ord != Ordering::Equal {
+                    return ord;
+                }
+                a_rest = &a_rest[a_num_len..];
+                b_rest = &b_rest[b_num_len..];
+            }
+            (false, false) => {
+                let a_text_len = a_rest
+                    .find(|c: char| c.is_ascii_digit())
+                    .unwrap_or(a_rest.len());
+                let b_text_len = b_rest
+                    .find(|c: char| c.is_ascii_digit())
+                    .unwrap_or(b_rest.len());
+                let ord = a_rest[..a_text_len].cmp(&b_rest[..b_text_len]);
+                if ord != Ordering::Equal {
+                    return ord;
+                }
+                a_rest = &a_rest[a_text_len..];
+                b_rest = &b_rest[b_text_len..];
+            }
+            (true, false) => return Ordering::Less,
+            (false, true) => return Ordering::Greater,
+        }
+    }
+}
+
+/// Returns the byte length of a numeric token starting at the beginning of
+/// `s`. A numeric token is one or more ASCII digits optionally followed by a
+/// single `'.'` and one or more additional ASCII digits (e.g. `"4"`, `"4.5"`).
+/// A trailing dot with no digits after it (e.g. `"4."`) is not included.
+fn numeric_token_len(s: &str) -> usize {
+    let int_len = s.find(|c: char| !c.is_ascii_digit()).unwrap_or(s.len());
+
+    let rest = &s[int_len..];
+    if let Some(after_dot) = rest.strip_prefix('.') {
+        let frac_len = after_dot
+            .find(|c: char| !c.is_ascii_digit())
+            .unwrap_or(after_dot.len());
+        if frac_len > 0 {
+            return int_len + 1 + frac_len;
+        }
+    }
+
+    int_len
 }
 
 lazy_static! {
@@ -1053,4 +1165,149 @@ pub fn file_name_from_info(info: &Info) -> String {
         .replace('?', "")
         .replace('!', "")
         .replace(':', "")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn make_info(title: &str, filename: &str) -> Info {
+        Info {
+            title: title.to_string(),
+            file: FileInfo {
+                path: PathBuf::from(filename),
+                absolute_path: PathBuf::new(),
+                kind: "epub".to_string(),
+                size: 0,
+            },
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn natural_cmp_pure_numbers() {
+        assert_eq!(natural_cmp("9", "10"), Ordering::Less);
+        assert_eq!(natural_cmp("10", "9"), Ordering::Greater);
+        assert_eq!(natural_cmp("100", "99"), Ordering::Greater);
+        assert_eq!(natural_cmp("10", "10"), Ordering::Equal);
+    }
+
+    #[test]
+    fn natural_cmp_leading_zeros_are_numerically_equal() {
+        assert_eq!(natural_cmp("01", "1"), Ordering::Equal);
+        assert_eq!(natural_cmp("001", "1"), Ordering::Equal);
+        assert_eq!(natural_cmp("007", "7"), Ordering::Equal);
+    }
+
+    #[test]
+    fn natural_cmp_mixed_strings() {
+        assert_eq!(natural_cmp("Chapter 9", "Chapter 10"), Ordering::Less);
+        assert_eq!(natural_cmp("Chapter 10", "Chapter 9"), Ordering::Greater);
+        assert_eq!(
+            natural_cmp("Vol 2 Chapter 9", "Vol 2 Chapter 10"),
+            Ordering::Less
+        );
+    }
+
+    #[test]
+    fn natural_cmp_pure_text() {
+        assert_eq!(natural_cmp("abc", "abd"), Ordering::Less);
+        assert_eq!(natural_cmp("abd", "abc"), Ordering::Greater);
+        assert_eq!(natural_cmp("abc", "abc"), Ordering::Equal);
+    }
+
+    #[test]
+    fn natural_cmp_empty_strings() {
+        assert_eq!(natural_cmp("", ""), Ordering::Equal);
+        assert_eq!(natural_cmp("", "a"), Ordering::Less);
+        assert_eq!(natural_cmp("a", ""), Ordering::Greater);
+    }
+
+    #[test]
+    fn natural_cmp_fractional_numbers() {
+        assert_eq!(natural_cmp("Vol 4", "Vol 4.5"), Ordering::Less);
+        assert_eq!(natural_cmp("Vol 4.5", "Vol 5"), Ordering::Less);
+        assert_eq!(natural_cmp("Vol 4.5", "Vol 4.5"), Ordering::Equal);
+        // 4.10 parses as 4.1 which is less than 4.9
+        assert_eq!(natural_cmp("Vol 4.10", "Vol 4.9"), Ordering::Less);
+    }
+
+    #[test]
+    fn natural_cmp_trailing_dot_not_included_in_number() {
+        // "4." — the dot has no digits after it, so it is not part of the number token.
+        // "4." therefore sorts the same as "4" for the numeric part, then "." > "" text-wise.
+        assert_eq!(natural_cmp("4.", "4"), Ordering::Greater);
+    }
+
+    #[test]
+    fn natural_cmp_digit_before_text_segment() {
+        assert_eq!(natural_cmp("1abc", "abc"), Ordering::Less);
+        assert_eq!(natural_cmp("abc", "1abc"), Ordering::Greater);
+    }
+
+    #[test]
+    fn natural_cmp_three_digit_before_two_digit() {
+        let mut items = ["100", "9", "10", "1", "99", "01"];
+        items.sort_by(|a, b| natural_cmp(a, b));
+        // "01" and "1" are numerically equal so their relative order is
+        // unspecified; assert only that the numeric ordering is correct.
+        let without_leading_zero: Vec<_> = items.iter().filter(|&&s| s != "01").copied().collect();
+        assert_eq!(without_leading_zero, vec!["1", "9", "10", "99", "100"]);
+        assert!(items.contains(&"01"));
+    }
+
+    #[test]
+    fn sort_filename_numerical_order() {
+        let i9 = make_info("", "9 - Title.epub");
+        let i10 = make_info("", "10 - Title.epub");
+        let i100 = make_info("", "100 - Title.epub");
+        assert_eq!(sort_filename(&i9, &i10), Ordering::Less);
+        assert_eq!(sort_filename(&i100, &i10), Ordering::Greater);
+        assert_eq!(sort_filename(&i10, &i10), Ordering::Equal);
+    }
+
+    #[test]
+    fn sort_filename_mixed_names() {
+        let i1 = make_info("", "Chapter 9.epub");
+        let i2 = make_info("", "Chapter 10.epub");
+        assert_eq!(sort_filename(&i1, &i2), Ordering::Less);
+    }
+
+    #[test]
+    fn sort_filepath_numerical_order() {
+        let i1 = make_info("", "Library/Vol 2/Chapter 9.epub");
+        let i2 = make_info("", "Library/Vol 2/Chapter 10.epub");
+        assert_eq!(sort_filepath(&i1, &i2), Ordering::Less);
+    }
+
+    #[test]
+    fn sort_filepath_directory_numerical_order() {
+        let i1 = make_info("", "Vol 9/book.epub");
+        let i2 = make_info("", "Vol 10/book.epub");
+        assert_eq!(sort_filepath(&i1, &i2), Ordering::Less);
+    }
+
+    #[test]
+    fn sort_title_strips_articles_then_natural_sorts() {
+        let i1 = make_info("The 9th Chapter", "a.epub");
+        let i2 = make_info("The 10th Chapter", "b.epub");
+        // After stripping "The ", compares "9th Chapter" vs "10th Chapter" — 9 < 10
+        assert_eq!(sort_title(&i1, &i2), Ordering::Less);
+    }
+
+    #[test]
+    fn sort_title_numbered_titles() {
+        let i1984 = make_info("1984", "a.epub");
+        let i2001 = make_info("2001: A Space Odyssey", "b.epub");
+        assert_eq!(sort_title(&i1984, &i2001), Ordering::Less);
+    }
+
+    #[test]
+    fn sort_title_plain_text_unchanged() {
+        let ia = make_info("Apple", "a.epub");
+        let ib = make_info("Banana", "b.epub");
+        assert_eq!(sort_title(&ia, &ib), Ordering::Less);
+        assert_eq!(sort_title(&ib, &ia), Ordering::Greater);
+    }
 }
