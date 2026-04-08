@@ -20,6 +20,7 @@
 //! | [`fmt`](tasks::fmt) | Check (or apply) `rustfmt` formatting |
 //! | [`clippy`](tasks::clippy) | Run `cargo clippy` across the feature matrix |
 //! | [`test`](tasks::test) | Run `cargo test` across the feature matrix |
+//! | [`bench`](tasks::bench) | Run benchmarks with the `bench` feature enabled |
 //! | [`build-kobo`](tasks::build_kobo) | Cross-compile for Kobo (ARM, Linux only) |
 //! | [`setup-native`](tasks::setup_native) | Build MuPDF and the C wrapper for native dev |
 //! | [`run-emulator`](tasks::run_emulator) | Run the Cadmus emulator (ensures prereqs are built) |
@@ -44,9 +45,10 @@ pub use anyhow::Result;
 pub use clap::Parser;
 
 pub use tasks::{
-    build_kobo::BuildKoboArgs, bundle::BundleArgs, ci::CiArgs, clippy::ClippyArgs, dist::DistArgs,
-    docs::DocsArgs, fmt::FmtArgs, install_importer::InstallImporterArgs,
-    run_emulator::RunEmulatorArgs, setup_native::SetupNativeArgs, test::TestArgs,
+    bench::BenchArgs, build_kobo::BuildKoboArgs, bundle::BundleArgs, ci::CiArgs,
+    clippy::ClippyArgs, dist::DistArgs, docs::DocsArgs, fmt::FmtArgs,
+    install_importer::InstallImporterArgs, run_emulator::RunEmulatorArgs,
+    setup_native::SetupNativeArgs, test::TestArgs,
 };
 
 /// Cadmus build automation.
@@ -67,6 +69,8 @@ pub enum Command {
     Clippy(ClippyArgs),
     /// Run cargo test across the full feature matrix.
     Test(TestArgs),
+    /// Run benchmarks with the bench feature enabled.
+    Bench(BenchArgs),
     /// Cross-compile Cadmus for Kobo devices (Linux only).
     BuildKobo(BuildKoboArgs),
     /// Build MuPDF and the C wrapper for native development.
@@ -98,6 +102,7 @@ pub fn run() -> Result<()> {
         Command::Fmt(args) => tasks::fmt::run(args),
         Command::Clippy(args) => tasks::clippy::run(args),
         Command::Test(args) => tasks::test::run(args),
+        Command::Bench(args) => tasks::bench::run(args),
         Command::BuildKobo(args) => tasks::build_kobo::run(args),
         Command::SetupNative(args) => tasks::setup_native::run(args),
         Command::RunEmulator(args) => tasks::run_emulator::run(args),

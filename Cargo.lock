@@ -327,7 +327,6 @@ dependencies = [
  "arc-swap",
  "bitflags 2.11.0",
  "byteorder",
- "cadmus-core",
  "chrono",
  "criterion",
  "ctor",

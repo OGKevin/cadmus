@@ -3,6 +3,7 @@
 //! Each sub-module corresponds to one top-level subcommand.  Shared utilities
 //! live in [`util`].
 
+pub mod bench;
 pub mod build_kobo;
 pub mod bundle;
 pub mod ci;

@@ -1,9 +1,14 @@
+#[cfg(feature = "bench")]
 use std::time::Duration;
 
+#[cfg(feature = "bench")]
 use cadmus_core::dictionary::indexing::{normalize, Entry};
+#[cfg(feature = "bench")]
 use cadmus_core::dictionary::Metadata;
+#[cfg(feature = "bench")]
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 
+#[cfg(feature = "bench")]
 fn make_sorted_entries(n: usize) -> Vec<Entry> {
     (0..n)
         .map(|i| Entry {
@@ -15,12 +20,14 @@ fn make_sorted_entries(n: usize) -> Vec<Entry> {
         .collect()
 }
 
+#[cfg(feature = "bench")]
 fn make_unsorted_entries(n: usize) -> Vec<Entry> {
     let mut entries = make_sorted_entries(n);
     entries.reverse();
     entries
 }
 
+#[cfg(feature = "bench")]
 fn make_entries_needing_transform(n: usize, sorted: bool) -> Vec<Entry> {
     let mut entries: Vec<Entry> = (0..n)
         .map(|i| Entry {
@@ -38,6 +45,7 @@ fn make_entries_needing_transform(n: usize, sorted: bool) -> Vec<Entry> {
     entries
 }
 
+#[cfg(feature = "bench")]
 fn bench_normalize(c: &mut Criterion) {
     let metadata_no_transform = Metadata {
         all_chars: true,
@@ -84,9 +92,14 @@ fn bench_normalize(c: &mut Criterion) {
     group.finish();
 }
 
+#[cfg(feature = "bench")]
 criterion_group!(
     name = benches;
     config = Criterion::default().measurement_time(Duration::from_secs(10)).sample_size(10);
     targets = bench_normalize
 );
+#[cfg(feature = "bench")]
 criterion_main!(benches);
+
+#[cfg(not(feature = "bench"))]
+fn main() {}
