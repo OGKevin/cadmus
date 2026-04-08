@@ -252,7 +252,9 @@ fn build_tracer_provider(endpoint: &str, resource: Resource) -> Result<SdkTracer
     let processor = BatchSpanProcessor::builder(exporter)
         .with_batch_config(
             opentelemetry_sdk::trace::BatchConfigBuilder::default()
-                .with_scheduled_delay(Duration::from_millis(100))
+                .with_max_queue_size(32768)
+                .with_max_export_batch_size(1024)
+                .with_scheduled_delay(Duration::from_millis(500))
                 .build(),
         )
         .build();

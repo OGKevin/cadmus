@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE reading_states SET fingerprint = ? WHERE fingerprint = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "5900b60857582a7ed69018147b4afa143c2b3d025640ff12c64b913a954e8fb7"
+}

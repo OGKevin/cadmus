@@ -242,7 +242,7 @@ mod tests {
 
     #[test]
     fn test_info_to_book_row_roundtrip() {
-        let fp = Fp::from_str("0000000000000001").unwrap();
+        let fp = Fp::from_u64(1);
         let info = Info {
             title: "Test Book".to_string(),
             author: "Test Author".to_string(),
@@ -257,7 +257,7 @@ mod tests {
 
         let row = info_to_book_row(fp, &info);
 
-        assert_eq!(row.fingerprint, "0000000000000001");
+        assert_eq!(row.fingerprint, fp.to_string());
         assert_eq!(row.title, "Test Book");
         assert_eq!(row.file_path, "/tmp/test.pdf");
         assert_eq!(row.absolute_path, "/mnt/onboard/tmp/test.pdf");

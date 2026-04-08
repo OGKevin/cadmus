@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        INSERT OR IGNORE INTO reading_states (\n            fingerprint, opened, current_page, pages_count, finished, dithered,\n            zoom_mode, scroll_mode, page_offset_x, page_offset_y, rotation,\n            cropping_margins_json, margin_width, screen_margin_width,\n            font_family, font_size, text_align, line_height,\n            contrast_exponent, contrast_gray,\n            page_names_json, bookmarks_json, annotations_json\n        )\n        SELECT\n            ?, opened, current_page, pages_count, finished, dithered,\n            zoom_mode, scroll_mode, page_offset_x, page_offset_y, rotation,\n            cropping_margins_json, margin_width, screen_margin_width,\n            font_family, font_size, text_align, line_height,\n            contrast_exponent, contrast_gray,\n            page_names_json, bookmarks_json, annotations_json\n        FROM reading_states\n        WHERE fingerprint = ?\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "be0ef2e2d0e4d3bd55a67fc7a977c6a8c23df80191707dbba61623f25e1042b4"
+}

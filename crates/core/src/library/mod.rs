@@ -13,15 +13,13 @@ use anyhow::{bail, format_err, Error};
 use chrono::Local;
 use fxhash::FxHashMap;
 use std::collections::BTreeSet;
-use std::fs::{self, File};
+use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime};
 use tracing::{debug, error, info};
 use walkdir::WalkDir;
 
 const METADATA_FILENAME: &str = ".metadata.json";
-const FAT32_EPOCH_FILENAME: &str = ".fat32-epoch";
 const READING_STATES_DIRNAME: &str = ".reading-states";
 #[cfg(not(feature = "test"))]
 const THUMBNAIL_PREVIEWS_DIRNAME: &str = ".thumbnail-previews";
@@ -34,14 +32,6 @@ enum PendingRelocation {
         old_fp: Fp,
         file_size: u64,
     },
-    /// Fingerprint drifted by ±1 FAT32 epoch second.
-    /// The book entry is migrated to the new fingerprint and path.
-    EpochDrift {
-        new_fp: Fp,
-        old_fp: Fp,
-        new_relat: PathBuf,
-        new_abs: PathBuf,
-    },
 }
 
 impl PendingRelocation {
@@ -49,7 +39,6 @@ impl PendingRelocation {
     fn old_fp(&self) -> Fp {
         match self {
             PendingRelocation::FingerprintChanged { old_fp, .. } => *old_fp,
-            PendingRelocation::EpochDrift { old_fp, .. } => *old_fp,
         }
     }
 }
@@ -64,7 +53,6 @@ pub struct Library {
     pub home: PathBuf,
     pub db: LibraryDb,
     pub library_id: i64,
-    pub fat32_epoch: SystemTime,
     pub sort_method: SortMethod,
     pub reverse_order: bool,
     pub show_hidden: bool,
@@ -97,21 +85,12 @@ impl Library {
             id
         };
 
-        let path = home.as_ref().join(FAT32_EPOCH_FILENAME);
-        if !path.exists() {
-            let file = File::create(&path)?;
-            file.set_modified(std::time::UNIX_EPOCH + Duration::from_secs(315_532_800))?;
-        }
-
-        let fat32_epoch = path.metadata()?.modified()?;
-
         let sort_method = SortMethod::Opened;
 
         Ok(Library {
             home: home.as_ref().to_path_buf(),
             db,
             library_id,
-            fat32_epoch,
             sort_method,
             reverse_order: sort_method.reverse_order(),
             show_hidden: false,
@@ -350,15 +329,30 @@ impl Library {
         let mut books_to_delete: Vec<Fp> = Vec::new();
         let mut pending_relocations: Vec<PendingRelocation> = Vec::new();
         let mut thumbnails_to_delete: Vec<Fp> = Vec::new();
-        let mut thumbnails_to_move: Vec<(Fp, Fp)> = Vec::new();
 
         #[cfg(feature = "tracing")]
         let _walk_span = tracing::info_span!("walk_directory").entered();
 
+        #[cfg(feature = "emulator")]
+        const IGNORED_TOP_LEVEL_DIRS: &[&str] = &["target", "node_modules", "thirdparty"];
+
         let walk_entries: Vec<_> = WalkDir::new(&self.home)
             .min_depth(1)
             .into_iter()
-            .filter_entry(|e| !e.is_hidden())
+            .filter_entry(|e| {
+                if e.is_hidden() {
+                    return false;
+                }
+                #[cfg(feature = "emulator")]
+                if e.depth() == 1 && e.file_type().is_dir() {
+                    if let Some(name) = e.file_name().to_str() {
+                        if IGNORED_TOP_LEVEL_DIRS.contains(&name) {
+                            return false;
+                        }
+                    }
+                }
+                true
+            })
             .filter_map(|e| e.ok())
             .filter(|e| !e.file_type().is_dir())
             .collect();
@@ -370,19 +364,30 @@ impl Library {
         let _process_span =
             tracing::info_span!("process_entries", count = walk_entries.len()).entered();
 
-        for entry in walk_entries {
+        for entry in &walk_entries {
+            #[cfg(feature = "tracing")]
+            let _span =
+                tracing::info_span!(parent: &_process_span, "process_entry", entry = entry.path().to_str())
+                    .entered();
+
             let path = entry.path();
             let relat = path.strip_prefix(&self.home).unwrap_or(path);
-            let md = entry.metadata().unwrap();
-            let fp = md.fingerprint(self.fat32_epoch).unwrap();
+
+            let fp = match path.fingerprint() {
+                Ok(fp) => fp,
+                Err(e) => {
+                    error!(path = ?path, error = %e, "failed to compute fingerprint, skipping");
+                    continue;
+                }
+            };
 
             if handles_by_fp.contains_key(&fp) {
                 if relat != handles_by_fp[&fp] {
                     debug!(
-                        "Update path for {}: {} → {}.",
-                        fp,
-                        handles_by_fp[&fp].display(),
-                        relat.display()
+                        fp = %fp,
+                        old_path = %handles_by_fp[&fp].display(),
+                        new_path = %relat.display(),
+                        "updated book path"
                     );
                     let old_path = handles_by_fp.remove(&fp).unwrap();
                     handles_by_path.remove(&old_path);
@@ -390,97 +395,56 @@ impl Library {
                     handles_by_path.insert(relat.to_path_buf(), fp);
                     path_updates.push((fp, relat.to_path_buf(), path.to_path_buf()));
                 }
-            } else if let Some(fp2) = handles_by_path.get(relat).cloned() {
+                continue;
+            }
+
+            if let Some(old_fp) = handles_by_path.get(relat).cloned() {
                 debug!(
-                    "Update fingerprint for {}: {} → {}.",
-                    relat.display(),
-                    fp2,
-                    fp
+                    path = %relat.display(),
+                    old_fp = %old_fp,
+                    new_fp = %fp,
+                    "updated book fingerprint"
                 );
 
-                handles_by_fp.remove(&fp2);
+                handles_by_fp.remove(&old_fp);
                 handles_by_path.remove(relat);
                 handles_by_fp.insert(fp, relat.to_path_buf());
                 handles_by_path.insert(relat.to_path_buf(), fp);
-                books_to_delete.push(fp2);
+                books_to_delete.push(old_fp);
 
                 pending_relocations.push(PendingRelocation::FingerprintChanged {
                     new_fp: fp,
-                    old_fp: fp2,
-                    file_size: md.len(),
+                    old_fp,
+                    file_size: entry.metadata().map(|m| m.len()).unwrap_or(0),
                 });
 
-                thumbnails_to_delete.push(fp2);
-            } else {
-                let fp1 = self
-                    .fat32_epoch
-                    .checked_sub(Duration::from_secs(1))
-                    .and_then(|epoch| md.fingerprint(epoch).ok())
-                    .unwrap_or(fp);
-                let fp2 = self
-                    .fat32_epoch
-                    .checked_add(Duration::from_secs(1))
-                    .and_then(|epoch| md.fingerprint(epoch).ok())
-                    .unwrap_or(fp);
+                thumbnails_to_delete.push(old_fp);
+                continue;
+            }
 
-                let nfp = if fp1 != fp && handles_by_fp.contains_key(&fp1) {
-                    Some(fp1)
-                } else if fp2 != fp && handles_by_fp.contains_key(&fp2) {
-                    Some(fp2)
-                } else {
-                    None
-                };
-
-                if let Some(nfp) = nfp {
-                    debug!(
-                        "Update fingerprint for {}: {} → {}.",
-                        handles_by_fp
-                            .get(&nfp)
-                            .map_or_else(|| relat.display(), |p| p.display()),
-                        nfp,
-                        fp
-                    );
-
-                    let old_path = handles_by_fp.remove(&nfp).unwrap_or_default();
-                    handles_by_path.remove(&old_path);
-                    handles_by_fp.insert(fp, relat.to_path_buf());
-                    handles_by_path.insert(relat.to_path_buf(), fp);
-                    books_to_delete.push(nfp);
-
-                    pending_relocations.push(PendingRelocation::EpochDrift {
-                        new_fp: fp,
-                        old_fp: nfp,
-                        new_relat: relat.to_path_buf(),
-                        new_abs: path.to_path_buf(),
-                    });
-
-                    thumbnails_to_move.push((nfp, fp));
-                } else {
-                    let kind = file_kind(path).unwrap_or_default();
-                    if !settings.allowed_kinds.contains(&kind) {
-                        continue;
-                    }
-                    info!("Add new entry: {}, {}.", fp, relat.display());
-                    let size = md.len();
-                    let file = FileInfo {
-                        path: relat.to_path_buf(),
-                        absolute_path: path.to_path_buf(),
-                        kind,
-                        size,
-                    };
-                    let mut info = Info {
-                        file,
-                        ..Default::default()
-                    };
-
-                    if settings.metadata_kinds.contains(&info.file.kind) {
-                        extract_metadata_from_document(&self.home, &mut info);
-                    }
-
-                    handles_by_fp.insert(fp, relat.to_path_buf());
-                    handles_by_path.insert(relat.to_path_buf(), fp);
-                    books_to_insert.push((fp, info));
+            {
+                let kind = file_kind(path).unwrap_or_default();
+                if !settings.allowed_kinds.contains(&kind) {
+                    continue;
                 }
+                info!(fp = %fp, path = %relat.display(), "added new entry");
+                let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
+                let file = FileInfo {
+                    path: relat.to_path_buf(),
+                    absolute_path: path.to_path_buf(),
+                    kind,
+                    size,
+                };
+                let mut info = Info {
+                    file,
+                    ..Default::default()
+                };
+                if settings.metadata_kinds.contains(&info.file.kind) {
+                    extract_metadata_from_document(&self.home, &mut info);
+                }
+                handles_by_fp.insert(fp, relat.to_path_buf());
+                handles_by_path.insert(relat.to_path_buf(), fp);
+                books_to_insert.push((fp, info));
             }
         }
 
@@ -534,36 +498,8 @@ impl Library {
                             books_to_insert.push((new_fp, info));
                         }
                     }
-                    PendingRelocation::EpochDrift {
-                        new_fp,
-                        old_fp,
-                        new_relat,
-                        new_abs,
-                    } => {
-                        if let Some(mut info) = fetched.remove(&old_fp) {
-                            if new_relat != info.file.path {
-                                debug!(
-                                    "Update path for {}: {} → {}.",
-                                    new_fp,
-                                    info.file.path.display(),
-                                    new_relat.display()
-                                );
-                                info.file.path = new_relat;
-                                info.file.absolute_path = new_abs;
-                            }
-                            books_to_insert.push((new_fp, info));
-                        }
-                    }
                 }
             }
-        }
-
-        if let Err(e) = self.db.batch_move_thumbnails(&thumbnails_to_move) {
-            error!(
-                error = %e,
-                count = thumbnails_to_move.len(),
-                "batch move thumbnails failed"
-            );
         }
 
         if let Err(e) = self.db.batch_delete_thumbnails(&thumbnails_to_delete) {
@@ -620,8 +556,13 @@ impl Library {
 
     pub fn add_document(&mut self, info: Info) {
         let path = self.home.join(&info.file.path);
-        let md = path.metadata().unwrap();
-        let fp = md.fingerprint(self.fat32_epoch).unwrap();
+        let fp = match path.fingerprint() {
+            Ok(fp) => fp,
+            Err(e) => {
+                error!(path = %path.display(), error = %e, "failed to fingerprint document");
+                return;
+            }
+        };
 
         if let Err(e) = self.db.insert_book(self.library_id, fp, &info) {
             error!(fp = %fp, error = %e, "failed to insert book into database");
@@ -639,16 +580,7 @@ impl Library {
         let src = self.home.join(path.as_ref());
 
         let fp = self
-            .db
-            .get_book_by_path(self.library_id, path.as_ref())
-            .ok()
-            .flatten()
-            .and_then(|info| info.fp)
-            .or_else(|| {
-                src.metadata()
-                    .ok()
-                    .and_then(|md| md.fingerprint(self.fat32_epoch).ok())
-            })
+            .resolve_fingerprint(path.as_ref())
             .ok_or_else(|| format_err!("can't get fingerprint of {}", path.as_ref().display()))?;
 
         let mut dest = src.clone();
@@ -679,17 +611,7 @@ impl Library {
         let full_path = self.home.join(path.as_ref());
 
         let fp = self
-            .db
-            .get_book_by_path(self.library_id, path.as_ref())
-            .ok()
-            .flatten()
-            .and_then(|info| info.fp)
-            .or_else(|| {
-                full_path
-                    .metadata()
-                    .ok()
-                    .and_then(|md| md.fingerprint(self.fat32_epoch).ok())
-            })
+            .resolve_fingerprint(path.as_ref())
             .ok_or_else(|| format_err!("can't get fingerprint of {}", path.as_ref().display()))?;
 
         if full_path.exists() {
@@ -723,14 +645,8 @@ impl Library {
             ));
         }
 
-        let md = src.metadata()?;
         let fp = self
-            .db
-            .get_book_by_path(self.library_id, path.as_ref())
-            .ok()
-            .flatten()
-            .and_then(|info| info.fp)
-            .or_else(|| md.fingerprint(self.fat32_epoch).ok())
+            .resolve_fingerprint(path.as_ref())
             .ok_or_else(|| format_err!("can't get fingerprint of {}", path.as_ref().display()))?;
 
         let mut dest = other.home.join(path.as_ref());
@@ -749,10 +665,6 @@ impl Library {
         }
 
         fs::copy(&src, &dest)?;
-        {
-            let fdest = File::open(&dest)?;
-            fdest.set_modified(md.modified()?)?;
-        }
 
         if let Ok(Some(thumbnail_data)) = self.db.get_thumbnail(fp) {
             other.db.save_thumbnail(fp, &thumbnail_data).ok();
@@ -787,14 +699,8 @@ impl Library {
             ));
         }
 
-        let md = src.metadata()?;
         let fp = self
-            .db
-            .get_book_by_path(self.library_id, path.as_ref())
-            .ok()
-            .flatten()
-            .and_then(|info| info.fp)
-            .or_else(|| md.fingerprint(self.fat32_epoch).ok())
+            .resolve_fingerprint(path.as_ref())
             .ok_or_else(|| format_err!("can't get fingerprint of {}", path.as_ref().display()))?;
 
         let src = self.home.join(path.as_ref());
@@ -884,12 +790,9 @@ impl Library {
     }
 
     pub fn sync_reader_info<P: AsRef<Path>>(&mut self, path: P, reader: &ReaderInfo) {
-        let fp = match self.fingerprint_for_path(path.as_ref()) {
-            Some(fp) => fp,
-            None => {
-                error!(path = %path.as_ref().display(), "failed to resolve fingerprint for sync_reader_info");
-                return;
-            }
+        let path = path.as_ref();
+        let Some(fp) = self.resolve_fingerprint(path) else {
+            return;
         };
 
         if let Err(e) = self.db.save_reading_state(fp, reader) {
@@ -904,12 +807,9 @@ impl Library {
     /// Call this when a TOC has been parsed from a document for the first time
     /// so subsequent opens can serve it from the database without re-parsing.
     pub fn sync_toc<P: AsRef<Path>>(&mut self, path: P, toc: Vec<SimpleTocEntry>) {
-        let fp = match self.fingerprint_for_path(path.as_ref()) {
-            Some(fp) => fp,
-            None => {
-                error!(path = %path.as_ref().display(), "failed to resolve fingerprint for sync_toc");
-                return;
-            }
+        let path = path.as_ref();
+        let Some(fp) = self.resolve_fingerprint(path) else {
+            return;
         };
 
         if let Err(e) = self.db.save_toc(fp, &toc) {
@@ -938,12 +838,9 @@ impl Library {
     }
 
     pub fn set_status<P: AsRef<Path>>(&mut self, path: P, status: SimpleStatus) {
-        let fp = match self.fingerprint_for_path(path.as_ref()) {
-            Some(fp) => fp,
-            None => {
-                error!(path = %path.as_ref().display(), "failed to resolve fingerprint for set_status");
-                return;
-            }
+        let path = path.as_ref();
+        let Some(fp) = self.resolve_fingerprint(path) else {
+            return;
         };
 
         match status {
@@ -1012,21 +909,6 @@ impl Library {
         books.into_iter().nth(current_index + 1)
     }
 
-    fn fingerprint_for_path(&self, path: &Path) -> Option<Fp> {
-        self.db
-            .get_book_by_path(self.library_id, path)
-            .ok()
-            .flatten()
-            .and_then(|info| info.fp)
-            .or_else(|| {
-                self.home
-                    .join(path)
-                    .metadata()
-                    .ok()
-                    .and_then(|md| md.fingerprint(self.fat32_epoch).ok())
-            })
-    }
-
     pub fn most_recently_opened_reading_book(&self) -> Option<Info> {
         self.db
             .most_recently_opened_reading_book(self.library_id)
@@ -1035,6 +917,34 @@ impl Library {
             })
             .ok()
             .flatten()
+    }
+
+    fn resolve_fingerprint(&self, path: &Path) -> Option<Fp> {
+        match self.db.get_book_by_path(self.library_id, path) {
+            Ok(Some(info)) => {
+                if let Some(fp) = info.fp {
+                    return Some(fp);
+                }
+            }
+            Ok(None) => {}
+            Err(e) => {
+                error!(
+                    path = %path.display(),
+                    error = %e,
+                    "failed to resolve fingerprint from database"
+                );
+            }
+        }
+
+        let full_path = self.home.join(path);
+
+        match full_path.fingerprint() {
+            Ok(fp) => Some(fp),
+            Err(e) => {
+                error!(path = %full_path.display(), error = %e, "failed to fingerprint path");
+                None
+            }
+        }
     }
 }
 
@@ -1993,7 +1903,7 @@ mod tests {
     }
 
     #[test]
-    fn fingerprint_for_path_prefers_db_and_falls_back_to_filesystem() {
+    fn resolve_fingerprint_prefers_db_and_falls_back_to_filesystem() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
         let db = Database::new(":memory:").expect("failed to create in-memory database");
         db.migrate().expect("failed to run migrations");
@@ -2008,22 +1918,20 @@ mod tests {
             .expect("failed to insert stored book");
 
         assert_eq!(
-            lib.fingerprint_for_path(Path::new("stored.pdf")),
+            lib.resolve_fingerprint(Path::new("stored.pdf")),
             Some(stored_fp)
         );
 
         let fallback_path = dir.path().join("fallback.pdf");
         fs::write(&fallback_path, b"fallback content").expect("failed to write fallback file");
         let expected_fallback_fp = fallback_path
-            .metadata()
-            .expect("failed to stat fallback file")
-            .fingerprint(lib.fat32_epoch)
+            .fingerprint()
             .expect("failed to fingerprint fallback file");
 
         assert_eq!(
-            lib.fingerprint_for_path(Path::new("fallback.pdf")),
+            lib.resolve_fingerprint(Path::new("fallback.pdf")),
             Some(expected_fallback_fp)
         );
-        assert_eq!(lib.fingerprint_for_path(Path::new("missing.pdf")), None);
+        assert_eq!(lib.resolve_fingerprint(Path::new("missing.pdf")), None);
     }
 }

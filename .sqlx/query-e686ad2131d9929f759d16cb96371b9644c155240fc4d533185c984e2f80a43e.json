@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT\n            book_fingerprint,\n            id                as \"id: Uuid7\",\n            parent_id         as \"parent_id!: OptionalUuid7\",\n            position,\n            title,\n            location_kind,\n            location_exact,\n            location_uri\n        FROM toc_entries\n        WHERE book_fingerprint = ?\n        ORDER BY id ASC\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "book_fingerprint",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "id: Uuid7",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "parent_id!: OptionalUuid7",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "position",
+        "ordinal": 3,
+        "type_info": "Integer"
+      },
+      {
+        "name": "title",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "location_kind",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "location_exact",
+        "ordinal": 6,
+        "type_info": "Integer"
+      },
+      {
+        "name": "location_uri",
+        "ordinal": 7,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "e686ad2131d9929f759d16cb96371b9644c155240fc4d533185c984e2f80a43e"
+}

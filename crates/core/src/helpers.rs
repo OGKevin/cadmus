@@ -7,13 +7,11 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::borrow::Cow;
 use std::char;
 use std::fmt;
-use std::fs::{self, File, Metadata};
+use std::fs::{self, File};
 use std::io::{self, BufReader, BufWriter};
-use std::num::ParseIntError;
-use std::ops::{Deref, DerefMut};
+use std::ops::Deref;
 use std::path::{Component, Path, PathBuf};
 use std::str::FromStr;
-use std::time::SystemTime;
 use walkdir::DirEntry;
 
 lazy_static! {
@@ -138,48 +136,146 @@ where
     }
 }
 
+/// Computes a content-based fingerprint for a file.
+///
+/// Implemented on [`Path`] to hash the full file contents using BLAKE3,
+/// producing a stable 32-byte digest that is independent of filesystem
+/// metadata such as modification time or file size.
+///
+/// # Hashing strategy
+///
+/// The implementation selects between two BLAKE3 strategies based on file size:
+///
+/// - **< 10 MiB** — [`update_reader`](blake3::Hasher::update_reader): plain
+///   buffered sequential read. Avoids both mmap syscall overhead and rayon
+///   thread-spawn cost. On slow storage, a
+///   single sequential `read()` into a buffer is faster than taking page
+///   faults through a memory mapping for small files. Benchmarks
+///   showed that `update_mmap_rayon` regressed by +125% at
+///   100 KiB and +76% at 200 KiB vs a plain read, confirming the pattern.
+///   The typical e-book (100 KiB–500 KiB) falls into this range.
+///
+/// - **≥ 10 MiB** — [`update_mmap_rayon`](blake3::Hasher::update_mmap_rayon):
+///   memory-mapped parallel hashing across rayon threads. Benchmarks showed
+///   −35% at 1 MiB, −70% at 200 MiB, and −79% at 1 GiB vs the
+///   single-threaded path. Reserved for large PDFs and similar files where
+///   the parallelism benefit clearly outweighs the mmap overhead.
+///
+/// The 10 MiB threshold is a conservative estimate that has not yet been
+/// measured on hardware directly.
 pub trait Fingerprint {
-    fn fingerprint(&self, epoch: SystemTime) -> io::Result<Fp>;
+    fn fingerprint(&self) -> io::Result<Fp>;
 }
 
-impl Fingerprint for Metadata {
-    fn fingerprint(&self, epoch: SystemTime) -> io::Result<Fp> {
-        let m = self
-            .modified()?
-            .duration_since(epoch)
-            .map_or_else(|e| e.duration().as_secs(), |v| v.as_secs());
-        Ok(Fp(m.rotate_left(32) ^ self.len()))
+/// Files at or above this size are hashed with `update_mmap_rayon`; smaller
+/// files use `update_reader` to avoid mmap and rayon thread-spawn overhead.
+const RAYON_THRESHOLD: u64 = 10 * 1024 * 1024;
+
+impl Fingerprint for Path {
+    #[cfg_attr(feature = "tracing", tracing::instrument(ret(level=tracing::Level::TRACE)))]
+    fn fingerprint(&self) -> io::Result<Fp> {
+        let mut hasher = blake3::Hasher::new();
+        if std::fs::metadata(self)?.len() >= RAYON_THRESHOLD {
+            hasher.update_mmap_rayon(self)?;
+        } else {
+            let file = std::fs::File::open(self)?;
+            hasher.update_reader(file)?;
+        }
+        Ok(Fp(*hasher.finalize().as_bytes()))
     }
 }
 
+/// A 32-byte BLAKE3 content fingerprint used as the primary key for books.
+///
+/// Serialized as a 64-character lowercase hex string (e.g.
+/// `"af1349b9f5f9a1a6a0404dea36dcc949..."`).
 #[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]
-pub struct Fp(u64);
+pub struct Fp([u8; 32]);
+
+impl Fp {
+    /// Constructs an `Fp` from a `u64` seed for use in tests.
+    ///
+    /// The seed is written into the last 8 bytes (big-endian); the remaining
+    /// 24 bytes are zero. This guarantees uniqueness for distinct seeds while
+    /// producing a valid 32-byte fingerprint.
+    #[cfg(test)]
+    pub fn from_u64(seed: u64) -> Self {
+        let mut bytes = [0u8; 32];
+        bytes[24..].copy_from_slice(&seed.to_be_bytes());
+        Fp(bytes)
+    }
+
+    /// Parses a legacy 16-character uppercase hex fingerprint (mtime + size
+    /// metadata format) into an `Fp`.
+    ///
+    /// The `u64` value is stored in the last 8 bytes (big-endian); the
+    /// remaining 24 bytes are zero. This matches the `from_u64` layout so
+    /// that legacy entries round-trip consistently. V2 migration will
+    /// re-key these to real BLAKE3 hashes once the files are found on disk.
+    pub(crate) fn from_legacy_str(s: &str) -> Result<Self, FpParseError> {
+        if s.len() != 16 {
+            return Err(FpParseError);
+        }
+        let seed = u64::from_str_radix(s, 16).map_err(|_| FpParseError)?;
+        let mut bytes = [0u8; 32];
+        bytes[24..].copy_from_slice(&seed.to_be_bytes());
+        Ok(Fp(bytes))
+    }
+}
 
 impl Deref for Fp {
-    type Target = u64;
+    type Target = [u8; 32];
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl DerefMut for Fp {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
+/// Error returned when a hex string cannot be decoded into an [`Fp`].
+#[derive(Debug)]
+pub struct FpParseError;
+
+impl fmt::Display for FpParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(
+            "invalid fingerprint: expected 64 hex characters or 16 hex characters (legacy format)",
+        )
     }
 }
 
+impl std::error::Error for FpParseError {}
+
 impl FromStr for Fp {
-    type Err = ParseIntError;
+    type Err = FpParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        u64::from_str_radix(s, 16).map(Fp)
+        if !s.is_ascii() {
+            return Err(FpParseError);
+        }
+
+        if s.len() == 16 {
+            return Self::from_legacy_str(s);
+        }
+
+        if s.len() != 64 {
+            return Err(FpParseError);
+        }
+
+        let mut bytes = [0u8; 32];
+        for (i, byte) in bytes.iter_mut().enumerate() {
+            *byte = u8::from_str_radix(&s[i * 2..i * 2 + 2], 16).map_err(|_| FpParseError)?;
+        }
+
+        Ok(Fp(bytes))
     }
 }
 
 impl fmt::Display for Fp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:016X}", self.0)
+        for byte in &self.0 {
+            write!(f, "{:02x}", byte)?;
+        }
+        Ok(())
     }
 }
 
@@ -198,14 +294,15 @@ impl<'de> Visitor<'de> for FpVisitor {
     type Value = Fp;
 
     fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        formatter.write_str("a string")
+        formatter.write_str("a 64-character hex string or a 16-character legacy hex string")
     }
 
     fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
     where
         E: de::Error,
     {
-        Self::Value::from_str(value)
+        Fp::from_str(value)
+            .or_else(|_| Fp::from_legacy_str(value))
             .map_err(|e| E::custom(format!("can't parse fingerprint: {}", e)))
     }
 }
@@ -293,6 +390,7 @@ impl IsHidden for DirEntry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::str::FromStr;
 
     #[test]
     fn test_entities() {
@@ -302,5 +400,48 @@ mod tests {
         assert_eq!(decode_entities("a &#x003E; b"), "a > b");
         assert_eq!(decode_entities("a &#38; b"), "a & b");
         assert_eq!(decode_entities("a &lt; b &gt; c"), "a < b > c");
+    }
+
+    #[test]
+    fn fp_from_str_rejects_non_ascii_input() {
+        let invalid = format!("a€{}", "0".repeat(60));
+
+        assert_eq!(invalid.len(), 64);
+        assert!(Fp::from_str(&invalid).is_err());
+    }
+
+    #[test]
+    fn fp_from_str_parses_valid_legacy_hex() {
+        let input = "0123456789ABCDEF";
+        let fp = Fp::from_str(input).expect("legacy fingerprint should parse");
+
+        assert_eq!(
+            fp.to_string(),
+            "0000000000000000000000000000000000000000000000000123456789abcdef"
+        );
+    }
+
+    #[test]
+    fn fp_from_str_rejects_invalid_legacy_hex() {
+        assert!(Fp::from_str("0123456789ABCDEG").is_err());
+    }
+
+    #[test]
+    fn fp_from_str_parses_valid_hex() {
+        let input = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        let fp = Fp::from_str(input).expect("valid fingerprint should parse");
+
+        assert_eq!(fp.to_string(), input);
+    }
+
+    #[test]
+    fn fp_from_str_accepts_uppercase_hex() {
+        let input = "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF";
+        let fp = Fp::from_str(input).expect("uppercase fingerprint should parse");
+
+        assert_eq!(
+            fp.to_string(),
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        );
     }
 }

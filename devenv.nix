@@ -377,6 +377,8 @@ in
             server:
               http_listen_port: 3200
               grpc_listen_port: 9096
+              grpc_server_max_recv_msg_size: 104857600
+              grpc_server_max_send_msg_size: 104857600
 
             distributor:
               receivers:
@@ -411,6 +413,16 @@ in
                   path: ${config.devenv.state}/tempo/traces
                 wal:
                   path: ${config.devenv.state}/tempo/wal
+
+            overrides:
+              defaults:
+                global:
+                  max_bytes_per_trace: 104857600
+
+            querier:
+              frontend_worker:
+                grpc_client_config:
+                  max_send_msg_size: 104857600
 
             query_frontend:
               search:

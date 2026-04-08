@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE toc_entries SET book_fingerprint = ? WHERE book_fingerprint = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "a80311c0868623486865d1cbe4719fa3c5c3002ad05db94ce5867f3798ef3f99"
+}

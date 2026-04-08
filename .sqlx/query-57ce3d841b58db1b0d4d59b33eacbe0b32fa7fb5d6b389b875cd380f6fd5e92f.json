@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT OR IGNORE INTO thumbnails (fingerprint, thumbnail_data)\n         SELECT ?, thumbnail_data\n         FROM thumbnails\n         WHERE fingerprint = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "57ce3d841b58db1b0d4d59b33eacbe0b32fa7fb5d6b389b875cd380f6fd5e92f"
+}

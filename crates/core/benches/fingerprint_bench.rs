@@ -4,7 +4,7 @@ use std::io::Write;
 use std::time::Duration;
 
 #[cfg(feature = "bench")]
-use cadmus_core::helpers::{Fingerprint, Fp};
+use cadmus_core::helpers::Fingerprint;
 #[cfg(feature = "bench")]
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 #[cfg(feature = "bench")]
@@ -42,19 +42,9 @@ fn bench_fingerprint(c: &mut Criterion) {
         let file = create_temp_file(*size);
         let path = file.path().to_path_buf();
 
-        // Set a fixed mtime so the bench is deterministic across runs.
-        let mtime = std::time::UNIX_EPOCH + Duration::from_secs(315_532_800);
-        file.as_file()
-            .set_modified(mtime)
-            .expect("failed to set mtime");
-
-        // The fat32 epoch anchor used by the current implementation.
-        let fat32_epoch = mtime;
-
         group.bench_with_input(BenchmarkId::new("size", label), label, |b, _| {
             b.iter(|| {
-                let md = std::fs::metadata(&path).expect("metadata failed");
-                let _fp: Fp = md.fingerprint(fat32_epoch).expect("fingerprint failed");
+                let _fp = path.fingerprint().expect("fingerprint failed");
             });
         });
     }

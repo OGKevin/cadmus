@@ -107,10 +107,7 @@ impl Shelf {
                     let path = info.file.path.clone();
                     let full_path = context.library.home.join(&info.file.path);
                     let database = context.library.db.clone();
-                    let fp = full_path
-                        .metadata()
-                        .ok()
-                        .and_then(|md| md.fingerprint(context.library.fat32_epoch).ok());
+                    let fp = full_path.fingerprint().ok();
 
                     if let Some(fp) = fp {
                         thread::spawn(move || {

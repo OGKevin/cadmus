@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE book_authors SET book_fingerprint = ? WHERE book_fingerprint = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "c96cd5e53aeed977262aba51c37e79f974e58b26b94904223295ec7819a1eec5"
+}

@@ -2793,7 +2793,7 @@ mod tests {
     #[test]
     fn test_insert_and_get_book() {
         let (_db, libdb) = create_test_db();
-        let fp = Fp::from_str("0000000000000001").unwrap();
+        let fp = Fp::from_u64(1);
 
         let info = Info {
             title: "Test Book".to_string(),
@@ -2845,7 +2845,7 @@ mod tests {
     #[test]
     fn test_insert_book_with_reading_state() {
         let (_db, libdb) = create_test_db();
-        let fp = Fp::from_str("0000000000000002").unwrap();
+        let fp = Fp::from_u64(2);
 
         let reader_info = ReaderInfo {
             current_page: 42,
@@ -2893,7 +2893,7 @@ mod tests {
     #[test]
     fn test_delete_book() {
         let (_db, libdb) = create_test_db();
-        let fp = Fp::from_str("0000000000000003").unwrap();
+        let fp = Fp::from_u64(3);
 
         let info = Info {
             title: "Book to Delete".to_string(),
@@ -2939,7 +2939,7 @@ mod tests {
         let library_id = register_test_library(&libdb, "/tmp/test_library4", "Test Library 4");
 
         for i in 1..=5 {
-            let fp = Fp::from_str(&format!("{:016X}", i)).unwrap();
+            let fp = Fp::from_u64(i as u64);
             let info = Info {
                 title: format!("Book {}", i),
                 author: format!("Author {}", i),
@@ -2961,7 +2961,7 @@ mod tests {
             .get_all_books(library_id)
             .expect("failed to get books");
         for i in 1..=5 {
-            let fp = Fp::from_str(&format!("{:016X}", i)).unwrap();
+            let fp = Fp::from_u64(i as u64);
             let retrieved = books
                 .iter()
                 .find(|info| info.fp == Some(fp))
@@ -2975,7 +2975,7 @@ mod tests {
     #[test]
     fn test_update_book() {
         let (_db, libdb) = create_test_db();
-        let fp = Fp::from_str("0000000000000004").unwrap();
+        let fp = Fp::from_u64(4);
 
         let mut info = Info {
             title: "Original Title".to_string(),
@@ -3021,7 +3021,7 @@ mod tests {
         let library_id = register_test_library(&libdb, "/tmp/test_library6", "Test Library 6");
 
         for i in 1..=3 {
-            let fp = Fp::from_str(&format!("{:016X}", i)).unwrap();
+            let fp = Fp::from_u64(i as u64);
             let info = Info {
                 title: format!("Book {}", i),
                 author: format!("Author {}", i),
@@ -3270,7 +3270,7 @@ mod tests {
     #[test]
     fn test_reading_state_crud() {
         let (_db, libdb) = create_test_db();
-        let fp = Fp::from_str("0000000000000005").unwrap();
+        let fp = Fp::from_u64(5);
 
         let info = Info {
             title: "Book with State".to_string(),
@@ -3340,7 +3340,7 @@ mod tests {
 
         let mut books = Vec::new();
         for i in 1..=5 {
-            let fp = Fp::from_str(&format!("{:016X}", i + 100)).unwrap();
+            let fp = Fp::from_u64((i + 100) as u64);
             let info = Info {
                 title: format!("Batch Book {}", i),
                 author: format!("Batch Author {}, Co-Author {}", i, i + 1),
@@ -3389,7 +3389,7 @@ mod tests {
 
         let mut books = Vec::new();
         for i in 1..=3 {
-            let fp = Fp::from_str(&format!("{:016X}", i + 200)).unwrap();
+            let fp = Fp::from_u64((i + 200) as u64);
             let mut info = Info {
                 title: format!("Original Book {}", i),
                 author: format!("Original Author {}", i),
@@ -3784,7 +3784,7 @@ mod tests {
 
         let mut fps = Vec::new();
         for i in 1..=4 {
-            let fp = Fp::from_str(&format!("{:016X}", i + 300)).unwrap();
+            let fp = Fp::from_u64((i + 300) as u64);
             let info = Info {
                 title: format!("Delete Book {}", i),
                 author: format!("Delete Author {}", i),
@@ -3843,7 +3843,7 @@ mod tests {
     #[test]
     fn test_categories_round_trip() {
         let (_db, libdb) = create_test_db();
-        let fp = Fp::from_str("0000000000000099").unwrap();
+        let fp = Fp::from_u64(0x99);
 
         let info = Info {
             title: "Categorized Book".to_string(),
@@ -3883,7 +3883,7 @@ mod tests {
     #[test]
     fn test_categories_updated_on_update_book() {
         let (_db, libdb) = create_test_db();
-        let fp = Fp::from_str("000000000000009A").unwrap();
+        let fp = Fp::from_u64(0x9A);
 
         let mut info = Info {
             title: "Updateable Book".to_string(),
@@ -4457,7 +4457,7 @@ mod tests {
 
         let mut books = Vec::new();
         for i in 1..=3 {
-            let fp = Fp::from_str(&format!("{:016X}", i + 400)).unwrap();
+            let fp = Fp::from_u64((i + 400) as u64);
             let reader_info = ReaderInfo {
                 current_page: i * 10,
                 pages_count: i * 100,

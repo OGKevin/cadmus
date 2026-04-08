@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE book_categories SET book_fingerprint = ? WHERE book_fingerprint = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "b2393302c1d25ac2e691b5e27a05b95feb36d5ef234a6316a30e5e3c8ae7b056"
+}

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO toc_entries (\n                id, book_fingerprint, parent_id, position, title, location_kind, location_exact, location_uri\n            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 8
+    },
+    "nullable": []
+  },
+  "hash": "4bc378635ca2074547afbe4d42914ba8c60bde10be219fbc941437e6af3d0342"
+}
