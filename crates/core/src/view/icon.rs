@@ -98,6 +98,8 @@ pub struct Icon {
 }
 
 impl Icon {
+    // TODO(OGKevin): This shall be refactored so that you don't pass a magic string
+    //                but rather an enum with the icon name.
     pub fn new(name: &str, rect: Rectangle, event: Event) -> Icon {
         Icon {
             id: ID_FEEDER.next(),

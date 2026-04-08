@@ -2,7 +2,7 @@ use crate::color::{BLACK, WHITE};
 use crate::context::Context;
 use crate::device::CURRENT_DEVICE;
 use crate::framebuffer::{Framebuffer, UpdateMode};
-use crate::geom::{halves, Rectangle};
+use crate::geom::{halves, CycleDir, Rectangle};
 use crate::settings::{LibrarySettings, Settings};
 use crate::unit::scale_by_dpi;
 use crate::view::common::locate_by_id;
@@ -16,10 +16,13 @@ use crate::view::{
 
 use super::bottom_bar::{BottomBarVariant, SettingsEditorBottomBar};
 use super::category::Category;
-use super::kinds::library::LibraryInfo;
 use super::library_editor::LibraryEditor;
 use super::setting_row::SettingRow;
 use std::path::PathBuf;
+
+/// Number of fixed structural children that always trail the setting rows:
+/// bottom separator, bottom bar, and the toggleable keyboard.
+const TAIL_CHILDREN: usize = 3;
 
 /// A view for editing category-specific settings.
 ///
@@ -37,8 +40,8 @@ use std::path::PathBuf;
 /// * `children` - Child views managed by this editor. The structure is:
 ///   1. Content background filler (index 0)
 ///   2. Setting rows (indices from `first_row_index` onwards)
-///   3. BottomSeparator (variable index, only for Libraries category)
-///   4. BottomBar (variable index, only for Libraries category)
+///   3. BottomSeparator (variable index, always present)
+///   4. BottomBar (variable index, always present)
 ///   5. ToggleableKeyboard (at index `keyboard_index`)
 ///   6. Plus optional overlay views like LibraryEditor and NamedInput fields
 /// * `category` - The settings category being edited
@@ -47,6 +50,8 @@ use std::path::PathBuf;
 /// * `focus` - Currently focused child view, if any
 /// * `first_row_index` - Index in the children vector where setting rows begin (after structural elements)
 /// * `keyboard_index` - Index of the keyboard child view in the children vector
+/// * `current_page` - The zero-based index of the currently displayed page of rows
+/// * `pages_count` - Total number of pages required to display all setting rows
 pub struct CategoryEditor {
     id: Id,
     rect: Rectangle,
@@ -57,6 +62,8 @@ pub struct CategoryEditor {
     focus: Option<ViewId>,
     first_row_index: usize,
     keyboard_index: usize,
+    current_page: usize,
+    pages_count: usize,
 }
 
 impl CategoryEditor {
@@ -71,18 +78,12 @@ impl CategoryEditor {
 
         let (bar_height, separator_top_half, separator_bottom_half) = Self::calculate_dimensions();
 
-        let mut content_rect = rect![rect.min.x, rect.min.y, rect.max.x, rect.max.y];
-
-        if matches!(category, Category::Libraries) {
-            content_rect = rect![
-                rect.min.x,
-                rect.min.y,
-                rect.max.x,
-                rect.max.y - bar_height - separator_top_half
-            ];
-        }
-
-        let content_rect = content_rect;
+        let content_rect = rect![
+            rect.min.x,
+            rect.min.y,
+            rect.max.x,
+            rect.max.y - bar_height - separator_top_half
+        ];
 
         let background = Filler::new(content_rect, WHITE);
         children.push(Box::new(background) as Box<dyn View>);
@@ -90,49 +91,29 @@ impl CategoryEditor {
         let first_row_index = children.len();
 
         let row_height = scale_by_dpi(SMALL_BAR_HEIGHT, CURRENT_DEVICE.dpi) as i32;
-        let setting_kinds = category.settings(context);
-        let mut current_y = content_rect.min.y;
 
-        for kind in setting_kinds {
-            let row_rect = rect![
-                content_rect.min.x,
-                current_y,
-                content_rect.max.x,
-                current_y + row_height
-            ];
-            children.push(Self::build_setting_row(
-                kind,
-                row_rect,
-                &context.settings,
-                &mut context.fonts,
-            ));
-            current_y += row_height;
-        }
+        children.push(Self::build_bottom_separator(
+            rect,
+            bar_height,
+            separator_top_half,
+            separator_bottom_half,
+        ));
 
-        if matches!(category, Category::Libraries) {
-            children.push(Self::build_bottom_separator(
-                rect,
-                bar_height,
-                separator_top_half,
-                separator_bottom_half,
-            ));
-
-            children.push(Self::build_bottom_bar(
-                rect,
-                bar_height,
-                separator_bottom_half,
-                category,
-            ));
-        }
+        children.push(Self::build_pagination_bar(
+            rect,
+            bar_height,
+            separator_bottom_half,
+            category,
+            false,
+            false,
+        ));
 
         let keyboard = ToggleableKeyboard::new(rect, true);
         children.push(Box::new(keyboard) as Box<dyn View>);
 
         let keyboard_index = children.len() - 1;
 
-        rq.add(RenderData::new(id, rect, UpdateMode::Gui));
-
-        CategoryEditor {
+        let mut editor = CategoryEditor {
             id,
             rect,
             children,
@@ -142,7 +123,13 @@ impl CategoryEditor {
             focus: None,
             first_row_index,
             keyboard_index,
-        }
+            current_page: 0,
+            pages_count: 1,
+        };
+
+        editor.update_rows_list(rq, context);
+
+        editor
     }
 
     pub fn category(&self) -> Category {
@@ -192,11 +179,13 @@ impl CategoryEditor {
     }
 
     #[inline]
-    fn build_bottom_bar(
+    fn build_pagination_bar(
         rect: Rectangle,
         bar_height: i32,
         separator_bottom_half: i32,
         category: Category,
+        prev_enabled: bool,
+        next_enabled: bool,
     ) -> Box<dyn View> {
         let bottom_bar_rect = rect![
             rect.min.x,
@@ -208,95 +197,123 @@ impl CategoryEditor {
         match category {
             Category::Libraries => Box::new(SettingsEditorBottomBar::new(
                 bottom_bar_rect,
-                BottomBarVariant::SingleButton {
-                    event: Event::AddLibrary,
-                    icon: "plus",
+                BottomBarVariant::PaginationWithButton {
+                    prev_enabled,
+                    next_enabled,
+                    center_event: Event::AddLibrary,
+                    center_icon: "plus",
                 },
             )),
-            _ => unreachable!("These categories have no bottom bar"),
+            _ => Box::new(SettingsEditorBottomBar::new(
+                bottom_bar_rect,
+                BottomBarVariant::Pagination {
+                    prev_enabled,
+                    next_enabled,
+                },
+            )),
         }
     }
 
-    /// Rebuilds the library rows in the UI after a library is added, removed, or modified.
+    /// Rebuilds the visible setting rows for the current page and refreshes the
+    /// bottom navigation bar to reflect the new pagination state.
     ///
-    /// This method removes the old library rows and inserts new ones based on the current
-    /// state of `context.settings.libraries`. It only operates when the current category is
-    /// `Category::Libraries`.
+    /// The children vector always has the following fixed tail (`TAIL_CHILDREN` items):
+    /// `[..rows.., separator, bottom_bar, keyboard]`. This method drains the
+    /// row slice, computes how many rows fit in `content_rect` at `row_height`,
+    /// calculates `pages_count`, clamps `current_page` into bounds, inserts the
+    /// rows for the current page, and replaces the separator and bottom bar with
+    /// freshly-built ones whose prev/next arrows reflect whether adjacent pages
+    /// exist. `keyboard_index` is re-synced at the end.
     ///
-    /// # Example
-    ///
-    /// If we have 3 structural children + 2 library rows + keyboard:
-    /// ```txt
-    /// Before:  [TopBar, TopSep, BgFiller, LibRow0, LibRow1, BottomSep, BottomBar, Keyboard]
-    ///           indices: 0      1        2        3        4         5          6        7
-    /// ```
-    ///
-    /// After adding a library (original_count=2, now 3 libraries):
-    /// ```txt
-    /// Removal phase:    [TopBar, TopSep, BgFiller, BottomSep, BottomBar, Keyboard]
-    ///                    Remove indices 3,4 (2 rows)
-    ///
-    /// Insertion phase:  [TopBar, TopSep, BgFiller, LibRow0, LibRow1, LibRow2, BottomSep, BottomBar, Keyboard]
-    ///                    Insert at indices 3,4,5
-    /// ```
-    ///
-    /// # Arguments
-    ///
-    /// * `rq` - The render queue to add render updates to
-    /// * `context` - The application context containing settings
-    /// * `original_count` - The original number of library rows before the change. If `None`,
-    ///   uses the current library count. This is used to determine how many old rows to remove.
-    #[inline]
-    fn rebuild_library_rows(
-        &mut self,
-        rq: &mut RenderQueue,
-        context: &mut Context,
-        original_count: Option<usize>,
-    ) {
-        if self.category != Category::Libraries {
-            return;
-        }
+    /// This is the single mutation point for page state — both `rebuild_library_rows`
+    /// and the `Event::Page` handler delegate here.
+    #[cfg_attr(feature = "otel", tracing::instrument(skip_all))]
+    fn update_rows_list(&mut self, rq: &mut RenderQueue, context: &mut Context) {
+        let rows_end = self.children.len() - TAIL_CHILDREN;
+        self.children.drain(self.first_row_index..rows_end);
 
-        let num_libraries = context.settings.libraries.len();
-        let rows_to_remove = original_count.unwrap_or(num_libraries);
+        let available_height = self.content_rect.height() as i32;
+        let max_rows = (available_height / self.row_height).max(1) as usize;
 
-        let first_row_index = self.first_row_index;
+        let all_kinds = self.category.settings(context);
+        let total_rows = all_kinds.len();
 
-        for _ in 0..rows_to_remove {
-            if first_row_index < self.children.len() {
-                self.children.remove(first_row_index);
-            }
-        }
+        self.pages_count = ((total_rows + max_rows - 1) / max_rows).max(1);
+        self.current_page = self.current_page.min(self.pages_count - 1);
+
+        let start = self.current_page * max_rows;
+        let end = (start + max_rows).min(total_rows);
 
         let mut current_y = self.content_rect.min.y;
-        let mut new_rows = Vec::new();
+        let mut new_rows: Vec<Box<dyn View>> = Vec::new();
 
-        for i in 0..num_libraries {
+        for kind in all_kinds.into_iter().skip(start).take(end - start) {
             let row_rect = rect![
                 self.content_rect.min.x,
                 current_y,
                 self.content_rect.max.x,
                 current_y + self.row_height
             ];
-
-            let setting_row = SettingRow::new(
-                Box::new(LibraryInfo(i)),
+            new_rows.push(Self::build_setting_row(
+                kind,
                 row_rect,
                 &context.settings,
                 &mut context.fonts,
-            );
-
-            new_rows.push(Box::new(setting_row) as Box<dyn View>);
+            ));
             current_y += self.row_height;
         }
 
+        let rows_len = new_rows.len();
         for (offset, row) in new_rows.into_iter().enumerate() {
-            self.children.insert(first_row_index + offset, row);
+            self.children.insert(self.first_row_index + offset, row);
         }
+
+        let sep_index = self.first_row_index + rows_len;
+        self.children.remove(sep_index);
+        self.children.remove(sep_index);
+
+        let (bar_height, separator_top_half, separator_bottom_half) = Self::calculate_dimensions();
+        let new_sep = Self::build_bottom_separator(
+            self.rect,
+            bar_height,
+            separator_top_half,
+            separator_bottom_half,
+        );
+        self.children.insert(sep_index, new_sep);
+
+        let prev_enabled = self.current_page > 0;
+        let next_enabled = self.current_page + 1 < self.pages_count;
+        let new_bar = Self::build_pagination_bar(
+            self.rect,
+            bar_height,
+            separator_bottom_half,
+            self.category,
+            prev_enabled,
+            next_enabled,
+        );
+        self.children.insert(sep_index + 1, new_bar);
 
         self.keyboard_index = self.children.len() - 1;
 
         rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+    }
+
+    /// Rebuilds the library rows in the UI after a library is added, removed, or modified.
+    ///
+    /// Resets to page 0 to avoid stale page state when the library list changes.
+    #[inline]
+    fn rebuild_library_rows(
+        &mut self,
+        rq: &mut RenderQueue,
+        context: &mut Context,
+        _original_count: Option<usize>,
+    ) {
+        if self.category != Category::Libraries {
+            return;
+        }
+
+        self.current_page = 0;
+        self.update_rows_list(rq, context);
     }
 
     #[inline]
@@ -552,6 +569,19 @@ impl View for CategoryEditor {
                 context,
             ),
             Event::Close(view_id) => self.handle_close_view_event(view_id, hub, rq),
+            Event::Page(dir) => {
+                let new_page = match dir {
+                    CycleDir::Previous => self.current_page.saturating_sub(1),
+                    CycleDir::Next => {
+                        (self.current_page + 1).min(self.pages_count.saturating_sub(1))
+                    }
+                };
+                if new_page != self.current_page {
+                    self.current_page = new_page;
+                    self.update_rows_list(rq, context);
+                }
+                true
+            }
             _ => false,
         }
     }
@@ -853,5 +883,82 @@ mod tests {
             context.settings.intermissions[IntermKind::PowerOff],
             IntermissionDisplay::Cover
         ));
+    }
+
+    #[test]
+    fn test_pagination_children_structure() {
+        let mut context = create_test_context();
+        context.settings = Settings::default();
+        context.settings.libraries.clear();
+        let editor = create_test_category_editor_with_context(&mut context);
+
+        let keyboard_still_exists = editor
+            .children
+            .iter()
+            .any(|child| child.downcast_ref::<ToggleableKeyboard>().is_some());
+        assert!(
+            keyboard_still_exists,
+            "ToggleableKeyboard must always be present"
+        );
+        assert_eq!(
+            editor.keyboard_index,
+            editor.children.len() - 1,
+            "keyboard_index must point to the last child"
+        );
+    }
+
+    #[test]
+    fn test_page_navigation_event() {
+        let mut context = create_test_context();
+        context.settings = Settings::default();
+        context.settings.libraries.clear();
+        for i in 0..50 {
+            context.settings.libraries.push(LibrarySettings {
+                name: format!("Library {}", i),
+                path: PathBuf::from(format!("/mnt/onboard/lib{}", i)),
+                ..Default::default()
+            });
+        }
+
+        let mut editor = create_test_category_editor_with_context(&mut context);
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+        let mut rq = RenderQueue::new();
+
+        assert_eq!(editor.current_page, 0);
+        assert!(
+            editor.pages_count > 1,
+            "Should have multiple pages with 50 libraries"
+        );
+
+        let handled = editor.handle_event(
+            &Event::Page(CycleDir::Next),
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        );
+        assert!(handled);
+        assert_eq!(editor.current_page, 1);
+
+        let handled = editor.handle_event(
+            &Event::Page(CycleDir::Previous),
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        );
+        assert!(handled);
+        assert_eq!(editor.current_page, 0);
+
+        let handled = editor.handle_event(
+            &Event::Page(CycleDir::Previous),
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        );
+        assert!(handled);
+        assert_eq!(editor.current_page, 0, "Should not go below page 0");
     }
 }
