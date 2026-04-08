@@ -104,6 +104,10 @@ tempfile = "3.14"
 name = "dictionary_bench"
 harness = false
 
+[[bench]]
+name = "fingerprint_bench"
+harness = false
+
 [build-dependencies]
 uuid = { version = "1.20.0", features = ["v7"] }
 
