@@ -20,6 +20,9 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
+    concurrency:
+      group: "cargo-${{ github.event_name }}-${{ github.event.number || github.ref }}-${{ matrix.os }}"
+      cancel-in-progress: true
 
     steps:
       - uses: actions/checkout@v6

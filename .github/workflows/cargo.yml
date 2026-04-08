@@ -15,6 +15,10 @@ on:
       - ".github/workflows/cargo.yml"
       - "thirdparty/**/*.patch"
 
+concurrency:
+  group: "cargo-${{ github.event_name }}-${{ github.event.number || github.ref }}"
+  cancel-in-progress: true
+
 jobs:
   format:
     runs-on: ubuntu-latest
