@@ -124,7 +124,7 @@
 //! }
 //! ```
 
-use crate::color::BLACK;
+use crate::color::{BLACK, SEPARATOR_NORMAL};
 use crate::context::Context;
 use crate::device::CURRENT_DEVICE;
 use crate::framebuffer::{Framebuffer, UpdateMode};
@@ -190,11 +190,12 @@ pub struct SettingsEditor {
 }
 
 impl SettingsEditor {
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(rq, context)))]
     pub fn new(rect: Rectangle, rq: &mut RenderQueue, context: &mut Context) -> Self {
         let id = ID_FEEDER.next();
         let mut children = Vec::new();
 
-        let (bar_height, _separator_thickness, separator_top_half, separator_bottom_half) =
+        let (bar_height, separator_thickness, separator_top_half, separator_bottom_half) =
             Self::calculate_dimensions();
 
         children.push(Self::build_top_bar(
@@ -220,16 +221,25 @@ impl SettingsEditor {
 
         let provider = SettingsCategoryProvider;
         let mut navigation_bar =
-            StackNavigationBar::new(nav_bar_rect, rect.max.y, 1, provider, Category::General)
+            StackNavigationBar::new(nav_bar_rect, rect.max.y, 2, provider, Category::General)
                 .disable_resize();
 
         navigation_bar.set_selected(Category::General, rq, context);
         let nav_bar_index = children.len();
         children.push(Box::new(navigation_bar));
 
+        let nav_bar_max_y = children[nav_bar_index].rect().max.y;
+        let (sep_top_half, sep_bottom_half) = halves(separator_thickness);
+        children.push(Self::build_nav_bar_separator(
+            &rect,
+            nav_bar_max_y,
+            sep_top_half,
+            sep_bottom_half,
+        ));
+
         let content_rect = rect![
             rect.min.x,
-            children[nav_bar_index].rect().max.y,
+            nav_bar_max_y + sep_bottom_half,
             rect.max.x,
             rect.max.y
         ];
@@ -314,6 +324,24 @@ impl SettingsEditor {
         );
         Box::new(separator) as Box<dyn View>
     }
+
+    fn build_nav_bar_separator(
+        rect: &Rectangle,
+        nav_bar_max_y: i32,
+        sep_top_half: i32,
+        sep_bottom_half: i32,
+    ) -> Box<dyn View> {
+        let separator = Filler::new(
+            rect![
+                rect.min.x,
+                nav_bar_max_y - sep_top_half,
+                rect.max.x,
+                nav_bar_max_y + sep_bottom_half
+            ],
+            SEPARATOR_NORMAL,
+        );
+        Box::new(separator) as Box<dyn View>
+    }
 }
 
 impl View for SettingsEditor {
@@ -340,6 +368,16 @@ impl View for SettingsEditor {
                     nav_bar.rect.max.y
                 };
 
+                let (_, separator_thickness, _, _) = Self::calculate_dimensions();
+                let (sep_top_half, sep_bottom_half) = halves(separator_thickness);
+                let sep_index = self.nav_bar_index + 1;
+                *self.children[sep_index].rect_mut() = rect![
+                    self.rect.min.x,
+                    nav_bar_max_y - sep_top_half,
+                    self.rect.max.x,
+                    nav_bar_max_y + sep_bottom_half
+                ];
+
                 let current_category = self.children[self.editor_index]
                     .downcast_ref::<CategoryEditor>()
                     .map(|e| e.category());
@@ -352,7 +390,7 @@ impl View for SettingsEditor {
 
                 let content_rect = rect![
                     self.rect.min.x,
-                    nav_bar_max_y,
+                    nav_bar_max_y + sep_bottom_half,
                     self.rect.max.x,
                     self.rect.max.y
                 ];

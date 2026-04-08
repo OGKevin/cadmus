@@ -5,21 +5,24 @@ use crate::context::Context;
 use crate::device::CURRENT_DEVICE;
 use crate::font::{font_from_style, Fonts, NORMAL_STYLE};
 use crate::framebuffer::Framebuffer;
-use crate::geom::{Point, Rectangle};
+use crate::geom::{big_half, divide, small_half, Point, Rectangle};
 use crate::view::filler::Filler;
 use crate::view::{Align, Bus, Event, Hub, Id, RenderQueue, View, ID_FEEDER};
 
 /// Horizontal navigation bar displaying category tabs.
 ///
-/// This component shows all available settings categories (General, Libraries,
-/// Intermissions) as horizontal tabs. The selected category is visually highlighted
-/// using `ActionLabel` children that manage their own color states.
+/// This component shows all available settings categories as horizontal tabs,
+/// wrapping onto additional rows when the categories no longer fit on a single
+/// line. The selected category is visually highlighted. The bar's height is
+/// determined by `SettingsCategoryProvider::estimate_line_count`, which must
+/// match the number of rows required.
 ///
 /// # Structure
 ///
 /// ```text
 /// ┌─────────────────────────────────────────────┐
-/// │ [General] [Libraries] [Intermissions]       │
+/// │ [General] [Libraries] [Intermissions] ...   │
+/// │ [OtherCategory] ...                         │
 /// └─────────────────────────────────────────────┘
 /// ```
 pub struct CategoryNavigationBar {
@@ -49,6 +52,25 @@ impl CategoryNavigationBar {
         self.children = Self::build_category_buttons(self.rect, selected, fonts);
     }
 
+    /// Layout all category buttons in rows, distributing vertical space evenly.
+    ///
+    /// This method implements a two-pass layout algorithm:
+    ///
+    /// ## Pass 1: Horizontal measurement
+    /// Each category is measured to determine its button width. Categories are
+    /// packed left-to-right; when a button doesn't fit, a new row begins.
+    ///
+    /// ## Pass 2: Vertical distribution
+    /// Available vertical space is divided evenly using the baseline method (same
+    /// as `DirectoriesBar`). For `row_count` rows, the total non-text space is
+    /// divided into `row_count + 1` gaps. Each row claims `big_half` of the gap
+    /// above it and `small_half` of the gap below. This ensures consistent
+    /// centering regardless of the number of rows.
+    ///
+    /// ## Child views:
+    /// Background fillers are added to cover all non-button regions (top strip,
+    /// left margin per row, trailing space per row, bottom strip) to prevent
+    /// stale framebuffer content from showing through.
     #[cfg_attr(feature = "otel", tracing::instrument(skip(fonts)))]
     fn build_category_buttons(
         rect: Rectangle,
@@ -60,33 +82,75 @@ impl CategoryNavigationBar {
         let dpi = CURRENT_DEVICE.dpi;
         let font = font_from_style(fonts, &NORMAL_STYLE, dpi);
         let padding = font.em() as i32;
+        let x_height = font.x_heights.0 as i32;
         let background = TEXT_BUMP_SMALL[0];
 
+        let mut rows: Vec<Vec<(Category, i32)>> = vec![Vec::new()];
         let mut x_pos = rect.min.x + padding / 2;
 
         for category in categories.iter() {
-            let text = category.label();
-            let plan = font.plan(&text, None, None);
+            let plan = font.plan(category.label(), None, None);
             let button_width = plan.width + padding;
 
-            let button_rect = rect![x_pos, rect.min.y, x_pos + button_width, rect.max.y];
-            let is_selected = *category == selected;
+            if x_pos + button_width > rect.max.x && !rows.last().unwrap().is_empty() {
+                rows.push(Vec::new());
+                x_pos = rect.min.x + padding / 2;
+            }
 
-            let button = CategoryButton::new(
-                button_rect,
-                *category,
-                is_selected,
-                Align::Left(padding / 2),
-            );
-            children.push(Box::new(button) as Box<dyn View>);
-
+            rows.last_mut().unwrap().push((*category, button_width));
             x_pos += button_width;
         }
 
-        if x_pos < rect.max.x {
-            let filler_rect = rect![x_pos, rect.min.y, rect.max.x, rect.max.y];
-            let filler = Filler::new(filler_rect, background);
-            children.push(Box::new(filler) as Box<dyn View>);
+        let row_count = rows.len();
+        let vertical_space = rect.height() as i32 - row_count as i32 * x_height;
+        let baselines = divide(vertical_space, row_count as i32 + 1);
+
+        let mut row_top = rect.min.y + small_half(baselines[0]);
+
+        children.push(Box::new(Filler::new(
+            rect![rect.min.x, rect.min.y, rect.max.x, row_top],
+            background,
+        )) as Box<dyn View>);
+
+        for (row_index, row) in rows.iter().enumerate() {
+            let row_height =
+                big_half(baselines[row_index]) + x_height + small_half(baselines[row_index + 1]);
+
+            let mut x_pos = rect.min.x + padding / 2;
+
+            children.push(Box::new(Filler::new(
+                rect![rect.min.x, row_top, x_pos, row_top + row_height],
+                background,
+            )) as Box<dyn View>);
+
+            for (category, button_width) in row {
+                let button_rect = rect![x_pos, row_top, x_pos + button_width, row_top + row_height];
+
+                children.push(Box::new(CategoryButton::new(
+                    button_rect,
+                    *category,
+                    *category == selected,
+                    Align::Left(padding / 2),
+                )) as Box<dyn View>);
+
+                x_pos += button_width;
+            }
+
+            if x_pos < rect.max.x {
+                children.push(Box::new(Filler::new(
+                    rect![x_pos, row_top, rect.max.x, row_top + row_height],
+                    background,
+                )) as Box<dyn View>);
+            }
+
+            row_top += row_height;
+        }
+
+        if row_top < rect.max.y {
+            children.push(Box::new(Filler::new(
+                rect![rect.min.x, row_top, rect.max.x, rect.max.y],
+                background,
+            )) as Box<dyn View>);
         }
 
         children

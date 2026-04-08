@@ -33,9 +33,9 @@ impl NavigationProvider for SettingsCategoryProvider {
 
     fn fetch_level_data(&self, _key: &Self::LevelKey, _context: &mut Context) -> Self::LevelData {}
 
-    /// Return 1 here, as the amount of categories fits on 1 line
+    /// Categories no longer fit on a single row, so allocate 2 rows.
     fn estimate_line_count(&self, _key: &Self::LevelKey, _data: &Self::LevelData) -> usize {
-        1
+        2
     }
 
     fn create_bar(&self, rect: Rectangle, key: &Self::LevelKey) -> Self::Bar {

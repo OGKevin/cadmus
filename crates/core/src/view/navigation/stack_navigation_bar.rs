@@ -10,6 +10,7 @@ use crate::view::UpdateMode;
 use crate::view::{Bus, Event, Hub, Id, RenderData, RenderQueue, View, ID_FEEDER};
 use crate::view::{SMALL_BAR_HEIGHT, THICKNESS_MEDIUM};
 use std::collections::BTreeMap;
+use std::fmt::Debug;
 
 /// Domain adapter for [`StackNavigationBar`].
 ///
@@ -25,7 +26,7 @@ use std::collections::BTreeMap;
 /// The method should return the actual resize amount after applying constraints.
 pub trait NavigationProvider {
     /// Key that identifies a level in the stack.
-    type LevelKey: Eq + Ord + Clone;
+    type LevelKey: Eq + Ord + Clone + Debug;
 
     /// Data needed to render a level.
     type LevelData;
@@ -338,6 +339,7 @@ impl<P: NavigationProvider + 'static> StackNavigationBar<P> {
     /// * `selected` - The new selected level key
     /// * `rq` - Render queue for scheduling redraws
     /// * `context` - Application context with fonts and other resources
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, rq, context)))]
     pub fn set_selected(
         &mut self,
         selected: P::LevelKey,
@@ -517,6 +519,7 @@ impl<P: NavigationProvider + 'static> StackNavigationBar<P> {
     /// If either `first` or `last` is `None`, reuse is not possible and the
     /// function returns `false`.
     #[inline]
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
     fn can_reuse_existing(
         &self,
         first: &Option<P::LevelKey>,
@@ -531,6 +534,7 @@ impl<P: NavigationProvider + 'static> StackNavigationBar<P> {
     }
 
     #[inline]
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
     fn reuse_existing_bar_and_separator(
         &mut self,
         index: usize,
@@ -610,6 +614,7 @@ impl<P: NavigationProvider + 'static> StackNavigationBar<P> {
     /// - `(height, ok)` where `height` is the computed pixel height for the bar and `ok`
     ///   indicates whether the bar can be placed without exceeding the top bound.
     #[inline]
+    #[cfg_attr(feature = "otel", tracing::instrument(skip_all, ret(level=tracing::Level::TRACE)))]
     fn compute_bar_height(
         &self,
         layout: &Layout,
@@ -660,6 +665,7 @@ impl<P: NavigationProvider + 'static> StackNavigationBar<P> {
     ///   the established convention used by this container to maintain the
     ///   alternating bar/filler pattern.
     #[inline]
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, layout)))]
     fn insert_bar_and_separator(
         &mut self,
         layout: &Layout,
