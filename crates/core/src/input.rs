@@ -335,8 +335,6 @@ fn parse_usb_events(tx: &Sender<DeviceEvent>) {
                             tx.send(DeviceEvent::Plug(PowerSource::Wall)).ok();
                         } else if msg == "usb ac remove" {
                             tx.send(DeviceEvent::Unplug(PowerSource::Wall)).ok();
-                        } else if msg.starts_with("network bound") {
-                            tx.send(DeviceEvent::NetUp).ok();
                         }
                     }
                 }
