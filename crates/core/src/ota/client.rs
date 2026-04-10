@@ -2,25 +2,16 @@ use crate::github::types::{
     Artifact, ArtifactsResponse, Release, ReleaseAsset, Repository, WorkflowRunsResponse,
 };
 use crate::github::{GithubClient, OtaProgress};
+use crate::http::ChunkedDownloadError;
 use crate::version::GitVersion;
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::PathBuf;
-use std::time::Duration;
 use zip::ZipArchive;
 
 #[cfg(all(not(test), not(feature = "emulator")))]
 use crate::settings::INTERNAL_CARD_ROOT;
-
-const MIN_CHUNK_SIZE: usize = 256 * 1024;
-const MAX_CHUNK_SIZE: usize = 10 * 1024 * 1024;
-const INITIAL_CHUNK_SIZE: usize = 1024 * 1024;
-/// Target 80% of the HTTP timeout to leave headroom for throughput variance.
-const TARGET_CHUNK_SECS: f64 = crate::github::CLIENT_TIMEOUT_SECS as f64 * 0.8;
-
-/// Maximum number of retry attempts for failed chunks
-const MAX_RETRIES: usize = 3;
 
 /// Downloads and deploys OTA updates from GitHub.
 ///
@@ -124,6 +115,16 @@ pub enum OtaError {
     /// Failed to parse version string
     #[error(transparent)]
     VersionParse(#[from] crate::version::VersionError),
+}
+
+impl From<ChunkedDownloadError> for OtaError {
+    fn from(e: ChunkedDownloadError) -> Self {
+        match e {
+            ChunkedDownloadError::Request(r) if r.status().is_some() => api_error(r),
+            ChunkedDownloadError::Request(r) => OtaError::Request(r),
+            ChunkedDownloadError::Io(e) => OtaError::Io(e),
+        }
+    }
 }
 
 impl OtaClient {
@@ -769,103 +770,6 @@ impl OtaClient {
             })
     }
 
-    /// Downloads a file from a URL with chunked transfer and progress reporting.
-    ///
-    /// Uses HTTP Range headers to request the file in chunks for resilience
-    /// against network interruptions.
-    ///
-    /// # Arguments
-    ///
-    /// * `url` - The complete download URL
-    /// * `total_size` - Total file size in bytes
-    /// * `download_path` - Path where the file should be saved
-    /// * `progress_callback` - Function called with progress updates
-    /// * `use_auth` - Whether to include Authorization header in requests
-    ///
-    /// # Returns
-    ///
-    /// Success if the file is written to disk, error otherwise.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, progress_callback)))]
-    fn download_by_url_to_path<F>(
-        &self,
-        url: &str,
-        total_size: u64,
-        download_path: &PathBuf,
-        progress_callback: &mut F,
-        use_auth: bool,
-    ) -> Result<(), OtaError>
-    where
-        F: FnMut(OtaProgress),
-    {
-        progress_callback(OtaProgress::DownloadingArtifact {
-            downloaded: 0,
-            total: total_size,
-        });
-
-        tracing::debug!(url = %url, "Downloading file");
-        tracing::debug!(path = ?download_path, "Download destination");
-
-        let mut file = File::create(download_path)?;
-
-        let mut downloaded = 0u64;
-        let mut chunk_size = INITIAL_CHUNK_SIZE;
-
-        tracing::debug!(
-            initial_chunk_size = INITIAL_CHUNK_SIZE,
-            "Starting chunked download"
-        );
-
-        while downloaded < total_size {
-            let chunk_start = downloaded;
-            let chunk_end = std::cmp::min(downloaded + chunk_size as u64 - 1, total_size - 1);
-
-            tracing::debug!(
-                chunk_start,
-                chunk_end,
-                chunk_size,
-                total_size,
-                "Downloading chunk"
-            );
-
-            let start = std::time::Instant::now();
-            let chunk_data =
-                self.download_chunk_with_retries(url, chunk_start, chunk_end, use_auth)?;
-            let elapsed_secs = start.elapsed().as_secs_f64();
-
-            file.write_all(&chunk_data)?;
-            downloaded += chunk_data.len() as u64;
-
-            if elapsed_secs > 0.0 {
-                let throughput = chunk_data.len() as f64 / elapsed_secs;
-                chunk_size = ((throughput * TARGET_CHUNK_SECS) as usize)
-                    .clamp(MIN_CHUNK_SIZE, MAX_CHUNK_SIZE);
-                tracing::debug!(
-                    elapsed_secs,
-                    throughput_bytes_per_sec = throughput as u64,
-                    next_chunk_size = chunk_size,
-                    "Adjusted chunk size"
-                );
-            }
-
-            progress_callback(OtaProgress::DownloadingArtifact {
-                downloaded,
-                total: total_size,
-            });
-
-            tracing::debug!(
-                downloaded,
-                total_size,
-                progress_percent = (downloaded as f64 / total_size as f64) * 100.0,
-                "Download progress"
-            );
-        }
-
-        tracing::debug!(bytes = downloaded, "Download complete");
-        tracing::debug!(path = ?download_path, "Saved file");
-
-        Ok(())
-    }
-
     /// Downloads an artifact ZIP to the specified path with chunked transfer and progress reporting.
     ///
     /// GitHub authentication is required for this operation.
@@ -883,116 +787,16 @@ impl OtaClient {
             artifact.id
         );
 
-        self.download_by_url_to_path(
+        self.github.download(
             &download_url,
             artifact.size_in_bytes,
             download_path,
-            progress_callback,
-            true,
-        )
-    }
-
-    /// Downloads a specific byte range of a file with automatic retry logic.
-    ///
-    /// Uses HTTP Range headers to request a specific chunk of the artifact.
-    /// Implements exponential backoff retry strategy for failed downloads.
-    ///
-    /// # Arguments
-    ///
-    /// * `url` - The download URL
-    /// * `start` - Starting byte offset (inclusive)
-    /// * `end` - Ending byte offset (inclusive)
-    ///
-    /// # Returns
-    ///
-    /// The downloaded chunk data as a byte vector.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if all retry attempts fail.
-    fn download_chunk_with_retries(
-        &self,
-        url: &str,
-        start: u64,
-        end: u64,
-        use_auth: bool,
-    ) -> Result<Vec<u8>, OtaError> {
-        let mut last_error = None;
-
-        for attempt in 1..=MAX_RETRIES {
-            match self.download_chunk(url, start, end, use_auth) {
-                Ok(data) => {
-                    if attempt > 1 {
-                        tracing::debug!(
-                            attempt,
-                            max_retries = MAX_RETRIES,
-                            "Chunk download succeeded after retry"
-                        );
-                    }
-                    return Ok(data);
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        attempt,
-                        max_retries = MAX_RETRIES,
-                        error = %e,
-                        "Chunk download failed"
-                    );
-                    last_error = Some(e);
-
-                    if attempt < MAX_RETRIES {
-                        let backoff_ms = 1000 * (2u64.pow(attempt as u32 - 1));
-                        tracing::debug!(backoff_ms, "Retrying after backoff");
-                        std::thread::sleep(Duration::from_millis(backoff_ms));
-                    }
-                }
-            }
-        }
-
-        Err(last_error.unwrap_or_else(|| {
-            OtaError::Api("Failed to download chunk after all retries".to_string())
-        }))
-    }
-
-    /// Downloads a specific byte range from a URL using HTTP Range header.
-    ///
-    /// # Arguments
-    ///
-    /// * `url` - The download URL
-    /// * `start` - Starting byte offset (inclusive)
-    /// * `end` - Ending byte offset (inclusive)
-    /// * `use_auth` - Whether to include Authorization header
-    ///
-    /// # Returns
-    ///
-    /// The downloaded chunk data as a byte vector.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the download fails or times out.
-    fn download_chunk(
-        &self,
-        url: &str,
-        start: u64,
-        end: u64,
-        use_auth: bool,
-    ) -> Result<Vec<u8>, OtaError> {
-        let range_header = format!("bytes={}-{}", start, end);
-
-        let builder = if use_auth {
-            self.github.get(url)
-        } else {
-            self.github.get_unauthenticated(url)
-        };
-
-        let bytes = builder
-            .header("Range", range_header)
-            .send()?
-            .error_for_status()
-            .map_err(api_error)?
-            .bytes()?;
-
-        Ok(bytes.to_vec())
+            |url| self.github.get(url),
+            &mut |downloaded, total| {
+                progress_callback(OtaProgress::DownloadingArtifact { downloaded, total })
+            },
+        )?;
+        Ok(())
     }
 
     /// Downloads a release asset to the specified path with chunked transfer and progress reporting.
@@ -1010,13 +814,16 @@ impl OtaClient {
     where
         F: FnMut(OtaProgress),
     {
-        self.download_by_url_to_path(
+        self.github.download(
             &asset.browser_download_url,
             asset.size,
             download_path,
-            progress_callback,
-            false,
-        )
+            |url| self.github.get_unauthenticated(url),
+            &mut |downloaded, total| {
+                progress_callback(OtaProgress::DownloadingArtifact { downloaded, total })
+            },
+        )?;
+        Ok(())
     }
 }
 
@@ -1142,10 +949,6 @@ mod tests {
         );
     }
 
-    fn external_test_enabled() -> bool {
-        std::env::var("CADMUS_TEST_OTA_EXTERNAL").is_ok() && std::env::var("GH_TOKEN").is_ok()
-    }
-
     fn create_external_client() -> OtaClient {
         crate::crypto::init_crypto_provider();
         let token = std::env::var("GH_TOKEN").expect("GH_TOKEN must be set");
@@ -1156,10 +959,6 @@ mod tests {
     #[test]
     #[ignore]
     fn test_external_download_default_branch_and_deploy() {
-        if !external_test_enabled() {
-            return;
-        }
-
         let client = create_external_client();
         let mut last_progress = None;
 
@@ -1206,10 +1005,6 @@ mod tests {
     #[test]
     #[ignore]
     fn test_external_download_stable_release_and_deploy() {
-        if !external_test_enabled() {
-            return;
-        }
-
         let client = create_external_client();
         let download_result = client.download_stable_release_artifact(|_| {});
 

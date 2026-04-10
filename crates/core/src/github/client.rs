@@ -1,9 +1,11 @@
 use super::types::{
     AccessTokenResponse, DeviceCodeResponse, ScopeError, TokenPollResult, VerifyScopesError,
 };
-use crate::{github::GithubError, http::Client};
+use crate::github::GithubError;
+use crate::http::{ChunkedDownloadError, Client};
 use reqwest::blocking::RequestBuilder;
 use secrecy::{ExposeSecret, SecretString};
+use std::path::PathBuf;
 
 /// GitHub OAuth App client ID, baked in at build time via `GH_OAUTH_CLIENT_ID` env var.
 ///
@@ -94,6 +96,35 @@ impl GithubClient {
     /// token would cause GitHub to reject the request with a 401.
     pub fn get_unauthenticated(&self, url: &str) -> RequestBuilder {
         self.http.get(url)
+    }
+
+    /// Downloads a file to `dest` using HTTP Range requests.
+    ///
+    /// Delegates to [`Client::download`]. `request_builder` is called once per
+    /// chunk (and per retry) to produce a `RequestBuilder` for the given URL.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ChunkedDownloadError` if the file cannot be written or if all
+    /// retry attempts for any chunk fail.
+    #[cfg_attr(
+        feature = "otel",
+        tracing::instrument(skip(self, request_builder, progress_callback))
+    )]
+    pub fn download<B, F>(
+        &self,
+        url: &str,
+        total_size: u64,
+        dest: &PathBuf,
+        request_builder: B,
+        progress_callback: &mut F,
+    ) -> Result<(), ChunkedDownloadError>
+    where
+        B: Fn(&str) -> RequestBuilder,
+        F: FnMut(u64, u64),
+    {
+        self.http
+            .download(url, total_size, dest, request_builder, progress_callback)
     }
 
     fn with_auth(&self, builder: RequestBuilder) -> RequestBuilder {
