@@ -1234,6 +1234,44 @@ mod tests {
     }
 
     #[test]
+    fn natural_cmp_decimal_between_integers() {
+        assert_eq!(natural_cmp("1", "10.5"), Ordering::Less);
+        assert_eq!(natural_cmp("10", "10.5"), Ordering::Less);
+        assert_eq!(natural_cmp("10.5", "11"), Ordering::Less);
+
+        let mut items = ["11", "1", "10.5", "10", "2"];
+        items.sort_by(|a, b| natural_cmp(a, b));
+        assert_eq!(items, ["1", "2", "10", "10.5", "11"]);
+    }
+
+    #[test]
+    fn sort_title_decimal_volume_between_integers() {
+        let v1 = make_info("Series Vol. 1", "a.epub");
+        let v2 = make_info("Series Vol. 2", "b.epub");
+        let v10 = make_info("Series Vol. 10", "c.epub");
+        let v10_5 = make_info("Series Vol. 10.5", "d.epub");
+        let v11 = make_info("Series Vol. 11", "e.epub");
+
+        assert_eq!(sort_title(&v1, &v10_5), Ordering::Less);
+        assert_eq!(sort_title(&v10, &v10_5), Ordering::Less);
+        assert_eq!(sort_title(&v10_5, &v11), Ordering::Less);
+
+        let mut books = [&v11, &v1, &v10_5, &v10, &v2];
+        books.sort_by(|a, b| sort_title(a, b));
+        let titles: Vec<_> = books.iter().map(|i| i.title.as_str()).collect();
+        assert_eq!(
+            titles,
+            [
+                "Series Vol. 1",
+                "Series Vol. 2",
+                "Series Vol. 10",
+                "Series Vol. 10.5",
+                "Series Vol. 11",
+            ]
+        );
+    }
+
+    #[test]
     fn natural_cmp_trailing_dot_not_included_in_number() {
         // "4." — the dot has no digits after it, so it is not part of the number token.
         // "4." therefore sorts the same as "4" for the numeric part, then "." > "" text-wise.
