@@ -129,81 +129,62 @@ impl SettingsEditorBottomBar {
                 center_event,
                 center_icon,
             } => {
-                let third_width = rect.width() as i32 / 3;
-                let left_rect = rect![rect.min.x, rect.min.y, rect.min.x + third_width, rect.max.y];
-                let center_rect = rect![
-                    rect.min.x + third_width,
-                    rect.min.y,
-                    rect.max.x - third_width,
-                    rect.max.y
-                ];
-                let right_rect =
-                    rect![rect.max.x - third_width, rect.min.y, rect.max.x, rect.max.y];
-
-                if prev_enabled {
-                    children.push(Box::new(Icon::new(
-                        "arrow-left",
-                        left_rect,
-                        Event::Page(CycleDir::Previous),
-                    )) as Box<dyn View>);
-                } else {
-                    children.push(Box::new(Filler::new(left_rect, WHITE)) as Box<dyn View>);
-                }
-
+                let (left_rect, center_rect, right_rect) = Self::pagination_rects(rect);
+                Self::push_prev_arrow(&mut children, left_rect, prev_enabled);
                 children
                     .push(Box::new(Icon::new(center_icon, center_rect, center_event))
                         as Box<dyn View>);
-
-                if next_enabled {
-                    children.push(Box::new(Icon::new(
-                        "arrow-right",
-                        right_rect,
-                        Event::Page(CycleDir::Next),
-                    )) as Box<dyn View>);
-                } else {
-                    children.push(Box::new(Filler::new(right_rect, WHITE)) as Box<dyn View>);
-                }
+                Self::push_next_arrow(&mut children, right_rect, next_enabled);
             }
             BottomBarVariant::Pagination {
                 prev_enabled,
                 next_enabled,
             } => {
-                let third_width = rect.width() as i32 / 3;
-                let left_rect = rect![rect.min.x, rect.min.y, rect.min.x + third_width, rect.max.y];
-                let center_rect = rect![
-                    rect.min.x + third_width,
-                    rect.min.y,
-                    rect.max.x - third_width,
-                    rect.max.y
-                ];
-                let right_rect =
-                    rect![rect.max.x - third_width, rect.min.y, rect.max.x, rect.max.y];
-
-                if prev_enabled {
-                    children.push(Box::new(Icon::new(
-                        "arrow-left",
-                        left_rect,
-                        Event::Page(CycleDir::Previous),
-                    )) as Box<dyn View>);
-                } else {
-                    children.push(Box::new(Filler::new(left_rect, WHITE)) as Box<dyn View>);
-                }
-
+                let (left_rect, center_rect, right_rect) = Self::pagination_rects(rect);
+                Self::push_prev_arrow(&mut children, left_rect, prev_enabled);
                 children.push(Box::new(Filler::new(center_rect, WHITE)) as Box<dyn View>);
-
-                if next_enabled {
-                    children.push(Box::new(Icon::new(
-                        "arrow-right",
-                        right_rect,
-                        Event::Page(CycleDir::Next),
-                    )) as Box<dyn View>);
-                } else {
-                    children.push(Box::new(Filler::new(right_rect, WHITE)) as Box<dyn View>);
-                }
+                Self::push_next_arrow(&mut children, right_rect, next_enabled);
             }
         }
 
         SettingsEditorBottomBar { id, rect, children }
+    }
+
+    /// Splits `rect` into equal left, center, and right thirds for pagination layouts.
+    fn pagination_rects(rect: Rectangle) -> (Rectangle, Rectangle, Rectangle) {
+        let third_width = rect.width() as i32 / 3;
+        let left_rect = rect![rect.min.x, rect.min.y, rect.min.x + third_width, rect.max.y];
+        let center_rect = rect![
+            rect.min.x + third_width,
+            rect.min.y,
+            rect.max.x - third_width,
+            rect.max.y
+        ];
+        let right_rect = rect![rect.max.x - third_width, rect.min.y, rect.max.x, rect.max.y];
+        (left_rect, center_rect, right_rect)
+    }
+
+    fn push_prev_arrow(children: &mut Vec<Box<dyn View>>, rect: Rectangle, enabled: bool) {
+        if enabled {
+            children.push(Box::new(Icon::new(
+                "arrow-left",
+                rect,
+                Event::Page(CycleDir::Previous),
+            )) as Box<dyn View>);
+        } else {
+            children.push(Box::new(Filler::new(rect, WHITE)) as Box<dyn View>);
+        }
+    }
+
+    fn push_next_arrow(children: &mut Vec<Box<dyn View>>, rect: Rectangle, enabled: bool) {
+        if enabled {
+            children.push(
+                Box::new(Icon::new("arrow-right", rect, Event::Page(CycleDir::Next)))
+                    as Box<dyn View>,
+            );
+        } else {
+            children.push(Box::new(Filler::new(rect, WHITE)) as Box<dyn View>);
+        }
     }
 }
 

@@ -20,10 +20,6 @@ use super::library_editor::LibraryEditor;
 use super::setting_row::SettingRow;
 use std::path::PathBuf;
 
-/// Number of fixed structural children that always trail the setting rows:
-/// bottom separator, bottom bar, and the toggleable keyboard.
-const TAIL_CHILDREN: usize = 3;
-
 /// A view for editing category-specific settings.
 ///
 /// The `CategoryEditor` manages the UI for editing settings within a specific category
@@ -49,7 +45,8 @@ const TAIL_CHILDREN: usize = 3;
 /// * `row_height` - The height of each setting row
 /// * `focus` - Currently focused child view, if any
 /// * `first_row_index` - Index in the children vector where setting rows begin (after structural elements)
-/// * `keyboard_index` - Index of the keyboard child view in the children vector
+/// * `separator_index` - Index of the bottom separator child view, always `first_row_index + rows_on_page`
+/// * `keyboard_index` - Index of the keyboard child view, always `separator_index + 2` (sep + bar)
 /// * `current_page` - The zero-based index of the currently displayed page of rows
 /// * `pages_count` - Total number of pages required to display all setting rows
 pub struct CategoryEditor {
@@ -61,6 +58,7 @@ pub struct CategoryEditor {
     row_height: i32,
     focus: Option<ViewId>,
     first_row_index: usize,
+    separator_index: usize,
     keyboard_index: usize,
     current_page: usize,
     pages_count: usize,
@@ -111,6 +109,7 @@ impl CategoryEditor {
         let keyboard = ToggleableKeyboard::new(rect, true);
         children.push(Box::new(keyboard) as Box<dyn View>);
 
+        let separator_index = first_row_index;
         let keyboard_index = children.len() - 1;
 
         let mut editor = CategoryEditor {
@@ -122,6 +121,7 @@ impl CategoryEditor {
             row_height,
             focus: None,
             first_row_index,
+            separator_index,
             keyboard_index,
             current_page: 0,
             pages_count: 1,
@@ -217,7 +217,7 @@ impl CategoryEditor {
     /// Rebuilds the visible setting rows for the current page and refreshes the
     /// bottom navigation bar to reflect the new pagination state.
     ///
-    /// The children vector always has the following fixed tail (`TAIL_CHILDREN` items):
+    /// The children vector always has the following fixed tail (3 items):
     /// `[..rows.., separator, bottom_bar, keyboard]`. This method drains the
     /// row slice, computes how many rows fit in `content_rect` at `row_height`,
     /// calculates `pages_count`, clamps `current_page` into bounds, inserts the
@@ -229,8 +229,8 @@ impl CategoryEditor {
     /// and the `Event::Page` handler delegate here.
     #[cfg_attr(feature = "otel", tracing::instrument(skip_all))]
     fn update_rows_list(&mut self, rq: &mut RenderQueue, context: &mut Context) {
-        let rows_end = self.children.len() - TAIL_CHILDREN;
-        self.children.drain(self.first_row_index..rows_end);
+        self.children
+            .drain(self.first_row_index..self.separator_index);
 
         let available_height = self.content_rect.height() as i32;
         let max_rows = (available_height / self.row_height).max(1) as usize;
@@ -238,7 +238,7 @@ impl CategoryEditor {
         let all_kinds = self.category.settings(context);
         let total_rows = all_kinds.len();
 
-        self.pages_count = ((total_rows + max_rows - 1) / max_rows).max(1);
+        self.pages_count = total_rows.div_ceil(max_rows).max(1);
         self.current_page = self.current_page.min(self.pages_count - 1);
 
         let start = self.current_page * max_rows;
@@ -268,9 +268,10 @@ impl CategoryEditor {
             self.children.insert(self.first_row_index + offset, row);
         }
 
-        let sep_index = self.first_row_index + rows_len;
-        self.children.remove(sep_index);
-        self.children.remove(sep_index);
+        self.separator_index = self.first_row_index + rows_len;
+        let bar_index = self.separator_index + 1;
+        self.children.remove(bar_index);
+        self.children.remove(self.separator_index);
 
         let (bar_height, separator_top_half, separator_bottom_half) = Self::calculate_dimensions();
         let new_sep = Self::build_bottom_separator(
@@ -279,7 +280,7 @@ impl CategoryEditor {
             separator_top_half,
             separator_bottom_half,
         );
-        self.children.insert(sep_index, new_sep);
+        self.children.insert(self.separator_index, new_sep);
 
         let prev_enabled = self.current_page > 0;
         let next_enabled = self.current_page + 1 < self.pages_count;
@@ -291,9 +292,9 @@ impl CategoryEditor {
             prev_enabled,
             next_enabled,
         );
-        self.children.insert(sep_index + 1, new_bar);
+        self.children.insert(self.separator_index + 1, new_bar);
 
-        self.keyboard_index = self.children.len() - 1;
+        self.keyboard_index = self.separator_index + 2;
 
         rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
     }
@@ -302,12 +303,7 @@ impl CategoryEditor {
     ///
     /// Resets to page 0 to avoid stale page state when the library list changes.
     #[inline]
-    fn rebuild_library_rows(
-        &mut self,
-        rq: &mut RenderQueue,
-        context: &mut Context,
-        _original_count: Option<usize>,
-    ) {
+    fn rebuild_library_rows(&mut self, rq: &mut RenderQueue, context: &mut Context) {
         if self.category != Category::Libraries {
             return;
         }
@@ -380,10 +376,8 @@ impl CategoryEditor {
         context: &mut Context,
     ) -> bool {
         if index < context.settings.libraries.len() {
-            let original_count = context.settings.libraries.len();
             context.settings.libraries.remove(index);
-
-            self.rebuild_library_rows(rq, context, Some(original_count));
+            self.rebuild_library_rows(rq, context);
         }
 
         if let Some(menu_index) = locate_by_id(self, ViewId::SettingsValueMenu) {
@@ -394,17 +388,12 @@ impl CategoryEditor {
         true
     }
 
-    /// Handles the `AddLibrary` event by creating a new library and opening an editor overlay.
+    /// Handles the `AddLibrary` event by opening a `LibraryEditor` overlay for a new library.
     ///
-    /// This function:
-    /// 1. Creates a new `LibrarySettings` with default values
-    /// 2. Adds it immediately to `context.settings.libraries`
-    /// 3. Rebuilds the library rows to display the new library in the list
-    /// 4. Opens a `LibraryEditor` overlay so the user can immediately configure the new library
-    ///
-    /// The `LibraryEditor` is pushed to the end of the children array, after the keyboard.
-    /// This means `keyboard_index` remains valid and continues to correctly point to the keyboard,
-    /// while the `LibraryEditor` becomes the new last child.
+    /// A `LibrarySettings` with default values is constructed and passed to the editor, but it
+    /// is not written to `context.settings.libraries` here. The library is only committed when
+    /// the user validates via `Event::UpdateLibrary`. The `LibraryEditor` is pushed to the end
+    /// of the children array, after the keyboard, so `keyboard_index` remains valid.
     #[inline]
     fn handle_add_library_event(
         &mut self,
@@ -470,7 +459,7 @@ impl CategoryEditor {
             return true;
         }
 
-        self.rebuild_library_rows(rq, context, None);
+        self.rebuild_library_rows(rq, context);
         true
     }
 
