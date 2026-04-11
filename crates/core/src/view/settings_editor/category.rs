@@ -151,7 +151,12 @@ impl Category {
                     .into_iter()
                     .map(|lang| {
                         let is_installed = installed.contains(&lang);
-                        Box::new(DictionaryInfo { lang, is_installed }) as Box<dyn SettingKind>
+                        let update_available = is_installed && service.is_update_available(&lang);
+                        Box::new(DictionaryInfo {
+                            lang,
+                            is_installed,
+                            update_available,
+                        }) as Box<dyn SettingKind>
                     })
                     .collect()
             }

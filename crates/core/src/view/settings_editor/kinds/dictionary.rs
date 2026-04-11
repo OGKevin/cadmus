@@ -10,11 +10,15 @@ use crate::view::{EntryId, EntryKind, Event};
 /// Each row shows a lang code as the label and "Installed" or "Download" as the
 /// value. Installed dictionaries show a sub-menu with "Re-download" and "Delete"
 /// options; uninstalled ones show an `ActionLabel` that fires the download event on tap.
+/// When an update is available, the value shows "Update Available" and the submenu
+/// includes an "Update" option above "Re-download".
 pub struct DictionaryInfo {
     /// ISO 639-1 language code, e.g. `"en"` or `"fr"`.
     pub lang: String,
     /// Whether this dictionary is currently installed on the device.
     pub is_installed: bool,
+    /// Whether a newer version is available on the server.
+    pub update_available: bool,
 }
 
 impl SettingKind for DictionaryInfo {
@@ -47,19 +51,33 @@ impl SettingKind for DictionaryInfo {
 
     fn fetch(&self, _settings: &Settings) -> SettingData {
         if self.is_installed {
-            let entries = vec![
-                EntryKind::Command(
+            let mut entries = Vec::new();
+
+            if self.update_available {
+                entries.push(EntryKind::Command(
+                    fl!("settings-dictionaries-update"),
+                    EntryId::RedownloadDictionary(self.lang.clone()),
+                ));
+            } else {
+                entries.push(EntryKind::Command(
                     fl!("settings-dictionaries-re-download"),
                     EntryId::RedownloadDictionary(self.lang.clone()),
-                ),
-                EntryKind::Command(
-                    fl!("settings-dictionaries-delete"),
-                    EntryId::DeleteDictionary(self.lang.clone()),
-                ),
-            ];
+                ));
+            }
+
+            entries.push(EntryKind::Command(
+                fl!("settings-dictionaries-delete"),
+                EntryId::DeleteDictionary(self.lang.clone()),
+            ));
+
+            let value = if self.update_available {
+                fl!("settings-dictionaries-update-available")
+            } else {
+                fl!("settings-dictionaries-installed")
+            };
 
             SettingData {
-                value: fl!("settings-dictionaries-installed"),
+                value,
                 widget: WidgetKind::SubMenu(entries),
             }
         } else {

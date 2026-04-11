@@ -7,6 +7,7 @@
 
 use std::collections::HashMap;
 
+use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 
 /// Top-level response from `GET https://www.reader-dict.com/api/v1/dictionaries`.
@@ -23,8 +24,9 @@ pub struct DictionaryEntry {
     /// (e.g. `"df,dic,dictorg,kobo,mobi,stardict"`).
     pub formats: String,
 
-    /// ISO 8601 date of the last release (e.g. `"2026-04-01"`).
-    pub updated: String,
+    /// Date of the last release.
+    #[serde(with = "date_serde")]
+    pub updated: NaiveDate,
 
     /// Number of headword entries in the dictionary.
     pub words: u64,
@@ -50,6 +52,28 @@ pub(super) fn download_url_no_etym(lang: &str) -> String {
     )
 }
 
+mod date_serde {
+    use chrono::NaiveDate;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    const FORMAT: &str = "%Y-%m-%d";
+
+    pub fn serialize<S>(date: &NaiveDate, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        date.format(FORMAT).to_string().serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<NaiveDate, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        NaiveDate::parse_from_str(&s, FORMAT).map_err(serde::de::Error::custom)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -57,7 +81,7 @@ mod tests {
     fn make_entry() -> DictionaryEntry {
         DictionaryEntry {
             formats: "df,dic,dictorg,kobo,mobi,stardict".to_string(),
-            updated: "2026-04-01".to_string(),
+            updated: NaiveDate::from_ymd_opt(2026, 4, 1).unwrap(),
             words: 1_381_375,
         }
     }
@@ -102,7 +126,10 @@ mod tests {
 
         let en_entry = resp.get("en").and_then(|m| m.get("en")).unwrap();
         assert_eq!(en_entry.words, 1_381_375);
-        assert_eq!(en_entry.updated, "2026-04-01");
+        assert_eq!(
+            en_entry.updated,
+            NaiveDate::from_ymd_opt(2026, 4, 1).unwrap()
+        );
 
         let fr_entry = resp.get("fr").and_then(|m| m.get("fr")).unwrap();
         assert_eq!(fr_entry.words, 2_050_655);

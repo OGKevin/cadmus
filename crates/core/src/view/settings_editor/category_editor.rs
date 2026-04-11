@@ -531,6 +531,18 @@ impl CategoryEditor {
             return true;
         }
 
+        let entry = match service.get_entry_for_lang(lang) {
+            Ok(Some(e)) => e,
+            Ok(None) => {
+                tracing::warn!(lang, "No metadata entry found for language; cannot install");
+                return true;
+            }
+            Err(e) => {
+                tracing::warn!(lang, error = %e, "Failed to look up dictionary entry");
+                return true;
+            }
+        };
+
         let lang_owned = lang.to_string();
         let hub2 = hub.clone();
         let parent_span = tracing::Span::current();
@@ -547,7 +559,7 @@ impl CategoryEditor {
                 tracing::info_span!(parent: &parent_span, "dictionary_install_async").entered();
 
             let result = service
-                .install_dictionary(&lang_owned, false, &mut |downloaded, total| {
+                .install_dictionary(&lang_owned, &entry, false, &mut |downloaded, total| {
                     use humanize_bytes::humanize_bytes_decimal;
                     let downloaded_str = humanize_bytes_decimal!(downloaded).to_string();
                     let total_str = humanize_bytes_decimal!(total).to_string();
@@ -600,6 +612,10 @@ impl CategoryEditor {
             if let Err(e) = std::fs::remove_dir_all(&lang_dir) {
                 tracing::warn!(lang, error = %e, "Failed to delete dictionary directory");
             }
+        }
+
+        if let Some(service) = &self.dict_service {
+            service.remove_installed(lang);
         }
 
         if let Some(menu_index) = locate_by_id(self, ViewId::SettingsValueMenu) {

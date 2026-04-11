@@ -92,3 +92,5 @@ settings-dictionaries-re-download = Re-download
 settings-dictionaries-delete = {delete}
 settings-dictionaries-installed = Installed
 settings-dictionaries-download = Download
+settings-dictionaries-update = Update
+settings-dictionaries-update-available = Update Available

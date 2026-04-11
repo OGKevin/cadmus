@@ -3,16 +3,18 @@
 //! Manages the `dictionary_monolingual_metadata` table, which caches the
 //! API response from `https://www.reader-dict.com/api/v1/dictionaries`.
 //! Only monolingual entries (source language == target language) are stored.
+//!
+//! Also manages the `dictionary_installed` table, which tracks which version
+//! of each dictionary is currently installed on the device.
 
 use super::metadata::DictionaryEntry;
 use crate::db::runtime::RUNTIME;
 use crate::db::types::UnixTimestamp;
 use crate::db::Database;
 use anyhow::Error;
-use chrono::NaiveDate;
 use sqlx::SqlitePool;
 
-/// Database handle for `dictionary_monolingual_metadata`.
+/// Database handle for monolingual dictionary tables.
 #[derive(Clone, Debug)]
 pub(super) struct Db {
     pool: SqlitePool,
@@ -27,16 +29,14 @@ impl Db {
 
     /// Inserts or replaces a single monolingual metadata entry.
     ///
-    /// The `updated` date string (e.g. `"2026-04-01"`) is parsed as midnight
-    /// UTC and stored as a Unix epoch integer.
+    /// The `updated` date is stored as a Unix epoch integer (midnight UTC).
     ///
     /// # Errors
     ///
-    /// Returns an error if the date string cannot be parsed or the database
-    /// write fails.
+    /// Returns an error if the database write fails.
     #[cfg_attr(feature = "otel", tracing::instrument(skip(self, entry), fields(lang = %lang)))]
     pub(super) fn upsert_entry(&self, lang: &str, entry: &DictionaryEntry) -> Result<(), Error> {
-        let updated = parse_date_to_timestamp(&entry.updated)?;
+        let updated: UnixTimestamp = entry.updated.into();
         let cached_at = UnixTimestamp::now();
         let formats = &entry.formats;
         let words = entry.words as i64;
@@ -65,6 +65,33 @@ impl Db {
         })
     }
 
+    /// Retrieves the cached metadata entry for a single language.
+    ///
+    /// Returns `None` if no entry for `lang` has been cached yet.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database query fails.
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(lang = %lang)))]
+    pub(super) fn get_entry(&self, lang: &str) -> Result<Option<DictionaryEntry>, Error> {
+        RUNTIME.block_on(async {
+            let row = sqlx::query!(
+                r#"SELECT formats, updated as "updated: UnixTimestamp", words
+                   FROM dictionary_monolingual_metadata
+                   WHERE lang = ?"#,
+                lang,
+            )
+            .fetch_optional(&self.pool)
+            .await?;
+
+            Ok(row.map(|r| DictionaryEntry {
+                formats: r.formats,
+                updated: r.updated.into(),
+                words: r.words as u64,
+            }))
+        })
+    }
+
     /// Retrieves all cached monolingual metadata entries.
     ///
     /// Returns an empty `Vec` if no entries have been cached yet.
@@ -72,7 +99,7 @@ impl Db {
     /// # Errors
     ///
     /// Returns an error if the database query fails or any stored `updated`
-    /// timestamp cannot be formatted as a date string.
+    /// timestamp cannot be converted to a `NaiveDate`.
     #[cfg_attr(feature = "otel", tracing::instrument(skip(self)))]
     pub(super) fn get_all_entries(&self) -> Result<Vec<(String, DictionaryEntry)>, Error> {
         RUNTIME.block_on(async {
@@ -89,7 +116,7 @@ impl Db {
                         r.lang,
                         DictionaryEntry {
                             formats: r.formats,
-                            updated: format_timestamp_to_date(r.updated)?,
+                            updated: r.updated.into(),
                             words: r.words as u64,
                         },
                     ))
@@ -97,25 +124,115 @@ impl Db {
                 .collect()
         })
     }
-}
 
-/// Parses an ISO 8601 date string (e.g. `"2026-04-01"`) to midnight UTC as a
-/// `UnixTimestamp`.
-fn parse_date_to_timestamp(date_str: &str) -> Result<UnixTimestamp, Error> {
-    let date = NaiveDate::parse_from_str(date_str, "%Y-%m-%d")
-        .map_err(|e| anyhow::anyhow!("invalid date '{}': {}", date_str, e))?;
-    let dt: chrono::NaiveDateTime = date.and_hms_opt(0, 0, 0).unwrap();
-    Ok(UnixTimestamp::from(dt))
-}
+    /// Returns the most recent `cached_at` value across all metadata entries.
+    ///
+    /// Used to determine whether the metadata cache is stale relative to
+    /// the API's `Last-Modified` header.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database query fails.
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self)))]
+    pub(super) fn get_most_recent_cached_at(&self) -> Result<Option<UnixTimestamp>, Error> {
+        RUNTIME.block_on(async {
+            let result = sqlx::query_scalar!(
+                r#"SELECT MAX(cached_at) as "cached_at: UnixTimestamp"
+                   FROM dictionary_monolingual_metadata"#
+            )
+            .fetch_one(&self.pool)
+            .await?;
 
-/// Formats a `UnixTimestamp` back to an ISO 8601 date string (e.g. `"2026-04-01"`).
-fn format_timestamp_to_date(ts: UnixTimestamp) -> Result<String, Error> {
-    let dt: chrono::NaiveDateTime = ts.into();
-    Ok(dt.format("%Y-%m-%d").to_string())
+            Ok(result)
+        })
+    }
+
+    /// Records that a dictionary was installed with the given version.
+    ///
+    /// If a record already exists for `lang`, it is updated in place.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database write fails.
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(lang = %lang)))]
+    pub(super) fn record_install(
+        &self,
+        lang: &str,
+        installed_version: UnixTimestamp,
+    ) -> Result<(), Error> {
+        let installed_at = UnixTimestamp::now();
+
+        RUNTIME.block_on(async {
+            sqlx::query!(
+                r#"INSERT INTO dictionary_installed (lang, installed_at, installed_version)
+                   VALUES (?, ?, ?)
+                   ON CONFLICT(lang) DO UPDATE SET
+                       installed_at      = excluded.installed_at,
+                       installed_version = excluded.installed_version"#,
+                lang,
+                installed_at,
+                installed_version,
+            )
+            .execute(&self.pool)
+            .await?;
+
+            tracing::debug!(lang, "recorded dictionary install");
+            Ok(())
+        })
+    }
+
+    /// Removes the installed record for a language.
+    ///
+    /// Called when a dictionary is deleted from the device.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database write fails.
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(lang = %lang)))]
+    pub(super) fn remove_installed(&self, lang: &str) -> Result<(), Error> {
+        RUNTIME.block_on(async {
+            sqlx::query!(r#"DELETE FROM dictionary_installed WHERE lang = ?"#, lang)
+                .execute(&self.pool)
+                .await?;
+
+            tracing::debug!(lang, "removed dictionary installed record");
+            Ok(())
+        })
+    }
+
+    /// Returns `true` if a newer version of the dictionary is available.
+    ///
+    /// Compares `updated` from `dictionary_monolingual_metadata` against
+    /// `installed_version` from `dictionary_installed` via a single SQL JOIN.
+    /// Returns `false` if the language is not installed or has no metadata.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database query fails.
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(lang = %lang), ret(level=tracing::Level::TRACE)))]
+    pub(super) fn is_update_available(&self, lang: &str) -> Result<bool, Error> {
+        RUNTIME.block_on(async {
+            let result = sqlx::query_scalar!(
+                r#"SELECT EXISTS(
+                    SELECT 1
+                    FROM dictionary_monolingual_metadata m
+                    JOIN dictionary_installed i ON m.lang = i.lang
+                    WHERE m.lang = ? AND m.updated > i.installed_version
+                ) as "exists: bool""#,
+                lang
+            )
+            .fetch_one(&self.pool)
+            .await?;
+
+            Ok(result)
+        })
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use chrono::NaiveDate;
+
     use super::*;
 
     fn create_test_db() -> (Database, Db) {
@@ -125,10 +242,10 @@ mod tests {
         (database, db)
     }
 
-    fn make_entry(updated: &str, words: u64) -> DictionaryEntry {
+    fn make_entry(year: i32, month: u32, day: u32, words: u64) -> DictionaryEntry {
         DictionaryEntry {
             formats: "df,dic,dictorg,kobo,mobi,stardict".to_string(),
-            updated: updated.to_string(),
+            updated: NaiveDate::from_ymd_opt(year, month, day).unwrap(),
             words,
         }
     }
@@ -136,7 +253,7 @@ mod tests {
     #[test]
     fn test_upsert_and_get_roundtrip() {
         let (_database, db) = create_test_db();
-        let entry = make_entry("2026-04-01", 1_381_375);
+        let entry = make_entry(2026, 4, 1, 1_381_375);
 
         db.upsert_entry("en", &entry)
             .expect("upsert should succeed");
@@ -146,7 +263,10 @@ mod tests {
         let (lang, fetched) = &all[0];
         assert_eq!(lang, "en");
         assert_eq!(fetched.formats, entry.formats);
-        assert_eq!(fetched.updated, "2026-04-01");
+        assert_eq!(
+            fetched.updated,
+            NaiveDate::from_ymd_opt(2026, 4, 1).unwrap()
+        );
         assert_eq!(fetched.words, 1_381_375);
     }
 
@@ -154,15 +274,18 @@ mod tests {
     fn test_upsert_overwrites_existing_entry() {
         let (_database, db) = create_test_db();
 
-        db.upsert_entry("en", &make_entry("2026-01-01", 100))
+        db.upsert_entry("en", &make_entry(2026, 1, 1, 100))
             .expect("upsert should succeed");
-        db.upsert_entry("en", &make_entry("2026-04-01", 1_381_375))
+        db.upsert_entry("en", &make_entry(2026, 4, 1, 1_381_375))
             .expect("upsert should succeed");
 
         let all = db.get_all_entries().expect("get_all should not fail");
         assert_eq!(all.len(), 1);
         let (_, fetched) = &all[0];
-        assert_eq!(fetched.updated, "2026-04-01");
+        assert_eq!(
+            fetched.updated,
+            NaiveDate::from_ymd_opt(2026, 4, 1).unwrap()
+        );
         assert_eq!(fetched.words, 1_381_375);
     }
 
@@ -170,9 +293,9 @@ mod tests {
     fn test_get_all_entries_returns_all() {
         let (_database, db) = create_test_db();
 
-        db.upsert_entry("en", &make_entry("2026-04-01", 1_381_375))
+        db.upsert_entry("en", &make_entry(2026, 4, 1, 1_381_375))
             .expect("upsert should succeed");
-        db.upsert_entry("fr", &make_entry("2026-03-01", 2_050_655))
+        db.upsert_entry("fr", &make_entry(2026, 3, 1, 2_050_655))
             .expect("upsert should succeed");
 
         let all = db.get_all_entries().expect("get_all should not fail");
@@ -191,16 +314,80 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_date_to_timestamp_roundtrip() {
-        let date_str = "2026-04-01";
-        let ts = parse_date_to_timestamp(date_str).expect("parse should succeed");
-        let formatted = format_timestamp_to_date(ts).expect("format should succeed");
-        assert_eq!(formatted, date_str);
+    fn test_get_most_recent_cached_at_empty() {
+        let (_database, db) = create_test_db();
+        let result = db
+            .get_most_recent_cached_at()
+            .expect("should not error on empty table");
+        assert!(result.is_none());
     }
 
     #[test]
-    fn test_parse_date_invalid_returns_error() {
-        assert!(parse_date_to_timestamp("not-a-date").is_err());
-        assert!(parse_date_to_timestamp("2026/04/01").is_err());
+    fn test_get_most_recent_cached_at_returns_max() {
+        let (_database, db) = create_test_db();
+
+        db.upsert_entry("en", &make_entry(2026, 4, 1, 1_381_375))
+            .expect("upsert should succeed");
+        db.upsert_entry("fr", &make_entry(2026, 3, 1, 2_050_655))
+            .expect("upsert should succeed");
+
+        let result = db.get_most_recent_cached_at().expect("should not error");
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_remove_installed() {
+        let (_database, db) = create_test_db();
+        let version = UnixTimestamp::now();
+
+        db.record_install("en", version)
+            .expect("record_install should succeed");
+        db.remove_installed("en")
+            .expect("remove_installed should succeed");
+
+        let result = db.is_update_available("en").expect("should not error");
+        assert!(!result);
+    }
+
+    #[test]
+    fn test_is_update_available_no_update() {
+        let (_database, db) = create_test_db();
+
+        let date = NaiveDate::from_ymd_opt(2026, 4, 1).unwrap();
+        let version: UnixTimestamp = date.into();
+
+        db.upsert_entry("en", &make_entry(2026, 4, 1, 1_381_375))
+            .expect("upsert should succeed");
+        db.record_install("en", version)
+            .expect("record_install should succeed");
+
+        let result = db.is_update_available("en").expect("should not error");
+        assert!(!result);
+    }
+
+    #[test]
+    fn test_is_update_available_with_update() {
+        let (_database, db) = create_test_db();
+
+        let old_version: UnixTimestamp = NaiveDate::from_ymd_opt(2026, 1, 1).unwrap().into();
+
+        db.upsert_entry("en", &make_entry(2026, 4, 1, 1_381_375))
+            .expect("upsert should succeed");
+        db.record_install("en", old_version)
+            .expect("record_install should succeed");
+
+        let result = db.is_update_available("en").expect("should not error");
+        assert!(result);
+    }
+
+    #[test]
+    fn test_is_update_available_not_installed() {
+        let (_database, db) = create_test_db();
+
+        db.upsert_entry("en", &make_entry(2026, 4, 1, 1_381_375))
+            .expect("upsert should succeed");
+
+        let result = db.is_update_available("en").expect("should not error");
+        assert!(!result);
     }
 }

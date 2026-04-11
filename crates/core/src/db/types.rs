@@ -1,4 +1,4 @@
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 use sqlx::encode::IsNull;
 use sqlx::error::BoxDynError;
 use sqlx::sqlite::{Sqlite, SqliteArgumentValue, SqliteTypeInfo, SqliteValueRef};
@@ -21,6 +21,38 @@ impl UnixTimestamp {
     }
 }
 
+impl std::fmt::Display for UnixTimestamp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let dt = NaiveDateTime::from(*self);
+
+        write!(f, "{} UTC ({})", dt, self.0)
+    }
+}
+
+impl From<UnixTimestamp> for i64 {
+    fn from(value: UnixTimestamp) -> Self {
+        value.0
+    }
+}
+
+impl From<NaiveDate> for UnixTimestamp {
+    fn from(value: NaiveDate) -> Self {
+        Self(
+            value
+                .and_hms_opt(0, 0, 0)
+                .expect("midnight should always be valid")
+                .and_utc()
+                .timestamp(),
+        )
+    }
+}
+
+impl From<UnixTimestamp> for NaiveDate {
+    fn from(value: UnixTimestamp) -> Self {
+        NaiveDateTime::from(value).date()
+    }
+}
+
 impl From<NaiveDateTime> for UnixTimestamp {
     fn from(dt: NaiveDateTime) -> Self {
         Self(dt.and_utc().timestamp())
@@ -31,9 +63,15 @@ impl From<NaiveDateTime> for UnixTimestamp {
 /// outside the valid range.
 impl From<UnixTimestamp> for NaiveDateTime {
     fn from(ts: UnixTimestamp) -> Self {
-        DateTime::from_timestamp(ts.0, 0)
-            .unwrap_or_else(|| DateTime::from_timestamp(0, 0).unwrap())
-            .naive_utc()
+        DateTime::<Utc>::from(ts).naive_utc()
+    }
+}
+
+/// Converts to `DateTime<Utc>`, falling back to the Unix epoch for timestamps
+/// outside the valid range.
+impl From<UnixTimestamp> for DateTime<Utc> {
+    fn from(ts: UnixTimestamp) -> Self {
+        DateTime::from_timestamp(ts.0, 0).unwrap_or_else(|| DateTime::from_timestamp(0, 0).unwrap())
     }
 }
 

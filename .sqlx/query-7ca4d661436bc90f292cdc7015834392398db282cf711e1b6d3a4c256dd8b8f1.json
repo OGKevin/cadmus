@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT MAX(cached_at) as \"cached_at: UnixTimestamp\"\n                   FROM dictionary_monolingual_metadata",
+  "describe": {
+    "columns": [
+      {
+        "name": "cached_at: UnixTimestamp",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "7ca4d661436bc90f292cdc7015834392398db282cf711e1b6d3a4c256dd8b8f1"
+}
