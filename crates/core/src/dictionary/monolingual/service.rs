@@ -10,7 +10,7 @@ use super::metadata::{download_url, download_url_no_etym, DictionaryEntry};
 use crate::db::Database;
 use std::collections::HashSet;
 use std::fs;
-use std::io::{self, Cursor};
+use std::io::{self};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use zip::ZipArchive;
@@ -123,9 +123,10 @@ impl MonolingualDictionaryService {
 
     /// Downloads and installs a dictionary for the given language.
     ///
-    /// The archive is extracted into `<dict_dir>/reader-dict/<lang>/` and the
-    /// files are renamed to `<lang>.index` and `<lang>.dict[.dz]`. Any
-    /// existing files in that directory are overwritten.
+    /// The archive is downloaded to a temporary file, then extracted into
+    /// `<dict_dir>/reader-dict/<lang>/` and the files are renamed to
+    /// `<lang>.index` and `<lang>.dict[.dz]`. Any existing files in that
+    /// directory are overwritten.
     ///
     /// Returns [`MonolingualError::InstallationInProgress`] immediately if a
     /// download for the same language is already running. The caller should
@@ -139,18 +140,24 @@ impl MonolingualDictionaryService {
     /// * `include_etymologies` - When `true`, the full archive (with
     ///   etymologies) is downloaded; when `false`, the smaller no-etymology
     ///   variant is used.
+    /// * `progress_callback` - Called after each downloaded chunk with
+    ///   `(bytes_downloaded_so_far, total_bytes)`.
     ///
     /// # Errors
     ///
     /// Returns an error if a download for `lang` is already in progress, if
     /// the download fails, if the archive cannot be parsed, or if files cannot
     /// be written to disk.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(lang = %lang, include_etymologies)))]
-    pub fn install_dictionary(
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, progress_callback), fields(lang = %lang, include_etymologies)))]
+    pub fn install_dictionary<F>(
         &self,
         lang: &str,
         include_etymologies: bool,
-    ) -> Result<(), MonolingualError> {
+        progress_callback: &mut F,
+    ) -> Result<(), MonolingualError>
+    where
+        F: FnMut(u64, u64),
+    {
         {
             #[cfg(feature = "otel")]
             let _span = tracing::info_span!("lock").entered();
@@ -162,7 +169,7 @@ impl MonolingualDictionaryService {
             pending.insert(lang.to_string());
         }
 
-        let result = self.do_install(lang, include_etymologies);
+        let result = self.do_install(lang, include_etymologies, progress_callback);
 
         {
             #[cfg(feature = "otel")]
@@ -173,8 +180,16 @@ impl MonolingualDictionaryService {
         result
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self)))]
-    fn do_install(&self, lang: &str, include_etymologies: bool) -> Result<(), MonolingualError> {
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, progress_callback)))]
+    fn do_install<F>(
+        &self,
+        lang: &str,
+        include_etymologies: bool,
+        progress_callback: &mut F,
+    ) -> Result<(), MonolingualError>
+    where
+        F: FnMut(u64, u64),
+    {
         let url = if include_etymologies {
             download_url(lang)
         } else {
@@ -183,17 +198,19 @@ impl MonolingualDictionaryService {
 
         tracing::info!(lang, url = %url, "Downloading dictionary");
 
-        let bytes = self
-            .client
-            .download_bytes(&url)
-            .map_err(|e| MonolingualError::Request(e.to_string()))?;
-
         let dest = self.lang_dir(lang);
         fs::create_dir_all(&dest)?;
 
+        let temp_path = dest.join(".download.tmp");
+
+        self.client.download(&url, &temp_path, progress_callback)?;
+
         tracing::debug!(lang, dest = %dest.display(), "Extracting dictionary archive");
 
-        extract_zip_renamed(&bytes, &dest, lang)?;
+        let file = fs::File::open(&temp_path)?;
+        extract_zip_renamed(file, &dest, lang)?;
+
+        fs::remove_file(&temp_path)?;
 
         tracing::info!(lang, dest = %dest.display(), "Dictionary installed");
 
@@ -239,15 +256,18 @@ fn has_dict_pair(dir: &Path) -> bool {
     false
 }
 
-/// Extracts all entries from a ZIP archive `bytes` into `dest`, renaming each
+/// Extracts all entries from a ZIP archive into `dest`, renaming each
 /// file to `<lang>.<ext>` where `<ext>` is `.index`, `.dict`, or `.dict.dz`.
 ///
 /// Files with unrecognised extensions are skipped. Directories inside the ZIP
 /// are ignored because all output files land flat in `dest`.
-#[cfg_attr(feature = "otel", tracing::instrument(skip(bytes)))]
-fn extract_zip_renamed(bytes: &[u8], dest: &Path, lang: &str) -> Result<(), MonolingualError> {
-    let cursor = Cursor::new(bytes);
-    let mut archive = ZipArchive::new(cursor)
+#[cfg_attr(feature = "otel", tracing::instrument(skip(reader)))]
+fn extract_zip_renamed<R: std::io::Read + std::io::Seek>(
+    reader: R,
+    dest: &Path,
+    lang: &str,
+) -> Result<(), MonolingualError> {
+    let mut archive = ZipArchive::new(reader)
         .map_err(|e| MonolingualError::Extraction(format!("failed to open zip archive: {e}")))?;
 
     for i in 0..archive.len() {
@@ -310,6 +330,7 @@ fn dict_file_target_name(original: &str, lang: &str) -> Option<String> {
 mod tests {
     use super::*;
     use crate::db::Database;
+    use std::io::Cursor;
     use std::io::Write;
     use tempfile::TempDir;
 
@@ -384,7 +405,7 @@ mod tests {
 
         let dest = dir.path().join(READER_DICT_SUBDIR).join("en");
         fs::create_dir_all(&dest).unwrap();
-        extract_zip_renamed(&zip_bytes, &dest, "en").unwrap();
+        extract_zip_renamed(Cursor::new(&zip_bytes), &dest, "en").unwrap();
 
         assert!(dest.join("Reader-Dict-en.index").exists());
         assert!(dest.join("Reader-Dict-en.dict").exists());
@@ -445,7 +466,7 @@ mod tests {
             .insert("de".to_string());
 
         let err = service
-            .install_dictionary("de", false)
+            .install_dictionary("de", false, &mut |_, _| {})
             .expect_err("expected InstallationInProgress error");
 
         assert!(
@@ -459,7 +480,7 @@ mod tests {
         let (service, _dir) = create_test_service();
 
         // A missing URL will cause a network error; verify pending is cleared.
-        let _ = service.install_dictionary("zz", false);
+        let _ = service.install_dictionary("zz", false, &mut |_, _| {});
         assert!(!service.is_installing("zz"));
     }
 
@@ -487,7 +508,7 @@ mod tests {
         let (service, dir) = create_test_service();
 
         service
-            .install_dictionary("en", false)
+            .install_dictionary("en", false, &mut |_, _| {})
             .expect("install_dictionary failed");
 
         let lang_dir = dir.path().join(READER_DICT_SUBDIR).join("en");

@@ -148,28 +148,58 @@ impl MonolingualClient {
         Ok(monolingual)
     }
 
-    /// Downloads raw bytes from `url`.
+    /// Downloads `url` to `dest` using chunked HTTP Range requests.
+    ///
+    /// Issues a minimal `bytes=0-0` Range request first to read `Content-Range`
+    /// and obtain the total file size, then delegates to the chunked
+    /// [`crate::http::Client::download`] method which handles retries and
+    /// adaptive chunk sizing.
+    ///
+    /// `progress_callback` receives `(bytes_downloaded_so_far, total_bytes)`
+    /// after each chunk.
     ///
     /// # Errors
     ///
-    /// Returns an error if the HTTP request fails.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(url = %url)))]
-    pub(super) fn download_bytes(&self, url: &str) -> Result<Vec<u8>, MonolingualError> {
-        tracing::debug!(url = %url, "Downloading bytes");
+    /// Returns an error if the HEAD-range request fails, the `Content-Range`
+    /// header is missing, or the chunked download fails.
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, progress_callback), fields(url = %url)))]
+    pub(super) fn download<F>(
+        &self,
+        url: &str,
+        dest: &std::path::Path,
+        progress_callback: &mut F,
+    ) -> Result<(), MonolingualError>
+    where
+        F: FnMut(u64, u64),
+    {
+        tracing::debug!(url = %url, "Probing content length");
 
-        let bytes = self
+        let response = self
             .http
-            .get(url)
+            .head(url)
+            .header("Range", "bytes=0-0")
             .send()
-            .map_err(|e| MonolingualError::Request(e.to_string()))?
-            .error_for_status()
-            .map_err(|e| MonolingualError::Request(e.to_string()))?
-            .bytes()
             .map_err(|e| MonolingualError::Request(e.to_string()))?;
 
-        tracing::debug!(url = %url, bytes = bytes.len(), "Download complete");
+        let total_size = response
+            .headers()
+            .get("content-range")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.split('/').last())
+            .and_then(|s| s.parse::<u64>().ok())
+            .ok_or_else(|| MonolingualError::Request("Missing Content-Range header".to_string()))?;
 
-        Ok(bytes.to_vec())
+        tracing::debug!(url = %url, total_size, "Starting chunked download");
+
+        self.http
+            .download(
+                url,
+                total_size,
+                &dest.to_path_buf(),
+                |u| self.http.get(u),
+                progress_callback,
+            )
+            .map_err(|e| MonolingualError::Request(e.to_string()))
     }
 }
 

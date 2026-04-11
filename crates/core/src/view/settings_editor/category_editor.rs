@@ -508,8 +508,10 @@ impl CategoryEditor {
     /// given language code.
     ///
     /// Uses `include_etymologies = false` to prefer the smaller no-etymology
-    /// variant. On completion the thread sends `Event::DictionaryInstallComplete`
-    /// via the hub so the UI can rebuild the rows on the main thread.
+    /// variant. Progress is reported via a sticky pinned notification that is
+    /// dismissed when the download completes. On completion the thread sends
+    /// `Event::DictionaryInstallComplete` via the hub so the UI can rebuild
+    /// the rows on the main thread.
     ///
     /// If a download is already in progress for `lang` the request is silently
     /// ignored to prevent duplicate background threads racing to write the same
@@ -533,7 +535,9 @@ impl CategoryEditor {
         let hub2 = hub.clone();
         let parent_span = tracing::Span::current();
 
-        hub.send(crate::view::Event::Notification(NotificationEvent::Show(
+        let download_id = ViewId::MessageNotif(ID_FEEDER.next());
+        hub.send(Event::Notification(NotificationEvent::ShowPinned(
+            download_id,
             fl!("notification-downloading-dictionary", lang = lang),
         )))
         .ok();
@@ -543,9 +547,30 @@ impl CategoryEditor {
                 tracing::info_span!(parent: &parent_span, "dictionary_install_async").entered();
 
             let result = service
-                .install_dictionary(&lang_owned, false)
+                .install_dictionary(&lang_owned, false, &mut |downloaded, total| {
+                    use humanize_bytes::humanize_bytes_decimal;
+                    let downloaded_str = humanize_bytes_decimal!(downloaded).to_string();
+                    let total_str = humanize_bytes_decimal!(total).to_string();
+                    let percent = (downloaded as f64 / total as f64 * 100.0) as u8;
+                    hub2.send(Event::Notification(NotificationEvent::UpdateProgress(
+                        download_id,
+                        percent,
+                    )))
+                    .ok();
+                    hub2.send(Event::Notification(NotificationEvent::UpdateText(
+                        download_id,
+                        fl!(
+                            "notification-downloading-dictionary-progress",
+                            lang = lang_owned.as_str(),
+                            downloaded = downloaded_str.as_str(),
+                            total = total_str.as_str()
+                        ),
+                    )))
+                    .ok();
+                })
                 .map_err(|e| e.to_string());
 
+            hub2.send(Event::Close(download_id)).ok();
             hub2.send(crate::view::Event::DictionaryInstallComplete {
                 lang: lang_owned,
                 result,

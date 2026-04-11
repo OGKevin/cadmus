@@ -10,6 +10,7 @@ startup-loading = Cadmus starting up…
 
 notification-downloading-dictionary = Downloading dictionary for "{ $lang }"
 notification-downloading-dictionary-completed = Downloading dictionary for "{ $lang }" completed
+notification-downloading-dictionary-progress = Downloading { $lang } ({ $downloaded }/{ $total })
 notification-not-online = WiFi must be connected for this action.
 
 # Common

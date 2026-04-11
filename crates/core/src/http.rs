@@ -94,6 +94,10 @@ impl Client {
         Ok(Self { client })
     }
 
+    pub fn head(&self, url: &str) -> RequestBuilder {
+        self.client.head(url)
+    }
+
     pub fn get(&self, url: &str) -> RequestBuilder {
         self.client.get(url)
     }
