@@ -263,7 +263,7 @@ impl Client {
             }
         }
 
-        Err(last_error.unwrap())
+        Err(last_error.expect("MAX_RETRIES >= 1, so last_error is always set"))
     }
 
     /// Downloads a specific byte range from a URL using the HTTP `Range` header.
