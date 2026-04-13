@@ -10,9 +10,10 @@ use crate::view::{Bus, EntryId, EntryKind, Event};
 fn fetch_intermission(kind: IntermKind, settings: &Settings) -> SettingData {
     let display = &settings.intermissions[kind];
 
-    let (value, is_logo, is_cover) = match display {
-        IntermissionDisplay::Logo => (display.to_i18n_string(), true, false),
-        IntermissionDisplay::Cover => (display.to_i18n_string(), false, true),
+    let (value, is_logo, is_cover, is_calendar) = match display {
+        IntermissionDisplay::Logo => (display.to_i18n_string(), true, false, false),
+        IntermissionDisplay::Cover => (display.to_i18n_string(), false, true, false),
+        IntermissionDisplay::Calendar => (display.to_i18n_string(), false, false, true),
         IntermissionDisplay::Image(path) => {
             let i18n_display = fl!("settings-intermission-custom");
             let display_name = path
@@ -20,7 +21,7 @@ fn fetch_intermission(kind: IntermKind, settings: &Settings) -> SettingData {
                 .and_then(|n| n.to_str())
                 .unwrap_or(i18n_display.as_str())
                 .to_string();
-            (display_name, false, false)
+            (display_name, false, false, false)
         }
     };
 
@@ -34,6 +35,11 @@ fn fetch_intermission(kind: IntermKind, settings: &Settings) -> SettingData {
             IntermissionDisplay::Cover.to_i18n_string(),
             EntryId::SetIntermission(kind, IntermissionDisplay::Cover),
             is_cover,
+        ),
+        EntryKind::RadioButton(
+            IntermissionDisplay::Calendar.to_i18n_string(),
+            EntryId::SetIntermission(kind, IntermissionDisplay::Calendar),
+            is_calendar,
         ),
         EntryKind::Command(
             fl!("settings-intermission-custom-image"),

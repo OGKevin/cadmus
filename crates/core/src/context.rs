@@ -9,7 +9,7 @@ use crate::geom::Rectangle;
 use crate::helpers::{load_json, IsHidden};
 use crate::library::Library;
 use crate::lightsensor::LightSensor;
-use crate::rtc::Rtc;
+use crate::rtc::{AlarmManager, Rtc};
 use crate::settings::Settings;
 use crate::view::keyboard::Layout;
 use crate::view::ViewId;
@@ -32,7 +32,7 @@ const INPUT_HISTORY_SIZE: usize = 32;
 
 pub struct Context {
     pub fb: Box<dyn Framebuffer>,
-    pub rtc: Option<Rtc>,
+    pub alarm_manager: Option<AlarmManager>,
     pub display: Display,
     pub settings: Settings,
     pub library: Library,
@@ -68,9 +68,10 @@ impl Context {
         let dims = fb.dims();
         let rotation = CURRENT_DEVICE.transformed_rotation(fb.rotation());
         let rng = Xoroshiro128Plus::seed_from_u64(Local::now().timestamp_subsec_nanos() as u64);
+        let alarm_manager = rtc.map(AlarmManager::new);
         Context {
             fb,
-            rtc,
+            alarm_manager,
             display: Display { dims, rotation },
             library,
             database,

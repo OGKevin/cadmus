@@ -25,15 +25,18 @@ pub const INTERNAL_CARD_ROOT: &str = "/mnt/onboard";
 pub const EXTERNAL_CARD_ROOT: &str = "/mnt/sd";
 const LOGO_SPECIAL_PATH: &str = "logo:";
 const COVER_SPECIAL_PATH: &str = "cover:";
+const CALENDAR_SPECIAL_PATH: &str = "calendar:";
 
 /// How to display intermission screens.
-/// Logo and Cover are special values that map to built-in images.
+/// Logo, Cover and Calendar are special values that map to built-in displays.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum IntermissionDisplay {
     /// Display the built-in logo image.
     Logo,
     /// Display the cover of the currently reading book.
     Cover,
+    /// Display the built-in calendar view.
+    Calendar,
     /// Display a custom image from the given path.
     Image(PathBuf),
 }
@@ -46,6 +49,7 @@ impl Serialize for IntermissionDisplay {
         match self {
             IntermissionDisplay::Logo => serializer.serialize_str(LOGO_SPECIAL_PATH),
             IntermissionDisplay::Cover => serializer.serialize_str(COVER_SPECIAL_PATH),
+            IntermissionDisplay::Calendar => serializer.serialize_str(CALENDAR_SPECIAL_PATH),
             IntermissionDisplay::Image(path) => {
                 serializer.serialize_str(path.to_string_lossy().as_ref())
             }
@@ -62,6 +66,7 @@ impl<'de> Deserialize<'de> for IntermissionDisplay {
         Ok(match s.as_str() {
             LOGO_SPECIAL_PATH => IntermissionDisplay::Logo,
             COVER_SPECIAL_PATH => IntermissionDisplay::Cover,
+            CALENDAR_SPECIAL_PATH => IntermissionDisplay::Calendar,
             _ => IntermissionDisplay::Image(PathBuf::from(s)),
         })
     }
@@ -72,6 +77,7 @@ impl fmt::Display for IntermissionDisplay {
         match self {
             IntermissionDisplay::Logo => write!(f, "Logo"),
             IntermissionDisplay::Cover => write!(f, "Cover"),
+            IntermissionDisplay::Calendar => write!(f, "Calendar"),
             IntermissionDisplay::Image(_) => write!(f, "Custom"),
         }
     }

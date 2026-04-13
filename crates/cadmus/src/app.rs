@@ -1,7 +1,7 @@
 use cadmus_core::anyhow::{format_err, Context as ResultExt, Error};
 use cadmus_core::assets::open_documentation;
 use cadmus_core::battery::{Battery, KoboBattery};
-use cadmus_core::chrono::Local;
+use cadmus_core::chrono::{Duration as ChronoDuration, Local, Timelike};
 use cadmus_core::context::Context;
 use cadmus_core::db::Database;
 use cadmus_core::device::{FrontlightKind, Orientation, CURRENT_DEVICE};
@@ -24,7 +24,9 @@ use cadmus_core::library::Library;
 use cadmus_core::lightsensor::{KoboLightSensor, LightSensor};
 use cadmus_core::rtc::Rtc;
 use cadmus_core::settings::versioned::SettingsManager;
-use cadmus_core::settings::{ButtonScheme, IntermKind, LoggingSettings, RotationLock, Settings};
+use cadmus_core::settings::{
+    ButtonScheme, IntermKind, IntermissionDisplay, LoggingSettings, RotationLock, Settings,
+};
 use cadmus_core::task::TaskManager;
 use cadmus_core::version::get_current_version;
 use cadmus_core::view::calculator::Calculator;
@@ -51,6 +53,7 @@ use cadmus_core::view::{
     AppCmd, EntryId, EntryKind, Event, NotificationEvent, RenderData, RenderQueue, UpdateData,
     View, ViewId,
 };
+use cadmus_core::AlarmType;
 use std::collections::VecDeque;
 use std::env;
 use std::fs::File;
@@ -119,7 +122,7 @@ fn build_context(
     database: Database,
 ) -> Result<Context, Error> {
     let rtc = Rtc::new(RTC_DEVICE)
-        .map_err(|e| eprintln!("Can't open RTC device: {:#}.", e))
+        .map_err(|e| warn!(error = %e, "Can't open RTC device"))
         .ok();
     let mut settings = settings;
 
@@ -1070,12 +1073,32 @@ pub fn run() -> Result<(), Error> {
                 );
             }
             Event::Suspend => {
-                if context.settings.auto_power_off > 0.0 {
-                    context.rtc.iter().for_each(|rtc| {
-                        rtc.set_alarm(context.settings.auto_power_off)
-                            .map_err(|e| error!("Can't set alarm: {:#}.", e))
+                if let Some(alarm_manager) = context.alarm_manager.as_mut() {
+                    if context.settings.auto_power_off > 0.0
+                        && !alarm_manager.is_alarm_scheduled(AlarmType::AutoPowerOff)
+                    {
+                        alarm_manager
+                            .schedule_alarm(
+                                AlarmType::AutoPowerOff,
+                                ChronoDuration::seconds(
+                                    (context.settings.auto_power_off * 86_400.0) as i64,
+                                ),
+                            )
+                            .map_err(|e| error!(error = %e, "Can't schedule auto power off alarm"))
                             .ok();
-                    });
+                    }
+                    if !alarm_manager.is_alarm_scheduled(AlarmType::CalendarUpdate) {
+                        let now = Local::now();
+                        let seconds_until_next_hour =
+                            3600 - (now.minute() as i64 * 60 + now.second() as i64);
+                        alarm_manager
+                            .schedule_alarm(
+                                AlarmType::CalendarUpdate,
+                                ChronoDuration::seconds(seconds_until_next_hour),
+                            )
+                            .map_err(|e| error!(error = %e, "Can't schedule calendar update alarm"))
+                            .ok();
+                    }
                 }
                 let before = Local::now();
                 info!(
@@ -1095,30 +1118,34 @@ pub fn run() -> Result<(), Error> {
                     &tx,
                     &mut tasks,
                 );
-                if context.settings.auto_power_off > 0.0 {
-                    let dur = cadmus_core::chrono::Duration::seconds(
-                        (86_400.0 * context.settings.auto_power_off) as i64,
-                    );
-                    if let Some(fired) = context.rtc.as_ref().and_then(|rtc| {
-                        rtc.alarm()
-                            .map_err(|e| error!("Can't get alarm: {:#}", e))
-                            .map(|rwa| {
-                                !rwa.enabled()
-                                    || (rwa.year() <= 1970
-                                        && ((after - before) - dur).num_seconds().abs() < 3)
-                            })
-                            .ok()
-                    }) {
-                        if fired {
-                            power_off(view.as_mut(), &mut history, &mut updating, &mut context);
-                            exit_status = ExitStatus::PowerOff;
-                            break;
-                        } else {
-                            context.rtc.iter().for_each(|rtc| {
-                                rtc.disable_alarm()
-                                    .map_err(|e| error!("Can't disable alarm: {:#}.", e))
-                                    .ok();
-                            });
+                if let Some(alarm_manager) = context.alarm_manager.as_mut() {
+                    match alarm_manager.check_fired_alarms(after.to_utc(), before.to_utc()) {
+                        Ok(fired_alarms) => {
+                            info!(alarms = ?fired_alarms, "Checked fired alarms after wake");
+                            if fired_alarms.contains(&AlarmType::AutoPowerOff) {
+                                power_off(view.as_mut(), &mut history, &mut updating, &mut context);
+                                exit_status = ExitStatus::PowerOff;
+                                break;
+                            }
+                            if fired_alarms.contains(&AlarmType::CalendarUpdate)
+                                && context.settings.intermissions[IntermKind::Suspend]
+                                    == IntermissionDisplay::Calendar
+                            {
+                                let interm = Intermission::new(
+                                    context.fb.rect(),
+                                    IntermKind::Suspend,
+                                    &context,
+                                );
+                                rq.add(RenderData::new(
+                                    interm.id(),
+                                    *interm.rect(),
+                                    UpdateMode::Full,
+                                ));
+                                view.children_mut().push(Box::new(interm) as Box<dyn View>);
+                            }
+                        }
+                        Err(e) => {
+                            error!(error = %e, "Error checking fired alarms");
                         }
                     }
                 }

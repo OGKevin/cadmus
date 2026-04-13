@@ -1,3 +1,5 @@
+mod calendar;
+
 use super::{Bus, Event, Hub, Id, RenderQueue, View, ID_FEEDER};
 use crate::color::{TEXT_INVERTED_HARD, TEXT_NORMAL};
 use crate::context::Context;
@@ -9,7 +11,9 @@ use crate::framebuffer::Framebuffer;
 use crate::geom::Rectangle;
 use crate::i18n::I18nDisplay;
 use crate::metadata::{sort, BookQuery, SortMethod};
+use crate::rtc::AlarmType;
 use crate::settings::{IntermKind, IntermissionDisplay};
+use calendar::CalendarView;
 use std::path::PathBuf;
 use tracing::warn;
 
@@ -21,40 +25,56 @@ pub struct Intermission {
     halt: bool,
 }
 
-pub enum Message {
+enum Message {
     Text(String),
     Image(PathBuf),
     Cover(PathBuf),
+    /// Calendar rendering is delegated entirely to the CalendarView child.
+    Calendar,
 }
 
 impl Intermission {
     pub fn new(rect: Rectangle, kind: IntermKind, context: &Context) -> Intermission {
-        let message = match &context.settings.intermissions[kind] {
-            IntermissionDisplay::Logo => Message::Text(kind.text().to_string()),
-            IntermissionDisplay::Cover => {
-                let query = BookQuery {
-                    reading: Some(true),
-                    ..Default::default()
-                };
-                let (mut files, _) =
-                    context
-                        .library
-                        .list(&context.library.home, Some(&query), false);
-                sort(&mut files, SortMethod::Opened, true);
-                if !files.is_empty() {
-                    Message::Cover(context.library.home.join(&files[0].file.path))
-                } else {
-                    Message::Text(kind.text().to_string())
+        let halt = kind == IntermKind::PowerOff;
+
+        let (message, children): (Message, Vec<Box<dyn View>>) =
+            match &context.settings.intermissions[kind] {
+                IntermissionDisplay::Logo => (Message::Text(kind.text().to_string()), Vec::new()),
+                IntermissionDisplay::Cover => {
+                    let query = BookQuery {
+                        reading: Some(true),
+                        ..Default::default()
+                    };
+                    let (mut files, _) =
+                        context
+                            .library
+                            .list(&context.library.home, Some(&query), false);
+                    sort(&mut files, SortMethod::Opened, true);
+                    let msg = if !files.is_empty() {
+                        Message::Cover(context.library.home.join(&files[0].file.path))
+                    } else {
+                        Message::Text(kind.text().to_string())
+                    };
+                    (msg, Vec::new())
                 }
-            }
-            IntermissionDisplay::Image(path) => Message::Image(path.clone()),
-        };
+                IntermissionDisplay::Image(path) => (Message::Image(path.clone()), Vec::new()),
+                IntermissionDisplay::Calendar => {
+                    let minutes_until_poweroff = context
+                        .alarm_manager
+                        .as_ref()
+                        .and_then(|am| am.time_until_alarm(AlarmType::AutoPowerOff))
+                        .map(|secs| secs / 60);
+                    let child = CalendarView::new(rect, minutes_until_poweroff, halt);
+                    (Message::Calendar, vec![Box::new(child) as Box<dyn View>])
+                }
+            };
+
         Intermission {
             id: ID_FEEDER.next(),
             rect,
-            children: Vec::new(),
+            children,
             message,
-            halt: kind == IntermKind::PowerOff,
+            halt,
         }
     }
 }
@@ -64,6 +84,7 @@ impl I18nDisplay for IntermissionDisplay {
         match self {
             IntermissionDisplay::Logo => fl!("settings-intermission-logo"),
             IntermissionDisplay::Cover => fl!("settings-intermission-cover"),
+            IntermissionDisplay::Calendar => fl!("settings-intermission-calendar"),
             IntermissionDisplay::Image(_) => fl!("settings-intermission-custom"),
         }
     }
@@ -173,6 +194,9 @@ impl View for Intermission {
                     }
                 }
             }
+            // CalendarView child handles its own rendering; this arm is never
+            // reached because Intermission has children in the Calendar case.
+            Message::Calendar => {}
         }
     }
 

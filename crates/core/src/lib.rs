@@ -28,6 +28,8 @@ pub mod logging;
 pub mod metadata;
 pub mod ota;
 pub mod rtc;
+
+pub use rtc::{AlarmManager, AlarmType};
 pub mod settings;
 pub mod task;
 #[cfg(feature = "otel")]

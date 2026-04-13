@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Cadmus Documentation\n"
-"POT-Creation-Date: 2026-04-14T20:25:06+02:00\n"
+"POT-Creation-Date: 2026-04-15T14:09:39+02:00\n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -888,9 +888,9 @@ msgstr ""
 #: src/settings/index.md:136 src/settings/index.md:142
 #: src/settings/index.md:148 src/settings/index.md:156
 #: src/settings/index.md:177 src/settings/index.md:190
-#: src/settings/index.md:198 src/settings/index.md:206
-#: src/settings/index.md:219 src/settings/index.md:234
-#: src/settings/index.md:301 src/settings/index.md:312
+#: src/settings/index.md:202 src/settings/index.md:210
+#: src/settings/index.md:223 src/settings/index.md:238
+#: src/settings/index.md:305 src/settings/index.md:316
 msgid "✏️"
 msgstr ""
 
@@ -1135,71 +1135,79 @@ msgstr ""
 msgid "Image displayed when the device enters sleep mode."
 msgstr ""
 
-#: src/settings/index.md:194 src/settings/index.md:202
-#: src/settings/index.md:210
+#: src/settings/index.md:194
 msgid ""
-"Possible values: `\"logo:\"` (built-in logo), `\"cover:\"` (current book "
-"cover), or a path to a custom image file."
+"Setting this to `\"calendar:\"` also enables the hourly calendar refresh: "
+"when the device wakes on the hour, it shows the calendar and then goes back "
+"to sleep automatically."
 msgstr ""
 
-#: src/settings/index.md:196
-msgid "`intermissions.power-off`"
+#: src/settings/index.md:198 src/settings/index.md:206
+#: src/settings/index.md:214
+msgid ""
+"Possible values: `\"logo:\"` (built-in logo), `\"cover:\"` (current book "
+"cover), `\"calendar:\"` (built-in calendar), or a path to a custom image "
+"file."
 msgstr ""
 
 #: src/settings/index.md:200
-msgid "Image displayed when the device powers off."
+msgid "`intermissions.power-off`"
 msgstr ""
 
 #: src/settings/index.md:204
-msgid "`intermissions.share`"
+msgid "Image displayed when the device powers off."
 msgstr ""
 
 #: src/settings/index.md:208
-msgid "Image displayed when entering USB sharing mode."
+msgid "`intermissions.share`"
 msgstr ""
 
 #: src/settings/index.md:212
+msgid "Image displayed when entering USB sharing mode."
+msgstr ""
+
+#: src/settings/index.md:216
 msgid "Import"
 msgstr ""
 
-#: src/settings/index.md:214
+#: src/settings/index.md:218
 msgid ""
 "These settings control how Cadmus imports documents from your device. They "
 "are available in the **Settings → Import** menu."
 msgstr ""
 
-#: src/settings/index.md:217
+#: src/settings/index.md:221
 msgid "`import.startup-trigger`"
 msgstr ""
 
-#: src/settings/index.md:221
+#: src/settings/index.md:225
 msgid "Automatically import new books when Cadmus starts."
 msgstr ""
 
-#: src/settings/index.md:228
+#: src/settings/index.md:232
 msgid ""
 "\\[!TIP\\] If this is turned off, you can still trigger an import manually "
 "from the home screen: tap the **database icon** (bottom-left corner) and "
 "choose **Import**."
 msgstr ""
 
-#: src/settings/index.md:232
+#: src/settings/index.md:236
 msgid "`import.sync-metadata`"
 msgstr ""
 
-#: src/settings/index.md:236
+#: src/settings/index.md:240
 msgid "Re-extract metadata (title, author, etc.) whenever a document changes."
 msgstr ""
 
-#: src/settings/index.md:243
+#: src/settings/index.md:247
 msgid "`import.metadata-kinds`"
 msgstr ""
 
-#: src/settings/index.md:245
+#: src/settings/index.md:249
 msgid "File extensions of documents whose metadata is extracted during import."
 msgstr ""
 
-#: src/settings/index.md:247
+#: src/settings/index.md:251
 msgid ""
 "```toml\n"
 "[import]\n"
@@ -1207,15 +1215,15 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:252
+#: src/settings/index.md:256
 msgid "`import.allowed-kinds`"
 msgstr ""
 
-#: src/settings/index.md:254
+#: src/settings/index.md:258
 msgid "File extensions of documents considered during the import process."
 msgstr ""
 
-#: src/settings/index.md:256
+#: src/settings/index.md:260
 msgid ""
 "```toml\n"
 "[import]\n"
@@ -1224,15 +1232,15 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:261
+#: src/settings/index.md:265
 msgid "OTA"
 msgstr ""
 
-#: src/settings/index.md:263
+#: src/settings/index.md:267
 msgid "The OTA feature downloads builds from GitHub."
 msgstr ""
 
-#: src/settings/index.md:265
+#: src/settings/index.md:269
 msgid ""
 "Authentication for main branch and PR builds uses **GitHub device auth "
 "flow**. When you select a build that requires authentication, Cadmus will "
@@ -1241,43 +1249,43 @@ msgid ""
 "once you authorize."
 msgstr ""
 
-#: src/settings/index.md:271
+#: src/settings/index.md:275
 msgid ""
 "The token is saved to disk after the first authorization so you will not be "
 "prompted again on subsequent downloads."
 msgstr ""
 
-#: src/settings/index.md:274
+#: src/settings/index.md:278
 msgid ""
 "For step-by-step instructions with screenshots, see the [OTA "
 "updates](../installation/ota.md) guide."
 msgstr ""
 
-#: src/settings/index.md:277
+#: src/settings/index.md:281
 msgid "Telemetry"
 msgstr ""
 
-#: src/settings/index.md:279
+#: src/settings/index.md:283
 msgid ""
 "Cadmus writes JSON logs to disk. When the build enables the `otel` feature, "
 "it can also export logs to an OpenTelemetry endpoint."
 msgstr ""
 
-#: src/settings/index.md:282
+#: src/settings/index.md:286
 msgid "These settings are available in the **Settings → Telemetry** menu."
 msgstr ""
 
-#: src/settings/index.md:284
+#: src/settings/index.md:288
 msgid ""
 "\\[!IMPORTANT\\] Changes to these settings only take effect after restarting "
 "Cadmus. The application initializes telemetry on startup."
 msgstr ""
 
-#: src/settings/index.md:288
+#: src/settings/index.md:292
 msgid "`logging`"
 msgstr ""
 
-#: src/settings/index.md:290
+#: src/settings/index.md:294
 msgid ""
 "```toml\n"
 "[logging]\n"
@@ -1289,29 +1297,29 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:299
+#: src/settings/index.md:303
 msgid "`logging.enabled`"
 msgstr ""
 
-#: src/settings/index.md:303
+#: src/settings/index.md:307
 msgid "Enable or disable structured JSON logging."
 msgstr ""
 
-#: src/settings/index.md:310
+#: src/settings/index.md:314
 msgid "`logging.level`"
 msgstr ""
 
-#: src/settings/index.md:314
+#: src/settings/index.md:318
 msgid "Minimum log level to record."
 msgstr ""
 
-#: src/settings/index.md:316
+#: src/settings/index.md:320
 msgid ""
 "Possible values: `\"trace\"`, `\"debug\"`, `\"info\"`, `\"warn\"`, "
 "`\"error\"`."
 msgstr ""
 
-#: src/settings/index.md:318
+#: src/settings/index.md:322
 msgid ""
 "```toml\n"
 "[logging]\n"
@@ -1319,37 +1327,37 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:323
+#: src/settings/index.md:327
 msgid "`logging.max-files`"
 msgstr ""
 
-#: src/settings/index.md:325
+#: src/settings/index.md:329
 msgid ""
 "Number of log files to keep. Only the most recent N files are kept — older "
 "ones are deleted automatically when Cadmus starts."
 msgstr ""
 
-#: src/settings/index.md:328 src/settings/index.md:384
+#: src/settings/index.md:332 src/settings/index.md:388
 msgid "Default: `3`"
 msgstr ""
 
-#: src/settings/index.md:329
+#: src/settings/index.md:333
 msgid "Set to `0` to keep all log files."
 msgstr ""
 
-#: src/settings/index.md:336
+#: src/settings/index.md:340
 msgid "`logging.otlp-endpoint`"
 msgstr ""
 
-#: src/settings/index.md:338
+#: src/settings/index.md:342
 msgid "✏️ (only when the `otel` feature is enabled)"
 msgstr ""
 
-#: src/settings/index.md:340
+#: src/settings/index.md:344
 msgid "Optional OTLP endpoint for exporting logs to an OpenTelemetry collector."
 msgstr ""
 
-#: src/settings/index.md:342
+#: src/settings/index.md:346
 msgid ""
 "```toml\n"
 "[logging]\n"
@@ -1357,62 +1365,62 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:347
+#: src/settings/index.md:351
 msgid "Environment override:"
 msgstr ""
 
-#: src/settings/index.md:349
+#: src/settings/index.md:353
 msgid ""
 "`OTEL_EXPORTER_OTLP_ENDPOINT` takes precedence over `logging.otlp-endpoint`."
 msgstr ""
 
-#: src/settings/index.md:351
+#: src/settings/index.md:355
 msgid "`logging.enable-kern-log`"
 msgstr ""
 
-#: src/settings/index.md:353 src/settings/index.md:365
+#: src/settings/index.md:357 src/settings/index.md:369
 msgid "🧪 📱 ✏️"
 msgstr ""
 
-#: src/settings/index.md:355
+#: src/settings/index.md:359
 msgid ""
 "Captures kernel logs via `logread -F` and forwards them to structured "
 "logging with the target `cadmus_core::logging:kern`."
 msgstr ""
 
-#: src/settings/index.md:363
+#: src/settings/index.md:367
 msgid "`logging.enable-dbus-log`"
 msgstr ""
 
-#: src/settings/index.md:367
+#: src/settings/index.md:371
 msgid ""
 "Captures D-Bus signals via the built-in zbus-based DbusMonitorTask and "
 "forwards them to structured logging."
 msgstr ""
 
-#: src/settings/index.md:375
+#: src/settings/index.md:379
 msgid "Settings Retention"
 msgstr ""
 
-#: src/settings/index.md:377
+#: src/settings/index.md:381
 msgid ""
 "Cadmus stores each version's settings in a separate file in the `Settings/` "
 "directory (for example, `Settings-v1.2.3.toml`). This ensures backward and "
 "forward compatibility when you upgrade."
 msgstr ""
 
-#: src/settings/index.md:380
+#: src/settings/index.md:384
 msgid "`settings-retention`"
 msgstr ""
 
-#: src/settings/index.md:382
+#: src/settings/index.md:386
 msgid ""
 "Number of recent version settings files to keep. Only the most recent N "
 "version files are kept. When a new version is saved, older versions beyond "
 "this limit are deleted automatically."
 msgstr ""
 
-#: src/settings/index.md:385
+#: src/settings/index.md:389
 msgid "Set to `0` to keep all version files"
 msgstr ""
 

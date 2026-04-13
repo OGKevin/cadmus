@@ -92,9 +92,11 @@ path = "/mnt/onboard/.kobo/kepub"
 # finished = "go-to-next"  # Optional: overrides reader.finished for this library
 
 # Defines the images displayed when entering an intermission.
-# Possible values: "logo:", "cover:", "/path/to/image/file".
+# Possible values: "logo:", "cover:", "calendar:", "/path/to/image/file".
 # If a relative file path is given, it will be relative to
 # the installation directory.
+# Setting suspend to "calendar:" will show the calendar when the device
+# wakes on the hour to refresh it, then go back to sleep.
 [intermissions]
 suspend = "logo:"
 power-off = "logo:"

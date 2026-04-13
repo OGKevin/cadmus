@@ -60,6 +60,7 @@ settings-intermission-power-off-screen = Power Off Screen
 settings-intermission-share-screen = Share Screen
 settings-intermission-logo = Logo
 settings-intermission-cover = Cover
+settings-intermission-calendar = Calendar
 settings-intermission-custom-image = Custom Image...
 settings-intermission-custom = Custom
 
