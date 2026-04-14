@@ -1,0 +1,217 @@
+{
+  "repo_notes": [
+    {
+      "content": "Cadmus is a document reader for e-readers, currently targeting Kobo devices with ambitions to support additional hardware in the future. The documentation is split into three audiences: (1) User Guide — for device owners who want to install and use Cadmus, written in friendly non-technical language; (2) Contributor Guide — for developers who want to build, extend, or contribute to Cadmus, using full technical terminology; (3) Investigations — detailed post-mortems and research notes on specific bugs or platform issues, preserved for future reference."
+    }
+  ],
+  "pages": [
+    {
+      "title": "Overview",
+      "purpose": "Introduce Cadmus as a document reader for e-readers, currently targeting Kobo devices. Summarize supported devices, supported document formats (PDF, CBZ, FB2, MOBI, XPS, TXT via MuPDF; EPUB via built-in renderer; DJVU via DjVuLibre), key features (margin crop, zoom, rotation, annotations, dictionary, hooks), and provide a high-level map of the three documentation sections.",
+      "page_notes": [
+        {
+          "content": "Landing page for end users. Tone should be welcoming and non-technical. Avoid crate names and build system details here."
+        }
+      ]
+    },
+    {
+      "title": "User Guide",
+      "purpose": "Top-level section grouping all end-user documentation. Covers everything a device owner needs to install, configure, and use Cadmus day-to-day without any programming knowledge.",
+      "parent": "Overview",
+      "page_notes": [
+        {
+          "content": "Audience: device owners with no development background. Use plain language throughout."
+        }
+      ]
+    },
+    {
+      "title": "Installation",
+      "purpose": "Walk a user through installing Cadmus on their device for the first time via USB: downloading the right package (KoboRoot.tgz, KoboRoot-nm.tgz, test variants), copying it to the device, and rebooting. Also cover the USB update path once Cadmus is already installed, and migrating from Plato.",
+      "parent": "User Guide",
+      "page_notes": [
+        {
+          "content": "Friendly step-by-step instructions. Avoid the word 'artifact' — use 'package' or 'file'."
+        }
+      ]
+    },
+    {
+      "title": "OTA Updates",
+      "purpose": "Explain the wireless (OTA) update feature from a user perspective: how to trigger it from the Cadmus main menu, what happens during a WiFi check, when GitHub authentication is required (main-branch and PR builds vs public stable releases), and the device-flow authentication steps shown on screen.",
+      "parent": "Installation",
+      "page_notes": [
+        {
+          "content": "User-facing; keep it simple. The technical backend (OtaClient, deployment mechanism) belongs in the Contributor Guide under OTA Update Internals."
+        }
+      ]
+    },
+    {
+      "title": "User Interface",
+      "purpose": "Describe the overall Cadmus UI model for end users: the three primary modes (Home, Reader, Applications), how to navigate between them, the nine-region tap layout in the viewer, swipe gesture vocabulary, keyboard interaction conventions, the file chooser, and the built-in Dictionary and Calculator applications.",
+      "parent": "User Guide",
+      "page_notes": [
+        {
+          "content": "User-facing overview. Use plain language. Avoid implementation details."
+        }
+      ]
+    },
+    {
+      "title": "Settings",
+      "purpose": "Document the Settings.toml configuration file for end users: all top-level keys (keyboard-layout, sleep-cover, auto-share, auto-suspend, auto-power-off, button-scheme, libraries, intermissions, logging), the LibrarySettings structure, settings-retention, and the logging subsection. Include the Settings UI walkthrough.",
+      "parent": "User Guide",
+      "page_notes": [
+        {
+          "content": "Merges the Settings UI (accessible from within Cadmus) and the Settings.toml file for power users. Keep the UI section friendly; the TOML section can be more technical."
+        }
+      ]
+    },
+    {
+      "title": "Troubleshooting",
+      "purpose": "Collect common problems users encounter and their solutions: Cadmus won't start, WiFi issues, OTA failures, display glitches, and where to report bugs.",
+      "parent": "User Guide",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Contributor Guide",
+      "purpose": "Top-level section grouping all documentation for developers who want to build, extend, or contribute to Cadmus. Assumes familiarity with Rust, Git, and GitHub.",
+      "parent": "Overview",
+      "page_notes": [
+        {
+          "content": "Audience: developers. Full technical terminology is appropriate here."
+        }
+      ]
+    },
+    {
+      "title": "Crate Structure",
+      "purpose": "Document the Rust workspace layout: each crate (cadmus-core, cadmus, emulator, importer, fetcher, xtask), their roles, the binaries they produce, and the inter-crate dependency graph. Cover shared workspace dependencies such as rustls and the release-minsized build profile.",
+      "parent": "Contributor Guide",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Development Environment",
+      "purpose": "Document the devenv and Nix-based reproducible development environment: entering the shell, available cargo xtask commands (setup-native, run-emulator, build-kobo, dist, bundle, test, docs), devenv tasks (deps:native, docs:build, build:kobo), the integrated observability stack (OTel Collector, Prometheus, Tempo, Loki, Grafana), platform support (Linux full, macOS native-only), and local override via devenv.local.nix.",
+      "parent": "Contributor Guide",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "View Framework and Event System",
+      "purpose": "Document the View trait interface, the Event enum and major variants, the Hub vs Bus channels, the handle_event dispatch mechanism (reverse child iteration, short-circuit capture, bus bubbling), the RenderQueue processing pipeline, and the view rendering pattern (when render() is called based on leaf/background status).",
+      "parent": "Contributor Guide",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Core Library (cadmus-core)",
+      "purpose": "Technical overview of the cadmus-core crate: its feature flags (emulator, test, otel), key dependency groups (serde/JSON, reqwest/HTTP, OpenTelemetry), and a map of the major subsystems (view framework, document rendering, HAL, context, library/database).",
+      "parent": "Contributor Guide",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Document Rendering",
+      "purpose": "Explain the Document trait abstraction (pixmap, words, lines, title, author, toc methods). Enumerate supported formats and describe how each maps to a concrete implementation: MuPDF (PDF, CBZ, FB2, MOBI, XPS, TXT) including the mupdf_sys FFI bindings; the built-in EPUB and HTML renderer including its CSS engine, DOM parser, and default stylesheets; and DjVuLibre.",
+      "parent": "Core Library (cadmus-core)",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Hardware Abstraction Layer",
+      "purpose": "Document the Device struct and CURRENT_DEVICE singleton (model detection, DPI, dims, feature queries), the Framebuffer trait and its implementations, the display update FFI layer, and the InputEvent processing pipeline that translates raw hardware events into DeviceEvents. Currently targets Kobo hardware.",
+      "parent": "Core Library (cadmus-core)",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Context and Application State",
+      "purpose": "Document the Context struct and its aggregated components (Framebuffer, Rtc, Library, Settings, Fonts, Battery, Frontlight, LightSensor), the initialization sequence in build_context for emulator and device targets, and the RTC alarm interface.",
+      "parent": "Core Library (cadmus-core)",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Library and Database",
+      "purpose": "Document the SQLite-backed library subsystem: the Database struct and its synchronous bridge over async SQLx, the schema (books, authors, reading_states, toc_entries, thumbnails, library_books tables), the migration system, the library_books_full_info view, and the sqlx query macro conventions (query!, query_as!, query_scalar!).",
+      "parent": "Core Library (cadmus-core)",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "OTA Update Internals",
+      "purpose": "Document the OTA update system internals: OtaView UI, OtaClient backend (download_pr_artifact, download_default_branch_artifact, download_stable_release_artifact, extract_and_deploy), GitHub device authentication flow, OtaProgress states, OtaError variants, and the deployment mechanism.",
+      "parent": "Contributor Guide",
+      "page_notes": [
+        {
+          "content": "The user-facing OTA page is under User Guide > Installation. This page covers the implementation details for contributors."
+        }
+      ]
+    },
+    {
+      "title": "Building for Device",
+      "purpose": "Explain the end-to-end process for cross-compiling and packaging Cadmus for a target device: the ARM cross-compilation toolchain, cargo xtask build-kobo (fast vs slow modes, mupdf_wrapper compilation), cargo xtask dist assembly, cargo xtask bundle packaging, NickelMenu integration, and the device management shell scripts (wifi-enable.sh, wifi-disable.sh, usb-enable.sh, usb-disable.sh). Currently Kobo-specific; the build system is expected to generalise as additional devices are supported.",
+      "parent": "Contributor Guide",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "CI/CD Pipeline",
+      "purpose": "Document the GitHub Actions CI workflows (cargo.yml): format, clippy, test, build-kobo, and build-kobo-test jobs, caching strategies for Cargo registry and cross-compilation toolchain, the feature-flag matrix ensuring every flag is checked individually and in combination, the release-please-based versioning system, and the build-and-upload job producing release packages with build provenance attestation.",
+      "parent": "Contributor Guide",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Investigations",
+      "purpose": "Top-level section preserving detailed research notes and post-mortems on specific bugs, platform issues, or design decisions. Each investigation documents the problem, the research process, findings, and resolution. Intended as a historical record for future contributors encountering the same or related issues. Current investigations include: DHCP IP address changes on WiFi toggle (issue #51).",
+      "parent": "Overview",
+      "page_notes": [
+        {
+          "content": "Audience: developers and future investigators. Technical depth is appropriate and encouraged."
+        }
+      ]
+    },
+    {
+      "title": "Glossary",
+      "purpose": "Define codebase-specific terms, jargon, abbreviations, and domain concepts for onboarding engineers. Each term includes code pointers (file paths, function/type names). Covers: hardware terms (mxcfb, waveform modes, Mark, HwtCon), software architecture terms (Hub, Bus, RenderQueue, Intermission, Reflowable, Synthetic Page Numbers), library terms (fingerprint, library_books_full_info, _cadmus_migrations), build terms (KoboRoot.tgz, release-minsized, xtask), and UI terms (Shelf, Navigation bar, Field selectors, State selectors, CMB key, dictd, ivy).",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    }
+  ]
+}
