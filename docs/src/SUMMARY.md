@@ -9,6 +9,8 @@
 - [Settings](settings/index.md)
 - [User Interface](ui/index.md)
   - [File Chooser](ui/filechooser.md)
+  - [Settings](ui/settings/index.md)
+    - [Dictionaries](ui/settings/dictionaries.md)
 - [Troubleshooting](troubleshooting/index.md)
 
 ---

@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Cadmus Documentation\n"
-"POT-Creation-Date: 2026-03-29T15:52:22+02:00\n"
+"POT-Creation-Date: 2026-04-14T20:25:06+02:00\n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -37,7 +37,8 @@ msgstr ""
 msgid "Migrating from Plato"
 msgstr ""
 
-#: src/SUMMARY.md:9 src/settings/index.md:1
+#: src/SUMMARY.md:9 src/SUMMARY.md:12 src/settings/index.md:1
+#: src/ui/settings/index.md:1
 msgid "Settings"
 msgstr ""
 
@@ -49,53 +50,69 @@ msgstr ""
 msgid "File Chooser"
 msgstr ""
 
-#: src/SUMMARY.md:12 src/troubleshooting/index.md:1
+#: src/SUMMARY.md:13 src/ui/settings/dictionaries.md:1
+msgid "Dictionaries"
+msgstr ""
+
+#: src/SUMMARY.md:14 src/troubleshooting/index.md:1
 #: src/contributing/devenv-setup.md:209
 msgid "Troubleshooting"
 msgstr ""
 
-#: src/SUMMARY.md:16
+#: src/SUMMARY.md:18
 msgid "Contributor Guide"
 msgstr ""
 
-#: src/SUMMARY.md:18
+#: src/SUMMARY.md:20
 msgid "Development Environment"
 msgstr ""
 
-#: src/SUMMARY.md:19 src/contributing/event-system.md:1
+#: src/SUMMARY.md:21 src/contributing/event-system.md:1
 msgid "Event System"
 msgstr ""
 
-#: src/SUMMARY.md:20 src/contributing/telemetry.md:1
+#: src/SUMMARY.md:22 src/contributing/telemetry.md:1
 msgid "OpenTelemetry Integration"
 msgstr ""
 
-#: src/SUMMARY.md:21 src/index.md:9
+#: src/SUMMARY.md:23 src/index.md:9
 msgid "Documentation"
 msgstr ""
 
-#: src/SUMMARY.md:22 src/contributing/translations/index.md:1
+#: src/SUMMARY.md:24 src/contributing/translations/index.md:1
 msgid "Translations"
 msgstr ""
 
-#: src/SUMMARY.md:23
+#: src/SUMMARY.md:25
 msgid "UI Strings"
 msgstr ""
 
-#: src/SUMMARY.md:24
+#: src/SUMMARY.md:26
 msgid "Guide"
 msgstr ""
 
-#: src/SUMMARY.md:25 src/contributing/sqlite-sqlx.md:1
+#: src/SUMMARY.md:27 src/contributing/sqlite-sqlx.md:1
 msgid "SQLite & SQLx"
 msgstr ""
 
-#: src/SUMMARY.md:26 src/contributing/library-database.md:1
+#: src/SUMMARY.md:28 src/contributing/library-database.md:1
 msgid "Library Database"
 msgstr ""
 
-#: src/SUMMARY.md:27 src/contributing/runtime-migrations.md:1
+#: src/SUMMARY.md:29 src/contributing/runtime-migrations.md:1
 msgid "Runtime Migrations"
+msgstr ""
+
+#: src/SUMMARY.md:33 src/investigations/index.md:1
+msgid "Investigations"
+msgstr ""
+
+#: src/SUMMARY.md:35
+msgid "Intro"
+msgstr ""
+
+#: src/SUMMARY.md:36 src/investigations/kobo/issue-51-dhcp-investigation.md:1
+msgid "DHCP IP Address Changes on WiFi Toggle"
 msgstr ""
 
 #: src/index.md:3
@@ -872,7 +889,8 @@ msgstr ""
 #: src/settings/index.md:148 src/settings/index.md:156
 #: src/settings/index.md:177 src/settings/index.md:190
 #: src/settings/index.md:198 src/settings/index.md:206
-#: src/settings/index.md:252 src/settings/index.md:263
+#: src/settings/index.md:219 src/settings/index.md:234
+#: src/settings/index.md:301 src/settings/index.md:312
 msgid "✏️"
 msgstr ""
 
@@ -1141,14 +1159,80 @@ msgid "Image displayed when entering USB sharing mode."
 msgstr ""
 
 #: src/settings/index.md:212
-msgid "OTA"
+msgid "Import"
 msgstr ""
 
 #: src/settings/index.md:214
+msgid ""
+"These settings control how Cadmus imports documents from your device. They "
+"are available in the **Settings → Import** menu."
+msgstr ""
+
+#: src/settings/index.md:217
+msgid "`import.startup-trigger`"
+msgstr ""
+
+#: src/settings/index.md:221
+msgid "Automatically import new books when Cadmus starts."
+msgstr ""
+
+#: src/settings/index.md:228
+msgid ""
+"\\[!TIP\\] If this is turned off, you can still trigger an import manually "
+"from the home screen: tap the **database icon** (bottom-left corner) and "
+"choose **Import**."
+msgstr ""
+
+#: src/settings/index.md:232
+msgid "`import.sync-metadata`"
+msgstr ""
+
+#: src/settings/index.md:236
+msgid "Re-extract metadata (title, author, etc.) whenever a document changes."
+msgstr ""
+
+#: src/settings/index.md:243
+msgid "`import.metadata-kinds`"
+msgstr ""
+
+#: src/settings/index.md:245
+msgid "File extensions of documents whose metadata is extracted during import."
+msgstr ""
+
+#: src/settings/index.md:247
+msgid ""
+"```toml\n"
+"[import]\n"
+"metadata-kinds = [\"epub\", \"pdf\", \"djvu\"]\n"
+"```"
+msgstr ""
+
+#: src/settings/index.md:252
+msgid "`import.allowed-kinds`"
+msgstr ""
+
+#: src/settings/index.md:254
+msgid "File extensions of documents considered during the import process."
+msgstr ""
+
+#: src/settings/index.md:256
+msgid ""
+"```toml\n"
+"[import]\n"
+"allowed-kinds = [\"djvu\", \"xps\", \"fb2\", \"txt\", \"pdf\", \"oxps\", "
+"\"cbz\", \"epub\"]\n"
+"```"
+msgstr ""
+
+#: src/settings/index.md:261
+msgid "OTA"
+msgstr ""
+
+#: src/settings/index.md:263
 msgid "The OTA feature downloads builds from GitHub."
 msgstr ""
 
-#: src/settings/index.md:216
+#: src/settings/index.md:265
 msgid ""
 "Authentication for main branch and PR builds uses **GitHub device auth "
 "flow**. When you select a build that requires authentication, Cadmus will "
@@ -1157,43 +1241,43 @@ msgid ""
 "once you authorize."
 msgstr ""
 
-#: src/settings/index.md:222
+#: src/settings/index.md:271
 msgid ""
 "The token is saved to disk after the first authorization so you will not be "
 "prompted again on subsequent downloads."
 msgstr ""
 
-#: src/settings/index.md:225
+#: src/settings/index.md:274
 msgid ""
 "For step-by-step instructions with screenshots, see the [OTA "
 "updates](../installation/ota.md) guide."
 msgstr ""
 
-#: src/settings/index.md:228
+#: src/settings/index.md:277
 msgid "Telemetry"
 msgstr ""
 
-#: src/settings/index.md:230
+#: src/settings/index.md:279
 msgid ""
 "Cadmus writes JSON logs to disk. When the build enables the `otel` feature, "
 "it can also export logs to an OpenTelemetry endpoint."
 msgstr ""
 
-#: src/settings/index.md:233
+#: src/settings/index.md:282
 msgid "These settings are available in the **Settings → Telemetry** menu."
 msgstr ""
 
-#: src/settings/index.md:235
+#: src/settings/index.md:284
 msgid ""
 "\\[!IMPORTANT\\] Changes to these settings only take effect after restarting "
 "Cadmus. The application initializes telemetry on startup."
 msgstr ""
 
-#: src/settings/index.md:239
+#: src/settings/index.md:288
 msgid "`logging`"
 msgstr ""
 
-#: src/settings/index.md:241
+#: src/settings/index.md:290
 msgid ""
 "```toml\n"
 "[logging]\n"
@@ -1205,29 +1289,29 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:250
+#: src/settings/index.md:299
 msgid "`logging.enabled`"
 msgstr ""
 
-#: src/settings/index.md:254
+#: src/settings/index.md:303
 msgid "Enable or disable structured JSON logging."
 msgstr ""
 
-#: src/settings/index.md:261
+#: src/settings/index.md:310
 msgid "`logging.level`"
 msgstr ""
 
-#: src/settings/index.md:265
+#: src/settings/index.md:314
 msgid "Minimum log level to record."
 msgstr ""
 
-#: src/settings/index.md:267
+#: src/settings/index.md:316
 msgid ""
 "Possible values: `\"trace\"`, `\"debug\"`, `\"info\"`, `\"warn\"`, "
 "`\"error\"`."
 msgstr ""
 
-#: src/settings/index.md:269
+#: src/settings/index.md:318
 msgid ""
 "```toml\n"
 "[logging]\n"
@@ -1235,37 +1319,37 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:274
+#: src/settings/index.md:323
 msgid "`logging.max-files`"
 msgstr ""
 
-#: src/settings/index.md:276
+#: src/settings/index.md:325
 msgid ""
 "Number of log files to keep. Only the most recent N files are kept — older "
 "ones are deleted automatically when Cadmus starts."
 msgstr ""
 
-#: src/settings/index.md:279 src/settings/index.md:335
+#: src/settings/index.md:328 src/settings/index.md:384
 msgid "Default: `3`"
 msgstr ""
 
-#: src/settings/index.md:280
+#: src/settings/index.md:329
 msgid "Set to `0` to keep all log files."
 msgstr ""
 
-#: src/settings/index.md:287
+#: src/settings/index.md:336
 msgid "`logging.otlp-endpoint`"
 msgstr ""
 
-#: src/settings/index.md:289
+#: src/settings/index.md:338
 msgid "✏️ (only when the `otel` feature is enabled)"
 msgstr ""
 
-#: src/settings/index.md:291
+#: src/settings/index.md:340
 msgid "Optional OTLP endpoint for exporting logs to an OpenTelemetry collector."
 msgstr ""
 
-#: src/settings/index.md:293
+#: src/settings/index.md:342
 msgid ""
 "```toml\n"
 "[logging]\n"
@@ -1273,62 +1357,62 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:298
+#: src/settings/index.md:347
 msgid "Environment override:"
 msgstr ""
 
-#: src/settings/index.md:300
+#: src/settings/index.md:349
 msgid ""
 "`OTEL_EXPORTER_OTLP_ENDPOINT` takes precedence over `logging.otlp-endpoint`."
 msgstr ""
 
-#: src/settings/index.md:302
+#: src/settings/index.md:351
 msgid "`logging.enable-kern-log`"
 msgstr ""
 
-#: src/settings/index.md:304 src/settings/index.md:316
+#: src/settings/index.md:353 src/settings/index.md:365
 msgid "🧪 📱 ✏️"
 msgstr ""
 
-#: src/settings/index.md:306
+#: src/settings/index.md:355
 msgid ""
 "Captures kernel logs via `logread -F` and forwards them to structured "
 "logging with the target `cadmus_core::logging:kern`."
 msgstr ""
 
-#: src/settings/index.md:314
+#: src/settings/index.md:363
 msgid "`logging.enable-dbus-log`"
 msgstr ""
 
-#: src/settings/index.md:318
+#: src/settings/index.md:367
 msgid ""
 "Captures D-Bus signals via the built-in zbus-based DbusMonitorTask and "
 "forwards them to structured logging."
 msgstr ""
 
-#: src/settings/index.md:326
+#: src/settings/index.md:375
 msgid "Settings Retention"
 msgstr ""
 
-#: src/settings/index.md:328
+#: src/settings/index.md:377
 msgid ""
 "Cadmus stores each version's settings in a separate file in the `Settings/` "
 "directory (for example, `Settings-v1.2.3.toml`). This ensures backward and "
 "forward compatibility when you upgrade."
 msgstr ""
 
-#: src/settings/index.md:331
+#: src/settings/index.md:380
 msgid "`settings-retention`"
 msgstr ""
 
-#: src/settings/index.md:333
+#: src/settings/index.md:382
 msgid ""
 "Number of recent version settings files to keep. Only the most recent N "
 "version files are kept. When a new version is saved, older versions beyond "
 "this limit are deleted automatically."
 msgstr ""
 
-#: src/settings/index.md:336
+#: src/settings/index.md:385
 msgid "Set to `0` to keep all version files"
 msgstr ""
 
@@ -1340,6 +1424,10 @@ msgstr ""
 
 #: src/ui/index.md:6
 msgid "[File Chooser](filechooser.md)"
+msgstr ""
+
+#: src/ui/index.md:7
+msgid "[Settings](settings/index.md)"
 msgstr ""
 
 #: src/ui/filechooser.md:3
@@ -1411,6 +1499,217 @@ msgstr ""
 msgid "The title will indicate the mode."
 msgstr ""
 
+#: src/ui/settings/index.md:3
+msgid ""
+"The settings editor lets you change how Cadmus works. Open it from **Main "
+"Menu → Settings**."
+msgstr ""
+
+#: src/ui/settings/index.md:6
+msgid "Settings are organised into tabs — tap a category to open it."
+msgstr ""
+
+#: src/ui/settings/index.md:8
+msgid "![settings editor screenshot](../screenshots/settings-editor.png)"
+msgstr ""
+
+#: src/ui/settings/index.md:10
+msgid "Categories"
+msgstr ""
+
+#: src/ui/settings/index.md:12
+msgid "**General** — language, sleep, auto-suspend, button layout"
+msgstr ""
+
+#: src/ui/settings/index.md:13
+msgid "**Reader** — what happens when you finish a book"
+msgstr ""
+
+#: src/ui/settings/index.md:14
+msgid "**Libraries** — add, edit, or remove your book libraries"
+msgstr ""
+
+#: src/ui/settings/index.md:15
+msgid "**Dictionaries** — download and manage offline dictionaries"
+msgstr ""
+
+#: src/ui/settings/index.md:16
+msgid "**Import** — control how new books are picked up automatically"
+msgstr ""
+
+#: src/ui/settings/index.md:17
+msgid "**OTA** — download Cadmus updates directly to your Kobo"
+msgstr ""
+
+#: src/ui/settings/index.md:18
+msgid "**Telemetry** — logging options"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:3
+msgid ""
+"Cadmus supports offline word definitions. You can look up any word while "
+"reading by long-pressing it. Dictionaries are stored on your device and work "
+"without an internet connection once downloaded."
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:7
+msgid ""
+"Cadmus integrates with "
+"[reader-dict](https://github.com/reader-dict/monolingual), an open-source "
+"project that provides high-quality monolingual dictionaries (where you look "
+"up a word and get a definition in the same language) for many languages."
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:12
+msgid ""
+"![dictionaries settings "
+"screenshot](../screenshots/settings-editor-dictionaries.png)"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:14
+msgid "Opening the Dictionaries Tab"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:16
+msgid "Go to **Main Menu → Settings → Dictionaries**."
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:18
+msgid ""
+"You will see a list of available languages. Each row shows the language code "
+"and its current status."
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:21
+msgid "Statuses"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:23 src/contributing/devenv-setup.md:171
+msgid "Status"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:23
+msgid "What it means"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:25
+msgid "Download"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:25
+msgid "Not yet on your device — tap to download"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:26
+msgid "Downloading"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:26
+msgid "A download is in progress"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:27
+msgid "Installed"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:27
+msgid "Ready to use"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:28
+msgid "Update Available"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:28
+msgid "A newer version is available"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:30
+msgid "Downloading a Dictionary"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:32
+msgid ""
+"\\[!IMPORTANT\\] Your device must be connected to Wi-Fi before you can "
+"download a dictionary."
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:35
+msgid "Open **Main Menu → Settings → Dictionaries**."
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:36
+msgid "Find the language you want."
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:37
+msgid "Tap **Download** next to it."
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:39
+msgid ""
+"A progress notification appears at the top of the screen while the file "
+"downloads. When it disappears, the dictionary is ready to use."
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:42
+msgid "Updating a Dictionary"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:44
+msgid "When a newer version is available the status shows **Update Available**."
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:46 src/ui/settings/dictionaries.md:56
+#: src/ui/settings/dictionaries.md:61
+msgid "Tap the language row."
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:47
+msgid "Select **Update** from the menu."
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:49
+msgid "The updated dictionary replaces the old one automatically."
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:51
+msgid "Re-downloading a Dictionary"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:53
+msgid ""
+"If a dictionary is already installed you can re-download it to get a fresh "
+"copy:"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:57
+msgid "Select **Re-download** from the menu."
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:59
+msgid "Deleting a Dictionary"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:62
+msgid "Select **Delete** from the menu."
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:64
+msgid "The dictionary files are removed from your device."
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:66
+msgid "Where Dictionaries are Stored"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:68
+msgid ""
+"Downloaded dictionaries live in the `dictionaries/reader-dict/<lang>/` "
+"folder on your device. Each language gets its own subfolder containing a "
+"`.dict.dz` (or `.dict`) and a `.index` file."
+msgstr ""
+
 #: src/troubleshooting/index.md:3
 msgid "Logs"
 msgstr ""
@@ -1432,7 +1731,7 @@ msgid ""
 "platform:"
 msgstr ""
 
-#: src/troubleshooting/index.md:13
+#: src/troubleshooting/index.md:13 src/investigations/index.md:7
 msgid "Platform"
 msgstr ""
 
@@ -1444,7 +1743,7 @@ msgstr ""
 msgid "Test build"
 msgstr ""
 
-#: src/troubleshooting/index.md:15
+#: src/troubleshooting/index.md:15 src/investigations/index.md:9
 msgid "Kobo"
 msgstr ""
 
@@ -1961,10 +2260,6 @@ msgstr ""
 
 #: src/contributing/devenv-setup.md:171
 msgid "Feature"
-msgstr ""
-
-#: src/contributing/devenv-setup.md:171
-msgid "Status"
 msgstr ""
 
 #: src/contributing/devenv-setup.md:171
@@ -2614,6 +2909,7 @@ msgid "// Return false to bubble up so grandparent removes us\n"
 msgstr ""
 
 #: src/contributing/event-system.md:324
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:10
 msgid "Summary"
 msgstr ""
 
@@ -2630,6 +2926,7 @@ msgid "Bus"
 msgstr ""
 
 #: src/contributing/event-system.md:328
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:147
 msgid "Type"
 msgstr ""
 
@@ -4240,5 +4537,377 @@ msgid ""
 "<a "
 "href=\"/api/cadmus_core/db/struct.Database\">`cadmus_core::db::Database`</a> "
 "— owns the connection pool and orchestrates both migration stages"
+msgstr ""
+
+#: src/investigations/index.md:3
+msgid ""
+"When something needs investigating, the investigation and its results are "
+"documented here. This is to ensure that the investigation is not lost and "
+"can be referred to in the future if needed."
+msgstr ""
+
+#: src/investigations/index.md:7
+msgid "Date"
+msgstr ""
+
+#: src/investigations/index.md:7
+msgid "Title"
+msgstr ""
+
+#: src/investigations/index.md:9
+msgid "2026-03-24"
+msgstr ""
+
+#: src/investigations/index.md:9
+msgid ""
+"[DHCP IP Address Changes on WiFi "
+"Toggle](./kobo/issue-51-dhcp-investigation.md)"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:3
+msgid ""
+"After identifying that killing the original `dhcpcd` and replacing it with "
+"`udhcpc` caused the issue reported in "
+"[\\#51](https://github.com/OGKevin/cadmus/issues/51), I confirmed the fix "
+"works in testing but wanted to understand the root cause before finalising "
+"PR [\\#299](https://github.com/OGKevin/cadmus/pull/299)."
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:12
+msgid ""
+"Investigated the DHCP behaviour by inspecting the running device alongside "
+"the KOReader source tree and the original Plato shell scripts."
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:15
+msgid "What is actually running on the device"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:23
+msgid ""
+"Nickel uses **`dhcpcd`**, not `udhcpc`. There is no `udhcpc` running under "
+"normal operation."
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:25
+msgid "Why the old script caused a new IP every toggle"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:27
+msgid ""
+"The original "
+"[`scripts/wifi-enable.sh`](https://github.com/OGKevin/cadmus/blob/253edbe8958a44d108676d57b85942f21bb7c899/scripts/wifi-enable.sh#L92-L93) "
+"(inherited from Plato) always spawned a fresh `udhcpc`:"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:53
+msgid ""
+"'t request any options (unless -O is given)\n"
+" -O OPT  Request option OPT from server (cumulative)\n"
+" -x OPT:VAL Include option OPT in sent packets (cumulative)\n"
+"   Examples of string, numeric, and hex byte opts:\n"
+"   -x hostname:bbox - option 12\n"
+"   -x lease:3600 - option 51 (lease time)\n"
+"   -x 0x3d:0100BEEFC0FFEE - option 61 (client id)\n"
+"   -x 14:'\"dumpfile\"' - option 14 (shell-quoted)\n"
+" -F NAME  Ask server to update DNS mapping for NAME\n"
+" -V VENDOR Vendor identifier (default '"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:62
+msgid "')\n -C  Don'"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:71
+msgid "\"$INTERFACE\""
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:74
+msgid ""
+"The `-q` flag is the core issue. It tells `udhcpc` to **quit immediately "
+"after obtaining a lease**. The full lifecycle on every WiFi toggle was:"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:77
+msgid ""
+"`udhcpc` spawned → sends `DISCOVER` → gets `OFFER` → sends `REQUEST` → gets "
+"`ACK` → runs `default.script bound` (sets IP, rewrites `resolv.conf`) → "
+"**process exits**"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:79
+msgid ""
+"WiFi disabled → `killall udhcpc default.script` → nothing to kill anyway, "
+"already exited"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:80
+msgid ""
+"WiFi enabled again → repeat from step 1 with **zero memory of the previous "
+"lease**"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:82
+msgid ""
+"Because the process exits after getting the lease, there is no daemon to "
+"renew it and no lease file written anywhere. Busybox's `udhcpc` has no lease "
+"persistence mechanism. On the next cycle it sends a bare `DISCOVER` with no "
+"preferred-IP hint (no DHCP Option 50), so the DHCP server is free to hand "
+"out any address from its pool."
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:87
+msgid ""
+"Additionally, "
+"[`cadmus.sh`](https://github.com/OGKevin/cadmus/blob/253edbe8958a44d108676d57b85942f21bb7c899/contrib/cadmus.sh#L18-L20) "
+"(previously `plato.sh`) was killing Nickel's already-running `dhcpcd` at "
+"startup:"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:93
+msgid ""
+"So even the stateful daemon that Nickel had set up (which _would_ have "
+"requested the same IP again) was torn down before Cadmus replaced it with a "
+"stateless `udhcpc -q`."
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:96
+msgid "What `default.script` does"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:98
+msgid ""
+"`/etc/udhcpc.d/default.script` is a minimal Busybox hook called by `udhcpc` "
+"on lease events. The relevant part:"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:102
+msgid "\"$1\""
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:105
+msgid "# ... deletes all default routes, adds new ones from $router ...\n"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:106
+msgid "# ← truncates resolv.conf to zero\n"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:112
+msgid "\"$ip\""
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:115
+msgid "Notable behaviours:"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:117
+msgid ""
+"**Wipes `resolv.conf` on every `bound` event.** This is why KOReader's "
+"[`disable-wifi.sh`](https://github.com/koreader/koreader/blob/d98dd9f244c5697c08a3bb9ac068f381d70b42c4/platform/kobo/disable-wifi.sh#L3-L6) "
+"saves and restores `resolv.conf` with an md5 check. This is a safety net "
+"against `udhcpc`'s script wiping DNS on lease release."
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:120
+msgid ""
+"**Writes to `/tmp/nickel-hardware-status`**, which is a FIFO Nickel listens "
+"on for network events. [KOReader explicitly removes this "
+"FIFO](https://github.com/koreader/koreader/blob/d98dd9f244c5697c08a3bb9ac068f381d70b42c4/platform/kobo/koreader.sh#L232-L233) "
+"(`rm -f /tmp/nickel-hardware-status`) to prevent scripts hanging when Nickel "
+"is not running."
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:124
+msgid "Why `dhcpcd` produces stable IPs"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:126
+msgid "`dhcpcd` writes a per-SSID lease file to **`/var/db/`**:"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:135
+msgid ""
+"`/var/db` lives on the root eMMC partition (`/dev/mmcblk0p10`), not a tmpfs. "
+"It survives reboots."
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:137
+msgid ""
+"When reconnecting to a known SSID, `dhcpcd` reads the matching `.lease` "
+"file, parses the previously-held IP, and sends a DHCP `REQUEST` directly for "
+"that IP (DHCP Option 50: Requested IP Address), skipping `DISCOVER` entirely "
+"if the lease has not expired. The DHCP server sees a familiar MAC + familiar "
+"IP request and simply ACKs it."
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:142
+msgid ""
+"The lease file for the current network encodes `192.x.x.x` in the `yiaddr` "
+"field of the saved BOOTREPLY, which is exactly the IP the device is using "
+"right now."
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:145
+msgid "Filesystem layout: what is ephemeral vs persistent"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:147
+msgid "Path"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:147
+msgid "Persistent?"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:149
+msgid "`/tmp`"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:149
+msgid "`tmpfs`"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:149
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:150
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:151
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:152
+msgid "No"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:150
+msgid "`/var/lib`"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:150
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:152
+msgid "`tmpfs` (16 KiB)"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:151
+msgid "`/var/run`"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:151
+msgid "`tmpfs` (128 KiB)"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:152
+msgid "`/var/log`"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:153
+msgid "`/var/db`"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:153
+msgid "eMMC (`mmcblk0p10`)"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:153
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:154
+msgid "**Yes**"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:154
+msgid "`/etc`"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:154
+msgid "eMMC"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:156
+msgid ""
+"`dhcpcd`'s runtime state (`/var/run/dhcpcd.pid`, `/var/run/dhcpcd.sock`) is "
+"ephemeral as expected, but the lease database in `/var/db/` persists. That "
+"is the architectural key."
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:159
+msgid ""
+"Why KOReader kills `dhcpcd` in its startup script but still gets stable IPs"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:161
+msgid ""
+"From "
+"[`koreader.sh`](https://github.com/koreader/koreader/blob/d98dd9f244c5697c08a3bb9ac068f381d70b42c4/platform/kobo/koreader.sh#L216-L220):"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:164
+msgid "# NOTE: We kill Nickel's master dhcpcd daemon on purpose,\n"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:165
+msgid ""
+"#       A SIGTERM does not break anything, it'll just prevent automatic "
+"lease renewal\n"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:167
+msgid ""
+"'ll do)...\n"
+"killall -q -TERM nickel ... dhcpcd-dbus dhcpcd ...\n"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:171
+msgid ""
+"KOReader kills Nickel's `dhcpcd` because it wants to start its own instance "
+"with custom arguments later via "
+"[`obtain-ip.sh`](https://github.com/koreader/koreader/blob/d98dd9f244c5697c08a3bb9ac068f381d70b42c4/platform/kobo/obtain-ip.sh#L54-L60). "
+"Crucially, `obtain-ip.sh` prefers `dhcpcd` over `udhcpc`:"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:175
+msgid ""
+"# NOTE: Prefer dhcpcd over udhcpc if available. That's what Nickel uses,\n"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:177
+msgid "\"/sbin/dhcpcd\""
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:178
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:180
+msgid "\"${INTERFACE}\""
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:184
+msgid ""
+"The new `dhcpcd` instance KOReader starts reads the same `/var/db/*.lease` "
+"files and requests the same IP. Stable address despite the kill/restart "
+"cycle."
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:187
+msgid ""
+"Why the fix in PR [\\#299](https://github.com/OGKevin/cadmus/pull/299) works"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:189
+msgid "The fix is twofold:"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:191
+msgid ""
+"**Remove `dhcpcd` from the kill list in "
+"[`cadmus.sh`](https://github.com/OGKevin/cadmus/blob/253edbe8958a44d108676d57b85942f21bb7c899/contrib/cadmus.sh#L18-L20)**. "
+"Nickel's running `dhcpcd -d -z wlan0` instance survives into the Cadmus "
+"session, continuously managing the lease."
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:194
+msgid ""
+"**Do not start `udhcpc` at all in the native Rust WiFi implementation**. No "
+"new DHCP client is spawned on toggle, so the already-running `dhcpcd` is "
+"never displaced."
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:197
+msgid ""
+"The result: one long-lived `dhcpcd` daemon manages the lease for the entire "
+"session, renews it in the background, and requests the same IP on every "
+"reconnect using the persisted `/var/db/*.lease` file."
 msgstr ""
 
