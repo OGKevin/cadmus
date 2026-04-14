@@ -160,8 +160,9 @@ impl MonolingualClient {
     ///
     /// # Errors
     ///
-    /// Returns an error if the HEAD-range request fails, the `Content-Range`
-    /// header is missing, or the chunked download fails.
+    /// Returns an error if the probe request fails or returns a non-2xx
+    /// status, if the `Content-Range` header is missing, or if the chunked
+    /// download fails.
     #[cfg_attr(feature = "otel", tracing::instrument(skip(self, progress_callback), fields(url = %url)))]
     pub(super) fn download<F>(
         &self,
@@ -179,13 +180,15 @@ impl MonolingualClient {
             .head(url)
             .header("Range", "bytes=0-0")
             .send()
+            .map_err(|e| MonolingualError::Request(e.to_string()))?
+            .error_for_status()
             .map_err(|e| MonolingualError::Request(e.to_string()))?;
 
         let total_size = response
             .headers()
             .get("content-range")
             .and_then(|v| v.to_str().ok())
-            .and_then(|v| v.split('/').last())
+            .and_then(|v| v.split('/').next_back())
             .and_then(|s| s.parse::<u64>().ok())
             .ok_or_else(|| MonolingualError::Request("Missing Content-Range header".to_string()))?;
 
