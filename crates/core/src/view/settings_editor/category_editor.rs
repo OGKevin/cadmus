@@ -733,7 +733,18 @@ impl View for CategoryEditor {
                         ))))
                         .ok();
                     }
-                    Err(e) => tracing::warn!(lang, error = %e, "Failed to install dictionary"),
+                    Err(e) => {
+                        tracing::warn!(lang, error = %e, "Failed to install dictionary");
+
+                        self.current_page = 0;
+                        self.update_rows_list(rq, context);
+
+                        hub.send(Event::Notification(NotificationEvent::Show(fl!(
+                            "notification-dictionary-install-failed",
+                            lang = lang
+                        ))))
+                        .ok();
+                    }
                 }
 
                 true

@@ -7,6 +7,7 @@ use crate::geom::Rectangle;
 use crate::settings::Settings;
 use crate::view::common::locate_by_id;
 use crate::view::file_chooser::{FileChooser, SelectionMode};
+use crate::view::label::Label;
 use crate::view::toggle::Toggle;
 use crate::view::{EntryKind, RenderData};
 
@@ -116,6 +117,7 @@ impl SettingValue {
         fonts: &mut crate::font::Fonts,
     ) -> Box<dyn View> {
         match widget {
+            WidgetKind::None => Box::new(Label::new(self.rect, value, Align::Right(10))),
             WidgetKind::Toggle {
                 left_label,
                 right_label,

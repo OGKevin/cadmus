@@ -152,8 +152,8 @@ impl MonolingualDictionaryService {
     ///
     /// The archive is downloaded to a temporary file, then extracted into
     /// `<dict_dir>/reader-dict/<lang>/` and the files are renamed to
-    /// `<lang>.index` and `<lang>.dict[.dz]`. Any existing files in that
-    /// directory are overwritten.
+    /// `Reader-Dict-<lang>.index` and `Reader-Dict-<lang>.dict[.dz]`. Any
+    /// existing files in that directory are overwritten.
     ///
     /// Returns [`MonolingualError::InstallationInProgress`] immediately if a
     /// download for the same language is already running. The caller should
@@ -377,7 +377,8 @@ fn has_dict_pair(dir: &Path) -> bool {
 }
 
 /// Extracts all entries from a ZIP archive into `dest`, renaming each
-/// file to `<lang>.<ext>` where `<ext>` is `.index`, `.dict`, or `.dict.dz`.
+/// file to `Reader-Dict-<lang><ext>` where `<ext>` is `.index`, `.dict`,
+/// or `.dict.dz`.
 ///
 /// Files with unrecognised extensions are skipped. Directories inside the ZIP
 /// are ignored because all output files land flat in `dest`.

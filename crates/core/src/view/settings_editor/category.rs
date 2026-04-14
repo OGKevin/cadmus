@@ -128,21 +128,24 @@ impl Category {
                 };
 
                 let available: BTreeSet<String> = if context.online {
-                    service
-                        .get_available_dictionaries()
-                        .unwrap_or_default()
-                        .into_iter()
-                        .map(|(lang, _)| lang)
-                        .collect()
+                    match service.get_available_dictionaries() {
+                        Ok(dicts) => dicts.into_iter().map(|(lang, _)| lang).collect(),
+                        Err(e) => {
+                            tracing::warn!(error = %e, "Failed to load available dictionaries");
+                            BTreeSet::new()
+                        }
+                    }
                 } else {
                     BTreeSet::new()
                 };
 
-                let installed: BTreeSet<String> = service
-                    .get_installed_dictionaries()
-                    .unwrap_or_default()
-                    .into_iter()
-                    .collect();
+                let installed: BTreeSet<String> = match service.get_installed_dictionaries() {
+                    Ok(dicts) => dicts.into_iter().collect(),
+                    Err(e) => {
+                        tracing::warn!(error = %e, "Failed to load installed dictionaries");
+                        BTreeSet::new()
+                    }
+                };
 
                 let mut all_langs: Vec<String> = available.union(&installed).cloned().collect();
                 all_langs.sort();
@@ -152,10 +155,12 @@ impl Category {
                     .map(|lang| {
                         let is_installed = installed.contains(&lang);
                         let update_available = is_installed && service.is_update_available(&lang);
+                        let is_installing = service.is_installing(&lang);
                         Box::new(DictionaryInfo {
                             lang,
                             is_installed,
                             update_available,
+                            is_installing,
                         }) as Box<dyn SettingKind>
                     })
                     .collect()

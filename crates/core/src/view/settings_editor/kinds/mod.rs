@@ -56,6 +56,8 @@ pub enum ToggleSettings {
 /// Each variant is fully self-contained: it carries everything needed to build
 /// the widget, including the tap event or sub-menu entries.
 pub enum WidgetKind {
+    /// No interactive widget; the value is shown as static text only.
+    None,
     /// A tappable label that opens a free-form editor (e.g. a text input dialog).
     ///
     /// The inner event is fired when the label is tapped.
@@ -104,8 +106,12 @@ pub trait SettingKind {
 
     /// Handle an incoming event that may apply a change to this setting.
     ///
-    /// Mutates `settings` if the event is relevant and returns the updated
-    /// display string. Returns `None` if this event does not apply to this setting.
+    /// Mutates `settings` if the event is relevant and returns:
+    /// - `Some(display_string)` as the first element when the event changes this
+    ///   setting's display value, or `None` if the event does not apply.
+    /// - `true` as the second element when the event has been fully consumed and
+    ///   should stop propagating; `false` to allow further handlers to see it.
+    ///
     /// `bus` is available for settings that need to propagate side-effects.
     fn handle(
         &self,

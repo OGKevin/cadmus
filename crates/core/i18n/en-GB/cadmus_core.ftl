@@ -8,6 +8,7 @@ startup-loading = Cadmus starting up…
 
 # Notifications
 
+notification-dictionary-install-failed = Failed to install dictionary for "{ $lang }"
 notification-downloading-dictionary = Downloading dictionary for "{ $lang }"
 notification-downloading-dictionary-completed = Downloading dictionary for "{ $lang }" completed
 notification-downloading-dictionary-progress = Downloading { $lang } ({ $downloaded }/{ $total })
