@@ -13,7 +13,15 @@ fn fetch_intermission(kind: IntermKind, settings: &Settings) -> SettingData {
     let (value, is_logo, is_cover, is_calendar) = match display {
         IntermissionDisplay::Logo => (display.to_i18n_string(), true, false, false),
         IntermissionDisplay::Cover => (display.to_i18n_string(), false, true, false),
-        IntermissionDisplay::Calendar => (display.to_i18n_string(), false, false, true),
+        IntermissionDisplay::Calendar if kind.supports_calendar() => {
+            (display.to_i18n_string(), false, false, true)
+        }
+        IntermissionDisplay::Calendar => (
+            IntermissionDisplay::Logo.to_i18n_string(),
+            true,
+            false,
+            false,
+        ),
         IntermissionDisplay::Image(path) => {
             let i18n_display = fl!("settings-intermission-custom");
             let display_name = path
@@ -25,7 +33,7 @@ fn fetch_intermission(kind: IntermKind, settings: &Settings) -> SettingData {
         }
     };
 
-    let entries = vec![
+    let mut entries = vec![
         EntryKind::RadioButton(
             IntermissionDisplay::Logo.to_i18n_string(),
             EntryId::SetIntermission(kind, IntermissionDisplay::Logo),
@@ -36,16 +44,20 @@ fn fetch_intermission(kind: IntermKind, settings: &Settings) -> SettingData {
             EntryId::SetIntermission(kind, IntermissionDisplay::Cover),
             is_cover,
         ),
-        EntryKind::RadioButton(
+    ];
+
+    if kind.supports_calendar() {
+        entries.push(EntryKind::RadioButton(
             IntermissionDisplay::Calendar.to_i18n_string(),
             EntryId::SetIntermission(kind, IntermissionDisplay::Calendar),
             is_calendar,
-        ),
-        EntryKind::Command(
-            fl!("settings-intermission-custom-image"),
-            EntryId::EditIntermissionImage(kind),
-        ),
-    ];
+        ));
+    }
+
+    entries.push(EntryKind::Command(
+        fl!("settings-intermission-custom-image"),
+        EntryId::EditIntermissionImage(kind),
+    ));
 
     SettingData {
         value,
@@ -93,7 +105,13 @@ impl SettingKind for IntermissionSuspend {
         _bus: &mut Bus,
     ) -> (Option<String>, bool) {
         if let Event::Select(EntryId::SetIntermission(IntermKind::Suspend, ref display)) = evt {
-            settings.intermissions[IntermKind::Suspend] = display.clone();
+            if !settings
+                .intermissions
+                .set_display(IntermKind::Suspend, display.clone())
+            {
+                return (None, true);
+            }
+
             return (Some(intermission_display_name(display)), true);
         }
 
@@ -134,7 +152,13 @@ impl SettingKind for IntermissionPowerOff {
         _bus: &mut Bus,
     ) -> (Option<String>, bool) {
         if let Event::Select(EntryId::SetIntermission(IntermKind::PowerOff, ref display)) = evt {
-            settings.intermissions[IntermKind::PowerOff] = display.clone();
+            if !settings
+                .intermissions
+                .set_display(IntermKind::PowerOff, display.clone())
+            {
+                return (None, true);
+            }
+
             return (Some(intermission_display_name(display)), true);
         }
 
@@ -175,7 +199,13 @@ impl SettingKind for IntermissionShare {
         _bus: &mut Bus,
     ) -> (Option<String>, bool) {
         if let Event::Select(EntryId::SetIntermission(IntermKind::Share, ref display)) = evt {
-            settings.intermissions[IntermKind::Share] = display.clone();
+            if !settings
+                .intermissions
+                .set_display(IntermKind::Share, display.clone())
+            {
+                return (None, true);
+            }
+
             return (Some(intermission_display_name(display)), true);
         }
 
@@ -203,6 +233,7 @@ mod tests {
 
     mod intermission_suspend {
         use super::*;
+        use crate::view::EntryKind;
 
         #[test]
         fn handle_set_intermission_updates_settings() {
@@ -265,10 +296,36 @@ mod tests {
 
             assert!(result.0.is_none());
         }
+
+        #[test]
+        fn fetch_includes_calendar_option() {
+            let setting = IntermissionSuspend;
+            let settings = Settings::default();
+            let data = setting.fetch(&settings);
+
+            let WidgetKind::SubMenu(entries) = data.widget else {
+                panic!("expected submenu widget");
+            };
+
+            assert!(entries.iter().any(|entry| {
+                matches!(
+                    entry,
+                    EntryKind::RadioButton(
+                        _,
+                        EntryId::SetIntermission(
+                            IntermKind::Suspend,
+                            IntermissionDisplay::Calendar
+                        ),
+                        _
+                    )
+                )
+            }));
+        }
     }
 
     mod intermission_power_off {
         use super::*;
+        use crate::view::EntryKind;
 
         #[test]
         fn handle_set_intermission_updates_settings() {
@@ -331,10 +388,55 @@ mod tests {
 
             assert!(result.0.is_none());
         }
+
+        #[test]
+        fn handle_rejects_calendar_selection() {
+            let setting = IntermissionPowerOff;
+            let mut settings = Settings::default();
+            let mut bus: Bus = VecDeque::new();
+            let event = Event::Select(EntryId::SetIntermission(
+                IntermKind::PowerOff,
+                IntermissionDisplay::Calendar,
+            ));
+
+            let result = setting.handle(&event, &mut settings, &mut bus);
+
+            assert_eq!(result, (None, true));
+            assert_eq!(
+                settings.intermissions[IntermKind::PowerOff],
+                IntermissionDisplay::Logo
+            );
+        }
+
+        #[test]
+        fn fetch_excludes_calendar_option() {
+            let setting = IntermissionPowerOff;
+            let settings = Settings::default();
+            let data = setting.fetch(&settings);
+
+            let WidgetKind::SubMenu(entries) = data.widget else {
+                panic!("expected submenu widget");
+            };
+
+            assert!(!entries.iter().any(|entry| {
+                matches!(
+                    entry,
+                    EntryKind::RadioButton(
+                        _,
+                        EntryId::SetIntermission(
+                            IntermKind::PowerOff,
+                            IntermissionDisplay::Calendar
+                        ),
+                        _
+                    )
+                )
+            }));
+        }
     }
 
     mod intermission_share {
         use super::*;
+        use crate::view::EntryKind;
 
         #[test]
         fn handle_set_intermission_updates_settings() {
@@ -396,6 +498,47 @@ mod tests {
             let result = setting.handle(&Event::FileChooserClosed(None), &mut settings, &mut bus);
 
             assert!(result.0.is_none());
+        }
+
+        #[test]
+        fn handle_rejects_calendar_selection() {
+            let setting = IntermissionShare;
+            let mut settings = Settings::default();
+            let mut bus: Bus = VecDeque::new();
+            let event = Event::Select(EntryId::SetIntermission(
+                IntermKind::Share,
+                IntermissionDisplay::Calendar,
+            ));
+
+            let result = setting.handle(&event, &mut settings, &mut bus);
+
+            assert_eq!(result, (None, true));
+            assert_eq!(
+                settings.intermissions[IntermKind::Share],
+                IntermissionDisplay::Logo
+            );
+        }
+
+        #[test]
+        fn fetch_excludes_calendar_option() {
+            let setting = IntermissionShare;
+            let settings = Settings::default();
+            let data = setting.fetch(&settings);
+
+            let WidgetKind::SubMenu(entries) = data.widget else {
+                panic!("expected submenu widget");
+            };
+
+            assert!(!entries.iter().any(|entry| {
+                matches!(
+                    entry,
+                    EntryKind::RadioButton(
+                        _,
+                        EntryId::SetIntermission(IntermKind::Share, IntermissionDisplay::Calendar),
+                        _
+                    )
+                )
+            }));
         }
     }
 }

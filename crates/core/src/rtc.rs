@@ -72,18 +72,17 @@ impl Rtc {
         }
     }
 
-    pub fn set_alarm(&self, duration: Duration) -> Result<i32, Error> {
-        let wt = Utc::now() + duration;
+    pub fn set_alarm(&self, wake_time: DateTime<Utc>) -> Result<i32, Error> {
         let rwa = RtcWkalrm {
             enabled: 1,
             pending: 0,
             time: RtcTime {
-                tm_sec: wt.second() as libc::c_int,
-                tm_min: wt.minute() as libc::c_int,
-                tm_hour: wt.hour() as libc::c_int,
-                tm_mday: wt.day() as libc::c_int,
-                tm_mon: wt.month0() as libc::c_int,
-                tm_year: (wt.year() - 1900) as libc::c_int,
+                tm_sec: wake_time.second() as libc::c_int,
+                tm_min: wake_time.minute() as libc::c_int,
+                tm_hour: wake_time.hour() as libc::c_int,
+                tm_mday: wake_time.day() as libc::c_int,
+                tm_mon: wake_time.month0() as libc::c_int,
+                tm_year: (wake_time.year() - 1900) as libc::c_int,
                 tm_wday: -1,
                 tm_yday: -1,
                 tm_isdst: -1,
@@ -104,6 +103,38 @@ pub enum AlarmType {
     CalendarUpdate,
 }
 
+/// Describes what [`AlarmManager::ensure_scheduled`] should do when an alarm
+/// exists in the map but its wake time is already in the past.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PastDueAction {
+    /// Cancel the stale alarm and reschedule it for `now + duration`.
+    Reschedule,
+    /// Cancel the stale alarm and return [`EnsureAlarmOutcome::PastDue`]
+    /// so the caller can decide what to do.
+    Cancel,
+}
+
+/// The outcome of an [`AlarmManager::ensure_scheduled`] call.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EnsureAlarmOutcome {
+    /// No alarm of this type existed; one was freshly scheduled.
+    Scheduled,
+    /// An alarm of this type already existed and its wake time is in the future.
+    AlreadyScheduled,
+    /// An alarm of this type existed but was past-due; it has been cancelled.
+    ///
+    /// Only returned when [`PastDueAction::Cancel`] was requested. When
+    /// [`PastDueAction::Reschedule`] is requested the stale alarm is replaced
+    /// and [`EnsureAlarmOutcome::Scheduled`] is returned instead.
+    PastDue,
+}
+
+impl AlarmType {
+    pub fn alarms_to_cancel_after_resume() -> [Self; 2] {
+        [Self::AutoPowerOff, Self::CalendarUpdate]
+    }
+}
+
 pub struct ScheduledAlarm {
     pub alarm_type: AlarmType,
     pub wake_time: DateTime<Utc>,
@@ -114,7 +145,7 @@ pub struct ScheduledAlarm {
 /// The hardware RTC supports only one wake alarm at a time. `AlarmManager`
 /// maintains a map of logical alarms keyed by [`AlarmType`] and always
 /// programs the hardware with the earliest upcoming wake time. After each
-/// wake, [`check_fired_alarms`] determines which logical alarms fired and
+/// wake, [`AlarmManager::check_fired_alarms`] determines which logical alarms fired and
 /// reschedules the hardware for any remaining ones.
 pub struct AlarmManager {
     rtc: Rtc,
@@ -168,6 +199,47 @@ impl AlarmManager {
             .unwrap_or(false)
     }
 
+    /// Returns `true` if an alarm of `alarm_type` exists in the schedule.
+    pub fn has_alarm(&self, alarm_type: AlarmType) -> bool {
+        self.scheduled_alarms.contains_key(&alarm_type)
+    }
+
+    /// Ensures an alarm of `alarm_type` is active and scheduled for the future.
+    ///
+    /// - If no alarm exists, one is scheduled for `now + duration`.
+    /// - If an alarm exists and is in the future, nothing changes.
+    /// - If an alarm exists but is past-due, the stale entry is always
+    ///   cancelled. `past_due_action` then controls whether a fresh alarm is
+    ///   scheduled: [`PastDueAction::Reschedule`] schedules a new one and
+    ///   returns [`EnsureAlarmOutcome::Scheduled`]; [`PastDueAction::Cancel`]
+    ///   stops there and returns [`EnsureAlarmOutcome::PastDue`] so the caller
+    ///   can decide what action to take.
+    pub fn ensure_scheduled(
+        &mut self,
+        alarm_type: AlarmType,
+        duration: Duration,
+        past_due_action: PastDueAction,
+    ) -> Result<EnsureAlarmOutcome, Error> {
+        if !self.has_alarm(alarm_type) {
+            self.schedule_alarm(alarm_type, duration)?;
+            return Ok(EnsureAlarmOutcome::Scheduled);
+        }
+
+        if self.is_alarm_scheduled(alarm_type) {
+            return Ok(EnsureAlarmOutcome::AlreadyScheduled);
+        }
+
+        self.cancel_alarm(alarm_type)?;
+
+        match past_due_action {
+            PastDueAction::Reschedule => {
+                self.schedule_alarm(alarm_type, duration)?;
+                Ok(EnsureAlarmOutcome::Scheduled)
+            }
+            PastDueAction::Cancel => Ok(EnsureAlarmOutcome::PastDue),
+        }
+    }
+
     /// Returns the number of seconds until `alarm_type` fires, or `None` if
     /// it is not scheduled.
     pub fn time_until_alarm(&self, alarm_type: AlarmType) -> Option<i64> {
@@ -189,8 +261,8 @@ impl AlarmManager {
     /// and the hardware is reprogrammed for the next earliest alarm.
     pub fn check_fired_alarms(
         &mut self,
-        after: DateTime<Utc>,
         before: DateTime<Utc>,
+        after: DateTime<Utc>,
     ) -> Result<Vec<AlarmType>, Error> {
         let mut fired_types = Vec::new();
 
@@ -207,19 +279,33 @@ impl AlarmManager {
                     && ((after - before) - expected_duration).num_seconds().abs() < 3);
 
             if hardware_alarm_fired {
-                let now = Utc::now();
-                let mut to_remove = Vec::new();
+                let mut removed: Vec<(AlarmType, ScheduledAlarm)> = Vec::new();
 
                 for (alarm_type, scheduled_alarm) in &self.scheduled_alarms {
-                    if (now - scheduled_alarm.wake_time).abs().num_milliseconds() <= 3000 {
+                    if (after - scheduled_alarm.wake_time).abs().num_milliseconds() <= 3000 {
                         fired_types.push(*alarm_type);
-                        to_remove.push(*alarm_type);
+                        removed.push((
+                            *alarm_type,
+                            ScheduledAlarm {
+                                alarm_type: scheduled_alarm.alarm_type,
+                                wake_time: scheduled_alarm.wake_time,
+                            },
+                        ));
                     }
                 }
 
-                for alarm_type in to_remove {
-                    self.scheduled_alarms.remove(&alarm_type);
+                for (alarm_type, _) in &removed {
+                    self.scheduled_alarms.remove(alarm_type);
                 }
+
+                if let Err(e) = self.update_hardware_alarm() {
+                    for (alarm_type, alarm) in removed {
+                        self.scheduled_alarms.insert(alarm_type, alarm);
+                    }
+                    return Err(e);
+                }
+
+                return Ok(fired_types);
             }
         }
 
@@ -228,21 +314,19 @@ impl AlarmManager {
     }
 
     fn update_hardware_alarm(&self) -> Result<(), Error> {
+        let now = Utc::now();
+
         if let Some((_, earliest_alarm)) = self
             .scheduled_alarms
             .iter()
+            .filter(|(_, alarm)| alarm.wake_time > now)
             .min_by_key(|(_, alarm)| &alarm.wake_time)
         {
-            let duration = earliest_alarm.wake_time.signed_duration_since(Utc::now());
-
-            if duration.num_seconds() > 0 {
-                self.rtc.set_alarm(duration)?;
-            } else {
-                self.rtc.disable_alarm()?;
-            }
+            self.rtc.set_alarm(earliest_alarm.wake_time)?;
         } else {
             self.rtc.disable_alarm()?;
         }
+
         Ok(())
     }
 }

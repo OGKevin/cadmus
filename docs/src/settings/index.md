@@ -191,8 +191,8 @@ share = "logo:"
 
 Image displayed when the device enters sleep mode.
 
-Setting this to `"calendar:"` also enables the hourly calendar refresh: when
-the device wakes on the hour, it shows the calendar and then goes back to sleep
+Setting this to `"calendar:"` also enables the calendar refresh: every 5
+minutes, the device wakes, shows the calendar, and then goes back to sleep
 automatically.
 
 - Possible values: `"logo:"` (built-in logo), `"cover:"` (current book cover), `"calendar:"` (built-in calendar), or a path to a custom image file.
@@ -203,7 +203,7 @@ automatically.
 
 Image displayed when the device powers off.
 
-- Possible values: `"logo:"` (built-in logo), `"cover:"` (current book cover), `"calendar:"` (built-in calendar), or a path to a custom image file.
+- Possible values: `"logo:"` (built-in logo), `"cover:"` (current book cover), or a path to a custom image file.
 
 ### `intermissions.share`
 
@@ -211,7 +211,7 @@ Image displayed when the device powers off.
 
 Image displayed when entering USB sharing mode.
 
-- Possible values: `"logo:"` (built-in logo), `"cover:"` (current book cover), `"calendar:"` (built-in calendar), or a path to a custom image file.
+- Possible values: `"logo:"` (built-in logo), `"cover:"` (current book cover), or a path to a custom image file.
 
 ## Import
 

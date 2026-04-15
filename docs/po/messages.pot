@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Cadmus Documentation\n"
-"POT-Creation-Date: 2026-04-15T14:09:39+02:00\n"
+"POT-Creation-Date: 2026-04-20T10:08:26+02:00\n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -1137,13 +1137,12 @@ msgstr ""
 
 #: src/settings/index.md:194
 msgid ""
-"Setting this to `\"calendar:\"` also enables the hourly calendar refresh: "
-"when the device wakes on the hour, it shows the calendar and then goes back "
-"to sleep automatically."
+"Setting this to `\"calendar:\"` also enables the calendar refresh: every 5 "
+"minutes, the device wakes, shows the calendar, and then goes back to sleep "
+"automatically."
 msgstr ""
 
-#: src/settings/index.md:198 src/settings/index.md:206
-#: src/settings/index.md:214
+#: src/settings/index.md:198
 msgid ""
 "Possible values: `\"logo:\"` (built-in logo), `\"cover:\"` (current book "
 "cover), `\"calendar:\"` (built-in calendar), or a path to a custom image "
@@ -1156,6 +1155,12 @@ msgstr ""
 
 #: src/settings/index.md:204
 msgid "Image displayed when the device powers off."
+msgstr ""
+
+#: src/settings/index.md:206 src/settings/index.md:214
+msgid ""
+"Possible values: `\"logo:\"` (built-in logo), `\"cover:\"` (current book "
+"cover), or a path to a custom image file."
 msgstr ""
 
 #: src/settings/index.md:208

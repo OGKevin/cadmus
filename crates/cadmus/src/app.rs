@@ -22,7 +22,7 @@ use cadmus_core::input::{
 };
 use cadmus_core::library::Library;
 use cadmus_core::lightsensor::{KoboLightSensor, LightSensor};
-use cadmus_core::rtc::Rtc;
+use cadmus_core::rtc::{AlarmType, EnsureAlarmOutcome, PastDueAction, Rtc};
 use cadmus_core::settings::versioned::SettingsManager;
 use cadmus_core::settings::{
     ButtonScheme, IntermKind, IntermissionDisplay, LoggingSettings, RotationLock, Settings,
@@ -53,7 +53,6 @@ use cadmus_core::view::{
     AppCmd, EntryId, EntryKind, Event, NotificationEvent, RenderData, RenderQueue, UpdateData,
     View, ViewId,
 };
-use cadmus_core::AlarmType;
 use std::collections::VecDeque;
 use std::env;
 use std::fs::File;
@@ -62,7 +61,7 @@ use std::process::Command;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
 use std::time::{Duration, Instant};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, warn, Level};
 
 pub const APP_NAME: &str = "Cadmus";
 const DB_FILENAME: &str = "cadmus.sqlite";
@@ -202,6 +201,7 @@ fn resume(
     rq: &mut RenderQueue,
     context: &mut Context,
 ) {
+    debug!(task = ?id, "resume called");
     if id == TaskId::Suspend {
         tasks.retain(|task| task.id != TaskId::Suspend);
         if context.settings.frontlight {
@@ -218,14 +218,35 @@ fn resume(
                 });
             }
         }
+        if let Some(alarm_manager) = context.alarm_manager.as_mut() {
+            for alarm in AlarmType::alarms_to_cancel_after_resume() {
+                if let Err(e) = alarm_manager.cancel_alarm(alarm) {
+                    error!(error = ?e, alarm = ?alarm, "failed to cancel alarm after resume")
+                }
+            }
+        }
     }
     if id == TaskId::Suspend || id == TaskId::PrepareSuspend {
         tasks.retain(|task| task.id != TaskId::PrepareSuspend);
+
+        if tracing::enabled!(Level::DEBUG) {
+            let intermission_count = view
+                .children()
+                .iter()
+                .filter(|c| c.is::<Intermission>())
+                .count();
+            debug!(intermission_count, "intermission views before cleanup");
+        }
+
         if let Some(index) = locate::<Intermission>(view) {
             let rect = *view.child(index).rect();
             view.children_mut().remove(index);
+            debug!("intermission view removed, queuing expose");
             rq.add(RenderData::expose(rect, UpdateMode::Full));
+        } else {
+            warn!("resume called but no intermission view found to remove");
         }
+
         hub.send(Event::ClockTick).ok();
         hub.send(Event::BatteryTick).ok();
     }
@@ -268,6 +289,7 @@ fn initiate_suspend(
     tasks: &mut Vec<Task>,
     context: &mut Context,
 ) {
+    debug!("initiating suspend");
     view.handle_event(&Event::Suspend, hub, bus, rq, context);
     let interm = Intermission::new(context.fb.rect(), IntermKind::Suspend, context);
     rq.add(RenderData::new(
@@ -283,6 +305,7 @@ fn initiate_suspend(
         tasks,
     );
     view.children_mut().push(Box::new(interm) as Box<dyn View>);
+    debug!("suspend intermission pushed, PrepareSuspend scheduled");
 }
 
 fn set_wifi(enable: bool, context: &mut Context) {
@@ -747,6 +770,7 @@ pub fn run() -> Result<(), Error> {
                     }
 
                     if tasks.iter().any(|task| task.id == TaskId::PrepareSuspend) {
+                        debug!("power button: resuming from PrepareSuspend");
                         resume(
                             TaskId::PrepareSuspend,
                             &mut tasks,
@@ -756,6 +780,7 @@ pub fn run() -> Result<(), Error> {
                             &mut context,
                         );
                     } else if tasks.iter().any(|task| task.id == TaskId::Suspend) {
+                        debug!("power button: resuming from Suspend");
                         resume(
                             TaskId::Suspend,
                             &mut tasks,
@@ -765,6 +790,7 @@ pub fn run() -> Result<(), Error> {
                             &mut context,
                         );
                     } else {
+                        debug!("power button: initiating new suspend");
                         initiate_suspend(
                             view.as_mut(),
                             &tx,
@@ -1074,27 +1100,38 @@ pub fn run() -> Result<(), Error> {
             }
             Event::Suspend => {
                 if let Some(alarm_manager) = context.alarm_manager.as_mut() {
-                    if context.settings.auto_power_off > 0.0
-                        && !alarm_manager.is_alarm_scheduled(AlarmType::AutoPowerOff)
-                    {
-                        alarm_manager
-                            .schedule_alarm(
-                                AlarmType::AutoPowerOff,
-                                ChronoDuration::seconds(
-                                    (context.settings.auto_power_off * 86_400.0) as i64,
-                                ),
-                            )
-                            .map_err(|e| error!(error = %e, "Can't schedule auto power off alarm"))
-                            .ok();
+                    if context.settings.auto_power_off > 0.0 {
+                        let duration = ChronoDuration::seconds(
+                            (context.settings.auto_power_off * 86_400.0) as i64,
+                        );
+                        match alarm_manager.ensure_scheduled(
+                            AlarmType::AutoPowerOff,
+                            duration,
+                            PastDueAction::Cancel,
+                        ) {
+                            Ok(EnsureAlarmOutcome::PastDue) => {
+                                info!("AutoPowerOff alarm is past due, powering off");
+                                power_off(view.as_mut(), &mut history, &mut updating, &mut context);
+                                exit_status = ExitStatus::PowerOff;
+                                break;
+                            }
+                            Ok(_) => {}
+                            Err(e) => error!(error = %e, "Can't schedule auto power off alarm"),
+                        }
                     }
-                    if !alarm_manager.is_alarm_scheduled(AlarmType::CalendarUpdate) {
+                    if context.settings.intermissions[IntermKind::Suspend]
+                        == IntermissionDisplay::Calendar
+                    {
                         let now = Local::now();
-                        let seconds_until_next_hour =
-                            3600 - (now.minute() as i64 * 60 + now.second() as i64);
+                        let seconds_into_current_5min =
+                            (now.minute() as i64 % 5) * 60 + now.second() as i64;
+                        // +1 to ensure we're always past the 5m clock mark
+                        let seconds_until_next_5min = 300 - seconds_into_current_5min + 1;
                         alarm_manager
-                            .schedule_alarm(
+                            .ensure_scheduled(
                                 AlarmType::CalendarUpdate,
-                                ChronoDuration::seconds(seconds_until_next_hour),
+                                ChronoDuration::seconds(seconds_until_next_5min),
+                                PastDueAction::Reschedule,
                             )
                             .map_err(|e| error!(error = %e, "Can't schedule calendar update alarm"))
                             .ok();
@@ -1110,6 +1147,8 @@ pub fn run() -> Result<(), Error> {
                 info!("{}", after.format("Woke up on %B %-d, %Y at %H:%M:%S."));
                 Command::new("scripts/resume.sh").status().ok();
                 inactive_since = Instant::now();
+                let pending_task_ids: Vec<_> = tasks.iter().map(|t| t.id).collect();
+                debug!(pending_tasks = ?pending_task_ids, "task state after wake");
                 // If the wake is legitimate, the task will be cancelled by `resume`.
                 schedule_task(
                     TaskId::Suspend,
@@ -1119,7 +1158,7 @@ pub fn run() -> Result<(), Error> {
                     &mut tasks,
                 );
                 if let Some(alarm_manager) = context.alarm_manager.as_mut() {
-                    match alarm_manager.check_fired_alarms(after.to_utc(), before.to_utc()) {
+                    match alarm_manager.check_fired_alarms(before.to_utc(), after.to_utc()) {
                         Ok(fired_alarms) => {
                             info!(alarms = ?fired_alarms, "Checked fired alarms after wake");
                             if fired_alarms.contains(&AlarmType::AutoPowerOff) {
@@ -1131,6 +1170,13 @@ pub fn run() -> Result<(), Error> {
                                 && context.settings.intermissions[IntermKind::Suspend]
                                     == IntermissionDisplay::Calendar
                             {
+                                debug!(
+                                    "CalendarUpdate alarm fired; refreshing calendar intermission"
+                                );
+                                if let Some(index) = locate::<Intermission>(view.as_mut()) {
+                                    view.children_mut().remove(index);
+                                    debug!("old calendar intermission removed");
+                                }
                                 let interm = Intermission::new(
                                     context.fb.rect(),
                                     IntermKind::Suspend,

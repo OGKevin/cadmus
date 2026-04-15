@@ -166,7 +166,15 @@ impl SettingsManager {
                 );
                 let file_path = self.settings_dir.join(&entry.file);
                 match crate::helpers::load_toml::<Settings, _>(&file_path) {
-                    Ok(settings) => settings,
+                    Ok(mut settings) => {
+                        if settings.sanitize() {
+                            eprintln!(
+                                "some settings value were invalid, they have been cleaned up"
+                            );
+                        }
+
+                        settings
+                    }
                     Err(e) => {
                         eprintln!(
                             "failed to load settings file {}: {}; using defaults",
@@ -840,6 +848,31 @@ mod tests {
             "Should save and load selected_library"
         );
         assert!(loaded.inverted, "Should save and load inverted");
+    }
+
+    #[test]
+    fn test_load_sanitizes_unsupported_calendar_intermissions() {
+        let temp_dir = TempDir::new().unwrap();
+        let manager = create_test_manager(&temp_dir);
+        let mut settings = Settings::default();
+
+        settings.intermissions[crate::settings::IntermKind::PowerOff] =
+            crate::settings::IntermissionDisplay::Calendar;
+        settings.intermissions[crate::settings::IntermKind::Share] =
+            crate::settings::IntermissionDisplay::Calendar;
+
+        manager.save(&settings).unwrap();
+
+        let loaded = manager.load();
+
+        assert_eq!(
+            loaded.intermissions[crate::settings::IntermKind::PowerOff],
+            crate::settings::IntermissionDisplay::Logo
+        );
+        assert_eq!(
+            loaded.intermissions[crate::settings::IntermKind::Share],
+            crate::settings::IntermissionDisplay::Logo
+        );
     }
 
     #[test]
