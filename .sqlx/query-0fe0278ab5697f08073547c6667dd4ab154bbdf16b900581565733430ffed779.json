@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT lang, formats, updated as \"updated: UnixTimestamp\", words\n                   FROM dictionary_monolingual_metadata",
+  "query": "SELECT lang, formats, updated as \"updated: UnixTimestamp\", words\n                   FROM reader_dict_monolingual_metadata",
   "describe": {
     "columns": [
       {
@@ -34,5 +34,5 @@
       false
     ]
   },
-  "hash": "426509510c78e31ee8ca666fdffa59b967971a7fe2332c5668b1d8143b19334d"
+  "hash": "0fe0278ab5697f08073547c6667dd4ab154bbdf16b900581565733430ffed779"
 }

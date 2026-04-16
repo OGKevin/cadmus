@@ -1,10 +1,10 @@
 //! Database access layer for monolingual dictionary metadata.
 //!
-//! Manages the `dictionary_monolingual_metadata` table, which caches the
+//! Manages the `reader_dict_monolingual_metadata` table, which caches the
 //! API response from `https://www.reader-dict.com/api/v1/dictionaries`.
 //! Only monolingual entries (source language == target language) are stored.
 //!
-//! Also manages the `dictionary_installed` table, which tracks which version
+//! Also manages the `reader_dict_monolingual_installed` table, which tracks which version
 //! of each dictionary is currently installed on the device.
 
 use super::metadata::DictionaryEntry;
@@ -43,7 +43,7 @@ impl Db {
 
         RUNTIME.block_on(async {
             sqlx::query!(
-                r#"INSERT INTO dictionary_monolingual_metadata
+                r#"INSERT INTO reader_dict_monolingual_metadata
                        (lang, formats, updated, words, cached_at)
                    VALUES (?, ?, ?, ?, ?)
                    ON CONFLICT(lang) DO UPDATE SET
@@ -77,7 +77,7 @@ impl Db {
         RUNTIME.block_on(async {
             let row = sqlx::query!(
                 r#"SELECT formats, updated as "updated: UnixTimestamp", words
-                   FROM dictionary_monolingual_metadata
+                   FROM reader_dict_monolingual_metadata
                    WHERE lang = ?"#,
                 lang,
             )
@@ -105,7 +105,7 @@ impl Db {
         RUNTIME.block_on(async {
             let rows = sqlx::query!(
                 r#"SELECT lang, formats, updated as "updated: UnixTimestamp", words
-                   FROM dictionary_monolingual_metadata"#,
+                   FROM reader_dict_monolingual_metadata"#,
             )
             .fetch_all(&self.pool)
             .await?;
@@ -138,7 +138,7 @@ impl Db {
         RUNTIME.block_on(async {
             let result = sqlx::query_scalar!(
                 r#"SELECT MAX(cached_at) as "cached_at: UnixTimestamp"
-                   FROM dictionary_monolingual_metadata"#
+                   FROM reader_dict_monolingual_metadata"#
             )
             .fetch_one(&self.pool)
             .await?;
@@ -164,7 +164,7 @@ impl Db {
 
         RUNTIME.block_on(async {
             sqlx::query!(
-                r#"INSERT INTO dictionary_installed (lang, installed_at, installed_version)
+                r#"INSERT INTO reader_dict_monolingual_installed (lang, installed_at, installed_version)
                    VALUES (?, ?, ?)
                    ON CONFLICT(lang) DO UPDATE SET
                        installed_at      = excluded.installed_at,
@@ -191,9 +191,12 @@ impl Db {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(lang = %lang)))]
     pub(super) fn remove_installed(&self, lang: &str) -> Result<(), Error> {
         RUNTIME.block_on(async {
-            sqlx::query!(r#"DELETE FROM dictionary_installed WHERE lang = ?"#, lang)
-                .execute(&self.pool)
-                .await?;
+            sqlx::query!(
+                r#"DELETE FROM reader_dict_monolingual_installed WHERE lang = ?"#,
+                lang
+            )
+            .execute(&self.pool)
+            .await?;
 
             tracing::debug!(lang, "removed dictionary installed record");
             Ok(())
@@ -202,8 +205,8 @@ impl Db {
 
     /// Returns `true` if a newer version of the dictionary is available.
     ///
-    /// Compares `updated` from `dictionary_monolingual_metadata` against
-    /// `installed_version` from `dictionary_installed` via a single SQL JOIN.
+    /// Compares `updated` from `reader_dict_monolingual_metadata` against
+    /// `installed_version` from `reader_dict_monolingual_installed` via a single SQL JOIN.
     /// Returns `false` if the language is not installed or has no metadata.
     ///
     /// # Errors
@@ -215,8 +218,8 @@ impl Db {
             let result = sqlx::query_scalar!(
                 r#"SELECT EXISTS(
                     SELECT 1
-                    FROM dictionary_monolingual_metadata m
-                    JOIN dictionary_installed i ON m.lang = i.lang
+                    FROM reader_dict_monolingual_metadata m
+                    JOIN reader_dict_monolingual_installed i ON m.lang = i.lang
                     WHERE m.lang = ? AND m.updated > i.installed_version
                 ) as "exists: bool""#,
                 lang

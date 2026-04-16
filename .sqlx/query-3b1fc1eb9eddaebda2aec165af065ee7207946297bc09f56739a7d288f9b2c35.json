@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM reader_dict_monolingual_installed WHERE lang = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "3b1fc1eb9eddaebda2aec165af065ee7207946297bc09f56739a7d288f9b2c35"
+}
