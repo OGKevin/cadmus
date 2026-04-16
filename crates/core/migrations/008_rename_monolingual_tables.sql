@@ -1,0 +1,2 @@
+ALTER TABLE dictionary_monolingual_metadata RENAME TO reader_dict_monolingual_metadata;
+ALTER TABLE dictionary_installed RENAME TO reader_dict_monolingual_installed;

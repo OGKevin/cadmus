@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO reader_dict_monolingual_installed (lang, installed_at, installed_version)\n                   VALUES (?, ?, ?)\n                   ON CONFLICT(lang) DO UPDATE SET\n                       installed_at      = excluded.installed_at,\n                       installed_version = excluded.installed_version",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "1249408a927b1959e2d88b5709bb2b1d4928685a7844ba3021337066128e4015"
+}

@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT MAX(cached_at) as \"cached_at: UnixTimestamp\"\n                   FROM dictionary_monolingual_metadata",
+  "query": "SELECT MAX(cached_at) as \"cached_at: UnixTimestamp\"\n                   FROM reader_dict_monolingual_metadata",
   "describe": {
     "columns": [
       {
@@ -16,5 +16,5 @@
       true
     ]
   },
-  "hash": "7ca4d661436bc90f292cdc7015834392398db282cf711e1b6d3a4c256dd8b8f1"
+  "hash": "0e00aff2f53db00eceb9f090585dce0638e35a561c60d8586f2bf37a14b8c6a9"
 }

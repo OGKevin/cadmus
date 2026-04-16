@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT EXISTS(\n                    SELECT 1\n                    FROM reader_dict_monolingual_metadata m\n                    JOIN reader_dict_monolingual_installed i ON m.lang = i.lang\n                    WHERE m.lang = ? AND m.updated > i.installed_version\n                ) as \"exists: bool\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "exists: bool",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "c636d97dc11a6a7d3b3dac7e23b148bdaabbce45c4de8f79775ceef4fd7246c3"
+}
