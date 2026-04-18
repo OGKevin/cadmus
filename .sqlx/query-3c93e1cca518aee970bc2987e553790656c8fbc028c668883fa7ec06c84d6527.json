@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                SELECT lb.book_fingerprint AS \"fingerprint!: String\",\n                       lb.file_path        AS \"file_path!: String\"\n                FROM library_books lb\n                WHERE lb.library_id = ?\n                ",
+  "describe": {
+    "columns": [
+      {
+        "name": "fingerprint!: String",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "file_path!: String",
+        "ordinal": 1,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "3c93e1cca518aee970bc2987e553790656c8fbc028c668883fa7ec06c84d6527"
+}

@@ -1,0 +1,254 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                SELECT\n                    fingerprint,\n                    title,\n                    subtitle,\n                    year,\n                    language,\n                    publisher,\n                    series,\n                    edition,\n                    volume,\n                    number,\n                    identifier,\n                    file_path,\n                    absolute_path,\n                    file_kind,\n                    file_size,\n                    added_at              as \"added_at: UnixTimestamp\",\n                    opened                as \"opened?: UnixTimestamp\",\n                    current_page          as \"current_page?: i64\",\n                    pages_count           as \"pages_count?: i64\",\n                    finished              as \"finished?: i64\",\n                    dithered              as \"dithered?: i64\",\n                    zoom_mode             as \"zoom_mode?: String\",\n                    scroll_mode           as \"scroll_mode?: String\",\n                    page_offset_x         as \"page_offset_x?: i64\",\n                    page_offset_y         as \"page_offset_y?: i64\",\n                    rotation              as \"rotation?: i64\",\n                    cropping_margins_json as \"cropping_margins_json?: String\",\n                    margin_width          as \"margin_width?: i64\",\n                    screen_margin_width   as \"screen_margin_width?: i64\",\n                    font_family           as \"font_family?: String\",\n                    font_size             as \"font_size?: f64\",\n                    text_align            as \"text_align?: String\",\n                    line_height           as \"line_height?: f64\",\n                    contrast_exponent     as \"contrast_exponent?: f64\",\n                    contrast_gray         as \"contrast_gray?: f64\",\n                    page_names_json       as \"page_names_json?: String\",\n                    bookmarks_json        as \"bookmarks_json?: String\",\n                    annotations_json      as \"annotations_json?: String\",\n                    authors               as \"authors?: String\",\n                    categories            as \"categories?: String\"\n                FROM library_books_full_info\n                WHERE library_id = ? AND fingerprint = ?\n                LIMIT 1\n                ",
+  "describe": {
+    "columns": [
+      {
+        "name": "fingerprint",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "title",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "subtitle",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "year",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "language",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "publisher",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "series",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "edition",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "volume",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "number",
+        "ordinal": 9,
+        "type_info": "Text"
+      },
+      {
+        "name": "identifier",
+        "ordinal": 10,
+        "type_info": "Text"
+      },
+      {
+        "name": "file_path",
+        "ordinal": 11,
+        "type_info": "Text"
+      },
+      {
+        "name": "absolute_path",
+        "ordinal": 12,
+        "type_info": "Text"
+      },
+      {
+        "name": "file_kind",
+        "ordinal": 13,
+        "type_info": "Text"
+      },
+      {
+        "name": "file_size",
+        "ordinal": 14,
+        "type_info": "Integer"
+      },
+      {
+        "name": "added_at: UnixTimestamp",
+        "ordinal": 15,
+        "type_info": "Integer"
+      },
+      {
+        "name": "opened?: UnixTimestamp",
+        "ordinal": 16,
+        "type_info": "Integer"
+      },
+      {
+        "name": "current_page?: i64",
+        "ordinal": 17,
+        "type_info": "Integer"
+      },
+      {
+        "name": "pages_count?: i64",
+        "ordinal": 18,
+        "type_info": "Integer"
+      },
+      {
+        "name": "finished?: i64",
+        "ordinal": 19,
+        "type_info": "Integer"
+      },
+      {
+        "name": "dithered?: i64",
+        "ordinal": 20,
+        "type_info": "Integer"
+      },
+      {
+        "name": "zoom_mode?: String",
+        "ordinal": 21,
+        "type_info": "Text"
+      },
+      {
+        "name": "scroll_mode?: String",
+        "ordinal": 22,
+        "type_info": "Text"
+      },
+      {
+        "name": "page_offset_x?: i64",
+        "ordinal": 23,
+        "type_info": "Integer"
+      },
+      {
+        "name": "page_offset_y?: i64",
+        "ordinal": 24,
+        "type_info": "Integer"
+      },
+      {
+        "name": "rotation?: i64",
+        "ordinal": 25,
+        "type_info": "Integer"
+      },
+      {
+        "name": "cropping_margins_json?: String",
+        "ordinal": 26,
+        "type_info": "Text"
+      },
+      {
+        "name": "margin_width?: i64",
+        "ordinal": 27,
+        "type_info": "Integer"
+      },
+      {
+        "name": "screen_margin_width?: i64",
+        "ordinal": 28,
+        "type_info": "Integer"
+      },
+      {
+        "name": "font_family?: String",
+        "ordinal": 29,
+        "type_info": "Text"
+      },
+      {
+        "name": "font_size?: f64",
+        "ordinal": 30,
+        "type_info": "Float"
+      },
+      {
+        "name": "text_align?: String",
+        "ordinal": 31,
+        "type_info": "Text"
+      },
+      {
+        "name": "line_height?: f64",
+        "ordinal": 32,
+        "type_info": "Float"
+      },
+      {
+        "name": "contrast_exponent?: f64",
+        "ordinal": 33,
+        "type_info": "Float"
+      },
+      {
+        "name": "contrast_gray?: f64",
+        "ordinal": 34,
+        "type_info": "Float"
+      },
+      {
+        "name": "page_names_json?: String",
+        "ordinal": 35,
+        "type_info": "Text"
+      },
+      {
+        "name": "bookmarks_json?: String",
+        "ordinal": 36,
+        "type_info": "Text"
+      },
+      {
+        "name": "annotations_json?: String",
+        "ordinal": 37,
+        "type_info": "Text"
+      },
+      {
+        "name": "authors?: String",
+        "ordinal": 38,
+        "type_info": "Null"
+      },
+      {
+        "name": "categories?: String",
+        "ordinal": 39,
+        "type_info": "Null"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      null,
+      null
+    ]
+  },
+  "hash": "b9103f7a3b198ba0660cdf19b5352ef89550bb7a48c42703d8575ac4ed109cf0"
+}

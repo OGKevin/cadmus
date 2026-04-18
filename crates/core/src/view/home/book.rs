@@ -64,6 +64,7 @@ impl View for Book {
             Event::Gesture(GestureEvent::Tap(center)) if self.rect.includes(center) => {
                 self.active = true;
                 rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+
                 hub.send(Event::Open(Box::new(self.info.clone()))).ok();
                 true
             }

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                    UPDATE library_books SET file_path = ?, absolute_path = ?\n                    WHERE library_id = ? AND book_fingerprint = ?\n                    ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "311fed01fb0e40c61804f991cea061e9f737f589f050b5650676861a07bd61f0"
+}

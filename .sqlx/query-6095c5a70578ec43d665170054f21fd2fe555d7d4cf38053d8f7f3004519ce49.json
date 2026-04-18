@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                SELECT title, language, file_path, sort_title as \"sort_title?: i64\"\n                FROM library_books_full_info\n                WHERE library_id = ? AND fingerprint != ?\n                ORDER BY sort_title ASC NULLS LAST\n                ",
+  "describe": {
+    "columns": [
+      {
+        "name": "title",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "language",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "file_path",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "sort_title?: i64",
+        "ordinal": 3,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "6095c5a70578ec43d665170054f21fd2fe555d7d4cf38053d8f7f3004519ce49"
+}

@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT t.thumbnail_data FROM library_books lb INNER JOIN thumbnails t ON lb.book_fingerprint = t.fingerprint WHERE lb.library_id = ? AND lb.file_path = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "thumbnail_data",
+        "ordinal": 0,
+        "type_info": "Blob"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "a5aa842cc5d9038e017cc6cc6b2fa44c54953d8a29e5e93f066be82d549b8bdd"
+}

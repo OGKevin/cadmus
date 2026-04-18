@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE thumbnails SET fingerprint = ? WHERE fingerprint = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "fdb2a60b09c6fdff13aa8f4a3257b6d54b70e1434a6f58e71eff473a79e068b6"
+}

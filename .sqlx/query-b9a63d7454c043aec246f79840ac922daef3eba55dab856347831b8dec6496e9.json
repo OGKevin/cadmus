@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                        SELECT DISTINCT\n                            substr(lb.file_path, 1, instr(lb.file_path, '/') - 1) AS \"child!: String\"\n                        FROM library_books lb\n                        WHERE lb.library_id = ?1\n                          AND lb.file_path LIKE '%/%'\n                        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "child!: String",
+        "ordinal": 0,
+        "type_info": "Null"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "b9a63d7454c043aec246f79840ac922daef3eba55dab856347831b8dec6496e9"
+}

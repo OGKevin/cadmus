@@ -191,6 +191,8 @@ in
     pkgs.sqlitebrowser
 
     pkgs.wrangler
+
+    pkgs.cargo-llvm-cov
   ]
   # Linux-only packages
   ++ pkgs.lib.optionals isLinux [
@@ -230,6 +232,7 @@ in
       toolchain = {
         inherit (pkgs) cargo-expand;
       };
+      components = [ "rustfmt" "rustc" "cargo" "llvm-tools-preview" ];
     };
   };
 

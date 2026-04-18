@@ -10,7 +10,6 @@ use crate::font::{font_from_style, Fonts, DISPLAY_STYLE};
 use crate::framebuffer::Framebuffer;
 use crate::geom::Rectangle;
 use crate::i18n::I18nDisplay;
-use crate::metadata::{sort, BookQuery, SortMethod};
 use crate::rtc::AlarmType;
 use crate::settings::{IntermKind, IntermissionDisplay};
 use calendar::CalendarView;
@@ -41,20 +40,12 @@ impl Intermission {
             match &context.settings.intermissions[kind] {
                 IntermissionDisplay::Logo => (Message::Text(kind.text().to_string()), Vec::new()),
                 IntermissionDisplay::Cover => {
-                    let query = BookQuery {
-                        reading: Some(true),
-                        ..Default::default()
-                    };
-                    let (mut files, _) =
-                        context
-                            .library
-                            .list(&context.library.home, Some(&query), false);
-                    sort(&mut files, SortMethod::Opened, true);
-                    let msg = if !files.is_empty() {
-                        Message::Cover(context.library.home.join(&files[0].file.path))
-                    } else {
-                        Message::Text(kind.text().to_string())
-                    };
+                    let msg =
+                        if let Some(info) = context.library.most_recently_opened_reading_book() {
+                            Message::Cover(context.library.home.join(&info.file.path))
+                        } else {
+                            Message::Text(kind.text().to_string())
+                        };
                     (msg, Vec::new())
                 }
                 IntermissionDisplay::Image(path) => (Message::Image(path.clone()), Vec::new()),

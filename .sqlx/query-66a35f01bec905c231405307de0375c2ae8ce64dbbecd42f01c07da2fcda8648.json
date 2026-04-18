@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                SELECT authors as \"authors?: String\", sort_author as \"sort_author?: i64\"\n                FROM library_books_full_info\n                WHERE library_id = ? AND fingerprint != ?\n                ORDER BY sort_author ASC NULLS LAST\n                ",
+  "describe": {
+    "columns": [
+      {
+        "name": "authors?: String",
+        "ordinal": 0,
+        "type_info": "Null"
+      },
+      {
+        "name": "sort_author?: i64",
+        "ordinal": 1,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      null,
+      true
+    ]
+  },
+  "hash": "66a35f01bec905c231405307de0375c2ae8ce64dbbecd42f01c07da2fcda8648"
+}

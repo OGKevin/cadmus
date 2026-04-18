@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE library_books SET sort_series = ? WHERE library_id = ? AND book_fingerprint = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "2d89963b9147646bfdaf9f1ad140674b2dec4e931a8ea07f573f2942b42a41fd"
+}

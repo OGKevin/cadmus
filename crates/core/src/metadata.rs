@@ -6,6 +6,7 @@ use crate::document::pdf::PdfOpener;
 use crate::document::{Document, SimpleTocEntry, TextLocation};
 use crate::geom::Point;
 use crate::helpers::datetime_format;
+use crate::helpers::Fp;
 use chrono::{Local, NaiveDateTime};
 use fxhash::FxHashMap;
 use lazy_static::lazy_static;
@@ -61,6 +62,8 @@ pub struct Info {
     pub toc: Option<Vec<SimpleTocEntry>>,
     #[serde(with = "datetime_format")]
     pub added: NaiveDateTime,
+    #[serde(skip)]
+    pub fp: Option<Fp>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -323,6 +326,7 @@ impl Default for Info {
             reader: None,
             reader_info: None,
             toc: None,
+            fp: None,
         }
     }
 }
@@ -414,32 +418,14 @@ impl Info {
     }
 
     // TODO: handle the following case: *Walter M. Miller Jr.*?
-    // NOTE: e.g.: John Le Carré: the space between *Le* and *Carré*
+    // NOTE: e.g.: John Le Carré: the space between *Le* and *Carré*
     // is a non-breaking space
     pub fn alphabetic_author(&self) -> &str {
-        self.author
-            .split(',')
-            .next()
-            .and_then(|a| a.split(' ').last())
-            .unwrap_or_default()
+        alphabetic_author(&self.author)
     }
 
     pub fn alphabetic_title(&self) -> &str {
-        let mut start = 0;
-
-        let lang = if self.language.is_empty() || self.language.starts_with("en") {
-            "en"
-        } else if self.language.starts_with("fr") {
-            "fr"
-        } else {
-            &self.language
-        };
-
-        if let Some(m) = TITLE_PREFIXES.get(lang).and_then(|re| re.find(&self.title)) {
-            start = m.end()
-        }
-
-        &self.title[start..]
+        alphabetic_title(&self.title, &self.language)
     }
 
     pub fn label(&self) -> String {
@@ -449,6 +435,40 @@ impl Info {
             self.title()
         }
     }
+}
+
+/// Returns the sort key for a title by stripping leading articles based on
+/// the book's language, delegating to the [`TITLE_PREFIXES`] regex table.
+///
+/// Used by both [`Info::alphabetic_title`] and the DB sort-rank layer so that
+/// the article-stripping logic lives in exactly one place.
+pub(crate) fn alphabetic_title<'a>(title: &'a str, language: &str) -> &'a str {
+    let lang = if language.is_empty() || language.starts_with("en") {
+        "en"
+    } else if language.starts_with("fr") {
+        "fr"
+    } else {
+        language
+    };
+
+    if let Some(m) = TITLE_PREFIXES.get(lang).and_then(|re| re.find(title)) {
+        return title[m.end()..].trim_start();
+    }
+
+    title
+}
+
+/// Returns the sort key for an author string by extracting the last word of
+/// the first name in a comma-separated list.
+///
+/// Used by both [`Info::alphabetic_author`] and the DB sort-rank layer so that
+/// the extraction logic lives in exactly one place.
+pub(crate) fn alphabetic_author(author: &str) -> &str {
+    author
+        .split(',')
+        .next()
+        .and_then(|a| a.split(' ').next_back())
+        .unwrap_or_default()
 }
 
 pub fn make_query(text: &str) -> Option<Regex> {
@@ -744,17 +764,8 @@ impl SortMethod {
     }
 }
 
-pub fn sort(md: &mut Metadata, sort_method: SortMethod, reverse_order: bool) {
-    let sort_fn = sorter(sort_method);
-
-    if reverse_order {
-        md.sort_by(|a, b| sort_fn(a, b).reverse());
-    } else {
-        md.sort_by(sort_fn);
-    }
-}
-
 #[inline]
+#[cfg_attr(feature = "otel", tracing::instrument)]
 pub fn sorter(sort_method: SortMethod) -> fn(&Info, &Info) -> Ordering {
     match sort_method {
         SortMethod::Opened => sort_opened,
@@ -797,7 +808,18 @@ pub fn sort_author(i1: &Info, i2: &Info) -> Ordering {
 }
 
 pub fn sort_title(i1: &Info, i2: &Info) -> Ordering {
-    natural_cmp(i1.alphabetic_title(), i2.alphabetic_title())
+    let mut i1_title = i1.alphabetic_title().to_string();
+    let mut i2_title = i2.alphabetic_title().to_string();
+
+    if i1_title.is_empty() {
+        i1_title = i1.file_stem()
+    }
+
+    if i2_title.is_empty() {
+        i2_title = i2.file_stem()
+    }
+
+    natural_cmp(i1_title.as_str(), i2_title.as_str())
 }
 
 pub fn sort_status(i1: &Info, i2: &Info) -> Ordering {
@@ -845,9 +867,10 @@ pub fn sort_year(i1: &Info, i2: &Info) -> Ordering {
 
 pub fn sort_series(i1: &Info, i2: &Info) -> Ordering {
     i1.series.cmp(&i2.series).then_with(|| {
-        usize::from_str_radix(&i1.number, 10)
+        i1.number
+            .parse::<usize>()
             .ok()
-            .zip(usize::from_str_radix(&i2.number, 10).ok())
+            .zip(i2.number.parse::<usize>().ok())
             .map_or_else(|| i1.number.cmp(&i2.number), |(a, b)| a.cmp(&b))
     })
 }
@@ -901,7 +924,7 @@ pub fn sort_filepath(i1: &Info, i2: &Info) -> Ordering {
 /// assert_eq!(natural_cmp("Chapter 9", "Chapter 10"), Ordering::Less);
 /// ```
 #[cfg_attr(feature = "otel", tracing::instrument(ret(level=tracing::Level::TRACE)))]
-fn natural_cmp(a: &str, b: &str) -> Ordering {
+pub(crate) fn natural_cmp(a: &str, b: &str) -> Ordering {
     let mut a_rest = a;
     let mut b_rest = b;
 

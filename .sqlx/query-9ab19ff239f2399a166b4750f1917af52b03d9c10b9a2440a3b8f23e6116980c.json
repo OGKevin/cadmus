@@ -1,0 +1,32 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                SELECT series, number, sort_series as \"sort_series?: i64\"\n                FROM library_books_full_info\n                WHERE library_id = ? AND fingerprint != ?\n                ORDER BY sort_series ASC NULLS LAST\n                ",
+  "describe": {
+    "columns": [
+      {
+        "name": "series",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "number",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "sort_series?: i64",
+        "ordinal": 2,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "9ab19ff239f2399a166b4750f1917af52b03d9c10b9a2440a3b8f23e6116980c"
+}

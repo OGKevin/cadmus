@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                SELECT file_path, sort_filepath as \"sort_filepath?: i64\"\n                FROM library_books_full_info\n                WHERE library_id = ? AND fingerprint != ?\n                ORDER BY sort_filepath ASC NULLS LAST\n                ",
+  "describe": {
+    "columns": [
+      {
+        "name": "file_path",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "sort_filepath?: i64",
+        "ordinal": 1,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      true
+    ]
+  },
+  "hash": "48c800fcfc014ac5adb194a5e014dced6ecffd89eab7abb02919dab538630906"
+}

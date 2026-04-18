@@ -19,7 +19,7 @@ use crate::geom::{halves, CycleDir, DiagDir, Dir, Rectangle};
 use crate::gesture::GestureEvent;
 use crate::input::{ButtonCode, ButtonStatus, DeviceEvent};
 use crate::library::Library;
-use crate::metadata::{sort, BookQuery, Info, Metadata, SimpleStatus, SortMethod};
+use crate::metadata::{BookQuery, Info, SimpleStatus, SortMethod};
 use crate::settings::{FirstColumn, Hook, SecondColumn};
 use crate::unit::scale_by_dpi;
 use crate::view::common::{locate, locate_by_id, rlocate};
@@ -62,7 +62,8 @@ pub struct Home {
     query: Option<BookQuery>,
     sort_method: SortMethod,
     reverse_order: bool,
-    visible_books: Metadata,
+    total_count: usize,
+    current_page_books: Vec<Info>,
     current_directory: PathBuf,
     target_document: Option<PathBuf>,
     background_fetchers: FxHashMap<u32, Fetcher>,
@@ -78,6 +79,8 @@ struct Fetcher {
 }
 
 impl Home {
+    /// Builds the Home view and loads the initial page of books for the selected library.
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(rq, hub, context)))]
     pub fn new(
         rect: Rectangle,
         hub: &Hub,
@@ -102,10 +105,7 @@ impl Home {
         let sort_method = library_settings.sort_method;
         let reverse_order = sort_method.reverse_order();
 
-        context.library.sort(sort_method, reverse_order);
-
-        let (visible_books, _dirs) = context.library.list(&current_directory, None, false);
-        let count = visible_books.len();
+        context.library.set_sort(sort_method, reverse_order);
         let current_page = 0;
         let mut shelf_index = 2;
 
@@ -203,16 +203,14 @@ impl Home {
         );
 
         let max_lines = shelf.max_lines;
-        let pages_count = (visible_books.len() as f32 / max_lines as f32).ceil() as usize;
-        let index_lower = current_page * max_lines;
-        let index_upper = (index_lower + max_lines).min(visible_books.len());
+        let page_result =
+            context
+                .library
+                .page(&current_directory, None, current_page, max_lines)?;
+        let count = page_result.total_count;
+        let pages_count = count.div_ceil(max_lines);
 
-        shelf.update(
-            &visible_books[index_lower..index_upper],
-            hub,
-            &mut RenderQueue::new(),
-            context,
-        );
+        shelf.update(&page_result.books, hub, &mut RenderQueue::new(), context);
 
         children.push(Box::new(shelf) as Box<dyn View>);
 
@@ -255,7 +253,8 @@ impl Home {
             query: None,
             sort_method,
             reverse_order,
-            visible_books,
+            total_count: count,
+            current_page_books: page_result.books,
             current_directory,
             target_document: None,
             background_fetchers: FxHashMap::default(),
@@ -283,11 +282,6 @@ impl Home {
             }
         }
 
-        let (files, _dirs) =
-            context
-                .library
-                .list(&self.current_directory, self.query.as_ref(), false);
-        self.visible_books = files;
         self.current_page = 0;
 
         let mut index = 2;
@@ -404,30 +398,22 @@ impl Home {
             .downcast_ref::<Shelf>()
             .unwrap()
             .max_lines;
-        let index_lower = self.current_page * max_lines;
-        let index_upper = (index_lower + max_lines).min(self.visible_books.len());
-        let book_index = match dir {
-            CycleDir::Next => index_upper.saturating_sub(1),
-            CycleDir::Previous => index_lower,
-        };
-        let status = self.visible_books[book_index].simple_status();
-
-        let page = match dir {
-            CycleDir::Next => self.visible_books[book_index + 1..]
-                .iter()
-                .position(|info| info.simple_status() != status)
-                .map(|delta| self.current_page + 1 + delta / max_lines),
-            CycleDir::Previous => self.visible_books[..book_index]
-                .iter()
-                .rev()
-                .position(|info| info.simple_status() != status)
-                .map(|delta| self.current_page - 1 - delta / max_lines),
-        };
-
-        if let Some(page) = page {
-            self.current_page = page;
-            self.update_shelf(false, hub, rq, context);
-            self.update_bottom_bar(rq, context);
+        match context.library.neighbor_status_change_page(
+            &self.current_directory,
+            self.query.as_ref(),
+            self.current_page,
+            max_lines,
+            dir,
+        ) {
+            Ok(Some(page)) => {
+                self.current_page = page;
+                self.update_shelf(false, hub, rq, context);
+                self.update_bottom_bar(rq, context);
+            }
+            Ok(None) => {}
+            Err(e) => {
+                error!(error = %e, "failed to find status change page");
+            }
         }
     }
 
@@ -440,11 +426,6 @@ impl Home {
         rq: &mut RenderQueue,
         context: &mut Context,
     ) {
-        let (files, _) = context
-            .library
-            .list(&self.current_directory, self.query.as_ref(), false);
-        self.visible_books = files;
-
         let max_lines = {
             let shelf = self
                 .child(self.shelf_index)
@@ -453,12 +434,44 @@ impl Home {
             shelf.max_lines
         };
 
-        self.pages_count = (self.visible_books.len() as f32 / max_lines as f32).ceil() as usize;
-
         if reset_page {
             self.current_page = 0;
-        } else if self.current_page >= self.pages_count {
-            self.current_page = self.pages_count.saturating_sub(1);
+        }
+
+        let page_result = context
+            .library
+            .page(
+                &self.current_directory,
+                self.query.as_ref(),
+                self.current_page,
+                max_lines,
+            )
+            .map_err(|e| error!(error = %e, "failed to refresh visibles"))
+            .ok();
+
+        if let Some(page_result) = page_result {
+            self.total_count = page_result.total_count;
+            self.pages_count = self.total_count.div_ceil(max_lines);
+
+            let previous_page = self.current_page;
+            if self.current_page >= self.pages_count && self.pages_count > 0 {
+                self.current_page = self.pages_count.saturating_sub(1);
+            }
+
+            self.current_page_books = if self.current_page != previous_page {
+                context
+                    .library
+                    .page(
+                        &self.current_directory,
+                        self.query.as_ref(),
+                        self.current_page,
+                        max_lines,
+                    )
+                    .map(|result| result.books)
+                    .unwrap_or_default()
+            } else {
+                page_result.books
+            };
         }
 
         if update {
@@ -521,33 +534,43 @@ impl Home {
         let max_lines = ((shelf.rect.height() as i32 + thickness) / big_height) as usize;
 
         if was_resized {
-            let page_position = if self.visible_books.is_empty() {
+            let page_position = if self.total_count == 0 {
                 0.0
             } else {
-                self.current_page as f32
-                    * (shelf.max_lines as f32 / self.visible_books.len() as f32)
+                self.current_page as f32 * (shelf.max_lines as f32 / self.total_count as f32)
             };
 
-            let mut page_guess = page_position * self.visible_books.len() as f32 / max_lines as f32;
+            let mut page_guess = page_position * self.total_count as f32 / max_lines as f32;
             let page_ceil = page_guess.ceil();
 
             if (page_ceil - page_guess).abs() < f32::EPSILON {
                 page_guess = page_ceil;
             }
 
-            self.pages_count = (self.visible_books.len() as f32 / max_lines as f32).ceil() as usize;
+            self.pages_count = self.total_count.div_ceil(max_lines);
             self.current_page = (page_guess as usize).min(self.pages_count.saturating_sub(1));
         }
 
-        let index_lower = self.current_page * max_lines;
-        let index_upper = (index_lower + max_lines).min(self.visible_books.len());
+        match context.library.page(
+            &self.current_directory,
+            self.query.as_ref(),
+            self.current_page,
+            max_lines,
+        ) {
+            Ok(page_result) => {
+                self.total_count = page_result.total_count;
+                self.pages_count = self.total_count.div_ceil(max_lines);
+                self.current_page_books = page_result.books;
+            }
+            Err(e) => {
+                error!(error = %e, "failed to update shelf page");
+                self.total_count = 0;
+                self.pages_count = 0;
+                self.current_page_books.clear();
+            }
+        }
 
-        shelf.update(
-            &self.visible_books[index_lower..index_upper],
-            hub,
-            rq,
-            context,
-        );
+        shelf.update(&self.current_page_books, hub, rq, context);
     }
 
     fn update_top_bar(&mut self, search_visible: bool, rq: &mut RenderQueue) {
@@ -571,12 +594,7 @@ impl Home {
             let filter = self.query.is_some() || self.current_directory != context.library.home;
             let selected_library = context.settings.selected_library;
             let library_settings = &context.settings.libraries[selected_library];
-            bottom_bar.update_library_label(
-                &library_settings.name,
-                self.visible_books.len(),
-                filter,
-                rq,
-            );
+            bottom_bar.update_library_label(&library_settings.name, self.total_count, filter, rq);
             bottom_bar.update_page_label(self.current_page, self.pages_count, rq);
             bottom_bar.update_icons(self.current_page, self.pages_count, rq);
         }
@@ -1262,16 +1280,6 @@ impl Home {
         }
     }
 
-    fn book_index(&self, index: usize) -> usize {
-        let max_lines = self
-            .child(self.shelf_index)
-            .downcast_ref::<Shelf>()
-            .unwrap()
-            .max_lines;
-        let index_lower = self.current_page * max_lines;
-        (index_lower + index).min(self.visible_books.len())
-    }
-
     fn toggle_book_menu(
         &mut self,
         index: usize,
@@ -1294,8 +1302,9 @@ impl Home {
                 return;
             }
 
-            let book_index = self.book_index(index);
-            let info = &self.visible_books[book_index];
+            let Some(info) = self.current_page_books.get(index) else {
+                return;
+            };
             let path = &info.file.path;
 
             let mut entries = Vec::new();
@@ -1602,19 +1611,18 @@ impl Home {
                 fs::create_dir(&trash_path)?;
             }
             let mut trash = Library::new(trash_path, &context.database, "Trash")?;
+            trash.sort_method = SortMethod::Added;
+            trash.reverse_order = true;
             context.library.move_to(path, &mut trash)?;
             let (mut files, _) = trash.list(&trash.home, None, false);
             let mut size = files.iter().map(|info| info.file.size).sum::<u64>();
-            if size > context.settings.home.max_trash_size {
-                sort(&mut files, SortMethod::Added, true);
-                while size > context.settings.home.max_trash_size {
-                    let info = files.pop().unwrap();
-                    if let Err(e) = trash.remove(&info.file.path) {
-                        error!("Can't erase {}: {:#}", info.file.path.display(), e);
-                        break;
-                    }
-                    size -= info.file.size;
+            while size > context.settings.home.max_trash_size {
+                let Some(info) = files.pop() else { break };
+                if let Err(e) = trash.remove(&info.file.path) {
+                    error!("Can't erase {}: {:#}", info.file.path.display(), e);
+                    break;
                 }
+                size -= info.file.size;
             }
             trash.flush();
         } else {
@@ -1693,12 +1701,9 @@ impl Home {
     }
 
     fn sort(&mut self, update: bool, hub: &Hub, rq: &mut RenderQueue, context: &mut Context) {
-        context.library.sort(self.sort_method, self.reverse_order);
-        sort(
-            &mut self.visible_books,
-            self.sort_method,
-            self.reverse_order,
-        );
+        context
+            .library
+            .set_sort(self.sort_method, self.reverse_order);
 
         if update {
             self.update_shelf(false, hub, rq, context);
@@ -1754,7 +1759,9 @@ impl Home {
             update_top_bar = true;
         }
 
-        context.library.sort(self.sort_method, self.reverse_order);
+        context
+            .library
+            .set_sort(self.sort_method, self.reverse_order);
 
         if update_top_bar {
             let search_visible = rlocate::<SearchBar>(self).is_some();
@@ -1786,7 +1793,9 @@ impl Home {
 
     fn import(&mut self, hub: &Hub, rq: &mut RenderQueue, context: &mut Context) {
         context.library.import(&context.settings.import);
-        context.library.sort(self.sort_method, self.reverse_order);
+        context
+            .library
+            .set_sort(self.sort_method, self.reverse_order);
         self.refresh_visibles(true, false, hub, rq, context);
     }
 
@@ -1983,7 +1992,9 @@ impl Home {
     }
 
     fn reseed(&mut self, hub: &Hub, rq: &mut RenderQueue, context: &mut Context) {
-        context.library.sort(self.sort_method, self.reverse_order);
+        context
+            .library
+            .set_sort(self.sort_method, self.reverse_order);
         self.refresh_visibles(true, false, hub, &mut RenderQueue::new(), context);
 
         if let Some(top_bar) = self.child_mut(0).downcast_mut::<TopBar>() {
@@ -2374,10 +2385,15 @@ impl View for Home {
             } => {
                 let path = path.as_ref().unwrap_or(&context.library.home);
                 let query = query.as_ref().and_then(|text| BookQuery::new(text));
-                let (mut files, _) = context.library.list(path, query.as_ref(), false);
-                if let Some((sort_method, reverse_order)) = *sort_by {
-                    sort(&mut files, sort_method, reverse_order);
-                }
+                let (sort_method, reverse_order) =
+                    sort_by.unwrap_or((context.library.sort_method, context.library.reverse_order));
+                let (mut files, _) = context.library.list_by(
+                    path,
+                    query.as_ref(),
+                    sort_method,
+                    reverse_order,
+                    false,
+                );
                 for entry in &mut files {
                     // Let the *reader* field pass through.
                     mem::swap(&mut entry.reader, &mut entry.reader_info);

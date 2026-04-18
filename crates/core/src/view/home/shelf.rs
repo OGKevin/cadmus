@@ -67,6 +67,7 @@ impl Shelf {
         self.thumbnail_previews = thumbnail_previews;
     }
 
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, hub, rq, context)))]
     pub fn update(
         &mut self,
         metadata: &[Info],
@@ -85,7 +86,12 @@ impl Shelf {
         let th = big_height;
         let tw = 3 * th / 4;
 
+        #[cfg(feature = "otel")]
+        let _span = tracing::info_span!("processing metadata").entered();
         for (index, info) in metadata.iter().enumerate() {
+            #[cfg(feature = "otel")]
+            let _span = tracing::info_span!("processing metadata entry", info = ?info).entered();
+
             let y_min = y_pos + if index > 0 { big_thickness } else { 0 };
             let y_max = y_pos + book_heights[index]
                 - if index < max_lines - 1 {

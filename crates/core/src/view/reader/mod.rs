@@ -1143,14 +1143,10 @@ impl Reader {
                             hub.send(Event::Back).ok();
                         }
                         FinishedAction::GoToNext => {
-                            let current_path = self.info.file.path.clone();
-                            let books: Vec<crate::metadata::Info> =
-                                context.library.books.values().cloned().collect();
-                            let next = books
-                                .iter()
-                                .position(|b| b.file.path == current_path)
-                                .and_then(|i| books.get(i + 1))
-                                .cloned();
+                            let next = self
+                                .info
+                                .fp
+                                .and_then(|fp| context.library.next_book_after(fp));
 
                             self.quit(context);
 
