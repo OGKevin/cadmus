@@ -1,6 +1,32 @@
 {
   "extends": ["config:recommended"],
+  "minimumReleaseAge": "7 days",
   "reviewers": ["OGKevin"],
+  "packageRules": [
+    {
+      "matchManagers": ["cargo"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "Rust non-major dependencies",
+      "groupSlug": "rust-non-major"
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "GitHub Actions non-major dependencies",
+      "groupSlug": "github-actions-non-major"
+    },
+    {
+      "matchManagers": ["npm"],
+      "matchPackageNames": [
+        "@mermaid-js/mermaid-cli",
+        "markdownlint-cli",
+        "prettier"
+      ],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "JavaScript tooling non-major dependencies",
+      "groupSlug": "js-tooling-non-major"
+    }
+  ],
   "customManagers": [
     {
       "customType": "regex",
