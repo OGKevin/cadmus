@@ -99,7 +99,7 @@ where
         .map_err(Into::into)
 }
 
-#[cfg_attr(feature = "otel", tracing::instrument(skip(data, path), fields(file_path = %path.as_ref().display())))]
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(data, path), fields(file_path = %path.as_ref().display())))]
 pub fn save_toml<T, P: AsRef<Path>>(data: &T, path: P) -> Result<(), Error>
 where
     T: Serialize,

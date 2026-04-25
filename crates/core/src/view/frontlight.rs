@@ -280,7 +280,7 @@ impl FrontlightWindow {
 }
 
 impl View for FrontlightWindow {
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, hub, _bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, _bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
@@ -384,7 +384,7 @@ impl View for FrontlightWindow {
         }
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, fb, _fonts, _rect), fields(rect = ?_rect)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fb, _fonts, _rect), fields(rect = ?_rect)))]
     fn render(&self, fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {
         let dpi = CURRENT_DEVICE.dpi;
 

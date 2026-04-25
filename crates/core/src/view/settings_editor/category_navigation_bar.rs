@@ -33,7 +33,7 @@ pub struct CategoryNavigationBar {
 }
 
 impl CategoryNavigationBar {
-    #[cfg_attr(feature = "otel", tracing::instrument())]
+    #[cfg_attr(feature = "tracing", tracing::instrument())]
     pub fn new(rect: Rectangle, selected: Category) -> Self {
         let id = ID_FEEDER.next();
 
@@ -45,7 +45,7 @@ impl CategoryNavigationBar {
         }
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, fonts)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fonts)))]
     pub fn update_content(&mut self, selected: Category, fonts: &mut Fonts) {
         self.selected = selected;
         self.children.clear();
@@ -71,7 +71,7 @@ impl CategoryNavigationBar {
     /// Background fillers are added to cover all non-button regions (top strip,
     /// left margin per row, trailing space per row, bottom strip) to prevent
     /// stale framebuffer content from showing through.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(fonts)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(fonts)))]
     fn build_category_buttons(
         rect: Rectangle,
         selected: Category,
@@ -156,7 +156,7 @@ impl CategoryNavigationBar {
         children
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, fonts)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fonts)))]
     pub fn update_selection(&mut self, selected: Category, fonts: &mut Fonts) {
         if self.selected == selected {
             return;
@@ -178,7 +178,7 @@ impl CategoryNavigationBar {
 }
 
 impl View for CategoryNavigationBar {
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _hub, _bus, _rq, _context), fields(event = ?_evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, _bus, _rq, _context), fields(event = ?_evt), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         _evt: &Event,
@@ -190,7 +190,7 @@ impl View for CategoryNavigationBar {
         false
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _fb, _fonts), fields(rect = ?_rect)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _fb, _fonts), fields(rect = ?_rect)))]
     fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {}
 
     fn rect(&self) -> &Rectangle {

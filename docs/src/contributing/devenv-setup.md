@@ -42,7 +42,7 @@ Once inside the devenv shell, these commands are available:
 | `cargo xtask build-kobo`   | Cross-compile for Kobo device (Linux only)       |
 | `cargo xtask dist`         | Assemble the Kobo distribution directory         |
 | `cargo xtask bundle`       | Package KoboRoot.tgz for installation            |
-| `cadmus-dev-otel`          | Run emulator with OpenTelemetry instrumentation  |
+| `cadmus-dev-otel`          | Run emulator with tracing and profiling enabled  |
 | `devenv up`                | Start observability stack (Grafana, Tempo, Loki) |
 | `cargo xtask docs`         | Build documentation portal (mdBook + Cargo docs) |
 | `cadmus-docs-serve`        | Serve documentation portal locally on port 1111  |
@@ -203,8 +203,9 @@ Services available after `devenv up`:
 | Loki           | <http://localhost:3100> | Log aggregation            |
 | Prometheus     | <http://localhost:9090> | Metrics                    |
 | OTLP Collector | <http://localhost:4318> | Telemetry ingestion        |
+| Pyroscope      | <http://localhost:4040> | Continuous profiling       |
 
-For more details on telemetry, see [OpenTelemetry Integration](telemetry.md).
+For more details on telemetry, see [Telemetry](telemetry/index.md).
 
 ## Troubleshooting
 

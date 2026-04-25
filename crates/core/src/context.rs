@@ -147,7 +147,7 @@ impl Context {
         }
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip_all))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
     pub fn load_dictionaries(&mut self) {
         self.dictionaries.clear();
 

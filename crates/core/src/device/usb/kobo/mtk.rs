@@ -81,7 +81,7 @@ impl MtkUsbManager {
     ///
     /// Returns [`UsbError::Udc`] if no UDC is available or the UDC
     /// directory cannot be read.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(metadata)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(metadata)))]
     pub fn new(metadata: DeviceMetadata) -> Result<Self, UsbError> {
         let udc = discover_udc()?;
         info!(
@@ -269,7 +269,7 @@ impl KoboUsbOperations for MtkUsbManager {
 }
 
 impl UsbManager for MtkUsbManager {
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
     fn enable(&self) -> Result<(), UsbError> {
         info!("Enabling MTK USB mass storage");
 
@@ -283,7 +283,7 @@ impl UsbManager for MtkUsbManager {
         Ok(())
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
     fn disable(&self) -> Result<(), UsbError> {
         info!("Disabling MTK USB mass storage");
 

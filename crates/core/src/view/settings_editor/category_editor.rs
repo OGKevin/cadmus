@@ -247,7 +247,7 @@ impl CategoryEditor {
     ///
     /// This is the single mutation point for page state — both `rebuild_library_rows`
     /// and the `Event::Page` handler delegate here.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip_all))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
     fn update_rows_list(&mut self, rq: &mut RenderQueue, context: &mut Context) {
         self.children
             .drain(self.first_row_index..self.separator_index);
@@ -517,7 +517,7 @@ impl CategoryEditor {
     /// ignored to prevent duplicate background threads racing to write the same
     /// files.
     #[inline]
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, hub)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub)))]
     fn handle_download_dictionary(&mut self, lang: &str, hub: &Hub) -> bool {
         let Some(service) = self.dict_service.clone() else {
             tracing::warn!(
@@ -650,8 +650,18 @@ impl CategoryEditor {
                 hub.send(Event::Focus(None)).ok();
                 true
             }
-            #[cfg(feature = "otel")]
+            #[cfg(feature = "tracing")]
             ViewId::OtlpEndpointInput => {
+                if let Some(index) = locate_by_id(self, *view_id) {
+                    let input_rect = *self.children[index].rect();
+                    self.children.remove(index);
+                    rq.add(RenderData::expose(input_rect, UpdateMode::Gui));
+                }
+                hub.send(Event::Focus(None)).ok();
+                true
+            }
+            #[cfg(feature = "profiling")]
+            ViewId::PyroscopeEndpointInput => {
                 if let Some(index) = locate_by_id(self, *view_id) {
                     let input_rect = *self.children[index].rect();
                     self.children.remove(index);
@@ -666,7 +676,7 @@ impl CategoryEditor {
 }
 
 impl View for CategoryEditor {
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, hub, _bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, _bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
@@ -766,7 +776,7 @@ impl View for CategoryEditor {
         }
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _fb, _fonts), fields(rect = ?_rect)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _fb, _fonts), fields(rect = ?_rect)))]
     fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut crate::font::Fonts) {
     }
 

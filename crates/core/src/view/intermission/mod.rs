@@ -82,7 +82,7 @@ impl I18nDisplay for IntermissionDisplay {
 }
 
 impl View for Intermission {
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _evt, _hub, _bus, _rq, _context), fields(event = ?_evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _evt, _hub, _bus, _rq, _context), fields(event = ?_evt), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         _evt: &Event,
@@ -94,7 +94,7 @@ impl View for Intermission {
         true
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, fb, fonts, _rect), fields(rect = ?_rect)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fb, fonts, _rect), fields(rect = ?_rect)))]
     fn render(&self, fb: &mut dyn Framebuffer, _rect: Rectangle, fonts: &mut Fonts) {
         let scheme = if self.halt {
             TEXT_INVERTED_HARD

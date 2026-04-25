@@ -97,7 +97,7 @@ const NTX_IO_WIFI_CTRL: u8 = 208;
 ioctl_write_int_bad!(set_ntx_io_wifi_ctrl, NTX_IO_WIFI_CTRL as libc::c_int);
 
 #[cfg(target_os = "linux")]
-#[cfg_attr(feature = "otel", tracing::instrument(skip_all, ret(level=tracing::Level::TRACE)))]
+#[cfg_attr(feature = "tracing", tracing::instrument(skip_all, ret(level=tracing::Level::TRACE)))]
 fn is_module_loaded(module_name: &str) -> bool {
     procfs::modules()
         .map(|modules| modules.iter().any(|(name, _)| name == module_name))
@@ -105,7 +105,7 @@ fn is_module_loaded(module_name: &str) -> bool {
 }
 
 #[cfg(not(target_os = "linux"))]
-#[cfg_attr(feature = "otel", tracing::instrument(skip_all, ret(level=tracing::Level::TRACE)))]
+#[cfg_attr(feature = "tracing", tracing::instrument(skip_all, ret(level=tracing::Level::TRACE)))]
 fn is_module_loaded(_module_name: &str) -> bool {
     unreachable!("is_module_loaded is only implemented on Linux")
 }
@@ -138,7 +138,7 @@ impl KoboWifiManager {
         }
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
     fn run_script(&self, script: &str) {
         if Path::new(script).exists() {
             let output = Command::new(script).output();
@@ -156,7 +156,7 @@ impl KoboWifiManager {
         }
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(path = %path), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(path = %path), ret(level=tracing::Level::TRACE)))]
     fn insmod(&self, path: &str) -> Result<(), WifiError> {
         let output = Command::new("insmod").arg(path).output().map_err(|e| {
             error!(error = %e, path, "Failed to execute insmod");
@@ -180,7 +180,7 @@ impl KoboWifiManager {
     ///
     /// This function is idempotent: if the module is already loaded, this returns `Ok(())`
     /// without attempting to reload it.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(path = %path, module_name = %module_name), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(path = %path, module_name = %module_name), ret(level=tracing::Level::TRACE)))]
     fn insmod_asneeded(&self, path: &str, module_name: &str) -> Result<(), WifiError> {
         if !is_module_loaded(module_name) {
             match self.insmod(path) {
@@ -205,7 +205,7 @@ impl KoboWifiManager {
     ///
     /// This function is idempotent: if the module is already loaded, this returns `Ok(())`
     /// without attempting to reload it.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(path = %path, module_name = %module_name), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(path = %path, module_name = %module_name), ret(level=tracing::Level::TRACE)))]
     fn insmod_asneeded_with_params(
         &self,
         path: &str,
@@ -245,7 +245,7 @@ impl KoboWifiManager {
         Ok(())
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(module_name = %module_name), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(module_name = %module_name), ret(level=tracing::Level::TRACE)))]
     fn rmmod(&self, module_name: &str) -> Result<(), WifiError> {
         if !is_module_loaded(module_name) {
             debug!(module_name, "Module not loaded, skipping rmmod");
@@ -273,7 +273,7 @@ impl KoboWifiManager {
         Ok(())
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
     fn power_up_ntx_io(&self) -> Result<(), WifiError> {
         use std::os::unix::fs::OpenOptionsExt;
 
@@ -292,7 +292,7 @@ impl KoboWifiManager {
         Ok(())
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
     fn power_down_ntx_io(&self) -> Result<(), WifiError> {
         use std::os::unix::fs::OpenOptionsExt;
 
@@ -311,7 +311,7 @@ impl KoboWifiManager {
         Ok(())
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(enable = enable), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(enable = enable), ret(level=tracing::Level::TRACE)))]
     fn ioctl_wifi_ctrl(&self, fd: std::os::fd::RawFd, enable: u8) -> Result<(), WifiError> {
         let ret = unsafe { set_ntx_io_wifi_ctrl(fd, enable as libc::c_int) }.map_err(|e| {
             WifiError::Ioctl(format!(
@@ -331,7 +331,7 @@ impl KoboWifiManager {
         Ok(())
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
     fn power_up_wmt(&self) -> Result<(), WifiError> {
         let module_path = &self.config.module_path;
 
@@ -362,7 +362,7 @@ impl KoboWifiManager {
         Ok(())
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
     fn power_down_wmt(&self) -> Result<(), WifiError> {
         if !Path::new(WMT_WIFI_PATH).exists() {
             debug!("wmtWifi not present, skipping power down");
@@ -380,7 +380,7 @@ impl KoboWifiManager {
         }
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
     fn power_up_module(&self) -> Result<(), WifiError> {
         let module_path = &self.config.module_path;
         self.insmod_asneeded(
@@ -391,14 +391,14 @@ impl KoboWifiManager {
         Ok(())
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
     fn power_down_module(&self) -> Result<(), WifiError> {
         self.rmmod("sdio_wifi_pwr")?;
         info!("WiFi powered down via module");
         Ok(())
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip_all, ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, ret(level=tracing::Level::TRACE)))]
     fn read_country_code(&self) -> Option<String> {
         let content = fs::read_to_string(CONFIG_PATH).ok()?;
         for line in content.lines() {
@@ -409,7 +409,7 @@ impl KoboWifiManager {
         None
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
     fn build_module_params(&self) -> Vec<String> {
         let mut params = Vec::new();
 
@@ -432,7 +432,7 @@ impl KoboWifiManager {
         params
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
     fn load_wifi_module(&self) -> Result<(), WifiError> {
         let module_params = self.build_module_params();
         let platform = std::env::var("PLATFORM").unwrap_or_default();
@@ -478,7 +478,7 @@ impl KoboWifiManager {
         Ok(())
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(interface = %self.config.interface), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(interface = %self.config.interface), ret(level=tracing::Level::TRACE)))]
     fn wait_for_interface(&self) -> Result<(), WifiError> {
         let interface_path = format!("/sys/class/net/{}", self.config.interface);
         let max_attempts = 20;
@@ -501,7 +501,7 @@ impl KoboWifiManager {
         )))
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
     fn start_wpa_supplicant(&self) -> Result<(), WifiError> {
         use std::process::Command;
 
@@ -541,7 +541,7 @@ impl KoboWifiManager {
         Ok(())
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip_all, ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, ret(level=tracing::Level::TRACE)))]
     fn is_wpa_supplicant_running(&self) -> bool {
         std::process::Command::new("pkill")
             .args(["-0", "wpa_supplicant"])
@@ -550,7 +550,7 @@ impl KoboWifiManager {
             .unwrap_or(false)
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
     fn stop_wpa_supplicant(&self) -> Result<(), WifiError> {
         let output = std::process::Command::new("wpa_cli")
             .arg("-i")
@@ -572,7 +572,7 @@ impl KoboWifiManager {
         Ok(())
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(interface = %self.config.interface), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(interface = %self.config.interface), ret(level=tracing::Level::TRACE)))]
     fn ifconfig_up(&self) -> Result<(), WifiError> {
         let output = std::process::Command::new("ifconfig")
             .arg(&self.config.interface)
@@ -596,7 +596,7 @@ impl KoboWifiManager {
         Ok(())
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(interface = %self.config.interface), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(interface = %self.config.interface), ret(level=tracing::Level::TRACE)))]
     fn ifconfig_down(&self) -> Result<(), WifiError> {
         let output = std::process::Command::new("ifconfig")
             .arg(&self.config.interface)
@@ -617,7 +617,7 @@ impl KoboWifiManager {
         Ok(())
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(interface = %self.config.interface), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(interface = %self.config.interface), ret(level=tracing::Level::TRACE)))]
     fn wlarm_le_up(&self) -> Result<(), WifiError> {
         if self.config.module != WifiModule::Dhd {
             return Ok(());
@@ -637,7 +637,7 @@ impl KoboWifiManager {
         Ok(())
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(interface = %self.config.interface), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(interface = %self.config.interface), ret(level=tracing::Level::TRACE)))]
     fn wlarm_le_down(&self) -> Result<(), WifiError> {
         if self.config.module != WifiModule::Dhd {
             return Ok(());
@@ -657,7 +657,7 @@ impl KoboWifiManager {
         Ok(())
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
     fn power_up(&self) -> Result<(), WifiError> {
         match self.config.power_toggle {
             PowerToggle::Wmt => self.power_up_wmt()?,
@@ -667,7 +667,7 @@ impl KoboWifiManager {
         Ok(())
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
     fn power_down(&self) -> Result<(), WifiError> {
         match self.config.power_toggle {
             PowerToggle::Wmt => self.power_down_wmt()?,
@@ -679,7 +679,7 @@ impl KoboWifiManager {
 }
 
 impl WifiManager for KoboWifiManager {
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
     fn enable(&self) -> Result<(), WifiError> {
         let _lock = self
             .lock
@@ -713,7 +713,7 @@ impl WifiManager for KoboWifiManager {
         Ok(())
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
     fn disable(&self) -> Result<(), WifiError> {
         let _lock = self
             .lock
@@ -773,7 +773,7 @@ impl WifiManager for KoboWifiManager {
 /// # Ok(())
 /// # }
 /// ```
-#[cfg_attr(feature = "otel", tracing::instrument)]
+#[cfg_attr(feature = "tracing", tracing::instrument)]
 pub fn create_wifi_manager() -> Result<Box<dyn WifiManager>, WifiError> {
     let config = WifiModuleConfig::from_env().ok_or_else(|| {
         WifiError::DeviceInfo("Missing WIFI_MODULE, PLATFORM, or INTERFACE env".to_string())

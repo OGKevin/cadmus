@@ -67,7 +67,7 @@ impl Shelf {
         self.thumbnail_previews = thumbnail_previews;
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, hub, rq, context)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, rq, context)))]
     pub fn update(
         &mut self,
         metadata: &[Info],
@@ -86,10 +86,10 @@ impl Shelf {
         let th = big_height;
         let tw = 3 * th / 4;
 
-        #[cfg(feature = "otel")]
+        #[cfg(feature = "tracing")]
         let _span = tracing::info_span!("processing metadata").entered();
         for (index, info) in metadata.iter().enumerate() {
-            #[cfg(feature = "otel")]
+            #[cfg(feature = "tracing")]
             let _span = tracing::info_span!("processing metadata entry", info = ?info).entered();
 
             let y_min = y_pos + if index > 0 { big_thickness } else { 0 };
@@ -172,7 +172,7 @@ impl Shelf {
 }
 
 impl View for Shelf {
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _hub, bus, _rq, _context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, bus, _rq, _context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
@@ -199,7 +199,7 @@ impl View for Shelf {
         }
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _fb, _fonts, _rect), fields(rect = ?_rect)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _fb, _fonts, _rect), fields(rect = ?_rect)))]
     fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {}
 
     fn rect(&self) -> &Rectangle {

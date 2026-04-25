@@ -62,7 +62,7 @@ unsafe impl<R: Read + Seek> Send for EpubDocument<R> {}
 unsafe impl<R: Read + Seek> Sync for EpubDocument<R> {}
 
 impl<R: Read + Seek> EpubDocument<R> {
-    #[cfg_attr(feature = "otel", tracing::instrument(skip_all))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
     fn from_archive(mut archive: ZipArchive<R>) -> Result<Self, Error> {
         let opf_path = {
             let mut zf = archive.by_name("META-INF/container.xml")?;
@@ -718,7 +718,7 @@ impl EpubDocumentFile {
 }
 
 impl EpubDocumentStatic {
-    #[cfg_attr(feature = "otel", tracing::instrument(skip_all))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
     pub fn new_from_static(bytes: &'static [u8]) -> Result<Self, Error> {
         let cursor = Cursor::new(bytes);
         let archive = ZipArchive::new(cursor)?;

@@ -28,7 +28,7 @@ impl StartupScreen {
 }
 
 impl View for StartupScreen {
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _hub, _bus, _rq, _context), fields(event = ?_evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, _bus, _rq, _context), fields(event = ?_evt), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         _evt: &Event,
@@ -40,7 +40,7 @@ impl View for StartupScreen {
         true
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, fb, fonts), fields(rect = ?rect)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fb, fonts), fields(rect = ?rect)))]
     fn render(&self, fb: &mut dyn Framebuffer, rect: Rectangle, fonts: &mut Fonts) {
         let scheme = TEXT_NORMAL;
 

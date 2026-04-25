@@ -80,7 +80,7 @@ struct Fetcher {
 
 impl Home {
     /// Builds the Home view and loads the initial page of books for the selected library.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(rq, hub, context)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(rq, hub, context)))]
     pub fn new(
         rect: Rectangle,
         hub: &Hub,
@@ -2006,7 +2006,7 @@ impl Home {
 }
 
 impl View for Home {
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, hub, _bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, _bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
@@ -2443,7 +2443,7 @@ impl View for Home {
         }
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _fb, _fonts, _rect), fields(rect = ?_rect)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _fb, _fonts, _rect), fields(rect = ?_rect)))]
     fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {}
 
     fn resize(&mut self, rect: Rectangle, hub: &Hub, rq: &mut RenderQueue, context: &mut Context) {

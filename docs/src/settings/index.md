@@ -280,7 +280,7 @@ For step-by-step instructions with screenshots, see the
 
 ## Telemetry
 
-Cadmus writes JSON logs to disk. When the build enables the `otel` feature, it
+Cadmus writes JSON logs to disk. When the build enables the `tracing` feature, it
 can also export logs to an OpenTelemetry endpoint.
 
 These settings are available in the **Settings → Telemetry** menu.
@@ -339,7 +339,7 @@ max-files = 3
 
 ### `logging.otlp-endpoint`
 
-✏️ (only when the `otel` feature is enabled)
+✏️ (only when the `tracing` feature is enabled)
 
 Optional OTLP endpoint for exporting logs to an OpenTelemetry collector.
 
@@ -351,6 +351,23 @@ otlp-endpoint = "https://otel.example.com:4318"
 Environment override:
 
 - `OTEL_EXPORTER_OTLP_ENDPOINT` takes precedence over `logging.otlp-endpoint`.
+
+### `logging.pyroscope-endpoint`
+
+✏️ (only when the `profiling` feature is enabled)
+
+Optional Pyroscope server URL for continuous profiling. When set, Cadmus starts
+both a heap profiling agent (via jemalloc) and a CPU profiling agent (via
+pprof) that push profiles to this endpoint.
+
+```toml
+[logging]
+pyroscope-endpoint = "http://localhost:4040"
+```
+
+Environment override:
+
+- `PYROSCOPE_SERVER_URL` takes precedence over `logging.pyroscope-endpoint`.
 
 ### `logging.enable-kern-log`
 

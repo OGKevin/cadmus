@@ -33,7 +33,7 @@ impl Database {
     /// # Returns
     /// * `Ok(Database)` - Successfully connected database
     /// * `Err(Error)` - Connection failure
-    #[cfg_attr(feature = "otel", tracing::instrument(fields(db_path = %path.as_ref().display())))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(fields(db_path = %path.as_ref().display())))]
     pub fn new<P: AsRef<Path> + std::fmt::Debug>(path: P) -> Result<Self, Error> {
         let path_str = path.as_ref().display().to_string();
 
@@ -84,14 +84,14 @@ impl Database {
     ///
     /// Must be called once after [`Database::new`] before the database is used.
     /// Intended for use in the synchronous startup path.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     pub fn migrate(&self) -> Result<(), Error> {
         RUNTIME.block_on(async {
             tracing::info!("running schema migrations");
-            #[cfg(feature = "otel")]
+            #[cfg(feature = "tracing")]
             let span = tracing::info_span!("sqlx_migrations").entered();
             sqlx::migrate!("./migrations").run(&self.pool).await?;
-            #[cfg(feature = "otel")]
+            #[cfg(feature = "tracing")]
             span.exit();
 
             tracing::info!("running runtime migrations");

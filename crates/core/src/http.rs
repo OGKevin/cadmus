@@ -106,6 +106,12 @@ impl Client {
         self.client.post(url)
     }
 
+    /// Returns the inner `reqwest::blocking::Client` for use with third-party
+    /// libraries that require a raw client (e.g. pyroscope-rs).
+    pub fn into_reqwest(self) -> ReqwestClient {
+        self.client
+    }
+
     /// Downloads a file to `dest` using HTTP Range requests.
     ///
     /// `request_builder` is called once per chunk (and per retry) to produce a
@@ -142,7 +148,7 @@ impl Client {
     /// # }
     /// ```
     #[cfg_attr(
-        feature = "otel",
+        feature = "tracing",
         tracing::instrument(skip(self, request_builder, progress_callback))
     )]
     pub fn download<B, F>(
@@ -225,7 +231,7 @@ impl Client {
     /// # Errors
     ///
     /// Returns an error if all `MAX_RETRIES` attempts fail.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(request_builder)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(request_builder)))]
     fn download_chunk_with_retries<B>(
         url: &str,
         start: u64,
@@ -275,7 +281,7 @@ impl Client {
     /// # Errors
     ///
     /// Returns an error if the request fails or the server returns a non-2xx status.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(request_builder)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(request_builder)))]
     fn download_chunk<B>(
         url: &str,
         start: u64,

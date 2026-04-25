@@ -61,7 +61,7 @@ impl DeviceAuthView {
     ///
     /// If the device flow initiation fails, sends [`Event::Github`] with [`GithubEvent::DeviceAuthError`]
     /// immediately and returns a view with an error message.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip_all))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
     pub fn new(hub: &Hub, context: &mut Context) -> Self {
         let id = ID_FEEDER.next();
         let view_id = ViewId::Ota(OtaViewId::DeviceAuth);
@@ -237,7 +237,7 @@ impl View for DeviceAuthView {
     /// handling them (which would close the modal). The user must use the
     /// Cancel button to close this view and return to the parent.
     #[cfg_attr(
-        feature = "otel",
+        feature = "tracing",
         tracing::instrument(
             skip(self, _hub, bus, _rq, _context),
             fields(event = ?evt),
@@ -264,7 +264,7 @@ impl View for DeviceAuthView {
     }
 
     #[cfg_attr(
-        feature = "otel",
+        feature = "tracing",
         tracing::instrument(skip(self, _fb, _fonts, _rect), fields(rect = ?_rect))
     )]
     fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {}

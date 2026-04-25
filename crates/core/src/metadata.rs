@@ -765,7 +765,7 @@ impl SortMethod {
 }
 
 #[inline]
-#[cfg_attr(feature = "otel", tracing::instrument)]
+#[cfg_attr(feature = "tracing", tracing::instrument)]
 pub fn sorter(sort_method: SortMethod) -> fn(&Info, &Info) -> Ordering {
     match sort_method {
         SortMethod::Opened => sort_opened,
@@ -923,7 +923,7 @@ pub fn sort_filepath(i1: &Info, i2: &Info) -> Ordering {
 /// // Mixed strings compare segment by segment.
 /// assert_eq!(natural_cmp("Chapter 9", "Chapter 10"), Ordering::Less);
 /// ```
-#[cfg_attr(feature = "otel", tracing::instrument(ret(level=tracing::Level::TRACE)))]
+#[cfg_attr(feature = "tracing", tracing::instrument(ret(level=tracing::Level::TRACE)))]
 pub(crate) fn natural_cmp(a: &str, b: &str) -> Ordering {
     let mut a_rest = a;
     let mut b_rest = b;
@@ -1008,7 +1008,7 @@ lazy_static! {
 }
 
 #[inline]
-#[cfg_attr(feature = "otel", tracing::instrument(skip(info)))]
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(info)))]
 pub fn extract_metadata_from_document(prefix: &Path, info: &mut Info) {
     let path = prefix.join(&info.file.path);
 

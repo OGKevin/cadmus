@@ -50,7 +50,7 @@ use super::util::{cmd, matrix, workspace};
 /// Arguments for `cargo xtask clippy`.
 #[derive(Debug, Args)]
 pub struct ClippyArgs {
-    /// Run only the named feature combination (e.g. `"test + otel"`).
+    /// Run only the named feature combination (e.g. `"telemetry + test"`).
     ///
     /// When omitted, all matrix entries are checked in sequence.
     #[arg(long)]
@@ -251,7 +251,8 @@ fn run_with_reviewdog(
 ///
 /// When `label` is `None` all entries are returned.  When a label is
 /// provided it is normalised via [`matrix::normalize_features_arg`] before
-/// matching, so both `"otel,test"` and `"otel + test"` resolve to the same
+/// matching, so both `"telemetry,test"` and `"telemetry + test"` resolve to
+/// the same
 /// entry.  An unknown label after normalisation is an error.
 ///
 /// # Errors

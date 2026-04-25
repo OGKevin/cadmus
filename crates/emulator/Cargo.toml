@@ -11,10 +11,13 @@ path = "src/main.rs"
 [dependencies]
 cadmus-core = { path = "../core" }
 sdl2 = "0.38.0"
+tikv-jemallocator = { version = "0.6", features = ["profiling"], optional = true }
 tracing = "0.1"
 
 [features]
 default = ["emulator"]
 emulator = ["cadmus-core/emulator"]
-otel = ["cadmus-core/otel"]
+tracing = ["cadmus-core/tracing"]
+profiling = ["cadmus-core/profiling", "tikv-jemallocator"]
+telemetry = ["cadmus-core/telemetry", "tracing", "profiling", "tikv-jemallocator"]
 test = ["cadmus-core/test"]

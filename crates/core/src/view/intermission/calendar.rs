@@ -130,7 +130,7 @@ fn color_or(is_color: bool, r: u8, g: u8, b: u8, fallback: Color) -> Color {
 }
 
 impl View for CalendarView {
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _hub, _bus, _rq, _context), fields(event = ?_evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, _bus, _rq, _context), fields(event = ?_evt), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         _evt: &Event,
@@ -142,7 +142,7 @@ impl View for CalendarView {
         false
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, fb, fonts), fields(rect = ?_rect)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fb, fonts), fields(rect = ?_rect)))]
     fn render(&self, fb: &mut dyn Framebuffer, _rect: Rectangle, fonts: &mut Fonts) {
         let scheme = if self.halt {
             TEXT_INVERTED_HARD

@@ -51,7 +51,7 @@ pub struct LibraryEditor {
 }
 
 impl LibraryEditor {
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(_hub, context, rq)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(_hub, context, rq)))]
     pub fn new(
         rect: Rectangle,
         library_index: usize,
@@ -509,7 +509,7 @@ impl LibraryEditor {
 }
 
 impl View for LibraryEditor {
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, hub, bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
@@ -546,7 +546,7 @@ impl View for LibraryEditor {
         }
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _fb, _fonts), fields(rect = ?_rect)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _fb, _fonts), fields(rect = ?_rect)))]
     fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {}
 
     fn rect(&self) -> &Rectangle {

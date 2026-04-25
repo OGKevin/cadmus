@@ -75,19 +75,19 @@ fn normalize_internal(entries: &[Entry], metadata: &Metadata) -> Vec<Entry> {
         .collect();
 
     {
-        #[cfg(feature = "otel")]
+        #[cfg(feature = "tracing")]
         let _span = tracing::info_span!("checking if already sorted").entered();
         if is_sorted(&result) {
             return result;
         }
     }
 
-    #[cfg(feature = "otel")]
+    #[cfg(feature = "tracing")]
     tracing::info_span!("sorting").in_scope(|| {
         result.sort_by_cached_key(|e| e.headword.clone());
     });
 
-    #[cfg(not(feature = "otel"))]
+    #[cfg(not(feature = "tracing"))]
     result.sort_by_cached_key(|e| e.headword.clone());
 
     result
@@ -101,7 +101,7 @@ pub fn normalize(entries: &[Entry], metadata: &Metadata) -> Vec<Entry> {
 /// Normalize the entries based on the metadata. If no normalization is needed and the entries are
 /// already sorted, the original entries are returned. Otherwise, a new vector of entries is
 /// returned, with the headwords transformed as needed and sorted by headword.
-#[cfg_attr(feature = "otel", tracing::instrument(skip_all, fields(entry_count = entries.len())))]
+#[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(entry_count = entries.len())))]
 #[cfg(not(feature = "bench"))]
 fn normalize(entries: &[Entry], metadata: &Metadata) -> Vec<Entry> {
     normalize_internal(entries, metadata)
@@ -129,7 +129,7 @@ fn apply_transform(headword: &str, needs_char_filter: bool, needs_lowercase: boo
 }
 
 impl<R: BufRead> IndexReader for Index<R> {
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, metadata), fields(headword = %headword, fuzzy)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, metadata), fields(headword = %headword, fuzzy)))]
     fn load_and_find(&mut self, headword: &str, fuzzy: bool, metadata: &Metadata) -> Vec<Entry> {
         if let Some(br) = self.state.take() {
             if let Ok(mut index) = parse_index(br, false) {
@@ -140,7 +140,7 @@ impl<R: BufRead> IndexReader for Index<R> {
         self.find(headword, fuzzy)
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(headword = %headword, fuzzy, entry_count = self.entries.len())))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(headword = %headword, fuzzy, entry_count = self.entries.len())))]
     fn find(&self, headword: &str, fuzzy: bool) -> Vec<Entry> {
         if fuzzy {
             self.entries
@@ -229,7 +229,7 @@ fn parse_line(line: &str, line_number: usize) -> Result<(&str, u64, u64, Option<
 
 /// Parse the index for a dictionary from a given BufRead compatible object.
 /// When `lazy` is `true`, the loop stops once all the metadata entries are parsed.
-#[cfg_attr(feature = "otel", tracing::instrument(skip_all))]
+#[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
 pub fn parse_index<B: BufRead>(mut br: B, lazy: bool) -> Result<Index<B>, DictError> {
     let mut info = false;
     let mut entries = Vec::new();
@@ -270,7 +270,7 @@ pub fn parse_index<B: BufRead>(mut br: B, lazy: bool) -> Result<Index<B>, DictEr
 }
 
 /// Parse the index for a dictionary from a given path.
-#[cfg_attr(feature = "otel", tracing::instrument(skip_all))]
+#[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
 pub fn parse_index_from_file<P: AsRef<Path>>(
     path: P,
     lazy: bool,

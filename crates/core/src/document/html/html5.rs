@@ -50,7 +50,7 @@ impl Html5Document {
     /// Defaults to the dictionary viewer and user stylesheets; call
     /// [`set_viewer_stylesheet`](Self::set_viewer_stylesheet) and
     /// [`set_user_stylesheet`](Self::set_user_stylesheet) to override them.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(text), fields(len = text.len())))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(text), fields(len = text.len())))]
     pub fn new_from_memory(text: &str) -> Html5Document {
         let content = parse_html5(text);
         Html5Document {
@@ -66,7 +66,7 @@ impl Html5Document {
 
     /// Replaces the document content with a freshly parsed version of `text`
     /// and clears the page cache.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, text), fields(len = text.len())))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, text), fields(len = text.len())))]
     pub fn update(&mut self, text: &str) {
         self.base.size = text.len();
         self.base.content = parse_html5(text);
@@ -121,12 +121,12 @@ impl Document for Html5Document {
         None
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(loc = ?loc)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(loc = ?loc)))]
     fn resolve_location(&mut self, loc: Location) -> Option<usize> {
         self.base.resolve_location(loc)
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(loc = ?loc)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(loc = ?loc)))]
     fn words(&mut self, loc: Location) -> Option<(Vec<BoundedText>, usize)> {
         self.base.words(loc)
     }
@@ -136,23 +136,23 @@ impl Document for Html5Document {
         None
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(loc = ?loc)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(loc = ?loc)))]
     fn images(&mut self, loc: Location) -> Option<(Vec<Boundary>, usize)> {
         self.base.images(loc)
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(loc = ?loc)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(loc = ?loc)))]
     fn links(&mut self, loc: Location) -> Option<(Vec<BoundedText>, usize)> {
         self.base.links(loc)
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(loc = ?loc, scale, samples)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(loc = ?loc, scale, samples)))]
     fn pixmap(&mut self, loc: Location, scale: f32, samples: usize) -> Option<(Pixmap, usize)> {
         self.base.pixmap(loc, scale, samples)
     }
 
     #[cfg_attr(
-        feature = "otel",
+        feature = "tracing",
         tracing::instrument(skip(self), fields(width, height, font_size, dpi))
     )]
     fn layout(&mut self, width: u32, height: u32, font_size: f32, dpi: u16) {

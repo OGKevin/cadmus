@@ -218,7 +218,7 @@ impl<'a> XmlParser<'a> {
     ///
     /// Every node's `offset` is the byte position of its opening `<` or first
     /// text character within the original source string.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(len = self.input.len())))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(len = self.input.len())))]
     pub fn parse(&mut self) -> XmlTree {
         let mut tree = XmlTree::new();
         self.parse_nodes(&mut tree, NodeId::from_index(0));
@@ -522,7 +522,7 @@ impl TreeSink for Html5Sink {
 /// increasing counter) and are **not** byte positions in the source string.
 /// This makes the tree unsuitable for persisting reading positions to disk.
 /// Use [`XmlParser`] when byte-accurate offsets are required.
-#[cfg_attr(feature = "otel", tracing::instrument(skip(input), fields(len = input.len())))]
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(input), fields(len = input.len())))]
 pub fn parse_html5(input: &str) -> XmlTree {
     use html5ever::{parse_document, ParseOpts};
 

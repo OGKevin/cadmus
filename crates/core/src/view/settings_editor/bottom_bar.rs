@@ -81,7 +81,7 @@ impl SettingsEditorBottomBar {
     ///     },
     /// );
     /// ```
-    #[cfg_attr(feature = "otel", tracing::instrument(skip_all))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
     pub fn new(rect: Rectangle, variant: BottomBarVariant) -> Self {
         let id = ID_FEEDER.next();
         let mut children = Vec::new();
@@ -189,7 +189,7 @@ impl SettingsEditorBottomBar {
 }
 
 impl View for SettingsEditorBottomBar {
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _hub, _bus, _rq, _context), fields(event = ?_evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, _bus, _rq, _context), fields(event = ?_evt), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         _evt: &Event,
@@ -201,7 +201,7 @@ impl View for SettingsEditorBottomBar {
         false
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _fb, _fonts), fields(rect = ?_rect)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _fb, _fonts), fields(rect = ?_rect)))]
     fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {}
 
     fn rect(&self) -> &Rectangle {

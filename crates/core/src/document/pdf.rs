@@ -55,7 +55,7 @@ pub struct PdfPage<'a> {
 }
 
 impl PdfOpener {
-    #[cfg_attr(feature = "otel", tracing::instrument)]
+    #[cfg_attr(feature = "tracing", tracing::instrument)]
     pub fn new() -> Option<PdfOpener> {
         unsafe {
             let version = CString::new(FZ_VERSION).unwrap();
@@ -70,7 +70,7 @@ impl PdfOpener {
         }
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, path), fields(path = %path.as_ref().display())))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, path), fields(path = %path.as_ref().display())))]
     pub fn open<P: AsRef<Path>>(&self, path: P) -> Result<PdfDocument, PdfOpenError> {
         unsafe {
             let c_path = CString::new(path.as_ref().as_os_str().as_bytes()).unwrap();

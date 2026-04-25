@@ -54,7 +54,7 @@ impl Category {
     /// `dict_service` is used only by the [`Category::Dictionaries`] variant.
     /// All other categories ignore it. Passing `None` for a `Dictionaries`
     /// category produces an empty list and logs a warning.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(context, dict_service)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(context, dict_service)))]
     pub fn settings(
         &self,
         context: &Context,
@@ -82,42 +82,36 @@ impl Category {
             ],
             Category::Import => vec![Box::new(ImportStartupTrigger), Box::new(ImportSyncMetadata)],
             Category::Telemetry => {
-                #[cfg(feature = "otel")]
+                let rows: Vec<Box<dyn SettingKind>> =
+                    vec![Box::new(LoggingEnabled), Box::new(LogLevel)];
+
+                #[cfg(any(
+                    feature = "tracing",
+                    feature = "profiling",
+                    all(feature = "test", feature = "kobo")
+                ))]
+                let mut rows = rows;
+
+                #[cfg(feature = "tracing")]
                 {
                     use super::kinds::telemetry::OtlpEndpoint;
-                    let rows: Vec<Box<dyn SettingKind>> = vec![
-                        Box::new(LoggingEnabled),
-                        Box::new(LogLevel),
-                        Box::new(OtlpEndpoint),
-                    ];
-
-                    #[cfg(all(feature = "test", feature = "kobo"))]
-                    let mut rows = rows;
-                    #[cfg(all(feature = "test", feature = "kobo"))]
-                    {
-                        use super::kinds::telemetry::EnableDbusLog;
-                        use super::kinds::telemetry::EnableKernLog;
-                        rows.push(Box::new(EnableKernLog));
-                        rows.push(Box::new(EnableDbusLog));
-                    }
-                    rows
+                    rows.push(Box::new(OtlpEndpoint));
                 }
-                #[cfg(not(feature = "otel"))]
+
+                #[cfg(feature = "profiling")]
                 {
-                    let rows: Vec<Box<dyn SettingKind>> =
-                        vec![Box::new(LoggingEnabled), Box::new(LogLevel)];
-
-                    #[cfg(all(feature = "test", feature = "kobo"))]
-                    let mut rows = rows;
-                    #[cfg(all(feature = "test", feature = "kobo"))]
-                    {
-                        use super::kinds::telemetry::EnableDbusLog;
-                        use super::kinds::telemetry::EnableKernLog;
-                        rows.push(Box::new(EnableKernLog));
-                        rows.push(Box::new(EnableDbusLog));
-                    }
-                    rows
+                    use super::kinds::telemetry::PyroscopeEndpoint;
+                    rows.push(Box::new(PyroscopeEndpoint));
                 }
+
+                #[cfg(all(feature = "test", feature = "kobo"))]
+                {
+                    use super::kinds::telemetry::EnableDbusLog;
+                    use super::kinds::telemetry::EnableKernLog;
+                    rows.push(Box::new(EnableKernLog));
+                    rows.push(Box::new(EnableDbusLog));
+                }
+                rows
             }
             Category::Dictionaries => {
                 let Some(service) = dict_service else {

@@ -62,7 +62,7 @@ pub enum OtaEntryId {
 /// `true` if the OTA view was successfully shown, `false` if validation failed
 /// and a notification was shown instead.
 #[cfg_attr(
-    feature = "otel",
+    feature = "tracing",
     tracing::instrument(
         skip_all, ret(level=tracing::Level::TRACE),
         ret(level = tracing::Level::TRACE)
@@ -74,7 +74,7 @@ pub fn show_ota_view(
     rq: &mut RenderQueue,
     context: &mut Context,
 ) -> bool {
-    #[cfg(feature = "otel")]
+    #[cfg(feature = "tracing")]
     tracing::trace!("showing ota view");
 
     if !context.online {
@@ -151,7 +151,7 @@ impl OtaView {
     /// # Arguments
     ///
     /// * `context` - Application context containing fonts and device information
-    #[cfg_attr(feature = "otel", tracing::instrument(skip_all))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
     pub fn new(context: &mut Context) -> OtaView {
         let id = ID_FEEDER.next();
         let view_id = ViewId::Ota(OtaViewId::Main);
@@ -418,7 +418,7 @@ impl OtaView {
     /// [`Event::Select`] with [`EntryId::Reboot`] to trigger an automatic reboot.
     /// On a 401 response, sends [`Event::Github`] with [`GithubEvent::TokenInvalid`] without closing
     /// the view so re-authentication can proceed.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, hub)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub)))]
     fn start_pr_download(&mut self, pr_number: u32, hub: &Hub) {
         let Some(github_token) = self.github_token.clone() else {
             tracing::error!("GitHub token is missing when starting download, this code path should be unreachable due to prior validation");
@@ -511,7 +511,7 @@ impl OtaView {
     /// [`Event::Select`] with [`EntryId::Reboot`] to trigger an automatic reboot.
     /// On a 401 response, sends [`Event::Github`] with [`GithubEvent::TokenInvalid`] without closing
     /// the view so re-authentication can proceed.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, hub)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub)))]
     fn start_default_branch_download(&mut self, hub: &Hub) {
         let Some(github_token) = self.github_token.clone() else {
             tracing::error!("GitHub token is missing when starting download, this code path should be unreachable due to prior validation");
@@ -610,7 +610,7 @@ impl OtaView {
     /// # Arguments
     ///
     /// * `hub` - Event hub for sending notifications and status updates
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, hub)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub)))]
     fn start_stable_release_download(&mut self, hub: &Hub) {
         let github_token = self.github_token.clone();
         let hub2 = hub.clone();
@@ -723,7 +723,7 @@ impl OtaView {
     }
 
     #[inline]
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, hub)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub)))]
     fn on_select_stable_release(&mut self, hub: &Hub) -> bool {
         let github_token = self.github_token.clone();
         let ota_view_id = self.view_id;
@@ -934,7 +934,7 @@ impl OtaView {
 }
 
 impl View for OtaView {
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, hub, _bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, _bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
@@ -987,7 +987,7 @@ impl View for OtaView {
         }
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _fb, _fonts, _rect), fields(rect = ?_rect)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _fb, _fonts, _rect), fields(rect = ?_rect)))]
     fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {}
 
     fn rect(&self) -> &Rectangle {

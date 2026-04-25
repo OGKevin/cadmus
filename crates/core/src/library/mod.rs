@@ -71,7 +71,7 @@ pub struct Library {
 }
 
 impl Library {
-    #[cfg_attr(feature = "otel", tracing::instrument())]
+    #[cfg_attr(feature = "tracing", tracing::instrument())]
     pub fn new<P: AsRef<Path> + std::fmt::Debug>(
         home: P,
         database: &Database,
@@ -118,7 +118,7 @@ impl Library {
         })
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, query, prefix)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, query, prefix)))]
     pub fn list<P: AsRef<Path>>(
         &self,
         prefix: P,
@@ -138,7 +138,7 @@ impl Library {
     ///
     /// When no query is active, sorting is delegated to SQLite. When a query is active it
     /// cannot be expressed in SQL, so books are loaded in full and sorted in Rust.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, query, prefix)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, query, prefix)))]
     pub fn list_by<P: AsRef<Path>>(
         &self,
         prefix: P,
@@ -205,7 +205,7 @@ impl Library {
         (files, dirs)
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, prefix, query)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, prefix, query)))]
     pub fn page<P: AsRef<Path>>(
         &self,
         prefix: P,
@@ -331,7 +331,7 @@ impl Library {
         Ok(page)
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, settings)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, settings)))]
     pub fn import(&mut self, settings: &ImportSettings) {
         let handles = match self.db.list_book_handles(self.library_id) {
             Ok(h) => h,
@@ -352,7 +352,7 @@ impl Library {
         let mut thumbnails_to_delete: Vec<Fp> = Vec::new();
         let mut thumbnails_to_move: Vec<(Fp, Fp)> = Vec::new();
 
-        #[cfg(feature = "otel")]
+        #[cfg(feature = "tracing")]
         let _walk_span = tracing::info_span!("walk_directory").entered();
 
         let walk_entries: Vec<_> = WalkDir::new(&self.home)
@@ -363,10 +363,10 @@ impl Library {
             .filter(|e| !e.file_type().is_dir())
             .collect();
 
-        #[cfg(feature = "otel")]
+        #[cfg(feature = "tracing")]
         let _walk_span = _walk_span.exit();
 
-        #[cfg(feature = "otel")]
+        #[cfg(feature = "tracing")]
         let _process_span =
             tracing::info_span!("process_entries", count = walk_entries.len()).entered();
 
@@ -484,10 +484,10 @@ impl Library {
             }
         }
 
-        #[cfg(feature = "otel")]
+        #[cfg(feature = "tracing")]
         let _process_span = _process_span.exit();
 
-        #[cfg(feature = "otel")]
+        #[cfg(feature = "tracing")]
         let _cleanup_span = tracing::info_span!("cleanup_orphaned_entries").entered();
 
         let home = &self.home;
@@ -500,10 +500,10 @@ impl Library {
             }
         }
 
-        #[cfg(feature = "otel")]
+        #[cfg(feature = "tracing")]
         let _cleanup_span = _cleanup_span.exit();
 
-        #[cfg(feature = "otel")]
+        #[cfg(feature = "tracing")]
         let _db_span = tracing::info_span!("database_batch_operations").entered();
 
         if !pending_relocations.is_empty() {
@@ -847,7 +847,7 @@ impl Library {
     /// No-op for the database-backed library: the database maintains its own consistency.
     pub fn clean_up(&mut self) {}
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     pub fn set_sort(&mut self, sort_method: SortMethod, reverse_order: bool) {
         self.sort_method = sort_method;
         self.reverse_order = reverse_order;
@@ -919,7 +919,7 @@ impl Library {
         }
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     pub fn thumbnail_preview<P: AsRef<Path> + std::fmt::Debug>(
         &self,
         path: P,

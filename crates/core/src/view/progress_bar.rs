@@ -46,7 +46,7 @@ impl ProgressBar {
 }
 
 impl View for ProgressBar {
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _hub, _bus, _rq, _context), fields(event = ?_evt), ret(level = tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, _bus, _rq, _context), fields(event = ?_evt), ret(level = tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         _evt: &Event,
@@ -58,7 +58,7 @@ impl View for ProgressBar {
         false
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, fb, _fonts, _rect), fields(rect = ?_rect)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fb, _fonts, _rect), fields(rect = ?_rect)))]
     fn render(&self, fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {
         let dpi = CURRENT_DEVICE.dpi;
         let progress_height = scale_by_dpi(PROGRESS_HEIGHT, dpi) as i32;

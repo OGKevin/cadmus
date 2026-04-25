@@ -34,8 +34,10 @@ pub enum SettingIdentity {
     LogLevel,
     ImportStartupTrigger,
     ImportSyncMetadata,
-    #[cfg(feature = "otel")]
+    #[cfg(feature = "tracing")]
     OtlpEndpoint,
+    #[cfg(feature = "profiling")]
+    PyroscopeEndpoint,
     #[cfg(all(feature = "test", feature = "kobo"))]
     EnableKernLog,
     #[cfg(all(feature = "test", feature = "kobo"))]

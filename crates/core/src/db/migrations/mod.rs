@@ -88,7 +88,7 @@ macro_rules! migration {
         #[doc = ""]
         #[doc = "To re-run this migration, delete its tracking row:"]
         #[doc = concat!("```sql\nDELETE FROM _cadmus_migrations WHERE id = '", $id, "';\n```")]
-        #[cfg_attr(feature = "otel", tracing::instrument(skip($pool), fields(migration_id = $id)))]
+        #[cfg_attr(feature = "tracing", tracing::instrument(skip($pool), fields(migration_id = $id)))]
         async fn $name($pool: &::sqlx::SqlitePool) -> ::std::result::Result<(), ::anyhow::Error> {
             $body
         }
@@ -160,7 +160,7 @@ impl MigrationRunner {
     }
 
     /// Execute all pending registered migrations against the database.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     pub async fn run_all(&self) -> Result<(), Error> {
         let registry = REGISTRY
             .lock()

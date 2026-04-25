@@ -10,9 +10,9 @@ use std::time::Duration;
 
 use futures_util::stream::StreamExt;
 
-#[cfg(feature = "otel")]
+#[cfg(feature = "tracing")]
 use opentelemetry::trace::Status;
-#[cfg(feature = "otel")]
+#[cfg(feature = "tracing")]
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 use crate::input::DeviceEvent;
@@ -49,7 +49,7 @@ impl BackgroundTask for WifiStatusMonitorTask {
     }
 }
 
-#[cfg_attr(feature = "otel", tracing::instrument(skip(connection, hub), ret(level=tracing::Level::TRACE)))]
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(connection, hub), ret(level=tracing::Level::TRACE)))]
 async fn check_initial_status(
     connection: &zbus::Connection,
     hub: &Sender<Event>,
@@ -111,14 +111,14 @@ async fn monitor(
             }
 
             msg = stream.next() => {
-                #[cfg(feature = "otel")]
+                #[cfg(feature = "tracing")]
                 let span = tracing::info_span!("wifi_status_monitor: received dbus message").entered();
 
                 let Some(msg) = msg else { break };
                 let msg = match msg {
                     Ok(m) => m,
                     Err(e) => {
-                        #[cfg(feature = "otel")]
+                        #[cfg(feature = "tracing")]
                         span.set_status(Status::error("failed to read dbus message"));
                         tracing::warn!(error = %e, "failed to read dbus message");
                         continue;
@@ -126,7 +126,7 @@ async fn monitor(
                 };
 
                 if let Err(e) = process_wpa_status(&msg, hub) {
-                    #[cfg(feature = "otel")]
+                    #[cfg(feature = "tracing")]
                     span.set_status(Status::error("failed to process wpa status"));
                     tracing::warn!(error = %e, "failed to process wpa status");
                 }
@@ -138,7 +138,7 @@ async fn monitor(
     Ok(())
 }
 
-#[cfg_attr(feature = "otel", tracing::instrument(skip(msg, hub), ret(level=tracing::Level::TRACE)))]
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(msg, hub), ret(level=tracing::Level::TRACE)))]
 fn process_wpa_status(
     msg: &zbus::Message,
     hub: &Sender<Event>,

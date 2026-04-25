@@ -59,6 +59,7 @@
 //!     max_files: 3,
 //!     directory: "logs".into(),
 //!     otlp_endpoint: None,
+//!     pyroscope_endpoint: None,
 //!     enable_kern_log: false,
 //!     enable_dbus_log: false,
 //! };
@@ -76,7 +77,7 @@
 //! ```
 
 use crate::settings::LoggingSettings;
-#[cfg(feature = "otel")]
+#[cfg(feature = "tracing")]
 use crate::telemetry;
 use crate::version::get_current_version;
 use anyhow::{Context, Error};
@@ -243,7 +244,10 @@ fn is_run_log_entry(entry: &DirEntry) -> bool {
 /// - Configures a rolling file appender with non-blocking I/O
 /// - Applies log level filtering from settings or environment
 /// - Sets up JSON formatting for structured logs
-/// - Initializes OpenTelemetry export if the `otel` feature is enabled
+/// - Initializes tracing export if the `tracing` feature is enabled
+/// - Bridges `log::` records (e.g. from pyroscope-rs) into the tracing pipeline
+///   so they appear in Loki alongside tracing events via the tracing-log
+///   layer automatically enabled by tracing-subscriber.
 ///
 /// The function should only be called once at application startup.
 /// The logging system remains active until `shutdown_logging()` is called.
@@ -279,6 +283,7 @@ fn is_run_log_entry(entry: &DirEntry) -> bool {
 ///     max_files: 5,
 ///     directory: "logs".into(),
 ///     otlp_endpoint: Some("http://localhost:4318".to_string()),
+///     pyroscope_endpoint: None,
 ///     enable_kern_log: false,
 ///     enable_dbus_log: false,
 /// };
@@ -323,7 +328,7 @@ pub fn init_logging(settings: &LoggingSettings) -> Result<(), Error> {
         .with_writer(swappable)
         .with_current_span(true);
 
-    #[cfg(feature = "otel")]
+    #[cfg(feature = "tracing")]
     {
         let subscriber = tracing_subscriber::registry()
             .with(filter)
@@ -335,7 +340,7 @@ pub fn init_logging(settings: &LoggingSettings) -> Result<(), Error> {
             .context("can't initialize tracing subscriber")?;
     }
 
-    #[cfg(not(feature = "otel"))]
+    #[cfg(not(feature = "tracing"))]
     {
         let subscriber = tracing_subscriber::registry().with(filter).with(fmt_layer);
 
@@ -401,7 +406,7 @@ pub fn shutdown_logging() {
         }
     }
 
-    #[cfg(feature = "otel")]
+    #[cfg(feature = "tracing")]
     telemetry::shutdown_telemetry();
 }
 
@@ -516,6 +521,7 @@ mod tests {
                     max_files: 5,
                     directory: dir.path().to_path_buf(),
                     otlp_endpoint: None,
+                    pyroscope_endpoint: None,
                     enable_kern_log: false,
                     enable_dbus_log: false,
                 };
@@ -602,6 +608,7 @@ mod tests {
             max_files: 5,
             directory: redirect_dir.path().to_path_buf(),
             otlp_endpoint: None,
+            pyroscope_endpoint: None,
             enable_kern_log: false,
             enable_dbus_log: false,
         };

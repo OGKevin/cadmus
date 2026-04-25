@@ -214,7 +214,7 @@ impl InputField {
 }
 
 impl View for InputField {
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, hub, bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
@@ -247,7 +247,7 @@ impl View for InputField {
                 true
             }
             Event::Focus(id_opt) => {
-                #[cfg(feature = "otel")]
+                #[cfg(feature = "tracing")]
                 tracing::trace!(
                     "InputField {:?} received focus event with id {:?}",
                     self.view_id,
@@ -256,7 +256,7 @@ impl View for InputField {
 
                 let focused = id_opt.is_some() && id_opt.unwrap() == self.view_id;
                 if self.focused != focused {
-                    #[cfg(feature = "otel")]
+                    #[cfg(feature = "tracing")]
                     tracing::trace!(
                         "InputField {:?} focus state changed to {:?}",
                         self.view_id,
@@ -314,7 +314,7 @@ impl View for InputField {
         }
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, fb, fonts, _rect), fields(rect = ?_rect)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fb, fonts, _rect), fields(rect = ?_rect)))]
     fn render(&self, fb: &mut dyn Framebuffer, _rect: Rectangle, fonts: &mut Fonts) {
         let dpi = CURRENT_DEVICE.dpi;
         let font = font_from_style(fonts, &NORMAL_STYLE, dpi);

@@ -33,7 +33,7 @@ impl MonolingualClient {
     /// # Errors
     ///
     /// Returns an error if the underlying HTTP client fails to build.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip_all))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
     pub(super) fn new() -> Result<Self, MonolingualError> {
         tracing::debug!("Building monolingual client");
         let http = Client::new()?;
@@ -50,7 +50,7 @@ impl MonolingualClient {
     ///
     /// Returns an error if the HTTP request fails or the response cannot be
     /// parsed.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     pub(super) fn fetch_metadata(&self) -> Result<DictionariesResponse, MonolingualError> {
         tracing::debug!("Fetching monolingual metadata from API");
 
@@ -78,7 +78,7 @@ impl MonolingualClient {
     ///
     /// Returns an error if the HTTP request fails or returns an unexpected
     /// status code.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(since = %since), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(since = %since), ret(level=tracing::Level::TRACE)))]
     pub(super) fn is_metadata_modified_since(
         &self,
         since: UnixTimestamp,
@@ -116,7 +116,7 @@ impl MonolingualClient {
     /// Returns an error if the probe request fails or returns a non-2xx
     /// status, if the `Content-Range` header is missing, or if the chunked
     /// download fails.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, progress_callback), fields(url = %url)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, progress_callback), fields(url = %url)))]
     pub(super) fn download<F>(
         &self,
         url: &str,

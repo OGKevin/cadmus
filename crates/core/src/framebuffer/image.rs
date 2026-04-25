@@ -67,7 +67,7 @@ impl Pixmap {
     }
 
     /// Decode a PNG-encoded buffer into a pixmap.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(bytes)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(bytes)))]
     pub fn from_png_bytes(bytes: &[u8]) -> Result<Pixmap, Error> {
         let cursor = Cursor::new(bytes);
         let decoder = png::Decoder::new(cursor);

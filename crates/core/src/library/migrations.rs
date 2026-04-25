@@ -81,7 +81,7 @@ crate::migration!(
 );
 
 /// Ensures the library row exists and returns its id.
-#[cfg_attr(feature = "otel", tracing::instrument(skip(pool), fields(path = %path, name = %name), ret(level = tracing::Level::TRACE)))]
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(pool), fields(path = %path, name = %name), ret(level = tracing::Level::TRACE)))]
 async fn ensure_library(
     pool: &sqlx::SqlitePool,
     path: &str,
@@ -117,7 +117,7 @@ async fn ensure_library(
 /// legacy files and removes `.thumbnail-previews/`.
 ///
 /// Returns `(books_imported, reading_states_imported)`.
-#[cfg_attr(feature = "otel", tracing::instrument(skip(pool), fields(library_id = library_id, path = ?library_path)))]
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(pool), fields(library_id = library_id, path = ?library_path)))]
 async fn import_library(
     pool: &sqlx::SqlitePool,
     library_id: i64,
@@ -160,7 +160,7 @@ async fn import_library(
 /// Returns `(books_imported, reading_states_imported, fingerprints_seen)`.
 /// The fingerprint set is passed to [`import_orphan_reading_states`] to skip
 /// books whose reading state was already written from this file.
-#[cfg_attr(feature = "otel", tracing::instrument(skip(tx, metadata), fields(library_id = library_id)))]
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(tx, metadata), fields(library_id = library_id)))]
 async fn import_metadata_entries(
     tx: &mut Transaction<'_, Sqlite>,
     library_id: i64,
@@ -206,7 +206,7 @@ async fn import_metadata_entries(
 /// for cleaning up any stub rows whose files are no longer on disk.
 ///
 /// Returns the number of reading states imported.
-#[cfg_attr(feature = "otel", tracing::instrument(skip(tx, already_imported), fields(library_id = library_id, path = ?reading_states_dir)))]
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(tx, already_imported), fields(library_id = library_id, path = ?reading_states_dir)))]
 async fn import_orphan_reading_states(
     tx: &mut Transaction<'_, Sqlite>,
     library_id: i64,
@@ -293,7 +293,7 @@ async fn import_orphan_reading_states(
 /// migration is responsible for pruning stub rows whose files are no longer
 /// present on disk. `Library::import()` will fill in the real values for files
 /// that are still present.
-#[cfg_attr(feature = "otel", tracing::instrument(skip(tx), fields(library_id = library_id, fp = %fp)))]
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(tx), fields(library_id = library_id, fp = %fp)))]
 async fn ensure_stub_book(
     tx: &mut Transaction<'_, Sqlite>,
     library_id: i64,
@@ -331,7 +331,7 @@ async fn ensure_stub_book(
 /// Renames `.metadata.json` and `.reading-states/` to their `.imported` suffixed
 /// equivalents so that subsequent runs of the migration skip this library.
 #[cfg(not(feature = "test"))]
-#[cfg_attr(feature = "otel", tracing::instrument(fields(path = ?library_path)))]
+#[cfg_attr(feature = "tracing", tracing::instrument(fields(path = ?library_path)))]
 async fn mark_library_imported(library_path: &Path) {
     let metadata_src = library_path.join(METADATA_FILENAME);
     let metadata_dst = library_path.join(format!("{}.imported", METADATA_FILENAME));
@@ -357,7 +357,7 @@ async fn mark_library_imported(library_path: &Path) {
 /// Thumbnails will be regenerated and stored in the database, so the legacy
 /// directory is no longer needed after migration.
 #[cfg(not(feature = "test"))]
-#[cfg_attr(feature = "otel", tracing::instrument(fields(path = ?library_path)))]
+#[cfg_attr(feature = "tracing", tracing::instrument(fields(path = ?library_path)))]
 async fn delete_thumbnail_previews(library_path: &Path) {
     let previews_dir = library_path.join(THUMBNAIL_PREVIEWS_DIRNAME);
 
@@ -370,7 +370,7 @@ async fn delete_thumbnail_previews(library_path: &Path) {
     }
 }
 
-#[cfg_attr(feature = "otel", tracing::instrument(fields(path = ?path), ret(level = tracing::Level::TRACE)))]
+#[cfg_attr(feature = "tracing", tracing::instrument(fields(path = ?path), ret(level = tracing::Level::TRACE)))]
 async fn load_metadata(path: &Path) -> Option<IndexMap<Fp, Info, FxBuildHasher>> {
     if !path.exists() {
         return None;
@@ -393,7 +393,7 @@ async fn load_metadata(path: &Path) -> Option<IndexMap<Fp, Info, FxBuildHasher>>
     }
 }
 
-#[cfg_attr(feature = "otel", tracing::instrument(skip(tx, info), fields(library_id = library_id, fp = %fp)))]
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(tx, info), fields(library_id = library_id, fp = %fp)))]
 async fn insert_book(
     tx: &mut Transaction<'_, Sqlite>,
     library_id: i64,
@@ -499,7 +499,7 @@ async fn insert_book(
     Ok(())
 }
 
-#[cfg_attr(feature = "otel", tracing::instrument(skip(tx, reader_info), fields(fp = %fp)))]
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(tx, reader_info), fields(fp = %fp)))]
 async fn insert_reading_state(
     tx: &mut Transaction<'_, Sqlite>,
     fp: Fp,

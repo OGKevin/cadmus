@@ -19,7 +19,10 @@
 
 - [Development Environment](contributing/devenv-setup.md)
 - [Event System](contributing/event-system.md)
-- [OpenTelemetry Integration](contributing/telemetry.md)
+- [Telemetry](contributing/telemetry/index.md)
+  - [Logging](contributing/telemetry/logging.md)
+  - [Tracing](contributing/telemetry/tracing.md)
+  - [Profiling](contributing/telemetry/profiling.md)
 - [Documentation](contributing/documentation.md)
 - [Translations](contributing/translations/index.md)
   - [UI Strings](contributing/translations/source-code.md)

@@ -5,7 +5,7 @@ use crate::metadata::{Info, ReaderInfo};
 use anyhow::{Context as AnyhowContext, Error};
 
 /// Convert Info struct to BookRow for database insertion.
-#[cfg_attr(feature = "otel", tracing::instrument(skip(fp, info), fields(fingerprint = %fp), ret(level = tracing::Level::TRACE)))]
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(fp, info), fields(fingerprint = %fp), ret(level = tracing::Level::TRACE)))]
 pub fn info_to_book_row(fp: Fp, info: &Info) -> BookRow {
     BookRow {
         fingerprint: fp.to_string(),
@@ -28,7 +28,7 @@ pub fn info_to_book_row(fp: Fp, info: &Info) -> BookRow {
 }
 
 /// Extract authors from Info.author (comma-separated string)
-#[cfg_attr(feature = "otel", tracing::instrument(skip(author_str), ret(level = tracing::Level::TRACE)))]
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(author_str), ret(level = tracing::Level::TRACE)))]
 pub fn extract_authors(author_str: &str) -> Vec<String> {
     author_str
         .split(", ")
@@ -38,7 +38,7 @@ pub fn extract_authors(author_str: &str) -> Vec<String> {
 }
 
 /// Convert ReaderInfo to ReadingStateRow for database insertion.
-#[cfg_attr(feature = "otel", tracing::instrument(skip(fp, reader_info), fields(fingerprint = %fp), ret(level = tracing::Level::TRACE)))]
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(fp, reader_info), fields(fingerprint = %fp), ret(level = tracing::Level::TRACE)))]
 pub fn reader_info_to_reading_state_row(fp: Fp, reader_info: &ReaderInfo) -> ReadingStateRow {
     let (page_offset_x, page_offset_y) = if let Some(offset) = reader_info.page_offset {
         (Some(offset.x as i64), Some(offset.y as i64))
@@ -112,7 +112,7 @@ pub fn reader_info_to_reading_state_row(fp: Fp, reader_info: &ReaderInfo) -> Rea
 }
 
 /// Encode a `TocLocation` into the `(location_kind, location_exact, location_uri)` column triple.
-#[cfg_attr(feature = "otel", tracing::instrument(skip(loc), ret(level = tracing::Level::TRACE)))]
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(loc), ret(level = tracing::Level::TRACE)))]
 pub fn encode_location(loc: &TocLocation) -> (&'static str, Option<i64>, Option<String>) {
     match loc {
         TocLocation::Exact(n) => ("exact", Some(*n as i64), None),
@@ -121,7 +121,7 @@ pub fn encode_location(loc: &TocLocation) -> (&'static str, Option<i64>, Option<
 }
 
 /// Decode the `(location_kind, location_exact, location_uri)` column triple back to a `TocLocation`.
-#[cfg_attr(feature = "otel", tracing::instrument(skip(kind, exact, uri), ret(level = tracing::Level::TRACE)))]
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(kind, exact, uri), ret(level = tracing::Level::TRACE)))]
 pub fn decode_location(
     kind: &str,
     exact: Option<i64>,
@@ -146,7 +146,7 @@ pub fn decode_location(
 ///
 /// Rows must be ordered such that every parent appears before its children (pre-order),
 /// which is guaranteed by inserting parents first and ordering by `id ASC`.
-#[cfg_attr(feature = "otel", tracing::instrument(skip(rows), fields(entry_count = rows.len()), ret(level = tracing::Level::TRACE)))]
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(rows), fields(entry_count = rows.len()), ret(level = tracing::Level::TRACE)))]
 pub fn rows_to_toc_entries(rows: &[TocEntryRow]) -> Result<Vec<SimpleTocEntry>, Error> {
     // Build a map from row id → (entry, parent_id, position) so we can reconstruct
     // the tree in a single pass.

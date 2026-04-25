@@ -255,7 +255,7 @@ impl KoboUsbOperations for LegacyUsbManager {
 }
 
 impl UsbManager for LegacyUsbManager {
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
     fn enable(&self) -> Result<(), UsbError> {
         info!(platform = %self.platform, "Enabling legacy USB mass storage");
 
@@ -268,7 +268,7 @@ impl UsbManager for LegacyUsbManager {
         Ok(())
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
     fn disable(&self) -> Result<(), UsbError> {
         info!(platform = %self.platform, "Disabling legacy USB mass storage");
 

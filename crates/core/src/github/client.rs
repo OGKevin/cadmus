@@ -68,7 +68,7 @@ impl GithubClient {
     ///
     /// let client = GithubClient::new(None).expect("failed to build client");
     /// ```
-    #[cfg_attr(feature = "otel", tracing::instrument(skip_all))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
     pub fn new(token: Option<SecretString>) -> Result<Self, GithubError> {
         tracing::debug!(token_provided = token.is_some(), "Building GitHub client");
 
@@ -108,7 +108,7 @@ impl GithubClient {
     /// Returns `ChunkedDownloadError` if the file cannot be written or if all
     /// retry attempts for any chunk fail.
     #[cfg_attr(
-        feature = "otel",
+        feature = "tracing",
         tracing::instrument(skip(self, request_builder, progress_callback))
     )]
     pub fn download<B, F>(
@@ -164,7 +164,7 @@ impl GithubClient {
     /// let response = client.initiate_device_flow().expect("device flow failed");
     /// println!("Go to {} and enter {}", response.verification_uri, response.user_code);
     /// ```
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     pub fn initiate_device_flow(&self) -> Result<DeviceCodeResponse, String> {
         tracing::info!(
             client_id = GITHUB_OAUTH_CLIENT_ID,
@@ -228,7 +228,7 @@ impl GithubClient {
     ///     Err(e) => println!("Error: {}", e),
     /// }
     /// ```
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     pub fn verify_token_scopes(&self) -> Result<(), VerifyScopesError> {
         tracing::debug!("Verifying token scopes");
 
@@ -296,7 +296,7 @@ impl GithubClient {
     ///     }
     /// }
     /// ```
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     pub fn poll_device_token(&self, device_code: &str) -> Result<TokenPollResult, String> {
         tracing::debug!("Polling GitHub for device token");
 

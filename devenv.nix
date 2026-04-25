@@ -113,6 +113,13 @@ let
         url: http://localhost:9090
         isDefault: true
         editable: true
+
+      - name: Pyroscope
+        type: grafana-pyroscope-datasource
+        access: proxy
+        url: http://localhost:4040
+        isDefault: false
+        editable: true
   '';
 in
 {
@@ -184,6 +191,7 @@ in
     pkgs.grafana
     pkgs.tempo
     pkgs.grafana-loki
+    pkgs.pyroscope
 
     # SQLx CLI for database migrations and compile-time query verification
     pkgs.sqlx-cli
@@ -245,7 +253,12 @@ in
     RUST_LOG = "emulator=debug,cadmus_core=debug";
     RUST_BACKTRACE = "1";
     OTEL_EXPORTER_OTLP_ENDPOINT = "http://localhost:4318";
+    PYROSCOPE_SERVER_URL = "http://localhost:4040";
     NEXTEST_NO_TESTS = "pass";
+
+    # jemalloc configure uses -O0 in debug builds, which triggers _FORTIFY_SOURCE warnings
+    # treated as errors under Nix hardening. Disable hardening for jemalloc's build script.
+    NIX_HARDENING_ENABLE = "";
   }
   // pkgs.lib.optionalAttrs isLinux {
     # pkg-config configuration for cross-compilation
@@ -411,7 +424,7 @@ in
 
             server:
               http_listen_port: 3100
-              grpc_listen_port: 9095
+              grpc_listen_port: 9097
 
             common:
               path_prefix: ${config.devenv.state}/loki
@@ -457,6 +470,38 @@ in
               retention_period: 1h
               max_query_lookback: 1h
           ''}
+      '';
+    };
+
+    pyroscope = {
+      exec = ''
+        mkdir -p ${config.devenv.state}/pyroscope/{data,data-compactor}
+        mkdir -p ${config.devenv.state}/pyroscope-sync
+
+        ${pkgs.pyroscope}/bin/pyroscope \
+          -config.file=${pkgs.writeText "pyroscope.yaml" ''
+            server:
+              http_listen_port: 4040
+
+            storage:
+              backend: filesystem
+              filesystem:
+                dir: ${config.devenv.state}/pyroscope
+
+            pyroscopedb:
+              data_path: ${config.devenv.state}/pyroscope/data
+
+            compactor:
+              data_dir: ${config.devenv.state}/pyroscope/data-compactor
+
+            memberlist:
+              bind_addr:
+                - 127.0.0.1
+              abort_if_cluster_join_fails: false
+          ''} \
+          -blocks-storage.bucket-store.sync-dir=${config.devenv.state}/pyroscope-sync \
+          -target=all \
+          -self-profiling.disable-push=true
       '';
     };
 
@@ -571,6 +616,7 @@ in
       echo "  Tempo:      http://localhost:3200"
       echo "  Loki:       http://localhost:3100"
       echo "  Prometheus: http://localhost:9090"
+      echo "  Pyroscope:  http://localhost:4040"
       echo "  OTLP:       http://localhost:4318"
       echo ""
 
@@ -580,11 +626,13 @@ in
 
       echo "Starting instrumented emulator..."
       echo "   Traces will be visible in Grafana → Explore → Tempo"
+      echo "   Heap profiles will be visible in Grafana → Explore → Pyroscope"
       echo ""
 
       export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4318"
+      export PYROSCOPE_SERVER_URL="http://localhost:4040"
       export RUST_LOG="emulator=trace,cadmus_core=trace"
-      cargo xtask run-emulator --features otel,test,emulator
+      cargo xtask run-emulator --features telemetry,test,emulator
     '';
 
     # Extract translatable strings from documentation
@@ -649,6 +697,7 @@ in
     echo "  cadmus-dev-otel      - Build & run emulator with OTEL enabled"
     echo ""
     echo "  After 'devenv up', visit http://localhost:3000 for Grafana"
+    echo "  Pyroscope profiling UI: http://localhost:4040"
     echo ""
 
      echo "Linking rust source for stable access"

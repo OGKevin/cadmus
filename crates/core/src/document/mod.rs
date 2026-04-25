@@ -234,7 +234,7 @@ pub fn asciify(name: &str) -> String {
         .replace('’', "'")
 }
 
-#[cfg_attr(feature = "otel", tracing::instrument(skip(path), fields(path = %path.as_ref().display())))]
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(path), fields(path = %path.as_ref().display())))]
 pub fn open<P: AsRef<Path>>(path: P) -> Option<Box<dyn Document>> {
     let kind = file_kind(path.as_ref());
     if kind.is_none() {

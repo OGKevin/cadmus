@@ -5,9 +5,9 @@ use crate::fl;
 use crate::settings::Settings;
 use crate::view::{Bus, EntryId, EntryKind, Event, ToggleEvent};
 
-#[cfg(feature = "otel")]
+#[cfg(any(feature = "tracing", feature = "profiling"))]
 use super::InputSettingKind;
-#[cfg(feature = "otel")]
+#[cfg(any(feature = "tracing", feature = "profiling"))]
 use crate::view::ViewId;
 use std::str::FromStr;
 
@@ -125,11 +125,11 @@ impl SettingKind for LogLevel {
     }
 }
 
-/// OTLP endpoint configuration setting (otel feature)
-#[cfg(feature = "otel")]
+/// OTLP endpoint configuration setting (tracing feature)
+#[cfg(feature = "tracing")]
 pub struct OtlpEndpoint;
 
-#[cfg(feature = "otel")]
+#[cfg(feature = "tracing")]
 impl SettingKind for OtlpEndpoint {
     fn identity(&self) -> SettingIdentity {
         SettingIdentity::OtlpEndpoint
@@ -157,7 +157,7 @@ impl SettingKind for OtlpEndpoint {
     }
 }
 
-#[cfg(feature = "otel")]
+#[cfg(feature = "tracing")]
 impl InputSettingKind for OtlpEndpoint {
     fn submit_view_id(&self) -> ViewId {
         ViewId::OtlpEndpointInput
@@ -189,6 +189,79 @@ impl InputSettingKind for OtlpEndpoint {
         settings
             .logging
             .otlp_endpoint
+            .clone()
+            .unwrap_or_else(|| fl!("settings-general-not-set"))
+    }
+}
+
+/// Pyroscope server endpoint configuration setting (profiling feature)
+#[cfg(feature = "profiling")]
+pub struct PyroscopeEndpoint;
+
+#[cfg(feature = "profiling")]
+impl SettingKind for PyroscopeEndpoint {
+    fn identity(&self) -> SettingIdentity {
+        SettingIdentity::PyroscopeEndpoint
+    }
+
+    fn label(&self, _settings: &Settings) -> String {
+        fl!("settings-telemetry-pyroscope-endpoint")
+    }
+
+    fn fetch(&self, settings: &Settings) -> SettingData {
+        let value = settings
+            .logging
+            .pyroscope_endpoint
+            .clone()
+            .unwrap_or_else(|| fl!("settings-general-not-set"));
+
+        SettingData {
+            value,
+            widget: WidgetKind::ActionLabel(Event::Select(EntryId::EditPyroscopeEndpoint)),
+        }
+    }
+
+    fn as_input_kind(&self) -> Option<&dyn InputSettingKind> {
+        Some(self)
+    }
+}
+
+#[cfg(feature = "profiling")]
+impl InputSettingKind for PyroscopeEndpoint {
+    fn submit_view_id(&self) -> ViewId {
+        ViewId::PyroscopeEndpointInput
+    }
+
+    fn open_entry_id(&self) -> EntryId {
+        EntryId::EditPyroscopeEndpoint
+    }
+
+    fn input_label(&self) -> String {
+        fl!("settings-telemetry-pyroscope-endpoint")
+    }
+
+    fn input_max_chars(&self) -> usize {
+        50
+    }
+
+    fn current_text(&self, settings: &Settings) -> String {
+        settings
+            .logging
+            .pyroscope_endpoint
+            .clone()
+            .unwrap_or_default()
+    }
+
+    fn apply_text(&self, text: &str, settings: &mut Settings) -> String {
+        let trimmed = text.trim();
+        settings.logging.pyroscope_endpoint = if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        };
+        settings
+            .logging
+            .pyroscope_endpoint
             .clone()
             .unwrap_or_else(|| fl!("settings-general-not-set"))
     }
@@ -388,7 +461,7 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "otel")]
+    #[cfg(feature = "tracing")]
     mod otlp_endpoint {
         use super::*;
         use crate::view::settings_editor::kinds::InputSettingKind;

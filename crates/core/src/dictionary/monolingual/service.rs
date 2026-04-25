@@ -50,7 +50,7 @@ impl MonolingualDictionaryService {
     /// # Errors
     ///
     /// Returns an error if the HTTP client cannot be built.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(database), fields(dict_dir = %dict_dir.display())))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(database), fields(dict_dir = %dict_dir.display())))]
     pub fn new(database: &Database, dict_dir: &Path) -> Result<Self, MonolingualError> {
         let client = MonolingualClient::new()?;
         let db = Db::new(database);
@@ -70,7 +70,7 @@ impl MonolingualDictionaryService {
     /// # Errors
     ///
     /// Returns an error if the metadata cannot be loaded from cache or network.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     pub fn get_available_dictionaries(
         &self,
     ) -> Result<Vec<(String, DictionaryEntry)>, MonolingualError> {
@@ -92,7 +92,7 @@ impl MonolingualDictionaryService {
     /// # Errors
     ///
     /// Returns an error if the database read fails.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(lang = %lang)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(lang = %lang)))]
     pub fn get_entry_for_lang(
         &self,
         lang: &str,
@@ -109,7 +109,7 @@ impl MonolingualDictionaryService {
     /// # Errors
     ///
     /// Returns an error if the directory cannot be read.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     pub fn get_installed_dictionaries(&self) -> Result<Vec<String>, MonolingualError> {
         let root = self.reader_dict_dir();
 
@@ -141,9 +141,9 @@ impl MonolingualDictionaryService {
     ///
     /// This can be used by callers to suppress duplicate install requests before
     /// spawning a background thread.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
     pub fn is_installing(&self, lang: &str) -> bool {
-        #[cfg(feature = "otel")]
+        #[cfg(feature = "tracing")]
         let _span = tracing::info_span!("lock").entered();
         self.pending_installs.lock().unwrap().contains(lang)
     }
@@ -176,7 +176,7 @@ impl MonolingualDictionaryService {
     /// Returns an error if a download for the language is already in progress,
     /// if the download fails, if the archive cannot be parsed, or if files
     /// cannot be written to disk.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, entry, progress_callback), fields(lang = %lang, include_etymologies)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, entry, progress_callback), fields(lang = %lang, include_etymologies)))]
     pub fn install_dictionary<F>(
         &self,
         lang: &str,
@@ -188,7 +188,7 @@ impl MonolingualDictionaryService {
         F: FnMut(u64, u64),
     {
         {
-            #[cfg(feature = "otel")]
+            #[cfg(feature = "tracing")]
             let _span = tracing::info_span!("lock").entered();
 
             let mut pending = self.pending_installs.lock().unwrap();
@@ -201,7 +201,7 @@ impl MonolingualDictionaryService {
         let result = self.do_install(lang, entry, include_etymologies, progress_callback);
 
         {
-            #[cfg(feature = "otel")]
+            #[cfg(feature = "tracing")]
             let _span = tracing::info_span!("lock").entered();
             self.pending_installs.lock().unwrap().remove(lang);
         }
@@ -210,7 +210,7 @@ impl MonolingualDictionaryService {
     }
 
     #[cfg_attr(
-        feature = "otel",
+        feature = "tracing",
         tracing::instrument(skip(self, entry, progress_callback))
     )]
     fn do_install<F>(
@@ -258,7 +258,7 @@ impl MonolingualDictionaryService {
     ///
     /// Logs a warning on failure rather than propagating the error, as this is
     /// a best-effort cleanup step called from event handlers.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     pub fn remove_installed(&self, lang: &str) {
         if let Err(e) = self.db.remove_installed(lang) {
             tracing::warn!(lang, error = %e, "Failed to remove installed dictionary record");
@@ -269,12 +269,12 @@ impl MonolingualDictionaryService {
     /// available on the server than the currently installed version.
     ///
     /// Returns `false` on any error to avoid surfacing spurious update badges.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     pub fn is_update_available(&self, lang: &str) -> bool {
         self.db.is_update_available(lang).unwrap_or(false)
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     fn load_metadata(&self) -> Result<DictionariesResponse, MonolingualError> {
         if let Some(cached_at) = self.db.get_most_recent_cached_at()? {
             match self.client.is_metadata_modified_since(cached_at) {
@@ -302,7 +302,7 @@ impl MonolingualDictionaryService {
         })
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     fn fetch_and_cache_metadata(&self) -> Result<DictionariesResponse, MonolingualError> {
         let metadata = self.client.fetch_metadata()?;
 
@@ -316,7 +316,7 @@ impl MonolingualDictionaryService {
         Ok(metadata)
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     fn get_cached_metadata(&self) -> Result<Option<DictionariesResponse>, MonolingualError> {
         let entries = self.db.get_all_entries()?;
 
@@ -382,7 +382,7 @@ fn has_dict_pair(dir: &Path) -> bool {
 ///
 /// Files with unrecognised extensions are skipped. Directories inside the ZIP
 /// are ignored because all output files land flat in `dest`.
-#[cfg_attr(feature = "otel", tracing::instrument(skip(reader)))]
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(reader)))]
 fn extract_zip_renamed<R: std::io::Read + std::io::Seek>(
     reader: R,
     dest: &Path,

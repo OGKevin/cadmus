@@ -558,7 +558,7 @@ impl Reader {
         }
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip_all))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
     pub fn from_embedded_epub(
         rect: Rectangle,
         epub_bytes: &'static [u8],
@@ -3878,7 +3878,7 @@ impl Reader {
 }
 
 impl View for Reader {
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, hub, _bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, _bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
@@ -5299,7 +5299,7 @@ impl View for Reader {
         }
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, fb, _fonts), fields(rect = ?rect)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fb, _fonts), fields(rect = ?rect)))]
     fn render(&self, fb: &mut dyn Framebuffer, rect: Rectangle, _fonts: &mut Fonts) {
         fb.draw_rectangle(&rect, WHITE);
 

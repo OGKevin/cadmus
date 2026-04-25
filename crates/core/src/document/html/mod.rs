@@ -107,7 +107,7 @@ impl HtmlBase {
     ///
     /// Triggers a full `build_pages` pass the first time it is called after
     /// the page cache has been cleared.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(offset)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(offset)))]
     pub(crate) fn page_index(&mut self, offset: usize) -> Option<usize> {
         if self.pages.is_empty() {
             self.pages = self.build_pages();
@@ -140,7 +140,10 @@ impl HtmlBase {
     /// Returns `None` if the URI has no `#` or no element with the given `id`
     /// is found. Results are written into `cache` so repeated lookups for the
     /// same URI are free.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, cache), fields(uri)))]
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(skip(self, cache), fields(uri))
+    )]
     fn resolve_link(&mut self, uri: &str, cache: &mut UriCache) -> Option<usize> {
         let frag_index = uri.find('#')?;
         let name = &uri[..frag_index];
@@ -174,7 +177,7 @@ impl HtmlBase {
     ///
     /// Returns a non-empty list; if the engine produces no draw commands a
     /// single fallback page anchored at offset 0 is returned.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     pub(crate) fn build_pages(&mut self) -> Vec<Page> {
         let mut stylesheet = StyleSheet::new();
         let spine_dir = PathBuf::default();
@@ -297,7 +300,7 @@ impl HtmlBase {
     ///
     /// Returns `None` when the location cannot be resolved (e.g. already on
     /// the first page for `Previous`, or no element with the given `id`).
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(loc = ?loc)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(loc = ?loc)))]
     pub(crate) fn resolve_location(&mut self, loc: Location) -> Option<usize> {
         self.engine.load_fonts();
 
@@ -331,7 +334,7 @@ impl HtmlBase {
 
     /// Returns all text spans on the page identified by `loc`, together with
     /// the resolved page offset.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(loc = ?loc)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(loc = ?loc)))]
     pub(crate) fn words(&mut self, loc: Location) -> Option<(Vec<BoundedText>, usize)> {
         let offset = self.resolve_location(loc)?;
         let page_index = self.page_index(offset)?;
@@ -356,7 +359,7 @@ impl HtmlBase {
 
     /// Returns all image bounding rectangles on the page identified by `loc`,
     /// together with the resolved page offset.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(loc = ?loc)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(loc = ?loc)))]
     pub(crate) fn images(&mut self, loc: Location) -> Option<(Vec<Boundary>, usize)> {
         let offset = self.resolve_location(loc)?;
         let page_index = self.page_index(offset)?;
@@ -377,7 +380,7 @@ impl HtmlBase {
     /// together with the resolved page offset.
     ///
     /// Both text and image draw commands are included when they carry a URI.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(loc = ?loc)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(loc = ?loc)))]
     pub(crate) fn links(&mut self, loc: Location) -> Option<(Vec<BoundedText>, usize)> {
         let offset = self.resolve_location(loc)?;
         let page_index = self.page_index(offset)?;
@@ -405,7 +408,7 @@ impl HtmlBase {
 
     /// Renders the page identified by `loc` to a [`Pixmap`] at the given
     /// `scale` factor and returns it together with the resolved page offset.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(loc = ?loc, scale, samples)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(loc = ?loc, scale, samples)))]
     pub(crate) fn pixmap(
         &mut self,
         loc: Location,
@@ -471,7 +474,7 @@ unsafe impl Sync for HtmlDocument {}
 impl HtmlDocument {
     /// Opens the file at `path`, parses it with [`XmlParser`], and returns a
     /// ready-to-render document.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(path), fields(path = %path.as_ref().display())))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(path), fields(path = %path.as_ref().display())))]
     pub fn new<P: AsRef<Path>>(path: P) -> Result<HtmlDocument, Error> {
         let mut file = File::open(&path)?;
         let size = file.metadata()?.len() as usize;
@@ -497,7 +500,7 @@ impl HtmlDocument {
     ///
     /// The document has no parent directory, so relative resource references
     /// (images, linked stylesheets) will not be resolved.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(text), fields(len = text.len())))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(text), fields(len = text.len())))]
     pub fn new_from_memory(text: &str) -> HtmlDocument {
         let size = text.len();
         let mut content = XmlParser::new(text).parse();
@@ -517,7 +520,7 @@ impl HtmlDocument {
 
     /// Replaces the document content with a freshly parsed version of `text`
     /// and clears the page cache.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, text), fields(len = text.len())))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, text), fields(len = text.len())))]
     pub fn update(&mut self, text: &str) {
         self.base.size = text.len();
         self.base.content = XmlParser::new(text).parse();

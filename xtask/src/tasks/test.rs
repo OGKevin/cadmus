@@ -16,7 +16,7 @@ use super::util::{cmd, matrix, workspace};
 /// Arguments for `cargo xtask test`.
 #[derive(Debug, Args)]
 pub struct TestArgs {
-    /// Run only the named feature combination (e.g. `"test + otel"`).
+    /// Run only the named feature combination (e.g. `"telemetry + test"`).
     ///
     /// When omitted, all matrix entries are run in sequence.
     #[arg(long)]
@@ -62,7 +62,8 @@ pub fn run(args: TestArgs) -> Result<()> {
 ///
 /// When `label` is `None` all entries are returned.  When a label is
 /// provided it is normalised via [`matrix::normalize_features_arg`] before
-/// matching, so both `"otel,test"` and `"otel + test"` resolve to the same
+/// matching, so both `"telemetry,test"` and `"telemetry + test"` resolve to
+/// the same
 /// entry.  An unknown label after normalisation is an error.
 ///
 /// # Errors

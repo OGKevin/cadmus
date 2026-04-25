@@ -130,7 +130,7 @@ impl SettingsManager {
     /// configured at this point in the app startup sequence. Tracing is
     /// configured *after* settings are loaded, so using tracing macros here
     /// would result in messages being silently dropped or not properly routed.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), ret(level = tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), ret(level = tracing::Level::TRACE)))]
     pub fn load(&self) -> Settings {
         if let Err(e) = fs::create_dir_all(&self.settings_dir) {
             eprintln!("failed to create settings directory: {}; using defaults", e);
@@ -213,7 +213,7 @@ impl SettingsManager {
     /// - Manifest cannot be updated
     /// - Old files cannot be removed
     #[cfg_attr(
-        feature = "otel", tracing::instrument(
+        feature = "tracing", tracing::instrument(
             skip(self, settings),
             fields(
                 version = %self.current_version,
@@ -277,7 +277,7 @@ impl SettingsManager {
     /// configured during the settings loading phase (called from `load()`).
     /// Tracing is initialized *after* settings are fully loaded, so any
     /// tracing calls here would be silently discarded.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), ret(level = tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), ret(level = tracing::Level::TRACE)))]
     fn migrate_legacy_settings(&self) {
         let legacy_path = self.root_dir.join(LEGACY_SETTINGS_FILE);
 
@@ -366,7 +366,7 @@ impl SettingsManager {
     /// - Version information and timestamps for each entry
     ///
     /// `Err` if the manifest file exists but cannot be read or parsed.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), ret(level = tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), ret(level = tracing::Level::TRACE)))]
     fn read_manifest(&self) -> Result<SettingsManifest, Error> {
         if self.manifest_path.exists() {
             crate::helpers::load_toml::<SettingsManifest, _>(&self.manifest_path)
@@ -391,7 +391,7 @@ impl SettingsManager {
     /// `Ok(())` if the manifest was successfully written.
     ///
     /// `Err` if the manifest file cannot be written or serialized.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, manifest), ret(level = tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, manifest), ret(level = tracing::Level::TRACE)))]
     fn write_manifest(&self, manifest: &SettingsManifest) -> Result<(), Error> {
         crate::helpers::save_toml(manifest, &self.manifest_path)
             .context("failed to write settings manifest")
@@ -428,7 +428,7 @@ impl SettingsManager {
     /// `Ok(())` if the manifest was successfully updated and written.
     ///
     /// `Err` if reading, updating, or writing the manifest fails.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, settings), fields(filename = filename), ret(level = tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, settings), fields(filename = filename), ret(level = tracing::Level::TRACE)))]
     fn update_manifest_and_cleanup(
         &self,
         filename: &str,

@@ -47,7 +47,9 @@ impl MatrixEntry {
 ///
 /// Features excluded from the matrix (see [`is_excluded_feature`]) are
 /// skipped — for example `default` (enabled by Cargo automatically) and
-/// `bench` (only affects module visibility for benchmarks).
+/// `bench` (only affects module visibility for benchmarks). Runtime features
+/// such as `tracing` and `profiling` stay in the matrix so CI checks them both
+/// standalone and in combinations.
 /// The matrix always starts with the default (no explicit features) entry,
 /// followed by every non-empty power-set combination in a stable order.
 /// Each feature combination is repeated once per OS in `os_list`.
@@ -125,8 +127,8 @@ pub fn to_github_matrix_json(entries: &[MatrixEntry]) -> Result<String> {
 
 /// Normalises a `--features` argument to the label format used by the matrix.
 ///
-/// Accepts both the comma-separated cargo format (`"otel,test"`) and the
-/// human-readable label format (`"otel + test"`), sorts the parts
+/// Accepts both the comma-separated cargo format (`"telemetry,test"`) and the
+/// human-readable label format (`"telemetry + test"`), sorts the parts
 /// alphabetically, and joins them with `" + "`.  An empty input returns
 /// `"default"`.
 ///
@@ -135,14 +137,14 @@ pub fn to_github_matrix_json(entries: &[MatrixEntry]) -> Result<String> {
 /// ```
 /// use xtask_lib::tasks::util::matrix::normalize_features_arg;
 ///
-/// assert_eq!(normalize_features_arg("otel,test"), "otel + test");
-/// assert_eq!(normalize_features_arg("otel + test"), "otel + test");
-/// assert_eq!(normalize_features_arg("test,otel"), "otel + test");
+/// assert_eq!(normalize_features_arg("telemetry,test"), "telemetry + test");
+/// assert_eq!(normalize_features_arg("telemetry + test"), "telemetry + test");
+/// assert_eq!(normalize_features_arg("test,telemetry"), "telemetry + test");
 /// assert_eq!(normalize_features_arg(""), "default");
 /// assert_eq!(normalize_features_arg("  "), "default");
 /// assert_eq!(normalize_features_arg(",,"), "default");
 /// assert_eq!(normalize_features_arg("+"), "default");
-/// assert_eq!(normalize_features_arg("otel"), "otel");
+/// assert_eq!(normalize_features_arg("telemetry"), "telemetry");
 /// ```
 pub fn normalize_features_arg(input: &str) -> String {
     let mut parts: Vec<&str> = input
@@ -253,29 +255,32 @@ mod tests {
 
     #[test]
     fn build_matrix_single_feature_yields_two_combos_per_os() {
-        let features = BTreeSet::from(["otel".to_owned()]);
+        let features = BTreeSet::from(["telemetry".to_owned()]);
         let entries = build_matrix(features, ONE_OS);
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].label, "default");
-        assert_eq!(entries[1].label, "otel");
+        assert_eq!(entries[1].label, "telemetry");
     }
 
     #[test]
     fn build_matrix_two_features_yields_four_combos_per_os() {
-        let features = BTreeSet::from(["otel".to_owned(), "test".to_owned()]);
+        let features = BTreeSet::from(["telemetry".to_owned(), "test".to_owned()]);
         let entries = build_matrix(features, ONE_OS);
         assert_eq!(entries.len(), 4);
         let labels: Vec<&str> = entries.iter().map(|e| e.label.as_str()).collect();
         assert!(labels.contains(&"default"));
-        assert!(labels.contains(&"otel"));
+        assert!(labels.contains(&"telemetry"));
         assert!(labels.contains(&"test"));
-        assert!(labels.contains(&"otel + test"));
+        assert!(labels.contains(&"telemetry + test"));
     }
 
     #[test]
     fn build_matrix_three_features_two_os_yields_sixteen_entries() {
-        let features =
-            BTreeSet::from(["emulator".to_owned(), "otel".to_owned(), "test".to_owned()]);
+        let features = BTreeSet::from([
+            "emulator".to_owned(),
+            "telemetry".to_owned(),
+            "test".to_owned(),
+        ]);
         let entries = build_matrix(features, TWO_OS);
         assert_eq!(entries.len(), 16, "2³ combos × 2 OSes = 16 entries");
     }
@@ -293,13 +298,13 @@ mod tests {
     #[test]
     fn cargo_args_combo_entry_includes_features_flag() {
         let entry = MatrixEntry {
-            label: "test + otel".to_owned(),
-            features: "test,otel".to_owned(),
+            label: "telemetry + test".to_owned(),
+            features: "telemetry,test".to_owned(),
             os: "ubuntu-latest".to_owned(),
         };
         assert_eq!(
             entry.cargo_args(),
-            vec!["--workspace", "--features", "test,otel"]
+            vec!["--workspace", "--features", "telemetry,test"]
         );
     }
 
@@ -318,22 +323,25 @@ mod tests {
 
     #[test]
     fn normalize_single_feature() {
-        assert_eq!(normalize_features_arg("otel"), "otel");
+        assert_eq!(normalize_features_arg("telemetry"), "telemetry");
     }
 
     #[test]
     fn normalize_comma_separated_two_features() {
-        assert_eq!(normalize_features_arg("otel,test"), "otel + test");
+        assert_eq!(normalize_features_arg("telemetry,test"), "telemetry + test");
     }
 
     #[test]
     fn normalize_label_format_round_trips() {
-        assert_eq!(normalize_features_arg("otel + test"), "otel + test");
+        assert_eq!(
+            normalize_features_arg("telemetry + test"),
+            "telemetry + test"
+        );
     }
 
     #[test]
     fn normalize_out_of_order_comma_separated_sorts() {
-        assert_eq!(normalize_features_arg("test,otel"), "otel + test");
+        assert_eq!(normalize_features_arg("test,telemetry"), "telemetry + test");
     }
 
     #[test]
@@ -342,19 +350,21 @@ mod tests {
     }
 
     #[test]
-    fn scan_workspace_finds_known_features_across_two_os() {
+    fn scan_workspace_includes_runtime_features_across_two_os() {
         let root = workspace::root().expect("workspace root must be resolvable in tests");
         let entries = scan(&root, TWO_OS).expect("scan must succeed");
 
         let labels: Vec<&str> = entries.iter().map(|e| e.label.as_str()).collect();
         assert!(labels.contains(&"default"));
         assert!(labels.contains(&"emulator"));
-        assert!(labels.contains(&"otel"));
+        assert!(labels.contains(&"profiling"));
+        assert!(labels.contains(&"telemetry"));
+        assert!(labels.contains(&"tracing"));
         assert!(labels.contains(&"test"));
         assert_eq!(
             entries.len(),
-            32,
-            "4 CI features (bench excluded) → 2⁴ = 16 combos × 2 OSes = 32 entries"
+            128,
+            "6 CI features including tracing/profiling (only bench excluded) → 2⁶ = 64 combos × 2 OSes = 128 entries"
         );
     }
 }

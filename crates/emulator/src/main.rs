@@ -1,5 +1,16 @@
 use cadmus_core::anyhow::{Context as ResultExt, Error};
 use cadmus_core::assets::open_documentation;
+
+#[cfg(feature = "profiling")]
+#[global_allocator]
+static ALLOC: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
+// Enable jemalloc heap profiling when built with the profiling feature.
+// prof_active:true starts profiling active so Pyroscope can collect samples immediately.
+#[cfg(feature = "profiling")]
+#[allow(non_upper_case_globals)]
+#[unsafe(export_name = "_rjem_malloc_conf")]
+pub static malloc_conf: &[u8] = b"prof:true,prof_active:true,lg_prof_sample:19\0";
 use cadmus_core::battery::{Battery, FakeBattery};
 use cadmus_core::chrono::Local;
 use cadmus_core::color::Color;
@@ -279,6 +290,10 @@ impl Framebuffer for FBCanvas {
 }
 
 fn main() -> Result<(), Error> {
+    run()
+}
+
+fn run() -> Result<(), Error> {
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
     let (width, height) = CURRENT_DEVICE.dims;
@@ -298,6 +313,10 @@ fn main() -> Result<(), Error> {
         .context("Failed to initialize logging")?;
 
     cadmus_core::crypto::init_crypto_provider();
+
+    #[cfg(feature = "profiling")]
+    cadmus_core::profiling::init_profiling(settings.logging.pyroscope_endpoint.as_deref())
+        .context("Failed to initialize profiling")?;
 
     i18n::init(settings.locale.as_ref());
 
@@ -921,6 +940,9 @@ fn main() -> Result<(), Error> {
     manager
         .save(&context.settings)
         .context("can't save settings")?;
+
+    #[cfg(feature = "profiling")]
+    cadmus_core::profiling::shutdown_profiling();
 
     cadmus_core::logging::shutdown_logging();
 

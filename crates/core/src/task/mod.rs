@@ -204,7 +204,7 @@ impl TaskManager {
     /// [`ShutdownSignal`] for graceful termination.
     ///
     /// Returns an error if a task with the same ID is already running.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, task, hub), fields(task_id = tracing::field::Empty), ret))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, task, hub), fields(task_id = tracing::field::Empty), ret))]
     pub fn start(
         &mut self,
         task: Box<dyn BackgroundTask>,
@@ -212,7 +212,7 @@ impl TaskManager {
     ) -> Result<TaskId, TaskError> {
         let id = task.id();
 
-        #[cfg(feature = "otel")]
+        #[cfg(feature = "tracing")]
         tracing::Span::current().record("task_id", tracing::field::display(&id));
 
         if self.is_running(&id) {
@@ -246,7 +246,7 @@ impl TaskManager {
     ///
     /// Sends the shutdown signal and waits for the task thread to finish.
     /// Returns an error if the task is not running.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(task_id = %id), ret))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(task_id = %id), ret))]
     pub fn stop(&mut self, id: &TaskId) -> Result<(), TaskError> {
         self.cleanup_finished();
         if let Some(task) = self.tasks.remove(id) {
@@ -266,11 +266,11 @@ impl TaskManager {
     /// Stops all running tasks.
     ///
     /// Sends shutdown signals to all tasks and waits for them to finish.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(task_count = tracing::field::Empty)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(task_count = tracing::field::Empty)))]
     pub fn stop_all(&mut self) {
         let tasks: Vec<_> = self.tasks.drain().collect();
 
-        #[cfg(feature = "otel")]
+        #[cfg(feature = "tracing")]
         tracing::Span::current().record("task_count", tasks.len());
 
         if !tasks.is_empty() {

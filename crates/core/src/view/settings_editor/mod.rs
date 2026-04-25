@@ -190,7 +190,7 @@ pub struct SettingsEditor {
 }
 
 impl SettingsEditor {
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(rq, context)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(rq, context)))]
     pub fn new(rect: Rectangle, rq: &mut RenderQueue, context: &mut Context) -> Self {
         let id = ID_FEEDER.next();
         let mut children = Vec::new();
@@ -345,7 +345,7 @@ impl SettingsEditor {
 }
 
 impl View for SettingsEditor {
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _hub, _bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, _bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
@@ -431,7 +431,7 @@ impl View for SettingsEditor {
         }
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _fb, _fonts), fields(rect = ?_rect)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _fb, _fonts), fields(rect = ?_rect)))]
     fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut crate::font::Fonts) {
     }
 

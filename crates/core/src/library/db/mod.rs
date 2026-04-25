@@ -158,7 +158,7 @@ impl Db {
         }
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(path = %path, name = %name)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(path = %path, name = %name)))]
     pub fn register_library(&self, path: &str, name: &str) -> Result<i64, Error> {
         tracing::debug!(path = %path, name = %name, "registering library");
 
@@ -183,7 +183,7 @@ impl Db {
         })
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(path = %path)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(path = %path)))]
     pub fn get_library_by_path(&self, path: &str) -> Result<Option<i64>, Error> {
         tracing::debug!(path = %path, "looking up library by path");
 
@@ -320,7 +320,7 @@ impl Db {
             .collect()
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(pool)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(pool)))]
     async fn fetch_toc_entries_for_book(
         pool: &SqlitePool,
         library_id: i64,
@@ -415,7 +415,7 @@ impl Db {
         Ok(info)
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(conn, entries), fields(book_fingerprint = %book_fingerprint, parent_id = ?parent_id)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(conn, entries), fields(book_fingerprint = %book_fingerprint, parent_id = ?parent_id)))]
     async fn insert_toc_entries(
         conn: &mut sqlx::SqliteConnection,
         book_fingerprint: &str,
@@ -502,7 +502,10 @@ impl Db {
         Ok(map)
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(library_id)))]
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(skip(self), fields(library_id))
+    )]
     pub fn get_all_books(&self, library_id: i64) -> Result<Vec<Info>, Error> {
         tracing::debug!(library_id, "fetching all books from database");
 
@@ -635,7 +638,7 @@ impl Db {
         })
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, path), fields(library_id, path = %path.display())))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, path), fields(library_id, path = %path.display())))]
     pub fn get_book_by_path(&self, library_id: i64, path: &Path) -> Result<Option<Info>, Error> {
         let path = path.to_string_lossy().into_owned();
 
@@ -708,7 +711,7 @@ impl Db {
         })
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(library_id, fp = %fp)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(library_id, fp = %fp)))]
     pub fn get_book_by_fingerprint(&self, library_id: i64, fp: Fp) -> Result<Option<Info>, Error> {
         let fingerprint = fp.to_string();
 
@@ -786,7 +789,7 @@ impl Db {
     ///
     /// Used by `import()` to retrieve book metadata (title, authors, reading state, etc.)
     /// for all fingerprint relocations in one batch, before re-inserting under new FPs.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, fps), fields(library_id, count = fps.len())))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fps), fields(library_id, count = fps.len())))]
     pub fn batch_get_books_by_fingerprints(
         &self,
         library_id: i64,
@@ -883,7 +886,10 @@ impl Db {
         })
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(library_id)))]
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(skip(self), fields(library_id))
+    )]
     pub fn count_books(&self, library_id: i64) -> Result<usize, Error> {
         RUNTIME.block_on(async {
             let count: i64 = sqlx::query_scalar!(
@@ -898,7 +904,7 @@ impl Db {
     }
 
     #[cfg_attr(
-        feature = "otel",
+        feature = "tracing",
         tracing::instrument(skip(self, prefix), fields(library_id))
     )]
     pub fn list_books_under_prefix(
@@ -1051,7 +1057,7 @@ impl Db {
     /// A full recompute is only needed after bulk changes (i.e. after
     /// `import()`). It also restores uniform gaps whenever they have been
     /// partially exhausted by many consecutive single-book insertions.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     pub fn compute_sort_keys(&self, library_id: i64) -> Result<(), Error> {
         let books = self.get_all_books(library_id)?;
         if books.is_empty() {
@@ -1116,7 +1122,7 @@ impl Db {
     /// If any column has exhausted its gaps (two neighbours whose ranks differ
     /// by at most 1), it falls back to a full [`Self::compute_sort_keys`]
     /// recompute to restore uniform gaps for that library.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, info)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, info)))]
     pub fn insert_sort_rank(&self, library_id: i64, fp: Fp, info: &Info) -> Result<(), Error> {
         let fp_str = fp.to_string();
         let needs_full_recompute = self.try_insert_sort_rank(library_id, &fp_str, info)?;
@@ -1443,7 +1449,7 @@ impl Db {
     ///
     /// Uses untyped `sqlx::query_as` so the `ORDER BY` column can be selected
     /// dynamically.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     pub fn page_books(
         &self,
         library_id: i64,
@@ -1571,7 +1577,7 @@ impl Db {
     }
 
     #[cfg_attr(
-        feature = "otel",
+        feature = "tracing",
         tracing::instrument(skip(self, prefix), fields(library_id))
     )]
     pub fn list_directories_under_prefix(
@@ -1626,7 +1632,7 @@ impl Db {
         })
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, info), fields(fp = %fp, library_id)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, info), fields(fp = %fp, library_id)))]
     pub fn insert_book(&self, library_id: i64, fp: Fp, info: &Info) -> Result<(), Error> {
         tracing::debug!(fp = %fp, library_id, "inserting book into database");
         let fp_str = fp.to_string();
@@ -1783,7 +1789,7 @@ impl Db {
     }
 
     /// Rewrites the stored metadata for one book and its library-specific path fields.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, info), fields(fp = %fp, library_id)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, info), fields(fp = %fp, library_id)))]
     pub fn update_book(&self, library_id: i64, fp: Fp, info: &Info) -> Result<(), Error> {
         tracing::debug!(fp = %fp, library_id, "updating book in database");
         let fp_str = fp.to_string();
@@ -1908,7 +1914,7 @@ impl Db {
         })
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(fp = %fp)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(fp = %fp)))]
     pub fn delete_reading_state(&self, fp: Fp) -> Result<(), Error> {
         tracing::debug!(fp = %fp, "deleting reading state from database");
 
@@ -1926,7 +1932,7 @@ impl Db {
         })
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(fp = %fp, library_id)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(fp = %fp, library_id)))]
     pub fn delete_book(&self, library_id: i64, fp: Fp) -> Result<(), Error> {
         tracing::debug!(fp = %fp, library_id, "deleting book from library");
 
@@ -1963,7 +1969,7 @@ impl Db {
         })
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(fp = %fp)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(fp = %fp)))]
     pub fn get_thumbnail(&self, fp: Fp) -> Result<Option<Vec<u8>>, Error> {
         tracing::debug!(fp = %fp, "fetching thumbnail from database");
         let fp_str = fp.to_string();
@@ -1979,7 +1985,7 @@ impl Db {
         })
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(library_id, path = %path.display())))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(library_id, path = %path.display())))]
     pub fn get_thumbnail_by_path(
         &self,
         library_id: i64,
@@ -2000,7 +2006,7 @@ impl Db {
         })
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, data), fields(fp = %fp, size = data.len())))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, data), fields(fp = %fp, size = data.len())))]
     pub fn save_thumbnail(&self, fp: Fp, data: &[u8]) -> Result<(), Error> {
         tracing::debug!(fp = %fp, size = data.len(), "saving thumbnail to database");
         let fp_str = fp.to_string();
@@ -2024,7 +2030,7 @@ impl Db {
         })
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(fp = %fp)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(fp = %fp)))]
     pub fn delete_thumbnail(&self, fp: Fp) -> Result<(), Error> {
         tracing::debug!(fp = %fp, "deleting thumbnail from database");
         let fp_str = fp.to_string();
@@ -2039,7 +2045,7 @@ impl Db {
         })
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, fps), fields(count = fps.len())))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fps), fields(count = fps.len())))]
     pub fn batch_delete_thumbnails(&self, fps: &[Fp]) -> Result<(), Error> {
         if fps.is_empty() {
             return Ok(());
@@ -2062,7 +2068,7 @@ impl Db {
         })
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(from = %from_fp, to = %to_fp)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(from = %from_fp, to = %to_fp)))]
     pub fn move_thumbnail(&self, from_fp: Fp, to_fp: Fp) -> Result<(), Error> {
         tracing::debug!(from = %from_fp, to = %to_fp, "moving thumbnail in database");
         let from_fp_str = from_fp.to_string();
@@ -2085,7 +2091,7 @@ impl Db {
         })
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, moves), fields(count = moves.len())))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, moves), fields(count = moves.len())))]
     pub fn batch_move_thumbnails(&self, moves: &[(Fp, Fp)]) -> Result<(), Error> {
         if moves.is_empty() {
             return Ok(());
@@ -2114,7 +2120,7 @@ impl Db {
         })
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, reader_info), fields(fp = %fp)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, reader_info), fields(fp = %fp)))]
     pub fn save_reading_state(&self, fp: Fp, reader_info: &ReaderInfo) -> Result<(), Error> {
         tracing::debug!(fp = %fp, "saving reading state to database");
 
@@ -2187,7 +2193,7 @@ impl Db {
         })
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, toc), fields(fp = %fp, entry_count = toc.len())))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, toc), fields(fp = %fp, entry_count = toc.len())))]
     pub fn save_toc(&self, fp: Fp, toc: &[SimpleTocEntry]) -> Result<(), Error> {
         if toc.is_empty() {
             return Ok(());
@@ -2212,7 +2218,7 @@ impl Db {
         })
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, books), fields(library_id, count = books.len())))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, books), fields(library_id, count = books.len())))]
     pub fn batch_insert_books(&self, library_id: i64, books: &[(Fp, &Info)]) -> Result<(), Error> {
         if books.is_empty() {
             return Ok(());
@@ -2381,7 +2387,7 @@ impl Db {
         })
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, books), fields(library_id, count = books.len())))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, books), fields(library_id, count = books.len())))]
     pub fn batch_update_books(&self, library_id: i64, books: &[(Fp, &Info)]) -> Result<(), Error> {
         if books.is_empty() {
             return Ok(());
@@ -2527,7 +2533,10 @@ impl Db {
     }
 
     /// Returns `(fingerprint, path)` pairs for every book currently linked to a library.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(library_id)))]
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(skip(self), fields(library_id))
+    )]
     pub fn list_book_handles(&self, library_id: i64) -> Result<Vec<(Fp, PathBuf)>, Error> {
         RUNTIME.block_on(async {
             let rows = sqlx::query!(
@@ -2554,7 +2563,7 @@ impl Db {
 
     /// Updates both the relative and absolute path of a book in a single transaction.
     /// No-op if the book is not found in the library.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(library_id, fp = %fp)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(library_id, fp = %fp)))]
     pub fn update_book_path(
         &self,
         library_id: i64,
@@ -2587,7 +2596,7 @@ impl Db {
     /// Updates relative and absolute paths for multiple books in a single transaction,
     /// with one combined UPDATE per entry. Used by `import()` after directory scanning
     /// to record the final locations of books that were moved or renamed on disk.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, updates), fields(library_id, count = updates.len())))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, updates), fields(library_id, count = updates.len())))]
     pub fn batch_update_book_paths(
         &self,
         library_id: i64,
@@ -2627,7 +2636,7 @@ impl Db {
         })
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, fps), fields(library_id, count = fps.len())))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fps), fields(library_id, count = fps.len())))]
     pub fn batch_delete_books(&self, library_id: i64, fps: &[Fp]) -> Result<(), Error> {
         if fps.is_empty() {
             return Ok(());

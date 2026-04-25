@@ -208,7 +208,7 @@ impl GitVersion {
     /// assert_eq!(result, VersionComparison::Equal);
     /// ```
     #[cfg_attr(
-        feature = "otel",
+        feature = "tracing",
         tracing::instrument(skip(self, other), fields(local = %self, remote = %other))
     )]
     pub fn compare(&self, other: &GitVersion) -> Result<VersionComparison, VersionError> {

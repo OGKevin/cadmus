@@ -132,7 +132,7 @@ impl View for Label {
     /// # Returns
     ///
     /// Returns `true` if the event was handled (consumed), `false` otherwise.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _hub, bus, _rq, _context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, bus, _rq, _context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
@@ -173,7 +173,7 @@ impl View for Label {
     /// * `fb` - The framebuffer to render to
     /// * `_rect` - The clipping region (unused)
     /// * `fonts` - The font manager for text rendering
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, fb, fonts, _rect), fields(rect = ?_rect)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fb, fonts, _rect), fields(rect = ?_rect)))]
     fn render(&self, fb: &mut dyn Framebuffer, _rect: Rectangle, fonts: &mut Fonts) {
         let dpi = CURRENT_DEVICE.dpi;
 

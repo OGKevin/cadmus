@@ -416,7 +416,7 @@ fn prepare_share_for_usb(
 /// seconds. This is done because if log redirection fails and the app tries to write logs while
 /// the mount is unmounted, it can lead to corruption. See [#246](https://github.com/OGKevin/cadmus/issues/246).
 #[inline]
-#[cfg_attr(feature = "otel", tracing::instrument(skip(tx, tasks, context)))]
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(tx, tasks, context)))]
 fn start_usb_share(tx: &Sender<Event>, tasks: &mut Vec<Task>, context: &mut Context) {
     if let Err(e) = cadmus_core::logging::redirect_log_to_dir(
         std::path::Path::new("/tmp/cadmus-logs"),
@@ -578,6 +578,13 @@ pub fn run() -> Result<(), Error> {
     }
 
     cadmus_core::crypto::init_crypto_provider();
+
+    #[cfg(feature = "profiling")]
+    if let Err(e) =
+        cadmus_core::profiling::init_profiling(settings.logging.pyroscope_endpoint.as_deref())
+    {
+        tracing::warn!(error = %e, "Failed to initialize profiling");
+    }
 
     i18n::init(settings.locale.as_ref());
 
@@ -751,11 +758,11 @@ pub fn run() -> Result<(), Error> {
     tx.send(Event::WakeUp).ok();
 
     while let Ok(evt) = rx.recv() {
-        #[cfg(feature = "otel")]
+        #[cfg(feature = "tracing")]
         let span = tracing::trace_span!("main-event-loop", event = ?evt);
-        #[cfg(feature = "otel")]
+        #[cfg(feature = "tracing")]
         let _enter = span.enter();
-        #[cfg(feature = "otel")]
+        #[cfg(feature = "tracing")]
         tracing::trace!(event = ?evt, "handling event");
 
         match evt {
@@ -1791,6 +1798,9 @@ pub fn run() -> Result<(), Error> {
             }
         }
     }
+
+    #[cfg(feature = "profiling")]
+    cadmus_core::profiling::shutdown_profiling();
 
     cadmus_core::logging::shutdown_logging();
 

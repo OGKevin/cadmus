@@ -11,9 +11,12 @@ path = "src/main.rs"
 [features]
 default = ["kobo"]
 test = ["cadmus-core/test"]
-otel = ["cadmus-core/otel"]
+tracing = ["cadmus-core/tracing"]
+profiling = ["cadmus-core/profiling", "tikv-jemallocator"]
+telemetry = ["cadmus-core/telemetry", "tracing", "profiling", "tikv-jemallocator"]
 kobo = ["cadmus-core/kobo"]
 
 [dependencies]
 cadmus-core = { path = "../core" }
+tikv-jemallocator = { version = "0.6", features = ["profiling"], optional = true }
 tracing = "0.1"

@@ -45,6 +45,9 @@ max-files = 3
 directory = "logs"
 # Optional OTLP endpoint for exporting logs when the build enables the otel feature.
 # otlp-endpoint = "https://otel.example.com:4318"
+# Optional Pyroscope server URL for continuous profiling when the build enables the profiling feature.
+# Env var PYROSCOPE_SERVER_URL takes precedence over this value.
+# pyroscope-endpoint = "http://pyroscope.example.com:4040"
 # Capture kernel logs (requires test build with kobo feature).
 # enable-kern-log = false
 # Capture D-Bus signals via the built-in zbus-based DbusMonitorTask (requires test build with

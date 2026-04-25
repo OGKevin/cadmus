@@ -228,7 +228,7 @@ impl OtaClient {
 
         tracing::debug!(count = runs.workflow_runs.len(), "Found workflow runs");
 
-        #[cfg(feature = "otel")]
+        #[cfg(feature = "tracing")]
         if tracing::enabled!(tracing::Level::DEBUG) {
             for (idx, run) in runs.workflow_runs.iter().enumerate() {
                 tracing::debug!(
@@ -421,7 +421,7 @@ impl OtaClient {
     /// * `OtaError::Request` - Network communication failed
     /// * `OtaError::ArtifactsNotFound` - KoboRoot.tgz not found in latest release
     /// * `OtaError::Io` - Failed to write downloaded file to disk
-    #[cfg_attr(feature = "otel", tracing::instrument(skip_all))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
     pub fn download_stable_release_artifact<F>(
         &self,
         mut progress_callback: F,
@@ -451,7 +451,7 @@ impl OtaClient {
 
         tracing::debug!(asset_count = release.assets.len(), "Found release assets");
 
-        #[cfg(feature = "otel")]
+        #[cfg(feature = "tracing")]
         for (idx, asset) in release.assets.iter().enumerate() {
             tracing::debug!(
                 index = idx,
@@ -522,7 +522,7 @@ impl OtaClient {
     /// # Ok(())
     /// # }
     /// ```
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     pub fn fetch_latest_release_version(&self) -> Result<GitVersion, OtaError> {
         let releases_url = "https://api.github.com/repos/ogkevin/cadmus/releases/latest";
         tracing::debug!(url = %releases_url, "Fetching latest release version");
@@ -560,7 +560,7 @@ impl OtaClient {
     /// # Errors
     ///
     /// * `OtaError::Io` - Failed to read or write files
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     pub fn deploy(&self, kobo_root_path: PathBuf) -> Result<PathBuf, OtaError> {
         tracing::info!(path = ?kobo_root_path, "Deploying KoboRoot.tgz");
 
@@ -650,7 +650,7 @@ impl OtaClient {
     /// * `OtaError::ZipError` - Failed to open or read ZIP archive
     /// * `OtaError::DeploymentError` - KoboRoot.tgz not found in archive
     /// * `OtaError::Io` - Failed to write deployment file
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     pub fn extract_and_deploy(&self, zip_path: PathBuf) -> Result<PathBuf, OtaError> {
         tracing::info!(path = ?zip_path, "Extracting and deploying update");
         tracing::debug!(path = ?zip_path, "Starting extraction");
@@ -745,7 +745,7 @@ impl OtaClient {
 
         tracing::debug!(count = artifacts.artifacts.len(), "Found artifacts");
 
-        #[cfg(feature = "otel")]
+        #[cfg(feature = "tracing")]
         if tracing::enabled!(tracing::Level::DEBUG) {
             for (idx, artifact) in artifacts.artifacts.iter().enumerate() {
                 tracing::debug!(
@@ -804,7 +804,10 @@ impl OtaClient {
     /// GitHub authentication is not required for this operation as release
     /// assets are downloaded from public URLs.
     #[inline]
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, progress_callback)))]
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(skip(self, progress_callback))
+    )]
     fn download_release_asset<F>(
         &self,
         asset: &ReleaseAsset,

@@ -30,9 +30,11 @@ pub mod ota;
 pub mod rtc;
 
 pub use rtc::{AlarmManager, AlarmType};
+#[cfg(feature = "profiling")]
+pub mod profiling;
 pub mod settings;
 pub mod task;
-#[cfg(feature = "otel")]
+#[cfg(feature = "tracing")]
 pub mod telemetry;
 mod unit;
 pub mod version;

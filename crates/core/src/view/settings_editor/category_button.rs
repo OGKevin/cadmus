@@ -26,7 +26,7 @@ pub struct CategoryButton {
 }
 
 impl CategoryButton {
-    #[cfg_attr(feature = "otel", tracing::instrument())]
+    #[cfg_attr(feature = "tracing", tracing::instrument())]
     pub fn new(
         rect: Rectangle,
         category: Category,
@@ -49,7 +49,7 @@ impl CategoryButton {
 }
 
 impl View for CategoryButton {
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, _hub, bus, _rq, _context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, bus, _rq, _context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
@@ -67,7 +67,7 @@ impl View for CategoryButton {
         }
     }
 
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, fb, fonts), fields(rect = ?rect)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fb, fonts), fields(rect = ?rect)))]
     fn render(&self, fb: &mut dyn Framebuffer, rect: Rectangle, fonts: &mut Fonts) {
         let dpi = CURRENT_DEVICE.dpi;
         fb.draw_rectangle(&rect, TEXT_BUMP_SMALL[0]);

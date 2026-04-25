@@ -34,7 +34,7 @@ impl Db {
     /// # Errors
     ///
     /// Returns an error if the database write fails.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, entry), fields(lang = %lang)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, entry), fields(lang = %lang)))]
     pub(super) fn upsert_entry(&self, lang: &str, entry: &DictionaryEntry) -> Result<(), Error> {
         let updated: UnixTimestamp = entry.updated.into();
         let cached_at = UnixTimestamp::now();
@@ -72,7 +72,7 @@ impl Db {
     /// # Errors
     ///
     /// Returns an error if the database query fails.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(lang = %lang)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(lang = %lang)))]
     pub(super) fn get_entry(&self, lang: &str) -> Result<Option<DictionaryEntry>, Error> {
         RUNTIME.block_on(async {
             let row = sqlx::query!(
@@ -100,7 +100,7 @@ impl Db {
     ///
     /// Returns an error if the database query fails or any stored `updated`
     /// timestamp cannot be converted to a `NaiveDate`.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     pub(super) fn get_all_entries(&self) -> Result<Vec<(String, DictionaryEntry)>, Error> {
         RUNTIME.block_on(async {
             let rows = sqlx::query!(
@@ -133,7 +133,7 @@ impl Db {
     /// # Errors
     ///
     /// Returns an error if the database query fails.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     pub(super) fn get_most_recent_cached_at(&self) -> Result<Option<UnixTimestamp>, Error> {
         RUNTIME.block_on(async {
             let result = sqlx::query_scalar!(
@@ -154,7 +154,7 @@ impl Db {
     /// # Errors
     ///
     /// Returns an error if the database write fails.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(lang = %lang)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(lang = %lang)))]
     pub(super) fn record_install(
         &self,
         lang: &str,
@@ -188,7 +188,7 @@ impl Db {
     /// # Errors
     ///
     /// Returns an error if the database write fails.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(lang = %lang)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(lang = %lang)))]
     pub(super) fn remove_installed(&self, lang: &str) -> Result<(), Error> {
         RUNTIME.block_on(async {
             sqlx::query!(r#"DELETE FROM dictionary_installed WHERE lang = ?"#, lang)
@@ -209,7 +209,7 @@ impl Db {
     /// # Errors
     ///
     /// Returns an error if the database query fails.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self), fields(lang = %lang), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(lang = %lang), ret(level=tracing::Level::TRACE)))]
     pub(super) fn is_update_available(&self, lang: &str) -> Result<bool, Error> {
         RUNTIME.block_on(async {
             let result = sqlx::query_scalar!(

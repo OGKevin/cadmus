@@ -27,7 +27,7 @@ impl BackgroundTask for HelloWorldTask {
 
         loop {
             {
-                #[cfg(feature = "otel")]
+                #[cfg(feature = "tracing")]
                 let _span = tracing::info_span!("hello_world_tick").entered();
                 tracing::info!("Hello world!");
             }
