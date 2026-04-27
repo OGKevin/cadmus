@@ -240,7 +240,13 @@ in
       toolchain = {
         inherit (pkgs) cargo-expand;
       };
-      components = [ "rustfmt" "rustc" "cargo" "llvm-tools-preview" ];
+      components = [
+        "cargo"
+        "clippy"
+        "llvm-tools-preview"
+        "rustc"
+        "rustfmt"
+      ];
     };
   };
 
