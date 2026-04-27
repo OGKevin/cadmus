@@ -1,8 +1,8 @@
 //! `cargo xtask clippy` — lint across the full feature matrix.
 //!
 //! The feature matrix is derived dynamically from the workspace `Cargo.toml`
-//! files, so adding a new feature flag automatically includes it in all
-//! clippy runs without any manual update.
+//! files, so adding a new non-aliased feature flag automatically includes it
+//! in all clippy runs without any manual update.
 //!
 //! ## Feature matrix
 //!

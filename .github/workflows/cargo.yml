@@ -64,9 +64,49 @@ jobs:
         id: matrix
         run: cargo xtask ci matrix
 
+  build-docs-epub:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        id: rust-toolchain
+      - name: Cache
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ steps.rust-toolchain.outputs.cachekey }}-${{ hashFiles('**/Cargo.lock') }}
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+      - name: Install npm dependencies
+        run: npm ci
+      - name: Install mdBook tools
+        uses: ./.github/actions/install-doc-tools
+      - name: Build documentation EPUB
+        run: cargo xtask docs --mdbook-only
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+      - name: Upload documentation EPUB
+        uses: actions/upload-artifact@v7
+        with:
+          name: docs-epub
+          path: docs/book/epub/Cadmus Documentation.epub
+          retention-days: 1
+
   clippy:
     if: github.event_name == 'pull_request'
-    needs: generate-matrix
+    needs: [generate-matrix, build-docs-epub]
 
     strategy:
       fail-fast: false
@@ -100,34 +140,14 @@ jobs:
             ~/.cargo/git/db/
             target/
           key: ${{ runner.os }}-cargo-${{ steps.rust-toolchain.outputs.cachekey }}-${{ hashFiles('**/Cargo.lock') }}
-      - &setup-node
-        name: Setup Node.js
-        uses: actions/setup-node@v6
+      - name: Download documentation EPUB
+        uses: actions/download-artifact@v8
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: "npm"
-
-      - &setup-python
-        name: Setup Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.x"
-
-      - &install-npm-deps
-        name: Install npm dependencies
-        run: npm ci
-
-      - &install-mdbook
-        name: Install mdBook tools
-        uses: ./.github/actions/install-doc-tools
-
-      - &build-docs
-        name: Build documentation
-        run: cargo xtask docs --mdbook-only
-        env:
-          RUSTDOCFLAGS: "-D warnings"
+          name: docs-epub
+          path: docs/book/epub
 
       - name: Run cargo clippy (${{ matrix.label }})
+        if: runner.os != 'Linux'
         run: cargo xtask clippy --features "${{ matrix.label }}"
 
       - name: Save clippy JSON artifact (ubuntu only)
@@ -190,7 +210,7 @@ jobs:
           REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   test:
-    needs: generate-matrix
+    needs: [generate-matrix, build-docs-epub]
     env:
       TEST_ROOT_DIR: ${{ github.workspace }}
 
@@ -210,13 +230,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         id: rust-toolchain
       - *set-build-metadata
-
-      - *setup-node
-      - *setup-python
-      - *install-npm-deps
-
-      - *install-mdbook
-      - *build-docs
+      - name: Download documentation EPUB
+        uses: actions/download-artifact@v8
+        with:
+          name: docs-epub
+          path: docs/book/epub
 
       - name: Install apt packages (Linux)
         if: runner.os == 'Linux'

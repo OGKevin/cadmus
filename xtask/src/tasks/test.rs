@@ -1,8 +1,8 @@
 //! `cargo xtask test` — run tests across the full feature matrix.
 //!
 //! The feature matrix is derived dynamically from the workspace `Cargo.toml`
-//! files, so adding a new feature flag automatically includes it in all test
-//! runs without any manual update.
+//! files, so adding a new non-aliased feature flag automatically includes it
+//! in all test runs without any manual update.
 //!
 //! Each matrix entry runs two passes:
 //! 1. `cargo nextest run` — parallel test execution with per-test output.

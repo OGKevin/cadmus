@@ -2,7 +2,7 @@
 //!
 //! Scans every `Cargo.toml` in the workspace, collects the union of all
 //! non-excluded feature names (see [`is_excluded_feature`]), and produces every
-//! power-set combination crossed with a list of target operating systems.  Each
+//! power-set combination crossed with a list of target operating systems. Each
 //! combination becomes one [`MatrixEntry`] that maps to a single CI job.
 //!
 //! The same entries are used locally (by `test` and `clippy` tasks) and in CI
@@ -46,10 +46,12 @@ impl MatrixEntry {
 /// Scans the workspace and returns the full feature × OS matrix.
 ///
 /// Features excluded from the matrix (see [`is_excluded_feature`]) are
-/// skipped — for example `default` (enabled by Cargo automatically) and
-/// `bench` (only affects module visibility for benchmarks). Runtime features
-/// such as `tracing` and `profiling` stay in the matrix so CI checks them both
-/// standalone and in combinations.
+/// skipped — for example `default` (enabled by Cargo automatically), `bench`
+/// (only affects module visibility for benchmarks), and `telemetry` (an alias
+/// for `tracing + profiling` with no direct `cfg(feature = "telemetry")`
+/// branches to validate separately). Runtime features such as `tracing` and
+/// `profiling` stay in the matrix so CI checks them both standalone and in
+/// combinations.
 /// The matrix always starts with the default (no explicit features) entry,
 /// followed by every non-empty power-set combination in a stable order.
 /// Each feature combination is repeated once per OS in `os_list`.
@@ -127,8 +129,8 @@ pub fn to_github_matrix_json(entries: &[MatrixEntry]) -> Result<String> {
 
 /// Normalises a `--features` argument to the label format used by the matrix.
 ///
-/// Accepts both the comma-separated cargo format (`"telemetry,test"`) and the
-/// human-readable label format (`"telemetry + test"`), sorts the parts
+/// Accepts both the comma-separated cargo format (`"tracing,test"`) and the
+/// human-readable label format (`"test + tracing"`), sorts the parts
 /// alphabetically, and joins them with `" + "`.  An empty input returns
 /// `"default"`.
 ///
@@ -137,14 +139,14 @@ pub fn to_github_matrix_json(entries: &[MatrixEntry]) -> Result<String> {
 /// ```
 /// use xtask_lib::tasks::util::matrix::normalize_features_arg;
 ///
-/// assert_eq!(normalize_features_arg("telemetry,test"), "telemetry + test");
-/// assert_eq!(normalize_features_arg("telemetry + test"), "telemetry + test");
-/// assert_eq!(normalize_features_arg("test,telemetry"), "telemetry + test");
+/// assert_eq!(normalize_features_arg("tracing,test"), "test + tracing");
+/// assert_eq!(normalize_features_arg("test + tracing"), "test + tracing");
+/// assert_eq!(normalize_features_arg("test,tracing"), "test + tracing");
 /// assert_eq!(normalize_features_arg(""), "default");
 /// assert_eq!(normalize_features_arg("  "), "default");
 /// assert_eq!(normalize_features_arg(",,"), "default");
 /// assert_eq!(normalize_features_arg("+"), "default");
-/// assert_eq!(normalize_features_arg("telemetry"), "telemetry");
+/// assert_eq!(normalize_features_arg("tracing"), "tracing");
 /// ```
 pub fn normalize_features_arg(input: &str) -> String {
     let mut parts: Vec<&str> = input
@@ -201,8 +203,10 @@ fn is_ignored(entry: &walkdir::DirEntry) -> bool {
 /// - `default` is always enabled by Cargo automatically.
 /// - `bench` only changes module visibility for micro-benchmarks and does not
 ///   need its own power-set of CI jobs.
+/// - `telemetry` only aliases `tracing + profiling`, so adding it to the
+///   powerset would duplicate combinations that already compile the same code.
 fn is_excluded_feature(name: &str) -> bool {
-    matches!(name, "default" | "bench")
+    matches!(name, "default" | "bench" | "telemetry")
 }
 
 fn build_matrix(features: BTreeSet<String>, os_list: &[&str]) -> Vec<MatrixEntry> {
@@ -255,30 +259,30 @@ mod tests {
 
     #[test]
     fn build_matrix_single_feature_yields_two_combos_per_os() {
-        let features = BTreeSet::from(["telemetry".to_owned()]);
+        let features = BTreeSet::from(["tracing".to_owned()]);
         let entries = build_matrix(features, ONE_OS);
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].label, "default");
-        assert_eq!(entries[1].label, "telemetry");
+        assert_eq!(entries[1].label, "tracing");
     }
 
     #[test]
     fn build_matrix_two_features_yields_four_combos_per_os() {
-        let features = BTreeSet::from(["telemetry".to_owned(), "test".to_owned()]);
+        let features = BTreeSet::from(["test".to_owned(), "tracing".to_owned()]);
         let entries = build_matrix(features, ONE_OS);
         assert_eq!(entries.len(), 4);
         let labels: Vec<&str> = entries.iter().map(|e| e.label.as_str()).collect();
         assert!(labels.contains(&"default"));
-        assert!(labels.contains(&"telemetry"));
+        assert!(labels.contains(&"tracing"));
         assert!(labels.contains(&"test"));
-        assert!(labels.contains(&"telemetry + test"));
+        assert!(labels.contains(&"test + tracing"));
     }
 
     #[test]
     fn build_matrix_three_features_two_os_yields_sixteen_entries() {
         let features = BTreeSet::from([
             "emulator".to_owned(),
-            "telemetry".to_owned(),
+            "tracing".to_owned(),
             "test".to_owned(),
         ]);
         let entries = build_matrix(features, TWO_OS);
@@ -298,14 +302,19 @@ mod tests {
     #[test]
     fn cargo_args_combo_entry_includes_features_flag() {
         let entry = MatrixEntry {
-            label: "telemetry + test".to_owned(),
-            features: "telemetry,test".to_owned(),
+            label: "test + tracing".to_owned(),
+            features: "test,tracing".to_owned(),
             os: "ubuntu-latest".to_owned(),
         };
         assert_eq!(
             entry.cargo_args(),
-            vec!["--workspace", "--features", "telemetry,test"]
+            vec!["--workspace", "--features", "test,tracing"]
         );
+    }
+
+    #[test]
+    fn excludes_telemetry_alias_from_matrix() {
+        assert!(is_excluded_feature("telemetry"));
     }
 
     #[test]
@@ -323,25 +332,22 @@ mod tests {
 
     #[test]
     fn normalize_single_feature() {
-        assert_eq!(normalize_features_arg("telemetry"), "telemetry");
+        assert_eq!(normalize_features_arg("tracing"), "tracing");
     }
 
     #[test]
     fn normalize_comma_separated_two_features() {
-        assert_eq!(normalize_features_arg("telemetry,test"), "telemetry + test");
+        assert_eq!(normalize_features_arg("tracing,test"), "test + tracing");
     }
 
     #[test]
     fn normalize_label_format_round_trips() {
-        assert_eq!(
-            normalize_features_arg("telemetry + test"),
-            "telemetry + test"
-        );
+        assert_eq!(normalize_features_arg("test + tracing"), "test + tracing");
     }
 
     #[test]
     fn normalize_out_of_order_comma_separated_sorts() {
-        assert_eq!(normalize_features_arg("test,telemetry"), "telemetry + test");
+        assert_eq!(normalize_features_arg("tracing,test"), "test + tracing");
     }
 
     #[test]
@@ -357,14 +363,15 @@ mod tests {
         let labels: Vec<&str> = entries.iter().map(|e| e.label.as_str()).collect();
         assert!(labels.contains(&"default"));
         assert!(labels.contains(&"emulator"));
+        assert!(labels.contains(&"kobo"));
         assert!(labels.contains(&"profiling"));
-        assert!(labels.contains(&"telemetry"));
         assert!(labels.contains(&"tracing"));
         assert!(labels.contains(&"test"));
+        assert!(!labels.contains(&"telemetry"));
         assert_eq!(
             entries.len(),
-            128,
-            "6 CI features including tracing/profiling (only bench excluded) → 2⁶ = 64 combos × 2 OSes = 128 entries"
+            64,
+            "5 CI features after excluding telemetry alias and bench → 2⁵ = 32 combos × 2 OSes = 64 entries"
         );
     }
 }
