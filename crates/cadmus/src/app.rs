@@ -614,9 +614,6 @@ pub fn run() -> Result<(), Error> {
 
     context.plugged = context.battery.status().is_ok_and(|v| v[0].is_wired());
 
-    if context.settings.import.startup_trigger {
-        context.batch_import();
-    }
     context.load_dictionaries();
     context.load_keyboard_layouts();
 
@@ -724,7 +721,12 @@ pub fn run() -> Result<(), Error> {
     let mut tasks: Vec<Task> = Vec::new();
     let mut background_tasks = TaskManager::new();
 
-    cadmus_core::task::register_startup_tasks(&mut background_tasks, tx.clone(), &context.settings);
+    cadmus_core::task::register_startup_tasks(
+        &mut background_tasks,
+        tx.clone(),
+        &context.settings,
+        &context.database,
+    );
 
     let mut history: Vec<HistoryItem> = Vec::new();
     let mut rq = RenderQueue::new();
@@ -764,6 +766,8 @@ pub fn run() -> Result<(), Error> {
         let _enter = span.enter();
         #[cfg(feature = "tracing")]
         tracing::trace!(event = ?evt, "handling event");
+
+        background_tasks.handle_event(&evt, &tx, &context.database, &context.settings);
 
         match evt {
             Event::Device(de) => match de {

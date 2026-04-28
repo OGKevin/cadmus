@@ -93,26 +93,6 @@ impl Context {
         }
     }
 
-    pub fn batch_import(&mut self) {
-        self.library.import(&self.settings.import);
-        let selected_library = self.settings.selected_library;
-        for (index, library_settings) in self.settings.libraries.iter().enumerate() {
-            if index == selected_library {
-                continue;
-            }
-            if let Ok(mut library) = Library::new(
-                &library_settings.path,
-                &self.database,
-                &library_settings.name,
-            )
-            .map_err(|e| error!("{:#?}", e))
-            {
-                library.import(&self.settings.import);
-                library.flush();
-            }
-        }
-    }
-
     pub fn load_keyboard_layouts(&mut self) {
         let glob = Glob::new("**/*.json").unwrap().compile_matcher();
 

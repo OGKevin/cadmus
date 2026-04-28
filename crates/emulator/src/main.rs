@@ -336,9 +336,6 @@ fn run() -> Result<(), Error> {
 
     let mut context = build_context(fb, settings, fonts, database)?;
 
-    if context.settings.import.startup_trigger {
-        context.batch_import();
-    }
     context.load_dictionaries();
     context.load_keyboard_layouts();
 
@@ -361,7 +358,12 @@ fn run() -> Result<(), Error> {
 
     let mut background_tasks = TaskManager::new();
 
-    cadmus_core::task::register_startup_tasks(&mut background_tasks, tx.clone(), &context.settings);
+    cadmus_core::task::register_startup_tasks(
+        &mut background_tasks,
+        tx.clone(),
+        &context.settings,
+        &context.database,
+    );
 
     let mut history: Vec<Box<dyn View>> = Vec::new();
     let mut rq = RenderQueue::new();
@@ -539,6 +541,7 @@ fn run() -> Result<(), Error> {
         }
 
         while let Ok(evt) = rx.recv_timeout(Duration::from_millis(20)) {
+            background_tasks.handle_event(&evt, &tx, &context.database, &context.settings);
             match evt {
                 Event::Open(info) => {
                     let rotation = context.display.rotation;

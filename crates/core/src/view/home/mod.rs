@@ -1791,14 +1791,6 @@ impl Home {
         self.select_directory(&home, hub, rq, context);
     }
 
-    fn import(&mut self, hub: &Hub, rq: &mut RenderQueue, context: &mut Context) {
-        context.library.import(&context.settings.import);
-        context
-            .library
-            .set_sort(self.sort_method, self.reverse_order);
-        self.refresh_visibles(true, false, hub, rq, context);
-    }
-
     fn clean_up(&mut self, hub: &Hub, rq: &mut RenderQueue, context: &mut Context) {
         context.library.clean_up();
         self.refresh_visibles(true, false, hub, rq, context);
@@ -2165,7 +2157,11 @@ impl View for Home {
                 true
             }
             Event::Select(EntryId::Import) => {
-                self.import(hub, rq, context);
+                let library_index = context.settings.selected_library;
+                hub.send(Event::ImportLibrary {
+                    library_index: Some(library_index),
+                })
+                .ok();
                 true
             }
             Event::Select(EntryId::CleanUp) => {
@@ -2438,6 +2434,17 @@ impl View for Home {
             Event::Reseed => {
                 self.reseed(hub, rq, context);
                 true
+            }
+            Event::ImportFinished { library_index } => {
+                if library_index.is_none()
+                    || library_index == Some(context.settings.selected_library)
+                {
+                    context
+                        .library
+                        .set_sort(self.sort_method, self.reverse_order);
+                    self.refresh_visibles(true, false, hub, rq, context);
+                }
+                false
             }
             _ => false,
         }

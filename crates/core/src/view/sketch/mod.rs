@@ -6,7 +6,7 @@ use crate::framebuffer::{Framebuffer, Pixmap, UpdateMode};
 use crate::geom::{CornerSpec, Point, Rectangle};
 use crate::helpers::IsHidden;
 use crate::input::{DeviceEvent, FingerStatus};
-use crate::settings::{ImportSettings, Pen};
+use crate::settings::Pen;
 use crate::unit::scale_by_dpi;
 use crate::view::common::locate_by_id;
 use crate::view::icon::{Icon, ICONS_PIXMAPS};
@@ -236,12 +236,11 @@ impl Sketch {
         Ok(())
     }
 
-    fn quit(&self, context: &mut Context) {
-        let import_settings = ImportSettings {
-            allowed_kinds: ["png".to_string()].iter().cloned().collect(),
-            ..Default::default()
-        };
-        context.library.import(&import_settings);
+    fn quit(&self, hub: &Hub, context: &Context) {
+        hub.send(Event::ImportLibrary {
+            library_index: Some(context.settings.selected_library),
+        })
+        .ok();
     }
 }
 
@@ -409,7 +408,7 @@ impl View for Sketch {
                 true
             }
             Event::Select(EntryId::Quit) => {
-                self.quit(context);
+                self.quit(hub, context);
                 hub.send(Event::Back).ok();
                 true
             }

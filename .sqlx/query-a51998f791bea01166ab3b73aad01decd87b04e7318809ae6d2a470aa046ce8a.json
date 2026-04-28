@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                        INSERT OR IGNORE INTO book_categories (book_fingerprint, category_id)\n                        VALUES (?, ?)\n                        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "a51998f791bea01166ab3b73aad01decd87b04e7318809ae6d2a470aa046ce8a"
+}

@@ -1,47 +1,25 @@
-mod db;
+pub(crate) mod db;
+pub mod importer;
 mod migrations;
 
 use crate::db::Database;
-use crate::document::{file_kind, SimpleTocEntry};
-use crate::helpers::{Fingerprint, Fp, IsHidden};
+use crate::document::SimpleTocEntry;
+use crate::helpers::{Fingerprint, Fp};
 use crate::library::db::Db as LibraryDb;
-use crate::metadata::extract_metadata_from_document;
 use crate::metadata::sorter;
-use crate::metadata::{BookQuery, FileInfo, Info, ReaderInfo, SimpleStatus, SortMethod};
-use crate::settings::ImportSettings;
+use crate::metadata::{BookQuery, Info, ReaderInfo, SimpleStatus, SortMethod};
 use anyhow::{bail, format_err, Error};
 use chrono::Local;
-use fxhash::FxHashMap;
 use std::collections::BTreeSet;
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use tracing::{debug, error, info};
-use walkdir::WalkDir;
 
-const METADATA_FILENAME: &str = ".metadata.json";
-const READING_STATES_DIRNAME: &str = ".reading-states";
+pub(crate) const METADATA_FILENAME: &str = ".metadata.json";
+pub(crate) const READING_STATES_DIRNAME: &str = ".reading-states";
 #[cfg(not(feature = "test"))]
-const THUMBNAIL_PREVIEWS_DIRNAME: &str = ".thumbnail-previews";
-
-enum PendingRelocation {
-    /// File at an existing path received a new fingerprint (e.g. re-saved).
-    /// The book's metadata is transferred to the new fingerprint.
-    FingerprintChanged {
-        new_fp: Fp,
-        old_fp: Fp,
-        file_size: u64,
-    },
-}
-
-impl PendingRelocation {
-    /// Returns the old fingerprint being replaced.
-    fn old_fp(&self) -> Fp {
-        match self {
-            PendingRelocation::FingerprintChanged { old_fp, .. } => *old_fp,
-        }
-    }
-}
+pub(crate) const THUMBNAIL_PREVIEWS_DIRNAME: &str = ".thumbnail-previews";
 
 #[derive(Debug, Clone, Default)]
 pub struct PageResult {
@@ -310,248 +288,8 @@ impl Library {
         Ok(page)
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, settings)))]
-    pub fn import(&mut self, settings: &ImportSettings) {
-        let handles = match self.db.list_book_handles(self.library_id) {
-            Ok(h) => h,
-            Err(e) => {
-                error!(error = %e, "failed to load book handles for import");
-                return;
-            }
-        };
-
-        let mut handles_by_fp: FxHashMap<Fp, PathBuf> = handles.iter().cloned().collect();
-        let mut handles_by_path: FxHashMap<PathBuf, Fp> =
-            handles.into_iter().map(|(fp, p)| (p, fp)).collect();
-
-        let mut books_to_insert: Vec<(Fp, Info)> = Vec::new();
-        let mut path_updates: Vec<(Fp, PathBuf, PathBuf)> = Vec::new();
-        let mut books_to_delete: Vec<Fp> = Vec::new();
-        let mut pending_relocations: Vec<PendingRelocation> = Vec::new();
-        let mut thumbnails_to_delete: Vec<Fp> = Vec::new();
-
-        #[cfg(feature = "tracing")]
-        let _walk_span = tracing::info_span!("walk_directory").entered();
-
-        #[cfg(feature = "emulator")]
-        const IGNORED_TOP_LEVEL_DIRS: &[&str] = &["target", "node_modules", "thirdparty"];
-
-        let walk_entries: Vec<_> = WalkDir::new(&self.home)
-            .min_depth(1)
-            .into_iter()
-            .filter_entry(|e| {
-                if e.is_hidden() {
-                    return false;
-                }
-                #[cfg(feature = "emulator")]
-                if e.depth() == 1 && e.file_type().is_dir() {
-                    if let Some(name) = e.file_name().to_str() {
-                        if IGNORED_TOP_LEVEL_DIRS.contains(&name) {
-                            return false;
-                        }
-                    }
-                }
-                true
-            })
-            .filter_map(|e| e.ok())
-            .filter(|e| !e.file_type().is_dir())
-            .collect();
-
-        #[cfg(feature = "tracing")]
-        let _walk_span = _walk_span.exit();
-
-        #[cfg(feature = "tracing")]
-        let _process_span =
-            tracing::info_span!("process_entries", count = walk_entries.len()).entered();
-
-        for entry in &walk_entries {
-            #[cfg(feature = "tracing")]
-            let _span =
-                tracing::info_span!(parent: &_process_span, "process_entry", entry = entry.path().to_str())
-                    .entered();
-
-            let path = entry.path();
-            let relat = path.strip_prefix(&self.home).unwrap_or(path);
-
-            let fp = match path.fingerprint() {
-                Ok(fp) => fp,
-                Err(e) => {
-                    error!(path = ?path, error = %e, "failed to compute fingerprint, skipping");
-                    continue;
-                }
-            };
-
-            if handles_by_fp.contains_key(&fp) {
-                if relat != handles_by_fp[&fp] {
-                    debug!(
-                        fp = %fp,
-                        old_path = %handles_by_fp[&fp].display(),
-                        new_path = %relat.display(),
-                        "updated book path"
-                    );
-                    let old_path = handles_by_fp.remove(&fp).unwrap();
-                    handles_by_path.remove(&old_path);
-                    handles_by_fp.insert(fp, relat.to_path_buf());
-                    handles_by_path.insert(relat.to_path_buf(), fp);
-                    path_updates.push((fp, relat.to_path_buf(), path.to_path_buf()));
-                }
-                continue;
-            }
-
-            if let Some(old_fp) = handles_by_path.get(relat).cloned() {
-                debug!(
-                    path = %relat.display(),
-                    old_fp = %old_fp,
-                    new_fp = %fp,
-                    "updated book fingerprint"
-                );
-
-                handles_by_fp.remove(&old_fp);
-                handles_by_path.remove(relat);
-                handles_by_fp.insert(fp, relat.to_path_buf());
-                handles_by_path.insert(relat.to_path_buf(), fp);
-                books_to_delete.push(old_fp);
-
-                pending_relocations.push(PendingRelocation::FingerprintChanged {
-                    new_fp: fp,
-                    old_fp,
-                    file_size: entry.metadata().map(|m| m.len()).unwrap_or(0),
-                });
-
-                thumbnails_to_delete.push(old_fp);
-                continue;
-            }
-
-            {
-                let kind = file_kind(path).unwrap_or_default();
-                if !settings.allowed_kinds.contains(&kind) {
-                    continue;
-                }
-                info!(fp = %fp, path = %relat.display(), "added new entry");
-                let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
-                let file = FileInfo {
-                    path: relat.to_path_buf(),
-                    absolute_path: path.to_path_buf(),
-                    kind,
-                    size,
-                };
-                let mut info = Info {
-                    file,
-                    ..Default::default()
-                };
-                if settings.metadata_kinds.contains(&info.file.kind) {
-                    extract_metadata_from_document(&self.home, &mut info);
-                }
-                handles_by_fp.insert(fp, relat.to_path_buf());
-                handles_by_path.insert(relat.to_path_buf(), fp);
-                books_to_insert.push((fp, info));
-            }
-        }
-
-        #[cfg(feature = "tracing")]
-        let _process_span = _process_span.exit();
-
-        #[cfg(feature = "tracing")]
-        let _cleanup_span = tracing::info_span!("cleanup_orphaned_entries").entered();
-
-        let home = &self.home;
-
-        for (fp, relat) in &handles_by_fp {
-            let full_path = home.join(relat);
-            if !full_path.exists() {
-                info!("Remove entry: {}, {}.", fp, relat.display());
-                books_to_delete.push(*fp);
-            }
-        }
-
-        #[cfg(feature = "tracing")]
-        let _cleanup_span = _cleanup_span.exit();
-
-        #[cfg(feature = "tracing")]
-        let _db_span = tracing::info_span!("database_batch_operations").entered();
-
-        if !pending_relocations.is_empty() {
-            let old_fps: Vec<Fp> = pending_relocations
-                .iter()
-                .map(PendingRelocation::old_fp)
-                .collect();
-
-            let mut fetched = self
-                .db
-                .batch_get_books_by_fingerprints(self.library_id, &old_fps)
-                .unwrap_or_default();
-
-            for relocation in pending_relocations {
-                match relocation {
-                    PendingRelocation::FingerprintChanged {
-                        new_fp,
-                        old_fp,
-                        file_size,
-                    } => {
-                        if let Some(mut info) = fetched.remove(&old_fp) {
-                            if settings.sync_metadata
-                                && settings.metadata_kinds.contains(&info.file.kind)
-                            {
-                                extract_metadata_from_document(&self.home, &mut info);
-                            }
-                            info.file.size = file_size;
-                            books_to_insert.push((new_fp, info));
-                        }
-                    }
-                }
-            }
-        }
-
-        if let Err(e) = self.db.batch_delete_thumbnails(&thumbnails_to_delete) {
-            error!(
-                error = %e,
-                count = thumbnails_to_delete.len(),
-                "batch delete thumbnails failed"
-            );
-        }
-
-        if !books_to_insert.is_empty() {
-            let book_refs: Vec<(Fp, &Info)> = books_to_insert
-                .iter()
-                .map(|(fp, info)| (*fp, info))
-                .collect();
-
-            if let Err(e) = self.db.batch_insert_books(self.library_id, &book_refs) {
-                error!(
-                    error = %e,
-                    count = book_refs.len(),
-                    "batch insert failed"
-                );
-            }
-        }
-
-        if let Err(e) = self
-            .db
-            .batch_update_book_paths(self.library_id, &path_updates)
-        {
-            error!(
-                error = %e,
-                count = path_updates.len(),
-                "batch update book paths failed"
-            );
-        }
-
-        if !books_to_delete.is_empty() {
-            if let Err(e) = self
-                .db
-                .batch_delete_books(self.library_id, &books_to_delete)
-            {
-                error!(
-                    error = %e,
-                    count = books_to_delete.len(),
-                    "batch delete failed"
-                );
-            }
-        }
-
-        if let Err(e) = self.db.compute_sort_keys(self.library_id) {
-            error!(error = %e, library_id = self.library_id, "failed to compute sort keys");
-        }
+    pub fn resolve_id(&self) -> (i64, &std::path::Path) {
+        (self.library_id, &self.home)
     }
 
     pub fn add_document(&mut self, info: Info) {
@@ -953,8 +691,11 @@ mod tests {
     use super::*;
     use crate::db::Database;
     use crate::geom::CycleDir;
+    use crate::metadata::FileInfo;
     use crate::settings::ImportSettings;
+    use crate::task::ShutdownSignal;
     use std::str::FromStr;
+    use std::sync::mpsc;
 
     fn setup_library_with_book(
         dir: &Path,
@@ -962,9 +703,20 @@ mod tests {
         name: &str,
         filename: &str,
     ) -> (Library, PathBuf) {
-        let mut lib = Library::new(dir, db, name).expect("failed to create library");
+        let lib = Library::new(dir, db, name).expect("failed to create library");
         fs::write(dir.join(filename), b"dummy book content").expect("failed to write test file");
-        lib.import(&ImportSettings::default());
+        let (tx, _rx) = mpsc::channel();
+        let notif_id = crate::view::ViewId::MessageNotif(0);
+        let shutdown = ShutdownSignal::never();
+        importer::run(
+            &lib.db,
+            lib.library_id,
+            dir,
+            &ImportSettings::default(),
+            &tx,
+            notif_id,
+            &shutdown,
+        );
         (lib, PathBuf::from(filename))
     }
 

@@ -62,5 +62,6 @@ When reviewing changes to `app.rs`:
 - [ ] Check if `locate_by_id` usage patterns changed
 - [ ] Verify hub vs bus usage is still accurate
 - [ ] Update or add Mermaid diagrams if flow changes
+- [ ] Use `<br/>` for line breaks inside Mermaid node labels — `\n` is not supported
 - [ ] Ensure code examples in docs match actual implementation
 - [ ] Test that documentation builds and renders correctly

@@ -2,13 +2,16 @@ use cadmus_core::anyhow::{format_err, Context, Error};
 use cadmus_core::chrono::NaiveDateTime;
 use cadmus_core::db::Database;
 use cadmus_core::helpers::datetime_format;
+// use cadmus_core::library::importer;
 use cadmus_core::library::Library;
 use cadmus_core::metadata::{consolidate, rename_from_info};
 use cadmus_core::metadata::{extract_metadata_from_document, extract_metadata_from_filename};
 use cadmus_core::settings::ImportSettings;
+// use cadmus_core::view::{Event, ViewId, ID_FEEDER};
 use getopts::Options;
 use std::env;
 use std::path::Path;
+// use std::sync::mpsc;
 
 const DB_FILENAME: &str = "cadmus.sqlite";
 
@@ -117,7 +120,19 @@ fn main() -> Result<(), Error> {
     let mut library = Library::new(library_path, &database, &library_name)?;
 
     if matches.opt_present("I") {
-        library.import(&import_settings);
+        // let notif_id = ViewId::MessageNotif(ID_FEEDER.next());
+        // let (hub, _rx) = mpsc::channel::<Event>();
+        // this should be refactored to either be made into a plugin and talk via the API
+        // or incorporated into core.
+        // for now, just comment out.
+        // importer::run(
+        //     &library.db,
+        //     library.library_id,
+        //     &library.home,
+        //     &import_settings,
+        //     &hub,
+        //     notif_id,
+        // );
     } else if matches.opt_present("C") {
         library.clean_up();
     } else {

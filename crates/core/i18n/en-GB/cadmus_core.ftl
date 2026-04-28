@@ -74,6 +74,9 @@ settings-library-inherit = Inherit
 settings-import-startup-trigger = Import on Startup
 settings-import-sync-metadata = Sync Metadata
 
+# Importer
+importer-importing-library = Importing Library…
+
 # Settings - Log Level
 settings-log-level-trace = TRACE
 settings-log-level-debug = DEBUG

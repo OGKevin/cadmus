@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                         INSERT OR IGNORE INTO book_authors (book_fingerprint, author_id, position)\n                         VALUES (?, ?, ?)\n                         ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "1dcb7a630e961b00422b6ea72f0655c81c3a42a6a956aec48c70128fe0f26700"
+}

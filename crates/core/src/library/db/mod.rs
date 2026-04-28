@@ -167,9 +167,9 @@ impl Db {
 
             let result = sqlx::query!(
                 r#"
-                INSERT INTO libraries (path, name, created_at)
-                VALUES (?, ?, ?)
-                "#,
+                        INSERT INTO libraries (path, name, created_at)
+                        VALUES (?, ?, ?)
+                        "#,
                 path,
                 name,
                 now
@@ -1728,10 +1728,10 @@ impl Db {
                 .await?;
 
                 sqlx::query!(
-                    r#"
-                    INSERT OR IGNORE INTO book_categories (book_fingerprint, category_id)
-                    VALUES (?, ?)
-                    "#,
+                        r#"
+                        INSERT OR IGNORE INTO book_categories (book_fingerprint, category_id)
+                        VALUES (?, ?)
+                        "#,
                     fp_str,
                     category_id
                 )
@@ -1862,9 +1862,9 @@ impl Db {
                 let pos = position as i64;
                 sqlx::query!(
                     r#"
-                    INSERT INTO book_authors (book_fingerprint, author_id, position)
-                    VALUES (?, ?, ?)
-                    "#,
+                        INSERT OR IGNORE INTO book_authors (book_fingerprint, author_id, position)
+                        VALUES (?, ?, ?)
+                        "#,
                     fp_str,
                     author_id,
                     pos
@@ -1897,9 +1897,9 @@ impl Db {
 
                 sqlx::query!(
                     r#"
-                    INSERT INTO book_categories (book_fingerprint, category_id)
-                    VALUES (?, ?)
-                    "#,
+                        INSERT OR IGNORE INTO book_categories (book_fingerprint, category_id)
+                        VALUES (?, ?)
+                        "#,
                     fp_str,
                     category_id
                 )
@@ -2292,20 +2292,20 @@ impl Db {
                     let pos = position as i64;
                     sqlx::query!(
                         r#"
-                        INSERT INTO book_authors (book_fingerprint, author_id, position)
-                        VALUES (?, ?, ?)
-                        "#,
-                        fp_str,
-                        author_id,
-                        pos
-                    )
-                    .execute(&mut *tx)
-                    .await?;
-                }
+                         INSERT OR IGNORE INTO book_authors (book_fingerprint, author_id, position)
+                         VALUES (?, ?, ?)
+                         "#,
+                         fp_str,
+                         author_id,
+                         pos
+                     )
+                     .execute(&mut *tx)
+                     .await?;
+                 }
 
-                for category_name in &info.categories {
-                    sqlx::query!(
-                        r#"INSERT OR IGNORE INTO categories (name) VALUES (?)"#,
+                 for category_name in &info.categories {
+                     sqlx::query!(
+                         r#"INSERT OR IGNORE INTO categories (name) VALUES (?)"#,
                         category_name
                     )
                     .execute(&mut *tx)
@@ -2318,19 +2318,19 @@ impl Db {
                     .fetch_one(&mut *tx)
                     .await?;
 
-                    sqlx::query!(
-                        r#"
-                        INSERT INTO book_categories (book_fingerprint, category_id)
-                        VALUES (?, ?)
-                        "#,
-                        fp_str,
-                        category_id
-                    )
-                    .execute(&mut *tx)
-                    .await?;
-                }
+                     sqlx::query!(
+                         r#"
+                         INSERT OR IGNORE INTO book_categories (book_fingerprint, category_id)
+                         VALUES (?, ?)
+                         "#,
+                         fp_str,
+                         category_id
+                     )
+                     .execute(&mut *tx)
+                     .await?;
+                 }
 
-                if let Some(reader_info) = &info.reader_info {
+                 if let Some(reader_info) = &info.reader_info {
                     let rs_row = reader_info_to_reading_state_row(*fp, reader_info);
 
                     sqlx::query!(

@@ -38,6 +38,7 @@
 mod dbus_monitor;
 #[cfg(any(feature = "test", doc))]
 mod hello_world;
+pub mod import;
 #[cfg(any(feature = "kobo", doc))]
 mod wifi_status_monitor;
 
@@ -49,6 +50,7 @@ use std::time::Duration;
 
 use thiserror::Error;
 
+use crate::db::Database;
 use crate::settings::Settings;
 use crate::view::Event;
 
@@ -69,6 +71,8 @@ pub enum TaskError {
 pub enum TaskId {
     /// A tmp placeholder until there is a Task always available.
     Placeholder,
+    /// Library import task.
+    Import,
     /// The example task that prints periodically (test builds only).
     #[cfg(any(feature = "test", doc))]
     HelloWorld,
@@ -90,6 +94,7 @@ impl std::fmt::Display for TaskId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             TaskId::Placeholder => write!(f, "placeholder"),
+            TaskId::Import => write!(f, "import"),
             #[cfg(feature = "test")]
             TaskId::HelloWorld => write!(f, "hello_world"),
             #[cfg(all(feature = "test", feature = "kobo"))]
@@ -110,6 +115,9 @@ impl std::fmt::Display for TaskId {
 /// [`wait`](Self::wait) to interrupt sleep when shutdown is requested.
 pub struct ShutdownSignal {
     receiver: Receiver<()>,
+    /// Keeps the sender alive when no external owner exists, preventing
+    /// spurious `Disconnected` errors in `wait()`.
+    _sender_anchor: Option<Sender<()>>,
     stopped: AtomicBool,
 }
 
@@ -117,8 +125,32 @@ impl ShutdownSignal {
     fn new(receiver: Receiver<()>) -> Self {
         Self {
             receiver,
+            _sender_anchor: None,
             stopped: AtomicBool::new(false),
         }
+    }
+
+    /// Creates a shutdown signal that never fires.
+    ///
+    /// Intended for use in tests and one-shot contexts where graceful shutdown
+    /// is not needed.
+    pub fn never() -> Self {
+        let (tx, rx) = mpsc::channel();
+        Self {
+            receiver: rx,
+            _sender_anchor: Some(tx),
+            stopped: AtomicBool::new(false),
+        }
+    }
+
+    /// Creates a shutdown signal from a raw receiver, for use in tests.
+    ///
+    /// Prefer [`never`](Self::never) when no shutdown is needed. Use this
+    /// when the test needs to trigger shutdown explicitly by sending `()` on
+    /// the corresponding `Sender`.
+    #[cfg(test)]
+    pub fn new_for_test(receiver: Receiver<()>) -> Self {
+        Self::new(receiver)
     }
 
     /// Returns `true` if shutdown has been requested.
@@ -188,6 +220,9 @@ struct RunningTask {
 /// methods to stop individual tasks or all tasks at once.
 pub struct TaskManager {
     tasks: HashMap<TaskId, RunningTask>,
+    /// A pending import rerun queued while an import was already running.
+    /// `Some(library_index)` means re-run for that index after current finishes.
+    pending_import_rerun: Option<Option<usize>>,
 }
 
 impl TaskManager {
@@ -195,6 +230,7 @@ impl TaskManager {
     pub fn new() -> Self {
         Self {
             tasks: HashMap::new(),
+            pending_import_rerun: None,
         }
     }
 
@@ -293,6 +329,56 @@ impl TaskManager {
         self.tasks.retain(|_, task| !task.handle.is_finished());
     }
 
+    /// Observes an event without consuming it.
+    ///
+    /// Must be called for every event before passing it to the view tree.
+    /// Always returns `false` — it never consumes events.
+    pub fn handle_event(
+        &mut self,
+        evt: &Event,
+        hub: &Sender<Event>,
+        database: &Database,
+        settings: &Settings,
+    ) -> bool {
+        match evt {
+            Event::ImportLibrary { library_index } => {
+                self.schedule_import(*library_index, hub, database, settings);
+            }
+            Event::ImportFinished { .. } => {
+                if let Some(pending) = self.pending_import_rerun.take() {
+                    self.schedule_import(pending, hub, database, settings);
+                }
+            }
+            _ => {}
+        }
+        false
+    }
+
+    /// Schedules an import task, coalescing if one is already running.
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
+    fn schedule_import(
+        &mut self,
+        library_index: Option<usize>,
+        hub: &Sender<Event>,
+        database: &Database,
+        settings: &Settings,
+    ) {
+        if self.is_running(&TaskId::Import) {
+            self.pending_import_rerun = Some(library_index);
+            return;
+        }
+
+        let task = Box::new(import::ImportTask::new(
+            database.clone(),
+            settings.clone(),
+            library_index,
+        ));
+
+        if let Err(e) = self.start(task, hub.clone()) {
+            tracing::warn!(error = %e, "failed to start import task");
+        }
+    }
+
     /// Returns `true` if a task with the given ID is running.
     pub fn is_running(&mut self, id: &TaskId) -> bool {
         self.cleanup_finished();
@@ -325,7 +411,13 @@ impl Drop for TaskManager {
 /// - [`wifi_status_monitor::WifiStatusMonitorTask`] - monitors WiFi status via dhcpcd-dbus (kobo only)
 /// - [`hello_world::HelloWorldTask`] - prints "Hello world!" every minute (test only)
 /// - [`dbus_monitor::DbusMonitorTask`] - monitors D-Bus signals (test + kobo only, when `settings.logging.enable_dbus_log` is true)
-pub fn register_startup_tasks(manager: &mut TaskManager, hub: Sender<Event>, _settings: &Settings) {
+/// - [`import::ImportTask`] - imports all libraries if `settings.import.startup_trigger` is set
+pub fn register_startup_tasks(
+    manager: &mut TaskManager,
+    hub: Sender<Event>,
+    settings: &Settings,
+    database: &Database,
+) {
     #[cfg(feature = "kobo")]
     {
         let task = Box::new(wifi_status_monitor::WifiStatusMonitorTask);
@@ -336,8 +428,6 @@ pub fn register_startup_tasks(manager: &mut TaskManager, hub: Sender<Event>, _se
 
     #[cfg(feature = "test")]
     {
-        let settings = _settings;
-
         let task = Box::new(hello_world::HelloWorldTask);
         if let Err(e) = manager.start(task, hub.clone()) {
             tracing::warn!(error = %e, "failed to start hello_world task");
@@ -346,10 +436,14 @@ pub fn register_startup_tasks(manager: &mut TaskManager, hub: Sender<Event>, _se
         #[cfg(feature = "kobo")]
         if settings.logging.enable_dbus_log {
             let task = Box::new(dbus_monitor::DbusMonitorTask);
-            if let Err(e) = manager.start(task, hub) {
+            if let Err(e) = manager.start(task, hub.clone()) {
                 tracing::warn!(error = %e, "failed to start dbus_monitor task");
             }
         }
+    }
+
+    if settings.import.startup_trigger {
+        manager.schedule_import(None, &hub, database, settings);
     }
 }
 

@@ -147,36 +147,26 @@ where
 /// The implementation selects between two BLAKE3 strategies based on file size:
 ///
 /// - **< 10 MiB** — [`update_reader`](blake3::Hasher::update_reader): plain
-///   buffered sequential read. Avoids both mmap syscall overhead and rayon
-///   thread-spawn cost. On slow storage, a
-///   single sequential `read()` into a buffer is faster than taking page
-///   faults through a memory mapping for small files. Benchmarks
-///   showed that `update_mmap_rayon` regressed by +125% at
-///   100 KiB and +76% at 200 KiB vs a plain read, confirming the pattern.
-///   The typical e-book (100 KiB–500 KiB) falls into this range.
+///   buffered sequential read. Avoids mmap syscall overhead for small files.
+///   On slow storage, a single sequential `read()` into a buffer is faster
+///   than taking page faults through a memory mapping. The typical e-book
+///   (100 KiB–500 KiB) falls into this range.
 ///
-/// - **≥ 10 MiB** — [`update_mmap_rayon`](blake3::Hasher::update_mmap_rayon):
-///   memory-mapped parallel hashing across rayon threads. Benchmarks showed
-///   −35% at 1 MiB, −70% at 200 MiB, and −79% at 1 GiB vs the
-///   single-threaded path. Reserved for large PDFs and similar files where
-///   the parallelism benefit clearly outweighs the mmap overhead.
-///
-/// The 10 MiB threshold is a conservative estimate that has not yet been
-/// measured on hardware directly.
+/// - **≥ 10 MiB** — [`update_mmap`](blake3::Hasher::update_mmap):
+///   single-threaded memory-mapped hashing. Avoids buffered-read overhead for
+///   large files while keeping CPU usage on a single core.
 pub trait Fingerprint {
     fn fingerprint(&self) -> io::Result<Fp>;
 }
 
-/// Files at or above this size are hashed with `update_mmap_rayon`; smaller
-/// files use `update_reader` to avoid mmap and rayon thread-spawn overhead.
-const RAYON_THRESHOLD: u64 = 10 * 1024 * 1024;
+const MMAP_THRESHOLD: u64 = 10 * 1024 * 1024;
 
 impl Fingerprint for Path {
     #[cfg_attr(feature = "tracing", tracing::instrument(ret(level=tracing::Level::TRACE)))]
     fn fingerprint(&self) -> io::Result<Fp> {
         let mut hasher = blake3::Hasher::new();
-        if std::fs::metadata(self)?.len() >= RAYON_THRESHOLD {
-            hasher.update_mmap_rayon(self)?;
+        if std::fs::metadata(self)?.len() >= MMAP_THRESHOLD {
+            hasher.update_mmap(self)?;
         } else {
             let file = std::fs::File::open(self)?;
             hasher.update_reader(file)?;

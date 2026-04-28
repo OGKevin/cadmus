@@ -541,6 +541,14 @@ pub enum Event {
         lang: String,
         result: Result<(), String>,
     },
+    /// Requests a background import for the given library index (or the current library if `None`).
+    ImportLibrary {
+        library_index: Option<usize>,
+    },
+    /// Signals that a background import has finished.
+    ImportFinished {
+        library_index: Option<usize>,
+    },
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
