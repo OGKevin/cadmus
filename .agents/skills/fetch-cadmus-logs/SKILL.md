@@ -14,7 +14,26 @@ The run ID is stored as a JSON field named `resources_cadmus_run_id` — it is
 It must be filtered with `| json | resources_cadmus_run_id="<id>"` in the
 LogQL pipeline.
 
-## Loki base URL
+### Two separate observability sources
+
+Cadmus uses two distinct pipelines:
+
+| Source                              | What it contains                                                                                                 | How to query                         |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| **Loki** (`http://localhost:3100`)  | `tracing`-bridge log records (third-party crate logs like `reqwest`, `i18n_embed`)                               | LogQL via `/loki/api/v1/query_range` |
+| **Tempo** (`http://localhost:3200`) | Spans and span events from `#[tracing::instrument]` — this is where cadmus-core importer, library, db spans live | `/api/traces/<traceID>`              |
+
+**Important:** Cadmus application logic (`cadmus_core::*`) emits structured
+spans via `tracing::instrument`, not log records. These appear in **Tempo**, not
+Loki. Loki for a cadmus run will mostly contain noise from `reqwest::retry`,
+`i18n_embed`, etc. — not importer or library logic.
+
+To debug application behaviour (import scan, db inserts, errors), query Tempo.
+To find third-party log noise or connectivity errors, query Loki.
+
+## Loki
+
+### Base URL
 
 ```text
 http://localhost:3100
@@ -22,16 +41,7 @@ http://localhost:3100
 
 Override with the `LOKI_URL` environment variable if the instance is elsewhere.
 
-## Step-by-step
-
-### 1. Resolve the time range (optional but recommended)
-
-If you know approximately when the run happened, pass `start` and `end` as
-Unix nanoseconds or RFC3339 to narrow the query and avoid timeouts.
-
-Leave them out to default to the last hour.
-
-### 2. Query logs for the run ID
+### Query logs for a run ID
 
 ```bash
 LOKI_URL="${LOKI_URL:-http://localhost:3100}"
@@ -46,19 +56,21 @@ curl -sG "${LOKI_URL}/loki/api/v1/query_range" \
 
 This prints the `body` field of each JSON log line in chronological order.
 
-### 3. Widen the output if needed
+### Filter to cadmus-core log records only
 
-To see all fields (level, target, span, etc.):
+Add `| instrumentation_scope_name="log"` to isolate records that went through
+the log bridge (as opposed to span events). Even then, most records will be
+from third-party crates. To further narrow to cadmus-core targets:
 
 ```bash
 curl -sG "${LOKI_URL}/loki/api/v1/query_range" \
-  --data-urlencode 'query={service_name="cadmus"} | json | resources_cadmus_run_id="'"${RUN_ID}"'"' \
+  --data-urlencode 'query={service_name="cadmus"} | json | resources_cadmus_run_id="'"${RUN_ID}"'" | instrumentation_scope_name="log"' \
   --data-urlencode 'limit=1000' \
   --data-urlencode 'direction=forward' \
-  | jq '.data.result[].values[] | .[0], (.[1] | fromjson)'
+  | jq -r '.data.result[].values[] | .[1] | fromjson | select(.attributes["log.target"] | startswith("cadmus")) | .body'
 ```
 
-### 4. Filter by log level
+### Filter by log level
 
 Loki attaches a `level` stream label (lowercase) derived from the `severity`
 JSON field. Filter by level two ways:
@@ -69,7 +81,7 @@ JSON field. Filter by level two ways:
 {service_name="cadmus", level="error"} | json | resources_cadmus_run_id="<id>"
 ```
 
-**JSON field filter (use when you need to match severity exactly as logged):**
+**JSON field filter:**
 
 ```text
 {service_name="cadmus"} | json | resources_cadmus_run_id="<id>" | severity="ERROR"
@@ -78,16 +90,14 @@ JSON field. Filter by level two ways:
 Valid `level` stream label values: `trace`, `debug`, `info`, `warn`, `error`.
 Valid `severity` JSON field values: `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`.
 
-### 5. Paginate large result sets
+### Paginate large result sets
 
-Loki returns at most `limit` entries per request. Use the `end` timestamp of
-the last entry as the new `start` to fetch the next page:
+Loki returns at most `limit` entries per request. Keep limit ≤ 1000 —
+larger values may return empty results. Paginate using the last timestamp:
 
 ```bash
-# Get the timestamp of the last entry from previous response
 LAST_TS=$(echo "$RESPONSE" | jq -r '.data.result[-1].values[-1][0]')
 
-# Next page: start just after the last entry
 curl -sG "${LOKI_URL}/loki/api/v1/query_range" \
   --data-urlencode 'query={service_name="cadmus"} | json | resources_cadmus_run_id="'"${RUN_ID}"'"' \
   --data-urlencode "start=$((LAST_TS + 1))" \
@@ -95,19 +105,75 @@ curl -sG "${LOKI_URL}/loki/api/v1/query_range" \
   --data-urlencode 'direction=forward'
 ```
 
-## Common patterns
+### Common Loki patterns
 
-| Goal                | LogQL suffix                                                                       |
-| ------------------- | ---------------------------------------------------------------------------------- |
-| All logs for a run  | `\| json \| resources_cadmus_run_id="<id>"`                                        |
-| Errors only         | `{service_name="cadmus", level="error"} \| json \| resources_cadmus_run_id="<id>"` |
-| Pyroscope push logs | `\| json \| resources_cadmus_run_id="<id>" \| body=~"pyroscope\|profil"`           |
-| Count entries       | Use `/loki/api/v1/query` with `count_over_time(...)`                               |
+| Goal                     | LogQL                                                                                   |
+| ------------------------ | --------------------------------------------------------------------------------------- |
+| All logs for a run       | `{service_name="cadmus"} \| json \| resources_cadmus_run_id="<id>"`                     |
+| Errors only              | `{service_name="cadmus", level="error"} \| json \| resources_cadmus_run_id="<id>"`      |
+| cadmus-core targets only | add `\| instrumentation_scope_name="log"` then filter `.attributes["log.target"]` in jq |
+| Count entries            | Use `/loki/api/v1/query` with `count_over_time(...)`                                    |
+
+## Tempo (spans and span events)
+
+### Tempo Base URL
+
+```text
+http://localhost:3200
+```
+
+### Find a trace by run ID
+
+```bash
+curl -sG "http://localhost:3200/api/search" \
+  --data-urlencode "tags=cadmus.run_id=<run-id>" \
+  --data-urlencode "limit=5" \
+  | jq -r '.traces[] | "\(.traceID) \(.rootName)"'
+```
+
+### Fetch a full trace
+
+```bash
+TRACE_ID="<traceID>"
+curl -s "http://localhost:3200/api/traces/${TRACE_ID}" \
+  | jq -r '.batches[].scopeSpans[].spans[] | "\(.name) | \(.attributes[] | "\(.key)=\(.value.stringValue // .value.intValue)")"'
+```
+
+### Find error spans
+
+```bash
+curl -s "http://localhost:3200/api/traces/${TRACE_ID}" | jq -r '
+  .batches[].scopeSpans[].spans[]
+  | select(.status.code == "STATUS_CODE_ERROR")
+  | {name, status, events: .events}
+'
+```
+
+Span events carry the actual error message. Check `.events[].attributes` for
+fields like `error` which contain the database error string.
+
+### Filter spans by name
+
+```bash
+curl -s "http://localhost:3200/api/traces/${TRACE_ID}" | jq -r '
+  .batches[].scopeSpans[].spans[]
+  | select(.name | test("scan_entries|flush_to_db|batch_insert|run"))
+  | "\(.name) | \(.attributes[] | select(.key | test("count|library_id|home")) | "\(.key)=\(.value.stringValue // .value.intValue)")"
+'
+```
+
+### Convert nanosecond timestamps
+
+Tempo span timestamps are Unix nanoseconds:
+
+```bash
+python3 -c "import datetime; print(datetime.datetime.fromtimestamp(<ns>/1e9, tz=datetime.timezone.utc))"
+```
 
 ## Loki API reference
 
-- `GET /loki/api/v1/query_range` — range query (use for fetching log lines)
-- `GET /loki/api/v1/query` — instant query (use for metric expressions)
+- `GET /loki/api/v1/query_range` — range query (fetching log lines)
+- `GET /loki/api/v1/query` — instant query (metric expressions)
 - `GET /loki/api/v1/labels` — list available label names
 - `GET /loki/api/v1/label/{name}/values` — list values for a label
 
