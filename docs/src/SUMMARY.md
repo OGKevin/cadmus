@@ -11,6 +11,8 @@
   - [File Chooser](ui/filechooser.md)
   - [Settings](ui/settings/index.md)
     - [Dictionaries](ui/settings/dictionaries.md)
+- [Library](library/index.md)
+  - [Importing](library/importing.md)
 - [Troubleshooting](troubleshooting/index.md)
 
 ---
