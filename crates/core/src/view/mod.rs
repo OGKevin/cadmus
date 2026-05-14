@@ -457,6 +457,14 @@ pub enum Event {
     UpdateLibrary(usize, Box<settings::LibrarySettings>),
     AddLibrary,
     DeleteLibrary(usize),
+    /// Open the refresh rate editor (global + per-kind overrides).
+    OpenRefreshRateEditor,
+    /// Open the per-kind refresh rate editor for the given file extension.
+    EditRefreshRateByKind(settings::FileExtension),
+    /// Commit a new or updated per-kind refresh rate pair to settings.
+    UpdateRefreshRateByKind(settings::FileExtension, Box<settings::RefreshRatePair>),
+    /// Delete the per-kind override for the given extension.
+    DeleteRefreshRateByKind(settings::FileExtension),
     ProcessLine(LineOrigin, String),
     History(CycleDir, bool),
     Toggle(ToggleEvent),
@@ -622,6 +630,12 @@ pub enum ViewId {
     IntermissionShareInput,
     OtlpEndpointInput,
     PyroscopeEndpointInput,
+    RefreshRateByKindEditor,
+    RefreshRateKindPairEditor,
+    RefreshRateRegularInput,
+    RefreshRateInvertedInput,
+    RefreshRateByKindRegularInput,
+    RefreshRateByKindInvertedInput,
     SketchMenu,
     RenameDocument,
     RenameDocumentInput,
@@ -823,6 +837,12 @@ pub enum EntryId {
     CheckForUpdates,
     FileEntry(PathBuf),
     Ota(OtaEntryId),
+    /// Open the per-kind refresh rate editor for the given file extension.
+    EditRefreshRateByKind(settings::FileExtension),
+    /// Delete the per-kind refresh rate override for the given file extension.
+    DeleteRefreshRateByKind(settings::FileExtension),
+    /// Add a new per-kind refresh rate override (opens extension picker submenu).
+    AddRefreshRateByKind,
 }
 
 impl EntryKind {

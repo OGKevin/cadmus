@@ -48,3 +48,5 @@ docs/mermaid.min.js
 docs/src/mermaid-images/
 crates/core/.sqlx-dev.db
 cadmus.sqlite
+
+.idea

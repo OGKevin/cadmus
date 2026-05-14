@@ -1,15 +1,18 @@
-use super::bottom_bar::{BottomBarVariant, SettingsEditorBottomBar};
+use super::bottom_bar::BottomBarVariant;
+use super::editor_utils::{
+    build_bottom_separator, build_two_button_bottom_bar, calculate_dimensions,
+};
 use super::kinds::library::{LibraryFinishedAction, LibraryName, LibraryPath};
 use super::kinds::SettingIdentity;
 use super::setting_row::SettingRow;
 use super::setting_value::SettingsEvent;
-use crate::color::{BLACK, WHITE};
+use crate::color::WHITE;
 use crate::context::Context;
 use crate::device::CURRENT_DEVICE;
 use crate::fl;
 use crate::font::Fonts;
 use crate::framebuffer::{Framebuffer, UpdateMode};
-use crate::geom::{halves, Rectangle};
+use crate::geom::Rectangle;
 use crate::gesture::GestureEvent;
 use crate::settings::{FinishedAction, LibrarySettings, Settings};
 use crate::unit::scale_by_dpi;
@@ -19,9 +22,9 @@ use crate::view::filler::Filler;
 use crate::view::menu::{Menu, MenuKind};
 use crate::view::named_input::NamedInput;
 use crate::view::toggleable_keyboard::ToggleableKeyboard;
+use crate::view::SMALL_BAR_HEIGHT;
 use crate::view::{Bus, Event, Hub, Id, RenderData, RenderQueue, View, ViewId, ID_FEEDER};
 use crate::view::{EntryId, NotificationEvent};
-use crate::view::{SMALL_BAR_HEIGHT, THICKNESS_MEDIUM};
 
 /// A view for editing library settings.
 ///
@@ -72,7 +75,7 @@ impl LibraryEditor {
         children.push(Box::new(Filler::new(rect, WHITE)) as Box<dyn View>);
 
         let (bar_height, separator_thickness, separator_top_half, separator_bottom_half) =
-            Self::calculate_dimensions();
+            calculate_dimensions();
 
         children.extend(Self::build_content_rows(
             rect,
@@ -83,7 +86,7 @@ impl LibraryEditor {
             &mut context.fonts,
         ));
 
-        children.push(Self::build_bottom_separator(
+        children.push(build_bottom_separator(
             rect,
             bar_height,
             separator_top_half,
@@ -112,22 +115,6 @@ impl LibraryEditor {
             focus: None,
             keyboard_index,
         }
-    }
-
-    #[inline]
-    fn calculate_dimensions() -> (i32, i32, i32, i32) {
-        let dpi = CURRENT_DEVICE.dpi;
-        let small_height = scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32;
-        let separator_thickness = scale_by_dpi(THICKNESS_MEDIUM, dpi) as i32;
-        let (separator_top_half, separator_bottom_half) = halves(separator_thickness);
-        let bar_height = small_height;
-
-        (
-            bar_height,
-            separator_thickness,
-            separator_top_half,
-            separator_bottom_half,
-        )
     }
 
     #[inline]
@@ -229,47 +216,22 @@ impl LibraryEditor {
     }
 
     #[inline]
-    fn build_bottom_separator(
-        rect: Rectangle,
-        bar_height: i32,
-        separator_top_half: i32,
-        separator_bottom_half: i32,
-    ) -> Box<dyn View> {
-        let separator = Filler::new(
-            rect![
-                rect.min.x,
-                rect.max.y - bar_height - separator_top_half,
-                rect.max.x,
-                rect.max.y - bar_height + separator_bottom_half
-            ],
-            BLACK,
-        );
-        Box::new(separator) as Box<dyn View>
-    }
-
-    #[inline]
     fn build_bottom_bar(
         rect: Rectangle,
         bar_height: i32,
         separator_bottom_half: i32,
     ) -> Box<dyn View> {
-        let bottom_bar_rect = rect![
-            rect.min.x,
-            rect.max.y - bar_height + separator_bottom_half,
-            rect.max.x,
-            rect.max.y
-        ];
-
-        let bottom_bar = SettingsEditorBottomBar::new(
-            bottom_bar_rect,
+        build_two_button_bottom_bar(
+            rect,
+            bar_height,
+            separator_bottom_half,
             BottomBarVariant::TwoButtons {
                 left_event: Event::Close(ViewId::LibraryEditor),
                 left_icon: "close",
                 right_event: Event::Validate,
                 right_icon: "check_mark-large",
             },
-        );
-        Box::new(bottom_bar) as Box<dyn View>
+        )
     }
 
     #[inline]

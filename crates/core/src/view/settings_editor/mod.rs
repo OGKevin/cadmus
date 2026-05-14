@@ -146,7 +146,9 @@ mod category_button;
 mod category_editor;
 mod category_navigation_bar;
 mod category_provider;
+mod editor_utils;
 mod library_editor;
+mod refresh_rate_by_kind_editor;
 mod setting_row;
 mod setting_value;
 

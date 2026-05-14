@@ -92,10 +92,11 @@ fn main() -> Result<(), Error> {
         ..Default::default()
     };
 
-    if let Some(allowed_kinds) = matches
-        .opt_str("k")
-        .map(|v| v.split(',').map(|k| k.to_string()).collect())
-    {
+    if let Some(allowed_kinds) = matches.opt_str("k").map(|v| {
+        v.split(',')
+            .filter_map(|k| cadmus_core::settings::FileExtension::from_str(k))
+            .collect()
+    }) {
         import_settings.allowed_kinds = allowed_kinds;
     }
 

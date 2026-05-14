@@ -304,13 +304,15 @@ impl Default for LibrarySettings {
     }
 }
 
+/// Settings controlling which files are imported into the library.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, rename_all = "kebab-case")]
 pub struct ImportSettings {
     pub startup_trigger: bool,
     pub sync_metadata: bool,
     pub metadata_kinds: FxHashSet<String>,
-    pub allowed_kinds: FxHashSet<String>,
+    #[serde(deserialize_with = "deserialize_allowed_kinds")]
+    pub allowed_kinds: FxHashSet<FileExtension>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -451,6 +453,118 @@ pub struct RefreshRateSettings {
     pub global: RefreshRatePair,
     #[serde(skip_serializing_if = "HashMap::is_empty")]
     pub by_kind: HashMap<String, RefreshRatePair>,
+}
+
+/// A known file extension for which per-kind refresh rates can be configured.
+///
+/// The serialized string (e.g. `"epub"`, `"cbz"`) is used as the key in
+/// [`RefreshRateSettings::by_kind`] and as values in [`ImportSettings::allowed_kinds`].
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum FileExtension {
+    Epub,
+    Pdf,
+    Cbz,
+    Cbr,
+    Djvu,
+    Fb2,
+    Mobi,
+    Txt,
+    Html,
+    Xps,
+    Oxps,
+}
+
+impl FileExtension {
+    /// Returns all known file extensions.
+    pub fn all() -> &'static [FileExtension] {
+        &[
+            FileExtension::Epub,
+            FileExtension::Pdf,
+            FileExtension::Cbz,
+            FileExtension::Cbr,
+            FileExtension::Djvu,
+            FileExtension::Fb2,
+            FileExtension::Mobi,
+            FileExtension::Txt,
+            FileExtension::Html,
+            FileExtension::Xps,
+            FileExtension::Oxps,
+        ]
+    }
+
+    /// Returns the lowercase string representation used as the TOML key.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            FileExtension::Epub => "epub",
+            FileExtension::Pdf => "pdf",
+            FileExtension::Cbz => "cbz",
+            FileExtension::Cbr => "cbr",
+            FileExtension::Djvu => "djvu",
+            FileExtension::Fb2 => "fb2",
+            FileExtension::Mobi => "mobi",
+            FileExtension::Txt => "txt",
+            FileExtension::Html => "html",
+            FileExtension::Xps => "xps",
+            FileExtension::Oxps => "oxps",
+        }
+    }
+
+    /// Parses a lowercase extension string, returning `None` for unknown values.
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "epub" => Some(FileExtension::Epub),
+            "pdf" => Some(FileExtension::Pdf),
+            "cbz" => Some(FileExtension::Cbz),
+            "cbr" => Some(FileExtension::Cbr),
+            "djvu" => Some(FileExtension::Djvu),
+            "fb2" => Some(FileExtension::Fb2),
+            "mobi" => Some(FileExtension::Mobi),
+            "txt" => Some(FileExtension::Txt),
+            "html" => Some(FileExtension::Html),
+            "xps" => Some(FileExtension::Xps),
+            "oxps" => Some(FileExtension::Oxps),
+            _ => None,
+        }
+    }
+}
+
+fn deserialize_allowed_kinds<'de, D>(deserializer: D) -> Result<FxHashSet<FileExtension>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    struct AllowedKindsVisitor;
+
+    impl<'de> serde::de::Visitor<'de> for AllowedKindsVisitor {
+        type Value = FxHashSet<FileExtension>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("a sequence of file extension strings")
+        }
+
+        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+        where
+            A: serde::de::SeqAccess<'de>,
+        {
+            let mut set = FxHashSet::default();
+
+            while let Some(s) = seq.next_element::<String>()? {
+                if let Some(ext) = FileExtension::from_str(&s) {
+                    set.insert(ext);
+                }
+            }
+
+            Ok(set)
+        }
+    }
+
+    deserializer.deserialize_seq(AllowedKindsVisitor)
+}
+
+impl fmt::Display for FileExtension {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -675,10 +789,18 @@ impl Default for ImportSettings {
                 .map(|k| k.to_string())
                 .collect(),
             allowed_kinds: [
-                "pdf", "djvu", "epub", "fb2", "txt", "xps", "oxps", "mobi", "cbz",
+                FileExtension::Pdf,
+                FileExtension::Djvu,
+                FileExtension::Epub,
+                FileExtension::Fb2,
+                FileExtension::Txt,
+                FileExtension::Xps,
+                FileExtension::Oxps,
+                FileExtension::Mobi,
+                FileExtension::Cbz,
             ]
             .iter()
-            .map(|k| k.to_string())
+            .copied()
             .collect(),
         }
     }
@@ -916,5 +1038,43 @@ share = "/path/to/custom.png"
             IntermissionDisplay::Logo
         );
         assert_eq!(intermissions[IntermKind::Share], IntermissionDisplay::Logo);
+    }
+
+    #[test]
+    fn test_allowed_kinds_deserializes_known_extensions() {
+        let toml_str = r#"
+startup-trigger = true
+sync-metadata = true
+metadata-kinds = ["epub"]
+allowed-kinds = ["epub", "pdf", "cbz"]
+"#;
+        let settings: ImportSettings = toml::from_str(toml_str).expect("Failed to deserialize");
+
+        assert!(settings.allowed_kinds.contains(&FileExtension::Epub));
+        assert!(settings.allowed_kinds.contains(&FileExtension::Pdf));
+        assert!(settings.allowed_kinds.contains(&FileExtension::Cbz));
+        assert_eq!(settings.allowed_kinds.len(), 3);
+    }
+
+    #[test]
+    fn test_allowed_kinds_silently_drops_unknown_extensions() {
+        let toml_str = r#"
+startup-trigger = true
+sync-metadata = true
+metadata-kinds = []
+allowed-kinds = ["epub", "unknown-format", "another-unknown"]
+"#;
+        let settings: ImportSettings = toml::from_str(toml_str).expect("Failed to deserialize");
+
+        assert!(settings.allowed_kinds.contains(&FileExtension::Epub));
+        assert_eq!(settings.allowed_kinds.len(), 1);
+    }
+
+    #[test]
+    fn test_file_extension_round_trip_via_from_str() {
+        for ext in FileExtension::all() {
+            let parsed = FileExtension::from_str(ext.as_str());
+            assert_eq!(parsed, Some(*ext), "round trip failed for {:?}", ext);
+        }
     }
 }

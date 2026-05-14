@@ -398,6 +398,13 @@ fn run() -> Result<(), Error> {
     'outer: loop {
         let mut event_pump = sdl_context.event_pump().unwrap();
         while let Some(sdl_evt) = event_pump.poll_event() {
+            #[cfg(feature = "tracing")]
+            let span = tracing::trace_span!("main-event-loop", event = ?sdl_evt);
+            #[cfg(feature = "tracing")]
+            let _enter = span.enter();
+            #[cfg(feature = "tracing")]
+            tracing::trace!(event = ?sdl_evt, "handling event");
+
             match sdl_evt {
                 SdlEvent::Quit { .. }
                 | SdlEvent::KeyDown {
@@ -543,6 +550,13 @@ fn run() -> Result<(), Error> {
         }
 
         while let Ok(evt) = rx.recv_timeout(Duration::from_millis(20)) {
+            #[cfg(feature = "tracing")]
+            let span = tracing::trace_span!("main-event-loop", event = ?evt);
+            #[cfg(feature = "tracing")]
+            let _enter = span.enter();
+            #[cfg(feature = "tracing")]
+            tracing::trace!(event = ?evt, "handling event");
+
             background_tasks.handle_event(&evt, &tx, &context.database, &context.settings);
             match evt {
                 Event::Open(info) => {

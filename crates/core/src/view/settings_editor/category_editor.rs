@@ -19,6 +19,7 @@ use crate::view::{
 use super::bottom_bar::{BottomBarVariant, SettingsEditorBottomBar};
 use super::category::Category;
 use super::library_editor::LibraryEditor;
+use super::refresh_rate_by_kind_editor::RefreshRateByKindEditor;
 use super::setting_row::SettingRow;
 use std::path::{Path, PathBuf};
 use std::thread;
@@ -504,6 +505,19 @@ impl CategoryEditor {
         true
     }
 
+    #[inline]
+    fn handle_open_refresh_rate_editor_event(
+        &mut self,
+        hub: &Hub,
+        rq: &mut RenderQueue,
+        context: &mut Context,
+    ) -> bool {
+        let editor = RefreshRateByKindEditor::new(self.rect, hub, rq, context);
+        self.children.push(Box::new(editor));
+        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+        true
+    }
+
     /// Spawns a background thread to download and install a dictionary for the
     /// given language code.
     ///
@@ -642,7 +656,8 @@ impl CategoryEditor {
             | ViewId::AutoPowerOffInput
             | ViewId::SettingsRetentionInput
             | ViewId::SettingsValueMenu
-            | ViewId::LibraryEditor => {
+            | ViewId::LibraryEditor
+            | ViewId::RefreshRateByKindEditor => {
                 if let Some(index) = locate_by_id(self, *view_id) {
                     let input_rect = *self.children[index].rect();
                     self.children.remove(index);
@@ -711,6 +726,9 @@ impl View for CategoryEditor {
             }
             Event::AddLibrary => self.handle_add_library_event(hub, rq, context),
             Event::EditLibrary(index) => self.handle_edit_library_event(*index, hub, rq, context),
+            Event::OpenRefreshRateEditor => {
+                self.handle_open_refresh_rate_editor_event(hub, rq, context)
+            }
             Event::UpdateLibrary(index, ref library) => {
                 self.handle_update_library_event(*index, library, rq, context)
             }

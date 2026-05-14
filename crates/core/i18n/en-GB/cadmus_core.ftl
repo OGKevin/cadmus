@@ -14,6 +14,7 @@ notification-downloading-dictionary-completed = Downloading dictionary for "{ $l
 notification-downloading-dictionary-progress = Downloading { $lang } ({ $downloaded }/{ $total })
 notification-dictionary-indexing = Indexing "{ $name }"
 notification-not-online = WiFi must be connected for this action.
+notification-refresh-rate-invalid = Refresh rate must be a number between 0 and 255.
 
 # Common
 delete = Delete
@@ -54,6 +55,13 @@ settings-general-unknown = Unknown
 
 # Settings - Reader
 settings-reader-end-of-book-action = End of Book Action
+settings-reader-refresh-rate = Refresh Rate
+settings-reader-refresh-rate-regular = Regular
+settings-reader-refresh-rate-inverted = Inverted
+settings-reader-refresh-rate-regular-input = Regular refresh rate (0 = never)
+settings-reader-refresh-rate-inverted-input = Inverted refresh rate (0 = never)
+settings-reader-refresh-rate-by-kind-regular-input = { $ext } regular refresh rate (0 = never)
+settings-reader-refresh-rate-by-kind-inverted-input = { $ext } inverted refresh rate (0 = never)
 
 # Settings - Intermission
 settings-intermission-suspend-screen = Suspend Screen

@@ -155,7 +155,11 @@ fn scan_entries(
         }
 
         let kind = file_kind(path).unwrap_or_default();
-        if settings.allowed_kinds.contains(&kind) {
+        if settings
+            .allowed_kinds
+            .iter()
+            .any(|ext| ext.as_str() == kind)
+        {
             info!(fp = %fp, path = %relat.display(), "added new entry");
             let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
             let mut info = Info {

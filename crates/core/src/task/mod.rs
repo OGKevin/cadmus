@@ -337,6 +337,10 @@ impl TaskManager {
     ///
     /// Must be called for every event before passing it to the view tree.
     /// Always returns `false` — it never consumes events.
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(skip(self, hub, database, settings))
+    )]
     pub fn handle_event(
         &mut self,
         evt: &Event,

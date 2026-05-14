@@ -44,4 +44,16 @@ pub enum SettingIdentity {
     EnableDbusLog,
     /// Identity for a monolingual dictionary row, keyed by ISO 639-1 language code.
     DictionaryInfo(String),
+    /// Summary row in the Reader category showing "regular / inverted".
+    RefreshRate,
+    /// Global refresh rate (regular, non-inverted page turns).
+    RefreshRateRegular,
+    /// Global refresh rate (inverted page turns).
+    RefreshRateInverted,
+    /// Per-kind refresh rate row in the Reader category list.
+    RefreshRateByKind(String),
+    /// Regular refresh rate inside a per-kind editor.
+    RefreshRateByKindRegular(String),
+    /// Inverted refresh rate inside a per-kind editor.
+    RefreshRateByKindInverted(String),
 }

@@ -6,7 +6,7 @@ use super::kinds::general::{
 use super::kinds::import::{ImportStartupTrigger, ImportSyncMetadata};
 use super::kinds::intermission::{IntermissionPowerOff, IntermissionShare, IntermissionSuspend};
 use super::kinds::library::LibraryInfo;
-use super::kinds::reader::FinishedActionSetting;
+use super::kinds::reader::{FinishedActionSetting, RefreshRateInfo};
 use super::kinds::telemetry::{LogLevel, LoggingEnabled};
 use super::kinds::SettingKind;
 use crate::context::Context;
@@ -71,7 +71,7 @@ impl Category {
                 Box::new(SleepCover),
                 Box::new(SettingsRetention),
             ],
-            Category::Reader => vec![Box::new(FinishedActionSetting)],
+            Category::Reader => vec![Box::new(FinishedActionSetting), Box::new(RefreshRateInfo)],
             Category::Libraries => (0..context.settings.libraries.len())
                 .map(|i| Box::new(LibraryInfo(i)) as Box<dyn SettingKind>)
                 .collect(),
