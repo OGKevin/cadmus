@@ -146,19 +146,15 @@ jobs:
           name: docs-epub
           path: docs/book/epub
 
-      - name: Run cargo clippy (${{ matrix.label }})
-        if: runner.os != 'Linux'
-        run: cargo xtask clippy --features "${{ matrix.label }}"
-
-      - name: Save clippy JSON artifact (ubuntu only)
-        if: runner.os == 'Linux' && github.event_name == 'pull_request'
+      - name: Save clippy JSON artifact
+        if: github.event_name == 'pull_request'
         run: |
           slug="${{ matrix.features }}"
           slug="${slug:-default}"
           cargo xtask clippy --features "${{ matrix.label }}" --save-json "clippy-json/${slug}.json"
 
       - name: Upload clippy JSON artifact
-        if: runner.os == 'Linux' && github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request'
         uses: actions/upload-artifact@v7
         with:
           name: clippy-json-${{ matrix.features || 'default' }}

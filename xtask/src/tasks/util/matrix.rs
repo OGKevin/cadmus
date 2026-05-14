@@ -15,7 +15,7 @@ use anyhow::{Context, Result};
 use serde::Serialize;
 
 /// Operating systems included in the CI clippy matrix.
-pub const CI_CLIPPY_OS: &[&str] = &["ubuntu-latest", "macos-latest"];
+pub const CI_CLIPPY_OS: &[&str] = &["ubuntu-latest"];
 
 /// One entry in the feature × OS matrix.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -243,18 +243,16 @@ mod tests {
     use super::*;
     use crate::tasks::util::workspace;
 
-    const TWO_OS: &[&str] = &["ubuntu-latest", "macos-latest"];
     const ONE_OS: &[&str] = &["ubuntu-latest"];
 
     #[test]
     fn build_matrix_empty_features_yields_one_entry_per_os() {
-        let entries = build_matrix(BTreeSet::new(), TWO_OS);
-        assert_eq!(entries.len(), 2);
+        let entries = build_matrix(BTreeSet::new(), ONE_OS);
+        assert_eq!(entries.len(), 1);
         assert!(entries.iter().all(|e| e.label == "default"));
         assert!(entries.iter().all(|e| e.features.is_empty()));
         let oses: Vec<&str> = entries.iter().map(|e| e.os.as_str()).collect();
         assert!(oses.contains(&"ubuntu-latest"));
-        assert!(oses.contains(&"macos-latest"));
     }
 
     #[test]
@@ -279,14 +277,14 @@ mod tests {
     }
 
     #[test]
-    fn build_matrix_three_features_two_os_yields_sixteen_entries() {
+    fn build_matrix_three_features_one_os_yields_eight_entries() {
         let features = BTreeSet::from([
             "emulator".to_owned(),
             "tracing".to_owned(),
             "test".to_owned(),
         ]);
-        let entries = build_matrix(features, TWO_OS);
-        assert_eq!(entries.len(), 16, "2³ combos × 2 OSes = 16 entries");
+        let entries = build_matrix(features, ONE_OS);
+        assert_eq!(entries.len(), 8, "2³ combos × 1 OS = 8 entries");
     }
 
     #[test]
@@ -356,9 +354,9 @@ mod tests {
     }
 
     #[test]
-    fn scan_workspace_includes_runtime_features_across_two_os() {
+    fn scan_workspace_includes_runtime_features_on_ubuntu() {
         let root = workspace::root().expect("workspace root must be resolvable in tests");
-        let entries = scan(&root, TWO_OS).expect("scan must succeed");
+        let entries = scan(&root, ONE_OS).expect("scan must succeed");
 
         let labels: Vec<&str> = entries.iter().map(|e| e.label.as_str()).collect();
         assert!(labels.contains(&"default"));
@@ -370,8 +368,8 @@ mod tests {
         assert!(!labels.contains(&"telemetry"));
         assert_eq!(
             entries.len(),
-            64,
-            "5 CI features after excluding telemetry alias and bench → 2⁵ = 32 combos × 2 OSes = 64 entries"
+            32,
+            "5 CI features after excluding telemetry alias and bench → 2⁵ = 32 combos × 1 OS = 32 entries"
         );
     }
 }
