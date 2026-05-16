@@ -12,6 +12,7 @@ notification-dictionary-install-failed = Failed to install dictionary for "{ $la
 notification-downloading-dictionary = Downloading dictionary for "{ $lang }"
 notification-downloading-dictionary-completed = Downloading dictionary for "{ $lang }" completed
 notification-downloading-dictionary-progress = Downloading { $lang } ({ $downloaded }/{ $total })
+notification-dictionary-indexing = Indexing "{ $name }"
 notification-not-online = WiFi must be connected for this action.
 
 # Common

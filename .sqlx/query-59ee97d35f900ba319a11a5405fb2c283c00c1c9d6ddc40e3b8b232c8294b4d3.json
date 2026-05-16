@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO dictionary_index_meta (fingerprint, dict_path, total_lines, indexed_lines, completed)\n                   VALUES (?, ?, ?, 0, 0)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "59ee97d35f900ba319a11a5405fb2c283c00c1c9d6ddc40e3b8b232c8294b4d3"
+}
