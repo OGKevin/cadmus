@@ -12,6 +12,7 @@ pub mod indexing;
 #[cfg(not(feature = "bench"))]
 mod indexing;
 
+pub(crate) mod db_index;
 mod monolingual;
 
 pub(crate) use monolingual::MonolingualDictionaryService;
@@ -20,6 +21,8 @@ use std::path::Path;
 
 use self::dictreader::DictReader;
 use self::indexing::IndexReader;
+use crate::db::Database;
+use crate::helpers::Fp;
 
 /// A dictionary wrapper.
 ///
@@ -116,17 +119,19 @@ impl Dictionary {
     }
 }
 
-/// Load dictionary from given paths
+/// Load dictionary using a database-backed index reader.
 ///
-/// A dictionary is made of an index and a dictionary (data) file, both are opened from the given
-/// input file names. Gzipped files with the suffix `.dz` will be handled automatically.
-#[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-pub fn load_dictionary_from_file<P: AsRef<Path>>(
+/// The content file is read from disk; index lookups are served from the
+/// database. Works even when indexing is still in progress — partial results
+/// are returned for words already indexed.
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(database), fields(fingerprint = %fingerprint)))]
+pub fn load_dictionary_from_db<P: AsRef<Path> + std::fmt::Debug>(
     content_path: P,
-    index_path: P,
+    database: &Database,
+    fingerprint: Fp,
 ) -> Result<Dictionary, errors::DictError> {
     let content = dictreader::load_dict(content_path)?;
-    let index = Box::new(indexing::parse_index_from_file(index_path, true)?);
+    let index = Box::new(db_index::DbIndexReader::new(database, Some(fingerprint)));
     Ok(load_dictionary(content, index))
 }
 
@@ -153,6 +158,16 @@ pub fn load_dictionary(content: Box<dyn DictReader>, index: Box<dyn IndexReader>
             case_sensitive,
         },
     }
+}
+
+#[cfg(test)]
+fn load_dictionary_from_file<P: AsRef<Path>>(
+    content_path: P,
+    index_path: P,
+) -> Result<Dictionary, errors::DictError> {
+    let content = dictreader::load_dict(content_path)?;
+    let index = Box::new(indexing::parse_index_from_file(index_path, true)?);
+    Ok(load_dictionary(content, index))
 }
 
 #[cfg(test)]

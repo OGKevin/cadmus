@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT word, offset, size, original\n               FROM dictionary_index_entry\n               WHERE fingerprint = ? AND word = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "word",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "offset",
+        "ordinal": 1,
+        "type_info": "Integer"
+      },
+      {
+        "name": "size",
+        "ordinal": 2,
+        "type_info": "Integer"
+      },
+      {
+        "name": "original",
+        "ordinal": 3,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "0b4024dc70c6cd87fc60c05f3a04b63324a7fc9f6084ca7fe8f18798a2c387ea"
+}

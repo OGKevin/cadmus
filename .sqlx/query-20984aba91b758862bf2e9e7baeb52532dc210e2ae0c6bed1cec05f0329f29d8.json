@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT fingerprint, total_lines, indexed_lines, completed\n                   FROM dictionary_index_meta\n                   WHERE fingerprint = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "fingerprint",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "total_lines",
+        "ordinal": 1,
+        "type_info": "Integer"
+      },
+      {
+        "name": "indexed_lines",
+        "ordinal": 2,
+        "type_info": "Integer"
+      },
+      {
+        "name": "completed",
+        "ordinal": 3,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "20984aba91b758862bf2e9e7baeb52532dc210e2ae0c6bed1cec05f0329f29d8"
+}

@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT word, offset, size, original\n               FROM dictionary_index_entry\n               WHERE word LIKE ? || '%'",
+  "describe": {
+    "columns": [
+      {
+        "name": "word",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "offset",
+        "ordinal": 1,
+        "type_info": "Integer"
+      },
+      {
+        "name": "size",
+        "ordinal": 2,
+        "type_info": "Integer"
+      },
+      {
+        "name": "original",
+        "ordinal": 3,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "1f671a75262dd1487e28b44a14a2332165ccdb349502dec8bc8a2c11e925f9c0"
+}

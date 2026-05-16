@@ -1,12 +1,12 @@
 use crate::battery::Battery;
 use crate::db::Database;
 use crate::device::CURRENT_DEVICE;
-use crate::dictionary::{load_dictionary_from_file, Dictionary};
+use crate::dictionary::{load_dictionary_from_db, Dictionary};
 use crate::font::Fonts;
 use crate::framebuffer::{Display, Framebuffer};
 use crate::frontlight::Frontlight;
 use crate::geom::Rectangle;
-use crate::helpers::{load_json, IsHidden};
+use crate::helpers::{load_json, Fingerprint, IsHidden};
 use crate::library::Library;
 use crate::lightsensor::LightSensor;
 use crate::rtc::{AlarmManager, Rtc};
@@ -162,7 +162,20 @@ impl Context {
             if !content_path.exists() {
                 content_path.set_extension("");
             }
-            if let Ok(mut dict) = load_dictionary_from_file(&content_path, &index_path) {
+
+            let dict_result = match index_path.fingerprint() {
+                Ok(fp) => load_dictionary_from_db(&content_path, &self.database, fp),
+                Err(e) => {
+                    tracing::warn!(
+                        path = %index_path.display(),
+                        error = %e,
+                        "failed to fingerprint index file, skipping dictionary"
+                    );
+                    continue;
+                }
+            };
+
+            if let Ok(mut dict) = dict_result {
                 let name = dict.short_name().ok().unwrap_or_else(|| {
                     index_path
                         .file_stem()
