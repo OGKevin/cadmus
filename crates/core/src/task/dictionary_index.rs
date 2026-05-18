@@ -3,6 +3,7 @@
 
 use std::fs::File;
 use std::io::{BufRead, BufReader};
+use std::num::NonZeroU64;
 use std::sync::mpsc::Sender;
 
 use globset::Glob;
@@ -18,6 +19,15 @@ use crate::view::notification::NotificationEvent;
 use crate::view::{Event, ViewId, ID_FEEDER};
 
 const BATCH_SIZE: usize = 5000;
+
+struct IndexFileJob<'a> {
+    index_path: &'a std::path::Path,
+    path_str: &'a str,
+    fingerprint: &'a str,
+    dict_name: &'a str,
+    total_lines: u64,
+    notif_id: ViewId,
+}
 
 /// Decodes a base64-like encoded number from the StarDict/dictd `.index` format.
 ///
@@ -208,23 +218,18 @@ impl DictionaryIndexTask {
     ///
     /// Returns `true` when scanning completed normally, `false` when a flush
     /// error or shutdown cut it short.
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(path = %path_str, skip_lines, total_lines)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(path = %job.path_str, skip_lines, total_lines = job.total_lines)))]
     fn scan_and_batch(
         &self,
-        index_path: &std::path::Path,
-        path_str: &str,
-        fp_str: &str,
-        dict_name: &str,
+        job: &IndexFileJob<'_>,
         skip_lines: u64,
-        total_lines: u64,
-        notif_id: ViewId,
         hub: &Sender<Event>,
         shutdown: &ShutdownSignal,
     ) -> bool {
-        let file = match File::open(index_path) {
+        let file = match File::open(job.index_path) {
             Ok(f) => f,
             Err(e) => {
-                tracing::error!(path = %path_str, error = %e, "failed to open index file");
+                tracing::error!(path = %job.path_str, error = %e, "failed to open index file");
                 return false;
             }
         };
@@ -244,7 +249,7 @@ impl DictionaryIndexTask {
             let line = match line_result {
                 Ok(l) => l,
                 Err(e) => {
-                    tracing::error!(path = %path_str, line = current_line, error = %e, "failed to read line");
+                    tracing::error!(path = %job.path_str, line = current_line, error = %e, "failed to read line");
                     current_line += 1;
                     continue;
                 }
@@ -252,9 +257,11 @@ impl DictionaryIndexTask {
 
             current_line += 1;
 
-            if let Some((word, offset, size, original)) = Self::parse_index_line(path_str, &line) {
+            if let Some((word, offset, size, original)) =
+                Self::parse_index_line(job.path_str, &line)
+            {
                 batch.push((
-                    fp_str.to_string(),
+                    job.fingerprint.to_string(),
                     word.to_string(),
                     offset,
                     size,
@@ -263,16 +270,8 @@ impl DictionaryIndexTask {
             }
 
             if batch.len() >= BATCH_SIZE {
-                if let Err(e) = self.flush_batch(
-                    &batch,
-                    current_line,
-                    fp_str,
-                    dict_name,
-                    notif_id,
-                    hub,
-                    total_lines,
-                ) {
-                    tracing::error!(path = %path_str, error = %e, "failed to flush batch");
+                if let Err(e) = self.flush_batch(job, &batch, current_line, hub) {
+                    tracing::error!(path = %job.path_str, error = %e, "failed to flush batch");
                     return false;
                 }
 
@@ -285,16 +284,8 @@ impl DictionaryIndexTask {
         }
 
         if !batch.is_empty() {
-            if let Err(e) = self.flush_batch(
-                &batch,
-                current_line,
-                fp_str,
-                dict_name,
-                notif_id,
-                hub,
-                total_lines,
-            ) {
-                tracing::error!(path = %path_str, error = %e, "failed to flush final batch");
+            if let Err(e) = self.flush_batch(job, &batch, current_line, hub) {
+                tracing::error!(path = %job.path_str, error = %e, "failed to flush final batch");
                 return false;
             }
         }
@@ -346,19 +337,18 @@ impl DictionaryIndexTask {
                 }
             };
 
-        tracing::debug!(path = %path_str, fingerprint = %fp_str, skip_lines, total_lines, "starting dictionary indexing");
-
-        if !self.scan_and_batch(
+        let job = IndexFileJob {
             index_path,
-            &path_str,
-            &fp_str,
-            &dict_name,
-            skip_lines,
+            path_str: &path_str,
+            fingerprint: &fp_str,
+            dict_name: &dict_name,
             total_lines,
             notif_id,
-            hub,
-            shutdown,
-        ) {
+        };
+
+        tracing::debug!(path = %path_str, fingerprint = %fp_str, skip_lines, total_lines, "starting dictionary indexing");
+
+        if !self.scan_and_batch(&job, skip_lines, hub, shutdown) {
             hub.send(Event::Close(notif_id)).ok();
             return;
         }
@@ -367,16 +357,13 @@ impl DictionaryIndexTask {
         hub.send(Event::Close(notif_id)).ok();
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(batch_size = batch.len(), current_line, total_lines)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(batch_size = batch.len(), current_line, total_lines = job.total_lines)))]
     fn flush_batch(
         &self,
+        job: &IndexFileJob<'_>,
         batch: &[(String, String, i64, i64, Option<String>)],
         current_line: u64,
-        fp_str: &str,
-        dict_name: &str,
-        notif_id: ViewId,
         hub: &Sender<Event>,
-        total_lines: u64,
     ) -> Result<(), anyhow::Error> {
         let pool = self.database.pool().clone();
         let indexed_lines = current_line as i64;
@@ -403,7 +390,7 @@ impl DictionaryIndexTask {
             sqlx::query!(
                 "UPDATE dictionary_index_meta SET indexed_lines = ? WHERE fingerprint = ?",
                 indexed_lines,
-                fp_str,
+                job.fingerprint,
             )
             .execute(&pool)
             .await?;
@@ -411,18 +398,23 @@ impl DictionaryIndexTask {
             Ok::<_, anyhow::Error>(())
         })?;
 
-        let progress = if total_lines > 0 {
-            ((current_line * 100) / total_lines).min(100) as u8
-        } else {
-            0
-        };
-        let msg = fl!("notification-dictionary-indexing", name = dict_name);
+        let progress = NonZeroU64::new(job.total_lines)
+            .and_then(|total_lines| {
+                current_line
+                    .checked_mul(100)
+                    .map(|value| value / total_lines.get())
+            })
+            .unwrap_or(0)
+            .min(100) as u8;
+        let msg = fl!("notification-dictionary-indexing", name = job.dict_name);
         hub.send(Event::Notification(NotificationEvent::UpdateText(
-            notif_id, msg,
+            job.notif_id,
+            msg,
         )))
         .ok();
         hub.send(Event::Notification(NotificationEvent::UpdateProgress(
-            notif_id, progress,
+            job.notif_id,
+            progress,
         )))
         .ok();
 

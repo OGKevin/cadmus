@@ -102,10 +102,6 @@ criterion = { version = "0.8", features = ["html_reports"] }
 tempfile = "3.14"
 
 [[bench]]
-name = "dictionary_bench"
-harness = false
-
-[[bench]]
 name = "fingerprint_bench"
 harness = false
 
