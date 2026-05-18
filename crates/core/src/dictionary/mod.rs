@@ -139,8 +139,7 @@ pub fn load_dictionary_from_db<P: AsRef<Path> + std::fmt::Debug>(
 ///
 /// A dictionary is made of an index and a dictionary (data). Both are required for look up. This
 /// function allows abstraction from the underlying source by only requiring a
-/// `dictReader` as trait object. This way, dictionaries from RAM or similar can be
-/// implemented.
+/// `DictReader` and an [`IndexReader`].
 #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
 pub fn load_dictionary(content: Box<dyn DictReader>, index: Box<dyn IndexReader>) -> Dictionary {
     let all_chars = !index.find("00-database-allchars", false).is_empty();
@@ -161,23 +160,72 @@ pub fn load_dictionary(content: Box<dyn DictReader>, index: Box<dyn IndexReader>
 }
 
 #[cfg(test)]
-fn load_dictionary_from_file<P: AsRef<Path>>(
-    content_path: P,
-    index_path: P,
-) -> Result<Dictionary, errors::DictError> {
-    let content = dictreader::load_dict(content_path)?;
-    let index = Box::new(indexing::parse_index_from_file(index_path, true)?);
-    Ok(load_dictionary(content, index))
-}
-
-#[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db::runtime::RUNTIME;
 
     const PATH_CASE_SENSITIVE_DICT: &str = "src/dictionary/testdata/case_sensitive_dict.dict";
-    const PATH_CASE_SENSITIVE_INDEX: &str = "src/dictionary/testdata/case_sensitive_dict.index";
     const PATH_CASE_INSENSITIVE_DICT: &str = "src/dictionary/testdata/case_insensitive_dict.dict";
-    const PATH_CASE_INSENSITIVE_INDEX: &str = "src/dictionary/testdata/case_insensitive_dict.index";
+    type TestEntry = (&'static str, i64, i64);
+
+    const CASE_INSENSITIVE_ENTRIES: &[TestEntry] = &[
+        ("00-database-allchars", 1, 1),
+        ("bar", 443, 30),
+        ("foo", 428, 15),
+        ("straße", 516, 44),
+    ];
+
+    const CASE_SENSITIVE_ENTRIES: &[TestEntry] = &[
+        ("00-database-allchars", 1, 1),
+        ("00-database-case-sensitive", 2, 1),
+        ("Bar", 459, 30),
+        ("foo", 444, 15),
+        ("straße", 532, 44),
+    ];
+
+    fn load_test_dictionary(
+        content_path: &str,
+        entries: &[TestEntry],
+    ) -> Result<Dictionary, errors::DictError> {
+        let db = Database::new(":memory:").expect("in-memory db");
+        db.migrate().expect("migrations");
+
+        let fp = Fp::from_u64(1);
+        let fp_str = fp.to_string();
+
+        RUNTIME.block_on(async {
+            let fingerprint = fp_str.clone();
+            let fingerprint_ref = fingerprint.as_str();
+            sqlx::query!(
+                r#"INSERT INTO dictionary_index_meta (fingerprint, dict_path, total_lines, indexed_lines, completed)
+                   VALUES (?, ?, ?, 0, 0)"#,
+                fingerprint_ref,
+                content_path,
+                0_i64,
+            )
+            .execute(db.pool())
+            .await
+            .expect("insert meta");
+
+            for (word, offset, size) in entries {
+                let fingerprint_ref = fingerprint.as_str();
+                sqlx::query!(
+                    r#"INSERT OR IGNORE INTO dictionary_index_entry (fingerprint, word, offset, size, original)
+                       VALUES (?, ?, ?, ?, ?)"#,
+                    fingerprint_ref,
+                    word,
+                    offset,
+                    size,
+                    Option::<&str>::None,
+                )
+                .execute(db.pool())
+                .await
+                .expect("insert entry");
+            }
+        });
+
+        load_dictionary_from_db(content_path, &db, fp)
+    }
 
     fn assert_dict_word_exists(
         mut dict: Dictionary,
@@ -194,14 +242,14 @@ mod tests {
     }
 
     #[test]
-    fn test_load_dictionary_from_file() {
-        let r = load_dictionary_from_file(PATH_CASE_INSENSITIVE_DICT, PATH_CASE_INSENSITIVE_INDEX);
+    fn test_load_dictionary_from_db() {
+        let r = load_test_dictionary(PATH_CASE_INSENSITIVE_DICT, CASE_INSENSITIVE_ENTRIES);
         assert!(r.is_ok());
     }
 
     #[test]
     fn test_dictionary_lookup_case_insensitive() {
-        let r = load_dictionary_from_file(PATH_CASE_INSENSITIVE_DICT, PATH_CASE_INSENSITIVE_INDEX);
+        let r = load_test_dictionary(PATH_CASE_INSENSITIVE_DICT, CASE_INSENSITIVE_ENTRIES);
         let mut dict = r.unwrap();
 
         dict = assert_dict_word_exists(dict, "bar", "test for case-sensitivity");
@@ -211,7 +259,7 @@ mod tests {
 
     #[test]
     fn test_dictionary_lookup_case_insensitive_fuzzy() {
-        let r = load_dictionary_from_file(PATH_CASE_INSENSITIVE_DICT, PATH_CASE_INSENSITIVE_INDEX);
+        let r = load_test_dictionary(PATH_CASE_INSENSITIVE_DICT, CASE_INSENSITIVE_ENTRIES);
         let mut dict = r.unwrap();
 
         let r = dict.lookup("ba", true);
@@ -224,7 +272,7 @@ mod tests {
 
     #[test]
     fn test_dictionary_lookup_case_sensitive() {
-        let r = load_dictionary_from_file(PATH_CASE_SENSITIVE_DICT, PATH_CASE_SENSITIVE_INDEX);
+        let r = load_test_dictionary(PATH_CASE_SENSITIVE_DICT, CASE_SENSITIVE_ENTRIES);
         let mut dict = r.unwrap();
 
         dict = assert_dict_word_exists(dict, "Bar", "test for case-sensitivity");
@@ -239,7 +287,7 @@ mod tests {
 
     #[test]
     fn test_dictionary_lookup_case_sensitive_fuzzy() {
-        let r = load_dictionary_from_file(PATH_CASE_SENSITIVE_DICT, PATH_CASE_SENSITIVE_INDEX);
+        let r = load_test_dictionary(PATH_CASE_SENSITIVE_DICT, CASE_SENSITIVE_ENTRIES);
         let mut dict = r.unwrap();
 
         let r = dict.lookup("Ba", true);
