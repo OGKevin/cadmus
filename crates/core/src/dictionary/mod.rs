@@ -192,10 +192,9 @@ mod tests {
 
         let fp = Fp::from_u64(1);
         let fp_str = fp.to_string();
+        let fingerprint_ref = fp_str.as_str();
 
         RUNTIME.block_on(async {
-            let fingerprint = fp_str.clone();
-            let fingerprint_ref = fingerprint.as_str();
             sqlx::query!(
                 r#"INSERT INTO dictionary_index_meta (fingerprint, dict_path, total_lines, indexed_lines, completed)
                    VALUES (?, ?, ?, 0, 0)"#,
@@ -208,7 +207,6 @@ mod tests {
             .expect("insert meta");
 
             for (word, offset, size) in entries {
-                let fingerprint_ref = fingerprint.as_str();
                 sqlx::query!(
                     r#"INSERT OR IGNORE INTO dictionary_index_entry (fingerprint, word, offset, size, original)
                        VALUES (?, ?, ?, ?, ?)"#,
