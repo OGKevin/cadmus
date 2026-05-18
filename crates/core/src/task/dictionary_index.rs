@@ -3,6 +3,7 @@
 
 use std::fs::File;
 use std::io::{BufRead, BufReader};
+use std::num::NonZeroU64;
 use std::sync::mpsc::Sender;
 
 use globset::Glob;
@@ -397,9 +398,12 @@ impl DictionaryIndexTask {
             Ok::<_, anyhow::Error>(())
         })?;
 
-        let progress = current_line
-            .checked_mul(100)
-            .and_then(|value| value.checked_div(job.total_lines))
+        let progress = NonZeroU64::new(job.total_lines)
+            .and_then(|total_lines| {
+                current_line
+                    .checked_mul(100)
+                    .map(|value| value / total_lines.get())
+            })
             .unwrap_or(0)
             .min(100) as u8;
         let msg = fl!("notification-dictionary-indexing", name = job.dict_name);
