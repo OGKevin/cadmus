@@ -307,21 +307,10 @@ impl DictionaryIndexTask {
             .map(|s| s.to_string_lossy().into_owned())
             .unwrap_or_else(|| path_str.clone());
 
-        let notif_id = ViewId::MessageNotif(ID_FEEDER.next());
-        hub.send(Event::Notification(NotificationEvent::ShowPinned(
-            notif_id,
-            fl!(
-                "notification-dictionary-indexing",
-                name = dict_name.as_str()
-            ),
-        )))
-        .ok();
-
         let fp = match index_path.fingerprint() {
             Ok(fp) => fp,
             Err(e) => {
                 tracing::error!(path = %path_str, error = %e, "failed to fingerprint index file");
-                hub.send(Event::Close(notif_id)).ok();
                 return;
             }
         };
@@ -332,10 +321,19 @@ impl DictionaryIndexTask {
             match self.resolve_index_state(index_path, &path_str, &fp_str) {
                 Some(state) => state,
                 None => {
-                    hub.send(Event::Close(notif_id)).ok();
                     return;
                 }
             };
+
+        let notif_id = ViewId::MessageNotif(ID_FEEDER.next());
+        hub.send(Event::Notification(NotificationEvent::ShowPinned(
+            notif_id,
+            fl!(
+                "notification-dictionary-indexing",
+                name = dict_name.as_str()
+            ),
+        )))
+        .ok();
 
         let job = IndexFileJob {
             index_path,
