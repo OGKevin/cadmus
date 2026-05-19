@@ -433,23 +433,33 @@ impl DictionaryIndexTask {
                 if !on_disk_fingerprints.contains(&fp) {
                     tracing::info!(fingerprint = %fp, "removing stale dictionary index");
 
+                    #[cfg(feature = "tracing")]
+                    let _span = tracing::info_span!("delete_stale_index", fingerprint = %fp).entered();
+
+                    let mut total_deleted: u64 = 0;
                     loop {
-                        let deleted = sqlx::query!(
+                        let deleted = sqlx::query(
                             "DELETE FROM dictionary_index_entry WHERE fingerprint = ? LIMIT ?",
-                            fp,
-                            BATCH_SIZE as i64,
                         )
+                        .bind(&fp)
+                        .bind(BATCH_SIZE as i64)
                         .execute(&pool)
                         .await?;
 
-                        if deleted.rows_affected() == 0 {
+                        let rows = deleted.rows_affected();
+                        total_deleted += rows;
+
+                        if rows == 0 {
                             break;
                         }
 
                         if shutdown.should_stop() {
+                            tracing::info!(total_deleted, "stale index deletion interrupted by shutdown");
                             return Ok::<_, anyhow::Error>(());
                         }
                     }
+
+                    tracing::info!(fingerprint = %fp, total_deleted, "deleted stale dictionary index entries");
 
                     sqlx::query!(
                         "DELETE FROM dictionary_index_meta WHERE fingerprint = ?",
