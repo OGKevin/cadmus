@@ -420,7 +420,7 @@ impl DictionaryIndexTask {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(on_disk_count = on_disk_fingerprints.len())))]
-    fn delete_stale_entries(&self, on_disk_fingerprints: &[String]) {
+    fn delete_stale_entries(&self, on_disk_fingerprints: &[String], shutdown: &ShutdownSignal) {
         let pool = self.database.pool().clone();
 
         let result = RUNTIME.block_on(async {
@@ -432,6 +432,25 @@ impl DictionaryIndexTask {
             for fp in db_fingerprints {
                 if !on_disk_fingerprints.contains(&fp) {
                     tracing::info!(fingerprint = %fp, "removing stale dictionary index");
+
+                    loop {
+                        let deleted = sqlx::query!(
+                            "DELETE FROM dictionary_index_entry WHERE fingerprint = ? LIMIT ?",
+                            fp,
+                            BATCH_SIZE as i64,
+                        )
+                        .execute(&pool)
+                        .await?;
+
+                        if deleted.rows_affected() == 0 {
+                            break;
+                        }
+
+                        if shutdown.should_stop() {
+                            return Ok::<_, anyhow::Error>(());
+                        }
+                    }
+
                     sqlx::query!(
                         "DELETE FROM dictionary_index_meta WHERE fingerprint = ?",
                         fp
@@ -501,6 +520,6 @@ impl BackgroundTask for DictionaryIndexTask {
             return;
         }
 
-        self.delete_stale_entries(&on_disk_fingerprints);
+        self.delete_stale_entries(&on_disk_fingerprints, shutdown);
     }
 }

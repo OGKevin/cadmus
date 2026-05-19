@@ -386,12 +386,14 @@ impl TaskManager {
         }
     }
 
-    /// Schedules a dictionary index scan, skipping if one is already running.
+    /// Schedules a dictionary index scan, stopping any running instance first.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
     fn schedule_dictionary_index(&mut self, hub: &Sender<Event>, database: &Database) {
         if self.is_running(&TaskId::DictionaryIndex) {
-            tracing::debug!("dictionary index task already running, skipping reindex");
-            return;
+            tracing::debug!("stopping running dictionary index task for restart");
+            if let Err(e) = self.stop(&TaskId::DictionaryIndex) {
+                tracing::warn!(error = %e, "failed to stop dictionary_index task for restart");
+            }
         }
 
         let task = Box::new(dictionary_index::DictionaryIndexTask::new(database.clone()));

@@ -66,7 +66,6 @@ pub struct CategoryEditor {
     current_page: usize,
     pages_count: usize,
     dict_service: Option<MonolingualDictionaryService>,
-    dictionaries_changed: bool,
 }
 
 impl CategoryEditor {
@@ -146,7 +145,6 @@ impl CategoryEditor {
             current_page: 0,
             pages_count: 1,
             dict_service,
-            dictionaries_changed: false,
         };
 
         editor.update_rows_list(rq, context);
@@ -156,10 +154,6 @@ impl CategoryEditor {
 
     pub fn category(&self) -> Category {
         self.category
-    }
-
-    pub fn dictionaries_changed(&self) -> bool {
-        self.dictionaries_changed
     }
 
     #[inline]
@@ -607,6 +601,7 @@ impl CategoryEditor {
     fn handle_delete_dictionary(
         &mut self,
         lang: &str,
+        hub: &Hub,
         rq: &mut RenderQueue,
         context: &mut Context,
     ) -> bool {
@@ -630,9 +625,9 @@ impl CategoryEditor {
         }
 
         self.current_page = 0;
-        self.dictionaries_changed = true;
         self.update_rows_list(rq, context);
         context.load_dictionaries();
+        hub.send(Event::ReindexDictionaries).ok();
         true
     }
 
@@ -713,7 +708,7 @@ impl View for CategoryEditor {
                 self.handle_download_dictionary(lang, hub)
             }
             Event::Select(EntryId::DeleteDictionary(lang)) => {
-                self.handle_delete_dictionary(lang, rq, context)
+                self.handle_delete_dictionary(lang, hub, rq, context)
             }
             Event::AddLibrary => self.handle_add_library_event(hub, rq, context),
             Event::EditLibrary(index) => self.handle_edit_library_event(*index, hub, rq, context),
@@ -741,9 +736,9 @@ impl View for CategoryEditor {
                         tracing::info!(lang, "Dictionary installed");
 
                         self.current_page = 0;
-                        self.dictionaries_changed = true;
                         self.update_rows_list(rq, context);
                         context.load_dictionaries();
+                        hub.send(Event::ReindexDictionaries).ok();
 
                         hub.send(Event::Notification(NotificationEvent::Show(fl!(
                             "notification-downloading-dictionary-completed",
