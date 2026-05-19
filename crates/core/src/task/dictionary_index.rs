@@ -173,9 +173,11 @@ impl DictionaryIndexTask {
 
     /// Parses one tab-separated line from a `.index` file.
     ///
-    /// Returns `None` for metadata header lines (`00-database-*`, `00database*`)
-    /// or lines that cannot be decoded. On decode failure a tracing error is
-    /// emitted so the caller can skip the line without losing diagnostic info.
+    /// Returns `None` for lines that cannot be decoded. On decode failure a
+    /// tracing error is emitted so the caller can skip the line without losing
+    /// diagnostic info. Metadata lines such as `00-database-*` are parsed
+    /// normally so they are indexed and available for dictionary metadata
+    /// queries.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(path = %path_str)))]
     fn parse_index_line<'a>(
         path_str: &str,
@@ -185,10 +187,6 @@ impl DictionaryIndexTask {
         let mut cols = trimmed.split('\t');
 
         let word = cols.next()?;
-
-        if word.starts_with("00-database-") || word.starts_with("00database") {
-            return None;
-        }
 
         let offset_str = cols.next()?;
         let offset = match decode_number(offset_str) {
@@ -216,8 +214,8 @@ impl DictionaryIndexTask {
     /// Drives the line-by-line scan of an open index file, collecting entries
     /// into batches and flushing them to the database.
     ///
-    /// Returns `true` when scanning completed normally, `false` when a flush
-    /// error or shutdown cut it short.
+    /// Returns `Some(current_line)` when scanning completed normally, `None`
+    /// when a flush error or shutdown cut it short.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(path = %job.path_str, skip_lines, total_lines = job.total_lines)))]
     fn scan_and_batch(
         &self,
@@ -225,12 +223,12 @@ impl DictionaryIndexTask {
         skip_lines: u64,
         hub: &Sender<Event>,
         shutdown: &ShutdownSignal,
-    ) -> bool {
+    ) -> Option<u64> {
         let file = match File::open(job.index_path) {
             Ok(f) => f,
             Err(e) => {
                 tracing::error!(path = %job.path_str, error = %e, "failed to open index file");
-                return false;
+                return None;
             }
         };
 
@@ -272,13 +270,13 @@ impl DictionaryIndexTask {
             if batch.len() >= BATCH_SIZE {
                 if let Err(e) = self.flush_batch(job, &batch, current_line, hub) {
                     tracing::error!(path = %job.path_str, error = %e, "failed to flush batch");
-                    return false;
+                    return None;
                 }
 
                 batch.clear();
 
                 if shutdown.should_stop() {
-                    return false;
+                    return None;
                 }
             }
         }
@@ -286,11 +284,11 @@ impl DictionaryIndexTask {
         if !batch.is_empty() {
             if let Err(e) = self.flush_batch(job, &batch, current_line, hub) {
                 tracing::error!(path = %job.path_str, error = %e, "failed to flush final batch");
-                return false;
+                return None;
             }
         }
 
-        true
+        Some(current_line)
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(path = %index_path.display())))]
@@ -307,6 +305,9 @@ impl DictionaryIndexTask {
             .map(|s| s.to_string_lossy().into_owned())
             .unwrap_or_else(|| path_str.clone());
 
+        // Fingerprint is computed from the .index file. The .index and
+        // .dict files are always updated together, so hashing the .index
+        // is sufficient to detect changes in the dictionary pair.
         let fp = match index_path.fingerprint() {
             Ok(fp) => fp,
             Err(e) => {
@@ -346,13 +347,15 @@ impl DictionaryIndexTask {
 
         tracing::debug!(path = %path_str, fingerprint = %fp_str, skip_lines, total_lines, "starting dictionary indexing");
 
-        if !self.scan_and_batch(&job, skip_lines, hub, shutdown) {
-            hub.send(Event::Close(notif_id)).ok();
-            return;
+        match self.scan_and_batch(&job, skip_lines, hub, shutdown) {
+            Some(current_line) => {
+                self.mark_completed(&fp_str, &path_str, current_line, total_lines);
+                hub.send(Event::Close(notif_id)).ok();
+            }
+            None => {
+                hub.send(Event::Close(notif_id)).ok();
+            }
         }
-
-        self.mark_completed(&fp_str, &path_str, skip_lines + total_lines, total_lines);
-        hub.send(Event::Close(notif_id)).ok();
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(batch_size = batch.len(), current_line, total_lines = job.total_lines)))]
@@ -383,15 +386,15 @@ impl DictionaryIndexTask {
                 .await?;
             }
 
-            tx.commit().await?;
-
             sqlx::query!(
                 "UPDATE dictionary_index_meta SET indexed_lines = ? WHERE fingerprint = ?",
                 indexed_lines,
                 job.fingerprint,
             )
-            .execute(&pool)
+            .execute(&mut *tx)
             .await?;
+
+            tx.commit().await?;
 
             Ok::<_, anyhow::Error>(())
         })?;
@@ -436,20 +439,21 @@ impl DictionaryIndexTask {
                     #[cfg(feature = "tracing")]
                     let _span = tracing::info_span!("delete_stale_index", fingerprint = %fp).entered();
 
-                    sqlx::query(
+                    sqlx::query!(
                         "UPDATE dictionary_index_meta SET completed = 0, indexed_lines = 0 WHERE fingerprint = ?",
+                        fp,
                     )
-                    .bind(&fp)
                     .execute(&pool)
                     .await?;
 
                     let mut total_deleted: u64 = 0;
+                    let batch_size = BATCH_SIZE as i64;
                     loop {
-                        let deleted = sqlx::query(
-                            "DELETE FROM dictionary_index_entry WHERE fingerprint = ? LIMIT ?",
+                        let deleted = sqlx::query!(
+                            "DELETE FROM dictionary_index_entry WHERE rowid IN (SELECT rowid FROM dictionary_index_entry WHERE fingerprint = ? LIMIT ?)",
+                            fp,
+                            batch_size,
                         )
-                        .bind(&fp)
-                        .bind(BATCH_SIZE as i64)
                         .execute(&pool)
                         .await?;
 

@@ -163,6 +163,9 @@ impl Context {
                 content_path.set_extension("");
             }
 
+            // Fingerprint is computed from the .index file. The .index and
+            // .dict files are always updated together, so hashing the .index
+            // is sufficient to detect changes in the dictionary pair.
             let dict_result = match index_path.fingerprint() {
                 Ok(fp) => load_dictionary_from_db(&content_path, &self.database, fp),
                 Err(e) => {

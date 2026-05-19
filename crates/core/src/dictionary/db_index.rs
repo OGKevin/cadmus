@@ -13,6 +13,15 @@ use crate::helpers::Fp;
 use super::indexing::{Entry, IndexReader};
 use super::Metadata;
 
+/// Escapes SQLite LIKE wildcards (`%`, `_`) and the escape character (`\`)
+/// so a user-supplied prefix is matched literally.
+fn escape_like_prefix(prefix: &str) -> String {
+    prefix
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
+}
+
 /// SQLite-backed implementation of [`IndexReader`].
 ///
 /// When `fingerprint` is `Some`, queries are scoped to that dictionary.
@@ -91,7 +100,7 @@ impl DbIndexReader {
         match sqlx::query!(
             r#"SELECT word, offset, size, original
                FROM dictionary_index_entry
-               WHERE fingerprint = ? AND word LIKE ? || '%'"#,
+               WHERE fingerprint = ? AND word LIKE ? || '%' ESCAPE '\'"#,
             fp,
             prefix,
         )
@@ -120,7 +129,7 @@ impl DbIndexReader {
         match sqlx::query!(
             r#"SELECT word, offset, size, original
                FROM dictionary_index_entry
-               WHERE word LIKE ? || '%'"#,
+               WHERE word LIKE ? || '%' ESCAPE '\'"#,
             prefix,
         )
         .fetch_all(&self.pool)
@@ -163,7 +172,7 @@ impl DbIndexReader {
             .nth(3)
             .map(|(i, _)| i)
             .unwrap_or(headword.len());
-        let prefix = headword[..prefix_len].to_string();
+        let prefix = escape_like_prefix(&headword[..prefix_len]);
         let headword = headword.to_string();
 
         RUNTIME.block_on(async {
@@ -205,11 +214,11 @@ mod tests {
 
     fn insert_meta(pool: &SqlitePool, fp: &str) {
         RUNTIME.block_on(async {
-            sqlx::query(
-                "INSERT OR IGNORE INTO dictionary_index_meta (fingerprint, dict_path, total_lines, indexed_lines, completed) VALUES (?, ?, 0, 0, 1)"
+            sqlx::query!(
+                "INSERT OR IGNORE INTO dictionary_index_meta (fingerprint, dict_path, total_lines, indexed_lines, completed) VALUES (?, ?, 0, 0, 1)",
+                fp,
+                fp,
             )
-            .bind(fp)
-            .bind(fp)
             .execute(pool)
             .await
             .expect("insert meta");
@@ -226,14 +235,14 @@ mod tests {
     ) {
         insert_meta(pool, fp);
         RUNTIME.block_on(async {
-            sqlx::query(
-                "INSERT INTO dictionary_index_entry (fingerprint, word, offset, size, original) VALUES (?, ?, ?, ?, ?)"
+            sqlx::query!(
+                "INSERT INTO dictionary_index_entry (fingerprint, word, offset, size, original) VALUES (?, ?, ?, ?, ?)",
+                fp,
+                word,
+                offset,
+                size,
+                original,
             )
-            .bind(fp)
-            .bind(word)
-            .bind(offset)
-            .bind(size)
-            .bind(original)
             .execute(pool)
             .await
             .expect("insert entry");
