@@ -9,6 +9,107 @@ let
   inherit (pkgs.stdenv) isLinux;
   inherit (pkgs.stdenv) isDarwin;
 
+  # Rust 1.94+ changed lib/ in tarballs from a directory to a symlink.
+  # devenv's rust module calls mk-aggregated.nix directly from the rust-overlay
+  # source, bypassing pkgs overlays. lndir can't merge components when $out/lib
+  # is already a symlink, so cp --remove-destination in postBuild fails with
+  # "are the same file" on macOS.
+  #
+  # Fix: wrap the produced toolchain derivation to resolve $out/lib from a
+  # symlink into a real directory before the cp step runs.
+  fixRustToolchainLibSymlink =
+    drv:
+    drv.overrideAttrs (old: {
+      buildCommand = builtins.replaceStrings
+        [ "for i in $(cat $pathsPath); do\n" ]
+        [
+          (
+            "for i in $(cat $pathsPath); do\n"
+            + "  if [ -L \"$out/lib\" ]; then\n"
+            + "    _lib_t=$(readlink -f \"$out/lib\")\n"
+            + "    rm \"$out/lib\"\n"
+            + "    mkdir \"$out/lib\"\n"
+            + "    ${pkgs.lndir}/bin/lndir -silent \"$_lib_t\" \"$out/lib\"\n"
+            + "  fi\n"
+          )
+        ]
+        old.buildCommand;
+    });
+
+  # Build the stable Rust toolchain the same way devenv does, but with the
+  # lib-symlink fix applied. We replicate devenv's channel != "nixpkgs" logic
+  # here so we can wrap the resulting derivation before devenv sees it.
+  rustToolchain =
+    let
+      rustOverlaySrc = inputs.rust-overlay;
+      rustBin = rustOverlaySrc.lib.mkRustBin { } pkgs.buildPackages;
+
+      mkAggregatedFn = import (rustOverlaySrc + "/lib/mk-aggregated.nix");
+      mkAggregatedArgs = builtins.functionArgs mkAggregatedFn;
+      mkAggregated = mkAggregatedFn (
+        {
+          inherit (pkgs)
+            lib
+            stdenv
+            symlinkJoin
+            bash
+            curl
+            ;
+          inherit (pkgs.buildPackages) rustc;
+          pkgsTargetTarget = pkgs.targetPackages;
+        }
+        // pkgs.lib.optionalAttrs (mkAggregatedArgs ? makeWrapper) { inherit (pkgs) makeWrapper; }
+        // pkgs.lib.optionalAttrs (mkAggregatedArgs ? pkgsHostHost) { inherit (pkgs) pkgsHostHost; }
+      );
+
+      toolchain = rustBin.stable.latest;
+      nativeTarget = pkgs.stdenv.hostPlatform.rust.rustcTargetSpec;
+      allTargets = pkgs.lib.unique ([ nativeTarget ] ++ [ "arm-unknown-linux-gnueabihf" ]);
+      components = [
+        "cargo"
+        "clippy"
+        "llvm-tools-preview"
+        "rustc"
+        "rustfmt"
+      ];
+
+      availableComponents = toolchain._manifest.profiles.complete or [ ];
+      allComponents = toolchain._components or { };
+
+      targetComponents = builtins.map (
+        target:
+        let
+          targetComponentSet = allComponents.${target} or { };
+          targetRustStd = targetComponentSet.rust-std or null;
+        in
+        targetRustStd
+      ) allTargets;
+
+      resolvedComponents = builtins.map (
+        c:
+        let
+          resolvedName =
+            if builtins.elem c availableComponents then
+              c
+            else if builtins.elem "${c}-preview" availableComponents then
+              "${c}-preview"
+            else
+              throw "Component '${c}' not found";
+          toolchainComponents = builtins.removeAttrs toolchain [ "rust" ];
+        in
+        toolchainComponents.${resolvedName}
+      ) components;
+
+      allSelectedComponents = resolvedComponents ++ targetComponents;
+
+      profile = mkAggregated {
+        pname = "rust-stable-${toolchain._manifest.version}";
+        inherit (toolchain._manifest) version date;
+        selectedComponents = allSelectedComponents;
+      };
+    in
+    fixRustToolchainLibSymlink profile;
+
   # cargo-diff-tools with Rust 1.70 for clap v2 compatibility
   cargo-diff-tools =
     let
@@ -247,6 +348,7 @@ in
         "rustc"
         "rustfmt"
       ];
+      toolchainPackage = pkgs.lib.mkForce rustToolchain;
     };
   };
 
