@@ -549,6 +549,13 @@ pub enum Event {
     ImportFinished {
         library_index: Option<usize>,
     },
+    /// Requests a background dictionary index scan.
+    ///
+    /// Emitted when the settings editor closes after dictionaries were installed
+    /// or deleted. The [`TaskManager`](crate::task::TaskManager) intercepts this
+    /// event and starts a [`DictionaryIndexTask`](crate::task::dictionary_index::DictionaryIndexTask)
+    /// if one is not already running.
+    ReindexDictionaries,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]

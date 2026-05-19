@@ -353,6 +353,9 @@ impl TaskManager {
                     self.schedule_import(pending, hub, database, settings);
                 }
             }
+            Event::ReindexDictionaries => {
+                self.schedule_dictionary_index(hub, database);
+            }
             _ => {}
         }
         false
@@ -380,6 +383,21 @@ impl TaskManager {
 
         if let Err(e) = self.start(task, hub.clone()) {
             tracing::warn!(error = %e, "failed to start import task");
+        }
+    }
+
+    /// Schedules a dictionary index scan, skipping if one is already running.
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
+    fn schedule_dictionary_index(&mut self, hub: &Sender<Event>, database: &Database) {
+        if self.is_running(&TaskId::DictionaryIndex) {
+            tracing::debug!("dictionary index task already running, skipping reindex");
+            return;
+        }
+
+        let task = Box::new(dictionary_index::DictionaryIndexTask::new(database.clone()));
+
+        if let Err(e) = self.start(task, hub.clone()) {
+            tracing::warn!(error = %e, "failed to start dictionary_index task");
         }
     }
 

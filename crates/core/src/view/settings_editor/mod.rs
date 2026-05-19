@@ -287,6 +287,20 @@ impl SettingsEditor {
         )
     }
 
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
+    fn any_dictionaries_changed(&self) -> bool {
+        let active_changed = self.children[self.editor_index]
+            .downcast_ref::<CategoryEditor>()
+            .is_some_and(|e| e.dictionaries_changed());
+
+        let cached_changed = self.editors.values().any(|v| {
+            v.downcast_ref::<CategoryEditor>()
+                .is_some_and(|e| e.dictionaries_changed())
+        });
+
+        active_changed || cached_changed
+    }
+
     fn build_top_bar(
         rect: &Rectangle,
         bar_height: i32,
@@ -345,16 +359,22 @@ impl SettingsEditor {
 }
 
 impl View for SettingsEditor {
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, _bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, _bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
-        _hub: &Hub,
+        hub: &Hub,
         _bus: &mut Bus,
         rq: &mut RenderQueue,
         context: &mut Context,
     ) -> bool {
         match evt {
+            Event::Back => {
+                if self.any_dictionaries_changed() {
+                    hub.send(Event::ReindexDictionaries).ok();
+                }
+                false
+            }
             Event::FileChooserClosed(_) => {
                 rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
                 true

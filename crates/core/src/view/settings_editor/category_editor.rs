@@ -66,6 +66,7 @@ pub struct CategoryEditor {
     current_page: usize,
     pages_count: usize,
     dict_service: Option<MonolingualDictionaryService>,
+    dictionaries_changed: bool,
 }
 
 impl CategoryEditor {
@@ -145,6 +146,7 @@ impl CategoryEditor {
             current_page: 0,
             pages_count: 1,
             dict_service,
+            dictionaries_changed: false,
         };
 
         editor.update_rows_list(rq, context);
@@ -154,6 +156,10 @@ impl CategoryEditor {
 
     pub fn category(&self) -> Category {
         self.category
+    }
+
+    pub fn dictionaries_changed(&self) -> bool {
+        self.dictionaries_changed
     }
 
     #[inline]
@@ -624,6 +630,7 @@ impl CategoryEditor {
         }
 
         self.current_page = 0;
+        self.dictionaries_changed = true;
         self.update_rows_list(rq, context);
         context.load_dictionaries();
         true
@@ -734,6 +741,7 @@ impl View for CategoryEditor {
                         tracing::info!(lang, "Dictionary installed");
 
                         self.current_page = 0;
+                        self.dictionaries_changed = true;
                         self.update_rows_list(rq, context);
                         context.load_dictionaries();
 

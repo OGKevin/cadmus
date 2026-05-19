@@ -167,10 +167,10 @@ flowchart TD
 
 The main loop (`app.rs`) receives events from the hub and handles them in two
 stages. First, `TaskManager` gets a chance to observe every event — this is
-where `ImportLibrary` and `ImportFinished` are intercepted to schedule or
-coalesce background import tasks. Then the event enters the large `match`
-statement, where some events are dispatched into the view tree and others are
-handled directly:
+where `ImportLibrary`, `ImportFinished`, and `ReindexDictionaries` are
+intercepted to schedule or coalesce background tasks. Then the event enters the
+large `match` statement, where some events are dispatched into the view tree
+and others are handled directly:
 
 ```mermaid
 flowchart TB
@@ -178,7 +178,7 @@ flowchart TB
         direction TB
 
         Recv["rx.recv() → evt"]
-        TaskManager["TaskManager::handle_event()<br/>(ImportLibrary, ImportFinished)"]
+        TaskManager["TaskManager::handle_event()<br/>(ImportLibrary, ImportFinished, ReindexDictionaries)"]
 
         Gesture["Event::Gesture(Tap/Swipe/...)"]
         GestureAction["Dispatched into view tree via handle_event()"]
@@ -198,8 +198,8 @@ flowchart TB
         Select["Event::Select(...)"]
         SelectAction["Some handled directly,<br/>some dispatched"]
 
-        ImportLibrary["Event::ImportLibrary / ImportFinished"]
-        ImportAction["Handled by TaskManager<br/>(schedules/coalesces import)"]
+        ImportLibrary["Event::ImportLibrary / ImportFinished / ReindexDictionaries"]
+        ImportAction["Handled by TaskManager<br/>(schedules/coalesces tasks)"]
 
         Recv --> TaskManager
         TaskManager --> Gesture
