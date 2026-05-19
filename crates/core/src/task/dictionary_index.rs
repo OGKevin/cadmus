@@ -436,6 +436,13 @@ impl DictionaryIndexTask {
                     #[cfg(feature = "tracing")]
                     let _span = tracing::info_span!("delete_stale_index", fingerprint = %fp).entered();
 
+                    sqlx::query(
+                        "UPDATE dictionary_index_meta SET completed = 0, indexed_lines = 0 WHERE fingerprint = ?",
+                    )
+                    .bind(&fp)
+                    .execute(&pool)
+                    .await?;
+
                     let mut total_deleted: u64 = 0;
                     loop {
                         let deleted = sqlx::query(
