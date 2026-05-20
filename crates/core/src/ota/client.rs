@@ -582,7 +582,7 @@ impl OtaClient {
         let deploy_path = self.deploy_bytes(&kobo_root_data)?;
         if kobo_root_path != deploy_path {
             if let Err(e) = std::fs::remove_file(&kobo_root_path) {
-                tracing::warn!(path = ?kobo_root_path, error = %e, "Failed to remove source file");
+                tracing::error!(path = ?kobo_root_path, error = %e, "Failed to remove source file");
             }
         }
 
@@ -714,14 +714,17 @@ impl OtaClient {
 
         let deploy_path = self.deploy_bytes(&kobo_root_data)?;
         if let Err(e) = std::fs::remove_file(&zip_path) {
-            tracing::warn!(path = ?zip_path, error = %e, "Failed to remove source file");
+            tracing::error!(path = ?zip_path, error = %e, "Failed to remove source file");
         }
 
         Ok(deploy_path)
     }
 
     fn prepare_tmp_dir(&self) -> Result<(), OtaError> {
-        std::fs::create_dir_all(&self.tmp_dir)?;
+        if let Err(e) = std::fs::create_dir_all(&self.tmp_dir) {
+            tracing::error!(path = ?self.tmp_dir, error = %e, "Failed to create OTA tmp directory");
+            return Err(OtaError::Io(e));
+        }
         check_disk_space(&self.tmp_dir)
     }
 
