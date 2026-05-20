@@ -550,6 +550,8 @@ impl OtaClient {
     /// Used when the artifact is already in the correct format (e.g., stable releases
     /// that are distributed as bare KoboRoot.tgz files).
     ///
+    /// On success, the source file is deleted as a best-effort cleanup step.
+    ///
     /// # Arguments
     ///
     /// * `kobo_root_path` - Path to the KoboRoot.tgz file to deploy
@@ -644,6 +646,7 @@ impl OtaClient {
     /// Opens the downloaded ZIP archive, locates the `KoboRoot.tgz` file,
     /// extracts it, and writes it to `/mnt/onboard/.kobo/KoboRoot.tgz`
     /// where the Kobo device will automatically install it on next reboot.
+    /// On success, the source artifact ZIP is deleted as a best-effort cleanup step.
     ///
     /// # Arguments
     ///
