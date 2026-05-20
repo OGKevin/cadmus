@@ -7,6 +7,7 @@ use lazy_static::lazy_static;
 use once_cell::sync::OnceCell;
 use std::env;
 use std::fmt::Debug;
+use std::path::{Path, PathBuf};
 
 mod error;
 mod metadata;
@@ -25,6 +26,7 @@ pub struct Device {
     pub dpi: u16,
     metadata: OnceCell<DeviceMetadata>,
     wifi_manager: OnceCell<Box<dyn crate::device::wifi::WifiManager>>,
+    tmp_dir: OnceCell<PathBuf>,
 }
 
 impl Debug for Device {
@@ -48,6 +50,7 @@ impl Device {
                 dpi: 212,
                 metadata: OnceCell::new(),
                 wifi_manager: OnceCell::new(),
+                tmp_dir: OnceCell::new(),
             },
             "pixie" => Device {
                 model: Model::Mini,
@@ -56,6 +59,7 @@ impl Device {
                 dpi: 200,
                 metadata: OnceCell::new(),
                 wifi_manager: OnceCell::new(),
+                tmp_dir: OnceCell::new(),
             },
             "dragon" => Device {
                 model: Model::AuraHD,
@@ -64,6 +68,7 @@ impl Device {
                 dpi: 265,
                 metadata: OnceCell::new(),
                 wifi_manager: OnceCell::new(),
+                tmp_dir: OnceCell::new(),
             },
             "phoenix" => Device {
                 model: Model::Aura,
@@ -72,6 +77,7 @@ impl Device {
                 dpi: 212,
                 metadata: OnceCell::new(),
                 wifi_manager: OnceCell::new(),
+                tmp_dir: OnceCell::new(),
             },
             "dahlia" => Device {
                 model: Model::AuraH2O,
@@ -80,6 +86,7 @@ impl Device {
                 dpi: 265,
                 metadata: OnceCell::new(),
                 wifi_manager: OnceCell::new(),
+                tmp_dir: OnceCell::new(),
             },
             "alyssum" => Device {
                 model: Model::GloHD,
@@ -88,6 +95,7 @@ impl Device {
                 dpi: 300,
                 metadata: OnceCell::new(),
                 wifi_manager: OnceCell::new(),
+                tmp_dir: OnceCell::new(),
             },
             "pika" => Device {
                 model: Model::Touch2,
@@ -96,6 +104,7 @@ impl Device {
                 dpi: 167,
                 metadata: OnceCell::new(),
                 wifi_manager: OnceCell::new(),
+                tmp_dir: OnceCell::new(),
             },
             "daylight" => Device {
                 model: if model_number == "381" {
@@ -108,6 +117,7 @@ impl Device {
                 dpi: 300,
                 metadata: OnceCell::new(),
                 wifi_manager: OnceCell::new(),
+                tmp_dir: OnceCell::new(),
             },
             "star" => Device {
                 model: if model_number == "379" {
@@ -120,6 +130,7 @@ impl Device {
                 dpi: 212,
                 metadata: OnceCell::new(),
                 wifi_manager: OnceCell::new(),
+                tmp_dir: OnceCell::new(),
             },
             "snow" => Device {
                 model: if model_number == "378" {
@@ -132,6 +143,7 @@ impl Device {
                 dpi: 265,
                 metadata: OnceCell::new(),
                 wifi_manager: OnceCell::new(),
+                tmp_dir: OnceCell::new(),
             },
             "nova" => Device {
                 model: Model::ClaraHD,
@@ -140,6 +152,7 @@ impl Device {
                 dpi: 300,
                 metadata: OnceCell::new(),
                 wifi_manager: OnceCell::new(),
+                tmp_dir: OnceCell::new(),
             },
             "frost" => Device {
                 model: if model_number == "380" {
@@ -152,6 +165,7 @@ impl Device {
                 dpi: 300,
                 metadata: OnceCell::new(),
                 wifi_manager: OnceCell::new(),
+                tmp_dir: OnceCell::new(),
             },
             "storm" => Device {
                 model: Model::LibraH2O,
@@ -160,6 +174,7 @@ impl Device {
                 dpi: 300,
                 metadata: OnceCell::new(),
                 wifi_manager: OnceCell::new(),
+                tmp_dir: OnceCell::new(),
             },
             "luna" => Device {
                 model: Model::Nia,
@@ -168,6 +183,7 @@ impl Device {
                 dpi: 212,
                 metadata: OnceCell::new(),
                 wifi_manager: OnceCell::new(),
+                tmp_dir: OnceCell::new(),
             },
             "europa" => Device {
                 model: Model::Elipsa,
@@ -176,6 +192,7 @@ impl Device {
                 dpi: 227,
                 metadata: OnceCell::new(),
                 wifi_manager: OnceCell::new(),
+                tmp_dir: OnceCell::new(),
             },
             "cadmus" => Device {
                 model: Model::Sage,
@@ -184,6 +201,7 @@ impl Device {
                 dpi: 300,
                 metadata: OnceCell::new(),
                 wifi_manager: OnceCell::new(),
+                tmp_dir: OnceCell::new(),
             },
             "io" => Device {
                 model: Model::Libra2,
@@ -192,6 +210,7 @@ impl Device {
                 dpi: 300,
                 metadata: OnceCell::new(),
                 wifi_manager: OnceCell::new(),
+                tmp_dir: OnceCell::new(),
             },
             "goldfinch" => Device {
                 model: Model::Clara2E,
@@ -200,6 +219,7 @@ impl Device {
                 dpi: 300,
                 metadata: OnceCell::new(),
                 wifi_manager: OnceCell::new(),
+                tmp_dir: OnceCell::new(),
             },
             "condor" => Device {
                 model: Model::Elipsa2E,
@@ -208,6 +228,7 @@ impl Device {
                 dpi: 227,
                 metadata: OnceCell::new(),
                 wifi_manager: OnceCell::new(),
+                tmp_dir: OnceCell::new(),
             },
             "spaBW" | "spaBWTPV" => Device {
                 model: Model::ClaraBW,
@@ -216,6 +237,7 @@ impl Device {
                 dpi: 300,
                 metadata: OnceCell::new(),
                 wifi_manager: OnceCell::new(),
+                tmp_dir: OnceCell::new(),
             },
             "spaColour" => Device {
                 model: Model::ClaraColour,
@@ -224,6 +246,7 @@ impl Device {
                 dpi: 300,
                 metadata: OnceCell::new(),
                 wifi_manager: OnceCell::new(),
+                tmp_dir: OnceCell::new(),
             },
             "monza" => Device {
                 model: Model::LibraColour,
@@ -232,6 +255,7 @@ impl Device {
                 dpi: 300,
                 metadata: OnceCell::new(),
                 wifi_manager: OnceCell::new(),
+                tmp_dir: OnceCell::new(),
             },
             _ => Device {
                 model: if model_number == "320" {
@@ -244,6 +268,7 @@ impl Device {
                 dpi: 167,
                 metadata: OnceCell::new(),
                 wifi_manager: OnceCell::new(),
+                tmp_dir: OnceCell::new(),
             },
         }
     }
@@ -280,6 +305,31 @@ impl Device {
         self.wifi_manager
             .get_or_try_init(crate::device::wifi::create_wifi_manager)
             .map(|b| b.as_ref())
+    }
+
+    /// Returns the OTA tmp directory path, initializing it on first call.
+    ///
+    /// On first access this resolves `<current_working_dir>/tmp`, removes any
+    /// stale contents from a previous run, and recreates the directory. The
+    /// result is cached so cleanup only happens once per process lifetime.
+    ///
+    /// If the current working directory cannot be determined, `/tmp` is used
+    /// as the parent so that OTA operations can still proceed.
+    pub fn tmp_dir(&self) -> &Path {
+        self.tmp_dir.get_or_init(|| {
+            let dir = std::env::current_dir()
+                .unwrap_or_else(|_| PathBuf::from("/tmp"))
+                .join("tmp");
+            if let Err(e) = std::fs::remove_dir_all(&dir) {
+                if e.kind() != std::io::ErrorKind::NotFound {
+                    tracing::warn!(path = ?dir, error = %e, "Failed to clean OTA tmp dir");
+                }
+            }
+            if let Err(e) = std::fs::create_dir_all(&dir) {
+                tracing::warn!(path = ?dir, error = %e, "Failed to create OTA tmp dir");
+            }
+            dir
+        })
     }
 
     /// Returns the number of color samples for the device screen.
