@@ -26,8 +26,9 @@ use crate::view::filler::Filler;
 use crate::view::github::GithubEvent;
 use crate::view::BIG_BAR_HEIGHT;
 use secrecy::SecretString;
+use std::path::PathBuf;
 use std::thread;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 #[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]
 pub enum OtaViewId {
@@ -445,7 +446,7 @@ impl OtaView {
                     return;
                 }
             };
-            let client = OtaClient::new(github);
+            let client = OtaClient::new(github, ota_tmp_dir());
 
             hub2.send(Event::OtaDownloadProgress {
                 label: format!("Downloading PR #{} build… 0%", pr_number),
@@ -538,7 +539,7 @@ impl OtaView {
                     return;
                 }
             };
-            let client = OtaClient::new(github);
+            let client = OtaClient::new(github, ota_tmp_dir());
 
             hub2.send(Event::OtaDownloadProgress {
                 label: "Downloading main branch build… 0%".to_string(),
@@ -633,7 +634,7 @@ impl OtaView {
                     return;
                 }
             };
-            let client = OtaClient::new(github);
+            let client = OtaClient::new(github, ota_tmp_dir());
 
             hub2.send(Event::OtaDownloadProgress {
                 label: "Downloading stable release… 0%".to_string(),
@@ -704,6 +705,16 @@ fn send_reboot_after_delay(hub: Hub) {
     });
 }
 
+fn ota_tmp_dir() -> PathBuf {
+    match std::env::current_dir() {
+        Ok(cwd) => cwd.join("tmp"),
+        Err(e) => {
+            warn!(error = %e, "Failed to resolve current directory for OTA temp path");
+            PathBuf::from("/tmp")
+        }
+    }
+}
+
 impl OtaView {
     #[inline]
     fn on_select_default_branch(
@@ -742,7 +753,7 @@ impl OtaView {
             }
         };
 
-        let client = OtaClient::new(github);
+        let client = OtaClient::new(github, ota_tmp_dir());
         let remote_version = match client.fetch_latest_release_version() {
             Ok(version) => version,
             Err(e) => {

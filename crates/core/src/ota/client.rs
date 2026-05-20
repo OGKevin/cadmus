@@ -7,7 +7,7 @@ use crate::version::GitVersion;
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use std::fs::File;
 use std::io::{Read, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use zip::ZipArchive;
 
 #[cfg(all(not(test), not(feature = "emulator")))]
@@ -20,6 +20,7 @@ use crate::settings::INTERNAL_CARD_ROOT;
 /// extraction, and deploying `KoboRoot.tgz` to the Kobo device.
 pub struct OtaClient {
     github: GithubClient,
+    tmp_dir: PathBuf,
 }
 
 /// Indicates where artifacts were expected but not found.
@@ -133,8 +134,8 @@ impl OtaClient {
     /// # Errors
     ///
     /// Returns `OtaError::TlsConfig` if the underlying HTTP client fails to build.
-    pub fn new(github: GithubClient) -> Self {
-        Self { github }
+    pub fn new(github: GithubClient, tmp_dir: PathBuf) -> Self {
+        Self { github, tmp_dir }
     }
 
     /// Downloads the build artifact from a GitHub pull request.
@@ -144,7 +145,7 @@ impl OtaClient {
     /// 2. Fetches PR metadata to get the commit SHA
     /// 3. Finds the associated "Cargo" workflow run
     /// 4. Locates artifacts matching "cadmus-kobo-pr*" pattern
-    /// 5. Downloads the artifact ZIP file to `/tmp/cadmus-ota-{pr_number}.zip`
+    /// 5. Downloads the artifact ZIP file to `tmp_dir/cadmus-ota-{pr_number}.zip`
     ///
     /// GitHub authentication is required for this operation.
     ///
@@ -159,7 +160,7 @@ impl OtaClient {
     ///
     /// # Errors
     ///
-    /// * `OtaError::InsufficientSpace` - Less than 100MB available in /tmp
+    /// * `OtaError::InsufficientSpace` - Less than 100MB available in the configured temp directory
     /// * `OtaError::NoToken` - GitHub token not configured
     /// * `OtaError::PrNotFound` - PR number doesn't exist in repository
     /// * `OtaError::ArtifactsNotFound` - No matching build artifacts found for the PR
@@ -174,7 +175,7 @@ impl OtaClient {
     where
         F: FnMut(OtaProgress),
     {
-        check_disk_space("/tmp")?;
+        self.prepare_tmp_dir()?;
         verify_scopes(&self.github)?;
 
         progress_callback(OtaProgress::CheckingPr);
@@ -272,7 +273,7 @@ impl OtaClient {
             "Found artifact"
         );
 
-        let download_path = PathBuf::from(format!("/tmp/cadmus-ota-{}.zip", pr_number));
+        let download_path = self.tmp_dir.join(format!("cadmus-ota-{}.zip", pr_number));
 
         self.download_artifact_to_path(&artifact, &download_path, &mut progress_callback)?;
 
@@ -290,7 +291,7 @@ impl OtaClient {
     /// 1. Verifies sufficient disk space (100MB required)
     /// 2. Queries GitHub API for the latest successful `cargo.yml` workflow run on the default branch
     /// 3. Locates artifacts matching "cadmus-kobo-{sha}" pattern (or "cadmus-kobo-test-{sha}" with `test` feature)
-    /// 4. Downloads the artifact ZIP file to `/tmp/cadmus-ota-{sha}.zip`
+    /// 4. Downloads the artifact ZIP file to `tmp_dir/cadmus-ota-{sha}.zip`
     ///
     /// GitHub authentication is required for this operation.
     ///
@@ -304,7 +305,7 @@ impl OtaClient {
     ///
     /// # Errors
     ///
-    /// * `OtaError::InsufficientSpace` - Less than 100MB available in /tmp
+    /// * `OtaError::InsufficientSpace` - Less than 100MB available in the configured temp directory
     /// * `OtaError::NoToken` - GitHub token not configured
     /// * `OtaError::ArtifactsNotFound` - No matching build artifacts found for default branch
     /// * `OtaError::Api` - GitHub API request failed
@@ -317,7 +318,7 @@ impl OtaClient {
     where
         F: FnMut(OtaProgress),
     {
-        check_disk_space("/tmp")?;
+        self.prepare_tmp_dir()?;
         verify_scopes(&self.github)?;
 
         progress_callback(OtaProgress::FindingLatestBuild);
@@ -383,7 +384,7 @@ impl OtaClient {
             "Found default branch artifact"
         );
 
-        let download_path = PathBuf::from(format!("/tmp/cadmus-ota-{}.zip", short_sha));
+        let download_path = self.tmp_dir.join(format!("cadmus-ota-{}.zip", short_sha));
 
         self.download_artifact_to_path(&artifact, &download_path, &mut progress_callback)?;
 
@@ -401,7 +402,7 @@ impl OtaClient {
     /// 1. Verifies sufficient disk space (100MB required)
     /// 2. Fetches the latest release from GitHub API
     /// 3. Locates the `KoboRoot.tgz` asset in the release
-    /// 4. Downloads the file to `/tmp/cadmus-ota-stable-release.tgz`
+    /// 4. Downloads the file to `tmp_dir/cadmus-ota-stable-release.tgz`
     ///
     /// GitHub authentication is not required for this operation as release
     /// assets are downloaded from public URLs without Authorization headers.
@@ -416,7 +417,7 @@ impl OtaClient {
     ///
     /// # Errors
     ///
-    /// * `OtaError::InsufficientSpace` - Less than 100MB available in /tmp
+    /// * `OtaError::InsufficientSpace` - Less than 100MB available in the configured temp directory
     /// * `OtaError::Api` - GitHub API request failed
     /// * `OtaError::Request` - Network communication failed
     /// * `OtaError::ArtifactsNotFound` - KoboRoot.tgz not found in latest release
@@ -429,7 +430,7 @@ impl OtaClient {
     where
         F: FnMut(OtaProgress),
     {
-        check_disk_space("/tmp")?;
+        self.prepare_tmp_dir()?;
 
         progress_callback(OtaProgress::FindingLatestBuild);
         tracing::info!("Starting stable release download");
@@ -482,7 +483,7 @@ impl OtaClient {
             "Found release asset"
         );
 
-        let download_path = PathBuf::from("/tmp/cadmus-ota-stable-release.tgz");
+        let download_path = self.tmp_dir.join("cadmus-ota-stable-release.tgz");
 
         self.download_release_asset(asset, &download_path, &mut progress_callback)?;
 
@@ -516,7 +517,7 @@ impl OtaClient {
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// # rustls::crypto::ring::default_provider().install_default().ok();
     /// # let github = GithubClient::new(None)?;
-    /// # let client = OtaClient::new(github);
+    /// # let client = OtaClient::new(github, std::path::PathBuf::from("/tmp"));
     /// let version = client.fetch_latest_release_version()?;
     /// println!("Latest version: {}", version);
     /// # Ok(())
@@ -576,7 +577,14 @@ impl OtaClient {
             "Read KoboRoot.tgz"
         );
 
-        self.deploy_bytes(&kobo_root_data)
+        let deploy_path = self.deploy_bytes(&kobo_root_data)?;
+        if kobo_root_path != deploy_path {
+            if let Err(e) = std::fs::remove_file(&kobo_root_path) {
+                tracing::warn!(path = ?kobo_root_path, error = %e, "Failed to remove source file");
+            }
+        }
+
+        Ok(deploy_path)
     }
 
     /// Deploys KoboRoot.tgz data to the appropriate location.
@@ -701,7 +709,17 @@ impl OtaClient {
             "Extracted file"
         );
 
-        self.deploy_bytes(&kobo_root_data)
+        let deploy_path = self.deploy_bytes(&kobo_root_data)?;
+        if let Err(e) = std::fs::remove_file(&zip_path) {
+            tracing::warn!(path = ?zip_path, error = %e, "Failed to remove source file");
+        }
+
+        Ok(deploy_path)
+    }
+
+    fn prepare_tmp_dir(&self) -> Result<(), OtaError> {
+        std::fs::create_dir_all(&self.tmp_dir)?;
+        check_disk_space(&self.tmp_dir)
     }
 
     /// Queries the GitHub API for the repository's default branch name.
@@ -860,16 +878,16 @@ fn api_error(e: reqwest::Error) -> OtaError {
     }
 }
 
-fn check_disk_space(path: &str) -> Result<(), OtaError> {
+fn check_disk_space(path: &Path) -> Result<(), OtaError> {
     use nix::sys::statvfs::statvfs;
 
     let stat = statvfs(path)?;
     let available_mb = (stat.blocks_available() as u64 * stat.block_size() as u64) / (1024 * 1024);
-    tracing::debug!(path, available_mb, "Checking disk space");
+    tracing::debug!(path = ?path, available_mb, "Checking disk space");
 
     if available_mb < 100 {
         tracing::error!(
-            path,
+            path = ?path,
             available_mb,
             required_mb = 100,
             "Insufficient disk space"
@@ -889,7 +907,7 @@ mod tests {
         crate::crypto::init_crypto_provider();
         let github =
             GithubClient::new(Some(SecretString::from("test_token"))).expect("client build");
-        OtaClient::new(github)
+        OtaClient::new(github, std::env::temp_dir().join("cadmus-ota-tests"))
     }
 
     #[test]
@@ -897,8 +915,11 @@ mod tests {
         let client = make_client();
         let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("src/ota/tests/fixtures/test_artifact.zip");
+        let temp_dir = tempfile::tempdir().unwrap();
+        let artifact_path = temp_dir.path().join("test_artifact.zip");
+        std::fs::copy(&fixture_path, &artifact_path).unwrap();
 
-        let result = client.extract_and_deploy(fixture_path);
+        let result = client.extract_and_deploy(artifact_path.clone());
 
         assert!(
             result.is_ok(),
@@ -920,6 +941,10 @@ mod tests {
         );
 
         std::fs::remove_file(&deploy_path).ok();
+        assert!(
+            !artifact_path.exists(),
+            "Downloaded artifact should be removed after successful deployment"
+        );
     }
 
     #[test]
@@ -927,8 +952,11 @@ mod tests {
         let client = make_client();
         let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("src/ota/tests/fixtures/empty_artifact.zip");
+        let temp_dir = tempfile::tempdir().unwrap();
+        let artifact_path = temp_dir.path().join("empty_artifact.zip");
+        std::fs::copy(&fixture_path, &artifact_path).unwrap();
 
-        let result = client.extract_and_deploy(fixture_path);
+        let result = client.extract_and_deploy(artifact_path);
         assert!(result.is_err(), "Should fail when KoboRoot.tgz is missing");
 
         if let Err(OtaError::DeploymentError(msg)) = result {
@@ -945,7 +973,7 @@ mod tests {
     fn test_check_disk_space_sufficient() {
         use tempfile::TempDir;
         let temp_dir = TempDir::new().unwrap();
-        let result = check_disk_space(temp_dir.path().to_str().unwrap());
+        let result = check_disk_space(temp_dir.path());
         assert!(
             result.is_ok(),
             "Should have sufficient disk space in temp directory"
@@ -956,7 +984,10 @@ mod tests {
         crate::crypto::init_crypto_provider();
         let token = std::env::var("GH_TOKEN").expect("GH_TOKEN must be set");
         let github = GithubClient::new(Some(SecretString::from(token))).expect("client build");
-        OtaClient::new(github)
+        OtaClient::new(
+            github,
+            std::env::temp_dir().join("cadmus-ota-external-tests"),
+        )
     }
 
     #[test]

@@ -56,6 +56,7 @@ use cadmus_core::view::{
 use std::collections::VecDeque;
 use std::env;
 use std::fs::File;
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -591,6 +592,19 @@ pub fn run() -> Result<(), Error> {
     let startup_cwd = env::current_dir().ok();
     let startup_db_exists = Path::new(DB_FILENAME).exists();
     info!(cwd = ?startup_cwd, db_exists = startup_db_exists, "startup diagnostics");
+    if let Some(ref cwd) = startup_cwd {
+        let tmp_dir = cwd.join("tmp");
+        if let Err(e) = std::fs::remove_dir_all(&tmp_dir) {
+            if e.kind() == ErrorKind::NotFound {
+                debug!(path = ?tmp_dir, "No existing tmp dir to clean");
+            } else {
+                warn!(path = ?tmp_dir, error = %e, "Failed to clean tmp dir");
+            }
+        }
+        if let Err(e) = std::fs::create_dir_all(&tmp_dir) {
+            warn!(path = ?tmp_dir, error = %e, "Failed to create tmp dir");
+        }
+    }
 
     let mut fonts = Fonts::load().context("can't load fonts")?;
     let database = Database::new(DB_FILENAME)

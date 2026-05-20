@@ -78,3 +78,15 @@ options.
 OTA only works for updating an existing installation. To install Cadmus for the
 first time, follow the [installation guide](./index.md) or the
 [test builds guide](./test-builds.md) to copy a KoboRoot file via USB.
+
+## Troubleshooting
+
+### "Insufficient disk space" error
+
+If Cadmus shows an error like _"Insufficient disk space: need 100MB, have XMB"_
+while downloading an update:
+
+- Free up space on your Kobo by deleting books or other files you do not need
+- Cadmus downloads update files into its own `tmp` folder inside the Cadmus
+  folder
+- This error means internal storage is too full for the update file

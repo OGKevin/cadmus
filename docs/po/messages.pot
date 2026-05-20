@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Cadmus Documentation\n"
-"POT-Creation-Date: 2026-05-22T06:30:09Z\n"
+"POT-Creation-Date: 2026-05-20T09:16:15Z\n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -61,7 +61,7 @@ msgstr ""
 msgid "Importing"
 msgstr ""
 
-#: src/SUMMARY.md:16 src/troubleshooting/index.md:1
+#: src/SUMMARY.md:16 src/installation/ota.md:82 src/troubleshooting/index.md:1
 #: src/contributing/devenv-setup.md:210
 msgid "Troubleshooting"
 msgstr ""
@@ -692,6 +692,31 @@ msgid ""
 "OTA only works for updating an existing installation. To install Cadmus for "
 "the first time, follow the [installation guide](./index.md) or the [test "
 "builds guide](./test-builds.md) to copy a KoboRoot file via USB."
+msgstr ""
+
+#: src/installation/ota.md:84
+msgid "\"Insufficient disk space\" error"
+msgstr ""
+
+#: src/installation/ota.md:86
+msgid ""
+"If Cadmus shows an error like _\"Insufficient disk space: need 100MB, have "
+"XMB\"_ while downloading an update:"
+msgstr ""
+
+#: src/installation/ota.md:89
+msgid ""
+"Free up space on your Kobo by deleting books or other files you do not need"
+msgstr ""
+
+#: src/installation/ota.md:90
+msgid ""
+"Cadmus downloads update files into its own `tmp` folder inside the Cadmus "
+"folder"
+msgstr ""
+
+#: src/installation/ota.md:92
+msgid "This error means internal storage is too full for the update file"
 msgstr ""
 
 #: src/installation/migration.md:3
@@ -1706,125 +1731,61 @@ msgstr ""
 #: src/ui/settings/dictionaries.md:39
 msgid ""
 "A progress notification appears at the top of the screen while the file "
-"downloads. Once the download finishes, Cadmus begins "
-"[indexing](#how-indexing-works) the dictionary automatically."
+"downloads. When it disappears, the dictionary is ready to use."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:43
+#: src/ui/settings/dictionaries.md:42
 msgid "Updating a Dictionary"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:45
+#: src/ui/settings/dictionaries.md:44
 msgid "When a newer version is available the status shows **Update Available**."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:47 src/ui/settings/dictionaries.md:57
-#: src/ui/settings/dictionaries.md:62
+#: src/ui/settings/dictionaries.md:46 src/ui/settings/dictionaries.md:56
+#: src/ui/settings/dictionaries.md:61
 msgid "Tap the language row."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:48
+#: src/ui/settings/dictionaries.md:47
 msgid "Select **Update** from the menu."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:50
+#: src/ui/settings/dictionaries.md:49
 msgid "The updated dictionary replaces the old one automatically."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:52
+#: src/ui/settings/dictionaries.md:51
 msgid "Re-downloading a Dictionary"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:54
+#: src/ui/settings/dictionaries.md:53
 msgid ""
 "If a dictionary is already installed you can re-download it to get a fresh "
 "copy:"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:58
+#: src/ui/settings/dictionaries.md:57
 msgid "Select **Re-download** from the menu."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:60
+#: src/ui/settings/dictionaries.md:59
 msgid "Deleting a Dictionary"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:63
+#: src/ui/settings/dictionaries.md:62
 msgid "Select **Delete** from the menu."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:65
+#: src/ui/settings/dictionaries.md:64
 msgid "The dictionary files are removed from your device."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:67
-msgid "How Indexing Works"
-msgstr ""
-
-#: src/ui/settings/dictionaries.md:69
-msgid ""
-"After you download, update, or re-download a dictionary, Cadmus needs to "
-"**index** it before you can look up words. Indexing reads every word in the "
-"dictionary and stores it in a database on disk so that lookups are fast "
-"without loading the entire dictionary into memory. This is especially "
-"important on devices with limited memory."
-msgstr ""
-
-#: src/ui/settings/dictionaries.md:75
-msgid ""
-"A notification with a progress bar appears at the top of the screen while "
-"indexing is in progress."
-msgstr ""
-
-#: src/ui/settings/dictionaries.md:78
-msgid ""
-"\\[!NOTE\\] You can keep reading while indexing runs in the background. "
-"Words that have already been indexed are available for lookup right away, so "
-"you may get partial results until indexing finishes."
-msgstr ""
-
-#: src/ui/settings/dictionaries.md:83
-msgid "What happens when you restart your Kobo"
-msgstr ""
-
-#: src/ui/settings/dictionaries.md:85
-msgid ""
-"If your Kobo restarts or shuts down while indexing is still running, Cadmus "
-"picks up where it left off the next time it starts. It does not start over "
-"from the beginning."
-msgstr ""
-
-#: src/ui/settings/dictionaries.md:89
-msgid "When does re-indexing happen"
-msgstr ""
-
-#: src/ui/settings/dictionaries.md:91
-msgid "Cadmus automatically re-indexes a dictionary when you:"
-msgstr ""
-
-#: src/ui/settings/dictionaries.md:93
-msgid "**Update** it to a newer version"
-msgstr ""
-
-#: src/ui/settings/dictionaries.md:94
-msgid "**Re-download** it"
-msgstr ""
-
-#: src/ui/settings/dictionaries.md:95
-msgid "**Delete** it (the old index is removed)"
-msgstr ""
-
-#: src/ui/settings/dictionaries.md:97
-msgid ""
-"You do not need to trigger indexing yourself — it happens automatically "
-"whenever the dictionary files change."
-msgstr ""
-
-#: src/ui/settings/dictionaries.md:100
+#: src/ui/settings/dictionaries.md:66
 msgid "Where Dictionaries are Stored"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:102
+#: src/ui/settings/dictionaries.md:68
 msgid ""
 "Downloaded dictionaries live in the `dictionaries/reader-dict/<lang>/` "
 "folder on your device. Each language gets its own subfolder containing a "
@@ -2919,10 +2880,10 @@ msgstr ""
 msgid ""
 "The main loop (`app.rs`) receives events from the hub and handles them in "
 "two stages. First, `TaskManager` gets a chance to observe every event — this "
-"is where `ImportLibrary`, `ImportFinished`, and `ReindexDictionaries` are "
-"intercepted to schedule or coalesce background tasks. Then the event enters "
-"the large `match` statement, where some events are dispatched into the view "
-"tree and others are handled directly:"
+"is where `ImportLibrary` and `ImportFinished` are intercepted to schedule or "
+"coalesce background import tasks. Then the event enters the large `match` "
+"statement, where some events are dispatched into the view tree and others "
+"are handled directly:"
 msgstr ""
 
 #: src/contributing/event-system.md:175
@@ -2934,7 +2895,7 @@ msgid ""
 "\n"
 "        Recv[\"rx.recv() → evt\"]\n"
 "        TaskManager[\"TaskManager::handle_event()<br/>(ImportLibrary, "
-"ImportFinished, ReindexDictionaries)\"]\n"
+"ImportFinished)\"]\n"
 "\n"
 "        Gesture[\"Event::Gesture(Tap/Swipe/...)\"]\n"
 "        GestureAction[\"Dispatched into view tree via handle_event()\"]\n"
@@ -2955,10 +2916,9 @@ msgid ""
 "        Select[\"Event::Select(...)\"]\n"
 "        SelectAction[\"Some handled directly,<br/>some dispatched\"]\n"
 "\n"
-"        ImportLibrary[\"Event::ImportLibrary / ImportFinished / "
-"ReindexDictionaries\"]\n"
+"        ImportLibrary[\"Event::ImportLibrary / ImportFinished\"]\n"
 "        ImportAction[\"Handled by TaskManager<br/>(schedules/coalesces "
-"tasks)\"]\n"
+"import)\"]\n"
 "\n"
 "        Recv --> TaskManager\n"
 "        TaskManager --> Gesture\n"
