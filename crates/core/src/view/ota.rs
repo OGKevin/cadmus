@@ -445,7 +445,7 @@ impl OtaView {
                     return;
                 }
             };
-            let client = OtaClient::new(github, CURRENT_DEVICE.tmp_dir().to_path_buf());
+            let client = OtaClient::new(github, CURRENT_DEVICE.tmp_dir());
 
             hub2.send(Event::OtaDownloadProgress {
                 label: format!("Downloading PR #{} build… 0%", pr_number),
@@ -538,7 +538,7 @@ impl OtaView {
                     return;
                 }
             };
-            let client = OtaClient::new(github, CURRENT_DEVICE.tmp_dir().to_path_buf());
+            let client = OtaClient::new(github, CURRENT_DEVICE.tmp_dir());
 
             hub2.send(Event::OtaDownloadProgress {
                 label: "Downloading main branch build… 0%".to_string(),
@@ -633,7 +633,7 @@ impl OtaView {
                     return;
                 }
             };
-            let client = OtaClient::new(github, CURRENT_DEVICE.tmp_dir().to_path_buf());
+            let client = OtaClient::new(github, CURRENT_DEVICE.tmp_dir());
 
             hub2.send(Event::OtaDownloadProgress {
                 label: "Downloading stable release… 0%".to_string(),
@@ -742,7 +742,7 @@ impl OtaView {
             }
         };
 
-        let client = OtaClient::new(github, CURRENT_DEVICE.tmp_dir().to_path_buf());
+        let client = OtaClient::new(github, CURRENT_DEVICE.tmp_dir());
         let remote_version = match client.fetch_latest_release_version() {
             Ok(version) => version,
             Err(e) => {

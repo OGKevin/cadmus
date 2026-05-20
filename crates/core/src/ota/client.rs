@@ -962,7 +962,7 @@ mod tests {
         let artifact_path = temp_dir.path().join("empty_artifact.zip");
         std::fs::copy(&fixture_path, &artifact_path).unwrap();
 
-        let result = client.extract_and_deploy(artifact_path);
+        let result = client.extract_and_deploy(artifact_path.clone());
         assert!(result.is_err(), "Should fail when KoboRoot.tgz is missing");
 
         if let Err(OtaError::DeploymentError(msg)) = result {
@@ -973,6 +973,11 @@ mod tests {
         } else {
             panic!("Expected DeploymentError");
         }
+
+        assert!(
+            artifact_path.exists(),
+            "Source artifact should be retained when deployment fails"
+        );
     }
 
     #[test]

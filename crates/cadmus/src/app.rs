@@ -591,7 +591,7 @@ pub fn run() -> Result<(), Error> {
     let startup_cwd = env::current_dir().ok();
     let startup_db_exists = Path::new(DB_FILENAME).exists();
     info!(cwd = ?startup_cwd, db_exists = startup_db_exists, "startup diagnostics");
-    CURRENT_DEVICE.tmp_dir();
+    CURRENT_DEVICE.clean_tmp_dir();
 
     let mut fonts = Fonts::load().context("can't load fonts")?;
     let database = Database::new(DB_FILENAME)
