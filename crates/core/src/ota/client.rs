@@ -175,7 +175,7 @@ impl OtaClient {
     where
         F: FnMut(OtaProgress),
     {
-        self.prepare_tmp_dir()?;
+        check_disk_space(&self.tmp_dir)?;
         verify_scopes(&self.github)?;
 
         progress_callback(OtaProgress::CheckingPr);
@@ -318,7 +318,7 @@ impl OtaClient {
     where
         F: FnMut(OtaProgress),
     {
-        self.prepare_tmp_dir()?;
+        check_disk_space(&self.tmp_dir)?;
         verify_scopes(&self.github)?;
 
         progress_callback(OtaProgress::FindingLatestBuild);
@@ -430,7 +430,7 @@ impl OtaClient {
     where
         F: FnMut(OtaProgress),
     {
-        self.prepare_tmp_dir()?;
+        check_disk_space(&self.tmp_dir)?;
 
         progress_callback(OtaProgress::FindingLatestBuild);
         tracing::info!("Starting stable release download");
@@ -720,14 +720,6 @@ impl OtaClient {
         Ok(deploy_path)
     }
 
-    fn prepare_tmp_dir(&self) -> Result<(), OtaError> {
-        if let Err(e) = std::fs::create_dir_all(&self.tmp_dir) {
-            tracing::error!(path = ?self.tmp_dir, error = %e, "Failed to create OTA tmp directory");
-            return Err(OtaError::Io(e));
-        }
-        check_disk_space(&self.tmp_dir)
-    }
-
     /// Queries the GitHub API for the repository's default branch name.
     fn fetch_default_branch(&self) -> Result<String, OtaError> {
         let repo_url = "https://api.github.com/repos/ogkevin/cadmus";
@@ -909,19 +901,19 @@ mod tests {
     use crate::github::GithubClient;
     use secrecy::SecretString;
 
-    fn make_client() -> OtaClient {
+    fn make_client(tmp_dir: PathBuf) -> OtaClient {
         crate::crypto::init_crypto_provider();
         let github =
             GithubClient::new(Some(SecretString::from("test_token"))).expect("client build");
-        OtaClient::new(github, std::env::temp_dir().join("cadmus-ota-tests"))
+        OtaClient::new(github, tmp_dir)
     }
 
     #[test]
     fn test_extract_and_deploy_success() {
-        let client = make_client();
+        let temp_dir = tempfile::tempdir().unwrap();
+        let client = make_client(temp_dir.path().to_path_buf());
         let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("src/ota/tests/fixtures/test_artifact.zip");
-        let temp_dir = tempfile::tempdir().unwrap();
         let artifact_path = temp_dir.path().join("test_artifact.zip");
         std::fs::copy(&fixture_path, &artifact_path).unwrap();
 
@@ -955,10 +947,10 @@ mod tests {
 
     #[test]
     fn test_extract_and_deploy_missing_koboroot() {
-        let client = make_client();
+        let temp_dir = tempfile::tempdir().unwrap();
+        let client = make_client(temp_dir.path().to_path_buf());
         let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("src/ota/tests/fixtures/empty_artifact.zip");
-        let temp_dir = tempfile::tempdir().unwrap();
         let artifact_path = temp_dir.path().join("empty_artifact.zip");
         std::fs::copy(&fixture_path, &artifact_path).unwrap();
 
@@ -991,20 +983,18 @@ mod tests {
         );
     }
 
-    fn create_external_client() -> OtaClient {
+    fn create_external_client(tmp_dir: PathBuf) -> OtaClient {
         crate::crypto::init_crypto_provider();
         let token = std::env::var("GH_TOKEN").expect("GH_TOKEN must be set");
         let github = GithubClient::new(Some(SecretString::from(token))).expect("client build");
-        OtaClient::new(
-            github,
-            std::env::temp_dir().join("cadmus-ota-external-tests"),
-        )
+        OtaClient::new(github, tmp_dir)
     }
 
     #[test]
     #[ignore]
     fn test_external_download_default_branch_and_deploy() {
-        let client = create_external_client();
+        let temp_dir = tempfile::tempdir().unwrap();
+        let client = create_external_client(temp_dir.path().to_path_buf());
         let mut last_progress = None;
 
         let download_result = client.download_default_branch_artifact(|progress| {
@@ -1043,14 +1033,15 @@ mod tests {
             deploy_path
         );
 
-        std::fs::remove_file(&zip_path).ok();
+        // `extract_and_deploy` removes the source zip on success.
         std::fs::remove_file(&deploy_path).ok();
     }
 
     #[test]
     #[ignore]
     fn test_external_download_stable_release_and_deploy() {
-        let client = create_external_client();
+        let temp_dir = tempfile::tempdir().unwrap();
+        let client = create_external_client(temp_dir.path().to_path_buf());
         let download_result = client.download_stable_release_artifact(|_| {});
 
         assert!(
@@ -1085,7 +1076,7 @@ mod tests {
             deploy_path
         );
 
-        std::fs::remove_file(&asset_path).ok();
+        // `deploy` removes the source asset on success.
         std::fs::remove_file(&deploy_path).ok();
     }
 }
