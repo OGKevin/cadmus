@@ -1033,7 +1033,6 @@ mod tests {
             deploy_path
         );
 
-        // `extract_and_deploy` removes the source zip on success.
         std::fs::remove_file(&deploy_path).ok();
     }
 
@@ -1076,7 +1075,6 @@ mod tests {
             deploy_path
         );
 
-        // `deploy` removes the source asset on success.
         std::fs::remove_file(&deploy_path).ok();
     }
 }
