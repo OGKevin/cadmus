@@ -213,12 +213,12 @@ mod tests {
 
     fn insert_meta(pool: &SqlitePool, dict_id: i64, fp: &str) {
         RUNTIME.block_on(async {
-            sqlx::query(
+            sqlx::query!(
                 "INSERT OR IGNORE INTO dictionary_index_meta (dict_id, fingerprint, dict_path, total_lines, indexed_lines, completed) VALUES (?, ?, ?, 0, 0, 1)",
+                dict_id,
+                fp,
+                fp,
             )
-            .bind(dict_id)
-            .bind(fp)
-            .bind(fp)
             .execute(pool)
             .await
             .expect("insert meta");
@@ -236,17 +236,17 @@ mod tests {
     ) {
         insert_meta(pool, dict_id, fp);
         RUNTIME.block_on(async {
-            sqlx::query(
+            sqlx::query!(
                 "INSERT INTO dictionary_index_entry (dict_id, word, offset, size, original) VALUES (?, ?, ?, ?, ?)",
+                dict_id,
+                word,
+                offset,
+                size,
+                original,
             )
-            .bind(dict_id)
-            .bind(word)
-            .bind(offset)
-            .bind(size)
-            .bind(original)
             .execute(pool)
-                .await
-                .expect("insert entry");
+            .await
+            .expect("insert entry");
         });
     }
 

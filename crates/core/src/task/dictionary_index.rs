@@ -1,6 +1,7 @@
 //! Background task that reads `.index` files from disk and inserts their
 //! entries into SQLite for fast lookups.
 
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::num::NonZeroU64;
@@ -509,6 +510,9 @@ impl DictionaryIndexTask {
         let pool = self.database.pool().clone();
 
         let result = RUNTIME.block_on(async {
+            let on_disk_set: HashSet<&str> =
+                on_disk_fingerprints.iter().map(|s| s.as_str()).collect();
+
             let db_entries = sqlx::query!(
                 "SELECT fingerprint, dict_id FROM dictionary_index_meta"
             )
@@ -518,7 +522,7 @@ impl DictionaryIndexTask {
             for row in db_entries {
                 let fp = row.fingerprint;
 
-                if on_disk_fingerprints.contains(&fp) {
+                if on_disk_set.contains(fp.as_str()) {
                     continue;
                 }
 
