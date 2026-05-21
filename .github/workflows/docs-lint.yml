@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "docs/**"
+      - ".agents/skills/**"
       - "package.json"
       - "package-lock.json"
       - ".github/workflows/docs-lint.yml"
@@ -24,7 +25,7 @@ jobs:
         run: npm ci
 
       - name: Prettier check
-        run: npx prettier docs --check
+        run: npx prettier docs .agents/skills --check
 
       - name: Markdownlint
-        run: npx markdownlint "docs/**/*.md"
+        run: npx markdownlint "docs/**/*.md" ".agents/skills/**/*.md"

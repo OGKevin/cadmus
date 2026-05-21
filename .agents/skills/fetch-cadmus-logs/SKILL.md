@@ -16,7 +16,7 @@ LogQL pipeline.
 
 ## Loki base URL
 
-```
+```text
 http://localhost:3100
 ```
 
@@ -65,13 +65,13 @@ JSON field. Filter by level two ways:
 
 **Stream label (preferred — fast, evaluated before parsing):**
 
-```
+```text
 {service_name="cadmus", level="error"} | json | resources_cadmus_run_id="<id>"
 ```
 
 **JSON field filter (use when you need to match severity exactly as logged):**
 
-```
+```text
 {service_name="cadmus"} | json | resources_cadmus_run_id="<id>" | severity="ERROR"
 ```
 
@@ -97,12 +97,12 @@ curl -sG "${LOKI_URL}/loki/api/v1/query_range" \
 
 ## Common patterns
 
-| Goal | LogQL suffix |
-|------|-------------|
-| All logs for a run | `| json | resources_cadmus_run_id="<id>"` |
-| Errors only | `{service_name="cadmus", level="error"} \| json \| resources_cadmus_run_id="<id>"` |
-| Pyroscope push logs | `\| json \| resources_cadmus_run_id="<id>" \| body=~"pyroscope\|profil"` |
-| Count entries | Use `/loki/api/v1/query` with `count_over_time(...)` |
+| Goal                | LogQL suffix                                                                       |
+| ------------------- | ---------------------------------------------------------------------------------- |
+| All logs for a run  | `\| json \| resources_cadmus_run_id="<id>"`                                        |
+| Errors only         | `{service_name="cadmus", level="error"} \| json \| resources_cadmus_run_id="<id>"` |
+| Pyroscope push logs | `\| json \| resources_cadmus_run_id="<id>" \| body=~"pyroscope\|profil"`           |
+| Count entries       | Use `/loki/api/v1/query` with `count_over_time(...)`                               |
 
 ## Loki API reference
 
