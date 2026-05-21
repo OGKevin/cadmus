@@ -19,9 +19,9 @@ pub(crate) use monolingual::MonolingualDictionaryService;
 
 use std::path::Path;
 
-pub(crate) use self::indexing::{apply_transform, normalize, Entry};
 use self::dictreader::DictReader;
 use self::indexing::IndexReader;
+pub(crate) use self::indexing::{apply_transform, normalize, Entry};
 use crate::db::Database;
 use crate::helpers::Fp;
 
@@ -59,7 +59,11 @@ impl Dictionary {
         word: &str,
         fuzzy: bool,
     ) -> Result<Vec<[String; 2]>, errors::DictError> {
-        let query = apply_transform(word, !self.metadata.all_chars, !self.metadata.case_sensitive);
+        let query = apply_transform(
+            word,
+            !self.metadata.all_chars,
+            !self.metadata.case_sensitive,
+        );
         let entries = self.index.load_and_find(&query, fuzzy, &self.metadata);
         let mut results = Vec::new();
         for entry in entries.into_iter() {
@@ -117,21 +121,23 @@ impl Dictionary {
 /// Resolves the `dict_id` for a given fingerprint from the database.
 ///
 /// Returns `None` if the fingerprint is not found in `dictionary_index_meta`.
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(database), fields(fingerprint = %fingerprint)))]
 pub fn resolve_dict_id(database: &Database, fingerprint: &Fp) -> Option<i64> {
     let fp_str = fingerprint.to_string();
     let pool = database.pool().clone();
 
-    crate::db::runtime::RUNTIME.block_on(async {
-        sqlx::query_scalar!(
-            "SELECT dict_id FROM dictionary_index_meta WHERE fingerprint = ?",
-            fp_str
-        )
-        .fetch_optional(&pool)
-        .await
-        .ok()
+    crate::db::runtime::RUNTIME
+        .block_on(async {
+            sqlx::query_scalar!(
+                "SELECT dict_id FROM dictionary_index_meta WHERE fingerprint = ?",
+                fp_str
+            )
+            .fetch_optional(&pool)
+            .await
+            .ok()
+            .flatten()
+        })
         .flatten()
-    })
-    .flatten()
 }
 
 /// Load dictionary using a database-backed index reader.
@@ -321,12 +327,7 @@ mod tests {
 
     #[test]
     fn test_dictionary_lookup_case_sensitive() {
-        let r = load_test_dictionary(
-            PATH_CASE_SENSITIVE_DICT,
-            CASE_SENSITIVE_ENTRIES,
-            true,
-            true,
-        );
+        let r = load_test_dictionary(PATH_CASE_SENSITIVE_DICT, CASE_SENSITIVE_ENTRIES, true, true);
         let mut dict = r.unwrap();
 
         dict = assert_dict_word_exists(dict, "Bar", "test for case-sensitivity");
@@ -341,12 +342,7 @@ mod tests {
 
     #[test]
     fn test_dictionary_lookup_case_sensitive_fuzzy() {
-        let r = load_test_dictionary(
-            PATH_CASE_SENSITIVE_DICT,
-            CASE_SENSITIVE_ENTRIES,
-            true,
-            true,
-        );
+        let r = load_test_dictionary(PATH_CASE_SENSITIVE_DICT, CASE_SENSITIVE_ENTRIES, true, true);
         let mut dict = r.unwrap();
 
         let r = dict.lookup("Ba", true);

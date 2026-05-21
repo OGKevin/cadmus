@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Cadmus Documentation\n"
-"POT-Creation-Date: 2026-04-20T10:08:26+02:00\n"
+"POT-Creation-Date: 2026-05-21T10:59:17+02:00\n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -13,7 +13,6 @@ msgstr ""
 "Plural-Forms: nplurals=1; plural=0;\n"
 
 #: src/SUMMARY.md:1 src/contributing/event-system.md:14
-#: src/contributing/telemetry.md:5
 msgid "Overview"
 msgstr ""
 
@@ -54,64 +53,85 @@ msgstr ""
 msgid "Dictionaries"
 msgstr ""
 
-#: src/SUMMARY.md:14 src/troubleshooting/index.md:1
-#: src/contributing/devenv-setup.md:209
+#: src/SUMMARY.md:14 src/library/index.md:1
+msgid "Library"
+msgstr ""
+
+#: src/SUMMARY.md:15
+msgid "Importing"
+msgstr ""
+
+#: src/SUMMARY.md:16 src/troubleshooting/index.md:1
+#: src/contributing/devenv-setup.md:210
 msgid "Troubleshooting"
 msgstr ""
 
-#: src/SUMMARY.md:18
+#: src/SUMMARY.md:20
 msgid "Contributor Guide"
 msgstr ""
 
-#: src/SUMMARY.md:20
+#: src/SUMMARY.md:22
 msgid "Development Environment"
 msgstr ""
 
-#: src/SUMMARY.md:21 src/contributing/event-system.md:1
+#: src/SUMMARY.md:23 src/contributing/event-system.md:1
 msgid "Event System"
 msgstr ""
 
-#: src/SUMMARY.md:22 src/contributing/telemetry.md:1
-msgid "OpenTelemetry Integration"
+#: src/SUMMARY.md:24 src/settings/index.md:281
+#: src/contributing/telemetry/index.md:1
+msgid "Telemetry"
 msgstr ""
 
-#: src/SUMMARY.md:23 src/index.md:9
+#: src/SUMMARY.md:25 src/contributing/telemetry/logging.md:1
+msgid "Logging"
+msgstr ""
+
+#: src/SUMMARY.md:26 src/contributing/telemetry/tracing.md:1
+msgid "Tracing"
+msgstr ""
+
+#: src/SUMMARY.md:27 src/contributing/telemetry/profiling.md:1
+msgid "Profiling"
+msgstr ""
+
+#: src/SUMMARY.md:28 src/index.md:9
 msgid "Documentation"
 msgstr ""
 
-#: src/SUMMARY.md:24 src/contributing/translations/index.md:1
+#: src/SUMMARY.md:29 src/contributing/translations/index.md:1
 msgid "Translations"
 msgstr ""
 
-#: src/SUMMARY.md:25
+#: src/SUMMARY.md:30
 msgid "UI Strings"
 msgstr ""
 
-#: src/SUMMARY.md:26
+#: src/SUMMARY.md:31
 msgid "Guide"
 msgstr ""
 
-#: src/SUMMARY.md:27 src/contributing/sqlite-sqlx.md:1
+#: src/SUMMARY.md:32 src/contributing/sqlite-sqlx.md:1
 msgid "SQLite & SQLx"
 msgstr ""
 
-#: src/SUMMARY.md:28 src/contributing/library-database.md:1
+#: src/SUMMARY.md:33 src/contributing/library-database.md:1
 msgid "Library Database"
 msgstr ""
 
-#: src/SUMMARY.md:29 src/contributing/runtime-migrations.md:1
+#: src/SUMMARY.md:34 src/contributing/runtime-migrations.md:1
 msgid "Runtime Migrations"
 msgstr ""
 
-#: src/SUMMARY.md:33 src/investigations/index.md:1
+#: src/SUMMARY.md:38 src/investigations/index.md:1
 msgid "Investigations"
 msgstr ""
 
-#: src/SUMMARY.md:35
+#: src/SUMMARY.md:40
 msgid "Intro"
 msgstr ""
 
-#: src/SUMMARY.md:36 src/investigations/kobo/issue-51-dhcp-investigation.md:1
+#: src/SUMMARY.md:41 src/investigations/kobo/issue-51-dhcp-investigation.md:1
 msgid "DHCP IP Address Changes on WiFi Toggle"
 msgstr ""
 
@@ -1266,14 +1286,10 @@ msgid ""
 "updates](../installation/ota.md) guide."
 msgstr ""
 
-#: src/settings/index.md:281
-msgid "Telemetry"
-msgstr ""
-
 #: src/settings/index.md:283
 msgid ""
-"Cadmus writes JSON logs to disk. When the build enables the `otel` feature, "
-"it can also export logs to an OpenTelemetry endpoint."
+"Cadmus writes JSON logs to disk. When the build enables the `tracing` "
+"feature, it can also export logs to an OpenTelemetry endpoint."
 msgstr ""
 
 #: src/settings/index.md:286
@@ -1302,7 +1318,7 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:303
+#: src/settings/index.md:303 src/contributing/telemetry/logging.md:50
 msgid "`logging.enabled`"
 msgstr ""
 
@@ -1310,7 +1326,7 @@ msgstr ""
 msgid "Enable or disable structured JSON logging."
 msgstr ""
 
-#: src/settings/index.md:314
+#: src/settings/index.md:314 src/contributing/telemetry/logging.md:51
 msgid "`logging.level`"
 msgstr ""
 
@@ -1332,7 +1348,7 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:327
+#: src/settings/index.md:327 src/contributing/telemetry/logging.md:52
 msgid "`logging.max-files`"
 msgstr ""
 
@@ -1342,7 +1358,7 @@ msgid ""
 "ones are deleted automatically when Cadmus starts."
 msgstr ""
 
-#: src/settings/index.md:332 src/settings/index.md:388
+#: src/settings/index.md:332 src/settings/index.md:405
 msgid "Default: `3`"
 msgstr ""
 
@@ -1350,12 +1366,12 @@ msgstr ""
 msgid "Set to `0` to keep all log files."
 msgstr ""
 
-#: src/settings/index.md:340
+#: src/settings/index.md:340 src/contributing/telemetry/logging.md:54
 msgid "`logging.otlp-endpoint`"
 msgstr ""
 
 #: src/settings/index.md:342
-msgid "✏️ (only when the `otel` feature is enabled)"
+msgid "✏️ (only when the `tracing` feature is enabled)"
 msgstr ""
 
 #: src/settings/index.md:344
@@ -1370,7 +1386,7 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:351
+#: src/settings/index.md:351 src/settings/index.md:368
 msgid "Environment override:"
 msgstr ""
 
@@ -1379,53 +1395,81 @@ msgid ""
 "`OTEL_EXPORTER_OTLP_ENDPOINT` takes precedence over `logging.otlp-endpoint`."
 msgstr ""
 
-#: src/settings/index.md:355
-msgid "`logging.enable-kern-log`"
+#: src/settings/index.md:355 src/contributing/telemetry/profiling.md:32
+msgid "`logging.pyroscope-endpoint`"
 msgstr ""
 
-#: src/settings/index.md:357 src/settings/index.md:369
-msgid "🧪 📱 ✏️"
+#: src/settings/index.md:357
+msgid "✏️ (only when the `profiling` feature is enabled)"
 msgstr ""
 
 #: src/settings/index.md:359
+msgid ""
+"Optional Pyroscope server URL for continuous profiling. When set, Cadmus "
+"starts both a heap profiling agent (via jemalloc) and a CPU profiling agent "
+"(via pprof) that push profiles to this endpoint."
+msgstr ""
+
+#: src/settings/index.md:363
+msgid ""
+"```toml\n"
+"[logging]\n"
+"pyroscope-endpoint = \"http://localhost:4040\"\n"
+"```"
+msgstr ""
+
+#: src/settings/index.md:370
+msgid ""
+"`PYROSCOPE_SERVER_URL` takes precedence over `logging.pyroscope-endpoint`."
+msgstr ""
+
+#: src/settings/index.md:372
+msgid "`logging.enable-kern-log`"
+msgstr ""
+
+#: src/settings/index.md:374 src/settings/index.md:386
+msgid "🧪 📱 ✏️"
+msgstr ""
+
+#: src/settings/index.md:376
 msgid ""
 "Captures kernel logs via `logread -F` and forwards them to structured "
 "logging with the target `cadmus_core::logging:kern`."
 msgstr ""
 
-#: src/settings/index.md:367
+#: src/settings/index.md:384
 msgid "`logging.enable-dbus-log`"
 msgstr ""
 
-#: src/settings/index.md:371
+#: src/settings/index.md:388
 msgid ""
 "Captures D-Bus signals via the built-in zbus-based DbusMonitorTask and "
 "forwards them to structured logging."
 msgstr ""
 
-#: src/settings/index.md:379
+#: src/settings/index.md:396
 msgid "Settings Retention"
 msgstr ""
 
-#: src/settings/index.md:381
+#: src/settings/index.md:398
 msgid ""
 "Cadmus stores each version's settings in a separate file in the `Settings/` "
 "directory (for example, `Settings-v1.2.3.toml`). This ensures backward and "
 "forward compatibility when you upgrade."
 msgstr ""
 
-#: src/settings/index.md:384
+#: src/settings/index.md:401
 msgid "`settings-retention`"
 msgstr ""
 
-#: src/settings/index.md:386
+#: src/settings/index.md:403
 msgid ""
 "Number of recent version settings files to keep. Only the most recent N "
 "version files are kept. When a new version is saved, older versions beyond "
 "this limit are deleted automatically."
 msgstr ""
 
-#: src/settings/index.md:389
+#: src/settings/index.md:406
 msgid "Set to `0` to keep all version files"
 msgstr ""
 
@@ -1723,6 +1767,77 @@ msgid ""
 "`.dict.dz` (or `.dict`) and a `.index` file."
 msgstr ""
 
+#: src/library/index.md:3
+msgid ""
+"The library is where all your books live. Cadmus scans your device's storage "
+"and keeps track of everything you've added, so you can browse, search, and "
+"organize your collection right on the device."
+msgstr ""
+
+#: src/library/index.md:7
+msgid "What's in this section"
+msgstr ""
+
+#: src/library/index.md:9
+msgid ""
+"[Importing books](importing.md) — how Cadmus finds and adds books to your "
+"library"
+msgstr ""
+
+#: src/library/importing.md:1
+msgid "Importing Books"
+msgstr ""
+
+#: src/library/importing.md:3
+msgid ""
+"Cadmus scans your device's storage and adds books to its database "
+"automatically. This process is called **importing**."
+msgstr ""
+
+#: src/library/importing.md:6
+msgid "Import on startup"
+msgstr ""
+
+#: src/library/importing.md:8
+msgid ""
+"By default, Cadmus imports any new books it finds every time it starts. Copy "
+"files to your device, restart the app, and they'll appear in your library "
+"right away."
+msgstr ""
+
+#: src/library/importing.md:12
+msgid ""
+"\\[!TIP\\] If you have a large library, consider turning off import on "
+"startup. Scanning a lot of files takes time and drains the battery. You can "
+"still import manually whenever you need to."
+msgstr ""
+
+#: src/library/importing.md:17
+msgid ""
+"To disable it, open **Settings** and set `import.startup-trigger` to `false`."
+msgstr ""
+
+#: src/library/importing.md:19
+msgid "Manual import"
+msgstr ""
+
+#: src/library/importing.md:21
+msgid "You can trigger an import at any time without restarting:"
+msgstr ""
+
+#: src/library/importing.md:23
+msgid "On the home screen, tap the **library name** in the bottom-left corner."
+msgstr ""
+
+#: src/library/importing.md:24
+msgid "In the menu that appears, tap **Database → Import**."
+msgstr ""
+
+#: src/library/importing.md:26
+msgid ""
+"Cadmus will scan your library folder and add any books it hasn't seen before."
+msgstr ""
+
 #: src/troubleshooting/index.md:3
 msgid "Logs"
 msgstr ""
@@ -1986,7 +2101,7 @@ msgid "`cadmus-dev-otel`"
 msgstr ""
 
 #: src/contributing/devenv-setup.md:45
-msgid "Run emulator with OpenTelemetry instrumentation"
+msgid "Run emulator with tracing and profiling enabled"
 msgstr ""
 
 #: src/contributing/devenv-setup.md:46
@@ -2223,7 +2338,7 @@ msgstr ""
 msgid "Or to run tests manually without xtask:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:149 src/contributing/devenv-setup.md:221
+#: src/contributing/devenv-setup.md:149 src/contributing/devenv-setup.md:222
 msgid "$(pwd)"
 msgstr ""
 
@@ -2414,41 +2529,52 @@ msgstr ""
 msgid "Telemetry ingestion"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:207
-msgid ""
-"For more details on telemetry, see [OpenTelemetry Integration](telemetry.md)."
+#: src/contributing/devenv-setup.md:206
+msgid "Pyroscope"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:211
+#: src/contributing/devenv-setup.md:206
+msgid "<http://localhost:4040>"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:206
+msgid "Continuous profiling"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:208
+msgid "For more details on telemetry, see [Telemetry](telemetry/index.md)."
+msgstr ""
+
+#: src/contributing/devenv-setup.md:212
 msgid "Shell takes a long time to start"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:213
+#: src/contributing/devenv-setup.md:214
 msgid ""
 "The first `devenv shell` invocation downloads and builds dependencies, which "
 "can take several minutes. Subsequent invocations are cached and should be "
 "fast."
 msgstr ""
 
-#: src/contributing/devenv-setup.md:216
+#: src/contributing/devenv-setup.md:217
 msgid "Tests fail with \"TEST_ROOT_DIR must be set\""
 msgstr ""
 
-#: src/contributing/devenv-setup.md:218
+#: src/contributing/devenv-setup.md:219
 msgid "Set the environment variable before running tests:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:224
+#: src/contributing/devenv-setup.md:225
 msgid "Local Configuration"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:226
+#: src/contributing/devenv-setup.md:227
 msgid ""
 "Create `devenv.local.nix` to override settings without modifying the tracked "
 "configuration:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:228
+#: src/contributing/devenv-setup.md:229
 msgid ""
 "```nix\n"
 "{ pkgs, ... }:\n"
@@ -2462,7 +2588,7 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:239
+#: src/contributing/devenv-setup.md:240
 msgid "This file is gitignored and won't affect other contributors."
 msgstr ""
 
@@ -2727,17 +2853,24 @@ msgstr ""
 
 #: src/contributing/event-system.md:168
 msgid ""
-"The main loop (`app.rs`) receives events from the hub and handles them in a "
-"large `match` statement. Some events are dispatched into the view tree, "
-"while others are handled directly:"
+"The main loop (`app.rs`) receives events from the hub and handles them in "
+"two stages. First, `TaskManager` gets a chance to observe every event — this "
+"is where `ImportLibrary`, `ImportFinished`, and `ReindexDictionaries` are "
+"intercepted to schedule or coalesce background tasks. Then the event enters "
+"the large `match` statement, where some events are dispatched into the view "
+"tree and others are handled directly:"
 msgstr ""
 
-#: src/contributing/event-system.md:171
+#: src/contributing/event-system.md:175
 msgid ""
 "```mermaid\n"
 "flowchart TB\n"
 "    subgraph MainLoop[\"Main Loop\"]\n"
 "        direction TB\n"
+"\n"
+"        Recv[\"rx.recv() → evt\"]\n"
+"        TaskManager[\"TaskManager::handle_event()<br/>(ImportLibrary, "
+"ImportFinished, ReindexDictionaries)\"]\n"
 "\n"
 "        Gesture[\"Event::Gesture(Tap/Swipe/...)\"]\n"
 "        GestureAction[\"Dispatched into view tree via handle_event()\"]\n"
@@ -2758,71 +2891,86 @@ msgid ""
 "        Select[\"Event::Select(...)\"]\n"
 "        SelectAction[\"Some handled directly,<br/>some dispatched\"]\n"
 "\n"
+"        ImportLibrary[\"Event::ImportLibrary / ImportFinished / "
+"ReindexDictionaries\"]\n"
+"        ImportAction[\"Handled by TaskManager<br/>(schedules/coalesces "
+"tasks)\"]\n"
+"\n"
+"        Recv --> TaskManager\n"
+"        TaskManager --> Gesture\n"
+"        TaskManager --> Close\n"
+"        TaskManager --> Notification\n"
+"        TaskManager --> Open\n"
+"        TaskManager --> Focus\n"
+"        TaskManager --> Select\n"
+"        TaskManager --> ImportLibrary\n"
+"\n"
 "        Gesture --> GestureAction\n"
 "        Close --> CloseAction\n"
 "        Notification --> NotificationAction\n"
 "        Open --> OpenAction\n"
 "        Focus --> FocusAction\n"
 "        Select --> SelectAction\n"
+"        ImportLibrary --> ImportAction\n"
 "    end\n"
 "```"
 msgstr ""
 
-#: src/contributing/event-system.md:203
+#: src/contributing/event-system.md:223
 msgid "Event::Close"
 msgstr ""
 
-#: src/contributing/event-system.md:205
+#: src/contributing/event-system.md:225
 msgid ""
 "`Event::Close(ViewId)` is handled **directly** by the main loop using "
 "`locate_by_id()`, which searches only the **top-level children** of the root "
 "view:"
 msgstr ""
 
-#: src/contributing/event-system.md:218
+#: src/contributing/event-system.md:238
 msgid ""
 "**Key limitation**: The main loop can only remove **direct children of the "
 "root**. To close nested views, either:"
 msgstr ""
 
-#: src/contributing/event-system.md:221
+#: src/contributing/event-system.md:241
 msgid ""
 "**Use the parent's ViewId** (via hub): Removes the entire parent container"
 msgstr ""
 
-#: src/contributing/event-system.md:222
+#: src/contributing/event-system.md:242
 msgid ""
 "**Use the bus**: Parent handles the close and removes just the specific child"
 msgstr ""
 
-#: src/contributing/event-system.md:224
+#: src/contributing/event-system.md:244
 msgid ""
 "See [Why ViewId Matters for Close](#why-viewid-matters-for-close) and "
 "[Closing Nested Views via the Bus](#closing-nested-views-via-the-bus) for "
 "details."
 msgstr ""
 
-#: src/contributing/event-system.md:227
+#: src/contributing/event-system.md:247
 msgid "Practical Example: Dialog Outside-Tap"
 msgstr ""
 
-#: src/contributing/event-system.md:229
+#: src/contributing/event-system.md:249
 msgid ""
 "When a `Dialog` is tapped outside its bounds, the following sequence occurs:"
 msgstr ""
 
-#: src/contributing/event-system.md:258
+#: src/contributing/event-system.md:278
 msgid "Why ViewId Matters for Close"
 msgstr ""
 
-#: src/contributing/event-system.md:260
+#: src/contributing/event-system.md:280
 msgid ""
 "When using the **hub** to close views, `locate_by_id()` only finds top-level "
 "children. If a dialog is nested inside a parent, you must use the "
 "**parent's** `ViewId` — this removes the entire parent:"
 msgstr ""
 
-#: src/contributing/event-system.md:264
+#: src/contributing/event-system.md:284
 msgid ""
 "```mermaid\n"
 "flowchart TD\n"
@@ -2840,467 +2988,694 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/contributing/event-system.md:278
+#: src/contributing/event-system.md:298
 msgid ""
 "To close just the nested view without affecting siblings, use the **bus** "
 "instead (see below)."
 msgstr ""
 
-#: src/contributing/event-system.md:280
+#: src/contributing/event-system.md:300
 msgid "Closing Nested Views via the Bus"
 msgstr ""
 
-#: src/contributing/event-system.md:282
+#: src/contributing/event-system.md:302
 msgid ""
 "Send `Event::Close` via the **bus** to close nested views. Parents handle "
 "bus events synchronously and can remove any child directly:"
 msgstr ""
 
-#: src/contributing/event-system.md:286
+#: src/contributing/event-system.md:306
 msgid "// Child sends close via bus\n"
 msgstr ""
 
-#: src/contributing/event-system.md:303
+#: src/contributing/event-system.md:323
 msgid "**Comparison:**"
 msgstr ""
 
-#: src/contributing/event-system.md:305
+#: src/contributing/event-system.md:325
 #: src/contributing/library-database.md:148
 msgid "Method"
 msgstr ""
 
-#: src/contributing/event-system.md:305
+#: src/contributing/event-system.md:325
 msgid "Code"
 msgstr ""
 
-#: src/contributing/event-system.md:305
+#: src/contributing/event-system.md:325
 msgid "Handler"
 msgstr ""
 
-#: src/contributing/event-system.md:305 src/contributing/event-system.md:329
+#: src/contributing/event-system.md:325 src/contributing/event-system.md:349
 msgid "Scope"
 msgstr ""
 
-#: src/contributing/event-system.md:307
+#: src/contributing/event-system.md:327
 msgid "Hub close"
 msgstr ""
 
-#: src/contributing/event-system.md:307
+#: src/contributing/event-system.md:327
 msgid "`hub.send(Event::Close(id))`"
 msgstr ""
 
-#: src/contributing/event-system.md:307
+#: src/contributing/event-system.md:327
 msgid "Main loop"
 msgstr ""
 
-#: src/contributing/event-system.md:307
+#: src/contributing/event-system.md:327
 msgid "Top-level children only"
 msgstr ""
 
-#: src/contributing/event-system.md:308
+#: src/contributing/event-system.md:328
 msgid "Bus close"
 msgstr ""
 
-#: src/contributing/event-system.md:308
+#: src/contributing/event-system.md:328
 msgid "`bus.push_back(Event::Close(id))`"
 msgstr ""
 
-#: src/contributing/event-system.md:308
+#: src/contributing/event-system.md:328
 msgid "Parent view"
 msgstr ""
 
-#: src/contributing/event-system.md:308
+#: src/contributing/event-system.md:328
 msgid "Any child"
 msgstr ""
 
-#: src/contributing/event-system.md:310
+#: src/contributing/event-system.md:330
 msgid "**Example implementation:**"
 msgstr ""
 
-#: src/contributing/event-system.md:316
+#: src/contributing/event-system.md:336
 msgid "// Return false to bubble up so grandparent removes us\n"
 msgstr ""
 
-#: src/contributing/event-system.md:324
+#: src/contributing/event-system.md:344
 #: src/investigations/kobo/issue-51-dhcp-investigation.md:10
 msgid "Summary"
 msgstr ""
 
-#: src/contributing/event-system.md:326
+#: src/contributing/event-system.md:346
 msgid "Aspect"
 msgstr ""
 
-#: src/contributing/event-system.md:326
+#: src/contributing/event-system.md:346
 msgid "Hub"
 msgstr ""
 
-#: src/contributing/event-system.md:326
+#: src/contributing/event-system.md:346
 msgid "Bus"
 msgstr ""
 
-#: src/contributing/event-system.md:328
+#: src/contributing/event-system.md:348
 #: src/investigations/kobo/issue-51-dhcp-investigation.md:147
 msgid "Type"
 msgstr ""
 
-#: src/contributing/event-system.md:328
+#: src/contributing/event-system.md:348
 msgid "`mpsc::Sender<Event>`"
 msgstr ""
 
-#: src/contributing/event-system.md:328
+#: src/contributing/event-system.md:348
 msgid "`VecDeque<Event>`"
 msgstr ""
 
-#: src/contributing/event-system.md:329
+#: src/contributing/event-system.md:349
 msgid "Global (main loop)"
 msgstr ""
 
-#: src/contributing/event-system.md:329
+#: src/contributing/event-system.md:349
 msgid "Local (parent-child)"
 msgstr ""
 
-#: src/contributing/event-system.md:330
+#: src/contributing/event-system.md:350
 msgid "Timing"
 msgstr ""
 
-#: src/contributing/event-system.md:330
+#: src/contributing/event-system.md:350
 msgid "Next loop iteration"
 msgstr ""
 
-#: src/contributing/event-system.md:330
+#: src/contributing/event-system.md:350
 msgid "Current dispatch cycle"
 msgstr ""
 
-#: src/contributing/event-system.md:331
+#: src/contributing/event-system.md:351
 msgid "Direction"
 msgstr ""
 
-#: src/contributing/event-system.md:331
+#: src/contributing/event-system.md:351
 msgid "View → Main loop"
 msgstr ""
 
-#: src/contributing/event-system.md:331
+#: src/contributing/event-system.md:351
 msgid "Child → Parent"
 msgstr ""
 
-#: src/contributing/event-system.md:332
+#: src/contributing/event-system.md:352
 msgid "Unhandled events"
 msgstr ""
 
-#: src/contributing/event-system.md:332
+#: src/contributing/event-system.md:352
 msgid "Processed by main loop `match`"
 msgstr ""
 
-#: src/contributing/event-system.md:332
+#: src/contributing/event-system.md:352
 msgid "Forwarded to hub"
 msgstr ""
 
-#: src/contributing/event-system.md:333
+#: src/contributing/event-system.md:353
 msgid "Use for"
 msgstr ""
 
-#: src/contributing/event-system.md:333
+#: src/contributing/event-system.md:353
 msgid "Close, Focus, Notifications"
 msgstr ""
 
-#: src/contributing/event-system.md:333
+#: src/contributing/event-system.md:353
 msgid "Submit, child-to-parent signals"
 msgstr ""
 
-#: src/contributing/telemetry.md:3
-msgid ""
-"Cadmus supports exporting logs and traces to OpenTelemetry-compatible "
-"backends when built with the `otel` feature flag."
+#: src/contributing/telemetry/index.md:3
+msgid "Cadmus has three related observability paths:"
 msgstr ""
 
-#: src/contributing/telemetry.md:7
-msgid ""
-"The OpenTelemetry (OTEL) integration allows Cadmus to export both "
-"**structured logs** and **distributed traces** to observability platforms "
-"like Grafana Loki/Tempo, Jaeger, or any OTLP-compatible service. Both logs "
-"and traces are first-class features that work together to provide "
-"comprehensive observability for monitoring application behavior, debugging "
-"issues, and analyzing performance."
+#: src/contributing/telemetry/index.md:5
+msgid "`logging` for structured log export and local log files"
 msgstr ""
 
-#: src/contributing/telemetry.md:12
+#: src/contributing/telemetry/index.md:6
+msgid "`tracing` for distributed tracing and OTLP export"
+msgstr ""
+
+#: src/contributing/telemetry/index.md:7
+msgid "`profiling` for continuous profiling with Pyroscope"
+msgstr ""
+
+#: src/contributing/telemetry/index.md:9
+msgid ""
+"Use this section when you need to understand how those features fit "
+"together, what each one depends on, and how to run them locally."
+msgstr ""
+
+#: src/contributing/telemetry/index.md:12
+msgid ""
+"Cadmus assigns each run a unique Run ID using UUID v7. That Run ID ties "
+"together local log files, OTLP exports, and profiling data for the same app "
+"session."
+msgstr ""
+
+#: src/contributing/telemetry/index.md:16
+msgid "Pages"
+msgstr ""
+
+#: src/contributing/telemetry/index.md:18
+#: src/contributing/telemetry/tracing.md:109
+msgid "[Logging](logging.md)"
+msgstr ""
+
+#: src/contributing/telemetry/index.md:19
+#: src/contributing/telemetry/logging.md:80
+msgid "[Tracing](tracing.md)"
+msgstr ""
+
+#: src/contributing/telemetry/index.md:20
+#: src/contributing/telemetry/logging.md:81
+#: src/contributing/telemetry/tracing.md:110
+msgid "[Profiling](profiling.md)"
+msgstr ""
+
+#: src/contributing/telemetry/index.md:22
+#: src/contributing/telemetry/profiling.md:12
+msgid "Feature flags"
+msgstr ""
+
+#: src/contributing/telemetry/index.md:24
+msgid "`tracing` enables structured logs, distributed traces, and OTLP export."
+msgstr ""
+
+#: src/contributing/telemetry/index.md:25
+msgid "`profiling` enables heap and CPU profiling with Pyroscope."
+msgstr ""
+
+#: src/contributing/telemetry/index.md:26
+msgid "`telemetry` enables both `tracing` and `profiling` together in the app."
+msgstr ""
+
+#: src/contributing/telemetry/index.md:28
 msgid "Architecture"
 msgstr ""
 
-#: src/contributing/telemetry.md:14
-msgid "The telemetry system consists of three main components:"
+#: src/contributing/telemetry/index.md:30
+msgid "The telemetry stack is split into three layers:"
 msgstr ""
 
-#: src/contributing/telemetry.md:16
+#: src/contributing/telemetry/index.md:32
 msgid ""
-"**Logging**: JSON-structured logs written to disk via `tracing_subscriber`"
+"Logging writes newline-delimited JSON to disk and can export log records "
+"over OTLP."
 msgstr ""
 
-#: src/contributing/telemetry.md:17
-msgid "**Tracing**: Distributed traces capturing execution flow and timing"
-msgstr ""
-
-#: src/contributing/telemetry.md:18
+#: src/contributing/telemetry/index.md:34
 msgid ""
-"**OTLP Export**: Optional export of both logs and traces to a remote OTLP "
-"endpoint"
+"Tracing creates spans around instrumented operations and exports them over "
+"OTLP."
 msgstr ""
 
-#: src/contributing/telemetry.md:20
-msgid "When the `otel` feature is enabled, Cadmus initializes:"
+#: src/contributing/telemetry/index.md:36
+msgid "Profiling samples CPU and heap activity and pushes profiles to Pyroscope."
 msgstr ""
 
-#: src/contributing/telemetry.md:22
+#: src/contributing/telemetry/index.md:38
 msgid ""
-"**Tracer Provider**: Exports distributed traces to `<endpoint>/v1/traces` "
-"using batch span processors for async delivery"
+"When `telemetry` is enabled, Cadmus runs all three paths together. In local "
+"development this matches the default observability stack exposed by `devenv "
+"up`."
 msgstr ""
 
-#: src/contributing/telemetry.md:23
+#: src/contributing/telemetry/index.md:42
+msgid "Local setup"
+msgstr ""
+
+#: src/contributing/telemetry/index.md:44
 msgid ""
-"**Logger Provider**: Exports structured logs to `<endpoint>/v1/logs` using "
-"batch log processors"
+"The development environment includes a full observability stack. Use the "
+"`cadmus-dev-otel` command to run the emulator with telemetry enabled."
 msgstr ""
 
-#: src/contributing/telemetry.md:25
+#: src/contributing/telemetry/logging.md:3
 msgid ""
-"Each Cadmus run is assigned a unique Run ID (UUID v7) that ties together all "
-"logs and traces for that session, enabling correlation between trace spans "
-"and log events."
+"Cadmus writes structured JSON logs to disk and can export logs to an OTLP "
+"backend when the `tracing` feature is enabled."
 msgstr ""
 
-#: src/contributing/telemetry.md:28
-msgid "Building with OTEL Support"
+#: src/contributing/telemetry/logging.md:6
+#: src/contributing/telemetry/tracing.md:6
+#: src/contributing/telemetry/profiling.md:6
+msgid "What it does"
 msgstr ""
 
-#: src/contributing/telemetry.md:30
-msgid "To enable OpenTelemetry, build Cadmus with the `otel` feature:"
+#: src/contributing/telemetry/logging.md:8
+msgid "Writes newline-delimited JSON log files to the configured log directory"
 msgstr ""
 
-#: src/contributing/telemetry.md:36
+#: src/contributing/telemetry/logging.md:9
+msgid ""
+"Adds run metadata so a single app session can be traced through log output"
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:10
+msgid "Optionally exports logs to an OpenTelemetry collector"
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:12
+#: src/contributing/telemetry/tracing.md:12
+msgid "Feature flag"
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:14
+msgid "`tracing` enables OTLP log export and shared tracing/logging context"
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:16
+msgid "Log file format"
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:18
+msgid "Cadmus writes newline-delimited JSON files named like this:"
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:24
+msgid "Each record includes these fields:"
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:26
+msgid "`timestamp`"
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:27
+msgid "`level`"
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:28
+msgid "`target`"
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:29
+msgid "`fields`"
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:30
+msgid "`spans`"
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:32
+msgid ""
+"The `spans` array carries active tracing context so log records can be "
+"matched back to the traced operation that emitted them."
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:35
+#: src/contributing/telemetry/tracing.md:84
+msgid "Resource attributes"
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:37
+msgid ""
+"When OTLP export is enabled, log records include the same resource metadata "
+"as traces:"
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:40
+#: src/contributing/telemetry/tracing.md:88
+msgid "`service.name = cadmus`"
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:41
+#: src/contributing/telemetry/tracing.md:89
+msgid "`service.version = <git describe output>`"
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:42
+#: src/contributing/telemetry/tracing.md:90
+msgid "`cadmus.run_id = <uuid-v7>`"
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:43
+#: src/contributing/telemetry/tracing.md:91
+msgid "`hostname = <system hostname>`"
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:45
+#: src/contributing/telemetry/tracing.md:93
+#: src/contributing/telemetry/profiling.md:27
 msgid "Configuration"
 msgstr ""
 
-#: src/contributing/telemetry.md:38
-msgid "Settings File"
-msgstr ""
-
-#: src/contributing/telemetry.md:40
-msgid "Configure OpenTelemetry in your `Settings.toml`:"
-msgstr ""
-
-#: src/contributing/telemetry.md:42
+#: src/contributing/telemetry/logging.md:47
 msgid ""
-"```toml\n"
-"[logging]\n"
-"enabled = true\n"
-"level = \"info\"\n"
-"max-files = 3\n"
-"directory = \"logs\"\n"
-"otlp-endpoint = \"https://otel.example.com:4318\"\n"
-"```"
+"See the [settings reference](../../settings/index.md#logging) for the full "
+"logging configuration. The main options are:"
 msgstr ""
 
-#: src/contributing/telemetry.md:51
-msgid "Configuration Options"
+#: src/contributing/telemetry/logging.md:53
+msgid "`logging.directory`"
 msgstr ""
 
-#: src/contributing/telemetry.md:53
-msgid "**enabled**: Enable or disable logging entirely"
-msgstr ""
-
-#: src/contributing/telemetry.md:54
-msgid "**level**: Minimum log level (`trace`, `debug`, `info`, `warn`, `error`)"
-msgstr ""
-
-#: src/contributing/telemetry.md:55
-msgid "**max-files**: Number of log files to retain (0 = keep all)"
-msgstr ""
-
-#: src/contributing/telemetry.md:56
-msgid "**directory**: Path to log directory (relative to installation directory)"
-msgstr ""
-
-#: src/contributing/telemetry.md:57
-msgid "**otlp-endpoint**: OTLP HTTP endpoint URL (optional)"
-msgstr ""
-
-#: src/contributing/telemetry.md:59
-msgid "Environment Variables"
-msgstr ""
-
-#: src/contributing/telemetry.md:61
-msgid "You can override the OTLP endpoint using an environment variable:"
-msgstr ""
-
-#: src/contributing/telemetry.md:64
-msgid "\"https://otel.example.com:4318\""
-msgstr ""
-
-#: src/contributing/telemetry.md:68
-msgid "Environment variables take precedence over `Settings.toml` configuration."
-msgstr ""
-
-#: src/contributing/telemetry.md:70
-msgid "Log Level Control"
-msgstr ""
-
-#: src/contributing/telemetry.md:72
+#: src/contributing/telemetry/logging.md:56
+#: src/contributing/telemetry/tracing.md:98
 msgid ""
-"The log level can be controlled via the `RUST_LOG` environment variable, "
-"which overrides the `level` setting:"
+"`OTEL_EXPORTER_OTLP_ENDPOINT` overrides `logging.otlp-endpoint` when both "
+"are set."
 msgstr ""
 
-#: src/contributing/telemetry.md:75
-msgid "# Enable debug logs for all modules\n"
+#: src/contributing/telemetry/logging.md:59
+msgid ""
+"`RUST_LOG` overrides the configured log level. This is useful when you need "
+"trace-level output for a single subsystem without editing `Settings.toml`."
 msgstr ""
 
-#: src/contributing/telemetry.md:76
+#: src/contributing/telemetry/logging.md:63
+msgid "# Enable debug logs globally\n"
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:64
 msgid "debug"
 msgstr ""
 
-#: src/contributing/telemetry.md:78
-msgid "# Enable trace logs only for specific modules\n"
+#: src/contributing/telemetry/logging.md:65
+msgid "# Enable trace logs for a specific module\n"
 msgstr ""
 
-#: src/contributing/telemetry.md:84
-msgid "Distributed Tracing"
+#: src/contributing/telemetry/logging.md:70
+#: src/contributing/telemetry/profiling.md:17
+msgid "Runtime behavior"
 msgstr ""
 
-#: src/contributing/telemetry.md:86
+#: src/contributing/telemetry/logging.md:72
 msgid ""
-"Distributed tracing captures the execution flow of operations through the "
-"application, providing timing information and context about how different "
-"components interact."
+"When `tracing` is enabled, log export is initialized during app startup and "
+"shut down during app exit."
 msgstr ""
 
-#: src/contributing/telemetry.md:89
-msgid "How Tracing Works in Cadmus"
-msgstr ""
-
-#: src/contributing/telemetry.md:91
+#: src/contributing/telemetry/logging.md:75
 msgid ""
-"When the `otel` feature is enabled, Cadmus automatically instruments key "
-"operations using the `tracing` crate. Each instrumented function creates a "
-"**span** that records:"
+"Cadmus always writes local JSON logs. OTLP export is an additional sink "
+"layered on top when an endpoint is configured."
 msgstr ""
 
-#: src/contributing/telemetry.md:94
-msgid "Function name and module path"
+#: src/contributing/telemetry/logging.md:78
+#: src/contributing/telemetry/tracing.md:107
+msgid "Related docs"
 msgstr ""
 
-#: src/contributing/telemetry.md:95
-msgid "Input parameters (selectively captured)"
-msgstr ""
-
-#: src/contributing/telemetry.md:96
-msgid "Execution duration"
-msgstr ""
-
-#: src/contributing/telemetry.md:97
-msgid "Return values (at TRACE level)"
-msgstr ""
-
-#: src/contributing/telemetry.md:98
-msgid "Hierarchical relationships between spans"
-msgstr ""
-
-#: src/contributing/telemetry.md:100
+#: src/contributing/telemetry/tracing.md:3
 msgid ""
-"Spans are organized hierarchically, showing which operations triggered which "
-"other operations, making it easier to understand execution flow and identify "
-"performance bottlenecks."
+"Cadmus uses `tracing` instrumentation to capture execution flow through the "
+"app and export spans to an OTLP backend."
 msgstr ""
 
-#: src/contributing/telemetry.md:103
+#: src/contributing/telemetry/tracing.md:8
+msgid "Adds spans around key operations in the app and core crates"
+msgstr ""
+
+#: src/contributing/telemetry/tracing.md:9
+msgid "Captures timing, fields, and parent-child relationships between spans"
+msgstr ""
+
+#: src/contributing/telemetry/tracing.md:10
+msgid "Exports traces to an OpenTelemetry collector when configured"
+msgstr ""
+
+#: src/contributing/telemetry/tracing.md:14
+msgid "`tracing` enables tracing support in the codebase"
+msgstr ""
+
+#: src/contributing/telemetry/tracing.md:16
 msgid "Instrumentation"
 msgstr ""
 
-#: src/contributing/telemetry.md:105
-msgid "View components in Cadmus are instrumented at critical chokepoints:"
+#: src/contributing/telemetry/tracing.md:18
+msgid ""
+"Most view and runtime chokepoints are instrumented with conditional "
+"compilation so tracing can be compiled out when the feature is disabled."
 msgstr ""
 
-#: src/contributing/telemetry.md:107
-msgid ""
-"**`handle_event` methods**: Capture event flow through the UI hierarchy with "
-"event type and return value"
+#: src/contributing/telemetry/tracing.md:21
+msgid "Each instrumented function can capture:"
 msgstr ""
 
-#: src/contributing/telemetry.md:108
-msgid ""
-"**`render` methods**: Capture rendering operations with rectangle dimensions "
-"for layout debugging"
+#: src/contributing/telemetry/tracing.md:23
+msgid "function and module name"
 msgstr ""
 
-#: src/contributing/telemetry.md:110
-msgid ""
-"All instrumentation uses conditional compilation (`#[cfg_attr(feature = "
-"\"otel\", ...)]`) to ensure zero runtime overhead when the feature is "
-"disabled."
+#: src/contributing/telemetry/tracing.md:24
+msgid "selected input fields"
 msgstr ""
 
-#: src/contributing/telemetry.md:113
+#: src/contributing/telemetry/tracing.md:25
+msgid "execution duration"
+msgstr ""
+
+#: src/contributing/telemetry/tracing.md:26
+msgid "return values at `TRACE` level"
+msgstr ""
+
+#: src/contributing/telemetry/tracing.md:27
+msgid "parent-child span relationships"
+msgstr ""
+
+#: src/contributing/telemetry/tracing.md:29
+msgid "View code is instrumented around two high-value paths:"
+msgstr ""
+
+#: src/contributing/telemetry/tracing.md:31
+msgid "`handle_event` methods for event flow through the UI tree"
+msgstr ""
+
+#: src/contributing/telemetry/tracing.md:32
+msgid "`render` methods for rendering and layout timing"
+msgstr ""
+
+#: src/contributing/telemetry/tracing.md:34
 msgid ""
-"For detailed instrumentation guidelines and examples, see "
+"For detailed instrumentation conventions, see "
 "`.github/instructions/rust-instrumentation.instructions.md`."
 msgstr ""
 
-#: src/contributing/telemetry.md:115
-msgid "Resource Attributes"
+#: src/contributing/telemetry/tracing.md:37
+msgid "Example: instrument a function"
 msgstr ""
 
-#: src/contributing/telemetry.md:117
+#: src/contributing/telemetry/tracing.md:39
 msgid ""
-"Each telemetry export (both logs and traces) includes the following resource "
-"attributes:"
+"Use `#[cfg_attr(feature = \"tracing\", tracing::instrument(...))]` on "
+"functions that should create a span for each call."
 msgstr ""
 
-#: src/contributing/telemetry.md:119
-msgid "**service.name**: Always `cadmus`"
+#: src/contributing/telemetry/tracing.md:44
+msgid "\"tracing\""
 msgstr ""
 
-#: src/contributing/telemetry.md:120
-msgid "**service.version**: Git version from build metadata"
+#: src/contributing/telemetry/tracing.md:48
+msgid "\"Saving cover image\""
 msgstr ""
 
-#: src/contributing/telemetry.md:121
-msgid "**cadmus.run_id**: Unique identifier for the application run"
+#: src/contributing/telemetry/tracing.md:56
+msgid ""
+"Use `skip(...)` for large values, borrowed buffers, or types with noisy "
+"`Debug` output. Add `fields(...)` for the identifiers you will actually "
+"query in Tempo or logs."
 msgstr ""
 
-#: src/contributing/telemetry.md:122
-msgid "**hostname**: System hostname"
+#: src/contributing/telemetry/tracing.md:60
+msgid "Example: instrument a closure"
 msgstr ""
 
-#: src/contributing/telemetry.md:124
-msgid "Log File Format"
+#: src/contributing/telemetry/tracing.md:62
+msgid ""
+"For a short synchronous closure, create a span and run the closure inside it "
+"with `in_scope()`."
 msgstr ""
 
-#: src/contributing/telemetry.md:126
-msgid "Logs are written as newline-delimited JSON to files named:"
+#: src/contributing/telemetry/tracing.md:66
+msgid "\"sorting\""
 msgstr ""
 
-#: src/contributing/telemetry.md:132
-msgid "Each log entry includes:"
+#: src/contributing/telemetry/tracing.md:73
+msgid ""
+"This is the usual pattern when you want to time a single closure body "
+"without extracting it into a separate function."
 msgstr ""
 
-#: src/contributing/telemetry.md:134
-msgid "**timestamp**: ISO 8601 formatted timestamp"
+#: src/contributing/telemetry/tracing.md:76
+msgid "OTLP export"
 msgstr ""
 
-#: src/contributing/telemetry.md:135
-msgid "**level**: Log level (TRACE, DEBUG, INFO, WARN, ERROR)"
+#: src/contributing/telemetry/tracing.md:78
+msgid ""
+"When `tracing` is enabled, Cadmus initializes a tracer provider that exports "
+"to `<endpoint>/v1/traces` using batch span processors."
 msgstr ""
 
-#: src/contributing/telemetry.md:136
-msgid "**target**: Module path where the log originated"
+#: src/contributing/telemetry/tracing.md:81
+msgid ""
+"This gives you distributed traces in backends like Tempo, Jaeger, or any "
+"other OTLP-compatible collector."
 msgstr ""
 
-#: src/contributing/telemetry.md:137
-msgid "**fields**: Structured log data"
+#: src/contributing/telemetry/tracing.md:86
+msgid "Each exported span includes shared process metadata:"
 msgstr ""
 
-#: src/contributing/telemetry.md:138
-msgid "**spans**: Active tracing spans providing context"
+#: src/contributing/telemetry/tracing.md:95
+msgid ""
+"See the [settings reference](../../settings/index.md#logging) for the full "
+"logging and OTLP configuration. The main option is `logging.otlp-endpoint`."
+msgstr ""
+
+#: src/contributing/telemetry/tracing.md:101
+msgid "To build Cadmus with tracing support:"
+msgstr ""
+
+#: src/contributing/telemetry/profiling.md:3
+msgid ""
+"Cadmus supports continuous profiling with Pyroscope when the `profiling` "
+"feature is enabled."
+msgstr ""
+
+#: src/contributing/telemetry/profiling.md:8
+msgid "Uses jemalloc heap profiling for allocation data"
+msgstr ""
+
+#: src/contributing/telemetry/profiling.md:9
+msgid "Uses pprof for CPU profiling data"
+msgstr ""
+
+#: src/contributing/telemetry/profiling.md:10
+msgid "Pushes both profile types to Pyroscope"
+msgstr ""
+
+#: src/contributing/telemetry/profiling.md:14
+msgid "`profiling` enables profiling support in the codebase"
+msgstr ""
+
+#: src/contributing/telemetry/profiling.md:15
+msgid "`telemetry` enables profiling together with tracing"
+msgstr ""
+
+#: src/contributing/telemetry/profiling.md:19
+msgid ""
+"Profiling is initialized during app startup and shut down during app exit. "
+"If a Pyroscope endpoint is configured, Cadmus starts collecting profiles "
+"right away so early startup work is included."
+msgstr ""
+
+#: src/contributing/telemetry/profiling.md:23
+msgid ""
+"The app configures jemalloc as the global allocator when `profiling` is "
+"enabled and enables heap profiling at process startup. CPU profiling runs "
+"alongside it through the Pyroscope agent."
+msgstr ""
+
+#: src/contributing/telemetry/profiling.md:29
+msgid ""
+"See the [settings reference](../../settings/index.md#logging) for the full "
+"logging and profiling configuration."
+msgstr ""
+
+#: src/contributing/telemetry/profiling.md:33
+msgid "`PYROSCOPE_SERVER_URL`"
+msgstr ""
+
+#: src/contributing/telemetry/profiling.md:35
+msgid ""
+"`PYROSCOPE_SERVER_URL` overrides `logging.pyroscope-endpoint` when both are "
+"set."
+msgstr ""
+
+#: src/contributing/telemetry/profiling.md:38
+msgid "To build Cadmus with profiling support:"
+msgstr ""
+
+#: src/contributing/telemetry/profiling.md:44
+msgid "To build Cadmus with tracing and profiling together:"
+msgstr ""
+
+#: src/contributing/telemetry/profiling.md:50
+msgid "Profile types"
+msgstr ""
+
+#: src/contributing/telemetry/profiling.md:52
+msgid "Cadmus currently exports:"
+msgstr ""
+
+#: src/contributing/telemetry/profiling.md:54
+msgid "heap allocation profiles via jemalloc"
+msgstr ""
+
+#: src/contributing/telemetry/profiling.md:55
+msgid "CPU profiles via pprof-rs"
+msgstr ""
+
+#: src/contributing/telemetry/profiling.md:57
+msgid "Both profile streams are pushed to the configured Pyroscope server."
+msgstr ""
+
+#: src/contributing/telemetry/profiling.md:59
+msgid "Local development"
+msgstr ""
+
+#: src/contributing/telemetry/profiling.md:61
+msgid ""
+"The `cadmus-dev-otel` command starts the emulator with profiling enabled and "
+"the local Pyroscope service available at <http://localhost:4040>."
+msgstr ""
+
+#: src/contributing/telemetry/profiling.md:64
+msgid ""
+"With the full devenv stack running, traces go to Tempo, logs go to Loki, and "
+"profiles go to Pyroscope. That makes it possible to correlate a single run "
+"across all three observability backends."
 msgstr ""
 
 #: src/contributing/documentation.md:1

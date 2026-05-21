@@ -106,9 +106,7 @@ impl DictionaryIndexTask {
 
             if word == "00-database-allchars" {
                 all_chars = true;
-            } else if word == "00-database-case-sensitive"
-                || word == "00databasecasesensitive"
-            {
+            } else if word == "00-database-case-sensitive" || word == "00databasecasesensitive" {
                 case_sensitive = true;
             }
         }
@@ -155,7 +153,11 @@ impl DictionaryIndexTask {
                 return None;
             }
 
-            return Some((row.dict_id?, row.indexed_lines as u64, row.total_lines as u64));
+            return Some((
+                row.dict_id?,
+                row.indexed_lines as u64,
+                row.total_lines as u64,
+            ));
         }
 
         let file = match File::open(index_path) {
@@ -228,10 +230,7 @@ impl DictionaryIndexTask {
     /// normally so they are indexed and available for dictionary metadata
     /// queries.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(path = %path_str)))]
-    fn parse_index_line<'a>(
-        path_str: &str,
-        line: &'a str,
-    ) -> Option<(&'a str, i64, i64)> {
+    fn parse_index_line<'a>(path_str: &str, line: &'a str) -> Option<(&'a str, i64, i64)> {
         let trimmed = line.trim_end();
         let mut cols = trimmed.split('\t');
 
@@ -314,7 +313,15 @@ impl DictionaryIndexTask {
                 let normalized = normalize(&raw_batch, &job.metadata);
                 let batch: Vec<(i64, String, i64, i64, Option<String>)> = normalized
                     .into_iter()
-                    .map(|e| (job.dict_id, e.headword, e.offset as i64, e.size as i64, e.original))
+                    .map(|e| {
+                        (
+                            job.dict_id,
+                            e.headword,
+                            e.offset as i64,
+                            e.size as i64,
+                            e.original,
+                        )
+                    })
                     .collect();
 
                 if let Err(e) = self.flush_batch(job, &batch, current_line, hub) {
@@ -334,7 +341,15 @@ impl DictionaryIndexTask {
             let normalized = normalize(&raw_batch, &job.metadata);
             let batch: Vec<(i64, String, i64, i64, Option<String>)> = normalized
                 .into_iter()
-                .map(|e| (job.dict_id, e.headword, e.offset as i64, e.size as i64, e.original))
+                .map(|e| {
+                    (
+                        job.dict_id,
+                        e.headword,
+                        e.offset as i64,
+                        e.size as i64,
+                        e.original,
+                    )
+                })
                 .collect();
 
             if let Err(e) = self.flush_batch(job, &batch, current_line, hub) {
@@ -379,7 +394,10 @@ impl DictionaryIndexTask {
             };
 
         let (case_sensitive, all_chars) = Self::detect_metadata(&path_str);
-        let metadata = Metadata { case_sensitive, all_chars };
+        let metadata = Metadata {
+            case_sensitive,
+            all_chars,
+        };
 
         let notif_id = ViewId::MessageNotif(ID_FEEDER.next());
         hub.send(Event::Notification(NotificationEvent::ShowPinned(
