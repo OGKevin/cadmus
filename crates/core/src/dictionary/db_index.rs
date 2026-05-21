@@ -8,7 +8,6 @@ use sqlx::SqlitePool;
 
 use crate::db::runtime::RUNTIME;
 use crate::db::Database;
-use crate::helpers::Fp;
 
 use super::indexing::{Entry, IndexReader};
 use super::Metadata;
@@ -24,29 +23,29 @@ fn escape_like_prefix(prefix: &str) -> String {
 
 /// SQLite-backed implementation of [`IndexReader`].
 ///
-/// When `fingerprint` is `Some`, queries are scoped to that dictionary.
+/// When `dict_id` is `Some`, queries are scoped to that dictionary.
 /// When `None`, queries search across all indexed dictionaries.
 pub struct DbIndexReader {
     pool: SqlitePool,
-    fingerprint: Option<Fp>,
+    dict_id: Option<i64>,
 }
 
 impl DbIndexReader {
-    /// Creates a new reader backed by `database`, optionally scoped to `fingerprint`.
-    pub fn new(database: &Database, fingerprint: Option<Fp>) -> Self {
+    /// Creates a new reader backed by `database`, optionally scoped to `dict_id`.
+    pub fn new(database: &Database, dict_id: Option<i64>) -> Self {
         Self {
             pool: database.pool().clone(),
-            fingerprint,
+            dict_id,
         }
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(headword = %headword)))]
-    async fn exact_scoped(&self, headword: &str, fp: &str) -> Vec<Entry> {
+    async fn exact_scoped(&self, headword: &str, id: i64) -> Vec<Entry> {
         match sqlx::query!(
             r#"SELECT word, offset, size, original
                FROM dictionary_index_entry
-               WHERE fingerprint = ? AND word = ?"#,
-            fp,
+               WHERE dict_id = ? AND word = ?"#,
+            id,
             headword,
         )
         .fetch_all(&self.pool)
@@ -96,12 +95,12 @@ impl DbIndexReader {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(headword = %headword, prefix = %prefix)))]
-    async fn fuzzy_scoped(&self, headword: &str, prefix: &str, fp: &str) -> Vec<Entry> {
+    async fn fuzzy_scoped(&self, headword: &str, prefix: &str, id: i64) -> Vec<Entry> {
         match sqlx::query!(
             r#"SELECT word, offset, size, original
                FROM dictionary_index_entry
-               WHERE fingerprint = ? AND word LIKE ? || '%' ESCAPE '\'"#,
-            fp,
+               WHERE dict_id = ? AND word LIKE ? || '%' ESCAPE '\'"#,
+            id,
             prefix,
         )
         .fetch_all(&self.pool)
@@ -157,8 +156,8 @@ impl DbIndexReader {
         let headword = headword.to_string();
 
         RUNTIME.block_on(async {
-            if let Some(fp) = self.fingerprint.map(|f| f.to_string()) {
-                self.exact_scoped(&headword, &fp).await
+            if let Some(id) = self.dict_id {
+                self.exact_scoped(&headword, id).await
             } else {
                 self.exact_global(&headword).await
             }
@@ -176,8 +175,8 @@ impl DbIndexReader {
         let headword = headword.to_string();
 
         RUNTIME.block_on(async {
-            if let Some(fp) = self.fingerprint.map(|f| f.to_string()) {
-                self.fuzzy_scoped(&headword, &prefix, &fp).await
+            if let Some(id) = self.dict_id {
+                self.fuzzy_scoped(&headword, &prefix, id).await
             } else {
                 self.fuzzy_global(&headword, &prefix).await
             }
@@ -212,13 +211,14 @@ mod tests {
         db
     }
 
-    fn insert_meta(pool: &SqlitePool, fp: &str) {
+    fn insert_meta(pool: &SqlitePool, dict_id: i64, fp: &str) {
         RUNTIME.block_on(async {
-            sqlx::query!(
-                "INSERT OR IGNORE INTO dictionary_index_meta (fingerprint, dict_path, total_lines, indexed_lines, completed) VALUES (?, ?, 0, 0, 1)",
-                fp,
-                fp,
+            sqlx::query(
+                "INSERT OR IGNORE INTO dictionary_index_meta (dict_id, fingerprint, dict_path, total_lines, indexed_lines, completed) VALUES (?, ?, ?, 0, 0, 1)",
             )
+            .bind(dict_id)
+            .bind(fp)
+            .bind(fp)
             .execute(pool)
             .await
             .expect("insert meta");
@@ -227,43 +227,39 @@ mod tests {
 
     fn insert_entry(
         pool: &SqlitePool,
+        dict_id: i64,
         fp: &str,
         word: &str,
         offset: i64,
         size: i64,
         original: Option<&str>,
     ) {
-        insert_meta(pool, fp);
+        insert_meta(pool, dict_id, fp);
         RUNTIME.block_on(async {
-            sqlx::query!(
-                "INSERT INTO dictionary_index_entry (fingerprint, word, offset, size, original) VALUES (?, ?, ?, ?, ?)",
-                fp,
-                word,
-                offset,
-                size,
-                original,
+            sqlx::query(
+                "INSERT INTO dictionary_index_entry (dict_id, word, offset, size, original) VALUES (?, ?, ?, ?, ?)",
             )
+            .bind(dict_id)
+            .bind(word)
+            .bind(offset)
+            .bind(size)
+            .bind(original)
             .execute(pool)
-            .await
-            .expect("insert entry");
+                .await
+                .expect("insert entry");
         });
     }
 
-    fn fp1() -> Fp {
-        Fp::from_u64(1)
-    }
-
-    fn fp2() -> Fp {
-        Fp::from_u64(2)
-    }
+    const DICT_ID_1: i64 = 1;
+    const DICT_ID_2: i64 = 2;
 
     #[test]
-    fn test_exact_lookup_with_fingerprint() {
+    fn test_exact_lookup_with_dict_id() {
         let db = setup_db();
-        insert_entry(db.pool(), &fp1().to_string(), "hello", 0, 10, None);
-        insert_entry(db.pool(), &fp2().to_string(), "world", 10, 5, None);
+        insert_entry(db.pool(), DICT_ID_1, "fp1", "hello", 0, 10, None);
+        insert_entry(db.pool(), DICT_ID_2, "fp2", "world", 10, 5, None);
 
-        let reader = DbIndexReader::new(&db, Some(fp1()));
+        let reader = DbIndexReader::new(&db, Some(DICT_ID_1));
         let results = reader.find("hello", false);
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].headword, "hello");
@@ -272,22 +268,22 @@ mod tests {
     }
 
     #[test]
-    fn test_exact_lookup_scoped_fingerprint_excludes_other() {
+    fn test_exact_lookup_scoped_dict_id_excludes_other() {
         let db = setup_db();
-        insert_entry(db.pool(), &fp1().to_string(), "hello", 0, 10, None);
-        insert_entry(db.pool(), &fp2().to_string(), "hello", 20, 8, None);
+        insert_entry(db.pool(), DICT_ID_1, "fp1", "hello", 0, 10, None);
+        insert_entry(db.pool(), DICT_ID_2, "fp2", "hello", 20, 8, None);
 
-        let reader = DbIndexReader::new(&db, Some(fp1()));
+        let reader = DbIndexReader::new(&db, Some(DICT_ID_1));
         let results = reader.find("hello", false);
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].offset, 0);
     }
 
     #[test]
-    fn test_exact_lookup_no_fingerprint_finds_all() {
+    fn test_exact_lookup_no_dict_id_finds_all() {
         let db = setup_db();
-        insert_entry(db.pool(), &fp1().to_string(), "hello", 0, 10, None);
-        insert_entry(db.pool(), &fp2().to_string(), "hello", 20, 8, None);
+        insert_entry(db.pool(), DICT_ID_1, "fp1", "hello", 0, 10, None);
+        insert_entry(db.pool(), DICT_ID_2, "fp2", "hello", 20, 8, None);
 
         let reader = DbIndexReader::new(&db, None);
         let results = reader.find("hello", false);
@@ -297,21 +293,21 @@ mod tests {
     #[test]
     fn test_exact_lookup_no_match() {
         let db = setup_db();
-        insert_entry(db.pool(), &fp1().to_string(), "hello", 0, 10, None);
+        insert_entry(db.pool(), DICT_ID_1, "fp1", "hello", 0, 10, None);
 
-        let reader = DbIndexReader::new(&db, Some(fp1()));
+        let reader = DbIndexReader::new(&db, Some(DICT_ID_1));
         let results = reader.find("world", false);
         assert!(results.is_empty());
     }
 
     #[test]
-    fn test_fuzzy_lookup_with_fingerprint() {
+    fn test_fuzzy_lookup_with_dict_id() {
         let db = setup_db();
-        insert_entry(db.pool(), &fp1().to_string(), "hello", 0, 10, None);
-        insert_entry(db.pool(), &fp1().to_string(), "helo", 10, 5, None);
-        insert_entry(db.pool(), &fp1().to_string(), "world", 15, 5, None);
+        insert_entry(db.pool(), DICT_ID_1, "fp1", "hello", 0, 10, None);
+        insert_entry(db.pool(), DICT_ID_1, "fp1", "helo", 10, 5, None);
+        insert_entry(db.pool(), DICT_ID_1, "fp1", "world", 15, 5, None);
 
-        let reader = DbIndexReader::new(&db, Some(fp1()));
+        let reader = DbIndexReader::new(&db, Some(DICT_ID_1));
         let results = reader.find("hello", true);
         assert_eq!(results.len(), 2);
         let words: Vec<&str> = results.iter().map(|e| e.headword.as_str()).collect();
@@ -320,10 +316,10 @@ mod tests {
     }
 
     #[test]
-    fn test_fuzzy_lookup_no_fingerprint_cross_dict() {
+    fn test_fuzzy_lookup_no_dict_id_cross_dict() {
         let db = setup_db();
-        insert_entry(db.pool(), &fp1().to_string(), "hello", 0, 10, None);
-        insert_entry(db.pool(), &fp2().to_string(), "helo", 10, 5, None);
+        insert_entry(db.pool(), DICT_ID_1, "fp1", "hello", 0, 10, None);
+        insert_entry(db.pool(), DICT_ID_2, "fp2", "helo", 10, 5, None);
 
         let reader = DbIndexReader::new(&db, None);
         let results = reader.find("hello", true);
@@ -333,9 +329,9 @@ mod tests {
     #[test]
     fn test_load_and_find_delegates_to_find() {
         let db = setup_db();
-        insert_entry(db.pool(), &fp1().to_string(), "hello", 0, 10, None);
+        insert_entry(db.pool(), DICT_ID_1, "fp1", "hello", 0, 10, None);
 
-        let mut reader = DbIndexReader::new(&db, Some(fp1()));
+        let mut reader = DbIndexReader::new(&db, Some(DICT_ID_1));
         let metadata = Metadata {
             all_chars: true,
             case_sensitive: false,
@@ -348,11 +344,28 @@ mod tests {
     #[test]
     fn test_original_field_preserved() {
         let db = setup_db();
-        insert_entry(db.pool(), &fp1().to_string(), "hello", 0, 10, Some("Hello"));
+        insert_entry(db.pool(), DICT_ID_1, "fp1", "hello", 0, 10, Some("Hello"));
 
-        let reader = DbIndexReader::new(&db, Some(fp1()));
+        let reader = DbIndexReader::new(&db, Some(DICT_ID_1));
         let results = reader.find("hello", false);
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].original.as_deref(), Some("Hello"));
+    }
+
+    #[test]
+    fn test_multiple_definitions_same_word_all_returned() {
+        let db = setup_db();
+        // Simulate "Pain", "PAIN", "pain" all normalizing to "pain" with different offsets.
+        insert_entry(db.pool(), DICT_ID_1, "fp1", "pain", 100, 20, Some("Pain"));
+        insert_entry(db.pool(), DICT_ID_1, "fp1", "pain", 200, 30, Some("PAIN"));
+        insert_entry(db.pool(), DICT_ID_1, "fp1", "pain", 300, 40, None);
+
+        let reader = DbIndexReader::new(&db, Some(DICT_ID_1));
+        let results = reader.find("pain", false);
+        assert_eq!(results.len(), 3);
+        let offsets: Vec<u64> = results.iter().map(|e| e.offset).collect();
+        assert!(offsets.contains(&100));
+        assert!(offsets.contains(&200));
+        assert!(offsets.contains(&300));
     }
 }

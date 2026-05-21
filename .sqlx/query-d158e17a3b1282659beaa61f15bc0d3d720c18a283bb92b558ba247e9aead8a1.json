@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT fingerprint, dict_id FROM dictionary_index_meta",
+  "describe": {
+    "columns": [
+      {
+        "name": "fingerprint",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "dict_id",
+        "ordinal": 1,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      true
+    ]
+  },
+  "hash": "d158e17a3b1282659beaa61f15bc0d3d720c18a283bb92b558ba247e9aead8a1"
+}

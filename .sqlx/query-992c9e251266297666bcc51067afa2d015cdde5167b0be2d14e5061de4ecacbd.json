@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT word, offset, size, original\n               FROM dictionary_index_entry\n               WHERE fingerprint = ? AND word LIKE ? || '%' ESCAPE '\\'",
+  "query": "SELECT word, offset, size, original\n               FROM dictionary_index_entry\n               WHERE dict_id = ? AND word = ?",
   "describe": {
     "columns": [
       {
@@ -34,5 +34,5 @@
       true
     ]
   },
-  "hash": "62a6f892ae16bc5417e9f5533900362a329046516dc429b025ec9baf2873935a"
+  "hash": "992c9e251266297666bcc51067afa2d015cdde5167b0be2d14e5061de4ecacbd"
 }

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT OR IGNORE INTO dictionary_index_entry (dict_id, word, offset, size, original)\n                       VALUES (?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "bc55a7eb9319adf879837a88e353e818df308c194b74ae673623f42e593bafd4"
+}

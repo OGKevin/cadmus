@@ -1,9 +1,9 @@
 -- Tracks per-dictionary indexing progress and completion state.
 -- fingerprint is a 64-char BLAKE3 hex string (from the Fp type in helpers.rs).
 CREATE TABLE IF NOT EXISTS dictionary_index_meta (
-    -- BLAKE3 hex fingerprint of the dictionary file; identifies the dictionary.
+    -- BLAKE3 hex fingerprint of the .index file; identifies the dictionary.
     fingerprint    TEXT    NOT NULL PRIMARY KEY,
-    -- Absolute path to the dictionary file on disk.
+    -- Absolute path to the .index file on disk.
     dict_path      TEXT    NOT NULL,
     -- Total number of lines in the dictionary index file.
     total_lines    INTEGER NOT NULL DEFAULT 0,

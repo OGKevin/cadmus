@@ -12,6 +12,7 @@ use walkdir::WalkDir;
 use crate::context::DICTIONARIES_DIRNAME;
 use crate::db::runtime::RUNTIME;
 use crate::db::Database;
+use crate::dictionary::{normalize, Entry, Metadata};
 use crate::fl;
 use crate::helpers::{Fingerprint, IsHidden};
 use crate::task::{BackgroundTask, ShutdownSignal, TaskId};
@@ -23,10 +24,11 @@ const BATCH_SIZE: usize = 5000;
 struct IndexFileJob<'a> {
     index_path: &'a std::path::Path,
     path_str: &'a str,
-    fingerprint: &'a str,
+    dict_id: i64,
     dict_name: &'a str,
     total_lines: u64,
     notif_id: ViewId,
+    metadata: Metadata,
 }
 
 /// Decodes a base64-like encoded number from the StarDict/dictd `.index` format.
@@ -77,8 +79,45 @@ impl DictionaryIndexTask {
         Self { database }
     }
 
+    /// Detects dictionary metadata by scanning the first lines of the `.index`
+    /// file for `00-database-allchars` and `00-database-case-sensitive` entries.
+    ///
+    /// Returns `(case_sensitive, all_chars)`.
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(path = %path_str)))]
+    fn detect_metadata(path_str: &str) -> (bool, bool) {
+        let file = match File::open(path_str) {
+            Ok(f) => f,
+            Err(e) => {
+                tracing::error!(path = %path_str, error = %e, "failed to open index file for metadata detection");
+                return (false, false);
+            }
+        };
+
+        let mut all_chars = false;
+        let mut case_sensitive = false;
+
+        for line in BufReader::new(file).lines().take(100) {
+            let line = match line {
+                Ok(l) => l,
+                Err(_) => continue,
+            };
+
+            let word = line.split('\t').next().unwrap_or("");
+
+            if word == "00-database-allchars" {
+                all_chars = true;
+            } else if word == "00-database-case-sensitive"
+                || word == "00databasecasesensitive"
+            {
+                case_sensitive = true;
+            }
+        }
+
+        (case_sensitive, all_chars)
+    }
+
     /// Queries or initialises the metadata row for `fp_str`, returning
-    /// `(skip_lines, total_lines)`.
+    /// `(dict_id, skip_lines, total_lines)`.
     ///
     /// Returns `None` when the file is already fully indexed or a DB error
     /// occurs, signalling that `index_file` should skip this file.
@@ -88,12 +127,12 @@ impl DictionaryIndexTask {
         index_path: &std::path::Path,
         path_str: &str,
         fp_str: &str,
-    ) -> Option<(u64, u64)> {
+    ) -> Option<(i64, u64, u64)> {
         let pool = self.database.pool().clone();
 
         let meta = RUNTIME.block_on(async {
             sqlx::query!(
-                r#"SELECT fingerprint, total_lines, indexed_lines, completed
+                r#"SELECT dict_id, total_lines, indexed_lines, completed
                    FROM dictionary_index_meta
                    WHERE fingerprint = ?"#,
                 fp_str,
@@ -116,7 +155,7 @@ impl DictionaryIndexTask {
                 return None;
             }
 
-            return Some((row.indexed_lines as u64, row.total_lines as u64));
+            return Some((row.dict_id?, row.indexed_lines as u64, row.total_lines as u64));
         }
 
         let file = match File::open(index_path) {
@@ -146,18 +185,28 @@ impl DictionaryIndexTask {
             return None;
         }
 
-        Some((0u64, total as u64))
+        let dict_id: i64 = RUNTIME.block_on(async {
+            sqlx::query_scalar!(
+                "SELECT dict_id FROM dictionary_index_meta WHERE fingerprint = ?",
+                fp_str
+            )
+            .fetch_one(&pool)
+            .await
+            .ok()?
+        })?;
+
+        Some((dict_id, 0u64, total as u64))
     }
 
     /// Marks the dictionary as fully indexed in the metadata table.
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(path = %path_str, fingerprint = %fp_str, indexed = current_line, total = total_lines)))]
-    fn mark_completed(&self, fp_str: &str, path_str: &str, current_line: u64, total_lines: u64) {
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(path = %path_str, dict_id, indexed = current_line, total = total_lines)))]
+    fn mark_completed(&self, dict_id: i64, path_str: &str, current_line: u64, total_lines: u64) {
         let pool = self.database.pool().clone();
 
         let result = RUNTIME.block_on(async {
             sqlx::query!(
-                "UPDATE dictionary_index_meta SET completed = 1 WHERE fingerprint = ?",
-                fp_str,
+                "UPDATE dictionary_index_meta SET completed = 1 WHERE dict_id = ?",
+                dict_id,
             )
             .execute(&pool)
             .await
@@ -182,7 +231,7 @@ impl DictionaryIndexTask {
     fn parse_index_line<'a>(
         path_str: &str,
         line: &'a str,
-    ) -> Option<(&'a str, i64, i64, Option<&'a str>)> {
+    ) -> Option<(&'a str, i64, i64)> {
         let trimmed = line.trim_end();
         let mut cols = trimmed.split('\t');
 
@@ -206,9 +255,7 @@ impl DictionaryIndexTask {
             }
         };
 
-        let original = cols.next();
-
-        Some((word, offset, size, original))
+        Some((word, offset, size))
     }
 
     /// Drives the line-by-line scan of an open index file, collecting entries
@@ -240,8 +287,7 @@ impl DictionaryIndexTask {
         }
 
         let mut current_line = skip_lines;
-        let mut batch: Vec<(String, String, i64, i64, Option<String>)> =
-            Vec::with_capacity(BATCH_SIZE);
+        let mut raw_batch: Vec<Entry> = Vec::with_capacity(BATCH_SIZE);
 
         for (_, line_result) in &mut lines_iter {
             let line = match line_result {
@@ -255,25 +301,28 @@ impl DictionaryIndexTask {
 
             current_line += 1;
 
-            if let Some((word, offset, size, original)) =
-                Self::parse_index_line(job.path_str, &line)
-            {
-                batch.push((
-                    job.fingerprint.to_string(),
-                    word.to_string(),
-                    offset,
-                    size,
-                    original.map(String::from),
-                ));
+            if let Some((word, offset, size)) = Self::parse_index_line(job.path_str, &line) {
+                raw_batch.push(Entry {
+                    headword: word.to_string(),
+                    offset: offset as u64,
+                    size: size as u64,
+                    original: None,
+                });
             }
 
-            if batch.len() >= BATCH_SIZE {
+            if raw_batch.len() >= BATCH_SIZE {
+                let normalized = normalize(&raw_batch, &job.metadata);
+                let batch: Vec<(i64, String, i64, i64, Option<String>)> = normalized
+                    .into_iter()
+                    .map(|e| (job.dict_id, e.headword, e.offset as i64, e.size as i64, e.original))
+                    .collect();
+
                 if let Err(e) = self.flush_batch(job, &batch, current_line, hub) {
                     tracing::error!(path = %job.path_str, error = %e, "failed to flush batch");
                     return None;
                 }
 
-                batch.clear();
+                raw_batch.clear();
 
                 if shutdown.should_stop() {
                     return None;
@@ -281,7 +330,13 @@ impl DictionaryIndexTask {
             }
         }
 
-        if !batch.is_empty() {
+        if !raw_batch.is_empty() {
+            let normalized = normalize(&raw_batch, &job.metadata);
+            let batch: Vec<(i64, String, i64, i64, Option<String>)> = normalized
+                .into_iter()
+                .map(|e| (job.dict_id, e.headword, e.offset as i64, e.size as i64, e.original))
+                .collect();
+
             if let Err(e) = self.flush_batch(job, &batch, current_line, hub) {
                 tracing::error!(path = %job.path_str, error = %e, "failed to flush final batch");
                 return None;
@@ -305,9 +360,6 @@ impl DictionaryIndexTask {
             .map(|s| s.to_string_lossy().into_owned())
             .unwrap_or_else(|| path_str.clone());
 
-        // Fingerprint is computed from the .index file. The .index and
-        // .dict files are always updated together, so hashing the .index
-        // is sufficient to detect changes in the dictionary pair.
         let fp = match index_path.fingerprint() {
             Ok(fp) => fp,
             Err(e) => {
@@ -318,13 +370,16 @@ impl DictionaryIndexTask {
 
         let fp_str = fp.to_string();
 
-        let (skip_lines, total_lines) =
+        let (dict_id, skip_lines, total_lines) =
             match self.resolve_index_state(index_path, &path_str, &fp_str) {
                 Some(state) => state,
                 None => {
                     return;
                 }
             };
+
+        let (case_sensitive, all_chars) = Self::detect_metadata(&path_str);
+        let metadata = Metadata { case_sensitive, all_chars };
 
         let notif_id = ViewId::MessageNotif(ID_FEEDER.next());
         hub.send(Event::Notification(NotificationEvent::ShowPinned(
@@ -339,17 +394,18 @@ impl DictionaryIndexTask {
         let job = IndexFileJob {
             index_path,
             path_str: &path_str,
-            fingerprint: &fp_str,
+            dict_id,
             dict_name: &dict_name,
             total_lines,
             notif_id,
+            metadata,
         };
 
-        tracing::debug!(path = %path_str, fingerprint = %fp_str, skip_lines, total_lines, "starting dictionary indexing");
+        tracing::debug!(path = %path_str, dict_id, skip_lines, total_lines, case_sensitive, all_chars, "starting dictionary indexing");
 
         match self.scan_and_batch(&job, skip_lines, hub, shutdown) {
             Some(current_line) => {
-                self.mark_completed(&fp_str, &path_str, current_line, total_lines);
+                self.mark_completed(dict_id, &path_str, current_line, total_lines);
                 hub.send(Event::Close(notif_id)).ok();
             }
             None => {
@@ -362,7 +418,7 @@ impl DictionaryIndexTask {
     fn flush_batch(
         &self,
         job: &IndexFileJob<'_>,
-        batch: &[(String, String, i64, i64, Option<String>)],
+        batch: &[(i64, String, i64, i64, Option<String>)],
         current_line: u64,
         hub: &Sender<Event>,
     ) -> Result<(), anyhow::Error> {
@@ -372,11 +428,11 @@ impl DictionaryIndexTask {
         RUNTIME.block_on(async {
             let mut tx = pool.begin().await?;
 
-            for (fingerprint, word, offset, size, original) in batch {
+            for (dict_id, word, offset, size, original) in batch {
                 sqlx::query!(
-                    r#"INSERT OR IGNORE INTO dictionary_index_entry (fingerprint, word, offset, size, original)
+                    r#"INSERT OR IGNORE INTO dictionary_index_entry (dict_id, word, offset, size, original)
                        VALUES (?, ?, ?, ?, ?)"#,
-                    fingerprint,
+                    dict_id,
                     word,
                     offset,
                     size,
@@ -387,9 +443,9 @@ impl DictionaryIndexTask {
             }
 
             sqlx::query!(
-                "UPDATE dictionary_index_meta SET indexed_lines = ? WHERE fingerprint = ?",
+                "UPDATE dictionary_index_meta SET indexed_lines = ? WHERE dict_id = ?",
                 indexed_lines,
-                job.fingerprint,
+                job.dict_id,
             )
             .execute(&mut *tx)
             .await?;
@@ -422,62 +478,63 @@ impl DictionaryIndexTask {
         Ok(())
     }
 
+    /// Removes index data for dictionaries that are no longer present on disk.
+    ///
+    /// For each fingerprint in `dictionary_index_meta` that has no corresponding
+    /// `.index` file in `on_disk_fingerprints`, this method marks the meta row as
+    /// incomplete before deletion begins. This ensures that if the process is
+    /// interrupted mid-deletion, the next startup does not treat a partially
+    /// deleted dictionary as fully indexed. Entries are then removed in batches
+    /// via [`delete_entries_for_dict`], after which the meta row itself is deleted.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(on_disk_count = on_disk_fingerprints.len())))]
     fn delete_stale_entries(&self, on_disk_fingerprints: &[String], shutdown: &ShutdownSignal) {
         let pool = self.database.pool().clone();
 
         let result = RUNTIME.block_on(async {
-            let db_fingerprints: Vec<String> =
-                sqlx::query_scalar!("SELECT fingerprint FROM dictionary_index_meta")
-                    .fetch_all(&pool)
-                    .await?;
+            let db_entries = sqlx::query!(
+                "SELECT fingerprint, dict_id FROM dictionary_index_meta"
+            )
+            .fetch_all(&pool)
+            .await?;
 
-            for fp in db_fingerprints {
-                if !on_disk_fingerprints.contains(&fp) {
-                    tracing::info!(fingerprint = %fp, "removing stale dictionary index");
+            for row in db_entries {
+                let fp = row.fingerprint;
 
-                    #[cfg(feature = "tracing")]
-                    let _span = tracing::info_span!("delete_stale_index", fingerprint = %fp).entered();
+                if on_disk_fingerprints.contains(&fp) {
+                    continue;
+                }
 
-                    sqlx::query!(
-                        "UPDATE dictionary_index_meta SET completed = 0, indexed_lines = 0 WHERE fingerprint = ?",
-                        fp,
-                    )
-                    .execute(&pool)
-                    .await?;
-
-                    let mut total_deleted: u64 = 0;
-                    let batch_size = BATCH_SIZE as i64;
-                    loop {
-                        let deleted = sqlx::query!(
-                            "DELETE FROM dictionary_index_entry WHERE rowid IN (SELECT rowid FROM dictionary_index_entry WHERE fingerprint = ? LIMIT ?)",
-                            fp,
-                            batch_size,
-                        )
-                        .execute(&pool)
-                        .await?;
-
-                        let rows = deleted.rows_affected();
-                        total_deleted += rows;
-
-                        if rows == 0 {
-                            break;
-                        }
-
-                        if shutdown.should_stop() {
-                            tracing::info!(total_deleted, "stale index deletion interrupted by shutdown");
-                            return Ok::<_, anyhow::Error>(());
-                        }
+                let dict_id = match row.dict_id {
+                    Some(id) => id,
+                    None => {
+                        tracing::warn!(fingerprint = %fp, "dict_id missing for stale fingerprint, skipping");
+                        continue;
                     }
+                };
 
-                    tracing::info!(fingerprint = %fp, total_deleted, "deleted stale dictionary index entries");
+                tracing::info!(fingerprint = %fp, "removing stale dictionary index");
 
-                    sqlx::query!(
-                        "DELETE FROM dictionary_index_meta WHERE fingerprint = ?",
-                        fp
-                    )
-                    .execute(&pool)
-                    .await?;
+                sqlx::query!(
+                    "UPDATE dictionary_index_meta SET completed = 0, indexed_lines = 0 WHERE dict_id = ?",
+                    dict_id,
+                )
+                .execute(&pool)
+                .await?;
+
+                let total_deleted =
+                    delete_entries_for_dict(&pool, dict_id, shutdown).await?;
+
+                tracing::info!(fingerprint = %fp, total_deleted, "deleted stale dictionary index entries");
+
+                sqlx::query!(
+                    "DELETE FROM dictionary_index_meta WHERE fingerprint = ?",
+                    fp
+                )
+                .execute(&pool)
+                .await?;
+
+                if shutdown.should_stop() {
+                    return Ok::<_, anyhow::Error>(());
                 }
             }
 
@@ -488,6 +545,63 @@ impl DictionaryIndexTask {
             tracing::error!(error = %e, "failed to delete stale dictionary index entries");
         }
     }
+}
+
+/// Deletes all index entries for a single dictionary in batches.
+///
+/// Entries are deleted in batches of [`BATCH_SIZE`] rows, identified by their
+/// full primary key `(dict_id, word, offset)`. Batching avoids holding a write
+/// lock on the (potentially very large) `dictionary_index_entry` table for the
+/// entire duration of the delete, which would block concurrent reads.
+///
+/// Returns the total number of rows deleted, or an error if any batch fails.
+/// Respects the shutdown signal between batches: if a shutdown is requested
+/// mid-way, the function returns early with the count deleted so far.
+#[cfg_attr(
+    feature = "tracing",
+    tracing::instrument(skip(pool, shutdown), fields(dict_id))
+)]
+async fn delete_entries_for_dict(
+    pool: &sqlx::SqlitePool,
+    dict_id: i64,
+    shutdown: &ShutdownSignal,
+) -> Result<u64, anyhow::Error> {
+    let batch_size = BATCH_SIZE as i64;
+    let mut total_deleted: u64 = 0;
+
+    loop {
+        let batch = sqlx::query!(
+            r#"SELECT word, offset FROM dictionary_index_entry WHERE dict_id = ? LIMIT ?"#,
+            dict_id,
+            batch_size,
+        )
+        .fetch_all(pool)
+        .await?;
+
+        if batch.is_empty() {
+            break;
+        }
+
+        for row in &batch {
+            sqlx::query!(
+                "DELETE FROM dictionary_index_entry WHERE dict_id = ? AND word = ? AND offset = ?",
+                dict_id,
+                row.word,
+                row.offset,
+            )
+            .execute(pool)
+            .await?;
+
+            total_deleted += 1;
+        }
+
+        if shutdown.should_stop() {
+            tracing::info!(total_deleted, "entry deletion interrupted by shutdown");
+            return Ok(total_deleted);
+        }
+    }
+
+    Ok(total_deleted)
 }
 
 impl BackgroundTask for DictionaryIndexTask {

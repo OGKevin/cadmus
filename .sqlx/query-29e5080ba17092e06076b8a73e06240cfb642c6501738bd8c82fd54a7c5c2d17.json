@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE dictionary_index_meta SET completed = 1 WHERE dict_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "29e5080ba17092e06076b8a73e06240cfb642c6501738bd8c82fd54a7c5c2d17"
+}
