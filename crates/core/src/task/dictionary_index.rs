@@ -438,6 +438,7 @@ impl DictionaryIndexTask {
         match self.scan_and_batch(&job, skip_lines, hub, shutdown) {
             Some(current_line) => {
                 self.mark_completed(dict_id, &path_str, current_line, total_lines);
+                hub.send(Event::ReloadDictionaries).ok();
                 hub.send(Event::Close(notif_id)).ok();
             }
             None => {
