@@ -593,10 +593,11 @@ impl OtaClient {
 
     /// Returns the platform-specific deployment path for KoboRoot.tgz.
     ///
-    /// The path is determined by the build configuration:
-    /// - **Test builds:** `<temp_dir>/test-kobo-deployment/KoboRoot.tgz`
-    /// - **Emulator builds:** `/tmp/.kobo/KoboRoot.tgz`
-    /// - **Production builds:** `{INTERNAL_CARD_ROOT}/.kobo/KoboRoot.tgz`
+    /// | Build context        | Path                                              |
+    /// |----------------------|---------------------------------------------------|
+    /// | During `cargo test`  | `<temp_dir>/test-kobo-deployment/KoboRoot.tgz`    |
+    /// | Emulator builds      | `/tmp/.kobo/KoboRoot.tgz`                         |
+    /// | Kobo builds          | `{INTERNAL_CARD_ROOT}/.kobo/KoboRoot.tgz`         |
     fn deploy_path(&self) -> PathBuf {
         #[cfg(test)]
         let path = std::env::temp_dir()
