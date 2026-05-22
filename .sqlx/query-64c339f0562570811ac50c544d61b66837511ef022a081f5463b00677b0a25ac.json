@@ -1,0 +1,18 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT COUNT(*) FROM dictionary_index_entry WHERE dict_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "COUNT(*)",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [false]
+  },
+  "hash": "64c339f0562570811ac50c544d61b66837511ef022a081f5463b00677b0a25ac"
+}

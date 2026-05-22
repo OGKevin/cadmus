@@ -571,10 +571,13 @@ impl DictionaryIndexTask {
 
 /// Deletes all index entries for a single dictionary in batches.
 ///
-/// Entries are deleted in batches of [`BATCH_SIZE`] rows, identified by their
-/// full primary key `(dict_id, word, offset)`. Batching avoids holding a write
-/// lock on the (potentially very large) `dictionary_index_entry` table for the
-/// entire duration of the delete, which would block concurrent reads.
+/// Each batch selects up to `BATCH_SIZE` primary key pairs `(word, offset)`
+/// for the given `dict_id`, then deletes those specific rows in a single
+/// transaction. This keeps write locks short while avoiding per-row overhead.
+///
+/// `DELETE … LIMIT` is not used because the bundled SQLite amalgamation in
+/// `libsqlite3-sys` was not generated with `SQLITE_UDL_CAPABLE_PARSER`, so
+/// the parser grammar does not support that syntax regardless of compile flags.
 ///
 /// Returns the total number of rows deleted, or an error if any batch fails.
 /// Respects the shutdown signal between batches: if a shutdown is requested
@@ -592,30 +595,34 @@ async fn delete_entries_for_dict(
     let mut total_deleted: u64 = 0;
 
     loop {
-        let batch = sqlx::query!(
-            r#"SELECT word, offset FROM dictionary_index_entry WHERE dict_id = ? LIMIT ?"#,
+        let keys = sqlx::query!(
+            "SELECT word, offset FROM dictionary_index_entry WHERE dict_id = ? LIMIT ?",
             dict_id,
             batch_size,
         )
         .fetch_all(pool)
         .await?;
 
-        if batch.is_empty() {
+        if keys.is_empty() {
             break;
         }
 
-        for row in &batch {
+        let mut tx = pool.begin().await?;
+
+        for key in &keys {
             sqlx::query!(
                 "DELETE FROM dictionary_index_entry WHERE dict_id = ? AND word = ? AND offset = ?",
                 dict_id,
-                row.word,
-                row.offset,
+                key.word,
+                key.offset,
             )
-            .execute(pool)
+            .execute(&mut *tx)
             .await?;
-
-            total_deleted += 1;
         }
+
+        tx.commit().await?;
+
+        total_deleted += keys.len() as u64;
 
         if shutdown.should_stop() {
             tracing::info!(total_deleted, "entry deletion interrupted by shutdown");
@@ -678,5 +685,96 @@ impl BackgroundTask for DictionaryIndexTask {
         }
 
         self.delete_stale_entries(&on_disk_fingerprints, shutdown);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::{runtime::RUNTIME, Database};
+
+    fn setup_db() -> Database {
+        let db = Database::new(":memory:").expect("failed to create in-memory database");
+        db.migrate().expect("failed to run migrations");
+        db
+    }
+
+    async fn insert_meta(pool: &sqlx::SqlitePool, fingerprint: &str) -> i64 {
+        sqlx::query_scalar!(
+            "INSERT INTO dictionary_index_meta (fingerprint, dict_path, total_lines) VALUES (?, ?, ?) RETURNING dict_id",
+            fingerprint,
+            fingerprint,
+            0_i64,
+        )
+        .fetch_one(pool)
+        .await
+        .expect("failed to insert meta")
+    }
+
+    async fn insert_entry(pool: &sqlx::SqlitePool, dict_id: i64, word: &str, offset: i64) {
+        sqlx::query!(
+            "INSERT INTO dictionary_index_entry (dict_id, word, offset, size) VALUES (?, ?, ?, 0)",
+            dict_id,
+            word,
+            offset,
+        )
+        .execute(pool)
+        .await
+        .expect("failed to insert entry");
+    }
+
+    async fn count_entries(pool: &sqlx::SqlitePool, dict_id: i64) -> i64 {
+        sqlx::query_scalar!(
+            "SELECT COUNT(*) FROM dictionary_index_entry WHERE dict_id = ?",
+            dict_id,
+        )
+        .fetch_one(pool)
+        .await
+        .expect("failed to count entries")
+    }
+
+    #[test]
+    fn test_delete_entries_for_dict_removes_all_entries() {
+        let db = setup_db();
+        let pool = db.pool();
+        let shutdown = ShutdownSignal::never();
+
+        RUNTIME.block_on(async {
+            let dict_id = insert_meta(pool, "all-entries").await;
+            for i in 0..5_i64 {
+                insert_entry(pool, dict_id, "word", i).await;
+            }
+
+            let deleted = delete_entries_for_dict(pool, dict_id, &shutdown)
+                .await
+                .expect("delete should succeed");
+
+            assert_eq!(deleted, 5);
+            assert_eq!(count_entries(pool, dict_id).await, 0);
+        });
+    }
+
+    #[test]
+    fn test_delete_entries_for_dict_only_removes_target_dict() {
+        let db = setup_db();
+        let pool = db.pool();
+        let shutdown = ShutdownSignal::never();
+
+        RUNTIME.block_on(async {
+            let dict_a = insert_meta(pool, "dict-a").await;
+            let dict_b = insert_meta(pool, "dict-b").await;
+
+            insert_entry(pool, dict_a, "apple", 0).await;
+            insert_entry(pool, dict_b, "banana", 0).await;
+            insert_entry(pool, dict_b, "cherry", 0).await;
+
+            let deleted = delete_entries_for_dict(pool, dict_a, &shutdown)
+                .await
+                .expect("delete should succeed");
+
+            assert_eq!(deleted, 1);
+            assert_eq!(count_entries(pool, dict_a).await, 0);
+            assert_eq!(count_entries(pool, dict_b).await, 2);
+        });
     }
 }

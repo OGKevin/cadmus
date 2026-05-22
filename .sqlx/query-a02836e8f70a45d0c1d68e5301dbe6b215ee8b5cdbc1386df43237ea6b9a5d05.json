@@ -1,0 +1,18 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO dictionary_index_meta (fingerprint, dict_path, total_lines) VALUES (?, ?, ?) RETURNING dict_id",
+  "describe": {
+    "columns": [
+      {
+        "name": "dict_id",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [false]
+  },
+  "hash": "a02836e8f70a45d0c1d68e5301dbe6b215ee8b5cdbc1386df43237ea6b9a5d05"
+}
