@@ -355,7 +355,6 @@ mod tests {
     #[test]
     fn test_multiple_definitions_same_word_all_returned() {
         let db = setup_db();
-        // Simulate "Pain", "PAIN", "pain" all normalizing to "pain" with different offsets.
         insert_entry(db.pool(), DICT_ID_1, "fp1", "pain", 100, 20, Some("Pain"));
         insert_entry(db.pool(), DICT_ID_1, "fp1", "pain", 200, 30, Some("PAIN"));
         insert_entry(db.pool(), DICT_ID_1, "fp1", "pain", 300, 40, None);

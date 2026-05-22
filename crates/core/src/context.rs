@@ -6,7 +6,7 @@ use crate::font::Fonts;
 use crate::framebuffer::{Display, Framebuffer};
 use crate::frontlight::Frontlight;
 use crate::geom::Rectangle;
-use crate::helpers::{load_json, Fingerprint, IsHidden};
+use crate::helpers::{load_json, Fingerprint, Fp, IsHidden};
 use crate::library::Library;
 use crate::lightsensor::LightSensor;
 use crate::rtc::{AlarmManager, Rtc};
@@ -21,6 +21,7 @@ use rand_xoshiro::Xoroshiro128Plus;
 use std::collections::{BTreeMap, VecDeque};
 #[cfg(test)]
 use std::env;
+use std::io;
 use std::path::Path;
 use tracing::error;
 
@@ -163,10 +164,7 @@ impl Context {
                 content_path.set_extension("");
             }
 
-            // Fingerprint is computed from the .index file. The .index and
-            // .dict files are always updated together, so hashing the .index
-            // is sufficient to detect changes in the dictionary pair.
-            let dict_result = match index_path.fingerprint() {
+            let dict_result = match fingerprint_dict_pair(&index_path) {
                 Ok(fp) => load_dictionary_from_db(&content_path, &self.database, fp),
                 Err(e) => {
                     tracing::warn!(
@@ -219,6 +217,15 @@ impl Context {
             self.frontlight.set_warmth(0.0);
         }
     }
+}
+
+/// Fingerprints a StarDict dictionary pair by hashing only the `.index` file.
+///
+/// The `.index` and `.dict` files in a StarDict pair are always installed and
+/// replaced together, so hashing the `.index` alone is sufficient to detect
+/// any change to either file.
+fn fingerprint_dict_pair(index_path: &PathBuf) -> io::Result<Fp> {
+    index_path.fingerprint()
 }
 
 #[cfg(test)]
