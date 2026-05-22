@@ -1637,6 +1637,9 @@ pub fn run() -> Result<(), Error> {
             Event::SetWifi(enable) => {
                 set_wifi(enable, &mut context);
             }
+            Event::ReloadDictionaries => {
+                context.load_dictionaries();
+            }
             Event::Select(EntryId::CheckForUpdates) => {
                 show_ota_view(view.as_mut(), &tx, &mut rq, &mut context);
             }

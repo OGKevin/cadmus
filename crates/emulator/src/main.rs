@@ -892,6 +892,9 @@ fn run() -> Result<(), Error> {
                 Event::Device(DeviceEvent::RotateScreen(n)) => {
                     tx.send(Event::Select(EntryId::Rotate(n))).ok();
                 }
+                Event::ReloadDictionaries => {
+                    context.load_dictionaries();
+                }
                 Event::Select(EntryId::Reboot) => {
                     thread::sleep(Duration::from_secs(3));
                     break 'outer;

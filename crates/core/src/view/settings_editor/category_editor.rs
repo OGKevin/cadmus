@@ -626,7 +626,6 @@ impl CategoryEditor {
 
         self.current_page = 0;
         self.update_rows_list(rq, context);
-        context.load_dictionaries();
         hub.send(Event::ReindexDictionaries).ok();
         true
     }
@@ -737,7 +736,6 @@ impl View for CategoryEditor {
 
                         self.current_page = 0;
                         self.update_rows_list(rq, context);
-                        context.load_dictionaries();
                         hub.send(Event::ReindexDictionaries).ok();
 
                         hub.send(Event::Notification(NotificationEvent::Show(fl!(

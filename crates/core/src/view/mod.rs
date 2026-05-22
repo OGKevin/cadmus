@@ -556,6 +556,15 @@ pub enum Event {
     /// event and starts a [`DictionaryIndexTask`](crate::task::dictionary_index::DictionaryIndexTask)
     /// if one is not already running.
     ReindexDictionaries,
+    /// Requests that `context.load_dictionaries()` be called to rebuild the
+    /// in-memory dictionary map.
+    ///
+    /// Emitted by [`DictionaryIndexTask`](crate::task::dictionary_index::DictionaryIndexTask)
+    /// after inserting a new `dictionary_index_meta` row (so the dictionary
+    /// becomes resolvable) and after deleting stale entries (so removed
+    /// dictionaries are no longer visible). The app and emulator main loops
+    /// handle this event directly on the context.
+    ReloadDictionaries,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]

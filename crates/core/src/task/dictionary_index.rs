@@ -134,7 +134,7 @@ impl DictionaryIndexTask {
         index_path: &std::path::Path,
         path_str: &str,
         fp_str: &str,
-    ) -> Option<(i64, u64, u64)> {
+    ) -> Option<(i64, u64, u64, bool)> {
         let pool = self.database.pool().clone();
 
         let meta = RUNTIME.block_on(async {
@@ -166,6 +166,7 @@ impl DictionaryIndexTask {
                 row.dict_id?,
                 row.indexed_lines as u64,
                 row.total_lines as u64,
+                false,
             ));
         }
 
@@ -206,7 +207,7 @@ impl DictionaryIndexTask {
             .ok()?
         })?;
 
-        Some((dict_id, 0u64, total as u64))
+        Some((dict_id, 0u64, total as u64, true))
     }
 
     /// Marks the dictionary as fully indexed in the metadata table.
@@ -394,13 +395,17 @@ impl DictionaryIndexTask {
 
         let fp_str = fp.to_string();
 
-        let (dict_id, skip_lines, total_lines) =
+        let (dict_id, skip_lines, total_lines, is_new) =
             match self.resolve_index_state(index_path, &path_str, &fp_str) {
                 Some(state) => state,
                 None => {
                     return;
                 }
             };
+
+        if is_new {
+            hub.send(Event::ReloadDictionaries).ok();
+        }
 
         let (case_sensitive, all_chars) = Self::detect_metadata(&path_str);
         let metadata = Metadata {
@@ -514,7 +519,12 @@ impl DictionaryIndexTask {
     /// deleted dictionary as fully indexed. Entries are then removed in batches
     /// via [`delete_entries_for_dict`], after which the meta row itself is deleted.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(on_disk_count = on_disk_fingerprints.len())))]
-    fn delete_stale_entries(&self, on_disk_fingerprints: &[String], shutdown: &ShutdownSignal) {
+    fn delete_stale_entries(
+        &self,
+        on_disk_fingerprints: &[String],
+        hub: &Sender<Event>,
+        shutdown: &ShutdownSignal,
+    ) {
         let pool = self.database.pool().clone();
 
         let result = RUNTIME.block_on(async {
@@ -526,6 +536,8 @@ impl DictionaryIndexTask {
             )
             .fetch_all(&pool)
             .await?;
+
+            let mut deleted_any = false;
 
             for row in db_entries {
                 let fp = row.fingerprint;
@@ -563,16 +575,24 @@ impl DictionaryIndexTask {
                 .execute(&pool)
                 .await?;
 
+                deleted_any = true;
+
                 if shutdown.should_stop() {
-                    return Ok::<_, anyhow::Error>(());
+                    break;
                 }
             }
 
-            Ok::<_, anyhow::Error>(())
+            Ok::<_, anyhow::Error>(deleted_any)
         });
 
-        if let Err(e) = result {
-            tracing::error!(error = %e, "failed to delete stale dictionary index entries");
+        match result {
+            Ok(true) => {
+                hub.send(Event::ReloadDictionaries).ok();
+            }
+            Ok(false) => {}
+            Err(e) => {
+                tracing::error!(error = %e, "failed to delete stale dictionary index entries");
+            }
         }
     }
 }
@@ -692,7 +712,7 @@ impl BackgroundTask for DictionaryIndexTask {
             return;
         }
 
-        self.delete_stale_entries(&on_disk_fingerprints, shutdown);
+        self.delete_stale_entries(&on_disk_fingerprints, hub, shutdown);
     }
 }
 
