@@ -37,7 +37,8 @@ and its current status.
 3. Tap **Download** next to it.
 
 A progress notification appears at the top of the screen while the file
-downloads. When it disappears, the dictionary is ready to use.
+downloads. Once the download finishes, Cadmus begins
+[indexing](#how-indexing-works) the dictionary automatically.
 
 ## Updating a Dictionary
 
@@ -62,6 +63,37 @@ copy:
 2. Select **Delete** from the menu.
 
 The dictionary files are removed from your device.
+
+## How Indexing Works
+
+After you download, update, or re-download a dictionary, Cadmus needs to
+**index** it before you can look up words. Indexing reads every word in
+the dictionary and stores it in a database so that lookups are fast.
+
+A notification with a progress bar appears at the top of the screen
+while indexing is in progress.
+
+> [!NOTE]
+> You can keep reading while indexing runs in the background. Words that
+> have already been indexed are available for lookup right away, so you
+> may get partial results until indexing finishes.
+
+### What happens when you restart your Kobo
+
+If your Kobo restarts or shuts down while indexing is still running,
+Cadmus picks up where it left off the next time it starts. It does not
+start over from the beginning.
+
+### When does re-indexing happen
+
+Cadmus automatically re-indexes a dictionary when you:
+
+- **Update** it to a newer version
+- **Re-download** it
+- **Delete** it (the old index is removed)
+
+You do not need to trigger indexing yourself — it happens automatically
+whenever the dictionary files change.
 
 ## Where Dictionaries are Stored
 

@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Cadmus Documentation\n"
-"POT-Creation-Date: 2026-05-21T10:59:17+02:00\n"
+"POT-Creation-Date: 2026-05-22T06:09:13Z\n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -1706,61 +1706,123 @@ msgstr ""
 #: src/ui/settings/dictionaries.md:39
 msgid ""
 "A progress notification appears at the top of the screen while the file "
-"downloads. When it disappears, the dictionary is ready to use."
+"downloads. Once the download finishes, Cadmus begins "
+"[indexing](#how-indexing-works) the dictionary automatically."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:42
+#: src/ui/settings/dictionaries.md:43
 msgid "Updating a Dictionary"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:44
+#: src/ui/settings/dictionaries.md:45
 msgid "When a newer version is available the status shows **Update Available**."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:46 src/ui/settings/dictionaries.md:56
-#: src/ui/settings/dictionaries.md:61
+#: src/ui/settings/dictionaries.md:47 src/ui/settings/dictionaries.md:57
+#: src/ui/settings/dictionaries.md:62
 msgid "Tap the language row."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:47
+#: src/ui/settings/dictionaries.md:48
 msgid "Select **Update** from the menu."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:49
+#: src/ui/settings/dictionaries.md:50
 msgid "The updated dictionary replaces the old one automatically."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:51
+#: src/ui/settings/dictionaries.md:52
 msgid "Re-downloading a Dictionary"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:53
+#: src/ui/settings/dictionaries.md:54
 msgid ""
 "If a dictionary is already installed you can re-download it to get a fresh "
 "copy:"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:57
+#: src/ui/settings/dictionaries.md:58
 msgid "Select **Re-download** from the menu."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:59
+#: src/ui/settings/dictionaries.md:60
 msgid "Deleting a Dictionary"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:62
+#: src/ui/settings/dictionaries.md:63
 msgid "Select **Delete** from the menu."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:64
+#: src/ui/settings/dictionaries.md:65
 msgid "The dictionary files are removed from your device."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:66
+#: src/ui/settings/dictionaries.md:67
+msgid "How Indexing Works"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:69
+msgid ""
+"After you download, update, or re-download a dictionary, Cadmus needs to "
+"**index** it before you can look up words. Indexing reads every word in the "
+"dictionary and stores it in a database so that lookups are fast."
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:73
+msgid ""
+"A notification with a progress bar appears at the top of the screen while "
+"indexing is in progress."
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:76
+msgid ""
+"\\[!NOTE\\] You can keep reading while indexing runs in the background. "
+"Words that have already been indexed are available for lookup right away, so "
+"you may get partial results until indexing finishes."
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:81
+msgid "What happens when you restart your Kobo"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:83
+msgid ""
+"If your Kobo restarts or shuts down while indexing is still running, Cadmus "
+"picks up where it left off the next time it starts. It does not start over "
+"from the beginning."
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:87
+msgid "When does re-indexing happen"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:89
+msgid "Cadmus automatically re-indexes a dictionary when you:"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:91
+msgid "**Update** it to a newer version"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:92
+msgid "**Re-download** it"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:93
+msgid "**Delete** it (the old index is removed)"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:95
+msgid ""
+"You do not need to trigger indexing yourself — it happens automatically "
+"whenever the dictionary files change."
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:98
 msgid "Where Dictionaries are Stored"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:68
+#: src/ui/settings/dictionaries.md:100
 msgid ""
 "Downloaded dictionaries live in the `dictionaries/reader-dict/<lang>/` "
 "folder on your device. Each language gets its own subfolder containing a "
