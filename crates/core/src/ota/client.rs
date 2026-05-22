@@ -567,62 +567,48 @@ impl OtaClient {
     pub fn deploy(&self, kobo_root_path: PathBuf) -> Result<PathBuf, OtaError> {
         tracing::info!(path = ?kobo_root_path, "Deploying KoboRoot.tgz");
 
-        let mut kobo_root_data = Vec::new();
-        {
-            let mut file = File::open(&kobo_root_path)?;
-            file.read_to_end(&mut kobo_root_data)?;
-        }
+        let deploy_path = self.deploy_path();
+        self.ensure_deploy_dir(&deploy_path)?;
+
+        let mut src = File::open(&kobo_root_path)?;
+        let mut dst = File::create(&deploy_path)?;
+        let bytes_copied = std::io::copy(&mut src, &mut dst)?;
 
         tracing::debug!(
-            bytes = kobo_root_data.len(),
-            path = ?kobo_root_path,
-            "Read KoboRoot.tgz"
+            bytes = bytes_copied,
+            src = ?kobo_root_path,
+            dst = ?deploy_path,
+            "Streamed KoboRoot.tgz to deploy path"
         );
 
-        let deploy_path = self.deploy_bytes(&kobo_root_data)?;
         if kobo_root_path != deploy_path {
             if let Err(e) = std::fs::remove_file(&kobo_root_path) {
                 tracing::error!(path = ?kobo_root_path, error = %e, "Failed to remove source file");
             }
         }
 
+        tracing::info!(path = ?deploy_path, "Update deployed successfully");
         Ok(deploy_path)
     }
 
-    /// Deploys KoboRoot.tgz data to the appropriate location.
-    ///
-    /// Writes the provided data to the deployment path determined by the build configuration:
-    /// - Test builds: temp directory
-    /// - Emulator builds: /tmp/.kobo/KoboRoot.tgz
-    /// - Production builds: {INTERNAL_CARD_ROOT}/.kobo/KoboRoot.tgz
-    ///
-    /// # Arguments
-    ///
-    /// * `data` - The KoboRoot.tgz file contents to deploy
-    ///
-    /// # Returns
-    ///
-    /// The deployment path where KoboRoot.tgz was written.
-    ///
-    /// # Errors
-    ///
-    /// * `OtaError::Io` - Failed to create directories or write deployment file
-    fn deploy_bytes(&self, data: &[u8]) -> Result<PathBuf, OtaError> {
+    /// Returns the platform-specific deployment path for KoboRoot.tgz.
+    fn deploy_path(&self) -> PathBuf {
         #[cfg(test)]
-        let deploy_path = {
-            std::env::temp_dir()
-                .join("test-kobo-deployment")
-                .join("KoboRoot.tgz")
-        };
+        let path = std::env::temp_dir()
+            .join("test-kobo-deployment")
+            .join("KoboRoot.tgz");
 
         #[cfg(all(feature = "emulator", not(test)))]
-        let deploy_path = PathBuf::from("/tmp/.kobo/KoboRoot.tgz");
+        let path = PathBuf::from("/tmp/.kobo/KoboRoot.tgz");
 
         #[cfg(all(not(feature = "emulator"), not(test)))]
-        let deploy_path = PathBuf::from(format!("{}/.kobo/KoboRoot.tgz", INTERNAL_CARD_ROOT));
+        let path = PathBuf::from(format!("{}/.kobo/KoboRoot.tgz", INTERNAL_CARD_ROOT));
 
-        tracing::debug!(path = ?deploy_path, "Deploy destination");
+        tracing::debug!(path = ?path, "Deploy destination");
+        path
+    }
 
+    fn ensure_deploy_dir(&self, deploy_path: &Path) -> Result<(), OtaError> {
         #[cfg(any(test, feature = "emulator"))]
         {
             if let Some(parent) = deploy_path.parent() {
@@ -630,6 +616,14 @@ impl OtaClient {
                 std::fs::create_dir_all(parent)?;
             }
         }
+
+        let _ = deploy_path;
+        Ok(())
+    }
+
+    fn deploy_bytes(&self, data: &[u8]) -> Result<PathBuf, OtaError> {
+        let deploy_path = self.deploy_path();
+        self.ensure_deploy_dir(&deploy_path)?;
 
         tracing::debug!(bytes = data.len(), path = ?deploy_path, "Writing file");
         let mut file = File::create(&deploy_path)?;
