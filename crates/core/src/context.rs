@@ -224,7 +224,7 @@ impl Context {
 /// The `.index` and `.dict` files in a StarDict pair are always installed and
 /// replaced together, so hashing the `.index` alone is sufficient to detect
 /// any change to either file.
-fn fingerprint_dict_pair(index_path: &PathBuf) -> io::Result<Fp> {
+fn fingerprint_dict_pair(index_path: &Path) -> io::Result<Fp> {
     index_path.fingerprint()
 }
 
