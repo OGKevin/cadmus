@@ -97,7 +97,7 @@ impl DictionaryIndexTask {
         let mut all_chars = false;
         let mut case_sensitive = false;
 
-        for line in BufReader::new(file).lines().take(100) {
+        for line in BufReader::new(file).lines() {
             let line = match line {
                 Ok(l) => l,
                 Err(_) => continue,
@@ -105,10 +105,18 @@ impl DictionaryIndexTask {
 
             let word = line.split('\t').next().unwrap_or("");
 
-            if word == "00-database-allchars" {
+            if word.is_empty() {
+                continue;
+            } else if word == "00-database-allchars" {
                 all_chars = true;
             } else if word == "00-database-case-sensitive" || word == "00databasecasesensitive" {
                 case_sensitive = true;
+            } else if !word.starts_with("00-database-") && !word.starts_with("00database") {
+                break;
+            }
+
+            if all_chars && case_sensitive {
+                break;
             }
         }
 
