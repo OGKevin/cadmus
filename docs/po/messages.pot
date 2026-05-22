@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Cadmus Documentation\n"
-"POT-Creation-Date: 2026-05-22T06:09:13Z\n"
+"POT-Creation-Date: 2026-05-22T06:26:06Z\n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -1765,64 +1765,66 @@ msgstr ""
 msgid ""
 "After you download, update, or re-download a dictionary, Cadmus needs to "
 "**index** it before you can look up words. Indexing reads every word in the "
-"dictionary and stores it in a database so that lookups are fast."
+"dictionary and stores it in a database on disk so that lookups are fast "
+"without loading the entire dictionary into memory. This is especially "
+"important on devices with limited memory like your Kobo."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:73
+#: src/ui/settings/dictionaries.md:75
 msgid ""
 "A notification with a progress bar appears at the top of the screen while "
 "indexing is in progress."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:76
+#: src/ui/settings/dictionaries.md:78
 msgid ""
 "\\[!NOTE\\] You can keep reading while indexing runs in the background. "
 "Words that have already been indexed are available for lookup right away, so "
 "you may get partial results until indexing finishes."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:81
+#: src/ui/settings/dictionaries.md:83
 msgid "What happens when you restart your Kobo"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:83
+#: src/ui/settings/dictionaries.md:85
 msgid ""
 "If your Kobo restarts or shuts down while indexing is still running, Cadmus "
 "picks up where it left off the next time it starts. It does not start over "
 "from the beginning."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:87
+#: src/ui/settings/dictionaries.md:89
 msgid "When does re-indexing happen"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:89
+#: src/ui/settings/dictionaries.md:91
 msgid "Cadmus automatically re-indexes a dictionary when you:"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:91
+#: src/ui/settings/dictionaries.md:93
 msgid "**Update** it to a newer version"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:92
+#: src/ui/settings/dictionaries.md:94
 msgid "**Re-download** it"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:93
+#: src/ui/settings/dictionaries.md:95
 msgid "**Delete** it (the old index is removed)"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:95
+#: src/ui/settings/dictionaries.md:97
 msgid ""
 "You do not need to trigger indexing yourself — it happens automatically "
 "whenever the dictionary files change."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:98
+#: src/ui/settings/dictionaries.md:100
 msgid "Where Dictionaries are Stored"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:100
+#: src/ui/settings/dictionaries.md:102
 msgid ""
 "Downloaded dictionaries live in the `dictionaries/reader-dict/<lang>/` "
 "folder on your device. Each language gets its own subfolder containing a "

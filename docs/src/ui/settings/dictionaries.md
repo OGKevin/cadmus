@@ -68,7 +68,9 @@ The dictionary files are removed from your device.
 
 After you download, update, or re-download a dictionary, Cadmus needs to
 **index** it before you can look up words. Indexing reads every word in
-the dictionary and stores it in a database so that lookups are fast.
+the dictionary and stores it in a database on disk so that lookups are
+fast without loading the entire dictionary into memory. This is
+especially important on devices with limited memory like your Kobo.
 
 A notification with a progress bar appears at the top of the screen
 while indexing is in progress.
