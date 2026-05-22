@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Cadmus Documentation\n"
-"POT-Creation-Date: 2026-05-22T06:26:06Z\n"
+"POT-Creation-Date: 2026-05-22T06:30:09Z\n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -1767,7 +1767,7 @@ msgid ""
 "**index** it before you can look up words. Indexing reads every word in the "
 "dictionary and stores it in a database on disk so that lookups are fast "
 "without loading the entire dictionary into memory. This is especially "
-"important on devices with limited memory like your Kobo."
+"important on devices with limited memory."
 msgstr ""
 
 #: src/ui/settings/dictionaries.md:75
