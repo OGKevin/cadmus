@@ -62,6 +62,7 @@ settings-reader-refresh-rate-inverted = Inverted
 settings-reader-refresh-rate-inverted-input = Inverted refresh rate (0 = never)
 settings-reader-refresh-rate-regular = Regular
 settings-reader-refresh-rate-regular-input = Regular refresh rate (0 = never)
+settings-reader-refresh-rate-summary = { $regular } / { $inverted }
 
 # Settings - Intermission
 settings-intermission-suspend-screen = Suspend Screen

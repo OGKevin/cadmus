@@ -97,11 +97,25 @@ impl SettingKind for RefreshRateInfo {
         match evt {
             Event::Submit(ViewId::RefreshRateRegularInput, text) => {
                 let regular = text.parse::<u8>().unwrap_or(global.regular);
-                (Some(format!("{} / {}", regular, global.inverted)), false)
+                (
+                    Some(fl!(
+                        "settings-reader-refresh-rate-summary",
+                        regular = regular,
+                        inverted = global.inverted
+                    )),
+                    false,
+                )
             }
             Event::Submit(ViewId::RefreshRateInvertedInput, text) => {
                 let inverted = text.parse::<u8>().unwrap_or(global.inverted);
-                (Some(format!("{} / {}", global.regular, inverted)), false)
+                (
+                    Some(fl!(
+                        "settings-reader-refresh-rate-summary",
+                        regular = global.regular,
+                        inverted = inverted
+                    )),
+                    false,
+                )
             }
             _ => (None, false),
         }
