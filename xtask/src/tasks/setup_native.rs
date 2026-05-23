@@ -112,6 +112,25 @@ fn read_mupdf_version(header: &Path) -> Option<String> {
     None
 }
 
+/// Returns `true` when the full native setup is complete.
+///
+/// Checks that the build marker, the compiled `libmupdf.a`, the C wrapper
+/// library `libmupdf_wrapper.a`, and both symlinks in
+/// `target/mupdf_wrapper/<platform>/` are all present.
+pub fn native_setup_done(root: &Path) -> bool {
+    let platform_dir = if cfg!(target_os = "macos") {
+        "Darwin"
+    } else {
+        "Linux"
+    };
+
+    let wrapper_dir = root.join(format!("target/mupdf_wrapper/{platform_dir}"));
+
+    native_mupdf_ready(root)
+        && wrapper_dir.join("libmupdf.a").exists()
+        && wrapper_dir.join("libmupdf_wrapper.a").exists()
+}
+
 /// Returns `true` when native MuPDF libraries are present and marked as built.
 fn native_mupdf_ready(root: &Path) -> bool {
     let marker = root.join("thirdparty/mupdf").join(NATIVE_BUILT_MARKER);

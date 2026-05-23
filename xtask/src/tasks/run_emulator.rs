@@ -1,14 +1,17 @@
 //! `cargo xtask run-emulator` — run the Cadmus emulator.
 //!
-//! Ensures MuPDF sources and the `mupdf_wrapper` C library are built for the
-//! native platform, then launches `cargo run -p emulator`.  Any extra
-//! arguments are forwarded to the emulator.
+//! Ensures the native MuPDF build and the embedded documentation EPUB are
+//! ready, then launches `cargo run -p emulator`.  Any extra arguments are
+//! forwarded to the emulator.
+
+use std::path::Path;
 
 use anyhow::Result;
 use clap::Args;
 
-use super::setup_native;
-use super::util::{cmd, mupdf_wrapper, workspace};
+use super::docs::{self, DocsArgs};
+use super::setup_native::{self, SetupNativeArgs};
+use super::util::{cmd, workspace};
 
 /// Arguments for `cargo xtask run-emulator`.
 #[derive(Debug, Args)]
@@ -22,17 +25,33 @@ pub struct RunEmulatorArgs {
     pub extra: Vec<String>,
 }
 
+/// Returns `true` when the documentation EPUB embedded by `cadmus-core` exists.
+fn mdbook_epub_built(root: &Path) -> bool {
+    root.join("docs/book/epub/Cadmus Documentation.epub")
+        .exists()
+}
+
 /// Ensures prerequisites are built then launches the emulator.
 ///
 /// # Errors
 ///
-/// Returns an error if the MuPDF download, wrapper build, or emulator launch
-/// fails.
+/// Returns an error if the native setup, documentation build, or emulator
+/// launch fails.
 pub fn run(args: RunEmulatorArgs) -> Result<()> {
     let root = workspace::root()?;
 
-    setup_native::ensure_mupdf_sources(&root, false)?;
-    mupdf_wrapper::build_native_if_needed(&root)?;
+    if !setup_native::native_setup_done(&root) {
+        println!("Native setup not found — running setup-native…");
+        setup_native::run(SetupNativeArgs { force: false })?;
+    }
+
+    if !mdbook_epub_built(&root) {
+        println!("Documentation EPUB not found — building mdBook…");
+        docs::run(DocsArgs {
+            base_url: "http://localhost".to_string(),
+            mdbook_only: true,
+        })?;
+    }
 
     let mut cargo_args = vec!["run", "-p", "emulator"];
 
