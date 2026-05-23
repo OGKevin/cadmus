@@ -247,7 +247,7 @@ fn resolve_relocations(
 fn find_deleted_books(handles_by_fp: &FxHashMap<Fp, PathBuf>, home: &Path) -> Vec<Fp> {
     handles_by_fp
         .iter()
-        .filter(|(_, relat)| !home.join(relat).exists())
+        .filter(|(_, relat)| relat.as_os_str().is_empty() || !home.join(relat).exists())
         .map(|(fp, relat)| {
             info!(fp = %fp, path = %relat.display(), "removing deleted entry");
             *fp
@@ -398,6 +398,7 @@ mod tests {
     use super::*;
     use crate::db::Database;
     use crate::library::Library;
+    use crate::metadata::{FileInfo, Info};
     use crate::settings::ImportSettings;
     use crate::task::ShutdownSignal;
     use crate::view::ViewId;
@@ -498,5 +499,32 @@ mod tests {
             "shutdown should have cut the scan short (got {} progress events)",
             progress_events.len()
         );
+    }
+
+    #[test]
+    fn finds_deleted_books_when_file_path_is_empty() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db = create_migrated_db();
+        let lib = Library::new(dir.path(), &db, "test").expect("library");
+        let fp = Fp::from_u64(1);
+        let info = Info {
+            title: "test".to_string(),
+            file: FileInfo {
+                path: PathBuf::new(),
+                absolute_path: dir.path().join("missing.epub"),
+                kind: "epub".to_string(),
+                size: 1,
+            },
+            ..Default::default()
+        };
+
+        lib.db
+            .batch_insert_books(lib.library_id, &[(fp, &info)])
+            .expect("insert library book");
+
+        let handles = lib.db.list_book_handles(lib.library_id).expect("handles");
+        let handles_by_fp: FxHashMap<Fp, PathBuf> = handles.into_iter().collect();
+
+        assert_eq!(find_deleted_books(&handles_by_fp, dir.path()), vec![fp]);
     }
 }
