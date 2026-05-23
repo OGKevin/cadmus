@@ -5,7 +5,7 @@ use crate::fl;
 use crate::geom::Rectangle;
 use crate::i18n::I18nDisplay;
 use crate::settings::{FileExtension, FinishedAction, RefreshRatePair, Settings};
-use crate::view::{Bus, EntryId, EntryKind, Event};
+use crate::view::{Bus, EntryId, EntryKind, Event, ViewId};
 
 /// Reader finished action setting
 pub struct FinishedActionSetting;
@@ -79,6 +79,31 @@ impl SettingKind for RefreshRateInfo {
         SettingData {
             value,
             widget: WidgetKind::ActionLabel(Event::OpenRefreshRateEditor),
+        }
+    }
+
+    /// Updates the summary label when either global input is submitted.
+    ///
+    /// Settings are intentionally not written here. Each input (`RefreshRateRegularInput`,
+    /// `RefreshRateInvertedInput`) has its own [`SettingKind`] row (`RefreshRateRegularSetting`,
+    /// `RefreshRateInvertedSetting`) that owns the write.
+    fn handle(
+        &self,
+        evt: &Event,
+        settings: &mut Settings,
+        _bus: &mut Bus,
+    ) -> (Option<String>, bool) {
+        let global = &settings.reader.refresh_rate.global;
+        match evt {
+            Event::Submit(ViewId::RefreshRateRegularInput, text) => {
+                let regular = text.parse::<u8>().unwrap_or(global.regular);
+                (Some(format!("{} / {}", regular, global.inverted)), false)
+            }
+            Event::Submit(ViewId::RefreshRateInvertedInput, text) => {
+                let inverted = text.parse::<u8>().unwrap_or(global.inverted);
+                (Some(format!("{} / {}", global.regular, inverted)), false)
+            }
+            _ => (None, false),
         }
     }
 }
@@ -395,6 +420,69 @@ mod tests {
             let result = setting.handle(&event, &mut settings, &mut bus);
 
             assert!(result.0.is_none());
+        }
+    }
+
+    mod refresh_rate_info {
+        use super::*;
+
+        #[test]
+        fn handle_regular_submit_updates_display_without_writing_settings() {
+            let setting = RefreshRateInfo;
+            let mut settings = Settings::default();
+            settings.reader.refresh_rate.global.regular = 5;
+            settings.reader.refresh_rate.global.inverted = 10;
+            let mut bus: Bus = VecDeque::new();
+
+            let event = Event::Submit(ViewId::RefreshRateRegularInput, "3".to_string());
+            let (display, handled) = setting.handle(&event, &mut settings, &mut bus);
+
+            assert_eq!(display.as_deref(), Some("3 / 10"));
+            assert!(!handled);
+            assert_eq!(settings.reader.refresh_rate.global.regular, 5);
+        }
+
+        #[test]
+        fn handle_inverted_submit_updates_display_without_writing_settings() {
+            let setting = RefreshRateInfo;
+            let mut settings = Settings::default();
+            settings.reader.refresh_rate.global.regular = 5;
+            settings.reader.refresh_rate.global.inverted = 10;
+            let mut bus: Bus = VecDeque::new();
+
+            let event = Event::Submit(ViewId::RefreshRateInvertedInput, "7".to_string());
+            let (display, handled) = setting.handle(&event, &mut settings, &mut bus);
+
+            assert_eq!(display.as_deref(), Some("5 / 7"));
+            assert!(!handled);
+            assert_eq!(settings.reader.refresh_rate.global.inverted, 10);
+        }
+
+        #[test]
+        fn handle_invalid_text_falls_back_to_current_value() {
+            let setting = RefreshRateInfo;
+            let mut settings = Settings::default();
+            settings.reader.refresh_rate.global.regular = 5;
+            settings.reader.refresh_rate.global.inverted = 10;
+            let mut bus: Bus = VecDeque::new();
+
+            let event = Event::Submit(ViewId::RefreshRateRegularInput, "bad".to_string());
+            let (display, _) = setting.handle(&event, &mut settings, &mut bus);
+
+            assert_eq!(display.as_deref(), Some("5 / 10"));
+        }
+
+        #[test]
+        fn handle_unrelated_event_returns_none() {
+            let setting = RefreshRateInfo;
+            let mut settings = Settings::default();
+            let mut bus: Bus = VecDeque::new();
+
+            let (display, handled) =
+                setting.handle(&Event::Select(EntryId::About), &mut settings, &mut bus);
+
+            assert!(display.is_none());
+            assert!(!handled);
         }
     }
 }

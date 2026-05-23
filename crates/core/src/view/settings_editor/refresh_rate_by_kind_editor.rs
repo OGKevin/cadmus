@@ -88,7 +88,7 @@ impl RefreshRateByKindEditor {
             separator_bottom_half,
         ));
 
-        let keyboard = ToggleableKeyboard::new(rect, false);
+        let keyboard = ToggleableKeyboard::new(rect, true);
         children.push(Box::new(keyboard) as Box<dyn View>);
 
         let keyboard_index = children.len() - 1;
@@ -305,17 +305,6 @@ impl RefreshRateByKindEditor {
         rq: &mut RenderQueue,
         context: &mut Context,
     ) -> bool {
-        context
-            .settings
-            .reader
-            .refresh_rate
-            .by_kind
-            .entry(ext.as_str().to_string())
-            .or_insert(RefreshRatePair {
-                regular: 0,
-                inverted: 0,
-            });
-
         if let Some(index) = locate_by_id(self, ViewId::SettingsValueMenu) {
             self.children.remove(index);
         }
@@ -411,6 +400,27 @@ impl RefreshRateByKindEditor {
     }
 
     #[inline]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, rq, context), fields(view_id = ?view_id)))]
+    fn handle_open_named_input(
+        &mut self,
+        view_id: ViewId,
+        label: &str,
+        max_chars: usize,
+        initial_text: &str,
+        hub: &Hub,
+        rq: &mut RenderQueue,
+        context: &mut Context,
+    ) -> bool {
+        let mut named_input =
+            NamedInput::new(label.to_string(), view_id, view_id, max_chars, context);
+        named_input.set_text(initial_text, rq, context);
+        self.children.push(Box::new(named_input));
+        hub.send(Event::Focus(Some(view_id))).ok();
+        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+        true
+    }
+
+    #[inline]
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, rq), fields(view_id = ?view_id)))]
     fn handle_close_event(&mut self, view_id: ViewId, hub: &Hub, rq: &mut RenderQueue) -> bool {
         match view_id {
@@ -462,6 +472,20 @@ impl View for RefreshRateByKindEditor {
             Event::SubMenu(rect, ref entries) => {
                 self.handle_submenu_event(*rect, entries, rq, context)
             }
+            Event::OpenNamedInput {
+                view_id,
+                ref label,
+                max_chars,
+                ref initial_text,
+            } => self.handle_open_named_input(
+                *view_id,
+                label,
+                *max_chars,
+                initial_text,
+                hub,
+                rq,
+                context,
+            ),
             Event::Close(view_id) => self.handle_close_event(*view_id, hub, rq),
             _ => {
                 let _ = bus;
