@@ -609,7 +609,7 @@ impl RefreshRateKindPairEditor {
             },
         ));
 
-        let keyboard = ToggleableKeyboard::new(rect, false);
+        let keyboard = ToggleableKeyboard::new(rect, true);
         children.push(Box::new(keyboard) as Box<dyn View>);
 
         let keyboard_index = children.len() - 1;
