@@ -30,7 +30,12 @@ jobs:
         id: files
         run: |
           shopt -s globstar nullglob
-          files=(docs/**/*.md .agents/skills/**/*.md **/AGENTS.md **/REVIEW.md)
+          all=(docs/**/*.md .agents/skills/**/*.md **/AGENTS.md **/REVIEW.md)
+          files=()
+          for f in "${all[@]}"; do
+            [[ "$f" == node_modules/* ]] && continue
+            files+=("$f")
+          done
           echo "list=${files[*]}" >> "$GITHUB_OUTPUT"
 
       - name: Prettier check
