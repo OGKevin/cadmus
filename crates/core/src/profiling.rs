@@ -40,8 +40,7 @@ use pyroscope::backend::backend::BackendConfig;
 use pyroscope::backend::jemalloc::jemalloc_backend;
 use pyroscope::backend::pprof::{pprof_backend, PprofConfig};
 use pyroscope::pyroscope::{PyroscopeAgent, PyroscopeAgentBuilder, PyroscopeAgentRunning};
-use std::sync::{mpsc, Mutex};
-use std::thread;
+use std::sync::Mutex;
 use std::time::Duration;
 
 struct ProfilingAgents {
@@ -150,19 +149,6 @@ pub fn init_profiling(settings_endpoint: Option<&str>) -> Result<(), Error> {
     Ok(())
 }
 
-/// This ensures that when there are connection failures during shutdown, it doesn't block
-/// forever.
-fn shutdown_with_timeout(shutdown: impl FnOnce() + Send + 'static, timeout: Duration) {
-    let (tx, rx) = mpsc::channel();
-
-    thread::spawn(move || {
-        shutdown();
-        let _ = tx.send(());
-    });
-
-    let _ = rx.recv_timeout(timeout);
-}
-
 /// Shuts down both Pyroscope profiling agents and flushes buffered profiles.
 ///
 /// Safe to call even if `init_profiling` was never called or profiling was
@@ -173,10 +159,10 @@ pub fn shutdown_profiling() {
     if let Ok(mut guard) = AGENTS.lock() {
         if let Some(agents) = guard.take() {
             if let Ok(stopped) = agents.heap.stop() {
-                shutdown_with_timeout(move || stopped.shutdown(), timeout);
+                crate::shutdown::shutdown_with_timeout(move || stopped.shutdown(), timeout);
             }
             if let Ok(stopped) = agents.cpu.stop() {
-                shutdown_with_timeout(move || stopped.shutdown(), timeout);
+                crate::shutdown::shutdown_with_timeout(move || stopped.shutdown(), timeout);
             }
         }
     }

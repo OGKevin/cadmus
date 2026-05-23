@@ -48,8 +48,7 @@ use opentelemetry_otlp::{LogExporter, SpanExporter, WithExportConfig};
 use opentelemetry_sdk::logs::{BatchLogProcessor, SdkLoggerProvider};
 use opentelemetry_sdk::trace::{BatchSpanProcessor, SdkTracerProvider};
 use opentelemetry_sdk::Resource;
-use std::sync::{mpsc, OnceLock};
-use std::thread;
+use std::sync::OnceLock;
 use std::time::Duration;
 use tracing_subscriber::Layer;
 
@@ -150,19 +149,6 @@ where
     Ok(Some(combined_layer))
 }
 
-/// This ensures that when there are connection failures during shutdown, it doesn't block
-/// forever.
-fn shutdown_with_timeout(shutdown: impl FnOnce() + Send + 'static, timeout: Duration) {
-    let (tx, rx) = mpsc::channel();
-
-    thread::spawn(move || {
-        shutdown();
-        let _ = tx.send(());
-    });
-
-    let _ = rx.recv_timeout(timeout);
-}
-
 /// Shuts down OpenTelemetry providers and flushes buffered telemetry.
 ///
 /// This function should be called before application exit to ensure all
@@ -186,7 +172,7 @@ pub fn shutdown_telemetry() {
     let timeout = Duration::from_millis(1500);
 
     if let Some(provider) = TRACER_PROVIDER.get() {
-        shutdown_with_timeout(
+        crate::shutdown::shutdown_with_timeout(
             {
                 move || {
                     let _ = provider.shutdown();
@@ -197,7 +183,7 @@ pub fn shutdown_telemetry() {
     }
 
     if let Some(provider) = LOGGER_PROVIDER.get() {
-        shutdown_with_timeout(
+        crate::shutdown::shutdown_with_timeout(
             {
                 move || {
                     let _ = provider.shutdown();

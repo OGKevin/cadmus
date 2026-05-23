@@ -33,6 +33,8 @@ pub use rtc::{AlarmManager, AlarmType};
 #[cfg(feature = "profiling")]
 pub mod profiling;
 pub mod settings;
+#[cfg(any(feature = "profiling", feature = "tracing"))]
+pub(crate) mod shutdown;
 pub mod task;
 #[cfg(feature = "tracing")]
 pub mod telemetry;
