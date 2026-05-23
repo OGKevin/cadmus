@@ -100,3 +100,28 @@ Never use untyped `sqlx::query()` / `sqlx::query_as()` / `sqlx::query_scalar()`.
 Untyped queries are allowed for dynamic SQL (e.g. runtime `ORDER BY` column)
 **only if** the function has unit tests covering every dynamic path, with a
 comment explaining why the typed macro cannot be used.
+
+## User-Facing String Translations
+
+All user-visible strings must use the `fl!` macro (`use crate::fl;`). Never
+hardcode string literals for labels, buttons, placeholders, or notifications.
+
+### Translation rules
+
+1. Every user-visible string needs a Fluent message ID in
+   `crates/core/i18n/en-GB/cadmus_core.ftl`.
+2. Use `fl!("message-id")` at the call site.
+3. For parameterised strings, use Fluent variables (`{ $var }`) in the `.ftl`
+   file and pass values via `fl!("id", var = value)`.
+4. Keep `.ftl` keys sorted alphabetically within each comment section.
+5. Naming convention — kebab-case, prefixed by feature area:
+   - `settings-<category>-<description>` for settings labels
+   - `settings-<category>-<description>-input` for input fields
+   - `notification-<description>` for notifications
+
+### Where this applies
+
+- `label()` implementations on `SettingKind` traits
+- Input field `label` strings in `Event::OpenNamedInput`
+- Menu entry text (`EntryKind::Command`, `EntryKind::RadioButton`, etc.)
+- Button labels, notification text, any other user-visible string

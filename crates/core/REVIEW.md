@@ -33,3 +33,12 @@ builds on device. Main/PR builds require GitHub device-flow authentication;
 stable releases are public.
 
 - [ ] If `ota.rs` changed, do the user-facing docs still match?
+
+## User-Facing String Translations
+
+When reviewing code that adds user-facing strings:
+
+- [ ] No `"string literal".to_string()` or `format!("literal")` for user-visible text.
+- [ ] New message IDs added to `cadmus_core.ftl` in the correct sorted section.
+- [ ] Parameterised messages use Fluent variable syntax in `.ftl`.
+- [ ] `fl!` macro is used at every call site.
