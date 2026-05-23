@@ -451,7 +451,17 @@ mod tests {
             let event = Event::Submit(ViewId::RefreshRateRegularInput, "3".to_string());
             let (display, handled) = setting.handle(&event, &mut settings, &mut bus);
 
-            assert_eq!(display.as_deref(), Some("3 / 10"));
+            assert_eq!(
+                display.as_deref(),
+                Some(
+                    fl!(
+                        "settings-reader-refresh-rate-summary",
+                        regular = 3u8,
+                        inverted = 10u8
+                    )
+                    .as_str()
+                )
+            );
             assert!(!handled);
             assert_eq!(settings.reader.refresh_rate.global.regular, 5);
         }
@@ -467,7 +477,17 @@ mod tests {
             let event = Event::Submit(ViewId::RefreshRateInvertedInput, "7".to_string());
             let (display, handled) = setting.handle(&event, &mut settings, &mut bus);
 
-            assert_eq!(display.as_deref(), Some("5 / 7"));
+            assert_eq!(
+                display.as_deref(),
+                Some(
+                    fl!(
+                        "settings-reader-refresh-rate-summary",
+                        regular = 5u8,
+                        inverted = 7u8
+                    )
+                    .as_str()
+                )
+            );
             assert!(!handled);
             assert_eq!(settings.reader.refresh_rate.global.inverted, 10);
         }
@@ -483,7 +503,17 @@ mod tests {
             let event = Event::Submit(ViewId::RefreshRateRegularInput, "bad".to_string());
             let (display, _) = setting.handle(&event, &mut settings, &mut bus);
 
-            assert_eq!(display.as_deref(), Some("5 / 10"));
+            assert_eq!(
+                display.as_deref(),
+                Some(
+                    fl!(
+                        "settings-reader-refresh-rate-summary",
+                        regular = 5u8,
+                        inverted = 10u8
+                    )
+                    .as_str()
+                )
+            );
         }
 
         #[test]
