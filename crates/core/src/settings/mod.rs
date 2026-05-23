@@ -509,22 +509,25 @@ impl FileExtension {
             FileExtension::Oxps => "oxps",
         }
     }
+}
 
-    /// Parses a lowercase extension string, returning `None` for unknown values.
-    pub fn from_str(s: &str) -> Option<Self> {
+impl std::str::FromStr for FileExtension {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "epub" => Some(FileExtension::Epub),
-            "pdf" => Some(FileExtension::Pdf),
-            "cbz" => Some(FileExtension::Cbz),
-            "cbr" => Some(FileExtension::Cbr),
-            "djvu" => Some(FileExtension::Djvu),
-            "fb2" => Some(FileExtension::Fb2),
-            "mobi" => Some(FileExtension::Mobi),
-            "txt" => Some(FileExtension::Txt),
-            "html" => Some(FileExtension::Html),
-            "xps" => Some(FileExtension::Xps),
-            "oxps" => Some(FileExtension::Oxps),
-            _ => None,
+            "epub" => Ok(FileExtension::Epub),
+            "pdf" => Ok(FileExtension::Pdf),
+            "cbz" => Ok(FileExtension::Cbz),
+            "cbr" => Ok(FileExtension::Cbr),
+            "djvu" => Ok(FileExtension::Djvu),
+            "fb2" => Ok(FileExtension::Fb2),
+            "mobi" => Ok(FileExtension::Mobi),
+            "txt" => Ok(FileExtension::Txt),
+            "html" => Ok(FileExtension::Html),
+            "xps" => Ok(FileExtension::Xps),
+            "oxps" => Ok(FileExtension::Oxps),
+            _ => Err(()),
         }
     }
 }
@@ -549,8 +552,13 @@ where
             let mut set = FxHashSet::default();
 
             while let Some(s) = seq.next_element::<String>()? {
-                if let Some(ext) = FileExtension::from_str(&s) {
-                    set.insert(ext);
+                match s.parse::<FileExtension>() {
+                    Ok(ext) => {
+                        set.insert(ext);
+                    }
+                    Err(()) => {
+                        tracing::warn!(extension = %s, "Unknown file extension skipped");
+                    }
                 }
             }
 
@@ -1073,7 +1081,7 @@ allowed-kinds = ["epub", "unknown-format", "another-unknown"]
     #[test]
     fn test_file_extension_round_trip_via_from_str() {
         for ext in FileExtension::all() {
-            let parsed = FileExtension::from_str(ext.as_str());
+            let parsed = ext.as_str().parse::<FileExtension>().ok();
             assert_eq!(parsed, Some(*ext), "round trip failed for {:?}", ext);
         }
     }

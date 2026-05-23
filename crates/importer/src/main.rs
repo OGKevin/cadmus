@@ -94,7 +94,15 @@ fn main() -> Result<(), Error> {
 
     if let Some(allowed_kinds) = matches.opt_str("k").map(|v| {
         v.split(',')
-            .filter_map(|k| cadmus_core::settings::FileExtension::from_str(k))
+            .filter_map(
+                |k| match k.parse::<cadmus_core::settings::FileExtension>() {
+                    Ok(ext) => Some(ext),
+                    Err(()) => {
+                        eprintln!("Warning: unknown file extension '{k}', skipping");
+                        None
+                    }
+                },
+            )
             .collect()
     }) {
         import_settings.allowed_kinds = allowed_kinds;

@@ -399,7 +399,7 @@ fn run() -> Result<(), Error> {
         let mut event_pump = sdl_context.event_pump().unwrap();
         while let Some(sdl_evt) = event_pump.poll_event() {
             #[cfg(feature = "tracing")]
-            let span = tracing::trace_span!("main-event-loop", event = ?sdl_evt);
+            let span = tracing::trace_span!("sdl-event-loop", event = ?sdl_evt);
             #[cfg(feature = "tracing")]
             let _enter = span.enter();
             #[cfg(feature = "tracing")]
@@ -551,7 +551,7 @@ fn run() -> Result<(), Error> {
 
         while let Ok(evt) = rx.recv_timeout(Duration::from_millis(20)) {
             #[cfg(feature = "tracing")]
-            let span = tracing::trace_span!("main-event-loop", event = ?evt);
+            let span = tracing::trace_span!("internal-event-loop", event = ?evt);
             #[cfg(feature = "tracing")]
             let _enter = span.enter();
             #[cfg(feature = "tracing")]

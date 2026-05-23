@@ -400,6 +400,7 @@ impl RefreshRateByKindEditor {
     }
 
     #[inline]
+    #[allow(clippy::too_many_arguments)]
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, rq, context), fields(view_id = ?view_id)))]
     fn handle_open_named_input(
         &mut self,
@@ -701,6 +702,7 @@ impl RefreshRateKindPairEditor {
     }
 
     #[inline]
+    #[allow(clippy::too_many_arguments)]
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, rq, context), fields(view_id = ?view_id)))]
     fn handle_open_named_input(
         &mut self,
