@@ -23,6 +23,8 @@ user experience.
 
 Comment **why**, not **what**. Most code needs no comments — use good naming.
 
+- **No inline comments** — if an inline comment feels necessary, extract the
+  code into its own well-named, documented function instead.
 - No dead-code comments (commented-out code).
 - No changelog comments (`Modified by X on date`).
 - No divider comments (`//=====`).

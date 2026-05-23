@@ -2,7 +2,7 @@
 
 ## User-Facing Docs (`docs/src/**/*.md` except `contributing/`)
 
-Audience: end users with no technical background, using Cadmus on a Kobo.
+Audience: end users with no technical background, using Cadmus.
 
 ### Tone
 
