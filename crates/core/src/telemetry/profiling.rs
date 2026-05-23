@@ -27,11 +27,11 @@
 //!
 //! ```no_run
 //! // Initialize profiling early in main(), before any significant allocation.
-//! cadmus_core::profiling::init_profiling(None)?;
+//! cadmus_core::telemetry::profiling::init_profiling(None)?;
 //!
 //! // ... application runs ...
 //!
-//! cadmus_core::profiling::shutdown_profiling();
+//! cadmus_core::telemetry::profiling::shutdown_profiling();
 //! # Ok::<(), anyhow::Error>(())
 //! ```
 
@@ -159,10 +159,10 @@ pub fn shutdown_profiling() {
     if let Ok(mut guard) = AGENTS.lock() {
         if let Some(agents) = guard.take() {
             if let Ok(stopped) = agents.heap.stop() {
-                crate::shutdown::shutdown_with_timeout(move || stopped.shutdown(), timeout);
+                super::shutdown::shutdown_with_timeout(move || stopped.shutdown(), timeout);
             }
             if let Ok(stopped) = agents.cpu.stop() {
-                crate::shutdown::shutdown_with_timeout(move || stopped.shutdown(), timeout);
+                super::shutdown::shutdown_with_timeout(move || stopped.shutdown(), timeout);
             }
         }
     }

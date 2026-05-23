@@ -30,13 +30,9 @@ pub mod ota;
 pub mod rtc;
 
 pub use rtc::{AlarmManager, AlarmType};
-#[cfg(feature = "profiling")]
-pub mod profiling;
 pub mod settings;
-#[cfg(any(feature = "profiling", feature = "tracing"))]
-pub(crate) mod shutdown;
 pub mod task;
-#[cfg(feature = "tracing")]
+#[cfg(any(feature = "profiling", feature = "tracing"))]
 pub mod telemetry;
 mod unit;
 pub mod version;

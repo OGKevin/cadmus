@@ -332,7 +332,7 @@ pub fn init_logging(settings: &LoggingSettings) -> Result<(), Error> {
     {
         let subscriber = tracing_subscriber::registry()
             .with(filter)
-            .with(telemetry::init_telemetry(settings, get_run_id())?)
+            .with(telemetry::tracing::init_telemetry(settings, get_run_id())?)
             .with(fmt_layer);
 
         subscriber
@@ -407,7 +407,7 @@ pub fn shutdown_logging() {
     }
 
     #[cfg(feature = "tracing")]
-    telemetry::shutdown_telemetry();
+    telemetry::tracing::shutdown_telemetry();
 }
 
 /// Redirects log output to `dir`, flushing the current file first.

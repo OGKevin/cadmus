@@ -22,19 +22,19 @@
 //!
 //! ```
 //! use cadmus_core::settings::LoggingSettings;
-//! use cadmus_core::telemetry;
+//! use cadmus_core::telemetry::tracing;
 //! use cadmus_core::logging::get_run_id;
 //!
 //! let mut settings = LoggingSettings::default();
 //! settings.otlp_endpoint = Some("http://localhost:4318".to_string());
 //!
 //! // Initialize telemetry (returns layer for tracing subscriber)
-//! let layer = telemetry::init_telemetry::<tracing_subscriber::Registry>(&settings, get_run_id())?;
+//! let layer = tracing::init_telemetry::<tracing_subscriber::Registry>(&settings, get_run_id())?;
 //!
 //! // ... application runs ...
 //!
 //! // Flush and shutdown at exit
-//! telemetry::shutdown_telemetry();
+//! tracing::shutdown_telemetry();
 //! # Ok::<(), anyhow::Error>(())
 //! ```
 
@@ -86,7 +86,7 @@ static LOGGER_PROVIDER: OnceLock<SdkLoggerProvider> = OnceLock::new();
 ///
 /// ```
 /// use cadmus_core::settings::LoggingSettings;
-/// use cadmus_core::telemetry::init_telemetry;
+/// use cadmus_core::telemetry::tracing::init_telemetry;
 ///
 /// let settings = LoggingSettings {
 ///     enabled: true,
@@ -163,7 +163,7 @@ where
 /// # Example
 ///
 /// ```
-/// use cadmus_core::telemetry::shutdown_telemetry;
+/// use cadmus_core::telemetry::tracing::shutdown_telemetry;
 ///
 /// // At application exit
 /// shutdown_telemetry();
@@ -172,7 +172,7 @@ pub fn shutdown_telemetry() {
     let timeout = Duration::from_millis(1500);
 
     if let Some(provider) = TRACER_PROVIDER.get() {
-        crate::shutdown::shutdown_with_timeout(
+        super::shutdown::shutdown_with_timeout(
             {
                 move || {
                     let _ = provider.shutdown();
@@ -183,7 +183,7 @@ pub fn shutdown_telemetry() {
     }
 
     if let Some(provider) = LOGGER_PROVIDER.get() {
-        crate::shutdown::shutdown_with_timeout(
+        super::shutdown::shutdown_with_timeout(
             {
                 move || {
                     let _ = provider.shutdown();
