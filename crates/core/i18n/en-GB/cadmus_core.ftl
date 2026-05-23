@@ -65,9 +65,9 @@ settings-reader-refresh-rate-regular-input = Regular refresh rate (0 = never)
 settings-reader-refresh-rate-summary = { $regular } / { $inverted }
 
 # Settings - Intermission
-settings-intermission-calendar = Calendar
 settings-intermission-blank = Blank
 settings-intermission-blank-inverted = Blank Inverted
+settings-intermission-calendar = Calendar
 settings-intermission-cover = Cover
 settings-intermission-custom = Custom
 settings-intermission-custom-image = Custom Image...
