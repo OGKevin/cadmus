@@ -380,7 +380,7 @@ dependencies = [
 
 [[package]]
 name = "cadmus"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "cadmus-core",
  "tikv-jemallocator",
@@ -389,7 +389,7 @@ dependencies = [
 
 [[package]]
 name = "cadmus-core"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -943,7 +943,7 @@ dependencies = [
 
 [[package]]
 name = "emulator"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "cadmus-core",
  "sdl2",
@@ -1075,7 +1075,7 @@ dependencies = [
 
 [[package]]
 name = "fetcher"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "cadmus-core",
  "reqwest 0.13.2",
@@ -1859,7 +1859,7 @@ dependencies = [
 
 [[package]]
 name = "importer"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "cadmus-core",
  "getopts",
@@ -5419,7 +5419,7 @@ checksum = "a67300977d3dc3f8034dae89778f502b6ba20b269527b3223ba59c0cf393bb8a"
 
 [[package]]
 name = "xtask"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "anyhow",
  "clap",
