@@ -9,40 +9,30 @@ use crate::view::{Bus, EntryId, EntryKind, Event};
 /// Fetches the intermission display setting data for the given intermission kind
 fn fetch_intermission(kind: IntermKind, settings: &Settings) -> SettingData {
     let display = &settings.intermissions[kind];
-
-    let (value, is_logo, is_cover, is_calendar) = match display {
-        IntermissionDisplay::Logo => (display.to_i18n_string(), true, false, false),
-        IntermissionDisplay::Cover => (display.to_i18n_string(), false, true, false),
-        IntermissionDisplay::Calendar if kind.supports_calendar() => {
-            (display.to_i18n_string(), false, false, true)
-        }
-        IntermissionDisplay::Calendar => (
-            IntermissionDisplay::Logo.to_i18n_string(),
-            true,
-            false,
-            false,
-        ),
-        IntermissionDisplay::Image(path) => {
-            let i18n_display = fl!("settings-intermission-custom");
-            let display_name = path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or(i18n_display.as_str())
-                .to_string();
-            (display_name, false, false, false)
-        }
-    };
+    let value = intermission_display_name(display);
+    let selected = selected_builtin_intermission(kind, display);
+    let is_selected = |candidate| selected.as_ref() == Some(&candidate);
 
     let mut entries = vec![
         EntryKind::RadioButton(
             IntermissionDisplay::Logo.to_i18n_string(),
             EntryId::SetIntermission(kind, IntermissionDisplay::Logo),
-            is_logo,
+            is_selected(IntermissionDisplay::Logo),
         ),
         EntryKind::RadioButton(
             IntermissionDisplay::Cover.to_i18n_string(),
             EntryId::SetIntermission(kind, IntermissionDisplay::Cover),
-            is_cover,
+            is_selected(IntermissionDisplay::Cover),
+        ),
+        EntryKind::RadioButton(
+            IntermissionDisplay::Blank.to_i18n_string(),
+            EntryId::SetIntermission(kind, IntermissionDisplay::Blank),
+            is_selected(IntermissionDisplay::Blank),
+        ),
+        EntryKind::RadioButton(
+            IntermissionDisplay::BlankInverted.to_i18n_string(),
+            EntryId::SetIntermission(kind, IntermissionDisplay::BlankInverted),
+            is_selected(IntermissionDisplay::BlankInverted),
         ),
     ];
 
@@ -50,7 +40,7 @@ fn fetch_intermission(kind: IntermKind, settings: &Settings) -> SettingData {
         entries.push(EntryKind::RadioButton(
             IntermissionDisplay::Calendar.to_i18n_string(),
             EntryId::SetIntermission(kind, IntermissionDisplay::Calendar),
-            is_calendar,
+            is_selected(IntermissionDisplay::Calendar),
         ));
     }
 
@@ -79,6 +69,19 @@ fn intermission_display_name(display: &IntermissionDisplay) -> String {
             .unwrap_or(i18n_display.as_str())
             .to_string(),
         _ => display.to_i18n_string(),
+    }
+}
+
+fn selected_builtin_intermission(
+    kind: IntermKind,
+    display: &IntermissionDisplay,
+) -> Option<IntermissionDisplay> {
+    match display {
+        IntermissionDisplay::Image(_) => None,
+        IntermissionDisplay::Calendar if !kind.supports_calendar() => {
+            Some(IntermissionDisplay::Logo)
+        }
+        _ => Some(display.clone()),
     }
 }
 
@@ -321,6 +324,42 @@ mod tests {
                 )
             }));
         }
+
+        #[test]
+        fn fetch_includes_blank_options() {
+            let setting = IntermissionSuspend;
+            let settings = Settings::default();
+            let data = setting.fetch(&settings);
+
+            let WidgetKind::SubMenu(entries) = data.widget else {
+                panic!("expected submenu widget");
+            };
+
+            assert!(entries.iter().any(|entry| {
+                matches!(
+                    entry,
+                    EntryKind::RadioButton(
+                        _,
+                        EntryId::SetIntermission(IntermKind::Suspend, IntermissionDisplay::Blank),
+                        _
+                    )
+                )
+            }));
+
+            assert!(entries.iter().any(|entry| {
+                matches!(
+                    entry,
+                    EntryKind::RadioButton(
+                        _,
+                        EntryId::SetIntermission(
+                            IntermKind::Suspend,
+                            IntermissionDisplay::BlankInverted
+                        ),
+                        _
+                    )
+                )
+            }));
+        }
     }
 
     mod intermission_power_off {
@@ -405,6 +444,25 @@ mod tests {
             assert_eq!(
                 settings.intermissions[IntermKind::PowerOff],
                 IntermissionDisplay::Logo
+            );
+        }
+
+        #[test]
+        fn handle_accepts_blank_selection() {
+            let setting = IntermissionPowerOff;
+            let mut settings = Settings::default();
+            let mut bus: Bus = VecDeque::new();
+            let event = Event::Select(EntryId::SetIntermission(
+                IntermKind::PowerOff,
+                IntermissionDisplay::Blank,
+            ));
+
+            let result = setting.handle(&event, &mut settings, &mut bus);
+
+            assert_eq!(result, (Some(fl!("settings-intermission-blank")), true));
+            assert_eq!(
+                settings.intermissions[IntermKind::PowerOff],
+                IntermissionDisplay::Blank
             );
         }
 
@@ -516,6 +574,28 @@ mod tests {
             assert_eq!(
                 settings.intermissions[IntermKind::Share],
                 IntermissionDisplay::Logo
+            );
+        }
+
+        #[test]
+        fn handle_accepts_blank_inverted_selection() {
+            let setting = IntermissionShare;
+            let mut settings = Settings::default();
+            let mut bus: Bus = VecDeque::new();
+            let event = Event::Select(EntryId::SetIntermission(
+                IntermKind::Share,
+                IntermissionDisplay::BlankInverted,
+            ));
+
+            let result = setting.handle(&event, &mut settings, &mut bus);
+
+            assert_eq!(
+                result,
+                (Some(fl!("settings-intermission-blank-inverted")), true)
+            );
+            assert_eq!(
+                settings.intermissions[IntermKind::Share],
+                IntermissionDisplay::BlankInverted
             );
         }
 

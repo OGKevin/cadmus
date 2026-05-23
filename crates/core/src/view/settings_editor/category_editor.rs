@@ -1095,6 +1095,35 @@ mod tests {
     }
 
     #[test]
+    fn test_set_intermission_blank_inverted() {
+        use crate::settings::{IntermKind, IntermissionDisplay};
+
+        let mut context = create_test_context();
+        let mut editor = create_test_intermissions_category_editor(&mut context);
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+        let mut rq = RenderQueue::new();
+
+        let handled = crate::view::handle_event(
+            &mut editor,
+            &Event::Select(EntryId::SetIntermission(
+                IntermKind::Share,
+                IntermissionDisplay::BlankInverted,
+            )),
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        );
+
+        assert!(handled);
+        assert!(matches!(
+            context.settings.intermissions[IntermKind::Share],
+            IntermissionDisplay::BlankInverted
+        ));
+    }
+
+    #[test]
     fn test_pagination_children_structure() {
         let mut context = create_test_context();
         context.settings = Settings::default();

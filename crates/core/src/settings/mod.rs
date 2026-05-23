@@ -26,9 +26,12 @@ pub const EXTERNAL_CARD_ROOT: &str = "/mnt/sd";
 const LOGO_SPECIAL_PATH: &str = "logo:";
 const COVER_SPECIAL_PATH: &str = "cover:";
 const CALENDAR_SPECIAL_PATH: &str = "calendar:";
+const BLANK_SPECIAL_PATH: &str = "blank:";
+const BLANK_INVERTED_SPECIAL_PATH: &str = "blank-inverted:";
 
 /// How to display intermission screens.
-/// Logo, Cover and Calendar are special values that map to built-in displays.
+/// Logo, Cover, Calendar, Blank and BlankInverted are special values that map
+/// to built-in displays.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum IntermissionDisplay {
     /// Display the built-in logo image.
@@ -37,6 +40,10 @@ pub enum IntermissionDisplay {
     Cover,
     /// Display the built-in calendar view.
     Calendar,
+    /// Display a blank white screen.
+    Blank,
+    /// Display a blank black screen.
+    BlankInverted,
     /// Display a custom image from the given path.
     Image(PathBuf),
 }
@@ -50,6 +57,10 @@ impl Serialize for IntermissionDisplay {
             IntermissionDisplay::Logo => serializer.serialize_str(LOGO_SPECIAL_PATH),
             IntermissionDisplay::Cover => serializer.serialize_str(COVER_SPECIAL_PATH),
             IntermissionDisplay::Calendar => serializer.serialize_str(CALENDAR_SPECIAL_PATH),
+            IntermissionDisplay::Blank => serializer.serialize_str(BLANK_SPECIAL_PATH),
+            IntermissionDisplay::BlankInverted => {
+                serializer.serialize_str(BLANK_INVERTED_SPECIAL_PATH)
+            }
             IntermissionDisplay::Image(path) => {
                 serializer.serialize_str(path.to_string_lossy().as_ref())
             }
@@ -67,6 +78,8 @@ impl<'de> Deserialize<'de> for IntermissionDisplay {
             LOGO_SPECIAL_PATH => IntermissionDisplay::Logo,
             COVER_SPECIAL_PATH => IntermissionDisplay::Cover,
             CALENDAR_SPECIAL_PATH => IntermissionDisplay::Calendar,
+            BLANK_SPECIAL_PATH => IntermissionDisplay::Blank,
+            BLANK_INVERTED_SPECIAL_PATH => IntermissionDisplay::BlankInverted,
             _ => IntermissionDisplay::Image(PathBuf::from(s)),
         })
     }
@@ -78,6 +91,8 @@ impl fmt::Display for IntermissionDisplay {
             IntermissionDisplay::Logo => write!(f, "Logo"),
             IntermissionDisplay::Cover => write!(f, "Cover"),
             IntermissionDisplay::Calendar => write!(f, "Calendar"),
+            IntermissionDisplay::Blank => write!(f, "Blank"),
+            IntermissionDisplay::BlankInverted => write!(f, "Blank Inverted"),
             IntermissionDisplay::Image(_) => write!(f, "Custom"),
         }
     }
@@ -930,20 +945,20 @@ mod tests {
     #[test]
     fn test_intermissions_struct_serialization() {
         let intermissions = Intermissions {
-            suspend: IntermissionDisplay::Logo,
-            power_off: IntermissionDisplay::Cover,
+            suspend: IntermissionDisplay::Blank,
+            power_off: IntermissionDisplay::BlankInverted,
             share: IntermissionDisplay::Image(PathBuf::from("/custom/share.png")),
         };
 
         let serialized = toml::to_string(&intermissions).expect("Failed to serialize");
 
         assert!(
-            serialized.contains("logo:"),
-            "Should contain logo: for suspend"
+            serialized.contains("blank:"),
+            "Should contain blank: for suspend"
         );
         assert!(
-            serialized.contains("cover:"),
-            "Should contain cover: for power-off"
+            serialized.contains("blank-inverted:"),
+            "Should contain blank-inverted: for power-off"
         );
         assert!(
             serialized.contains("/custom/share.png"),
@@ -954,20 +969,20 @@ mod tests {
     #[test]
     fn test_intermissions_struct_deserialization() {
         let toml_str = r#"
-suspend = "logo:"
-power-off = "cover:"
+suspend = "blank:"
+power-off = "blank-inverted:"
 share = "/path/to/custom.png"
 "#;
 
         let intermissions: Intermissions = toml::from_str(toml_str).expect("Failed to deserialize");
 
         assert!(
-            matches!(intermissions.suspend, IntermissionDisplay::Logo),
-            "suspend should deserialize to Logo"
+            matches!(intermissions.suspend, IntermissionDisplay::Blank),
+            "suspend should deserialize to Blank"
         );
         assert!(
-            matches!(intermissions.power_off, IntermissionDisplay::Cover),
-            "power_off should deserialize to Cover"
+            matches!(intermissions.power_off, IntermissionDisplay::BlankInverted),
+            "power_off should deserialize to BlankInverted"
         );
         assert!(
             matches!(
@@ -981,8 +996,8 @@ share = "/path/to/custom.png"
     #[test]
     fn test_intermissions_struct_round_trip() {
         let original = Intermissions {
-            suspend: IntermissionDisplay::Logo,
-            power_off: IntermissionDisplay::Cover,
+            suspend: IntermissionDisplay::Blank,
+            power_off: IntermissionDisplay::BlankInverted,
             share: IntermissionDisplay::Image(PathBuf::from("/some/custom/image.jpg")),
         };
 
@@ -1025,6 +1040,29 @@ share = "/path/to/custom.png"
             intermissions[IntermKind::Suspend],
             IntermissionDisplay::Calendar
         );
+    }
+
+    #[test]
+    fn test_intermissions_accept_blank_selection_for_all_kinds() {
+        let mut intermissions = Intermissions {
+            suspend: IntermissionDisplay::Logo,
+            power_off: IntermissionDisplay::Logo,
+            share: IntermissionDisplay::Logo,
+        };
+
+        assert!(intermissions.set_display(IntermKind::Suspend, IntermissionDisplay::Blank));
+        assert!(intermissions.set_display(IntermKind::PowerOff, IntermissionDisplay::BlankInverted));
+        assert!(intermissions.set_display(IntermKind::Share, IntermissionDisplay::Blank));
+
+        assert_eq!(
+            intermissions[IntermKind::Suspend],
+            IntermissionDisplay::Blank
+        );
+        assert_eq!(
+            intermissions[IntermKind::PowerOff],
+            IntermissionDisplay::BlankInverted
+        );
+        assert_eq!(intermissions[IntermKind::Share], IntermissionDisplay::Blank);
     }
 
     #[test]

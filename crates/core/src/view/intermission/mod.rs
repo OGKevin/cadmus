@@ -1,7 +1,7 @@
 mod calendar;
 
 use super::{Bus, Event, Hub, Id, RenderQueue, View, ID_FEEDER};
-use crate::color::{TEXT_INVERTED_HARD, TEXT_NORMAL};
+use crate::color::{Color, BLACK, TEXT_INVERTED_HARD, TEXT_NORMAL, WHITE};
 use crate::context::Context;
 use crate::device::CURRENT_DEVICE;
 use crate::document::{open, Location};
@@ -30,6 +30,7 @@ enum Message {
     Cover(PathBuf),
     /// Calendar rendering is delegated entirely to the CalendarView child.
     Calendar,
+    Fill(Color),
 }
 
 impl Intermission {
@@ -48,6 +49,8 @@ impl Intermission {
                         };
                     (msg, Vec::new())
                 }
+                IntermissionDisplay::Blank => (Message::Fill(WHITE), Vec::new()),
+                IntermissionDisplay::BlankInverted => (Message::Fill(BLACK), Vec::new()),
                 IntermissionDisplay::Image(path) => (Message::Image(path.clone()), Vec::new()),
                 IntermissionDisplay::Calendar => {
                     let minutes_until_poweroff = context
@@ -74,6 +77,8 @@ impl I18nDisplay for IntermissionDisplay {
     fn to_i18n_string(&self) -> String {
         match self {
             IntermissionDisplay::Logo => fl!("settings-intermission-logo"),
+            IntermissionDisplay::Blank => fl!("settings-intermission-blank"),
+            IntermissionDisplay::BlankInverted => fl!("settings-intermission-blank-inverted"),
             IntermissionDisplay::Cover => fl!("settings-intermission-cover"),
             IntermissionDisplay::Calendar => fl!("settings-intermission-calendar"),
             IntermissionDisplay::Image(_) => fl!("settings-intermission-custom"),
@@ -184,6 +189,9 @@ impl View for Intermission {
                         }
                     }
                 }
+            }
+            Message::Fill(color) => {
+                fb.draw_rectangle(&self.rect, color);
             }
             // CalendarView child handles its own rendering; this arm is never
             // reached because Intermission has children in the Calendar case.

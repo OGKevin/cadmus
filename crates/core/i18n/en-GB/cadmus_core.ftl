@@ -65,14 +65,16 @@ settings-reader-refresh-rate-regular-input = Regular refresh rate (0 = never)
 settings-reader-refresh-rate-summary = { $regular } / { $inverted }
 
 # Settings - Intermission
-settings-intermission-suspend-screen = Suspend Screen
+settings-intermission-calendar = Calendar
+settings-intermission-blank = Blank
+settings-intermission-blank-inverted = Blank Inverted
+settings-intermission-cover = Cover
+settings-intermission-custom = Custom
+settings-intermission-custom-image = Custom Image...
+settings-intermission-logo = Logo
 settings-intermission-power-off-screen = Power Off Screen
 settings-intermission-share-screen = Share Screen
-settings-intermission-logo = Logo
-settings-intermission-cover = Cover
-settings-intermission-calendar = Calendar
-settings-intermission-custom-image = Custom Image...
-settings-intermission-custom = Custom
+settings-intermission-suspend-screen = Suspend Screen
 
 # Settings - Library
 settings-library-name = Name

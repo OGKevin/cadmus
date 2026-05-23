@@ -95,8 +95,10 @@ path = "/mnt/onboard/.kobo/kepub"
 # finished = "go-to-next"  # Optional: overrides reader.finished for this library
 
 # Defines the images displayed when entering an intermission.
-# Suspend supports "logo:", "cover:", "calendar:", and custom image paths.
-# Power-off and share support "logo:", "cover:", and custom image paths.
+# Suspend supports "logo:", "cover:", "calendar:", "blank:",
+# "blank-inverted:", and custom image paths.
+# Power-off and share support "logo:", "cover:", "blank:",
+# "blank-inverted:", and custom image paths.
 # If a relative file path is given, it will be relative to
 # the installation directory.
 # Setting suspend to "calendar:" will show the calendar when the device
