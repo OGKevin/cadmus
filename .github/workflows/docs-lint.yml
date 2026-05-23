@@ -5,6 +5,8 @@ on:
     paths:
       - "docs/**"
       - ".agents/skills/**"
+      - "**/AGENTS.md"
+      - "**/REVIEW.md"
       - "package.json"
       - "package-lock.json"
       - ".github/workflows/docs-lint.yml"
@@ -25,7 +27,21 @@ jobs:
         run: npm ci
 
       - name: Prettier check
-        run: npx prettier docs .agents/skills --check
+        run: >-
+          npx prettier --check
+          docs
+          .agents/skills
+          AGENTS.md
+          REVIEW.md
+          crates/core/AGENTS.md
+          crates/core/REVIEW.md
 
       - name: Markdownlint
-        run: npx markdownlint "docs/**/*.md" ".agents/skills/**/*.md"
+        run: >-
+          npx markdownlint
+          "docs/**/*.md"
+          ".agents/skills/**/*.md"
+          AGENTS.md
+          REVIEW.md
+          crates/core/AGENTS.md
+          crates/core/REVIEW.md
