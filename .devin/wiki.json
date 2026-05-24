@@ -185,6 +185,16 @@
       ]
     },
     {
+      "title": "Third-Party Dependencies",
+      "purpose": "Document the thirdparty/ directory: its role in the cross-compilation pipeline, how library sources are downloaded at build time (not vendored), the dependency-ordered build process via build-kobo.sh scripts, which libraries carry Kobo-specific patches and the rationale behind each patch (e.g. bypassing pkg-config for cross-compilation, stripping unnecessary build targets, adding a device-specific cross-compile target), the relationship between version constants in xtask and Renovate-managed automated updates, and guidance on adding or upgrading a library.",
+      "parent": "Contributor Guide",
+      "page_notes": [
+        {
+          "content": "Audience: contributors who need to update, patch, or add thirdparty libraries. Keep generic — describe the patterns and processes rather than enumerating every library, so the page stays accurate as libraries are added or removed."
+        }
+      ]
+    },
+    {
       "title": "CI/CD Pipeline",
       "purpose": "Document the GitHub Actions CI workflows (cargo.yml): format, clippy, test, build-kobo, and build-kobo-test jobs, caching strategies for Cargo registry and cross-compilation toolchain, the feature-flag matrix ensuring every flag is checked individually and in combination, the release-please-based versioning system, and the build-and-upload job producing release packages with build provenance attestation.",
       "parent": "Contributor Guide",
