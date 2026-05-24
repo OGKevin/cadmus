@@ -8,7 +8,7 @@
     "@mermaid-js/mermaid-cli": "^11.12.0",
     "markdownlint-cli": "^0.48.0",
     "prettier": "^3.6.2",
-    "puppeteer": "^24.0.0"
+    "puppeteer": "^25.0.4"
   },
   "overrides": {
     "@mermaid-js/mermaid-cli": {
