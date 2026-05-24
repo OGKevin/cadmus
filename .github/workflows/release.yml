@@ -73,6 +73,9 @@ jobs:
         with:
           targets: arm-unknown-linux-gnueabihf
 
+      - name: Install doc tools
+        uses: ./.github/actions/install-doc-tools
+
       - name: Build Kobo artifacts
         uses: ./.github/actions/build-kobo
         with:
