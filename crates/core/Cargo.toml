@@ -79,7 +79,7 @@ tracing = "0.1"
 tracing-log = "0.2"
 tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
 tracing-appender = "0.2"
-tracing-opentelemetry = { version = "0.32", optional = true }
+tracing-opentelemetry = { version = "0.33", optional = true }
 opentelemetry-appender-tracing = { version = "0.32", optional = true }
 opentelemetry = { version = "0.32", features = ["trace", "logs"], optional = true }
 opentelemetry-otlp = { version = "0.32", features = ["trace", "logs", "http-proto", "reqwest-blocking-client"], optional = true }
