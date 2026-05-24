@@ -108,7 +108,7 @@ pub fn soname(libs_dir: &Path, lib: &str) -> Result<String> {
 /// hardcoded.  Remaining: bzip2, jbig2dec, mupdf.
 pub const ZLIB_VERSION: &str = "1.3.2";
 pub const LIBPNG_VERSION: &str = "1.6.53";
-pub const DJVULIBRE_VERSION: &str = "3.5.29";
+pub const DJVULIBRE_VERSION: &str = "3.5.30";
 /// IJG libjpeg version tracked via the libjpeg-turbo `jpeg-<version>` tag mirror.
 pub const LIBJPEG_VERSION: &str = "10";
 
