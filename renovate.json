@@ -25,6 +25,10 @@
       "matchUpdateTypes": ["minor", "patch"],
       "groupName": "JavaScript tooling non-major dependencies",
       "groupSlug": "js-tooling-non-major"
+    },
+    {
+      "matchFileNames": ["xtask/src/tasks/util/thirdparty.rs"],
+      "addLabels": ["thirdparty"]
     }
   ],
   "customManagers": [
