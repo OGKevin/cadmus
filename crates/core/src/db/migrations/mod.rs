@@ -106,7 +106,7 @@ macro_rules! migration {
             #[allow(dead_code)]
             pub const MIGRATION_ID: &str = $id;
 
-            #[$crate::ctor::ctor]
+            #[$crate::ctor::ctor(unsafe)]
             fn __register() {
                 fn __boxed(
                     pool: &::sqlx::SqlitePool,
