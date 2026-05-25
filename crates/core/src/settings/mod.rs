@@ -9,6 +9,9 @@ use crate::i18n::I18nDisplay;
 use crate::metadata::{SortMethod, TextAlign};
 use crate::unit::mm_to_px;
 use fxhash::FxHashSet;
+use sqlx::encode::IsNull;
+use sqlx::error::BoxDynError;
+use sqlx::sqlite::{Sqlite, SqliteArgumentValue, SqliteTypeInfo, SqliteValueRef};
 use unic_langid::LanguageIdentifier;
 
 pub use self::preset::{guess_frontlight, LightPreset};
@@ -547,6 +550,30 @@ impl std::str::FromStr for FileExtension {
     }
 }
 
+impl sqlx::Type<Sqlite> for FileExtension {
+    fn type_info() -> SqliteTypeInfo {
+        <String as sqlx::Type<Sqlite>>::type_info()
+    }
+
+    fn compatible(ty: &SqliteTypeInfo) -> bool {
+        <String as sqlx::Type<Sqlite>>::compatible(ty)
+    }
+}
+
+impl<'q> sqlx::Encode<'q, Sqlite> for FileExtension {
+    fn encode_by_ref(&self, buf: &mut Vec<SqliteArgumentValue<'q>>) -> Result<IsNull, BoxDynError> {
+        self.as_str().encode_by_ref(buf)
+    }
+}
+
+impl<'r> sqlx::Decode<'r, Sqlite> for FileExtension {
+    fn decode(value: SqliteValueRef<'r>) -> Result<Self, BoxDynError> {
+        let s = <String as sqlx::Decode<'r, Sqlite>>::decode(value)?;
+        s.parse()
+            .map_err(|()| format!("unknown file extension: {s}").into())
+    }
+}
+
 fn deserialize_allowed_kinds<'de, D>(deserializer: D) -> Result<FxHashSet<FileExtension>, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -826,6 +853,13 @@ impl Default for ImportSettings {
             .copied()
             .collect(),
         }
+    }
+}
+
+impl ImportSettings {
+    /// Returns `true` if `kind` is in the set of allowed file kinds.
+    pub fn is_kind_allowed(&self, kind: FileExtension) -> bool {
+        self.allowed_kinds.contains(&kind)
     }
 }
 

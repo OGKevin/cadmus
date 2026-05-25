@@ -1,10 +1,10 @@
 {
   "db_name": "SQLite",
-  "query": "\n                SELECT\n                    fingerprint,\n                    title,\n                    subtitle,\n                    year,\n                    language,\n                    publisher,\n                    series,\n                    edition,\n                    volume,\n                    number,\n                    identifier,\n                    file_path,\n                    absolute_path,\n                    file_kind,\n                    file_size,\n                    added_at              as \"added_at: UnixTimestamp\",\n                    opened                as \"opened?: UnixTimestamp\",\n                    current_page          as \"current_page?: i64\",\n                    pages_count           as \"pages_count?: i64\",\n                    finished              as \"finished?: i64\",\n                    dithered              as \"dithered?: i64\",\n                    zoom_mode             as \"zoom_mode?: String\",\n                    scroll_mode           as \"scroll_mode?: String\",\n                    page_offset_x         as \"page_offset_x?: i64\",\n                    page_offset_y         as \"page_offset_y?: i64\",\n                    rotation              as \"rotation?: i64\",\n                    cropping_margins_json as \"cropping_margins_json?: String\",\n                    margin_width          as \"margin_width?: i64\",\n                    screen_margin_width   as \"screen_margin_width?: i64\",\n                    font_family           as \"font_family?: String\",\n                    font_size             as \"font_size?: f64\",\n                    text_align            as \"text_align?: String\",\n                    line_height           as \"line_height?: f64\",\n                    contrast_exponent     as \"contrast_exponent?: f64\",\n                    contrast_gray         as \"contrast_gray?: f64\",\n                    page_names_json       as \"page_names_json?: String\",\n                    bookmarks_json        as \"bookmarks_json?: String\",\n                    annotations_json      as \"annotations_json?: String\",\n                    authors               as \"authors?: String\",\n                    categories            as \"categories?: String\"\n                FROM library_books_full_info\n                WHERE library_id = ? AND file_path = ?\n                LIMIT 1\n                ",
+  "query": "\n                SELECT\n                    fingerprint as \"fingerprint: Fp\",\n                    title,\n                    subtitle,\n                    year,\n                    language,\n                    publisher,\n                    series,\n                    edition,\n                    volume,\n                    number,\n                    identifier,\n                    file_path,\n                    absolute_path,\n                    file_kind,\n                    file_size,\n                    added_at              as \"added_at: UnixTimestamp\",\n                    opened                as \"opened?: UnixTimestamp\",\n                    current_page          as \"current_page?: i64\",\n                    pages_count           as \"pages_count?: i64\",\n                    finished              as \"finished?: i64\",\n                    dithered              as \"dithered?: i64\",\n                    zoom_mode             as \"zoom_mode?: String\",\n                    scroll_mode           as \"scroll_mode?: String\",\n                    page_offset_x         as \"page_offset_x?: i64\",\n                    page_offset_y         as \"page_offset_y?: i64\",\n                    rotation              as \"rotation?: i64\",\n                    cropping_margins_json as \"cropping_margins_json?: String\",\n                    margin_width          as \"margin_width?: i64\",\n                    screen_margin_width   as \"screen_margin_width?: i64\",\n                    font_family           as \"font_family?: String\",\n                    font_size             as \"font_size?: f64\",\n                    text_align            as \"text_align?: String\",\n                    line_height           as \"line_height?: f64\",\n                    contrast_exponent     as \"contrast_exponent?: f64\",\n                    contrast_gray         as \"contrast_gray?: f64\",\n                    page_names_json       as \"page_names_json?: String\",\n                    bookmarks_json        as \"bookmarks_json?: String\",\n                    annotations_json      as \"annotations_json?: String\",\n                    authors               as \"authors?: String\",\n                    categories            as \"categories?: String\"\n                FROM library_books_full_info\n                WHERE library_id = ?1\n                  AND finished = 0\n                  AND opened IS NOT NULL\n                ORDER BY opened DESC\n                LIMIT 1\n                ",
   "describe": {
     "columns": [
       {
-        "name": "fingerprint",
+        "name": "fingerprint: Fp",
         "ordinal": 0,
         "type_info": "Text"
       },
@@ -205,7 +205,7 @@
       }
     ],
     "parameters": {
-      "Right": 2
+      "Right": 1
     },
     "nullable": [
       false,
@@ -250,5 +250,5 @@
       null
     ]
   },
-  "hash": "6cc1a727bda74e0eea815d2a4be02bdc770fc13df6d9a14e084dc199b96d6ffe"
+  "hash": "7579439dce7f9faedf0139df050f6e1ac22e49086608f58cd9294510fe178b6b"
 }

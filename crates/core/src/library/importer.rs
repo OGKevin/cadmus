@@ -102,6 +102,15 @@ fn scan_entries(
         let path = entry.path();
         let relat = path.strip_prefix(home).unwrap_or(path);
 
+        let kind = file_kind(path);
+        let is_known_to_db = handles_by_path.contains_key(relat);
+        let allowed_kind = kind.filter(|k| settings.is_kind_allowed(*k));
+
+        if !is_known_to_db && allowed_kind.is_none() {
+            send_progress(ctx.hub, ctx.notif_id, idx, total);
+            continue;
+        }
+
         let fp = match path.fingerprint() {
             Ok(fp) => fp,
             Err(e) => {
@@ -154,19 +163,14 @@ fn scan_entries(
             continue;
         }
 
-        let kind = file_kind(path).unwrap_or_default();
-        if settings
-            .allowed_kinds
-            .iter()
-            .any(|ext| ext.as_str() == kind)
-        {
+        if let Some(kind) = allowed_kind {
             info!(fp = %fp, path = %relat.display(), "added new entry");
             let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
             let mut info = Info {
                 file: FileInfo {
                     path: relat.to_path_buf(),
                     absolute_path: path.to_path_buf(),
-                    kind,
+                    kind: kind.as_str().to_owned(),
                     size,
                 },
                 ..Default::default()
@@ -347,6 +351,25 @@ pub fn run(
     let mut handles_by_path: FxHashMap<PathBuf, Fp> =
         handles.into_iter().map(|(fp, p)| (p, fp)).collect();
 
+    let purged_fps = db
+        .delete_books_with_disallowed_kinds(library_id, &settings.allowed_kinds)
+        .unwrap_or_else(|e| {
+            error!(error = %e, "failed to purge disallowed books");
+            Vec::new()
+        });
+
+    for fp in &purged_fps {
+        if let Some(path) = handles_by_fp.remove(fp) {
+            handles_by_path.remove(&path);
+        }
+    }
+
+    if !purged_fps.is_empty() {
+        if let Err(e) = db.batch_delete_thumbnails(&purged_fps) {
+            error!(error = %e, count = purged_fps.len(), "failed to delete thumbnails for purged books");
+        }
+    }
+
     let entries = walk_files(home);
 
     let ctx = ScanContext {
@@ -526,5 +549,119 @@ mod tests {
         let handles_by_fp: FxHashMap<Fp, PathBuf> = handles.into_iter().collect();
 
         assert_eq!(find_deleted_books(&handles_by_fp, dir.path()), vec![fp]);
+    }
+
+    #[test]
+    fn skips_fingerprinting_disallowed_new_files() {
+        use crate::settings::FileExtension;
+        use fxhash::FxHashSet;
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db = create_migrated_db();
+
+        std::fs::write(dir.path().join("book.epub"), b"epub content").expect("write epub");
+        std::fs::write(dir.path().join("ignore.xyz"), b"unsupported content").expect("write xyz");
+
+        let mut allowed: FxHashSet<FileExtension> = FxHashSet::default();
+        allowed.insert(FileExtension::Epub);
+
+        let settings = ImportSettings {
+            allowed_kinds: allowed,
+            ..ImportSettings::default()
+        };
+
+        let lib = Library::new(dir.path(), &db, "test").expect("library");
+        let (tx, rx) = std::sync::mpsc::channel();
+        let notif_id = ViewId::MessageNotif(0);
+        let shutdown = ShutdownSignal::never();
+
+        run(
+            &lib.db,
+            lib.library_id,
+            dir.path(),
+            &settings,
+            &tx,
+            notif_id,
+            &shutdown,
+        );
+        drop(tx);
+        let _events: Vec<Event> = rx.try_iter().collect();
+
+        let handles = lib.db.list_book_handles(lib.library_id).expect("handles");
+        let paths: Vec<_> = handles.iter().map(|(_, p)| p.clone()).collect();
+
+        assert!(
+            paths.iter().any(|p| p.ends_with("book.epub")),
+            "epub should be imported"
+        );
+        assert!(
+            !paths.iter().any(|p| p.ends_with("ignore.xyz")),
+            "unsupported kind should not be imported"
+        );
+    }
+
+    #[test]
+    fn purges_disallowed_books_on_import() {
+        use crate::settings::FileExtension;
+        use fxhash::FxHashSet;
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db = create_migrated_db();
+
+        std::fs::write(dir.path().join("book.epub"), b"epub content").expect("write epub");
+        std::fs::write(dir.path().join("doc.pdf"), b"pdf content").expect("write pdf");
+
+        let lib = Library::new(dir.path(), &db, "test").expect("library");
+        let (tx, rx) = std::sync::mpsc::channel();
+        let notif_id = ViewId::MessageNotif(0);
+        let shutdown = ShutdownSignal::never();
+
+        run(
+            &lib.db,
+            lib.library_id,
+            dir.path(),
+            &ImportSettings::default(),
+            &tx,
+            notif_id,
+            &shutdown,
+        );
+        drop(tx);
+        let _: Vec<Event> = rx.try_iter().collect();
+
+        let handles = lib.db.list_book_handles(lib.library_id).expect("handles");
+        assert_eq!(handles.len(), 2, "both files should be imported initially");
+
+        let mut epub_only: FxHashSet<FileExtension> = FxHashSet::default();
+        epub_only.insert(FileExtension::Epub);
+
+        let settings = ImportSettings {
+            allowed_kinds: epub_only,
+            ..ImportSettings::default()
+        };
+
+        let (tx2, rx2) = std::sync::mpsc::channel();
+        run(
+            &lib.db,
+            lib.library_id,
+            dir.path(),
+            &settings,
+            &tx2,
+            notif_id,
+            &shutdown,
+        );
+        drop(tx2);
+        let _: Vec<Event> = rx2.try_iter().collect();
+
+        let handles = lib
+            .db
+            .list_book_handles(lib.library_id)
+            .expect("handles after purge");
+        let paths: Vec<_> = handles.iter().map(|(_, p)| p.clone()).collect();
+
+        assert_eq!(handles.len(), 1, "only epub should remain after purge");
+        assert!(
+            paths.iter().any(|p| p.ends_with("book.epub")),
+            "epub should still be present"
+        );
     }
 }

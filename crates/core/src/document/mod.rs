@@ -14,7 +14,7 @@ use crate::device::CURRENT_DEVICE;
 use crate::framebuffer::Pixmap;
 use crate::geom::{Boundary, CycleDir};
 use crate::metadata::{Annotation, TextAlign};
-use crate::settings::INTERNAL_CARD_ROOT;
+use crate::settings::{FileExtension, INTERNAL_CARD_ROOT};
 use anyhow::{format_err, Error};
 use fxhash::FxHashMap;
 use nix::sys::statvfs;
@@ -172,12 +172,13 @@ pub trait Document: Send + Sync {
     }
 }
 
-pub fn file_kind<P: AsRef<Path>>(path: P) -> Option<String> {
+pub fn file_kind<P: AsRef<Path>>(path: P) -> Option<FileExtension> {
     path.as_ref()
         .extension()
         .and_then(OsStr::to_str)
         .map(str::to_lowercase)
         .or_else(|| guess_kind(path.as_ref()).ok().map(String::from))
+        .and_then(|s| s.parse().ok())
 }
 
 pub fn guess_kind<P: AsRef<Path>>(path: P) -> Result<&'static str, Error> {
@@ -240,16 +241,16 @@ pub fn open<P: AsRef<Path>>(path: P) -> Option<Box<dyn Document>> {
     if kind.is_none() {
         warn!(path = %path.as_ref().display(), "Failed to determine file kind");
     }
-    kind.and_then(|k| match k.as_ref() {
-        "epub" => EpubDocument::new(&path)
+    kind.and_then(|k| match k {
+        FileExtension::Epub => EpubDocument::new(&path)
             .map_err(|e| error!(path = %path.as_ref().display(), error = %e, "Failed to open epub document"))
             .map(|d| Box::new(d) as Box<dyn Document>)
             .ok(),
-        "html" | "htm" => HtmlDocument::new(&path)
+        FileExtension::Html => HtmlDocument::new(&path)
             .map_err(|e| error!(path = %path.as_ref().display(), error = %e, "Failed to open html document"))
             .map(|d| Box::new(d) as Box<dyn Document>)
             .ok(),
-        "djvu" | "djv" => {
+        FileExtension::Djvu => {
             let opener = DjvuOpener::new();
             if opener.is_none() {
                 warn!(path = %path.as_ref().display(), "Failed to create DjvuOpener");
@@ -262,13 +263,20 @@ pub fn open<P: AsRef<Path>>(path: P) -> Option<Box<dyn Document>> {
                 doc
             })
         }
-        _ => {
+        FileExtension::Pdf
+        | FileExtension::Cbz
+        | FileExtension::Cbr
+        | FileExtension::Fb2
+        | FileExtension::Mobi
+        | FileExtension::Txt
+        | FileExtension::Xps
+        | FileExtension::Oxps => {
             let opener = PdfOpener::new();
             if opener.is_none() {
                 warn!(path = %path.as_ref().display(), "Failed to create PdfOpener");
             }
             opener.and_then(|mut o| {
-                if matches!(k.as_ref(), "mobi" | "fb2" | "xps" | "txt") {
+                if matches!(k, FileExtension::Mobi | FileExtension::Fb2 | FileExtension::Xps | FileExtension::Txt) {
                     o.load_user_stylesheet();
                 }
                 o.open(&path)

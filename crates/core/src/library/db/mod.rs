@@ -11,16 +11,16 @@ use crate::metadata::{
     alphabetic_author, alphabetic_title, natural_cmp, sorter, CroppingMargins, FileInfo, Info,
     ReaderInfo, ScrollMode, SortMethod, TextAlign, ZoomMode,
 };
+use crate::settings::FileExtension;
 use anyhow::Error;
 use conversion::{
     extract_authors, info_to_book_row, reader_info_to_reading_state_row, rows_to_toc_entries,
 };
-use fxhash::FxHashMap;
+use fxhash::{FxHashMap, FxHashSet};
 use models::TocEntryRow;
 use sqlx::sqlite::SqlitePool;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
-use std::str::FromStr;
 
 /// Gap between adjacent sort ranks assigned by [`Db::compute_sort_keys`].
 ///
@@ -104,7 +104,7 @@ struct SeriesSortRow {
 
 #[derive(Debug, Clone, sqlx::FromRow)]
 struct StoredBookRow {
-    fingerprint: String,
+    fingerprint: Fp,
     title: String,
     subtitle: String,
     year: String,
@@ -356,7 +356,7 @@ impl Db {
         row: StoredBookRow,
         toc: Option<Vec<SimpleTocEntry>>,
     ) -> Result<Info, Error> {
-        let fp = Fp::from_str(&row.fingerprint)?;
+        let fp = row.fingerprint;
 
         let mut info = Info {
             title: row.title,
@@ -513,7 +513,7 @@ impl Db {
             let book_rows = sqlx::query!(
                 r#"
                 SELECT
-                    fingerprint,
+                    fingerprint as "fingerprint: Fp",
                     title,
                     subtitle,
                     year,
@@ -568,10 +568,10 @@ impl Db {
             let mut result = Vec::new();
 
             for row in book_rows {
-                let fp = Fp::from_str(&row.fingerprint)?;
+                let fp = row.fingerprint;
 
                 let toc = toc_by_fingerprint
-                    .remove(&row.fingerprint)
+                    .remove(&fp.to_string())
                     .map(|rows| rows_to_toc_entries(&rows))
                     .transpose()?;
 
@@ -647,7 +647,7 @@ impl Db {
                 StoredBookRow,
                 r#"
                 SELECT
-                    fingerprint,
+                    fingerprint as "fingerprint: Fp",
                     title,
                     subtitle,
                     year,
@@ -701,8 +701,12 @@ impl Db {
                 return Ok(None);
             };
 
-            let toc_rows =
-                Self::fetch_toc_entries_for_book(&self.pool, library_id, &row.fingerprint).await?;
+            let toc_rows = Self::fetch_toc_entries_for_book(
+                &self.pool,
+                library_id,
+                &row.fingerprint.to_string(),
+            )
+            .await?;
             let toc = (!toc_rows.is_empty())
                 .then(|| rows_to_toc_entries(&toc_rows))
                 .transpose()?;
@@ -720,7 +724,7 @@ impl Db {
                 StoredBookRow,
                 r#"
                 SELECT
-                    fingerprint,
+                    fingerprint as "fingerprint: Fp",
                     title,
                     subtitle,
                     year,
@@ -774,8 +778,12 @@ impl Db {
                 return Ok(None);
             };
 
-            let toc_rows =
-                Self::fetch_toc_entries_for_book(&self.pool, library_id, &row.fingerprint).await?;
+            let toc_rows = Self::fetch_toc_entries_for_book(
+                &self.pool,
+                library_id,
+                &row.fingerprint.to_string(),
+            )
+            .await?;
             let toc = (!toc_rows.is_empty())
                 .then(|| rows_to_toc_entries(&toc_rows))
                 .transpose()?;
@@ -816,7 +824,7 @@ impl Db {
                     StoredBookRow,
                     r#"
                     SELECT
-                        fingerprint,
+                        fingerprint as "fingerprint: Fp",
                         title,
                         subtitle,
                         year,
@@ -870,9 +878,12 @@ impl Db {
                     continue;
                 };
 
-                let toc_rows =
-                    Self::fetch_toc_entries_for_book(&self.pool, library_id, &row.fingerprint)
-                        .await?;
+                let toc_rows = Self::fetch_toc_entries_for_book(
+                    &self.pool,
+                    library_id,
+                    &row.fingerprint.to_string(),
+                )
+                .await?;
                 let toc = (!toc_rows.is_empty())
                     .then(|| rows_to_toc_entries(&toc_rows))
                     .transpose()?;
@@ -920,7 +931,7 @@ impl Db {
                 StoredBookRow,
                 r#"
                 SELECT
-                    fingerprint,
+                    fingerprint as "fingerprint: Fp",
                     title,
                     subtitle,
                     year,
@@ -985,7 +996,7 @@ impl Db {
                 StoredBookRow,
                 r#"
                 SELECT
-                    fingerprint,
+                    fingerprint as "fingerprint: Fp",
                     title,
                     subtitle,
                     year,
@@ -2541,7 +2552,7 @@ impl Db {
         RUNTIME.block_on(async {
             let rows = sqlx::query!(
                 r#"
-                SELECT lb.book_fingerprint AS "fingerprint!: String",
+                SELECT lb.book_fingerprint AS "fingerprint!: Fp",
                        lb.file_path        AS "file_path!: String"
                 FROM library_books lb
                 WHERE lb.library_id = ?
@@ -2552,11 +2563,7 @@ impl Db {
             .await?;
 
             rows.into_iter()
-                .map(|row| {
-                    Fp::from_str(&row.fingerprint)
-                        .map(|fp| (fp, PathBuf::from(row.file_path)))
-                        .map_err(Error::from)
-                })
+                .map(|row| Ok((row.fingerprint, PathBuf::from(row.file_path))))
                 .collect()
         })
     }
@@ -2686,6 +2693,84 @@ impl Db {
 
             tracing::debug!(count = fps.len(), "batch delete complete");
             Ok(())
+        })
+    }
+
+    /// Deletes all `library_books` rows for this library whose `file_kind` is not in
+    /// `allowed_kinds`, cleans up orphaned `books` rows, and returns the fingerprints
+    /// of removed entries so callers can purge thumbnails.
+    ///
+    /// Called at the start of every import so that books whose kind was later removed
+    /// from `allowed_kinds` do not persist in the database.
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(skip(self, allowed_kinds), fields(library_id))
+    )]
+    pub fn delete_books_with_disallowed_kinds(
+        &self,
+        library_id: i64,
+        allowed_kinds: &FxHashSet<FileExtension>,
+    ) -> Result<Vec<Fp>, Error> {
+        RUNTIME.block_on(async {
+            let mut tx = self.pool.begin().await?;
+
+            let rows = sqlx::query!(
+                r#"
+                SELECT lb.book_fingerprint AS "fingerprint!: Fp"
+                FROM library_books lb
+                INNER JOIN books b ON b.fingerprint = lb.book_fingerprint
+                WHERE lb.library_id = ?
+                "#,
+                library_id,
+            )
+            .fetch_all(&mut *tx)
+            .await?;
+
+            let mut purged: Vec<Fp> = Vec::new();
+
+            for row in rows {
+                let kind: FileExtension = sqlx::query_scalar!(
+                    r#"SELECT file_kind AS "file_kind!: FileExtension" FROM books WHERE fingerprint = ?"#,
+                    row.fingerprint,
+                )
+                .fetch_one(&mut *tx)
+                .await?;
+
+                if allowed_kinds.contains(&kind) {
+                    continue;
+                }
+
+                sqlx::query!(
+                    r#"DELETE FROM library_books WHERE library_id = ? AND book_fingerprint = ?"#,
+                    library_id,
+                    row.fingerprint,
+                )
+                .execute(&mut *tx)
+                .await?;
+
+                let ref_count: i64 = sqlx::query_scalar!(
+                    r#"SELECT COUNT(*) FROM library_books WHERE book_fingerprint = ?"#,
+                    row.fingerprint,
+                )
+                .fetch_one(&mut *tx)
+                .await?;
+
+                if ref_count == 0 {
+                    sqlx::query!(
+                        r#"DELETE FROM books WHERE fingerprint = ?"#,
+                        row.fingerprint,
+                    )
+                    .execute(&mut *tx)
+                    .await?;
+                }
+
+                tracing::info!(fp = %row.fingerprint, kind = %kind, "removed disallowed book from library");
+                purged.push(row.fingerprint);
+            }
+
+            tx.commit().await?;
+            tracing::debug!(count = purged.len(), "disallowed kind cleanup complete");
+            Ok(purged)
         })
     }
 }
@@ -4507,5 +4592,57 @@ mod tests {
             assert_eq!(retrieved_state.pages_count, original_state.pages_count);
             assert_eq!(retrieved_state.finished, original_state.finished);
         }
+    }
+
+    #[test]
+    fn delete_books_with_disallowed_kinds_removes_wrong_kind() {
+        use crate::settings::FileExtension;
+
+        let (_db, libdb) = create_test_db();
+        let library_id =
+            register_test_library(&libdb, "/tmp/test_disallowed_kinds", "Disallowed Kinds");
+
+        let epub_fp = Fp::from_u64(9001);
+        let pdf_fp = Fp::from_u64(9002);
+
+        let epub_info = Info {
+            title: "Epub Book".to_string(),
+            file: FileInfo {
+                path: PathBuf::from("book.epub"),
+                kind: "epub".to_string(),
+                size: 100,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let pdf_info = Info {
+            title: "Pdf Book".to_string(),
+            file: FileInfo {
+                path: PathBuf::from("book.pdf"),
+                kind: "pdf".to_string(),
+                size: 200,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        libdb
+            .batch_insert_books(library_id, &[(epub_fp, &epub_info), (pdf_fp, &pdf_info)])
+            .expect("insert books");
+
+        let mut allowed = FxHashSet::default();
+        allowed.insert(FileExtension::Epub);
+
+        let purged = libdb
+            .delete_books_with_disallowed_kinds(library_id, &allowed)
+            .expect("purge disallowed");
+
+        assert_eq!(purged, vec![pdf_fp], "only pdf should be purged");
+
+        let handles = libdb.list_book_handles(library_id).expect("handles");
+        let fps: Vec<Fp> = handles.iter().map(|(fp, _)| *fp).collect();
+
+        assert!(fps.contains(&epub_fp), "epub should remain");
+        assert!(!fps.contains(&pdf_fp), "pdf should be gone");
     }
 }
