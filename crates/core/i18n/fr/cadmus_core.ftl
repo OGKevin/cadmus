@@ -12,7 +12,7 @@ notification-dictionary-install-failed = Failed to install dictionary for "{ $la
 notification-downloading-dictionary = Downloading dictionary for "{ $lang }"
 notification-downloading-dictionary-completed = Downloading dictionary for "{ $lang }" completed
 notification-downloading-dictionary-progress = Downloading { $lang } ({ $downloaded }/{ $total })
-notification-dictionary-indexing = Indexing "{ $name }"
+notification-dictionary-indexing = Indexation "{ $name }"
 notification-not-online = WiFi must be connected for this action.
 notification-refresh-rate-invalid = Refresh rate must be a number between 0 and 255.
 
@@ -28,17 +28,17 @@ top-menu-quit = Quitter
 top-menu-power-off = Éteindre
 
 # Settings - Button Scheme
-settings-button-scheme-natural = Natural
-settings-button-scheme-inverted = Inverted
+settings-button-scheme-natural = Naturel
+settings-button-scheme-inverted = Inversé
 
 # Settings - Finished Actions
-settings-finished-action-notify = Notify
-settings-finished-action-close = Close
-settings-finished-action-goto-next = Go to Next
+settings-finished-action-notify = Notifier
+settings-finished-action-close = Fermer
+settings-finished-action-goto-next = Aller au Prochain
 
 # Settings - General
 settings-general-language = Langage
-settings-general-keyboard-layout = Keyboard Layout
+settings-general-keyboard-layout = Disposition de clavier
 settings-general-auto-suspend = Auto Suspend (minutes)
 settings-general-auto-power-off = Auto Power Off (days)
 settings-general-enable-sleep-cover = Enable Sleep Cover
