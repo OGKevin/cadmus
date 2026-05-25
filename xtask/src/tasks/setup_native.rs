@@ -16,8 +16,8 @@ use std::path::Path;
 use anyhow::{Context, Result, bail};
 use clap::Args;
 
-use super::util::{cmd, mupdf_wrapper, thirdparty, workspace};
 use super::util::thirdparty::MUPDF_VERSION;
+use super::util::{cmd, mupdf_wrapper, thirdparty, workspace};
 
 /// Marker file written after a successful native MuPDF build.
 const NATIVE_BUILT_MARKER: &str = ".built-native";
