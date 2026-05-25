@@ -1,7 +1,7 @@
 name: Build Kobo
 description: >
   Full Kobo build pipeline: restore caches, install dependencies, build
-  thirdparty libraries, compile Cadmus for ARM, download static assets,
+  thirdparty libraries, download static assets, compile Cadmus for ARM,
   create the distribution, and produce release artifacts in release-artifacts/.
 
   Attestation and artifact upload are left to the caller because they require
@@ -95,6 +95,12 @@ runs:
       shell: bash
       run: cargo xtask docs --mdbook-only
 
+    - name: Download static assets
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.gh-token }}
+      run: cargo xtask download-assets
+
     - name: Build for Kobo
       shell: bash
       env:
@@ -105,12 +111,6 @@ runs:
         else
           cargo xtask build-kobo --slow
         fi
-
-    - name: Download static assets
-      shell: bash
-      env:
-        GH_TOKEN: ${{ inputs.gh-token }}
-      run: cargo xtask download-assets
 
     - name: Create distribution
       shell: bash

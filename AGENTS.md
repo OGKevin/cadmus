@@ -108,3 +108,15 @@ misses `#[cfg(not(feature = "..."))]` paths.
 
 5. All combinations run on `ubuntu-latest`.
 6. Only `default` and `test` features produce build artifacts.
+
+## OTA and Asset Build Order
+
+- OTA updates delete only Cadmus-owned bundled files before reboot. Do not
+  assume a whole asset directory can be removed because users may add their own
+  fonts, icons, or other files.
+- `libs/` is special: all Cadmus-shipped shared libraries may be cleaned before
+  reboot because the next `KoboRoot.tgz` repopulates that directory.
+- If code generates compile-time metadata from bundled asset directories, make
+  sure `bin/`, `resources/`, and `hyphenation-patterns/` are present before the
+  Kobo build starts. In CI, `cargo xtask download-assets` must run before
+  `cargo xtask build-kobo` for the generated asset list to stay accurate.

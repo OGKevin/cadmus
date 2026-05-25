@@ -7,7 +7,7 @@ use lazy_static::lazy_static;
 use once_cell::sync::OnceCell;
 use std::env;
 use std::fmt::Debug;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 mod error;
 mod metadata;
@@ -283,26 +283,56 @@ impl Device {
             .map(|b| b.as_ref())
     }
 
-    /// Returns the path to the device-managed tmp directory.
+    /// Returns the install subdirectory for this build.
+    ///
+    /// Kobo devices install Cadmus under `.adds/` on the user-visible storage.
+    /// Test builds use a separate sibling directory so they can coexist with
+    /// stable builds.
+    pub fn install_subdir(&self) -> &'static str {
+        #[cfg(not(feature = "test"))]
+        return ".adds/cadmus";
+
+        #[cfg(feature = "test")]
+        return ".adds/cadmus-tst";
+    }
+
+    /// Returns the absolute install directory for this device.
     ///
     /// The path is determined at compile time and does not depend on the
     /// process's current working directory, so it remains stable even when
-    /// callers change `cwd` (for example during USB sharing).
+    /// callers change `cwd`.
     ///
-    /// - Normal device builds: `/mnt/onboard/.adds/cadmus/tmp`
-    /// - Test device builds: `/mnt/onboard/.adds/cadmus-tst/tmp`
-    /// - Emulator builds: `/tmp/.adds/cadmus/tmp` (or `cadmus-tst` with `test`)
+    /// - Normal device builds: `/mnt/onboard/.adds/cadmus`
+    /// - Test device builds: `/mnt/onboard/.adds/cadmus-tst`
+    /// - Emulator builds: `/tmp/.adds/cadmus` (or `cadmus-tst` with `test`)
+    /// - Unit tests: `<temp_dir>/test-kobo-installation/.adds/cadmus-tst`
+    pub fn install_dir(&self) -> PathBuf {
+        #[cfg(test)]
+        return std::env::temp_dir()
+            .join("test-kobo-installation")
+            .join(self.install_subdir());
+
+        #[cfg(all(feature = "emulator", not(test)))]
+        return PathBuf::from("/tmp").join(self.install_subdir());
+
+        #[cfg(all(not(feature = "emulator"), not(test)))]
+        return PathBuf::from(crate::settings::INTERNAL_CARD_ROOT).join(self.install_subdir());
+    }
+
+    /// Returns a path inside the device install directory.
+    ///
+    /// Use this for files and directories that Cadmus owns under its install
+    /// root, such as `tmp/` or `.github_token`.
+    pub fn install_path(&self, relative_path: impl AsRef<Path>) -> PathBuf {
+        self.install_dir().join(relative_path)
+    }
+
+    /// Returns the path to the device-managed tmp directory.
+    ///
+    /// The returned path is rooted under [`Device::install_dir`], so it remains
+    /// stable even when callers change `cwd` (for example during USB sharing).
     pub fn tmp_dir(&self) -> PathBuf {
-        #[cfg(not(feature = "test"))]
-        const TMP_RELATIVE_PATH: &str = ".adds/cadmus/tmp";
-        #[cfg(feature = "test")]
-        const TMP_RELATIVE_PATH: &str = ".adds/cadmus-tst/tmp";
-
-        #[cfg(feature = "emulator")]
-        return PathBuf::from("/tmp").join(TMP_RELATIVE_PATH);
-
-        #[cfg(not(feature = "emulator"))]
-        return PathBuf::from(crate::settings::INTERNAL_CARD_ROOT).join(TMP_RELATIVE_PATH);
+        self.install_path("tmp")
     }
 
     /// Removes stale contents left by a previous run and recreates the tmp

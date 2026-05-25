@@ -1,21 +1,14 @@
+use crate::device::CURRENT_DEVICE;
 use secrecy::{ExposeSecret, SecretString};
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::PathBuf;
 
-/// Subdirectory and filename appended to the card root for token storage.
-///
-/// Uses `.adds/cadmus/` for normal builds and `.adds/cadmus-tst/` for test
-/// builds.
-#[cfg(not(feature = "test"))]
-const TOKEN_RELATIVE_PATH: &str = ".adds/cadmus/.github_token";
-
-#[cfg(feature = "test")]
-const TOKEN_RELATIVE_PATH: &str = ".adds/cadmus-tst/.github_token";
+const TOKEN_FILENAME: &str = ".github_token";
 
 /// Persists a GitHub OAuth token to disk for reuse across app restarts.
 ///
-/// Writes to `{card_root}/.adds/cadmus/.github_token` with `0600` permissions.
+/// Writes to `<install-dir>/.github_token` with `0600` permissions.
 ///
 /// # Errors
 ///
@@ -100,14 +93,5 @@ pub fn delete_token() -> Result<(), String> {
 }
 
 fn token_path() -> PathBuf {
-    #[cfg(test)]
-    return std::env::temp_dir()
-        .join("cadmus-test")
-        .join(TOKEN_RELATIVE_PATH);
-
-    #[cfg(all(not(test), feature = "emulator"))]
-    return PathBuf::from("/tmp").join(TOKEN_RELATIVE_PATH);
-
-    #[cfg(all(not(test), not(feature = "emulator")))]
-    return PathBuf::from(crate::settings::INTERNAL_CARD_ROOT).join(TOKEN_RELATIVE_PATH);
+    CURRENT_DEVICE.install_path(TOKEN_FILENAME)
 }

@@ -19,7 +19,7 @@ use crate::geom::Rectangle;
 use crate::gesture::GestureEvent;
 use crate::github::device_flow;
 use crate::github::GithubClient;
-use crate::ota::{OtaClient, OtaError, OtaProgress};
+use crate::ota::{clean_bundled_files, OtaClient, OtaError, OtaProgress};
 use crate::unit::scale_by_dpi;
 use crate::version::{get_current_version, VersionComparison};
 use crate::view::filler::Filler;
@@ -469,6 +469,7 @@ impl OtaView {
                     info!(pr_number, "Download completed, starting extraction");
                     match client.extract_and_deploy(zip_path) {
                         Ok(_) => {
+                            clean_installation_before_reboot();
                             hub2.send(Event::OtaDownloadProgress {
                                 label: "Installing and rebooting…".to_string(),
                                 percent: 100,
@@ -562,6 +563,7 @@ impl OtaView {
                     info!("Main branch download completed, starting extraction");
                     match client.extract_and_deploy(zip_path) {
                         Ok(_) => {
+                            clean_installation_before_reboot();
                             hub2.send(Event::OtaDownloadProgress {
                                 label: "Installing and rebooting…".to_string(),
                                 percent: 100,
@@ -657,6 +659,7 @@ impl OtaView {
                     info!("Stable release download completed, deploying update");
                     match client.deploy(asset_path) {
                         Ok(_) => {
+                            clean_installation_before_reboot();
                             hub2.send(Event::OtaDownloadProgress {
                                 label: "Installing and rebooting…".to_string(),
                                 percent: 100,
@@ -702,6 +705,14 @@ fn send_reboot_after_delay(hub: Hub) {
         thread::sleep(std::time::Duration::from_secs(1));
         hub.send(Event::Select(EntryId::Reboot)).ok();
     });
+}
+
+fn clean_installation_before_reboot() {
+    let install_dir = CURRENT_DEVICE.install_dir();
+
+    if let Err(e) = clean_bundled_files(&install_dir) {
+        tracing::warn!(path = ?install_dir, error = %e, "Failed to clean bundled OTA files");
+    }
 }
 
 impl OtaView {

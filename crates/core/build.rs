@@ -1,6 +1,18 @@
 use std::env::{self, VarError};
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use uuid::Uuid;
+
+const BUNDLED_ASSET_DIRS: &[&str] = &[
+    "bin",
+    "css",
+    "fonts",
+    "hyphenation-patterns",
+    "icons",
+    "keyboard-layouts",
+    "resources",
+    "scripts",
+];
 
 fn main() {
     let target = env::var("TARGET").unwrap();
@@ -54,6 +66,7 @@ fn main() {
     println!("cargo:rustc-link-lib=jbig2dec");
 
     generate_locales();
+    generate_bundled_assets();
 }
 
 fn generate_locales() {
@@ -75,6 +88,96 @@ fn generate_locales() {
     let generated = format!("pub const AVAILABLE_LOCALES: &[&str] = &[\n{entries}];\n");
     std::fs::write(std::path::Path::new(&out_dir).join("locales.rs"), generated)
         .expect("failed to write locales.rs");
+}
+
+/// Generates the bundled asset manifest.
+///
+/// This is later used during OTA to delete them so that
+/// the new update bundle can re-install bundled assets.
+///
+/// This ensures that e.g. there are no lingering scripts, fonts or libs etc
+/// when they are removed.
+fn generate_bundled_assets() {
+    let out_dir = env::var("OUT_DIR").expect("OUT_DIR not set");
+    let workspace_root = workspace_root();
+    let is_kobo = env::var("TARGET").unwrap_or_default() == "arm-unknown-linux-gnueabihf";
+    let is_release = env::var("PROFILE").unwrap_or_default() == "release";
+    let mut asset_files = Vec::new();
+
+    for dir in BUNDLED_ASSET_DIRS {
+        let asset_dir = workspace_root.join(dir);
+
+        if is_kobo
+            && is_release
+            && matches!(*dir, "bin" | "resources" | "hyphenation-patterns")
+            && !asset_dir.is_dir()
+        {
+            panic!(
+                "required asset directory missing: {}. Run `cargo xtask download-assets` before build.",
+                asset_dir.display()
+            );
+        }
+
+        println!("cargo:rerun-if-changed={}", asset_dir.display());
+        collect_asset_files(&workspace_root, &asset_dir, &mut asset_files);
+    }
+
+    asset_files.sort();
+
+    let entries: String = asset_files
+        .iter()
+        .map(|path| format!("    {path:?},\n"))
+        .collect();
+    let generated = format!("const BUNDLED_ASSET_FILES: &[&str] = &[\n{entries}];\n");
+
+    std::fs::write(Path::new(&out_dir).join("bundled_assets.rs"), generated)
+        .expect("failed to write bundled_assets.rs");
+}
+
+fn workspace_root() -> PathBuf {
+    let manifest_dir =
+        PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set"));
+
+    manifest_dir
+        .parent()
+        .and_then(Path::parent)
+        .expect("workspace root not found")
+        .to_path_buf()
+}
+
+fn collect_asset_files(workspace_root: &Path, dir: &Path, asset_files: &mut Vec<String>) {
+    if !dir.exists() {
+        return;
+    }
+
+    for entry in
+        std::fs::read_dir(dir).unwrap_or_else(|_| panic!("failed to read {}", dir.display()))
+    {
+        let entry = entry.unwrap_or_else(|_| panic!("failed to read entry in {}", dir.display()));
+        let path = entry.path();
+        let file_type = entry
+            .file_type()
+            .unwrap_or_else(|_| panic!("failed to read type for {}", path.display()));
+
+        if file_type.is_dir() {
+            collect_asset_files(workspace_root, &path, asset_files);
+            continue;
+        }
+
+        if !file_type.is_file() {
+            continue;
+        }
+
+        let relative_path = path.strip_prefix(workspace_root).unwrap_or_else(|_| {
+            panic!(
+                "{} is not under {}",
+                path.display(),
+                workspace_root.display()
+            )
+        });
+
+        asset_files.push(relative_path.to_string_lossy().replace('\\', "/"));
+    }
 }
 
 fn get_version_info() -> Result<(String, Option<String>), VarError> {

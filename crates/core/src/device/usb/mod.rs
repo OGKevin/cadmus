@@ -15,4 +15,4 @@ pub use manager::UsbManager;
 pub(crate) use kobo::create_usb_manager;
 
 #[cfg(not(feature = "kobo"))]
-use stub::StubUsbManager;
+pub(crate) use stub::StubUsbManager;

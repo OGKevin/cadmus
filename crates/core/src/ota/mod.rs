@@ -7,7 +7,9 @@
 //!
 //! Authentication is handled via GitHub device auth flow — see [`crate::github`].
 
+mod cleanup;
 mod client;
 
 pub use crate::github::OtaProgress;
+pub use cleanup::clean_bundled_files;
 pub use client::{ArtifactSource, OtaClient, OtaError};

@@ -49,6 +49,9 @@ const ASSET_DIRS: &[&str] = &["bin", "resources", "hyphenation-patterns"];
 /// the directories are extracted into the cache, and then copied to the
 /// workspace root.
 ///
+/// These directories must exist before Kobo builds that generate compile-time
+/// bundled asset metadata, otherwise the generated list will be incomplete.
+///
 /// Workspace-level directories that already exist are left untouched.
 ///
 /// # Errors

@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Cadmus Documentation\n"
-"POT-Creation-Date: 2026-05-25T09:26:23+02:00\n"
+"POT-Creation-Date: 2026-05-25T13:06:34+02:00\n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -65,8 +65,8 @@ msgstr ""
 msgid "Importing"
 msgstr ""
 
-#: src/SUMMARY.md:17 src/installation/ota.md:82 src/troubleshooting/index.md:1
-#: src/contributing/devenv-setup.md:210
+#: src/SUMMARY.md:17 src/installation/ota.md:86 src/troubleshooting/index.md:1
+#: src/contributing/devenv-setup.md:231
 msgid "Troubleshooting"
 msgstr ""
 
@@ -399,7 +399,7 @@ msgid ""
 "out changes that haven't been released yet"
 msgstr ""
 
-#: src/installation/index.md:21 src/installation/ota.md:76
+#: src/installation/index.md:21 src/installation/ota.md:80
 msgid "First-time setup"
 msgstr ""
 
@@ -556,14 +556,8 @@ msgstr ""
 
 #: src/installation/uninstall.md:23
 msgid ""
-"\\[!NOTE\\] If you no longer want NickelMenu at all, you can remove it "
-"separately after deleting the Cadmus entry above."
-msgstr ""
-
-#: src/installation/uninstall.md:27
-msgid ""
-"\\[!TIP\\] If you copied an update file into `/mnt/onboard/.kobo/`, you can "
-"also delete that leftover `KoboRoot*.tgz` file."
+"\\[!NOTE\\] If you no longer need NickelMenu at all, you can remove it "
+"separately."
 msgstr ""
 
 #: src/installation/test-builds.md:3
@@ -686,8 +680,8 @@ msgstr ""
 msgid "Source"
 msgstr ""
 
-#: src/installation/ota.md:34 src/contributing/devenv-setup.md:37
-#: src/contributing/devenv-setup.md:63
+#: src/installation/ota.md:34 src/contributing/devenv-setup.md:48
+#: src/contributing/devenv-setup.md:75
 msgid "Description"
 msgstr ""
 
@@ -742,10 +736,17 @@ msgid ""
 msgstr ""
 
 #: src/installation/ota.md:54
+msgid ""
+"Before that reboot, Cadmus removes the files it previously installed so the "
+"new package can replace them cleanly. Your books, settings, dictionaries, "
+"and other personal files are left alone."
+msgstr ""
+
+#: src/installation/ota.md:58
 msgid "Testing a pull request"
 msgstr ""
 
-#: src/installation/ota.md:56
+#: src/installation/ota.md:60
 msgid ""
 "Select **PR Build** to try out a specific change before it's released. Enter "
 "the PR number when prompted. If you haven't authenticated before, Cadmus "
@@ -753,67 +754,67 @@ msgid ""
 "[Authentication](#authentication) for details."
 msgstr ""
 
-#: src/installation/ota.md:61
+#: src/installation/ota.md:65
 msgid ""
 "\\[!TIP\\] Find the PR number in the GitHub URL. For example, in "
 "`github.com/OGKevin/cadmus/pull/42` the PR number is **42**."
 msgstr ""
 
-#: src/installation/ota.md:65
+#: src/installation/ota.md:69
 msgid "Normal vs test builds"
 msgstr ""
 
-#: src/installation/ota.md:67
+#: src/installation/ota.md:71
 msgid ""
 "OTA works for both types of builds. The type you're currently using "
 "determines what gets downloaded:"
 msgstr ""
 
-#: src/installation/ota.md:70
+#: src/installation/ota.md:74
 msgid "**Normal builds** update to `KoboRoot.tgz` in `/mnt/onboard/.adds/cadmus`"
 msgstr ""
 
-#: src/installation/ota.md:71
+#: src/installation/ota.md:75
 msgid ""
 "**Test builds** update to `KoboRoot-test.tgz` in "
 "`/mnt/onboard/.adds/cadmus-tst`"
 msgstr ""
 
-#: src/installation/ota.md:73
+#: src/installation/ota.md:77
 msgid ""
 "See the [available packages](./index.md#available-packages) table for all "
 "options."
 msgstr ""
 
-#: src/installation/ota.md:78
+#: src/installation/ota.md:82
 msgid ""
 "OTA only works for updating an existing installation. To install Cadmus for "
 "the first time, follow the [installation guide](./index.md) or the [test "
 "builds guide](./test-builds.md) to copy a KoboRoot file via USB."
 msgstr ""
 
-#: src/installation/ota.md:84
+#: src/installation/ota.md:88
 msgid "\"Insufficient disk space\" error"
 msgstr ""
 
-#: src/installation/ota.md:86
+#: src/installation/ota.md:90
 msgid ""
 "If Cadmus shows an error like _\"Insufficient disk space: need 100MB, have "
 "XMB\"_ while downloading an update:"
 msgstr ""
 
-#: src/installation/ota.md:89
+#: src/installation/ota.md:93
 msgid ""
 "Free up space on your Kobo by deleting books or other files you do not need"
 msgstr ""
 
-#: src/installation/ota.md:90
+#: src/installation/ota.md:94
 msgid ""
 "Cadmus downloads update files into its own `tmp` folder inside the Cadmus "
 "folder"
 msgstr ""
 
-#: src/installation/ota.md:92
+#: src/installation/ota.md:96
 msgid "This error means internal storage is too full for the update file"
 msgstr ""
 
@@ -1752,7 +1753,7 @@ msgstr ""
 msgid "Statuses"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:23 src/contributing/devenv-setup.md:171
+#: src/ui/settings/dictionaries.md:23 src/contributing/devenv-setup.md:192
 msgid "Status"
 msgstr ""
 
@@ -2208,548 +2209,590 @@ msgid "Run the one-time setup to build native dependencies:"
 msgstr ""
 
 #: src/contributing/devenv-setup.md:27
-msgid "Run the emulator:"
+msgid "Download the packaged runtime assets used by Kobo builds:"
 msgstr ""
 
 #: src/contributing/devenv-setup.md:33
+msgid ""
+"`cadmus-core` generates some compile-time metadata from the bundled asset "
+"directories. For Kobo builds, make sure `bin/`, `resources/`, and "
+"`hyphenation-patterns/` are present before `cargo xtask build-kobo` so the "
+"generated asset list is complete."
+msgstr ""
+
+#: src/contributing/devenv-setup.md:38
+msgid "Run the emulator:"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:44
 msgid "Available Commands"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:35
+#: src/contributing/devenv-setup.md:46
 msgid "Once inside the devenv shell, these commands are available:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:37
+#: src/contributing/devenv-setup.md:48
 msgid "Command"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:39
+#: src/contributing/devenv-setup.md:50
 msgid "`cargo xtask setup-native`"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:39
+#: src/contributing/devenv-setup.md:50
 msgid "Build MuPDF for native development (run once)"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:40
-msgid "`cargo xtask test`"
-msgstr ""
-
-#: src/contributing/devenv-setup.md:40
-msgid "Run the test suite across the feature matrix"
-msgstr ""
-
-#: src/contributing/devenv-setup.md:41
-msgid "`cargo xtask run-emulator`"
-msgstr ""
-
-#: src/contributing/devenv-setup.md:41
-msgid "Run the emulator"
-msgstr ""
-
-#: src/contributing/devenv-setup.md:42
-msgid "`cargo xtask build-kobo`"
-msgstr ""
-
-#: src/contributing/devenv-setup.md:42
-msgid "Cross-compile for Kobo device (Linux only)"
-msgstr ""
-
-#: src/contributing/devenv-setup.md:43
-msgid "`cargo xtask dist`"
-msgstr ""
-
-#: src/contributing/devenv-setup.md:43
-msgid "Assemble the Kobo distribution directory"
-msgstr ""
-
-#: src/contributing/devenv-setup.md:44
-msgid "`cargo xtask bundle`"
-msgstr ""
-
-#: src/contributing/devenv-setup.md:44
-msgid "Package KoboRoot.tgz for installation"
-msgstr ""
-
-#: src/contributing/devenv-setup.md:45
-msgid "`cadmus-dev-otel`"
-msgstr ""
-
-#: src/contributing/devenv-setup.md:45
-msgid "Run emulator with tracing and profiling enabled"
-msgstr ""
-
-#: src/contributing/devenv-setup.md:46
-msgid "`devenv up`"
-msgstr ""
-
-#: src/contributing/devenv-setup.md:46
-msgid "Start observability stack (Grafana, Tempo, Loki)"
-msgstr ""
-
-#: src/contributing/devenv-setup.md:47
-msgid "`cargo xtask docs`"
-msgstr ""
-
-#: src/contributing/devenv-setup.md:47
-msgid "Build documentation portal (mdBook + Cargo docs)"
-msgstr ""
-
-#: src/contributing/devenv-setup.md:48
-msgid "`cadmus-docs-serve`"
-msgstr ""
-
-#: src/contributing/devenv-setup.md:48
-msgid "Serve documentation portal locally on port 1111"
-msgstr ""
-
-#: src/contributing/devenv-setup.md:49
-msgid "`cadmus-translate`"
-msgstr ""
-
-#: src/contributing/devenv-setup.md:49
-msgid "Generates the template .pot file for the docs"
+#: src/contributing/devenv-setup.md:51
+msgid "`cargo xtask download-assets`"
 msgstr ""
 
 #: src/contributing/devenv-setup.md:51
+msgid "Download packaged Plato runtime assets"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:52
+msgid "`cargo xtask test`"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:52
+msgid "Run the test suite across the feature matrix"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:53
+msgid "`cargo xtask run-emulator`"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:53
+msgid "Run the emulator"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:54
+msgid "`cargo xtask build-kobo`"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:54
+msgid "Cross-compile for Kobo device (Linux only)"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:55
+msgid "`cargo xtask dist`"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:55
+msgid "Assemble the Kobo distribution directory"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:56
+msgid "`cargo xtask bundle`"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:56
+msgid "Package KoboRoot.tgz for installation"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:57
+msgid "`cadmus-dev-otel`"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:57
+msgid "Run emulator with tracing and profiling enabled"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:58
+msgid "`devenv up`"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:58
+msgid "Start observability stack (Grafana, Tempo, Loki)"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:59
+msgid "`cargo xtask docs`"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:59
+msgid "Build documentation portal (mdBook + Cargo docs)"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:60
+msgid "`cadmus-docs-serve`"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:60
+msgid "Serve documentation portal locally on port 1111"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:61
+msgid "`cadmus-translate`"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:61
+msgid "Generates the template .pot file for the docs"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:63
 msgid ""
 "Run `cargo xtask --help` to see all available subcommands, or `cargo xtask "
 "<cmd> --help` for options on a specific command."
 msgstr ""
 
-#: src/contributing/devenv-setup.md:54
+#: src/contributing/devenv-setup.md:66
 msgid ""
 "Or have a look at the rustdocs for `xtask` <a href=\"/api/xtask/\">here</a>."
 msgstr ""
 
-#: src/contributing/devenv-setup.md:56
+#: src/contributing/devenv-setup.md:68
 msgid "Tasks"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:58
+#: src/contributing/devenv-setup.md:70
 msgid ""
 "The devenv environment uses [tasks](https://devenv.sh/tasks/) to manage "
 "build dependencies. Tasks are defined in `devenv.nix` and can be run with "
 "`devenv tasks run <task>`."
 msgstr ""
 
-#: src/contributing/devenv-setup.md:61
+#: src/contributing/devenv-setup.md:73
 msgid "Available Tasks"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:63
+#: src/contributing/devenv-setup.md:75
 msgid "Task"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:63
+#: src/contributing/devenv-setup.md:75
 msgid "Dependencies"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:65 src/contributing/devenv-setup.md:67
+#: src/contributing/devenv-setup.md:77 src/contributing/devenv-setup.md:79
 msgid "`docs:build`"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:65
+#: src/contributing/devenv-setup.md:77
 msgid "Build documentation EPUB (only rebuilds if files changed)"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:65 src/contributing/devenv-setup.md:66
+#: src/contributing/devenv-setup.md:77 src/contributing/devenv-setup.md:78
 msgid "None"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:66
+#: src/contributing/devenv-setup.md:78
 msgid "`deps:native`"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:66
+#: src/contributing/devenv-setup.md:78
 msgid "Build MuPDF and wrapper for native development"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:67
+#: src/contributing/devenv-setup.md:79
 msgid "`build:kobo`"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:67
+#: src/contributing/devenv-setup.md:79
 msgid "Build for Kobo device (Linux only)"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:69
+#: src/contributing/devenv-setup.md:81
 msgid "All tasks delegate to `cargo xtask` under the hood."
 msgstr ""
 
-#: src/contributing/devenv-setup.md:71
+#: src/contributing/devenv-setup.md:83
 msgid "How Tasks Work"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:73
+#: src/contributing/devenv-setup.md:85
 msgid ""
 "Tasks with dependencies automatically run their dependencies first. For "
 "example:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:76
+#: src/contributing/devenv-setup.md:88
 msgid "# This will first run docs:build (if needed), then build for Kobo\n"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:80
+#: src/contributing/devenv-setup.md:92
 msgid ""
 "The `docs:build` task uses `execIfModified` to only rebuild when "
 "documentation files have actually changed."
 msgstr ""
 
-#: src/contributing/devenv-setup.md:82
+#: src/contributing/devenv-setup.md:94
+msgid "Kobo Build Notes"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:96
+msgid ""
+"`cargo xtask download-assets` must run before `cargo xtask build-kobo` when "
+"you need compile-time asset metadata to match the packaged Kobo contents."
+msgstr ""
+
+#: src/contributing/devenv-setup.md:98
+msgid ""
+"OTA updates delete Cadmus-owned bundled files before reboot, then Kobo "
+"extracts the new `KoboRoot.tgz` over the install directory."
+msgstr ""
+
+#: src/contributing/devenv-setup.md:100
+msgid ""
+"User files outside the generated Cadmus-owned asset list must be preserved, "
+"so do not model OTA cleanup as a full directory wipe."
+msgstr ""
+
+#: src/contributing/devenv-setup.md:103
 msgid "Documentation Portal"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:84
+#: src/contributing/devenv-setup.md:105
 msgid ""
 "Cadmus provides a unified documentation portal that combines user guides, "
 "API reference, and contribution guides in one place."
 msgstr ""
 
-#: src/contributing/devenv-setup.md:87
+#: src/contributing/devenv-setup.md:108
 msgid "Building and Serving Locally"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:89
+#: src/contributing/devenv-setup.md:110
 msgid "To build the documentation portal:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:95
+#: src/contributing/devenv-setup.md:116
 msgid "This runs the full build pipeline:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:97
+#: src/contributing/devenv-setup.md:118
 msgid "Builds the mdBook user guide (`docs/book/html/`)"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:98
+#: src/contributing/devenv-setup.md:119
 msgid "Generates Rust API documentation (`target/doc/`)"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:99
+#: src/contributing/devenv-setup.md:120
 msgid "Builds the Zola landing page and integrates all documentation"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:101
+#: src/contributing/devenv-setup.md:122
 msgid "To serve the portal locally with live reload:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:107
+#: src/contributing/devenv-setup.md:128
 msgid ""
 "The portal will be available at <http://localhost:1111> with automatic "
 "rebuilds when you change documentation files or Rust code."
 msgstr ""
 
-#: src/contributing/devenv-setup.md:110
+#: src/contributing/devenv-setup.md:131
 msgid "Documentation Structure"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:112
+#: src/contributing/devenv-setup.md:133
 msgid "The portal provides three integrated sections:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:114
+#: src/contributing/devenv-setup.md:135
 msgid "**Landing Page** (`/`) - Overview and feature highlights"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:115
+#: src/contributing/devenv-setup.md:136
 msgid "**User Guide** (`/guide/`) - User-facing documentation from mdBook"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:116
+#: src/contributing/devenv-setup.md:137
 msgid "**API Reference** (`/api/`) - Auto-generated Rust API documentation"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:118
+#: src/contributing/devenv-setup.md:139
 msgid ""
 "All three sections are deployed as a single artifact to GitHub Pages at "
 "<https://ogkevin.github.io/cadmus/>."
 msgstr ""
 
-#: src/contributing/devenv-setup.md:121
+#: src/contributing/devenv-setup.md:142
 msgid "Continuous Integration"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:123
+#: src/contributing/devenv-setup.md:144
 msgid ""
 "Documentation is automatically built and validated on every pull request and "
 "deployed on push to `main` or `master`. The CI pipeline checks:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:126
+#: src/contributing/devenv-setup.md:147
 msgid "mdBook documentation compiles"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:127
+#: src/contributing/devenv-setup.md:148
 msgid "Rust code documentation is valid"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:128
+#: src/contributing/devenv-setup.md:149
 msgid "Zola landing page builds successfully"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:130
+#: src/contributing/devenv-setup.md:151
 msgid "Running Tests"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:132
+#: src/contributing/devenv-setup.md:153
 msgid ""
 "Tests require the `TEST_ROOT_DIR` environment variable to be set. The "
 "easiest way to run the full test matrix is:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:139
+#: src/contributing/devenv-setup.md:160
 msgid ""
 "This sets `TEST_ROOT_DIR` automatically and runs tests across all feature "
 "combinations. To run a single feature combination:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:143
+#: src/contributing/devenv-setup.md:164
 msgid "\"emulator + test\""
 msgstr ""
 
-#: src/contributing/devenv-setup.md:146
+#: src/contributing/devenv-setup.md:167
 msgid "Or to run tests manually without xtask:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:149 src/contributing/devenv-setup.md:222
+#: src/contributing/devenv-setup.md:170 src/contributing/devenv-setup.md:243
 msgid "$(pwd)"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:152
+#: src/contributing/devenv-setup.md:173
 msgid ""
 "`TEST_ROOT_DIR` is automatically configured in CI but must be set manually "
 "when running `cargo test` directly."
 msgstr ""
 
-#: src/contributing/devenv-setup.md:155
+#: src/contributing/devenv-setup.md:176
 msgid "Platform Support"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:157
+#: src/contributing/devenv-setup.md:178
 msgid "Linux (Full Support)"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:159
+#: src/contributing/devenv-setup.md:180
 msgid "Linux provides full development capabilities including:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:161
+#: src/contributing/devenv-setup.md:182
 msgid "Native development (emulator, tests)"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:162
+#: src/contributing/devenv-setup.md:183
 msgid "Cross-compilation for Kobo devices using the Linaro ARM toolchain"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:163
+#: src/contributing/devenv-setup.md:184
 msgid "Git hooks (actionlint, shellcheck, shfmt, markdownlint, prettier)"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:165
+#: src/contributing/devenv-setup.md:186
 msgid ""
 "The Linaro toolchain is automatically added to `PATH` and provides "
 "`arm-linux-gnueabihf-*` commands."
 msgstr ""
 
-#: src/contributing/devenv-setup.md:167
+#: src/contributing/devenv-setup.md:188
 msgid "macOS (Native Development Only)"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:169
+#: src/contributing/devenv-setup.md:190
 msgid "macOS supports native development but has some limitations:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:171
+#: src/contributing/devenv-setup.md:192
 msgid "Feature"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:171
+#: src/contributing/devenv-setup.md:192
 msgid "Notes"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:173
+#: src/contributing/devenv-setup.md:194
 msgid "Native builds"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:173
+#: src/contributing/devenv-setup.md:194
 msgid "Supported"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:173
+#: src/contributing/devenv-setup.md:194
 msgid "Emulator and tests work"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:174
+#: src/contributing/devenv-setup.md:195
 msgid "Cross-compilation"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:174
+#: src/contributing/devenv-setup.md:195
 msgid "Not supported"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:174
+#: src/contributing/devenv-setup.md:195
 msgid "Linaro toolchain is Linux-only"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:176
+#: src/contributing/devenv-setup.md:197
 msgid "macOS-Specific Notes"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:178
+#: src/contributing/devenv-setup.md:199
 msgid ""
 "**Cross-compilation for Kobo**: The Linaro ARM cross-compilation toolchain "
 "consists of x86_64 Linux ELF binaries that cannot run on macOS. To build for "
 "Kobo devices on macOS, use Docker with a Linux container or a Linux VM."
 msgstr ""
 
-#: src/contributing/devenv-setup.md:182
+#: src/contributing/devenv-setup.md:203
 msgid ""
 "**MuPDF build**: On macOS, the native setup script manually gathers "
 "pkg-config CFLAGS for system libraries because MuPDF's build system doesn't "
 "properly detect them on Darwin."
 msgstr ""
 
-#: src/contributing/devenv-setup.md:185
+#: src/contributing/devenv-setup.md:206
 msgid "Observability Stack"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:187
+#: src/contributing/devenv-setup.md:208
 msgid "The devenv includes a full observability stack for development:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:190
+#: src/contributing/devenv-setup.md:211
 msgid "# Start all services\n"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:192
+#: src/contributing/devenv-setup.md:213
 msgid "# In another terminal, run the instrumented emulator\n"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:197
+#: src/contributing/devenv-setup.md:218
 msgid "Services available after `devenv up`:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:199
+#: src/contributing/devenv-setup.md:220
 msgid "Service"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:199
+#: src/contributing/devenv-setup.md:220
 msgid "URL"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:199
+#: src/contributing/devenv-setup.md:220
 #: src/contributing/library-database.md:148
 msgid "Purpose"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:201
+#: src/contributing/devenv-setup.md:222
 msgid "Grafana"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:201
+#: src/contributing/devenv-setup.md:222
 msgid "<http://localhost:3000>"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:201
+#: src/contributing/devenv-setup.md:222
 msgid "Dashboards and exploration"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:202
+#: src/contributing/devenv-setup.md:223
 msgid "Tempo"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:202
+#: src/contributing/devenv-setup.md:223
 msgid "<http://localhost:3200>"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:202
+#: src/contributing/devenv-setup.md:223
 msgid "Distributed tracing"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:203
+#: src/contributing/devenv-setup.md:224
 msgid "Loki"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:203
+#: src/contributing/devenv-setup.md:224
 msgid "<http://localhost:3100>"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:203
+#: src/contributing/devenv-setup.md:224
 msgid "Log aggregation"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:204
+#: src/contributing/devenv-setup.md:225
 msgid "Prometheus"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:204
+#: src/contributing/devenv-setup.md:225
 msgid "<http://localhost:9090>"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:204
+#: src/contributing/devenv-setup.md:225
 msgid "Metrics"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:205
+#: src/contributing/devenv-setup.md:226
 msgid "OTLP Collector"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:205
+#: src/contributing/devenv-setup.md:226
 msgid "<http://localhost:4318>"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:205
+#: src/contributing/devenv-setup.md:226
 msgid "Telemetry ingestion"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:206
+#: src/contributing/devenv-setup.md:227
 msgid "Pyroscope"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:206
+#: src/contributing/devenv-setup.md:227
 msgid "<http://localhost:4040>"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:206
+#: src/contributing/devenv-setup.md:227
 msgid "Continuous profiling"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:208
+#: src/contributing/devenv-setup.md:229
 msgid "For more details on telemetry, see [Telemetry](telemetry/index.md)."
 msgstr ""
 
-#: src/contributing/devenv-setup.md:212
+#: src/contributing/devenv-setup.md:233
 msgid "Shell takes a long time to start"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:214
+#: src/contributing/devenv-setup.md:235
 msgid ""
 "The first `devenv shell` invocation downloads and builds dependencies, which "
 "can take several minutes. Subsequent invocations are cached and should be "
 "fast."
 msgstr ""
 
-#: src/contributing/devenv-setup.md:217
+#: src/contributing/devenv-setup.md:238
 msgid "Tests fail with \"TEST_ROOT_DIR must be set\""
 msgstr ""
 
-#: src/contributing/devenv-setup.md:219
+#: src/contributing/devenv-setup.md:240
 msgid "Set the environment variable before running tests:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:225
+#: src/contributing/devenv-setup.md:246
 msgid "Local Configuration"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:227
+#: src/contributing/devenv-setup.md:248
 msgid ""
 "Create `devenv.local.nix` to override settings without modifying the tracked "
 "configuration:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:229
+#: src/contributing/devenv-setup.md:250
 msgid ""
 "```nix\n"
 "{ pkgs, ... }:\n"
@@ -2763,7 +2806,7 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:240
+#: src/contributing/devenv-setup.md:261
 msgid "This file is gitignored and won't affect other contributors."
 msgstr ""
 

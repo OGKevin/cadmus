@@ -24,7 +24,19 @@ This guide covers setup on both Linux and macOS.
    cargo xtask setup-native
    ```
 
-3. Run the emulator:
+3. Download the packaged runtime assets used by Kobo builds:
+
+   ```bash
+   cargo xtask download-assets
+   ```
+
+   > [!NOTE]
+   > `cadmus-core` generates some compile-time metadata from the bundled asset
+   > directories. For Kobo builds, make sure `bin/`, `resources/`, and
+   > `hyphenation-patterns/` are present before `cargo xtask build-kobo` so the
+   > generated asset list is complete.
+
+4. Run the emulator:
 
    ```bash
    cargo xtask run-emulator
@@ -34,19 +46,20 @@ This guide covers setup on both Linux and macOS.
 
 Once inside the devenv shell, these commands are available:
 
-| Command                    | Description                                      |
-| -------------------------- | ------------------------------------------------ |
-| `cargo xtask setup-native` | Build MuPDF for native development (run once)    |
-| `cargo xtask test`         | Run the test suite across the feature matrix     |
-| `cargo xtask run-emulator` | Run the emulator                                 |
-| `cargo xtask build-kobo`   | Cross-compile for Kobo device (Linux only)       |
-| `cargo xtask dist`         | Assemble the Kobo distribution directory         |
-| `cargo xtask bundle`       | Package KoboRoot.tgz for installation            |
-| `cadmus-dev-otel`          | Run emulator with tracing and profiling enabled  |
-| `devenv up`                | Start observability stack (Grafana, Tempo, Loki) |
-| `cargo xtask docs`         | Build documentation portal (mdBook + Cargo docs) |
-| `cadmus-docs-serve`        | Serve documentation portal locally on port 1111  |
-| `cadmus-translate`         | Generates the template .pot file for the docs    |
+| Command                       | Description                                      |
+| ----------------------------- | ------------------------------------------------ |
+| `cargo xtask setup-native`    | Build MuPDF for native development (run once)    |
+| `cargo xtask download-assets` | Download packaged Plato runtime assets           |
+| `cargo xtask test`            | Run the test suite across the feature matrix     |
+| `cargo xtask run-emulator`    | Run the emulator                                 |
+| `cargo xtask build-kobo`      | Cross-compile for Kobo device (Linux only)       |
+| `cargo xtask dist`            | Assemble the Kobo distribution directory         |
+| `cargo xtask bundle`          | Package KoboRoot.tgz for installation            |
+| `cadmus-dev-otel`             | Run emulator with tracing and profiling enabled  |
+| `devenv up`                   | Start observability stack (Grafana, Tempo, Loki) |
+| `cargo xtask docs`            | Build documentation portal (mdBook + Cargo docs) |
+| `cadmus-docs-serve`           | Serve documentation portal locally on port 1111  |
+| `cadmus-translate`            | Generates the template .pot file for the docs    |
 
 Run `cargo xtask --help` to see all available subcommands, or `cargo xtask <cmd> --help` for
 options on a specific command.
@@ -78,6 +91,13 @@ devenv tasks run build:kobo
 ```
 
 The `docs:build` task uses `execIfModified` to only rebuild when documentation files have actually changed.
+
+## Kobo Build Notes
+
+- `cargo xtask download-assets` must run before `cargo xtask build-kobo`.
+- OTA updates delete Cadmus-owned bundled files before reboot, then Kobo
+  extracts the new `KoboRoot.tgz` over the install directory.
+- User files outside the generated Cadmus-owned asset list must be preserved.
 
 ## Documentation Portal
 
