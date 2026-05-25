@@ -52,7 +52,8 @@ The update downloads from GitHub, installs automatically, and reboots the device
 to finish.
 
 Before that reboot, Cadmus removes the files it previously installed so the new
-package can replace them cleanly. Your custom fonts etc will be preserved.
+package can replace them cleanly. Your custom fonts, icons, and other
+user-added files will be preserved.
 
 ## Testing a pull request
 

@@ -59,7 +59,7 @@ Once inside the devenv shell, these commands are available:
 | `devenv up`                   | Start observability stack (Grafana, Tempo, Loki) |
 | `cargo xtask docs`            | Build documentation portal (mdBook + Cargo docs) |
 | `cadmus-docs-serve`           | Serve documentation portal locally on port 1111  |
-| `cadmus-translate`            | Generates the template .pot file for the docs    |
+| `cadmus-translate`            | Generate the docs translation template (.pot)    |
 
 Run `cargo xtask --help` to see all available subcommands, or `cargo xtask <cmd> --help` for
 options on a specific command.
