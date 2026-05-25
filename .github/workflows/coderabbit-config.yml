@@ -5,6 +5,10 @@ on:
       - ".coderabbit.yaml"
       - ".yamllint.yml"
       - ".github/workflows/coderabbit-config.yml"
+
+permissions:
+  contents: read
+
 jobs:
   validate:
     runs-on: ubuntu-latest
