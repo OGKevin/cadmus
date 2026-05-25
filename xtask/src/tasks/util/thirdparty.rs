@@ -108,7 +108,7 @@ pub const DJVULIBRE_VERSION: &str = "3.5.29";
 /// IJG libjpeg version tracked via the libjpeg-turbo `jpeg-<version>` tag mirror.
 pub const LIBJPEG_VERSION: &str = "10";
 
-/// bzip2 version, tracked via GitLab tags on `bzip2/bzip2`.
+/// bzip2 version, tracked and downloaded via GitLab `bzip2/bzip2`.
 pub const BZIP2_VERSION: &str = "1.0.8";
 /// OpenJPEG version, derived from the archive URL.
 pub const OPENJPEG_VERSION: &str = "2.5.4";
@@ -164,7 +164,7 @@ pub fn library_source(name: &str) -> Result<LibrarySource> {
             v = ZLIB_VERSION
         ))),
         "bzip2" => Ok(LibrarySource::Tarball(format!(
-            "https://sourceware.org/pub/bzip2/bzip2-{v}.tar.gz",
+            "https://gitlab.com/bzip2/bzip2/-/archive/bzip2-{v}/bzip2-bzip2-{v}.tar.gz",
             v = BZIP2_VERSION
         ))),
         "libpng" => Ok(LibrarySource::Tarball(format!(
