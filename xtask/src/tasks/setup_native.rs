@@ -8,7 +8,7 @@
 //!
 //! ## Required MuPDF version
 //!
-//! The version is pinned to [`REQUIRED_MUPDF_VERSION`].  If the sources
+//! The version is pinned to [`thirdparty::MUPDF_VERSION`].  If the sources
 //! already present on disk match this version the download is skipped.
 
 use std::path::Path;
@@ -17,9 +17,7 @@ use anyhow::{Context, Result, bail};
 use clap::Args;
 
 use super::util::{cmd, mupdf_wrapper, thirdparty, workspace};
-
-/// The MuPDF source version that must be present for a successful build.
-pub const REQUIRED_MUPDF_VERSION: &str = "1.27.0";
+use super::util::thirdparty::MUPDF_VERSION;
 
 /// Marker file written after a successful native MuPDF build.
 const NATIVE_BUILT_MARKER: &str = ".built-native";
@@ -72,16 +70,16 @@ pub fn ensure_mupdf_sources(root: &Path, force: bool) -> Result<()> {
 
     let current_version = read_mupdf_version(&version_header);
 
-    if !force && current_version.as_deref() == Some(REQUIRED_MUPDF_VERSION) {
-        println!("MuPDF {REQUIRED_MUPDF_VERSION} already present.");
+    if !force && current_version.as_deref() == Some(MUPDF_VERSION) {
+        println!("MuPDF {MUPDF_VERSION} already present.");
         return Ok(());
     }
 
     if let Some(v) = &current_version {
-        println!("MuPDF version mismatch: have '{v}', need '{REQUIRED_MUPDF_VERSION}'");
+        println!("MuPDF version mismatch: have '{v}', need '{MUPDF_VERSION}'");
     }
 
-    println!("Downloading MuPDF {REQUIRED_MUPDF_VERSION} sources…");
+    println!("Downloading MuPDF {MUPDF_VERSION} sources…");
 
     let mupdf_dir = root.join("thirdparty/mupdf");
     if mupdf_dir.exists() {

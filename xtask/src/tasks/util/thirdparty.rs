@@ -94,29 +94,26 @@ pub fn soname(libs_dir: &Path, lib: &str) -> Result<String> {
 
 /// Version strings for thirdparty libraries tracked by Renovate.
 ///
-/// Each version constant is the single source of truth — the download URL is
-/// derived from it at call time in [`library_source`].  A Renovate regex manager
-/// in `renovate.json` matches these constants and opens PRs when new releases
-/// are available.
+/// Every thirdparty library must have a `VERSION` constant here.  The
+/// constant is the single source of truth — the download URL is derived
+/// from it at call time in [`library_source`].  A corresponding Renovate
+/// regex custom manager in `renovate.json` matches each constant and
+/// opens PRs when new upstream releases are available.
 ///
-/// # TODO
-///
-/// Add Renovate regex managers for the remaining URL constants below so that
-/// all thirdparty dependency updates are tracked automatically.  The
-/// following are now tracked via VERSION constants: openjpeg, harfbuzz, gumbo.
-/// Their SONAMEs are discovered at build time via `readelf -d` rather than
-/// hardcoded.  Remaining: bzip2, jbig2dec, mupdf.
+/// When adding a new thirdparty library, add a `VERSION` constant here
+/// and a matching Renovate regex manager entry in `renovate.json`.
 pub const ZLIB_VERSION: &str = "1.3.2";
 pub const LIBPNG_VERSION: &str = "1.6.53";
 pub const DJVULIBRE_VERSION: &str = "3.5.29";
 /// IJG libjpeg version tracked via the libjpeg-turbo `jpeg-<version>` tag mirror.
 pub const LIBJPEG_VERSION: &str = "10";
 
-pub const BZIP2_URL: &str = "https://sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz";
+/// bzip2 version, tracked via GitLab tags on `bzip2/bzip2`.
+pub const BZIP2_VERSION: &str = "1.0.8";
 /// OpenJPEG version, derived from the archive URL.
 pub const OPENJPEG_VERSION: &str = "2.5.4";
-pub const JBIG2DEC_URL: &str =
-    "https://github.com/ArtifexSoftware/jbig2dec/releases/download/0.20/jbig2dec-0.20.tar.gz";
+/// jbig2dec version, tracked via GitHub Releases on `ArtifexSoftware/jbig2dec`.
+pub const JBIG2DEC_VERSION: &str = "0.20";
 /// FreeType version, cloned from `freetype/freetype` at tag `VER-X-Y-Z`.
 ///
 /// Tracked by Renovate via the `github-tags` datasource with
@@ -129,7 +126,8 @@ pub const HARFBUZZ_VERSION: &str = "14.1.0";
 /// Gumbo version, derived from the archive URL.
 pub const GUMBO_VERSION: &str = "0.10.1";
 
-pub const MUPDF_URL: &str = "https://casper.mupdf.com/downloads/archive/mupdf-1.27.0-source.tar.gz";
+/// MuPDF version, tracked via GitHub Releases on `ArtifexSoftware/mupdf-downloads`.
+pub const MUPDF_VERSION: &str = "1.27.0";
 
 /// All libraries in dependency order for building.
 const LIBRARY_NAMES: &[&str] = &[
@@ -165,7 +163,10 @@ pub fn library_source(name: &str) -> Result<LibrarySource> {
             "https://github.com/madler/zlib/releases/download/v{v}/zlib-{v}.tar.gz",
             v = ZLIB_VERSION
         ))),
-        "bzip2" => Ok(LibrarySource::Tarball(BZIP2_URL.to_owned())),
+        "bzip2" => Ok(LibrarySource::Tarball(format!(
+            "https://sourceware.org/pub/bzip2/bzip2-{v}.tar.gz",
+            v = BZIP2_VERSION
+        ))),
         "libpng" => Ok(LibrarySource::Tarball(format!(
             "https://github.com/pnggroup/libpng/archive/refs/tags/v{v}.tar.gz",
             v = LIBPNG_VERSION
@@ -178,7 +179,10 @@ pub fn library_source(name: &str) -> Result<LibrarySource> {
             "https://github.com/uclouvain/openjpeg/archive/v{v}.tar.gz",
             v = OPENJPEG_VERSION
         ))),
-        "jbig2dec" => Ok(LibrarySource::Tarball(JBIG2DEC_URL.to_owned())),
+        "jbig2dec" => Ok(LibrarySource::Tarball(format!(
+            "https://github.com/ArtifexSoftware/jbig2dec/releases/download/{v}/jbig2dec-{v}.tar.gz",
+            v = JBIG2DEC_VERSION
+        ))),
         "freetype2" => Ok(LibrarySource::Git {
             repo: "https://github.com/freetype/freetype".to_owned(),
             tag: format!("VER-{}", FREETYPE2_VERSION.replace('.', "-")),
@@ -195,7 +199,10 @@ pub fn library_source(name: &str) -> Result<LibrarySource> {
             "https://github.com/barak/djvulibre/archive/refs/tags/release.{v}.tar.gz",
             v = DJVULIBRE_VERSION
         ))),
-        "mupdf" => Ok(LibrarySource::Tarball(MUPDF_URL.to_owned())),
+        "mupdf" => Ok(LibrarySource::Tarball(format!(
+            "https://github.com/ArtifexSoftware/mupdf-downloads/releases/download/{v}/mupdf-{v}-source.tar.gz",
+            v = MUPDF_VERSION
+        ))),
         _ => bail!("unknown thirdparty library: {name}"),
     }
 }

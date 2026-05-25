@@ -237,6 +237,44 @@
       "depNameTemplate": "google/gumbo-parser",
       "extractVersionTemplate": "^v(?<version>.+)$",
       "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^xtask\\/src\\/tasks\\/util\\/thirdparty\\.rs$/"
+      ],
+      "matchStrings": [
+        "MUPDF_VERSION: &str = \\\"(?<currentValue>[^\\\"]+)\\\""
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "ArtifexSoftware/mupdf-downloads",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^xtask\\/src\\/tasks\\/util\\/thirdparty\\.rs$/"
+      ],
+      "matchStrings": [
+        "JBIG2DEC_VERSION: &str = \\\"(?<currentValue>[^\\\"]+)\\\""
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "ArtifexSoftware/jbig2dec",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^xtask\\/src\\/tasks\\/util\\/thirdparty\\.rs$/"
+      ],
+      "matchStrings": [
+        "BZIP2_VERSION: &str = \\\"(?<currentValue>[^\\\"]+)\\\""
+      ],
+      "datasourceTemplate": "gitlab-tags",
+      "depNameTemplate": "bzip2/bzip2",
+      "registryUrlTemplate": "https://gitlab.com",
+      "extractVersionTemplate": "^bzip2-(?<version>.+)$",
+      "versioningTemplate": "semver"
     }
   ]
 }
