@@ -3,6 +3,7 @@
 # User Guide
 
 - [Installation](installation/index.md)
+  - [Uninstalling Cadmus](installation/uninstall.md)
   - [Test builds](installation/test-builds.md)
   - [OTA updates](installation/ota.md)
   - [Migrating from Plato](installation/migration.md)

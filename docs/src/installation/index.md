@@ -23,8 +23,14 @@ Cadmus comes in different packages. Pick the one that matches your needs.
 1. Go to the [latest release](https://github.com/OGKevin/cadmus/releases/latest).
 2. Download the package you want from the table above.
 3. Connect your Kobo to your computer via USB.
-4. Copy the downloaded file to `/mnt/onboard/.kobo/KoboRoot.tgz` on the device.
-5. Eject the device and reboot.
+4. Rename the downloaded file to `KoboRoot.tgz`.
+5. Copy that renamed file to `/mnt/onboard/.kobo/KoboRoot.tgz` on the device.
+6. Eject the device and reboot.
+
+> [!NOTE]
+> You must rename the file to `KoboRoot.tgz` before copying it to your Kobo.
+> For example, `KoboRoot-nm.tgz` and `KoboRoot-test.tgz` will not install until
+> you rename them.
 
 ## Updating
 
@@ -53,3 +59,7 @@ first-time install.
 
 Cadmus detects the file automatically and reboots your Kobo to install the
 update. You don't need to do anything else.
+
+## Uninstalling
+
+See [Uninstalling Cadmus](./uninstall.md).

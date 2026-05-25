@@ -7,9 +7,14 @@
 3. Download the `cadmus-kobo-test-<suffix>` file.
    ![Download from GitHub Actions](./screenshots/artifacts.png)
 4. Extract it and pick the [package](./index.md) that matches your setup.
-5. Copy the selected KoboRoot file to:
+5. Rename the selected file to `KoboRoot.tgz`.
+6. Copy that renamed file to:
    `/mnt/onboard/.kobo/KoboRoot.tgz`
-6. Eject the device and reboot.
+7. Eject the device and reboot.
+
+> [!NOTE]
+> Test packages such as `KoboRoot-test.tgz` and `KoboRoot-nm-test.tgz` must be
+> renamed to `KoboRoot.tgz` before you copy them to your Kobo.
 
 ## Updating an existing test build
 
