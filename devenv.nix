@@ -246,6 +246,8 @@ in
     pkgs.pkg-config
     pkgs.unzip
     pkgs.jq
+    pkgs.yamllint
+    pkgs.check-jsonschema
 
     pkgs.mdbook
     mdbook-epub-custom
@@ -833,6 +835,17 @@ in
   git-hooks.hooks = {
     actionlint.enable = true;
     shellcheck.enable = true;
+    yamllint = {
+      enable = true;
+      files = "^(\\.coderabbit\\.yaml|\\.yamllint\\.ya?ml)$";
+    };
+    coderabbit-schema = {
+      enable = true;
+      name = "CodeRabbit schema";
+      files = "^\\.coderabbit\\.yaml$";
+      entry = "${pkgs.check-jsonschema}/bin/check-jsonschema --schemafile https://coderabbit.ai/integrations/schema.v2.json .coderabbit.yaml";
+      pass_filenames = false;
+    };
     shfmt = {
       enable = true;
       settings = {

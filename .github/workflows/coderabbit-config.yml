@@ -1,0 +1,23 @@
+name: CodeRabbit config validation
+on:
+  pull_request:
+    paths:
+      - ".coderabbit.yaml"
+      - ".yamllint.yml"
+      - ".github/workflows/coderabbit-config.yml"
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+      - name: Install YAML validation tools
+        run: pip install yamllint check-jsonschema
+      - name: Lint YAML files
+        run: yamllint .coderabbit.yaml
+      - name: Validate CodeRabbit schema
+        run: >-
+          check-jsonschema --schemafile https://coderabbit.ai/integrations/schema.v2.json .coderabbit.yaml

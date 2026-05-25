@@ -1,0 +1,50 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: en-US
+tone_instructions: "chill"
+early_access: false
+enable_free_tier: true
+inheritance: true
+reviews:
+  review_status: false
+  request_changes_workflow: true
+  high_level_summary: false
+  high_level_summary_in_walkthrough: true
+  review_details: true
+  collapse_walkthrough: false
+  labeling_instructions:
+    - label: documentation
+      instructions: When the code modifies documentation in the docs folder that is user/contributor facing.
+    - label: dependencies
+      instructions: When a dependency is being bumped, added or removed.
+  auto_apply_labels: true
+  auto_assign_reviewers: true
+  path_filters:
+    - "!docs/po/messages.pot"
+  auto_review:
+    auto_pause_after_reviewed_commits: 3
+    labels:
+      - ai-review
+    base_branches:
+      - master
+  finishing_touches:
+    docstrings:
+      enabled: false
+    unit_tests:
+      enabled: false
+  pre_merge_checks:
+    title:
+      mode: error
+      requirements: It should follow https://www.conventionalcommits.org/en/v1.0.0/
+    description:
+      mode: "off"
+  tools:
+    github-checks:
+      timeout_ms: 900000
+chat: {}
+knowledge_base: {}
+code_generation: {}
+issue_enrichment:
+  planning:
+    auto_planning:
+      labels:
+        - ai-plan
