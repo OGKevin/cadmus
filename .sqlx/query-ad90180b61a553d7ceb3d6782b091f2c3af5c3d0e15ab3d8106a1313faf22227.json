@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                SELECT\n                    lb.book_fingerprint AS \"fingerprint!: Fp\",\n                    b.file_kind AS \"file_kind!: FileExtension\"\n                FROM library_books lb\n                INNER JOIN books b ON b.fingerprint = lb.book_fingerprint\n                WHERE lb.library_id = ?\n                ",
+  "describe": {
+    "columns": [
+      {
+        "name": "fingerprint!: Fp",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "file_kind!: FileExtension",
+        "ordinal": 1,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "ad90180b61a553d7ceb3d6782b091f2c3af5c3d0e15ab3d8106a1313faf22227"
+}

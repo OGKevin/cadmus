@@ -2716,7 +2716,9 @@ impl Db {
 
             let rows = sqlx::query!(
                 r#"
-                SELECT lb.book_fingerprint AS "fingerprint!: Fp"
+                SELECT
+                    lb.book_fingerprint AS "fingerprint!: Fp",
+                    b.file_kind AS "file_kind!: FileExtension"
                 FROM library_books lb
                 INNER JOIN books b ON b.fingerprint = lb.book_fingerprint
                 WHERE lb.library_id = ?
@@ -2729,12 +2731,7 @@ impl Db {
             let mut purged: Vec<Fp> = Vec::new();
 
             for row in rows {
-                let kind: FileExtension = sqlx::query_scalar!(
-                    r#"SELECT file_kind AS "file_kind!: FileExtension" FROM books WHERE fingerprint = ?"#,
-                    row.fingerprint,
-                )
-                .fetch_one(&mut *tx)
-                .await?;
+                let kind = row.file_kind;
 
                 if allowed_kinds.contains(&kind) {
                     continue;
