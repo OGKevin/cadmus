@@ -557,6 +557,15 @@ pub enum Event {
     ImportFinished {
         library_index: Option<usize>,
     },
+    /// Signals that a background thumbnail extraction has finished.
+    ///
+    /// Emitted by [`ThumbnailExtractionTask`](crate::task::thumbnail::ThumbnailExtractionTask)
+    /// when it completes (regardless of whether any thumbnails were extracted).
+    /// The [`TaskManager`](crate::task::TaskManager) intercepts this event to
+    /// drain any queued extractions that accumulated while the task was running.
+    ThumbnailExtractionFinished {
+        library_index: Option<usize>,
+    },
     /// Requests a background dictionary index scan.
     ///
     /// Emitted when the settings editor closes after dictionaries were installed

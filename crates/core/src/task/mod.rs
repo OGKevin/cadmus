@@ -359,15 +359,17 @@ impl TaskManager {
                 self.schedule_import(*library_index, hub, database, settings);
             }
             Event::ImportFinished { library_index } => {
+                self.drain_pending_imports(hub, database, settings);
                 self.schedule_thumbnail_extraction(*library_index, hub, database, settings);
+            }
+            Event::ThumbnailExtractionFinished { .. } => {
+                self.drain_pending_thumbnails(hub, database, settings);
             }
             Event::ReindexDictionaries => {
                 self.schedule_dictionary_index(hub, database);
             }
             _ => {}
         }
-        self.drain_pending_imports(hub, database, settings);
-        self.drain_pending_thumbnails(hub, database, settings);
         false
     }
 
