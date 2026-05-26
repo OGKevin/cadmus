@@ -8,8 +8,9 @@
 //! ## Platform requirement
 //!
 //! Cross-compilation requires the Linaro ARM toolchain
-//! (`arm-linux-gnueabihf-gcc` and friends) which is only available on Linux.
-//! The task exits with a clear error on macOS.
+//! (`arm-linux-gnueabihf-gcc` and friends).
+//! The task checks for the toolchain at runtime and exits with a clear error if
+//! it is not available.
 //!
 //! ## Build modes
 //!
