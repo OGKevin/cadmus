@@ -52,7 +52,7 @@ Once inside the devenv shell, these commands are available:
 | `cargo xtask download-assets` | Download packaged Plato runtime assets           |
 | `cargo xtask test`            | Run the test suite across the feature matrix     |
 | `cargo xtask run-emulator`    | Run the emulator                                 |
-| `cargo xtask build-kobo`      | Cross-compile for Kobo device (Linux only)       |
+| `cargo xtask build-kobo`      | Cross-compile for Kobo device                    |
 | `cargo xtask dist`            | Assemble the Kobo distribution directory         |
 | `cargo xtask bundle`          | Package KoboRoot.tgz for installation            |
 | `cadmus-dev-otel`             | Run emulator with tracing and profiling enabled  |
@@ -77,7 +77,7 @@ Tasks are defined in `devenv.nix` and can be run with `devenv tasks run <task>`.
 | ------------- | --------------------------------------------------------- | ------------ |
 | `docs:build`  | Build documentation EPUB (only rebuilds if files changed) | None         |
 | `deps:native` | Build MuPDF and wrapper for native development            | None         |
-| `build:kobo`  | Build for Kobo device (Linux only)                        | `docs:build` |
+| `build:kobo`  | Build for Kobo device                                     | `docs:build` |
 
 All tasks delegate to `cargo xtask` under the hood.
 
@@ -184,20 +184,16 @@ Linux provides full development capabilities including:
 
 The Linaro toolchain is automatically added to `PATH` and provides `arm-linux-gnueabihf-*` commands.
 
-### macOS (Native Development Only)
+### macOS (Full Support)
 
-macOS supports native development but has some limitations:
+macOS supports full development capabilities including:
 
-| Feature           | Status        | Notes                          |
-| ----------------- | ------------- | ------------------------------ |
-| Native builds     | Supported     | Emulator and tests work        |
-| Cross-compilation | Not supported | Linaro toolchain is Linux-only |
+- Native development (emulator, tests)
+- Cross-compilation for Kobo devices using the Linaro ARM toolchain (downloaded and patched via
+  patchelf at setup time)
+- Git hooks (actionlint, shellcheck, shfmt, markdownlint, prettier)
 
 #### macOS-Specific Notes
-
-**Cross-compilation for Kobo**: The Linaro ARM cross-compilation toolchain consists of x86_64 Linux
-ELF binaries that cannot run on macOS. To build for Kobo devices on macOS, use Docker with a Linux
-container or a Linux VM.
 
 **MuPDF build**: On macOS, the native setup script manually gathers pkg-config CFLAGS for system
 libraries because MuPDF's build system doesn't properly detect them on Darwin.
