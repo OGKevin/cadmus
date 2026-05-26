@@ -228,9 +228,8 @@ struct RunningTask {
 /// methods to stop individual tasks or all tasks at once.
 pub struct TaskManager {
     tasks: HashMap<TaskId, RunningTask>,
-    /// A pending import rerun queued while an import was already running.
-    /// `Some(library_index)` means re-run for that index after current finishes.
-    pending_import_rerun: Option<Option<usize>>,
+    /// Library indices awaiting import while one is already running.
+    pending_import_indices: Vec<Option<usize>>,
     /// Library indices awaiting thumbnail extraction while a run is in progress.
     pending_thumbnail_indices: Vec<Option<usize>>,
 }
@@ -240,7 +239,7 @@ impl TaskManager {
     pub fn new() -> Self {
         Self {
             tasks: HashMap::new(),
-            pending_import_rerun: None,
+            pending_import_indices: Vec::new(),
             pending_thumbnail_indices: Vec::new(),
         }
     }
@@ -361,20 +360,18 @@ impl TaskManager {
             }
             Event::ImportFinished { library_index } => {
                 self.schedule_thumbnail_extraction(*library_index, hub, database, settings);
-                if let Some(pending) = self.pending_import_rerun.take() {
-                    self.schedule_import(pending, hub, database, settings);
-                }
             }
             Event::ReindexDictionaries => {
                 self.schedule_dictionary_index(hub, database);
             }
             _ => {}
         }
+        self.drain_pending_imports(hub, database, settings);
         self.drain_pending_thumbnails(hub, database, settings);
         false
     }
 
-    /// Schedules an import task, coalescing if one is already running.
+    /// Schedules an import task, queuing the index if one is already running.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
     fn schedule_import(
         &mut self,
@@ -384,7 +381,8 @@ impl TaskManager {
         settings: &Settings,
     ) {
         if self.is_running(&TaskId::Import) {
-            self.pending_import_rerun = Some(library_index);
+            tracing::info!(library_index = ?library_index, "import already running, queueing");
+            self.pending_import_indices.push(library_index);
             return;
         }
 
@@ -397,6 +395,22 @@ impl TaskManager {
         if let Err(e) = self.start(task, hub.clone()) {
             tracing::warn!(error = %e, "failed to start import task");
         }
+    }
+
+    /// Starts the next pending import when the current one finishes.
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
+    fn drain_pending_imports(
+        &mut self,
+        hub: &Sender<Event>,
+        database: &Database,
+        settings: &Settings,
+    ) {
+        if self.is_running(&TaskId::Import) || self.pending_import_indices.is_empty() {
+            return;
+        }
+
+        let next = self.pending_import_indices.remove(0);
+        self.schedule_import(next, hub, database, settings);
     }
 
     /// Schedules a dictionary index scan, stopping any running instance first.
@@ -426,7 +440,7 @@ impl TaskManager {
         settings: &Settings,
     ) {
         if self.is_running(&TaskId::ThumbnailExtraction) {
-            tracing::info!("thumbnail extraction already running, queueing index");
+            tracing::info!(library_index = ?library_index, "thumbnail extraction already running, queueing");
             self.pending_thumbnail_indices.push(library_index);
             return;
         }
@@ -442,7 +456,7 @@ impl TaskManager {
         }
     }
 
-    /// Starts the next thumbnail extraction run when the current one finishes.
+    /// Starts the next pending thumbnail extraction when the current one finishes.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
     fn drain_pending_thumbnails(
         &mut self,
@@ -456,11 +470,8 @@ impl TaskManager {
             return;
         }
 
-        // Each library query only returns books still missing thumbnails,
-        // so running with None (all libraries) safely covers every pending
-        // index without duplicating work.
-        self.pending_thumbnail_indices.clear();
-        self.schedule_thumbnail_extraction(None, hub, database, settings);
+        let next = self.pending_thumbnail_indices.remove(0);
+        self.schedule_thumbnail_extraction(next, hub, database, settings);
     }
 
     /// Returns `true` if a task with the given ID is running.
@@ -701,6 +712,11 @@ mod tests {
         assert_eq!(manager.pending_thumbnail_indices.len(), 2);
 
         manager.stop(&TaskId::ThumbnailExtraction).unwrap();
+
+        manager.drain_pending_thumbnails(&hub, &database, &settings);
+        assert_eq!(manager.pending_thumbnail_indices.len(), 1);
+
+        wait_until_not_running(&mut manager, &TaskId::ThumbnailExtraction);
 
         manager.drain_pending_thumbnails(&hub, &database, &settings);
         assert!(manager.pending_thumbnail_indices.is_empty());
