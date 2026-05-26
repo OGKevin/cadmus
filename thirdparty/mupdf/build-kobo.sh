@@ -3,6 +3,7 @@
 [ -e .gitattributes ] && rm -rf .git*
 
 BUILD_KIND=${1:-release}
+rm -rf build
 make verbose=yes generate
 make verbose=yes mujs=no tesseract=no extract=no archive=no brotli=no barcode=no commercial=no USE_SYSTEM_LIBS=yes OS=kobo build="$BUILD_KIND" libs
 

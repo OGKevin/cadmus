@@ -57,7 +57,7 @@ pub fn run(args: SetupNativeArgs) -> Result<()> {
     println!("\nNative setup complete!");
     println!("You can now run:");
     println!("  cargo test          - Run tests");
-    println!("  cargo xtask build-kobo  - Build for Kobo (Linux only)");
+    println!("  cargo xtask build-kobo  - Build for Kobo (Linux & macOS)");
 
     Ok(())
 }

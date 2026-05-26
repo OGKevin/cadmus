@@ -21,7 +21,7 @@
 //! | [`clippy`](tasks::clippy) | Run `cargo clippy` across the feature matrix |
 //! | [`test`](tasks::test) | Run `cargo test` across the feature matrix |
 //! | [`bench`](tasks::bench) | Run benchmarks with the `bench` feature enabled |
-//! | [`build-kobo`](tasks::build_kobo) | Cross-compile for Kobo (ARM, Linux only) |
+//! | [`build-kobo`](tasks::build_kobo) | Cross-compile for Kobo (ARM, Linux & macOS) |
 //! | [`setup-native`](tasks::setup_native) | Build MuPDF and the C wrapper for native dev |
 //! | [`run-emulator`](tasks::run_emulator) | Run the Cadmus emulator (ensures prereqs are built) |
 //! | [`install-importer`](tasks::install_importer) | Install the Cadmus importer crate |
@@ -71,7 +71,7 @@ pub enum Command {
     Test(TestArgs),
     /// Run benchmarks with the bench feature enabled.
     Bench(BenchArgs),
-    /// Cross-compile Cadmus for Kobo devices (Linux only).
+    /// Cross-compile Cadmus for Kobo devices (Linux & macOS).
     BuildKobo(BuildKoboArgs),
     /// Build MuPDF and the C wrapper for native development.
     SetupNative(SetupNativeArgs),

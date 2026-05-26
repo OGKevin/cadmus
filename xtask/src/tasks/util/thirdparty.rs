@@ -56,7 +56,7 @@ pub fn soname(libs_dir: &Path, lib: &str) -> Result<String> {
         let so_path_str = so_path
             .to_str()
             .with_context(|| format!("shared library path is not valid UTF-8: {so_path:?}"))?;
-        let output = cmd::output("readelf", &["-d", so_path_str], libs_dir, &[])?;
+        let output = cmd::output("arm-linux-gnueabihf-readelf", &["-d", so_path_str], libs_dir, &[])?;
         let soname = output
             .lines()
             .find(|line| line.contains("SONAME"))
@@ -406,7 +406,17 @@ pub fn build_libraries(thirdparty_dir: &Path, names: &[&str]) -> Result<()> {
                 .with_context(|| format!("failed to apply kobo.patch for {name}"))?;
         }
 
-        cmd::run("./build-kobo.sh", &[], &lib_dir, &[])
+        let envs = [
+            ("AR", "arm-linux-gnueabihf-ar"),
+            ("AS", "arm-linux-gnueabihf-as"),
+            ("STRIP", "arm-linux-gnueabihf-strip"),
+            ("RANLIB", "arm-linux-gnueabihf-ranlib"),
+            ("LD", "arm-linux-gnueabihf-ld"),
+            ("CC_FOR_BUILD", "cc"),
+            ("CXX_FOR_BUILD", "c++"),
+            ("CC_BUILD", "cc"),
+        ];
+        cmd::run("./build-kobo.sh", &[], &lib_dir, &envs)
             .with_context(|| format!("failed to build {name}"))?;
 
         write_marker(&lib_dir, BUILT_MARKER, name, "build")?;

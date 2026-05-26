@@ -20,20 +20,21 @@ let
   fixRustToolchainLibSymlink =
     drv:
     drv.overrideAttrs (old: {
-      buildCommand = builtins.replaceStrings
-        [ "for i in $(cat $pathsPath); do\n" ]
-        [
-          (
-            "for i in $(cat $pathsPath); do\n"
-            + "  if [ -L \"$out/lib\" ]; then\n"
-            + "    _lib_t=$(readlink -f \"$out/lib\")\n"
-            + "    rm \"$out/lib\"\n"
-            + "    mkdir \"$out/lib\"\n"
-            + "    ${pkgs.lndir}/bin/lndir -silent \"$_lib_t\" \"$out/lib\"\n"
-            + "  fi\n"
-          )
-        ]
-        old.buildCommand;
+      buildCommand =
+        builtins.replaceStrings
+          [ "for i in $(cat $pathsPath); do\n" ]
+          [
+            (
+              "for i in $(cat $pathsPath); do\n"
+              + "  if [ -L \"$out/lib\" ]; then\n"
+              + "    _lib_t=$(readlink -f \"$out/lib\")\n"
+              + "    rm \"$out/lib\"\n"
+              + "    mkdir \"$out/lib\"\n"
+              + "    ${pkgs.lndir}/bin/lndir -silent \"$_lib_t\" \"$out/lib\"\n"
+              + "  fi\n"
+            )
+          ]
+          old.buildCommand;
     });
 
   # Build the stable Rust toolchain the same way devenv does, but with the
@@ -133,19 +134,26 @@ let
 
   # Linaro GCC toolchain for Kobo - same as used by Kobo Reader
   # https://github.com/kobolabs/Kobo-Reader/blob/master/toolchain/gcc-linaro-4.9.4-2017.01-x86_64_arm-linux-gnueabihf.tar.xz
-  # NOTE: This toolchain is x86_64 Linux-only (ELF binaries with autoPatchelfHook)
-  # On macOS, cross-compilation for Kobo is not supported - use Docker/Linux VM instead
+  # On macOS, we download the Darwin-compatible Linaro compiler from Google Drive.
   linaroToolchain = pkgs.stdenv.mkDerivation {
     pname = "gcc-linaro";
     version = "4.9.4-2017.01";
 
-    src = pkgs.fetchurl {
-      url = "https://releases.linaro.org/components/toolchain/binaries/4.9-2017.01/arm-linux-gnueabihf/gcc-linaro-4.9.4-2017.01-x86_64_arm-linux-gnueabihf.tar.xz";
-      sha256 = "22914118fd963f953824b58107015c6953b5bbdccbdcf25ad9fd9a2f9f11ac07";
-    };
+    src =
+      if isLinux then
+        pkgs.fetchurl {
+          url = "https://releases.linaro.org/components/toolchain/binaries/4.9-2017.01/arm-linux-gnueabihf/gcc-linaro-4.9.4-2017.01-x86_64_arm-linux-gnueabihf.tar.xz";
+          sha256 = "22914118fd963f953824b58107015c6953b5bbdccbdcf25ad9fd9a2f9f11ac07";
+        }
+      else
+        pkgs.fetchurl {
+          name = "gcc-linaro-darwin.tar.bz2";
+          url = "https://drive.usercontent.google.com/download?id=1ggMLM3VBwCYQuFTpJEC0OmyMkiDtYMju&export=download&confirm=t";
+          sha256 = "rSP4JS/KsK8dxPwvdY7Cnb5zxbKbFYnVuKe/VIOIf/Q=";
+        };
 
-    nativeBuildInputs = [ pkgs.autoPatchelfHook ];
-    buildInputs = [
+    nativeBuildInputs = pkgs.lib.optionals isLinux [ pkgs.autoPatchelfHook ];
+    buildInputs = pkgs.lib.optionals isLinux [
       pkgs.stdenv.cc.cc.lib
       pkgs.zlib
       pkgs.ncurses5
@@ -161,9 +169,11 @@ let
       cp -r * $out/
     '';
 
-    # The toolchain has pre-built binaries that need patching
-    # Ignore python dependency for gdb (we don't need gdb for building)
-    autoPatchelfIgnoreMissingDeps = [ "libpython2.7.so.1.0" ];
+    # Pre-built binaries only need patching/stripping on Linux
+    autoPatchelfIgnoreMissingDeps = pkgs.lib.optionals isLinux [ "libpython2.7.so.1.0" ];
+    dontFixup = isDarwin;
+    dontPatchELF = isDarwin;
+    dontStrip = isDarwin;
   };
 
   # Custom mdbook-epub from specific commit
@@ -304,18 +314,17 @@ in
     pkgs.wrangler
 
     pkgs.cargo-llvm-cov
+
+    # Linaro ARM cross-compilation toolchain (provides arm-linux-gnueabihf-* commands)
+    linaroToolchain
+
+    # patchelf is used to patch ELF binaries
+    pkgs.patchelf
   ]
   # Linux-only packages
   ++ pkgs.lib.optionals isLinux [
-    # patchelf is Linux-only (patches ELF binaries)
-    pkgs.patchelf
-
     # GCC - on macOS we use clang from Xcode
     pkgs.gcc
-
-    # Linaro ARM cross-compilation toolchain (provides arm-linux-gnueabihf-* commands)
-    # This is x86_64 Linux ELF binaries - cannot run on macOS
-    linaroToolchain
 
     # This seems to be borken on macos
     # https://github.com/NixOS/nixpkgs/blob/ed142ab1b3a092c4d149245d0c4126a5d7ea00b0/pkgs/by-name/po/poedit/package.nix#L88
@@ -369,8 +378,7 @@ in
     # jemalloc configure uses -O0 in debug builds, which triggers _FORTIFY_SOURCE warnings
     # treated as errors under Nix hardening. Disable hardening for jemalloc's build script.
     NIX_HARDENING_ENABLE = "";
-  }
-  // pkgs.lib.optionalAttrs isLinux {
+
     # pkg-config configuration for cross-compilation
     PKG_CONFIG_ALLOW_CROSS = "1";
 
@@ -673,16 +681,9 @@ in
       exec = "cargo xtask setup-native";
     };
 
-    # Build for Kobo with cross-compilation (Linux only)
+    # Build for Kobo with cross-compilation
     "build:kobo" = {
-      exec =
-        if isLinux then
-          "cargo xtask build-kobo --slow"
-        else
-          ''
-            echo "Error: Kobo build is only available on Linux."
-            exit 1
-          '';
+      exec = "cargo xtask build-kobo --slow";
       after = [ "docs:build" ];
     };
 
@@ -708,20 +709,11 @@ in
       cargo xtask setup-native
     '';
 
-    # Build for Kobo device (Linux only)
-    cadmus-build-kobo.exec =
-      if isLinux then
-        ''
-          cargo xtask build-kobo --slow
-          cargo xtask dist
-        ''
-      else
-        ''
-          echo "Error: cadmus-build-kobo is only available on Linux."
-          echo ""
-          echo "The Linaro ARM cross-compilation toolchain requires Linux."
-          exit 1
-        '';
+    # Build for Kobo device
+    cadmus-build-kobo.exec = ''
+      cargo xtask build-kobo --slow
+      cargo xtask dist
+    '';
 
     # Run clippy filtered to lines changed relative to master
     cadmus-clippy.exec = ''
@@ -797,20 +789,14 @@ in
     echo "  cargo xtask bundle        - Package KoboRoot.tgz"
     echo ""
   ''
-  # Linux-specific shell setup
-  + pkgs.lib.optionalString isLinux ''
+  + ''
     # Add Linaro toolchain to PATH
     export PATH="${linaroToolchain}/bin:$PATH"
 
-    echo "Cross-compilation (Linux only):"
+    echo "Cross-compilation:"
     echo "  cadmus-build-kobo         - Build for Kobo (cross-compile + dist)"
     echo "  cargo xtask build-kobo    - Cross-compile Cadmus for Kobo"
     echo "  Linaro toolchain: $(which arm-linux-gnueabihf-gcc 2>/dev/null || echo 'not found')"
-    echo ""
-  ''
-  # macOS-specific shell setup
-  + pkgs.lib.optionalString isDarwin ''
-    echo "Note: Cross-compilation for Kobo is not available on macOS."
     echo ""
   ''
   + ''

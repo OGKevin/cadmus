@@ -100,11 +100,10 @@ pub struct BuildKoboArgs {
 /// - The Linaro toolchain is not on `PATH`.
 /// - Any build step fails.
 pub fn run(args: BuildKoboArgs) -> Result<()> {
-    if !cfg!(target_os = "linux") {
+    if !cfg!(any(target_os = "linux", target_os = "macos")) {
         bail!(
-            "Kobo cross-compilation is only available on Linux.\n\
-             The Linaro ARM toolchain consists of x86_64 Linux ELF binaries \
-             that cannot run on macOS. Use Docker or a Linux VM instead."
+            "Kobo cross-compilation is only available on Linux and macOS.\n\
+             On other platforms, please use Docker or a Linux VM instead."
         );
     }
 
