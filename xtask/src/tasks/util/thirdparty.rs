@@ -25,8 +25,8 @@ use super::{cmd, fs, http};
 
 /// Base names of all thirdparty shared libraries.
 ///
-/// SONAMEs are discovered at runtime via `readelf -d` because upstream
-/// libraries do not follow a consistent ABI versioning scheme.
+/// SONAMEs are discovered at runtime via `arm-linux-gnueabihf-readelf -d`
+/// because upstream libraries do not follow a consistent ABI versioning scheme.
 pub const SONAMES: &[&str] = &[
     "libz.so",
     "libbz2.so",
@@ -43,13 +43,15 @@ pub const SONAMES: &[&str] = &[
 
 /// Returns the SONAME of `lib` in `libs_dir`.
 ///
-/// When the library file exists, `readelf -d` is used to extract the SONAME
-/// from the binary. When only a versioned file exists (e.g. `libz.so.1.2.13`
-/// without `libz.so`), the versioned filename is returned directly.
+/// When the library file exists, `arm-linux-gnueabihf-readelf -d` is used to
+/// extract the SONAME from the binary. When only a versioned file exists
+/// (e.g. `libz.so.1.2.13` without `libz.so`), the versioned filename is
+/// returned directly.
 ///
 /// # Errors
 ///
-/// Returns an error if `readelf` fails or the SONAME cannot be determined.
+/// Returns an error if `arm-linux-gnueabihf-readelf` fails or the SONAME
+/// cannot be determined.
 pub fn soname(libs_dir: &Path, lib: &str) -> Result<String> {
     let so_path = libs_dir.join(lib);
     if so_path.exists() {

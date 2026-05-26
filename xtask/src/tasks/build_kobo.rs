@@ -97,7 +97,7 @@ pub struct BuildKoboArgs {
 /// # Errors
 ///
 /// Returns an error if:
-/// - The platform is not Linux.
+/// - The platform is not Linux or macOS.
 /// - The Linaro toolchain is not on `PATH`.
 /// - Any build step fails.
 pub fn run(args: BuildKoboArgs) -> Result<()> {
