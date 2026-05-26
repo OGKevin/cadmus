@@ -56,7 +56,12 @@ pub fn soname(libs_dir: &Path, lib: &str) -> Result<String> {
         let so_path_str = so_path
             .to_str()
             .with_context(|| format!("shared library path is not valid UTF-8: {so_path:?}"))?;
-        let output = cmd::output("arm-linux-gnueabihf-readelf", &["-d", so_path_str], libs_dir, &[])?;
+        let output = cmd::output(
+            "arm-linux-gnueabihf-readelf",
+            &["-d", so_path_str],
+            libs_dir,
+            &[],
+        )?;
         let soname = output
             .lines()
             .find(|line| line.contains("SONAME"))
