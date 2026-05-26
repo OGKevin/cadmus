@@ -189,8 +189,7 @@ The Linaro toolchain is automatically added to `PATH` and provides `arm-linux-gn
 macOS supports full development capabilities including:
 
 - Native development (emulator, tests)
-- Cross-compilation for Kobo devices using the Linaro ARM toolchain (downloaded and patched via
-  patchelf at setup time)
+- Cross-compilation for Kobo devices using the Linaro ARM toolchain
 - Git hooks (actionlint, shellcheck, shfmt, markdownlint, prettier)
 
 #### macOS-Specific Notes
