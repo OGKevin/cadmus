@@ -369,8 +369,7 @@ fn run() -> Result<(), Error> {
 
     let mut history: Vec<Box<dyn View>> = Vec::new();
     let mut rq = RenderQueue::new();
-    let mut view: Box<dyn View> =
-        Box::new(Home::new(context.fb.rect(), &tx, &mut rq, &mut context)?);
+    let mut view: Box<dyn View> = Box::new(Home::new(context.fb.rect(), &mut rq, &mut context)?);
 
     let mut updating = Vec::new();
 

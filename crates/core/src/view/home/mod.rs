@@ -80,10 +80,9 @@ struct Fetcher {
 
 impl Home {
     /// Builds the Home view and loads the initial page of books for the selected library.
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(rq, hub, context)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(rq, context)))]
     pub fn new(
         rect: Rectangle,
-        hub: &Hub,
         rq: &mut RenderQueue,
         context: &mut Context,
     ) -> Result<Home, Error> {
@@ -210,7 +209,7 @@ impl Home {
         let count = page_result.total_count;
         let pages_count = count.div_ceil(max_lines);
 
-        shelf.update(&page_result.books, hub, &mut RenderQueue::new(), context);
+        shelf.update(&page_result.books, &mut RenderQueue::new(), context);
 
         children.push(Box::new(shelf) as Box<dyn View>);
 
@@ -314,7 +313,7 @@ impl Home {
             ));
         }
 
-        self.update_shelf(true, hub, rq, context);
+        self.update_shelf(true, rq, context);
         self.update_bottom_bar(rq, context);
     }
 
@@ -352,22 +351,16 @@ impl Home {
         }
     }
 
-    fn go_to_page(&mut self, index: usize, hub: &Hub, rq: &mut RenderQueue, context: &mut Context) {
+    fn go_to_page(&mut self, index: usize, rq: &mut RenderQueue, context: &mut Context) {
         if index >= self.pages_count {
             return;
         }
         self.current_page = index;
-        self.update_shelf(false, hub, rq, context);
+        self.update_shelf(false, rq, context);
         self.update_bottom_bar(rq, context);
     }
 
-    fn go_to_neighbor(
-        &mut self,
-        dir: CycleDir,
-        hub: &Hub,
-        rq: &mut RenderQueue,
-        context: &mut Context,
-    ) {
+    fn go_to_neighbor(&mut self, dir: CycleDir, rq: &mut RenderQueue, context: &mut Context) {
         match dir {
             CycleDir::Next if self.current_page < self.pages_count.saturating_sub(1) => {
                 self.current_page += 1;
@@ -378,17 +371,11 @@ impl Home {
             _ => return,
         }
 
-        self.update_shelf(false, hub, rq, context);
+        self.update_shelf(false, rq, context);
         self.update_bottom_bar(rq, context);
     }
 
-    fn go_to_status_change(
-        &mut self,
-        dir: CycleDir,
-        hub: &Hub,
-        rq: &mut RenderQueue,
-        context: &mut Context,
-    ) {
+    fn go_to_status_change(&mut self, dir: CycleDir, rq: &mut RenderQueue, context: &mut Context) {
         if self.pages_count < 2 {
             return;
         }
@@ -407,7 +394,7 @@ impl Home {
         ) {
             Ok(Some(page)) => {
                 self.current_page = page;
-                self.update_shelf(false, hub, rq, context);
+                self.update_shelf(false, rq, context);
                 self.update_bottom_bar(rq, context);
             }
             Ok(None) => {}
@@ -422,7 +409,6 @@ impl Home {
         &mut self,
         update: bool,
         reset_page: bool,
-        hub: &Hub,
         rq: &mut RenderQueue,
         context: &mut Context,
     ) {
@@ -475,37 +461,32 @@ impl Home {
         }
 
         if update {
-            self.update_shelf(false, hub, rq, context);
+            self.update_shelf(false, rq, context);
             self.update_bottom_bar(rq, context);
         }
     }
 
-    fn update_first_column(&mut self, hub: &Hub, rq: &mut RenderQueue, context: &mut Context) {
+    fn update_first_column(&mut self, rq: &mut RenderQueue, context: &mut Context) {
         let selected_library = context.settings.selected_library;
         self.children[self.shelf_index]
             .as_mut()
             .downcast_mut::<Shelf>()
             .unwrap()
             .set_first_column(context.settings.libraries[selected_library].first_column);
-        self.update_shelf(false, hub, rq, context);
+        self.update_shelf(false, rq, context);
     }
 
-    fn update_second_column(&mut self, hub: &Hub, rq: &mut RenderQueue, context: &mut Context) {
+    fn update_second_column(&mut self, rq: &mut RenderQueue, context: &mut Context) {
         let selected_library = context.settings.selected_library;
         self.children[self.shelf_index]
             .as_mut()
             .downcast_mut::<Shelf>()
             .unwrap()
             .set_second_column(context.settings.libraries[selected_library].second_column);
-        self.update_shelf(false, hub, rq, context);
+        self.update_shelf(false, rq, context);
     }
 
-    fn update_thumbnail_previews(
-        &mut self,
-        hub: &Hub,
-        rq: &mut RenderQueue,
-        context: &mut Context,
-    ) {
+    fn update_thumbnail_previews(&mut self, rq: &mut RenderQueue, context: &mut Context) {
         let selected_library = context.settings.selected_library;
         self.children[self.shelf_index]
             .as_mut()
@@ -514,16 +495,10 @@ impl Home {
             .set_thumbnail_previews(
                 context.settings.libraries[selected_library].thumbnail_previews,
             );
-        self.update_shelf(false, hub, rq, context);
+        self.update_shelf(false, rq, context);
     }
 
-    fn update_shelf(
-        &mut self,
-        was_resized: bool,
-        hub: &Hub,
-        rq: &mut RenderQueue,
-        context: &mut Context,
-    ) {
+    fn update_shelf(&mut self, was_resized: bool, rq: &mut RenderQueue, context: &mut Context) {
         let dpi = CURRENT_DEVICE.dpi;
         let big_height = scale_by_dpi(BIG_BAR_HEIGHT, dpi) as i32;
         let thickness = scale_by_dpi(THICKNESS_MEDIUM, dpi) as i32;
@@ -570,7 +545,7 @@ impl Home {
             }
         }
 
-        shelf.update(&self.current_page_books, hub, rq, context);
+        shelf.update(&self.current_page_books, rq, context);
     }
 
     fn update_top_bar(&mut self, search_visible: bool, rq: &mut RenderQueue) {
@@ -834,7 +809,7 @@ impl Home {
                 ));
             }
 
-            self.update_shelf(true, hub, rq, context);
+            self.update_shelf(true, rq, context);
             self.update_bottom_bar(rq, context);
         }
     }
@@ -843,7 +818,6 @@ impl Home {
         &mut self,
         enable: Option<bool>,
         update: bool,
-        hub: &Hub,
         rq: &mut RenderQueue,
         context: &mut Context,
     ) {
@@ -920,7 +894,7 @@ impl Home {
                 ));
             }
 
-            self.update_shelf(true, hub, rq, context);
+            self.update_shelf(true, rq, context);
             self.update_bottom_bar(rq, context);
         }
     }
@@ -1039,7 +1013,7 @@ impl Home {
 
         if update {
             if !search_visible {
-                self.refresh_visibles(false, true, hub, rq, context);
+                self.refresh_visibles(false, true, rq, context);
             }
 
             self.update_top_bar(search_visible, rq);
@@ -1053,7 +1027,7 @@ impl Home {
                 let mut rect = *self.child(self.shelf_index).rect();
                 rect.max.y = self.child(self.shelf_index + 1).rect().min.y;
                 // Render the part of the shelf that isn't covered.
-                self.update_shelf(true, hub, &mut RenderQueue::new(), context);
+                self.update_shelf(true, &mut RenderQueue::new(), context);
                 rq.add(RenderData::new(
                     self.child(self.shelf_index).id(),
                     rect,
@@ -1067,7 +1041,7 @@ impl Home {
             } else {
                 for i in self.shelf_index - 1..=self.shelf_index + 1 {
                     if i == self.shelf_index {
-                        self.update_shelf(true, hub, rq, context);
+                        self.update_shelf(true, rq, context);
                         continue;
                     }
                     rq.add(RenderData::new(
@@ -1527,17 +1501,16 @@ impl Home {
         }
     }
 
-    fn add_document(&mut self, info: Info, hub: &Hub, rq: &mut RenderQueue, context: &mut Context) {
+    fn add_document(&mut self, info: Info, rq: &mut RenderQueue, context: &mut Context) {
         context.library.add_document(info);
-        self.sort(false, hub, rq, context);
-        self.refresh_visibles(true, false, hub, rq, context);
+        self.sort(false, rq, context);
+        self.refresh_visibles(true, false, rq, context);
     }
 
     fn set_status(
         &mut self,
         path: &Path,
         status: SimpleStatus,
-        hub: &Hub,
         rq: &mut RenderQueue,
         context: &mut Context,
     ) {
@@ -1545,10 +1518,10 @@ impl Home {
 
         // Is the current sort method affected by this change?
         if self.sort_method.is_status_related() {
-            self.sort(false, hub, rq, context);
+            self.sort(false, rq, context);
         }
 
-        self.refresh_visibles(true, false, hub, rq, context);
+        self.refresh_visibles(true, false, rq, context);
     }
 
     fn empty_trash(&mut self, hub: &Hub, rq: &mut RenderQueue, context: &mut Context) {
@@ -1588,19 +1561,17 @@ impl Home {
         &mut self,
         path: &Path,
         file_name: &str,
-        hub: &Hub,
         rq: &mut RenderQueue,
         context: &mut Context,
     ) -> Result<(), Error> {
         context.library.rename(path, file_name)?;
-        self.refresh_visibles(true, false, hub, rq, context);
+        self.refresh_visibles(true, false, rq, context);
         Ok(())
     }
 
     fn remove(
         &mut self,
         path: &Path,
-        hub: &Hub,
         rq: &mut RenderQueue,
         context: &mut Context,
     ) -> Result<(), Error> {
@@ -1628,7 +1599,7 @@ impl Home {
         } else {
             context.library.remove(path)?;
         }
-        self.refresh_visibles(true, false, hub, rq, context);
+        self.refresh_visibles(true, false, rq, context);
         Ok(())
     }
 
@@ -1648,7 +1619,6 @@ impl Home {
         &mut self,
         path: &Path,
         index: usize,
-        hub: &Hub,
         rq: &mut RenderQueue,
         context: &mut Context,
     ) -> Result<(), Error> {
@@ -1660,26 +1630,19 @@ impl Home {
         )?;
         context.library.move_to(path, &mut library)?;
         library.flush();
-        self.refresh_visibles(true, false, hub, rq, context);
+        self.refresh_visibles(true, false, rq, context);
         Ok(())
     }
 
-    fn set_reverse_order(
-        &mut self,
-        value: bool,
-        hub: &Hub,
-        rq: &mut RenderQueue,
-        context: &mut Context,
-    ) {
+    fn set_reverse_order(&mut self, value: bool, rq: &mut RenderQueue, context: &mut Context) {
         self.reverse_order = value;
         self.current_page = 0;
-        self.sort(true, hub, rq, context);
+        self.sort(true, rq, context);
     }
 
     fn set_sort_method(
         &mut self,
         sort_method: SortMethod,
-        hub: &Hub,
         rq: &mut RenderQueue,
         context: &mut Context,
     ) {
@@ -1697,16 +1660,16 @@ impl Home {
         }
 
         self.current_page = 0;
-        self.sort(true, hub, rq, context);
+        self.sort(true, rq, context);
     }
 
-    fn sort(&mut self, update: bool, hub: &Hub, rq: &mut RenderQueue, context: &mut Context) {
+    fn sort(&mut self, update: bool, rq: &mut RenderQueue, context: &mut Context) {
         context
             .library
             .set_sort(self.sort_method, self.reverse_order);
 
         if update {
-            self.update_shelf(false, hub, rq, context);
+            self.update_shelf(false, rq, context);
             let search_visible = rlocate::<SearchBar>(self).is_some();
             self.update_top_bar(search_visible, rq);
             self.update_bottom_bar(rq, context);
@@ -1791,9 +1754,9 @@ impl Home {
         self.select_directory(&home, hub, rq, context);
     }
 
-    fn clean_up(&mut self, hub: &Hub, rq: &mut RenderQueue, context: &mut Context) {
+    fn clean_up(&mut self, rq: &mut RenderQueue, context: &mut Context) {
         context.library.clean_up();
-        self.refresh_visibles(true, false, hub, rq, context);
+        self.refresh_visibles(true, false, rq, context);
     }
 
     fn flush(&mut self, context: &mut Context) {
@@ -1983,11 +1946,11 @@ impl Home {
         Ok(process)
     }
 
-    fn reseed(&mut self, hub: &Hub, rq: &mut RenderQueue, context: &mut Context) {
+    fn reseed(&mut self, rq: &mut RenderQueue, context: &mut Context) {
         context
             .library
             .set_sort(self.sort_method, self.reverse_order);
-        self.refresh_visibles(true, false, hub, &mut RenderQueue::new(), context);
+        self.refresh_visibles(true, false, &mut RenderQueue::new(), context);
 
         if let Some(top_bar) = self.child_mut(0).downcast_mut::<TopBar>() {
             top_bar.reseed(&mut RenderQueue::new(), context);
@@ -2017,7 +1980,7 @@ impl View for Home {
                             && self.children[self.shelf_index].rect().includes(end) =>
                     {
                         if !context.settings.home.navigation_bar {
-                            self.toggle_navigation_bar(Some(true), true, hub, rq, context);
+                            self.toggle_navigation_bar(Some(true), true, rq, context);
                         } else if !context.settings.home.address_bar {
                             self.toggle_address_bar(Some(true), true, hub, rq, context);
                         }
@@ -2029,7 +1992,7 @@ impl View for Home {
                         if context.settings.home.address_bar {
                             self.toggle_address_bar(Some(false), true, hub, rq, context);
                         } else if context.settings.home.navigation_bar {
-                            self.toggle_navigation_bar(Some(false), true, hub, rq, context);
+                            self.toggle_navigation_bar(Some(false), true, rq, context);
                         }
                     }
                     _ => (),
@@ -2044,10 +2007,10 @@ impl View for Home {
             }
             Event::Gesture(GestureEvent::Arrow { dir, .. }) => {
                 match dir {
-                    Dir::West => self.go_to_page(0, hub, rq, context),
+                    Dir::West => self.go_to_page(0, rq, context),
                     Dir::East => {
                         let pages_count = self.pages_count;
-                        self.go_to_page(pages_count.saturating_sub(1), hub, rq, context);
+                        self.go_to_page(pages_count.saturating_sub(1), rq, context);
                     }
                     Dir::North => {
                         let path = context.library.home.clone();
@@ -2060,10 +2023,10 @@ impl View for Home {
             Event::Gesture(GestureEvent::Corner { dir, .. }) => {
                 match dir {
                     DiagDir::NorthWest | DiagDir::SouthWest => {
-                        self.go_to_status_change(CycleDir::Previous, hub, rq, context)
+                        self.go_to_status_change(CycleDir::Previous, rq, context)
                     }
                     DiagDir::NorthEast | DiagDir::SouthEast => {
-                        self.go_to_status_change(CycleDir::Next, hub, rq, context)
+                        self.go_to_status_change(CycleDir::Next, rq, context)
                     }
                 };
                 true
@@ -2144,12 +2107,12 @@ impl View for Home {
             Event::Select(EntryId::Sort(sort_method)) => {
                 let selected_library = context.settings.selected_library;
                 context.settings.libraries[selected_library].sort_method = sort_method;
-                self.set_sort_method(sort_method, hub, rq, context);
+                self.set_sort_method(sort_method, rq, context);
                 true
             }
             Event::Select(EntryId::ReverseOrder) => {
                 let next_value = !self.reverse_order;
-                self.set_reverse_order(next_value, hub, rq, context);
+                self.set_reverse_order(next_value, rq, context);
                 true
             }
             Event::Select(EntryId::LoadLibrary(index)) => {
@@ -2165,7 +2128,7 @@ impl View for Home {
                 true
             }
             Event::Select(EntryId::CleanUp) => {
-                self.clean_up(hub, rq, context);
+                self.clean_up(rq, context);
                 true
             }
             Event::Select(EntryId::Flush) => {
@@ -2173,30 +2136,30 @@ impl View for Home {
                 true
             }
             Event::FetcherAddDocument(_, ref info) => {
-                self.add_document(*info.clone(), hub, rq, context);
+                self.add_document(*info.clone(), rq, context);
                 true
             }
             Event::Select(EntryId::SetStatus(ref path, status)) => {
-                self.set_status(path, status, hub, rq, context);
+                self.set_status(path, status, rq, context);
                 true
             }
             Event::Select(EntryId::FirstColumn(first_column)) => {
                 let selected_library = context.settings.selected_library;
                 context.settings.libraries[selected_library].first_column = first_column;
-                self.update_first_column(hub, rq, context);
+                self.update_first_column(rq, context);
                 true
             }
             Event::Select(EntryId::SecondColumn(second_column)) => {
                 let selected_library = context.settings.selected_library;
                 context.settings.libraries[selected_library].second_column = second_column;
-                self.update_second_column(hub, rq, context);
+                self.update_second_column(rq, context);
                 true
             }
             Event::Select(EntryId::ThumbnailPreviews) => {
                 let selected_library = context.settings.selected_library;
                 context.settings.libraries[selected_library].thumbnail_previews =
                     !context.settings.libraries[selected_library].thumbnail_previews;
-                self.update_thumbnail_previews(hub, rq, context);
+                self.update_thumbnail_previews(rq, context);
                 true
             }
             Event::Submit(ViewId::AddressBarInput, ref addr) => {
@@ -2216,7 +2179,7 @@ impl View for Home {
                             UpdateMode::Gui,
                         ));
                     }
-                    self.refresh_visibles(true, true, hub, rq, context);
+                    self.refresh_visibles(true, true, rq, context);
                 } else {
                     let notif = Notification::new(
                         None,
@@ -2232,20 +2195,20 @@ impl View for Home {
             }
             Event::Submit(ViewId::GoToPageInput, ref text) => {
                 if text == "(" {
-                    self.go_to_page(0, hub, rq, context);
+                    self.go_to_page(0, rq, context);
                 } else if text == ")" {
-                    self.go_to_page(self.pages_count.saturating_sub(1), hub, rq, context);
+                    self.go_to_page(self.pages_count.saturating_sub(1), rq, context);
                 } else if text == "_" {
                     let index = (context.rng.next_u64() % self.pages_count as u64) as usize;
-                    self.go_to_page(index, hub, rq, context);
+                    self.go_to_page(index, rq, context);
                 } else if let Ok(index) = text.parse::<usize>() {
-                    self.go_to_page(index.saturating_sub(1), hub, rq, context);
+                    self.go_to_page(index.saturating_sub(1), rq, context);
                 }
                 true
             }
             Event::Submit(ViewId::RenameDocumentInput, ref file_name) => {
                 if let Some(ref path) = self.target_document.take() {
-                    self.rename(path, file_name, hub, rq, context)
+                    self.rename(path, file_name, rq, context)
                         .map_err(|e| error!("Can't rename document: {:#}.", e))
                         .ok();
                 }
@@ -2253,7 +2216,7 @@ impl View for Home {
             }
             Event::NavigationBarResized(_) => {
                 self.adjust_shelf_top_edge();
-                self.update_shelf(true, hub, rq, context);
+                self.update_shelf(true, rq, context);
                 self.update_bottom_bar(rq, context);
                 for i in self.shelf_index - 2..=self.shelf_index - 1 {
                     rq.add(RenderData::new(
@@ -2275,7 +2238,7 @@ impl View for Home {
             }
             Event::Select(EntryId::Remove(ref path))
             | Event::FetcherRemoveDocument(_, ref path) => {
-                self.remove(path, hub, rq, context)
+                self.remove(path, rq, context)
                     .map_err(|e| error!("Can't remove document: {:#}.", e))
                     .ok();
                 true
@@ -2287,14 +2250,14 @@ impl View for Home {
                 true
             }
             Event::Select(EntryId::MoveTo(ref path, index)) => {
-                self.move_to(path, index, hub, rq, context)
+                self.move_to(path, index, rq, context)
                     .map_err(|e| error!("Can't move document: {:#}.", e))
                     .ok();
                 true
             }
             Event::Select(EntryId::ToggleShowHidden) => {
                 context.library.show_hidden = !context.library.show_hidden;
-                self.refresh_visibles(true, false, hub, rq, context);
+                self.refresh_visibles(true, false, rq, context);
                 true
             }
             Event::SelectDirectory(ref path)
@@ -2327,26 +2290,24 @@ impl View for Home {
                             UpdateMode::Gui,
                         ));
                     }
-                    self.refresh_visibles(true, true, hub, rq, context);
+                    self.refresh_visibles(true, true, rq, context);
                 }
                 true
             }
             Event::GoTo(location) => {
-                self.go_to_page(location as usize, hub, rq, context);
+                self.go_to_page(location as usize, rq, context);
                 true
             }
             Event::Chapter(dir) => {
                 let pages_count = self.pages_count;
                 match dir {
-                    CycleDir::Previous => self.go_to_page(0, hub, rq, context),
-                    CycleDir::Next => {
-                        self.go_to_page(pages_count.saturating_sub(1), hub, rq, context)
-                    }
+                    CycleDir::Previous => self.go_to_page(0, rq, context),
+                    CycleDir::Next => self.go_to_page(pages_count.saturating_sub(1), rq, context),
                 }
                 true
             }
             Event::Page(dir) => {
-                self.go_to_neighbor(dir, hub, rq, context);
+                self.go_to_neighbor(dir, rq, context);
                 true
             }
             Event::Device(DeviceEvent::Button {
@@ -2354,7 +2315,7 @@ impl View for Home {
                 status: ButtonStatus::Pressed,
                 ..
             }) => {
-                self.go_to_neighbor(CycleDir::Previous, hub, rq, context);
+                self.go_to_neighbor(CycleDir::Previous, rq, context);
                 true
             }
             Event::Device(DeviceEvent::Button {
@@ -2362,7 +2323,7 @@ impl View for Home {
                 status: ButtonStatus::Pressed,
                 ..
             }) => {
-                self.go_to_neighbor(CycleDir::Next, hub, rq, context);
+                self.go_to_neighbor(CycleDir::Next, rq, context);
                 true
             }
             Event::Device(DeviceEvent::NetUp) => {
@@ -2432,7 +2393,7 @@ impl View for Home {
                 true
             }
             Event::Reseed => {
-                self.reseed(hub, rq, context);
+                self.reseed(rq, context);
                 true
             }
             Event::ImportFinished { library_index } => {
@@ -2442,7 +2403,7 @@ impl View for Home {
                     context
                         .library
                         .set_sort(self.sort_method, self.reverse_order);
-                    self.refresh_visibles(true, false, hub, rq, context);
+                    self.refresh_visibles(true, false, rq, context);
                 }
                 false
             }
@@ -2617,7 +2578,7 @@ impl View for Home {
         let shelf_rect = rect![rect.min.x, shelf_min_y, rect.max.x, shelf_max_y];
         self.children[self.shelf_index].resize(shelf_rect, hub, rq, context);
 
-        self.update_shelf(true, hub, &mut RenderQueue::new(), context);
+        self.update_shelf(true, &mut RenderQueue::new(), context);
         self.update_bottom_bar(&mut RenderQueue::new(), context);
 
         // Floating windows.
@@ -2666,9 +2627,9 @@ mod tests {
         context.settings.home.address_bar = false;
 
         let rect = rect![0, 0, 600, 800];
-        let mut home = Home::new(rect, &hub, &mut rq, &mut context).unwrap();
+        let mut home = Home::new(rect, &mut rq, &mut context).unwrap();
 
-        home.toggle_navigation_bar(Some(true), false, &hub, &mut rq, &mut context);
+        home.toggle_navigation_bar(Some(true), false, &mut rq, &mut context);
         assert!(context.settings.home.navigation_bar);
 
         let nav_bar_index =
