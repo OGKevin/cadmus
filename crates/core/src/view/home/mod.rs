@@ -2295,7 +2295,7 @@ impl View for Home {
                 true
             }
             Event::GoTo(location) => {
-                self.go_to_page(location as usize, rq, context);
+                self.go_to_page(location, rq, context);
                 true
             }
             Event::Chapter(dir) => {

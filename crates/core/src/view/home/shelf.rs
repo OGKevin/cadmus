@@ -58,10 +58,7 @@ impl Shelf {
         self.thumbnail_previews = thumbnail_previews;
     }
 
-    #[cfg_attr(
-        feature = "tracing",
-        tracing::instrument(skip(self, rq, context))
-    )]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, rq, context)))]
     pub fn update(&mut self, metadata: &[Info], rq: &mut RenderQueue, context: &Context) {
         self.children.clear();
         let dpi = CURRENT_DEVICE.dpi;
