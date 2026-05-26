@@ -2,26 +2,17 @@ use super::book::Book;
 use crate::color::{SEPARATOR_NORMAL, WHITE};
 use crate::context::Context;
 use crate::device::CURRENT_DEVICE;
-use crate::document::open;
 use crate::font::Fonts;
 use crate::framebuffer::{Framebuffer, UpdateMode};
 use crate::geom::divide;
 use crate::geom::{halves, CycleDir, Dir, Rectangle};
 use crate::gesture::GestureEvent;
-use crate::helpers::Fingerprint;
 use crate::metadata::Info;
 use crate::settings::{FirstColumn, SecondColumn};
 use crate::unit::scale_by_dpi;
 use crate::view::filler::Filler;
 use crate::view::{Bus, Event, Hub, Id, RenderData, RenderQueue, View, ID_FEEDER};
 use crate::view::{BIG_BAR_HEIGHT, THICKNESS_MEDIUM};
-use lazy_static::lazy_static;
-use std::sync::Mutex;
-use std::thread;
-
-lazy_static! {
-    static ref EXCLUSIVE_ACCESS: Mutex<u8> = Mutex::new(0);
-}
 
 pub struct Shelf {
     id: Id,
@@ -67,14 +58,11 @@ impl Shelf {
         self.thumbnail_previews = thumbnail_previews;
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, rq, context)))]
-    pub fn update(
-        &mut self,
-        metadata: &[Info],
-        hub: &Hub,
-        rq: &mut RenderQueue,
-        context: &Context,
-    ) {
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(skip(self, rq, context))
+    )]
+    pub fn update(&mut self, metadata: &[Info], rq: &mut RenderQueue, context: &Context) {
         self.children.clear();
         let dpi = CURRENT_DEVICE.dpi;
         let big_height = scale_by_dpi(BIG_BAR_HEIGHT, dpi) as i32;
@@ -83,8 +71,6 @@ impl Shelf {
         let max_lines = ((self.rect.height() as i32 + thickness) / big_height) as usize;
         let book_heights = divide(self.rect.height() as i32, max_lines as i32);
         let mut y_pos = self.rect.min.y;
-        let th = big_height;
-        let tw = 3 * th / 4;
 
         #[cfg(feature = "tracing")]
         let _span = tracing::info_span!("processing metadata").entered();
@@ -103,30 +89,7 @@ impl Shelf {
             let preview = if self.thumbnail_previews {
                 let existing = context.library.thumbnail_preview(&info.file.path);
                 if existing.is_none() {
-                    let hub2 = hub.clone();
-                    let path = info.file.path.clone();
-                    let full_path = context.library.home.join(&info.file.path);
-                    let database = context.library.db.clone();
-                    let fp = full_path.fingerprint().ok();
-
-                    if let Some(fp) = fp {
-                        thread::spawn(move || {
-                            let _guard = EXCLUSIVE_ACCESS.lock().unwrap();
-                            if let Some(bytes) = open(full_path)
-                                .and_then(|mut doc| {
-                                    doc.preview_pixmap(
-                                        tw as f32,
-                                        th as f32,
-                                        CURRENT_DEVICE.color_samples(),
-                                    )
-                                })
-                                .and_then(|pixmap| pixmap.to_png_bytes().ok())
-                            {
-                                database.save_thumbnail(fp, &bytes).ok();
-                                hub2.send(Event::RefreshBookPreview(path)).ok();
-                            }
-                        });
-                    }
+                    tracing::debug!(path = %info.file.path.display(), "no preview");
                 }
                 existing
             } else {

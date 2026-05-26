@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                SELECT lb.book_fingerprint AS \"fingerprint!: Fp\",\n                       lb.file_path        AS \"file_path!: String\"\n                FROM library_books lb\n                LEFT JOIN thumbnails t ON lb.book_fingerprint = t.fingerprint\n                WHERE lb.library_id = ? AND t.fingerprint IS NULL\n                ",
+  "describe": {
+    "columns": [
+      {
+        "name": "fingerprint!: Fp",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "file_path!: String",
+        "ordinal": 1,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "f57b916e338839ca6233d33a41127cc39c64d2d0fd1beebfbf30fe1e7202805f"
+}

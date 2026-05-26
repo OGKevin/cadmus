@@ -40,6 +40,7 @@ pub mod dictionary_index;
 #[cfg(any(feature = "test", doc))]
 mod hello_world;
 pub mod import;
+pub mod thumbnail;
 #[cfg(any(feature = "kobo", doc))]
 mod wifi_status_monitor;
 
@@ -74,6 +75,8 @@ pub enum TaskId {
     Placeholder,
     /// Library import task.
     Import,
+    /// Thumbnail extraction background task.
+    ThumbnailExtraction,
     /// Dictionary index background task.
     DictionaryIndex,
     /// The example task that prints periodically (test builds only).
@@ -98,6 +101,7 @@ impl std::fmt::Display for TaskId {
         match self {
             TaskId::Placeholder => write!(f, "placeholder"),
             TaskId::Import => write!(f, "import"),
+            TaskId::ThumbnailExtraction => write!(f, "thumbnail_extraction"),
             TaskId::DictionaryIndex => write!(f, "dictionary_index"),
             #[cfg(feature = "test")]
             TaskId::HelloWorld => write!(f, "hello_world"),
@@ -352,7 +356,8 @@ impl TaskManager {
             Event::ImportLibrary { library_index } => {
                 self.schedule_import(*library_index, hub, database, settings);
             }
-            Event::ImportFinished { .. } => {
+            Event::ImportFinished { library_index } => {
+                self.schedule_thumbnail_extraction(*library_index, hub, database, settings);
                 if let Some(pending) = self.pending_import_rerun.take() {
                     self.schedule_import(pending, hub, database, settings);
                 }
@@ -404,6 +409,33 @@ impl TaskManager {
 
         if let Err(e) = self.start(task, hub.clone()) {
             tracing::warn!(error = %e, "failed to start dictionary_index task");
+        }
+    }
+
+    /// Schedules a thumbnail extraction task, stopping any running instance first.
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
+    pub fn schedule_thumbnail_extraction(
+        &mut self,
+        library_index: Option<usize>,
+        hub: &Sender<Event>,
+        database: &Database,
+        settings: &Settings,
+    ) {
+        if self.is_running(&TaskId::ThumbnailExtraction) {
+            tracing::info!("stopping running thumbnail extraction task for restart");
+            if let Err(e) = self.stop(&TaskId::ThumbnailExtraction) {
+                tracing::warn!(error = %e, "failed to stop thumbnail extraction task for restart");
+            }
+        }
+
+        let task = Box::new(thumbnail::ThumbnailExtractionTask::new(
+            database.clone(),
+            settings.clone(),
+            library_index,
+        ));
+
+        if let Err(e) = self.start(task, hub.clone()) {
+            tracing::warn!(error = %e, "failed to start thumbnail extraction task");
         }
     }
 
@@ -593,5 +625,20 @@ mod tests {
         manager.stop_all();
 
         assert!(!manager.is_running(&TaskId::TestTask));
+    }
+
+    #[test]
+    fn test_thumbnail_extraction_task_lifecycle() {
+        let mut manager = TaskManager::new();
+        let (hub, _rx) = mpsc::channel();
+        let database = Database::new(":memory:").unwrap();
+        database.migrate().unwrap();
+        let settings = Settings::default();
+
+        manager.schedule_thumbnail_extraction(None, &hub, &database, &settings);
+        assert!(manager.is_running(&TaskId::ThumbnailExtraction));
+
+        manager.stop(&TaskId::ThumbnailExtraction).unwrap();
+        assert!(!manager.is_running(&TaskId::ThumbnailExtraction));
     }
 }

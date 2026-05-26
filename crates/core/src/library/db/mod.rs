@@ -2568,6 +2568,32 @@ impl Db {
         })
     }
 
+    /// Returns `(fingerprint, path)` pairs for every book that does not have a thumbnail cached.
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(skip(self), fields(library_id))
+    )]
+    pub fn books_without_thumbnails(&self, library_id: i64) -> Result<Vec<(Fp, PathBuf)>, Error> {
+        RUNTIME.block_on(async {
+            let rows = sqlx::query!(
+                r#"
+                SELECT lb.book_fingerprint AS "fingerprint!: Fp",
+                       lb.file_path        AS "file_path!: String"
+                FROM library_books lb
+                LEFT JOIN thumbnails t ON lb.book_fingerprint = t.fingerprint
+                WHERE lb.library_id = ? AND t.fingerprint IS NULL
+                "#,
+                library_id,
+            )
+            .fetch_all(&self.pool)
+            .await?;
+
+            rows.into_iter()
+                .map(|row| Ok((row.fingerprint, PathBuf::from(row.file_path))))
+                .collect()
+        })
+    }
+
     /// Updates both the relative and absolute path of a book in a single transaction.
     /// No-op if the book is not found in the library.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(library_id, fp = %fp)))]
@@ -3596,6 +3622,50 @@ mod tests {
 
         let thumbnail = libdb.get_thumbnail(fp).expect("failed to get thumbnail");
         assert!(thumbnail.is_none());
+    }
+
+    #[test]
+    fn test_books_without_thumbnails() {
+        let (_db, libdb) = create_test_db();
+        let library_id = register_test_library(
+            &libdb,
+            "/tmp/test_library_thumbnails_missing",
+            "Missing Thumbs Library",
+        );
+        let fp1 = Fp::from_str("0000000000000008").unwrap();
+        let fp2 = Fp::from_str("0000000000000009").unwrap();
+
+        libdb
+            .insert_book(
+                library_id,
+                fp1,
+                &make_info("thumbs/book1.epub", "Thumb Book 1", "Thumb Author 1"),
+            )
+            .expect("failed to insert book 1");
+
+        libdb
+            .insert_book(
+                library_id,
+                fp2,
+                &make_info("thumbs/book2.epub", "Thumb Book 2", "Thumb Author 2"),
+            )
+            .expect("failed to insert book 2");
+
+        let missing = libdb.books_without_thumbnails(library_id).unwrap();
+        assert_eq!(missing.len(), 2);
+        assert!(missing.contains(&(fp1, PathBuf::from("thumbs/book1.epub"))));
+        assert!(missing.contains(&(fp2, PathBuf::from("thumbs/book2.epub"))));
+
+        libdb.save_thumbnail(fp1, &[1, 2, 3]).unwrap();
+
+        let missing = libdb.books_without_thumbnails(library_id).unwrap();
+        assert_eq!(missing.len(), 1);
+        assert_eq!(missing[0], (fp2, PathBuf::from("thumbs/book2.epub")));
+
+        libdb.save_thumbnail(fp2, &[4, 5, 6]).unwrap();
+
+        let missing = libdb.books_without_thumbnails(library_id).unwrap();
+        assert!(missing.is_empty());
     }
 
     #[test]
