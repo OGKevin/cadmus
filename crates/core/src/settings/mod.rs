@@ -542,7 +542,7 @@ impl std::str::FromStr for FileExtension {
             "fb2" => Ok(FileExtension::Fb2),
             "mobi" => Ok(FileExtension::Mobi),
             "txt" => Ok(FileExtension::Txt),
-            "html" => Ok(FileExtension::Html),
+            "html" | "htm" => Ok(FileExtension::Html),
             "xps" => Ok(FileExtension::Xps),
             "oxps" => Ok(FileExtension::Oxps),
             _ => Err(()),
@@ -1156,5 +1156,17 @@ allowed-kinds = ["epub", "unknown-format", "another-unknown"]
             let parsed = ext.as_str().parse::<FileExtension>().ok();
             assert_eq!(parsed, Some(*ext), "round trip failed for {:?}", ext);
         }
+    }
+
+    #[test]
+    fn test_htm_extension_parses_as_html() {
+        let parsed = "htm".parse::<FileExtension>();
+        assert_eq!(parsed, Ok(FileExtension::Html));
+    }
+
+    #[test]
+    fn test_html_extension_still_parses() {
+        let parsed = "html".parse::<FileExtension>();
+        assert_eq!(parsed, Ok(FileExtension::Html));
     }
 }

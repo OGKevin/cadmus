@@ -714,3 +714,31 @@ pub fn sys_info_as_html() -> String {
     buf.push_str("\t\t</table>\n\t</body>\n</html>");
     buf
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_file_kind_recognizes_htm_extension() {
+        let path = PathBuf::from("test_file.htm");
+        let kind = file_kind(&path);
+        assert_eq!(kind, Some(FileExtension::Html));
+    }
+
+    #[test]
+    fn test_file_kind_recognizes_html_extension() {
+        let path = PathBuf::from("test_file.html");
+        let kind = file_kind(&path);
+        assert_eq!(kind, Some(FileExtension::Html));
+    }
+
+    #[test]
+    fn test_file_kind_case_insensitive() {
+        let path_upper = PathBuf::from("test_file.HTM");
+        let path_mixed = PathBuf::from("test_file.HtM");
+        assert_eq!(file_kind(&path_upper), Some(FileExtension::Html));
+        assert_eq!(file_kind(&path_mixed), Some(FileExtension::Html));
+    }
+}
