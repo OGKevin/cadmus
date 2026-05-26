@@ -19,6 +19,31 @@ user experience.
 - Avoid premature `collect()` — keep iterators lazy.
 - Ensure code compiles without warnings.
 
+## Newtype Wrappers
+
+Prefer newtype wrappers over raw primitives for domain concepts. A
+`Fingerprint(String)` is safer and more descriptive than a bare `String`.
+
+```rust
+// ✅ Good — the type documents intent and prevents misuse
+struct Fingerprint(String);
+struct FileExtension(/* variant enum */);
+
+fn lookup(fp: &Fingerprint) { /* … */ }
+
+// ❌ Bad — raw primitives are interchangeable by accident
+fn lookup(fp: &str) { /* … */ }
+```
+
+### Guidelines
+
+- Wrap `String`, `i64`, and similar primitives when the value represents a
+  specific domain concept (fingerprints, file kinds, identifiers, …).
+- Implement `Display`, `FromStr`, and other standard traits on the newtype so
+  it stays ergonomic.
+- Match on enum variants instead of string comparisons — the compiler catches
+  missing arms.
+
 ## Code Comments
 
 Comment **why**, not **what**. Most code needs no comments — use good naming.
@@ -63,6 +88,59 @@ tracing::debug!("[OTA] Found {} artifacts for PR #{}", count, pr_number);
 - `info` — important runtime events
 - `warn` — recoverable issues (retries, fallbacks)
 - `error` — failures requiring attention
+
+## SQLite / sqlx Conventions
+
+Return domain types directly from queries instead of parsing primitives after
+the fact.
+
+### Implementing sqlx traits for a custom type
+
+For a newtype to be used in `sqlx::query!()` results, implement three traits
+delegating to the inner primitive:
+
+```rust
+impl sqlx::Type<sqlx::Sqlite> for MyType {
+    fn type_info() -> sqlx::sqlite::SqliteTypeInfo {
+        <String as sqlx::Type<sqlx::Sqlite>>::type_info()
+    }
+
+    fn compatible(ty: &sqlx::sqlite::SqliteTypeInfo) -> bool {
+        <String as sqlx::Type<sqlx::Sqlite>>::compatible(ty)
+    }
+}
+
+impl<'q> sqlx::Encode<'q, sqlx::Sqlite> for MyType {
+    fn encode_by_ref(
+        &self,
+        buf: &mut Vec<sqlx::sqlite::SqliteArgumentValue<'q>>,
+    ) -> Result<sqlx::encode::IsNull, sqlx::error::BoxDynError> {
+        self.inner_string().encode_by_ref(buf)
+    }
+}
+
+impl<'r> sqlx::Decode<'r, sqlx::Sqlite> for MyType {
+    fn decode(
+        value: sqlx::sqlite::SqliteValueRef<'r>,
+    ) -> Result<Self, sqlx::error::BoxDynError> {
+        let s = <String as sqlx::Decode<'r, sqlx::Sqlite>>::decode(value)?;
+        s.parse().map_err(|e| /* convert to BoxDynError */)
+    }
+}
+```
+
+### Column type annotations
+
+Use sqlx type-override syntax so the macro deserializes into the domain type
+directly:
+
+```rust
+// ✅ Good — result field is already `Fp`
+sqlx::query!(r#"SELECT fingerprint AS "fingerprint: Fp" FROM books"#)
+
+// ❌ Bad — caller must parse the String manually
+sqlx::query!(r#"SELECT fingerprint FROM books"#)
+```
 
 ## Cargo Dependencies
 
