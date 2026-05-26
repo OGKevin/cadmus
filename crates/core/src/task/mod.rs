@@ -231,6 +231,8 @@ pub struct TaskManager {
     /// A pending import rerun queued while an import was already running.
     /// `Some(library_index)` means re-run for that index after current finishes.
     pending_import_rerun: Option<Option<usize>>,
+    /// Library indices awaiting thumbnail extraction while a run is in progress.
+    pending_thumbnail_indices: Vec<Option<usize>>,
 }
 
 impl TaskManager {
@@ -239,6 +241,7 @@ impl TaskManager {
         Self {
             tasks: HashMap::new(),
             pending_import_rerun: None,
+            pending_thumbnail_indices: Vec::new(),
         }
     }
 
@@ -367,6 +370,7 @@ impl TaskManager {
             }
             _ => {}
         }
+        self.drain_pending_thumbnails(hub, database, settings);
         false
     }
 
@@ -412,7 +416,7 @@ impl TaskManager {
         }
     }
 
-    /// Schedules a thumbnail extraction task, stopping any running instance first.
+    /// Schedules a thumbnail extraction task, queuing the index if one is already running.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
     pub fn schedule_thumbnail_extraction(
         &mut self,
@@ -422,10 +426,9 @@ impl TaskManager {
         settings: &Settings,
     ) {
         if self.is_running(&TaskId::ThumbnailExtraction) {
-            tracing::info!("stopping running thumbnail extraction task for restart");
-            if let Err(e) = self.stop(&TaskId::ThumbnailExtraction) {
-                tracing::warn!(error = %e, "failed to stop thumbnail extraction task for restart");
-            }
+            tracing::info!("thumbnail extraction already running, queueing index");
+            self.pending_thumbnail_indices.push(library_index);
+            return;
         }
 
         let task = Box::new(thumbnail::ThumbnailExtractionTask::new(
@@ -437,6 +440,27 @@ impl TaskManager {
         if let Err(e) = self.start(task, hub.clone()) {
             tracing::warn!(error = %e, "failed to start thumbnail extraction task");
         }
+    }
+
+    /// Starts the next thumbnail extraction run when the current one finishes.
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
+    fn drain_pending_thumbnails(
+        &mut self,
+        hub: &Sender<Event>,
+        database: &Database,
+        settings: &Settings,
+    ) {
+        if self.is_running(&TaskId::ThumbnailExtraction)
+            || self.pending_thumbnail_indices.is_empty()
+        {
+            return;
+        }
+
+        // Each library query only returns books still missing thumbnails,
+        // so running with None (all libraries) safely covers every pending
+        // index without duplicating work.
+        self.pending_thumbnail_indices.clear();
+        self.schedule_thumbnail_extraction(None, hub, database, settings);
     }
 
     /// Returns `true` if a task with the given ID is running.
@@ -636,9 +660,51 @@ mod tests {
         let settings = Settings::default();
 
         manager.schedule_thumbnail_extraction(None, &hub, &database, &settings);
-        assert!(manager.is_running(&TaskId::ThumbnailExtraction));
+
+        // Task exits quickly on an unseeded database, so wait for
+        // completion rather than asserting the transient running state.
+        wait_until_not_running(&mut manager, &TaskId::ThumbnailExtraction);
+        assert!(!manager.is_running(&TaskId::ThumbnailExtraction));
+
+        let err = manager.stop(&TaskId::ThumbnailExtraction).unwrap_err();
+        assert!(matches!(
+            err,
+            TaskError::NotRunning(TaskId::ThumbnailExtraction)
+        ));
+    }
+
+    #[test]
+    fn thumbnail_extraction_queues_when_running() {
+        let mut manager = TaskManager::new();
+        let (hub, _rx) = mpsc::channel();
+
+        // Simulate a running ThumbnailExtraction task with a blocking thread.
+        let (shutdown_tx, shutdown_rx) = mpsc::channel();
+        let blocking_handle = thread::spawn(move || {
+            let _ = shutdown_rx.recv();
+        });
+        manager.tasks.insert(
+            TaskId::ThumbnailExtraction,
+            RunningTask {
+                handle: blocking_handle,
+                shutdown: shutdown_tx,
+            },
+        );
+
+        let database = Database::new(":memory:").unwrap();
+        database.migrate().unwrap();
+        let settings = Settings::default();
+
+        manager.schedule_thumbnail_extraction(Some(0), &hub, &database, &settings);
+        manager.schedule_thumbnail_extraction(Some(1), &hub, &database, &settings);
+
+        assert_eq!(manager.pending_thumbnail_indices.len(), 2);
 
         manager.stop(&TaskId::ThumbnailExtraction).unwrap();
-        assert!(!manager.is_running(&TaskId::ThumbnailExtraction));
+
+        manager.drain_pending_thumbnails(&hub, &database, &settings);
+        assert!(manager.pending_thumbnail_indices.is_empty());
+
+        wait_until_not_running(&mut manager, &TaskId::ThumbnailExtraction);
     }
 }
