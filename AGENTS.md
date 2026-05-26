@@ -142,6 +142,29 @@ sqlx::query!(r#"SELECT fingerprint AS "fingerprint: Fp" FROM books"#)
 sqlx::query!(r#"SELECT fingerprint FROM books"#)
 ```
 
+### Orphan rule — types you don't own
+
+When the orphan rule prevents implementing sqlx traits (e.g. `PathBuf`,
+`SystemTime`), convert at the database function boundary so callers never see
+the primitive:
+
+```rust
+// The query returns a String, but the public function returns PathBuf.
+pub fn get_book_path(&self, fp: &Fp) -> Result<PathBuf, Error> {
+    let row = sqlx::query!(
+        r#"SELECT file_path AS "file_path!: String" FROM library_books WHERE book_fingerprint = ?"#,
+        fp,
+    )
+    .fetch_one(&self.pool)
+    .await?;
+
+    Ok(PathBuf::from(row.file_path))
+}
+```
+
+If the same conversion appears in many places, create a newtype wrapper instead
+(e.g. `UnixTimestamp(i64)`) and implement the sqlx traits on it.
+
 ## Cargo Dependencies
 
 - Define versions in root `Cargo.toml` under `[workspace.dependencies]`.
