@@ -44,7 +44,7 @@ pub mod thumbnail;
 #[cfg(any(feature = "kobo", doc))]
 mod wifi_status_monitor;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread::{self, JoinHandle};
@@ -229,9 +229,9 @@ struct RunningTask {
 pub struct TaskManager {
     tasks: HashMap<TaskId, RunningTask>,
     /// Library indices awaiting import while one is already running.
-    pending_import_indices: Vec<Option<usize>>,
+    pending_import_indices: VecDeque<Option<usize>>,
     /// Library indices awaiting thumbnail extraction while a run is in progress.
-    pending_thumbnail_indices: Vec<Option<usize>>,
+    pending_thumbnail_indices: VecDeque<Option<usize>>,
 }
 
 impl TaskManager {
@@ -239,8 +239,8 @@ impl TaskManager {
     pub fn new() -> Self {
         Self {
             tasks: HashMap::new(),
-            pending_import_indices: Vec::new(),
-            pending_thumbnail_indices: Vec::new(),
+            pending_import_indices: VecDeque::new(),
+            pending_thumbnail_indices: VecDeque::new(),
         }
     }
 
@@ -382,7 +382,7 @@ impl TaskManager {
     ) {
         if self.is_running(&TaskId::Import) {
             tracing::info!(library_index = ?library_index, "import already running, queueing");
-            self.pending_import_indices.push(library_index);
+            self.pending_import_indices.push_back(library_index);
             return;
         }
 
@@ -409,7 +409,7 @@ impl TaskManager {
             return;
         }
 
-        let next = self.pending_import_indices.remove(0);
+        let next = self.pending_import_indices.pop_front().unwrap();
         self.schedule_import(next, hub, database, settings);
     }
 
@@ -441,7 +441,7 @@ impl TaskManager {
     ) {
         if self.is_running(&TaskId::ThumbnailExtraction) {
             tracing::info!(library_index = ?library_index, "thumbnail extraction already running, queueing");
-            self.pending_thumbnail_indices.push(library_index);
+            self.pending_thumbnail_indices.push_back(library_index);
             return;
         }
 
@@ -470,7 +470,7 @@ impl TaskManager {
             return;
         }
 
-        let next = self.pending_thumbnail_indices.remove(0);
+        let next = self.pending_thumbnail_indices.pop_front().unwrap();
         self.schedule_thumbnail_extraction(next, hub, database, settings);
     }
 
