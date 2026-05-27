@@ -13,17 +13,34 @@ jobs:
     steps:
       - name: Cleanup
         run: |
-          echo "Fetching list of cache keys"
-          cacheKeysForPR=$(gh cache list --ref $BRANCH --limit 100 --json id --jq '.[].id')
+          echo "Fetching list of caches for $BRANCH"
+          caches=$(gh cache list --ref "$BRANCH" --limit 100 --json id,key --jq '.[] | "\(.id)\t\(.key)"')
+
+          if [ -z "$caches" ]; then
+            echo "No caches found for this PR."
+            exit 0
+          fi
+
+          count=$(echo "$caches" | wc -l)
+          echo "Found $count cache(s) to delete"
+
+          deleted=0
+          failed=0
 
           ## Setting this to not fail the workflow while deleting cache keys.
           set +e
-          echo "Deleting caches..."
-          for cacheKey in $cacheKeysForPR
-          do
-              gh cache delete $cacheKey
-          done
-          echo "Done"
+
+          while IFS=$'\t' read -r cacheId cacheKey; do
+            echo "Deleting cache: $cacheKey (id=$cacheId)"
+            if gh cache delete "$cacheId"; then
+              deleted=$((deleted + 1))
+            else
+              echo "  Failed to delete cache: $cacheKey"
+              failed=$((failed + 1))
+            fi
+          done <<< "$caches"
+
+          echo "Cache cleanup complete: $deleted deleted, $failed failed"
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
