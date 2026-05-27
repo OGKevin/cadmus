@@ -218,9 +218,8 @@ pub trait BackgroundTask: Send {
 
     /// Returns a "finished" event to send after the task thread exits.
     ///
-    /// Called after [`stop`](Self::stop) in the thread closure. If the
-    /// returned `Event` is `Some`, it is sent on the hub once the thread
-    /// has truly finished running. The default returns `None`.
+    /// The [`TaskManager`] sends this event after
+    /// observing the task's thread as finished. The default returns `None`.
     fn finished_event(&self) -> Option<Event> {
         None
     }
@@ -229,6 +228,8 @@ pub trait BackgroundTask: Send {
 struct RunningTask {
     handle: JoinHandle<()>,
     shutdown: Sender<()>,
+    /// Event to emit when the task is observed as naturally finished.
+    finished_event: Option<Event>,
 }
 
 /// Manages the lifecycle of background tasks.
@@ -241,6 +242,8 @@ pub struct TaskManager {
     pending_import_indices: VecDeque<Option<usize>>,
     /// Library indices awaiting thumbnail extraction while a run is in progress.
     pending_thumbnail_indices: VecDeque<Option<usize>>,
+    /// Events from naturally finished tasks, waiting to be sent.
+    buffered_events: Vec<Event>,
 }
 
 impl TaskManager {
@@ -250,6 +253,7 @@ impl TaskManager {
             tasks: HashMap::new(),
             pending_import_indices: VecDeque::new(),
             pending_thumbnail_indices: VecDeque::new(),
+            buffered_events: Vec::new(),
         }
     }
 
@@ -277,16 +281,13 @@ impl TaskManager {
         let (shutdown_tx, shutdown_rx) = mpsc::channel();
         let shutdown_signal = ShutdownSignal::new(shutdown_rx);
 
+        let finished_event = task.finished_event();
+
         let handle = thread::spawn(move || {
             let mut task = task;
             tracing::info!("task started");
             task.run(&hub, &shutdown_signal);
             task.stop();
-            if !shutdown_signal.should_stop() {
-                if let Some(evt) = task.finished_event() {
-                    hub.send(evt).ok();
-                }
-            }
             tracing::info!("task stopped");
         });
 
@@ -295,6 +296,7 @@ impl TaskManager {
             RunningTask {
                 handle,
                 shutdown: shutdown_tx,
+                finished_event,
             },
         );
 
@@ -348,9 +350,28 @@ impl TaskManager {
         }
     }
 
-    /// Removes entries for tasks whose threads have finished.
+    /// Removes entries for tasks whose threads have finished, buffering
+    /// their completion events to be sent later.
     fn cleanup_finished(&mut self) {
-        self.tasks.retain(|_, task| !task.handle.is_finished());
+        let mut events = Vec::new();
+        self.tasks.retain(|_, task| {
+            if task.handle.is_finished() {
+                if let Some(evt) = task.finished_event.take() {
+                    events.push(evt);
+                }
+                false
+            } else {
+                true
+            }
+        });
+        self.buffered_events.extend(events);
+    }
+
+    /// Sends any buffered completion events from naturally finished tasks.
+    fn flush_buffered_events(&mut self, hub: &Sender<Event>) {
+        for evt in self.buffered_events.drain(..) {
+            hub.send(evt).ok();
+        }
     }
 
     /// Observes an event without consuming it.
@@ -368,6 +389,9 @@ impl TaskManager {
         database: &Database,
         settings: &Settings,
     ) -> bool {
+        self.cleanup_finished();
+        self.flush_buffered_events(hub);
+
         match evt {
             Event::ImportLibrary { library_index } => {
                 self.schedule_import(*library_index, hub, database, settings);
@@ -402,6 +426,8 @@ impl TaskManager {
             return;
         }
 
+        self.flush_buffered_events(hub);
+
         let task = Box::new(import::ImportTask::new(
             database.clone(),
             settings.clone(),
@@ -425,7 +451,9 @@ impl TaskManager {
             return;
         }
 
-        let next = self.pending_import_indices.pop_front().unwrap();
+        let Some(next) = self.pending_import_indices.pop_front() else {
+            return;
+        };
         self.schedule_import(next, hub, database, settings);
     }
 
@@ -438,6 +466,8 @@ impl TaskManager {
                 tracing::warn!(error = %e, "failed to stop dictionary_index task for restart");
             }
         }
+
+        self.flush_buffered_events(hub);
 
         let task = Box::new(dictionary_index::DictionaryIndexTask::new(database.clone()));
 
@@ -460,6 +490,8 @@ impl TaskManager {
             self.pending_thumbnail_indices.push_back(library_index);
             return;
         }
+
+        self.flush_buffered_events(hub);
 
         let task = Box::new(thumbnail::ThumbnailExtractionTask::new(
             database.clone(),
@@ -486,7 +518,9 @@ impl TaskManager {
             return;
         }
 
-        let next = self.pending_thumbnail_indices.pop_front().unwrap();
+        let Some(next) = self.pending_thumbnail_indices.pop_front() else {
+            return;
+        };
         self.schedule_thumbnail_extraction(next, hub, database, settings);
     }
 
@@ -715,6 +749,7 @@ mod tests {
             RunningTask {
                 handle: blocking_handle,
                 shutdown: shutdown_tx,
+                finished_event: None,
             },
         );
 

@@ -20,7 +20,7 @@ reviews:
   auto_assign_reviewers: true
   path_filters:
     - "!docs/po/messages.pot"
-    - "!.sqlx/"
+    - "!.sqlx/**"
   auto_review:
     auto_pause_after_reviewed_commits: 3
     labels:

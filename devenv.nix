@@ -841,5 +841,13 @@ in
     };
     markdownlint.enable = true;
     prettier.enable = true;
+    cargo-test = {
+      enable = true;
+      name = "cargo test (default features)";
+      entry = "cargo test --workspace --features default";
+      files = "\\.rs$";
+      pass_filenames = false;
+      language = "system";
+    };
   };
 }
