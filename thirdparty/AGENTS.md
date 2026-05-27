@@ -21,6 +21,13 @@ Each subdirectory may contain:
   for `arm-linux-gnueabihf` with `-mcpu=cortex-a9 -mfpu=neon`.
 - `kobo.patch` — applied before building. Used when upstream sources need
   modification for the cross-compilation environment.
+- Additional patches named `*-kobo.patch` — when a library requires
+  multiple patches (e.g. from different origins), each gets a descriptive
+  name with a `-kobo` suffix.
+- `README-kobo.md` — Kobo-specific notes: patch provenance, deviations
+  from upstream, and build quirks for the cross-compilation target.
+- `README-cadmus.md` — project-specific notes: why the library is needed,
+  what Cadmus-specific modifications exist, and integration context.
 - Additional files (e.g. `Makefile-kobo`, meson cross-file) when the
   upstream build system cannot be driven solely via environment variables.
 
