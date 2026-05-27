@@ -80,12 +80,11 @@ impl BackgroundTask for ImportTask {
                 }
             }
         }
+    }
 
-        if !shutdown.should_stop() {
-            hub.send(Event::ImportFinished {
-                library_index: self.library_index,
-            })
-            .ok();
-        }
+    fn finished_event(&self) -> Option<Event> {
+        Some(Event::ImportFinished {
+            library_index: self.library_index,
+        })
     }
 }

@@ -215,6 +215,15 @@ pub trait BackgroundTask: Send {
     ///
     /// Override this to perform cleanup. The default implementation does nothing.
     fn stop(&mut self) {}
+
+    /// Returns a "finished" event to send after the task thread exits.
+    ///
+    /// Called after [`stop`](Self::stop) in the thread closure. If the
+    /// returned `Event` is `Some`, it is sent on the hub once the thread
+    /// has truly finished running. The default returns `None`.
+    fn finished_event(&self) -> Option<Event> {
+        None
+    }
 }
 
 struct RunningTask {
@@ -273,6 +282,11 @@ impl TaskManager {
             tracing::info!("task started");
             task.run(&hub, &shutdown_signal);
             task.stop();
+            if !shutdown_signal.should_stop() {
+                if let Some(evt) = task.finished_event() {
+                    hub.send(evt).ok();
+                }
+            }
             tracing::info!("task stopped");
         });
 

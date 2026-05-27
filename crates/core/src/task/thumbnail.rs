@@ -127,12 +127,11 @@ impl BackgroundTask for ThumbnailExtractionTask {
                 }
             }
         }
+    }
 
-        if !shutdown.should_stop() {
-            hub.send(Event::ThumbnailExtractionFinished {
-                library_index: self.library_index,
-            })
-            .ok();
-        }
+    fn finished_event(&self) -> Option<Event> {
+        Some(Event::ThumbnailExtractionFinished {
+            library_index: self.library_index,
+        })
     }
 }
