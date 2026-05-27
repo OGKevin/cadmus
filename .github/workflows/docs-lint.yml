@@ -7,24 +7,17 @@ on:
       - ".agents/skills/**"
       - "**/AGENTS.md"
       - "**/REVIEW.md"
-      - "package.json"
-      - "package-lock.json"
+      - ".github/lint/package.json"
       - ".github/workflows/docs-lint.yml"
 
 jobs:
   lint:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v6
-
-      - name: Setup Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: "npm"
-
-      - name: Install dependencies
-        run: npm ci
 
       - name: Collect markdown files
         id: files
@@ -38,8 +31,19 @@ jobs:
           done
           echo "list=${files[*]}" >> "$GITHUB_OUTPUT"
 
-      - name: Prettier check
-        run: npx prettier --check ${{ steps.files.outputs.list }}
+      - name: Prettier
+        uses: EPMatt/reviewdog-action-prettier@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          reporter: github-pr-review
+          fail_level: error
+          prettier_flags: ${{ steps.files.outputs.list }}
+          workdir: .github/lint
 
       - name: Markdownlint
-        run: npx markdownlint ${{ steps.files.outputs.list }}
+        uses: reviewdog/action-markdownlint@v0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          reporter: github-pr-review
+          fail_level: error
+          markdownlint_flags: ${{ steps.files.outputs.list }}

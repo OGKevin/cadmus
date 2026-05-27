@@ -1,0 +1,7 @@
+{
+  "name": "cadmus-lint",
+  "private": true,
+  "devDependencies": {
+    "prettier": "^3.6.2"
+  }
+}
