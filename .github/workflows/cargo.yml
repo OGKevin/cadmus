@@ -14,6 +14,9 @@ on:
       - "**/Cargo.*"
       - ".github/workflows/cargo.yml"
       - ".github/actions/build-kobo/**"
+      - ".github/actions/build-docs-epub/**"
+      - ".github/actions/install-doc-tools/**"
+      - "thirdparty/**/*.patch"
       - "thirdparty/**/*.patch"
 
 concurrency:
