@@ -351,20 +351,26 @@ impl TaskManager {
     }
 
     /// Removes entries for tasks whose threads have finished, buffering
-    /// their completion events to be sent later.
+    /// their completion events only if the thread exited successfully.
     fn cleanup_finished(&mut self) {
-        let mut events = Vec::new();
-        self.tasks.retain(|_, task| {
-            if task.handle.is_finished() {
-                if let Some(evt) = task.finished_event.take() {
-                    events.push(evt);
+        let finished: Vec<TaskId> = self
+            .tasks
+            .iter()
+            .filter(|(_, task)| task.handle.is_finished())
+            .map(|(id, _)| id.clone())
+            .collect();
+
+        for id in finished {
+            if let Some(task) = self.tasks.remove(&id) {
+                if task.handle.join().is_ok() {
+                    if let Some(evt) = task.finished_event {
+                        self.buffered_events.push(evt);
+                    }
+                } else {
+                    tracing::error!(task_id = %id, "task thread panicked");
                 }
-                false
-            } else {
-                true
             }
-        });
-        self.buffered_events.extend(events);
+        }
     }
 
     /// Sends any buffered completion events from naturally finished tasks.
