@@ -1,0 +1,45 @@
+name: Build documentation EPUB
+description: >
+  Install all doc tooling and build the mdBook EPUB, then upload it
+  as a workflow artifact. Callers must have already checked out the
+  repository and set up a Rust toolchain.
+
+inputs:
+  node-version:
+    description: "Node.js version to install"
+    required: false
+    default: "24"
+  artifact-name:
+    description: "Name of the uploaded artifact"
+    required: false
+    default: "docs-epub"
+  retention-days:
+    description: "Artifact retention in days"
+    required: false
+    default: "1"
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: "3.x"
+
+    - name: Install doc tools
+      uses: ./.github/actions/install-doc-tools
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    - name: Build documentation EPUB
+      shell: bash
+      run: cargo xtask docs --mdbook-only
+      env:
+        RUSTDOCFLAGS: "-D warnings"
+
+    - name: Upload documentation EPUB
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: docs/book/epub/Cadmus Documentation.epub
+        retention-days: ${{ inputs.retention-days }}

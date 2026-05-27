@@ -13,6 +13,7 @@ on:
       - "Cargo.*"
       - "**/Cargo.*"
       - ".github/workflows/cargo.yml"
+      - ".github/actions/build-kobo/**"
       - "thirdparty/**/*.patch"
 
 concurrency:
@@ -71,29 +72,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         id: rust-toolchain
       - *restore-shared-cache
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
+      - name: Build documentation EPUB
+        uses: ./.github/actions/build-docs-epub
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: "npm"
-      - name: Setup Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.x"
-      - name: Install npm dependencies
-        run: npm ci
-      - name: Install mdBook tools
-        uses: ./.github/actions/install-doc-tools
-      - name: Build documentation EPUB
-        run: cargo xtask docs --mdbook-only
-        env:
-          RUSTDOCFLAGS: "-D warnings"
-      - name: Upload documentation EPUB
-        uses: actions/upload-artifact@v7
-        with:
-          name: docs-epub
-          path: docs/book/epub/Cadmus Documentation.epub
-          retention-days: 1
 
   cache-warmup:
     needs: build-docs-epub
@@ -339,7 +321,6 @@ jobs:
         with:
           gh-token: ${{ secrets.GITHUB_TOKEN }}
           gh-oauth-client-id: ${{ secrets.GH_OAUTH_CLIENT_ID }}
-          skip-docs: "true"
 
       - &get-commit
         name: Get commit hash
@@ -407,7 +388,6 @@ jobs:
           gh-token: ${{ secrets.GITHUB_TOKEN }}
           gh-oauth-client-id: ${{ secrets.GH_OAUTH_CLIENT_ID }}
           test: "true"
-          skip-docs: "true"
 
       - *get-commit
       - *determine-suffix

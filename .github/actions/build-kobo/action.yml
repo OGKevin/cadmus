@@ -19,10 +19,6 @@ inputs:
     description: "Build the test variant (installs to .adds/cadmus-tst)"
     required: false
     default: "false"
-  skip-docs:
-    description: "Skip building documentation (caller must provide docs/book/epub/)"
-    required: false
-    default: "false"
 
 runs:
   using: composite
@@ -76,24 +72,9 @@ runs:
         packages: git wget curl pkg-config unzip jq patchelf gcc g++ make cmake meson ninja-build autoconf automake libtool gperf python3 zlib1g-dev libbz2-dev libpng-dev libjpeg-dev libopenjp2-7-dev libjbig2dec0-dev libgumbo-dev libfreetype6-dev libharfbuzz-dev libdjvulibre-dev libsdl2-dev
         version: 1.0
 
-    - name: Setup Node.js
-      uses: actions/setup-node@v6
-      with:
-        node-version: ${{ env.NODE_VERSION }}
-        cache: npm
-
-    - name: Install npm dependencies
-      shell: bash
-      run: npm ci
-
     - name: Setup Linaro toolchain
       shell: bash
       run: echo "$HOME/linaro-toolchain/bin" >> "$GITHUB_PATH"
-
-    - name: Build documentation
-      if: inputs.skip-docs != 'true'
-      shell: bash
-      run: cargo xtask docs --mdbook-only
 
     - name: Download static assets
       shell: bash

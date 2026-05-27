@@ -73,8 +73,10 @@ jobs:
         with:
           targets: arm-unknown-linux-gnueabihf
 
-      - name: Install doc tools
-        uses: ./.github/actions/install-doc-tools
+      - name: Build documentation EPUB
+        uses: ./.github/actions/build-docs-epub
+        with:
+          node-version: ${{ env.NODE_VERSION }}
 
       - name: Build Kobo artifacts
         uses: ./.github/actions/build-kobo
