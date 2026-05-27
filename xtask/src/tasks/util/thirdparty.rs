@@ -135,7 +135,7 @@ pub const HARFBUZZ_VERSION: &str = "14.2.0";
 /// Gumbo version, derived from the archive URL.
 pub const GUMBO_VERSION: &str = "0.10.1";
 /// libwebp version, derived from the archive URL.
-pub const LIBWEBP_VERSION: &str = "1.2.3";
+pub const LIBWEBP_VERSION: &str = "1.6.0";
 
 /// MuPDF version, tracked via GitHub Releases on `ArtifexSoftware/mupdf-downloads`.
 pub const MUPDF_VERSION: &str = "1.27.0";
