@@ -5,11 +5,8 @@
   "packageRules": [
     {
       "matchManagers": ["cargo"],
-      "versioning": "cargo"
-    },
-    {
-      "matchManagers": ["cargo"],
       "matchUpdateTypes": ["minor", "patch"],
+      "matchJsonata": ["isBreaking != true"],
       "groupName": "Rust non-major dependencies",
       "groupSlug": "rust-non-major"
     },
