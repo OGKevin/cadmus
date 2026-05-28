@@ -10,6 +10,7 @@
 //! authentication for public repository access.
 
 use crate::github::GithubClient;
+use chrono::{DateTime, Utc};
 use serde::{de::Visitor, Deserialize, Deserializer, Serialize, Serializer};
 
 /// Result of comparing two versions.
@@ -54,6 +55,136 @@ pub struct GitVersion {
     commits_ahead: u64,
     hash: Option<String>,
     dirty: bool,
+}
+
+/// Complete compile-time version metadata for display.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Version {
+    git: GitVersion,
+    pull_request: Option<PullRequestInfo>,
+    build: BuildAttributes,
+    build_kind: BuildKind,
+}
+
+/// Build flavor captured from Cargo features.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BuildKind {
+    /// Test build.
+    Test,
+    /// Standard build.
+    Standard,
+}
+
+/// Pull request metadata captured at build time.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PullRequestInfo {
+    value: &'static str,
+}
+
+/// Compile-time build provenance attributes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BuildAttributes {
+    /// User that produced this build.
+    pub user: &'static str,
+    /// Host that produced this build.
+    pub host: &'static str,
+    /// Timestamp when this build was produced.
+    pub timestamp: BuildTimestamp,
+}
+
+/// Build timestamp parsed from Unix epoch seconds.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BuildTimestamp {
+    raw: &'static str,
+    datetime: Option<DateTime<Utc>>,
+}
+
+impl std::fmt::Display for Version {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.build_kind {
+            BuildKind::Test => write!(f, "Test {}", self.git)?,
+            BuildKind::Standard => write!(f, "{}", self.git)?,
+        }
+
+        if let Some(pull_request) = self.pull_request {
+            write!(f, "\n{}", pull_request)?;
+        }
+
+        write!(f, "\n{}", self.build)
+    }
+}
+
+impl Version {
+    /// Returns the git describe version.
+    pub fn git(&self) -> &GitVersion {
+        &self.git
+    }
+
+    /// Returns the pull request metadata, if present.
+    pub fn pull_request(&self) -> Option<PullRequestInfo> {
+        self.pull_request
+    }
+
+    /// Returns the build provenance attributes.
+    pub fn build(&self) -> &BuildAttributes {
+        &self.build
+    }
+
+    /// Returns the build flavor.
+    pub fn build_kind(&self) -> BuildKind {
+        self.build_kind
+    }
+}
+
+impl std::fmt::Display for PullRequestInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.value)
+    }
+}
+
+impl PullRequestInfo {
+    /// Returns the raw pull request metadata.
+    pub fn as_str(&self) -> &'static str {
+        self.value
+    }
+}
+
+impl std::fmt::Display for BuildAttributes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let timestamp = self.timestamp.to_string();
+        f.write_str(&crate::fl!(
+            "build-attributes",
+            timestamp = timestamp.as_str(),
+            user = self.user,
+            host = self.host,
+        ))
+    }
+}
+
+impl std::fmt::Display for BuildTimestamp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(datetime) = self.datetime {
+            return write!(f, "{}", datetime.format("%Y-%m-%d %H:%M:%S %Z"));
+        }
+
+        f.write_str(self.raw)
+    }
+}
+
+impl BuildTimestamp {
+    /// Parses a build timestamp from Unix epoch seconds.
+    ///
+    /// Invalid values are preserved so the About dialog can still show the raw
+    /// build metadata instead of failing to render version information.
+    pub fn parse(raw: &'static str) -> Self {
+        Self {
+            raw,
+            datetime: raw
+                .parse::<i64>()
+                .ok()
+                .and_then(|seconds| DateTime::from_timestamp(seconds, 0)),
+        }
+    }
 }
 
 impl std::fmt::Display for GitVersion {
@@ -348,6 +479,36 @@ pub fn get_current_version() -> GitVersion {
     }
 }
 
+/// Returns complete compile-time version metadata for display.
+pub fn get_version() -> Version {
+    Version {
+        git: get_current_version(),
+        pull_request: option_env!("PR_INFO").map(|value| PullRequestInfo { value }),
+        build: get_build_attributes(),
+        build_kind: get_build_kind(),
+    }
+}
+
+/// Returns compile-time build provenance attributes.
+///
+/// The timestamp is parsed from `BUILD_TIMESTAMP`, which is emitted by
+/// `build.rs` as Unix epoch seconds.
+pub fn get_build_attributes() -> BuildAttributes {
+    BuildAttributes {
+        user: env!("BUILD_USER"),
+        host: env!("BUILD_HOST"),
+        timestamp: BuildTimestamp::parse(env!("BUILD_TIMESTAMP")),
+    }
+}
+
+fn get_build_kind() -> BuildKind {
+    if cfg!(feature = "test") {
+        return BuildKind::Test;
+    }
+
+    BuildKind::Standard
+}
+
 fn parse_semver(semver: &str) -> Result<(u64, u64, u64), VersionError> {
     let without_v = semver.strip_prefix('v').unwrap_or(semver);
     let nums: Vec<&str> = without_v.split('.').collect();
@@ -473,6 +634,60 @@ fn check_ancestry(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_version_display_includes_metadata() {
+        let version = Version {
+            git: GitVersion::parse("v0.9.46-5-gabc123").unwrap(),
+            pull_request: Some(PullRequestInfo {
+                value: "PR #12 (abc1234)",
+            }),
+            build: BuildAttributes {
+                user: "builder",
+                host: "host",
+                timestamp: BuildTimestamp::parse("1234567890"),
+            },
+            build_kind: BuildKind::Test,
+        };
+        let build_attributes = crate::fl!(
+            "build-attributes",
+            timestamp = "2009-02-13 23:31:30 UTC",
+            user = "builder",
+            host = "host",
+        );
+
+        assert_eq!(
+            version.to_string(),
+            format!("Test v0.9.46-5-gabc123\nPR #12 (abc1234)\n{build_attributes}")
+        );
+    }
+
+    #[test]
+    fn test_version_display_without_pull_request() {
+        let version = Version {
+            git: GitVersion::parse("v0.9.46").unwrap(),
+            pull_request: None,
+            build: BuildAttributes {
+                user: "builder",
+                host: "host",
+                timestamp: BuildTimestamp::parse("1234567890"),
+            },
+            build_kind: BuildKind::Standard,
+        };
+        let build_attributes = crate::fl!(
+            "build-attributes",
+            timestamp = "2009-02-13 23:31:30 UTC",
+            user = "builder",
+            host = "host",
+        );
+
+        assert_eq!(version.to_string(), format!("v0.9.46\n{build_attributes}"));
+    }
+
+    #[test]
+    fn test_build_timestamp_display_falls_back_to_raw_value() {
+        assert_eq!(BuildTimestamp::parse("unknown").to_string(), "unknown");
+    }
 
     #[test]
     fn test_parse_release_version() {

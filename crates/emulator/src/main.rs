@@ -30,7 +30,7 @@ use cadmus_core::pt;
 use cadmus_core::settings::versioned::SettingsManager;
 use cadmus_core::settings::{IntermKind, Settings};
 use cadmus_core::task::TaskManager;
-use cadmus_core::version::get_current_version;
+use cadmus_core::version::{get_current_version, get_version};
 use cadmus_core::view::calculator::Calculator;
 use cadmus_core::view::common::{
     find_notification_mut, locate, locate_by_id, overlapping_rectangle, transfer_notifications,
@@ -763,13 +763,11 @@ fn run() -> Result<(), Error> {
                     }
                 }
                 Event::Select(EntryId::About) => {
-                    let dialog = Dialog::builder(
-                        ViewId::AboutDialog,
-                        format!("Cadmus {}", get_current_version()),
-                    )
-                    .add_button("OK", Event::Close(ViewId::AboutDialog))
-                    .add_button("Docs", Event::Select(EntryId::OpenDocumentation))
-                    .build(&mut context);
+                    let version_text = format!("{} {}", APP_NAME, get_version());
+                    let dialog = Dialog::builder(ViewId::AboutDialog, version_text)
+                        .add_button("OK", Event::Close(ViewId::AboutDialog))
+                        .add_button("Docs", Event::Select(EntryId::OpenDocumentation))
+                        .build(&mut context);
                     rq.add(RenderData::new(
                         dialog.id(),
                         *dialog.rect(),

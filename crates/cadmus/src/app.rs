@@ -28,7 +28,7 @@ use cadmus_core::settings::{
     ButtonScheme, IntermKind, IntermissionDisplay, LoggingSettings, RotationLock, Settings,
 };
 use cadmus_core::task::TaskManager;
-use cadmus_core::version::get_current_version;
+use cadmus_core::version::{get_current_version, get_version};
 use cadmus_core::view::calculator::Calculator;
 use cadmus_core::view::common::{
     find_notification_mut, locate, locate_by_id, overlapping_rectangle, transfer_notifications,
@@ -737,11 +737,15 @@ pub fn run() -> Result<(), Error> {
 
     let mut updating = Vec::new();
 
+    let version = get_version();
     info!(
         "{} {} {} is running on a Kobo {}.",
         APP_NAME,
-        get_current_version(),
-        option_env!("PR_INFO").unwrap_or(""),
+        version.git(),
+        version
+            .pull_request()
+            .map(|pull_request| pull_request.as_str())
+            .unwrap_or(""),
         CURRENT_DEVICE.model
     );
     info!(
@@ -1363,16 +1367,7 @@ pub fn run() -> Result<(), Error> {
                 }
             }
             Event::Select(EntryId::About) => {
-                #[cfg(feature = "test")]
-                let version_text = match option_env!("PR_INFO") {
-                    Some(pr_info) => format!("Cadmus Test {}\n{}", get_current_version(), pr_info),
-                    None => format!("Cadmus {} (Test)", get_current_version()),
-                };
-                #[cfg(not(feature = "test"))]
-                let version_text = match option_env!("PR_INFO") {
-                    Some(pr_info) => format!("Cadmus {}\n{}", get_current_version(), pr_info),
-                    None => format!("Cadmus {}", get_current_version()),
-                };
+                let version_text = format!("{} {}", APP_NAME, get_version());
 
                 let dialog = Dialog::builder(ViewId::AboutDialog, version_text)
                     .add_button("OK", Event::Close(ViewId::AboutDialog))

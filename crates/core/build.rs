@@ -1,6 +1,7 @@
 use std::env::{self, VarError};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
 const BUNDLED_ASSET_DIRS: &[&str] = &[
@@ -14,10 +15,14 @@ const BUNDLED_ASSET_DIRS: &[&str] = &[
     "scripts",
 ];
 
+/// Set this to any changing value to force build metadata to refresh.
+const FORCE_REBUILD_ENV: &str = "FORCE_REBUILD";
+
 fn main() {
     let target = env::var("TARGET").unwrap();
 
     println!("cargo:rerun-if-changed=.git/HEAD");
+    println!("cargo:rerun-if-env-changed={FORCE_REBUILD_ENV}");
     let (git_version, pr_info) = get_version_info().expect("Failed to get version info");
     println!("cargo:rustc-env=GIT_VERSION={}", git_version);
     if let Some(pr) = pr_info {
@@ -26,6 +31,14 @@ fn main() {
 
     let build_uuid = Uuid::now_v7().to_string();
     println!("cargo:rustc-env=BUILD_UUID={}", build_uuid);
+
+    let build_attributes = get_build_attributes();
+    println!("cargo:rustc-env=BUILD_USER={}", build_attributes.user);
+    println!("cargo:rustc-env=BUILD_HOST={}", build_attributes.host);
+    println!(
+        "cargo:rustc-env=BUILD_TIMESTAMP={}",
+        build_attributes.timestamp
+    );
 
     // GitHub OAuth App client ID for device flow authentication.
     println!("cargo:rerun-if-env-changed=GH_OAUTH_CLIENT_ID");
@@ -184,6 +197,47 @@ fn collect_asset_files(workspace_root: &Path, dir: &Path, asset_files: &mut Vec<
 
         asset_files.push(relative_path.to_string_lossy().replace('\\', "/"));
     }
+}
+
+struct BuildAttributes {
+    user: String,
+    host: String,
+    timestamp: String,
+}
+
+/// Captures build provenance values passed to rustc as compile-time env vars.
+fn get_build_attributes() -> BuildAttributes {
+    BuildAttributes {
+        user: command_output("whoami"),
+        host: command_output("hostname"),
+        timestamp: build_timestamp(),
+    }
+}
+
+/// Runs a command and returns its trimmed stdout, or `unknown` if it fails.
+fn command_output(command: &str) -> String {
+    Command::new(command)
+        .output()
+        .ok()
+        .and_then(|output| {
+            output.status.success().then(|| {
+                let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if value.is_empty() {
+                    "unknown".to_string()
+                } else {
+                    value
+                }
+            })
+        })
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+/// Returns the current Unix epoch timestamp for this build script run.
+fn build_timestamp() -> String {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs().to_string())
+        .unwrap_or_else(|_| "unknown".to_string())
 }
 
 fn get_version_info() -> Result<(String, Option<String>), VarError> {

@@ -210,6 +210,12 @@ misses `#[cfg(not(feature = "..."))]` paths.
 5. All combinations run on `ubuntu-latest`.
 6. Only `default` and `test` features produce build artifacts.
 
+## User-Facing String Tests
+
+- When testing strings rendered through `fl!`, build expected strings with
+  `fl!` too. Fluent may add Unicode isolation marks around variables, so raw
+  string literals can fail even when visible text matches.
+
 ## OTA and Asset Build Order
 
 - OTA updates delete only Cadmus-owned bundled files before reboot. Do not

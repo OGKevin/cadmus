@@ -2,6 +2,10 @@
 
 -app-name = Cadmus
 
+build-attributes =
+    Built { $timestamp }
+    By { $user }@{ $host }
+
 english = English
 
 startup-loading = Cadmus starting up…
