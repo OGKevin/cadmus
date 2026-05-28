@@ -531,17 +531,25 @@ impl CategoryEditor {
     /// ignored to prevent duplicate background threads racing to write the same
     /// files.
     #[inline]
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub)))]
-    fn handle_download_dictionary(&mut self, lang: &str, hub: &Hub) -> bool {
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, rq, context)))]
+    fn handle_download_dictionary(
+        &mut self,
+        lang: &str,
+        hub: &Hub,
+        rq: &mut RenderQueue,
+        context: &mut Context,
+    ) -> bool {
         let Some(service) = self.dict_service.clone() else {
             tracing::warn!(
                 lang,
                 "No MonolingualDictionaryService available to download dictionary"
             );
+            self.update_rows_list(rq, context);
             return true;
         };
 
         if service.is_installing(lang) {
+            self.update_rows_list(rq, context);
             return true;
         }
 
@@ -549,10 +557,12 @@ impl CategoryEditor {
             Ok(Some(e)) => e,
             Ok(None) => {
                 tracing::warn!(lang, "No metadata entry found for language; cannot install");
+                self.update_rows_list(rq, context);
                 return true;
             }
             Err(e) => {
                 tracing::warn!(lang, error = %e, "Failed to look up dictionary entry");
+                self.update_rows_list(rq, context);
                 return true;
             }
         };
@@ -719,7 +729,7 @@ impl View for CategoryEditor {
 
                     return true;
                 }
-                self.handle_download_dictionary(lang, hub)
+                self.handle_download_dictionary(lang, hub, rq, context)
             }
             Event::Select(EntryId::DeleteDictionary(lang)) => {
                 self.handle_delete_dictionary(lang, hub, rq, context)
@@ -828,6 +838,7 @@ impl View for CategoryEditor {
 mod tests {
     use super::*;
     use crate::context::test_helpers::create_test_context;
+    use crate::crypto;
     use crate::geom::Point;
     use crate::gesture::GestureEvent;
     use crate::settings::Settings;
@@ -1198,5 +1209,48 @@ mod tests {
         );
         assert!(handled);
         assert_eq!(editor.current_page, 0, "Should not go below page 0");
+    }
+
+    #[test]
+    fn test_download_dictionary_invalid_language_rebuilds_rows() {
+        crypto::init_crypto_provider();
+        let mut context = create_test_context();
+        context.online = true;
+
+        let rect = rect![0, 0, 600, 800];
+        let mut rq = RenderQueue::new();
+
+        let mut editor = CategoryEditor::new(rect, Category::Dictionaries, &mut rq, &mut context);
+
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+        let mut rq2 = RenderQueue::new();
+
+        let initial_rows_count = editor
+            .separator_index
+            .saturating_sub(editor.first_row_index);
+
+        let handled = editor.handle_event(
+            &Event::Select(EntryId::DownloadDictionary("xy".to_string())),
+            &hub,
+            &mut bus,
+            &mut rq2,
+            &mut context,
+        );
+
+        assert!(handled, "Download event should be handled");
+
+        let rows_count_after = editor
+            .separator_index
+            .saturating_sub(editor.first_row_index);
+
+        assert_eq!(
+            initial_rows_count, rows_count_after,
+            "Row count unchanged after download attempt (early return triggers rebuild)"
+        );
+        assert!(
+            !rq2.is_empty(),
+            "RenderQueue should have render requests from update_rows_list()"
+        );
     }
 }
