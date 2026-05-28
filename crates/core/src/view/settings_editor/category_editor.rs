@@ -8,6 +8,7 @@ use crate::geom::{halves, CycleDir, Rectangle};
 use crate::settings::{LibrarySettings, Settings};
 use crate::unit::scale_by_dpi;
 use crate::view::common::locate_by_id;
+use crate::view::dialog::Dialog;
 use crate::view::filler::Filler;
 use crate::view::menu::{Menu, MenuKind};
 use crate::view::toggleable_keyboard::ToggleableKeyboard;
@@ -548,11 +549,6 @@ impl CategoryEditor {
             return true;
         };
 
-        if service.is_installing(lang) {
-            self.update_rows_list(rq, context);
-            return true;
-        }
-
         let entry = match service.get_entry_for_lang(lang) {
             Ok(Some(e)) => e,
             Ok(None) => {
@@ -566,6 +562,13 @@ impl CategoryEditor {
                 return true;
             }
         };
+
+        if !service.try_begin_install(lang) {
+            self.update_rows_list(rq, context);
+            return true;
+        }
+
+        self.update_rows_list(rq, context);
 
         let lang_owned = lang.to_string();
         let hub2 = hub.clone();
@@ -583,27 +586,32 @@ impl CategoryEditor {
                 tracing::info_span!(parent: &parent_span, "dictionary_install_async").entered();
 
             let result = service
-                .install_dictionary(&lang_owned, &entry, false, &mut |downloaded, total| {
-                    use humanize_bytes::humanize_bytes_decimal;
-                    let downloaded_str = humanize_bytes_decimal!(downloaded).to_string();
-                    let total_str = humanize_bytes_decimal!(total).to_string();
-                    let percent = (downloaded as f64 / total as f64 * 100.0) as u8;
-                    hub2.send(Event::Notification(NotificationEvent::UpdateProgress(
-                        download_id,
-                        percent,
-                    )))
-                    .ok();
-                    hub2.send(Event::Notification(NotificationEvent::UpdateText(
-                        download_id,
-                        fl!(
-                            "notification-downloading-dictionary-progress",
-                            lang = lang_owned.as_str(),
-                            downloaded = downloaded_str.as_str(),
-                            total = total_str.as_str()
-                        ),
-                    )))
-                    .ok();
-                })
+                .install_reserved_dictionary(
+                    &lang_owned,
+                    &entry,
+                    false,
+                    &mut |downloaded, total| {
+                        use humanize_bytes::humanize_bytes_decimal;
+                        let downloaded_str = humanize_bytes_decimal!(downloaded).to_string();
+                        let total_str = humanize_bytes_decimal!(total).to_string();
+                        let percent = (downloaded as f64 / total as f64 * 100.0) as u8;
+                        hub2.send(Event::Notification(NotificationEvent::UpdateProgress(
+                            download_id,
+                            percent,
+                        )))
+                        .ok();
+                        hub2.send(Event::Notification(NotificationEvent::UpdateText(
+                            download_id,
+                            fl!(
+                                "notification-downloading-dictionary-progress",
+                                lang = lang_owned.as_str(),
+                                downloaded = downloaded_str.as_str(),
+                                total = total_str.as_str()
+                            ),
+                        )))
+                        .ok();
+                    },
+                )
                 .map_err(|e| e.to_string());
 
             hub2.send(Event::Close(download_id)).ok();
@@ -615,6 +623,84 @@ impl CategoryEditor {
         });
 
         true
+    }
+
+    /// Opens a modal confirmation dialog before starting a dictionary download.
+    #[inline]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, rq, context)))]
+    fn handle_dictionary_download_request(
+        &mut self,
+        lang: &str,
+        hub: &Hub,
+        rq: &mut RenderQueue,
+        context: &mut Context,
+    ) -> bool {
+        if !context.online {
+            hub.send(Event::Notification(NotificationEvent::Show(fl!(
+                "notification-not-online"
+            ))))
+            .ok();
+
+            return true;
+        }
+
+        self.remove_dictionary_download_confirm(rq);
+
+        let dialog = Dialog::builder(
+            ViewId::DictionaryDownloadConfirm,
+            fl!("settings-dictionaries-confirm-download", lang = lang),
+        )
+        .add_button(
+            &fl!("settings-dictionaries-confirm-download-cancel"),
+            Event::Close(ViewId::DictionaryDownloadConfirm),
+        )
+        .add_button(
+            &fl!("settings-dictionaries-confirm-download-confirm"),
+            Event::Select(EntryId::DownloadDictionary(lang.to_string())),
+        )
+        .build(context);
+
+        rq.add(RenderData::new(
+            dialog.id(),
+            *dialog.rect(),
+            UpdateMode::Gui,
+        ));
+        self.children.push(Box::new(dialog));
+        true
+    }
+
+    /// Removes any active dictionary download confirmation dialog.
+    #[inline]
+    fn remove_dictionary_download_confirm(&mut self, rq: &mut RenderQueue) {
+        if let Some(index) = locate_by_id(self, ViewId::DictionaryDownloadConfirm) {
+            let dialog_rect = *self.children[index].rect();
+            self.children.remove(index);
+            rq.add(RenderData::expose(dialog_rect, UpdateMode::Gui));
+        }
+    }
+
+    /// Starts a confirmed dictionary download and closes the confirmation dialog.
+    #[inline]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, rq, context)))]
+    fn handle_confirm_dictionary_download(
+        &mut self,
+        lang: &str,
+        hub: &Hub,
+        rq: &mut RenderQueue,
+        context: &mut Context,
+    ) -> bool {
+        self.remove_dictionary_download_confirm(rq);
+
+        if !context.online {
+            hub.send(Event::Notification(NotificationEvent::Show(fl!(
+                "notification-not-online"
+            ))))
+            .ok();
+
+            return true;
+        }
+
+        self.handle_download_dictionary(lang, hub, rq, context)
     }
 
     /// Removes the installed dictionary directory for the given language code, then rebuilds the rows.
@@ -667,6 +753,7 @@ impl CategoryEditor {
             | ViewId::SettingsRetentionInput
             | ViewId::SettingsValueMenu
             | ViewId::LibraryEditor
+            | ViewId::DictionaryDownloadConfirm
             | ViewId::RefreshRateByKindEditor => {
                 if let Some(index) = locate_by_id(self, *view_id) {
                     let input_rect = *self.children[index].rect();
@@ -719,17 +806,11 @@ impl View for CategoryEditor {
             Event::Select(EntryId::DeleteLibrary(index)) => {
                 self.handle_delete_library(*index, rq, context)
             }
-            Event::Select(EntryId::DownloadDictionary(lang))
-            | Event::Select(EntryId::RedownloadDictionary(lang)) => {
-                if !context.online {
-                    hub.send(Event::Notification(NotificationEvent::Show(fl!(
-                        "notification-not-online"
-                    ))))
-                    .ok();
-
-                    return true;
-                }
-                self.handle_download_dictionary(lang, hub, rq, context)
+            Event::Select(EntryId::RequestDictionaryDownload(lang)) => {
+                self.handle_dictionary_download_request(lang, hub, rq, context)
+            }
+            Event::Select(EntryId::DownloadDictionary(lang)) => {
+                self.handle_confirm_dictionary_download(lang, hub, rq, context)
             }
             Event::Select(EntryId::DeleteDictionary(lang)) => {
                 self.handle_delete_dictionary(lang, hub, rq, context)
@@ -863,6 +944,14 @@ mod tests {
         let mut rq = RenderQueue::new();
 
         CategoryEditor::new(rect, Category::Libraries, &mut rq, context)
+    }
+
+    fn create_test_dictionary_category_editor(context: &mut Context) -> CategoryEditor {
+        crypto::init_crypto_provider();
+        let rect = rect![0, 0, 600, 800];
+        let mut rq = RenderQueue::new();
+
+        CategoryEditor::new(rect, Category::Dictionaries, &mut rq, context)
     }
 
     #[test]
@@ -1212,15 +1301,96 @@ mod tests {
     }
 
     #[test]
-    fn test_download_dictionary_invalid_language_rebuilds_rows() {
-        crypto::init_crypto_provider();
+    fn test_download_dictionary_opens_confirmation_dialog() {
         let mut context = create_test_context();
         context.online = true;
-
-        let rect = rect![0, 0, 600, 800];
+        let mut editor = create_test_dictionary_category_editor(&mut context);
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
 
-        let mut editor = CategoryEditor::new(rect, Category::Dictionaries, &mut rq, &mut context);
+        let initial_children_count = editor.children.len();
+
+        let handled = editor.handle_event(
+            &Event::Select(EntryId::RequestDictionaryDownload("xy".to_string())),
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        );
+
+        assert!(handled, "Download event should be handled");
+        assert_eq!(editor.children.len(), initial_children_count + 1);
+        assert!(
+            locate_by_id(&editor, ViewId::DictionaryDownloadConfirm).is_some(),
+            "Dictionary download confirmation dialog should be present"
+        );
+        assert!(!rq.is_empty());
+    }
+
+    #[test]
+    fn test_redownload_dictionary_opens_confirmation_dialog() {
+        let mut context = create_test_context();
+        context.online = true;
+        let mut editor = create_test_dictionary_category_editor(&mut context);
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+        let mut rq = RenderQueue::new();
+
+        let handled = editor.handle_event(
+            &Event::Select(EntryId::RequestDictionaryDownload("xy".to_string())),
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        );
+
+        assert!(handled, "Re-download event should be handled");
+        assert!(
+            locate_by_id(&editor, ViewId::DictionaryDownloadConfirm).is_some(),
+            "Dictionary download confirmation dialog should be present"
+        );
+        assert!(!rq.is_empty());
+    }
+
+    #[test]
+    fn test_close_dictionary_download_confirmation_removes_dialog() {
+        let mut context = create_test_context();
+        context.online = true;
+        let mut editor = create_test_dictionary_category_editor(&mut context);
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+        let mut rq = RenderQueue::new();
+
+        editor.handle_event(
+            &Event::Select(EntryId::RequestDictionaryDownload("xy".to_string())),
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        );
+
+        let handled = editor.handle_event(
+            &Event::Close(ViewId::DictionaryDownloadConfirm),
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        );
+
+        assert!(handled, "Close event should be handled");
+        assert!(
+            locate_by_id(&editor, ViewId::DictionaryDownloadConfirm).is_none(),
+            "Dictionary download confirmation dialog should be removed"
+        );
+        assert!(!rq.is_empty());
+    }
+
+    #[test]
+    fn test_download_dictionary_invalid_language_rebuilds_rows() {
+        let mut context = create_test_context();
+        context.online = true;
+        let mut editor = create_test_dictionary_category_editor(&mut context);
 
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
@@ -1229,6 +1399,14 @@ mod tests {
         let initial_rows_count = editor
             .separator_index
             .saturating_sub(editor.first_row_index);
+
+        editor.handle_event(
+            &Event::Select(EntryId::RequestDictionaryDownload("xy".to_string())),
+            &hub,
+            &mut bus,
+            &mut rq2,
+            &mut context,
+        );
 
         let handled = editor.handle_event(
             &Event::Select(EntryId::DownloadDictionary("xy".to_string())),
@@ -1239,6 +1417,10 @@ mod tests {
         );
 
         assert!(handled, "Download event should be handled");
+        assert!(
+            locate_by_id(&editor, ViewId::DictionaryDownloadConfirm).is_none(),
+            "Dictionary download confirmation dialog should be removed"
+        );
 
         let rows_count_after = editor
             .separator_index

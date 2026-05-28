@@ -13,7 +13,7 @@ use std::collections::HashSet;
 use std::fs;
 use std::io::{self};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 use zip::ZipArchive;
 
 /// Subdirectory inside the dictionaries root where reader-dict downloads live.
@@ -145,7 +145,39 @@ impl MonolingualDictionaryService {
     pub fn is_installing(&self, lang: &str) -> bool {
         #[cfg(feature = "tracing")]
         let _span = tracing::info_span!("lock").entered();
-        self.pending_installs.lock().unwrap().contains(lang)
+        self.pending_installs().contains(lang)
+    }
+
+    fn pending_installs(&self) -> MutexGuard<'_, HashSet<String>> {
+        self.pending_installs.lock().unwrap_or_else(|poisoned| {
+            tracing::warn!("Pending installs lock poisoned; continuing anyway");
+            poisoned.into_inner()
+        })
+    }
+
+    /// Reserves a language for installation before work moves to a background thread.
+    ///
+    /// Returns `false` when another install for the same language is already active.
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
+    pub(crate) fn try_begin_install(&self, lang: &str) -> bool {
+        #[cfg(feature = "tracing")]
+        let _span = tracing::info_span!("lock").entered();
+
+        let mut pending = self.pending_installs();
+
+        if pending.contains(lang) {
+            return false;
+        }
+
+        pending.insert(lang.to_string());
+        true
+    }
+
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
+    fn finish_install(&self, lang: &str) {
+        #[cfg(feature = "tracing")]
+        let _span = tracing::info_span!("lock").entered();
+        self.pending_installs().remove(lang);
     }
 
     /// Downloads and installs a dictionary for the given language.
@@ -156,10 +188,9 @@ impl MonolingualDictionaryService {
     /// existing files in that directory are overwritten.
     ///
     /// Returns [`MonolingualError::InstallationInProgress`] immediately if a
-    /// download for the same language is already running. The caller should
-    /// check [`Self::is_installing`] on the UI thread before spawning a thread
-    /// to get a user-visible early exit; this check inside `install_dictionary`
-    /// provides a safety net against races.
+    /// download for the same language is already running. Callers that need to
+    /// update UI state before spawning a thread can reserve the language with
+    /// [`Self::try_begin_install`] and finish with [`Self::install_reserved_dictionary`].
     ///
     /// # Arguments
     ///
@@ -187,24 +218,30 @@ impl MonolingualDictionaryService {
     where
         F: FnMut(u64, u64),
     {
-        {
-            #[cfg(feature = "tracing")]
-            let _span = tracing::info_span!("lock").entered();
-
-            let mut pending = self.pending_installs.lock().unwrap();
-            if pending.contains(lang) {
-                return Err(MonolingualError::InstallationInProgress(lang.to_string()));
-            }
-            pending.insert(lang.to_string());
+        if !self.try_begin_install(lang) {
+            return Err(MonolingualError::InstallationInProgress(lang.to_string()));
         }
 
+        self.install_reserved_dictionary(lang, entry, include_etymologies, progress_callback)
+    }
+
+    /// Installs a dictionary after [`Self::try_begin_install`] reserves its language.
+    ///
+    /// This keeps UI state synchronous with background work by allowing callers to
+    /// mark a language as installing before spawning a thread.
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, entry, progress_callback), fields(lang = %lang, include_etymologies)))]
+    pub(crate) fn install_reserved_dictionary<F>(
+        &self,
+        lang: &str,
+        entry: &DictionaryEntry,
+        include_etymologies: bool,
+        progress_callback: &mut F,
+    ) -> Result<(), MonolingualError>
+    where
+        F: FnMut(u64, u64),
+    {
         let result = self.do_install(lang, entry, include_etymologies, progress_callback);
-
-        {
-            #[cfg(feature = "tracing")]
-            let _span = tracing::info_span!("lock").entered();
-            self.pending_installs.lock().unwrap().remove(lang);
-        }
+        self.finish_install(lang);
 
         result
     }
@@ -576,6 +613,33 @@ mod tests {
     }
 
     #[test]
+    fn test_try_begin_install_marks_pending_and_blocks_duplicate() {
+        let (service, _dir, _db) = create_test_service();
+
+        assert!(service.try_begin_install("en"));
+        assert!(service.is_installing("en"));
+        assert!(!service.try_begin_install("en"));
+    }
+
+    #[test]
+    fn test_pending_installs_recovers_from_poisoned_lock() {
+        let (service, _dir, _db) = create_test_service();
+        let service_clone = service.clone();
+
+        let result = std::thread::spawn(move || {
+            let _guard = service_clone.pending_installs.lock().unwrap();
+            panic!("poison pending installs lock");
+        })
+        .join();
+
+        assert!(result.is_err());
+        assert!(service.try_begin_install("en"));
+        assert!(service.is_installing("en"));
+        service.finish_install("en");
+        assert!(!service.is_installing("en"));
+    }
+
+    #[test]
     fn test_is_installing_false_after_removal() {
         let (service, _dir, _db) = create_test_service();
         service
@@ -613,6 +677,18 @@ mod tests {
 
         let entry = make_entry(2026, 4, 1);
         let _ = service.install_dictionary("zz", &entry, false, &mut |_, _| {});
+        assert!(!service.is_installing("zz"));
+    }
+
+    #[test]
+    fn test_reserved_install_clears_after_failed_install() {
+        let (service, _dir, _db) = create_test_service();
+        let entry = make_entry(2026, 4, 1);
+
+        assert!(service.try_begin_install("zz"));
+
+        let _ = service.install_reserved_dictionary("zz", &entry, false, &mut |_, _| {});
+
         assert!(!service.is_installing("zz"));
     }
 

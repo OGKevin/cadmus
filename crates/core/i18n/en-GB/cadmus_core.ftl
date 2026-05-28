@@ -109,11 +109,14 @@ settings-telemetry-enable-kernel-log = Enable Kernel Log
 settings-telemetry-enable-dbus-log = Enable D-Bus Log
 
 # Settings - Dictionaries
-settings-dictionaries-downloading = Downloading
-settings-dictionaries-re-download = Re-download
+settings-dictionaries-confirm-download = Download dictionary for "{ $lang }"?
+settings-dictionaries-confirm-download-cancel = Cancel
+settings-dictionaries-confirm-download-confirm = Download
 settings-dictionaries-delete = {delete}
-settings-dictionaries-installed = Installed
 settings-dictionaries-download = Download
+settings-dictionaries-downloading = Downloading
+settings-dictionaries-installed = Installed
+settings-dictionaries-re-download = Re-download
 settings-dictionaries-update = Update
 settings-dictionaries-update-available = Update Available
 

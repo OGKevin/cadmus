@@ -9,7 +9,7 @@ use crate::view::{EntryId, EntryKind, Event};
 ///
 /// Each row shows a lang code as the label and "Installed" or "Download" as the
 /// value. Installed dictionaries show a sub-menu with "Re-download" and "Delete"
-/// options; uninstalled ones show an `ActionLabel` that fires the download event on tap.
+/// options; uninstalled ones show an `ActionLabel` that requests a download on tap.
 /// When an update is available, the value shows "Update Available" and the submenu
 /// includes an "Update" option above "Re-download". When a download is in progress,
 /// the value shows "Downloading" and no action widget is offered.
@@ -41,9 +41,7 @@ impl SettingKind for DictionaryInfo {
     ) -> (Option<String>, bool) {
         match evt {
             Event::Select(entry) => match entry {
-                EntryId::DownloadDictionary(lang) | EntryId::RedownloadDictionary(lang)
-                    if lang == &self.lang =>
-                {
+                EntryId::DownloadDictionary(lang) if lang == &self.lang => {
                     (Some(fl!("settings-dictionaries-downloading")), false)
                 }
                 _ => (None, false),
@@ -66,12 +64,12 @@ impl SettingKind for DictionaryInfo {
             if self.update_available {
                 entries.push(EntryKind::Command(
                     fl!("settings-dictionaries-update"),
-                    EntryId::RedownloadDictionary(self.lang.clone()),
+                    EntryId::RequestDictionaryDownload(self.lang.clone()),
                 ));
             } else {
                 entries.push(EntryKind::Command(
                     fl!("settings-dictionaries-re-download"),
-                    EntryId::RedownloadDictionary(self.lang.clone()),
+                    EntryId::RequestDictionaryDownload(self.lang.clone()),
                 ));
             }
 
@@ -93,7 +91,7 @@ impl SettingKind for DictionaryInfo {
         } else {
             SettingData {
                 value: fl!("settings-dictionaries-download"),
-                widget: WidgetKind::ActionLabel(Event::Select(EntryId::DownloadDictionary(
+                widget: WidgetKind::ActionLabel(Event::Select(EntryId::RequestDictionaryDownload(
                     self.lang.clone(),
                 ))),
             }
@@ -116,7 +114,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn uninstalled_yields_action_label_with_download_event() {
+        fn uninstalled_yields_action_label_with_request_event() {
             let info = DictionaryInfo {
                 lang: "en".to_string(),
                 is_installed: false,
@@ -127,7 +125,7 @@ mod tests {
 
             assert!(matches!(
                 data.widget,
-                WidgetKind::ActionLabel(Event::Select(EntryId::DownloadDictionary(ref l)))
+                WidgetKind::ActionLabel(Event::Select(EntryId::RequestDictionaryDownload(ref l)))
                     if l == "en"
             ));
         }
@@ -148,7 +146,7 @@ mod tests {
             assert_eq!(entries.len(), 2);
             assert!(matches!(
                 &entries[0],
-                EntryKind::Command(_, EntryId::RedownloadDictionary(l)) if l == "fr"
+                EntryKind::Command(_, EntryId::RequestDictionaryDownload(l)) if l == "fr"
             ));
             assert!(matches!(
                 &entries[1],
@@ -172,7 +170,7 @@ mod tests {
             assert_eq!(entries.len(), 2);
             assert!(matches!(
                 &entries[0],
-                EntryKind::Command(label, EntryId::RedownloadDictionary(l))
+                EntryKind::Command(label, EntryId::RequestDictionaryDownload(l))
                     if l == "de" && label == "Update"
             ));
             assert!(matches!(
@@ -231,7 +229,7 @@ mod tests {
         }
 
         #[test]
-        fn redownload_event_returns_downloading_string() {
+        fn request_event_returns_none() {
             let info = DictionaryInfo {
                 lang: "en".to_string(),
                 is_installed: true,
@@ -240,11 +238,11 @@ mod tests {
             };
             let mut settings = make_settings();
             let mut bus: Bus = VecDeque::new();
-            let event = Event::Select(EntryId::RedownloadDictionary("en".to_string()));
+            let event = Event::Select(EntryId::RequestDictionaryDownload("en".to_string()));
 
             let (display, consumed) = info.handle(&event, &mut settings, &mut bus);
 
-            assert!(display.is_some());
+            assert!(display.is_none());
             assert!(!consumed);
         }
 
