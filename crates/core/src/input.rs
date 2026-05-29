@@ -1,16 +1,20 @@
 use crate::framebuffer::Display;
 use crate::geom::{LinearDir, Point};
 use crate::settings::ButtonScheme;
-use anyhow::{Context, Error};
-use rustc_hash::FxHashMap;
+use anyhow::Error;
+use nix::ioctl_read;
+use nix::ioctl_read_buf;
+use rustc_hash::{FxHashMap, FxHashSet};
 use std::fs::File;
 use std::mem::{self, MaybeUninit};
 use std::os::fd::{AsRawFd, OwnedFd, RawFd};
 use std::os::unix::fs::OpenOptionsExt;
 use std::ptr;
+use std::time::{Duration, Instant};
 use tokio::io::Interest;
 use tokio::io::unix::AsyncFd;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+use tokio_util::sync::CancellationToken;
 
 // Event types
 pub const EV_SYN: u16 = 0x00;
@@ -281,42 +285,16 @@ pub fn seconds(time: libc::timeval) -> f64 {
 }
 
 pub fn raw_events(
-    paths: Vec<String>,
+    display: Display,
+    proto: TouchProto,
+    cancel: CancellationToken,
 ) -> (UnboundedSender<InputEvent>, UnboundedReceiver<InputEvent>) {
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
     let tx_reader = tx.clone();
     crate::runtime::current_handle().spawn(async move {
-        if let Err(err) = parse_raw_events(&paths, &tx_reader).await {
-            tracing::warn!(error = %err, "raw input reader stopped");
-        }
+        parse_raw_events(&cancel, display, proto, &tx_reader).await;
     });
     (tx, rx)
-}
-
-async fn parse_raw_events(paths: &[String], tx: &UnboundedSender<InputEvent>) -> Result<(), Error> {
-    let mut watched = Vec::with_capacity(paths.len());
-    for path in paths {
-        let file = std::fs::OpenOptions::new()
-            .read(true)
-            .custom_flags(libc::O_NONBLOCK)
-            .open(path)
-            .with_context(|| format!("can't open input file {path}"))?;
-        let fd = AsyncFd::with_interest(file, Interest::READABLE)
-            .with_context(|| format!("can't watch input file {path}"))?;
-        watched.push((path.clone(), fd));
-    }
-
-    let mut readers = tokio::task::JoinSet::new();
-    for (path, fd) in watched {
-        let tx = tx.clone();
-        readers.spawn(async move {
-            if let Err(err) = read_input_events(fd, &tx).await {
-                tracing::warn!(path = %path, error = %err, "input device reader stopped");
-            }
-        });
-    }
-    while readers.join_next().await.is_some() {}
-    Ok(())
 }
 
 /// Forwards evdev events from one nonblocking device until it closes or `tx` drops.
@@ -993,6 +971,320 @@ async fn parse_device_events(
     }
 }
 
+// Ioctl wrappers for evdev device introspection.
+//
+// `EVIOCGID` returns the bustype/vendor/product/version tuple used to
+// deduplicate devices that the kernel exposes under multiple event nodes.
+// `EVIOCGEV` returns the bitmap of event types supported by a device, used
+// to filter for input devices (those that emit `EV_KEY` or `EV_ABS`).
+ioctl_read!(eviocgid, b'E', 0x02, InputId);
+
+#[repr(C)]
+#[derive(Debug, Clone)]
+struct InputId {
+    bustype: u16,
+    vendor: u16,
+    product: u16,
+    version: u16,
+}
+
+ioctl_read_buf!(eviocgbit_ev, b'E', 0x20, u8);
+
+// `EVIOCGNAME` — returns the kernel device name string, included in the
+// deduplication identity so distinct devices that share an `EVIOCGID` tuple
+// (e.g. `gpio-keys` and `bd71828-pwrkey` on current Kobo hardware) are not
+// collapsed into one.
+ioctl_read_buf!(eviocgname, b'E', 0x06, u8);
+
+/// Kernel-reported features of an evdev device, probed via `EVIOCGID`,
+/// `EVIOCGNAME`, and `EVIOCGEV`. Used to decide whether a device should be
+/// opened (it must emit `EV_KEY` or `EV_ABS`) and to deduplicate devices
+/// exposed under multiple event nodes.
+struct DeviceFeatures {
+    name: Option<String>,
+    bustype: u16,
+    vendor: u16,
+    product: u16,
+    version: u16,
+    emits_key: bool,
+    emits_abs: bool,
+}
+
+impl DeviceFeatures {
+    /// Returns a stable identity string for deduplication, based on the
+    /// device name and the bustype/vendor/product/version tuple. Returns
+    /// `None` when the device reports no identity (all zeros and no name),
+    /// so callers fall back to path-based deduplication.
+    ///
+    /// The device name is included because distinct built-in devices can
+    /// share an `EVIOCGID` tuple: `gpio-keys` and `bd71828-pwrkey` both
+    /// report `bus 0x19, vendor 0x1, product 0x1, version 0x100` on current
+    /// Kobo hardware. Without the name, the deduplicator would treat the
+    /// power key as a duplicate of the page-turn buttons and drop one of
+    /// them.
+    fn identity(&self) -> Option<String> {
+        let name = self.name.as_deref().unwrap_or("");
+        if name.is_empty() && self.bustype == 0 && self.vendor == 0 && self.product == 0 {
+            return None;
+        }
+        Some(format!(
+            "id:{}:{:04x}:{:04x}:{:04x}:{:04x}",
+            name, self.bustype, self.vendor, self.product, self.version
+        ))
+    }
+}
+
+/// Probes the device at `path` and returns its [`DeviceFeatures`].
+///
+/// Opens the device once and issues all introspection ioctls on the resulting
+/// file descriptor. Returns `None` only if the device cannot be opened.
+fn probe_device(path: &str) -> Option<DeviceFeatures> {
+    let file = File::open(path).ok()?;
+    let fd = file.as_raw_fd();
+    let mut id = InputId {
+        bustype: 0,
+        vendor: 0,
+        product: 0,
+        version: 0,
+    };
+    let _ = unsafe { eviocgid(fd, &mut id) };
+
+    let mut name_buf = [0u8; 256];
+    let name = unsafe { eviocgname(fd, &mut name_buf) }.ok().and_then(|n| {
+        std::str::from_utf8(&name_buf[..n as usize])
+            .ok()
+            .map(|s| s.trim_end_matches('\0').to_string())
+    });
+
+    let (emits_key, emits_abs) = {
+        let mut evbits = [0u8; 4];
+        if unsafe { eviocgbit_ev(fd, &mut evbits) }.is_err() {
+            (false, false)
+        } else {
+            // EV_KEY is event type 1; EV_ABS is event type 3.
+            ((evbits[0] & (1 << 1)) != 0, (evbits[0] & (1 << 3)) != 0)
+        }
+    };
+
+    Some(DeviceFeatures {
+        name,
+        bustype: id.bustype,
+        vendor: id.vendor,
+        product: id.product,
+        version: id.version,
+        emits_key,
+        emits_abs,
+    })
+}
+
+/// Scans `/dev/input/event*` for input devices not already tracked.
+///
+/// Returns each new device's path alongside its probed [`DeviceFeatures`] so the
+/// caller can decide whether to trace its geometry without re-probing. Excludes
+/// paths in `tracked_paths` (already opened persistent + removable devices) and
+/// `blacklisted_paths` (known duplicates). Deduplicates by device identity so a
+/// device exposed under multiple event nodes is only opened once; duplicates are
+/// added to `blacklisted_paths` to avoid re-querying them on every scan.
+fn scan_input_devices(
+    tracked_paths: &[String],
+    known_identities: &mut FxHashSet<String>,
+    blacklisted_paths: &mut FxHashSet<String>,
+) -> Vec<(String, DeviceFeatures)> {
+    let mut found = Vec::new();
+    let entries = match std::fs::read_dir("/dev/input") {
+        Ok(e) => e,
+        Err(_) => return found,
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(path_str) = path.to_str() else {
+            continue;
+        };
+        if !path_str.starts_with("/dev/input/event") {
+            continue;
+        }
+        if tracked_paths.iter().any(|p| p == path_str) || blacklisted_paths.contains(path_str) {
+            continue;
+        }
+        let Some(features) = probe_device(path_str) else {
+            continue;
+        };
+        if !features.emits_key && !features.emits_abs {
+            continue;
+        }
+        match features.identity() {
+            Some(identity) => {
+                if known_identities.insert(identity.clone()) {
+                    tracing::debug!(device = path_str, identity, "scan: new device");
+                    found.push((path_str.to_string(), features));
+                } else {
+                    tracing::debug!(
+                        device = path_str,
+                        identity,
+                        "scan: blacklisting duplicate device"
+                    );
+                    blacklisted_paths.insert(path_str.to_string());
+                }
+            }
+            None => {
+                tracing::debug!(device = path_str, "scan: device without identity");
+                found.push((path_str.to_string(), features));
+            }
+        }
+    }
+
+    found
+}
+
+/// Reads raw evdev events from all input devices and forwards them on `tx`.
+///
+/// Every device under `/dev/input/event*` is probed at startup and opened as a
+/// **persistent** device. Built-in nodes (`/dev/input/eventN`) outlive driver
+/// hiccups, so a reader that exits from a driver error is re-opened on the next
+/// scan rather than dropped for the rest of the session. A periodic rescan
+/// discovers **removable** devices hotplugged after startup, and when a reader
+/// stops the device's identity is released so a replug is re-detected instead of
+/// being treated as a duplicate.
+async fn parse_raw_events(
+    cancel: &CancellationToken,
+    display: Display,
+    proto: TouchProto,
+    tx: &UnboundedSender<InputEvent>,
+) {
+    /// How often `/dev/input/event*` is rescanned for hotplugged devices.
+    const SCAN_INTERVAL: Duration = Duration::from_secs(5);
+
+    let mut device = OpenInputDevices {
+        watched: Vec::new(),
+        readers: tokio::task::JoinSet::new(),
+        known_identities: FxHashSet::default(),
+        blacklisted_paths: FxHashSet::default(),
+        proto,
+        display,
+        tx,
+    };
+
+    device.open(&[], false);
+
+    let mut last_scan = Instant::now();
+    loop {
+        let next_scan = SCAN_INTERVAL.saturating_sub(last_scan.elapsed());
+        let readers_busy = !device.readers.is_empty();
+        tokio::select! {
+            biased;
+            () = cancel.cancelled() => break,
+            () = tokio::time::sleep(next_scan) => {}
+            Some(joined) = device.readers.join_next(), if readers_busy => {
+                device.reap(joined);
+            }
+        }
+
+        if last_scan.elapsed() >= SCAN_INTERVAL {
+            last_scan = Instant::now();
+            device.open(&device.tracked(), true);
+        }
+    }
+}
+
+/// Owns the evdev devices the input reader currently watches.
+///
+/// One reader task per open device forwards events on `tx`; when a task ends it
+/// returns the device's path and dedup identity so [`Self::reap`] can release
+/// them, letting a later scan re-open a persistent node or re-detect a replugged
+/// removable one.
+struct OpenInputDevices<'a> {
+    watched: Vec<(String, Option<String>)>,
+    readers: tokio::task::JoinSet<(String, Option<String>)>,
+    known_identities: FxHashSet<String>,
+    blacklisted_paths: FxHashSet<String>,
+    proto: TouchProto,
+    display: Display,
+    tx: &'a UnboundedSender<InputEvent>,
+}
+
+impl OpenInputDevices<'_> {
+    /// Paths currently watched, passed to the scan as already tracked.
+    fn tracked(&self) -> Vec<String> {
+        self.watched.iter().map(|(path, _)| path.clone()).collect()
+    }
+
+    /// Scans for devices not already tracked and opens a reader for each.
+    ///
+    /// `hotplugged` only distinguishes the log line between the startup set and
+    /// devices that appeared later.
+    fn open(&mut self, tracked: &[String], hotplugged: bool) {
+        for (path, features) in scan_input_devices(
+            tracked,
+            &mut self.known_identities,
+            &mut self.blacklisted_paths,
+        ) {
+            let file = match std::fs::OpenOptions::new()
+                .read(true)
+                .custom_flags(libc::O_NONBLOCK)
+                .open(&path)
+            {
+                Ok(file) => file,
+                Err(error) => {
+                    tracing::warn!(
+                        device = %path,
+                        error = %error,
+                        "failed to open input device; skipping"
+                    );
+                    continue;
+                }
+            };
+            if features.emits_abs {
+                trace_touch_device_geometry(&path, self.proto, self.display);
+            }
+            let fd = match AsyncFd::with_interest(file, Interest::READABLE) {
+                Ok(fd) => fd,
+                Err(error) => {
+                    tracing::warn!(
+                        device = %path,
+                        error = %error,
+                        "failed to watch input device; skipping"
+                    );
+                    continue;
+                }
+            };
+            tracing::info!(
+                device = %path,
+                emits_key = features.emits_key,
+                emits_abs = features.emits_abs,
+                hotplugged,
+                "opened input device"
+            );
+            let identity = features.identity();
+            let tx = self.tx.clone();
+            let path_for_reader = path.clone();
+            let identity_for_reader = identity.clone();
+            self.readers.spawn(async move {
+                let outcome = read_input_events(fd, &tx).await;
+                tracing::debug!(
+                    device = %path_for_reader,
+                    error = ?outcome.as_ref().err(),
+                    "input device reader exited"
+                );
+                (path_for_reader, identity_for_reader)
+            });
+            self.watched.push((path, identity));
+        }
+    }
+
+    /// Releases the device whose reader just ended.
+    fn reap(&mut self, joined: Result<(String, Option<String>), tokio::task::JoinError>) {
+        if let Ok((path, identity)) = joined {
+            if let Some(pos) = self.watched.iter().position(|(p, _)| p == &path) {
+                self.watched.remove(pos);
+            }
+            if let Some(identity) = identity.as_ref() {
+                self.known_identities.remove(identity);
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1130,8 +1422,13 @@ mod tests {
 
         let path_str = path.to_str().expect("utf8 path").to_string();
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-        let reader_path = path_str.clone();
-        let reader = tokio::spawn(async move { parse_raw_events(&[reader_path], &tx).await });
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NONBLOCK)
+            .open(&path_str)
+            .expect("open fifo");
+        let fd = AsyncFd::with_interest(file, Interest::READABLE).expect("watch fifo");
+        let reader = tokio::spawn(async move { read_input_events(fd, &tx).await });
 
         let writer_path = path.clone();
         let writer = tokio::task::spawn_blocking(move || {
@@ -1191,8 +1488,13 @@ mod tests {
 
         let path_str = path.to_str().expect("utf8 path").to_string();
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-        let reader_path = path_str.clone();
-        let reader = tokio::spawn(async move { parse_raw_events(&[reader_path], &tx).await });
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NONBLOCK)
+            .open(&path_str)
+            .expect("open fifo");
+        let fd = AsyncFd::with_interest(file, Interest::READABLE).expect("watch fifo");
+        let reader = tokio::spawn(async move { read_input_events(fd, &tx).await });
 
         let writer_path = path.clone();
         let mut writer = tokio::task::spawn_blocking(move || {
