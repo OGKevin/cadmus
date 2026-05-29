@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 mod error;
 mod metadata;
 mod model;
+mod power;
 mod types;
 mod usb;
 mod wifi;
@@ -26,6 +27,7 @@ pub struct Device {
     pub dpi: u16,
     metadata: OnceCell<DeviceMetadata>,
     wifi_manager: OnceCell<Box<dyn crate::device::wifi::WifiManager>>,
+    power_manager: OnceCell<Box<dyn crate::device::power::PowerManager>>,
 }
 
 impl Debug for Device {
@@ -41,211 +43,75 @@ impl Debug for Device {
 impl Device {
     /// Creates a new device from product and model number strings.
     fn new(product: &str, model_number: &str) -> Device {
-        match product {
-            "kraken" => Device {
-                model: Model::Glo,
-                proto: TouchProto::Single,
-                dims: (758, 1024),
-                dpi: 212,
-                metadata: OnceCell::new(),
-                wifi_manager: OnceCell::new(),
-            },
-            "pixie" => Device {
-                model: Model::Mini,
-                proto: TouchProto::Single,
-                dims: (600, 800),
-                dpi: 200,
-                metadata: OnceCell::new(),
-                wifi_manager: OnceCell::new(),
-            },
-            "dragon" => Device {
-                model: Model::AuraHD,
-                proto: TouchProto::Single,
-                dims: (1080, 1440),
-                dpi: 265,
-                metadata: OnceCell::new(),
-                wifi_manager: OnceCell::new(),
-            },
-            "phoenix" => Device {
-                model: Model::Aura,
-                proto: TouchProto::MultiA,
-                dims: (758, 1024),
-                dpi: 212,
-                metadata: OnceCell::new(),
-                wifi_manager: OnceCell::new(),
-            },
-            "dahlia" => Device {
-                model: Model::AuraH2O,
-                proto: TouchProto::MultiA,
-                dims: (1080, 1440),
-                dpi: 265,
-                metadata: OnceCell::new(),
-                wifi_manager: OnceCell::new(),
-            },
-            "alyssum" => Device {
-                model: Model::GloHD,
-                proto: TouchProto::MultiA,
-                dims: (1072, 1448),
-                dpi: 300,
-                metadata: OnceCell::new(),
-                wifi_manager: OnceCell::new(),
-            },
-            "pika" => Device {
-                model: Model::Touch2,
-                proto: TouchProto::MultiA,
-                dims: (600, 800),
-                dpi: 167,
-                metadata: OnceCell::new(),
-                wifi_manager: OnceCell::new(),
-            },
-            "daylight" => Device {
-                model: if model_number == "381" {
+        let (model, proto, dims, dpi) = match product {
+            "kraken" => (Model::Glo, TouchProto::Single, (758, 1024), 212),
+            "pixie" => (Model::Mini, TouchProto::Single, (600, 800), 200),
+            "dragon" => (Model::AuraHD, TouchProto::Single, (1080, 1440), 265),
+            "phoenix" => (Model::Aura, TouchProto::MultiA, (758, 1024), 212),
+            "dahlia" => (Model::AuraH2O, TouchProto::MultiA, (1080, 1440), 265),
+            "alyssum" => (Model::GloHD, TouchProto::MultiA, (1072, 1448), 300),
+            "pika" => (Model::Touch2, TouchProto::MultiA, (600, 800), 167),
+            "daylight" => {
+                let model = if model_number == "381" {
                     Model::AuraONELimEd
                 } else {
                     Model::AuraONE
-                },
-                proto: TouchProto::MultiA,
-                dims: (1404, 1872),
-                dpi: 300,
-                metadata: OnceCell::new(),
-                wifi_manager: OnceCell::new(),
-            },
-            "star" => Device {
-                model: if model_number == "379" {
+                };
+                (model, TouchProto::MultiA, (1404, 1872), 300)
+            }
+            "star" => {
+                let model = if model_number == "379" {
                     Model::AuraEd2V2
                 } else {
                     Model::AuraEd2V1
-                },
-                proto: TouchProto::MultiA,
-                dims: (758, 1024),
-                dpi: 212,
-                metadata: OnceCell::new(),
-                wifi_manager: OnceCell::new(),
-            },
-            "snow" => Device {
-                model: if model_number == "378" {
+                };
+                (model, TouchProto::MultiA, (758, 1024), 212)
+            }
+            "snow" => {
+                let model = if model_number == "378" {
                     Model::AuraH2OEd2V2
                 } else {
                     Model::AuraH2OEd2V1
-                },
-                proto: TouchProto::MultiB,
-                dims: (1080, 1440),
-                dpi: 265,
-                metadata: OnceCell::new(),
-                wifi_manager: OnceCell::new(),
-            },
-            "nova" => Device {
-                model: Model::ClaraHD,
-                proto: TouchProto::MultiB,
-                dims: (1072, 1448),
-                dpi: 300,
-                metadata: OnceCell::new(),
-                wifi_manager: OnceCell::new(),
-            },
-            "frost" => Device {
-                model: if model_number == "380" {
+                };
+                (model, TouchProto::MultiB, (1080, 1440), 265)
+            }
+            "nova" => (Model::ClaraHD, TouchProto::MultiB, (1072, 1448), 300),
+            "frost" => {
+                let model = if model_number == "380" {
                     Model::Forma32GB
                 } else {
                     Model::Forma
-                },
-                proto: TouchProto::MultiB,
-                dims: (1440, 1920),
-                dpi: 300,
-                metadata: OnceCell::new(),
-                wifi_manager: OnceCell::new(),
-            },
-            "storm" => Device {
-                model: Model::LibraH2O,
-                proto: TouchProto::MultiB,
-                dims: (1264, 1680),
-                dpi: 300,
-                metadata: OnceCell::new(),
-                wifi_manager: OnceCell::new(),
-            },
-            "luna" => Device {
-                model: Model::Nia,
-                proto: TouchProto::MultiA,
-                dims: (758, 1024),
-                dpi: 212,
-                metadata: OnceCell::new(),
-                wifi_manager: OnceCell::new(),
-            },
-            "europa" => Device {
-                model: Model::Elipsa,
-                proto: TouchProto::MultiC,
-                dims: (1404, 1872),
-                dpi: 227,
-                metadata: OnceCell::new(),
-                wifi_manager: OnceCell::new(),
-            },
-            "cadmus" => Device {
-                model: Model::Sage,
-                proto: TouchProto::MultiC,
-                dims: (1440, 1920),
-                dpi: 300,
-                metadata: OnceCell::new(),
-                wifi_manager: OnceCell::new(),
-            },
-            "io" => Device {
-                model: Model::Libra2,
-                proto: TouchProto::MultiC,
-                dims: (1264, 1680),
-                dpi: 300,
-                metadata: OnceCell::new(),
-                wifi_manager: OnceCell::new(),
-            },
-            "goldfinch" => Device {
-                model: Model::Clara2E,
-                proto: TouchProto::MultiB,
-                dims: (1072, 1448),
-                dpi: 300,
-                metadata: OnceCell::new(),
-                wifi_manager: OnceCell::new(),
-            },
-            "condor" => Device {
-                model: Model::Elipsa2E,
-                proto: TouchProto::MultiC,
-                dims: (1404, 1872),
-                dpi: 227,
-                metadata: OnceCell::new(),
-                wifi_manager: OnceCell::new(),
-            },
-            "spaBW" | "spaBWTPV" => Device {
-                model: Model::ClaraBW,
-                proto: TouchProto::MultiB,
-                dims: (1072, 1448),
-                dpi: 300,
-                metadata: OnceCell::new(),
-                wifi_manager: OnceCell::new(),
-            },
-            "spaColour" => Device {
-                model: Model::ClaraColour,
-                proto: TouchProto::MultiB,
-                dims: (1072, 1448),
-                dpi: 300,
-                metadata: OnceCell::new(),
-                wifi_manager: OnceCell::new(),
-            },
-            "monza" => Device {
-                model: Model::LibraColour,
-                proto: TouchProto::MultiB,
-                dims: (1264, 1680),
-                dpi: 300,
-                metadata: OnceCell::new(),
-                wifi_manager: OnceCell::new(),
-            },
-            _ => Device {
-                model: if model_number == "320" {
+                };
+                (model, TouchProto::MultiB, (1440, 1920), 300)
+            }
+            "storm" => (Model::LibraH2O, TouchProto::MultiB, (1264, 1680), 300),
+            "luna" => (Model::Nia, TouchProto::MultiA, (758, 1024), 212),
+            "europa" => (Model::Elipsa, TouchProto::MultiC, (1404, 1872), 227),
+            "cadmus" => (Model::Sage, TouchProto::MultiC, (1440, 1920), 300),
+            "io" => (Model::Libra2, TouchProto::MultiC, (1264, 1680), 300),
+            "goldfinch" => (Model::Clara2E, TouchProto::MultiB, (1072, 1448), 300),
+            "condor" => (Model::Elipsa2E, TouchProto::MultiC, (1404, 1872), 227),
+            "spaBW" | "spaBWTPV" => (Model::ClaraBW, TouchProto::MultiB, (1072, 1448), 300),
+            "spaColour" => (Model::ClaraColour, TouchProto::MultiB, (1072, 1448), 300),
+            "monza" => (Model::LibraColour, TouchProto::MultiB, (1264, 1680), 300),
+            _ => {
+                let model = if model_number == "320" {
                     Model::TouchC
                 } else {
                     Model::TouchAB
-                },
-                proto: TouchProto::Single,
-                dims: (600, 800),
-                dpi: 167,
-                metadata: OnceCell::new(),
-                wifi_manager: OnceCell::new(),
-            },
+                };
+                (model, TouchProto::Single, (600, 800), 167)
+            }
+        };
+
+        Device {
+            model,
+            proto,
+            dims,
+            dpi,
+            metadata: OnceCell::new(),
+            wifi_manager: OnceCell::new(),
+            power_manager: OnceCell::new(),
         }
     }
 
@@ -280,6 +146,15 @@ impl Device {
     ) -> Result<&dyn crate::device::wifi::WifiManager, crate::device::wifi::WifiError> {
         self.wifi_manager
             .get_or_try_init(crate::device::wifi::create_wifi_manager)
+            .map(|b| b.as_ref())
+    }
+
+    /// Returns the Power manager for this device.
+    pub fn power_manager(
+        &self,
+    ) -> Result<&dyn crate::device::power::PowerManager, crate::device::power::PowerError> {
+        self.power_manager
+            .get_or_try_init(|| crate::device::power::create_power_manager(self.model))
             .map(|b| b.as_ref())
     }
 

@@ -1159,10 +1159,18 @@ pub fn run() -> Result<(), Error> {
                     "{}",
                     before.format("Went to sleep on %B %-d, %Y at %H:%M:%S.")
                 );
-                Command::new("scripts/suspend.sh").status().ok();
+                if let Ok(power) = CURRENT_DEVICE.power_manager() {
+                    if let Err(e) = power.suspend() {
+                        tracing::error!(error = %e, "Failed to suspend device");
+                    }
+                }
                 let after = Local::now();
                 info!("{}", after.format("Woke up on %B %-d, %Y at %H:%M:%S."));
-                Command::new("scripts/resume.sh").status().ok();
+                if let Ok(power) = CURRENT_DEVICE.power_manager() {
+                    if let Err(e) = power.resume() {
+                        tracing::error!(error = %e, "Failed to resume device");
+                    }
+                }
                 inactive_since = Instant::now();
                 let pending_task_ids: Vec<_> = tasks.iter().map(|t| t.id).collect();
                 debug!(pending_tasks = ?pending_task_ids, "task state after wake");
