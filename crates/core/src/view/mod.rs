@@ -853,6 +853,10 @@ pub enum EntryId {
     DeleteRefreshRateByKind(settings::FileExtension),
     /// Add a new per-kind refresh rate override (opens extension picker submenu).
     AddRefreshRateByKind,
+    /// Toggle whether a file extension is indexed during import.
+    ToggleAllowedKind(settings::FileExtension),
+    /// Toggle whether a file extension is rendered with dithering.
+    ToggleDitheredKind(settings::FileExtension),
 }
 
 impl EntryKind {

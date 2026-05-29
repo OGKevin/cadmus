@@ -3,10 +3,10 @@ use super::kinds::general::{
     AutoPowerOff, AutoShare, AutoSuspend, ButtonScheme, KeyboardLayout, Locale, SettingsRetention,
     SleepCover,
 };
-use super::kinds::import::{ImportStartupTrigger, ImportSyncMetadata};
+use super::kinds::import::{AllowedKindsSetting, ImportStartupTrigger, ImportSyncMetadata};
 use super::kinds::intermission::{IntermissionPowerOff, IntermissionShare, IntermissionSuspend};
 use super::kinds::library::LibraryInfo;
-use super::kinds::reader::{FinishedActionSetting, RefreshRateInfo};
+use super::kinds::reader::{DitheredKindsSetting, FinishedActionSetting, RefreshRateInfo};
 use super::kinds::telemetry::{LogLevel, LoggingEnabled};
 use super::kinds::SettingKind;
 use crate::context::Context;
@@ -71,7 +71,11 @@ impl Category {
                 Box::new(SleepCover),
                 Box::new(SettingsRetention),
             ],
-            Category::Reader => vec![Box::new(FinishedActionSetting), Box::new(RefreshRateInfo)],
+            Category::Reader => vec![
+                Box::new(FinishedActionSetting),
+                Box::new(DitheredKindsSetting),
+                Box::new(RefreshRateInfo),
+            ],
             Category::Libraries => (0..context.settings.libraries.len())
                 .map(|i| Box::new(LibraryInfo(i)) as Box<dyn SettingKind>)
                 .collect(),
@@ -80,7 +84,11 @@ impl Category {
                 Box::new(IntermissionPowerOff),
                 Box::new(IntermissionShare),
             ],
-            Category::Import => vec![Box::new(ImportStartupTrigger), Box::new(ImportSyncMetadata)],
+            Category::Import => vec![
+                Box::new(ImportStartupTrigger),
+                Box::new(ImportSyncMetadata),
+                Box::new(AllowedKindsSetting),
+            ],
             Category::Telemetry => {
                 let rows: Vec<Box<dyn SettingKind>> =
                     vec![Box::new(LoggingEnabled), Box::new(LogLevel)];

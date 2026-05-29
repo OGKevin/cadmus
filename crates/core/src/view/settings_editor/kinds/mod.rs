@@ -142,6 +142,11 @@ pub trait SettingKind {
     fn hold_event(&self, _rect: Rectangle) -> Option<Event> {
         None
     }
+
+    /// Whether a submenu should remain open after this setting handles a selection.
+    fn keep_menu_open(&self) -> bool {
+        false
+    }
 }
 
 impl<T: SettingKind + ?Sized> SettingKind for &T {
@@ -177,6 +182,10 @@ impl<T: SettingKind + ?Sized> SettingKind for &T {
     fn hold_event(&self, rect: Rectangle) -> Option<Event> {
         (**self).hold_event(rect)
     }
+
+    fn keep_menu_open(&self) -> bool {
+        (**self).keep_menu_open()
+    }
 }
 
 impl<T: SettingKind + ?Sized> SettingKind for Box<T> {
@@ -211,6 +220,10 @@ impl<T: SettingKind + ?Sized> SettingKind for Box<T> {
 
     fn hold_event(&self, rect: Rectangle) -> Option<Event> {
         (**self).hold_event(rect)
+    }
+
+    fn keep_menu_open(&self) -> bool {
+        (**self).keep_menu_open()
     }
 }
 

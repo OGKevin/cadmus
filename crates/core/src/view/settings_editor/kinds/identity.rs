@@ -34,6 +34,7 @@ pub enum SettingIdentity {
     LogLevel,
     ImportStartupTrigger,
     ImportSyncMetadata,
+    AllowedKinds,
     #[cfg(feature = "tracing")]
     OtlpEndpoint,
     #[cfg(feature = "profiling")]
@@ -56,4 +57,5 @@ pub enum SettingIdentity {
     RefreshRateByKindRegular(String),
     /// Inverted refresh rate inside a per-kind editor.
     RefreshRateByKindInverted(String),
+    DitheredKinds,
 }

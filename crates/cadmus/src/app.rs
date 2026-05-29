@@ -1332,13 +1332,11 @@ pub fn run() -> Result<(), Error> {
                     }
                     context.fb.set_dithered(reader_info.dithered);
                 } else {
-                    context.fb.set_dithered(
-                        context
-                            .settings
-                            .reader
-                            .dithered_kinds
-                            .contains(&info.file.kind),
-                    );
+                    context
+                        .fb
+                        .set_dithered(info.file.kind.parse().ok().is_some_and(|kind| {
+                            context.settings.reader.dithered_kinds.contains(&kind)
+                        }));
                 }
                 let path = info.file.path.clone();
                 if let Some(r) = Reader::new(context.fb.rect(), *info, &tx, &mut context) {

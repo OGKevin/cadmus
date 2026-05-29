@@ -59,6 +59,7 @@ settings-general-unknown = Unknown
 
 # Settings - Reader
 settings-reader-end-of-book-action = End of Book Action
+settings-reader-dithered-kinds = Dithered File Types
 settings-reader-refresh-rate = Refresh Rate
 settings-reader-refresh-rate-by-kind-inverted-input = { $ext } inverted refresh rate (0 = never)
 settings-reader-refresh-rate-by-kind-regular-input = { $ext } regular refresh rate (0 = never)
@@ -89,6 +90,7 @@ settings-library-inherit = Inherit
 # Settings - Import
 settings-import-startup-trigger = Import on Startup
 settings-import-sync-metadata = Sync Metadata
+settings-import-allowed-kinds = Indexed File Types
 
 # Importer
 importer-importing-library = Importing Library…

@@ -118,6 +118,17 @@ Possible values:
 finished = "close"
 ```
 
+### `reader.dithered-kinds`
+
+✏️
+
+File extensions rendered with dithering by default.
+
+```toml
+[reader]
+dithered-kinds = ["cbz", "png", "jpg", "jpeg", "webp"]
+```
+
 ## Libraries
 
 ✏️
@@ -254,6 +265,8 @@ metadata-kinds = ["epub", "pdf", "djvu"]
 ```
 
 ### `import.allowed-kinds`
+
+✏️
 
 File extensions of documents considered during the import process.
 

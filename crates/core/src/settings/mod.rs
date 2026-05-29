@@ -329,7 +329,7 @@ pub struct ImportSettings {
     pub startup_trigger: bool,
     pub sync_metadata: bool,
     pub metadata_kinds: FxHashSet<String>,
-    #[serde(deserialize_with = "deserialize_allowed_kinds")]
+    #[serde(deserialize_with = "deserialize_file_extension_set")]
     pub allowed_kinds: FxHashSet<FileExtension>,
 }
 
@@ -590,13 +590,15 @@ impl<'r> sqlx::Decode<'r, Sqlite> for FileExtension {
     }
 }
 
-fn deserialize_allowed_kinds<'de, D>(deserializer: D) -> Result<FxHashSet<FileExtension>, D::Error>
+fn deserialize_file_extension_set<'de, D>(
+    deserializer: D,
+) -> Result<FxHashSet<FileExtension>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
-    struct AllowedKindsVisitor;
+    struct FileExtensionSetVisitor;
 
-    impl<'de> serde::de::Visitor<'de> for AllowedKindsVisitor {
+    impl<'de> serde::de::Visitor<'de> for FileExtensionSetVisitor {
         type Value = FxHashSet<FileExtension>;
 
         fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
@@ -624,7 +626,7 @@ where
         }
     }
 
-    deserializer.deserialize_seq(AllowedKindsVisitor)
+    deserializer.deserialize_seq(FileExtensionSetVisitor)
 }
 
 impl fmt::Display for FileExtension {
@@ -663,7 +665,8 @@ pub struct ReaderSettings {
     pub line_height: f32,
     pub continuous_fit_to_width: bool,
     pub ignore_document_css: bool,
-    pub dithered_kinds: FxHashSet<String>,
+    #[serde(deserialize_with = "deserialize_file_extension_set")]
+    pub dithered_kinds: FxHashSet<FileExtension>,
     pub paragraph_breaker: ParagraphBreakerSettings,
     pub refresh_rate: RefreshRateSettings,
 }
@@ -835,10 +838,16 @@ impl Default for ReaderSettings {
             line_height: DEFAULT_LINE_HEIGHT,
             continuous_fit_to_width: true,
             ignore_document_css: false,
-            dithered_kinds: ["cbz", "png", "jpg", "jpeg", "webp"]
-                .iter()
-                .map(|k| k.to_string())
-                .collect(),
+            dithered_kinds: [
+                FileExtension::Cbz,
+                FileExtension::Png,
+                FileExtension::Jpg,
+                FileExtension::Jpeg,
+                FileExtension::Webp,
+            ]
+            .iter()
+            .copied()
+            .collect(),
             paragraph_breaker: ParagraphBreakerSettings::default(),
             refresh_rate: RefreshRateSettings::default(),
         }
@@ -1168,6 +1177,32 @@ allowed-kinds = ["epub", "unknown-format", "another-unknown"]
 
         assert!(settings.allowed_kinds.contains(&FileExtension::Epub));
         assert_eq!(settings.allowed_kinds.len(), 1);
+    }
+
+    #[test]
+    fn test_dithered_kinds_deserializes_known_extensions() {
+        let toml_str = r#"
+finished = "close"
+dithered-kinds = ["cbz", "png", "jpeg"]
+"#;
+        let settings: ReaderSettings = toml::from_str(toml_str).expect("Failed to deserialize");
+
+        assert!(settings.dithered_kinds.contains(&FileExtension::Cbz));
+        assert!(settings.dithered_kinds.contains(&FileExtension::Png));
+        assert!(settings.dithered_kinds.contains(&FileExtension::Jpeg));
+        assert_eq!(settings.dithered_kinds.len(), 3);
+    }
+
+    #[test]
+    fn test_dithered_kinds_silently_drops_unknown_extensions() {
+        let toml_str = r#"
+finished = "close"
+dithered-kinds = ["cbz", "unknown-format"]
+"#;
+        let settings: ReaderSettings = toml::from_str(toml_str).expect("Failed to deserialize");
+
+        assert!(settings.dithered_kinds.contains(&FileExtension::Cbz));
+        assert_eq!(settings.dithered_kinds.len(), 1);
     }
 
     #[test]

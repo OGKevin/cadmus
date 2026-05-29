@@ -257,7 +257,9 @@ impl View for SettingValue {
 
         if let (Some(display), handled) = self.kind.handle(evt, &mut context.settings, bus) {
             self.update(display, &context.settings, rq);
-            bus.push_back(Event::Close(ViewId::SettingsValueMenu));
+            if !self.kind.keep_menu_open() {
+                bus.push_back(Event::Close(ViewId::SettingsValueMenu));
+            }
             return handled;
         }
 
@@ -336,12 +338,13 @@ mod tests {
     use crate::view::settings_editor::kinds::general::{
         AutoPowerOff, AutoSuspend, KeyboardLayout, SettingsRetention,
     };
+    use crate::view::settings_editor::kinds::import::AllowedKindsSetting;
     use crate::view::settings_editor::kinds::intermission::{
         IntermissionPowerOff, IntermissionShare, IntermissionSuspend,
     };
     use crate::view::settings_editor::kinds::library::{LibraryInfo, LibraryName, LibraryPath};
     use crate::view::settings_editor::kinds::telemetry::LogLevel;
-    use crate::view::RenderQueue;
+    use crate::view::{EntryId, RenderQueue};
     use std::collections::VecDeque;
     use std::path::PathBuf;
     use std::sync::mpsc::channel;
@@ -855,5 +858,42 @@ mod tests {
             "UpdateValue event should be handled when kind matches"
         );
         assert_eq!(value.value(), "DEBUG");
+    }
+
+    #[test]
+    fn test_keep_open_submenu_does_not_queue_menu_close() {
+        use crate::settings::FileExtension;
+
+        let rect = rect![0, 0, 200, 50];
+        let mut context = create_test_context();
+        let mut value = SettingValue::new(
+            &AllowedKindsSetting,
+            rect,
+            &context.settings,
+            &mut context.fonts,
+        );
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+        let mut rq = RenderQueue::new();
+
+        let handled = value.handle_event(
+            &Event::Select(EntryId::ToggleAllowedKind(FileExtension::Cbr)),
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        );
+
+        assert!(handled);
+        assert!(context
+            .settings
+            .import
+            .allowed_kinds
+            .contains(&FileExtension::Cbr));
+        assert!(
+            !bus.iter()
+                .any(|evt| matches!(evt, Event::Close(ViewId::SettingsValueMenu))),
+            "submenu should remain open for multi-select settings"
+        );
     }
 }

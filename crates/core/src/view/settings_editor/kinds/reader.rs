@@ -10,6 +10,66 @@ use crate::view::{Bus, EntryId, EntryKind, Event, ViewId};
 /// Reader finished action setting
 pub struct FinishedActionSetting;
 
+/// File kinds rendered with dithering.
+pub struct DitheredKindsSetting;
+
+impl SettingKind for DitheredKindsSetting {
+    fn identity(&self) -> SettingIdentity {
+        SettingIdentity::DitheredKinds
+    }
+
+    fn label(&self, _settings: &Settings) -> String {
+        fl!("settings-reader-dithered-kinds")
+    }
+
+    fn fetch(&self, settings: &Settings) -> SettingData {
+        let entries = FileExtension::all()
+            .iter()
+            .copied()
+            .map(|kind| {
+                EntryKind::CheckBox(
+                    kind.to_string().to_uppercase(),
+                    EntryId::ToggleDitheredKind(kind),
+                    settings.reader.dithered_kinds.contains(&kind),
+                )
+            })
+            .collect();
+
+        SettingData {
+            value: kinds_summary(settings.reader.dithered_kinds.len()),
+            widget: WidgetKind::SubMenu(entries),
+        }
+    }
+
+    fn handle(
+        &self,
+        evt: &Event,
+        settings: &mut Settings,
+        _bus: &mut Bus,
+    ) -> (Option<String>, bool) {
+        if let Event::Select(EntryId::ToggleDitheredKind(kind)) = evt {
+            if !settings.reader.dithered_kinds.remove(kind) {
+                settings.reader.dithered_kinds.insert(*kind);
+            }
+
+            return (
+                Some(kinds_summary(settings.reader.dithered_kinds.len())),
+                true,
+            );
+        }
+
+        (None, false)
+    }
+
+    fn keep_menu_open(&self) -> bool {
+        true
+    }
+}
+
+fn kinds_summary(selected: usize) -> String {
+    format!("{selected} / {}", FileExtension::all().len())
+}
+
 impl SettingKind for FinishedActionSetting {
     fn identity(&self) -> SettingIdentity {
         SettingIdentity::FinishedAction
@@ -375,7 +435,7 @@ impl SettingKind for RefreshRateByKindInverted {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::settings::{FinishedAction, Settings};
+    use crate::settings::{FileExtension, FinishedAction, Settings};
     use crate::view::{Bus, EntryId, Event};
     use std::collections::VecDeque;
 
@@ -410,6 +470,61 @@ mod tests {
                 let event = Event::Select(EntryId::SetFinishedAction(action));
                 setting.handle(&event, &mut settings, &mut bus);
                 assert_eq!(settings.reader.finished, action);
+            }
+        }
+
+        mod dithered_kinds_setting {
+            use super::*;
+
+            #[test]
+            fn fetch_builds_checkbox_submenu_for_all_extensions() {
+                let setting = DitheredKindsSetting;
+                let settings = Settings::default();
+
+                let data = setting.fetch(&settings);
+
+                assert_eq!(
+                    data.value,
+                    kinds_summary(settings.reader.dithered_kinds.len())
+                );
+                let WidgetKind::SubMenu(entries) = data.widget else {
+                    panic!("expected submenu widget");
+                };
+                assert_eq!(entries.len(), FileExtension::all().len());
+                assert!(matches!(
+                    entries.first(),
+                    Some(EntryKind::CheckBox(_, EntryId::ToggleDitheredKind(_), _))
+                ));
+            }
+
+            #[test]
+            fn handle_toggle_adds_and_removes_extensions() {
+                let setting = DitheredKindsSetting;
+                let mut settings = Settings::default();
+                settings.reader.dithered_kinds.remove(&FileExtension::Pdf);
+                let mut bus: Bus = VecDeque::new();
+
+                let add = setting.handle(
+                    &Event::Select(EntryId::ToggleDitheredKind(FileExtension::Pdf)),
+                    &mut settings,
+                    &mut bus,
+                );
+                assert_eq!(
+                    add.0,
+                    Some(kinds_summary(settings.reader.dithered_kinds.len()))
+                );
+                assert!(settings.reader.dithered_kinds.contains(&FileExtension::Pdf));
+
+                let remove = setting.handle(
+                    &Event::Select(EntryId::ToggleDitheredKind(FileExtension::Pdf)),
+                    &mut settings,
+                    &mut bus,
+                );
+                assert_eq!(
+                    remove.0,
+                    Some(kinds_summary(settings.reader.dithered_kinds.len()))
+                );
+                assert!(!settings.reader.dithered_kinds.contains(&FileExtension::Pdf));
             }
         }
 
