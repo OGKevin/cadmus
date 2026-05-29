@@ -23,4 +23,22 @@ pub trait PowerManager: Send + Sync {
     ///
     /// Returns [`PowerError`] if any write operation fails.
     fn resume(&self) -> Result<(), PowerError>;
+
+    /// Initializes and enables all available CPU cores on startup.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PowerError`] if scanning or enabling fails.
+    fn init_cores(&self) -> Result<(), PowerError> {
+        Ok(())
+    }
+
+    /// Restores CPU cores to their initial state on shutdown.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PowerError`] if writing the saved states fails.
+    fn restore_cores(&self) -> Result<(), PowerError> {
+        Ok(())
+    }
 }

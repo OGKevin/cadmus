@@ -8,6 +8,8 @@ use crate::device::power::error::PowerError;
 use crate::device::power::manager::PowerManager;
 use crate::device::Model;
 use std::fs;
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 
@@ -34,12 +36,16 @@ const NEOCMD_PATH: &str = "/sys/devices/virtual/input/input1/neocmd";
 /// ```
 pub struct KoboPowerManager {
     model: Model,
+    initial_cpu_states: Mutex<Vec<PathBuf>>,
 }
 
 impl KoboPowerManager {
     /// Creates a new `KoboPowerManager` for the specified device model.
     pub fn new(model: Model) -> Self {
-        KoboPowerManager { model }
+        KoboPowerManager {
+            model,
+            initial_cpu_states: Mutex::new(Vec::new()),
+        }
     }
 }
 
@@ -116,6 +122,67 @@ impl PowerManager for KoboPowerManager {
         }
 
         Ok(())
+    }
+
+    fn init_cores(&self) -> Result<(), PowerError> {
+        let cpu_dir = Path::new("/sys/devices/system/cpu");
+        let discovered = super::discover_cores(cpu_dir).map_err(|e| {
+            tracing::warn!(error = %e, "Failed to discover CPU cores");
+            e
+        })?;
+
+        let mut modified_cores = Vec::new();
+        let mut first_error: Option<PowerError> = None;
+
+        for (online_path, initial_state) in discovered {
+            if initial_state == "0" {
+                tracing::info!(path = ?online_path, "Enabling offline CPU core");
+                match fs::write(&online_path, "1") {
+                    Ok(()) => modified_cores.push(online_path),
+                    Err(e) => {
+                        tracing::error!(path = ?online_path, error = %e, "Failed to enable CPU core");
+                        if first_error.is_none() {
+                            first_error = Some(PowerError::Io(e));
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut states = self
+            .initial_cpu_states
+            .lock()
+            .map_err(|_| PowerError::LockPoisoned)?;
+        *states = modified_cores;
+
+        match first_error {
+            Some(e) => Err(e),
+            None => Ok(()),
+        }
+    }
+
+    fn restore_cores(&self) -> Result<(), PowerError> {
+        let states = self
+            .initial_cpu_states
+            .lock()
+            .map_err(|_| PowerError::LockPoisoned)?;
+
+        let mut first_error: Option<PowerError> = None;
+
+        for path in states.iter() {
+            tracing::info!(path = ?path, "Disabling CPU core on exit");
+            if let Err(e) = fs::write(path, "0") {
+                tracing::error!(path = ?path, error = %e, "Failed to restore CPU core state");
+                if first_error.is_none() {
+                    first_error = Some(PowerError::Io(e));
+                }
+            }
+        }
+
+        match first_error {
+            Some(e) => Err(e),
+            None => Ok(()),
+        }
     }
 }
 

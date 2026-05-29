@@ -595,6 +595,17 @@ pub fn run() -> Result<(), Error> {
     info!(cwd = ?startup_cwd, db_exists = startup_db_exists, "startup diagnostics");
     CURRENT_DEVICE.clean_tmp_dir();
 
+    match CURRENT_DEVICE.power_manager() {
+        Ok(power) => {
+            if let Err(e) = power.init_cores() {
+                tracing::error!(error = %e, "Failed to initialize CPU cores");
+            }
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "Failed to retrieve power manager");
+        }
+    }
+
     let mut fonts = Fonts::load().context("can't load fonts")?;
     let database = Database::new(DB_FILENAME)
         .map_err(|e| {
@@ -1818,6 +1829,17 @@ pub fn run() -> Result<(), Error> {
                     tracing::error!(error = %e, "Failed to disable WiFi on exit");
                 }
             }
+        }
+    }
+
+    match CURRENT_DEVICE.power_manager() {
+        Ok(power) => {
+            if let Err(e) = power.restore_cores() {
+                tracing::error!(error = %e, "Failed to restore CPU cores on exit");
+            }
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "Failed to retrieve power manager on exit");
         }
     }
 
