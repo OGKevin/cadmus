@@ -1,6 +1,7 @@
 {
   "extends": ["config:recommended"],
   "minimumReleaseAge": "7 days",
+  "labels": ["dependencies"],
   "reviewers": ["OGKevin"],
   "packageRules": [
     {
