@@ -10,6 +10,8 @@ reviews:
   high_level_summary: false
   high_level_summary_in_walkthrough: true
   review_details: true
+  changed_files_summary: false
+  auto_title_instructions: It should follow https://www.conventionalcommits.org/en/v1.0.0/
   collapse_walkthrough: false
   labeling_instructions:
     - label: documentation
@@ -22,7 +24,7 @@ reviews:
     - "!docs/po/messages.pot"
     - "!.sqlx/**"
   auto_review:
-    auto_pause_after_reviewed_commits: 3
+    auto_pause_after_reviewed_commits: 5
     labels:
       - ai-review
     base_branches:
