@@ -22,7 +22,7 @@ pub fn log_mupdf_features() {
 }
 
 pub const FZ_MAX_COLORS: usize = 32;
-pub const FZ_VERSION: &str = "1.27.0";
+pub const FZ_VERSION: &str = "1.27.2";
 
 pub const FZ_META_INFO_AUTHOR: &str = "info:Author";
 pub const FZ_META_INFO_TITLE: &str = "info:Title";

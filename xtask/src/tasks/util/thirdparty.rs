@@ -138,7 +138,7 @@ pub const GUMBO_VERSION: &str = "0.10.1";
 pub const LIBWEBP_VERSION: &str = "1.2.3";
 
 /// MuPDF version, tracked via GitHub Releases on `ArtifexSoftware/mupdf-downloads`.
-pub const MUPDF_VERSION: &str = "1.27.0";
+pub const MUPDF_VERSION: &str = "1.27.2";
 
 const MUPDF_WEBP_PATCHES: &[&str] = &[
     "webp-upstream-697749-kobo.patch", // verbatim KOReader upstream
