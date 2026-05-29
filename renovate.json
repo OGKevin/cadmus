@@ -254,6 +254,18 @@
     {
       "customType": "regex",
       "managerFilePatterns": [
+        "/^crates\\/core\\/src\\/document\\/mupdf_sys\\.rs$/"
+      ],
+      "matchStrings": [
+        "pub const FZ_VERSION: &str = \\\"(?<currentValue>[^\\\"]+)\\\""
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "ArtifexSoftware/mupdf-downloads",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
         "/^xtask\\/src\\/tasks\\/util\\/thirdparty\\.rs$/"
       ],
       "matchStrings": [
