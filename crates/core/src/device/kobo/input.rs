@@ -3,7 +3,6 @@ use crate::framebuffer::Display;
 use crate::input::{InputEvent, device_events, raw_events, usb_events};
 use crate::settings::ButtonScheme;
 use crate::view::Event;
-use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc::UnboundedSender;
@@ -11,21 +10,6 @@ use tokio_util::sync::CancellationToken;
 
 pub(crate) const CLOCK_REFRESH_INTERVAL: Duration = Duration::from_secs(60);
 pub(crate) const BATTERY_REFRESH_INTERVAL: Duration = Duration::from_secs(299);
-
-fn touch_input_path() -> Option<String> {
-    for path in [
-        "/dev/input/by-path/platform-2-0010-event",
-        "/dev/input/by-path/platform-1-0038-event",
-        "/dev/input/by-path/platform-1-0010-event",
-        "/dev/input/by-path/platform-0-0010-event",
-        "/dev/input/event1",
-    ] {
-        if Path::new(path).exists() {
-            return Some(path.to_string());
-        }
-    }
-    None
-}
 
 /// Stub input source for Kobo devices.
 ///
@@ -86,50 +70,17 @@ impl crate::device::InputSource for InputSource {
         button_scheme: ButtonScheme,
         inhibitor: Arc<Inhibitor>,
     ) -> (crate::view::Hub, crate::view::HubReceiver) {
-        let mut paths = Vec::new();
-        let touch_path = touch_input_path();
-        if let Some(path) = touch_path.as_ref() {
-            paths.push(path.clone());
+        if let Some(cancel) = &self.pipeline_cancel {
+            cancel.cancel();
         }
-        for bi in [
-            "/dev/input/by-path/platform-gpio-keys-event",
-            "/dev/input/by-path/platform-ntx_event0-event",
-            "/dev/input/by-path/platform-mxckpd-event",
-            "/dev/input/event0",
-        ] {
-            if Path::new(bi).exists() {
-                paths.push(bi.to_string());
-                break;
-            }
-        }
-        for pi in [
-            "/dev/input/by-path/platform-bd71828-pwrkey.6.auto-event",
-            "/dev/input/by-path/platform-bd71828-pwrkey.4.auto-event",
-            "/dev/input/by-path/platform-bd71828-pwrkey-event",
-        ] {
-            if Path::new(pi).exists() {
-                paths.push(pi.to_string());
-                break;
-            }
-        }
+        let pipeline_cancel = CancellationToken::new();
+        self.pipeline_cancel = Some(pipeline_cancel.clone());
 
-        if let Some(path) = touch_path.as_deref() {
-            crate::input::trace_touch_device_geometry(path, self.info.proto, screen);
-        }
-
-        tracing::debug!(
-            touch_path = touch_path.as_deref(),
-            input_paths = ?paths,
-            rotation = screen.rotation,
-            dims = ?screen.dims,
-            mirroring_scheme = ?self.info.mirroring_scheme,
-            swapping_scheme = self.info.swapping_scheme,
-            startup_rotation = self.info.startup_rotation,
-            mark = self.info.mark,
-            "starting kobo input pipeline"
-        );
-
-        let (raw_sender, raw_receiver) = raw_events(paths);
+        // All evdev input devices (touch digitizer, gpio-keys, power key, and
+        // any hotplugged keyboards) are discovered by a feature scan inside
+        // `raw_events` — no hard-coded device paths.
+        let (raw_sender, raw_receiver) =
+            raw_events(screen, self.info.proto, pipeline_cancel.clone());
         self.raw_sender = Some(raw_sender.clone());
         if let Some(job) = self.gesture_job.take() {
             job.cancel();
@@ -142,12 +93,6 @@ impl crate::device::InputSource for InputSource {
         self.gesture_job = Some(gesture_job);
         let usb_port = usb_events();
         let (tx, rx) = crate::view::hub_channel();
-
-        if let Some(cancel) = &self.pipeline_cancel {
-            cancel.cancel();
-        }
-        let pipeline_cancel = CancellationToken::new();
-        self.pipeline_cancel = Some(pipeline_cancel.clone());
 
         let tx2 = tx.clone();
         let inhibitor2 = Arc::clone(&inhibitor);
