@@ -40,13 +40,12 @@ Both database mode and filesystem mode libraries are handled. Cadmus reads
 carry over regardless of which mode you used in Plato.
 
 > [!NOTE]
-> After a successful import the original files are renamed:
->
-> - `.metadata.json` → `.metadata.json.imported`
-> - `.reading-states/` → `.reading-states.imported`
->
-> These renamed files are just a safety backup. Once you've confirmed
-> everything looks right you can delete them.
+> The original `.metadata.json` and `.reading-states/` files are not modified
+> or deleted during import. Once you have confirmed everything looks right in
+> Cadmus, you can safely delete them. Keeping these files means your Plato
+> progress remains intact. If you decide to go back to Plato, you can do so
+> without losing your original Plato reading states. Though keep in
+> mind that any progress you make in Cadmus will not sync back to Plato.
 
 > [!NOTE]
 > Cadmus also removes the `.thumbnail-previews/` folder and regenerates
@@ -57,17 +56,14 @@ carry over regardless of which mode you used in Plato.
 If the import went wrong (for example, the library path was incorrect in
 settings), you can start it fresh:
 
-1. Rename `.metadata.json.imported` back to `.metadata.json` and
-   `.reading-states.imported` back to `.reading-states/` in each library
-   directory.
-2. Delete the Cadmus SQLite database:
+1. Delete the Cadmus SQLite database:
 
    | Build  | Database path                                 |
    | ------ | --------------------------------------------- |
    | Stable | `/mnt/onboard/.adds/cadmus/cadmus.sqlite`     |
    | Test   | `/mnt/onboard/.adds/cadmus-tst/cadmus.sqlite` |
 
-3. Restart Cadmus — the import will run again from scratch.
+2. Restart Cadmus — the import will run again from scratch.
 
 If something still looks wrong after re-running, check the logs for details.
 See [Troubleshooting](../troubleshooting/index.md) for where to find them.

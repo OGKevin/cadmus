@@ -633,7 +633,6 @@ async fn import_library(
 
     #[cfg(not(feature = "test"))]
     {
-        mark_library_imported(library_path).await;
         delete_thumbnail_previews(library_path).await;
     }
 
@@ -811,30 +810,6 @@ async fn ensure_stub_book(
     .await?;
 
     Ok(())
-}
-
-/// Renames `.metadata.json` and `.reading-states/` to their `.imported` suffixed
-/// equivalents so that subsequent runs of the migration skip this library.
-#[cfg(not(feature = "test"))]
-#[cfg_attr(feature = "tracing", tracing::instrument(fields(path = ?library_path)))]
-async fn mark_library_imported(library_path: &Path) {
-    let metadata_src = library_path.join(METADATA_FILENAME);
-    let metadata_dst = library_path.join(format!("{}.imported", METADATA_FILENAME));
-
-    if metadata_src.exists() {
-        if let Err(e) = fs::rename(&metadata_src, &metadata_dst).await {
-            warn!(path = ?metadata_src, error = %e, "failed to rename .metadata.json after import");
-        }
-    }
-
-    let states_src = library_path.join(READING_STATES_DIRNAME);
-    let states_dst = library_path.join(format!("{}.imported", READING_STATES_DIRNAME));
-
-    if states_src.exists() {
-        if let Err(e) = fs::rename(&states_src, &states_dst).await {
-            warn!(path = ?states_src, error = %e, "failed to rename .reading-states after import");
-        }
-    }
 }
 
 /// Removes `.thumbnail-previews/` from the library directory.
