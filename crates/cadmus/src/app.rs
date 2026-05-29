@@ -1159,16 +1159,26 @@ pub fn run() -> Result<(), Error> {
                     "{}",
                     before.format("Went to sleep on %B %-d, %Y at %H:%M:%S.")
                 );
-                if let Ok(power) = CURRENT_DEVICE.power_manager() {
-                    if let Err(e) = power.suspend() {
-                        tracing::error!(error = %e, "Failed to suspend device");
+                match CURRENT_DEVICE.power_manager() {
+                    Ok(power) => {
+                        if let Err(e) = power.suspend() {
+                            tracing::error!(error = %e, "Failed to suspend device");
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!(error = %e, "power_manager() initialization failed for suspend");
                     }
                 }
                 let after = Local::now();
                 info!("{}", after.format("Woke up on %B %-d, %Y at %H:%M:%S."));
-                if let Ok(power) = CURRENT_DEVICE.power_manager() {
-                    if let Err(e) = power.resume() {
-                        tracing::error!(error = %e, "Failed to resume device");
+                match CURRENT_DEVICE.power_manager() {
+                    Ok(power) => {
+                        if let Err(e) = power.resume() {
+                            tracing::error!(error = %e, "Failed to resume device");
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!(error = %e, "power_manager() initialization failed for resume");
                     }
                 }
                 inactive_since = Instant::now();
