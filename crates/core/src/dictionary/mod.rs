@@ -7,10 +7,10 @@
 
 mod dictreader;
 mod errors;
-#[cfg(feature = "bench")]
-pub mod indexing;
-#[cfg(not(feature = "bench"))]
-mod indexing;
+cfg_select! {
+    feature = "bench" => { pub mod indexing; }
+    _ => { mod indexing; }
+}
 
 pub(crate) mod db_index;
 mod monolingual;

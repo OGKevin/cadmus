@@ -78,17 +78,20 @@ fn is_sorted(entries: &[Entry]) -> bool {
     entries.windows(2).all(|w| w[0].headword <= w[1].headword)
 }
 
-/// Normalize entries based on dictionary metadata.
-///
-/// If no normalization is needed and the entries are already sorted, returns
-/// the original entries unchanged. Otherwise transforms headwords (lowercasing
-/// and/or stripping non-alphanumeric characters) and sorts by headword.
-#[cfg(feature = "bench")]
-pub fn normalize(entries: &[Entry], metadata: &Metadata) -> Vec<Entry> {
-    normalize_internal(entries, metadata)
-}
-
-#[cfg(not(feature = "bench"))]
-pub(crate) fn normalize(entries: &[Entry], metadata: &Metadata) -> Vec<Entry> {
-    normalize_internal(entries, metadata)
+cfg_select! {
+    feature = "bench" => {
+        pub fn normalize(entries: &[Entry], metadata: &Metadata) -> Vec<Entry> {
+            normalize_internal(entries, metadata)
+        }
+    }
+    _ => {
+        /// Normalize entries based on dictionary metadata.
+        ///
+        /// If no normalization is needed and the entries are already sorted, returns
+        /// the original entries unchanged. Otherwise transforms headwords (lowercasing
+        /// and/or stripping non-alphanumeric characters) and sorts by headword.
+        pub(crate) fn normalize(entries: &[Entry], metadata: &Metadata) -> Vec<Entry> {
+            normalize_internal(entries, metadata)
+        }
+    }
 }

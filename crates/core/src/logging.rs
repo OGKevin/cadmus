@@ -328,25 +328,24 @@ pub fn init_logging(settings: &LoggingSettings) -> Result<(), Error> {
         .with_writer(swappable)
         .with_current_span(true);
 
-    #[cfg(feature = "tracing")]
-    {
-        let subscriber = tracing_subscriber::registry()
-            .with(filter)
-            .with(telemetry::tracing::init_telemetry(settings, get_run_id())?)
-            .with(fmt_layer);
+    cfg_select! {
+        feature = "tracing" => {
+            let subscriber = tracing_subscriber::registry()
+                .with(filter)
+                .with(telemetry::tracing::init_telemetry(settings, get_run_id())?)
+                .with(fmt_layer);
 
-        subscriber
-            .try_init()
-            .context("can't initialize tracing subscriber")?;
-    }
+            subscriber
+                .try_init()
+                .context("can't initialize tracing subscriber")?;
+        }
+        _ => {
+            let subscriber = tracing_subscriber::registry().with(filter).with(fmt_layer);
 
-    #[cfg(not(feature = "tracing"))]
-    {
-        let subscriber = tracing_subscriber::registry().with(filter).with(fmt_layer);
-
-        subscriber
-            .try_init()
-            .context("can't initialize tracing subscriber")?;
+            subscriber
+                .try_init()
+                .context("can't initialize tracing subscriber")?;
+        }
     }
 
     eprintln!(

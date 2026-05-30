@@ -458,22 +458,25 @@ impl<'de> Deserialize<'de> for GitVersion {
 pub fn get_current_version() -> GitVersion {
     let version_str = env!("GIT_VERSION");
 
-    match version_str.parse() {
-        Ok(version) => version,
-        Err(e) => {
-            #[cfg(feature = "emulator")]
-            panic!("compile-time GIT_VERSION is not a valid git-describe string: {e}");
-
-            #[cfg(not(feature = "emulator"))]
-            {
-                tracing::warn!(
-                    error = %e,
-                    version = version_str,
-                    "Failed to parse compile-time GIT_VERSION; falling back to v0.0.0"
-                );
-                "v0.0.0"
-                    .parse()
-                    .expect("v0.0.0 is always a valid version string")
+    cfg_select! {
+        feature = "emulator" => {
+            version_str.parse().unwrap_or_else(|e| {
+                panic!("compile-time GIT_VERSION is not a valid git-describe string: {e}")
+            })
+        }
+        _ => {
+            match version_str.parse() {
+                Ok(version) => version,
+                Err(e) => {
+                    tracing::warn!(
+                        error = %e,
+                        version = version_str,
+                        "Failed to parse compile-time GIT_VERSION; falling back to v0.0.0"
+                    );
+                    "v0.0.0"
+                        .parse()
+                        .expect("v0.0.0 is always a valid version string")
+                }
             }
         }
     }
@@ -502,11 +505,10 @@ pub fn get_build_attributes() -> BuildAttributes {
 }
 
 fn get_build_kind() -> BuildKind {
-    if cfg!(feature = "test") {
-        return BuildKind::Test;
+    cfg_select! {
+        feature = "test" => { BuildKind::Test }
+        _ => { BuildKind::Standard }
     }
-
-    BuildKind::Standard
 }
 
 fn parse_semver(semver: &str) -> Result<(u64, u64, u64), VersionError> {

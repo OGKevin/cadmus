@@ -920,42 +920,46 @@ impl Default for Settings {
     fn default() -> Self {
         Settings {
             selected_library: 0,
-            #[cfg(feature = "emulator")]
-            libraries: vec![LibrarySettings {
-                name: "Cadmus Source".to_string(),
-                path: PathBuf::from("."),
-                ..Default::default()
-            }],
-            #[cfg(not(feature = "emulator"))]
-            libraries: vec![
-                LibrarySettings {
-                    name: "On Board".to_string(),
-                    path: PathBuf::from(INTERNAL_CARD_ROOT),
-                    hooks: vec![Hook {
-                        path: PathBuf::from("Articles"),
-                        program: PathBuf::from("bin/article_fetcher/article_fetcher"),
-                        sort_method: Some(SortMethod::Added),
-                        first_column: Some(FirstColumn::TitleAndAuthor),
-                        second_column: Some(SecondColumn::Progress),
-                    }],
-                    ..Default::default()
-                },
-                LibrarySettings {
-                    name: "Removable".to_string(),
-                    path: PathBuf::from(EXTERNAL_CARD_ROOT),
-                    ..Default::default()
-                },
-                LibrarySettings {
-                    name: "Dropbox".to_string(),
-                    path: PathBuf::from("/mnt/onboard/.kobo/dropbox"),
-                    ..Default::default()
-                },
-                LibrarySettings {
-                    name: "KePub".to_string(),
-                    path: PathBuf::from("/mnt/onboard/.kobo/kepub"),
-                    ..Default::default()
-                },
-            ],
+            libraries: cfg_select! {
+                feature = "emulator" => {
+                    vec![LibrarySettings {
+                        name: "Cadmus Source".to_string(),
+                        path: PathBuf::from("."),
+                        ..Default::default()
+                    }]
+                }
+                _ => {
+                    vec![
+                        LibrarySettings {
+                            name: "On Board".to_string(),
+                            path: PathBuf::from(INTERNAL_CARD_ROOT),
+                            hooks: vec![Hook {
+                                path: PathBuf::from("Articles"),
+                                program: PathBuf::from("bin/article_fetcher/article_fetcher"),
+                                sort_method: Some(SortMethod::Added),
+                                first_column: Some(FirstColumn::TitleAndAuthor),
+                                second_column: Some(SecondColumn::Progress),
+                            }],
+                            ..Default::default()
+                        },
+                        LibrarySettings {
+                            name: "Removable".to_string(),
+                            path: PathBuf::from(EXTERNAL_CARD_ROOT),
+                            ..Default::default()
+                        },
+                        LibrarySettings {
+                            name: "Dropbox".to_string(),
+                            path: PathBuf::from("/mnt/onboard/.kobo/dropbox"),
+                            ..Default::default()
+                        },
+                        LibrarySettings {
+                            name: "KePub".to_string(),
+                            path: PathBuf::from("/mnt/onboard/.kobo/kepub"),
+                            ..Default::default()
+                        },
+                    ]
+                }
+            },
             external_urls_queue: Some(PathBuf::from("bin/article_fetcher/urls.txt")),
             keyboard_layout: "English".to_string(),
             frontlight: true,

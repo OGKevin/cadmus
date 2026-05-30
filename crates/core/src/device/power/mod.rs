@@ -3,20 +3,19 @@
 mod error;
 mod manager;
 
-#[cfg(not(feature = "kobo"))]
-mod stub;
-
-#[cfg(feature = "kobo")]
-mod kobo;
+cfg_select! {
+    feature = "kobo" => {
+        mod kobo;
+        pub(crate) use kobo::create_power_manager;
+    }
+    _ => {
+        mod stub;
+        pub(crate) use stub::create_power_manager;
+    }
+}
 
 pub use error::PowerError;
 pub use manager::PowerManager;
-
-#[cfg(feature = "kobo")]
-pub(crate) use kobo::create_power_manager;
-
-#[cfg(not(feature = "kobo"))]
-pub(crate) use stub::create_power_manager;
 
 pub(crate) fn discover_cores(
     cpu_dir: &std::path::Path,

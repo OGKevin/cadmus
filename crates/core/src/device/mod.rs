@@ -121,23 +121,21 @@ impl Device {
     }
 
     /// Creates USB manager for this device.
-    #[cfg(feature = "kobo")]
     pub fn usb_manager(
         &self,
     ) -> Result<Box<dyn crate::device::usb::UsbManager>, crate::device::usb::UsbError> {
-        let metadata = self
-            .metadata()
-            .map_err(|e| crate::device::usb::UsbError::DeviceInfo(e.to_string()))?
-            .clone();
-        crate::device::usb::create_usb_manager(metadata)
-    }
-
-    /// Creates stub USB manager (non-kobo builds).
-    #[cfg(not(feature = "kobo"))]
-    pub fn usb_manager(
-        &self,
-    ) -> Result<Box<dyn crate::device::usb::UsbManager>, crate::device::usb::UsbError> {
-        Ok(Box::new(crate::device::usb::StubUsbManager))
+        cfg_select! {
+            feature = "kobo" => {
+               let metadata = self
+                   .metadata()
+                   .map_err(|e| crate::device::usb::UsbError::DeviceInfo(e.to_string()))?
+                   .clone();
+               crate::device::usb::create_usb_manager(metadata)
+            }
+            _ => {
+               Ok(Box::new(crate::device::usb::StubUsbManager))
+            }
+        }
     }
 
     /// Returns the WiFi manager for this device.
@@ -164,11 +162,10 @@ impl Device {
     /// Test builds use a separate sibling directory so they can coexist with
     /// stable builds.
     pub fn install_subdir(&self) -> &'static str {
-        #[cfg(not(feature = "test"))]
-        return ".adds/cadmus";
-
-        #[cfg(feature = "test")]
-        return ".adds/cadmus-tst";
+        cfg_select! {
+            feature = "test" => { ".adds/cadmus-tst" }
+            _ => { ".adds/cadmus" }
+        }
     }
 
     /// Returns the absolute install directory for this device.
@@ -182,16 +179,19 @@ impl Device {
     /// - Emulator builds: `/tmp/.adds/cadmus` (or `cadmus-tst` with `test`)
     /// - Unit tests: `<temp_dir>/test-kobo-installation/.adds/cadmus-tst`
     pub fn install_dir(&self) -> PathBuf {
-        #[cfg(test)]
-        return std::env::temp_dir()
-            .join("test-kobo-installation")
-            .join(self.install_subdir());
-
-        #[cfg(all(feature = "emulator", not(test)))]
-        return PathBuf::from("/tmp").join(self.install_subdir());
-
-        #[cfg(all(not(feature = "emulator"), not(test)))]
-        return PathBuf::from(crate::settings::INTERNAL_CARD_ROOT).join(self.install_subdir());
+        cfg_select! {
+            test => {
+                std::env::temp_dir()
+                    .join("test-kobo-installation")
+                    .join(self.install_subdir())
+            }
+            feature = "emulator" => {
+                PathBuf::from("/tmp").join(self.install_subdir())
+            }
+            _ => {
+                PathBuf::from(crate::settings::INTERNAL_CARD_ROOT).join(self.install_subdir())
+            }
+        }
     }
 
     /// Returns a path inside the device install directory.

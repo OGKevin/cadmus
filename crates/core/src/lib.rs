@@ -8,10 +8,10 @@ pub mod context;
 pub mod crypto;
 pub mod db;
 pub mod device;
-#[cfg(feature = "bench")]
-pub mod dictionary;
-#[cfg(not(feature = "bench"))]
-mod dictionary;
+cfg_select! {
+    feature = "bench" => { pub mod dictionary; }
+    _ => { mod dictionary; }
+}
 pub mod document;
 pub mod font;
 pub mod framebuffer;

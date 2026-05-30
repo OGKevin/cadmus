@@ -252,10 +252,10 @@ impl OtaClient {
 
         tracing::debug!(run_id = run.id, "Found Cargo workflow run");
 
-        #[cfg(feature = "test")]
-        let artifact_name_pattern = format!("cadmus-kobo-test-pr{}", pr_number);
-        #[cfg(not(feature = "test"))]
-        let artifact_name_pattern = format!("cadmus-kobo-pr{}", pr_number);
+        let artifact_name_pattern = cfg_select! {
+            feature = "test" => { format!("cadmus-kobo-test-pr{}", pr_number) }
+            _ => { format!("cadmus-kobo-pr{}", pr_number) }
+        };
 
         let artifact = self
             .find_artifact_in_run(run.id, &artifact_name_pattern)
@@ -358,10 +358,10 @@ impl OtaClient {
         })?;
         let short_sha = &head_sha[..7.min(head_sha.len())];
 
-        #[cfg(feature = "test")]
-        let artifact_name_prefix = format!("cadmus-kobo-test-{}", short_sha);
-        #[cfg(not(feature = "test"))]
-        let artifact_name_prefix = format!("cadmus-kobo-{}", short_sha);
+        let artifact_name_prefix = cfg_select! {
+            feature = "test" => { format!("cadmus-kobo-test-{}", short_sha) }
+            _ => { format!("cadmus-kobo-{}", short_sha) }
+        };
 
         tracing::debug!(pattern = %artifact_name_prefix, "Looking for artifact");
 
@@ -599,16 +599,15 @@ impl OtaClient {
     /// | Emulator builds      | `/tmp/.kobo/KoboRoot.tgz`                         |
     /// | Kobo builds          | `{INTERNAL_CARD_ROOT}/.kobo/KoboRoot.tgz`         |
     fn deploy_path(&self) -> PathBuf {
-        #[cfg(test)]
-        let path = std::env::temp_dir()
-            .join("test-kobo-deployment")
-            .join("KoboRoot.tgz");
-
-        #[cfg(all(feature = "emulator", not(test)))]
-        let path = PathBuf::from("/tmp/.kobo/KoboRoot.tgz");
-
-        #[cfg(all(not(feature = "emulator"), not(test)))]
-        let path = PathBuf::from(format!("{}/.kobo/KoboRoot.tgz", INTERNAL_CARD_ROOT));
+        let path = cfg_select! {
+            test => {
+                std::env::temp_dir()
+                    .join("test-kobo-deployment")
+                    .join("KoboRoot.tgz")
+            }
+            feature = "emulator" => { PathBuf::from("/tmp/.kobo/KoboRoot.tgz") }
+            _ => { PathBuf::from(format!("{}/.kobo/KoboRoot.tgz", INTERNAL_CARD_ROOT)) }
+        };
 
         tracing::debug!(path = ?path, "Deploy destination");
         path
@@ -674,10 +673,10 @@ impl OtaClient {
         let mut kobo_root_data = Vec::new();
         let mut found = false;
 
-        #[cfg(not(feature = "test"))]
-        let kobo_root_name = "KoboRoot.tgz";
-        #[cfg(feature = "test")]
-        let kobo_root_name = "KoboRoot-test.tgz";
+        let kobo_root_name = cfg_select! {
+            feature = "test" => { "KoboRoot-test.tgz" }
+            _ => { "KoboRoot.tgz" }
+        };
 
         tracing::debug!(target_file = kobo_root_name, "Looking for file");
 
