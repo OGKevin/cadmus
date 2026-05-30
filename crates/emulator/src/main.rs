@@ -683,7 +683,8 @@ fn run() -> Result<(), Error> {
                     show_ota_view(view.as_mut(), &tx, &mut rq, &mut context);
                 }
                 Event::Back => {
-                    if let Some(v) = history.pop() {
+                    if let Some(mut v) = history.pop() {
+                        transfer_notifications(view.as_mut(), v.as_mut(), &mut rq, &mut context);
                         view = v;
                         if view.is::<Home>() && context.display.rotation % 2 != 1 {
                             if let Ok(dims) = context.fb.set_rotation(DEFAULT_ROTATION) {

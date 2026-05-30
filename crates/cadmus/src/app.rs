@@ -1525,7 +1525,13 @@ pub fn run() -> Result<(), Error> {
                 view = next_view;
             }
             Event::Back => {
-                if let Some(item) = history.pop() {
+                if let Some(mut item) = history.pop() {
+                    transfer_notifications(
+                        view.as_mut(),
+                        item.view.as_mut(),
+                        &mut rq,
+                        &mut context,
+                    );
                     view = item.view;
                     if item.monochrome != context.fb.monochrome() {
                         context.fb.set_monochrome(item.monochrome);
