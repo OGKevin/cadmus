@@ -8,7 +8,7 @@ use crate::helpers::{Fingerprint, Fp};
 use crate::library::db::Db as LibraryDb;
 use crate::metadata::sorter;
 use crate::metadata::{BookQuery, Info, ReaderInfo, SimpleStatus, SortMethod};
-use anyhow::{bail, format_err, Error};
+use anyhow::{Error, bail, format_err};
 use chrono::Local;
 use std::collections::BTreeSet;
 use std::fs;

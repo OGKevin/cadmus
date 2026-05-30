@@ -1,10 +1,10 @@
-use cadmus_core::anyhow::{format_err, Context as ResultExt, Error};
+use cadmus_core::anyhow::{Context as ResultExt, Error, format_err};
 use cadmus_core::assets::open_documentation;
 use cadmus_core::battery::{Battery, KoboBattery};
 use cadmus_core::chrono::{Duration as ChronoDuration, Local, Timelike};
 use cadmus_core::context::Context;
 use cadmus_core::db::Database;
-use cadmus_core::device::{FrontlightKind, Orientation, CURRENT_DEVICE};
+use cadmus_core::device::{CURRENT_DEVICE, FrontlightKind, Orientation};
 use cadmus_core::document::sys_info_as_html;
 use cadmus_core::font::Fonts;
 use cadmus_core::framebuffer::{Framebuffer, KoboFramebuffer1, KoboFramebuffer2, UpdateMode};
@@ -12,13 +12,13 @@ use cadmus_core::frontlight::{
     Frontlight, NaturalFrontlight, PremixedFrontlight, StandardFrontlight,
 };
 use cadmus_core::geom::{DiagDir, Rectangle, Region};
-use cadmus_core::gesture::{gesture_events, GestureEvent};
+use cadmus_core::gesture::{GestureEvent, gesture_events};
 use cadmus_core::i18n;
 use cadmus_core::input::{
-    button_scheme_event, device_events, display_rotate_event, raw_events, usb_events, InputEvent,
+    ButtonCode, ButtonStatus, DeviceEvent, PowerSource, VAL_PRESS, VAL_RELEASE,
 };
 use cadmus_core::input::{
-    ButtonCode, ButtonStatus, DeviceEvent, PowerSource, VAL_PRESS, VAL_RELEASE,
+    InputEvent, button_scheme_event, device_events, display_rotate_event, raw_events, usb_events,
 };
 use cadmus_core::library::Library;
 use cadmus_core::lightsensor::{KoboLightSensor, LightSensor};
@@ -48,11 +48,11 @@ use cadmus_core::view::settings_editor::SettingsEditor;
 use cadmus_core::view::sketch::Sketch;
 use cadmus_core::view::startup::StartupScreen;
 use cadmus_core::view::touch_events::TouchEvents;
-use cadmus_core::view::{handle_event, process_render_queue, wait_for_all};
 use cadmus_core::view::{
     AppCmd, EntryId, EntryKind, Event, NotificationEvent, RenderData, RenderQueue, UpdateData,
     View, ViewId,
 };
+use cadmus_core::view::{handle_event, process_render_queue, wait_for_all};
 use std::collections::VecDeque;
 use std::env;
 use std::fs::File;
@@ -61,7 +61,7 @@ use std::process::Command;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
 use std::time::{Duration, Instant};
-use tracing::{debug, error, info, warn, Level};
+use tracing::{Level, debug, error, info, warn};
 
 pub const APP_NAME: &str = "Cadmus";
 const DB_FILENAME: &str = "cadmus.sqlite";
@@ -676,22 +676,28 @@ pub fn run() -> Result<(), Error> {
     });
 
     let tx4 = tx.clone();
-    thread::spawn(move || loop {
-        thread::sleep(CLOCK_REFRESH_INTERVAL);
-        tx4.send(Event::ClockTick).ok();
+    thread::spawn(move || {
+        loop {
+            thread::sleep(CLOCK_REFRESH_INTERVAL);
+            tx4.send(Event::ClockTick).ok();
+        }
     });
 
     let tx5 = tx.clone();
-    thread::spawn(move || loop {
-        thread::sleep(BATTERY_REFRESH_INTERVAL);
-        tx5.send(Event::BatteryTick).ok();
+    thread::spawn(move || {
+        loop {
+            thread::sleep(BATTERY_REFRESH_INTERVAL);
+            tx5.send(Event::BatteryTick).ok();
+        }
     });
 
     if context.settings.auto_suspend > 0.0 {
         let tx6 = tx.clone();
-        thread::spawn(move || loop {
-            thread::sleep(AUTO_SUSPEND_REFRESH_INTERVAL);
-            tx6.send(Event::MightSuspend).ok();
+        thread::spawn(move || {
+            loop {
+                thread::sleep(AUTO_SUSPEND_REFRESH_INTERVAL);
+                tx6.send(Event::MightSuspend).ok();
+            }
         });
     }
 

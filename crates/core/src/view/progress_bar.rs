@@ -1,10 +1,10 @@
-use super::{Bus, Event, Hub, Id, RenderData, RenderQueue, View, ID_FEEDER};
+use super::{Bus, Event, Hub, ID_FEEDER, Id, RenderData, RenderQueue, View};
 use crate::color::{BLACK, PROGRESS_EMPTY, PROGRESS_FULL, WHITE};
 use crate::context::Context;
 use crate::device::CURRENT_DEVICE;
 use crate::font::Fonts;
 use crate::framebuffer::{Framebuffer, UpdateMode};
-use crate::geom::{halves, BorderSpec, CornerSpec, Rectangle};
+use crate::geom::{BorderSpec, CornerSpec, Rectangle, halves};
 use crate::unit::scale_by_dpi;
 
 const PROGRESS_HEIGHT: f32 = 7.0;

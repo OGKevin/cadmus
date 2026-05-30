@@ -3,7 +3,7 @@ use super::mxcfb_sys::*;
 use super::transform::*;
 use super::{Framebuffer, UpdateMode};
 use crate::color::Color;
-use crate::device::{Model, CURRENT_DEVICE};
+use crate::device::{CURRENT_DEVICE, Model};
 use crate::geom::Rectangle;
 use anyhow::{Context, Error};
 use std::fs::{File, OpenOptions};

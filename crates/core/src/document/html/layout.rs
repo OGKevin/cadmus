@@ -1,5 +1,5 @@
-use crate::color::Color;
 use crate::color::BLACK;
+use crate::color::Color;
 use crate::font::{Font, FontFamily, RenderPlan};
 use crate::geom::{Edge, Point, Rectangle};
 pub use crate::metadata::TextAlign;

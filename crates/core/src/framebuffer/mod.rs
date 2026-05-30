@@ -7,9 +7,9 @@ mod mxcfb_sys;
 mod sunxi_sys;
 mod transform;
 
-use crate::color::{Color, BLACK, WHITE};
-use crate::geom::{lerp, nearest_segment_point, surface_area, Point, Rectangle};
+use crate::color::{BLACK, Color, WHITE};
 use crate::geom::{BorderSpec, ColorSource, CornerSpec, Vec2};
+use crate::geom::{Point, Rectangle, lerp, nearest_segment_point, surface_area};
 use anyhow::Error;
 
 pub use self::image::Pixmap;

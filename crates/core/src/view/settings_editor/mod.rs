@@ -128,13 +128,13 @@ use crate::color::{BLACK, SEPARATOR_NORMAL};
 use crate::context::Context;
 use crate::device::CURRENT_DEVICE;
 use crate::framebuffer::{Framebuffer, UpdateMode};
-use crate::geom::{halves, Rectangle};
+use crate::geom::{Rectangle, halves};
 use crate::unit::scale_by_dpi;
 use crate::view::common::toggle_main_menu;
 use crate::view::filler::Filler;
 use crate::view::navigation::stack_navigation_bar::StackNavigationBar;
 use crate::view::top_bar::{TopBar, TopBarVariant};
-use crate::view::{Bus, Event, Hub, Id, RenderData, RenderQueue, View, ViewId, ID_FEEDER};
+use crate::view::{Bus, Event, Hub, ID_FEEDER, Id, RenderData, RenderQueue, View, ViewId};
 use crate::view::{SMALL_BAR_HEIGHT, THICKNESS_MEDIUM};
 use fxhash::FxHashMap;
 
@@ -408,7 +408,9 @@ impl View for SettingsEditor {
                 true
             }
             Event::NavigationBarResized(_) => {
-                unimplemented!("The settings navigation bar should not be resizable which means this event is not expected to be send.")
+                unimplemented!(
+                    "The settings navigation bar should not be resizable which means this event is not expected to be send."
+                )
             }
             Event::ToggleNear(ViewId::MainMenu, rect) => {
                 toggle_main_menu(self, *rect, None, rq, context);

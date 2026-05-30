@@ -11,7 +11,7 @@
 
 use crate::github::GithubClient;
 use chrono::{DateTime, Utc};
-use serde::{de::Visitor, Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor};
 
 /// Result of comparing two versions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

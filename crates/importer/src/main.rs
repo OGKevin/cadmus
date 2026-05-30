@@ -1,4 +1,4 @@
-use cadmus_core::anyhow::{format_err, Context, Error};
+use cadmus_core::anyhow::{Context, Error, format_err};
 use cadmus_core::chrono::NaiveDateTime;
 use cadmus_core::db::Database;
 use cadmus_core::helpers::datetime_format;

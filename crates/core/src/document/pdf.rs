@@ -1,7 +1,7 @@
 use super::mupdf_sys::*;
 
-use super::{chapter, chapter_relative};
 use super::{BoundedText, Document, Location, TextLocation, TocEntry};
+use super::{chapter, chapter_relative};
 use crate::framebuffer::Pixmap;
 use crate::geom::{Boundary, CycleDir};
 use crate::metadata::TextAlign;

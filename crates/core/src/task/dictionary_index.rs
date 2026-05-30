@@ -11,14 +11,14 @@ use globset::Glob;
 use walkdir::WalkDir;
 
 use crate::context::DICTIONARIES_DIRNAME;
-use crate::db::runtime::RUNTIME;
 use crate::db::Database;
-use crate::dictionary::{normalize, Entry, Metadata};
+use crate::db::runtime::RUNTIME;
+use crate::dictionary::{Entry, Metadata, normalize};
 use crate::fl;
 use crate::helpers::{Fingerprint, IsHidden};
 use crate::task::{BackgroundTask, ShutdownSignal, TaskId};
 use crate::view::notification::NotificationEvent;
-use crate::view::{Event, ViewId, ID_FEEDER};
+use crate::view::{Event, ID_FEEDER, ViewId};
 
 const BATCH_SIZE: usize = 5000;
 
@@ -720,7 +720,7 @@ impl BackgroundTask for DictionaryIndexTask {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::{runtime::RUNTIME, Database};
+    use crate::db::{Database, runtime::RUNTIME};
 
     fn setup_db() -> Database {
         let db = Database::new(":memory:").expect("failed to create in-memory database");

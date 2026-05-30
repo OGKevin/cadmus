@@ -10,7 +10,7 @@ use crate::unit::scale_by_dpi;
 use crate::view::filler::Filler;
 use crate::view::icon::Icon;
 use crate::view::input_field::InputField;
-use crate::view::{Bus, Event, Hub, Id, RenderQueue, View, ViewId, ID_FEEDER, THICKNESS_MEDIUM};
+use crate::view::{Bus, Event, Hub, ID_FEEDER, Id, RenderQueue, THICKNESS_MEDIUM, View, ViewId};
 
 pub struct InputBar {
     id: Id,

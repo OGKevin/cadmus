@@ -3,14 +3,14 @@ use crate::color::WHITE;
 use crate::context::Context;
 use crate::font::Fonts;
 use crate::framebuffer::{Framebuffer, UpdateMode};
-use crate::geom::{halves, CycleDir, Rectangle};
+use crate::geom::{CycleDir, Rectangle, halves};
 use crate::gesture::GestureEvent;
 use crate::input::DeviceEvent;
 use crate::view::filler::Filler;
 use crate::view::icon::Icon;
 use crate::view::page_label::PageLabel;
 use crate::view::{
-    Bus, Event, Hub, Id, RenderData, RenderQueue, ToggleEvent, View, ViewId, ID_FEEDER,
+    Bus, Event, Hub, ID_FEEDER, Id, RenderData, RenderQueue, ToggleEvent, View, ViewId,
 };
 
 pub struct ResultsBar {

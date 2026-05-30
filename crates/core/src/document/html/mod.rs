@@ -37,7 +37,7 @@ use self::xml::XmlParser;
 use crate::document::{BoundedText, Document, Location, TextLocation, TocEntry};
 use crate::framebuffer::Pixmap;
 use crate::geom::{Boundary, CycleDir, Edge};
-use crate::helpers::{decode_entities, Normalize};
+use crate::helpers::{Normalize, decode_entities};
 use crate::unit::pt_to_px;
 use anyhow::Error;
 use fxhash::FxHashMap;

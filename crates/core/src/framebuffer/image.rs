@@ -1,7 +1,7 @@
 use super::{Framebuffer, UpdateMode};
 use crate::color::{Color, WHITE};
-use crate::geom::{lerp, Rectangle};
-use anyhow::{format_err, Context, Error};
+use crate::geom::{Rectangle, lerp};
+use anyhow::{Context, Error, format_err};
 use std::fs::File;
 use std::io::BufReader;
 use std::io::Cursor;

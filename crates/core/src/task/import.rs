@@ -3,11 +3,11 @@
 use std::sync::mpsc::Sender;
 
 use crate::db::Database;
-use crate::library::importer;
 use crate::library::Library;
+use crate::library::importer;
 use crate::settings::Settings;
 use crate::task::{BackgroundTask, ShutdownSignal, TaskId};
-use crate::view::{Event, ViewId, ID_FEEDER};
+use crate::view::{Event, ID_FEEDER, ViewId};
 
 /// Runs a full import for one library (or all libraries when `library_index` is `None`).
 pub struct ImportTask {

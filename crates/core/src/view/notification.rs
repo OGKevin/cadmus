@@ -35,12 +35,12 @@
 //! tx.send(Event::Close(download_id)).ok();
 //! ```
 
-use super::{Bus, Event, Hub, Id, RenderData, RenderQueue, View, ViewId, ID_FEEDER};
 use super::{BORDER_RADIUS_MEDIUM, SMALL_BAR_HEIGHT, THICKNESS_LARGE};
+use super::{Bus, Event, Hub, ID_FEEDER, Id, RenderData, RenderQueue, View, ViewId};
 use crate::color::{BLACK, TEXT_NORMAL, WHITE};
 use crate::context::Context;
 use crate::device::CURRENT_DEVICE;
-use crate::font::{font_from_style, Fonts, NORMAL_STYLE};
+use crate::font::{Fonts, NORMAL_STYLE, font_from_style};
 use crate::framebuffer::{Framebuffer, UpdateMode};
 use crate::geom::{BorderSpec, CornerSpec, Rectangle};
 use crate::gesture::GestureEvent;

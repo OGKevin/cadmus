@@ -2,8 +2,8 @@ use super::bottom_bar::BottomBarVariant;
 use super::editor_utils::{
     build_bottom_separator, build_two_button_bottom_bar, calculate_dimensions,
 };
-use super::kinds::library::{LibraryFinishedAction, LibraryName, LibraryPath};
 use super::kinds::SettingIdentity;
+use super::kinds::library::{LibraryFinishedAction, LibraryName, LibraryPath};
 use super::setting_row::SettingRow;
 use super::setting_value::SettingsEvent;
 use crate::color::WHITE;
@@ -16,14 +16,14 @@ use crate::geom::Rectangle;
 use crate::gesture::GestureEvent;
 use crate::settings::{FinishedAction, LibrarySettings, Settings};
 use crate::unit::scale_by_dpi;
+use crate::view::SMALL_BAR_HEIGHT;
 use crate::view::common::locate_by_id;
 use crate::view::file_chooser::{FileChooser, SelectionMode};
 use crate::view::filler::Filler;
 use crate::view::menu::{Menu, MenuKind};
 use crate::view::named_input::NamedInput;
 use crate::view::toggleable_keyboard::ToggleableKeyboard;
-use crate::view::SMALL_BAR_HEIGHT;
-use crate::view::{Bus, Event, Hub, Id, RenderData, RenderQueue, View, ViewId, ID_FEEDER};
+use crate::view::{Bus, Event, Hub, ID_FEEDER, Id, RenderData, RenderQueue, View, ViewId};
 use crate::view::{EntryId, NotificationEvent};
 
 /// A view for editing library settings.

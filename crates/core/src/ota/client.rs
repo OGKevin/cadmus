@@ -4,7 +4,7 @@ use crate::github::types::{
 use crate::github::{GithubClient, OtaProgress};
 use crate::http::ChunkedDownloadError;
 use crate::version::GitVersion;
-use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
+use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};

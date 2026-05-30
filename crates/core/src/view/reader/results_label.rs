@@ -1,10 +1,10 @@
 use crate::color::TEXT_NORMAL;
 use crate::context::Context;
 use crate::device::CURRENT_DEVICE;
-use crate::font::{font_from_style, Fonts, NORMAL_STYLE};
+use crate::font::{Fonts, NORMAL_STYLE, font_from_style};
 use crate::framebuffer::{Framebuffer, UpdateMode};
 use crate::geom::Rectangle;
-use crate::view::{Bus, Event, Hub, Id, RenderData, RenderQueue, View, ID_FEEDER};
+use crate::view::{Bus, Event, Hub, ID_FEEDER, Id, RenderData, RenderQueue, View};
 
 pub struct ResultsLabel {
     id: Id,

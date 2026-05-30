@@ -1,6 +1,6 @@
-use super::icon::ICONS_PIXMAPS;
 use super::THICKNESS_MEDIUM;
-use super::{Bus, Event, Hub, Id, RenderData, RenderQueue, View, ID_FEEDER};
+use super::icon::ICONS_PIXMAPS;
+use super::{Bus, Event, Hub, ID_FEEDER, Id, RenderData, RenderQueue, View};
 use crate::color::{TEXT_INVERTED_HARD, TEXT_NORMAL};
 use crate::context::Context;
 use crate::device::CURRENT_DEVICE;

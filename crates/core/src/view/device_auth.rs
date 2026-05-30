@@ -11,11 +11,11 @@
 use super::button::Button;
 use super::filler::Filler;
 use super::label::Label;
-use super::{Align, Bus, Event, Hub, Id, RenderQueue, View, ViewId, ID_FEEDER};
+use super::{Align, Bus, Event, Hub, ID_FEEDER, Id, RenderQueue, View, ViewId};
 use crate::color::WHITE;
 use crate::context::Context;
 use crate::device::CURRENT_DEVICE;
-use crate::font::{font_from_style, Fonts, NORMAL_STYLE};
+use crate::font::{Fonts, NORMAL_STYLE, font_from_style};
 use crate::framebuffer::Framebuffer;
 use crate::geom::Rectangle;
 use crate::gesture::GestureEvent;
@@ -23,8 +23,8 @@ use crate::github::{GithubClient, GithubError, TokenPollResult};
 use crate::unit::scale_by_dpi;
 use crate::view::github::GithubEvent;
 use crate::view::ota::OtaViewId;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Duration;
 

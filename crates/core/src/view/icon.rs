@@ -1,4 +1,4 @@
-use super::{Align, Bus, Event, Hub, Id, RenderData, RenderQueue, View, ViewId, ID_FEEDER};
+use super::{Align, Bus, Event, Hub, ID_FEEDER, Id, RenderData, RenderQueue, View, ViewId};
 use crate::color::{Color, TEXT_INVERTED_HARD, TEXT_NORMAL};
 use crate::context::Context;
 use crate::device::CURRENT_DEVICE;

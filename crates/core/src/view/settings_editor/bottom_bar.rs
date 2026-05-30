@@ -4,7 +4,7 @@ use crate::framebuffer::Framebuffer;
 use crate::geom::{CycleDir, Rectangle};
 use crate::view::filler::Filler;
 use crate::view::icon::Icon;
-use crate::view::{Event, Id, View, ID_FEEDER};
+use crate::view::{Event, ID_FEEDER, Id, View};
 
 /// Defines the layout variant for the settings editor bottom bar
 #[derive(Debug, Clone)]

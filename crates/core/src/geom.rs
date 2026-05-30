@@ -1366,7 +1366,7 @@ impl Region {
 
 #[cfg(test)]
 mod tests {
-    use super::{divide, LinearDir};
+    use super::{LinearDir, divide};
 
     #[test]
     fn test_linear_dir_opposite() {

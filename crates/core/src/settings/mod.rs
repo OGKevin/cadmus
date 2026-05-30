@@ -1,7 +1,7 @@
 mod preset;
 pub mod versioned;
 
-use crate::color::{Color, BLACK};
+use crate::color::{BLACK, Color};
 use crate::device::CURRENT_DEVICE;
 use crate::fl;
 use crate::frontlight::LightLevels;
@@ -14,7 +14,7 @@ use sqlx::error::BoxDynError;
 use sqlx::sqlite::{Sqlite, SqliteArgumentValue, SqliteTypeInfo, SqliteValueRef};
 use unic_langid::LanguageIdentifier;
 
-pub use self::preset::{guess_frontlight, LightPreset};
+pub use self::preset::{LightPreset, guess_frontlight};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::env;
@@ -228,7 +228,9 @@ impl Intermissions {
         changed |= self.sanitize_kind(IntermKind::Share);
 
         if changed {
-            eprintln!("ignoring unsupported calendar intermissions for power-off/share; using logo instead");
+            eprintln!(
+                "ignoring unsupported calendar intermissions for power-off/share; using logo instead"
+            );
         }
 
         changed
@@ -1118,7 +1120,9 @@ share = "/path/to/custom.png"
         };
 
         assert!(intermissions.set_display(IntermKind::Suspend, IntermissionDisplay::Blank));
-        assert!(intermissions.set_display(IntermKind::PowerOff, IntermissionDisplay::BlankInverted));
+        assert!(
+            intermissions.set_display(IntermKind::PowerOff, IntermissionDisplay::BlankInverted)
+        );
         assert!(intermissions.set_display(IntermKind::Share, IntermissionDisplay::Blank));
 
         assert_eq!(

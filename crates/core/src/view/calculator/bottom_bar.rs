@@ -2,12 +2,12 @@ use crate::color::WHITE;
 use crate::context::Context;
 use crate::font::Fonts;
 use crate::framebuffer::Framebuffer;
-use crate::geom::{divide, Rectangle};
+use crate::geom::{Rectangle, divide};
 use crate::gesture::GestureEvent;
 use crate::input::DeviceEvent;
 use crate::view::filler::Filler;
 use crate::view::labeled_icon::LabeledIcon;
-use crate::view::{Bus, Event, Hub, Id, RenderQueue, View, ViewId, ID_FEEDER};
+use crate::view::{Bus, Event, Hub, ID_FEEDER, Id, RenderQueue, View, ViewId};
 
 pub struct BottomBar {
     id: Id,

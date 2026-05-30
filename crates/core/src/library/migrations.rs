@@ -15,13 +15,13 @@ use crate::db::types::UnixTimestamp;
 use crate::db::types::Uuid7;
 use crate::document::SimpleTocEntry;
 use crate::helpers::{Fingerprint, Fp};
+#[cfg(not(feature = "test"))]
+use crate::library::THUMBNAIL_PREVIEWS_DIRNAME;
 use crate::library::db::conversion::{
     encode_location, extract_authors, info_to_book_row, reader_info_to_reading_state_row,
     rows_to_toc_entries,
 };
 use crate::library::db::models::TocEntryRow;
-#[cfg(not(feature = "test"))]
-use crate::library::THUMBNAIL_PREVIEWS_DIRNAME;
 use crate::library::{METADATA_FILENAME, READING_STATES_DIRNAME};
 use crate::metadata::Info;
 use crate::settings::versioned::SettingsManager;
@@ -1012,8 +1012,8 @@ async fn insert_reading_state(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::runtime::RUNTIME;
     use crate::db::Database;
+    use crate::db::runtime::RUNTIME;
     use crate::document::{SimpleTocEntry, TocLocation};
     use crate::library::db::Db;
     use crate::metadata::{FileInfo, ReaderInfo};

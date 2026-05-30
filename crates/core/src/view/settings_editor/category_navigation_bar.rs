@@ -3,11 +3,11 @@ use super::category_button::CategoryButton;
 use crate::color::TEXT_BUMP_SMALL;
 use crate::context::Context;
 use crate::device::CURRENT_DEVICE;
-use crate::font::{font_from_style, Fonts, NORMAL_STYLE};
+use crate::font::{Fonts, NORMAL_STYLE, font_from_style};
 use crate::framebuffer::Framebuffer;
-use crate::geom::{big_half, divide, small_half, Point, Rectangle};
+use crate::geom::{Point, Rectangle, big_half, divide, small_half};
 use crate::view::filler::Filler;
-use crate::view::{Align, Bus, Event, Hub, Id, RenderQueue, View, ID_FEEDER};
+use crate::view::{Align, Bus, Event, Hub, ID_FEEDER, Id, RenderQueue, View};
 
 /// Horizontal navigation bar displaying category tabs.
 ///

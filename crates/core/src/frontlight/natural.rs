@@ -1,5 +1,5 @@
 use super::{Frontlight, LightLevels};
-use crate::device::{Model, CURRENT_DEVICE};
+use crate::device::{CURRENT_DEVICE, Model};
 use anyhow::Error;
 use fxhash::FxHashMap;
 use lazy_static::lazy_static;

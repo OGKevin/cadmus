@@ -2,11 +2,11 @@
 use std::time::Duration;
 
 #[cfg(feature = "bench")]
-use cadmus_core::dictionary::indexing::{normalize, Entry};
-#[cfg(feature = "bench")]
 use cadmus_core::dictionary::Metadata;
 #[cfg(feature = "bench")]
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
+use cadmus_core::dictionary::indexing::{Entry, normalize};
+#[cfg(feature = "bench")]
+use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 
 #[cfg(feature = "bench")]
 fn make_sorted_entries(n: usize) -> Vec<Entry> {

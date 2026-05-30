@@ -8,7 +8,7 @@ use crate::input::DeviceEvent;
 use crate::view::filler::Filler;
 use crate::view::icon::Icon;
 use crate::view::label::Label;
-use crate::view::{Align, Bus, Event, Hub, Id, RenderData, RenderQueue, View, ViewId, ID_FEEDER};
+use crate::view::{Align, Bus, Event, Hub, ID_FEEDER, Id, RenderData, RenderQueue, View, ViewId};
 
 pub struct BottomBar {
     id: Id,

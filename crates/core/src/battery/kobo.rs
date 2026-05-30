@@ -1,6 +1,6 @@
 use super::{Battery, Status};
 use crate::device::CURRENT_DEVICE;
-use anyhow::{format_err, Error};
+use anyhow::{Error, format_err};
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;

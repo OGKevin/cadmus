@@ -6,8 +6,8 @@ use crate::framebuffer::{Framebuffer, UpdateMode};
 use crate::geom::Rectangle;
 use crate::gesture::GestureEvent;
 use crate::input::DeviceEvent;
-use crate::metadata::{ReaderInfo, TextAlign};
 use crate::metadata::{DEFAULT_CONTRAST_EXPONENT, DEFAULT_CONTRAST_GRAY};
+use crate::metadata::{ReaderInfo, TextAlign};
 use crate::settings::ReaderSettings;
 use crate::unit::scale_by_dpi;
 use crate::view::filler::Filler;
@@ -15,8 +15,8 @@ use crate::view::icon::Icon;
 use crate::view::labeled_icon::LabeledIcon;
 use crate::view::slider::Slider;
 use crate::view::{
-    Bus, Event, Hub, Id, RenderData, RenderQueue, SliderId, View, ViewId, ID_FEEDER,
-    THICKNESS_MEDIUM,
+    Bus, Event, Hub, ID_FEEDER, Id, RenderData, RenderQueue, SliderId, THICKNESS_MEDIUM, View,
+    ViewId,
 };
 
 pub struct ToolBar {

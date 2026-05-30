@@ -1,14 +1,14 @@
 use super::common::shift;
 use super::input_field::InputField;
 use super::label::Label;
-use super::{Align, Bus, Event, Hub, Id, RenderQueue, View, ViewId, ID_FEEDER};
+use super::{Align, Bus, Event, Hub, ID_FEEDER, Id, RenderQueue, View, ViewId};
 use super::{BORDER_RADIUS_MEDIUM, THICKNESS_LARGE};
 use crate::color::{BLACK, WHITE};
 use crate::context::Context;
 use crate::device::CURRENT_DEVICE;
-use crate::font::{font_from_style, Fonts, NORMAL_STYLE};
+use crate::font::{Fonts, NORMAL_STYLE, font_from_style};
 use crate::framebuffer::Framebuffer;
-use crate::geom::{big_half, halves, BorderSpec, CornerSpec, Rectangle};
+use crate::geom::{BorderSpec, CornerSpec, Rectangle, big_half, halves};
 use crate::gesture::GestureEvent;
 use crate::unit::scale_by_dpi;
 

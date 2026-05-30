@@ -6,7 +6,7 @@ mod results_label;
 mod tool_bar;
 
 use self::bottom_bar::BottomBar;
-use self::margin_cropper::{MarginCropper, BUTTON_DIAMETER};
+use self::margin_cropper::{BUTTON_DIAMETER, MarginCropper};
 use self::results_bar::ResultsBar;
 use self::tool_bar::ToolBar;
 use super::top_bar::{TopBar, TopBarVariant};
@@ -16,28 +16,28 @@ use crate::device::CURRENT_DEVICE;
 use crate::document::epub::EpubDocumentStatic;
 use crate::document::html::HtmlDocument;
 use crate::document::{
-    annotations_as_html, bookmarks_as_html, toc_as_html, SimpleTocEntry, TocEntry, TocLocation,
+    BYTES_PER_PAGE, BoundedText, Document, Location, Neighbors, TextLocation, open,
 };
 use crate::document::{
-    open, BoundedText, Document, Location, Neighbors, TextLocation, BYTES_PER_PAGE,
+    SimpleTocEntry, TocEntry, TocLocation, annotations_as_html, bookmarks_as_html, toc_as_html,
 };
-use crate::font::family_names;
 use crate::font::Fonts;
+use crate::font::family_names;
 use crate::framebuffer::{Framebuffer, Pixmap, UpdateMode};
 use crate::frontlight::LightLevels;
-use crate::geom::{halves, Axis, CycleDir, DiagDir, Dir, LinearDir, Region};
+use crate::geom::{Axis, CycleDir, DiagDir, Dir, LinearDir, Region, halves};
 use crate::geom::{BorderSpec, Boundary, CornerSpec, Point, Rectangle, Vec2};
 use crate::gesture::GestureEvent;
 use crate::helpers::AsciiExtension;
 use crate::input::{ButtonCode, ButtonStatus, DeviceEvent, FingerStatus};
-use crate::metadata::{make_query, CroppingMargins, Margin};
 use crate::metadata::{
     Annotation, FileInfo, Info, PageScheme, ReaderInfo, ScrollMode, TextAlign, ZoomMode,
 };
+use crate::metadata::{CroppingMargins, Margin, make_query};
 use crate::metadata::{DEFAULT_CONTRAST_EXPONENT, DEFAULT_CONTRAST_GRAY};
 use crate::settings::{
-    guess_frontlight, BottomRightGestureAction, EastStripAction, FinishedAction,
-    SouthEastCornerAction, SouthStripAction, WestStripAction,
+    BottomRightGestureAction, EastStripAction, FinishedAction, SouthEastCornerAction,
+    SouthStripAction, WestStripAction, guess_frontlight,
 };
 use crate::settings::{
     DEFAULT_FONT_FAMILY, DEFAULT_LINE_HEIGHT, DEFAULT_MARGIN_WIDTH, DEFAULT_TEXT_ALIGN,
@@ -54,8 +54,8 @@ use crate::view::named_input::NamedInput;
 use crate::view::notification::Notification;
 use crate::view::search_bar::SearchBar;
 use crate::view::{AppCmd, Bus, Event, Hub, RenderData, RenderQueue, ToggleEvent, View};
-use crate::view::{EntryId, EntryKind, Id, SliderId, ViewId, ID_FEEDER};
 use crate::view::{BIG_BAR_HEIGHT, SMALL_BAR_HEIGHT, THICKNESS_MEDIUM};
+use crate::view::{EntryId, EntryKind, ID_FEEDER, Id, SliderId, ViewId};
 use chrono::Local;
 use fxhash::{FxHashMap, FxHashSet};
 use rand_core::Rng;

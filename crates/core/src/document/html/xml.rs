@@ -13,7 +13,7 @@
 //!   positions). Use this for ephemeral rendering where offset precision is
 //!   not required (e.g. the dictionary view).
 
-use super::dom::{element, text, whitespace, Attributes, NodeId, XmlTree};
+use super::dom::{Attributes, NodeId, XmlTree, element, text, whitespace};
 use fxhash::FxHashMap;
 use html5ever::tendril::{Tendril, TendrilSink};
 use html5ever::tree_builder::{ElementFlags, NodeOrText, QuirksMode, TreeSink};
@@ -524,7 +524,7 @@ impl TreeSink for Html5Sink {
 /// Use [`XmlParser`] when byte-accurate offsets are required.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(input), fields(len = input.len())))]
 pub fn parse_html5(input: &str) -> XmlTree {
-    use html5ever::{parse_document, ParseOpts};
+    use html5ever::{ParseOpts, parse_document};
 
     let parser = parse_document(Html5Sink::new(), ParseOpts::default());
     let input_tendril: Tendril<html5ever::tendril::fmt::UTF8> = input.into();

@@ -1,12 +1,12 @@
-use super::icon::ICONS_PIXMAPS;
 use super::BORDER_RADIUS_LARGE;
+use super::icon::ICONS_PIXMAPS;
 use super::{
-    Bus, Event, Hub, Id, KeyboardEvent, RenderData, RenderQueue, TextKind, View, ViewId, ID_FEEDER,
+    Bus, Event, Hub, ID_FEEDER, Id, KeyboardEvent, RenderData, RenderQueue, TextKind, View, ViewId,
 };
 use crate::color::{Color, KEYBOARD_BG, TEXT_INVERTED_HARD, TEXT_NORMAL};
 use crate::context::Context;
 use crate::device::CURRENT_DEVICE;
-use crate::font::{font_from_style, Fonts, KBD_CHAR, KBD_LABEL};
+use crate::font::{Fonts, KBD_CHAR, KBD_LABEL, font_from_style};
 use crate::framebuffer::{Framebuffer, UpdateMode};
 use crate::geom::{CornerSpec, LinearDir, Rectangle};
 use crate::gesture::GestureEvent;

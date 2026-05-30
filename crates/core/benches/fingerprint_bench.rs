@@ -6,7 +6,7 @@ use std::time::Duration;
 #[cfg(feature = "bench")]
 use cadmus_core::helpers::Fingerprint;
 #[cfg(feature = "bench")]
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 #[cfg(feature = "bench")]
 use tempfile::NamedTempFile;
 

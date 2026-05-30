@@ -2,11 +2,11 @@ use super::bottom_bar::BottomBarVariant;
 use super::editor_utils::{
     build_bottom_separator, build_two_button_bottom_bar, calculate_dimensions,
 };
+use super::kinds::SettingIdentity;
 use super::kinds::reader::{
     RefreshRateByKindInfo, RefreshRateByKindInverted, RefreshRateByKindRegular,
     RefreshRateInvertedSetting, RefreshRateRegularSetting,
 };
-use super::kinds::SettingIdentity;
 use super::setting_row::SettingRow;
 use super::setting_value::SettingsEvent;
 use crate::color::WHITE;
@@ -18,15 +18,15 @@ use crate::framebuffer::{Framebuffer, UpdateMode};
 use crate::geom::Rectangle;
 use crate::settings::{FileExtension, RefreshRatePair, Settings};
 use crate::unit::scale_by_dpi;
+use crate::view::SMALL_BAR_HEIGHT;
 use crate::view::common::locate_by_id;
 use crate::view::filler::Filler;
 use crate::view::menu::{Menu, MenuKind};
 use crate::view::named_input::NamedInput;
 use crate::view::toggleable_keyboard::ToggleableKeyboard;
-use crate::view::SMALL_BAR_HEIGHT;
 use crate::view::{
-    Bus, EntryId, Event, Hub, Id, NotificationEvent, RenderData, RenderQueue, View, ViewId,
-    ID_FEEDER,
+    Bus, EntryId, Event, Hub, ID_FEEDER, Id, NotificationEvent, RenderData, RenderQueue, View,
+    ViewId,
 };
 
 /// Sub-editor for the global refresh rate settings and per-file-extension overrides.
@@ -470,9 +470,7 @@ impl View for RefreshRateByKindEditor {
             Event::UpdateRefreshRateByKind(ext, pair) => {
                 self.handle_update_by_kind_event(*ext, pair, rq, context)
             }
-            Event::SubMenu(rect, entries) => {
-                self.handle_submenu_event(*rect, entries, rq, context)
-            }
+            Event::SubMenu(rect, entries) => self.handle_submenu_event(*rect, entries, rq, context),
             Event::OpenNamedInput {
                 view_id,
                 label,

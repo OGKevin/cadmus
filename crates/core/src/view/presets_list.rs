@@ -1,9 +1,9 @@
 use super::preset::{Preset, PresetKind};
-use super::{Bus, Event, Hub, Id, RenderData, RenderQueue, View, ID_FEEDER};
+use super::{Bus, Event, Hub, ID_FEEDER, Id, RenderData, RenderQueue, View};
 use crate::color::WHITE;
 use crate::context::Context;
 use crate::device::CURRENT_DEVICE;
-use crate::font::{font_from_style, Fonts, NORMAL_STYLE};
+use crate::font::{Fonts, NORMAL_STYLE, font_from_style};
 use crate::framebuffer::{Framebuffer, UpdateMode};
 use crate::geom::{CycleDir, Dir, Rectangle};
 use crate::gesture::GestureEvent;

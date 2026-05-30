@@ -1,15 +1,15 @@
-use cadmus_core::anyhow::{format_err, Context, Error};
+use cadmus_core::anyhow::{Context, Error, format_err};
 use cadmus_core::chrono::{DateTime, Duration, Local, Utc};
 use cadmus_core::helpers::{decode_entities, load_json, load_toml, save_json};
 use cadmus_core::serde::{Deserialize, Serialize};
-use cadmus_core::serde_json::{self, json, Value as JsonValue};
+use cadmus_core::serde_json::{self, Value as JsonValue, json};
 use reqwest::blocking::Client;
 use std::env;
 use std::fs::{self, File};
 use std::io;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 const SETTINGS_PATH: &str = "Settings.toml";
 const SESSION_PATH: &str = ".session.json";

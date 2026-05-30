@@ -1,12 +1,12 @@
 use crate::color::{BLACK, TEXT_BUMP_SMALL, WHITE};
 use crate::context::Context;
 use crate::device::CURRENT_DEVICE;
-use crate::font::{font_from_style, Fonts, NORMAL_STYLE};
+use crate::font::{Fonts, NORMAL_STYLE, font_from_style};
 use crate::framebuffer::Framebuffer;
 use crate::geom::{BorderSpec, CornerSpec, Rectangle};
 use crate::gesture::GestureEvent;
 use crate::unit::scale_by_dpi;
-use crate::view::{Align, Bus, Event, Hub, Id, RenderQueue, View, ID_FEEDER};
+use crate::view::{Align, Bus, Event, Hub, ID_FEEDER, Id, RenderQueue, View};
 use crate::view::{BORDER_RADIUS_SMALL, THICKNESS_SMALL};
 use std::path::{Path, PathBuf};
 

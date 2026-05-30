@@ -1,7 +1,7 @@
 use super::filler::Filler;
 use super::icon::Icon;
 use super::input_field::InputField;
-use super::{Bus, Event, Hub, Id, RenderQueue, View, ViewId, ID_FEEDER, THICKNESS_MEDIUM};
+use super::{Bus, Event, Hub, ID_FEEDER, Id, RenderQueue, THICKNESS_MEDIUM, View, ViewId};
 use crate::color::{SEPARATOR_NORMAL, TEXT_BUMP_SMALL};
 use crate::context::Context;
 use crate::device::CURRENT_DEVICE;

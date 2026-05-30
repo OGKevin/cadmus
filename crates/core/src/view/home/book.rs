@@ -3,15 +3,15 @@ use crate::color::{TEXT_INVERTED_HARD, TEXT_NORMAL};
 use crate::context::Context;
 use crate::device::CURRENT_DEVICE;
 use crate::document::HumanSize;
-use crate::font::{font_from_style, Fonts};
+use crate::font::{Fonts, font_from_style};
 use crate::font::{MD_AUTHOR, MD_KIND, MD_SIZE, MD_TITLE, MD_YEAR};
 use crate::framebuffer::{Framebuffer, UpdateMode};
-use crate::geom::{halves, BorderSpec, CornerSpec, Rectangle};
+use crate::geom::{BorderSpec, CornerSpec, Rectangle, halves};
 use crate::gesture::GestureEvent;
 use crate::metadata::{Info, Status};
 use crate::settings::{FirstColumn, SecondColumn};
 use crate::unit::scale_by_dpi;
-use crate::view::{Bus, Event, Hub, Id, RenderData, RenderQueue, View, ID_FEEDER, THICKNESS_SMALL};
+use crate::view::{Bus, Event, Hub, ID_FEEDER, Id, RenderData, RenderQueue, THICKNESS_SMALL, View};
 
 const PROGRESS_HEIGHT: f32 = 13.0;
 

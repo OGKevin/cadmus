@@ -1,3 +1,4 @@
+use super::kinds::SettingKind;
 use super::kinds::dictionary::DictionaryInfo;
 use super::kinds::general::{
     AutoPowerOff, AutoShare, AutoSuspend, ButtonScheme, KeyboardLayout, Locale, SettingsRetention,
@@ -8,7 +9,6 @@ use super::kinds::intermission::{IntermissionPowerOff, IntermissionShare, Interm
 use super::kinds::library::LibraryInfo;
 use super::kinds::reader::{DitheredKindsSetting, FinishedActionSetting, RefreshRateInfo};
 use super::kinds::telemetry::{LogLevel, LoggingEnabled};
-use super::kinds::SettingKind;
 use crate::context::Context;
 use crate::dictionary::MonolingualDictionaryService;
 use std::collections::BTreeSet;

@@ -2,12 +2,12 @@ use super::FileEntryData;
 use crate::color::{TEXT_NORMAL, WHITE};
 use crate::context::Context;
 use crate::device::CURRENT_DEVICE;
-use crate::font::{font_from_style, Fonts, NORMAL_STYLE};
+use crate::font::{Fonts, NORMAL_STYLE, font_from_style};
 use crate::framebuffer::Framebuffer;
 use crate::geom::Rectangle;
 use crate::gesture::GestureEvent;
 use crate::view::label::Label;
-use crate::view::{Align, Bus, EntryId, Event, Hub, Id, RenderQueue, View, ID_FEEDER};
+use crate::view::{Align, Bus, EntryId, Event, Hub, ID_FEEDER, Id, RenderQueue, View};
 use chrono::{DateTime, Local};
 
 /// A visual entry representing a file or directory in the file browser.

@@ -1,12 +1,12 @@
 use super::{
-    Bus, Event, Hub, Id, RenderData, RenderQueue, SliderId, View, ID_FEEDER, THICKNESS_SMALL,
+    Bus, Event, Hub, ID_FEEDER, Id, RenderData, RenderQueue, SliderId, THICKNESS_SMALL, View,
 };
 use crate::color::{BLACK, PROGRESS_EMPTY, PROGRESS_FULL, PROGRESS_VALUE, WHITE};
 use crate::context::Context;
 use crate::device::CURRENT_DEVICE;
-use crate::font::{font_from_style, Fonts, SLIDER_VALUE};
+use crate::font::{Fonts, SLIDER_VALUE, font_from_style};
 use crate::framebuffer::{Framebuffer, UpdateMode};
-use crate::geom::{halves, BorderSpec, CornerSpec, Rectangle};
+use crate::geom::{BorderSpec, CornerSpec, Rectangle, halves};
 use crate::input::{DeviceEvent, FingerStatus};
 use crate::unit::scale_by_dpi;
 

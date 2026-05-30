@@ -1,15 +1,15 @@
 pub mod conversion;
 pub mod models;
 
+use crate::db::Database;
 use crate::db::runtime::RUNTIME;
 use crate::db::types::{OptionalUuid7, UnixTimestamp, Uuid7};
-use crate::db::Database;
 use crate::document::SimpleTocEntry;
 use crate::geom::Point;
 use crate::helpers::Fp;
 use crate::metadata::{
-    alphabetic_author, alphabetic_title, natural_cmp, sorter, CroppingMargins, FileInfo, Info,
-    ReaderInfo, ScrollMode, SortMethod, TextAlign, ZoomMode,
+    CroppingMargins, FileInfo, Info, ReaderInfo, ScrollMode, SortMethod, TextAlign, ZoomMode,
+    alphabetic_author, alphabetic_title, natural_cmp, sorter,
 };
 use crate::settings::FileExtension;
 use anyhow::Error;
@@ -55,11 +55,7 @@ fn midpoint_rank(existing_ranks: &[Option<i64>], pos: usize) -> Option<i64> {
         (Some(l), None) => Some(l + SORT_RANK_STRIDE),
         (Some(l), Some(r)) => {
             let mid = (l + r) / 2;
-            if mid <= l {
-                None
-            } else {
-                Some(mid)
-            }
+            if mid <= l { None } else { Some(mid) }
         }
     }
 }
@@ -3193,14 +3189,18 @@ mod tests {
         assert_eq!(by_fp.title, "Lookup Book");
         assert_eq!(by_fp.file.path, PathBuf::from("nested/book.pdf"));
 
-        assert!(libdb
-            .get_book_by_path(library_id, Path::new("missing.pdf"))
-            .expect("lookup should succeed")
-            .is_none());
-        assert!(libdb
-            .get_book_by_fingerprint(library_id, Fp::from_str("00000000000000FF").unwrap())
-            .expect("lookup should succeed")
-            .is_none());
+        assert!(
+            libdb
+                .get_book_by_path(library_id, Path::new("missing.pdf"))
+                .expect("lookup should succeed")
+                .is_none()
+        );
+        assert!(
+            libdb
+                .get_book_by_fingerprint(library_id, Fp::from_str("00000000000000FF").unwrap())
+                .expect("lookup should succeed")
+                .is_none()
+        );
     }
 
     #[test]
@@ -3706,10 +3706,12 @@ mod tests {
             .batch_delete_thumbnails(&[fp1, fp3])
             .expect("failed to batch delete thumbnails");
 
-        assert!(libdb
-            .get_thumbnail(fp1)
-            .expect("failed to get thumbnail 1")
-            .is_none());
+        assert!(
+            libdb
+                .get_thumbnail(fp1)
+                .expect("failed to get thumbnail 1")
+                .is_none()
+        );
         assert_eq!(
             libdb.get_thumbnail(fp2).expect("failed to get thumbnail 2"),
             Some(vec![4, 5, 6])
@@ -3812,14 +3814,18 @@ mod tests {
             .batch_move_thumbnails(&[(from_fp1, to_fp1), (from_fp2, to_fp2)])
             .expect("failed to batch move thumbnails");
 
-        assert!(libdb
-            .get_thumbnail(from_fp1)
-            .expect("failed to get old thumbnail 1")
-            .is_none());
-        assert!(libdb
-            .get_thumbnail(from_fp2)
-            .expect("failed to get old thumbnail 2")
-            .is_none());
+        assert!(
+            libdb
+                .get_thumbnail(from_fp1)
+                .expect("failed to get old thumbnail 1")
+                .is_none()
+        );
+        assert!(
+            libdb
+                .get_thumbnail(from_fp2)
+                .expect("failed to get old thumbnail 2")
+                .is_none()
+        );
         assert_eq!(
             libdb
                 .get_thumbnail(to_fp1)
@@ -4080,10 +4086,12 @@ mod tests {
     fn most_recently_opened_reading_book_none_when_empty() {
         let (_db, libdb) = create_test_db();
         let library_id = register_test_library(&libdb, "/tmp/mro_empty", "MRO Empty");
-        assert!(libdb
-            .most_recently_opened_reading_book(library_id)
-            .expect("query failed")
-            .is_none());
+        assert!(
+            libdb
+                .most_recently_opened_reading_book(library_id)
+                .expect("query failed")
+                .is_none()
+        );
     }
 
     #[test]
@@ -4100,10 +4108,12 @@ mod tests {
         });
         libdb.insert_book(library_id, fp, &info).unwrap();
 
-        assert!(libdb
-            .most_recently_opened_reading_book(library_id)
-            .expect("query failed")
-            .is_none());
+        assert!(
+            libdb
+                .most_recently_opened_reading_book(library_id)
+                .expect("query failed")
+                .is_none()
+        );
     }
 
     #[test]
@@ -4156,10 +4166,12 @@ mod tests {
             )
             .unwrap();
 
-        assert!(libdb
-            .most_recently_opened_reading_book(library_id)
-            .expect("query failed")
-            .is_none());
+        assert!(
+            libdb
+                .most_recently_opened_reading_book(library_id)
+                .expect("query failed")
+                .is_none()
+        );
     }
 
     #[test]

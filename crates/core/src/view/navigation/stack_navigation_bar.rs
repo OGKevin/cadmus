@@ -1,13 +1,13 @@
 use crate::color::SEPARATOR_NORMAL;
 use crate::context::Context;
 use crate::device::CURRENT_DEVICE;
-use crate::font::{font_from_style, Fonts, NORMAL_STYLE};
+use crate::font::{Fonts, NORMAL_STYLE, font_from_style};
 use crate::framebuffer::Framebuffer;
 use crate::geom::{Dir, Point, Rectangle};
 use crate::unit::scale_by_dpi;
-use crate::view::filler::Filler;
 use crate::view::UpdateMode;
-use crate::view::{Bus, Event, Hub, Id, RenderData, RenderQueue, View, ID_FEEDER};
+use crate::view::filler::Filler;
+use crate::view::{Bus, Event, Hub, ID_FEEDER, Id, RenderData, RenderQueue, View};
 use crate::view::{SMALL_BAR_HEIGHT, THICKNESS_MEDIUM};
 use std::collections::BTreeMap;
 use std::fmt::Debug;

@@ -8,7 +8,7 @@ use crate::view::battery::Battery;
 use crate::view::clock::Clock;
 use crate::view::icon::Icon;
 use crate::view::label::Label;
-use crate::view::{Align, Bus, Event, Hub, Id, RenderData, RenderQueue, View, ViewId, ID_FEEDER};
+use crate::view::{Align, Bus, Event, Hub, ID_FEEDER, Id, RenderData, RenderQueue, View, ViewId};
 
 /// Defines the behavior and appearance of the left icon in the top bar
 #[derive(Debug, Clone)]

@@ -1,11 +1,11 @@
 use super::dom::{ElementData, NodeData, NodeRef, TextData, WRAPPER_TAG_NAME};
-use super::layout::{collapse_margins, hyph_lang, DEFAULT_HYPH_LANG, HYPHENATION_PATTERNS};
 use super::layout::{ChildArtifact, GlueMaterial, LoopContext, PenaltyMaterial, SiblingStyle};
+use super::layout::{DEFAULT_HYPH_LANG, HYPHENATION_PATTERNS, collapse_margins, hyph_lang};
 use super::layout::{Display, Float, ImageElement, ParagraphElement, TextAlign, TextElement};
 use super::layout::{DrawCommand, DrawState, FontKind, Fonts, ImageCommand, RootData, TextCommand};
+use super::layout::{EM_SPACE_RATIOS, FONT_SPACES, WORD_SPACE_RATIOS};
 use super::layout::{ImageMaterial, InlineMaterial, StyleData, TextMaterial};
 use super::layout::{LineStats, ListStyleType, WordSpacing};
-use super::layout::{EM_SPACE_RATIOS, FONT_SPACES, WORD_SPACE_RATIOS};
 use super::parse::{parse_color, parse_line_height, parse_list_style_type, parse_vertical_align};
 use super::parse::{parse_display, parse_edge, parse_float, parse_text_align, parse_text_indent};
 use super::parse::{parse_font_features, parse_font_size, parse_font_variant, parse_font_weight};
@@ -13,14 +13,14 @@ use super::parse::{
     parse_font_kind, parse_font_style, parse_height, parse_inline_material, parse_width,
 };
 use super::parse::{parse_letter_spacing, parse_word_spacing};
-use super::style::{specified_values, StyleSheet};
+use super::style::{StyleSheet, specified_values};
 use super::xml::XmlExt;
 use crate::document::pdf::PdfOpener;
 use crate::document::{Document, Location};
 use crate::font::{FontFamily, FontOpener};
 use crate::framebuffer::{Framebuffer, Pixmap};
 use crate::geom::{Edge, Point, Rectangle, Vec2};
-use crate::helpers::{decode_entities, Normalize};
+use crate::helpers::{Normalize, decode_entities};
 use crate::settings::{
     DEFAULT_FONT_SIZE, DEFAULT_LINE_HEIGHT, DEFAULT_MARGIN_WIDTH, DEFAULT_TEXT_ALIGN,
 };
@@ -28,8 +28,8 @@ use crate::settings::{HYPHEN_PENALTY, STRETCH_TOLERANCE};
 use crate::unit::{mm_to_px, pt_to_px};
 use anyhow::Error;
 use kl_hyphenate::{Hyphenator, Iter, Standard};
+use paragraph_breaker::{Breakpoint, INFINITE_PENALTY, Item as ParagraphItem};
 use paragraph_breaker::{standard_fit, total_fit};
-use paragraph_breaker::{Breakpoint, Item as ParagraphItem, INFINITE_PENALTY};
 use percent_encoding::percent_decode_str;
 use septem::Roman;
 use std::convert::TryFrom;
@@ -1826,7 +1826,7 @@ impl Engine {
                                 while k < index {
                                     match items[k] {
                                         ParagraphItem::Box { width, .. } if width > 0 && k != i => {
-                                            break
+                                            break;
                                         }
                                         _ => k += 1,
                                     }

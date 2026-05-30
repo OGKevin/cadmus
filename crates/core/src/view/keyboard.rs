@@ -1,7 +1,7 @@
-use super::key::{Key, KeyKind};
 use super::BIG_BAR_HEIGHT;
+use super::key::{Key, KeyKind};
 use super::{
-    Bus, EntryId, Event, Hub, Id, KeyboardEvent, RenderData, RenderQueue, TextKind, View, ID_FEEDER,
+    Bus, EntryId, Event, Hub, ID_FEEDER, Id, KeyboardEvent, RenderData, RenderQueue, TextKind, View,
 };
 use crate::color::KEYBOARD_BG;
 use crate::context::Context;

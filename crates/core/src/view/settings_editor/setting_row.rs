@@ -1,6 +1,6 @@
-use super::super::label::Label;
 use super::super::Align;
-use super::super::{Bus, Event, Hub, Id, RenderQueue, View, ID_FEEDER};
+use super::super::label::Label;
+use super::super::{Bus, Event, Hub, ID_FEEDER, Id, RenderQueue, View};
 use super::kinds::{SettingIdentity, SettingKind};
 use super::setting_value::SettingValue;
 use crate::context::Context;

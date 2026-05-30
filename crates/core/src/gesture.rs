@@ -1,5 +1,5 @@
 use crate::device::CURRENT_DEVICE;
-use crate::geom::{elbow, nearest_segment_point, Axis, DiagDir, Dir, Point, Vec2};
+use crate::geom::{Axis, DiagDir, Dir, Point, Vec2, elbow, nearest_segment_point};
 use crate::input::{ButtonCode, ButtonStatus, DeviceEvent, FingerStatus};
 use crate::unit::mm_to_px;
 use crate::view::Event;

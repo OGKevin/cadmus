@@ -5,18 +5,18 @@ use super::label::Label;
 use super::presets_list::PresetsList;
 use super::slider::Slider;
 use super::{
-    Align, Bus, EntryId, Event, Hub, Id, RenderData, RenderQueue, SliderId, View, ViewId, ID_FEEDER,
+    Align, Bus, EntryId, Event, Hub, ID_FEEDER, Id, RenderData, RenderQueue, SliderId, View, ViewId,
 };
 use super::{BORDER_RADIUS_MEDIUM, SMALL_BAR_HEIGHT, THICKNESS_LARGE};
 use crate::color::{BLACK, WHITE};
 use crate::context::Context;
 use crate::device::CURRENT_DEVICE;
-use crate::font::{font_from_style, Fonts, NORMAL_STYLE};
+use crate::font::{Fonts, NORMAL_STYLE, font_from_style};
 use crate::framebuffer::{Framebuffer, UpdateMode};
 use crate::frontlight::LightLevels;
 use crate::geom::{BorderSpec, CornerSpec, Rectangle};
 use crate::gesture::GestureEvent;
-use crate::settings::{guess_frontlight, LightPreset};
+use crate::settings::{LightPreset, guess_frontlight};
 use crate::unit::scale_by_dpi;
 
 const LABEL_SAVE: &str = "Save";

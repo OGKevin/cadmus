@@ -4,13 +4,13 @@ use crate::context::Context;
 use crate::document::{Document, Neighbors, TocEntry};
 use crate::font::Fonts;
 use crate::framebuffer::{Framebuffer, UpdateMode};
-use crate::geom::{halves, CycleDir, Rectangle};
+use crate::geom::{CycleDir, Rectangle, halves};
 use crate::gesture::GestureEvent;
 use crate::input::DeviceEvent;
 use crate::view::filler::Filler;
 use crate::view::icon::Icon;
 use crate::view::page_label::PageLabel;
-use crate::view::{Bus, Event, Hub, Id, RenderData, RenderQueue, View, ID_FEEDER};
+use crate::view::{Bus, Event, Hub, ID_FEEDER, Id, RenderData, RenderQueue, View};
 
 pub struct BottomBar {
     id: Id,

@@ -3,7 +3,7 @@ use crate::context::Context;
 use crate::font::Fonts;
 use crate::framebuffer::{Framebuffer, Pixmap, UpdateMode};
 use crate::geom::Rectangle;
-use crate::view::{Bus, Event, Hub, Id, RenderData, RenderQueue, View, ID_FEEDER};
+use crate::view::{Bus, Event, Hub, ID_FEEDER, Id, RenderData, RenderQueue, View};
 
 pub struct Image {
     id: Id,

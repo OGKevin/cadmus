@@ -4,7 +4,7 @@ use crate::framebuffer::Framebuffer;
 use crate::geom::Rectangle;
 use crate::view::icon::Icon;
 use crate::view::label::Label;
-use crate::view::{Align, Bus, Event, Hub, Id, RenderQueue, View, ID_FEEDER};
+use crate::view::{Align, Bus, Event, Hub, ID_FEEDER, Id, RenderQueue, View};
 
 pub struct LabeledIcon {
     id: Id,

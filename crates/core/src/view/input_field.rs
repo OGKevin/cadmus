@@ -1,14 +1,14 @@
 use super::THICKNESS_MEDIUM;
 use super::{
-    Bus, EntryId, Event, Hub, Id, KeyboardEvent, RenderData, RenderQueue, TextKind, View, ViewId,
-    ID_FEEDER,
+    Bus, EntryId, Event, Hub, ID_FEEDER, Id, KeyboardEvent, RenderData, RenderQueue, TextKind,
+    View, ViewId,
 };
 use crate::color::{BLACK, TEXT_NORMAL};
 use crate::context::Context;
 use crate::device::CURRENT_DEVICE;
-use crate::font::{font_from_style, Fonts, FONT_SIZES, NORMAL_STYLE};
+use crate::font::{FONT_SIZES, Fonts, NORMAL_STYLE, font_from_style};
 use crate::framebuffer::{Framebuffer, UpdateMode};
-use crate::geom::{halves, BorderSpec, LinearDir, Point, Rectangle};
+use crate::geom::{BorderSpec, LinearDir, Point, Rectangle, halves};
 use crate::gesture::GestureEvent;
 use crate::unit::scale_by_dpi;
 

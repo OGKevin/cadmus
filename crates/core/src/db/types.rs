@@ -114,7 +114,7 @@ pub struct Uuid7(Uuid);
 impl Uuid7 {
     /// Generates a new UUID version 7 using the current system time.
     pub fn now() -> Self {
-        use uuid::timestamp::{context::NoContext, Timestamp};
+        use uuid::timestamp::{Timestamp, context::NoContext};
         Self(Uuid::new_v7(Timestamp::now(NoContext)))
     }
 }

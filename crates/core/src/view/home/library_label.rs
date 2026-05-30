@@ -1,11 +1,11 @@
 use crate::color::{BLACK, WHITE};
 use crate::context::Context;
 use crate::device::CURRENT_DEVICE;
-use crate::font::{font_from_style, Fonts, NORMAL_STYLE};
+use crate::font::{Fonts, NORMAL_STYLE, font_from_style};
 use crate::framebuffer::{Framebuffer, UpdateMode};
 use crate::geom::Rectangle;
 use crate::gesture::GestureEvent;
-use crate::view::{Bus, Event, Hub, Id, RenderData, RenderQueue, View, ViewId, ID_FEEDER};
+use crate::view::{Bus, Event, Hub, ID_FEEDER, Id, RenderData, RenderQueue, View, ViewId};
 
 pub struct LibraryLabel {
     id: Id,
@@ -49,17 +49,9 @@ impl LibraryLabel {
 
     fn text(&self) -> String {
         let subject = if self.filter {
-            if self.count != 1 {
-                "matches"
-            } else {
-                "match"
-            }
+            if self.count != 1 { "matches" } else { "match" }
         } else {
-            if self.count != 1 {
-                "books"
-            } else {
-                "book"
-            }
+            if self.count != 1 { "books" } else { "book" }
         };
 
         if self.count == 0 {

@@ -2,7 +2,7 @@ use crate::document::file_kind;
 use crate::fl;
 use crate::helpers::{Fingerprint, Fp, IsHidden};
 use crate::library::db::Db as LibraryDb;
-use crate::metadata::{extract_metadata_from_document, FileInfo, Info};
+use crate::metadata::{FileInfo, Info, extract_metadata_from_document};
 use crate::settings::ImportSettings;
 use crate::task::ShutdownSignal;
 use crate::view::{Event, NotificationEvent, ViewId};

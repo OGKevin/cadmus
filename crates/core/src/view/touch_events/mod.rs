@@ -5,11 +5,11 @@ use crate::font::Fonts;
 use crate::framebuffer::{Framebuffer, UpdateMode};
 use crate::geom::{CornerSpec, Dir, Rectangle, Region};
 use crate::unit::scale_by_dpi;
+use crate::view::SMALL_BAR_HEIGHT;
 use crate::view::icon::Icon;
 use crate::view::notification::Notification;
-use crate::view::SMALL_BAR_HEIGHT;
 use crate::view::{Bus, Event, Hub, RenderData, RenderQueue, View};
-use crate::view::{Id, ID_FEEDER};
+use crate::view::{ID_FEEDER, Id};
 
 pub struct TouchEvents {
     id: Id,

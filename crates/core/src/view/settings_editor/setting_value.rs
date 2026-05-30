@@ -1,5 +1,5 @@
 use super::super::action_label::ActionLabel;
-use super::super::{Align, Bus, Event, Hub, Id, RenderQueue, View, ViewId, ID_FEEDER};
+use super::super::{Align, Bus, Event, Hub, ID_FEEDER, Id, RenderQueue, View, ViewId};
 use super::kinds::{SettingIdentity, SettingKind, WidgetKind};
 use crate::context::Context;
 use crate::framebuffer::{Framebuffer, UpdateMode};
@@ -885,11 +885,13 @@ mod tests {
         );
 
         assert!(handled);
-        assert!(context
-            .settings
-            .import
-            .allowed_kinds
-            .contains(&FileExtension::Cbr));
+        assert!(
+            context
+                .settings
+                .import
+                .allowed_kinds
+                .contains(&FileExtension::Cbr)
+        );
         assert!(
             !bus.iter()
                 .any(|evt| matches!(evt, Event::Close(ViewId::SettingsValueMenu))),

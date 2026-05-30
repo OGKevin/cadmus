@@ -8,12 +8,12 @@ use crate::context::Context;
 use crate::device::CURRENT_DEVICE;
 use crate::font::Fonts;
 use crate::framebuffer::{Framebuffer, UpdateMode};
-use crate::geom::{halves, Rectangle};
+use crate::geom::{Rectangle, halves};
 use crate::unit::scale_by_dpi;
 use crate::view::filler::Filler;
 use crate::view::keyboard::Keyboard;
-use crate::view::{Bus, Event, Hub, Id, RenderData, RenderQueue, View, ID_FEEDER};
 use crate::view::{BIG_BAR_HEIGHT, SMALL_BAR_HEIGHT, THICKNESS_MEDIUM};
+use crate::view::{Bus, Event, Hub, ID_FEEDER, Id, RenderData, RenderQueue, View};
 
 /// A view component that wraps a keyboard and provides toggle functionality.
 ///

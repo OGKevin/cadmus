@@ -16,7 +16,7 @@ use crate::framebuffer::Pixmap;
 use crate::geom::{Boundary, CycleDir};
 use crate::metadata::{Annotation, TextAlign};
 use crate::settings::{FileExtension, INTERNAL_CARD_ROOT};
-use anyhow::{format_err, Error};
+use anyhow::{Error, format_err};
 use fxhash::FxHashMap;
 use nix::sys::statvfs;
 #[cfg(target_os = "linux")]
@@ -31,8 +31,8 @@ use std::os::unix::fs::FileExt;
 use std::path::Path;
 use std::process::Command;
 use tracing::{error, warn};
-use unicode_normalization::char::is_combining_mark;
 use unicode_normalization::UnicodeNormalization;
+use unicode_normalization::char::is_combining_mark;
 
 pub const BYTES_PER_PAGE: f64 = 2048.0;
 

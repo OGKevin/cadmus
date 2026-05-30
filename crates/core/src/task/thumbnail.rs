@@ -9,8 +9,8 @@ use crate::library::Library;
 use crate::settings::Settings;
 use crate::task::{BackgroundTask, ShutdownSignal, TaskId};
 use crate::unit::scale_by_dpi;
-use crate::view::Event;
 use crate::view::BIG_BAR_HEIGHT;
+use crate::view::Event;
 
 /// Runs thumbnail extraction for missing book previews in a library (or all libraries when `library_index` is `None`).
 pub struct ThumbnailExtractionTask {

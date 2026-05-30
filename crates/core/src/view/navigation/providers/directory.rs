@@ -5,7 +5,7 @@ use crate::geom::Point;
 use crate::unit::scale_by_dpi;
 use crate::view::home::directories_bar::DirectoriesBar;
 use crate::view::navigation::stack_navigation_bar::NavigationProvider;
-use crate::view::{View, SMALL_BAR_HEIGHT, THICKNESS_MEDIUM};
+use crate::view::{SMALL_BAR_HEIGHT, THICKNESS_MEDIUM, View};
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};

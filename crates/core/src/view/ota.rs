@@ -6,25 +6,25 @@ use super::notification::Notification;
 use super::progress_bar::ProgressBar;
 use super::toggleable_keyboard::ToggleableKeyboard;
 use super::{
-    Align, Bus, EntryId, Event, Hub, Id, NotificationEvent, RenderData, RenderQueue, UpdateMode,
-    View, ViewId, ID_FEEDER,
+    Align, Bus, EntryId, Event, Hub, ID_FEEDER, Id, NotificationEvent, RenderData, RenderQueue,
+    UpdateMode, View, ViewId,
 };
 use crate::color::WHITE;
 use crate::context::Context;
 use crate::device::CURRENT_DEVICE;
 use crate::fl;
-use crate::font::{font_from_style, Fonts, NORMAL_STYLE};
+use crate::font::{Fonts, NORMAL_STYLE, font_from_style};
 use crate::framebuffer::Framebuffer;
 use crate::geom::Rectangle;
 use crate::gesture::GestureEvent;
-use crate::github::device_flow;
 use crate::github::GithubClient;
-use crate::ota::{clean_bundled_files, OtaClient, OtaError, OtaProgress};
+use crate::github::device_flow;
+use crate::ota::{OtaClient, OtaError, OtaProgress, clean_bundled_files};
 use crate::unit::scale_by_dpi;
-use crate::version::{get_current_version, VersionComparison};
+use crate::version::{VersionComparison, get_current_version};
+use crate::view::BIG_BAR_HEIGHT;
 use crate::view::filler::Filler;
 use crate::view::github::GithubEvent;
-use crate::view::BIG_BAR_HEIGHT;
 use secrecy::SecretString;
 use std::thread;
 use tracing::{error, info};
@@ -421,7 +421,9 @@ impl OtaView {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub)))]
     fn start_pr_download(&mut self, pr_number: u32, hub: &Hub) {
         let Some(github_token) = self.github_token.clone() else {
-            tracing::error!("GitHub token is missing when starting download, this code path should be unreachable due to prior validation");
+            tracing::error!(
+                "GitHub token is missing when starting download, this code path should be unreachable due to prior validation"
+            );
             return;
         };
 
@@ -515,7 +517,9 @@ impl OtaView {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub)))]
     fn start_default_branch_download(&mut self, hub: &Hub) {
         let Some(github_token) = self.github_token.clone() else {
-            tracing::error!("GitHub token is missing when starting download, this code path should be unreachable due to prior validation");
+            tracing::error!(
+                "GitHub token is missing when starting download, this code path should be unreachable due to prior validation"
+            );
             return;
         };
 
@@ -985,9 +989,7 @@ impl View for OtaView {
             }
             Event::Github(GithubEvent::TokenInvalid) => self.on_token_invalid(hub, rq, context),
             Event::Github(GithubEvent::DeviceAuthExpired) => self.on_device_auth_expired(hub),
-            Event::Github(GithubEvent::DeviceAuthError(msg)) => {
-                self.on_device_auth_error(msg, hub)
-            }
+            Event::Github(GithubEvent::DeviceAuthError(msg)) => self.on_device_auth_error(msg, hub),
             Event::StartStableReleaseDownload => {
                 self.build_progress_screen("Downloading stable release… 0%", context);
                 rq.add(RenderData::new(self.id, self.rect, UpdateMode::Full));

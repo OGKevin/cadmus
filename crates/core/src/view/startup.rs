@@ -1,9 +1,9 @@
-use super::{Bus, Event, Hub, Id, RenderQueue, View, ID_FEEDER};
+use super::{Bus, Event, Hub, ID_FEEDER, Id, RenderQueue, View};
 use crate::color::TEXT_NORMAL;
 use crate::context::Context;
 use crate::device::CURRENT_DEVICE;
 use crate::fl;
-use crate::font::{font_from_style, Fonts, DISPLAY_FONT_SIZE, DISPLAY_STYLE};
+use crate::font::{DISPLAY_FONT_SIZE, DISPLAY_STYLE, Fonts, font_from_style};
 use crate::framebuffer::Framebuffer;
 use crate::geom::Rectangle;
 

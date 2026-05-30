@@ -1,6 +1,6 @@
 use super::icon::ICONS_PIXMAPS;
-use super::{Bus, Event, Hub, Id, RenderData, RenderQueue, View, ViewId, ID_FEEDER};
 use super::{BORDER_RADIUS_SMALL, THICKNESS_LARGE, THICKNESS_MEDIUM};
+use super::{Bus, Event, Hub, ID_FEEDER, Id, RenderData, RenderQueue, View, ViewId};
 use crate::battery::Status;
 use crate::color::{BATTERY_FILL, BLACK, WHITE};
 use crate::context::Context;

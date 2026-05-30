@@ -6,10 +6,10 @@
 
 use crate::color::BLACK;
 use crate::device::CURRENT_DEVICE;
-use crate::geom::{halves, Rectangle};
+use crate::geom::{Rectangle, halves};
 use crate::unit::scale_by_dpi;
 use crate::view::filler::Filler;
-use crate::view::{View, SMALL_BAR_HEIGHT, THICKNESS_MEDIUM};
+use crate::view::{SMALL_BAR_HEIGHT, THICKNESS_MEDIUM, View};
 
 use super::bottom_bar::{BottomBarVariant, SettingsEditorBottomBar};
 

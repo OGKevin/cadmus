@@ -90,8 +90,8 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
 use tracing_appender::non_blocking::{NonBlocking, WorkerGuard};
-use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
+use tracing_subscriber::prelude::*;
 use uuid::Uuid;
 
 mod kern;

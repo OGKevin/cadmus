@@ -11,9 +11,9 @@
 //! positions), reading positions must **not** be persisted when using this
 //! type.
 
+use super::HtmlBase;
 use super::layout::TextAlign;
 use super::xml::parse_html5;
-use super::HtmlBase;
 use crate::document::{BoundedText, Document, Location, TocEntry};
 use crate::framebuffer::Pixmap;
 use crate::geom::{Boundary, CycleDir};

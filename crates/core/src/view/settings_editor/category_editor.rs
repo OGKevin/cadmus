@@ -4,7 +4,7 @@ use crate::device::CURRENT_DEVICE;
 use crate::dictionary::MonolingualDictionaryService;
 use crate::fl;
 use crate::framebuffer::{Framebuffer, UpdateMode};
-use crate::geom::{halves, CycleDir, Rectangle};
+use crate::geom::{CycleDir, Rectangle, halves};
 use crate::settings::{LibrarySettings, Settings};
 use crate::unit::scale_by_dpi;
 use crate::view::common::locate_by_id;
@@ -13,8 +13,8 @@ use crate::view::filler::Filler;
 use crate::view::menu::{Menu, MenuKind};
 use crate::view::toggleable_keyboard::ToggleableKeyboard;
 use crate::view::{
-    Bus, EntryId, EntryKind, Event, Hub, Id, NotificationEvent, RenderData, RenderQueue, View,
-    ViewId, ID_FEEDER, SMALL_BAR_HEIGHT, THICKNESS_MEDIUM,
+    Bus, EntryId, EntryKind, Event, Hub, ID_FEEDER, Id, NotificationEvent, RenderData, RenderQueue,
+    SMALL_BAR_HEIGHT, THICKNESS_MEDIUM, View, ViewId,
 };
 
 use super::bottom_bar::{BottomBarVariant, SettingsEditorBottomBar};
@@ -800,9 +800,7 @@ impl View for CategoryEditor {
     ) -> bool {
         match evt {
             Event::Focus(view_id) => self.handle_focus_event(view_id, hub, rq, context),
-            Event::SubMenu(rect, entries) => {
-                self.handle_submenu_event(rect, entries, rq, context)
-            }
+            Event::SubMenu(rect, entries) => self.handle_submenu_event(rect, entries, rq, context),
             Event::Select(EntryId::DeleteLibrary(index)) => {
                 self.handle_delete_library(*index, rq, context)
             }

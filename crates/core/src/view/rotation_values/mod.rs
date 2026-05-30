@@ -1,12 +1,12 @@
 use crate::color::{BLACK, GRAY07, WHITE};
 use crate::context::Context;
 use crate::device::CURRENT_DEVICE;
-use crate::font::{font_from_style, Fonts, DISPLAY_STYLE, NORMAL_STYLE};
+use crate::font::{DISPLAY_STYLE, Fonts, NORMAL_STYLE, font_from_style};
 use crate::framebuffer::{Framebuffer, UpdateMode};
 use crate::geom::{Point, Rectangle};
 use crate::gesture::GestureEvent;
 use crate::view::{Bus, Event, Hub, RenderData, RenderQueue, View};
-use crate::view::{Id, ID_FEEDER};
+use crate::view::{ID_FEEDER, Id};
 use std::mem;
 use tracing::{debug, error, info};
 

@@ -5,14 +5,14 @@ use crate::device::CURRENT_DEVICE;
 use crate::font::Fonts;
 use crate::framebuffer::{Framebuffer, UpdateMode};
 use crate::geom::divide;
-use crate::geom::{halves, CycleDir, Dir, Rectangle};
+use crate::geom::{CycleDir, Dir, Rectangle, halves};
 use crate::gesture::GestureEvent;
 use crate::metadata::Info;
 use crate::settings::{FirstColumn, SecondColumn};
 use crate::unit::scale_by_dpi;
 use crate::view::filler::Filler;
-use crate::view::{Bus, Event, Hub, Id, RenderData, RenderQueue, View, ID_FEEDER};
 use crate::view::{BIG_BAR_HEIGHT, THICKNESS_MEDIUM};
+use crate::view::{Bus, Event, Hub, ID_FEEDER, Id, RenderData, RenderQueue, View};
 
 pub struct Shelf {
     id: Id,

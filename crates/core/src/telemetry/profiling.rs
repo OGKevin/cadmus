@@ -38,7 +38,7 @@
 use anyhow::{Context, Error};
 use pyroscope::backend::backend::BackendConfig;
 use pyroscope::backend::jemalloc::jemalloc_backend;
-use pyroscope::backend::pprof::{pprof_backend, PprofConfig};
+use pyroscope::backend::pprof::{PprofConfig, pprof_backend};
 use pyroscope::pyroscope::{PyroscopeAgent, PyroscopeAgentBuilder, PyroscopeAgentRunning};
 use std::sync::Mutex;
 use std::time::Duration;

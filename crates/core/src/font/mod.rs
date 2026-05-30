@@ -9,7 +9,7 @@ use crate::device::CURRENT_DEVICE;
 use crate::framebuffer::Framebuffer;
 use crate::geom::{Point, Vec2};
 use crate::helpers::IsHidden;
-use anyhow::{format_err, Error};
+use anyhow::{Error, format_err};
 use bitflags::bitflags;
 use fxhash::FxHashMap;
 use globset::Glob;
@@ -784,400 +784,454 @@ pub fn font_from_style<'a>(fonts: &'a mut Fonts, style: &Style, dpi: u16) -> &'a
 }
 
 #[inline]
-unsafe fn font_data_from_script(script: HbScript) -> &'static [libc::c_uchar] { unsafe {
-    // Extracted from mupdf in source/fitz/noto.c
-    #[cfg(any(not(target_os = "linux"), target_arch = "arm"))]
-    match script {
-        HB_SCRIPT_HANGUL | HB_SCRIPT_HIRAGANA | HB_SCRIPT_KATAKANA | HB_SCRIPT_BOPOMOFO
-        | HB_SCRIPT_HAN => &_binary_DroidSansFallback_ttf,
+unsafe fn font_data_from_script(script: HbScript) -> &'static [libc::c_uchar] {
+    unsafe {
+        // Extracted from mupdf in source/fitz/noto.c
+        #[cfg(any(not(target_os = "linux"), target_arch = "arm"))]
+        match script {
+            HB_SCRIPT_HANGUL | HB_SCRIPT_HIRAGANA | HB_SCRIPT_KATAKANA | HB_SCRIPT_BOPOMOFO
+            | HB_SCRIPT_HAN => &_binary_DroidSansFallback_ttf,
 
-        HB_SCRIPT_ARABIC => &_binary_NotoNaskhArabic_Regular_otf,
-        HB_SCRIPT_SYRIAC => &_binary_NotoSansSyriac_Regular_otf,
-        HB_SCRIPT_MEROITIC_CURSIVE | HB_SCRIPT_MEROITIC_HIEROGLYPHS => {
-            &_binary_NotoSansMeroitic_Regular_otf
+            HB_SCRIPT_ARABIC => &_binary_NotoNaskhArabic_Regular_otf,
+            HB_SCRIPT_SYRIAC => &_binary_NotoSansSyriac_Regular_otf,
+            HB_SCRIPT_MEROITIC_CURSIVE | HB_SCRIPT_MEROITIC_HIEROGLYPHS => {
+                &_binary_NotoSansMeroitic_Regular_otf
+            }
+
+            HB_SCRIPT_ADLAM => &_binary_NotoSansAdlam_Regular_otf,
+            HB_SCRIPT_AHOM => &_binary_NotoSerifAhom_Regular_otf,
+            HB_SCRIPT_ANATOLIAN_HIEROGLYPHS => &_binary_NotoSansAnatolianHieroglyphs_Regular_otf,
+            HB_SCRIPT_ARMENIAN => &_binary_NotoSerifArmenian_Regular_otf,
+            HB_SCRIPT_AVESTAN => &_binary_NotoSansAvestan_Regular_otf,
+            HB_SCRIPT_BALINESE => &_binary_NotoSerifBalinese_Regular_otf,
+            HB_SCRIPT_BAMUM => &_binary_NotoSansBamum_Regular_otf,
+            HB_SCRIPT_BASSA_VAH => &_binary_NotoSansBassaVah_Regular_otf,
+            HB_SCRIPT_BATAK => &_binary_NotoSansBatak_Regular_otf,
+            HB_SCRIPT_BENGALI => &_binary_NotoSerifBengali_Regular_otf,
+            HB_SCRIPT_BHAIKSUKI => &_binary_NotoSansBhaiksuki_Regular_otf,
+            HB_SCRIPT_BRAHMI => &_binary_NotoSansBrahmi_Regular_otf,
+            HB_SCRIPT_BUGINESE => &_binary_NotoSansBuginese_Regular_otf,
+            HB_SCRIPT_BUHID => &_binary_NotoSansBuhid_Regular_otf,
+            HB_SCRIPT_CANADIAN_SYLLABICS => &_binary_NotoSansCanadianAboriginal_Regular_otf,
+            HB_SCRIPT_CARIAN => &_binary_NotoSansCarian_Regular_otf,
+            HB_SCRIPT_CAUCASIAN_ALBANIAN => &_binary_NotoSansCaucasianAlbanian_Regular_otf,
+            HB_SCRIPT_CHAKMA => &_binary_NotoSansChakma_Regular_otf,
+            HB_SCRIPT_CHAM => &_binary_NotoSansCham_Regular_otf,
+            HB_SCRIPT_CHEROKEE => &_binary_NotoSansCherokee_Regular_otf,
+            HB_SCRIPT_CHORASMIAN => &_binary_NotoSansChorasmian_Regular_otf,
+            HB_SCRIPT_COPTIC => &_binary_NotoSansCoptic_Regular_otf,
+            HB_SCRIPT_CUNEIFORM => &_binary_NotoSansCuneiform_Regular_otf,
+            HB_SCRIPT_CYPRIOT => &_binary_NotoSansCypriot_Regular_otf,
+            HB_SCRIPT_CYPRO_MINOAN => &_binary_NotoSansCyproMinoan_Regular_otf,
+            HB_SCRIPT_DESERET => &_binary_NotoSansDeseret_Regular_otf,
+            HB_SCRIPT_DEVANAGARI => &_binary_NotoSerifDevanagari_Regular_otf,
+            HB_SCRIPT_DIVES_AKURU => &_binary_NotoSerifDivesAkuru_Regular_otf,
+            HB_SCRIPT_DOGRA => &_binary_NotoSerifDogra_Regular_otf,
+            HB_SCRIPT_DUPLOYAN => &_binary_NotoSansDuployan_Regular_otf,
+            HB_SCRIPT_EGYPTIAN_HIEROGLYPHS => &_binary_NotoSansEgyptianHieroglyphs_Regular_otf,
+            HB_SCRIPT_ELBASAN => &_binary_NotoSansElbasan_Regular_otf,
+            HB_SCRIPT_ELYMAIC => &_binary_NotoSansElymaic_Regular_otf,
+            HB_SCRIPT_ETHIOPIC => &_binary_NotoSerifEthiopic_Regular_otf,
+            HB_SCRIPT_GEORGIAN => &_binary_NotoSerifGeorgian_Regular_otf,
+            HB_SCRIPT_GLAGOLITIC => &_binary_NotoSansGlagolitic_Regular_otf,
+            HB_SCRIPT_GOTHIC => &_binary_NotoSansGothic_Regular_otf,
+            HB_SCRIPT_GRANTHA => &_binary_NotoSerifGrantha_Regular_otf,
+            HB_SCRIPT_GUJARATI => &_binary_NotoSerifGujarati_Regular_otf,
+            HB_SCRIPT_GUNJALA_GONDI => &_binary_NotoSansGunjalaGondi_Regular_otf,
+            HB_SCRIPT_GURMUKHI => &_binary_NotoSerifGurmukhi_Regular_otf,
+            HB_SCRIPT_HANIFI_ROHINGYA => &_binary_NotoSansHanifiRohingya_Regular_otf,
+            HB_SCRIPT_HANUNOO => &_binary_NotoSansHanunoo_Regular_otf,
+            HB_SCRIPT_HATRAN => &_binary_NotoSansHatran_Regular_otf,
+            HB_SCRIPT_HEBREW => &_binary_NotoSerifHebrew_Regular_otf,
+            HB_SCRIPT_IMPERIAL_ARAMAIC => &_binary_NotoSansImperialAramaic_Regular_otf,
+            HB_SCRIPT_INSCRIPTIONAL_PAHLAVI => &_binary_NotoSansInscriptionalPahlavi_Regular_otf,
+            HB_SCRIPT_INSCRIPTIONAL_PARTHIAN => &_binary_NotoSansInscriptionalParthian_Regular_otf,
+            HB_SCRIPT_JAVANESE => &_binary_NotoSansJavanese_Regular_otf,
+            HB_SCRIPT_KAITHI => &_binary_NotoSansKaithi_Regular_otf,
+            HB_SCRIPT_KANNADA => &_binary_NotoSerifKannada_Regular_otf,
+            HB_SCRIPT_KAWI => &_binary_NotoSansKawi_Regular_otf,
+            HB_SCRIPT_KAYAH_LI => &_binary_NotoSansKayahLi_Regular_otf,
+            HB_SCRIPT_KHAROSHTHI => &_binary_NotoSansKharoshthi_Regular_otf,
+            HB_SCRIPT_KHITAN_SMALL_SCRIPT => &_binary_NotoSerifKhitanSmallScript_Regular_otf,
+            HB_SCRIPT_KHMER => &_binary_NotoSerifKhmer_Regular_otf,
+            HB_SCRIPT_KHOJKI => &_binary_NotoSerifKhojki_Regular_otf,
+            HB_SCRIPT_KHUDAWADI => &_binary_NotoSansKhudawadi_Regular_otf,
+            HB_SCRIPT_LAO => &_binary_NotoSerifLao_Regular_otf,
+            HB_SCRIPT_LEPCHA => &_binary_NotoSansLepcha_Regular_otf,
+            HB_SCRIPT_LIMBU => &_binary_NotoSansLimbu_Regular_otf,
+            HB_SCRIPT_LINEAR_A => &_binary_NotoSansLinearA_Regular_otf,
+            HB_SCRIPT_LINEAR_B => &_binary_NotoSansLinearB_Regular_otf,
+            HB_SCRIPT_LISU => &_binary_NotoSansLisu_Regular_otf,
+            HB_SCRIPT_LYCIAN => &_binary_NotoSansLycian_Regular_otf,
+            HB_SCRIPT_LYDIAN => &_binary_NotoSansLydian_Regular_otf,
+            HB_SCRIPT_MAHAJANI => &_binary_NotoSansMahajani_Regular_otf,
+            HB_SCRIPT_MAKASAR => &_binary_NotoSerifMakasar_Regular_otf,
+            HB_SCRIPT_MALAYALAM => &_binary_NotoSerifMalayalam_Regular_otf,
+            HB_SCRIPT_MANDAIC => &_binary_NotoSansMandaic_Regular_otf,
+            HB_SCRIPT_MANICHAEAN => &_binary_NotoSansManichaean_Regular_otf,
+            HB_SCRIPT_MARCHEN => &_binary_NotoSansMarchen_Regular_otf,
+            HB_SCRIPT_MASARAM_GONDI => &_binary_NotoSansMasaramGondi_Regular_otf,
+            HB_SCRIPT_MEDEFAIDRIN => &_binary_NotoSansMedefaidrin_Regular_otf,
+            HB_SCRIPT_MEETEI_MAYEK => &_binary_NotoSansMeeteiMayek_Regular_otf,
+            HB_SCRIPT_MENDE_KIKAKUI => &_binary_NotoSansMendeKikakui_Regular_otf,
+            HB_SCRIPT_MIAO => &_binary_NotoSansMiao_Regular_otf,
+            HB_SCRIPT_MODI => &_binary_NotoSansModi_Regular_otf,
+            HB_SCRIPT_MONGOLIAN => &_binary_NotoSansMongolian_Regular_otf,
+            HB_SCRIPT_MRO => &_binary_NotoSansMro_Regular_otf,
+            HB_SCRIPT_MULTANI => &_binary_NotoSansMultani_Regular_otf,
+            HB_SCRIPT_MYANMAR => &_binary_NotoSerifMyanmar_Regular_otf,
+            HB_SCRIPT_NABATAEAN => &_binary_NotoSansNabataean_Regular_otf,
+            HB_SCRIPT_NAG_MUNDARI => &_binary_NotoSansNagMundari_Regular_otf,
+            HB_SCRIPT_NANDINAGARI => &_binary_NotoSansNandinagari_Regular_otf,
+            HB_SCRIPT_NEWA => &_binary_NotoSansNewa_Regular_otf,
+            HB_SCRIPT_NEW_TAI_LUE => &_binary_NotoSansNewTaiLue_Regular_otf,
+            HB_SCRIPT_NKO => &_binary_NotoSansNKo_Regular_otf,
+            HB_SCRIPT_NUSHU => &_binary_NotoSansNushu_Regular_otf,
+            HB_SCRIPT_NYIAKENG_PUACHUE_HMONG => &_binary_NotoSerifNyiakengPuachueHmong_Regular_otf,
+            HB_SCRIPT_OGHAM => &_binary_NotoSansOgham_Regular_otf,
+            HB_SCRIPT_OLD_HUNGARIAN => &_binary_NotoSansOldHungarian_Regular_otf,
+            HB_SCRIPT_OLD_ITALIC => &_binary_NotoSansOldItalic_Regular_otf,
+            HB_SCRIPT_OLD_NORTH_ARABIAN => &_binary_NotoSansOldNorthArabian_Regular_otf,
+            HB_SCRIPT_OLD_PERMIC => &_binary_NotoSansOldPermic_Regular_otf,
+            HB_SCRIPT_OLD_PERSIAN => &_binary_NotoSansOldPersian_Regular_otf,
+            HB_SCRIPT_OLD_SOGDIAN => &_binary_NotoSansOldSogdian_Regular_otf,
+            HB_SCRIPT_OLD_SOUTH_ARABIAN => &_binary_NotoSansOldSouthArabian_Regular_otf,
+            HB_SCRIPT_OLD_TURKIC => &_binary_NotoSansOldTurkic_Regular_otf,
+            HB_SCRIPT_OLD_UYGHUR => &_binary_NotoSerifOldUyghur_Regular_otf,
+            HB_SCRIPT_OL_CHIKI => &_binary_NotoSansOlChiki_Regular_otf,
+            HB_SCRIPT_ORIYA => &_binary_NotoSerifOriya_Regular_otf,
+            HB_SCRIPT_OSAGE => &_binary_NotoSansOsage_Regular_otf,
+            HB_SCRIPT_OSMANYA => &_binary_NotoSansOsmanya_Regular_otf,
+            HB_SCRIPT_PAHAWH_HMONG => &_binary_NotoSansPahawhHmong_Regular_otf,
+            HB_SCRIPT_PALMYRENE => &_binary_NotoSansPalmyrene_Regular_otf,
+            HB_SCRIPT_PAU_CIN_HAU => &_binary_NotoSansPauCinHau_Regular_otf,
+            HB_SCRIPT_PHAGS_PA => &_binary_NotoSansPhagsPa_Regular_otf,
+            HB_SCRIPT_PHOENICIAN => &_binary_NotoSansPhoenician_Regular_otf,
+            HB_SCRIPT_PSALTER_PAHLAVI => &_binary_NotoSansPsalterPahlavi_Regular_otf,
+            HB_SCRIPT_REJANG => &_binary_NotoSansRejang_Regular_otf,
+            HB_SCRIPT_RUNIC => &_binary_NotoSansRunic_Regular_otf,
+            HB_SCRIPT_SAMARITAN => &_binary_NotoSansSamaritan_Regular_otf,
+            HB_SCRIPT_SAURASHTRA => &_binary_NotoSansSaurashtra_Regular_otf,
+            HB_SCRIPT_SHARADA => &_binary_NotoSansSharada_Regular_otf,
+            HB_SCRIPT_SHAVIAN => &_binary_NotoSansShavian_Regular_otf,
+            HB_SCRIPT_SIDDHAM => &_binary_NotoSansSiddham_Regular_otf,
+            HB_SCRIPT_SIGNWRITING => &_binary_NotoSansSignWriting_Regular_otf,
+            HB_SCRIPT_SINHALA => &_binary_NotoSerifSinhala_Regular_otf,
+            HB_SCRIPT_SOGDIAN => &_binary_NotoSansSogdian_Regular_otf,
+            HB_SCRIPT_SORA_SOMPENG => &_binary_NotoSansSoraSompeng_Regular_otf,
+            HB_SCRIPT_SOYOMBO => &_binary_NotoSansSoyombo_Regular_otf,
+            HB_SCRIPT_SUNDANESE => &_binary_NotoSansSundanese_Regular_otf,
+            HB_SCRIPT_SYLOTI_NAGRI => &_binary_NotoSansSylotiNagri_Regular_otf,
+            HB_SCRIPT_TAGALOG => &_binary_NotoSansTagalog_Regular_otf,
+            HB_SCRIPT_TAGBANWA => &_binary_NotoSansTagbanwa_Regular_otf,
+            HB_SCRIPT_TAI_LE => &_binary_NotoSansTaiLe_Regular_otf,
+            HB_SCRIPT_TAI_THAM => &_binary_NotoSansTaiTham_Regular_otf,
+            HB_SCRIPT_TAI_VIET => &_binary_NotoSansTaiViet_Regular_otf,
+            HB_SCRIPT_TAKRI => &_binary_NotoSansTakri_Regular_otf,
+            HB_SCRIPT_TAMIL => &_binary_NotoSerifTamil_Regular_otf,
+            HB_SCRIPT_TANGSA => &_binary_NotoSansTangsa_Regular_otf,
+            HB_SCRIPT_TELUGU => &_binary_NotoSerifTelugu_Regular_otf,
+            HB_SCRIPT_THAANA => &_binary_NotoSansThaana_Regular_otf,
+            HB_SCRIPT_THAI => &_binary_NotoSerifThai_Regular_otf,
+            HB_SCRIPT_TIBETAN => &_binary_NotoSerifTibetan_Regular_otf,
+            HB_SCRIPT_TIFINAGH => &_binary_NotoSansTifinagh_Regular_otf,
+            HB_SCRIPT_TIRHUTA => &_binary_NotoSansTirhuta_Regular_otf,
+            HB_SCRIPT_TOTO => &_binary_NotoSerifToto_Regular_otf,
+            HB_SCRIPT_UGARITIC => &_binary_NotoSansUgaritic_Regular_otf,
+            HB_SCRIPT_VAI => &_binary_NotoSansVai_Regular_otf,
+            HB_SCRIPT_VITHKUQI => &_binary_NotoSerifVithkuqi_Regular_otf,
+            HB_SCRIPT_WANCHO => &_binary_NotoSansWancho_Regular_otf,
+            HB_SCRIPT_WARANG_CITI => &_binary_NotoSansWarangCiti_Regular_otf,
+            HB_SCRIPT_YEZIDI => &_binary_NotoSerifYezidi_Regular_otf,
+            HB_SCRIPT_YI => &_binary_NotoSansYi_Regular_otf,
+            HB_SCRIPT_ZANABAZAR_SQUARE => &_binary_NotoSansZanabazarSquare_Regular_otf,
+
+            HB_SYMBOL_MATHS => &_binary_NotoSansMath_Regular_otf,
+            HB_SYMBOL_MUSIC => &_binary_NotoMusic_Regular_otf,
+            HB_SYMBOL_MISC_ONE => &_binary_NotoSansSymbols_Regular_otf,
+            HB_SCRIPT_BRAILLE | HB_SYMBOL_MISC_TWO => &_binary_NotoSansSymbols2_Regular_otf,
+            HB_SYMBOL_EMOJI => &_binary_NotoEmoji_Regular_ttf,
+
+            _ => &_binary_DroidSansFallback_ttf,
         }
 
-        HB_SCRIPT_ADLAM => &_binary_NotoSansAdlam_Regular_otf,
-        HB_SCRIPT_AHOM => &_binary_NotoSerifAhom_Regular_otf,
-        HB_SCRIPT_ANATOLIAN_HIEROGLYPHS => &_binary_NotoSansAnatolianHieroglyphs_Regular_otf,
-        HB_SCRIPT_ARMENIAN => &_binary_NotoSerifArmenian_Regular_otf,
-        HB_SCRIPT_AVESTAN => &_binary_NotoSansAvestan_Regular_otf,
-        HB_SCRIPT_BALINESE => &_binary_NotoSerifBalinese_Regular_otf,
-        HB_SCRIPT_BAMUM => &_binary_NotoSansBamum_Regular_otf,
-        HB_SCRIPT_BASSA_VAH => &_binary_NotoSansBassaVah_Regular_otf,
-        HB_SCRIPT_BATAK => &_binary_NotoSansBatak_Regular_otf,
-        HB_SCRIPT_BENGALI => &_binary_NotoSerifBengali_Regular_otf,
-        HB_SCRIPT_BHAIKSUKI => &_binary_NotoSansBhaiksuki_Regular_otf,
-        HB_SCRIPT_BRAHMI => &_binary_NotoSansBrahmi_Regular_otf,
-        HB_SCRIPT_BUGINESE => &_binary_NotoSansBuginese_Regular_otf,
-        HB_SCRIPT_BUHID => &_binary_NotoSansBuhid_Regular_otf,
-        HB_SCRIPT_CANADIAN_SYLLABICS => &_binary_NotoSansCanadianAboriginal_Regular_otf,
-        HB_SCRIPT_CARIAN => &_binary_NotoSansCarian_Regular_otf,
-        HB_SCRIPT_CAUCASIAN_ALBANIAN => &_binary_NotoSansCaucasianAlbanian_Regular_otf,
-        HB_SCRIPT_CHAKMA => &_binary_NotoSansChakma_Regular_otf,
-        HB_SCRIPT_CHAM => &_binary_NotoSansCham_Regular_otf,
-        HB_SCRIPT_CHEROKEE => &_binary_NotoSansCherokee_Regular_otf,
-        HB_SCRIPT_CHORASMIAN => &_binary_NotoSansChorasmian_Regular_otf,
-        HB_SCRIPT_COPTIC => &_binary_NotoSansCoptic_Regular_otf,
-        HB_SCRIPT_CUNEIFORM => &_binary_NotoSansCuneiform_Regular_otf,
-        HB_SCRIPT_CYPRIOT => &_binary_NotoSansCypriot_Regular_otf,
-        HB_SCRIPT_CYPRO_MINOAN => &_binary_NotoSansCyproMinoan_Regular_otf,
-        HB_SCRIPT_DESERET => &_binary_NotoSansDeseret_Regular_otf,
-        HB_SCRIPT_DEVANAGARI => &_binary_NotoSerifDevanagari_Regular_otf,
-        HB_SCRIPT_DIVES_AKURU => &_binary_NotoSerifDivesAkuru_Regular_otf,
-        HB_SCRIPT_DOGRA => &_binary_NotoSerifDogra_Regular_otf,
-        HB_SCRIPT_DUPLOYAN => &_binary_NotoSansDuployan_Regular_otf,
-        HB_SCRIPT_EGYPTIAN_HIEROGLYPHS => &_binary_NotoSansEgyptianHieroglyphs_Regular_otf,
-        HB_SCRIPT_ELBASAN => &_binary_NotoSansElbasan_Regular_otf,
-        HB_SCRIPT_ELYMAIC => &_binary_NotoSansElymaic_Regular_otf,
-        HB_SCRIPT_ETHIOPIC => &_binary_NotoSerifEthiopic_Regular_otf,
-        HB_SCRIPT_GEORGIAN => &_binary_NotoSerifGeorgian_Regular_otf,
-        HB_SCRIPT_GLAGOLITIC => &_binary_NotoSansGlagolitic_Regular_otf,
-        HB_SCRIPT_GOTHIC => &_binary_NotoSansGothic_Regular_otf,
-        HB_SCRIPT_GRANTHA => &_binary_NotoSerifGrantha_Regular_otf,
-        HB_SCRIPT_GUJARATI => &_binary_NotoSerifGujarati_Regular_otf,
-        HB_SCRIPT_GUNJALA_GONDI => &_binary_NotoSansGunjalaGondi_Regular_otf,
-        HB_SCRIPT_GURMUKHI => &_binary_NotoSerifGurmukhi_Regular_otf,
-        HB_SCRIPT_HANIFI_ROHINGYA => &_binary_NotoSansHanifiRohingya_Regular_otf,
-        HB_SCRIPT_HANUNOO => &_binary_NotoSansHanunoo_Regular_otf,
-        HB_SCRIPT_HATRAN => &_binary_NotoSansHatran_Regular_otf,
-        HB_SCRIPT_HEBREW => &_binary_NotoSerifHebrew_Regular_otf,
-        HB_SCRIPT_IMPERIAL_ARAMAIC => &_binary_NotoSansImperialAramaic_Regular_otf,
-        HB_SCRIPT_INSCRIPTIONAL_PAHLAVI => &_binary_NotoSansInscriptionalPahlavi_Regular_otf,
-        HB_SCRIPT_INSCRIPTIONAL_PARTHIAN => &_binary_NotoSansInscriptionalParthian_Regular_otf,
-        HB_SCRIPT_JAVANESE => &_binary_NotoSansJavanese_Regular_otf,
-        HB_SCRIPT_KAITHI => &_binary_NotoSansKaithi_Regular_otf,
-        HB_SCRIPT_KANNADA => &_binary_NotoSerifKannada_Regular_otf,
-        HB_SCRIPT_KAWI => &_binary_NotoSansKawi_Regular_otf,
-        HB_SCRIPT_KAYAH_LI => &_binary_NotoSansKayahLi_Regular_otf,
-        HB_SCRIPT_KHAROSHTHI => &_binary_NotoSansKharoshthi_Regular_otf,
-        HB_SCRIPT_KHITAN_SMALL_SCRIPT => &_binary_NotoSerifKhitanSmallScript_Regular_otf,
-        HB_SCRIPT_KHMER => &_binary_NotoSerifKhmer_Regular_otf,
-        HB_SCRIPT_KHOJKI => &_binary_NotoSerifKhojki_Regular_otf,
-        HB_SCRIPT_KHUDAWADI => &_binary_NotoSansKhudawadi_Regular_otf,
-        HB_SCRIPT_LAO => &_binary_NotoSerifLao_Regular_otf,
-        HB_SCRIPT_LEPCHA => &_binary_NotoSansLepcha_Regular_otf,
-        HB_SCRIPT_LIMBU => &_binary_NotoSansLimbu_Regular_otf,
-        HB_SCRIPT_LINEAR_A => &_binary_NotoSansLinearA_Regular_otf,
-        HB_SCRIPT_LINEAR_B => &_binary_NotoSansLinearB_Regular_otf,
-        HB_SCRIPT_LISU => &_binary_NotoSansLisu_Regular_otf,
-        HB_SCRIPT_LYCIAN => &_binary_NotoSansLycian_Regular_otf,
-        HB_SCRIPT_LYDIAN => &_binary_NotoSansLydian_Regular_otf,
-        HB_SCRIPT_MAHAJANI => &_binary_NotoSansMahajani_Regular_otf,
-        HB_SCRIPT_MAKASAR => &_binary_NotoSerifMakasar_Regular_otf,
-        HB_SCRIPT_MALAYALAM => &_binary_NotoSerifMalayalam_Regular_otf,
-        HB_SCRIPT_MANDAIC => &_binary_NotoSansMandaic_Regular_otf,
-        HB_SCRIPT_MANICHAEAN => &_binary_NotoSansManichaean_Regular_otf,
-        HB_SCRIPT_MARCHEN => &_binary_NotoSansMarchen_Regular_otf,
-        HB_SCRIPT_MASARAM_GONDI => &_binary_NotoSansMasaramGondi_Regular_otf,
-        HB_SCRIPT_MEDEFAIDRIN => &_binary_NotoSansMedefaidrin_Regular_otf,
-        HB_SCRIPT_MEETEI_MAYEK => &_binary_NotoSansMeeteiMayek_Regular_otf,
-        HB_SCRIPT_MENDE_KIKAKUI => &_binary_NotoSansMendeKikakui_Regular_otf,
-        HB_SCRIPT_MIAO => &_binary_NotoSansMiao_Regular_otf,
-        HB_SCRIPT_MODI => &_binary_NotoSansModi_Regular_otf,
-        HB_SCRIPT_MONGOLIAN => &_binary_NotoSansMongolian_Regular_otf,
-        HB_SCRIPT_MRO => &_binary_NotoSansMro_Regular_otf,
-        HB_SCRIPT_MULTANI => &_binary_NotoSansMultani_Regular_otf,
-        HB_SCRIPT_MYANMAR => &_binary_NotoSerifMyanmar_Regular_otf,
-        HB_SCRIPT_NABATAEAN => &_binary_NotoSansNabataean_Regular_otf,
-        HB_SCRIPT_NAG_MUNDARI => &_binary_NotoSansNagMundari_Regular_otf,
-        HB_SCRIPT_NANDINAGARI => &_binary_NotoSansNandinagari_Regular_otf,
-        HB_SCRIPT_NEWA => &_binary_NotoSansNewa_Regular_otf,
-        HB_SCRIPT_NEW_TAI_LUE => &_binary_NotoSansNewTaiLue_Regular_otf,
-        HB_SCRIPT_NKO => &_binary_NotoSansNKo_Regular_otf,
-        HB_SCRIPT_NUSHU => &_binary_NotoSansNushu_Regular_otf,
-        HB_SCRIPT_NYIAKENG_PUACHUE_HMONG => &_binary_NotoSerifNyiakengPuachueHmong_Regular_otf,
-        HB_SCRIPT_OGHAM => &_binary_NotoSansOgham_Regular_otf,
-        HB_SCRIPT_OLD_HUNGARIAN => &_binary_NotoSansOldHungarian_Regular_otf,
-        HB_SCRIPT_OLD_ITALIC => &_binary_NotoSansOldItalic_Regular_otf,
-        HB_SCRIPT_OLD_NORTH_ARABIAN => &_binary_NotoSansOldNorthArabian_Regular_otf,
-        HB_SCRIPT_OLD_PERMIC => &_binary_NotoSansOldPermic_Regular_otf,
-        HB_SCRIPT_OLD_PERSIAN => &_binary_NotoSansOldPersian_Regular_otf,
-        HB_SCRIPT_OLD_SOGDIAN => &_binary_NotoSansOldSogdian_Regular_otf,
-        HB_SCRIPT_OLD_SOUTH_ARABIAN => &_binary_NotoSansOldSouthArabian_Regular_otf,
-        HB_SCRIPT_OLD_TURKIC => &_binary_NotoSansOldTurkic_Regular_otf,
-        HB_SCRIPT_OLD_UYGHUR => &_binary_NotoSerifOldUyghur_Regular_otf,
-        HB_SCRIPT_OL_CHIKI => &_binary_NotoSansOlChiki_Regular_otf,
-        HB_SCRIPT_ORIYA => &_binary_NotoSerifOriya_Regular_otf,
-        HB_SCRIPT_OSAGE => &_binary_NotoSansOsage_Regular_otf,
-        HB_SCRIPT_OSMANYA => &_binary_NotoSansOsmanya_Regular_otf,
-        HB_SCRIPT_PAHAWH_HMONG => &_binary_NotoSansPahawhHmong_Regular_otf,
-        HB_SCRIPT_PALMYRENE => &_binary_NotoSansPalmyrene_Regular_otf,
-        HB_SCRIPT_PAU_CIN_HAU => &_binary_NotoSansPauCinHau_Regular_otf,
-        HB_SCRIPT_PHAGS_PA => &_binary_NotoSansPhagsPa_Regular_otf,
-        HB_SCRIPT_PHOENICIAN => &_binary_NotoSansPhoenician_Regular_otf,
-        HB_SCRIPT_PSALTER_PAHLAVI => &_binary_NotoSansPsalterPahlavi_Regular_otf,
-        HB_SCRIPT_REJANG => &_binary_NotoSansRejang_Regular_otf,
-        HB_SCRIPT_RUNIC => &_binary_NotoSansRunic_Regular_otf,
-        HB_SCRIPT_SAMARITAN => &_binary_NotoSansSamaritan_Regular_otf,
-        HB_SCRIPT_SAURASHTRA => &_binary_NotoSansSaurashtra_Regular_otf,
-        HB_SCRIPT_SHARADA => &_binary_NotoSansSharada_Regular_otf,
-        HB_SCRIPT_SHAVIAN => &_binary_NotoSansShavian_Regular_otf,
-        HB_SCRIPT_SIDDHAM => &_binary_NotoSansSiddham_Regular_otf,
-        HB_SCRIPT_SIGNWRITING => &_binary_NotoSansSignWriting_Regular_otf,
-        HB_SCRIPT_SINHALA => &_binary_NotoSerifSinhala_Regular_otf,
-        HB_SCRIPT_SOGDIAN => &_binary_NotoSansSogdian_Regular_otf,
-        HB_SCRIPT_SORA_SOMPENG => &_binary_NotoSansSoraSompeng_Regular_otf,
-        HB_SCRIPT_SOYOMBO => &_binary_NotoSansSoyombo_Regular_otf,
-        HB_SCRIPT_SUNDANESE => &_binary_NotoSansSundanese_Regular_otf,
-        HB_SCRIPT_SYLOTI_NAGRI => &_binary_NotoSansSylotiNagri_Regular_otf,
-        HB_SCRIPT_TAGALOG => &_binary_NotoSansTagalog_Regular_otf,
-        HB_SCRIPT_TAGBANWA => &_binary_NotoSansTagbanwa_Regular_otf,
-        HB_SCRIPT_TAI_LE => &_binary_NotoSansTaiLe_Regular_otf,
-        HB_SCRIPT_TAI_THAM => &_binary_NotoSansTaiTham_Regular_otf,
-        HB_SCRIPT_TAI_VIET => &_binary_NotoSansTaiViet_Regular_otf,
-        HB_SCRIPT_TAKRI => &_binary_NotoSansTakri_Regular_otf,
-        HB_SCRIPT_TAMIL => &_binary_NotoSerifTamil_Regular_otf,
-        HB_SCRIPT_TANGSA => &_binary_NotoSansTangsa_Regular_otf,
-        HB_SCRIPT_TELUGU => &_binary_NotoSerifTelugu_Regular_otf,
-        HB_SCRIPT_THAANA => &_binary_NotoSansThaana_Regular_otf,
-        HB_SCRIPT_THAI => &_binary_NotoSerifThai_Regular_otf,
-        HB_SCRIPT_TIBETAN => &_binary_NotoSerifTibetan_Regular_otf,
-        HB_SCRIPT_TIFINAGH => &_binary_NotoSansTifinagh_Regular_otf,
-        HB_SCRIPT_TIRHUTA => &_binary_NotoSansTirhuta_Regular_otf,
-        HB_SCRIPT_TOTO => &_binary_NotoSerifToto_Regular_otf,
-        HB_SCRIPT_UGARITIC => &_binary_NotoSansUgaritic_Regular_otf,
-        HB_SCRIPT_VAI => &_binary_NotoSansVai_Regular_otf,
-        HB_SCRIPT_VITHKUQI => &_binary_NotoSerifVithkuqi_Regular_otf,
-        HB_SCRIPT_WANCHO => &_binary_NotoSansWancho_Regular_otf,
-        HB_SCRIPT_WARANG_CITI => &_binary_NotoSansWarangCiti_Regular_otf,
-        HB_SCRIPT_YEZIDI => &_binary_NotoSerifYezidi_Regular_otf,
-        HB_SCRIPT_YI => &_binary_NotoSansYi_Regular_otf,
-        HB_SCRIPT_ZANABAZAR_SQUARE => &_binary_NotoSansZanabazarSquare_Regular_otf,
+        #[cfg(all(target_os = "linux", not(target_arch = "arm")))]
+        match script {
+            HB_SCRIPT_HANGUL | HB_SCRIPT_HIRAGANA | HB_SCRIPT_KATAKANA | HB_SCRIPT_BOPOMOFO
+            | HB_SCRIPT_HAN => &_binary_resources_fonts_droid_DroidSansFallback_ttf_start,
 
-        HB_SYMBOL_MATHS => &_binary_NotoSansMath_Regular_otf,
-        HB_SYMBOL_MUSIC => &_binary_NotoMusic_Regular_otf,
-        HB_SYMBOL_MISC_ONE => &_binary_NotoSansSymbols_Regular_otf,
-        HB_SCRIPT_BRAILLE | HB_SYMBOL_MISC_TWO => &_binary_NotoSansSymbols2_Regular_otf,
-        HB_SYMBOL_EMOJI => &_binary_NotoEmoji_Regular_ttf,
+            HB_SCRIPT_ARABIC => &_binary_resources_fonts_noto_NotoNaskhArabic_Regular_otf_start,
+            HB_SCRIPT_SYRIAC => &_binary_resources_fonts_noto_NotoSansSyriac_Regular_otf_start,
+            HB_SCRIPT_MEROITIC_CURSIVE | HB_SCRIPT_MEROITIC_HIEROGLYPHS => {
+                &_binary_resources_fonts_noto_NotoSansMeroitic_Regular_otf_start
+            }
 
-        _ => &_binary_DroidSansFallback_ttf,
+            HB_SCRIPT_ADLAM => &_binary_resources_fonts_noto_NotoSansAdlam_Regular_otf_start,
+            HB_SCRIPT_AHOM => &_binary_resources_fonts_noto_NotoSerifAhom_Regular_otf_start,
+            HB_SCRIPT_ANATOLIAN_HIEROGLYPHS => {
+                &_binary_resources_fonts_noto_NotoSansAnatolianHieroglyphs_Regular_otf_start
+            }
+            HB_SCRIPT_ARMENIAN => &_binary_resources_fonts_noto_NotoSerifArmenian_Regular_otf_start,
+            HB_SCRIPT_AVESTAN => &_binary_resources_fonts_noto_NotoSansAvestan_Regular_otf_start,
+            HB_SCRIPT_BALINESE => &_binary_resources_fonts_noto_NotoSerifBalinese_Regular_otf_start,
+            HB_SCRIPT_BAMUM => &_binary_resources_fonts_noto_NotoSansBamum_Regular_otf_start,
+            HB_SCRIPT_BASSA_VAH => &_binary_resources_fonts_noto_NotoSansBassaVah_Regular_otf_start,
+            HB_SCRIPT_BATAK => &_binary_resources_fonts_noto_NotoSansBatak_Regular_otf_start,
+            HB_SCRIPT_BENGALI => &_binary_resources_fonts_noto_NotoSerifBengali_Regular_otf_start,
+            HB_SCRIPT_BHAIKSUKI => {
+                &_binary_resources_fonts_noto_NotoSansBhaiksuki_Regular_otf_start
+            }
+            HB_SCRIPT_BRAHMI => &_binary_resources_fonts_noto_NotoSansBrahmi_Regular_otf_start,
+            HB_SCRIPT_BUGINESE => &_binary_resources_fonts_noto_NotoSansBuginese_Regular_otf_start,
+            HB_SCRIPT_BUHID => &_binary_resources_fonts_noto_NotoSansBuhid_Regular_otf_start,
+            HB_SCRIPT_CANADIAN_SYLLABICS => {
+                &_binary_resources_fonts_noto_NotoSansCanadianAboriginal_Regular_otf_start
+            }
+            HB_SCRIPT_CARIAN => &_binary_resources_fonts_noto_NotoSansCarian_Regular_otf_start,
+            HB_SCRIPT_CAUCASIAN_ALBANIAN => {
+                &_binary_resources_fonts_noto_NotoSansCaucasianAlbanian_Regular_otf_start
+            }
+            HB_SCRIPT_CHAKMA => &_binary_resources_fonts_noto_NotoSansChakma_Regular_otf_start,
+            HB_SCRIPT_CHAM => &_binary_resources_fonts_noto_NotoSansCham_Regular_otf_start,
+            HB_SCRIPT_CHEROKEE => &_binary_resources_fonts_noto_NotoSansCherokee_Regular_otf_start,
+            HB_SCRIPT_CHORASMIAN => {
+                &_binary_resources_fonts_noto_NotoSansChorasmian_Regular_otf_start
+            }
+            HB_SCRIPT_COPTIC => &_binary_resources_fonts_noto_NotoSansCoptic_Regular_otf_start,
+            HB_SCRIPT_CUNEIFORM => {
+                &_binary_resources_fonts_noto_NotoSansCuneiform_Regular_otf_start
+            }
+            HB_SCRIPT_CYPRIOT => &_binary_resources_fonts_noto_NotoSansCypriot_Regular_otf_start,
+            HB_SCRIPT_CYPRO_MINOAN => {
+                &_binary_resources_fonts_noto_NotoSansCyproMinoan_Regular_otf_start
+            }
+            HB_SCRIPT_DESERET => &_binary_resources_fonts_noto_NotoSansDeseret_Regular_otf_start,
+            HB_SCRIPT_DEVANAGARI => {
+                &_binary_resources_fonts_noto_NotoSerifDevanagari_Regular_otf_start
+            }
+            HB_SCRIPT_DIVES_AKURU => {
+                &_binary_resources_fonts_noto_NotoSerifDivesAkuru_Regular_otf_start
+            }
+            HB_SCRIPT_DOGRA => &_binary_resources_fonts_noto_NotoSerifDogra_Regular_otf_start,
+            HB_SCRIPT_DUPLOYAN => &_binary_resources_fonts_noto_NotoSansDuployan_Regular_otf_start,
+            HB_SCRIPT_EGYPTIAN_HIEROGLYPHS => {
+                &_binary_resources_fonts_noto_NotoSansEgyptianHieroglyphs_Regular_otf_start
+            }
+            HB_SCRIPT_ELBASAN => &_binary_resources_fonts_noto_NotoSansElbasan_Regular_otf_start,
+            HB_SCRIPT_ELYMAIC => &_binary_resources_fonts_noto_NotoSansElymaic_Regular_otf_start,
+            HB_SCRIPT_ETHIOPIC => &_binary_resources_fonts_noto_NotoSerifEthiopic_Regular_otf_start,
+            HB_SCRIPT_GEORGIAN => &_binary_resources_fonts_noto_NotoSerifGeorgian_Regular_otf_start,
+            HB_SCRIPT_GLAGOLITIC => {
+                &_binary_resources_fonts_noto_NotoSansGlagolitic_Regular_otf_start
+            }
+            HB_SCRIPT_GOTHIC => &_binary_resources_fonts_noto_NotoSansGothic_Regular_otf_start,
+            HB_SCRIPT_GRANTHA => &_binary_resources_fonts_noto_NotoSerifGrantha_Regular_otf_start,
+            HB_SCRIPT_GUJARATI => &_binary_resources_fonts_noto_NotoSerifGujarati_Regular_otf_start,
+            HB_SCRIPT_GUNJALA_GONDI => {
+                &_binary_resources_fonts_noto_NotoSansGunjalaGondi_Regular_otf_start
+            }
+            HB_SCRIPT_GURMUKHI => &_binary_resources_fonts_noto_NotoSerifGurmukhi_Regular_otf_start,
+            HB_SCRIPT_HANIFI_ROHINGYA => {
+                &_binary_resources_fonts_noto_NotoSansHanifiRohingya_Regular_otf_start
+            }
+            HB_SCRIPT_HANUNOO => &_binary_resources_fonts_noto_NotoSansHanunoo_Regular_otf_start,
+            HB_SCRIPT_HATRAN => &_binary_resources_fonts_noto_NotoSansHatran_Regular_otf_start,
+            HB_SCRIPT_HEBREW => &_binary_resources_fonts_noto_NotoSerifHebrew_Regular_otf_start,
+            HB_SCRIPT_IMPERIAL_ARAMAIC => {
+                &_binary_resources_fonts_noto_NotoSansImperialAramaic_Regular_otf_start
+            }
+            HB_SCRIPT_INSCRIPTIONAL_PAHLAVI => {
+                &_binary_resources_fonts_noto_NotoSansInscriptionalPahlavi_Regular_otf_start
+            }
+            HB_SCRIPT_INSCRIPTIONAL_PARTHIAN => {
+                &_binary_resources_fonts_noto_NotoSansInscriptionalParthian_Regular_otf_start
+            }
+            HB_SCRIPT_JAVANESE => &_binary_resources_fonts_noto_NotoSansJavanese_Regular_otf_start,
+            HB_SCRIPT_KAITHI => &_binary_resources_fonts_noto_NotoSansKaithi_Regular_otf_start,
+            HB_SCRIPT_KANNADA => &_binary_resources_fonts_noto_NotoSerifKannada_Regular_otf_start,
+            HB_SCRIPT_KAWI => &_binary_resources_fonts_noto_NotoSansKawi_Regular_otf_start,
+            HB_SCRIPT_KAYAH_LI => &_binary_resources_fonts_noto_NotoSansKayahLi_Regular_otf_start,
+            HB_SCRIPT_KHAROSHTHI => {
+                &_binary_resources_fonts_noto_NotoSansKharoshthi_Regular_otf_start
+            }
+            HB_SCRIPT_KHITAN_SMALL_SCRIPT => {
+                &_binary_resources_fonts_noto_NotoSerifKhitanSmallScript_Regular_otf_start
+            }
+            HB_SCRIPT_KHMER => &_binary_resources_fonts_noto_NotoSerifKhmer_Regular_otf_start,
+            HB_SCRIPT_KHOJKI => &_binary_resources_fonts_noto_NotoSerifKhojki_Regular_otf_start,
+            HB_SCRIPT_KHUDAWADI => {
+                &_binary_resources_fonts_noto_NotoSansKhudawadi_Regular_otf_start
+            }
+            HB_SCRIPT_LAO => &_binary_resources_fonts_noto_NotoSerifLao_Regular_otf_start,
+            HB_SCRIPT_LEPCHA => &_binary_resources_fonts_noto_NotoSansLepcha_Regular_otf_start,
+            HB_SCRIPT_LIMBU => &_binary_resources_fonts_noto_NotoSansLimbu_Regular_otf_start,
+            HB_SCRIPT_LINEAR_A => &_binary_resources_fonts_noto_NotoSansLinearA_Regular_otf_start,
+            HB_SCRIPT_LINEAR_B => &_binary_resources_fonts_noto_NotoSansLinearB_Regular_otf_start,
+            HB_SCRIPT_LISU => &_binary_resources_fonts_noto_NotoSansLisu_Regular_otf_start,
+            HB_SCRIPT_LYCIAN => &_binary_resources_fonts_noto_NotoSansLycian_Regular_otf_start,
+            HB_SCRIPT_LYDIAN => &_binary_resources_fonts_noto_NotoSansLydian_Regular_otf_start,
+            HB_SCRIPT_MAHAJANI => &_binary_resources_fonts_noto_NotoSansMahajani_Regular_otf_start,
+            HB_SCRIPT_MAKASAR => &_binary_resources_fonts_noto_NotoSerifMakasar_Regular_otf_start,
+            HB_SCRIPT_MALAYALAM => {
+                &_binary_resources_fonts_noto_NotoSerifMalayalam_Regular_otf_start
+            }
+            HB_SCRIPT_MANDAIC => &_binary_resources_fonts_noto_NotoSansMandaic_Regular_otf_start,
+            HB_SCRIPT_MANICHAEAN => {
+                &_binary_resources_fonts_noto_NotoSansManichaean_Regular_otf_start
+            }
+            HB_SCRIPT_MARCHEN => &_binary_resources_fonts_noto_NotoSansMarchen_Regular_otf_start,
+            HB_SCRIPT_MASARAM_GONDI => {
+                &_binary_resources_fonts_noto_NotoSansMasaramGondi_Regular_otf_start
+            }
+            HB_SCRIPT_MEDEFAIDRIN => {
+                &_binary_resources_fonts_noto_NotoSansMedefaidrin_Regular_otf_start
+            }
+            HB_SCRIPT_MEETEI_MAYEK => {
+                &_binary_resources_fonts_noto_NotoSansMeeteiMayek_Regular_otf_start
+            }
+            HB_SCRIPT_MENDE_KIKAKUI => {
+                &_binary_resources_fonts_noto_NotoSansMendeKikakui_Regular_otf_start
+            }
+            HB_SCRIPT_MIAO => &_binary_resources_fonts_noto_NotoSansMiao_Regular_otf_start,
+            HB_SCRIPT_MODI => &_binary_resources_fonts_noto_NotoSansModi_Regular_otf_start,
+            HB_SCRIPT_MONGOLIAN => {
+                &_binary_resources_fonts_noto_NotoSansMongolian_Regular_otf_start
+            }
+            HB_SCRIPT_MRO => &_binary_resources_fonts_noto_NotoSansMro_Regular_otf_start,
+            HB_SCRIPT_MULTANI => &_binary_resources_fonts_noto_NotoSansMultani_Regular_otf_start,
+            HB_SCRIPT_MYANMAR => &_binary_resources_fonts_noto_NotoSerifMyanmar_Regular_otf_start,
+            HB_SCRIPT_NABATAEAN => {
+                &_binary_resources_fonts_noto_NotoSansNabataean_Regular_otf_start
+            }
+            HB_SCRIPT_NAG_MUNDARI => {
+                &_binary_resources_fonts_noto_NotoSansNagMundari_Regular_otf_start
+            }
+            HB_SCRIPT_NANDINAGARI => {
+                &_binary_resources_fonts_noto_NotoSansNandinagari_Regular_otf_start
+            }
+            HB_SCRIPT_NEWA => &_binary_resources_fonts_noto_NotoSansNewa_Regular_otf_start,
+            HB_SCRIPT_NEW_TAI_LUE => {
+                &_binary_resources_fonts_noto_NotoSansNewTaiLue_Regular_otf_start
+            }
+            HB_SCRIPT_NKO => &_binary_resources_fonts_noto_NotoSansNKo_Regular_otf_start,
+            HB_SCRIPT_NUSHU => &_binary_resources_fonts_noto_NotoSansNushu_Regular_otf_start,
+            HB_SCRIPT_NYIAKENG_PUACHUE_HMONG => {
+                &_binary_resources_fonts_noto_NotoSerifNyiakengPuachueHmong_Regular_otf_start
+            }
+            HB_SCRIPT_OGHAM => &_binary_resources_fonts_noto_NotoSansOgham_Regular_otf_start,
+            HB_SCRIPT_OLD_HUNGARIAN => {
+                &_binary_resources_fonts_noto_NotoSansOldHungarian_Regular_otf_start
+            }
+            HB_SCRIPT_OLD_ITALIC => {
+                &_binary_resources_fonts_noto_NotoSansOldItalic_Regular_otf_start
+            }
+            HB_SCRIPT_OLD_NORTH_ARABIAN => {
+                &_binary_resources_fonts_noto_NotoSansOldNorthArabian_Regular_otf_start
+            }
+            HB_SCRIPT_OLD_PERMIC => {
+                &_binary_resources_fonts_noto_NotoSansOldPermic_Regular_otf_start
+            }
+            HB_SCRIPT_OLD_PERSIAN => {
+                &_binary_resources_fonts_noto_NotoSansOldPersian_Regular_otf_start
+            }
+            HB_SCRIPT_OLD_SOGDIAN => {
+                &_binary_resources_fonts_noto_NotoSansOldSogdian_Regular_otf_start
+            }
+            HB_SCRIPT_OLD_SOUTH_ARABIAN => {
+                &_binary_resources_fonts_noto_NotoSansOldSouthArabian_Regular_otf_start
+            }
+            HB_SCRIPT_OLD_TURKIC => {
+                &_binary_resources_fonts_noto_NotoSansOldTurkic_Regular_otf_start
+            }
+            HB_SCRIPT_OLD_UYGHUR => {
+                &_binary_resources_fonts_noto_NotoSerifOldUyghur_Regular_otf_start
+            }
+            HB_SCRIPT_OL_CHIKI => &_binary_resources_fonts_noto_NotoSansOlChiki_Regular_otf_start,
+            HB_SCRIPT_ORIYA => &_binary_resources_fonts_noto_NotoSerifOriya_Regular_otf_start,
+            HB_SCRIPT_OSAGE => &_binary_resources_fonts_noto_NotoSansOsage_Regular_otf_start,
+            HB_SCRIPT_OSMANYA => &_binary_resources_fonts_noto_NotoSansOsmanya_Regular_otf_start,
+            HB_SCRIPT_PAHAWH_HMONG => {
+                &_binary_resources_fonts_noto_NotoSansPahawhHmong_Regular_otf_start
+            }
+            HB_SCRIPT_PALMYRENE => {
+                &_binary_resources_fonts_noto_NotoSansPalmyrene_Regular_otf_start
+            }
+            HB_SCRIPT_PAU_CIN_HAU => {
+                &_binary_resources_fonts_noto_NotoSansPauCinHau_Regular_otf_start
+            }
+            HB_SCRIPT_PHAGS_PA => &_binary_resources_fonts_noto_NotoSansPhagsPa_Regular_otf_start,
+            HB_SCRIPT_PHOENICIAN => {
+                &_binary_resources_fonts_noto_NotoSansPhoenician_Regular_otf_start
+            }
+            HB_SCRIPT_PSALTER_PAHLAVI => {
+                &_binary_resources_fonts_noto_NotoSansPsalterPahlavi_Regular_otf_start
+            }
+            HB_SCRIPT_REJANG => &_binary_resources_fonts_noto_NotoSansRejang_Regular_otf_start,
+            HB_SCRIPT_RUNIC => &_binary_resources_fonts_noto_NotoSansRunic_Regular_otf_start,
+            HB_SCRIPT_SAMARITAN => {
+                &_binary_resources_fonts_noto_NotoSansSamaritan_Regular_otf_start
+            }
+            HB_SCRIPT_SAURASHTRA => {
+                &_binary_resources_fonts_noto_NotoSansSaurashtra_Regular_otf_start
+            }
+            HB_SCRIPT_SHARADA => &_binary_resources_fonts_noto_NotoSansSharada_Regular_otf_start,
+            HB_SCRIPT_SHAVIAN => &_binary_resources_fonts_noto_NotoSansShavian_Regular_otf_start,
+            HB_SCRIPT_SIDDHAM => &_binary_resources_fonts_noto_NotoSansSiddham_Regular_otf_start,
+            HB_SCRIPT_SIGNWRITING => {
+                &_binary_resources_fonts_noto_NotoSansSignWriting_Regular_otf_start
+            }
+            HB_SCRIPT_SINHALA => &_binary_resources_fonts_noto_NotoSerifSinhala_Regular_otf_start,
+            HB_SCRIPT_SOGDIAN => &_binary_resources_fonts_noto_NotoSansSogdian_Regular_otf_start,
+            HB_SCRIPT_SORA_SOMPENG => {
+                &_binary_resources_fonts_noto_NotoSansSoraSompeng_Regular_otf_start
+            }
+            HB_SCRIPT_SOYOMBO => &_binary_resources_fonts_noto_NotoSansSoyombo_Regular_otf_start,
+            HB_SCRIPT_SUNDANESE => {
+                &_binary_resources_fonts_noto_NotoSansSundanese_Regular_otf_start
+            }
+            HB_SCRIPT_SYLOTI_NAGRI => {
+                &_binary_resources_fonts_noto_NotoSansSylotiNagri_Regular_otf_start
+            }
+            HB_SCRIPT_TAGALOG => &_binary_resources_fonts_noto_NotoSansTagalog_Regular_otf_start,
+            HB_SCRIPT_TAGBANWA => &_binary_resources_fonts_noto_NotoSansTagbanwa_Regular_otf_start,
+            HB_SCRIPT_TAI_LE => &_binary_resources_fonts_noto_NotoSansTaiLe_Regular_otf_start,
+            HB_SCRIPT_TAI_THAM => &_binary_resources_fonts_noto_NotoSansTaiTham_Regular_otf_start,
+            HB_SCRIPT_TAI_VIET => &_binary_resources_fonts_noto_NotoSansTaiViet_Regular_otf_start,
+            HB_SCRIPT_TAKRI => &_binary_resources_fonts_noto_NotoSansTakri_Regular_otf_start,
+            HB_SCRIPT_TAMIL => &_binary_resources_fonts_noto_NotoSerifTamil_Regular_otf_start,
+            HB_SCRIPT_TANGSA => &_binary_resources_fonts_noto_NotoSansTangsa_Regular_otf_start,
+            HB_SCRIPT_TELUGU => &_binary_resources_fonts_noto_NotoSerifTelugu_Regular_otf_start,
+            HB_SCRIPT_THAANA => &_binary_resources_fonts_noto_NotoSansThaana_Regular_otf_start,
+            HB_SCRIPT_THAI => &_binary_resources_fonts_noto_NotoSerifThai_Regular_otf_start,
+            HB_SCRIPT_TIBETAN => &_binary_resources_fonts_noto_NotoSerifTibetan_Regular_otf_start,
+            HB_SCRIPT_TIFINAGH => &_binary_resources_fonts_noto_NotoSansTifinagh_Regular_otf_start,
+            HB_SCRIPT_TIRHUTA => &_binary_resources_fonts_noto_NotoSansTirhuta_Regular_otf_start,
+            HB_SCRIPT_TOTO => &_binary_resources_fonts_noto_NotoSerifToto_Regular_otf_start,
+            HB_SCRIPT_UGARITIC => &_binary_resources_fonts_noto_NotoSansUgaritic_Regular_otf_start,
+            HB_SCRIPT_VAI => &_binary_resources_fonts_noto_NotoSansVai_Regular_otf_start,
+            HB_SCRIPT_VITHKUQI => &_binary_resources_fonts_noto_NotoSerifVithkuqi_Regular_otf_start,
+            HB_SCRIPT_WANCHO => &_binary_resources_fonts_noto_NotoSansWancho_Regular_otf_start,
+            HB_SCRIPT_WARANG_CITI => {
+                &_binary_resources_fonts_noto_NotoSansWarangCiti_Regular_otf_start
+            }
+            HB_SCRIPT_YEZIDI => &_binary_resources_fonts_noto_NotoSerifYezidi_Regular_otf_start,
+            HB_SCRIPT_YI => &_binary_resources_fonts_noto_NotoSansYi_Regular_otf_start,
+            HB_SCRIPT_ZANABAZAR_SQUARE => {
+                &_binary_resources_fonts_noto_NotoSansZanabazarSquare_Regular_otf_start
+            }
+
+            HB_SYMBOL_MATHS => &_binary_resources_fonts_noto_NotoSansMath_Regular_otf_start,
+            HB_SYMBOL_MUSIC => &_binary_resources_fonts_noto_NotoMusic_Regular_otf_start,
+            HB_SYMBOL_MISC_ONE => &_binary_resources_fonts_noto_NotoSansSymbols_Regular_otf_start,
+            HB_SCRIPT_BRAILLE | HB_SYMBOL_MISC_TWO => {
+                &_binary_resources_fonts_noto_NotoSansSymbols2_Regular_otf_start
+            }
+            HB_SYMBOL_EMOJI => &_binary_resources_fonts_noto_NotoEmoji_Regular_ttf_start,
+
+            _ => &_binary_resources_fonts_droid_DroidSansFallback_ttf_start,
+        }
     }
-
-    #[cfg(all(target_os = "linux", not(target_arch = "arm")))]
-    match script {
-        HB_SCRIPT_HANGUL | HB_SCRIPT_HIRAGANA | HB_SCRIPT_KATAKANA | HB_SCRIPT_BOPOMOFO
-        | HB_SCRIPT_HAN => &_binary_resources_fonts_droid_DroidSansFallback_ttf_start,
-
-        HB_SCRIPT_ARABIC => &_binary_resources_fonts_noto_NotoNaskhArabic_Regular_otf_start,
-        HB_SCRIPT_SYRIAC => &_binary_resources_fonts_noto_NotoSansSyriac_Regular_otf_start,
-        HB_SCRIPT_MEROITIC_CURSIVE | HB_SCRIPT_MEROITIC_HIEROGLYPHS => {
-            &_binary_resources_fonts_noto_NotoSansMeroitic_Regular_otf_start
-        }
-
-        HB_SCRIPT_ADLAM => &_binary_resources_fonts_noto_NotoSansAdlam_Regular_otf_start,
-        HB_SCRIPT_AHOM => &_binary_resources_fonts_noto_NotoSerifAhom_Regular_otf_start,
-        HB_SCRIPT_ANATOLIAN_HIEROGLYPHS => {
-            &_binary_resources_fonts_noto_NotoSansAnatolianHieroglyphs_Regular_otf_start
-        }
-        HB_SCRIPT_ARMENIAN => &_binary_resources_fonts_noto_NotoSerifArmenian_Regular_otf_start,
-        HB_SCRIPT_AVESTAN => &_binary_resources_fonts_noto_NotoSansAvestan_Regular_otf_start,
-        HB_SCRIPT_BALINESE => &_binary_resources_fonts_noto_NotoSerifBalinese_Regular_otf_start,
-        HB_SCRIPT_BAMUM => &_binary_resources_fonts_noto_NotoSansBamum_Regular_otf_start,
-        HB_SCRIPT_BASSA_VAH => &_binary_resources_fonts_noto_NotoSansBassaVah_Regular_otf_start,
-        HB_SCRIPT_BATAK => &_binary_resources_fonts_noto_NotoSansBatak_Regular_otf_start,
-        HB_SCRIPT_BENGALI => &_binary_resources_fonts_noto_NotoSerifBengali_Regular_otf_start,
-        HB_SCRIPT_BHAIKSUKI => &_binary_resources_fonts_noto_NotoSansBhaiksuki_Regular_otf_start,
-        HB_SCRIPT_BRAHMI => &_binary_resources_fonts_noto_NotoSansBrahmi_Regular_otf_start,
-        HB_SCRIPT_BUGINESE => &_binary_resources_fonts_noto_NotoSansBuginese_Regular_otf_start,
-        HB_SCRIPT_BUHID => &_binary_resources_fonts_noto_NotoSansBuhid_Regular_otf_start,
-        HB_SCRIPT_CANADIAN_SYLLABICS => {
-            &_binary_resources_fonts_noto_NotoSansCanadianAboriginal_Regular_otf_start
-        }
-        HB_SCRIPT_CARIAN => &_binary_resources_fonts_noto_NotoSansCarian_Regular_otf_start,
-        HB_SCRIPT_CAUCASIAN_ALBANIAN => {
-            &_binary_resources_fonts_noto_NotoSansCaucasianAlbanian_Regular_otf_start
-        }
-        HB_SCRIPT_CHAKMA => &_binary_resources_fonts_noto_NotoSansChakma_Regular_otf_start,
-        HB_SCRIPT_CHAM => &_binary_resources_fonts_noto_NotoSansCham_Regular_otf_start,
-        HB_SCRIPT_CHEROKEE => &_binary_resources_fonts_noto_NotoSansCherokee_Regular_otf_start,
-        HB_SCRIPT_CHORASMIAN => &_binary_resources_fonts_noto_NotoSansChorasmian_Regular_otf_start,
-        HB_SCRIPT_COPTIC => &_binary_resources_fonts_noto_NotoSansCoptic_Regular_otf_start,
-        HB_SCRIPT_CUNEIFORM => &_binary_resources_fonts_noto_NotoSansCuneiform_Regular_otf_start,
-        HB_SCRIPT_CYPRIOT => &_binary_resources_fonts_noto_NotoSansCypriot_Regular_otf_start,
-        HB_SCRIPT_CYPRO_MINOAN => {
-            &_binary_resources_fonts_noto_NotoSansCyproMinoan_Regular_otf_start
-        }
-        HB_SCRIPT_DESERET => &_binary_resources_fonts_noto_NotoSansDeseret_Regular_otf_start,
-        HB_SCRIPT_DEVANAGARI => &_binary_resources_fonts_noto_NotoSerifDevanagari_Regular_otf_start,
-        HB_SCRIPT_DIVES_AKURU => {
-            &_binary_resources_fonts_noto_NotoSerifDivesAkuru_Regular_otf_start
-        }
-        HB_SCRIPT_DOGRA => &_binary_resources_fonts_noto_NotoSerifDogra_Regular_otf_start,
-        HB_SCRIPT_DUPLOYAN => &_binary_resources_fonts_noto_NotoSansDuployan_Regular_otf_start,
-        HB_SCRIPT_EGYPTIAN_HIEROGLYPHS => {
-            &_binary_resources_fonts_noto_NotoSansEgyptianHieroglyphs_Regular_otf_start
-        }
-        HB_SCRIPT_ELBASAN => &_binary_resources_fonts_noto_NotoSansElbasan_Regular_otf_start,
-        HB_SCRIPT_ELYMAIC => &_binary_resources_fonts_noto_NotoSansElymaic_Regular_otf_start,
-        HB_SCRIPT_ETHIOPIC => &_binary_resources_fonts_noto_NotoSerifEthiopic_Regular_otf_start,
-        HB_SCRIPT_GEORGIAN => &_binary_resources_fonts_noto_NotoSerifGeorgian_Regular_otf_start,
-        HB_SCRIPT_GLAGOLITIC => &_binary_resources_fonts_noto_NotoSansGlagolitic_Regular_otf_start,
-        HB_SCRIPT_GOTHIC => &_binary_resources_fonts_noto_NotoSansGothic_Regular_otf_start,
-        HB_SCRIPT_GRANTHA => &_binary_resources_fonts_noto_NotoSerifGrantha_Regular_otf_start,
-        HB_SCRIPT_GUJARATI => &_binary_resources_fonts_noto_NotoSerifGujarati_Regular_otf_start,
-        HB_SCRIPT_GUNJALA_GONDI => {
-            &_binary_resources_fonts_noto_NotoSansGunjalaGondi_Regular_otf_start
-        }
-        HB_SCRIPT_GURMUKHI => &_binary_resources_fonts_noto_NotoSerifGurmukhi_Regular_otf_start,
-        HB_SCRIPT_HANIFI_ROHINGYA => {
-            &_binary_resources_fonts_noto_NotoSansHanifiRohingya_Regular_otf_start
-        }
-        HB_SCRIPT_HANUNOO => &_binary_resources_fonts_noto_NotoSansHanunoo_Regular_otf_start,
-        HB_SCRIPT_HATRAN => &_binary_resources_fonts_noto_NotoSansHatran_Regular_otf_start,
-        HB_SCRIPT_HEBREW => &_binary_resources_fonts_noto_NotoSerifHebrew_Regular_otf_start,
-        HB_SCRIPT_IMPERIAL_ARAMAIC => {
-            &_binary_resources_fonts_noto_NotoSansImperialAramaic_Regular_otf_start
-        }
-        HB_SCRIPT_INSCRIPTIONAL_PAHLAVI => {
-            &_binary_resources_fonts_noto_NotoSansInscriptionalPahlavi_Regular_otf_start
-        }
-        HB_SCRIPT_INSCRIPTIONAL_PARTHIAN => {
-            &_binary_resources_fonts_noto_NotoSansInscriptionalParthian_Regular_otf_start
-        }
-        HB_SCRIPT_JAVANESE => &_binary_resources_fonts_noto_NotoSansJavanese_Regular_otf_start,
-        HB_SCRIPT_KAITHI => &_binary_resources_fonts_noto_NotoSansKaithi_Regular_otf_start,
-        HB_SCRIPT_KANNADA => &_binary_resources_fonts_noto_NotoSerifKannada_Regular_otf_start,
-        HB_SCRIPT_KAWI => &_binary_resources_fonts_noto_NotoSansKawi_Regular_otf_start,
-        HB_SCRIPT_KAYAH_LI => &_binary_resources_fonts_noto_NotoSansKayahLi_Regular_otf_start,
-        HB_SCRIPT_KHAROSHTHI => &_binary_resources_fonts_noto_NotoSansKharoshthi_Regular_otf_start,
-        HB_SCRIPT_KHITAN_SMALL_SCRIPT => {
-            &_binary_resources_fonts_noto_NotoSerifKhitanSmallScript_Regular_otf_start
-        }
-        HB_SCRIPT_KHMER => &_binary_resources_fonts_noto_NotoSerifKhmer_Regular_otf_start,
-        HB_SCRIPT_KHOJKI => &_binary_resources_fonts_noto_NotoSerifKhojki_Regular_otf_start,
-        HB_SCRIPT_KHUDAWADI => &_binary_resources_fonts_noto_NotoSansKhudawadi_Regular_otf_start,
-        HB_SCRIPT_LAO => &_binary_resources_fonts_noto_NotoSerifLao_Regular_otf_start,
-        HB_SCRIPT_LEPCHA => &_binary_resources_fonts_noto_NotoSansLepcha_Regular_otf_start,
-        HB_SCRIPT_LIMBU => &_binary_resources_fonts_noto_NotoSansLimbu_Regular_otf_start,
-        HB_SCRIPT_LINEAR_A => &_binary_resources_fonts_noto_NotoSansLinearA_Regular_otf_start,
-        HB_SCRIPT_LINEAR_B => &_binary_resources_fonts_noto_NotoSansLinearB_Regular_otf_start,
-        HB_SCRIPT_LISU => &_binary_resources_fonts_noto_NotoSansLisu_Regular_otf_start,
-        HB_SCRIPT_LYCIAN => &_binary_resources_fonts_noto_NotoSansLycian_Regular_otf_start,
-        HB_SCRIPT_LYDIAN => &_binary_resources_fonts_noto_NotoSansLydian_Regular_otf_start,
-        HB_SCRIPT_MAHAJANI => &_binary_resources_fonts_noto_NotoSansMahajani_Regular_otf_start,
-        HB_SCRIPT_MAKASAR => &_binary_resources_fonts_noto_NotoSerifMakasar_Regular_otf_start,
-        HB_SCRIPT_MALAYALAM => &_binary_resources_fonts_noto_NotoSerifMalayalam_Regular_otf_start,
-        HB_SCRIPT_MANDAIC => &_binary_resources_fonts_noto_NotoSansMandaic_Regular_otf_start,
-        HB_SCRIPT_MANICHAEAN => &_binary_resources_fonts_noto_NotoSansManichaean_Regular_otf_start,
-        HB_SCRIPT_MARCHEN => &_binary_resources_fonts_noto_NotoSansMarchen_Regular_otf_start,
-        HB_SCRIPT_MASARAM_GONDI => {
-            &_binary_resources_fonts_noto_NotoSansMasaramGondi_Regular_otf_start
-        }
-        HB_SCRIPT_MEDEFAIDRIN => {
-            &_binary_resources_fonts_noto_NotoSansMedefaidrin_Regular_otf_start
-        }
-        HB_SCRIPT_MEETEI_MAYEK => {
-            &_binary_resources_fonts_noto_NotoSansMeeteiMayek_Regular_otf_start
-        }
-        HB_SCRIPT_MENDE_KIKAKUI => {
-            &_binary_resources_fonts_noto_NotoSansMendeKikakui_Regular_otf_start
-        }
-        HB_SCRIPT_MIAO => &_binary_resources_fonts_noto_NotoSansMiao_Regular_otf_start,
-        HB_SCRIPT_MODI => &_binary_resources_fonts_noto_NotoSansModi_Regular_otf_start,
-        HB_SCRIPT_MONGOLIAN => &_binary_resources_fonts_noto_NotoSansMongolian_Regular_otf_start,
-        HB_SCRIPT_MRO => &_binary_resources_fonts_noto_NotoSansMro_Regular_otf_start,
-        HB_SCRIPT_MULTANI => &_binary_resources_fonts_noto_NotoSansMultani_Regular_otf_start,
-        HB_SCRIPT_MYANMAR => &_binary_resources_fonts_noto_NotoSerifMyanmar_Regular_otf_start,
-        HB_SCRIPT_NABATAEAN => &_binary_resources_fonts_noto_NotoSansNabataean_Regular_otf_start,
-        HB_SCRIPT_NAG_MUNDARI => &_binary_resources_fonts_noto_NotoSansNagMundari_Regular_otf_start,
-        HB_SCRIPT_NANDINAGARI => {
-            &_binary_resources_fonts_noto_NotoSansNandinagari_Regular_otf_start
-        }
-        HB_SCRIPT_NEWA => &_binary_resources_fonts_noto_NotoSansNewa_Regular_otf_start,
-        HB_SCRIPT_NEW_TAI_LUE => &_binary_resources_fonts_noto_NotoSansNewTaiLue_Regular_otf_start,
-        HB_SCRIPT_NKO => &_binary_resources_fonts_noto_NotoSansNKo_Regular_otf_start,
-        HB_SCRIPT_NUSHU => &_binary_resources_fonts_noto_NotoSansNushu_Regular_otf_start,
-        HB_SCRIPT_NYIAKENG_PUACHUE_HMONG => {
-            &_binary_resources_fonts_noto_NotoSerifNyiakengPuachueHmong_Regular_otf_start
-        }
-        HB_SCRIPT_OGHAM => &_binary_resources_fonts_noto_NotoSansOgham_Regular_otf_start,
-        HB_SCRIPT_OLD_HUNGARIAN => {
-            &_binary_resources_fonts_noto_NotoSansOldHungarian_Regular_otf_start
-        }
-        HB_SCRIPT_OLD_ITALIC => &_binary_resources_fonts_noto_NotoSansOldItalic_Regular_otf_start,
-        HB_SCRIPT_OLD_NORTH_ARABIAN => {
-            &_binary_resources_fonts_noto_NotoSansOldNorthArabian_Regular_otf_start
-        }
-        HB_SCRIPT_OLD_PERMIC => &_binary_resources_fonts_noto_NotoSansOldPermic_Regular_otf_start,
-        HB_SCRIPT_OLD_PERSIAN => &_binary_resources_fonts_noto_NotoSansOldPersian_Regular_otf_start,
-        HB_SCRIPT_OLD_SOGDIAN => &_binary_resources_fonts_noto_NotoSansOldSogdian_Regular_otf_start,
-        HB_SCRIPT_OLD_SOUTH_ARABIAN => {
-            &_binary_resources_fonts_noto_NotoSansOldSouthArabian_Regular_otf_start
-        }
-        HB_SCRIPT_OLD_TURKIC => &_binary_resources_fonts_noto_NotoSansOldTurkic_Regular_otf_start,
-        HB_SCRIPT_OLD_UYGHUR => &_binary_resources_fonts_noto_NotoSerifOldUyghur_Regular_otf_start,
-        HB_SCRIPT_OL_CHIKI => &_binary_resources_fonts_noto_NotoSansOlChiki_Regular_otf_start,
-        HB_SCRIPT_ORIYA => &_binary_resources_fonts_noto_NotoSerifOriya_Regular_otf_start,
-        HB_SCRIPT_OSAGE => &_binary_resources_fonts_noto_NotoSansOsage_Regular_otf_start,
-        HB_SCRIPT_OSMANYA => &_binary_resources_fonts_noto_NotoSansOsmanya_Regular_otf_start,
-        HB_SCRIPT_PAHAWH_HMONG => {
-            &_binary_resources_fonts_noto_NotoSansPahawhHmong_Regular_otf_start
-        }
-        HB_SCRIPT_PALMYRENE => &_binary_resources_fonts_noto_NotoSansPalmyrene_Regular_otf_start,
-        HB_SCRIPT_PAU_CIN_HAU => &_binary_resources_fonts_noto_NotoSansPauCinHau_Regular_otf_start,
-        HB_SCRIPT_PHAGS_PA => &_binary_resources_fonts_noto_NotoSansPhagsPa_Regular_otf_start,
-        HB_SCRIPT_PHOENICIAN => &_binary_resources_fonts_noto_NotoSansPhoenician_Regular_otf_start,
-        HB_SCRIPT_PSALTER_PAHLAVI => {
-            &_binary_resources_fonts_noto_NotoSansPsalterPahlavi_Regular_otf_start
-        }
-        HB_SCRIPT_REJANG => &_binary_resources_fonts_noto_NotoSansRejang_Regular_otf_start,
-        HB_SCRIPT_RUNIC => &_binary_resources_fonts_noto_NotoSansRunic_Regular_otf_start,
-        HB_SCRIPT_SAMARITAN => &_binary_resources_fonts_noto_NotoSansSamaritan_Regular_otf_start,
-        HB_SCRIPT_SAURASHTRA => &_binary_resources_fonts_noto_NotoSansSaurashtra_Regular_otf_start,
-        HB_SCRIPT_SHARADA => &_binary_resources_fonts_noto_NotoSansSharada_Regular_otf_start,
-        HB_SCRIPT_SHAVIAN => &_binary_resources_fonts_noto_NotoSansShavian_Regular_otf_start,
-        HB_SCRIPT_SIDDHAM => &_binary_resources_fonts_noto_NotoSansSiddham_Regular_otf_start,
-        HB_SCRIPT_SIGNWRITING => {
-            &_binary_resources_fonts_noto_NotoSansSignWriting_Regular_otf_start
-        }
-        HB_SCRIPT_SINHALA => &_binary_resources_fonts_noto_NotoSerifSinhala_Regular_otf_start,
-        HB_SCRIPT_SOGDIAN => &_binary_resources_fonts_noto_NotoSansSogdian_Regular_otf_start,
-        HB_SCRIPT_SORA_SOMPENG => {
-            &_binary_resources_fonts_noto_NotoSansSoraSompeng_Regular_otf_start
-        }
-        HB_SCRIPT_SOYOMBO => &_binary_resources_fonts_noto_NotoSansSoyombo_Regular_otf_start,
-        HB_SCRIPT_SUNDANESE => &_binary_resources_fonts_noto_NotoSansSundanese_Regular_otf_start,
-        HB_SCRIPT_SYLOTI_NAGRI => {
-            &_binary_resources_fonts_noto_NotoSansSylotiNagri_Regular_otf_start
-        }
-        HB_SCRIPT_TAGALOG => &_binary_resources_fonts_noto_NotoSansTagalog_Regular_otf_start,
-        HB_SCRIPT_TAGBANWA => &_binary_resources_fonts_noto_NotoSansTagbanwa_Regular_otf_start,
-        HB_SCRIPT_TAI_LE => &_binary_resources_fonts_noto_NotoSansTaiLe_Regular_otf_start,
-        HB_SCRIPT_TAI_THAM => &_binary_resources_fonts_noto_NotoSansTaiTham_Regular_otf_start,
-        HB_SCRIPT_TAI_VIET => &_binary_resources_fonts_noto_NotoSansTaiViet_Regular_otf_start,
-        HB_SCRIPT_TAKRI => &_binary_resources_fonts_noto_NotoSansTakri_Regular_otf_start,
-        HB_SCRIPT_TAMIL => &_binary_resources_fonts_noto_NotoSerifTamil_Regular_otf_start,
-        HB_SCRIPT_TANGSA => &_binary_resources_fonts_noto_NotoSansTangsa_Regular_otf_start,
-        HB_SCRIPT_TELUGU => &_binary_resources_fonts_noto_NotoSerifTelugu_Regular_otf_start,
-        HB_SCRIPT_THAANA => &_binary_resources_fonts_noto_NotoSansThaana_Regular_otf_start,
-        HB_SCRIPT_THAI => &_binary_resources_fonts_noto_NotoSerifThai_Regular_otf_start,
-        HB_SCRIPT_TIBETAN => &_binary_resources_fonts_noto_NotoSerifTibetan_Regular_otf_start,
-        HB_SCRIPT_TIFINAGH => &_binary_resources_fonts_noto_NotoSansTifinagh_Regular_otf_start,
-        HB_SCRIPT_TIRHUTA => &_binary_resources_fonts_noto_NotoSansTirhuta_Regular_otf_start,
-        HB_SCRIPT_TOTO => &_binary_resources_fonts_noto_NotoSerifToto_Regular_otf_start,
-        HB_SCRIPT_UGARITIC => &_binary_resources_fonts_noto_NotoSansUgaritic_Regular_otf_start,
-        HB_SCRIPT_VAI => &_binary_resources_fonts_noto_NotoSansVai_Regular_otf_start,
-        HB_SCRIPT_VITHKUQI => &_binary_resources_fonts_noto_NotoSerifVithkuqi_Regular_otf_start,
-        HB_SCRIPT_WANCHO => &_binary_resources_fonts_noto_NotoSansWancho_Regular_otf_start,
-        HB_SCRIPT_WARANG_CITI => &_binary_resources_fonts_noto_NotoSansWarangCiti_Regular_otf_start,
-        HB_SCRIPT_YEZIDI => &_binary_resources_fonts_noto_NotoSerifYezidi_Regular_otf_start,
-        HB_SCRIPT_YI => &_binary_resources_fonts_noto_NotoSansYi_Regular_otf_start,
-        HB_SCRIPT_ZANABAZAR_SQUARE => {
-            &_binary_resources_fonts_noto_NotoSansZanabazarSquare_Regular_otf_start
-        }
-
-        HB_SYMBOL_MATHS => &_binary_resources_fonts_noto_NotoSansMath_Regular_otf_start,
-        HB_SYMBOL_MUSIC => &_binary_resources_fonts_noto_NotoMusic_Regular_otf_start,
-        HB_SYMBOL_MISC_ONE => &_binary_resources_fonts_noto_NotoSansSymbols_Regular_otf_start,
-        HB_SCRIPT_BRAILLE | HB_SYMBOL_MISC_TWO => {
-            &_binary_resources_fonts_noto_NotoSansSymbols2_Regular_otf_start
-        }
-        HB_SYMBOL_EMOJI => &_binary_resources_fonts_noto_NotoEmoji_Regular_ttf_start,
-
-        _ => &_binary_resources_fonts_droid_DroidSansFallback_ttf_start,
-    }
-}}
+}
 
 #[inline]
 fn script_from_code(code: u32) -> HbScript {
@@ -1806,70 +1860,72 @@ impl Font {
         render_plan: &mut RenderPlan,
         missing_glyphs: Vec<(usize, usize)>,
         buf: *mut HbBuffer,
-    ) { unsafe {
-        let mut drift = 0;
-        for (mut start, mut end) in missing_glyphs.into_iter() {
-            start = (start as i32 + drift).max(0) as usize;
-            end = (end as i32 + drift).max(0) as usize;
-            hb_buffer_clear_contents(buf);
-            let start_index = render_plan.glyphs[start].cluster;
-            let end_index = render_plan
-                .glyphs
-                .get(end)
-                .map(|g| g.cluster)
-                .unwrap_or_else(|| txt.len());
-            let chunk = &txt[start_index..end_index];
-            hb_buffer_add_utf8(
-                buf,
-                chunk.as_ptr() as *const libc::c_char,
-                chunk.len() as libc::c_int,
-                0,
-                -1,
-            );
-            hb_buffer_guess_segment_properties(buf);
-            let mut script = hb_buffer_get_script(buf);
-            if script == HB_SCRIPT_INVALID || script == HB_SCRIPT_UNKNOWN {
-                if let Some(c) = chunk.chars().next() {
-                    script = script_from_code(u32::from(c));
+    ) {
+        unsafe {
+            let mut drift = 0;
+            for (mut start, mut end) in missing_glyphs.into_iter() {
+                start = (start as i32 + drift).max(0) as usize;
+                end = (end as i32 + drift).max(0) as usize;
+                hb_buffer_clear_contents(buf);
+                let start_index = render_plan.glyphs[start].cluster;
+                let end_index = render_plan
+                    .glyphs
+                    .get(end)
+                    .map(|g| g.cluster)
+                    .unwrap_or_else(|| txt.len());
+                let chunk = &txt[start_index..end_index];
+                hb_buffer_add_utf8(
+                    buf,
+                    chunk.as_ptr() as *const libc::c_char,
+                    chunk.len() as libc::c_int,
+                    0,
+                    -1,
+                );
+                hb_buffer_guess_segment_properties(buf);
+                let mut script = hb_buffer_get_script(buf);
+                if script == HB_SCRIPT_INVALID || script == HB_SCRIPT_UNKNOWN {
+                    if let Some(c) = chunk.chars().next() {
+                        script = script_from_code(u32::from(c));
+                    }
                 }
+                let font_data = font_data_from_script(script);
+                let mut face = ptr::null_mut();
+                FT_New_Memory_Face(
+                    (self.lib).0,
+                    font_data.as_ptr() as *const FtByte,
+                    font_data.len() as libc::c_long,
+                    0,
+                    &mut face,
+                );
+                FT_Set_Pixel_Sizes(face, (*(*self.face).size).metrics.x_ppem as libc::c_uint, 0);
+                let font = hb_ft_font_create(face, ptr::null());
+                hb_shape(font, buf, features.as_ptr(), features.len() as libc::c_uint);
+                let len = hb_buffer_get_length(buf) as usize;
+                let info = hb_buffer_get_glyph_infos(buf, ptr::null_mut());
+                let pos = hb_buffer_get_glyph_positions(buf, ptr::null_mut());
+                let mut glyphs = Vec::with_capacity(len);
+
+                for i in 0..len {
+                    let pos_i = &*pos.add(i);
+                    let info_i = &*info.add(i);
+                    render_plan.width += pos_i.x_advance >> 6;
+                    glyphs.push(GlyphPlan {
+                        codepoint: info_i.codepoint,
+                        cluster: start_index + info_i.cluster as usize,
+                        advance: pt!(pos_i.x_advance >> 6, pos_i.y_advance >> 6),
+                        offset: pt!(pos_i.x_offset >> 6, -pos_i.y_offset >> 6),
+                    });
+                    render_plan.scripts.insert(start + i, script);
+                }
+
+                render_plan.glyphs.splice(start..end, glyphs.into_iter());
+                drift += len as i32 - (end - start) as i32;
+
+                hb_font_destroy(font);
+                FT_Done_Face(face);
             }
-            let font_data = font_data_from_script(script);
-            let mut face = ptr::null_mut();
-            FT_New_Memory_Face(
-                (self.lib).0,
-                font_data.as_ptr() as *const FtByte,
-                font_data.len() as libc::c_long,
-                0,
-                &mut face,
-            );
-            FT_Set_Pixel_Sizes(face, (*(*self.face).size).metrics.x_ppem as libc::c_uint, 0);
-            let font = hb_ft_font_create(face, ptr::null());
-            hb_shape(font, buf, features.as_ptr(), features.len() as libc::c_uint);
-            let len = hb_buffer_get_length(buf) as usize;
-            let info = hb_buffer_get_glyph_infos(buf, ptr::null_mut());
-            let pos = hb_buffer_get_glyph_positions(buf, ptr::null_mut());
-            let mut glyphs = Vec::with_capacity(len);
-
-            for i in 0..len {
-                let pos_i = &*pos.add(i);
-                let info_i = &*info.add(i);
-                render_plan.width += pos_i.x_advance >> 6;
-                glyphs.push(GlyphPlan {
-                    codepoint: info_i.codepoint,
-                    cluster: start_index + info_i.cluster as usize,
-                    advance: pt!(pos_i.x_advance >> 6, pos_i.y_advance >> 6),
-                    offset: pt!(pos_i.x_offset >> 6, -pos_i.y_offset >> 6),
-                });
-                render_plan.scripts.insert(start + i, script);
-            }
-
-            render_plan.glyphs.splice(start..end, glyphs.into_iter());
-            drift += len as i32 - (end - start) as i32;
-
-            hb_font_destroy(font);
-            FT_Done_Face(face);
         }
-    }}
+    }
 
     pub fn plan<S: AsRef<str>>(
         &mut self,
@@ -1901,11 +1957,7 @@ impl Font {
                                 f.len() as libc::c_int,
                                 &mut feature,
                             );
-                            if ret == 1 {
-                                Some(feature)
-                            } else {
-                                None
-                            }
+                            if ret == 1 { Some(feature) } else { None }
                         })
                         .collect()
                 })

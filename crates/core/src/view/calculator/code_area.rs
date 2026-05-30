@@ -8,7 +8,7 @@ use crate::geom::{CycleDir, Dir, Rectangle};
 use crate::gesture::GestureEvent;
 use crate::input::{ButtonCode, ButtonStatus, DeviceEvent};
 use crate::unit::mm_to_px;
-use crate::view::{Bus, Event, Hub, Id, RenderQueue, View, ID_FEEDER};
+use crate::view::{Bus, Event, Hub, ID_FEEDER, Id, RenderQueue, View};
 
 pub struct CodeArea {
     id: Id,

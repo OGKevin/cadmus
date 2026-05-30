@@ -22,7 +22,7 @@ use cadmus_core::font::Fonts;
 use cadmus_core::framebuffer::{Framebuffer, UpdateMode};
 use cadmus_core::frontlight::{Frontlight, LightLevels};
 use cadmus_core::geom::{Axis, Rectangle};
-use cadmus_core::gesture::{gesture_events, GestureEvent};
+use cadmus_core::gesture::{GestureEvent, gesture_events};
 use cadmus_core::input::{ButtonCode, ButtonStatus, DeviceEvent, FingerStatus};
 use cadmus_core::library::Library;
 use cadmus_core::lightsensor::LightSensor;
@@ -50,10 +50,10 @@ use cadmus_core::view::settings_editor::SettingsEditor;
 use cadmus_core::view::sketch::Sketch;
 use cadmus_core::view::startup::StartupScreen;
 use cadmus_core::view::touch_events::TouchEvents;
-use cadmus_core::view::{
-    handle_event, process_render_queue, wait_for_all, RenderData, RenderQueue,
-};
 use cadmus_core::view::{AppCmd, EntryId, EntryKind, Event, NotificationEvent, View, ViewId};
+use cadmus_core::view::{
+    RenderData, RenderQueue, handle_event, process_render_queue, wait_for_all,
+};
 use cadmus_core::{i18n, png};
 use sdl2::event::Event as SdlEvent;
 use sdl2::keyboard::{Keycode, Mod, Scancode};
@@ -355,9 +355,11 @@ fn run() -> Result<(), Error> {
     });
 
     let tx3 = tx.clone();
-    thread::spawn(move || loop {
-        thread::sleep(CLOCK_REFRESH_INTERVAL);
-        tx3.send(Event::ClockTick).ok();
+    thread::spawn(move || {
+        loop {
+            thread::sleep(CLOCK_REFRESH_INTERVAL);
+            tx3.send(Event::ClockTick).ok();
+        }
     });
 
     let mut background_tasks = TaskManager::new();

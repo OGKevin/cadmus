@@ -1,5 +1,5 @@
 use super::label::Label;
-use super::{Align, Bus, Event, Hub, Id, RenderQueue, View, ID_FEEDER};
+use super::{Align, Bus, Event, Hub, ID_FEEDER, Id, RenderQueue, View};
 use crate::color::{TEXT_INVERTED_HARD, TEXT_NORMAL};
 use crate::context::Context;
 use crate::framebuffer::Framebuffer;

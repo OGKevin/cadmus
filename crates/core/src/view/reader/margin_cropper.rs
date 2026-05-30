@@ -8,7 +8,7 @@ use crate::gesture::GestureEvent;
 use crate::metadata::Margin;
 use crate::unit::scale_by_dpi;
 use crate::view::rounded_button::RoundedButton;
-use crate::view::{Bus, Event, Hub, Id, RenderData, RenderQueue, View, ViewId, ID_FEEDER};
+use crate::view::{Bus, Event, Hub, ID_FEEDER, Id, RenderData, RenderQueue, View, ViewId};
 use crate::view::{SMALL_BAR_HEIGHT, THICKNESS_MEDIUM};
 
 pub const BUTTON_DIAMETER: f32 = 30.0;

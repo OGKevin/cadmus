@@ -1,12 +1,12 @@
 mod calendar;
 
-use super::{Bus, Event, Hub, Id, RenderQueue, View, ID_FEEDER};
-use crate::color::{Color, BLACK, TEXT_INVERTED_HARD, TEXT_NORMAL, WHITE};
+use super::{Bus, Event, Hub, ID_FEEDER, Id, RenderQueue, View};
+use crate::color::{BLACK, Color, TEXT_INVERTED_HARD, TEXT_NORMAL, WHITE};
 use crate::context::Context;
 use crate::device::CURRENT_DEVICE;
-use crate::document::{open, Location};
+use crate::document::{Location, open};
 use crate::fl;
-use crate::font::{font_from_style, Fonts, DISPLAY_STYLE};
+use crate::font::{DISPLAY_STYLE, Fonts, font_from_style};
 use crate::framebuffer::Framebuffer;
 use crate::geom::Rectangle;
 use crate::i18n::I18nDisplay;

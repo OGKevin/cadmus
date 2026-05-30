@@ -1,10 +1,10 @@
 use super::layout::{Display, Float, ListStyleType, TextAlign};
 use super::layout::{FontKind, FontStyle, FontWeight, WordSpacing};
 use super::layout::{GlueMaterial, InlineMaterial, PenaltyMaterial};
-use crate::color::{Color, BLACK, WHITE};
+use crate::color::{BLACK, Color, WHITE};
 use crate::geom::Edge;
-use crate::unit::{in_to_px, mm_to_px, pc_to_px, pt_to_px};
 use crate::unit::{CENTIMETERS_PER_INCH, MILLIMETERS_PER_INCH, PICAS_PER_INCH, POINTS_PER_INCH};
+use crate::unit::{in_to_px, mm_to_px, pc_to_px, pt_to_px};
 use fxhash::FxHashSet;
 use regex::Regex;
 

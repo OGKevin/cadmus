@@ -1,9 +1,9 @@
-use super::super::{Bus, Event, Hub, Id, RenderQueue, View, ID_FEEDER};
+use super::super::{Bus, Event, Hub, ID_FEEDER, Id, RenderQueue, View};
 use crate::color::{Color, TEXT_INVERTED_HARD, TEXT_NORMAL};
 use crate::context::Context;
 use crate::device::CURRENT_DEVICE;
 use crate::fl;
-use crate::font::{font_from_style, Fonts, DISPLAY_FONT_SIZE, FONT_SIZES, NORMAL_STYLE};
+use crate::font::{DISPLAY_FONT_SIZE, FONT_SIZES, Fonts, NORMAL_STYLE, font_from_style};
 use crate::framebuffer::Framebuffer;
 use crate::geom::{CornerSpec, Point, Rectangle};
 use chrono::{Datelike, Local, NaiveDate, Timelike};

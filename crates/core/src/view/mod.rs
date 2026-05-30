@@ -74,7 +74,7 @@ use crate::settings::{
     self, ButtonScheme, FinishedAction, FirstColumn, RotationLock, SecondColumn,
 };
 use crate::view::ota::OtaEntryId;
-use downcast_rs::{impl_downcast, Downcast};
+use downcast_rs::{Downcast, impl_downcast};
 use fxhash::FxHashMap;
 use std::collections::VecDeque;
 use std::fmt::{self, Debug};
