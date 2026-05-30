@@ -13,12 +13,7 @@ reviews:
   changed_files_summary: false
   auto_title_instructions: It should follow https://www.conventionalcommits.org/en/v1.0.0/
   collapse_walkthrough: false
-  labeling_instructions:
-    - label: documentation
-      instructions: When the code modifies documentation in the docs folder that is user/contributor facing.
-    - label: dependencies
-      instructions: When a dependency is being bumped, added or removed.
-  auto_apply_labels: true
+  auto_apply_labels: false
   auto_assign_reviewers: true
   path_filters:
     - "!docs/po/messages.pot"
