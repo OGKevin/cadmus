@@ -196,38 +196,37 @@ impl View for SettingValue {
         rq: &mut RenderQueue,
         context: &mut Context,
     ) -> bool {
-        if let Event::Select(entry_id) = evt {
-            if Some(entry_id) == self.kind.file_chooser_entry_id().as_ref()
-                && !self.active_file_chooser
-            {
-                #[cfg(not(test))]
-                let initial_path = std::path::PathBuf::from("/mnt/onboard");
-                #[cfg(test)]
-                let initial_path = {
-                    let temp_dir = tempfile::tempdir().expect("failed to create temp dir for test");
-                    let path = temp_dir.path().to_path_buf();
-                    self._temp_dir = Some(temp_dir);
-                    path
-                };
+        if let Event::Select(entry_id) = evt
+            && Some(entry_id) == self.kind.file_chooser_entry_id().as_ref()
+            && !self.active_file_chooser
+        {
+            #[cfg(not(test))]
+            let initial_path = std::path::PathBuf::from("/mnt/onboard");
+            #[cfg(test)]
+            let initial_path = {
+                let temp_dir = tempfile::tempdir().expect("failed to create temp dir for test");
+                let path = temp_dir.path().to_path_buf();
+                self._temp_dir = Some(temp_dir);
+                path
+            };
 
-                let file_chooser = FileChooser::new(
-                    rect!(
-                        0,
-                        0,
-                        context.display.dims.0 as i32,
-                        context.display.dims.1 as i32
-                    ),
-                    initial_path,
-                    SelectionMode::File,
-                    hub,
-                    rq,
-                    context,
-                );
-                rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
-                self.children.push(Box::new(file_chooser));
-                self.active_file_chooser = true;
-                return true;
-            }
+            let file_chooser = FileChooser::new(
+                rect!(
+                    0,
+                    0,
+                    context.display.dims.0 as i32,
+                    context.display.dims.1 as i32
+                ),
+                initial_path,
+                SelectionMode::File,
+                hub,
+                rq,
+                context,
+            );
+            rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+            self.children.push(Box::new(file_chooser));
+            self.active_file_chooser = true;
+            return true;
         }
 
         if let Event::FileChooserClosed(_) = evt {
@@ -267,30 +266,31 @@ impl View for SettingValue {
             let view_id = input_kind.submit_view_id();
             let open_entry = input_kind.open_entry_id();
 
-            if let Event::Select(id) = evt {
-                if *id == open_entry && self.active_input.is_none() {
-                    bus.push_back(Event::OpenNamedInput {
-                        view_id,
-                        label: input_kind.input_label(),
-                        max_chars: input_kind.input_max_chars(),
-                        initial_text: input_kind.current_text(&context.settings),
-                    });
-                    self.active_input = Some(view_id);
-                    return true;
-                }
+            if let Event::Select(id) = evt
+                && *id == open_entry
+                && self.active_input.is_none()
+            {
+                bus.push_back(Event::OpenNamedInput {
+                    view_id,
+                    label: input_kind.input_label(),
+                    max_chars: input_kind.input_max_chars(),
+                    initial_text: input_kind.current_text(&context.settings),
+                });
+                self.active_input = Some(view_id);
+                return true;
             }
 
-            if let Event::Submit(submitted_id, text) = evt {
-                if Some(*submitted_id) == self.active_input {
-                    let display = self
-                        .kind
-                        .as_input_kind()
-                        .unwrap()
-                        .apply_text(text, &mut context.settings);
-                    self.active_input = None;
-                    self.update(display, &context.settings, rq);
-                    return true;
-                }
+            if let Event::Submit(submitted_id, text) = evt
+                && Some(*submitted_id) == self.active_input
+            {
+                let display = self
+                    .kind
+                    .as_input_kind()
+                    .unwrap()
+                    .apply_text(text, &mut context.settings);
+                self.active_input = None;
+                self.update(display, &context.settings, rq);
+                return true;
             }
         }
 

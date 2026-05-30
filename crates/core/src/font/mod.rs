@@ -1883,20 +1883,26 @@ impl Font {
                 );
                 hb_buffer_guess_segment_properties(buf);
                 let mut script = hb_buffer_get_script(buf);
-                if script == HB_SCRIPT_INVALID || script == HB_SCRIPT_UNKNOWN {
-                    if let Some(c) = chunk.chars().next() {
-                        script = script_from_code(u32::from(c));
-                    }
+                if (script == HB_SCRIPT_INVALID || script == HB_SCRIPT_UNKNOWN)
+                    && let Some(c) = chunk.chars().next()
+                {
+                    script = script_from_code(u32::from(c));
                 }
                 let font_data = font_data_from_script(script);
                 let mut face = ptr::null_mut();
-                FT_New_Memory_Face(
+                let face_error = FT_New_Memory_Face(
                     (self.lib).0,
                     font_data.as_ptr() as *const FtByte,
                     font_data.len() as libc::c_long,
                     0,
                     &mut face,
                 );
+                if face_error != 0 || face.is_null() {
+                    hb_buffer_destroy(buf);
+                    tracing::warn!(face_error = face_error, "there has been a face_error");
+
+                    continue;
+                }
                 FT_Set_Pixel_Sizes(face, (*(*self.face).size).metrics.x_ppem as libc::c_uint, 0);
                 let font = hb_ft_font_create(face, ptr::null());
                 hb_shape(font, buf, features.as_ptr(), features.len() as libc::c_uint);
@@ -1918,7 +1924,7 @@ impl Font {
                     render_plan.scripts.insert(start + i, script);
                 }
 
-                render_plan.glyphs.splice(start..end, glyphs.into_iter());
+                render_plan.glyphs.splice(start..end, glyphs);
                 drift += len as i32 - (end - start) as i32;
 
                 hb_font_destroy(font);

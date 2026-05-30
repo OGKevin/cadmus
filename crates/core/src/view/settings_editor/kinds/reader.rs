@@ -256,11 +256,11 @@ impl SettingKind for RefreshRateRegularSetting {
         settings: &mut Settings,
         _bus: &mut Bus,
     ) -> (Option<String>, bool) {
-        if let Event::Submit(crate::view::ViewId::RefreshRateRegularInput, text) = evt {
-            if let Ok(v) = text.parse::<u8>() {
-                settings.reader.refresh_rate.global.regular = v;
-                return (Some(v.to_string()), true);
-            }
+        if let Event::Submit(crate::view::ViewId::RefreshRateRegularInput, text) = evt
+            && let Ok(v) = text.parse::<u8>()
+        {
+            settings.reader.refresh_rate.global.regular = v;
+            return (Some(v.to_string()), true);
         }
 
         (None, false)
@@ -299,11 +299,11 @@ impl SettingKind for RefreshRateInvertedSetting {
         settings: &mut Settings,
         _bus: &mut Bus,
     ) -> (Option<String>, bool) {
-        if let Event::Submit(crate::view::ViewId::RefreshRateInvertedInput, text) = evt {
-            if let Ok(v) = text.parse::<u8>() {
-                settings.reader.refresh_rate.global.inverted = v;
-                return (Some(v.to_string()), true);
-            }
+        if let Event::Submit(crate::view::ViewId::RefreshRateInvertedInput, text) = evt
+            && let Ok(v) = text.parse::<u8>()
+        {
+            settings.reader.refresh_rate.global.inverted = v;
+            return (Some(v.to_string()), true);
         }
 
         (None, false)
@@ -351,20 +351,20 @@ impl SettingKind for RefreshRateByKindRegular {
         settings: &mut Settings,
         _bus: &mut Bus,
     ) -> (Option<String>, bool) {
-        if let Event::Submit(crate::view::ViewId::RefreshRateByKindRegularInput, text) = evt {
-            if let Ok(v) = text.parse::<u8>() {
-                let pair = settings
-                    .reader
-                    .refresh_rate
-                    .by_kind
-                    .entry(self.0.as_str().to_string())
-                    .or_insert(RefreshRatePair {
-                        regular: 0,
-                        inverted: 0,
-                    });
-                pair.regular = v;
-                return (Some(v.to_string()), true);
-            }
+        if let Event::Submit(crate::view::ViewId::RefreshRateByKindRegularInput, text) = evt
+            && let Ok(v) = text.parse::<u8>()
+        {
+            let pair = settings
+                .reader
+                .refresh_rate
+                .by_kind
+                .entry(self.0.as_str().to_string())
+                .or_insert(RefreshRatePair {
+                    regular: 0,
+                    inverted: 0,
+                });
+            pair.regular = v;
+            return (Some(v.to_string()), true);
         }
 
         (None, false)
@@ -412,20 +412,20 @@ impl SettingKind for RefreshRateByKindInverted {
         settings: &mut Settings,
         _bus: &mut Bus,
     ) -> (Option<String>, bool) {
-        if let Event::Submit(crate::view::ViewId::RefreshRateByKindInvertedInput, text) = evt {
-            if let Ok(v) = text.parse::<u8>() {
-                let pair = settings
-                    .reader
-                    .refresh_rate
-                    .by_kind
-                    .entry(self.0.as_str().to_string())
-                    .or_insert(RefreshRatePair {
-                        regular: 0,
-                        inverted: 0,
-                    });
-                pair.inverted = v;
-                return (Some(v.to_string()), true);
-            }
+        if let Event::Submit(crate::view::ViewId::RefreshRateByKindInvertedInput, text) = evt
+            && let Ok(v) = text.parse::<u8>()
+        {
+            let pair = settings
+                .reader
+                .refresh_rate
+                .by_kind
+                .entry(self.0.as_str().to_string())
+                .or_insert(RefreshRatePair {
+                    regular: 0,
+                    inverted: 0,
+                });
+            pair.inverted = v;
+            return (Some(v.to_string()), true);
         }
 
         (None, false)
