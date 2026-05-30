@@ -3,10 +3,11 @@
 # User Guide
 
 - [Installation](installation/index.md)
-  - [Uninstalling Cadmus](installation/uninstall.md)
   - [Test builds](installation/test-builds.md)
   - [OTA updates](installation/ota.md)
+  - [Manually install PR builds](installation/manual-pr-install.md)
   - [Migrating from Plato](installation/migration.md)
+  - [Uninstalling Cadmus](installation/uninstall.md)
 - [Settings](settings/index.md)
 - [User Interface](ui/index.md)
   - [File Chooser](ui/filechooser.md)
