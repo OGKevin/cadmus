@@ -256,7 +256,7 @@ impl SettingKind for RefreshRateRegularSetting {
         settings: &mut Settings,
         _bus: &mut Bus,
     ) -> (Option<String>, bool) {
-        if let Event::Submit(crate::view::ViewId::RefreshRateRegularInput, ref text) = evt {
+        if let Event::Submit(crate::view::ViewId::RefreshRateRegularInput, text) = evt {
             if let Ok(v) = text.parse::<u8>() {
                 settings.reader.refresh_rate.global.regular = v;
                 return (Some(v.to_string()), true);
@@ -299,7 +299,7 @@ impl SettingKind for RefreshRateInvertedSetting {
         settings: &mut Settings,
         _bus: &mut Bus,
     ) -> (Option<String>, bool) {
-        if let Event::Submit(crate::view::ViewId::RefreshRateInvertedInput, ref text) = evt {
+        if let Event::Submit(crate::view::ViewId::RefreshRateInvertedInput, text) = evt {
             if let Ok(v) = text.parse::<u8>() {
                 settings.reader.refresh_rate.global.inverted = v;
                 return (Some(v.to_string()), true);
@@ -351,7 +351,7 @@ impl SettingKind for RefreshRateByKindRegular {
         settings: &mut Settings,
         _bus: &mut Bus,
     ) -> (Option<String>, bool) {
-        if let Event::Submit(crate::view::ViewId::RefreshRateByKindRegularInput, ref text) = evt {
+        if let Event::Submit(crate::view::ViewId::RefreshRateByKindRegularInput, text) = evt {
             if let Ok(v) = text.parse::<u8>() {
                 let pair = settings
                     .reader
@@ -412,7 +412,7 @@ impl SettingKind for RefreshRateByKindInverted {
         settings: &mut Settings,
         _bus: &mut Bus,
     ) -> (Option<String>, bool) {
-        if let Event::Submit(crate::view::ViewId::RefreshRateByKindInvertedInput, ref text) = evt {
+        if let Event::Submit(crate::view::ViewId::RefreshRateByKindInvertedInput, text) = evt {
             if let Ok(v) = text.parse::<u8>() {
                 let pair = settings
                     .reader

@@ -69,7 +69,7 @@ impl View for SettingRow {
         _context: &mut Context,
     ) -> bool {
         match evt {
-            Event::UpdateLibrary(index, ref library) => {
+            Event::UpdateLibrary(index, library) => {
                 if let SettingIdentity::LibraryInfo(our_index) = self.identity {
                     if *index == our_index {
                         if let Some(name_view) = self.children.get_mut(0) {

@@ -200,7 +200,7 @@ impl View for Label {
         _rq: &mut RenderQueue,
         _context: &mut Context,
     ) {
-        if let Some(Event::ToggleNear(_, ref mut event_rect)) = self.event.as_mut() {
+        if let Some(Event::ToggleNear(_, event_rect)) = self.event.as_mut() {
             *event_rect = rect;
         }
         self.rect = rect;

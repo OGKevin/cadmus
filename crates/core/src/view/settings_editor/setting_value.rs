@@ -196,7 +196,7 @@ impl View for SettingValue {
         rq: &mut RenderQueue,
         context: &mut Context,
     ) -> bool {
-        if let Event::Select(ref entry_id) = evt {
+        if let Event::Select(entry_id) = evt {
             if Some(entry_id) == self.kind.file_chooser_entry_id().as_ref()
                 && !self.active_file_chooser
             {
@@ -267,7 +267,7 @@ impl View for SettingValue {
             let view_id = input_kind.submit_view_id();
             let open_entry = input_kind.open_entry_id();
 
-            if let Event::Select(ref id) = evt {
+            if let Event::Select(id) = evt {
                 if *id == open_entry && self.active_input.is_none() {
                     bus.push_back(Event::OpenNamedInput {
                         view_id,
@@ -280,7 +280,7 @@ impl View for SettingValue {
                 }
             }
 
-            if let Event::Submit(submitted_id, ref text) = evt {
+            if let Event::Submit(submitted_id, text) = evt {
                 if Some(*submitted_id) == self.active_input {
                     let display = self
                         .kind

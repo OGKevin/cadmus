@@ -19,7 +19,7 @@ pub enum HbBuffer {}
 pub enum HbFont {}
 
 #[link(name = "harfbuzz")]
-extern "C" {
+unsafe extern "C" {
     pub fn hb_ft_font_create(face: *mut FtFace, destroy: *const libc::c_void) -> *mut HbFont;
     pub fn hb_ft_font_changed(font: *mut HbFont);
     pub fn hb_font_destroy(font: *mut HbFont);

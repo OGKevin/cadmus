@@ -102,7 +102,7 @@ pub const MD_SIZE: Style = Style {
 
 #[cfg(any(not(target_os = "linux"), target_arch = "arm"))]
 #[link(name = "mupdf")]
-extern "C" {
+unsafe extern "C" {
     // Based on the outputs of:
     // arm-linux-gnueabihf-readelf -Ws ./libs/libmupdf.so | grep '\b_binary_' | \
     // grep -v '_size$' | awk '{print $8, strtonum($3)-1}' | sort -u
@@ -269,7 +269,7 @@ extern "C" {
 
 #[cfg(all(target_os = "linux", not(target_arch = "arm")))]
 #[link(name = "mupdf")]
-extern "C" {
+unsafe extern "C" {
     pub static _binary_resources_fonts_droid_DroidSansFallback_ttf_start: [libc::c_uchar; 3556308];
     pub static _binary_resources_fonts_noto_NotoEmoji_Regular_ttf_start: [libc::c_uchar; 418804];
     pub static _binary_resources_fonts_noto_NotoMusic_Regular_otf_start: [libc::c_uchar; 60812];
@@ -784,7 +784,7 @@ pub fn font_from_style<'a>(fonts: &'a mut Fonts, style: &Style, dpi: u16) -> &'a
 }
 
 #[inline]
-unsafe fn font_data_from_script(script: HbScript) -> &'static [libc::c_uchar] {
+unsafe fn font_data_from_script(script: HbScript) -> &'static [libc::c_uchar] { unsafe {
     // Extracted from mupdf in source/fitz/noto.c
     #[cfg(any(not(target_os = "linux"), target_arch = "arm"))]
     match script {
@@ -1177,7 +1177,7 @@ unsafe fn font_data_from_script(script: HbScript) -> &'static [libc::c_uchar] {
 
         _ => &_binary_resources_fonts_droid_DroidSansFallback_ttf_start,
     }
-}
+}}
 
 #[inline]
 fn script_from_code(code: u32) -> HbScript {
@@ -1806,7 +1806,7 @@ impl Font {
         render_plan: &mut RenderPlan,
         missing_glyphs: Vec<(usize, usize)>,
         buf: *mut HbBuffer,
-    ) {
+    ) { unsafe {
         let mut drift = 0;
         for (mut start, mut end) in missing_glyphs.into_iter() {
             start = (start as i32 + drift).max(0) as usize;
@@ -1869,7 +1869,7 @@ impl Font {
             hb_font_destroy(font);
             FT_Done_Face(face);
         }
-    }
+    }}
 
     pub fn plan<S: AsRef<str>>(
         &mut self,

@@ -107,7 +107,7 @@ impl SettingKind for IntermissionSuspend {
         settings: &mut Settings,
         _bus: &mut Bus,
     ) -> (Option<String>, bool) {
-        if let Event::Select(EntryId::SetIntermission(IntermKind::Suspend, ref display)) = evt {
+        if let Event::Select(EntryId::SetIntermission(IntermKind::Suspend, display)) = evt {
             if !settings
                 .intermissions
                 .set_display(IntermKind::Suspend, display.clone())
@@ -118,7 +118,7 @@ impl SettingKind for IntermissionSuspend {
             return (Some(intermission_display_name(display)), true);
         }
 
-        if let Event::FileChooserClosed(Some(ref path)) = evt {
+        if let Event::FileChooserClosed(Some(path)) = evt {
             let display = IntermissionDisplay::Image(path.clone());
             settings.intermissions[IntermKind::Suspend] = display.clone();
             return (Some(intermission_display_name(&display)), true);
@@ -154,7 +154,7 @@ impl SettingKind for IntermissionPowerOff {
         settings: &mut Settings,
         _bus: &mut Bus,
     ) -> (Option<String>, bool) {
-        if let Event::Select(EntryId::SetIntermission(IntermKind::PowerOff, ref display)) = evt {
+        if let Event::Select(EntryId::SetIntermission(IntermKind::PowerOff, display)) = evt {
             if !settings
                 .intermissions
                 .set_display(IntermKind::PowerOff, display.clone())
@@ -165,7 +165,7 @@ impl SettingKind for IntermissionPowerOff {
             return (Some(intermission_display_name(display)), true);
         }
 
-        if let Event::FileChooserClosed(Some(ref path)) = evt {
+        if let Event::FileChooserClosed(Some(path)) = evt {
             let display = IntermissionDisplay::Image(path.clone());
             settings.intermissions[IntermKind::PowerOff] = display.clone();
             return (Some(intermission_display_name(&display)), true);
@@ -201,7 +201,7 @@ impl SettingKind for IntermissionShare {
         settings: &mut Settings,
         _bus: &mut Bus,
     ) -> (Option<String>, bool) {
-        if let Event::Select(EntryId::SetIntermission(IntermKind::Share, ref display)) = evt {
+        if let Event::Select(EntryId::SetIntermission(IntermKind::Share, display)) = evt {
             if !settings
                 .intermissions
                 .set_display(IntermKind::Share, display.clone())
@@ -212,7 +212,7 @@ impl SettingKind for IntermissionShare {
             return (Some(intermission_display_name(display)), true);
         }
 
-        if let Event::FileChooserClosed(Some(ref path)) = evt {
+        if let Event::FileChooserClosed(Some(path)) = evt {
             let display = IntermissionDisplay::Image(path.clone());
             settings.intermissions[IntermKind::Share] = display.clone();
             return (Some(intermission_display_name(&display)), true);

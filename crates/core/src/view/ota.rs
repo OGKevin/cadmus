@@ -967,7 +967,7 @@ impl View for OtaView {
                 true
             }
             Event::Focus(Some(ViewId::Ota(_))) => true,
-            Event::Submit(ViewId::Ota(OtaViewId::PrInput), ref text) => {
+            Event::Submit(ViewId::Ota(OtaViewId::PrInput), text) => {
                 self.toggle_keyboard(false, hub, rq, context);
                 let text = text.clone();
                 self.handle_pr_submission(&text, hub, rq, context);
@@ -980,12 +980,12 @@ impl View for OtaView {
             Event::OtaDownloadProgress { label, percent } => {
                 self.on_download_progress(label, *percent, rq)
             }
-            Event::Github(GithubEvent::DeviceAuthComplete(ref token)) => {
+            Event::Github(GithubEvent::DeviceAuthComplete(token)) => {
                 self.on_device_auth_complete(token, hub, rq, context)
             }
             Event::Github(GithubEvent::TokenInvalid) => self.on_token_invalid(hub, rq, context),
             Event::Github(GithubEvent::DeviceAuthExpired) => self.on_device_auth_expired(hub),
-            Event::Github(GithubEvent::DeviceAuthError(ref msg)) => {
+            Event::Github(GithubEvent::DeviceAuthError(msg)) => {
                 self.on_device_auth_error(msg, hub)
             }
             Event::StartStableReleaseDownload => {

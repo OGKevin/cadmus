@@ -36,7 +36,7 @@ pub enum FtMemory {}
 pub enum FtStream {}
 
 #[link(name = "freetype")]
-extern "C" {
+unsafe extern "C" {
     pub fn FT_Init_FreeType(lib: *mut *mut FtLibrary) -> FtError;
     pub fn FT_Done_FreeType(lib: *mut FtLibrary) -> FtError;
     pub fn FT_New_Face(

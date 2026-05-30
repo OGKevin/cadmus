@@ -287,8 +287,8 @@ impl XmlTree {
 
     pub fn append_text_to(&mut self, id: NodeId, extra: &str) {
         match &mut self.node_mut(id).data {
-            NodeData::Text(TextData { ref mut text, .. })
-            | NodeData::Whitespace(TextData { ref mut text, .. }) => {
+            NodeData::Text(TextData { text, .. })
+            | NodeData::Whitespace(TextData { text, .. }) => {
                 text.push_str(extra);
             }
             _ => {}

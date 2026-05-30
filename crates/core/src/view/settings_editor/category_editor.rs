@@ -800,7 +800,7 @@ impl View for CategoryEditor {
     ) -> bool {
         match evt {
             Event::Focus(view_id) => self.handle_focus_event(view_id, hub, rq, context),
-            Event::SubMenu(rect, ref entries) => {
+            Event::SubMenu(rect, entries) => {
                 self.handle_submenu_event(rect, entries, rq, context)
             }
             Event::Select(EntryId::DeleteLibrary(index)) => {
@@ -820,14 +820,14 @@ impl View for CategoryEditor {
             Event::OpenRefreshRateEditor => {
                 self.handle_open_refresh_rate_editor_event(hub, rq, context)
             }
-            Event::UpdateLibrary(index, ref library) => {
+            Event::UpdateLibrary(index, library) => {
                 self.handle_update_library_event(*index, library, rq, context)
             }
             Event::OpenNamedInput {
                 view_id,
-                ref label,
+                label,
                 max_chars,
-                ref initial_text,
+                initial_text,
             } => self.handle_open_named_input(
                 *view_id,
                 label.clone(),

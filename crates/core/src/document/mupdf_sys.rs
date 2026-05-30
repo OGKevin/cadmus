@@ -81,7 +81,7 @@ pub enum FzImage {}
 #[link(name = "mupdf")]
 #[link(name = "mupdf_wrapper", kind = "static")]
 
-extern "C" {
+unsafe extern "C" {
     pub fn fz_new_context_imp(
         alloc_ctx: *const FzAllocContext,
         locks_ctx: *const FzLocksContext,

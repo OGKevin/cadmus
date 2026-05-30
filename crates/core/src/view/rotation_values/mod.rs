@@ -111,7 +111,7 @@ impl View for RotationValues {
                     let startup_rotation = self.taps[CORNERS_COUNT..2 * CORNERS_COUNT]
                         .iter()
                         .enumerate()
-                        .min_by_key(|(_, &pt)| first.dist2(pt))
+                        .min_by_key(|&(_, &pt)| first.dist2(pt))
                         .map(|(i, _)| i)
                         .unwrap();
                     let origin = self.taps[CORNERS_COUNT..2 * CORNERS_COUNT]

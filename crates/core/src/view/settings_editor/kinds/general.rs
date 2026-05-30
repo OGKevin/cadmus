@@ -54,7 +54,7 @@ impl SettingKind for Locale {
         settings: &mut Settings,
         _bus: &mut Bus,
     ) -> (Option<String>, bool) {
-        if let Event::Select(EntryId::SetLocale(ref locale)) = evt {
+        if let Event::Select(EntryId::SetLocale(locale)) = evt {
             settings.locale = locale.clone();
             crate::i18n::init(locale.as_ref());
             let display = locale
@@ -106,7 +106,7 @@ impl SettingKind for KeyboardLayout {
         settings: &mut Settings,
         _bus: &mut Bus,
     ) -> (Option<String>, bool) {
-        if let Event::Select(EntryId::SetKeyboardLayout(ref layout)) = evt {
+        if let Event::Select(EntryId::SetKeyboardLayout(layout)) = evt {
             settings.keyboard_layout = layout.clone();
             return (Some(layout.clone()), true);
         }

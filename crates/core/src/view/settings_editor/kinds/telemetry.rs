@@ -117,7 +117,7 @@ impl SettingKind for LogLevel {
         settings: &mut Settings,
         _bus: &mut Bus,
     ) -> (Option<String>, bool) {
-        if let Event::Select(EntryId::SetLogLevel(ref level)) = evt {
+        if let Event::Select(EntryId::SetLogLevel(level)) = evt {
             settings.logging.level = level.to_string();
             return (Some(Self::level_to_i18n(level)), true);
         }
