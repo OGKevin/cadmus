@@ -1,7 +1,25 @@
 ---
 name: clippy-resolver
 description: Resolves Clippy warnings in PRs by fixing idiomatic Rust issues without using `allow` blocks, ensuring full build and test compliance
-tools: [vscode, execute, read, agent, edit, search, web, browser, github.vscode-pull-request-github/issue_fetch, github.vscode-pull-request-github/labels_fetch, github.vscode-pull-request-github/notification_fetch, github.vscode-pull-request-github/doSearch, github.vscode-pull-request-github/activePullRequest, github.vscode-pull-request-github/pullRequestStatusChecks, github.vscode-pull-request-github/openPullRequest, todo]
+tools:
+  [
+    vscode,
+    execute,
+    read,
+    agent,
+    edit,
+    search,
+    web,
+    browser,
+    github.vscode-pull-request-github/issue_fetch,
+    github.vscode-pull-request-github/labels_fetch,
+    github.vscode-pull-request-github/notification_fetch,
+    github.vscode-pull-request-github/doSearch,
+    github.vscode-pull-request-github/activePullRequest,
+    github.vscode-pull-request-github/pullRequestStatusChecks,
+    github.vscode-pull-request-github/openPullRequest,
+    todo,
+  ]
 ---
 
 # Rust Clippy Warning Resolver
@@ -37,4 +55,3 @@ cargo xtask test --features default
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --check
 ```
-

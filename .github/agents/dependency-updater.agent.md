@@ -1,7 +1,25 @@
 ---
 name: dependency-updater
 description: Resolves Renovate/Dependabot dependency update failures by fixing version constraints, API changes, and ensuring full build/test/format compliance
-tools: [vscode, execute, read, agent, edit, search, web, browser, github.vscode-pull-request-github/issue_fetch, github.vscode-pull-request-github/labels_fetch, github.vscode-pull-request-github/notification_fetch, github.vscode-pull-request-github/doSearch, github.vscode-pull-request-github/activePullRequest, github.vscode-pull-request-github/pullRequestStatusChecks, github.vscode-pull-request-github/openPullRequest, todo]
+tools:
+  [
+    vscode,
+    execute,
+    read,
+    agent,
+    edit,
+    search,
+    web,
+    browser,
+    github.vscode-pull-request-github/issue_fetch,
+    github.vscode-pull-request-github/labels_fetch,
+    github.vscode-pull-request-github/notification_fetch,
+    github.vscode-pull-request-github/doSearch,
+    github.vscode-pull-request-github/activePullRequest,
+    github.vscode-pull-request-github/pullRequestStatusChecks,
+    github.vscode-pull-request-github/openPullRequest,
+    todo,
+  ]
 ---
 
 # Rust Dependency Update Specialist
@@ -62,7 +80,7 @@ cargo build --all-features 2>&1
 
 When you see errors like:
 
-```
+```text
 error: failed to select a version for the requirement `rand_core = "^0.9.0"`
 candidate versions found which didn't match: 0.10.0
 required by package `rand_xoshiro v0.7.0`
@@ -143,7 +161,7 @@ cargo clippy --all-features -- -D warnings
 
 When committing fixes, use this format:
 
-```
+```text
 chore(deps): resolve {package} {old_version} -> {new_version} update
 
 - Update {related_package} to {version} for compatibility
@@ -163,16 +181,16 @@ when those packages are declared in **multiple** `Cargo.toml` files within the s
 **Symptom:** Renovate runs `cargo update --manifest-path <crate>/Cargo.toml --package pkg@old+meta --precise new`
 once per manifest file. The first run succeeds and rewrites `Cargo.lock`. The second run then fails:
 
-```
+```text
 error: package ID specification `pkg@old+meta` did not match any packages
 ```
 
 because `old+meta` no longer exists after the first run.
 
-See: https://github.com/renovatebot/renovate/discussions/42208
+See: <https://github.com/renovatebot/renovate/discussions/42208>
 
 **Fix:** When you encounter this failure pattern, run `cargo update` from the workspace root,
-targeting the *new* version that was already written into `Cargo.lock` by the first run:
+targeting the _new_ version that was already written into `Cargo.lock` by the first run:
 
 ```bash
 cargo update -p pkg@<new-version>+<meta> --precise <new-version>

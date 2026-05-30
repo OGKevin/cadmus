@@ -21,7 +21,7 @@ use std::path::Path;
 
 use self::dictreader::DictReader;
 use self::indexing::IndexReader;
-pub(crate) use self::indexing::{apply_transform, normalize, Entry};
+pub(crate) use self::indexing::{Entry, apply_transform, normalize};
 use crate::db::Database;
 use crate::helpers::Fp;
 

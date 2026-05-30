@@ -6,11 +6,11 @@
 use levenshtein::levenshtein;
 use sqlx::SqlitePool;
 
-use crate::db::runtime::RUNTIME;
 use crate::db::Database;
+use crate::db::runtime::RUNTIME;
 
-use super::indexing::{Entry, IndexReader};
 use super::Metadata;
+use super::indexing::{Entry, IndexReader};
 
 /// Escapes SQLite LIKE wildcards (`%`, `_`) and the escape character (`\`)
 /// so a user-supplied prefix is matched literally.

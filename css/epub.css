@@ -1,97 +1,112 @@
 a {
-	color: #444;
+  color: #444;
 }
 
-i, em, cite, var, address {
-	font-style: italic;
+i,
+em,
+cite,
+var,
+address {
+  font-style: italic;
 }
 
-b, strong {
-	font-weight: bold;
+b,
+strong {
+  font-weight: bold;
 }
 
 h1 {
-	font-size: 2em;
-	margin: 0.67em 0;
+  font-size: 2em;
+  margin: 0.67em 0;
 }
 
 h2 {
-	font-size: 1.5em;
-	margin: 0.75em 0;
+  font-size: 1.5em;
+  margin: 0.75em 0;
 }
 
 h3 {
-	font-size: 1.17em;
-	margin: 0.83em 0;
+  font-size: 1.17em;
+  margin: 0.83em 0;
 }
 
-h4, p, blockquote, dl {
-	margin: 1.12em 0;
+h4,
+p,
+blockquote,
+dl {
+  margin: 1.12em 0;
 }
 
 h5 {
-	font-size: 0.83em;
-	margin: 1.5em 0;
+  font-size: 0.83em;
+  margin: 1.5em 0;
 }
 
 h6 {
-	font-size: 0.75em;
-	margin: 1.67em 0;
+  font-size: 0.75em;
+  margin: 1.67em 0;
 }
 
 hr {
-	margin: 0.5em 0;
+  margin: 0.5em 0;
 }
 
 dt {
-	margin-top: 1.12em;
+  margin-top: 1.12em;
 }
 
 dd {
-	margin-left: 1.5em;
+  margin-left: 1.5em;
 }
 
-pre, code, samp, kbd {
-	font-family: monospace;
-	font-size: 0.891em;
+pre,
+code,
+samp,
+kbd {
+  font-family: monospace;
+  font-size: 0.891em;
 }
 
-ul, ol {
-	margin-left: 1.5em;
-	margin-top: 0.6rem;
-	margin-bottom: 0.6rem;
+ul,
+ol {
+  margin-left: 1.5em;
+  margin-top: 0.6rem;
+  margin-bottom: 0.6rem;
 }
 
-li > ul, li > ol {
-	margin-top: 0;
-	margin-bottom: 0;
+li > ul,
+li > ol {
+  margin-top: 0;
+  margin-bottom: 0;
 }
 
 svg {
-	text-align: center;
+  text-align: center;
 }
 
-sub, sup {
-	font-size: 0.83em;
+sub,
+sup {
+  font-size: 0.83em;
 }
 
 sub {
-	vertical-align: sub;
+  vertical-align: sub;
 }
 
 sup {
-	vertical-align: super;
+  vertical-align: super;
 }
 
 table {
-	text-align: left;
+  text-align: left;
 }
 
 th {
-	font-weight: bold;
-	text-align: center;
+  font-weight: bold;
+  text-align: center;
 }
 
-th, td {
-	padding: 0.67em;
+th,
+td {
+  padding: 0.67em;
 }

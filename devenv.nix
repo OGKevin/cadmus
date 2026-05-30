@@ -818,13 +818,76 @@ in
     cargo test --workspace
   '';
 
-  git-hooks.hooks = {
-    actionlint.enable = true;
-    shellcheck.enable = true;
-    yamllint = {
-      enable = true;
-      files = "^(\\.coderabbit\\.yaml|\\.yamllint\\.ya?ml)$";
+  treefmt = {
+    enable = true;
+    config = {
+      programs = {
+        prettier.enable = true;
+        rustfmt.enable = true;
+        shellcheck.enable = true;
+        shfmt.enable = true;
+        yamllint = {
+          enable = true;
+          settings.extends = "default";
+          settings.rules = {
+            line-length = "disable";
+            comments = "disable";
+            document-start = "disable";
+            new-line-at-end-of-file = "disable";
+            truthy = "disable";
+          };
+        };
+        rumdl-check.enable = true;
+      };
+
+      settings = {
+        excludes = [
+          ".sqlx/**"
+          "doc/**"
+        ];
+        formatter = {
+          # The treefmt-nix shfmt module does not expose a case-indent option,
+          # so we override the formatter directly to match CI's -ci flag.
+          shfmt = {
+            command = "${pkgs.shfmt}/bin/shfmt";
+            options = [
+              "-i"
+              "2"
+              "-ci"
+              "-w"
+            ];
+            includes = [
+              "*.sh"
+              "*.bash"
+              "*.envrc"
+              "*.envrc.*"
+            ];
+          };
+
+          # actionlint does not support ignore patterns in its config file;
+          # the -ignore flag must be passed on the command line. We define the
+          # formatter manually so we can suppress the false positive that arises
+          # from YAML anchors: the step ID 'rust-toolchain' is defined in every
+          # job that expands the anchor but actionlint cannot resolve it
+          # statically from the anchor body alone.
+          actionlint = {
+            command = "${pkgs.actionlint}/bin/actionlint";
+            options = [
+              "-ignore"
+              ''"rust-toolchain" is not defined in object type''
+            ];
+            includes = [
+              ".github/workflows/*.yml"
+              ".github/workflows/*.yaml"
+            ];
+          };
+        };
+      };
     };
+  };
+
+  git-hooks.hooks = {
+    treefmt.enable = true;
     coderabbit-schema = {
       enable = true;
       name = "CodeRabbit schema";
@@ -832,15 +895,6 @@ in
       entry = "${pkgs.check-jsonschema}/bin/check-jsonschema --schemafile https://coderabbit.ai/integrations/schema.v2.json .coderabbit.yaml";
       pass_filenames = false;
     };
-    shfmt = {
-      enable = true;
-      settings = {
-        indent = 2;
-        case-indent = true;
-      };
-    };
-    markdownlint.enable = true;
-    prettier.enable = true;
     cargo-test = {
       enable = true;
       name = "cargo test (default features)";

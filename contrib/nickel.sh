@@ -5,10 +5,10 @@ export QT_GSTREAMER_PLAYBIN_AUDIOSINK=alsasink
 export QT_GSTREAMER_PLAYBIN_AUDIOSINK_DEVICE_PARAMETER=bluealsa:DEV=00:00:00:00:00:00
 
 (
-	if [ "$PLATFORM" = "freescale" ] || [ "$PLATFORM" = "mx50-ntx" ] || [ "$PLATFORM" = "mx6sl-ntx" ]; then
-		usleep 400000
-	fi
-	/etc/init.d/on-animator.sh
+  if [ "$PLATFORM" = "freescale" ] || [ "$PLATFORM" = "mx50-ntx" ] || [ "$PLATFORM" = "mx6sl-ntx" ]; then
+    usleep 400000
+  fi
+  /etc/init.d/on-animator.sh
 ) &
 
 # Let Nickel remounts the SD card read only.

@@ -1,11 +1,11 @@
 .dictname {
-	margin-top: 1.5em;
-	text-align: center;
-	font-feature-settings: "smcp" "c2sc" "onum";
-	letter-spacing: 0.07em;
+  margin-top: 1.5em;
+  text-align: center;
+  font-feature-settings: "smcp" "c2sc" "onum";
+  letter-spacing: 0.07em;
 }
 
 .headword {
-	margin-top: 1.0em;
-	font-weight: bold;
+  margin-top: 1em;
+  font-weight: bold;
 }

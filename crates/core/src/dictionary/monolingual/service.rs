@@ -7,7 +7,7 @@
 use super::client::MonolingualClient;
 use super::db::Db;
 use super::errors::MonolingualError;
-use super::metadata::{download_url, download_url_no_etym, DictionariesResponse, DictionaryEntry};
+use super::metadata::{DictionariesResponse, DictionaryEntry, download_url, download_url_no_etym};
 use crate::db::Database;
 use std::collections::HashSet;
 use std::fs;

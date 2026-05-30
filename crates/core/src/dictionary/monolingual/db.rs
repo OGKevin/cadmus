@@ -8,9 +8,9 @@
 //! of each dictionary is currently installed on the device.
 
 use super::metadata::DictionaryEntry;
+use crate::db::Database;
 use crate::db::runtime::RUNTIME;
 use crate::db::types::UnixTimestamp;
-use crate::db::Database;
 use anyhow::Error;
 use sqlx::SqlitePool;
 

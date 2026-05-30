@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Don't set the framebuffer's depth.
 # unset CADMUS_SET_FRAMEBUFFER_DEPTH
 

@@ -4,8 +4,8 @@
 # configured at build-time and many ARM builds of dropbear have weird locations.
 # In order to specify a location, we need to generate the key manually.
 if [ ! -e /etc/dropbear/dropbear_ecdsa_host_key ]; then
-	mkdir -p /etc/dropbear
-	/mnt/onboard/.adds/bin/dropbearkey -t ecdsa -f /etc/dropbear/dropbear_ecdsa_host_key
+  mkdir -p /etc/dropbear
+  /mnt/onboard/.adds/bin/dropbearkey -t ecdsa -f /etc/dropbear/dropbear_ecdsa_host_key
 fi
 
 # Add `-n` to skip password check, for initial user creation or password setting.

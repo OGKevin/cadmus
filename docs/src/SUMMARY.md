@@ -18,9 +18,10 @@
 
 ---
 
-# Contributor Guide
+## Contributor Guide
 
 - [Development Environment](contributing/devenv-setup.md)
+- [Code Style and Linting](contributing/code-style.md)
 - [Event System](contributing/event-system.md)
 - [Telemetry](contributing/telemetry/index.md)
   - [Logging](contributing/telemetry/logging.md)
@@ -36,7 +37,7 @@
 
 ---
 
-# Investigations
+## Investigations
 
 - [Intro](investigations/index.md)
   - [DHCP IP Address Changes on WiFi Toggle](investigations/kobo/issue-51-dhcp-investigation.md)

@@ -4,9 +4,9 @@
 //! It handles touch screen power state transitions, filesystem buffer flushes,
 //! and writing to kernel sysfs nodes to trigger suspend to RAM.
 
+use crate::device::Model;
 use crate::device::power::error::PowerError;
 use crate::device::power::manager::PowerManager;
-use crate::device::Model;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;

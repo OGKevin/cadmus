@@ -23,7 +23,6 @@ All locations must stay in sync:
 - `contrib/Settings-sample.toml`
 - `crates/core/src/settings/*`
 - `docs/src/settings/*`
-
 - [ ] If settings structures, fields, or defaults changed, do the docs match?
 
 ## OTA Documentation

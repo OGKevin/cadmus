@@ -218,7 +218,7 @@ impl<B: Read + Seek> DictReaderDz<B> {
         // validity check. The first 10 bytes of FEXTRA are header information, the rest are 2-byte,
         // little-endian numbers.
         let numbers_chunks_which_would_fit = ((fextra.len() - 10) / 2) as u16; // each chunk represented by u16 == 2 bytes
-                                                                               // Check that number of claimed chunks fits within given size for subfield.
+        // Check that number of claimed chunks fits within given size for subfield.
         if numbers_chunks_which_would_fit != chunk_count {
             return Err(DictError::InvalidFileFormat(
                 format!(
@@ -263,8 +263,12 @@ impl<B: Read + Seek> DictReaderDz<B> {
             chunk_offsets.push(end_compressed_data);
             end_compressed_data += compressed_len;
         }
-        assert_eq!(chunk_offsets.len() as u16, chunk_count, "The read number of compressed chunks in \
-                the .dz file must be equivalent to the number of chunks actually found in the file.\n");
+        assert_eq!(
+            chunk_offsets.len() as u16,
+            chunk_count,
+            "The read number of compressed chunks in \
+                the .dz file must be equivalent to the number of chunks actually found in the file.\n"
+        );
 
         // Read uncompressed file length.
         buffered_dzdict.seek(SeekFrom::Start(end_compressed_data as u64))?;

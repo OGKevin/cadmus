@@ -9,7 +9,7 @@ use tracing::{debug, error, info, warn};
 use nix::unistd::sync;
 
 #[cfg(target_os = "linux")]
-use nix::mount::{mount, umount2, MntFlags, MsFlags};
+use nix::mount::{MntFlags, MsFlags, mount, umount2};
 #[cfg(target_os = "linux")]
 use procfs;
 #[cfg(target_os = "linux")]

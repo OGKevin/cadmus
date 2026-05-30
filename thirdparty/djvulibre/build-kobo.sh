@@ -8,4 +8,4 @@ export CXXFLAGS="$CFLAGS"
 export CXX=${TRIPLE}-g++
 export AS=${TRIPLE}-as
 
-./autogen.sh --host=${TRIPLE} --disable-xmltools --disable-desktopfiles --with-jpeg=${JPEG_DIR} && make
+./autogen.sh --host=${TRIPLE} --disable-xmltools --disable-desktopfiles --with-jpeg="${JPEG_DIR}" && make

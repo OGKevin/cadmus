@@ -20,7 +20,7 @@
 //! # }
 //! ```
 
-use crate::device::metadata::{detect_platform, DeviceMetadata, Platform};
+use crate::device::metadata::{DeviceMetadata, Platform, detect_platform};
 use crate::device::usb::error::UsbError;
 use crate::device::usb::manager::UsbManager;
 
