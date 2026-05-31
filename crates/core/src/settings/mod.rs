@@ -328,7 +328,6 @@ impl Default for LibrarySettings {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, rename_all = "kebab-case")]
 pub struct ImportSettings {
-    pub startup_trigger: bool,
     pub sync_metadata: bool,
     pub metadata_kinds: FxHashSet<String>,
     #[serde(deserialize_with = "deserialize_file_extension_set")]
@@ -887,7 +886,6 @@ impl Default for ReaderSettings {
 impl Default for ImportSettings {
     fn default() -> Self {
         ImportSettings {
-            startup_trigger: true,
             sync_metadata: true,
             metadata_kinds: ["epub", "pdf", "djvu"]
                 .iter()
@@ -1188,7 +1186,6 @@ share = "/path/to/custom.png"
     #[test]
     fn test_allowed_kinds_deserializes_known_extensions() {
         let toml_str = r#"
-startup-trigger = true
 sync-metadata = true
 metadata-kinds = ["epub"]
 allowed-kinds = ["epub", "pdf", "cbz"]
@@ -1204,7 +1201,6 @@ allowed-kinds = ["epub", "pdf", "cbz"]
     #[test]
     fn test_allowed_kinds_silently_drops_unknown_extensions() {
         let toml_str = r#"
-startup-trigger = true
 sync-metadata = true
 metadata-kinds = []
 allowed-kinds = ["epub", "unknown-format", "another-unknown"]

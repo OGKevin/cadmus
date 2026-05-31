@@ -1,7 +1,8 @@
+use crate::db::types::{FileSize, UnixTimestamp};
 use crate::document::file_kind;
 use crate::fl;
 use crate::helpers::{Fingerprint, Fp, IsHidden};
-use crate::library::db::Db as LibraryDb;
+use crate::library::db::{Db as LibraryDb, PathUpdate};
 use crate::metadata::{FileInfo, Info, extract_metadata_from_document};
 use crate::settings::ImportSettings;
 use crate::task::ShutdownSignal;
@@ -9,7 +10,7 @@ use crate::view::{Event, NotificationEvent, ViewId};
 use fxhash::FxHashMap;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, UNIX_EPOCH};
 use tracing::{debug, error, info};
 use walkdir::{DirEntry, WalkDir};
 
@@ -73,7 +74,7 @@ struct ScanContext<'a> {
 
 struct ScanResult {
     books_to_insert: Vec<(Fp, Info)>,
-    path_updates: Vec<(Fp, PathBuf, PathBuf)>,
+    path_updates: Vec<PathUpdate>,
     books_to_delete: Vec<Fp>,
     pending_relocations: Vec<PendingRelocation>,
     thumbnails_to_delete: Vec<Fp>,
@@ -109,7 +110,15 @@ fn walk_files(home: &Path) -> Vec<DirEntry> {
 #[cfg_attr(
     feature = "tracing",
     tracing::instrument(
-        skip(home, settings, ctx, tracker, handles_by_fp, handles_by_path),
+        skip(
+            home,
+            settings,
+            ctx,
+            tracker,
+            mtime_by_abs,
+            handles_by_fp,
+            handles_by_path
+        ),
         fields(total)
     )
 )]
@@ -117,21 +126,30 @@ fn scan_entries(
     home: &Path,
     entries: &[DirEntry],
     settings: &ImportSettings,
+    force: bool,
     ctx: &ScanContext<'_>,
     tracker: &mut ProgressTracker,
-    handles_by_fp: &mut FxHashMap<Fp, PathBuf>,
+    mtime_by_abs: &FxHashMap<PathBuf, (UnixTimestamp, FileSize)>,
+    handles_by_fp: &mut FxHashMap<Fp, (PathBuf, PathBuf)>,
     handles_by_path: &mut FxHashMap<PathBuf, Fp>,
 ) -> Option<ScanResult> {
     let total = entries.len();
     tracing::Span::current().record("total", total);
+    let mut skipped_count = 0u32;
+    let mut fingerprinted_count = 0u32;
+    let mut mtime_miss_count = 0u32;
+    debug!(mtime_map_size = mtime_by_abs.len(), "starting scan");
 
     let mut books_to_insert: Vec<(Fp, Info)> = Vec::new();
-    let mut path_updates: Vec<(Fp, PathBuf, PathBuf)> = Vec::new();
+    let mut path_updates: Vec<PathUpdate> = Vec::new();
     let mut books_to_delete: Vec<Fp> = Vec::new();
     let mut pending_relocations: Vec<PendingRelocation> = Vec::new();
     let mut thumbnails_to_delete: Vec<Fp> = Vec::new();
 
     for (idx, entry) in entries.iter().enumerate() {
+        #[cfg(feature = "tracing")]
+        let _span = tracing::info_span!("procssing entry", entry = ?entry).entered();
+
         if ctx.shutdown.should_stop() {
             tracing::info!("import scan interrupted by shutdown");
             return None;
@@ -149,8 +167,48 @@ fn scan_entries(
             continue;
         }
 
+        let file_meta = match entry.metadata() {
+            Ok(m) => m,
+            Err(e) => {
+                error!(path = ?path, error = %e, "failed to read metadata, skipping");
+                send_progress(ctx.hub, ctx.notif_id, tracker, idx, total);
+                continue;
+            }
+        };
+
+        let current_size = FileSize::from(file_meta.len() as i64);
+        let current_mtime = file_meta
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+            .map(|d| UnixTimestamp::from((d.as_secs().div_ceil(2) * 2) as i64));
+
+        if !force && let Some(mtime) = current_mtime {
+            match mtime_by_abs.get(path) {
+                Some(&(stored_mtime, stored_size)) => {
+                    if stored_mtime == mtime && stored_size == current_size {
+                        skipped_count += 1;
+                        debug!(path = %relat.display(), "mtime and size unchanged, skipping fingerprint");
+                        send_progress(ctx.hub, ctx.notif_id, tracker, idx, total);
+                        continue;
+                    }
+                }
+                None => {
+                    mtime_miss_count += 1;
+                    debug!(
+                        path = %relat.display(),
+                        abs = %path.display(),
+                        "mtime lookup miss: file not in mtime_by_abs map"
+                    );
+                }
+            }
+        }
+
         let fp = match path.fingerprint() {
-            Ok(fp) => fp,
+            Ok(fp) => {
+                fingerprinted_count += 1;
+                fp
+            }
             Err(e) => {
                 error!(path = ?path, error = %e, "failed to compute fingerprint, skipping");
                 send_progress(ctx.hub, ctx.notif_id, tracker, idx, total);
@@ -159,19 +217,37 @@ fn scan_entries(
         };
 
         if handles_by_fp.contains_key(&fp) {
-            if relat != handles_by_fp[&fp] {
+            let (stored_relat, stored_abs) = handles_by_fp[&fp].clone();
+            let path_changed = relat != stored_relat;
+            let abs_stale = path != stored_abs;
+
+            if path_changed {
                 debug!(
                     fp = %fp,
-                    old_path = %handles_by_fp[&fp].display(),
+                    old_path = %stored_relat.display(),
                     new_path = %relat.display(),
                     "updated book path"
                 );
-                let old_path = handles_by_fp.remove(&fp).unwrap();
-                handles_by_path.remove(&old_path);
-                handles_by_fp.insert(fp, relat.to_path_buf());
+                handles_by_path.remove(&stored_relat);
+                handles_by_fp.insert(fp, (relat.to_path_buf(), path.to_path_buf()));
                 handles_by_path.insert(relat.to_path_buf(), fp);
-                path_updates.push((fp, relat.to_path_buf(), path.to_path_buf()));
+            } else if abs_stale {
+                debug!(
+                    fp = %fp,
+                    path = %relat.display(),
+                    "healing stale absolute_path"
+                );
+                handles_by_fp.insert(fp, (relat.to_path_buf(), path.to_path_buf()));
             }
+
+            path_updates.push(PathUpdate {
+                fp,
+                relat: relat.to_path_buf(),
+                abs: path.to_path_buf(),
+                mtime: current_mtime,
+                file_size: Some(current_size),
+            });
+
             send_progress(ctx.hub, ctx.notif_id, tracker, idx, total);
             continue;
         }
@@ -186,43 +262,59 @@ fn scan_entries(
 
             handles_by_fp.remove(&old_fp);
             handles_by_path.remove(relat);
-            handles_by_fp.insert(fp, relat.to_path_buf());
+            handles_by_fp.insert(fp, (relat.to_path_buf(), path.to_path_buf()));
             handles_by_path.insert(relat.to_path_buf(), fp);
             books_to_delete.push(old_fp);
 
             pending_relocations.push(PendingRelocation::FingerprintChanged {
                 new_fp: fp,
                 old_fp,
-                file_size: entry.metadata().map(|m| m.len()).unwrap_or(0),
+                file_size: i64::from(current_size) as u64,
             });
 
             thumbnails_to_delete.push(old_fp);
+            path_updates.push(PathUpdate {
+                fp,
+                relat: relat.to_path_buf(),
+                abs: path.to_path_buf(),
+                mtime: current_mtime,
+                file_size: Some(current_size),
+            });
             send_progress(ctx.hub, ctx.notif_id, tracker, idx, total);
             continue;
         }
 
         if let Some(kind) = allowed_kind {
             info!(fp = %fp, path = %relat.display(), "added new entry");
-            let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
-            let mut info = Info {
+            let size = i64::from(current_size) as u64;
+            let mut book_info = Info {
                 file: FileInfo {
                     path: relat.to_path_buf(),
                     absolute_path: path.to_path_buf(),
                     kind: kind.as_str().to_owned(),
                     size,
+                    mtime: current_mtime.map(i64::from),
                 },
                 ..Default::default()
             };
-            if settings.metadata_kinds.contains(&info.file.kind) {
-                extract_metadata_from_document(home, &mut info);
+            if settings.metadata_kinds.contains(&book_info.file.kind) {
+                extract_metadata_from_document(home, &mut book_info);
             }
-            handles_by_fp.insert(fp, relat.to_path_buf());
+            handles_by_fp.insert(fp, (relat.to_path_buf(), path.to_path_buf()));
             handles_by_path.insert(relat.to_path_buf(), fp);
-            books_to_insert.push((fp, info));
+            books_to_insert.push((fp, book_info));
         }
 
         send_progress(ctx.hub, ctx.notif_id, tracker, idx, total);
     }
+
+    info!(
+        total,
+        skipped = skipped_count,
+        fingerprinted = fingerprinted_count,
+        mtime_misses = mtime_miss_count,
+        "scan complete"
+    );
 
     Some(ScanResult {
         books_to_insert,
@@ -291,11 +383,11 @@ fn resolve_relocations(
 }
 
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(handles_by_fp, home)))]
-fn find_deleted_books(handles_by_fp: &FxHashMap<Fp, PathBuf>, home: &Path) -> Vec<Fp> {
+fn find_deleted_books(handles_by_fp: &FxHashMap<Fp, (PathBuf, PathBuf)>, home: &Path) -> Vec<Fp> {
     handles_by_fp
         .iter()
-        .filter(|(_, relat)| relat.as_os_str().is_empty() || !home.join(relat).exists())
-        .map(|(fp, relat)| {
+        .filter(|(_, (relat, _))| relat.as_os_str().is_empty() || !home.join(relat).exists())
+        .map(|(fp, (relat, _))| {
             info!(fp = %fp, path = %relat.display(), "removing deleted entry");
             *fp
         })
@@ -316,7 +408,7 @@ fn flush_to_db(
     db: &LibraryDb,
     library_id: i64,
     books_to_insert: Vec<(Fp, Info)>,
-    path_updates: Vec<(Fp, PathBuf, PathBuf)>,
+    path_updates: Vec<PathUpdate>,
     books_to_delete: Vec<Fp>,
     thumbnails_to_delete: Vec<Fp>,
 ) {
@@ -357,7 +449,12 @@ fn flush_to_db(
     }
 }
 
-/// Runs a full directory scan and syncs the database for one library.
+/// Runs a directory scan and syncs the database for one library.
+///
+/// When `force` is `false` (incremental mode), files whose stored `mtime` and
+/// `file_size` have not changed since the last import are skipped without
+/// re-fingerprinting. When `force` is `true` every file is re-fingerprinted
+/// regardless of its stored values.
 ///
 /// Sends pinned progress notifications to `hub` via `notif_id` while running.
 /// Checks `shutdown` between entries and exits early if shutdown is requested.
@@ -371,6 +468,7 @@ pub fn run(
     library_id: i64,
     home: &Path,
     settings: &ImportSettings,
+    force: bool,
     hub: &Sender<Event>,
     notif_id: ViewId,
     shutdown: &ShutdownSignal,
@@ -390,9 +488,20 @@ pub fn run(
         }
     };
 
-    let mut handles_by_fp: FxHashMap<Fp, PathBuf> = handles.iter().cloned().collect();
+    let mut handles_by_fp: FxHashMap<Fp, (PathBuf, PathBuf)> = handles
+        .iter()
+        .map(|h| (h.fp, (h.relat.clone(), h.abs.clone())))
+        .collect();
     let mut handles_by_path: FxHashMap<PathBuf, Fp> =
-        handles.into_iter().map(|(fp, p)| (p, fp)).collect();
+        handles.iter().map(|h| (h.relat.clone(), h.fp)).collect();
+    let mtime_by_abs: FxHashMap<PathBuf, (UnixTimestamp, FileSize)> = handles
+        .iter()
+        .filter_map(|h| {
+            let mtime = h.mtime?;
+            let size = h.file_size?;
+            Some((h.abs.clone(), (mtime, size)))
+        })
+        .collect();
 
     let purged_fps = db
         .delete_books_with_disallowed_kinds(library_id, &settings.allowed_kinds)
@@ -402,8 +511,8 @@ pub fn run(
         });
 
     for fp in &purged_fps {
-        if let Some(path) = handles_by_fp.remove(fp) {
-            handles_by_path.remove(&path);
+        if let Some((relat, _abs)) = handles_by_fp.remove(fp) {
+            handles_by_path.remove(&relat);
         }
     }
 
@@ -427,8 +536,10 @@ pub fn run(
         home,
         &entries,
         settings,
+        force,
         &ctx,
         &mut tracker,
+        &mtime_by_abs,
         &mut handles_by_fp,
         &mut handles_by_path,
     ) else {
@@ -488,6 +599,7 @@ mod tests {
             lib.library_id,
             dir,
             &ImportSettings::default(),
+            false,
             &tx,
             notif_id,
             shutdown,
@@ -542,6 +654,7 @@ mod tests {
             lib.library_id,
             dir.path(),
             &ImportSettings::default(),
+            false,
             &tx,
             notif_id,
             &shutdown,
@@ -640,6 +753,7 @@ mod tests {
                 absolute_path: dir.path().join("missing.epub"),
                 kind: "epub".to_string(),
                 size: 1,
+                mtime: None,
             },
             ..Default::default()
         };
@@ -649,7 +763,10 @@ mod tests {
             .expect("insert library book");
 
         let handles = lib.db.list_book_handles(lib.library_id).expect("handles");
-        let handles_by_fp: FxHashMap<Fp, PathBuf> = handles.into_iter().collect();
+        let handles_by_fp: FxHashMap<Fp, (PathBuf, PathBuf)> = handles
+            .into_iter()
+            .map(|h| (h.fp, (h.relat, h.abs)))
+            .collect();
 
         assert_eq!(find_deleted_books(&handles_by_fp, dir.path()), vec![fp]);
     }
@@ -668,11 +785,6 @@ mod tests {
         let mut allowed: FxHashSet<FileExtension> = FxHashSet::default();
         allowed.insert(FileExtension::Epub);
 
-        let settings = ImportSettings {
-            allowed_kinds: allowed,
-            ..ImportSettings::default()
-        };
-
         let lib = Library::new(dir.path(), &db, "test").expect("library");
         let (tx, rx) = std::sync::mpsc::channel();
         let notif_id = ViewId::MessageNotif(0);
@@ -682,7 +794,8 @@ mod tests {
             &lib.db,
             lib.library_id,
             dir.path(),
-            &settings,
+            &ImportSettings::default(),
+            false,
             &tx,
             notif_id,
             &shutdown,
@@ -691,7 +804,7 @@ mod tests {
         let _events: Vec<Event> = rx.try_iter().collect();
 
         let handles = lib.db.list_book_handles(lib.library_id).expect("handles");
-        let paths: Vec<_> = handles.iter().map(|(_, p)| p.clone()).collect();
+        let paths: Vec<_> = handles.iter().map(|h| h.relat.clone()).collect();
 
         assert!(
             paths.iter().any(|p| p.ends_with("book.epub")),
@@ -724,6 +837,7 @@ mod tests {
             lib.library_id,
             dir.path(),
             &ImportSettings::default(),
+            false,
             &tx,
             notif_id,
             &shutdown,
@@ -748,6 +862,7 @@ mod tests {
             lib.library_id,
             dir.path(),
             &settings,
+            false,
             &tx2,
             notif_id,
             &shutdown,
@@ -759,7 +874,7 @@ mod tests {
             .db
             .list_book_handles(lib.library_id)
             .expect("handles after purge");
-        let paths: Vec<_> = handles.iter().map(|(_, p)| p.clone()).collect();
+        let paths: Vec<_> = handles.iter().map(|h| h.relat.clone()).collect();
 
         assert_eq!(handles.len(), 1, "only epub should remain after purge");
         assert!(

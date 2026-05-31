@@ -238,8 +238,8 @@ struct RunningTask {
 /// methods to stop individual tasks or all tasks at once.
 pub struct TaskManager {
     tasks: HashMap<TaskId, RunningTask>,
-    /// Library indices awaiting import while one is already running.
-    pending_import_indices: VecDeque<Option<usize>>,
+    /// Library indices awaiting import while one is already running. The bool is the `force` flag.
+    pending_import_indices: VecDeque<(Option<usize>, bool)>,
     /// Library indices awaiting thumbnail extraction while a run is in progress.
     pending_thumbnail_indices: VecDeque<Option<usize>>,
     /// Events from naturally finished tasks, waiting to be sent.
@@ -399,8 +399,11 @@ impl TaskManager {
         self.flush_buffered_events(hub);
 
         match evt {
-            Event::ImportLibrary { library_index } => {
-                self.schedule_import(*library_index, hub, database, settings);
+            Event::ImportLibrary {
+                library_index,
+                force,
+            } => {
+                self.schedule_import(*library_index, *force, hub, database, settings);
             }
             Event::ImportFinished { library_index } => {
                 self.drain_pending_imports(hub, database, settings);
@@ -422,13 +425,15 @@ impl TaskManager {
     fn schedule_import(
         &mut self,
         library_index: Option<usize>,
+        force: bool,
         hub: &Sender<Event>,
         database: &Database,
         settings: &Settings,
     ) {
         if self.is_running(&TaskId::Import) {
-            tracing::info!(library_index = ?library_index, "import already running, queueing");
-            self.pending_import_indices.push_back(library_index);
+            tracing::info!(library_index = ?library_index, force, "import already running, queueing");
+            self.pending_import_indices
+                .push_back((library_index, force));
             return;
         }
 
@@ -438,6 +443,7 @@ impl TaskManager {
             database.clone(),
             settings.clone(),
             library_index,
+            force,
         ));
 
         if let Err(e) = self.start(task, hub.clone()) {
@@ -457,10 +463,10 @@ impl TaskManager {
             return;
         }
 
-        let Some(next) = self.pending_import_indices.pop_front() else {
+        let Some((next, force)) = self.pending_import_indices.pop_front() else {
             return;
         };
-        self.schedule_import(next, hub, database, settings);
+        self.schedule_import(next, force, hub, database, settings);
     }
 
     /// Schedules a dictionary index scan, stopping any running instance first.
@@ -562,7 +568,7 @@ impl Drop for TaskManager {
 /// - [`wifi_status_monitor::WifiStatusMonitorTask`] - monitors WiFi status via dhcpcd-dbus (kobo only)
 /// - [`hello_world::HelloWorldTask`] - prints "Hello world!" every minute (test only)
 /// - [`dbus_monitor::DbusMonitorTask`] - monitors D-Bus signals (test + kobo only, when `settings.logging.enable_dbus_log` is true)
-/// - [`import::ImportTask`] - imports all libraries if `settings.import.startup_trigger` is set
+/// - [`import::ImportTask`] - runs an incremental import of all libraries on startup
 /// - [`dictionary_index::DictionaryIndexTask`] - indexes `.index` dictionary files into SQLite
 pub fn register_startup_tasks(
     manager: &mut TaskManager,
@@ -594,9 +600,7 @@ pub fn register_startup_tasks(
         }
     }
 
-    if settings.import.startup_trigger {
-        manager.schedule_import(None, &hub, database, settings);
-    }
+    manager.schedule_import(None, false, &hub, database, settings);
 
     let task = Box::new(dictionary_index::DictionaryIndexTask::new(database.clone()));
     if let Err(e) = manager.start(task, hub.clone()) {

@@ -962,8 +962,6 @@ fn run() -> Result<(), Error> {
         context.settings.frontlight_levels = context.frontlight.levels();
     }
 
-    context.library.flush();
-
     manager
         .save(&context.settings)
         .context("can't save settings")?;

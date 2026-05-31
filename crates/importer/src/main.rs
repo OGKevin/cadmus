@@ -172,7 +172,5 @@ fn main() -> Result<(), Error> {
         });
     }
 
-    library.flush();
-
     Ok(())
 }

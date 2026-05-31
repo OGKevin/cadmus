@@ -1,5 +1,7 @@
-use crate::db::types::{OptionalUuid7, UnixTimestamp, Uuid7};
+use crate::db::types::{FileSize, OptionalUuid7, UnixTimestamp, Uuid7};
+use crate::helpers::Fp;
 use sqlx::FromRow;
+use std::path::PathBuf;
 
 /// Database row for the books table
 #[derive(Debug, Clone, FromRow)]
@@ -20,6 +22,27 @@ pub struct BookRow {
     pub file_kind: String,
     pub file_size: i64,
     pub added_at: UnixTimestamp,
+}
+
+/// A book record loaded from the database at the start of an import scan.
+pub struct BookHandle {
+    pub fp: Fp,
+    pub relat: PathBuf,
+    pub abs: PathBuf,
+    pub mtime: Option<UnixTimestamp>,
+    pub file_size: Option<FileSize>,
+}
+
+/// A pending write that records a book's new paths and current mtime/size.
+///
+/// Accumulated during the scan and flushed to the database in a single
+/// batched transaction at the end, avoiding N individual fsyncs.
+pub struct PathUpdate {
+    pub fp: Fp,
+    pub relat: PathBuf,
+    pub abs: PathBuf,
+    pub mtime: Option<UnixTimestamp>,
+    pub file_size: Option<FileSize>,
 }
 
 /// Database row for the reading_states table

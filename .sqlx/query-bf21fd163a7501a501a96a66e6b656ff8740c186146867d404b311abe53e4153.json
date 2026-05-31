@@ -1,0 +1,44 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                SELECT lb.book_fingerprint AS \"fingerprint!: Fp\",\n                       lb.file_path        AS \"file_path!: String\",\n                       lb.absolute_path    AS \"absolute_path!: String\",\n                       lb.mtime            AS \"mtime?: UnixTimestamp\",\n                       lb.file_size        AS \"file_size?: FileSize\"\n                FROM library_books lb\n                WHERE lb.library_id = ?\n                ",
+  "describe": {
+    "columns": [
+      {
+        "name": "fingerprint!: Fp",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "file_path!: String",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "absolute_path!: String",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "mtime?: UnixTimestamp",
+        "ordinal": 3,
+        "type_info": "Integer"
+      },
+      {
+        "name": "file_size?: FileSize",
+        "ordinal": 4,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "bf21fd163a7501a501a96a66e6b656ff8740c186146867d404b311abe53e4153"
+}

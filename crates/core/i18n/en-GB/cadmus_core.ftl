@@ -22,6 +22,7 @@ notification-refresh-rate-invalid = Refresh rate must be a number between 0 and 
 
 # Common
 delete = Delete
+cancel = Cancel
 
 # Top Menu Strings
 top-menu-exit = Exit
@@ -41,20 +42,21 @@ settings-finished-action-close = Close
 settings-finished-action-goto-next = Go to Next
 
 # Settings - General
-settings-general-language = Language
-settings-general-keyboard-layout = Keyboard Layout
-settings-general-auto-suspend = Auto Suspend (minutes)
 settings-general-auto-power-off = Auto Power Off (days)
-settings-general-enable-sleep-cover = Enable Sleep Cover
-settings-general-enable-auto-share = Enable Auto Share
-settings-general-button-scheme = Button Scheme
-settings-general-settings-retention = Settings Retention
-settings-general-auto-suspend-input = Auto Suspend (minutes, 0 = never)
 settings-general-auto-power-off-input = Auto Power Off (days, 0 = never)
-settings-general-toggle-on = on
-settings-general-toggle-off = off
+settings-general-auto-suspend = Auto Suspend (minutes)
+settings-general-auto-suspend-input = Auto Suspend (minutes, 0 = never)
+settings-general-button-scheme = Button Scheme
+settings-general-enable-auto-share = Enable Auto Share
+settings-general-enable-sleep-cover = Enable Sleep Cover
+settings-general-keyboard-layout = Keyboard Layout
+settings-general-language = Language
 settings-general-never = Never
 settings-general-not-set = Not set
+settings-general-settings-retention = Settings Retention
+settings-general-toggle-off = off
+settings-general-toggle-on = on
+settings-general-trigger = Trigger
 settings-general-unknown = Unknown
 
 # Settings - Reader
@@ -88,7 +90,12 @@ settings-library-end-of-book-action = End of Book Action
 settings-library-inherit = Inherit
 
 # Settings - Import
-settings-import-startup-trigger = Import on Startup
+settings-import-force-full-import = Force Full Import
+settings-import-force-full-import-cancel = {cancel}
+settings-import-force-full-import-confirm = Re-import all the files from all your libraies.
+                                            This could take time and consume battery, it's
+                                            advisable to keep your device plugged in while this runs.
+settings-import-force-full-import-confirm-button = Re-import All
 settings-import-sync-metadata = Sync Metadata
 settings-import-allowed-kinds = Indexed File Types
 

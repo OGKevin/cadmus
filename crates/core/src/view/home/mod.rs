@@ -1404,16 +1404,7 @@ impl Home {
                 })
                 .collect();
 
-            let mut entries = vec![
-                EntryKind::SubMenu("Library".to_string(), libraries),
-                EntryKind::SubMenu(
-                    "Database".to_string(),
-                    vec![
-                        EntryKind::Command("Import".to_string(), EntryId::Import),
-                        EntryKind::Command("Flush".to_string(), EntryId::Flush),
-                    ],
-                ),
-            ];
+            let mut entries = vec![EntryKind::SubMenu("Library".to_string(), libraries)];
 
             let hooks: Vec<EntryKind> = context.settings.libraries[selected_library]
                 .hooks
@@ -1547,7 +1538,6 @@ impl Home {
                 Ok(()) => count += 1,
             }
         }
-        trash.flush();
         let message = format!(
             "Removed {} book{}.",
             count,
@@ -1595,7 +1585,6 @@ impl Home {
                 }
                 size -= info.file.size;
             }
-            trash.flush();
         } else {
             context.library.remove(path)?;
         }
@@ -1611,7 +1600,6 @@ impl Home {
             &library_settings.name,
         )?;
         context.library.copy_to(path, &mut library)?;
-        library.flush();
         Ok(())
     }
 
@@ -1629,7 +1617,6 @@ impl Home {
             &library_settings.name,
         )?;
         context.library.move_to(path, &mut library)?;
-        library.flush();
         self.refresh_visibles(true, false, rq, context);
         Ok(())
     }
@@ -1711,8 +1698,6 @@ impl Home {
             update_top_bar = true;
         }
 
-        context.library.flush();
-
         context.library = library;
         context.settings.selected_library = index;
 
@@ -1757,10 +1742,6 @@ impl Home {
     fn clean_up(&mut self, rq: &mut RenderQueue, context: &mut Context) {
         context.library.clean_up();
         self.refresh_visibles(true, false, rq, context);
-    }
-
-    fn flush(&mut self, context: &mut Context) {
-        context.library.flush();
     }
 
     fn terminate_fetchers(&mut self, path: &Path, update: bool, hub: &Hub, context: &mut Context) {
@@ -2120,20 +2101,8 @@ impl View for Home {
                 self.load_library(index, hub, rq, context);
                 true
             }
-            Event::Select(EntryId::Import) => {
-                let library_index = context.settings.selected_library;
-                hub.send(Event::ImportLibrary {
-                    library_index: Some(library_index),
-                })
-                .ok();
-                true
-            }
             Event::Select(EntryId::CleanUp) => {
                 self.clean_up(rq, context);
-                true
-            }
-            Event::Select(EntryId::Flush) => {
-                self.flush(context);
                 true
             }
             Event::FetcherAddDocument(_, ref info) => {

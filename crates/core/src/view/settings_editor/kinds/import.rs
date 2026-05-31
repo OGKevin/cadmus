@@ -5,42 +5,31 @@ use crate::fl;
 use crate::settings::{FileExtension, Settings};
 use crate::view::{Bus, EntryId, EntryKind, Event, ToggleEvent};
 
-/// Import on startup toggle setting
-pub struct ImportStartupTrigger;
+/// Force full library re-import action setting.
+pub struct ForceFullImport;
 
-impl SettingKind for ImportStartupTrigger {
+impl SettingKind for ForceFullImport {
     fn identity(&self) -> SettingIdentity {
-        SettingIdentity::ImportStartupTrigger
+        SettingIdentity::ForceFullImport
     }
 
     fn label(&self, _settings: &Settings) -> String {
-        fl!("settings-import-startup-trigger")
+        fl!("settings-import-force-full-import")
     }
 
-    fn fetch(&self, settings: &Settings) -> SettingData {
+    fn fetch(&self, _settings: &Settings) -> SettingData {
         SettingData {
-            value: settings.import.startup_trigger.to_string(),
-            widget: WidgetKind::Toggle {
-                left_label: fl!("settings-general-toggle-on"),
-                right_label: fl!("settings-general-toggle-off"),
-                enabled: settings.import.startup_trigger,
-                tap_event: Event::Toggle(ToggleEvent::Setting(
-                    ToggleSettings::ImportStartupTrigger,
-                )),
-            },
+            value: fl!("settings-general-trigger"),
+            widget: WidgetKind::ActionLabel(Event::Select(EntryId::RequestForceImport)),
         }
     }
 
     fn handle(
         &self,
-        evt: &Event,
-        settings: &mut Settings,
+        _evt: &Event,
+        _settings: &mut Settings,
         _bus: &mut Bus,
     ) -> (Option<String>, bool) {
-        if let Event::Toggle(ToggleEvent::Setting(ToggleSettings::ImportStartupTrigger)) = evt {
-            settings.import.startup_trigger = !settings.import.startup_trigger;
-            return (Some(settings.import.startup_trigger.to_string()), true);
-        }
         (None, false)
     }
 }
@@ -147,68 +136,8 @@ fn kinds_summary(selected: usize) -> String {
 mod tests {
     use super::*;
     use crate::settings::{FileExtension, Settings};
-    use crate::view::settings_editor::kinds::ToggleSettings;
-    use crate::view::{Bus, EntryKind, Event, ToggleEvent};
+    use crate::view::{Bus, EntryKind, Event};
     use std::collections::VecDeque;
-
-    mod import_startup_trigger {
-        use super::*;
-
-        #[test]
-        fn handle_toggle_disables_when_enabled() {
-            let setting = ImportStartupTrigger;
-            let mut settings = Settings::default();
-            settings.import.startup_trigger = true;
-            let mut bus: Bus = VecDeque::new();
-            let event = Event::Toggle(ToggleEvent::Setting(ToggleSettings::ImportStartupTrigger));
-
-            let result = setting.handle(&event, &mut settings, &mut bus);
-
-            assert!(result.0.is_some());
-            assert!(!settings.import.startup_trigger);
-        }
-
-        #[test]
-        fn handle_toggle_enables_when_disabled() {
-            let setting = ImportStartupTrigger;
-            let mut settings = Settings::default();
-            settings.import.startup_trigger = false;
-            let mut bus: Bus = VecDeque::new();
-            let event = Event::Toggle(ToggleEvent::Setting(ToggleSettings::ImportStartupTrigger));
-
-            let result = setting.handle(&event, &mut settings, &mut bus);
-
-            assert!(result.0.is_some());
-            assert!(settings.import.startup_trigger);
-        }
-
-        #[test]
-        fn handle_returns_none_for_wrong_event() {
-            let setting = ImportStartupTrigger;
-            let mut settings = Settings::default();
-            let mut bus: Bus = VecDeque::new();
-            use crate::view::EntryId;
-
-            let result = setting.handle(&Event::Select(EntryId::About), &mut settings, &mut bus);
-
-            assert!(result.0.is_none());
-        }
-
-        #[test]
-        fn handle_returns_none_for_wrong_toggle() {
-            let setting = ImportStartupTrigger;
-            let mut settings = Settings::default();
-            let mut bus: Bus = VecDeque::new();
-
-            let result = setting.handle(
-                &Event::Toggle(ToggleEvent::Setting(ToggleSettings::SleepCover)),
-                &mut settings,
-                &mut bus,
-            );
-
-            assert!(result.0.is_none());
-        }
-    }
 
     mod import_sync_metadata {
         use super::*;
