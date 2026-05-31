@@ -22,7 +22,7 @@ use super::category::Category;
 use super::library_editor::LibraryEditor;
 use super::refresh_rate_by_kind_editor::RefreshRateByKindEditor;
 use super::setting_row::SettingRow;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::thread;
 
 /// A view for editing category-specific settings.

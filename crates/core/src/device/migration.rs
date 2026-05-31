@@ -218,7 +218,8 @@ mod tests {
     use tempfile::TempDir;
 
     fn run(install: &TempDir, data: &TempDir) {
-        migrate_data_to_sd(install.path().to_path_buf(), data.path().to_path_buf());
+        migrate_data_to_sd(install.path().to_path_buf(), data.path().to_path_buf())
+            .expect("migration failed");
     }
 
     #[test]
@@ -227,7 +228,8 @@ mod tests {
         let settings = dir.path().join("Settings.toml");
         fs::write(&settings, "key = true").unwrap();
 
-        migrate_data_to_sd(dir.path().to_path_buf(), dir.path().to_path_buf());
+        migrate_data_to_sd(dir.path().to_path_buf(), dir.path().to_path_buf())
+            .expect("migration failed");
 
         assert!(
             settings.exists(),
