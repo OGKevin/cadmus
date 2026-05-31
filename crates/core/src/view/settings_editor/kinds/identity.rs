@@ -32,9 +32,9 @@ pub enum SettingIdentity {
     IntermissionShare,
     SettingsRetention,
     LogLevel,
-    ImportStartupTrigger,
     ImportSyncMetadata,
     AllowedKinds,
+    ForceFullImport,
     #[cfg(feature = "tracing")]
     OtlpEndpoint,
     #[cfg(feature = "profiling")]

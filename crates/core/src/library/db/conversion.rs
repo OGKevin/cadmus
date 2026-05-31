@@ -251,6 +251,7 @@ mod tests {
                 absolute_path: PathBuf::from("/mnt/onboard/tmp/test.pdf"),
                 kind: "pdf".to_string(),
                 size: 1024,
+                mtime: None,
             },
             ..Default::default()
         };

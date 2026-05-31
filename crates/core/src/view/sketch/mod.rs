@@ -239,6 +239,7 @@ impl Sketch {
     fn quit(&self, hub: &Hub, context: &Context) {
         hub.send(Event::ImportLibrary {
             library_index: Some(context.settings.selected_library),
+            force: false,
         })
         .ok();
     }

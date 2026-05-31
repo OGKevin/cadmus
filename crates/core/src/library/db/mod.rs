@@ -3,7 +3,7 @@ pub mod models;
 
 use crate::db::Database;
 use crate::db::runtime::RUNTIME;
-use crate::db::types::{OptionalUuid7, UnixTimestamp, Uuid7};
+use crate::db::types::{FileSize, OptionalUuid7, UnixTimestamp, Uuid7};
 use crate::document::SimpleTocEntry;
 use crate::geom::Point;
 use crate::helpers::Fp;
@@ -21,6 +21,8 @@ use models::TocEntryRow;
 use sqlx::sqlite::SqlitePool;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
+
+pub use models::{BookHandle, PathUpdate};
 
 /// Gap between adjacent sort ranks assigned by [`Db::compute_sort_keys`].
 ///
@@ -372,6 +374,7 @@ impl Db {
                 absolute_path: PathBuf::from(&row.absolute_path),
                 kind: row.file_kind,
                 size: row.file_size as u64,
+                mtime: None,
             },
             reader: None,
             reader_info: None,
@@ -589,6 +592,7 @@ impl Db {
                         absolute_path: PathBuf::from(&row.absolute_path),
                         kind: row.file_kind,
                         size: row.file_size as u64,
+                        mtime: None,
                     },
                     reader: None,
                     reader_info: None,
@@ -1675,16 +1679,20 @@ impl Db {
             .execute(&mut *tx)
             .await?;
 
+            let file_size_i64 = info.file.size as i64;
+
             sqlx::query!(
                 r#"
-                INSERT OR IGNORE INTO library_books (library_id, book_fingerprint, added_to_library_at, file_path, absolute_path)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT OR IGNORE INTO library_books (library_id, book_fingerprint, added_to_library_at, file_path, absolute_path, mtime, file_size)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 "#,
                 library_id,
                 fp_str,
                 book_row.added_at,
                 book_row.file_path,
                 book_row.absolute_path,
+                info.file.mtime,
+                file_size_i64,
             )
             .execute(&mut *tx)
             .await?;
@@ -2266,16 +2274,20 @@ impl Db {
                 .execute(&mut *tx)
                 .await?;
 
+                let file_size_i64 = info.file.size as i64;
+
                 sqlx::query!(
                     r#"
-                    INSERT OR IGNORE INTO library_books (library_id, book_fingerprint, added_to_library_at, file_path, absolute_path)
-                    VALUES (?, ?, ?, ?, ?)
+                    INSERT OR IGNORE INTO library_books (library_id, book_fingerprint, added_to_library_at, file_path, absolute_path, mtime, file_size)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                     "#,
                     library_id,
                     fp_str,
                     book_row.added_at,
                     book_row.file_path,
                     book_row.absolute_path,
+                    info.file.mtime,
+                    file_size_i64,
                 )
                 .execute(&mut *tx)
                 .await?;
@@ -2544,12 +2556,15 @@ impl Db {
         feature = "tracing",
         tracing::instrument(skip(self), fields(library_id))
     )]
-    pub fn list_book_handles(&self, library_id: i64) -> Result<Vec<(Fp, PathBuf)>, Error> {
+    pub fn list_book_handles(&self, library_id: i64) -> Result<Vec<BookHandle>, Error> {
         RUNTIME.block_on(async {
             let rows = sqlx::query!(
                 r#"
                 SELECT lb.book_fingerprint AS "fingerprint!: Fp",
-                       lb.file_path        AS "file_path!: String"
+                       lb.file_path        AS "file_path!: String",
+                       lb.absolute_path    AS "absolute_path!: String",
+                       lb.mtime            AS "mtime?: UnixTimestamp",
+                       lb.file_size        AS "file_size?: FileSize"
                 FROM library_books lb
                 WHERE lb.library_id = ?
                 "#,
@@ -2558,9 +2573,16 @@ impl Db {
             .fetch_all(&self.pool)
             .await?;
 
-            rows.into_iter()
-                .map(|row| Ok((row.fingerprint, PathBuf::from(row.file_path))))
-                .collect()
+            Ok(rows
+                .into_iter()
+                .map(|row| BookHandle {
+                    fp: row.fingerprint,
+                    relat: PathBuf::from(row.file_path),
+                    abs: PathBuf::from(row.absolute_path),
+                    mtime: row.mtime,
+                    file_size: row.file_size,
+                })
+                .collect())
         })
     }
 
@@ -2629,7 +2651,7 @@ impl Db {
     pub fn batch_update_book_paths(
         &self,
         library_id: i64,
-        updates: &[(Fp, PathBuf, PathBuf)],
+        updates: &[PathUpdate],
     ) -> Result<(), Error> {
         if updates.is_empty() {
             return Ok(());
@@ -2644,15 +2666,19 @@ impl Db {
         RUNTIME.block_on(async {
             let mut tx = self.pool.begin().await?;
 
-            for (fp, rel_path, abs_path) in updates {
-                let fp_str = fp.to_string();
-                let rel_str = rel_path.to_string_lossy().into_owned();
-                let abs_str = abs_path.to_string_lossy().into_owned();
+            for update in updates {
+                let fp_str = update.fp.to_string();
+                let rel_str = update.relat.to_string_lossy().into_owned();
+                let abs_str = update.abs.to_string_lossy().into_owned();
 
                 sqlx::query!(
-                    r#"UPDATE library_books SET file_path = ?, absolute_path = ? WHERE library_id = ? AND book_fingerprint = ?"#,
+                    r#"UPDATE library_books
+                       SET file_path = ?, absolute_path = ?, mtime = ?, file_size = ?
+                       WHERE library_id = ? AND book_fingerprint = ?"#,
                     rel_str,
                     abs_str,
+                    update.mtime,
+                    update.file_size,
                     library_id,
                     fp_str,
                 )
@@ -3853,7 +3879,10 @@ mod tests {
         let handles = libdb
             .list_book_handles(library_id)
             .expect("failed to list handles");
-        assert_eq!(handles, vec![(fp, PathBuf::from("old/path.pdf"))]);
+        assert_eq!(handles.len(), 1);
+        assert_eq!(handles[0].fp, fp);
+        assert_eq!(handles[0].relat, PathBuf::from("old/path.pdf"));
+        assert_eq!(handles[0].abs, PathBuf::from(""));
 
         libdb
             .update_book_path(
@@ -3877,7 +3906,10 @@ mod tests {
         let handles = libdb
             .list_book_handles(library_id)
             .expect("failed to list handles after update");
-        assert_eq!(handles, vec![(fp, PathBuf::from("new/path.pdf"))]);
+        assert_eq!(handles.len(), 1);
+        assert_eq!(handles[0].fp, fp);
+        assert_eq!(handles[0].relat, PathBuf::from("new/path.pdf"));
+        assert_eq!(handles[0].abs, PathBuf::from("/abs/new/path.pdf"));
     }
 
     #[test]
@@ -3900,16 +3932,20 @@ mod tests {
             .batch_update_book_paths(
                 library_id,
                 &[
-                    (
-                        fp1,
-                        PathBuf::from("new/one.pdf"),
-                        PathBuf::from("/abs/new/one.pdf"),
-                    ),
-                    (
-                        fp2,
-                        PathBuf::from("new/two.pdf"),
-                        PathBuf::from("/abs/new/two.pdf"),
-                    ),
+                    PathUpdate {
+                        fp: fp1,
+                        relat: PathBuf::from("new/one.pdf"),
+                        abs: PathBuf::from("/abs/new/one.pdf"),
+                        mtime: None,
+                        file_size: None,
+                    },
+                    PathUpdate {
+                        fp: fp2,
+                        relat: PathBuf::from("new/two.pdf"),
+                        abs: PathBuf::from("/abs/new/two.pdf"),
+                        mtime: None,
+                        file_size: None,
+                    },
                 ],
             )
             .expect("failed to batch update book paths");
@@ -4719,7 +4755,7 @@ mod tests {
         assert_eq!(purged, vec![pdf_fp], "only pdf should be purged");
 
         let handles = libdb.list_book_handles(library_id).expect("handles");
-        let fps: Vec<Fp> = handles.iter().map(|(fp, _)| *fp).collect();
+        let fps: Vec<Fp> = handles.iter().map(|h| h.fp).collect();
 
         assert!(fps.contains(&epub_fp), "epub should remain");
         assert!(!fps.contains(&pdf_fp), "pdf should be gone");

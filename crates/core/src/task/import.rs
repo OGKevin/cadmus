@@ -9,20 +9,32 @@ use crate::settings::Settings;
 use crate::task::{BackgroundTask, ShutdownSignal, TaskId};
 use crate::view::{Event, ID_FEEDER, ViewId};
 
-/// Runs a full import for one library (or all libraries when `library_index` is `None`).
+/// Runs an import for one library (or all libraries when `library_index` is `None`).
+///
+/// When `force` is `false` the import is incremental: files whose stored `mtime` and
+/// `file_size` have not changed are skipped without re-fingerprinting. When `force` is
+/// `true` every file is re-fingerprinted regardless.
 pub struct ImportTask {
     database: Database,
     settings: Settings,
     /// Which library to import. `None` means all configured libraries.
     library_index: Option<usize>,
+    /// When `true`, skip the mtime/size cache and re-fingerprint every file.
+    force: bool,
 }
 
 impl ImportTask {
-    pub fn new(database: Database, settings: Settings, library_index: Option<usize>) -> Self {
+    pub fn new(
+        database: Database,
+        settings: Settings,
+        library_index: Option<usize>,
+        force: bool,
+    ) -> Self {
         Self {
             database,
             settings,
             library_index,
+            force,
         }
     }
 
@@ -53,6 +65,7 @@ impl ImportTask {
             library.library_id,
             &library.home,
             &self.settings.import,
+            self.force,
             hub,
             notif_id,
             shutdown,

@@ -679,6 +679,47 @@ impl CategoryEditor {
         }
     }
 
+    /// Removes the active force-import confirmation dialog, if present.
+    #[inline]
+    fn remove_force_import_confirm(&mut self, rq: &mut RenderQueue) {
+        if let Some(index) = locate_by_id(self, ViewId::ForceImportConfirm) {
+            let dialog_rect = *self.children[index].rect();
+            self.children.remove(index);
+            rq.add(RenderData::expose(dialog_rect, UpdateMode::Gui));
+        }
+    }
+
+    /// Shows the force-import confirmation dialog.
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, rq, context)))]
+    fn handle_force_import_request(&mut self, rq: &mut RenderQueue, context: &mut Context) -> bool {
+        self.remove_force_import_confirm(rq);
+
+        let dialog = Dialog::builder(
+            ViewId::ForceImportConfirm,
+            fl!("settings-import-force-full-import-confirm"),
+        )
+        .add_button(
+            &fl!("settings-import-force-full-import-cancel"),
+            Event::Close(ViewId::ForceImportConfirm),
+        )
+        .add_button(
+            &fl!("settings-import-force-full-import-confirm-button"),
+            Event::ImportLibrary {
+                library_index: None,
+                force: true,
+            },
+        )
+        .build(context);
+
+        rq.add(RenderData::new(
+            dialog.id(),
+            *dialog.rect(),
+            UpdateMode::Gui,
+        ));
+        self.children.push(Box::new(dialog));
+        true
+    }
+
     /// Starts a confirmed dictionary download and closes the confirmation dialog.
     #[inline]
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, rq, context)))]
@@ -755,6 +796,7 @@ impl CategoryEditor {
             | ViewId::SettingsValueMenu
             | ViewId::LibraryEditor
             | ViewId::DictionaryDownloadConfirm
+            | ViewId::ForceImportConfirm
             | ViewId::RefreshRateByKindEditor => {
                 if let Some(index) = locate_by_id(self, *view_id) {
                     let input_rect = *self.children[index].rect();
@@ -804,6 +846,13 @@ impl View for CategoryEditor {
             Event::SubMenu(rect, entries) => self.handle_submenu_event(rect, entries, rq, context),
             Event::Select(EntryId::DeleteLibrary(index)) => {
                 self.handle_delete_library(*index, rq, context)
+            }
+            Event::Select(EntryId::RequestForceImport) => {
+                self.handle_force_import_request(rq, context)
+            }
+            Event::ImportLibrary { force: true, .. } => {
+                self.remove_force_import_confirm(rq);
+                false
             }
             Event::Select(EntryId::RequestDictionaryDownload(lang)) => {
                 self.handle_dictionary_download_request(lang, hub, rq, context)

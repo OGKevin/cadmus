@@ -1050,6 +1050,7 @@ mod tests {
                 absolute_path: PathBuf::from(path),
                 kind: "epub".to_string(),
                 size: 1024,
+                mtime: None,
             },
             reader_info,
             added: Local::now().naive_local(),
