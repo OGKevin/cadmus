@@ -121,7 +121,7 @@ impl CategoryEditor {
         let dict_service = if category == Category::Dictionaries {
             match MonolingualDictionaryService::new(
                 &context.database,
-                std::path::Path::new(DICTIONARIES_DIRNAME),
+                CURRENT_DEVICE.data_path(DICTIONARIES_DIRNAME).as_path(),
             ) {
                 Ok(service) => Some(service),
                 Err(e) => {

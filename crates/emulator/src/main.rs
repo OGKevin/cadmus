@@ -71,7 +71,6 @@ use std::time::Duration;
 use tracing::{info, warn};
 
 pub const APP_NAME: &str = "Cadmus";
-const DB_FILENAME: &str = "cadmus.sqlite";
 const DEFAULT_ROTATION: i8 = 1;
 
 const CLOCK_REFRESH_INTERVAL: Duration = Duration::from_secs(60);
@@ -306,13 +305,16 @@ fn run() -> Result<(), Error> {
     let mut fb = window.into_canvas().software().build().unwrap();
     fb.set_blend_mode(BlendMode::Blend);
 
-    let manager = SettingsManager::new(get_current_version());
+    let manager = SettingsManager::new(CURRENT_DEVICE.data_dir(), get_current_version());
     let settings = manager.load();
 
     cadmus_core::crypto::init_crypto_provider();
 
-    cadmus_core::logging::init_logging(&settings.logging)
-        .context("Failed to initialize logging")?;
+    cadmus_core::logging::init_logging(
+        &settings.logging,
+        CURRENT_DEVICE.data_path(&settings.logging.directory),
+    )
+    .context("Failed to initialize logging")?;
 
     cadmus_core::document::log_mupdf_features();
 
@@ -325,7 +327,8 @@ fn run() -> Result<(), Error> {
     i18n::init(settings.locale.as_ref());
 
     let mut fonts = Fonts::load().context("can't load fonts")?;
-    let database = Database::new(DB_FILENAME).context("can't open database")?;
+    let database =
+        Database::new(CURRENT_DEVICE.resolve_db_path()).context("can't open database")?;
 
     let mut fb = Box::new(FBCanvas(fb));
 

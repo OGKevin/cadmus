@@ -13,6 +13,7 @@
 use crate::db::types::OptionalUuid7;
 use crate::db::types::UnixTimestamp;
 use crate::db::types::Uuid7;
+use crate::device::CURRENT_DEVICE;
 use crate::document::SimpleTocEntry;
 use crate::helpers::{Fingerprint, Fp};
 #[cfg(not(feature = "test"))]
@@ -48,7 +49,7 @@ crate::migration!(
     /// The migration is idempotent (all inserts use `ON CONFLICT … DO NOTHING`).
     "v1_import_legacy_filesystem_data",
     async fn import_legacy_filesystem_data(pool: &SqlitePool) {
-        let settings = SettingsManager::new(get_current_version()).load();
+        let settings = SettingsManager::new(CURRENT_DEVICE.data_dir(), get_current_version()).load();
 
         if settings.libraries.is_empty() {
             info!("no libraries in settings, skipping legacy data import");
