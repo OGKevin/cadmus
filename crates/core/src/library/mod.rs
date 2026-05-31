@@ -612,9 +612,6 @@ impl Library {
     /// No-op: the database is the source of truth and requires no explicit cache reload.
     pub fn reload(&mut self) {}
 
-    /// No-op: database writes are immediate and do not require an explicit flush.
-    pub fn flush(&mut self) {}
-
     pub fn is_empty(&self) -> Option<bool> {
         self.db
             .count_books(self.library_id)
@@ -713,6 +710,7 @@ mod tests {
             lib.library_id,
             dir,
             &ImportSettings::default(),
+            false,
             &tx,
             notif_id,
             &shutdown,

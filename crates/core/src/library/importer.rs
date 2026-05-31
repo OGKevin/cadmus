@@ -1,3 +1,4 @@
+use crate::db::types::{FileSize, UnixTimestamp};
 use crate::document::file_kind;
 use crate::fl;
 use crate::helpers::{Fingerprint, Fp, IsHidden};
@@ -9,6 +10,7 @@ use crate::view::{Event, NotificationEvent, ViewId};
 use fxhash::FxHashMap;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
+use std::time::UNIX_EPOCH;
 use tracing::{debug, error, info};
 use walkdir::{DirEntry, WalkDir};
 
@@ -72,14 +74,17 @@ fn walk_files(home: &Path) -> Vec<DirEntry> {
 #[cfg_attr(
     feature = "tracing",
     tracing::instrument(
-        skip(home, settings, ctx, handles_by_fp, handles_by_path),
+        skip(db, home, settings, ctx, handles_by_fp, handles_by_path),
         fields(total)
     )
 )]
 fn scan_entries(
+    db: &LibraryDb,
+    library_id: i64,
     home: &Path,
     entries: &[DirEntry],
     settings: &ImportSettings,
+    force: bool,
     ctx: &ScanContext<'_>,
     handles_by_fp: &mut FxHashMap<Fp, PathBuf>,
     handles_by_path: &mut FxHashMap<PathBuf, Fp>,
@@ -111,6 +116,40 @@ fn scan_entries(
             continue;
         }
 
+        let file_meta = match entry.metadata() {
+            Ok(m) => m,
+            Err(e) => {
+                error!(path = ?path, error = %e, "failed to read metadata, skipping");
+                send_progress(ctx.hub, ctx.notif_id, idx, total);
+                continue;
+            }
+        };
+
+        let current_size = FileSize::from(file_meta.len() as i64);
+        let current_mtime = file_meta
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+            .map(|d| UnixTimestamp::from((d.as_secs().div_ceil(2) * 2) as i64));
+
+        if !force {
+            if let Some(mtime) = current_mtime {
+                match db.get_book_mtime_and_size_by_path(library_id, path) {
+                    Ok(Some((stored_mtime, stored_size))) => {
+                        if stored_mtime == mtime && stored_size == current_size {
+                            debug!(path = %relat.display(), "mtime and size unchanged, skipping fingerprint");
+                            send_progress(ctx.hub, ctx.notif_id, idx, total);
+                            continue;
+                        }
+                    }
+                    Ok(None) => {}
+                    Err(e) => {
+                        error!(path = ?path, error = %e, "failed to look up stored mtime, will re-fingerprint");
+                    }
+                }
+            }
+        }
+
         let fp = match path.fingerprint() {
             Ok(fp) => fp,
             Err(e) => {
@@ -119,6 +158,12 @@ fn scan_entries(
                 continue;
             }
         };
+
+        if let Some(mtime) = current_mtime {
+            if let Err(e) = db.update_book_mtime_and_size(library_id, path, mtime, current_size) {
+                error!(path = ?path, error = %e, "failed to update stored mtime");
+            }
+        }
 
         if handles_by_fp.contains_key(&fp) {
             if relat != handles_by_fp[&fp] {
@@ -155,7 +200,7 @@ fn scan_entries(
             pending_relocations.push(PendingRelocation::FingerprintChanged {
                 new_fp: fp,
                 old_fp,
-                file_size: entry.metadata().map(|m| m.len()).unwrap_or(0),
+                file_size: i64::from(current_size) as u64,
             });
 
             thumbnails_to_delete.push(old_fp);
@@ -165,8 +210,8 @@ fn scan_entries(
 
         if let Some(kind) = allowed_kind {
             info!(fp = %fp, path = %relat.display(), "added new entry");
-            let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
-            let mut info = Info {
+            let size = i64::from(current_size) as u64;
+            let mut book_info = Info {
                 file: FileInfo {
                     path: relat.to_path_buf(),
                     absolute_path: path.to_path_buf(),
@@ -175,12 +220,12 @@ fn scan_entries(
                 },
                 ..Default::default()
             };
-            if settings.metadata_kinds.contains(&info.file.kind) {
-                extract_metadata_from_document(home, &mut info);
+            if settings.metadata_kinds.contains(&book_info.file.kind) {
+                extract_metadata_from_document(home, &mut book_info);
             }
             handles_by_fp.insert(fp, relat.to_path_buf());
             handles_by_path.insert(relat.to_path_buf(), fp);
-            books_to_insert.push((fp, info));
+            books_to_insert.push((fp, book_info));
         }
 
         send_progress(ctx.hub, ctx.notif_id, idx, total);
@@ -314,7 +359,12 @@ fn flush_to_db(
     }
 }
 
-/// Runs a full directory scan and syncs the database for one library.
+/// Runs a directory scan and syncs the database for one library.
+///
+/// When `force` is `false` (incremental mode), files whose stored `mtime` and
+/// `file_size` have not changed since the last import are skipped without
+/// re-fingerprinting. When `force` is `true` every file is re-fingerprinted
+/// regardless of its stored values.
 ///
 /// Sends pinned progress notifications to `hub` via `notif_id` while running.
 /// Checks `shutdown` between entries and exits early if shutdown is requested.
@@ -328,6 +378,7 @@ pub fn run(
     library_id: i64,
     home: &Path,
     settings: &ImportSettings,
+    force: bool,
     hub: &Sender<Event>,
     notif_id: ViewId,
     shutdown: &ShutdownSignal,
@@ -379,9 +430,12 @@ pub fn run(
     };
 
     let Some(mut result) = scan_entries(
+        db,
+        library_id,
         home,
         &entries,
         settings,
+        force,
         &ctx,
         &mut handles_by_fp,
         &mut handles_by_path,
@@ -442,6 +496,7 @@ mod tests {
             lib.library_id,
             dir,
             &ImportSettings::default(),
+            false,
             &tx,
             notif_id,
             shutdown,
@@ -496,6 +551,7 @@ mod tests {
             lib.library_id,
             dir.path(),
             &ImportSettings::default(),
+            false,
             &tx,
             notif_id,
             &shutdown,
@@ -579,7 +635,8 @@ mod tests {
             &lib.db,
             lib.library_id,
             dir.path(),
-            &settings,
+            &ImportSettings::default(),
+            false,
             &tx,
             notif_id,
             &shutdown,
@@ -621,6 +678,7 @@ mod tests {
             lib.library_id,
             dir.path(),
             &ImportSettings::default(),
+            false,
             &tx,
             notif_id,
             &shutdown,
@@ -645,6 +703,7 @@ mod tests {
             lib.library_id,
             dir.path(),
             &settings,
+            false,
             &tx2,
             notif_id,
             &shutdown,

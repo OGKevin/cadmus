@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                SELECT mtime      AS \"mtime?: UnixTimestamp\",\n                       file_size  AS \"file_size?: FileSize\"\n                FROM library_books\n                WHERE library_id = ? AND absolute_path = ?\n                LIMIT 1\n                ",
+  "describe": {
+    "columns": [
+      {
+        "name": "mtime?: UnixTimestamp",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "file_size?: FileSize",
+        "ordinal": 1,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      true,
+      true
+    ]
+  },
+  "hash": "803382f542791aca0f693977f606fbf82ddd41f2adbd8c22a0b421941a3cdcc8"
+}

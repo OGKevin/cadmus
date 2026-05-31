@@ -29,6 +29,12 @@ impl std::fmt::Display for UnixTimestamp {
     }
 }
 
+impl From<i64> for UnixTimestamp {
+    fn from(value: i64) -> Self {
+        Self(value)
+    }
+}
+
 impl From<UnixTimestamp> for i64 {
     fn from(value: UnixTimestamp) -> Self {
         value.0
@@ -95,6 +101,49 @@ impl<'r> sqlx::Decode<'r, Sqlite> for UnixTimestamp {
     fn decode(value: SqliteValueRef<'r>) -> Result<Self, BoxDynError> {
         let ts = <i64 as sqlx::Decode<'r, Sqlite>>::decode(value)?;
         Ok(Self(ts))
+    }
+}
+
+/// A file size in bytes as stored in SQLite `INTEGER` columns.
+///
+/// Implementing `sqlx::Type`, `sqlx::Encode`, and `sqlx::Decode` lets SQLx
+/// macros treat this type as an `INTEGER` column, so `query!` can decode rows
+/// directly into `FileSize` fields without manual `i64` intermediaries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct FileSize(i64);
+
+impl From<FileSize> for i64 {
+    fn from(value: FileSize) -> Self {
+        value.0
+    }
+}
+
+impl From<i64> for FileSize {
+    fn from(value: i64) -> Self {
+        Self(value)
+    }
+}
+
+impl sqlx::Type<Sqlite> for FileSize {
+    fn type_info() -> SqliteTypeInfo {
+        <i64 as sqlx::Type<Sqlite>>::type_info()
+    }
+
+    fn compatible(ty: &SqliteTypeInfo) -> bool {
+        <i64 as sqlx::Type<Sqlite>>::compatible(ty)
+    }
+}
+
+impl<'q> sqlx::Encode<'q, Sqlite> for FileSize {
+    fn encode_by_ref(&self, buf: &mut Vec<SqliteArgumentValue<'q>>) -> Result<IsNull, BoxDynError> {
+        self.0.encode_by_ref(buf)
+    }
+}
+
+impl<'r> sqlx::Decode<'r, Sqlite> for FileSize {
+    fn decode(value: SqliteValueRef<'r>) -> Result<Self, BoxDynError> {
+        let n = <i64 as sqlx::Decode<'r, Sqlite>>::decode(value)?;
+        Ok(Self(n))
     }
 }
 

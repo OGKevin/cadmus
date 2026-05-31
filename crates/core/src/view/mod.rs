@@ -550,8 +550,13 @@ pub enum Event {
         result: Result<(), String>,
     },
     /// Requests a background import for the given library index (or the current library if `None`).
+    ///
+    /// When `force` is `true`, every file is re-fingerprinted regardless of its stored
+    /// `mtime` and `file_size`. When `false`, files whose metadata has not changed are
+    /// skipped (incremental mode).
     ImportLibrary {
         library_index: Option<usize>,
+        force: bool,
     },
     /// Signals that a background import has finished.
     ImportFinished {
@@ -669,6 +674,7 @@ pub enum ViewId {
     AboutDialog,
     ShareDialog,
     DictionaryDownloadConfirm,
+    ForceImportConfirm,
     MarginCropper,
     TopBottomBars,
     TableOfContents,
@@ -751,9 +757,7 @@ pub enum EntryId {
     OpenDocumentation,
     LoadLibrary(usize),
     Load(PathBuf),
-    Flush,
     Save,
-    Import,
     CleanUp,
     Sort(SortMethod),
     ReverseOrder,
@@ -836,6 +840,7 @@ pub enum EntryId {
     RequestDictionaryDownload(String),
     DownloadDictionary(String),
     DeleteDictionary(String),
+    RequestForceImport,
     New,
     Refresh,
     TakeScreenshot,

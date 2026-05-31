@@ -4,7 +4,7 @@ use super::kinds::general::{
     AutoPowerOff, AutoShare, AutoSuspend, ButtonScheme, KeyboardLayout, Locale, SettingsRetention,
     SleepCover,
 };
-use super::kinds::import::{AllowedKindsSetting, ImportStartupTrigger, ImportSyncMetadata};
+use super::kinds::import::{AllowedKindsSetting, ForceFullImport, ImportSyncMetadata};
 use super::kinds::intermission::{IntermissionPowerOff, IntermissionShare, IntermissionSuspend};
 use super::kinds::library::LibraryInfo;
 use super::kinds::reader::{DitheredKindsSetting, FinishedActionSetting, RefreshRateInfo};
@@ -85,7 +85,7 @@ impl Category {
                 Box::new(IntermissionShare),
             ],
             Category::Import => vec![
-                Box::new(ImportStartupTrigger),
+                Box::new(ForceFullImport),
                 Box::new(ImportSyncMetadata),
                 Box::new(AllowedKindsSetting),
             ],

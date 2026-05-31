@@ -369,7 +369,6 @@ fn prepare_share_for_usb(
         .save(&context.settings)
         .map_err(|e| error!("Can't save settings: {:#}.", e))
         .ok();
-    context.library.flush();
     context.database.close();
 
     if context.settings.frontlight {
@@ -1109,7 +1108,6 @@ pub fn run() -> Result<(), Error> {
                     .save(&context.settings)
                     .map_err(|e| error!("Can't save settings: {:#}.", e))
                     .ok();
-                context.library.flush();
 
                 if context.settings.frontlight {
                     context.settings.frontlight_levels = context.frontlight.levels();
@@ -1809,8 +1807,6 @@ pub fn run() -> Result<(), Error> {
     if tasks.iter().all(|task| task.id != TaskId::Suspend) && context.settings.frontlight {
         context.settings.frontlight_levels = context.frontlight.levels();
     }
-
-    context.library.flush();
 
     let save_settings = match exit_status {
         ExitStatus::Restart | ExitStatus::Reboot => !context.shared,

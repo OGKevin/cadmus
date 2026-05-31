@@ -22,6 +22,7 @@ notification-refresh-rate-invalid = Refresh rate must be a number between 0 and 
 
 # Common
 delete = Delete
+cancel = Cancel
 
 # Top Menu Strings
 top-menu-exit = Exit
@@ -88,7 +89,12 @@ settings-library-end-of-book-action = End of Book Action
 settings-library-inherit = Inherit
 
 # Settings - Import
-settings-import-startup-trigger = Import on Startup
+settings-import-force-full-import = Force Full Import
+settings-import-force-full-import-cancel = {cancel}
+settings-import-force-full-import-confirm = Re-import all the files from all your libraies.
+                                            This could take time and consume battery, it's
+                                            advisable to keep your device plugged in while this runs.
+settings-import-force-full-import-confirm-button = Re-import All
 settings-import-sync-metadata = Sync Metadata
 settings-import-allowed-kinds = Indexed File Types
 

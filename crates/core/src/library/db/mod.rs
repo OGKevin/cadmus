@@ -3,7 +3,7 @@ pub mod models;
 
 use crate::db::Database;
 use crate::db::runtime::RUNTIME;
-use crate::db::types::{OptionalUuid7, UnixTimestamp, Uuid7};
+use crate::db::types::{FileSize, OptionalUuid7, UnixTimestamp, Uuid7};
 use crate::document::SimpleTocEntry;
 use crate::geom::Point;
 use crate::helpers::Fp;
@@ -2561,6 +2561,83 @@ impl Db {
             rows.into_iter()
                 .map(|row| Ok((row.fingerprint, PathBuf::from(row.file_path))))
                 .collect()
+        })
+    }
+
+    /// Returns the stored `(mtime, file_size)` for a book identified by its absolute path.
+    ///
+    /// Returns `None` when the book is not found or its `mtime`/`file_size` columns are still
+    /// `NULL` (e.g. rows that existed before migration 011). In both cases the caller must
+    /// re-fingerprint the file.
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(skip(self, absolute_path), fields(library_id, path = %absolute_path.display()))
+    )]
+    pub fn get_book_mtime_and_size_by_path(
+        &self,
+        library_id: i64,
+        absolute_path: &Path,
+    ) -> Result<Option<(UnixTimestamp, FileSize)>, Error> {
+        let path_str = absolute_path.to_string_lossy().into_owned();
+
+        RUNTIME.block_on(async {
+            let row = sqlx::query!(
+                r#"
+                SELECT mtime      AS "mtime?: UnixTimestamp",
+                       file_size  AS "file_size?: FileSize"
+                FROM library_books
+                WHERE library_id = ? AND absolute_path = ?
+                LIMIT 1
+                "#,
+                library_id,
+                path_str,
+            )
+            .fetch_optional(&self.pool)
+            .await?;
+
+            let result = row.and_then(|r| match (r.mtime, r.file_size) {
+                (Some(mtime), Some(file_size)) => Some((mtime, file_size)),
+                _ => None,
+            });
+
+            Ok(result)
+        })
+    }
+
+    /// Updates the stored `mtime` and `file_size` for a book identified by its absolute path.
+    ///
+    /// `mtime` must already be ceiling-rounded to the nearest 2-second boundary before calling
+    /// this method, so that FAT32's 2-second mtime granularity does not cause spurious cache
+    /// misses on the next incremental scan.
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(skip(self, absolute_path), fields(library_id, path = %absolute_path.display()))
+    )]
+    pub fn update_book_mtime_and_size(
+        &self,
+        library_id: i64,
+        absolute_path: &Path,
+        mtime: UnixTimestamp,
+        file_size: FileSize,
+    ) -> Result<(), Error> {
+        let path_str = absolute_path.to_string_lossy().into_owned();
+
+        RUNTIME.block_on(async {
+            sqlx::query!(
+                r#"
+                UPDATE library_books
+                SET mtime = ?, file_size = ?
+                WHERE library_id = ? AND absolute_path = ?
+                "#,
+                mtime,
+                file_size,
+                library_id,
+                path_str,
+            )
+            .execute(&self.pool)
+            .await?;
+
+            Ok(())
         })
     }
 
