@@ -15,7 +15,14 @@ The `[[libraries]]` section is the most important part, it tells Cadmus where yo
 first launch. On first launch, Cadmus will move this file into its `Settings/` folder automatically.
 
 > [!NOTE]
-> If you insert an SD card after initial setup, Cadmus automatically migrates settings, logs, dictionaries, and the database to `/mnt/sd/.cadmus/` (or `/mnt/sd/.cadmus-tst/` for test builds) to free up internal storage.
+> If your SD card is already inserted when you upgrade, Cadmus automatically
+> moves your settings, logs, and dictionaries to `/mnt/sd/.cadmus/`
+> (or `/mnt/sd/.cadmus-tst/` for test builds) on the next boot.
+
+> [!NOTE]
+> If you insert an SD card **after** Cadmus has already run, the automatic
+> migration will not run. You will need to copy your data manually — see
+> [Moving data to an SD card](#moving-data-to-an-sd-card) below.
 
 ```toml
 [[libraries]]
@@ -61,12 +68,39 @@ settings), you can start it fresh:
 
 1. Delete the Cadmus SQLite database:
 
-   | Build  | Database path (with SD card)          | Database path (without SD card)               |
-   | ------ | ------------------------------------- | --------------------------------------------- |
-   | Stable | `/mnt/sd/.cadmus/cadmus.sqlite`       | `/mnt/onboard/.adds/cadmus/cadmus.sqlite`     |
-   | Test   | `/mnt/sd/.cadmus-tst/cadmus.sqlite`   | `/mnt/onboard/.adds/cadmus-tst/cadmus.sqlite` |
+   | Build  | Database path (with SD card)        | Database path (without SD card)               |
+   | ------ | ----------------------------------- | --------------------------------------------- |
+   | Stable | `/mnt/sd/.cadmus/cadmus.sqlite`     | `/mnt/onboard/.adds/cadmus/cadmus.sqlite`     |
+   | Test   | `/mnt/sd/.cadmus-tst/cadmus.sqlite` | `/mnt/onboard/.adds/cadmus-tst/cadmus.sqlite` |
 
 2. Restart Cadmus — the import will run again from scratch.
 
 If something still looks wrong after re-running, check the logs for details.
 See [Troubleshooting](../troubleshooting/index.md) for where to find them.
+
+## Moving data to an SD card
+
+If you insert an SD card after Cadmus has already run, you need to move your
+data manually. Cadmus will use the SD card for new data once it detects the
+card, but your existing files stay in internal storage until you move them.
+
+> [!CAUTION]
+> Do these operations while Cadmus is not running!
+>
+> In other words, do this while the Nickel/KOReader/etc is running.
+
+1. Connect your Kobo to your computer
+2. Copy the following from internal storage to the SD card:
+
+   | What to move       | From (internal)                           | To (SD card)                    |
+   | ------------------ | ----------------------------------------- | ------------------------------- |
+   | Settings directory | `/mnt/onboard/.adds/cadmus/Settings/`     | `/mnt/sd/.cadmus/Settings/`     |
+   | Settings file      | `/mnt/onboard/.adds/cadmus/Settings.toml` | `/mnt/sd/.cadmus/Settings.toml` |
+   | Logs               | `/mnt/onboard/.adds/cadmus/logs/`         | `/mnt/sd/.cadmus/logs/`         |
+   | Dictionaries       | `/mnt/onboard/.adds/cadmus/dictionaries/` | `/mnt/sd/.cadmus/dictionaries/` |
+   | Database           | `/mnt/onboard/.adds/cadmus/cadmus.sqlite` | `/mnt/sd/.cadmus/cadmus.sqlite` |
+
+   > [!NOTE]
+   > Use the test paths (`cadmus-tst` / `.cadmus-tst`) if you are on a test build.
+
+3. Restart Cadmus. It will pick up the files from the SD card automatically.

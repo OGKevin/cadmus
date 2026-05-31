@@ -82,7 +82,7 @@ use crate::settings::LoggingSettings;
 #[cfg(feature = "tracing")]
 use crate::telemetry;
 use crate::version::get_current_version;
-use anyhow::{Context, Error};
+use anyhow::{Context, Error, ensure};
 use arc_swap::ArcSwap;
 use std::fs;
 use std::fs::DirEntry;
@@ -304,6 +304,12 @@ pub fn init_logging(settings: &LoggingSettings, log_dir: std::path::PathBuf) -> 
         return Ok(());
     }
 
+    ensure!(
+        log_dir.is_absolute(),
+        "log_dir must be absolute, got {}",
+        log_dir.display()
+    );
+
     fs::create_dir_all(&log_dir)
         .with_context(|| format!("can't create log directory {}", &log_dir.display()))?;
 
@@ -424,6 +430,12 @@ pub fn shutdown_logging() {
 /// logging system to use it. The old appender is dropped, which flushes any buffered data to disk
 /// after the new appender is in place to avoid log loss.
 pub fn redirect_log_to_dir(dir: &Path, settings: &LoggingSettings) -> Result<(), Error> {
+    ensure!(
+        dir.is_absolute(),
+        "log_dir must be absolute, got {}",
+        dir.display()
+    );
+
     let (Some(writer_swap), Some(guard_mutex)) = (WRITER_INNER.get(), LOG_GUARD.get()) else {
         return Ok(());
     };

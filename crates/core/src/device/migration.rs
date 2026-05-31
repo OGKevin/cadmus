@@ -30,20 +30,19 @@ crate::migration!(
     /// This migration is a no-op when no SD card is present (`data_dir` equals
     /// `install_dir`). It will be recorded as succeeded so it does not re-run
     /// on subsequent boots without a card.
-    "v3_migrate_data_to_sd_card",
+    "v1_migrate_data_to_sd_card",
     async fn migrate_data_to_sd_card(_pool: &sqlx::SqlitePool) {
         let install_dir = crate::device::CURRENT_DEVICE.install_dir();
         let data_dir = crate::device::CURRENT_DEVICE.data_dir();
 
-        migrate_data_to_sd(install_dir, data_dir);
+        migrate_data_to_sd(install_dir, data_dir)
 
-        Ok(())
     }
 );
 
-fn migrate_data_to_sd(install_dir: PathBuf, data_dir: PathBuf) {
+fn migrate_data_to_sd(install_dir: PathBuf, data_dir: PathBuf) -> anyhow::Result<()> {
     if install_dir == data_dir {
-        return;
+        return Ok(());
     }
 
     tracing::info!(
@@ -58,21 +57,26 @@ fn migrate_data_to_sd(install_dir: PathBuf, data_dir: PathBuf) {
             error = %e,
             "failed to create data dir on sd card; skipping migration"
         );
-        return;
+        anyhow::bail!("failed to create data dir {}", data_dir.display());
     }
 
+    let mut all_ok = true;
+
     for dirname in MIGRATE_DIRS {
-        migrate_dir(&install_dir.join(dirname), &data_dir.join(dirname));
+        all_ok &= migrate_dir(&install_dir.join(dirname), &data_dir.join(dirname));
     }
 
     for filename in MIGRATE_FILES {
-        migrate_file(&install_dir.join(filename), &data_dir.join(filename));
+        all_ok &= migrate_file(&install_dir.join(filename), &data_dir.join(filename));
     }
+
+    anyhow::ensure!(all_ok, "sd-card data migration completed with copy errors");
+    Ok(())
 }
 
-fn migrate_dir(src: &Path, dst: &Path) {
+fn migrate_dir(src: &Path, dst: &Path) -> bool {
     if !src.exists() {
-        return;
+        return true;
     }
 
     if let Err(e) = fs::create_dir_all(dst) {
@@ -81,10 +85,18 @@ fn migrate_dir(src: &Path, dst: &Path) {
             error = %e,
             "failed to create destination dir; skipping directory migration"
         );
-        return;
+        return false;
     }
 
-    copy_dir_recursive(src, dst, src);
+    let fully_copied = copy_dir_recursive(src, dst, src);
+
+    if !fully_copied {
+        tracing::warn!(
+            path = %src.display(),
+            "skipping source directory removal; not all files were copied"
+        );
+        return false;
+    }
 
     if let Err(e) = fs::remove_dir_all(src) {
         tracing::warn!(
@@ -93,9 +105,11 @@ fn migrate_dir(src: &Path, dst: &Path) {
             "failed to remove source directory after migration"
         );
     }
+
+    true
 }
 
-fn copy_dir_recursive(src_root: &Path, dst_root: &Path, current: &Path) {
+fn copy_dir_recursive(src_root: &Path, dst_root: &Path, current: &Path) -> bool {
     let entries = match fs::read_dir(current) {
         Ok(e) => e,
         Err(e) => {
@@ -104,15 +118,18 @@ fn copy_dir_recursive(src_root: &Path, dst_root: &Path, current: &Path) {
                 error = %e,
                 "failed to read directory during migration"
             );
-            return;
+            return false;
         }
     };
+
+    let mut all_ok = true;
 
     for entry in entries {
         let entry = match entry {
             Ok(e) => e,
             Err(e) => {
                 tracing::warn!(error = %e, "failed to read directory entry during migration");
+                all_ok = false;
                 continue;
             }
         };
@@ -121,6 +138,7 @@ fn copy_dir_recursive(src_root: &Path, dst_root: &Path, current: &Path) {
             Ok(ft) => ft,
             Err(e) => {
                 tracing::warn!(error = %e, "failed to get file type during migration");
+                all_ok = false;
                 continue;
             }
         };
@@ -129,6 +147,7 @@ fn copy_dir_recursive(src_root: &Path, dst_root: &Path, current: &Path) {
             Ok(r) => r.to_path_buf(),
             Err(e) => {
                 tracing::warn!(error = %e, "failed to strip prefix during migration");
+                all_ok = false;
                 continue;
             }
         };
@@ -142,10 +161,13 @@ fn copy_dir_recursive(src_root: &Path, dst_root: &Path, current: &Path) {
                     error = %e,
                     "failed to create subdirectory during migration"
                 );
+                all_ok = false;
                 continue;
             }
 
-            copy_dir_recursive(src_root, dst_root, &entry.path());
+            if !copy_dir_recursive(src_root, dst_root, &entry.path()) {
+                all_ok = false;
+            }
             continue;
         }
 
@@ -153,13 +175,17 @@ fn copy_dir_recursive(src_root: &Path, dst_root: &Path, current: &Path) {
             continue;
         }
 
-        migrate_file(&entry.path(), &dst_path);
+        if !migrate_file(&entry.path(), &dst_path) {
+            all_ok = false;
+        }
     }
+
+    all_ok
 }
 
-fn migrate_file(src: &Path, dst: &Path) {
+fn migrate_file(src: &Path, dst: &Path) -> bool {
     if !src.exists() || dst.exists() {
-        return;
+        return true;
     }
 
     if let Err(e) = fs::copy(src, dst) {
@@ -169,7 +195,7 @@ fn migrate_file(src: &Path, dst: &Path) {
             error = %e,
             "failed to copy file during migration"
         );
-        return;
+        return false;
     }
 
     if let Err(e) = fs::remove_file(src) {
@@ -181,6 +207,8 @@ fn migrate_file(src: &Path, dst: &Path) {
     }
 
     tracing::debug!(path = %src.display(), "migrated file to sd card");
+
+    true
 }
 
 #[cfg(test)]
@@ -190,7 +218,8 @@ mod tests {
     use tempfile::TempDir;
 
     fn run(install: &TempDir, data: &TempDir) {
-        migrate_data_to_sd(install.path().to_path_buf(), data.path().to_path_buf());
+        migrate_data_to_sd(install.path().to_path_buf(), data.path().to_path_buf())
+            .expect("migration failed");
     }
 
     #[test]
@@ -199,7 +228,8 @@ mod tests {
         let settings = dir.path().join("Settings.toml");
         fs::write(&settings, "key = true").unwrap();
 
-        migrate_data_to_sd(dir.path().to_path_buf(), dir.path().to_path_buf());
+        migrate_data_to_sd(dir.path().to_path_buf(), dir.path().to_path_buf())
+            .expect("migration failed");
 
         assert!(
             settings.exists(),
