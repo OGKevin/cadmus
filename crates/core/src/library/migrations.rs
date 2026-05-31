@@ -106,15 +106,9 @@ crate::migration!(
                 r#"
                 SELECT
                     b.fingerprint,
-                    (
-                        SELECT lb.absolute_path
-                        FROM library_books lb
-                        WHERE lb.book_fingerprint = b.fingerprint
-                          AND lb.absolute_path != ''
-                        ORDER BY lb.absolute_path ASC, lb.library_id ASC
-                        LIMIT 1
-                    ) AS "absolute_path?: String"
+                    b.absolute_path AS "absolute_path?: String"
                 FROM books b
+                WHERE b.absolute_path != ''
                 "#
             )
             .fetch_all(pool)
@@ -492,12 +486,12 @@ async fn insert_rekeyed_book(
         INSERT INTO books (
             fingerprint, title, subtitle, year, language, publisher,
             series, edition, volume, number, identifier,
-            file_kind, file_size, added_at
+            absolute_path, file_kind, file_size, added_at, mtime
         )
         SELECT
             ?, title, subtitle, year, language, publisher,
             series, edition, volume, number, identifier,
-            file_kind, file_size, added_at
+            absolute_path, file_kind, file_size, added_at, mtime
         FROM books WHERE fingerprint = ?
         "#,
     )
@@ -1325,12 +1319,13 @@ mod tests {
                 INSERT INTO books (
                     fingerprint, title, subtitle, year, language, publisher,
                     series, edition, volume, number, identifier,
-                    file_kind, file_size, added_at
-                ) VALUES (?, ?, '', '', '', '', '', '', '', '', '', ?, ?, ?)
+                    absolute_path, file_kind, file_size, added_at
+                ) VALUES (?, ?, '', '', '', '', '', '', '', '', '', ?, ?, ?, ?)
                 "#,
             )
             .bind(legacy_fp)
             .bind("Legacy Book")
+            .bind(book_path.to_string_lossy().as_ref())
             .bind("epub")
             .bind(9_i64)
             .bind(now)
@@ -1341,15 +1336,14 @@ mod tests {
             sqlx::query(
                 r#"
                 INSERT INTO library_books (
-                    library_id, book_fingerprint, added_to_library_at, file_path, absolute_path
-                ) VALUES (?, ?, ?, ?, ?)
+                    library_id, book_fingerprint, added_to_library_at, file_path
+                ) VALUES (?, ?, ?, ?)
                 "#,
             )
             .bind(library_id)
             .bind(legacy_fp)
             .bind(now)
             .bind("book.epub")
-            .bind(book_path.to_string_lossy().as_ref())
             .execute(db.pool())
             .await
             .expect("failed to insert library book row");

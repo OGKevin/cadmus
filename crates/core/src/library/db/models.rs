@@ -22,6 +22,7 @@ pub struct BookRow {
     pub file_kind: String,
     pub file_size: i64,
     pub added_at: UnixTimestamp,
+    pub mtime: Option<UnixTimestamp>,
 }
 
 /// A book record loaded from the database at the start of an import scan.
@@ -30,7 +31,7 @@ pub struct BookHandle {
     pub relat: PathBuf,
     pub abs: PathBuf,
     pub mtime: Option<UnixTimestamp>,
-    pub file_size: Option<FileSize>,
+    pub file_size: FileSize,
 }
 
 /// A pending write that records a book's new paths and current mtime/size.
@@ -42,7 +43,7 @@ pub struct PathUpdate {
     pub relat: PathBuf,
     pub abs: PathBuf,
     pub mtime: Option<UnixTimestamp>,
-    pub file_size: Option<FileSize>,
+    pub file_size: FileSize,
 }
 
 /// Database row for the reading_states table

@@ -1658,8 +1658,8 @@ impl Db {
                 INSERT OR IGNORE INTO books (
                     fingerprint, title, subtitle, year, language, publisher,
                     series, edition, volume, number, identifier,
-                    file_kind, file_size, added_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    absolute_path, file_kind, file_size, added_at, mtime
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 "#,
                 book_row.fingerprint,
                 book_row.title,
@@ -1672,27 +1672,24 @@ impl Db {
                 book_row.volume,
                 book_row.number,
                 book_row.identifier,
+                book_row.absolute_path,
                 book_row.file_kind,
                 book_row.file_size,
                 book_row.added_at,
+                book_row.mtime,
             )
             .execute(&mut *tx)
             .await?;
 
-            let file_size_i64 = info.file.size as i64;
-
             sqlx::query!(
                 r#"
-                INSERT OR IGNORE INTO library_books (library_id, book_fingerprint, added_to_library_at, file_path, absolute_path, mtime, file_size)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT OR IGNORE INTO library_books (library_id, book_fingerprint, added_to_library_at, file_path)
+                VALUES (?, ?, ?, ?)
                 "#,
                 library_id,
                 fp_str,
                 book_row.added_at,
                 book_row.file_path,
-                book_row.absolute_path,
-                info.file.mtime,
-                file_size_i64,
             )
             .execute(&mut *tx)
             .await?;
@@ -1842,11 +1839,21 @@ impl Db {
 
             sqlx::query!(
                 r#"
-                UPDATE library_books SET file_path = ?, absolute_path = ?
+                UPDATE books SET absolute_path = ?
+                WHERE fingerprint = ?
+                "#,
+                book_row.absolute_path,
+                fp_str,
+            )
+            .execute(&mut *tx)
+            .await?;
+
+            sqlx::query!(
+                r#"
+                UPDATE library_books SET file_path = ?
                 WHERE library_id = ? AND book_fingerprint = ?
                 "#,
                 book_row.file_path,
-                book_row.absolute_path,
                 library_id,
                 fp_str,
             )
@@ -2253,8 +2260,8 @@ impl Db {
                     INSERT OR IGNORE INTO books (
                         fingerprint, title, subtitle, year, language, publisher,
                         series, edition, volume, number, identifier,
-                        file_kind, file_size, added_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        absolute_path, file_kind, file_size, added_at, mtime
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     "#,
                     book_row.fingerprint,
                     book_row.title,
@@ -2267,27 +2274,24 @@ impl Db {
                     book_row.volume,
                     book_row.number,
                     book_row.identifier,
+                    book_row.absolute_path,
                     book_row.file_kind,
                     book_row.file_size,
                     book_row.added_at,
+                    book_row.mtime,
                 )
                 .execute(&mut *tx)
                 .await?;
 
-                let file_size_i64 = info.file.size as i64;
-
                 sqlx::query!(
                     r#"
-                    INSERT OR IGNORE INTO library_books (library_id, book_fingerprint, added_to_library_at, file_path, absolute_path, mtime, file_size)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    INSERT OR IGNORE INTO library_books (library_id, book_fingerprint, added_to_library_at, file_path)
+                    VALUES (?, ?, ?, ?)
                     "#,
                     library_id,
                     fp_str,
                     book_row.added_at,
                     book_row.file_path,
-                    book_row.absolute_path,
-                    info.file.mtime,
-                    file_size_i64,
                 )
                 .execute(&mut *tx)
                 .await?;
@@ -2450,11 +2454,21 @@ impl Db {
 
                 sqlx::query!(
                     r#"
-                    UPDATE library_books SET file_path = ?, absolute_path = ?
+                    UPDATE books SET absolute_path = ?
+                    WHERE fingerprint = ?
+                    "#,
+                    book_row.absolute_path,
+                    fp_str,
+                )
+                .execute(&mut *tx)
+                .await?;
+
+                sqlx::query!(
+                    r#"
+                    UPDATE library_books SET file_path = ?
                     WHERE library_id = ? AND book_fingerprint = ?
                     "#,
                     book_row.file_path,
-                    book_row.absolute_path,
                     library_id,
                     fp_str,
                 )
@@ -2562,10 +2576,11 @@ impl Db {
                 r#"
                 SELECT lb.book_fingerprint AS "fingerprint!: Fp",
                        lb.file_path        AS "file_path!: String",
-                       lb.absolute_path    AS "absolute_path!: String",
-                       lb.mtime            AS "mtime?: UnixTimestamp",
-                       lb.file_size        AS "file_size?: FileSize"
+                       b.absolute_path     AS "absolute_path!: String",
+                       b.mtime             AS "mtime?: UnixTimestamp",
+                       b.file_size         AS "file_size: i64"
                 FROM library_books lb
+                INNER JOIN books b ON lb.book_fingerprint = b.fingerprint
                 WHERE lb.library_id = ?
                 "#,
                 library_id,
@@ -2580,7 +2595,7 @@ impl Db {
                     relat: PathBuf::from(row.file_path),
                     abs: PathBuf::from(row.absolute_path),
                     mtime: row.mtime,
-                    file_size: row.file_size,
+                    file_size: FileSize::from(row.file_size),
                 })
                 .collect())
         })
@@ -2630,9 +2645,16 @@ impl Db {
             let mut tx = self.pool.begin().await?;
 
             sqlx::query!(
-                r#"UPDATE library_books SET file_path = ?, absolute_path = ? WHERE library_id = ? AND book_fingerprint = ?"#,
-                rel_str,
+                r#"UPDATE books SET absolute_path = ? WHERE fingerprint = ?"#,
                 abs_str,
+                fp_str,
+            )
+            .execute(&mut *tx)
+            .await?;
+
+            sqlx::query!(
+                r#"UPDATE library_books SET file_path = ? WHERE library_id = ? AND book_fingerprint = ?"#,
+                rel_str,
                 library_id,
                 fp_str,
             )
@@ -2672,13 +2694,22 @@ impl Db {
                 let abs_str = update.abs.to_string_lossy().into_owned();
 
                 sqlx::query!(
-                    r#"UPDATE library_books
-                       SET file_path = ?, absolute_path = ?, mtime = ?, file_size = ?
-                       WHERE library_id = ? AND book_fingerprint = ?"#,
-                    rel_str,
+                    r#"UPDATE books
+                       SET absolute_path = ?, mtime = ?, file_size = ?
+                       WHERE fingerprint = ?"#,
                     abs_str,
                     update.mtime,
                     update.file_size,
+                    fp_str,
+                )
+                .execute(&mut *tx)
+                .await?;
+
+                sqlx::query!(
+                    r#"UPDATE library_books
+                       SET file_path = ?
+                       WHERE library_id = ? AND book_fingerprint = ?"#,
+                    rel_str,
                     library_id,
                     fp_str,
                 )
@@ -3937,14 +3968,14 @@ mod tests {
                         relat: PathBuf::from("new/one.pdf"),
                         abs: PathBuf::from("/abs/new/one.pdf"),
                         mtime: None,
-                        file_size: None,
+                        file_size: FileSize::from(1024_i64),
                     },
                     PathUpdate {
                         fp: fp2,
                         relat: PathBuf::from("new/two.pdf"),
                         abs: PathBuf::from("/abs/new/two.pdf"),
                         mtime: None,
-                        file_size: None,
+                        file_size: FileSize::from(1024_i64),
                     },
                 ],
             )

@@ -2,7 +2,7 @@ use crate::db::types::{FileSize, UnixTimestamp};
 use crate::document::file_kind;
 use crate::fl;
 use crate::helpers::{Fingerprint, Fp, IsHidden};
-use crate::library::db::{BookHandle, Db as LibraryDb, PathUpdate};
+use crate::library::db::{Db as LibraryDb, PathUpdate};
 use crate::metadata::{FileInfo, Info, extract_metadata_from_document};
 use crate::settings::ImportSettings;
 use crate::task::ShutdownSignal;
@@ -202,7 +202,7 @@ fn scan_entries(
                 relat: relat.to_path_buf(),
                 abs: path.to_path_buf(),
                 mtime: current_mtime,
-                file_size: Some(current_size),
+                file_size: current_size,
             });
 
             send_progress(ctx.hub, ctx.notif_id, idx, total);
@@ -235,7 +235,7 @@ fn scan_entries(
                 relat: relat.to_path_buf(),
                 abs: path.to_path_buf(),
                 mtime: current_mtime,
-                file_size: Some(current_size),
+                file_size: current_size,
             });
             send_progress(ctx.hub, ctx.notif_id, idx, total);
             continue;
@@ -461,8 +461,7 @@ pub fn run(
         .iter()
         .filter_map(|h| {
             let mtime = h.mtime?;
-            let size = h.file_size?;
-            Some((h.abs.clone(), (mtime, size)))
+            Some((h.abs.clone(), (mtime, h.file_size)))
         })
         .collect();
 
@@ -712,11 +711,6 @@ mod tests {
 
         let mut allowed: FxHashSet<FileExtension> = FxHashSet::default();
         allowed.insert(FileExtension::Epub);
-
-        let settings = ImportSettings {
-            allowed_kinds: allowed,
-            ..ImportSettings::default()
-        };
 
         let lib = Library::new(dir.path(), &db, "test").expect("library");
         let (tx, rx) = std::sync::mpsc::channel();

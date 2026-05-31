@@ -418,6 +418,15 @@ impl Library {
             } else {
                 debug!(fp = %fp, "book copied to target database");
 
+                if let Err(e) = other.db.update_book_path(
+                    other.library_id,
+                    fp,
+                    &info.file.path,
+                    &info.file.absolute_path,
+                ) {
+                    error!(fp = %fp, error = %e, "failed to update absolute_path for copied book");
+                }
+
                 if let Err(e) = other.db.insert_sort_rank(other.library_id, fp, &info) {
                     error!(fp = %fp, error = %e, "failed to insert sort rank for copied book");
                 }
@@ -470,6 +479,15 @@ impl Library {
                 error!(fp = %fp, error = %e, "failed to insert moved book into target database");
             } else {
                 debug!(fp = %fp, "book moved to target database");
+
+                if let Err(e) = other.db.update_book_path(
+                    other.library_id,
+                    fp,
+                    &info.file.path,
+                    &info.file.absolute_path,
+                ) {
+                    error!(fp = %fp, error = %e, "failed to update absolute_path for moved book");
+                }
 
                 if let Err(e) = other.db.insert_sort_rank(other.library_id, fp, &info) {
                     error!(fp = %fp, error = %e, "failed to insert sort rank for moved book");

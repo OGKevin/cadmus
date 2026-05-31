@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n                SELECT lb.book_fingerprint AS \"fingerprint!: Fp\",\n                       lb.file_path        AS \"file_path!: String\",\n                       lb.absolute_path    AS \"absolute_path!: String\",\n                       lb.mtime            AS \"mtime?: UnixTimestamp\",\n                       lb.file_size        AS \"file_size?: FileSize\"\n                FROM library_books lb\n                WHERE lb.library_id = ?\n                ",
+  "query": "\n                SELECT lb.book_fingerprint AS \"fingerprint!: Fp\",\n                       lb.file_path        AS \"file_path!: String\",\n                       b.absolute_path     AS \"absolute_path!: String\",\n                       b.mtime             AS \"mtime?: UnixTimestamp\",\n                       b.file_size         AS \"file_size: i64\"\n                FROM library_books lb\n                INNER JOIN books b ON lb.book_fingerprint = b.fingerprint\n                WHERE lb.library_id = ?\n                ",
   "describe": {
     "columns": [
       {
@@ -24,7 +24,7 @@
         "type_info": "Integer"
       },
       {
-        "name": "file_size?: FileSize",
+        "name": "file_size: i64",
         "ordinal": 4,
         "type_info": "Integer"
       }
@@ -37,8 +37,8 @@
       false,
       false,
       true,
-      true
+      false
     ]
   },
-  "hash": "bf21fd163a7501a501a96a66e6b656ff8740c186146867d404b311abe53e4153"
+  "hash": "4f06f1eea7ba462e213dd1e98e309765420513308ebc24e5fe89e0def20bec81"
 }

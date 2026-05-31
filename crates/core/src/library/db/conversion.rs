@@ -1,4 +1,5 @@
 use super::models::{BookRow, ReadingStateRow, TocEntryRow};
+use crate::db::types::UnixTimestamp;
 use crate::document::{SimpleTocEntry, TocLocation};
 use crate::helpers::Fp;
 use crate::metadata::{Info, ReaderInfo};
@@ -24,6 +25,7 @@ pub fn info_to_book_row(fp: Fp, info: &Info) -> BookRow {
         file_kind: info.file.kind.clone(),
         file_size: info.file.size as i64,
         added_at: info.added.into(),
+        mtime: info.file.mtime.map(UnixTimestamp::from),
     }
 }
 
