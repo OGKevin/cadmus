@@ -35,15 +35,14 @@ crate::migration!(
         let install_dir = crate::device::CURRENT_DEVICE.install_dir();
         let data_dir = crate::device::CURRENT_DEVICE.data_dir();
 
-        migrate_data_to_sd(install_dir, data_dir);
+        migrate_data_to_sd(install_dir, data_dir)
 
-        Ok(())
     }
 );
 
-fn migrate_data_to_sd(install_dir: PathBuf, data_dir: PathBuf) {
+fn migrate_data_to_sd(install_dir: PathBuf, data_dir: PathBuf) -> anyhow::Result<()> {
     if install_dir == data_dir {
-        return;
+        return Ok(());
     }
 
     tracing::info!(
@@ -58,21 +57,26 @@ fn migrate_data_to_sd(install_dir: PathBuf, data_dir: PathBuf) {
             error = %e,
             "failed to create data dir on sd card; skipping migration"
         );
-        return;
+        anyhow::bail!("failed to create data dir {}", data_dir.display());
     }
 
+    let mut all_ok = true;
+
     for dirname in MIGRATE_DIRS {
-        migrate_dir(&install_dir.join(dirname), &data_dir.join(dirname));
+        all_ok &= migrate_dir(&install_dir.join(dirname), &data_dir.join(dirname));
     }
 
     for filename in MIGRATE_FILES {
-        migrate_file(&install_dir.join(filename), &data_dir.join(filename));
+        all_ok &= migrate_file(&install_dir.join(filename), &data_dir.join(filename));
     }
+
+    anyhow::ensure!(all_ok, "sd-card data migration completed with copy errors");
+    Ok(())
 }
 
-fn migrate_dir(src: &Path, dst: &Path) {
+fn migrate_dir(src: &Path, dst: &Path) -> bool {
     if !src.exists() {
-        return;
+        return true;
     }
 
     if let Err(e) = fs::create_dir_all(dst) {
@@ -81,7 +85,7 @@ fn migrate_dir(src: &Path, dst: &Path) {
             error = %e,
             "failed to create destination dir; skipping directory migration"
         );
-        return;
+        return false;
     }
 
     let fully_copied = copy_dir_recursive(src, dst, src);
@@ -91,7 +95,7 @@ fn migrate_dir(src: &Path, dst: &Path) {
             path = %src.display(),
             "skipping source directory removal; not all files were copied"
         );
-        return;
+        return false;
     }
 
     if let Err(e) = fs::remove_dir_all(src) {
@@ -101,6 +105,8 @@ fn migrate_dir(src: &Path, dst: &Path) {
             "failed to remove source directory after migration"
         );
     }
+
+    true
 }
 
 fn copy_dir_recursive(src_root: &Path, dst_root: &Path, current: &Path) -> bool {
