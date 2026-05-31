@@ -572,14 +572,14 @@ pub fn run() -> Result<(), Error> {
     let manager = SettingsManager::new(get_current_version());
     let settings = manager.load();
 
+    cadmus_core::crypto::init_crypto_provider();
+
     if let Err(e) = cadmus_core::logging::init_logging(&settings.logging) {
         eprintln!("Warning: Failed to initialize logging: {:#}", e);
         eprintln!("Continuing without logging...");
     }
 
     cadmus_core::document::log_mupdf_features();
-
-    cadmus_core::crypto::init_crypto_provider();
 
     #[cfg(feature = "profiling")]
     if let Err(e) = cadmus_core::telemetry::profiling::init_profiling(
