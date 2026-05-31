@@ -2544,12 +2544,13 @@ impl Db {
         feature = "tracing",
         tracing::instrument(skip(self), fields(library_id))
     )]
-    pub fn list_book_handles(&self, library_id: i64) -> Result<Vec<(Fp, PathBuf)>, Error> {
+    pub fn list_book_handles(&self, library_id: i64) -> Result<Vec<(Fp, PathBuf, PathBuf)>, Error> {
         RUNTIME.block_on(async {
             let rows = sqlx::query!(
                 r#"
                 SELECT lb.book_fingerprint AS "fingerprint!: Fp",
-                       lb.file_path        AS "file_path!: String"
+                       lb.file_path        AS "file_path!: String",
+                       lb.absolute_path    AS "absolute_path!: String"
                 FROM library_books lb
                 WHERE lb.library_id = ?
                 "#,
@@ -2559,7 +2560,13 @@ impl Db {
             .await?;
 
             rows.into_iter()
-                .map(|row| Ok((row.fingerprint, PathBuf::from(row.file_path))))
+                .map(|row| {
+                    Ok((
+                        row.fingerprint,
+                        PathBuf::from(row.file_path),
+                        PathBuf::from(row.absolute_path),
+                    ))
+                })
                 .collect()
         })
     }
@@ -3930,7 +3937,10 @@ mod tests {
         let handles = libdb
             .list_book_handles(library_id)
             .expect("failed to list handles");
-        assert_eq!(handles, vec![(fp, PathBuf::from("old/path.pdf"))]);
+        assert_eq!(
+            handles,
+            vec![(fp, PathBuf::from("old/path.pdf"), PathBuf::from(""))]
+        );
 
         libdb
             .update_book_path(
@@ -3954,7 +3964,14 @@ mod tests {
         let handles = libdb
             .list_book_handles(library_id)
             .expect("failed to list handles after update");
-        assert_eq!(handles, vec![(fp, PathBuf::from("new/path.pdf"))]);
+        assert_eq!(
+            handles,
+            vec![(
+                fp,
+                PathBuf::from("new/path.pdf"),
+                PathBuf::from("/abs/new/path.pdf")
+            )]
+        );
     }
 
     #[test]
@@ -4796,7 +4813,7 @@ mod tests {
         assert_eq!(purged, vec![pdf_fp], "only pdf should be purged");
 
         let handles = libdb.list_book_handles(library_id).expect("handles");
-        let fps: Vec<Fp> = handles.iter().map(|(fp, _)| *fp).collect();
+        let fps: Vec<Fp> = handles.iter().map(|(fp, _, _)| *fp).collect();
 
         assert!(fps.contains(&epub_fp), "epub should remain");
         assert!(!fps.contains(&pdf_fp), "pdf should be gone");

@@ -86,7 +86,7 @@ fn scan_entries(
     settings: &ImportSettings,
     force: bool,
     ctx: &ScanContext<'_>,
-    handles_by_fp: &mut FxHashMap<Fp, PathBuf>,
+    handles_by_fp: &mut FxHashMap<Fp, (PathBuf, PathBuf)>,
     handles_by_path: &mut FxHashMap<PathBuf, Fp>,
 ) -> Option<ScanResult> {
     let total = entries.len();
@@ -166,19 +166,31 @@ fn scan_entries(
         }
 
         if handles_by_fp.contains_key(&fp) {
-            if relat != handles_by_fp[&fp] {
+            let (stored_relat, stored_abs) = handles_by_fp[&fp].clone();
+            let path_changed = relat != stored_relat;
+            let abs_stale = path != stored_abs;
+
+            if path_changed {
                 debug!(
                     fp = %fp,
-                    old_path = %handles_by_fp[&fp].display(),
+                    old_path = %stored_relat.display(),
                     new_path = %relat.display(),
                     "updated book path"
                 );
-                let old_path = handles_by_fp.remove(&fp).unwrap();
-                handles_by_path.remove(&old_path);
-                handles_by_fp.insert(fp, relat.to_path_buf());
+                handles_by_path.remove(&stored_relat);
+                handles_by_fp.insert(fp, (relat.to_path_buf(), path.to_path_buf()));
                 handles_by_path.insert(relat.to_path_buf(), fp);
                 path_updates.push((fp, relat.to_path_buf(), path.to_path_buf()));
+            } else if abs_stale {
+                debug!(
+                    fp = %fp,
+                    path = %relat.display(),
+                    "healing stale absolute_path"
+                );
+                handles_by_fp.insert(fp, (relat.to_path_buf(), path.to_path_buf()));
+                path_updates.push((fp, relat.to_path_buf(), path.to_path_buf()));
             }
+
             send_progress(ctx.hub, ctx.notif_id, idx, total);
             continue;
         }
@@ -193,7 +205,7 @@ fn scan_entries(
 
             handles_by_fp.remove(&old_fp);
             handles_by_path.remove(relat);
-            handles_by_fp.insert(fp, relat.to_path_buf());
+            handles_by_fp.insert(fp, (relat.to_path_buf(), path.to_path_buf()));
             handles_by_path.insert(relat.to_path_buf(), fp);
             books_to_delete.push(old_fp);
 
@@ -223,7 +235,7 @@ fn scan_entries(
             if settings.metadata_kinds.contains(&book_info.file.kind) {
                 extract_metadata_from_document(home, &mut book_info);
             }
-            handles_by_fp.insert(fp, relat.to_path_buf());
+            handles_by_fp.insert(fp, (relat.to_path_buf(), path.to_path_buf()));
             handles_by_path.insert(relat.to_path_buf(), fp);
             books_to_insert.push((fp, book_info));
         }
@@ -293,11 +305,11 @@ fn resolve_relocations(
 }
 
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(handles_by_fp, home)))]
-fn find_deleted_books(handles_by_fp: &FxHashMap<Fp, PathBuf>, home: &Path) -> Vec<Fp> {
+fn find_deleted_books(handles_by_fp: &FxHashMap<Fp, (PathBuf, PathBuf)>, home: &Path) -> Vec<Fp> {
     handles_by_fp
         .iter()
-        .filter(|(_, relat)| relat.as_os_str().is_empty() || !home.join(relat).exists())
-        .map(|(fp, relat)| {
+        .filter(|(_, (relat, _))| relat.as_os_str().is_empty() || !home.join(relat).exists())
+        .map(|(fp, (relat, _))| {
             info!(fp = %fp, path = %relat.display(), "removing deleted entry");
             *fp
         })
@@ -398,9 +410,15 @@ pub fn run(
         }
     };
 
-    let mut handles_by_fp: FxHashMap<Fp, PathBuf> = handles.iter().cloned().collect();
-    let mut handles_by_path: FxHashMap<PathBuf, Fp> =
-        handles.into_iter().map(|(fp, p)| (p, fp)).collect();
+    let mut handles_by_fp: FxHashMap<Fp, (PathBuf, PathBuf)> = handles
+        .iter()
+        .cloned()
+        .map(|(fp, relat, abs)| (fp, (relat, abs)))
+        .collect();
+    let mut handles_by_path: FxHashMap<PathBuf, Fp> = handles
+        .into_iter()
+        .map(|(fp, relat, _abs)| (relat, fp))
+        .collect();
 
     let purged_fps = db
         .delete_books_with_disallowed_kinds(library_id, &settings.allowed_kinds)
@@ -410,8 +428,8 @@ pub fn run(
         });
 
     for fp in &purged_fps {
-        if let Some(path) = handles_by_fp.remove(fp) {
-            handles_by_path.remove(&path);
+        if let Some((relat, _abs)) = handles_by_fp.remove(fp) {
+            handles_by_path.remove(&relat);
         }
     }
 
@@ -602,7 +620,10 @@ mod tests {
             .expect("insert library book");
 
         let handles = lib.db.list_book_handles(lib.library_id).expect("handles");
-        let handles_by_fp: FxHashMap<Fp, PathBuf> = handles.into_iter().collect();
+        let handles_by_fp: FxHashMap<Fp, (PathBuf, PathBuf)> = handles
+            .into_iter()
+            .map(|(fp, relat, abs)| (fp, (relat, abs)))
+            .collect();
 
         assert_eq!(find_deleted_books(&handles_by_fp, dir.path()), vec![fp]);
     }
@@ -645,7 +666,7 @@ mod tests {
         let _events: Vec<Event> = rx.try_iter().collect();
 
         let handles = lib.db.list_book_handles(lib.library_id).expect("handles");
-        let paths: Vec<_> = handles.iter().map(|(_, p)| p.clone()).collect();
+        let paths: Vec<_> = handles.iter().map(|(_, p, _)| p.clone()).collect();
 
         assert!(
             paths.iter().any(|p| p.ends_with("book.epub")),
@@ -715,7 +736,7 @@ mod tests {
             .db
             .list_book_handles(lib.library_id)
             .expect("handles after purge");
-        let paths: Vec<_> = handles.iter().map(|(_, p)| p.clone()).collect();
+        let paths: Vec<_> = handles.iter().map(|(_, p, _)| p.clone()).collect();
 
         assert_eq!(handles.len(), 1, "only epub should remain after purge");
         assert!(
