@@ -90,7 +90,9 @@ first time, follow the [installation guide](./index.md) or the
 If Cadmus shows an error like _"Insufficient disk space: need 100MB, have XMB"_
 while downloading an update:
 
-- Free up space on your Kobo by deleting books or other files you do not need
-- Cadmus downloads update files into its own `tmp` folder inside the Cadmus
-  folder
-- This error means internal storage is too full for the update file
+- Cadmus downloads update files into a `tmp` folder:
+  - **With SD card**: `/mnt/sd/.cadmus/tmp` (uses SD card space)
+  - **Without SD card**: `/mnt/onboard/.adds/cadmus/tmp` (uses internal storage)
+- If you see this error and have an SD card inserted, the card may be full
+- If you do not have an SD card, free up space on internal storage by deleting
+  books or other files you do not need

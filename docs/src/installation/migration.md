@@ -14,6 +14,9 @@ Copy the file as-is into the Cadmus folder so it is named `Settings.toml` (for e
 The `[[libraries]]` section is the most important part, it tells Cadmus where your books live and drives the reading-progress import on
 first launch. On first launch, Cadmus will move this file into its `Settings/` folder automatically.
 
+> [!NOTE]
+> If you insert an SD card after initial setup, Cadmus automatically migrates settings, logs, dictionaries, and the database to `/mnt/sd/.cadmus/` (or `/mnt/sd/.cadmus-tst/` for test builds) to free up internal storage.
+
 ```toml
 [[libraries]]
 name = "On Board"
@@ -58,10 +61,10 @@ settings), you can start it fresh:
 
 1. Delete the Cadmus SQLite database:
 
-   | Build  | Database path                                 |
-   | ------ | --------------------------------------------- |
-   | Stable | `/mnt/onboard/.adds/cadmus/cadmus.sqlite`     |
-   | Test   | `/mnt/onboard/.adds/cadmus-tst/cadmus.sqlite` |
+   | Build  | Database path (with SD card)          | Database path (without SD card)               |
+   | ------ | ------------------------------------- | --------------------------------------------- |
+   | Stable | `/mnt/sd/.cadmus/cadmus.sqlite`       | `/mnt/onboard/.adds/cadmus/cadmus.sqlite`     |
+   | Test   | `/mnt/sd/.cadmus-tst/cadmus.sqlite`   | `/mnt/onboard/.adds/cadmus-tst/cadmus.sqlite` |
 
 2. Restart Cadmus — the import will run again from scratch.
 
