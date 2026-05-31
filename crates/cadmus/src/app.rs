@@ -64,7 +64,6 @@ use std::time::{Duration, Instant};
 use tracing::{Level, debug, error, info, warn};
 
 pub const APP_NAME: &str = "Cadmus";
-const DB_FILENAME: &str = "cadmus.sqlite";
 const FB_DEVICE: &str = "/dev/fb0";
 const RTC_DEVICE: &str = "/dev/rtc0";
 const TOUCH_INPUTS: [&str; 5] = [
@@ -569,10 +568,13 @@ pub fn run() -> Result<(), Error> {
         fb.set_rotation(startup_rotation).ok();
     }
 
-    let manager = SettingsManager::new(get_current_version());
+    let manager = SettingsManager::new(CURRENT_DEVICE.data_dir(), get_current_version());
     let settings = manager.load();
 
-    if let Err(e) = cadmus_core::logging::init_logging(&settings.logging) {
+    if let Err(e) = cadmus_core::logging::init_logging(
+        &settings.logging,
+        CURRENT_DEVICE.data_path(&settings.logging.directory),
+    ) {
         eprintln!("Warning: Failed to initialize logging: {:#}", e);
         eprintln!("Continuing without logging...");
     }
@@ -591,8 +593,7 @@ pub fn run() -> Result<(), Error> {
     i18n::init(settings.locale.as_ref());
 
     let startup_cwd = env::current_dir().ok();
-    let startup_db_exists = Path::new(DB_FILENAME).exists();
-    info!(cwd = ?startup_cwd, db_exists = startup_db_exists, "startup diagnostics");
+    info!(cwd = ?startup_cwd, "startup diagnostics");
     CURRENT_DEVICE.clean_tmp_dir();
 
     match CURRENT_DEVICE.power_manager() {
@@ -607,7 +608,7 @@ pub fn run() -> Result<(), Error> {
     }
 
     let mut fonts = Fonts::load().context("can't load fonts")?;
-    let database = Database::new(DB_FILENAME)
+    let database = Database::new(CURRENT_DEVICE.resolve_db_path())
         .map_err(|e| {
             error!(error = %e, "can't open database");
             e
