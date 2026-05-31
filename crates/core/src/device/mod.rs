@@ -163,6 +163,7 @@ impl Device {
     /// stable builds.
     pub fn install_subdir(&self) -> &'static str {
         cfg_select! {
+            feature = "emulator" => {""}
             feature = "test" => { ".adds/cadmus-tst" }
             _ => { ".adds/cadmus" }
         }
@@ -186,7 +187,7 @@ impl Device {
                     .join(self.install_subdir())
             }
             feature = "emulator" => {
-                PathBuf::from("/tmp").join(self.install_subdir())
+                PathBuf::from(".").join(self.install_subdir())
             }
             _ => {
                 PathBuf::from(crate::settings::INTERNAL_CARD_ROOT).join(self.install_subdir())
