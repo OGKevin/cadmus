@@ -715,7 +715,8 @@ impl CategoryEditor {
         rq: &mut RenderQueue,
         context: &mut Context,
     ) -> bool {
-        let lang_dir = Path::new(DICTIONARIES_DIRNAME)
+        let lang_dir = CURRENT_DEVICE
+            .data_path(DICTIONARIES_DIRNAME)
             .join("reader-dict")
             .join(lang);
 

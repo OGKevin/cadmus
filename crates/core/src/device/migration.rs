@@ -30,7 +30,7 @@ crate::migration!(
     /// This migration is a no-op when no SD card is present (`data_dir` equals
     /// `install_dir`). It will be recorded as succeeded so it does not re-run
     /// on subsequent boots without a card.
-    "v3_migrate_data_to_sd_card",
+    "v1_migrate_data_to_sd_card",
     async fn migrate_data_to_sd_card(_pool: &sqlx::SqlitePool) {
         let install_dir = crate::device::CURRENT_DEVICE.install_dir();
         let data_dir = crate::device::CURRENT_DEVICE.data_dir();
@@ -84,7 +84,15 @@ fn migrate_dir(src: &Path, dst: &Path) {
         return;
     }
 
-    copy_dir_recursive(src, dst, src);
+    let fully_copied = copy_dir_recursive(src, dst, src);
+
+    if !fully_copied {
+        tracing::warn!(
+            path = %src.display(),
+            "skipping source directory removal; not all files were copied"
+        );
+        return;
+    }
 
     if let Err(e) = fs::remove_dir_all(src) {
         tracing::warn!(
@@ -95,7 +103,7 @@ fn migrate_dir(src: &Path, dst: &Path) {
     }
 }
 
-fn copy_dir_recursive(src_root: &Path, dst_root: &Path, current: &Path) {
+fn copy_dir_recursive(src_root: &Path, dst_root: &Path, current: &Path) -> bool {
     let entries = match fs::read_dir(current) {
         Ok(e) => e,
         Err(e) => {
@@ -104,15 +112,18 @@ fn copy_dir_recursive(src_root: &Path, dst_root: &Path, current: &Path) {
                 error = %e,
                 "failed to read directory during migration"
             );
-            return;
+            return false;
         }
     };
+
+    let mut all_ok = true;
 
     for entry in entries {
         let entry = match entry {
             Ok(e) => e,
             Err(e) => {
                 tracing::warn!(error = %e, "failed to read directory entry during migration");
+                all_ok = false;
                 continue;
             }
         };
@@ -121,6 +132,7 @@ fn copy_dir_recursive(src_root: &Path, dst_root: &Path, current: &Path) {
             Ok(ft) => ft,
             Err(e) => {
                 tracing::warn!(error = %e, "failed to get file type during migration");
+                all_ok = false;
                 continue;
             }
         };
@@ -129,6 +141,7 @@ fn copy_dir_recursive(src_root: &Path, dst_root: &Path, current: &Path) {
             Ok(r) => r.to_path_buf(),
             Err(e) => {
                 tracing::warn!(error = %e, "failed to strip prefix during migration");
+                all_ok = false;
                 continue;
             }
         };
@@ -142,10 +155,13 @@ fn copy_dir_recursive(src_root: &Path, dst_root: &Path, current: &Path) {
                     error = %e,
                     "failed to create subdirectory during migration"
                 );
+                all_ok = false;
                 continue;
             }
 
-            copy_dir_recursive(src_root, dst_root, &entry.path());
+            if !copy_dir_recursive(src_root, dst_root, &entry.path()) {
+                all_ok = false;
+            }
             continue;
         }
 
@@ -153,13 +169,17 @@ fn copy_dir_recursive(src_root: &Path, dst_root: &Path, current: &Path) {
             continue;
         }
 
-        migrate_file(&entry.path(), &dst_path);
+        if !migrate_file(&entry.path(), &dst_path) {
+            all_ok = false;
+        }
     }
+
+    all_ok
 }
 
-fn migrate_file(src: &Path, dst: &Path) {
+fn migrate_file(src: &Path, dst: &Path) -> bool {
     if !src.exists() || dst.exists() {
-        return;
+        return true;
     }
 
     if let Err(e) = fs::copy(src, dst) {
@@ -169,7 +189,7 @@ fn migrate_file(src: &Path, dst: &Path) {
             error = %e,
             "failed to copy file during migration"
         );
-        return;
+        return false;
     }
 
     if let Err(e) = fs::remove_file(src) {
@@ -181,6 +201,8 @@ fn migrate_file(src: &Path, dst: &Path) {
     }
 
     tracing::debug!(path = %src.display(), "migrated file to sd card");
+
+    true
 }
 
 #[cfg(test)]

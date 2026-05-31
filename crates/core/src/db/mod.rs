@@ -38,7 +38,12 @@ impl Database {
     /// * `Err(Error)` - Connection failure
     #[cfg_attr(feature = "tracing", tracing::instrument(fields(db_path = %path.as_ref().display())))]
     pub fn new<P: AsRef<Path> + std::fmt::Debug>(path: P) -> Result<Self, Error> {
-        let path_str = path.as_ref().display().to_string();
+        let path = path.as_ref();
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        let path_str = path.display().to_string();
 
         tracing::info!(db_path = %path_str, "connecting to database");
 
