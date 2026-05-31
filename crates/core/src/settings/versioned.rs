@@ -71,11 +71,16 @@ pub struct SettingsManager {
 }
 
 impl SettingsManager {
-    /// Creates a new settings manager.
+    /// Creates a new settings manager rooted at `root_dir`.
     ///
     /// # Arguments
     ///
-    /// * `current_version` - The current application version (from `get_current_version()`)
+    /// * `root_dir` - The directory that contains the `Settings/` subdirectory
+    ///   and the legacy `Settings.toml` file. Pass
+    ///   [`Device::data_dir()`](crate::device::Device::data_dir) so that
+    ///   versioned settings are stored on the SD card when one is present.
+    /// * `current_version` - The current application version (from
+    ///   `get_current_version()`)
     ///
     /// The build UUID is automatically obtained from the compile-time `BUILD_UUID`
     /// environment variable set by the core crate's build script.
@@ -83,13 +88,13 @@ impl SettingsManager {
     /// # Example
     ///
     /// ```no_run
+    /// use cadmus_core::device::CURRENT_DEVICE;
     /// use cadmus_core::settings::versioned::SettingsManager;
     /// use cadmus_core::version::get_current_version;
     ///
-    /// let manager = SettingsManager::new(get_current_version());
+    /// let manager = SettingsManager::new(CURRENT_DEVICE.data_dir(), get_current_version());
     /// ```
-    pub fn new(current_version: GitVersion) -> Self {
-        let root_dir = PathBuf::from(".");
+    pub fn new(root_dir: PathBuf, current_version: GitVersion) -> Self {
         let settings_dir = root_dir.join(SETTINGS_DIR);
         let manifest_path = settings_dir.join(MANIFEST_FILE);
 

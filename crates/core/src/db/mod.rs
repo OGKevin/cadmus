@@ -8,6 +8,9 @@ use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
 use std::path::Path;
 use std::str::FromStr;
 
+/// The filename of the SQLite database used by Cadmus.
+pub const DB_FILENAME: &str = "cadmus.sqlite";
+
 /// Database handle providing synchronous API over async SQLx operations.
 /// Uses a bridge pattern with `RUNTIME.block_on()` to maintain synchronous interface
 /// for compatibility with existing single-threaded event loop.

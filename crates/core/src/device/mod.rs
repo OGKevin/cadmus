@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 
 mod error;
 mod metadata;
+pub mod migration;
 mod model;
 mod power;
 mod types;
@@ -203,12 +204,85 @@ impl Device {
         self.install_dir().join(relative_path)
     }
 
+    /// Returns the subdirectory name used for dynamic data on removable storage.
+    ///
+    /// Mirrors [`Device::install_subdir`] but for the SD card, using the
+    /// `.cadmus` prefix instead of `.adds/cadmus`.
+    pub fn data_subdir(&self) -> &'static str {
+        cfg_select! {
+            feature = "test" => { ".cadmus-tst" }
+            _ => { ".cadmus" }
+        }
+    }
+
+    /// Returns the directory where dynamic data files are stored.
+    ///
+    /// On device builds for models with removable storage and an SD card
+    /// currently mounted, this returns `/mnt/sd/.cadmus` (or `.cadmus-tst`
+    /// for test builds). Otherwise it falls back to [`Device::install_dir`].
+    ///
+    /// Dynamic files include the SQLite database, settings, logs, and
+    /// dictionaries. Static assets (fonts, icons, bundled resources) always
+    /// live under [`Device::install_dir`].
+    pub fn data_dir(&self) -> PathBuf {
+        cfg_select! {
+            test => { self.install_dir() }
+            feature = "emulator" => { self.install_dir() }
+            _ => {
+                if self.has_removable_storage()
+                    && Path::new(crate::settings::EXTERNAL_CARD_ROOT).is_dir()
+                {
+                    PathBuf::from(crate::settings::EXTERNAL_CARD_ROOT)
+                        .join(self.data_subdir())
+                } else {
+                    self.install_dir()
+                }
+            }
+        }
+    }
+
+    /// Returns a path inside the dynamic data directory.
+    ///
+    /// Use this for files and directories that Cadmus writes at runtime:
+    /// the SQLite database, versioned settings, log files, and downloaded
+    /// dictionaries.
+    pub fn data_path(&self, relative_path: impl AsRef<Path>) -> PathBuf {
+        self.data_dir().join(relative_path)
+    }
+
+    /// Resolves the path to the SQLite database.
+    ///
+    /// Lookup order:
+    /// 1. `data_dir/cadmus.sqlite` — preferred location (SD card when available).
+    /// 2. `install_dir/cadmus.sqlite` — legacy location; logs a warning so the
+    ///    user knows to copy the database manually to free internal storage.
+    /// 3. `data_dir/cadmus.sqlite` — new install; the file does not exist yet.
+    pub fn resolve_db_path(&self) -> PathBuf {
+        let data_path = self.data_path(crate::db::DB_FILENAME);
+        if data_path.exists() {
+            return data_path;
+        }
+
+        let install_path = self.install_path(crate::db::DB_FILENAME);
+        if install_path.exists() {
+            tracing::warn!(
+                path = %install_path.display(),
+                "sqlite db found in install dir, not data dir; \
+                 copy it to data dir"
+            );
+            return install_path;
+        }
+
+        data_path
+    }
+
     /// Returns the path to the device-managed tmp directory.
     ///
-    /// The returned path is rooted under [`Device::install_dir`], so it remains
-    /// stable even when callers change `cwd` (for example during USB sharing).
+    /// The returned path is rooted under [`Device::data_dir`], so large
+    /// temporary downloads (e.g. OTA bundles) consume SD card space rather
+    /// than internal storage when a card is present.
     pub fn tmp_dir(&self) -> PathBuf {
-        self.install_path("tmp")
+        self.data_path("tmp")
     }
 
     /// Removes stale contents left by a previous run and recreates the tmp

@@ -49,7 +49,8 @@
 //!
 //! # Example Usage
 //!
-//! ```rust
+//! ```no_run
+//! use cadmus_core::device::CURRENT_DEVICE;
 //! use cadmus_core::settings::LoggingSettings;
 //! use cadmus_core::logging::{init_logging, shutdown_logging, get_run_id};
 //!
@@ -65,7 +66,8 @@
 //! };
 //!
 //! // Initialize at application startup
-//! init_logging(&settings)?;
+//! let log_dir = CURRENT_DEVICE.data_path(&settings.directory);
+//! init_logging(&settings, log_dir)?;
 //! eprintln!("Started with run ID: {}", get_run_id());
 //!
 //! // Use tracing macros throughout the application
@@ -254,7 +256,13 @@ fn is_run_log_entry(entry: &DirEntry) -> bool {
 ///
 /// # Arguments
 ///
-/// * `settings` - Logging configuration including level, directory, and retention
+/// * `settings` - Logging configuration including level, directory name, and
+///   retention settings.
+/// * `log_dir` - Absolute path to the directory where log files are written.
+///   The caller is responsible for computing this from
+///   [`Device::data_path`](crate::device::Device::data_path) so that logs land
+///   on the SD card when one is present. Pass
+///   `CURRENT_DEVICE.data_path(&settings.directory)` at call sites.
 ///
 /// # Returns
 ///
@@ -263,17 +271,16 @@ fn is_run_log_entry(entry: &DirEntry) -> bool {
 /// # Errors
 ///
 /// Returns an error if:
-/// - The current working directory cannot be determined
 /// - The log directory cannot be created
 /// - Log file cleanup fails
 /// - The rolling file appender cannot be initialized
-/// - The log filter configuration is invalid
 /// - The tracing subscriber cannot be initialized
 /// - OpenTelemetry initialization fails (when `otel` feature is enabled)
 ///
 /// # Example
 ///
-/// ```
+/// ```no_run
+/// use cadmus_core::device::CURRENT_DEVICE;
 /// use cadmus_core::settings::LoggingSettings;
 /// use cadmus_core::logging::init_logging;
 ///
@@ -288,17 +295,15 @@ fn is_run_log_entry(entry: &DirEntry) -> bool {
 ///     enable_dbus_log: false,
 /// };
 ///
-/// init_logging(&settings)?;
+/// let log_dir = CURRENT_DEVICE.data_path(&settings.directory);
+/// init_logging(&settings, log_dir)?;
 /// # Ok::<(), anyhow::Error>(())
 /// ```
-pub fn init_logging(settings: &LoggingSettings) -> Result<(), Error> {
+pub fn init_logging(settings: &LoggingSettings, log_dir: std::path::PathBuf) -> Result<(), Error> {
     if !settings.enabled {
         return Ok(());
     }
 
-    let current_working_dir =
-        std::env::current_dir().context("can't get current working directory")?;
-    let log_dir = current_working_dir.join(&settings.directory);
     fs::create_dir_all(&log_dir)
         .with_context(|| format!("can't create log directory {}", &log_dir.display()))?;
 
@@ -375,12 +380,14 @@ pub fn init_logging(settings: &LoggingSettings) -> Result<(), Error> {
 /// # Example
 ///
 /// ```no_run
+/// use cadmus_core::device::CURRENT_DEVICE;
 /// use cadmus_core::logging::{init_logging, shutdown_logging};
 /// use cadmus_core::settings::LoggingSettings;
 ///
 /// // At application start
 /// let settings = LoggingSettings::default();
-/// init_logging(&settings)?;
+/// let log_dir = CURRENT_DEVICE.data_path(&settings.directory);
+/// init_logging(&settings, log_dir)?;
 ///
 /// // ... application runs ...
 ///
@@ -524,7 +531,8 @@ mod tests {
                     enable_kern_log: false,
                     enable_dbus_log: false,
                 };
-                init_logging(&settings).expect("failed to initialize logging for tests");
+                init_logging(&settings, dir.path().to_path_buf())
+                    .expect("failed to initialize logging for tests");
                 dir
             })
             .path()

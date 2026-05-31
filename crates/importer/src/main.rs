@@ -1,6 +1,7 @@
 use cadmus_core::anyhow::{Context, Error, format_err};
 use cadmus_core::chrono::NaiveDateTime;
 use cadmus_core::db::Database;
+use cadmus_core::device::CURRENT_DEVICE;
 use cadmus_core::helpers::datetime_format;
 // use cadmus_core::library::importer;
 use cadmus_core::library::Library;
@@ -12,8 +13,6 @@ use getopts::Options;
 use std::env;
 use std::path::Path;
 // use std::sync::mpsc;
-
-const DB_FILENAME: &str = "cadmus.sqlite";
 
 fn main() -> Result<(), Error> {
     let args: Vec<String> = env::args().skip(1).collect();
@@ -120,7 +119,7 @@ fn main() -> Result<(), Error> {
         .as_ref()
         .and_then(|v| NaiveDateTime::parse_from_str(v, datetime_format::FORMAT).ok());
 
-    let database = Database::new(DB_FILENAME)?;
+    let database = Database::new(CURRENT_DEVICE.resolve_db_path())?;
     let library_name = library_path
         .file_name()
         .and_then(|n| n.to_str())

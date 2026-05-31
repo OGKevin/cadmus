@@ -105,7 +105,7 @@ impl Context {
         .join(KEYBOARD_LAYOUTS_DIRNAME);
 
         #[cfg(not(test))]
-        let path = Path::new(KEYBOARD_LAYOUTS_DIRNAME);
+        let path = CURRENT_DEVICE.install_path(KEYBOARD_LAYOUTS_DIRNAME);
 
         for entry in WalkDir::new(path)
             .min_depth(1)
@@ -143,7 +143,7 @@ impl Context {
         .join(DICTIONARIES_DIRNAME);
 
         #[cfg(not(test))]
-        let path = Path::new(DICTIONARIES_DIRNAME);
+        let path = CURRENT_DEVICE.data_path(DICTIONARIES_DIRNAME);
 
         for entry in WalkDir::new(path)
             .min_depth(1)
