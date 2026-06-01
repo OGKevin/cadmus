@@ -196,10 +196,19 @@ fn scan_entries(
 }
 
 fn send_progress(hub: &Sender<Event>, notif_id: ViewId, idx: usize, total: usize) {
-    let Some(percent) = ((idx + 1) * 100).checked_div(total) else {
+    let Some(current_percent) = ((idx + 1) * 100).checked_div(total) else {
         return;
     };
-    let percent = percent as u8;
+    let Some(previous_percent) = (idx * 100).checked_div(total) else {
+        return;
+    };
+
+    let current_bucket = current_percent / 5;
+    if current_bucket == previous_percent / 5 {
+        return;
+    }
+
+    let percent = (current_bucket * 5).min(100) as u8;
     debug!(percent, "import progress");
     hub.send(Event::Notification(NotificationEvent::UpdateProgress(
         notif_id, percent,
@@ -521,6 +530,31 @@ mod tests {
             progress_events.len() < 20,
             "shutdown should have cut the scan short (got {} progress events)",
             progress_events.len()
+        );
+    }
+
+    #[test]
+    fn sends_progress_in_five_percent_steps() {
+        let (tx, rx) = mpsc::channel();
+        let notif_id = ViewId::MessageNotif(0);
+
+        for idx in 0..72 {
+            send_progress(&tx, notif_id, idx, 72);
+        }
+
+        drop(tx);
+        let percents: Vec<u8> = rx
+            .try_iter()
+            .filter_map(|event| match event {
+                Event::Notification(NotificationEvent::UpdateProgress(_, percent)) => Some(percent),
+                _ => None,
+            })
+            .collect();
+
+        assert_eq!(
+            percents,
+            (5..=100).step_by(5).collect::<Vec<_>>(),
+            "progress should emit each 5% step exactly once"
         );
     }
 
