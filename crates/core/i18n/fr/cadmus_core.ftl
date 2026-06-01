@@ -2,19 +2,19 @@
 
 -app-name = Cadmus
 
-english = English
+english = Anglais
 
 startup-loading = Cadmus démarre…
 
 # Notifications
 
-notification-dictionary-install-failed = Failed to install dictionary for "{ $lang }"
-notification-downloading-dictionary = Downloading dictionary for "{ $lang }"
-notification-downloading-dictionary-completed = Downloading dictionary for "{ $lang }" completed
-notification-downloading-dictionary-progress = Downloading { $lang } ({ $downloaded }/{ $total })
-notification-dictionary-indexing = Indexation "{ $name }"
-notification-not-online = WiFi must be connected for this action.
-notification-refresh-rate-invalid = Refresh rate must be a number between 0 and 255.
+notification-dictionary-install-failed = Échec dans l'installation du dictionnaire "{ $lang }"
+notification-downloading-dictionary = Téléchargement du dictionnaire "{ $lang }"
+notification-downloading-dictionary-completed = Téléchargement du dictionnaire "{ $lang }" terminé
+notification-downloading-dictionary-progress = Téléchargement { $lang } en cours ({ $downloaded }/{ $total })
+notification-dictionary-indexing = Indexation de "{ $name }" en cours
+notification-not-online = Le WiFi doit être connecté pour cette action.
+notification-refresh-rate-invalid = Le taux de rafraîchissement doit être compris entre 0 et 255.
 
 # Common
 delete = Supprimer
@@ -23,7 +23,7 @@ delete = Supprimer
 top-menu-exit = Sortir
 top-menu-reboot-device = Redémarrer l'appareil
 top-menu-restart-app = Redémarrer {-app-name}
-top-menu-suspend = Suspendre
+top-menu-suspend = Mise en veille
 top-menu-quit = Quitter
 top-menu-power-off = Éteindre
 
@@ -37,16 +37,16 @@ settings-finished-action-close = Fermer
 settings-finished-action-goto-next = Aller au Prochain
 
 # Settings - General
-settings-general-language = Langage
-settings-general-keyboard-layout = Disposition de clavier
-settings-general-auto-suspend = Auto Suspend (minutes)
-settings-general-auto-power-off = Auto Power Off (days)
-settings-general-enable-sleep-cover = Enable Sleep Cover
-settings-general-enable-auto-share = Enable Auto Share
-settings-general-button-scheme = Button Scheme
+settings-general-language = Langue
+settings-general-keyboard-layout = Disposition du clavier
+settings-general-auto-suspend = Mise en veille Auto (minutes)
+settings-general-auto-power-off = Extinction Auto (jours)
+settings-general-enable-sleep-cover = Activer Sleep Cover
+settings-general-enable-auto-share = Activer Partage Auto
+settings-general-button-scheme = Schéma des boutons 
 settings-general-settings-retention = Settings Retention
-settings-general-auto-suspend-input = Auto Suspend (minutes, 0 = never)
-settings-general-auto-power-off-input = Auto Power Off (days, 0 = never)
+settings-general-auto-suspend-input = Mise en veille Auto (minutes, 0 = jamais)
+settings-general-auto-power-off-input = Extinction Auto (jours, 0 = jamais)
 settings-general-toggle-on = on
 settings-general-toggle-off = off
 settings-general-never = Jamais
@@ -55,18 +55,18 @@ settings-general-unknown = Inconnu
 
 # Settings - Reader
 settings-reader-end-of-book-action = Action Fin de Livre
-settings-reader-refresh-rate = Refresh Rate
-settings-reader-refresh-rate-by-kind-inverted-input = { $ext } inverted refresh rate (0 = never)
-settings-reader-refresh-rate-by-kind-regular-input = { $ext } regular refresh rate (0 = never)
-settings-reader-refresh-rate-inverted = Inverted
-settings-reader-refresh-rate-inverted-input = Inverted refresh rate (0 = never)
-settings-reader-refresh-rate-regular = Regular
-settings-reader-refresh-rate-regular-input = Regular refresh rate (0 = never)
+settings-reader-refresh-rate = Taux de rafraîchissement
+settings-reader-refresh-rate-by-kind-inverted-input = { $ext } taux de rafraîchissement inversé (0 = jamais)
+settings-reader-refresh-rate-by-kind-regular-input = { $ext } taux de rafraîchissement inversé (0 = jamais)
+settings-reader-refresh-rate-inverted = Inversé
+settings-reader-refresh-rate-inverted-input = Taux de rafraîchissement Inversé (0 = jamais)
+settings-reader-refresh-rate-regular = Normal
+settings-reader-refresh-rate-regular-input = Taux de rafraîchissement Normal (0 = jamais)
 settings-reader-refresh-rate-summary = { $regular } / { $inverted }
 
 # Settings - Intermission
-settings-intermission-blank = Blank
-settings-intermission-blank-inverted = Blank Inverted
+settings-intermission-blank = Écran Blanc
+settings-intermission-blank-inverted = Écran Noir
 settings-intermission-calendar = Calendrier
 settings-intermission-cover = Couverture
 settings-intermission-custom = Personnalisé
@@ -87,7 +87,7 @@ settings-import-startup-trigger = Importation au Démarrage
 settings-import-sync-metadata = Synchroniser Metadata
 
 # Importer
-importer-importing-library = Importing Library…
+importer-importing-library = Importation de la bibliothèque en cours…
 
 # Settings - Log Level
 settings-log-level-trace = TRACE
@@ -97,12 +97,12 @@ settings-log-level-warn = WARN
 settings-log-level-error = ERROR
 
 # Settings - Telemetry
-settings-telemetry-enable-logging = Enable Logging
-settings-telemetry-log-level = Log Level
+settings-telemetry-enable-logging = Activer le Logging
+settings-telemetry-log-level = Niveau de Log
 settings-telemetry-otlp-endpoint = OTLP Endpoint
 settings-telemetry-pyroscope-endpoint = Pyroscope Endpoint
-settings-telemetry-enable-kernel-log = Enable Kernel Log
-settings-telemetry-enable-dbus-log = Enable D-Bus Log
+settings-telemetry-enable-kernel-log = Activer les Logs Kernel
+settings-telemetry-enable-dbus-log = Activer les Logs D-Bus
 
 # Settings - Dictionaries
 settings-dictionaries-downloading = Téléchargement
