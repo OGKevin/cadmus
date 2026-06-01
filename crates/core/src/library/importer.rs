@@ -9,6 +9,7 @@ use crate::view::{Event, NotificationEvent, ViewId};
 use fxhash::FxHashMap;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
+use std::time::{Duration, Instant};
 use tracing::{debug, error, info};
 use walkdir::{DirEntry, WalkDir};
 
@@ -24,6 +25,42 @@ impl PendingRelocation {
     fn old_fp(&self) -> Fp {
         match self {
             PendingRelocation::FingerprintChanged { old_fp, .. } => *old_fp,
+        }
+    }
+}
+
+struct ProgressTracker {
+    last_sent: Instant,
+    last_percent: u8,
+    first_tick: bool,
+}
+
+impl ProgressTracker {
+    const SEND_INTERVAL_SEC: u64 = 2;
+
+    fn new() -> Self {
+        Self {
+            last_sent: Instant::now(),
+            last_percent: 0,
+            first_tick: true,
+        }
+    }
+
+    fn should_send(&mut self, idx: usize, total: usize, now: Instant) -> Option<u8> {
+        let percent = ((idx + 1) * 100).checked_div(total)?;
+        let percent = percent.min(100) as u8;
+
+        if self.first_tick
+            || percent == 100
+            || now.checked_duration_since(self.last_sent)
+                >= Some(Duration::from_secs(Self::SEND_INTERVAL_SEC))
+        {
+            self.last_sent = now;
+            self.last_percent = percent;
+            self.first_tick = false;
+            Some(percent)
+        } else {
+            None
         }
     }
 }
@@ -72,7 +109,7 @@ fn walk_files(home: &Path) -> Vec<DirEntry> {
 #[cfg_attr(
     feature = "tracing",
     tracing::instrument(
-        skip(home, settings, ctx, handles_by_fp, handles_by_path),
+        skip(home, settings, ctx, tracker, handles_by_fp, handles_by_path),
         fields(total)
     )
 )]
@@ -81,6 +118,7 @@ fn scan_entries(
     entries: &[DirEntry],
     settings: &ImportSettings,
     ctx: &ScanContext<'_>,
+    tracker: &mut ProgressTracker,
     handles_by_fp: &mut FxHashMap<Fp, PathBuf>,
     handles_by_path: &mut FxHashMap<PathBuf, Fp>,
 ) -> Option<ScanResult> {
@@ -107,7 +145,7 @@ fn scan_entries(
         let allowed_kind = kind.filter(|k| settings.is_kind_allowed(*k));
 
         if !is_known_to_db && allowed_kind.is_none() {
-            send_progress(ctx.hub, ctx.notif_id, idx, total);
+            send_progress(ctx.hub, ctx.notif_id, tracker, idx, total);
             continue;
         }
 
@@ -115,7 +153,7 @@ fn scan_entries(
             Ok(fp) => fp,
             Err(e) => {
                 error!(path = ?path, error = %e, "failed to compute fingerprint, skipping");
-                send_progress(ctx.hub, ctx.notif_id, idx, total);
+                send_progress(ctx.hub, ctx.notif_id, tracker, idx, total);
                 continue;
             }
         };
@@ -134,7 +172,7 @@ fn scan_entries(
                 handles_by_path.insert(relat.to_path_buf(), fp);
                 path_updates.push((fp, relat.to_path_buf(), path.to_path_buf()));
             }
-            send_progress(ctx.hub, ctx.notif_id, idx, total);
+            send_progress(ctx.hub, ctx.notif_id, tracker, idx, total);
             continue;
         }
 
@@ -159,7 +197,7 @@ fn scan_entries(
             });
 
             thumbnails_to_delete.push(old_fp);
-            send_progress(ctx.hub, ctx.notif_id, idx, total);
+            send_progress(ctx.hub, ctx.notif_id, tracker, idx, total);
             continue;
         }
 
@@ -183,7 +221,7 @@ fn scan_entries(
             books_to_insert.push((fp, info));
         }
 
-        send_progress(ctx.hub, ctx.notif_id, idx, total);
+        send_progress(ctx.hub, ctx.notif_id, tracker, idx, total);
     }
 
     Some(ScanResult {
@@ -195,20 +233,16 @@ fn scan_entries(
     })
 }
 
-fn send_progress(hub: &Sender<Event>, notif_id: ViewId, idx: usize, total: usize) {
-    let Some(current_percent) = ((idx + 1) * 100).checked_div(total) else {
+fn send_progress(
+    hub: &Sender<Event>,
+    notif_id: ViewId,
+    tracker: &mut ProgressTracker,
+    idx: usize,
+    total: usize,
+) {
+    let Some(percent) = tracker.should_send(idx, total, Instant::now()) else {
         return;
     };
-    let Some(previous_percent) = (idx * 100).checked_div(total) else {
-        return;
-    };
-
-    let current_bucket = current_percent / 5;
-    if current_bucket == previous_percent / 5 {
-        return;
-    }
-
-    let percent = (current_bucket * 5).min(100) as u8;
     debug!(percent, "import progress");
     hub.send(Event::Notification(NotificationEvent::UpdateProgress(
         notif_id, percent,
@@ -387,11 +421,14 @@ pub fn run(
         shutdown,
     };
 
+    let mut tracker = ProgressTracker::new();
+
     let Some(mut result) = scan_entries(
         home,
         &entries,
         settings,
         &ctx,
+        &mut tracker,
         &mut handles_by_fp,
         &mut handles_by_path,
     ) else {
@@ -534,27 +571,59 @@ mod tests {
     }
 
     #[test]
-    fn sends_progress_in_five_percent_steps() {
-        let (tx, rx) = mpsc::channel();
-        let notif_id = ViewId::MessageNotif(0);
+    fn progress_sends_at_100_percent_immediately() {
+        let mut tracker = ProgressTracker::new();
+        let base = Instant::now();
 
-        for idx in 0..72 {
-            send_progress(&tx, notif_id, idx, 72);
-        }
+        let sent = (0..100)
+            .filter_map(|i| tracker.should_send(i, 100, base))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            sent,
+            vec![1, 100],
+            "Only beginning and end when loop is fast"
+        );
 
-        drop(tx);
-        let percents: Vec<u8> = rx
-            .try_iter()
-            .filter_map(|event| match event {
-                Event::Notification(NotificationEvent::UpdateProgress(_, percent)) => Some(percent),
-                _ => None,
-            })
-            .collect();
+        assert_eq!(tracker.should_send(99, 100, base), Some(100));
+    }
+
+    #[test]
+    fn progress_throttled_within_two_seconds() {
+        let mut tracker = ProgressTracker::new();
+        let base = Instant::now();
+
+        assert_eq!(tracker.should_send(0, 200, base), Some(0));
 
         assert_eq!(
-            percents,
-            (5..=100).step_by(5).collect::<Vec<_>>(),
-            "progress should emit each 5% step exactly once"
+            tracker.should_send(50, 200, base + Duration::from_millis(500)),
+            None
+        );
+        assert_eq!(
+            tracker.should_send(100, 200, base + Duration::from_secs(1)),
+            None
+        );
+    }
+
+    #[test]
+    fn progress_sends_after_two_second_gap() {
+        let mut tracker = ProgressTracker::new();
+        let base = Instant::now();
+
+        assert_eq!(tracker.should_send(0, 200, base), Some(0));
+
+        assert_eq!(
+            tracker.should_send(50, 200, base + Duration::from_secs(2)),
+            Some(25)
+        );
+
+        assert_eq!(
+            tracker.should_send(75, 200, base + Duration::from_secs(3)),
+            None
+        );
+
+        assert_eq!(
+            tracker.should_send(150, 200, base + Duration::from_secs(5)),
+            Some(75)
         );
     }
 
