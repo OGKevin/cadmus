@@ -210,10 +210,12 @@ fn send_progress(hub: &Sender<Event>, notif_id: ViewId, idx: usize, total: usize
 
     let percent = (current_bucket * 5).min(100) as u8;
     debug!(percent, "import progress");
-    hub.send(Event::Notification(NotificationEvent::UpdateProgress(
-        notif_id, percent,
-    )))
-    .ok();
+    // hub.send(Event::Notification(NotificationEvent::UpdateProgress(
+    //     notif_id, percent,
+    // )))
+    // .ok();
+
+    // std::thread::yield_now();
 }
 
 #[cfg_attr(
