@@ -482,88 +482,116 @@ pub struct RefreshRateSettings {
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum FileExtension {
-    Epub,
-    Pdf,
-    Cbz,
+    /// Comic book RAR archive.
     Cbr,
+    /// Comic book ZIP archive.
+    Cbz,
+    /// DjVu document.
     Djvu,
+    /// EPUB ebook.
+    Epub,
+    /// FictionBook document.
     Fb2,
-    Mobi,
-    Txt,
+    /// HTML document.
     Html,
-    Xps,
-    Oxps,
-    Webp,
-    Png,
-    Jpg,
+    /// JPEG image using the long extension.
     Jpeg,
+    /// JPEG image using the short extension.
+    Jpg,
+    /// Mobipocket ebook.
+    Mobi,
+    /// OpenXPS document.
+    Oxps,
+    /// PDF document.
+    Pdf,
+    /// PNG image.
+    Png,
+    /// SVG image.
+    Svg,
+    /// Plain text document.
+    Txt,
+    /// WebP image.
+    Webp,
+    /// XPS document.
+    Xps,
 }
 
 impl FileExtension {
     /// Returns all known file extensions.
     pub fn all() -> &'static [FileExtension] {
         &[
-            FileExtension::Epub,
-            FileExtension::Pdf,
-            FileExtension::Cbz,
             FileExtension::Cbr,
+            FileExtension::Cbz,
             FileExtension::Djvu,
+            FileExtension::Epub,
             FileExtension::Fb2,
-            FileExtension::Mobi,
-            FileExtension::Txt,
             FileExtension::Html,
-            FileExtension::Xps,
-            FileExtension::Oxps,
-            FileExtension::Webp,
-            FileExtension::Png,
-            FileExtension::Jpg,
             FileExtension::Jpeg,
+            FileExtension::Jpg,
+            FileExtension::Mobi,
+            FileExtension::Oxps,
+            FileExtension::Pdf,
+            FileExtension::Png,
+            FileExtension::Svg,
+            FileExtension::Txt,
+            FileExtension::Webp,
+            FileExtension::Xps,
         ]
     }
 
     /// Returns the lowercase string representation used as the TOML key.
     pub fn as_str(self) -> &'static str {
         match self {
-            FileExtension::Epub => "epub",
-            FileExtension::Pdf => "pdf",
-            FileExtension::Cbz => "cbz",
             FileExtension::Cbr => "cbr",
+            FileExtension::Cbz => "cbz",
             FileExtension::Djvu => "djvu",
+            FileExtension::Epub => "epub",
             FileExtension::Fb2 => "fb2",
-            FileExtension::Mobi => "mobi",
-            FileExtension::Txt => "txt",
             FileExtension::Html => "html",
-            FileExtension::Xps => "xps",
-            FileExtension::Oxps => "oxps",
-            FileExtension::Webp => "webp",
-            FileExtension::Png => "png",
-            FileExtension::Jpg => "jpg",
             FileExtension::Jpeg => "jpeg",
+            FileExtension::Jpg => "jpg",
+            FileExtension::Mobi => "mobi",
+            FileExtension::Oxps => "oxps",
+            FileExtension::Pdf => "pdf",
+            FileExtension::Png => "png",
+            FileExtension::Svg => "svg",
+            FileExtension::Txt => "txt",
+            FileExtension::Webp => "webp",
+            FileExtension::Xps => "xps",
         }
     }
 }
 
+/// Error returned when a string does not match any known file extension.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("unknown file extension: {0}")]
+pub struct UnknownFileExtension(
+    /// Extension string that could not be parsed.
+    pub String,
+);
+
 impl std::str::FromStr for FileExtension {
-    type Err = ();
+    type Err = UnknownFileExtension;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "epub" => Ok(FileExtension::Epub),
-            "pdf" => Ok(FileExtension::Pdf),
-            "cbz" => Ok(FileExtension::Cbz),
             "cbr" => Ok(FileExtension::Cbr),
+            "cbz" => Ok(FileExtension::Cbz),
             "djvu" => Ok(FileExtension::Djvu),
+            "epub" => Ok(FileExtension::Epub),
             "fb2" => Ok(FileExtension::Fb2),
-            "mobi" => Ok(FileExtension::Mobi),
-            "txt" => Ok(FileExtension::Txt),
             "html" | "htm" => Ok(FileExtension::Html),
-            "xps" => Ok(FileExtension::Xps),
-            "oxps" => Ok(FileExtension::Oxps),
-            "webp" => Ok(FileExtension::Webp),
-            "png" => Ok(FileExtension::Png),
-            "jpg" => Ok(FileExtension::Jpg),
             "jpeg" => Ok(FileExtension::Jpeg),
-            _ => Err(()),
+            "jpg" => Ok(FileExtension::Jpg),
+            "mobi" => Ok(FileExtension::Mobi),
+            "oxps" => Ok(FileExtension::Oxps),
+            "pdf" => Ok(FileExtension::Pdf),
+            "png" => Ok(FileExtension::Png),
+            "svg" => Ok(FileExtension::Svg),
+            "txt" => Ok(FileExtension::Txt),
+            "webp" => Ok(FileExtension::Webp),
+            "xps" => Ok(FileExtension::Xps),
+            _ => Err(UnknownFileExtension(s.to_owned())),
         }
     }
 }
@@ -588,7 +616,7 @@ impl<'r> sqlx::Decode<'r, Sqlite> for FileExtension {
     fn decode(value: SqliteValueRef<'r>) -> Result<Self, BoxDynError> {
         let s = <String as sqlx::Decode<'r, Sqlite>>::decode(value)?;
         s.parse()
-            .map_err(|()| format!("unknown file extension: {s}").into())
+            .map_err(|UnknownFileExtension(ext)| format!("unknown file extension: {ext}").into())
     }
 }
 
@@ -618,8 +646,8 @@ where
                     Ok(ext) => {
                         set.insert(ext);
                     }
-                    Err(()) => {
-                        tracing::warn!(extension = %s, "Unknown file extension skipped");
+                    Err(e) => {
+                        tracing::warn!(extension = %s, error = %e, "failed to load extension");
                     }
                 }
             }

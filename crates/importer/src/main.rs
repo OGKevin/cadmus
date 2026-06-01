@@ -97,8 +97,8 @@ fn main() -> Result<(), Error> {
             .filter_map(
                 |k| match k.parse::<cadmus_core::settings::FileExtension>() {
                     Ok(ext) => Some(ext),
-                    Err(()) => {
-                        eprintln!("Warning: unknown file extension '{k}', skipping");
+                    Err(e) => {
+                        eprintln!("Warning: {e}, skipping");
                         None
                     }
                 },
