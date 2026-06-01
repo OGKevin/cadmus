@@ -1,13 +1,12 @@
 //! `cargo xtask install-importer` — install the Cadmus importer crate.
 //!
-//! Ensures MuPDF sources and the `mupdf_wrapper` C library are built for the
-//! native platform, then runs `cargo install --path crates/importer`.  Any
-//! extra arguments are forwarded to `cargo install`.
+//! Runs `cargo install --path crates/importer`.  Any extra arguments are
+//! forwarded to `cargo install`.  Native dependencies are built automatically
+//! by `build.rs`.
 
 use anyhow::Result;
 use clap::Args;
 
-use super::setup_native;
 use super::util::{cmd, workspace};
 
 /// Arguments for `cargo xtask install-importer`.
@@ -18,16 +17,9 @@ pub struct InstallImporterArgs {
     pub extra: Vec<String>,
 }
 
-/// Ensures prerequisites are built then installs the importer.
-///
-/// # Errors
-///
-/// Returns an error if the MuPDF download, wrapper build, or installation
-/// fails.
+/// Installs the importer crate.
 pub fn run(args: InstallImporterArgs) -> Result<()> {
     let root = workspace::root()?;
-
-    setup_native::ensure_native_artifacts(&root, false)?;
 
     let importer_path = root.join("crates/importer");
     let importer_str = importer_path.to_string_lossy().into_owned();

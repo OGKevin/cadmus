@@ -16,3 +16,6 @@ signal-hook = "0.4.1"
 version = "0.13.1"
 features = ["blocking", "json", "query", "rustls"]
 default-features = false
+
+[lints]
+workspace = true

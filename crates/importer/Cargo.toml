@@ -11,3 +11,6 @@ path = "src/main.rs"
 [dependencies]
 cadmus-core = { path = "../core" }
 getopts = "0.2.24"
+
+[lints]
+workspace = true

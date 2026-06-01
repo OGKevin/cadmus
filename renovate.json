@@ -3,6 +3,9 @@
   "minimumReleaseAge": "7 days",
   "labels": ["dependencies"],
   "reviewers": ["OGKevin"],
+  "git-submodules": {
+    "enabled": true
+  },
   "packageRules": [
     {
       "matchManagers": ["cargo"],
@@ -29,7 +32,7 @@
       "groupSlug": "js-tooling-non-major"
     },
     {
-      "matchFileNames": ["xtask/src/tasks/util/thirdparty.rs"],
+      "matchManagers": ["git-submodules"],
       "addLabels": ["thirdparty"]
     }
   ],
@@ -112,7 +115,7 @@
     {
       "customType": "regex",
       "managerFilePatterns": ["/^\\.github\\/workflows\\/cargo\\.yml$/"],
-      "matchStrings": ["NEXTEST_VERSION=(?<currentValue>[^\\n]+)"],
+      "matchStrings": ["NEXTEST_VERSION:\\s+\\\"(?<currentValue>[^\\\"]+)\\\""],
       "datasourceTemplate": "github-releases",
       "depNameTemplate": "nextest-rs/nextest",
       "extractVersionTemplate": "^cargo-nextest-(?<version>.+)$",
@@ -140,111 +143,7 @@
     },
     {
       "customType": "regex",
-      "managerFilePatterns": [
-        "/^xtask\\/src\\/tasks\\/util\\/thirdparty\\.rs$/"
-      ],
-      "matchStrings": [
-        "ZLIB_VERSION: &str = \\\"(?<currentValue>[^\\\"]+)\\\""
-      ],
-      "datasourceTemplate": "github-releases",
-      "depNameTemplate": "madler/zlib",
-      "versioningTemplate": "semver"
-    },
-    {
-      "customType": "regex",
-      "managerFilePatterns": [
-        "/^xtask\\/src\\/tasks\\/util\\/thirdparty\\.rs$/"
-      ],
-      "matchStrings": [
-        "LIBPNG_VERSION: &str = \\\"(?<currentValue>[^\\\"]+)\\\""
-      ],
-      "datasourceTemplate": "github-releases",
-      "depNameTemplate": "pnggroup/libpng",
-      "versioningTemplate": "semver"
-    },
-    {
-      "customType": "regex",
-      "managerFilePatterns": [
-        "/^xtask\\/src\\/tasks\\/util\\/thirdparty\\.rs$/"
-      ],
-      "matchStrings": [
-        "DJVULIBRE_VERSION: &str = \\\"(?<currentValue>[^\\\"]+)\\\""
-      ],
-      "datasourceTemplate": "github-tags",
-      "depNameTemplate": "barak/djvulibre",
-      "extractVersionTemplate": "^release\\.(?<version>.+)$",
-      "versioningTemplate": "semver"
-    },
-    {
-      "customType": "regex",
-      "managerFilePatterns": [
-        "/^xtask\\/src\\/tasks\\/util\\/thirdparty\\.rs$/"
-      ],
-      "matchStrings": [
-        "LIBJPEG_VERSION: &str = \\\"(?<currentValue>[^\\\"]+)\\\""
-      ],
-      "datasourceTemplate": "github-tags",
-      "depNameTemplate": "libjpeg-turbo/libjpeg-turbo",
-      "extractVersionTemplate": "^jpeg-(?<version>.+)$",
-      "versioningTemplate": "regex:^(?<major>\\d+)(?<minor>[a-z]?)$"
-    },
-    {
-      "customType": "regex",
-      "managerFilePatterns": [
-        "/^xtask\\/src\\/tasks\\/util\\/thirdparty\\.rs$/"
-      ],
-      "matchStrings": [
-        "FREETYPE2_VERSION: &str = \\\"(?<currentValue>[^\\\"]+)\\\""
-      ],
-      "datasourceTemplate": "github-tags",
-      "depNameTemplate": "freetype/freetype",
-      "extractVersionTemplate": "^VER-(?<major>\\d+)-(?<minor>\\d+)-(?<patch>\\d+)$",
-      "versioningTemplate": "semver"
-    },
-    {
-      "customType": "regex",
-      "managerFilePatterns": [
-        "/^xtask\\/src\\/tasks\\/util\\/thirdparty\\.rs$/"
-      ],
-      "matchStrings": [
-        "OPENJPEG_VERSION: &str = \\\"(?<currentValue>[^\\\"]+)\\\""
-      ],
-      "datasourceTemplate": "github-tags",
-      "depNameTemplate": "uclouvain/openjpeg",
-      "extractVersionTemplate": "^v(?<version>.+)$",
-      "versioningTemplate": "semver"
-    },
-    {
-      "customType": "regex",
-      "managerFilePatterns": [
-        "/^xtask\\/src\\/tasks\\/util\\/thirdparty\\.rs$/"
-      ],
-      "matchStrings": [
-        "HARFBUZZ_VERSION: &str = \\\"(?<currentValue>[^\\\"]+)\\\""
-      ],
-      "datasourceTemplate": "github-tags",
-      "depNameTemplate": "harfbuzz/harfbuzz",
-      "extractVersionTemplate": "^(?<version>.+)$",
-      "versioningTemplate": "semver"
-    },
-    {
-      "customType": "regex",
-      "managerFilePatterns": [
-        "/^xtask\\/src\\/tasks\\/util\\/thirdparty\\.rs$/"
-      ],
-      "matchStrings": [
-        "GUMBO_VERSION: &str = \\\"(?<currentValue>[^\\\"]+)\\\""
-      ],
-      "datasourceTemplate": "github-tags",
-      "depNameTemplate": "google/gumbo-parser",
-      "extractVersionTemplate": "^v(?<version>.+)$",
-      "versioningTemplate": "semver"
-    },
-    {
-      "customType": "regex",
-      "managerFilePatterns": [
-        "/^xtask\\/src\\/tasks\\/util\\/thirdparty\\.rs$/"
-      ],
+      "managerFilePatterns": ["/^crates\\/build-deps\\/src\\/versions\\.rs$/"],
       "matchStrings": [
         "MUPDF_VERSION: &str = \\\"(?<currentValue>[^\\\"]+)\\\""
       ],
@@ -262,45 +161,6 @@
       ],
       "datasourceTemplate": "github-releases",
       "depNameTemplate": "ArtifexSoftware/mupdf-downloads",
-      "versioningTemplate": "semver"
-    },
-    {
-      "customType": "regex",
-      "managerFilePatterns": [
-        "/^xtask\\/src\\/tasks\\/util\\/thirdparty\\.rs$/"
-      ],
-      "matchStrings": [
-        "JBIG2DEC_VERSION: &str = \\\"(?<currentValue>[^\\\"]+)\\\""
-      ],
-      "datasourceTemplate": "github-releases",
-      "depNameTemplate": "ArtifexSoftware/jbig2dec",
-      "versioningTemplate": "semver"
-    },
-    {
-      "customType": "regex",
-      "managerFilePatterns": [
-        "/^xtask\\/src\\/tasks\\/util\\/thirdparty\\.rs$/"
-      ],
-      "matchStrings": [
-        "BZIP2_VERSION: &str = \\\"(?<currentValue>[^\\\"]+)\\\""
-      ],
-      "datasourceTemplate": "gitlab-tags",
-      "depNameTemplate": "bzip2/bzip2",
-      "registryUrlTemplate": "https://gitlab.com",
-      "extractVersionTemplate": "^bzip2-(?<version>.+)$",
-      "versioningTemplate": "semver"
-    },
-    {
-      "customType": "regex",
-      "managerFilePatterns": [
-        "/^xtask\\/src\\/tasks\\/util\\/thirdparty\\.rs$/"
-      ],
-      "matchStrings": [
-        "LIBWEBP_VERSION: &str = \\\"(?<currentValue>[^\\\"]+)\\\""
-      ],
-      "datasourceTemplate": "github-tags",
-      "depNameTemplate": "webmproject/libwebp",
-      "extractVersionTemplate": "^v(?<version>.+)$",
       "versioningTemplate": "semver"
     }
   ]

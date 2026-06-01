@@ -1,0 +1,17 @@
+[package]
+name = "build-deps"
+version = "0.10.1"
+edition = "2024"
+description = "Thirdparty dependency build helpers shared between build.rs and xtask"
+
+[lib]
+name = "build_deps"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = "1"
+cc = { workspace = true }
+tempfile = "3"
+
+[lints]
+workspace = true

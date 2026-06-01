@@ -21,3 +21,6 @@ tracing = ["cadmus-core/tracing"]
 profiling = ["cadmus-core/profiling", "tikv-jemallocator"]
 telemetry = ["cadmus-core/telemetry", "tracing", "profiling", "tikv-jemallocator"]
 test = ["cadmus-core/test"]
+
+[lints]
+workspace = true

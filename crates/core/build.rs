@@ -1,8 +1,29 @@
-use std::env::{self, VarError};
+//! Build script for the `core` crate.
+//!
+//! All third-party dependency orchestration lives in the
+//! `build_deps` crate. This script's responsibilities are limited to:
+//!
+//! 1. Emitting compile-time metadata (git version, PR info, build
+//!    provenance).
+//! 2. Asking `build_deps` to produce the MuPDF/libwebp artifacts
+//!    needed for the active target.
+//! 3. Translating those artifacts into `cargo:rustc-link-*`
+//!    directives for the Rust compiler.
+//! 4. Generating the locales and bundled asset manifests.
+//!
+//! The whole script returns `Result`; the single `panic!` lives in
+//! [`main`] so failures surface as a coherent error chain with cargo's
+//! expected non-zero exit.
+
+use std::env;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
+
+use anyhow::{Context, Result, bail};
+use build_deps::build::kobo;
+use build_deps::build::{mupdf_wrapper, native};
 
 const BUNDLED_ASSET_DIRS: &[&str] = &[
     "bin",
@@ -18,21 +39,41 @@ const BUNDLED_ASSET_DIRS: &[&str] = &[
 /// Set this to any changing value to force build metadata to refresh.
 const FORCE_REBUILD_ENV: &str = "FORCE_REBUILD";
 
+/// When set, skip building and linking third-party native dependencies.
+/// Used by `cargo doc` and other no-link workflows where only Rust source
+/// analysis and metadata generation are needed.
+const SKIP_THIRDPARTY_DEPS_ENV: &str = "CADMUS_SKIP_THIRDPARTY_DEPS";
+
 fn main() {
-    let target = env::var("TARGET").unwrap();
+    if let Err(err) = try_main() {
+        panic!("cadmus build script failed: {err:#}");
+    }
+}
+
+/// Returns `true` when `CADMUS_SKIP_THIRDPARTY_DEPS` is set,
+/// indicating that native dependency building and linking should be skipped.
+fn skip_thirdparty_deps() -> bool {
+    env::var_os(SKIP_THIRDPARTY_DEPS_ENV).is_some()
+}
+
+fn try_main() -> Result<()> {
+    let target = env::var("TARGET").context("TARGET not set")?;
 
     println!("cargo:rerun-if-changed=.git/HEAD");
     println!("cargo:rerun-if-env-changed={FORCE_REBUILD_ENV}");
-    let (git_version, pr_info) = get_version_info().expect("Failed to get version info");
-    println!("cargo:rustc-env=GIT_VERSION={}", git_version);
+    println!("cargo:rerun-if-env-changed={SKIP_THIRDPARTY_DEPS_ENV}");
+    println!("cargo:rerun-if-env-changed=TARGET");
+
+    let (git_version, pr_info) = get_version_info()?;
+    println!("cargo:rustc-env=GIT_VERSION={git_version}");
     if let Some(pr) = pr_info {
-        println!("cargo:rustc-env=PR_INFO={}", pr);
+        println!("cargo:rustc-env=PR_INFO={pr}");
     }
 
     let build_uuid = Uuid::now_v7().to_string();
-    println!("cargo:rustc-env=BUILD_UUID={}", build_uuid);
+    println!("cargo:rustc-env=BUILD_UUID={build_uuid}");
 
-    let build_attributes = get_build_attributes();
+    let build_attributes = get_build_attributes()?;
     println!("cargo:rustc-env=BUILD_USER={}", build_attributes.user);
     println!("cargo:rustc-env=BUILD_HOST={}", build_attributes.host);
     println!(
@@ -40,40 +81,79 @@ fn main() {
         build_attributes.timestamp
     );
 
-    // GitHub OAuth App client ID for device flow authentication.
     println!("cargo:rerun-if-env-changed=GH_OAUTH_CLIENT_ID");
     let client_id =
         env::var("GH_OAUTH_CLIENT_ID").unwrap_or_else(|_| "GH_OAUTH_CLIENT_ID_NOT_SET".to_string());
-    println!("cargo:rustc-env=GH_OAUTH_CLIENT_ID={}", client_id);
+    println!("cargo:rustc-env=GH_OAUTH_CLIENT_ID={client_id}");
 
-    // Cross-compiling for Kobo.
-    if target == "arm-unknown-linux-gnueabihf" {
-        println!("cargo:rustc-env=PKG_CONFIG_ALLOW_CROSS=1");
-        println!("cargo:rustc-link-search=target/mupdf_wrapper/Kobo");
-        println!("cargo:rustc-link-search=libs");
-        println!("cargo:rustc-link-lib=dylib=stdc++");
-    // Handle the Linux and macOS platforms.
-    } else {
-        let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
-        match target_os.as_ref() {
-            "linux" => {
-                println!("cargo:rustc-link-search=target/mupdf_wrapper/Linux");
-                println!("cargo:rustc-link-search=native=thirdparty/libwebp/src/.libs");
-                println!("cargo:rustc-link-search=native=thirdparty/libwebp/src/demux/.libs");
-                println!("cargo:rustc-link-lib=dylib=stdc++");
-            }
-            "macos" => {
-                println!("cargo:rustc-link-search=target/mupdf_wrapper/Darwin");
-                println!("cargo:rustc-link-search=native=thirdparty/libwebp/src/.libs");
-                println!("cargo:rustc-link-search=native=thirdparty/libwebp/src/demux/.libs");
-                println!("cargo:rustc-link-lib=dylib=c++");
-            }
-            _ => panic!("Unsupported platform: {}.", target_os),
+    let root = workspace_root()?;
+
+    if !skip_thirdparty_deps() {
+        if target == "arm-unknown-linux-gnueabihf" {
+            emit_kobo_link_directives();
+            kobo::ensure_kobo_artifacts(&root)?;
+        } else {
+            let artifacts =
+                native::ensure_native_artifacts(&root).context("failed to build native deps")?;
+            mupdf_wrapper::build_native_if_needed(&root, &artifacts.include)
+                .context("failed to build mupdf_wrapper")?;
+            emit_native_link_directives(&root, &target)?;
         }
 
-        println!("cargo:rustc-link-lib=mupdf-third");
+        emit_common_link_directives();
     }
 
+    generate_locales()?;
+    generate_bundled_assets()?;
+
+    Ok(())
+}
+
+fn emit_native_link_directives(root: &Path, target: &str) -> Result<()> {
+    let target_os = env::var("CARGO_CFG_TARGET_OS").context("CARGO_CFG_TARGET_OS not set")?;
+    let build_deps = root.join("target/cadmus-build-deps").join(target);
+    let libwebp = build_deps.join("libwebp");
+
+    match target_os.as_ref() {
+        "linux" => {
+            println!("cargo:rustc-link-search=target/mupdf_wrapper/Linux");
+            println!(
+                "cargo:rustc-link-search=native={}/src/.libs",
+                libwebp.display()
+            );
+            println!(
+                "cargo:rustc-link-search=native={}/src/demux/.libs",
+                libwebp.display()
+            );
+            println!("cargo:rustc-link-lib=dylib=stdc++");
+        }
+        "macos" => {
+            println!("cargo:rustc-link-search=target/mupdf_wrapper/Darwin");
+            println!(
+                "cargo:rustc-link-search=native={}/src/.libs",
+                libwebp.display()
+            );
+            println!(
+                "cargo:rustc-link-search=native={}/src/demux/.libs",
+                libwebp.display()
+            );
+            println!("cargo:rustc-link-lib=dylib=c++");
+        }
+        other => bail!("unsupported platform: {other}"),
+    }
+
+    println!("cargo:rustc-link-lib=mupdf-third");
+    Ok(())
+}
+
+fn emit_kobo_link_directives() {
+    println!("cargo:rustc-env=PKG_CONFIG_ALLOW_CROSS=1");
+    println!("cargo:rustc-link-search=target/mupdf_wrapper/Kobo");
+    println!("cargo:rustc-link-search=libs");
+    println!("cargo:rustc-link-lib=dylib=stdc++");
+}
+
+fn emit_common_link_directives() {
     println!("cargo:rustc-link-lib=z");
     println!("cargo:rustc-link-lib=bz2");
     println!("cargo:rustc-link-lib=jpeg");
@@ -83,16 +163,14 @@ fn main() {
     println!("cargo:rustc-link-lib=jbig2dec");
     println!("cargo:rustc-link-lib=webp");
     println!("cargo:rustc-link-lib=webpdemux");
-
-    generate_locales();
-    generate_bundled_assets();
 }
 
-fn generate_locales() {
+fn generate_locales() -> Result<()> {
     println!("cargo:rerun-if-changed=i18n/");
-    let out_dir = env::var("OUT_DIR").expect("OUT_DIR not set");
-    let mut locales: Vec<String> = std::fs::read_dir("i18n/")
-        .expect("i18n/ directory not found")
+    let out_dir = env::var("OUT_DIR").context("OUT_DIR not set")?;
+    let locales_dir = Path::new("i18n");
+    let mut locales: Vec<String> = std::fs::read_dir(locales_dir)
+        .with_context(|| format!("i18n/ directory not found: {}", locales_dir.display()))?
         .filter_map(|entry| {
             let entry = entry.ok()?;
             if entry.file_type().ok()?.is_dir() {
@@ -105,8 +183,9 @@ fn generate_locales() {
     locales.sort();
     let entries: String = locales.iter().map(|l| format!("    \"{l}\",\n")).collect();
     let generated = format!("pub const AVAILABLE_LOCALES: &[&str] = &[\n{entries}];\n");
-    std::fs::write(std::path::Path::new(&out_dir).join("locales.rs"), generated)
-        .expect("failed to write locales.rs");
+    std::fs::write(Path::new(&out_dir).join("locales.rs"), generated)
+        .context("failed to write locales.rs")?;
+    Ok(())
 }
 
 /// Generates the bundled asset manifest.
@@ -116,9 +195,9 @@ fn generate_locales() {
 ///
 /// This ensures that e.g. there are no lingering scripts, fonts or libs etc
 /// when they are removed.
-fn generate_bundled_assets() {
-    let out_dir = env::var("OUT_DIR").expect("OUT_DIR not set");
-    let workspace_root = workspace_root();
+fn generate_bundled_assets() -> Result<()> {
+    let out_dir = env::var("OUT_DIR").context("OUT_DIR not set")?;
+    let workspace_root = workspace_root()?;
     let is_kobo = env::var("TARGET").unwrap_or_default() == "arm-unknown-linux-gnueabihf";
     let is_release = env::var("PROFILE").unwrap_or_default() == "release";
     let mut asset_files = Vec::new();
@@ -131,14 +210,15 @@ fn generate_bundled_assets() {
             && matches!(*dir, "bin" | "resources" | "hyphenation-patterns")
             && !asset_dir.is_dir()
         {
-            panic!(
+            bail!(
                 "required asset directory missing: {}. Run `cargo xtask download-assets` before build.",
                 asset_dir.display()
             );
         }
 
         println!("cargo:rerun-if-changed={}", asset_dir.display());
-        collect_asset_files(&workspace_root, &asset_dir, &mut asset_files);
+        collect_asset_files(&workspace_root, &asset_dir, &mut asset_files)
+            .with_context(|| format!("failed to collect asset files under {}", dir))?;
     }
 
     asset_files.sort();
@@ -150,36 +230,40 @@ fn generate_bundled_assets() {
     let generated = format!("const BUNDLED_ASSET_FILES: &[&str] = &[\n{entries}];\n");
 
     std::fs::write(Path::new(&out_dir).join("bundled_assets.rs"), generated)
-        .expect("failed to write bundled_assets.rs");
+        .context("failed to write bundled_assets.rs")?;
+    Ok(())
 }
 
-fn workspace_root() -> PathBuf {
+fn workspace_root() -> Result<PathBuf> {
     let manifest_dir =
-        PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set"));
-
+        PathBuf::from(env::var("CARGO_MANIFEST_DIR").context("CARGO_MANIFEST_DIR not set")?);
     manifest_dir
         .parent()
         .and_then(Path::parent)
-        .expect("workspace root not found")
-        .to_path_buf()
+        .context("workspace root not found")
+        .map(Path::to_path_buf)
 }
 
-fn collect_asset_files(workspace_root: &Path, dir: &Path, asset_files: &mut Vec<String>) {
+fn collect_asset_files(
+    workspace_root: &Path,
+    dir: &Path,
+    asset_files: &mut Vec<String>,
+) -> Result<()> {
     if !dir.exists() {
-        return;
+        return Ok(());
     }
 
     for entry in
-        std::fs::read_dir(dir).unwrap_or_else(|_| panic!("failed to read {}", dir.display()))
+        std::fs::read_dir(dir).with_context(|| format!("failed to read {}", dir.display()))?
     {
-        let entry = entry.unwrap_or_else(|_| panic!("failed to read entry in {}", dir.display()));
+        let entry = entry.with_context(|| format!("failed to read entry in {}", dir.display()))?;
         let path = entry.path();
         let file_type = entry
             .file_type()
-            .unwrap_or_else(|_| panic!("failed to read type for {}", path.display()));
+            .with_context(|| format!("failed to read type for {}", path.display()))?;
 
         if file_type.is_dir() {
-            collect_asset_files(workspace_root, &path, asset_files);
+            collect_asset_files(workspace_root, &path, asset_files)?;
             continue;
         }
 
@@ -187,16 +271,17 @@ fn collect_asset_files(workspace_root: &Path, dir: &Path, asset_files: &mut Vec<
             continue;
         }
 
-        let relative_path = path.strip_prefix(workspace_root).unwrap_or_else(|_| {
-            panic!(
+        let relative_path = path.strip_prefix(workspace_root).with_context(|| {
+            format!(
                 "{} is not under {}",
                 path.display(),
                 workspace_root.display()
             )
-        });
+        })?;
 
         asset_files.push(relative_path.to_string_lossy().replace('\\', "/"));
     }
+    Ok(())
 }
 
 struct BuildAttributes {
@@ -206,41 +291,42 @@ struct BuildAttributes {
 }
 
 /// Captures build provenance values passed to rustc as compile-time env vars.
-fn get_build_attributes() -> BuildAttributes {
-    BuildAttributes {
-        user: command_output("whoami"),
-        host: command_output("hostname"),
-        timestamp: build_timestamp(),
-    }
+fn get_build_attributes() -> Result<BuildAttributes> {
+    Ok(BuildAttributes {
+        user: command_output("whoami")?,
+        host: command_output("hostname")?,
+        timestamp: build_timestamp()?,
+    })
 }
 
 /// Runs a command and returns its trimmed stdout, or `unknown` if it fails.
-fn command_output(command: &str) -> String {
-    Command::new(command)
+fn command_output(command: &str) -> Result<String> {
+    let output = Command::new(command)
         .output()
-        .ok()
-        .and_then(|output| {
-            output.status.success().then(|| {
-                let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                if value.is_empty() {
-                    "unknown".to_string()
-                } else {
-                    value
-                }
-            })
-        })
-        .unwrap_or_else(|| "unknown".to_string())
+        .with_context(|| format!("failed to spawn `{command}`"))?;
+
+    if !output.status.success() {
+        return Ok("unknown".to_string());
+    }
+
+    let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    Ok(if value.is_empty() {
+        "unknown".to_string()
+    } else {
+        value
+    })
 }
 
 /// Returns the current Unix epoch timestamp for this build script run.
-fn build_timestamp() -> String {
+fn build_timestamp() -> Result<String> {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs().to_string())
-        .unwrap_or_else(|_| "unknown".to_string())
+        .or_else(|_| Ok("unknown".to_string()))
 }
 
-fn get_version_info() -> Result<(String, Option<String>), VarError> {
+/// Compute the Git version and PR info to embed in the build.
+fn get_version_info() -> Result<(String, Option<String>)> {
     let git_version = Command::new("git")
         .args(["describe", "--tags", "--always", "--dirty"])
         .output()
@@ -253,26 +339,23 @@ fn get_version_info() -> Result<(String, Option<String>), VarError> {
         })
         .unwrap_or_else(|| "unknown".to_string());
 
-    let ci_var = env::var("CI").ok();
-    match ci_var {
-        Some(_) => {
-            if !env::var("GITHUB_EVENT_NAME")
-                .unwrap_or_default()
-                .starts_with("pull_request")
-            {
-                return Ok((git_version, None));
-            }
-
-            let pr_number = env::var("PR_NUMBER").expect("PR_NUMBER not set in CI environment");
-            let mut pr_head_sha =
-                env::var("PR_HEAD_SHA").expect("PR_HEAD_SHA not set in CI environment");
-            pr_head_sha = pr_head_sha.get(..7).unwrap_or(&pr_head_sha).to_string();
-
-            Ok((
-                git_version,
-                Some(format!("PR #{} ({})", pr_number, pr_head_sha)),
-            ))
-        }
-        _ => Ok((git_version, None)),
+    if env::var("CI").is_err() {
+        return Ok((git_version, None));
     }
+
+    if !env::var("GITHUB_EVENT_NAME")
+        .unwrap_or_default()
+        .starts_with("pull_request")
+    {
+        return Ok((git_version, None));
+    }
+
+    let pr_number = env::var("PR_NUMBER").context("PR_NUMBER not set in CI environment")?;
+    let pr_head_sha = env::var("PR_HEAD_SHA").context("PR_HEAD_SHA not set in CI environment")?;
+    let pr_head_short = pr_head_sha.get(..7).unwrap_or(&pr_head_sha).to_string();
+
+    Ok((
+        git_version,
+        Some(format!("PR #{} ({})", pr_number, pr_head_short)),
+    ))
 }

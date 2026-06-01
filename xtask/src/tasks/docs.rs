@@ -107,7 +107,7 @@ fn build_cargo_doc(root: &Path) -> Result<()> {
         "cargo",
         &["doc", "--no-deps", "--document-private-items"],
         root,
-        &[],
+        &[("CADMUS_SKIP_THIRDPARTY_DEPS", "1")],
     )
 }
 

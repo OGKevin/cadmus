@@ -22,8 +22,7 @@
 //! | [`test`](tasks::test) | Run `cargo test` across the feature matrix |
 //! | [`bench`](tasks::bench) | Run benchmarks with the `bench` feature enabled |
 //! | [`build-kobo`](tasks::build_kobo) | Cross-compile for Kobo (ARM, Linux & macOS) |
-//! | [`setup-native`](tasks::setup_native) | Build MuPDF and the C wrapper for native dev |
-//! | [`run-emulator`](tasks::run_emulator) | Run the Cadmus emulator (ensures prereqs are built) |
+//! | [`run-emulator`](tasks::run_emulator) | Run the Cadmus emulator |
 //! | [`install-importer`](tasks::install_importer) | Install the Cadmus importer crate |
 //! | [`docs`](tasks::docs) | Build the full documentation portal |
 //! | [`download-assets`](tasks::download_assets) | Download static asset dirs from the latest release |
@@ -47,8 +46,7 @@ pub use clap::Parser;
 pub use tasks::{
     bench::BenchArgs, build_kobo::BuildKoboArgs, bundle::BundleArgs, ci::CiArgs,
     clippy::ClippyArgs, dist::DistArgs, docs::DocsArgs, fmt::FmtArgs,
-    install_importer::InstallImporterArgs, run_emulator::RunEmulatorArgs,
-    setup_native::SetupNativeArgs, test::TestArgs,
+    install_importer::InstallImporterArgs, run_emulator::RunEmulatorArgs, test::TestArgs,
 };
 
 /// Cadmus build automation.
@@ -73,11 +71,9 @@ pub enum Command {
     Bench(BenchArgs),
     /// Cross-compile Cadmus for Kobo devices (Linux & macOS).
     BuildKobo(BuildKoboArgs),
-    /// Build MuPDF and the C wrapper for native development.
-    SetupNative(SetupNativeArgs),
-    /// Run the Cadmus emulator (ensures MuPDF and wrapper are built first).
+    /// Run the Cadmus emulator.
     RunEmulator(RunEmulatorArgs),
-    /// Install the Cadmus importer crate (ensures MuPDF and wrapper are built first).
+    /// Install the Cadmus importer crate.
     InstallImporter(InstallImporterArgs),
     /// Build the full documentation portal (mdBook + cargo doc + Zola).
     Docs(DocsArgs),
@@ -104,7 +100,6 @@ pub fn run() -> Result<()> {
         Command::Test(args) => tasks::test::run(args),
         Command::Bench(args) => tasks::bench::run(args),
         Command::BuildKobo(args) => tasks::build_kobo::run(args),
-        Command::SetupNative(args) => tasks::setup_native::run(args),
         Command::RunEmulator(args) => tasks::run_emulator::run(args),
         Command::InstallImporter(args) => tasks::install_importer::run(args),
         Command::Docs(args) => tasks::docs::run(args),

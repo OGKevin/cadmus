@@ -35,7 +35,9 @@ use anyhow::{Context, Result, bail};
 use clap::Args;
 use wildmatch::WildMatch;
 
-use super::util::{cmd, fs, thirdparty, workspace};
+use super::util::{cmd, fs, workspace};
+use build_deps::build::kobo;
+use build_deps::versions;
 
 /// Arguments for `cargo xtask dist`.
 #[derive(Debug, Args)]
@@ -91,8 +93,8 @@ fn copy_libraries(root: &Path, dist_dir: &Path) -> Result<()> {
     let libs_dir = root.join("libs");
     let dist_libs = dist_dir.join("libs");
 
-    for &lib in thirdparty::SONAMES {
-        let soname = thirdparty::soname(&libs_dir, lib)?;
+    for &lib in versions::SONAMES {
+        let soname = kobo::soname(&libs_dir, lib)?;
         let src = libs_dir.join(lib);
         let dest = dist_libs.join(&soname);
         std::fs::copy(&src, &dest).with_context(|| {

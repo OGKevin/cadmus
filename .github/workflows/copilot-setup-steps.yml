@@ -27,7 +27,7 @@ jobs:
           targets: arm-unknown-linux-gnueabihf
 
       - name: Restore shared cargo cache
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae
         with:
           path: |
             ~/.cargo/bin/
@@ -35,21 +35,12 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-shared-${{ steps.rust-toolchain.outputs.cachekey }}-${{ hashFiles('**/Cargo.lock') }}
+            libs/
+          key: ${{ runner.os }}-cargo-shared-${{ steps.rust-toolchain.outputs.cachekey }}-${{ hashFiles('**/Cargo.lock', 'crates/build-deps/**', 'build-scripts/**', '.gitmodules', 'mupdf_wrapper/mupdf_wrapper.c', 'crates/core/build.rs') }}
           restore-keys: |
             ${{ runner.os }}-cargo-shared-${{ steps.rust-toolchain.outputs.cachekey }}-
 
-      - name: Cache thirdparty libraries (Kobo cross-compile)
-        uses: ./.github/actions/cache-thirdparty
-        with:
-          kind: kobo-download
-
-      - name: Cache thirdparty libraries (native testing)
-        uses: ./.github/actions/cache-thirdparty
-        with:
-          kind: native
-
-      - name: Cache Linaro toolchain
+      - name: Restore Linaro toolchain
         id: cache-linaro
         uses: actions/cache@v5
         with:
@@ -97,12 +88,6 @@ jobs:
 
       - name: Build documentation
         run: cargo xtask docs --mdbook-only
-
-      - name: Download thirdparty dependencies
-        run: cargo xtask build-kobo --slow --download-only
-
-      - name: Setup native dependencies for testing
-        run: cargo xtask setup-native
 
       - name: Install reviewdog
         uses: reviewdog/action-setup@v1

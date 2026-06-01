@@ -14,6 +14,5 @@ pub mod download_assets;
 pub mod fmt;
 pub mod install_importer;
 pub mod run_emulator;
-pub mod setup_native;
 pub mod test;
 pub mod util;

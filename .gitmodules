@@ -1,0 +1,48 @@
+[submodule "thirdparty/zlib"]
+	path = thirdparty/zlib
+	url = https://github.com/madler/zlib
+	branch = v1.3.2
+[submodule "thirdparty/bzip2"]
+	path = thirdparty/bzip2
+	url = https://gitlab.com/bzip2/bzip2
+	branch = bzip2-1.0.8
+[submodule "thirdparty/libpng"]
+	path = thirdparty/libpng
+	url = https://github.com/pnggroup/libpng
+	branch = v1.6.53
+[submodule "thirdparty/libjpeg"]
+	path = thirdparty/libjpeg
+	url = https://github.com/libjpeg-turbo/libjpeg-turbo
+	branch = jpeg-10
+[submodule "thirdparty/openjpeg"]
+	path = thirdparty/openjpeg
+	url = https://github.com/uclouvain/openjpeg
+	branch = v2.5.4
+[submodule "thirdparty/jbig2dec"]
+	path = thirdparty/jbig2dec
+	url = https://github.com/ArtifexSoftware/jbig2dec
+	branch = 0.20
+[submodule "thirdparty/libwebp"]
+	path = thirdparty/libwebp
+	url = https://github.com/webmproject/libwebp
+	branch = v1.2.3
+[submodule "thirdparty/freetype2"]
+	path = thirdparty/freetype2
+	url = https://github.com/freetype/freetype
+	branch = VER-2-14-1
+[submodule "thirdparty/harfbuzz"]
+	path = thirdparty/harfbuzz
+	url = https://github.com/harfbuzz/harfbuzz
+	branch = 14.2.0
+[submodule "thirdparty/gumbo"]
+	path = thirdparty/gumbo
+	url = https://github.com/google/gumbo-parser
+	branch = v0.10.1
+[submodule "thirdparty/djvulibre"]
+	path = thirdparty/djvulibre
+	url = https://github.com/barak/djvulibre
+	branch = release.3.5.30
+[submodule "thirdparty/mupdf"]
+	path = thirdparty/mupdf
+	url = https://github.com/ArtifexSoftware/mupdf
+	branch = 1.27.2

@@ -5,6 +5,4 @@ pub mod fs;
 pub mod github;
 pub mod http;
 pub mod matrix;
-pub mod mupdf_wrapper;
-pub mod thirdparty;
 pub mod workspace;

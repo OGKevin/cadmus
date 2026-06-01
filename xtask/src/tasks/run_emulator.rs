@@ -1,8 +1,8 @@
 //! `cargo xtask run-emulator` — run the Cadmus emulator.
 //!
-//! Ensures the native MuPDF build and the embedded documentation EPUB are
-//! ready, then launches `cargo run -p emulator`.  Any extra arguments are
-//! forwarded to the emulator.
+//! Ensures the embedded documentation EPUB is ready, then launches
+//! `cargo run -p emulator`.  Any extra arguments are forwarded to the cargo invocation.
+//! Native dependencies (MuPDF, libwebp) are built automatically by `build.rs`.
 
 use std::path::Path;
 
@@ -10,7 +10,6 @@ use anyhow::Result;
 use clap::Args;
 
 use super::docs::{self, DocsArgs};
-use super::setup_native::{self, SetupNativeArgs};
 use super::util::{cmd, workspace};
 
 /// Arguments for `cargo xtask run-emulator`.
@@ -31,19 +30,9 @@ fn mdbook_epub_built(root: &Path) -> bool {
         .exists()
 }
 
-/// Ensures prerequisites are built then launches the emulator.
-///
-/// # Errors
-///
-/// Returns an error if the native setup, documentation build, or emulator
-/// launch fails.
+/// Ensures documentation is built then launches the emulator.
 pub fn run(args: RunEmulatorArgs) -> Result<()> {
     let root = workspace::root()?;
-
-    if !setup_native::native_setup_done(&root) {
-        println!("Native setup not found — running setup-native…");
-        setup_native::run(SetupNativeArgs { force: false })?;
-    }
 
     if !mdbook_epub_built(&root) {
         println!("Documentation EPUB not found — building mdBook…");

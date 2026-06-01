@@ -86,7 +86,7 @@
     },
     {
       "title": "Crate Structure",
-      "purpose": "Document the Rust workspace layout: each crate (cadmus-core, cadmus, emulator, importer, fetcher, xtask), their roles, the binaries they produce, and the inter-crate dependency graph. Cover shared workspace dependencies such as rustls and the release-minsized build profile.",
+      "purpose": "Document the Rust workspace layout: each crate (cadmus-core, cadmus, emulator, importer, fetcher, xtask, build-deps), their roles, the binaries they produce, and the inter-crate dependency graph. Cover shared workspace dependencies such as rustls and the release-minsized build profile. The build-deps crate is shared between cadmus-core's build.rs and xtask, and owns all thirdparty C/C++ build orchestration (native and Kobo recipes, MuPDF source preparation, mupdf_wrapper compilation).",
       "parent": "Contributor Guide",
       "page_notes": [
         {
@@ -96,7 +96,7 @@
     },
     {
       "title": "Development Environment",
-      "purpose": "Document the devenv and Nix-based reproducible development environment: entering the shell, available cargo xtask commands (setup-native, run-emulator, build-kobo, dist, bundle, test, docs), devenv tasks (deps:native, docs:build, build:kobo), the integrated observability stack (OTel Collector, Prometheus, Tempo, Loki, Grafana), platform support (Linux full, macOS native-only), and local override via devenv.local.nix.",
+      "purpose": "Document the devenv and Nix-based reproducible development environment: entering the shell, available cargo xtask commands (run-emulator, build-kobo, dist, bundle, test, docs, download-assets), devenv tasks (docs:build, build:kobo), the integrated observability stack (OTel Collector, Prometheus, Tempo, Loki, Grafana), platform support (Linux full, macOS full including Kobo cross-compilation), and local override via devenv.local.nix. Thirdparty native dependencies are built lazily by the cadmus-core build.rs (via the build-deps crate) the first time `cargo build` runs, so no explicit setup step is required.",
       "parent": "Contributor Guide",
       "page_notes": [
         {
@@ -176,7 +176,7 @@
     },
     {
       "title": "Building for Device",
-      "purpose": "Explain the end-to-end process for cross-compiling and packaging Cadmus for a target device: the ARM cross-compilation toolchain, cargo xtask build-kobo (fast vs slow modes, mupdf_wrapper compilation), cargo xtask dist assembly, cargo xtask bundle packaging, NickelMenu integration, and the device management shell scripts (wifi-enable.sh, wifi-disable.sh, usb-enable.sh, usb-disable.sh). Currently Kobo-specific; the build system is expected to generalise as additional devices are supported.",
+      "purpose": "Explain the end-to-end process for cross-compiling and packaging Cadmus for a target device: the ARM cross-compilation toolchain, cargo xtask build-kobo (a thin wrapper over `cargo build --release --target arm-unknown-linux-gnueabihf` whose thirdparty native artifacts are produced lazily by the cadmus-core build.rs via the build-deps crate), cargo xtask dist assembly, cargo xtask bundle packaging, NickelMenu integration, and the device management shell scripts (wifi-enable.sh, wifi-disable.sh, usb-enable.sh, usb-disable.sh). Currently Kobo-specific; the build system is expected to generalise as additional devices are supported.",
       "parent": "Contributor Guide",
       "page_notes": [
         {
@@ -186,7 +186,7 @@
     },
     {
       "title": "Third-Party Dependencies",
-      "purpose": "Document the thirdparty/ directory: its role in the cross-compilation pipeline, how library sources are downloaded at build time (not vendored), the dependency-ordered build process via build-kobo.sh scripts, which libraries carry Kobo-specific patches and the rationale behind each patch (e.g. bypassing pkg-config for cross-compilation, stripping unnecessary build targets, adding a device-specific cross-compile target), the relationship between version constants in xtask and Renovate-managed automated updates, and guidance on adding or upgrading a library.",
+      "purpose": "Document the thirdparty/ directory: its role in the cross-compilation pipeline, how library sources are vendored as git submodules and built from source by the build-deps crate (invoked from the cadmus-core build.rs and from xtask), the dependency-ordered build process via per-library recipes in build-deps (build/kobo/recipes.rs for ARM, build/native.rs for the host), which libraries carry Kobo-specific patches under build-scripts/ and the rationale behind each patch (e.g. bypassing pkg-config for cross-compilation, stripping unnecessary build targets, adding a device-specific cross-compile target), the relationship between version constants in build-deps (versions.rs) and Renovate-managed automated updates (including the git-submodules manager for submodule SHAs), and guidance on adding or upgrading a library.",
       "parent": "Contributor Guide",
       "page_notes": [
         {
