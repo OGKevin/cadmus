@@ -742,7 +742,7 @@ impl OtaClient {
     /// Fetches artifacts for a workflow run and finds one matching the given prefix.
     fn find_artifact_in_run(&self, run_id: u64, name_prefix: &str) -> Result<Artifact, OtaError> {
         let artifacts_url = format!(
-            "https://api.github.com/repos/ogkevin/cadmus/actions/runs/{}/artifacts",
+            "https://api.github.com/repos/ogkevin/cadmus/actions/runs/{}/artifacts?per_page=100",
             run_id
         );
         tracing::debug!(url = %artifacts_url, "Fetching artifacts");
