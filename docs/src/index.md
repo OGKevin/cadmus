@@ -41,7 +41,7 @@ Any 4._X_._Y_ firmware, with _X_ ≥ 6, will do.
 
 ## Supported formats
 
-- PDF, CBZ, FB2, MOBI, XPS and TXT via [MuPDF](https://mupdf.com/index.html).
+- PDF, CBZ, FB2, MOBI, XPS, TXT, JPEG, JPG, PNG, WEBP and SVG via [MuPDF](https://mupdf.com/index.html).
 - ePUB through a built-in renderer.
 - DJVU via [DjVuLibre](http://djvu.sourceforge.net/index.html).
 
