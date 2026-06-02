@@ -685,7 +685,7 @@ impl Fonts {
         let search_path = if let Some(root_dir) = root_dir {
             root_dir.join("fonts")
         } else {
-            PathBuf::from("fonts")
+            CURRENT_DEVICE.install_path("fonts")
         };
 
         let opener = FontOpener::new()?;

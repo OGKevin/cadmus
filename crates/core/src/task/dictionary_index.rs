@@ -13,6 +13,7 @@ use walkdir::WalkDir;
 use crate::context::DICTIONARIES_DIRNAME;
 use crate::db::Database;
 use crate::db::runtime::RUNTIME;
+use crate::device::CURRENT_DEVICE;
 use crate::dictionary::{Entry, Metadata, normalize};
 use crate::fl;
 use crate::helpers::{Fingerprint, IsHidden};
@@ -677,7 +678,7 @@ impl BackgroundTask for DictionaryIndexTask {
             }
         };
 
-        let path = std::path::Path::new(DICTIONARIES_DIRNAME);
+        let path = CURRENT_DEVICE.data_path(DICTIONARIES_DIRNAME);
 
         let mut on_disk_fingerprints: Vec<String> = Vec::new();
 

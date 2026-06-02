@@ -11,7 +11,6 @@ use crate::input::{DeviceEvent, FingerStatus};
 use crate::unit::scale_by_dpi_raw;
 use fxhash::FxHashMap;
 use lazy_static::lazy_static;
-use std::path::Path;
 
 const ICON_SCALE: f32 = 1.0 / 32.0;
 
@@ -20,12 +19,12 @@ lazy_static! {
         let mut m = FxHashMap::default();
         let scale = scale_by_dpi_raw(ICON_SCALE, CURRENT_DEVICE.dpi);
         #[cfg(test)]
-        let dir = Path::new(
+        let dir = std::path::Path::new(
             &std::env::var("TEST_ROOT_DIR").expect("TEST_ROOT_DIR must be set for tests."),
         )
         .join("icons");
         #[cfg(not(test))]
-        let dir = Path::new("icons").to_path_buf();
+        let dir = CURRENT_DEVICE.install_path("icons");
         for name in [
             "home",
             "search",

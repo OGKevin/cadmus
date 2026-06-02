@@ -15,6 +15,7 @@ use super::parse::{
 use super::parse::{parse_letter_spacing, parse_word_spacing};
 use super::style::{StyleSheet, specified_values};
 use super::xml::XmlExt;
+use crate::device::CURRENT_DEVICE;
 use crate::document::pdf::PdfOpener;
 use crate::document::{Document, Location};
 use crate::font::{FontFamily, FontOpener};
@@ -2450,7 +2451,7 @@ fn build_fonts(root_dir: Option<std::path::PathBuf>) -> Result<Fonts, Error> {
     let font_path = |name: &str| -> std::path::PathBuf {
         match &root_dir {
             Some(root) => root.join("fonts").join(name),
-            None => std::path::PathBuf::from("fonts").join(name),
+            None => CURRENT_DEVICE.install_path("fonts").join(name),
         }
     };
     let mut fonts = Fonts {

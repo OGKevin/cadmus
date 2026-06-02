@@ -4399,8 +4399,9 @@ impl View for Reader {
                         } else if link.text.starts_with("https:") || link.text.starts_with("http:")
                         {
                             if let Some(path) = context.settings.external_urls_queue.as_ref() {
+                                let path = CURRENT_DEVICE.install_path(path);
                                 if let Ok(mut file) =
-                                    OpenOptions::new().create(true).append(true).open(path)
+                                    OpenOptions::new().create(true).append(true).open(&path)
                                 {
                                     if let Err(e) = writeln!(file, "{}", link.text) {
                                         error!("Couldn't write to {}: {:#}.", path.display(), e);

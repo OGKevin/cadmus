@@ -1,5 +1,6 @@
 use crate::color::BLACK;
 use crate::color::Color;
+use crate::device::CURRENT_DEVICE;
 use crate::font::{Font, FontFamily, RenderPlan};
 use crate::geom::{Edge, Point, Rectangle};
 pub use crate::metadata::TextAlign;
@@ -8,7 +9,7 @@ use kl_hyphenate::{Language, Load, Standard};
 use lazy_static::lazy_static;
 use std::fmt::Debug;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 pub const DEFAULT_HYPH_LANG: &str = "en";
 
@@ -554,7 +555,7 @@ pub static ref HYPHENATION_PATTERNS: FxHashMap<Language, Standard> = {
         if map.contains_key(lang) {
             continue;
         }
-        let base = Path::new("hyphenation-patterns")
+        let base = CURRENT_DEVICE.install_path("hyphenation-patterns")
                         .join(lang.code());
         let path = base.with_extension("standard.bincode");
         if let Ok(mut patterns) = Standard::from_path(*lang, path) {

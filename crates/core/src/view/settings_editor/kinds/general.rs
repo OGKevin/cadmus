@@ -3,13 +3,13 @@
 use super::{
     InputSettingKind, SettingData, SettingIdentity, SettingKind, ToggleSettings, WidgetKind,
 };
+use crate::device::CURRENT_DEVICE;
 use crate::fl;
 use crate::i18n::I18nDisplay;
 use crate::settings::Settings;
 use crate::view::{Bus, EntryId, EntryKind, Event, ToggleEvent, ViewId};
 use anyhow::Error;
 use std::fs;
-use std::path::Path;
 
 /// Language and locale selection setting
 pub struct Locale;
@@ -434,11 +434,11 @@ impl InputSettingKind for SettingsRetention {
 
 /// Scans the keyboard-layouts directory for available keyboard layouts
 fn get_available_layouts() -> Result<Vec<String>, Error> {
-    let layouts_dir = Path::new("keyboard-layouts");
+    let layouts_dir = CURRENT_DEVICE.install_path("keyboard-layouts");
     let mut layouts = Vec::new();
 
     if layouts_dir.exists() {
-        for entry in fs::read_dir(layouts_dir)? {
+        for entry in fs::read_dir(&layouts_dir)? {
             let entry = entry?;
             let path = entry.path();
 

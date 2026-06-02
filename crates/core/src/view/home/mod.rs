@@ -1802,10 +1802,11 @@ impl Home {
     fn insert_fetcher(&mut self, hook: &Hook, hub: &Hub, context: &Context) {
         let library_path = &context.library.home;
         let save_path = context.library.home.join(&hook.path);
+        let program = CURRENT_DEVICE.install_path(&hook.program);
         match self.spawn_child(
             library_path,
             &save_path,
-            &hook.program,
+            &program,
             context.settings.wifi,
             context.online,
             hub,

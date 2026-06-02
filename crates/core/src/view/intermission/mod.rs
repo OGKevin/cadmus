@@ -132,8 +132,9 @@ impl View for Intermission {
 
                 font.render(fb, scheme[1], &plan, pt!(dx, dy));
 
-                match open("icons/dodecahedron.svg") {
-                    None => warn!("failed to open icons/dodecahedron.svg"),
+                let logo_path = CURRENT_DEVICE.install_path("icons/dodecahedron.svg");
+                match open(&logo_path) {
+                    None => warn!(path = %logo_path.display(), "failed to open logo icon"),
                     Some(mut doc) => match doc.dims(0) {
                         None => warn!("failed to read dimensions from dodecahedron.svg"),
                         Some((width, height)) => {
