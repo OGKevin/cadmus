@@ -227,7 +227,11 @@ impl Device {
     pub fn data_dir(&self) -> PathBuf {
         cfg_select! {
             test => { self.install_dir() }
-            feature = "emulator" => { self.install_dir() }
+            feature = "emulator" => {
+                std::env::current_dir()
+                    .map(|cwd| cwd.join(self.install_dir()))
+                    .unwrap_or_else(|_| self.install_dir())
+            }
             _ => {
                 if self.has_removable_storage()
                     && Path::new(crate::settings::EXTERNAL_CARD_ROOT).is_dir()

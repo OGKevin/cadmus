@@ -504,8 +504,8 @@ fn handle_usb_unshare(
         Ok(usb_manager) => match usb_manager.disable() {
             Ok(()) => {
                 info!("USB mass storage disabled successfully");
-                if let Some(cwd) = startup_cwd.as_ref() {
-                    let log_dir = cwd.join(&logging_settings.directory);
+                if startup_cwd.is_some() {
+                    let log_dir = CURRENT_DEVICE.data_path(&logging_settings.directory);
                     if let Err(e) =
                         cadmus_core::logging::redirect_log_to_dir(&log_dir, logging_settings)
                     {
