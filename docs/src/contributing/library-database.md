@@ -75,6 +75,10 @@ erDiagram
         INTEGER library_id FK
         TEXT book_fingerprint FK
         INTEGER added_to_library_at
+        TEXT file_path
+        TEXT absolute_path
+        INTEGER mtime
+        INTEGER file_size
     }
 
     _cadmus_migrations {
@@ -110,6 +114,13 @@ erDiagram
 - **TOC tree via adjacency list.** `toc_entries.parent_id` is a self-reference;
   `position` preserves sibling order. The `id` is a UUID7 (generated in Rust) so
   `ORDER BY id ASC` gives stable insertion order without a growing rowid.
+- **Incremental import via `mtime` and `file_size`.** The `library_books` table
+  stores the file's last modification time (ceiling-rounded to 2-second FAT32
+  precision) and size in bytes. During import scans, files whose `mtime` and
+  `file_size` have not changed are skipped without re-fingerprinting, improving
+  startup performance. An index on `(library_id, absolute_path)` enables
+  efficient per-path lookups. Both columns are nullable to support books
+  imported before migration 011.
 - **`library_books_full_info` view.** An aggregating view joins `books`,
   `reading_states`, `book_authors`, `authors`, `book_categories`, and
   `categories` in one query. The `library_id` column from `library_books` is
