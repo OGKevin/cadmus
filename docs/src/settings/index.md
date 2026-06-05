@@ -229,6 +229,10 @@ Image displayed when entering USB sharing mode.
 These settings control how Cadmus imports documents from your device.
 They are available in the **Settings → Import** menu.
 
+Import scanning happens automatically on startup using incremental file checking — files are only re-scanned if their modification time or size has changed since the last import.
+
+To trigger a full re-scan of all files regardless of cached values, use the **Force Full Import** action button in the Import settings category.
+
 ### `import.sync-metadata`
 
 ✏️
