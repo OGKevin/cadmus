@@ -1,3 +1,4 @@
+use crate::db::types::UnixTimestamp;
 use crate::document::asciify;
 use crate::document::djvu::DjvuOpener;
 use crate::document::epub::EpubDocument;
@@ -75,7 +76,7 @@ pub struct FileInfo {
     pub kind: String,
     pub size: u64,
     #[serde(skip)]
-    pub mtime: Option<i64>,
+    pub mtime: Option<UnixTimestamp>,
 }
 
 impl Default for FileInfo {

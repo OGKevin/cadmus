@@ -293,7 +293,7 @@ fn scan_entries(
                     absolute_path: path.to_path_buf(),
                     kind: kind.as_str().to_owned(),
                     size,
-                    mtime: current_mtime.map(i64::from),
+                    mtime: current_mtime,
                 },
                 ..Default::default()
             };
@@ -784,6 +784,10 @@ mod tests {
 
         let mut allowed: FxHashSet<FileExtension> = FxHashSet::default();
         allowed.insert(FileExtension::Epub);
+        let settings = ImportSettings {
+            allowed_kinds: allowed,
+            ..ImportSettings::default()
+        };
 
         let lib = Library::new(dir.path(), &db, "test").expect("library");
         let (tx, rx) = std::sync::mpsc::channel();
@@ -794,7 +798,7 @@ mod tests {
             &lib.db,
             lib.library_id,
             dir.path(),
-            &ImportSettings::default(),
+            &settings,
             false,
             &tx,
             notif_id,

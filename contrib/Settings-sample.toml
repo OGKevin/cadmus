@@ -186,8 +186,6 @@ inverted = 2
 # cbz = { regular = 1, inverted = 1 }
 
 [import]
-# Start the import process when *Cadmus* starts.
-startup-trigger = true
 # When a document changes, re-extract its metadata.
 sync-metadata = true
 # The file extensions of the documents for which the metadata extraction

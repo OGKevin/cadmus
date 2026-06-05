@@ -229,21 +229,6 @@ Image displayed when entering USB sharing mode.
 These settings control how Cadmus imports documents from your device.
 They are available in the **Settings → Import** menu.
 
-### `import.startup-trigger`
-
-✏️
-
-Automatically import new books when Cadmus starts.
-
-```toml
-[import]
-startup-trigger = true
-```
-
-> [!TIP]
-> If this is turned off, you can still trigger an import manually from the home
-> screen: tap the **database icon** (bottom-left corner) and choose **Import**.
-
 ### `import.sync-metadata`
 
 ✏️

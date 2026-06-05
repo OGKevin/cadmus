@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Cadmus Documentation\n"
-"POT-Creation-Date: 2026-05-29T07:38:13+02:00\n"
+"POT-Creation-Date: 2026-06-05T16:12:12+02:00\n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -24,118 +24,131 @@ msgstr ""
 msgid "Installation"
 msgstr ""
 
-#: src/SUMMARY.md:6 src/installation/uninstall.md:1
-msgid "Uninstalling Cadmus"
-msgstr ""
-
-#: src/SUMMARY.md:7 src/installation/test-builds.md:1
+#: src/SUMMARY.md:6 src/installation/test-builds.md:1
 msgid "Test builds"
 msgstr ""
 
-#: src/SUMMARY.md:8 src/installation/ota.md:1
+#: src/SUMMARY.md:7 src/installation/ota.md:1
 msgid "OTA updates"
+msgstr ""
+
+#: src/SUMMARY.md:8
+msgid "Manually install PR builds"
 msgstr ""
 
 #: src/SUMMARY.md:9 src/installation/migration.md:1
 msgid "Migrating from Plato"
 msgstr ""
 
-#: src/SUMMARY.md:10 src/SUMMARY.md:13 src/settings/index.md:1
+#: src/SUMMARY.md:10 src/installation/uninstall.md:1
+msgid "Uninstalling Cadmus"
+msgstr ""
+
+#: src/SUMMARY.md:11 src/SUMMARY.md:15 src/settings/index.md:1
 #: src/ui/settings/index.md:1
 msgid "Settings"
 msgstr ""
 
-#: src/SUMMARY.md:11 src/ui/index.md:1
+#: src/SUMMARY.md:12 src/ui/index.md:1
 msgid "User Interface"
 msgstr ""
 
-#: src/SUMMARY.md:12 src/ui/filechooser.md:1
+#: src/SUMMARY.md:13 src/ui/filechooser.md:1
 msgid "File Chooser"
 msgstr ""
 
-#: src/SUMMARY.md:14 src/ui/settings/dictionaries.md:1
+#: src/SUMMARY.md:14 src/ui/keyboard.md:1
+msgid "Keyboard"
+msgstr ""
+
+#: src/SUMMARY.md:16 src/installation/migration.md:100
+#: src/ui/settings/dictionaries.md:1
 msgid "Dictionaries"
 msgstr ""
 
-#: src/SUMMARY.md:15 src/library/index.md:1
+#: src/SUMMARY.md:17 src/library/index.md:1
 msgid "Library"
 msgstr ""
 
-#: src/SUMMARY.md:16
+#: src/SUMMARY.md:18
 msgid "Importing"
 msgstr ""
 
-#: src/SUMMARY.md:17 src/installation/ota.md:86 src/troubleshooting/index.md:1
+#: src/SUMMARY.md:19 src/installation/ota.md:86 src/troubleshooting/index.md:1
 #: src/contributing/devenv-setup.md:225
 msgid "Troubleshooting"
 msgstr ""
 
-#: src/SUMMARY.md:21
+#: src/SUMMARY.md:23
 msgid "Contributor Guide"
 msgstr ""
 
-#: src/SUMMARY.md:23
+#: src/SUMMARY.md:25
 msgid "Development Environment"
 msgstr ""
 
-#: src/SUMMARY.md:24 src/contributing/event-system.md:1
+#: src/SUMMARY.md:26 src/contributing/code-style.md:1
+msgid "Code Style and Linting"
+msgstr ""
+
+#: src/SUMMARY.md:27 src/contributing/event-system.md:1
 msgid "Event System"
 msgstr ""
 
-#: src/SUMMARY.md:25 src/settings/index.md:281
+#: src/SUMMARY.md:28 src/settings/index.md:279
 #: src/contributing/telemetry/index.md:1
 msgid "Telemetry"
 msgstr ""
 
-#: src/SUMMARY.md:26 src/contributing/telemetry/logging.md:1
+#: src/SUMMARY.md:29 src/contributing/telemetry/logging.md:1
 msgid "Logging"
 msgstr ""
 
-#: src/SUMMARY.md:27 src/contributing/telemetry/tracing.md:1
+#: src/SUMMARY.md:30 src/contributing/telemetry/tracing.md:1
 msgid "Tracing"
 msgstr ""
 
-#: src/SUMMARY.md:28 src/contributing/telemetry/profiling.md:1
+#: src/SUMMARY.md:31 src/contributing/telemetry/profiling.md:1
 msgid "Profiling"
 msgstr ""
 
-#: src/SUMMARY.md:29 src/index.md:9
+#: src/SUMMARY.md:32 src/index.md:9
 msgid "Documentation"
 msgstr ""
 
-#: src/SUMMARY.md:30 src/contributing/translations/index.md:1
+#: src/SUMMARY.md:33 src/contributing/translations/index.md:1
 msgid "Translations"
 msgstr ""
 
-#: src/SUMMARY.md:31
+#: src/SUMMARY.md:34
 msgid "UI Strings"
 msgstr ""
 
-#: src/SUMMARY.md:32
+#: src/SUMMARY.md:35
 msgid "Guide"
 msgstr ""
 
-#: src/SUMMARY.md:33 src/contributing/sqlite-sqlx.md:1
+#: src/SUMMARY.md:36 src/contributing/sqlite-sqlx.md:1
 msgid "SQLite & SQLx"
 msgstr ""
 
-#: src/SUMMARY.md:34 src/contributing/library-database.md:1
+#: src/SUMMARY.md:37 src/contributing/library-database.md:1
 msgid "Library Database"
 msgstr ""
 
-#: src/SUMMARY.md:35 src/contributing/runtime-migrations.md:1
+#: src/SUMMARY.md:38 src/contributing/runtime-migrations.md:1
 msgid "Runtime Migrations"
 msgstr ""
 
-#: src/SUMMARY.md:39 src/investigations/index.md:1
+#: src/SUMMARY.md:42 src/investigations/index.md:1
 msgid "Investigations"
 msgstr ""
 
-#: src/SUMMARY.md:41
+#: src/SUMMARY.md:44
 msgid "Intro"
 msgstr ""
 
-#: src/SUMMARY.md:42 src/investigations/kobo/issue-51-dhcp-investigation.md:1
+#: src/SUMMARY.md:45 src/investigations/kobo/issue-51-dhcp-investigation.md:1
 msgid "DHCP IP Address Changes on WiFi Toggle"
 msgstr ""
 
@@ -255,7 +268,8 @@ msgstr ""
 
 #: src/index.md:44
 msgid ""
-"PDF, CBZ, FB2, MOBI, XPS and TXT via [MuPDF](https://mupdf.com/index.html)."
+"PDF, CBZ, FB2, MOBI, XPS, TXT, JPEG, JPG, PNG, WEBP and SVG via "
+"[MuPDF](https://mupdf.com/index.html)."
 msgstr ""
 
 #: src/index.md:45
@@ -505,61 +519,6 @@ msgstr ""
 msgid "See [Uninstalling Cadmus](./uninstall.md)."
 msgstr ""
 
-#: src/installation/uninstall.md:3
-msgid "To remove Cadmus from your Kobo:"
-msgstr ""
-
-#: src/installation/uninstall.md:6
-msgid "Delete the Cadmus folder from `.adds`:"
-msgstr ""
-
-#: src/installation/uninstall.md:8 src/installation/uninstall.md:16
-#: src/installation/migration.md:8 src/installation/migration.md:61
-msgid "Build"
-msgstr ""
-
-#: src/installation/uninstall.md:8
-msgid "Folder to delete"
-msgstr ""
-
-#: src/installation/uninstall.md:10 src/installation/uninstall.md:18
-#: src/installation/migration.md:10 src/installation/migration.md:63
-msgid "Stable"
-msgstr ""
-
-#: src/installation/uninstall.md:11 src/installation/uninstall.md:19
-#: src/installation/migration.md:11 src/installation/migration.md:64
-msgid "Test"
-msgstr ""
-
-#: src/installation/uninstall.md:13
-msgid ""
-"If you installed a package that included NickelMenu, delete the Cadmus menu "
-"entry too:"
-msgstr ""
-
-#: src/installation/uninstall.md:16
-msgid "NickelMenu entry to delete"
-msgstr ""
-
-#: src/installation/uninstall.md:18
-msgid "`/mnt/onboard/.adds/nm/cadmus`"
-msgstr ""
-
-#: src/installation/uninstall.md:19
-msgid "`/mnt/onboard/.adds/nm/cadmus-tst`"
-msgstr ""
-
-#: src/installation/uninstall.md:21
-msgid "Eject the device and disconnect the USB cable."
-msgstr ""
-
-#: src/installation/uninstall.md:23
-msgid ""
-"\\[!NOTE\\] If you no longer need NickelMenu at all, you can remove it "
-"separately."
-msgstr ""
-
 #: src/installation/test-builds.md:3
 msgid "First-time install"
 msgstr ""
@@ -676,7 +635,7 @@ msgid ""
 "the update from:"
 msgstr ""
 
-#: src/installation/ota.md:34 src/installation/migration.md:33
+#: src/installation/ota.md:34 src/installation/migration.md:43
 msgid "Source"
 msgstr ""
 
@@ -804,18 +763,56 @@ msgid ""
 msgstr ""
 
 #: src/installation/ota.md:93
-msgid ""
-"Free up space on your Kobo by deleting books or other files you do not need"
+msgid "Cadmus downloads update files into a `tmp` folder:"
 msgstr ""
 
 #: src/installation/ota.md:94
+msgid "**With SD card**: `/mnt/sd/.cadmus/tmp` (uses SD card space)"
+msgstr ""
+
+#: src/installation/ota.md:95
 msgid ""
-"Cadmus downloads update files into its own `tmp` folder inside the Cadmus "
-"folder"
+"**Without SD card**: `/mnt/onboard/.adds/cadmus/tmp` (uses internal storage)"
 msgstr ""
 
 #: src/installation/ota.md:96
-msgid "This error means internal storage is too full for the update file"
+msgid "If you see this error and have an SD card inserted, the card may be full"
+msgstr ""
+
+#: src/installation/ota.md:97
+msgid ""
+"If you do not have an SD card, free up space on internal storage by deleting "
+"books or other files you do not need"
+msgstr ""
+
+#: src/installation/manual-pr-install.md:1
+msgid "Manually install PR build"
+msgstr ""
+
+#: src/installation/manual-pr-install.md:3
+msgid "To manually install a PR build, follow these steps:"
+msgstr ""
+
+#: src/installation/manual-pr-install.md:5
+msgid "Open the PR you want to install"
+msgstr ""
+
+#: src/installation/manual-pr-install.md:6
+msgid "Press the checks tab ![pr checks](screenshots/pr-checks.png)"
+msgstr ""
+
+#: src/installation/manual-pr-install.md:8
+msgid "Press the cargo job ![cargo job](screenshots/pr-cargo-job.png)"
+msgstr ""
+
+#: src/installation/manual-pr-install.md:10
+msgid ""
+"Scroll down until you find the files ![Download from GitHub "
+"Actions](screenshots/artifacts.png)"
+msgstr ""
+
+#: src/installation/manual-pr-install.md:13
+msgid "Afterward, follow the [installation](index.md) instructions accordingly."
 msgstr ""
 
 #: src/installation/migration.md:3
@@ -828,6 +825,11 @@ msgstr ""
 msgid "Copy your settings"
 msgstr ""
 
+#: src/installation/migration.md:8 src/installation/migration.md:71
+#: src/installation/uninstall.md:8 src/installation/uninstall.md:16
+msgid "Build"
+msgstr ""
+
 #: src/installation/migration.md:8
 msgid "Plato settings"
 msgstr ""
@@ -836,12 +838,22 @@ msgstr ""
 msgid "Cadmus settings"
 msgstr ""
 
+#: src/installation/migration.md:10 src/installation/migration.md:73
+#: src/installation/uninstall.md:10 src/installation/uninstall.md:18
+msgid "Stable"
+msgstr ""
+
 #: src/installation/migration.md:10 src/installation/migration.md:11
 msgid "`/mnt/onboard/.adds/plato/Settings.toml`"
 msgstr ""
 
-#: src/installation/migration.md:10
+#: src/installation/migration.md:10 src/installation/migration.md:98
 msgid "`/mnt/onboard/.adds/cadmus/Settings.toml`"
+msgstr ""
+
+#: src/installation/migration.md:11 src/installation/migration.md:74
+#: src/installation/uninstall.md:11 src/installation/uninstall.md:19
+msgid "Test"
 msgstr ""
 
 #: src/installation/migration.md:11
@@ -858,7 +870,22 @@ msgid ""
 "move this file into its `Settings/` folder automatically."
 msgstr ""
 
-#: src/installation/migration.md:17 src/settings/index.md:127
+#: src/installation/migration.md:17
+msgid ""
+"\\[!NOTE\\] If your SD card is already inserted when you upgrade, Cadmus "
+"automatically moves your settings, logs, and dictionaries to "
+"`/mnt/sd/.cadmus/` (or `/mnt/sd/.cadmus-tst/` for test builds) on the next "
+"boot."
+msgstr ""
+
+#: src/installation/migration.md:22
+msgid ""
+"\\[!NOTE\\] If you insert an SD card **after** Cadmus has already run, the "
+"automatic migration will not run. You will need to copy your data manually — "
+"see [Moving data to an SD card](#moving-data-to-an-sd-card) below."
+msgstr ""
+
+#: src/installation/migration.md:27 src/settings/index.md:138
 msgid ""
 "```toml\n"
 "[[libraries]]\n"
@@ -868,51 +895,51 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/installation/migration.md:24
+#: src/installation/migration.md:34
 msgid ""
 "\\[!IMPORTANT\\] Make sure each `[[libraries]]` entry has the correct `path` "
 "and `name`. If a path doesn't match what's on disk, Cadmus skips that "
 "library's import."
 msgstr ""
 
-#: src/installation/migration.md:28
+#: src/installation/migration.md:38
 msgid "What happens on first launch"
 msgstr ""
 
-#: src/installation/migration.md:30
+#: src/installation/migration.md:40
 msgid ""
 "When Cadmus starts for the first time it automatically imports your data "
 "from each library listed in settings:"
 msgstr ""
 
-#: src/installation/migration.md:33
+#: src/installation/migration.md:43
 msgid "What's imported"
 msgstr ""
 
-#: src/installation/migration.md:35
+#: src/installation/migration.md:45
 msgid "`.metadata.json`"
 msgstr ""
 
-#: src/installation/migration.md:35
+#: src/installation/migration.md:45
 msgid "Book metadata (title, author, …) and reading progress"
 msgstr ""
 
-#: src/installation/migration.md:36
+#: src/installation/migration.md:46
 msgid "`.reading-states/<fp>.json`"
 msgstr ""
 
-#: src/installation/migration.md:36
+#: src/installation/migration.md:46
 msgid "Reading progress for books not already covered by the above"
 msgstr ""
 
-#: src/installation/migration.md:38
+#: src/installation/migration.md:48
 msgid ""
 "Both database mode and filesystem mode libraries are handled. Cadmus reads "
 "`.reading-states/` in all cases, so current page, bookmarks, and annotations "
 "carry over regardless of which mode you used in Plato."
 msgstr ""
 
-#: src/installation/migration.md:42
+#: src/installation/migration.md:52
 msgid ""
 "\\[!NOTE\\] The original `.metadata.json` and `.reading-states/` files are "
 "not modified or deleted during import. Once you have confirmed everything "
@@ -922,46 +949,191 @@ msgid ""
 "mind that any progress you make in Cadmus will not sync back to Plato."
 msgstr ""
 
-#: src/installation/migration.md:50
+#: src/installation/migration.md:60
 msgid ""
 "\\[!NOTE\\] Cadmus also removes the `.thumbnail-previews/` folder and "
 "regenerates thumbnails itself."
 msgstr ""
 
-#: src/installation/migration.md:54
+#: src/installation/migration.md:64
 msgid "Re-running the import"
 msgstr ""
 
-#: src/installation/migration.md:56
+#: src/installation/migration.md:66
 msgid ""
 "If the import went wrong (for example, the library path was incorrect in "
 "settings), you can start it fresh:"
 msgstr ""
 
-#: src/installation/migration.md:59
+#: src/installation/migration.md:69
 msgid "Delete the Cadmus SQLite database:"
 msgstr ""
 
-#: src/installation/migration.md:61
-msgid "Database path"
+#: src/installation/migration.md:71
+msgid "Database path (with SD card)"
 msgstr ""
 
-#: src/installation/migration.md:63
+#: src/installation/migration.md:71
+msgid "Database path (without SD card)"
+msgstr ""
+
+#: src/installation/migration.md:73 src/installation/migration.md:101
+msgid "`/mnt/sd/.cadmus/cadmus.sqlite`"
+msgstr ""
+
+#: src/installation/migration.md:73 src/installation/migration.md:101
 msgid "`/mnt/onboard/.adds/cadmus/cadmus.sqlite`"
 msgstr ""
 
-#: src/installation/migration.md:64
+#: src/installation/migration.md:74
+msgid "`/mnt/sd/.cadmus-tst/cadmus.sqlite`"
+msgstr ""
+
+#: src/installation/migration.md:74
 msgid "`/mnt/onboard/.adds/cadmus-tst/cadmus.sqlite`"
 msgstr ""
 
-#: src/installation/migration.md:66
+#: src/installation/migration.md:76
 msgid "Restart Cadmus — the import will run again from scratch."
 msgstr ""
 
-#: src/installation/migration.md:68
+#: src/installation/migration.md:78
 msgid ""
 "If something still looks wrong after re-running, check the logs for details. "
 "See [Troubleshooting](../troubleshooting/index.md) for where to find them."
+msgstr ""
+
+#: src/installation/migration.md:81
+msgid "Moving data to an SD card"
+msgstr ""
+
+#: src/installation/migration.md:83
+msgid ""
+"If you insert an SD card after Cadmus has already run, you need to move your "
+"data manually. Cadmus will use the SD card for new data once it detects the "
+"card, but your existing files stay in internal storage until you move them."
+msgstr ""
+
+#: src/installation/migration.md:87
+msgid "\\[!CAUTION\\] Do these operations while Cadmus is not running!"
+msgstr ""
+
+#: src/installation/migration.md:90
+msgid "In other words, do this while the Nickel/KOReader/etc is running."
+msgstr ""
+
+#: src/installation/migration.md:92
+msgid "Connect your Kobo to your computer"
+msgstr ""
+
+#: src/installation/migration.md:93
+msgid "Copy the following from internal storage to the SD card:"
+msgstr ""
+
+#: src/installation/migration.md:95
+msgid "What to move"
+msgstr ""
+
+#: src/installation/migration.md:95
+msgid "From (internal)"
+msgstr ""
+
+#: src/installation/migration.md:95
+msgid "To (SD card)"
+msgstr ""
+
+#: src/installation/migration.md:97
+msgid "Settings directory"
+msgstr ""
+
+#: src/installation/migration.md:97
+msgid "`/mnt/onboard/.adds/cadmus/Settings/`"
+msgstr ""
+
+#: src/installation/migration.md:97
+msgid "`/mnt/sd/.cadmus/Settings/`"
+msgstr ""
+
+#: src/installation/migration.md:98
+msgid "Settings file"
+msgstr ""
+
+#: src/installation/migration.md:98
+msgid "`/mnt/sd/.cadmus/Settings.toml`"
+msgstr ""
+
+#: src/installation/migration.md:99 src/troubleshooting/index.md:3
+msgid "Logs"
+msgstr ""
+
+#: src/installation/migration.md:99
+msgid "`/mnt/onboard/.adds/cadmus/logs/`"
+msgstr ""
+
+#: src/installation/migration.md:99
+msgid "`/mnt/sd/.cadmus/logs/`"
+msgstr ""
+
+#: src/installation/migration.md:100
+msgid "`/mnt/onboard/.adds/cadmus/dictionaries/`"
+msgstr ""
+
+#: src/installation/migration.md:100
+msgid "`/mnt/sd/.cadmus/dictionaries/`"
+msgstr ""
+
+#: src/installation/migration.md:101
+msgid "Database"
+msgstr ""
+
+#: src/installation/migration.md:103
+msgid ""
+"\\[!NOTE\\] Use the test paths (`cadmus-tst` / `.cadmus-tst`) if you are on "
+"a test build."
+msgstr ""
+
+#: src/installation/migration.md:106
+msgid "Restart Cadmus. It will pick up the files from the SD card automatically."
+msgstr ""
+
+#: src/installation/uninstall.md:3
+msgid "To remove Cadmus from your Kobo:"
+msgstr ""
+
+#: src/installation/uninstall.md:6
+msgid "Delete the Cadmus folder from `.adds`:"
+msgstr ""
+
+#: src/installation/uninstall.md:8
+msgid "Folder to delete"
+msgstr ""
+
+#: src/installation/uninstall.md:13
+msgid ""
+"If you installed a package that included NickelMenu, delete the Cadmus menu "
+"entry too:"
+msgstr ""
+
+#: src/installation/uninstall.md:16
+msgid "NickelMenu entry to delete"
+msgstr ""
+
+#: src/installation/uninstall.md:18
+msgid "`/mnt/onboard/.adds/nm/cadmus`"
+msgstr ""
+
+#: src/installation/uninstall.md:19
+msgid "`/mnt/onboard/.adds/nm/cadmus-tst`"
+msgstr ""
+
+#: src/installation/uninstall.md:21
+msgid "Eject the device and disconnect the USB cable."
+msgstr ""
+
+#: src/installation/uninstall.md:23
+msgid ""
+"\\[!NOTE\\] If you no longer need NickelMenu at all, you can remove it "
+"separately."
 msgstr ""
 
 #: src/settings/index.md:3
@@ -1002,12 +1174,13 @@ msgstr ""
 #: src/settings/index.md:17 src/settings/index.md:29 src/settings/index.md:39
 #: src/settings/index.md:54 src/settings/index.md:66 src/settings/index.md:78
 #: src/settings/index.md:90 src/settings/index.md:106 src/settings/index.md:123
-#: src/settings/index.md:136 src/settings/index.md:142
-#: src/settings/index.md:148 src/settings/index.md:156
-#: src/settings/index.md:177 src/settings/index.md:190
-#: src/settings/index.md:202 src/settings/index.md:210
-#: src/settings/index.md:223 src/settings/index.md:238
-#: src/settings/index.md:305 src/settings/index.md:316
+#: src/settings/index.md:134 src/settings/index.md:147
+#: src/settings/index.md:153 src/settings/index.md:159
+#: src/settings/index.md:167 src/settings/index.md:188
+#: src/settings/index.md:201 src/settings/index.md:213
+#: src/settings/index.md:221 src/settings/index.md:234
+#: src/settings/index.md:254 src/settings/index.md:303
+#: src/settings/index.md:314
 msgid "✏️"
 msgstr ""
 
@@ -1130,7 +1303,7 @@ msgstr ""
 msgid "What to do when you finish reading a book."
 msgstr ""
 
-#: src/settings/index.md:110 src/settings/index.md:161
+#: src/settings/index.md:110 src/settings/index.md:172
 msgid "Possible values:"
 msgstr ""
 
@@ -1155,68 +1328,84 @@ msgid ""
 msgstr ""
 
 #: src/settings/index.md:121
-msgid "Libraries"
+msgid "`reader.dithered-kinds`"
 msgstr ""
 
 #: src/settings/index.md:125
+msgid "File extensions rendered with dithering by default."
+msgstr ""
+
+#: src/settings/index.md:127
+msgid ""
+"```toml\n"
+"[reader]\n"
+"dithered-kinds = [\"cbz\", \"png\", \"jpg\", \"jpeg\", \"webp\"]\n"
+"```"
+msgstr ""
+
+#: src/settings/index.md:132
+msgid "Libraries"
+msgstr ""
+
+#: src/settings/index.md:136
 msgid "Document library configuration. Each library has a name, path, and mode."
 msgstr ""
 
-#: src/settings/index.md:134
+#: src/settings/index.md:145
 msgid "`libraries.name`"
 msgstr ""
 
-#: src/settings/index.md:138
+#: src/settings/index.md:149
 msgid "Display name for the library."
 msgstr ""
 
-#: src/settings/index.md:140
+#: src/settings/index.md:151
 msgid "`libraries.path`"
 msgstr ""
 
-#: src/settings/index.md:144
+#: src/settings/index.md:155
 msgid "Directory path containing documents."
 msgstr ""
 
-#: src/settings/index.md:146
+#: src/settings/index.md:157
 msgid "`libraries.mode`"
 msgstr ""
 
-#: src/settings/index.md:150
+#: src/settings/index.md:161
 msgid "Library indexing mode."
 msgstr ""
 
-#: src/settings/index.md:152
+#: src/settings/index.md:163
 msgid "Possible values: `\"database\"`, `\"filesystem\"`."
 msgstr ""
 
-#: src/settings/index.md:154
+#: src/settings/index.md:165
 msgid "`libraries.finished`"
 msgstr ""
 
-#: src/settings/index.md:158
+#: src/settings/index.md:169
 msgid ""
 "Override the `reader.finished` setting for this specific library. When set, "
 "this takes precedence over the global reader setting."
 msgstr ""
 
-#: src/settings/index.md:163
+#: src/settings/index.md:174
 msgid "`\"notify\"`"
 msgstr ""
 
-#: src/settings/index.md:164
+#: src/settings/index.md:175
 msgid "`\"close\"`"
 msgstr ""
 
-#: src/settings/index.md:165
+#: src/settings/index.md:176
 msgid "`\"go-to-next\"`."
 msgstr ""
 
-#: src/settings/index.md:166
+#: src/settings/index.md:177
 msgid "Leave unset to inherit the global `reader.finished` setting."
 msgstr ""
 
-#: src/settings/index.md:168
+#: src/settings/index.md:179
 msgid ""
 "```toml\n"
 "[[libraries]]\n"
@@ -1226,15 +1415,15 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:175
+#: src/settings/index.md:186
 msgid "Intermissions"
 msgstr ""
 
-#: src/settings/index.md:179
+#: src/settings/index.md:190
 msgid "Defines the images displayed when entering an intermission state."
 msgstr ""
 
-#: src/settings/index.md:181
+#: src/settings/index.md:192
 msgid ""
 "```toml\n"
 "[intermissions]\n"
@@ -1244,92 +1433,77 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:188
+#: src/settings/index.md:199
 msgid "`intermissions.suspend`"
 msgstr ""
 
-#: src/settings/index.md:192
+#: src/settings/index.md:203
 msgid "Image displayed when the device enters sleep mode."
 msgstr ""
 
-#: src/settings/index.md:194
+#: src/settings/index.md:205
 msgid ""
 "Setting this to `\"calendar:\"` also enables the calendar refresh: every 5 "
 "minutes, the device wakes, shows the calendar, and then goes back to sleep "
 "automatically."
 msgstr ""
 
-#: src/settings/index.md:198
+#: src/settings/index.md:209
 msgid ""
 "Possible values: `\"logo:\"` (built-in logo), `\"cover:\"` (current book "
 "cover), `\"calendar:\"` (built-in calendar), or a path to a custom image "
 "file."
 msgstr ""
 
-#: src/settings/index.md:200
+#: src/settings/index.md:211
 msgid "`intermissions.power-off`"
 msgstr ""
 
-#: src/settings/index.md:204
+#: src/settings/index.md:215
 msgid "Image displayed when the device powers off."
 msgstr ""
 
-#: src/settings/index.md:206 src/settings/index.md:214
+#: src/settings/index.md:217 src/settings/index.md:225
 msgid ""
 "Possible values: `\"logo:\"` (built-in logo), `\"cover:\"` (current book "
 "cover), or a path to a custom image file."
 msgstr ""
 
-#: src/settings/index.md:208
+#: src/settings/index.md:219
 msgid "`intermissions.share`"
 msgstr ""
 
-#: src/settings/index.md:212
+#: src/settings/index.md:223
 msgid "Image displayed when entering USB sharing mode."
 msgstr ""
 
-#: src/settings/index.md:216
+#: src/settings/index.md:227
 msgid "Import"
 msgstr ""
 
-#: src/settings/index.md:218
+#: src/settings/index.md:229
 msgid ""
 "These settings control how Cadmus imports documents from your device. They "
 "are available in the **Settings → Import** menu."
 msgstr ""
 
-#: src/settings/index.md:221
-msgid "`import.startup-trigger`"
-msgstr ""
-
-#: src/settings/index.md:225
-msgid "Automatically import new books when Cadmus starts."
-msgstr ""
-
 #: src/settings/index.md:232
-msgid ""
-"\\[!TIP\\] If this is turned off, you can still trigger an import manually "
-"from the home screen: tap the **database icon** (bottom-left corner) and "
-"choose **Import**."
-msgstr ""
-
-#: src/settings/index.md:236
 msgid "`import.sync-metadata`"
 msgstr ""
 
-#: src/settings/index.md:240
+#: src/settings/index.md:236
 msgid "Re-extract metadata (title, author, etc.) whenever a document changes."
 msgstr ""
 
-#: src/settings/index.md:247
+#: src/settings/index.md:243
 msgid "`import.metadata-kinds`"
 msgstr ""
 
-#: src/settings/index.md:249
+#: src/settings/index.md:245
 msgid "File extensions of documents whose metadata is extracted during import."
 msgstr ""
 
-#: src/settings/index.md:251
+#: src/settings/index.md:247
 msgid ""
 "```toml\n"
 "[import]\n"
@@ -1337,15 +1511,15 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:256
+#: src/settings/index.md:252
 msgid "`import.allowed-kinds`"
 msgstr ""
 
-#: src/settings/index.md:258
+#: src/settings/index.md:256
 msgid "File extensions of documents considered during the import process."
 msgstr ""
 
-#: src/settings/index.md:260
+#: src/settings/index.md:258
 msgid ""
 "```toml\n"
 "[import]\n"
@@ -1354,15 +1528,15 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:265
+#: src/settings/index.md:263
 msgid "OTA"
 msgstr ""
 
-#: src/settings/index.md:267
+#: src/settings/index.md:265
 msgid "The OTA feature downloads builds from GitHub."
 msgstr ""
 
-#: src/settings/index.md:269
+#: src/settings/index.md:267
 msgid ""
 "Authentication for main branch and PR builds uses **GitHub device auth "
 "flow**. When you select a build that requires authentication, Cadmus will "
@@ -1371,39 +1545,39 @@ msgid ""
 "once you authorize."
 msgstr ""
 
-#: src/settings/index.md:275
+#: src/settings/index.md:273
 msgid ""
 "The token is saved to disk after the first authorization so you will not be "
 "prompted again on subsequent downloads."
 msgstr ""
 
-#: src/settings/index.md:278
+#: src/settings/index.md:276
 msgid ""
 "For step-by-step instructions with screenshots, see the [OTA "
 "updates](../installation/ota.md) guide."
 msgstr ""
 
-#: src/settings/index.md:283
+#: src/settings/index.md:281
 msgid ""
 "Cadmus writes JSON logs to disk. When the build enables the `tracing` "
 "feature, it can also export logs to an OpenTelemetry endpoint."
 msgstr ""
 
-#: src/settings/index.md:286
+#: src/settings/index.md:284
 msgid "These settings are available in the **Settings → Telemetry** menu."
 msgstr ""
 
-#: src/settings/index.md:288
+#: src/settings/index.md:286
 msgid ""
 "\\[!IMPORTANT\\] Changes to these settings only take effect after restarting "
 "Cadmus. The application initializes telemetry on startup."
 msgstr ""
 
-#: src/settings/index.md:292
+#: src/settings/index.md:290
 msgid "`logging`"
 msgstr ""
 
-#: src/settings/index.md:294
+#: src/settings/index.md:292
 msgid ""
 "```toml\n"
 "[logging]\n"
@@ -1415,29 +1589,29 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:303 src/contributing/telemetry/logging.md:50
+#: src/settings/index.md:301 src/contributing/telemetry/logging.md:50
 msgid "`logging.enabled`"
 msgstr ""
 
-#: src/settings/index.md:307
+#: src/settings/index.md:305
 msgid "Enable or disable structured JSON logging."
 msgstr ""
 
-#: src/settings/index.md:314 src/contributing/telemetry/logging.md:51
+#: src/settings/index.md:312 src/contributing/telemetry/logging.md:51
 msgid "`logging.level`"
 msgstr ""
 
-#: src/settings/index.md:318
+#: src/settings/index.md:316
 msgid "Minimum log level to record."
 msgstr ""
 
-#: src/settings/index.md:320
+#: src/settings/index.md:318
 msgid ""
 "Possible values: `\"trace\"`, `\"debug\"`, `\"info\"`, `\"warn\"`, "
 "`\"error\"`."
 msgstr ""
 
-#: src/settings/index.md:322
+#: src/settings/index.md:320
 msgid ""
 "```toml\n"
 "[logging]\n"
@@ -1445,37 +1619,37 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:327 src/contributing/telemetry/logging.md:52
+#: src/settings/index.md:325 src/contributing/telemetry/logging.md:52
 msgid "`logging.max-files`"
 msgstr ""
 
-#: src/settings/index.md:329
+#: src/settings/index.md:327
 msgid ""
 "Number of log files to keep. Only the most recent N files are kept — older "
 "ones are deleted automatically when Cadmus starts."
 msgstr ""
 
-#: src/settings/index.md:332 src/settings/index.md:405
+#: src/settings/index.md:330 src/settings/index.md:403
 msgid "Default: `3`"
 msgstr ""
 
-#: src/settings/index.md:333
+#: src/settings/index.md:331
 msgid "Set to `0` to keep all log files."
 msgstr ""
 
-#: src/settings/index.md:340 src/contributing/telemetry/logging.md:54
+#: src/settings/index.md:338 src/contributing/telemetry/logging.md:54
 msgid "`logging.otlp-endpoint`"
 msgstr ""
 
-#: src/settings/index.md:342
+#: src/settings/index.md:340
 msgid "✏️ (only when the `tracing` feature is enabled)"
 msgstr ""
 
-#: src/settings/index.md:344
+#: src/settings/index.md:342
 msgid "Optional OTLP endpoint for exporting logs to an OpenTelemetry collector."
 msgstr ""
 
-#: src/settings/index.md:346
+#: src/settings/index.md:344
 msgid ""
 "```toml\n"
 "[logging]\n"
@@ -1483,31 +1657,31 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:351 src/settings/index.md:368
+#: src/settings/index.md:349 src/settings/index.md:366
 msgid "Environment override:"
 msgstr ""
 
-#: src/settings/index.md:353
+#: src/settings/index.md:351
 msgid ""
 "`OTEL_EXPORTER_OTLP_ENDPOINT` takes precedence over `logging.otlp-endpoint`."
 msgstr ""
 
-#: src/settings/index.md:355 src/contributing/telemetry/profiling.md:32
+#: src/settings/index.md:353 src/contributing/telemetry/profiling.md:32
 msgid "`logging.pyroscope-endpoint`"
 msgstr ""
 
-#: src/settings/index.md:357
+#: src/settings/index.md:355
 msgid "✏️ (only when the `profiling` feature is enabled)"
 msgstr ""
 
-#: src/settings/index.md:359
+#: src/settings/index.md:357
 msgid ""
 "Optional Pyroscope server URL for continuous profiling. When set, Cadmus "
 "starts both a heap profiling agent (via jemalloc) and a CPU profiling agent "
 "(via pprof) that push profiles to this endpoint."
 msgstr ""
 
-#: src/settings/index.md:363
+#: src/settings/index.md:361
 msgid ""
 "```toml\n"
 "[logging]\n"
@@ -1515,58 +1689,58 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:370
+#: src/settings/index.md:368
 msgid ""
 "`PYROSCOPE_SERVER_URL` takes precedence over `logging.pyroscope-endpoint`."
 msgstr ""
 
-#: src/settings/index.md:372
+#: src/settings/index.md:370
 msgid "`logging.enable-kern-log`"
 msgstr ""
 
-#: src/settings/index.md:374 src/settings/index.md:386
+#: src/settings/index.md:372 src/settings/index.md:384
 msgid "🧪 📱 ✏️"
 msgstr ""
 
-#: src/settings/index.md:376
+#: src/settings/index.md:374
 msgid ""
 "Captures kernel logs via `logread -F` and forwards them to structured "
 "logging with the target `cadmus_core::logging:kern`."
 msgstr ""
 
-#: src/settings/index.md:384
+#: src/settings/index.md:382
 msgid "`logging.enable-dbus-log`"
 msgstr ""
 
-#: src/settings/index.md:388
+#: src/settings/index.md:386
 msgid ""
 "Captures D-Bus signals via the built-in zbus-based DbusMonitorTask and "
 "forwards them to structured logging."
 msgstr ""
 
-#: src/settings/index.md:396
+#: src/settings/index.md:394
 msgid "Settings Retention"
 msgstr ""
 
-#: src/settings/index.md:398
+#: src/settings/index.md:396
 msgid ""
 "Cadmus stores each version's settings in a separate file in the `Settings/` "
 "directory (for example, `Settings-v1.2.3.toml`). This ensures backward and "
 "forward compatibility when you upgrade."
 msgstr ""
 
-#: src/settings/index.md:401
+#: src/settings/index.md:399
 msgid "`settings-retention`"
 msgstr ""
 
-#: src/settings/index.md:403
+#: src/settings/index.md:401
 msgid ""
 "Number of recent version settings files to keep. Only the most recent N "
 "version files are kept. When a new version is saved, older versions beyond "
 "this limit are deleted automatically."
 msgstr ""
 
-#: src/settings/index.md:406
+#: src/settings/index.md:404
 msgid "Set to `0` to keep all version files"
 msgstr ""
 
@@ -1581,6 +1755,10 @@ msgid "[File Chooser](filechooser.md)"
 msgstr ""
 
 #: src/ui/index.md:7
+msgid "[Keyboard](keyboard.md)"
+msgstr ""
+
+#: src/ui/index.md:8
 msgid "[Settings](settings/index.md)"
 msgstr ""
 
@@ -1651,6 +1829,1243 @@ msgstr ""
 
 #: src/ui/filechooser.md:30
 msgid "The title will indicate the mode."
+msgstr ""
+
+#: src/ui/keyboard.md:3
+msgid ""
+"The on-screen keyboard lets you type text for searches, dictionary lookups, "
+"and other input fields."
+msgstr ""
+
+#: src/ui/keyboard.md:6
+msgid "Basics"
+msgstr ""
+
+#: src/ui/keyboard.md:8
+msgid "**Lock modifier keys** — Tap _ALT_ or _SHIFT_ twice to lock them on."
+msgstr ""
+
+#: src/ui/keyboard.md:9
+msgid ""
+"**Combine key (CMB)** — Press _CMB_ followed by two keys to type accented or "
+"special characters (see [Combination Sequences](#combination-sequences) "
+"below). For example, `CMB o e` produces _œ_."
+msgstr ""
+
+#: src/ui/keyboard.md:12
+msgid ""
+"**Delete / motion keys** — Tap and hold to act on whole words instead of "
+"individual characters."
+msgstr ""
+
+#: src/ui/keyboard.md:14
+msgid "**Keyboard layouts** — Tap and hold the space bar to switch layouts."
+msgstr ""
+
+#: src/ui/keyboard.md:16
+msgid "Inputting Accented Characters"
+msgstr ""
+
+#: src/ui/keyboard.md:18
+msgid ""
+"Cadmus supports these through **combination sequences** using the _CMB_ key. "
+"See [Combination Sequences](#combination-sequences)."
+msgstr ""
+
+#: src/ui/keyboard.md:21
+msgid "How to type an accented character"
+msgstr ""
+
+#: src/ui/keyboard.md:23
+msgid "Press the **CMB** key."
+msgstr ""
+
+#: src/ui/keyboard.md:24
+msgid "Press the **base letter** (e.g. `e`)."
+msgstr ""
+
+#: src/ui/keyboard.md:25
+msgid "Press the **accent modifier** (e.g. `'` for acute)."
+msgstr ""
+
+#: src/ui/keyboard.md:27
+msgid "Example: `CMB e '` produces **é**."
+msgstr ""
+
+#: src/ui/keyboard.md:29
+msgid "Combination Sequences"
+msgstr ""
+
+#: src/ui/keyboard.md:31
+msgid ""
+"Press _CMB_ followed by the two keys listed below to produce the "
+"corresponding character."
+msgstr ""
+
+#: src/ui/keyboard.md:34
+msgid "Keys"
+msgstr ""
+
+#: src/ui/keyboard.md:34
+msgid "Result"
+msgstr ""
+
+#: src/ui/keyboard.md:36
+msgid "`a '`"
+msgstr ""
+
+#: src/ui/keyboard.md:36
+msgid "á"
+msgstr ""
+
+#: src/ui/keyboard.md:36
+msgid "`A '`"
+msgstr ""
+
+#: src/ui/keyboard.md:36
+msgid "Á"
+msgstr ""
+
+#: src/ui/keyboard.md:36
+msgid "```a `` ```"
+msgstr ""
+
+#: src/ui/keyboard.md:36
+msgid "à"
+msgstr ""
+
+#: src/ui/keyboard.md:36
+msgid "```A `` ```"
+msgstr ""
+
+#: src/ui/keyboard.md:36
+msgid "À"
+msgstr ""
+
+#: src/ui/keyboard.md:37
+msgid "`e '`"
+msgstr ""
+
+#: src/ui/keyboard.md:37
+msgid "é"
+msgstr ""
+
+#: src/ui/keyboard.md:37
+msgid "`E '`"
+msgstr ""
+
+#: src/ui/keyboard.md:37
+msgid "É"
+msgstr ""
+
+#: src/ui/keyboard.md:37
+msgid "```e `` ```"
+msgstr ""
+
+#: src/ui/keyboard.md:37
+msgid "è"
+msgstr ""
+
+#: src/ui/keyboard.md:37
+msgid "```E `` ```"
+msgstr ""
+
+#: src/ui/keyboard.md:37
+msgid "È"
+msgstr ""
+
+#: src/ui/keyboard.md:38
+msgid "`i '`"
+msgstr ""
+
+#: src/ui/keyboard.md:38
+msgid "í"
+msgstr ""
+
+#: src/ui/keyboard.md:38
+msgid "`I '`"
+msgstr ""
+
+#: src/ui/keyboard.md:38
+msgid "Í"
+msgstr ""
+
+#: src/ui/keyboard.md:38
+msgid "```i `` ```"
+msgstr ""
+
+#: src/ui/keyboard.md:38
+msgid "ì"
+msgstr ""
+
+#: src/ui/keyboard.md:38
+msgid "```I `` ```"
+msgstr ""
+
+#: src/ui/keyboard.md:38
+msgid "Ì"
+msgstr ""
+
+#: src/ui/keyboard.md:39
+msgid "`o '`"
+msgstr ""
+
+#: src/ui/keyboard.md:39
+msgid "ó"
+msgstr ""
+
+#: src/ui/keyboard.md:39
+msgid "`O '`"
+msgstr ""
+
+#: src/ui/keyboard.md:39
+msgid "Ó"
+msgstr ""
+
+#: src/ui/keyboard.md:39
+msgid "```o `` ```"
+msgstr ""
+
+#: src/ui/keyboard.md:39
+msgid "ò"
+msgstr ""
+
+#: src/ui/keyboard.md:39
+msgid "```O `` ```"
+msgstr ""
+
+#: src/ui/keyboard.md:39
+msgid "Ò"
+msgstr ""
+
+#: src/ui/keyboard.md:40
+msgid "`u '`"
+msgstr ""
+
+#: src/ui/keyboard.md:40
+msgid "ú"
+msgstr ""
+
+#: src/ui/keyboard.md:40
+msgid "`U '`"
+msgstr ""
+
+#: src/ui/keyboard.md:40
+msgid "Ú"
+msgstr ""
+
+#: src/ui/keyboard.md:40
+msgid "```u `` ```"
+msgstr ""
+
+#: src/ui/keyboard.md:40
+msgid "ù"
+msgstr ""
+
+#: src/ui/keyboard.md:40
+msgid "```U `` ```"
+msgstr ""
+
+#: src/ui/keyboard.md:40
+msgid "Ù"
+msgstr ""
+
+#: src/ui/keyboard.md:41
+msgid "`y '`"
+msgstr ""
+
+#: src/ui/keyboard.md:41
+msgid "ý"
+msgstr ""
+
+#: src/ui/keyboard.md:41
+msgid "`Y '`"
+msgstr ""
+
+#: src/ui/keyboard.md:41
+msgid "Ý"
+msgstr ""
+
+#: src/ui/keyboard.md:41
+msgid "`u \"`"
+msgstr ""
+
+#: src/ui/keyboard.md:41
+msgid "ű"
+msgstr ""
+
+#: src/ui/keyboard.md:41
+msgid "`U \"`"
+msgstr ""
+
+#: src/ui/keyboard.md:41
+msgid "Ű"
+msgstr ""
+
+#: src/ui/keyboard.md:42
+msgid "`a ^`"
+msgstr ""
+
+#: src/ui/keyboard.md:42
+msgid "â"
+msgstr ""
+
+#: src/ui/keyboard.md:42
+msgid "`A ^`"
+msgstr ""
+
+#: src/ui/keyboard.md:42
+msgid "Â"
+msgstr ""
+
+#: src/ui/keyboard.md:42
+msgid "`o \"`"
+msgstr ""
+
+#: src/ui/keyboard.md:42
+msgid "ő"
+msgstr ""
+
+#: src/ui/keyboard.md:42
+msgid "`O \"`"
+msgstr ""
+
+#: src/ui/keyboard.md:42
+msgid "Ő"
+msgstr ""
+
+#: src/ui/keyboard.md:43
+msgid "`e ^`"
+msgstr ""
+
+#: src/ui/keyboard.md:43
+msgid "ê"
+msgstr ""
+
+#: src/ui/keyboard.md:43
+msgid "`E ^`"
+msgstr ""
+
+#: src/ui/keyboard.md:43
+msgid "Ê"
+msgstr ""
+
+#: src/ui/keyboard.md:43
+msgid "`a :`"
+msgstr ""
+
+#: src/ui/keyboard.md:43
+msgid "ä"
+msgstr ""
+
+#: src/ui/keyboard.md:43
+msgid "`A :`"
+msgstr ""
+
+#: src/ui/keyboard.md:43
+msgid "Ä"
+msgstr ""
+
+#: src/ui/keyboard.md:44
+msgid "`i ^`"
+msgstr ""
+
+#: src/ui/keyboard.md:44
+msgid "î"
+msgstr ""
+
+#: src/ui/keyboard.md:44
+msgid "`I ^`"
+msgstr ""
+
+#: src/ui/keyboard.md:44
+msgid "Î"
+msgstr ""
+
+#: src/ui/keyboard.md:44
+msgid "`e :`"
+msgstr ""
+
+#: src/ui/keyboard.md:44
+msgid "ë"
+msgstr ""
+
+#: src/ui/keyboard.md:44
+msgid "`E :`"
+msgstr ""
+
+#: src/ui/keyboard.md:44
+msgid "Ë"
+msgstr ""
+
+#: src/ui/keyboard.md:45
+msgid "`o ^`"
+msgstr ""
+
+#: src/ui/keyboard.md:45
+msgid "ô"
+msgstr ""
+
+#: src/ui/keyboard.md:45
+msgid "`O ^`"
+msgstr ""
+
+#: src/ui/keyboard.md:45
+msgid "Ô"
+msgstr ""
+
+#: src/ui/keyboard.md:45
+msgid "`i :`"
+msgstr ""
+
+#: src/ui/keyboard.md:45
+msgid "ï"
+msgstr ""
+
+#: src/ui/keyboard.md:45
+msgid "`I :`"
+msgstr ""
+
+#: src/ui/keyboard.md:45
+msgid "Ï"
+msgstr ""
+
+#: src/ui/keyboard.md:46
+msgid "`u ^`"
+msgstr ""
+
+#: src/ui/keyboard.md:46
+msgid "û"
+msgstr ""
+
+#: src/ui/keyboard.md:46
+msgid "`U ^`"
+msgstr ""
+
+#: src/ui/keyboard.md:46
+msgid "Û"
+msgstr ""
+
+#: src/ui/keyboard.md:46
+msgid "`o :`"
+msgstr ""
+
+#: src/ui/keyboard.md:46
+msgid "ö"
+msgstr ""
+
+#: src/ui/keyboard.md:46
+msgid "`O :`"
+msgstr ""
+
+#: src/ui/keyboard.md:46
+msgid "Ö"
+msgstr ""
+
+#: src/ui/keyboard.md:47
+msgid "`w ^`"
+msgstr ""
+
+#: src/ui/keyboard.md:47
+msgid "ŵ"
+msgstr ""
+
+#: src/ui/keyboard.md:47
+msgid "`W ^`"
+msgstr ""
+
+#: src/ui/keyboard.md:47
+msgid "Ŵ"
+msgstr ""
+
+#: src/ui/keyboard.md:47
+msgid "`u :`"
+msgstr ""
+
+#: src/ui/keyboard.md:47
+msgid "ü"
+msgstr ""
+
+#: src/ui/keyboard.md:47
+msgid "`U :`"
+msgstr ""
+
+#: src/ui/keyboard.md:47
+msgid "Ü"
+msgstr ""
+
+#: src/ui/keyboard.md:48
+msgid "`y ^`"
+msgstr ""
+
+#: src/ui/keyboard.md:48
+msgid "ŷ"
+msgstr ""
+
+#: src/ui/keyboard.md:48
+msgid "`Y ^`"
+msgstr ""
+
+#: src/ui/keyboard.md:48
+msgid "Ŷ"
+msgstr ""
+
+#: src/ui/keyboard.md:48
+msgid "`y :`"
+msgstr ""
+
+#: src/ui/keyboard.md:48
+msgid "ÿ"
+msgstr ""
+
+#: src/ui/keyboard.md:49
+msgid "`a ~`"
+msgstr ""
+
+#: src/ui/keyboard.md:49
+msgid "ã"
+msgstr ""
+
+#: src/ui/keyboard.md:49
+msgid "`A ~`"
+msgstr ""
+
+#: src/ui/keyboard.md:49
+msgid "Ã"
+msgstr ""
+
+#: src/ui/keyboard.md:49
+msgid "`c ,`"
+msgstr ""
+
+#: src/ui/keyboard.md:49
+msgid "ç"
+msgstr ""
+
+#: src/ui/keyboard.md:49
+msgid "`C ,`"
+msgstr ""
+
+#: src/ui/keyboard.md:49
+msgid "Ç"
+msgstr ""
+
+#: src/ui/keyboard.md:50
+msgid "`o ~`"
+msgstr ""
+
+#: src/ui/keyboard.md:50
+msgid "õ"
+msgstr ""
+
+#: src/ui/keyboard.md:50
+msgid "`O ~`"
+msgstr ""
+
+#: src/ui/keyboard.md:50
+msgid "Õ"
+msgstr ""
+
+#: src/ui/keyboard.md:50
+msgid "`c '`"
+msgstr ""
+
+#: src/ui/keyboard.md:50
+msgid "ć"
+msgstr ""
+
+#: src/ui/keyboard.md:50
+msgid "`C '`"
+msgstr ""
+
+#: src/ui/keyboard.md:50
+msgid "Ć"
+msgstr ""
+
+#: src/ui/keyboard.md:51
+msgid "`n ~`"
+msgstr ""
+
+#: src/ui/keyboard.md:51
+msgid "ñ"
+msgstr ""
+
+#: src/ui/keyboard.md:51
+msgid "`N ~`"
+msgstr ""
+
+#: src/ui/keyboard.md:51
+msgid "Ñ"
+msgstr ""
+
+#: src/ui/keyboard.md:51
+msgid "`z '`"
+msgstr ""
+
+#: src/ui/keyboard.md:51
+msgid "ź"
+msgstr ""
+
+#: src/ui/keyboard.md:51
+msgid "`Z '`"
+msgstr ""
+
+#: src/ui/keyboard.md:51
+msgid "Ź"
+msgstr ""
+
+#: src/ui/keyboard.md:52
+msgid "`a ;`"
+msgstr ""
+
+#: src/ui/keyboard.md:52
+msgid "ą"
+msgstr ""
+
+#: src/ui/keyboard.md:52
+msgid "`A ;`"
+msgstr ""
+
+#: src/ui/keyboard.md:52
+msgid "Ą"
+msgstr ""
+
+#: src/ui/keyboard.md:52
+msgid "`s '`"
+msgstr ""
+
+#: src/ui/keyboard.md:52
+msgid "ś"
+msgstr ""
+
+#: src/ui/keyboard.md:52
+msgid "`S '`"
+msgstr ""
+
+#: src/ui/keyboard.md:52
+msgid "Ś"
+msgstr ""
+
+#: src/ui/keyboard.md:53
+msgid "`e ;`"
+msgstr ""
+
+#: src/ui/keyboard.md:53
+msgid "ę"
+msgstr ""
+
+#: src/ui/keyboard.md:53
+msgid "`E ;`"
+msgstr ""
+
+#: src/ui/keyboard.md:53
+msgid "Ę"
+msgstr ""
+
+#: src/ui/keyboard.md:53
+msgid "`n '`"
+msgstr ""
+
+#: src/ui/keyboard.md:53
+msgid "ń"
+msgstr ""
+
+#: src/ui/keyboard.md:53
+msgid "`N '`"
+msgstr ""
+
+#: src/ui/keyboard.md:53
+msgid "Ń"
+msgstr ""
+
+#: src/ui/keyboard.md:54
+msgid "`z .`"
+msgstr ""
+
+#: src/ui/keyboard.md:54
+msgid "ż"
+msgstr ""
+
+#: src/ui/keyboard.md:54
+msgid "`Z .`"
+msgstr ""
+
+#: src/ui/keyboard.md:54
+msgid "Ż"
+msgstr ""
+
+#: src/ui/keyboard.md:54
+msgid "`t h`"
+msgstr ""
+
+#: src/ui/keyboard.md:54
+msgid "þ"
+msgstr ""
+
+#: src/ui/keyboard.md:54
+msgid "`T h`"
+msgstr ""
+
+#: src/ui/keyboard.md:54
+msgid "Þ"
+msgstr ""
+
+#: src/ui/keyboard.md:55
+msgid "`a o`"
+msgstr ""
+
+#: src/ui/keyboard.md:55
+msgid "å"
+msgstr ""
+
+#: src/ui/keyboard.md:55
+msgid "`A o`"
+msgstr ""
+
+#: src/ui/keyboard.md:55
+msgid "Å"
+msgstr ""
+
+#: src/ui/keyboard.md:55
+msgid "`l /`"
+msgstr ""
+
+#: src/ui/keyboard.md:55
+msgid "ł"
+msgstr ""
+
+#: src/ui/keyboard.md:55
+msgid "`L /`"
+msgstr ""
+
+#: src/ui/keyboard.md:55
+msgid "Ł"
+msgstr ""
+
+#: src/ui/keyboard.md:56
+msgid "`d /`"
+msgstr ""
+
+#: src/ui/keyboard.md:56
+msgid "đ"
+msgstr ""
+
+#: src/ui/keyboard.md:56
+msgid "`D /`"
+msgstr ""
+
+#: src/ui/keyboard.md:56
+msgid "Đ"
+msgstr ""
+
+#: src/ui/keyboard.md:56
+msgid "`o /`"
+msgstr ""
+
+#: src/ui/keyboard.md:56
+msgid "ø"
+msgstr ""
+
+#: src/ui/keyboard.md:56
+msgid "`O /`"
+msgstr ""
+
+#: src/ui/keyboard.md:56
+msgid "Ø"
+msgstr ""
+
+#: src/ui/keyboard.md:57
+msgid "`o e`"
+msgstr ""
+
+#: src/ui/keyboard.md:57
+msgid "œ"
+msgstr ""
+
+#: src/ui/keyboard.md:57
+msgid "`O e`"
+msgstr ""
+
+#: src/ui/keyboard.md:57
+msgid "Œ"
+msgstr ""
+
+#: src/ui/keyboard.md:57
+msgid "`a e`"
+msgstr ""
+
+#: src/ui/keyboard.md:57
+msgid "æ"
+msgstr ""
+
+#: src/ui/keyboard.md:57
+msgid "`A E`"
+msgstr ""
+
+#: src/ui/keyboard.md:57
+msgid "Æ"
+msgstr ""
+
+#: src/ui/keyboard.md:58
+msgid "`s s`"
+msgstr ""
+
+#: src/ui/keyboard.md:58
+msgid "ß"
+msgstr ""
+
+#: src/ui/keyboard.md:58
+msgid "`S s`"
+msgstr ""
+
+#: src/ui/keyboard.md:58
+msgid "ẞ"
+msgstr ""
+
+#: src/ui/keyboard.md:58
+msgid "`m u`"
+msgstr ""
+
+#: src/ui/keyboard.md:58
+msgid "µ"
+msgstr ""
+
+#: src/ui/keyboard.md:58
+msgid "`l -`"
+msgstr ""
+
+#: src/ui/keyboard.md:58
+msgid "£"
+msgstr ""
+
+#: src/ui/keyboard.md:59
+msgid "`p p`"
+msgstr ""
+
+#: src/ui/keyboard.md:59
+msgid "¶"
+msgstr ""
+
+#: src/ui/keyboard.md:59
+msgid "`s o`"
+msgstr ""
+
+#: src/ui/keyboard.md:59
+msgid "§"
+msgstr ""
+
+#: src/ui/keyboard.md:59
+msgid "`o _`"
+msgstr ""
+
+#: src/ui/keyboard.md:59
+msgid "º"
+msgstr ""
+
+#: src/ui/keyboard.md:59
+msgid "`a _`"
+msgstr ""
+
+#: src/ui/keyboard.md:59
+msgid "ª"
+msgstr ""
+
+#: src/ui/keyboard.md:60
+msgid "`o o`"
+msgstr ""
+
+#: src/ui/keyboard.md:60
+msgid "°"
+msgstr ""
+
+#: src/ui/keyboard.md:60
+msgid "`e =`"
+msgstr ""
+
+#: src/ui/keyboard.md:60
+msgid "€"
+msgstr ""
+
+#: src/ui/keyboard.md:60
+msgid "`o r`"
+msgstr ""
+
+#: src/ui/keyboard.md:60
+msgid "®"
+msgstr ""
+
+#: src/ui/keyboard.md:60
+msgid "`o c`"
+msgstr ""
+
+#: src/ui/keyboard.md:60
+msgid "©"
+msgstr ""
+
+#: src/ui/keyboard.md:61
+msgid "`o p`"
+msgstr ""
+
+#: src/ui/keyboard.md:61
+msgid "℗"
+msgstr ""
+
+#: src/ui/keyboard.md:61
+msgid "`t m`"
+msgstr ""
+
+#: src/ui/keyboard.md:61
+msgid "™"
+msgstr ""
+
+#: src/ui/keyboard.md:61
+msgid "`] ]`"
+msgstr ""
+
+#: src/ui/keyboard.md:61
+msgid "⟧"
+msgstr ""
+
+#: src/ui/keyboard.md:61
+msgid "`[ [`"
+msgstr ""
+
+#: src/ui/keyboard.md:61
+msgid "⟦"
+msgstr ""
+
+#: src/ui/keyboard.md:62
+msgid "`\\| -`"
+msgstr ""
+
+#: src/ui/keyboard.md:62
+msgid "†"
+msgstr ""
+
+#: src/ui/keyboard.md:62
+msgid "`\\| =`"
+msgstr ""
+
+#: src/ui/keyboard.md:62
+msgid "‡"
+msgstr ""
+
+#: src/ui/keyboard.md:62
+msgid "`- ,`"
+msgstr ""
+
+#: src/ui/keyboard.md:62
+msgid "¬"
+msgstr ""
+
+#: src/ui/keyboard.md:62
+msgid "`~ ~`"
+msgstr ""
+
+#: src/ui/keyboard.md:62
+msgid "≈"
+msgstr ""
+
+#: src/ui/keyboard.md:63
+msgid "`< <`"
+msgstr ""
+
+#: src/ui/keyboard.md:63
+msgid "«"
+msgstr ""
+
+#: src/ui/keyboard.md:63
+msgid "`> >`"
+msgstr ""
+
+#: src/ui/keyboard.md:63
+msgid "»"
+msgstr ""
+
+#: src/ui/keyboard.md:63
+msgid "`! !`"
+msgstr ""
+
+#: src/ui/keyboard.md:63
+msgid "¡"
+msgstr ""
+
+#: src/ui/keyboard.md:63
+msgid "`? ?`"
+msgstr ""
+
+#: src/ui/keyboard.md:63
+msgid "¿"
+msgstr ""
+
+#: src/ui/keyboard.md:64
+msgid "`. -`"
+msgstr ""
+
+#: src/ui/keyboard.md:64
+msgid "·"
+msgstr ""
+
+#: src/ui/keyboard.md:64
+msgid "`. =`"
+msgstr ""
+
+#: src/ui/keyboard.md:64
+msgid "•"
+msgstr ""
+
+#: src/ui/keyboard.md:64
+msgid "`. >`"
+msgstr ""
+
+#: src/ui/keyboard.md:64
+msgid "›"
+msgstr ""
+
+#: src/ui/keyboard.md:64
+msgid "`. <`"
+msgstr ""
+
+#: src/ui/keyboard.md:64
+msgid "‹"
+msgstr ""
+
+#: src/ui/keyboard.md:65
+msgid "`' 1`"
+msgstr ""
+
+#: src/ui/keyboard.md:65
+msgid "′"
+msgstr ""
+
+#: src/ui/keyboard.md:65
+msgid "`' 2`"
+msgstr ""
+
+#: src/ui/keyboard.md:65
+msgid "″"
+msgstr ""
+
+#: src/ui/keyboard.md:65
+msgid "`+ -`"
+msgstr ""
+
+#: src/ui/keyboard.md:65
+msgid "±"
+msgstr ""
+
+#: src/ui/keyboard.md:65
+msgid "`- :`"
+msgstr ""
+
+#: src/ui/keyboard.md:65
+msgid "÷"
+msgstr ""
+
+#: src/ui/keyboard.md:66
+msgid "`< =`"
+msgstr ""
+
+#: src/ui/keyboard.md:66
+msgid "≤"
+msgstr ""
+
+#: src/ui/keyboard.md:66
+msgid "`> =`"
+msgstr ""
+
+#: src/ui/keyboard.md:66
+msgid "≥"
+msgstr ""
+
+#: src/ui/keyboard.md:66
+msgid "`= /`"
+msgstr ""
+
+#: src/ui/keyboard.md:66
+msgid "≠"
+msgstr ""
+
+#: src/ui/keyboard.md:66
+msgid "`% o`"
+msgstr ""
+
+#: src/ui/keyboard.md:66
+msgid "‰"
+msgstr ""
+
+#: src/ui/keyboard.md:67
+msgid "`# f`"
+msgstr ""
+
+#: src/ui/keyboard.md:67
+msgid "♭"
+msgstr ""
+
+#: src/ui/keyboard.md:67
+msgid "`# n`"
+msgstr ""
+
+#: src/ui/keyboard.md:67
+msgid "♮"
+msgstr ""
+
+#: src/ui/keyboard.md:67
+msgid "`# s`"
+msgstr ""
+
+#: src/ui/keyboard.md:67
+msgid "♯"
+msgstr ""
+
+#: src/ui/keyboard.md:68
+msgid "`1 2`"
+msgstr ""
+
+#: src/ui/keyboard.md:68
+msgid "½"
+msgstr ""
+
+#: src/ui/keyboard.md:68
+msgid "`1 3`"
+msgstr ""
+
+#: src/ui/keyboard.md:68
+msgid "⅓"
+msgstr ""
+
+#: src/ui/keyboard.md:68
+msgid "`2 3`"
+msgstr ""
+
+#: src/ui/keyboard.md:68
+msgid "⅔"
+msgstr ""
+
+#: src/ui/keyboard.md:68
+msgid "`1 4`"
+msgstr ""
+
+#: src/ui/keyboard.md:68
+msgid "¼"
+msgstr ""
+
+#: src/ui/keyboard.md:69
+msgid "`3 4`"
+msgstr ""
+
+#: src/ui/keyboard.md:69
+msgid "¾"
+msgstr ""
+
+#: src/ui/keyboard.md:69
+msgid "`1 5`"
+msgstr ""
+
+#: src/ui/keyboard.md:69
+msgid "⅕"
+msgstr ""
+
+#: src/ui/keyboard.md:69
+msgid "`2 5`"
+msgstr ""
+
+#: src/ui/keyboard.md:69
+msgid "⅖"
+msgstr ""
+
+#: src/ui/keyboard.md:69
+msgid "`3 5`"
+msgstr ""
+
+#: src/ui/keyboard.md:69
+msgid "⅗"
+msgstr ""
+
+#: src/ui/keyboard.md:70
+msgid "`4 5`"
+msgstr ""
+
+#: src/ui/keyboard.md:70
+msgid "⅘"
+msgstr ""
+
+#: src/ui/keyboard.md:70
+msgid "`1 6`"
+msgstr ""
+
+#: src/ui/keyboard.md:70
+msgid "⅙"
+msgstr ""
+
+#: src/ui/keyboard.md:70
+msgid "`5 6`"
+msgstr ""
+
+#: src/ui/keyboard.md:70
+msgid "⅚"
+msgstr ""
+
+#: src/ui/keyboard.md:70
+msgid "`1 8`"
+msgstr ""
+
+#: src/ui/keyboard.md:70
+msgid "⅛"
+msgstr ""
+
+#: src/ui/keyboard.md:71
+msgid "`3 8`"
+msgstr ""
+
+#: src/ui/keyboard.md:71
+msgid "⅜"
+msgstr ""
+
+#: src/ui/keyboard.md:71
+msgid "`5 8`"
+msgstr ""
+
+#: src/ui/keyboard.md:71
+msgid "⅝"
+msgstr ""
+
+#: src/ui/keyboard.md:71
+msgid "`7 8`"
+msgstr ""
+
+#: src/ui/keyboard.md:71
+msgid "⅞"
+msgstr ""
+
+#: src/ui/keyboard.md:73
+msgid "Custom Keyboard Layouts"
+msgstr ""
+
+#: src/ui/keyboard.md:75
+msgid "Keyboard layouts are defined as JSON files with the following structure:"
+msgstr ""
+
+#: src/ui/keyboard.md:77
+msgid "**name** — Display name shown in the keyboard layouts menu."
+msgstr ""
+
+#: src/ui/keyboard.md:78
+msgid ""
+"**outputs** — List of output keys for each modifier combination (_none_, "
+"_shift_, _alt_, _shift+alt_)."
+msgstr ""
+
+#: src/ui/keyboard.md:80
+msgid ""
+"**keys** — Description of each key. Special key names: _Shift_ (_Sft_), "
+"_Return_ (_Ret_), _Alternate_ (_Alt_), _Combine_ (_Cmb_), _MoveFwd_ "
+"(_MoveF_, _MF_), _MoveBwd_ (_MoveB_, _MB_), _DelFwd_ (_DelF_, _DF_), "
+"_DelBwd_ (_DelB_, _DB_), _Space_ (_Spc_). Use _▢_ to mark output keys."
+msgstr ""
+
+#: src/ui/keyboard.md:84
+msgid "**widths** — Width/height ratio for each key. The key gap ratio is 0.06."
 msgstr ""
 
 #: src/ui/settings/index.md:3
@@ -1923,9 +3338,48 @@ msgstr ""
 
 #: src/ui/settings/dictionaries.md:102
 msgid ""
-"Downloaded dictionaries live in the `dictionaries/reader-dict/<lang>/` "
-"folder on your device. Each language gets its own subfolder containing a "
-"`.dict.dz` (or `.dict`) and a `.index` file."
+"Cadmus stores dictionaries in different locations depending on whether your "
+"device has an SD card and whether you are using a test build:"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:105
+msgid "**On devices with an SD card**:"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:106
+msgid "Production: `/mnt/sd/.cadmus/dictionaries/reader-dict/<lang>/`"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:107
+msgid "Test build: `/mnt/sd/.cadmus-tst/dictionaries/reader-dict/<lang>/`"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:108
+msgid "**On devices without an SD card**:"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:109
+msgid "Production: `/mnt/onboard/.adds/cadmus/dictionaries/reader-dict/<lang>/`"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:110
+msgid ""
+"Test build: `/mnt/onboard/.adds/cadmus-tst/dictionaries/reader-dict/<lang>/`"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:112
+msgid ""
+"Each language gets its own subfolder containing a `.dict.dz` (or `.dict`) "
+"and a `.index` file."
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:114
+msgid ""
+"\\[!NOTE\\] If your SD card is already inserted when you upgrade Cadmus, "
+"your dictionaries are moved to the SD card automatically on the next boot. "
+"If you insert an SD card after Cadmus has already run, move the "
+"`dictionaries/` folder manually — see [Moving data to an SD "
+"card](../../installation/migration.md#moving-data-to-an-sd-card)."
 msgstr ""
 
 #: src/library/index.md:3
@@ -1956,51 +3410,26 @@ msgid ""
 msgstr ""
 
 #: src/library/importing.md:6
-msgid "Import on startup"
+msgid "Automatic import"
 msgstr ""
 
 #: src/library/importing.md:8
 msgid ""
-"By default, Cadmus imports any new books it finds every time it starts. Copy "
-"files to your device, restart the app, and they'll appear in your library "
-"right away."
+"Cadmus imports any new books it finds automatically. Copy files to your "
+"device, and they'll appear in your library after the next import pass."
 msgstr ""
 
-#: src/library/importing.md:12
-msgid ""
-"\\[!TIP\\] If you have a large library, consider turning off import on "
-"startup. Scanning a lot of files takes time and drains the battery. You can "
-"still import manually whenever you need to."
-msgstr ""
-
-#: src/library/importing.md:17
-msgid ""
-"To disable it, open **Settings** and set `import.startup-trigger` to `false`."
-msgstr ""
-
-#: src/library/importing.md:19
+#: src/library/importing.md:11
 msgid "Manual import"
 msgstr ""
 
-#: src/library/importing.md:21
-msgid "You can trigger an import at any time without restarting:"
+#: src/library/importing.md:13
+msgid "You can trigger an import at any time from the settings editor."
 msgstr ""
 
-#: src/library/importing.md:23
-msgid "On the home screen, tap the **library name** in the bottom-left corner."
-msgstr ""
-
-#: src/library/importing.md:24
-msgid "In the menu that appears, tap **Database → Import**."
-msgstr ""
-
-#: src/library/importing.md:26
+#: src/library/importing.md:15
 msgid ""
 "Cadmus will scan your library folder and add any books it hasn't seen before."
-msgstr ""
-
-#: src/troubleshooting/index.md:3
-msgid "Logs"
 msgstr ""
 
 #: src/troubleshooting/index.md:5
@@ -2751,6 +4180,343 @@ msgstr ""
 
 #: src/contributing/devenv-setup.md:255
 msgid "This file is gitignored and won't affect other contributors."
+msgstr ""
+
+#: src/contributing/code-style.md:3
+msgid ""
+"Cadmus enforces a consistent code style across all languages using "
+"[treefmt](https://treefmt.com/) for formatting and several linters for "
+"static analysis. The pre-commit hooks run all checks automatically, and CI "
+"enforces the same rules on every pull request."
+msgstr ""
+
+#: src/contributing/code-style.md:8
+msgid "Formatters and Linters"
+msgstr ""
+
+#: src/contributing/code-style.md:10
+msgid "Tool"
+msgstr ""
+
+#: src/contributing/code-style.md:10
+msgid "Languages / Files"
+msgstr ""
+
+#: src/contributing/code-style.md:10
+msgid "Key Configuration"
+msgstr ""
+
+#: src/contributing/code-style.md:12
+msgid "`rustfmt`"
+msgstr ""
+
+#: src/contributing/code-style.md:12
+msgid "Rust (`*.rs`)"
+msgstr ""
+
+#: src/contributing/code-style.md:12
+msgid "Workspace `rustfmt.toml`"
+msgstr ""
+
+#: src/contributing/code-style.md:13
+msgid "`prettier`"
+msgstr ""
+
+#: src/contributing/code-style.md:13
+msgid "JSON, YAML, Markdown, CSS, JS"
+msgstr ""
+
+#: src/contributing/code-style.md:13
+msgid "`.prettierrc.json`"
+msgstr ""
+
+#: src/contributing/code-style.md:14
+msgid "`shfmt`"
+msgstr ""
+
+#: src/contributing/code-style.md:14 src/contributing/code-style.md:15
+msgid "Shell (`*.sh`, `*.bash`)"
+msgstr ""
+
+#: src/contributing/code-style.md:14
+msgid "`-i 2 -ci` (2-space, case-indent)"
+msgstr ""
+
+#: src/contributing/code-style.md:15
+msgid "`shellcheck`"
+msgstr ""
+
+#: src/contributing/code-style.md:15
+msgid "`.editorconfig`"
+msgstr ""
+
+#: src/contributing/code-style.md:16
+msgid "`yamllint`"
+msgstr ""
+
+#: src/contributing/code-style.md:16
+msgid "YAML"
+msgstr ""
+
+#: src/contributing/code-style.md:16
+msgid "`extends: default`, several rules disabled"
+msgstr ""
+
+#: src/contributing/code-style.md:17
+msgid "`rumdl`"
+msgstr ""
+
+#: src/contributing/code-style.md:17
+msgid "Markdown (`*.md`)"
+msgstr ""
+
+#: src/contributing/code-style.md:17
+msgid "Default rules"
+msgstr ""
+
+#: src/contributing/code-style.md:18
+msgid "`actionlint`"
+msgstr ""
+
+#: src/contributing/code-style.md:18
+msgid "GitHub Actions workflows"
+msgstr ""
+
+#: src/contributing/code-style.md:18
+msgid "`-ignore \"rust-toolchain\"`"
+msgstr ""
+
+#: src/contributing/code-style.md:19
+msgid "`clippy`"
+msgstr ""
+
+#: src/contributing/code-style.md:19
+msgid "Rust"
+msgstr ""
+
+#: src/contributing/code-style.md:19
+msgid "`-D warnings`"
+msgstr ""
+
+#: src/contributing/code-style.md:21
+msgid "Running treefmt"
+msgstr ""
+
+#: src/contributing/code-style.md:23
+msgid "All formatters run through `treefmt`. Inside the devenv shell:"
+msgstr ""
+
+#: src/contributing/code-style.md:26
+msgid "# Format all files tracked by treefmt\n"
+msgstr ""
+
+#: src/contributing/code-style.md:28
+msgid "# Check without writing (dry run)\n"
+msgstr ""
+
+#: src/contributing/code-style.md:33
+msgid ""
+"The pre-commit hook (`git-hooks.hooks.treefmt`) runs `treefmt "
+"--fail-on-change` automatically on every commit, so format issues are caught "
+"before they reach CI."
+msgstr ""
+
+#: src/contributing/code-style.md:36
+msgid "Rust Style"
+msgstr ""
+
+#: src/contributing/code-style.md:38
+msgid "Formatting"
+msgstr ""
+
+#: src/contributing/code-style.md:40
+msgid ""
+"`rustfmt` with the workspace configuration handles formatting automatically. "
+"Run it via treefmt or directly:"
+msgstr ""
+
+#: src/contributing/code-style.md:47
+msgid "Linting (Clippy)"
+msgstr ""
+
+#: src/contributing/code-style.md:49
+msgid "Clippy runs with `-D warnings` — all warnings are errors:"
+msgstr ""
+
+#: src/contributing/code-style.md:55
+msgid ""
+"Clippy runs across every feature flag combination in CI. When adding a new "
+"feature flag, update `.github/workflows/cargo.yml` to include the new matrix "
+"entries."
+msgstr ""
+
+#: src/contributing/code-style.md:59
+msgid "Key Conventions"
+msgstr ""
+
+#: src/contributing/code-style.md:61
+msgid "Prefer `?` over `unwrap()` / `expect()` in library and app code."
+msgstr ""
+
+#: src/contributing/code-style.md:62
+msgid "Use iterators over index-based loops."
+msgstr ""
+
+#: src/contributing/code-style.md:63
+msgid ""
+"Use `&str` over `String` in function parameters when ownership is not needed."
+msgstr ""
+
+#: src/contributing/code-style.md:64
+msgid "Prefer borrowing over cloning."
+msgstr ""
+
+#: src/contributing/code-style.md:65
+msgid "Avoid premature `collect()` — keep iterators lazy."
+msgstr ""
+
+#: src/contributing/code-style.md:66
+msgid "Use newtype wrappers over raw primitives for domain concepts."
+msgstr ""
+
+#: src/contributing/code-style.md:68
+msgid "Shell Style"
+msgstr ""
+
+#: src/contributing/code-style.md:70
+msgid ""
+"Shell scripts are formatted with `shfmt` (`-i 2 -ci`) and checked with "
+"`shellcheck`. The `-ci` flag indents `case` statement arms relative to the "
+"`case` keyword:"
+msgstr ""
+
+#: src/contributing/code-style.md:75
+msgid "# Correct — case arms indented with -ci\n"
+msgstr ""
+
+#: src/contributing/code-style.md:76
+msgid "\"${VAR}\""
+msgstr ""
+
+#: src/contributing/code-style.md:86
+msgid "Scripts must declare their shell variant. For bash scripts, use:"
+msgstr ""
+
+#: src/contributing/code-style.md:89
+msgid "#! /bin/bash\n"
+msgstr ""
+
+#: src/contributing/code-style.md:92
+msgid "Structured Logging"
+msgstr ""
+
+#: src/contributing/code-style.md:94
+msgid ""
+"Use the `tracing` crate with structured fields — never string formatting for "
+"log data:"
+msgstr ""
+
+#: src/contributing/code-style.md:98
+msgid "// Correct\n"
+msgstr ""
+
+#: src/contributing/code-style.md:99
+msgid "\"Found artifacts\""
+msgstr ""
+
+#: src/contributing/code-style.md:100
+msgid "// Wrong\n"
+msgstr ""
+
+#: src/contributing/code-style.md:102
+msgid "\"[OTA] Found {} artifacts for PR #{}\""
+msgstr ""
+
+#: src/contributing/code-style.md:105
+msgid "See [Logging](telemetry/logging.md) for log level guidance."
+msgstr ""
+
+#: src/contributing/code-style.md:107
+msgid "Comments"
+msgstr ""
+
+#: src/contributing/code-style.md:109
+msgid ""
+"Comment **why**, not **what**. Most code needs no comments — good naming is "
+"preferred. The rules:"
+msgstr ""
+
+#: src/contributing/code-style.md:112
+msgid ""
+"No inline comments — if one feels necessary, extract the code into a "
+"well-named function instead."
+msgstr ""
+
+#: src/contributing/code-style.md:114
+msgid "No commented-out code."
+msgstr ""
+
+#: src/contributing/code-style.md:115
+msgid "No changelog comments (`Modified by X on date`)."
+msgstr ""
+
+#: src/contributing/code-style.md:116
+msgid "No decorative dividers (`//=====`)."
+msgstr ""
+
+#: src/contributing/code-style.md:117
+msgid "`TODO`, `FIXME`, `HACK`, `NOTE` annotations are fine with context."
+msgstr ""
+
+#: src/contributing/code-style.md:119
+msgid "Public API items must have doc comments."
+msgstr ""
+
+#: src/contributing/code-style.md:121
+msgid "CI Checks"
+msgstr ""
+
+#: src/contributing/code-style.md:123
+msgid "The following CI workflows enforce style:"
+msgstr ""
+
+#: src/contributing/code-style.md:125
+msgid "Workflow"
+msgstr ""
+
+#: src/contributing/code-style.md:125
+msgid "What it checks"
+msgstr ""
+
+#: src/contributing/code-style.md:127
+msgid "`cargo.yml`"
+msgstr ""
+
+#: src/contributing/code-style.md:127
+msgid "`rustfmt`, `clippy` (full feature matrix), tests"
+msgstr ""
+
+#: src/contributing/code-style.md:128
+msgid "`shell.yml`"
+msgstr ""
+
+#: src/contributing/code-style.md:128
+msgid "`shellcheck`, `shfmt` (changed lines only)"
+msgstr ""
+
+#: src/contributing/code-style.md:129
+msgid "`docs-lint.yml`"
+msgstr ""
+
+#: src/contributing/code-style.md:129
+msgid "`prettier`, `markdownlint` (docs and markdown files)"
+msgstr ""
+
+#: src/contributing/code-style.md:131
+msgid ""
+"CI uses `filter_mode: added` for shell checks, meaning only lines changed in "
+"the PR are flagged. Running `treefmt` locally before pushing will catch "
+"everything."
 msgstr ""
 
 #: src/contributing/event-system.md:3

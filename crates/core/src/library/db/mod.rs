@@ -2551,7 +2551,11 @@ impl Db {
         })
     }
 
-    /// Returns `(fingerprint, path)` pairs for every book currently linked to a library.
+    /// Returns handles for every book currently linked to a library.
+    ///
+    /// Each [`BookHandle`] carries the fingerprint, the relative path stored
+    /// in the database, the absolute path used to compute it, and the
+    /// optional `mtime`/`file_size` snapshot used by the incremental import.
     #[cfg_attr(
         feature = "tracing",
         tracing::instrument(skip(self), fields(library_id))
@@ -3928,6 +3932,11 @@ mod tests {
             .insert_book(library_id, fp2, &make_info("old/two.pdf", "Two", "Author"))
             .expect("failed to insert second book");
 
+        let fp1_mtime = UnixTimestamp::from(1_700_000_001);
+        let fp1_size = FileSize::from(111);
+        let fp2_mtime = UnixTimestamp::from(1_700_000_002);
+        let fp2_size = FileSize::from(222);
+
         libdb
             .batch_update_book_paths(
                 library_id,
@@ -3936,15 +3945,15 @@ mod tests {
                         fp: fp1,
                         relat: PathBuf::from("new/one.pdf"),
                         abs: PathBuf::from("/abs/new/one.pdf"),
-                        mtime: None,
-                        file_size: None,
+                        mtime: Some(fp1_mtime),
+                        file_size: Some(fp1_size),
                     },
                     PathUpdate {
                         fp: fp2,
                         relat: PathBuf::from("new/two.pdf"),
                         abs: PathBuf::from("/abs/new/two.pdf"),
-                        mtime: None,
-                        file_size: None,
+                        mtime: Some(fp2_mtime),
+                        file_size: Some(fp2_size),
                     },
                 ],
             )
@@ -3969,6 +3978,16 @@ mod tests {
             updated2.file.absolute_path,
             PathBuf::from("/abs/new/two.pdf")
         );
+
+        let handles = libdb
+            .list_book_handles(library_id)
+            .expect("failed to list handles");
+        let h1 = handles.iter().find(|h| h.fp == fp1).expect("missing fp1");
+        let h2 = handles.iter().find(|h| h.fp == fp2).expect("missing fp2");
+        assert_eq!(h1.mtime, Some(fp1_mtime));
+        assert_eq!(h1.file_size, Some(fp1_size));
+        assert_eq!(h2.mtime, Some(fp2_mtime));
+        assert_eq!(h2.file_size, Some(fp2_size));
     }
 
     #[test]

@@ -139,6 +139,40 @@ mod tests {
     use crate::view::{Bus, EntryKind, Event};
     use std::collections::VecDeque;
 
+    mod force_full_import {
+        use super::*;
+
+        #[test]
+        fn identity_returns_force_full_import() {
+            let setting = ForceFullImport;
+            assert_eq!(setting.identity(), SettingIdentity::ForceFullImport);
+        }
+
+        #[test]
+        fn fetch_builds_action_label_requesting_force_import() {
+            let setting = ForceFullImport;
+            let settings = Settings::default();
+            let data = setting.fetch(&settings);
+
+            match data.widget {
+                WidgetKind::ActionLabel(Event::Select(EntryId::RequestForceImport)) => {}
+                other => panic!("expected ActionLabel(RequestForceImport), got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn handle_ignores_events() {
+            let setting = ForceFullImport;
+            let mut settings = Settings::default();
+            let mut bus: Bus = VecDeque::new();
+
+            let result = setting.handle(&Event::Select(EntryId::About), &mut settings, &mut bus);
+
+            assert!(result.0.is_none());
+            assert!(!result.1);
+        }
+    }
+
     mod import_sync_metadata {
         use super::*;
 

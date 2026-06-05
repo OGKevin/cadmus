@@ -11,16 +11,18 @@
 //!
 //! # Example
 //!
-//! ```ignore
-//! use cadmus_core::task::{BackgroundTask, TaskId, ShutdownSignal};
+//! ```no_run
 //! use std::sync::mpsc::Sender;
+//! use std::time::Duration;
+//!
+//! use cadmus_core::task::{BackgroundTask, ShutdownSignal, TaskId};
 //! use cadmus_core::view::Event;
 //!
 //! struct MyTask;
 //!
 //! impl BackgroundTask for MyTask {
 //!     fn id(&self) -> TaskId {
-//!         TaskId::MyTask
+//!         TaskId::Placeholder
 //!     }
 //!
 //!     fn run(&mut self, hub: &Sender<Event>, shutdown: &ShutdownSignal) {
@@ -783,5 +785,81 @@ mod tests {
         assert!(manager.pending_thumbnail_indices.is_empty());
 
         wait_until_not_running(&mut manager, &TaskId::ThumbnailExtraction);
+    }
+
+    #[test]
+    fn import_queue_preserves_force_flag() {
+        let mut manager = TaskManager::new();
+        let (hub, _rx) = mpsc::channel();
+        let database = Database::new(":memory:").unwrap();
+        database.migrate().unwrap();
+        let settings = Settings::default();
+
+        // Simulate a running import task with a blocking thread.
+        let (shutdown_tx, shutdown_rx) = mpsc::channel();
+        let blocking_handle = thread::spawn(move || {
+            let _ = shutdown_rx.recv();
+        });
+        manager.tasks.insert(
+            TaskId::Import,
+            RunningTask {
+                handle: blocking_handle,
+                shutdown: shutdown_tx,
+                finished_event: None,
+            },
+        );
+
+        manager.handle_event(
+            &Event::ImportLibrary {
+                library_index: Some(0),
+                force: true,
+            },
+            &hub,
+            &database,
+            &settings,
+        );
+
+        assert_eq!(
+            manager.pending_import_indices.front(),
+            Some(&(Some(0), true))
+        );
+
+        manager.stop(&TaskId::Import).unwrap();
+    }
+
+    #[test]
+    fn import_queue_preserves_force_false_flag() {
+        let mut manager = TaskManager::new();
+        let (hub, _rx) = mpsc::channel();
+        let database = Database::new(":memory:").unwrap();
+        database.migrate().unwrap();
+        let settings = Settings::default();
+
+        let (shutdown_tx, shutdown_rx) = mpsc::channel();
+        let blocking_handle = thread::spawn(move || {
+            let _ = shutdown_rx.recv();
+        });
+        manager.tasks.insert(
+            TaskId::Import,
+            RunningTask {
+                handle: blocking_handle,
+                shutdown: shutdown_tx,
+                finished_event: None,
+            },
+        );
+
+        manager.handle_event(
+            &Event::ImportLibrary {
+                library_index: None,
+                force: false,
+            },
+            &hub,
+            &database,
+            &settings,
+        );
+
+        assert_eq!(manager.pending_import_indices.front(), Some(&(None, false)));
+
+        manager.stop(&TaskId::Import).unwrap();
     }
 }
