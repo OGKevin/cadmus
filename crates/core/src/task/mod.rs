@@ -44,6 +44,8 @@ mod hello_world;
 pub mod import;
 pub mod thumbnail;
 #[cfg(any(feature = "kobo", doc))]
+pub mod time_sync;
+#[cfg(any(feature = "kobo", doc))]
 mod wifi_status_monitor;
 
 use std::collections::{HashMap, VecDeque};
@@ -54,9 +56,12 @@ use std::time::Duration;
 
 use thiserror::Error;
 
+use crate::context::Context;
 use crate::db::Database;
+use crate::fl;
+use crate::input::DeviceEvent;
 use crate::settings::Settings;
-use crate::view::Event;
+use crate::view::{EntryId, Event, NotificationEvent};
 
 /// Errors that can occur during task management operations.
 #[derive(Error, Debug)]
@@ -90,6 +95,9 @@ pub enum TaskId {
     /// WiFi status monitor using dhcpcd-dbus (kobo builds only).
     #[cfg(any(feature = "kobo", doc))]
     WifiStatusMonitor,
+    /// Time synchronization via NTP (kobo builds only).
+    #[cfg(any(feature = "kobo", doc))]
+    TimeSync,
     /// Test-only task for unit tests.
     #[cfg(test)]
     TestTask,
@@ -111,6 +119,8 @@ impl std::fmt::Display for TaskId {
             TaskId::DbusMonitor => write!(f, "dbus_monitor"),
             #[cfg(feature = "kobo")]
             TaskId::WifiStatusMonitor => write!(f, "wifi_status_monitor"),
+            #[cfg(feature = "kobo")]
+            TaskId::TimeSync => write!(f, "time_sync"),
             #[cfg(test)]
             TaskId::TestTask => write!(f, "test_task"),
             #[cfg(test)]
@@ -386,17 +396,8 @@ impl TaskManager {
     ///
     /// Must be called for every event before passing it to the view tree.
     /// Always returns `false` — it never consumes events.
-    #[cfg_attr(
-        feature = "tracing",
-        tracing::instrument(skip(self, hub, database, settings))
-    )]
-    pub fn handle_event(
-        &mut self,
-        evt: &Event,
-        hub: &Sender<Event>,
-        database: &Database,
-        settings: &Settings,
-    ) -> bool {
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, context)))]
+    pub fn handle_event(&mut self, evt: &Event, hub: &Sender<Event>, context: &Context) -> bool {
         self.cleanup_finished();
         self.flush_buffered_events(hub);
 
@@ -405,17 +406,49 @@ impl TaskManager {
                 library_index,
                 force,
             } => {
-                self.schedule_import(*library_index, *force, hub, database, settings);
+                self.schedule_import(
+                    *library_index,
+                    *force,
+                    hub,
+                    &context.database,
+                    &context.settings,
+                );
             }
             Event::ImportFinished { library_index } => {
-                self.drain_pending_imports(hub, database, settings);
-                self.schedule_thumbnail_extraction(*library_index, hub, database, settings);
+                self.drain_pending_imports(hub, &context.database, &context.settings);
+                self.schedule_thumbnail_extraction(
+                    *library_index,
+                    hub,
+                    &context.database,
+                    &context.settings,
+                );
             }
             Event::ThumbnailExtractionFinished { .. } => {
-                self.drain_pending_thumbnails(hub, database, settings);
+                self.drain_pending_thumbnails(hub, &context.database, &context.settings);
             }
             Event::ReindexDictionaries => {
-                self.schedule_dictionary_index(hub, database);
+                self.schedule_dictionary_index(hub, &context.database);
+            }
+            Event::Device(DeviceEvent::NetUp) => {
+                #[cfg(feature = "kobo")]
+                {
+                    if context.settings.auto_time {
+                        self.schedule_time_sync(false, hub);
+                    }
+                }
+            }
+            Event::Select(EntryId::SyncTime) => {
+                #[cfg(feature = "kobo")]
+                {
+                    if !context.online {
+                        hub.send(Event::Notification(NotificationEvent::Show(fl!(
+                            "notification-not-online"
+                        ))))
+                        .ok();
+                    } else {
+                        self.schedule_time_sync(true, hub);
+                    }
+                }
             }
             _ => {}
         }
@@ -487,6 +520,23 @@ impl TaskManager {
 
         if let Err(e) = self.start(task, hub.clone()) {
             tracing::warn!(error = %e, "failed to start dictionary_index task");
+        }
+    }
+
+    #[cfg(feature = "kobo")]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
+    fn schedule_time_sync(&mut self, manual: bool, hub: &Sender<Event>) {
+        if self.is_running(&TaskId::TimeSync) {
+            tracing::warn!("Time sync task alredy running, not scheduling");
+
+            return;
+        }
+
+        if let Ok(time_manager) = crate::device::CURRENT_DEVICE.time_manager() {
+            let task = Box::new(time_sync::TimeSyncTask::new(time_manager, manual));
+            if let Err(e) = self.start(task, hub.clone()) {
+                tracing::warn!(error = %e, "failed to start time sync task");
+            }
         }
     }
 
@@ -613,6 +663,7 @@ pub fn register_startup_tasks(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::context::test_helpers::create_test_context;
     use std::sync::mpsc;
     use std::time::{Duration, Instant};
 
@@ -791,9 +842,7 @@ mod tests {
     fn import_queue_preserves_force_flag() {
         let mut manager = TaskManager::new();
         let (hub, _rx) = mpsc::channel();
-        let database = Database::new(":memory:").unwrap();
-        database.migrate().unwrap();
-        let settings = Settings::default();
+        let context = create_test_context();
 
         // Simulate a running import task with a blocking thread.
         let (shutdown_tx, shutdown_rx) = mpsc::channel();
@@ -815,8 +864,7 @@ mod tests {
                 force: true,
             },
             &hub,
-            &database,
-            &settings,
+            &context,
         );
 
         assert_eq!(
@@ -831,9 +879,7 @@ mod tests {
     fn import_queue_preserves_force_false_flag() {
         let mut manager = TaskManager::new();
         let (hub, _rx) = mpsc::channel();
-        let database = Database::new(":memory:").unwrap();
-        database.migrate().unwrap();
-        let settings = Settings::default();
+        let context = create_test_context();
 
         let (shutdown_tx, shutdown_rx) = mpsc::channel();
         let blocking_handle = thread::spawn(move || {
@@ -854,8 +900,7 @@ mod tests {
                 force: false,
             },
             &hub,
-            &database,
-            &settings,
+            &context,
         );
 
         assert_eq!(manager.pending_import_indices.front(), Some(&(None, false)));

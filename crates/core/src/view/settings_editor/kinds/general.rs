@@ -324,6 +324,44 @@ impl SettingKind for AutoShare {
     }
 }
 
+/// Auto time sync enable/disable toggle setting
+pub struct AutoTime;
+
+impl SettingKind for AutoTime {
+    fn identity(&self) -> SettingIdentity {
+        SettingIdentity::AutoTime
+    }
+
+    fn label(&self, _settings: &Settings) -> String {
+        fl!("settings-general-auto-time")
+    }
+
+    fn fetch(&self, settings: &Settings) -> SettingData {
+        SettingData {
+            value: settings.auto_time.to_string(),
+            widget: WidgetKind::Toggle {
+                left_label: fl!("settings-general-toggle-on"),
+                right_label: fl!("settings-general-toggle-off"),
+                enabled: settings.auto_time,
+                tap_event: Event::Toggle(ToggleEvent::Setting(ToggleSettings::AutoTime)),
+            },
+        }
+    }
+
+    fn handle(
+        &self,
+        evt: &Event,
+        settings: &mut Settings,
+        _bus: &mut Bus,
+    ) -> (Option<String>, bool) {
+        if let Event::Toggle(ToggleEvent::Setting(ToggleSettings::AutoTime)) = evt {
+            settings.auto_time = !settings.auto_time;
+            return (Some(settings.auto_time.to_string()), true);
+        }
+        (None, false)
+    }
+}
+
 /// Button scheme (natural/inverted) toggle setting
 pub struct ButtonScheme;
 

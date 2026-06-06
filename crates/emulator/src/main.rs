@@ -95,7 +95,6 @@ pub fn build_context(
 
     let mut ctx = Context::new(
         fb,
-        None,
         library,
         database,
         settings,
@@ -563,7 +562,7 @@ fn run() -> Result<(), Error> {
             #[cfg(feature = "tracing")]
             tracing::trace!(event = ?evt, "handling event");
 
-            background_tasks.handle_event(&evt, &tx, &context.database, &context.settings);
+            background_tasks.handle_event(&evt, &tx, &context);
             match evt {
                 Event::Open(info) => {
                     let rotation = context.display.rotation;
@@ -919,6 +918,9 @@ fn run() -> Result<(), Error> {
                 Event::Select(EntryId::Reboot) => {
                     thread::sleep(Duration::from_secs(3));
                     break 'outer;
+                }
+                Event::Select(EntryId::SyncTime) => {
+                    tracing::info!("Sync Time requested (no-op in emulator)");
                 }
                 Event::Select(EntryId::Quit) => {
                     break 'outer;

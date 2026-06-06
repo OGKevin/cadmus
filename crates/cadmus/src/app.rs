@@ -22,7 +22,7 @@ use cadmus_core::input::{
 };
 use cadmus_core::library::Library;
 use cadmus_core::lightsensor::{KoboLightSensor, LightSensor};
-use cadmus_core::rtc::{AlarmType, EnsureAlarmOutcome, PastDueAction, Rtc};
+use cadmus_core::rtc::{AlarmType, EnsureAlarmOutcome, PastDueAction};
 use cadmus_core::settings::versioned::SettingsManager;
 use cadmus_core::settings::{
     ButtonScheme, IntermKind, IntermissionDisplay, LoggingSettings, RotationLock, Settings,
@@ -65,7 +65,6 @@ use tracing::{Level, debug, error, info, warn};
 
 pub const APP_NAME: &str = "Cadmus";
 const FB_DEVICE: &str = "/dev/fb0";
-const RTC_DEVICE: &str = "/dev/rtc0";
 const TOUCH_INPUTS: [&str; 5] = [
     "/dev/input/by-path/platform-2-0010-event",
     "/dev/input/by-path/platform-1-0038-event",
@@ -119,9 +118,6 @@ fn build_context(
     fonts: Fonts,
     database: Database,
 ) -> Result<Context, Error> {
-    let rtc = Rtc::new(RTC_DEVICE)
-        .map_err(|e| warn!(error = %e, "Can't open RTC device"))
-        .ok();
     let mut settings = settings;
 
     if settings.libraries.is_empty() {
@@ -162,7 +158,6 @@ fn build_context(
 
     Ok(Context::new(
         fb,
-        rtc,
         library,
         database,
         settings,
@@ -790,7 +785,7 @@ pub fn run() -> Result<(), Error> {
         #[cfg(feature = "tracing")]
         tracing::trace!(event = ?evt, "handling event");
 
-        background_tasks.handle_event(&evt, &tx, &context.database, &context.settings);
+        background_tasks.handle_event(&evt, &tx, &context);
 
         match evt {
             Event::Device(de) => match de {

@@ -862,6 +862,7 @@ pub enum EntryId {
     ToggleAllowedKind(settings::FileExtension),
     /// Toggle whether a file extension is rendered with dithering.
     ToggleDitheredKind(settings::FileExtension),
+    SyncTime,
 }
 
 impl EntryKind {

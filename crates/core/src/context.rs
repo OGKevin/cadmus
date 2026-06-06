@@ -9,7 +9,7 @@ use crate::geom::Rectangle;
 use crate::helpers::{Fingerprint, Fp, IsHidden, load_json};
 use crate::library::Library;
 use crate::lightsensor::LightSensor;
-use crate::rtc::{AlarmManager, Rtc};
+use crate::rtc::AlarmManager;
 use crate::settings::Settings;
 use crate::view::ViewId;
 use crate::view::keyboard::Layout;
@@ -57,7 +57,6 @@ pub struct Context {
 impl Context {
     pub fn new(
         fb: Box<dyn Framebuffer>,
-        rtc: Option<Rtc>,
         library: Library,
         database: Database,
         settings: Settings,
@@ -69,7 +68,10 @@ impl Context {
         let dims = fb.dims();
         let rotation = CURRENT_DEVICE.transformed_rotation(fb.rotation());
         let rng = Xoroshiro128Plus::seed_from_u64(Local::now().timestamp_subsec_nanos() as u64);
-        let alarm_manager = rtc.map(AlarmManager::new);
+        let alarm_manager = CURRENT_DEVICE
+            .rtc()
+            .ok()
+            .map(|rtc| AlarmManager::new(rtc.clone()));
         Context {
             fb,
             alarm_manager,
@@ -241,7 +243,6 @@ pub mod test_helpers {
         database.migrate().expect("failed to run migrations");
         Context::new(
             Box::new(Pixmap::new(600, 800, 1)),
-            None,
             Library::new(Path::new("/tmp"), &database, "test").unwrap(),
             database,
             Settings::default(),

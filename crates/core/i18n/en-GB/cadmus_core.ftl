@@ -19,6 +19,7 @@ notification-downloading-dictionary-progress = Downloading { $lang } ({ $downloa
 notification-dictionary-indexing = Indexing "{ $name }"
 notification-not-online = WiFi must be connected for this action.
 notification-refresh-rate-invalid = Refresh rate must be a number between 0 and 255.
+notification-time-sync-failed = Time sync failed
 
 # Common
 cancel = Cancel
@@ -31,6 +32,7 @@ top-menu-restart-app = Restart {-app-name}
 top-menu-suspend = Suspend
 top-menu-quit = Quit
 top-menu-power-off = Power Off
+top-menu-sync-time = Sync Time
 
 # Settings - Button Scheme
 settings-button-scheme-natural = Natural
@@ -46,6 +48,7 @@ settings-general-auto-power-off = Auto Power Off (days)
 settings-general-auto-power-off-input = Auto Power Off (days, 0 = never)
 settings-general-auto-suspend = Auto Suspend (minutes)
 settings-general-auto-suspend-input = Auto Suspend (minutes, 0 = never)
+settings-general-auto-time = Automatic Time Sync
 settings-general-button-scheme = Button Scheme
 settings-general-enable-auto-share = Enable Auto Share
 settings-general-enable-sleep-cover = Enable Sleep Cover

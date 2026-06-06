@@ -34,6 +34,7 @@ pub mod settings;
 pub mod task;
 #[cfg(any(feature = "profiling", feature = "tracing"))]
 pub mod telemetry;
+pub mod time_manager;
 mod unit;
 pub mod version;
 pub mod view;

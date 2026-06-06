@@ -340,7 +340,12 @@ pub fn toggle_clock_menu(
         let text = Local::now()
             .format(&context.settings.date_format)
             .to_string();
-        let entries = vec![EntryKind::Message(text, None)];
+        let entries = vec![
+            EntryKind::Message(text, None),
+            EntryKind::Separator,
+            EntryKind::Command(fl!("top-menu-sync-time"), EntryId::SyncTime),
+        ];
+
         let clock_menu = Menu::new(
             rect,
             ViewId::ClockMenu,

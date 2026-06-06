@@ -1,8 +1,8 @@
 use super::kinds::SettingKind;
 use super::kinds::dictionary::DictionaryInfo;
 use super::kinds::general::{
-    AutoPowerOff, AutoShare, AutoSuspend, ButtonScheme, KeyboardLayout, Locale, SettingsRetention,
-    SleepCover,
+    AutoPowerOff, AutoShare, AutoSuspend, AutoTime, ButtonScheme, KeyboardLayout, Locale,
+    SettingsRetention, SleepCover,
 };
 use super::kinds::import::{AllowedKindsSetting, ForceFullImport, ImportSyncMetadata};
 use super::kinds::intermission::{IntermissionPowerOff, IntermissionShare, IntermissionSuspend};
@@ -64,6 +64,7 @@ impl Category {
             Category::General => vec![
                 Box::new(Locale),
                 Box::new(AutoShare),
+                Box::new(AutoTime),
                 Box::new(AutoSuspend),
                 Box::new(AutoPowerOff),
                 Box::new(ButtonScheme),

@@ -3,6 +3,8 @@
 use crate::device::error::DeviceError;
 use crate::device::metadata::DeviceMetadata;
 use crate::input::TouchProto;
+use crate::rtc::Rtc;
+use crate::time_manager::TimeManager;
 use lazy_static::lazy_static;
 use once_cell::sync::OnceCell;
 use std::env;
@@ -14,9 +16,12 @@ mod metadata;
 pub mod migration;
 mod model;
 mod power;
+pub mod time;
 mod types;
 mod usb;
 mod wifi;
+
+const RTC_DEVICE: &str = "/dev/rtc0";
 
 pub use model::Model;
 pub use types::{FrontlightKind, Orientation};
@@ -29,6 +34,8 @@ pub struct Device {
     metadata: OnceCell<DeviceMetadata>,
     wifi_manager: OnceCell<Box<dyn crate::device::wifi::WifiManager>>,
     power_manager: OnceCell<Box<dyn crate::device::power::PowerManager>>,
+    rtc: OnceCell<Rtc>,
+    time_manager: OnceCell<TimeManager>,
 }
 
 impl Debug for Device {
@@ -113,6 +120,8 @@ impl Device {
             metadata: OnceCell::new(),
             wifi_manager: OnceCell::new(),
             power_manager: OnceCell::new(),
+            rtc: OnceCell::new(),
+            time_manager: OnceCell::new(),
         }
     }
 
@@ -155,6 +164,33 @@ impl Device {
         self.power_manager
             .get_or_try_init(|| crate::device::power::create_power_manager(self.model))
             .map(|b| b.as_ref())
+    }
+
+    /// Returns the shared RTC instance for this device.
+    pub fn rtc(&self) -> Result<&Rtc, anyhow::Error> {
+        cfg_select! {
+          feature = "kobo" => {
+            self.rtc.get_or_try_init(|| Rtc::new(RTC_DEVICE))
+          }
+          _ => {
+            unimplemented!("The current device does not support rtc.")
+          }
+        }
+    }
+
+    /// Returns the time manager for this device.
+    pub fn time_manager(&self) -> Result<&TimeManager, anyhow::Error> {
+        self.time_manager
+            .get_or_try_init(|| Ok(TimeManager::new(self.rtc()?.clone())))
+    }
+
+    /// Sets the system timezone.
+    ///
+    /// On Kobo devices this updates `/etc/localtime`, `/etc/timezone`, and
+    /// calls `tzset()`. On other platforms this is a no-op.
+    pub fn set_system_timezone(&self, tz: chrono_tz::Tz) -> Result<(), anyhow::Error> {
+        time::set_system_timezone(tz)?;
+        Ok(())
     }
 
     /// Returns the install subdirectory for this build.

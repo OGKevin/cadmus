@@ -20,6 +20,7 @@ pub enum SettingIdentity {
     AutoPowerOff,
     SleepCover,
     AutoShare,
+    AutoTime,
     ButtonScheme,
     LoggingEnabled,
     FinishedAction,

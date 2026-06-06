@@ -35,6 +35,8 @@ pub enum ToggleSettings {
     SleepCover,
     /// Auto-share enable/disable setting
     AutoShare,
+    /// Auto time sync enable/disable setting
+    AutoTime,
     /// Button scheme selection (natural or inverted)
     ButtonScheme,
     /// Logging enabled setting
