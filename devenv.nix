@@ -676,14 +676,9 @@ in
       ];
     };
 
-    # Build mupdf and wrapper for native development
-    "deps:native" = {
-      exec = "cargo xtask setup-native";
-    };
-
     # Build for Kobo with cross-compilation
     "build:kobo" = {
-      exec = "cargo xtask build-kobo --slow";
+      exec = "cargo xtask build-kobo";
       after = [ "docs:build" ];
     };
 
@@ -704,14 +699,9 @@ in
       zola serve --base-url http://localhost
     '';
 
-    # Build mupdf for native development
-    cadmus-setup-native.exec = ''
-      cargo xtask setup-native
-    '';
-
     # Build for Kobo device
     cadmus-build-kobo.exec = ''
-      cargo xtask build-kobo --slow
+      cargo xtask build-kobo
       cargo xtask dist
     '';
 
@@ -766,7 +756,6 @@ in
     echo "Cadmus development environment"
     echo ""
     echo "Available commands:"
-    echo "  cadmus-setup-native   - Build mupdf for native development (run once)"
     echo "  cadmus-docs-build     - Build complete documentation portal"
     echo "  cadmus-docs-serve     - Serve documentation locally (http://localhost:1111)"
     echo "  cargo test            - Run tests (after setup)"
@@ -783,7 +772,6 @@ in
     echo "  cadmus-clippy             - Lint lines changed vs master (reviewdog)"
     echo "  cargo xtask clippy        - Lint across feature matrix"
     echo "  cargo xtask test          - Test across feature matrix"
-    echo "  cargo xtask setup-native  - Build MuPDF for native development"
     echo "  cargo xtask docs          - Build documentation portal"
     echo "  cargo xtask dist          - Assemble Kobo distribution"
     echo "  cargo xtask bundle        - Package KoboRoot.tgz"

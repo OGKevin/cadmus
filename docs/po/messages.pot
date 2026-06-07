@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Cadmus Documentation\n"
-"POT-Creation-Date: 2026-06-05T16:12:12+02:00\n"
+"POT-Creation-Date: 2026-06-07T18:53:20Z\n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -75,7 +75,7 @@ msgid "Importing"
 msgstr ""
 
 #: src/SUMMARY.md:19 src/installation/ota.md:86 src/troubleshooting/index.md:1
-#: src/contributing/devenv-setup.md:225
+#: src/contributing/devenv-setup.md:221
 msgid "Troubleshooting"
 msgstr ""
 
@@ -95,7 +95,7 @@ msgstr ""
 msgid "Event System"
 msgstr ""
 
-#: src/SUMMARY.md:28 src/settings/index.md:279
+#: src/SUMMARY.md:28 src/settings/index.md:283
 #: src/contributing/telemetry/index.md:1
 msgid "Telemetry"
 msgstr ""
@@ -639,8 +639,8 @@ msgstr ""
 msgid "Source"
 msgstr ""
 
-#: src/installation/ota.md:34 src/contributing/devenv-setup.md:49
-#: src/contributing/devenv-setup.md:76
+#: src/installation/ota.md:34 src/contributing/devenv-setup.md:47
+#: src/contributing/devenv-setup.md:73
 msgid "Description"
 msgstr ""
 
@@ -1178,9 +1178,9 @@ msgstr ""
 #: src/settings/index.md:153 src/settings/index.md:159
 #: src/settings/index.md:167 src/settings/index.md:188
 #: src/settings/index.md:201 src/settings/index.md:213
-#: src/settings/index.md:221 src/settings/index.md:234
-#: src/settings/index.md:254 src/settings/index.md:303
-#: src/settings/index.md:314
+#: src/settings/index.md:221 src/settings/index.md:238
+#: src/settings/index.md:258 src/settings/index.md:307
+#: src/settings/index.md:318
 msgid "✏️"
 msgstr ""
 
@@ -1488,22 +1488,35 @@ msgid ""
 msgstr ""
 
 #: src/settings/index.md:232
-msgid "`import.sync-metadata`"
+msgid ""
+"Import scanning happens automatically on startup using incremental file "
+"checking — files are only re-scanned if their modification time or size has "
+"changed since the last import."
+msgstr ""
+
+#: src/settings/index.md:234
+msgid ""
+"To trigger a full re-scan of all files regardless of cached values, use the "
+"**Force Full Import** action button in the Import settings category."
 msgstr ""
 
 #: src/settings/index.md:236
+msgid "`import.sync-metadata`"
+msgstr ""
+
+#: src/settings/index.md:240
 msgid "Re-extract metadata (title, author, etc.) whenever a document changes."
 msgstr ""
 
-#: src/settings/index.md:243
+#: src/settings/index.md:247
 msgid "`import.metadata-kinds`"
 msgstr ""
 
-#: src/settings/index.md:245
+#: src/settings/index.md:249
 msgid "File extensions of documents whose metadata is extracted during import."
 msgstr ""
 
-#: src/settings/index.md:247
+#: src/settings/index.md:251
 msgid ""
 "```toml\n"
 "[import]\n"
@@ -1511,15 +1524,15 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:252
+#: src/settings/index.md:256
 msgid "`import.allowed-kinds`"
 msgstr ""
 
-#: src/settings/index.md:256
+#: src/settings/index.md:260
 msgid "File extensions of documents considered during the import process."
 msgstr ""
 
-#: src/settings/index.md:258
+#: src/settings/index.md:262
 msgid ""
 "```toml\n"
 "[import]\n"
@@ -1528,15 +1541,15 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:263
+#: src/settings/index.md:267
 msgid "OTA"
 msgstr ""
 
-#: src/settings/index.md:265
+#: src/settings/index.md:269
 msgid "The OTA feature downloads builds from GitHub."
 msgstr ""
 
-#: src/settings/index.md:267
+#: src/settings/index.md:271
 msgid ""
 "Authentication for main branch and PR builds uses **GitHub device auth "
 "flow**. When you select a build that requires authentication, Cadmus will "
@@ -1545,39 +1558,39 @@ msgid ""
 "once you authorize."
 msgstr ""
 
-#: src/settings/index.md:273
+#: src/settings/index.md:277
 msgid ""
 "The token is saved to disk after the first authorization so you will not be "
 "prompted again on subsequent downloads."
 msgstr ""
 
-#: src/settings/index.md:276
+#: src/settings/index.md:280
 msgid ""
 "For step-by-step instructions with screenshots, see the [OTA "
 "updates](../installation/ota.md) guide."
 msgstr ""
 
-#: src/settings/index.md:281
+#: src/settings/index.md:285
 msgid ""
 "Cadmus writes JSON logs to disk. When the build enables the `tracing` "
 "feature, it can also export logs to an OpenTelemetry endpoint."
 msgstr ""
 
-#: src/settings/index.md:284
+#: src/settings/index.md:288
 msgid "These settings are available in the **Settings → Telemetry** menu."
 msgstr ""
 
-#: src/settings/index.md:286
+#: src/settings/index.md:290
 msgid ""
 "\\[!IMPORTANT\\] Changes to these settings only take effect after restarting "
 "Cadmus. The application initializes telemetry on startup."
 msgstr ""
 
-#: src/settings/index.md:290
+#: src/settings/index.md:294
 msgid "`logging`"
 msgstr ""
 
-#: src/settings/index.md:292
+#: src/settings/index.md:296
 msgid ""
 "```toml\n"
 "[logging]\n"
@@ -1589,29 +1602,29 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:301 src/contributing/telemetry/logging.md:50
+#: src/settings/index.md:305 src/contributing/telemetry/logging.md:50
 msgid "`logging.enabled`"
 msgstr ""
 
-#: src/settings/index.md:305
+#: src/settings/index.md:309
 msgid "Enable or disable structured JSON logging."
 msgstr ""
 
-#: src/settings/index.md:312 src/contributing/telemetry/logging.md:51
+#: src/settings/index.md:316 src/contributing/telemetry/logging.md:51
 msgid "`logging.level`"
 msgstr ""
 
-#: src/settings/index.md:316
+#: src/settings/index.md:320
 msgid "Minimum log level to record."
 msgstr ""
 
-#: src/settings/index.md:318
+#: src/settings/index.md:322
 msgid ""
 "Possible values: `\"trace\"`, `\"debug\"`, `\"info\"`, `\"warn\"`, "
 "`\"error\"`."
 msgstr ""
 
-#: src/settings/index.md:320
+#: src/settings/index.md:324
 msgid ""
 "```toml\n"
 "[logging]\n"
@@ -1619,37 +1632,37 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:325 src/contributing/telemetry/logging.md:52
+#: src/settings/index.md:329 src/contributing/telemetry/logging.md:52
 msgid "`logging.max-files`"
 msgstr ""
 
-#: src/settings/index.md:327
+#: src/settings/index.md:331
 msgid ""
 "Number of log files to keep. Only the most recent N files are kept — older "
 "ones are deleted automatically when Cadmus starts."
 msgstr ""
 
-#: src/settings/index.md:330 src/settings/index.md:403
+#: src/settings/index.md:334 src/settings/index.md:407
 msgid "Default: `3`"
 msgstr ""
 
-#: src/settings/index.md:331
+#: src/settings/index.md:335
 msgid "Set to `0` to keep all log files."
 msgstr ""
 
-#: src/settings/index.md:338 src/contributing/telemetry/logging.md:54
+#: src/settings/index.md:342 src/contributing/telemetry/logging.md:54
 msgid "`logging.otlp-endpoint`"
 msgstr ""
 
-#: src/settings/index.md:340
+#: src/settings/index.md:344
 msgid "✏️ (only when the `tracing` feature is enabled)"
 msgstr ""
 
-#: src/settings/index.md:342
+#: src/settings/index.md:346
 msgid "Optional OTLP endpoint for exporting logs to an OpenTelemetry collector."
 msgstr ""
 
-#: src/settings/index.md:344
+#: src/settings/index.md:348
 msgid ""
 "```toml\n"
 "[logging]\n"
@@ -1657,31 +1670,31 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:349 src/settings/index.md:366
+#: src/settings/index.md:353 src/settings/index.md:370
 msgid "Environment override:"
 msgstr ""
 
-#: src/settings/index.md:351
+#: src/settings/index.md:355
 msgid ""
 "`OTEL_EXPORTER_OTLP_ENDPOINT` takes precedence over `logging.otlp-endpoint`."
 msgstr ""
 
-#: src/settings/index.md:353 src/contributing/telemetry/profiling.md:32
+#: src/settings/index.md:357 src/contributing/telemetry/profiling.md:32
 msgid "`logging.pyroscope-endpoint`"
 msgstr ""
 
-#: src/settings/index.md:355
+#: src/settings/index.md:359
 msgid "✏️ (only when the `profiling` feature is enabled)"
 msgstr ""
 
-#: src/settings/index.md:357
+#: src/settings/index.md:361
 msgid ""
 "Optional Pyroscope server URL for continuous profiling. When set, Cadmus "
 "starts both a heap profiling agent (via jemalloc) and a CPU profiling agent "
 "(via pprof) that push profiles to this endpoint."
 msgstr ""
 
-#: src/settings/index.md:361
+#: src/settings/index.md:365
 msgid ""
 "```toml\n"
 "[logging]\n"
@@ -1689,58 +1702,58 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:368
+#: src/settings/index.md:372
 msgid ""
 "`PYROSCOPE_SERVER_URL` takes precedence over `logging.pyroscope-endpoint`."
 msgstr ""
 
-#: src/settings/index.md:370
+#: src/settings/index.md:374
 msgid "`logging.enable-kern-log`"
 msgstr ""
 
-#: src/settings/index.md:372 src/settings/index.md:384
+#: src/settings/index.md:376 src/settings/index.md:388
 msgid "🧪 📱 ✏️"
 msgstr ""
 
-#: src/settings/index.md:374
+#: src/settings/index.md:378
 msgid ""
 "Captures kernel logs via `logread -F` and forwards them to structured "
 "logging with the target `cadmus_core::logging:kern`."
 msgstr ""
 
-#: src/settings/index.md:382
+#: src/settings/index.md:386
 msgid "`logging.enable-dbus-log`"
 msgstr ""
 
-#: src/settings/index.md:386
+#: src/settings/index.md:390
 msgid ""
 "Captures D-Bus signals via the built-in zbus-based DbusMonitorTask and "
 "forwards them to structured logging."
 msgstr ""
 
-#: src/settings/index.md:394
+#: src/settings/index.md:398
 msgid "Settings Retention"
 msgstr ""
 
-#: src/settings/index.md:396
+#: src/settings/index.md:400
 msgid ""
 "Cadmus stores each version's settings in a separate file in the `Settings/` "
 "directory (for example, `Settings-v1.2.3.toml`). This ensures backward and "
 "forward compatibility when you upgrade."
 msgstr ""
 
-#: src/settings/index.md:399
+#: src/settings/index.md:403
 msgid "`settings-retention`"
 msgstr ""
 
-#: src/settings/index.md:401
+#: src/settings/index.md:405
 msgid ""
 "Number of recent version settings files to keep. Only the most recent N "
 "version files are kept. When a new version is saved, older versions beyond "
 "this limit are deleted automatically."
 msgstr ""
 
-#: src/settings/index.md:404
+#: src/settings/index.md:408
 msgid "Set to `0` to keep all version files"
 msgstr ""
 
@@ -3410,26 +3423,55 @@ msgid ""
 msgstr ""
 
 #: src/library/importing.md:6
-msgid "Automatic import"
+msgid "Automatic import on startup"
 msgstr ""
 
 #: src/library/importing.md:8
 msgid ""
-"Cadmus imports any new books it finds automatically. Copy files to your "
-"device, and they'll appear in your library after the next import pass."
+"Cadmus automatically imports books every time it starts. The import is "
+"**incremental**: files whose modification time and file size haven't changed "
+"since the last import are skipped, avoiding unnecessary re-fingerprinting. "
+"Only new or modified files are processed, significantly improving startup "
+"performance for large libraries."
 msgstr ""
 
-#: src/library/importing.md:11
-msgid "Manual import"
-msgstr ""
-
-#: src/library/importing.md:13
-msgid "You can trigger an import at any time from the settings editor."
-msgstr ""
-
-#: src/library/importing.md:15
+#: src/library/importing.md:14
 msgid ""
-"Cadmus will scan your library folder and add any books it hasn't seen before."
+"Copy files to your device, restart the app, and they'll appear in your "
+"library right away."
+msgstr ""
+
+#: src/library/importing.md:17
+msgid "Force full import"
+msgstr ""
+
+#: src/library/importing.md:19
+msgid ""
+"If you suspect the import cache is stale or corrupted, you can force a full "
+"re-import:"
+msgstr ""
+
+#: src/library/importing.md:22
+msgid "Open **Settings**."
+msgstr ""
+
+#: src/library/importing.md:23
+msgid "Navigate to the **Import** section."
+msgstr ""
+
+#: src/library/importing.md:24
+msgid "Tap **Force Full Import**."
+msgstr ""
+
+#: src/library/importing.md:25
+msgid "Confirm when prompted."
+msgstr ""
+
+#: src/library/importing.md:27
+msgid ""
+"This bypasses the incremental import cache and re-fingerprints all files in "
+"your library directories. Be aware that this can take time and drain the "
+"battery for large libraries, so keep your device plugged in while it runs."
 msgstr ""
 
 #: src/troubleshooting/index.md:5
@@ -3619,14 +3661,10 @@ msgid "Clone the repository and enter the devenv shell:"
 msgstr ""
 
 #: src/contributing/devenv-setup.md:21
-msgid "Run the one-time setup to build native dependencies:"
-msgstr ""
-
-#: src/contributing/devenv-setup.md:27
 msgid "Download the packaged runtime assets used by Kobo builds:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:33
+#: src/contributing/devenv-setup.md:27
 msgid ""
 "\\[!NOTE\\] `cadmus-core` generates some compile-time metadata from the "
 "bundled asset directories. For Kobo builds, make sure `bin/`, `resources/`, "
@@ -3634,537 +3672,528 @@ msgid ""
 "the generated asset list is complete."
 msgstr ""
 
-#: src/contributing/devenv-setup.md:39
+#: src/contributing/devenv-setup.md:33
+msgid ""
+"Thirdparty C/C++ dependencies (MuPDF, libwebp, zlib, etc.) are tracked as "
+"git submodules and built automatically by `build.rs` when you run `cargo "
+"build` or `cargo xtask run-emulator`. No separate setup step is required."
+msgstr ""
+
+#: src/contributing/devenv-setup.md:37
 msgid "Run the emulator:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:45
+#: src/contributing/devenv-setup.md:43
 msgid "Available Commands"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:47
+#: src/contributing/devenv-setup.md:45
 msgid "Once inside the devenv shell, these commands are available:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:49
+#: src/contributing/devenv-setup.md:47
 msgid "Command"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:51
-msgid "`cargo xtask setup-native`"
-msgstr ""
-
-#: src/contributing/devenv-setup.md:51
-msgid "Build MuPDF for native development (run once)"
-msgstr ""
-
-#: src/contributing/devenv-setup.md:52
+#: src/contributing/devenv-setup.md:49
 msgid "`cargo xtask download-assets`"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:52
+#: src/contributing/devenv-setup.md:49
 msgid "Download packaged Plato runtime assets"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:53
+#: src/contributing/devenv-setup.md:50
 msgid "`cargo xtask test`"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:53
+#: src/contributing/devenv-setup.md:50
 msgid "Run the test suite across the feature matrix"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:54
+#: src/contributing/devenv-setup.md:51
 msgid "`cargo xtask run-emulator`"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:54
+#: src/contributing/devenv-setup.md:51
 msgid "Run the emulator"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:55
+#: src/contributing/devenv-setup.md:52
 msgid "`cargo xtask build-kobo`"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:55
+#: src/contributing/devenv-setup.md:52
 msgid "Cross-compile for Kobo device"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:56
+#: src/contributing/devenv-setup.md:53
 msgid "`cargo xtask dist`"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:56
+#: src/contributing/devenv-setup.md:53
 msgid "Assemble the Kobo distribution directory"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:57
+#: src/contributing/devenv-setup.md:54
 msgid "`cargo xtask bundle`"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:57
+#: src/contributing/devenv-setup.md:54
 msgid "Package KoboRoot.tgz for installation"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:58
+#: src/contributing/devenv-setup.md:55
 msgid "`cadmus-dev-otel`"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:58
+#: src/contributing/devenv-setup.md:55
 msgid "Run emulator with tracing and profiling enabled"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:59
+#: src/contributing/devenv-setup.md:56
 msgid "`devenv up`"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:59
+#: src/contributing/devenv-setup.md:56
 msgid "Start observability stack (Grafana, Tempo, Loki)"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:60
+#: src/contributing/devenv-setup.md:57
 msgid "`cargo xtask docs`"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:60
+#: src/contributing/devenv-setup.md:57
 msgid "Build documentation portal (mdBook + Cargo docs)"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:61
+#: src/contributing/devenv-setup.md:58
 msgid "`cadmus-docs-serve`"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:61
+#: src/contributing/devenv-setup.md:58
 msgid "Serve documentation portal locally on port 1111"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:62
+#: src/contributing/devenv-setup.md:59
 msgid "`cadmus-translate`"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:62
+#: src/contributing/devenv-setup.md:59
 msgid "Generate the docs translation template (.pot)"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:64
+#: src/contributing/devenv-setup.md:61
 msgid ""
 "Run `cargo xtask --help` to see all available subcommands, or `cargo xtask "
 "<cmd> --help` for options on a specific command."
 msgstr ""
 
-#: src/contributing/devenv-setup.md:67
+#: src/contributing/devenv-setup.md:64
 msgid ""
 "Or have a look at the rustdocs for `xtask` <a href=\"/api/xtask/\">here</a>."
 msgstr ""
 
-#: src/contributing/devenv-setup.md:69
+#: src/contributing/devenv-setup.md:66
 msgid "Tasks"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:71
+#: src/contributing/devenv-setup.md:68
 msgid ""
 "The devenv environment uses [tasks](https://devenv.sh/tasks/) to manage "
 "build dependencies. Tasks are defined in `devenv.nix` and can be run with "
 "`devenv tasks run <task>`."
 msgstr ""
 
-#: src/contributing/devenv-setup.md:74
+#: src/contributing/devenv-setup.md:71
 msgid "Available Tasks"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:76
+#: src/contributing/devenv-setup.md:73
 msgid "Task"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:76
+#: src/contributing/devenv-setup.md:73
 msgid "Dependencies"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:78 src/contributing/devenv-setup.md:80
+#: src/contributing/devenv-setup.md:75 src/contributing/devenv-setup.md:76
 msgid "`docs:build`"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:78
+#: src/contributing/devenv-setup.md:75
 msgid "Build documentation EPUB (only rebuilds if files changed)"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:78 src/contributing/devenv-setup.md:79
+#: src/contributing/devenv-setup.md:75
 msgid "None"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:79
-msgid "`deps:native`"
-msgstr ""
-
-#: src/contributing/devenv-setup.md:79
-msgid "Build MuPDF and wrapper for native development"
-msgstr ""
-
-#: src/contributing/devenv-setup.md:80
+#: src/contributing/devenv-setup.md:76
 msgid "`build:kobo`"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:80
+#: src/contributing/devenv-setup.md:76
 msgid "Build for Kobo device"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:82
+#: src/contributing/devenv-setup.md:78
 msgid "All tasks delegate to `cargo xtask` under the hood."
 msgstr ""
 
-#: src/contributing/devenv-setup.md:84
+#: src/contributing/devenv-setup.md:80
 msgid "How Tasks Work"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:86
+#: src/contributing/devenv-setup.md:82
 msgid ""
 "Tasks with dependencies automatically run their dependencies first. For "
 "example:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:89
+#: src/contributing/devenv-setup.md:85
 msgid "# This will first run docs:build (if needed), then build for Kobo\n"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:93
+#: src/contributing/devenv-setup.md:89
 msgid ""
 "The `docs:build` task uses `execIfModified` to only rebuild when "
 "documentation files have actually changed."
 msgstr ""
 
-#: src/contributing/devenv-setup.md:95
+#: src/contributing/devenv-setup.md:91
 msgid "Kobo Build Notes"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:97
+#: src/contributing/devenv-setup.md:93
 msgid "`cargo xtask download-assets` must run before `cargo xtask build-kobo`."
 msgstr ""
 
-#: src/contributing/devenv-setup.md:98
+#: src/contributing/devenv-setup.md:94
 msgid ""
 "OTA updates delete Cadmus-owned bundled files before reboot, then Kobo "
 "extracts the new `KoboRoot.tgz` over the install directory."
 msgstr ""
 
-#: src/contributing/devenv-setup.md:100
+#: src/contributing/devenv-setup.md:96
 msgid ""
 "User files outside the generated Cadmus-owned asset list must be preserved."
 msgstr ""
 
-#: src/contributing/devenv-setup.md:102
+#: src/contributing/devenv-setup.md:98
 msgid "Documentation Portal"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:104
+#: src/contributing/devenv-setup.md:100
 msgid ""
 "Cadmus provides a unified documentation portal that combines user guides, "
 "API reference, and contribution guides in one place."
 msgstr ""
 
-#: src/contributing/devenv-setup.md:107
+#: src/contributing/devenv-setup.md:103
 msgid "Building and Serving Locally"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:109
+#: src/contributing/devenv-setup.md:105
 msgid "To build the documentation portal:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:115
+#: src/contributing/devenv-setup.md:111
 msgid "This runs the full build pipeline:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:117
+#: src/contributing/devenv-setup.md:113
 msgid "Builds the mdBook user guide (`docs/book/html/`)"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:118
+#: src/contributing/devenv-setup.md:114
 msgid "Generates Rust API documentation (`target/doc/`)"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:119
+#: src/contributing/devenv-setup.md:115
 msgid "Builds the Zola landing page and integrates all documentation"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:121
+#: src/contributing/devenv-setup.md:117
 msgid "To serve the portal locally with live reload:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:127
+#: src/contributing/devenv-setup.md:123
 msgid ""
 "The portal will be available at <http://localhost:1111> with automatic "
 "rebuilds when you change documentation files or Rust code."
 msgstr ""
 
-#: src/contributing/devenv-setup.md:130
+#: src/contributing/devenv-setup.md:126
 msgid "Documentation Structure"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:132
+#: src/contributing/devenv-setup.md:128
 msgid "The portal provides three integrated sections:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:134
+#: src/contributing/devenv-setup.md:130
 msgid "**Landing Page** (`/`) - Overview and feature highlights"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:135
+#: src/contributing/devenv-setup.md:131
 msgid "**User Guide** (`/guide/`) - User-facing documentation from mdBook"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:136
+#: src/contributing/devenv-setup.md:132
 msgid "**API Reference** (`/api/`) - Auto-generated Rust API documentation"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:138
+#: src/contributing/devenv-setup.md:134
 msgid ""
 "All three sections are deployed as a single artifact to GitHub Pages at "
 "<https://ogkevin.github.io/cadmus/>."
 msgstr ""
 
-#: src/contributing/devenv-setup.md:141
+#: src/contributing/devenv-setup.md:137
 msgid "Continuous Integration"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:143
+#: src/contributing/devenv-setup.md:139
 msgid ""
 "Documentation is automatically built and validated on every pull request and "
 "deployed on push to `main` or `master`. The CI pipeline checks:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:146
+#: src/contributing/devenv-setup.md:142
 msgid "mdBook documentation compiles"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:147
+#: src/contributing/devenv-setup.md:143
 msgid "Rust code documentation is valid"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:148
+#: src/contributing/devenv-setup.md:144
 msgid "Zola landing page builds successfully"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:150
+#: src/contributing/devenv-setup.md:146
 msgid "Running Tests"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:152
+#: src/contributing/devenv-setup.md:148
 msgid ""
 "Tests require the `TEST_ROOT_DIR` environment variable to be set. The "
 "easiest way to run the full test matrix is:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:159
+#: src/contributing/devenv-setup.md:155
 msgid ""
 "This sets `TEST_ROOT_DIR` automatically and runs tests across all feature "
 "combinations. To run a single feature combination:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:163
+#: src/contributing/devenv-setup.md:159
 msgid "\"emulator + test\""
 msgstr ""
 
-#: src/contributing/devenv-setup.md:166
+#: src/contributing/devenv-setup.md:162
 msgid "Or to run tests manually without xtask:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:169 src/contributing/devenv-setup.md:237
+#: src/contributing/devenv-setup.md:165 src/contributing/devenv-setup.md:233
 msgid "$(pwd)"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:172
+#: src/contributing/devenv-setup.md:168
 msgid ""
 "`TEST_ROOT_DIR` is automatically configured in CI but must be set manually "
 "when running `cargo test` directly."
 msgstr ""
 
-#: src/contributing/devenv-setup.md:175
+#: src/contributing/devenv-setup.md:171
 msgid "Platform Support"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:177
+#: src/contributing/devenv-setup.md:173
 msgid "Linux (Full Support)"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:179
+#: src/contributing/devenv-setup.md:175
 msgid "Linux provides full development capabilities including:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:181 src/contributing/devenv-setup.md:191
+#: src/contributing/devenv-setup.md:177 src/contributing/devenv-setup.md:187
 msgid "Native development (emulator, tests)"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:182 src/contributing/devenv-setup.md:192
+#: src/contributing/devenv-setup.md:178 src/contributing/devenv-setup.md:188
 msgid "Cross-compilation for Kobo devices using the Linaro ARM toolchain"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:183 src/contributing/devenv-setup.md:193
+#: src/contributing/devenv-setup.md:179 src/contributing/devenv-setup.md:189
 msgid "Git hooks (actionlint, shellcheck, shfmt, markdownlint, prettier)"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:185
+#: src/contributing/devenv-setup.md:181
 msgid ""
 "The Linaro toolchain is automatically added to `PATH` and provides "
 "`arm-linux-gnueabihf-*` commands."
 msgstr ""
 
-#: src/contributing/devenv-setup.md:187
+#: src/contributing/devenv-setup.md:183
 msgid "macOS (Full Support)"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:189
+#: src/contributing/devenv-setup.md:185
 msgid "macOS supports full development capabilities including:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:195
+#: src/contributing/devenv-setup.md:191
 msgid "macOS-Specific Notes"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:197
+#: src/contributing/devenv-setup.md:193
 msgid ""
-"**MuPDF build**: On macOS, the native setup script manually gathers "
+"**MuPDF build**: On macOS, the native build script manually gathers "
 "pkg-config CFLAGS for system libraries because MuPDF's build system doesn't "
 "properly detect them on Darwin."
 msgstr ""
 
-#: src/contributing/devenv-setup.md:200
+#: src/contributing/devenv-setup.md:196
 msgid "Observability Stack"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:202
+#: src/contributing/devenv-setup.md:198
 msgid "The devenv includes a full observability stack for development:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:205
+#: src/contributing/devenv-setup.md:201
 msgid "# Start all services\n"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:207
+#: src/contributing/devenv-setup.md:203
 msgid "# In another terminal, run the instrumented emulator\n"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:212
+#: src/contributing/devenv-setup.md:208
 msgid "Services available after `devenv up`:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:214
+#: src/contributing/devenv-setup.md:210
 msgid "Service"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:214
+#: src/contributing/devenv-setup.md:210
 msgid "URL"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:214
-#: src/contributing/library-database.md:148
+#: src/contributing/devenv-setup.md:210
+#: src/contributing/library-database.md:159
 msgid "Purpose"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:216
+#: src/contributing/devenv-setup.md:212
 msgid "Grafana"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:216
+#: src/contributing/devenv-setup.md:212
 msgid "<http://localhost:3000>"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:216
+#: src/contributing/devenv-setup.md:212
 msgid "Dashboards and exploration"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:217
+#: src/contributing/devenv-setup.md:213
 msgid "Tempo"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:217
+#: src/contributing/devenv-setup.md:213
 msgid "<http://localhost:3200>"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:217
+#: src/contributing/devenv-setup.md:213
 msgid "Distributed tracing"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:218
+#: src/contributing/devenv-setup.md:214
 msgid "Loki"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:218
+#: src/contributing/devenv-setup.md:214
 msgid "<http://localhost:3100>"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:218
+#: src/contributing/devenv-setup.md:214
 msgid "Log aggregation"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:219
+#: src/contributing/devenv-setup.md:215
 msgid "Prometheus"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:219
+#: src/contributing/devenv-setup.md:215
 msgid "<http://localhost:9090>"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:219
+#: src/contributing/devenv-setup.md:215
 msgid "Metrics"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:220
+#: src/contributing/devenv-setup.md:216
 msgid "OTLP Collector"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:220
+#: src/contributing/devenv-setup.md:216
 msgid "<http://localhost:4318>"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:220
+#: src/contributing/devenv-setup.md:216
 msgid "Telemetry ingestion"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:221
+#: src/contributing/devenv-setup.md:217
 msgid "Pyroscope"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:221
+#: src/contributing/devenv-setup.md:217
 msgid "<http://localhost:4040>"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:221
+#: src/contributing/devenv-setup.md:217
 msgid "Continuous profiling"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:223
+#: src/contributing/devenv-setup.md:219
 msgid "For more details on telemetry, see [Telemetry](telemetry/index.md)."
 msgstr ""
 
-#: src/contributing/devenv-setup.md:227
+#: src/contributing/devenv-setup.md:223
 msgid "Shell takes a long time to start"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:229
+#: src/contributing/devenv-setup.md:225
 msgid ""
 "The first `devenv shell` invocation downloads and builds dependencies, which "
 "can take several minutes. Subsequent invocations are cached and should be "
 "fast."
 msgstr ""
 
-#: src/contributing/devenv-setup.md:232
+#: src/contributing/devenv-setup.md:228
 msgid "Tests fail with \"TEST_ROOT_DIR must be set\""
 msgstr ""
 
-#: src/contributing/devenv-setup.md:234
+#: src/contributing/devenv-setup.md:230
 msgid "Set the environment variable before running tests:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:240
+#: src/contributing/devenv-setup.md:236
 msgid "Local Configuration"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:242
+#: src/contributing/devenv-setup.md:238
 msgid ""
 "Create `devenv.local.nix` to override settings without modifying the tracked "
 "configuration:"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:244
+#: src/contributing/devenv-setup.md:240
 msgid ""
 "```nix\n"
 "{ pkgs, ... }:\n"
@@ -4178,7 +4207,7 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/contributing/devenv-setup.md:255
+#: src/contributing/devenv-setup.md:251
 msgid "This file is gitignored and won't affect other contributors."
 msgstr ""
 
@@ -4940,7 +4969,7 @@ msgid "**Comparison:**"
 msgstr ""
 
 #: src/contributing/event-system.md:325
-#: src/contributing/library-database.md:148
+#: src/contributing/library-database.md:159
 msgid "Method"
 msgstr ""
 
@@ -6373,6 +6402,10 @@ msgid ""
 "        INTEGER library_id FK\n"
 "        TEXT book_fingerprint FK\n"
 "        INTEGER added_to_library_at\n"
+"        TEXT file_path\n"
+"        TEXT absolute_path\n"
+"        INTEGER mtime\n"
+"        INTEGER file_size\n"
 "    }\n"
 "\n"
 "    _cadmus_migrations {\n"
@@ -6394,37 +6427,37 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/contributing/library-database.md:98
+#: src/contributing/library-database.md:102
 msgid "Key design choices"
 msgstr ""
 
-#: src/contributing/library-database.md:100
+#: src/contributing/library-database.md:104
 msgid ""
 "**`books` is the main table.** Every other per-book table references "
 "`books.fingerprint` with `ON DELETE CASCADE`, so deleting a book row removes "
 "all associated data automatically."
 msgstr ""
 
-#: src/contributing/library-database.md:103
+#: src/contributing/library-database.md:107
 msgid ""
 "**Authors are normalised.** `authors` holds unique author names; "
 "`book_authors` is the join table and carries a `position` column that "
 "preserves display order."
 msgstr ""
 
-#: src/contributing/library-database.md:106
+#: src/contributing/library-database.md:110
 msgid ""
 "**All tables use `STRICT` mode.** SQLite's `STRICT` pragma enforces column "
 "type constraints at the storage layer, catching type mismatches early."
 msgstr ""
 
-#: src/contributing/library-database.md:108
+#: src/contributing/library-database.md:112
 msgid ""
 "**Timestamps are Unix epoch integers.** `added_at`, `created_at`, and "
 "similar columns are `INTEGER NOT NULL`; never `TEXT`."
 msgstr ""
 
-#: src/contributing/library-database.md:110
+#: src/contributing/library-database.md:114
 msgid ""
 "**TOC tree via adjacency list.** `toc_entries.parent_id` is a "
 "self-reference; `position` preserves sibling order. The `id` is a UUID7 "
@@ -6432,7 +6465,18 @@ msgid ""
 "without a growing rowid."
 msgstr ""
 
-#: src/contributing/library-database.md:113
+#: src/contributing/library-database.md:117
+msgid ""
+"**Incremental import via `mtime` and `file_size`.** The `library_books` "
+"table stores the file's last modification time (ceiling-rounded to 2-second "
+"FAT32 precision) and size in bytes. During import scans, files whose `mtime` "
+"and `file_size` have not changed are skipped without re-fingerprinting, "
+"improving startup performance. An index on `(library_id, absolute_path)` "
+"enables efficient per-path lookups. Both columns are nullable to support "
+"books imported before migration 011."
+msgstr ""
+
+#: src/contributing/library-database.md:124
 msgid ""
 "**`library_books_full_info` view.** An aggregating view joins `books`, "
 "`reading_states`, `book_authors`, `authors`, `book_categories`, and "
@@ -6440,11 +6484,11 @@ msgid ""
 "exposed so callers can filter with a plain `WHERE library_id = ?`."
 msgstr ""
 
-#: src/contributing/library-database.md:118
+#: src/contributing/library-database.md:129
 msgid "Data access layer"
 msgstr ""
 
-#: src/contributing/library-database.md:120
+#: src/contributing/library-database.md:131
 msgid ""
 "The <a "
 "href=\"/api/cadmus_core/library/db/struct.Db\">`cadmus_core::library::db::Db`</a> "
@@ -6453,7 +6497,7 @@ msgid ""
 "async SQLx call through the global Tokio runtime:"
 msgstr ""
 
-#: src/contributing/library-database.md:126
+#: src/contributing/library-database.md:137
 msgid ""
 "```mermaid\n"
 "flowchart LR\n"
@@ -6472,7 +6516,7 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/contributing/library-database.md:142
+#: src/contributing/library-database.md:153
 msgid ""
 "The sync bridge exists because Cadmus's UI event loop is single-threaded and "
 "synchronous. The global `RUNTIME` (a `tokio::runtime::Runtime` singleton) "
@@ -6480,109 +6524,109 @@ msgid ""
 "async."
 msgstr ""
 
-#: src/contributing/library-database.md:146
+#: src/contributing/library-database.md:157
 msgid "Key methods on `Db`:"
 msgstr ""
 
-#: src/contributing/library-database.md:150
+#: src/contributing/library-database.md:161
 msgid ""
 "<a "
 "href=\"/api/cadmus_core/library/db/struct.Db#method.register_library\">`register_library`</a>"
 msgstr ""
 
-#: src/contributing/library-database.md:150
+#: src/contributing/library-database.md:161
 msgid "Insert a new library row and return its id"
 msgstr ""
 
-#: src/contributing/library-database.md:151
+#: src/contributing/library-database.md:162
 msgid ""
 "<a "
 "href=\"/api/cadmus_core/library/db/struct.Db#method.get_library_by_path\">`get_library_by_path`</a>"
 msgstr ""
 
-#: src/contributing/library-database.md:151
+#: src/contributing/library-database.md:162
 msgid "Look up a library id by filesystem path"
 msgstr ""
 
-#: src/contributing/library-database.md:152
+#: src/contributing/library-database.md:163
 msgid ""
 "<a "
 "href=\"/api/cadmus_core/library/db/struct.Db#method.get_all_books\">`get_all_books`</a>"
 msgstr ""
 
-#: src/contributing/library-database.md:152
+#: src/contributing/library-database.md:163
 msgid "Fetch every book in a library via the full-info view"
 msgstr ""
 
-#: src/contributing/library-database.md:153
+#: src/contributing/library-database.md:164
 msgid ""
 "<a "
 "href=\"/api/cadmus_core/library/db/struct.Db#method.insert_book\">`insert_book`</a>"
 msgstr ""
 
-#: src/contributing/library-database.md:153
+#: src/contributing/library-database.md:164
 msgid "Write a new book and its authors/categories"
 msgstr ""
 
-#: src/contributing/library-database.md:154
+#: src/contributing/library-database.md:165
 msgid ""
 "<a "
 "href=\"/api/cadmus_core/library/db/struct.Db#method.save_reading_state\">`save_reading_state`</a>"
 msgstr ""
 
-#: src/contributing/library-database.md:154
+#: src/contributing/library-database.md:165
 msgid "Save or update reading progress for a book"
 msgstr ""
 
-#: src/contributing/library-database.md:155
+#: src/contributing/library-database.md:166
 msgid ""
 "<a "
 "href=\"/api/cadmus_core/library/db/struct.Db#method.save_toc\">`save_toc`</a>"
 msgstr ""
 
-#: src/contributing/library-database.md:155
+#: src/contributing/library-database.md:166
 msgid "Bulk-write a book's table of contents"
 msgstr ""
 
-#: src/contributing/library-database.md:156
+#: src/contributing/library-database.md:167
 msgid ""
 "<a "
 "href=\"/api/cadmus_core/library/db/struct.Db#method.get_thumbnail\">`get_thumbnail`</a>"
 msgstr ""
 
-#: src/contributing/library-database.md:156
+#: src/contributing/library-database.md:167
 msgid "Retrieve the stored cover thumbnail BLOB"
 msgstr ""
 
-#: src/contributing/library-database.md:157
+#: src/contributing/library-database.md:168
 msgid ""
 "<a "
 "href=\"/api/cadmus_core/library/db/struct.Db#method.save_thumbnail\">`save_thumbnail`</a>"
 msgstr ""
 
-#: src/contributing/library-database.md:157
+#: src/contributing/library-database.md:168
 msgid "Save or replace a cover thumbnail"
 msgstr ""
 
-#: src/contributing/library-database.md:159
+#: src/contributing/library-database.md:170
 msgid "How a book scan flows into the database"
 msgstr ""
 
-#: src/contributing/library-database.md:161
+#: src/contributing/library-database.md:172
 msgid "When a library directory is scanned, Cadmus follows this sequence:"
 msgstr ""
 
-#: src/contributing/library-database.md:192
+#: src/contributing/library-database.md:203
 msgid "Related pages"
 msgstr ""
 
-#: src/contributing/library-database.md:194
+#: src/contributing/library-database.md:205
 msgid ""
 "[SQLite & SQLx](sqlite-sqlx.md) — compile-time query verification, review "
 "rules"
 msgstr ""
 
-#: src/contributing/library-database.md:195
+#: src/contributing/library-database.md:206
 msgid ""
 "[Runtime Migrations](runtime-migrations.md) — one-time data migrations using "
 "the `migration!` macro"
