@@ -18,13 +18,7 @@ This guide covers setup on both Linux and macOS.
    devenv shell
    ```
 
-2. Run the one-time setup to build native dependencies:
-
-   ```bash
-   cargo xtask setup-native
-   ```
-
-3. Download the packaged runtime assets used by Kobo builds:
+2. Download the packaged runtime assets used by Kobo builds:
 
    ```bash
    cargo xtask download-assets
@@ -35,8 +29,12 @@ This guide covers setup on both Linux and macOS.
    > directories. For Kobo builds, make sure `bin/`, `resources/`, and
    > `hyphenation-patterns/` are present before `cargo xtask build-kobo` so the
    > generated asset list is complete.
+   >
+   > Thirdparty C/C++ dependencies (MuPDF, libwebp, zlib, etc.) are tracked as git
+   > submodules and built automatically by `build.rs` when you run `cargo build` or
+   > `cargo xtask run-emulator`. No separate setup step is required.
 
-4. Run the emulator:
+3. Run the emulator:
 
    ```bash
    cargo xtask run-emulator
@@ -48,7 +46,6 @@ Once inside the devenv shell, these commands are available:
 
 | Command                       | Description                                      |
 | ----------------------------- | ------------------------------------------------ |
-| `cargo xtask setup-native`    | Build MuPDF for native development (run once)    |
 | `cargo xtask download-assets` | Download packaged Plato runtime assets           |
 | `cargo xtask test`            | Run the test suite across the feature matrix     |
 | `cargo xtask run-emulator`    | Run the emulator                                 |
@@ -73,11 +70,10 @@ Tasks are defined in `devenv.nix` and can be run with `devenv tasks run <task>`.
 
 ### Available Tasks
 
-| Task          | Description                                               | Dependencies |
-| ------------- | --------------------------------------------------------- | ------------ |
-| `docs:build`  | Build documentation EPUB (only rebuilds if files changed) | None         |
-| `deps:native` | Build MuPDF and wrapper for native development            | None         |
-| `build:kobo`  | Build for Kobo device                                     | `docs:build` |
+| Task         | Description                                               | Dependencies |
+| ------------ | --------------------------------------------------------- | ------------ |
+| `docs:build` | Build documentation EPUB (only rebuilds if files changed) | None         |
+| `build:kobo` | Build for Kobo device                                     | `docs:build` |
 
 All tasks delegate to `cargo xtask` under the hood.
 
@@ -194,7 +190,7 @@ macOS supports full development capabilities including:
 
 #### macOS-Specific Notes
 
-**MuPDF build**: On macOS, the native setup script manually gathers pkg-config CFLAGS for system
+**MuPDF build**: On macOS, the native build script manually gathers pkg-config CFLAGS for system
 libraries because MuPDF's build system doesn't properly detect them on Darwin.
 
 ## Observability Stack

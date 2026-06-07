@@ -4,43 +4,24 @@ description: Cross-compile Cadmus for Kobo e-reader devices (ARM Linux). Use thi
 ---
 
 Use `cargo xtask build-kobo` to cross-compile Cadmus for Kobo devices.
-This task is **Linux only** — the Linaro ARM toolchain consists of x86_64 Linux
-ELF binaries that cannot run on macOS. Use Docker or a Linux VM on macOS.
+The Linaro ARM toolchain is supported on both Linux and macOS hosts.
 
 ## Basic usage
 
 ```sh
-# Fast mode — downloads pre-built .so files (default)
+# Cross-compile for Kobo
 cargo xtask build-kobo
-
-# Slow mode — builds all thirdparty libraries from source (required for CI)
-cargo xtask build-kobo --slow
-
-# Skip library download entirely (when libs/ already exists)
-cargo xtask build-kobo --skip
-
-# Download thirdparty sources only, without building
-cargo xtask build-kobo --download-only
 
 # Build with specific Cargo feature flags
 cargo xtask build-kobo --features test
 ```
 
-## Build modes
-
-| Mode                 | Flag                     | Description                                             |
-| -------------------- | ------------------------ | ------------------------------------------------------- |
-| Fast (default)       | _(none)_                 | Downloads pre-built `.so` files + MuPDF sources         |
-| Slow                 | `--slow`                 | Builds all thirdparty libraries from source             |
-| Slow + download only | `--slow --download-only` | Downloads all thirdparty sources without building       |
-| Skip                 | `--skip`                 | Assumes `libs/` already exists; skips download entirely |
-
 ## What it does
 
 1. Verifies the Linaro ARM toolchain is available on `PATH`
-2. Downloads or builds thirdparty `.so` libraries into `libs/`
-3. Builds the `mupdf_wrapper` C library for the ARM target
-4. Runs `cargo build --release --target arm-unknown-linux-gnueabihf -p cadmus`
+2. Runs `cargo build --release --target arm-unknown-linux-gnueabihf -p cadmus`
+
+Thirdparty dependencies (zlib, bzip2, libpng, libjpeg, openjpeg, jbig2dec, libwebp, freetype2, harfbuzz, gumbo, djvulibre, mupdf) are tracked as git submodules and built automatically by the `build-deps` crate's build.rs when needed. On a warm cache, no submodule initialisation or C/C++ compilation happens.
 
 ## Output
 
@@ -49,7 +30,6 @@ The compiled binary is written to:
 
 ## Prerequisites
 
-- **Linux only** — exits with a clear error on macOS
+- **Linux or macOS** — cross-compilation is supported on both platforms
 - Linaro ARM toolchain on `PATH`: `arm-linux-gnueabihf-gcc`, `arm-linux-gnueabihf-ar`
-  (provided by the devenv shell on Linux)
-- Run `cargo xtask setup-native` first if MuPDF sources are not yet present
+  (provided by the devenv shell)

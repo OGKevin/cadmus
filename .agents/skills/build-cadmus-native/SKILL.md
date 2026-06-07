@@ -29,16 +29,7 @@ it when documentation sources change.
 
 ## One-time setup
 
-### 1. Native dependencies (MuPDF + C wrapper)
-
-```bash
-cargo xtask setup-native
-```
-
-This downloads MuPDF sources, applies Cadmus-specific patches, and compiles the
-C wrapper library. It is **required** before any compilation or test run.
-
-### 2. (Optional) Download runtime assets
+### Download runtime assets (optional)
 
 ```bash
 cargo xtask download-assets
@@ -46,6 +37,10 @@ cargo xtask download-assets
 
 Pulls static assets (fonts, icons, etc.) from the latest GitHub release. Not
 strictly required for compilation, but the emulator and some tests expect them.
+
+Native dependencies (MuPDF, libwebp, and the C wrapper) are now built
+automatically by `build.rs` when you run any Cargo command that compiles
+`cadmus-core`.
 
 ## Daily workflow commands
 
@@ -84,21 +79,20 @@ need to verify a specific one.
 
 - **`fmt`** — runs `cargo fmt --check` (or `--apply` in CI) across the workspace
 - **`clippy`** — iterates the full feature matrix; use `--features` to narrow it
-- **`test`** — iterates the test feature matrix; native deps are assumed built
-- **`run-emulator`** — ensures `setup-native` has run, then `cargo run -p emulator`
-- **`install-importer`** — ensures `setup-native` has run, then `cargo install --path crates/importer`
+- **`test`** — iterates the test feature matrix
+- **`run-emulator`** — runs `cargo run -p emulator`
+- **`install-importer`** — runs `cargo install --path crates/importer`
 
 ## Common mistakes
 
 | Mistake                                                       | Result                                                        | Fix                                                      |
 | ------------------------------------------------------------- | ------------------------------------------------------------- | -------------------------------------------------------- |
 | Running `cargo check` before `cargo xtask docs --mdbook-only` | `RustEmbed` folder-not-found error                            | Generate the EPUB first                                  |
-| Running `cargo test` before `cargo xtask setup-native`        | Linker errors for missing MuPDF / wrapper                     | Run `setup-native` first                                 |
 | Running bare `cargo clippy` / `cargo test` directly           | May miss feature-gated code or use wrong feature combinations | Prefer `cargo xtask clippy` and `cargo xtask test`       |
 | Running `cargo xtask test` without `--features`               | Runs the full (slow) CI matrix locally                        | Pass `--features default` or the specific combo you need |
 
 ## Platform notes
 
-- **Linux**: `setup-native` builds MuPDF from source; ensure `gcc`, `make`, `cmake`, and standard build tools are installed.
-- **macOS**: `setup-native` builds MuPDF from source; Xcode Command Line Tools must be installed.
-- The `build-kobo` command is **Linux-only** (cross-compiles for ARM); it is not covered here because it runs inside a containerised CI action.
+- **Linux**: Native dependencies are built from source automatically via `build.rs`; ensure `gcc`, `make`, `cmake`, and standard build tools are installed.
+- **macOS**: Native dependencies are built from source automatically via `build.rs`; Xcode Command Line Tools must be installed. Full support including Kobo cross-compilation.
+- The `build-kobo` command cross-compiles for ARM and is available on both Linux and macOS; it runs inside a containerised CI action in the main workflow.
