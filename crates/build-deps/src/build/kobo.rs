@@ -70,7 +70,8 @@ fn build_libraries(thirdparty_dir: &Path) -> Result<()> {
         }
 
         let build_dir = build_root.join(name);
-        if markers::is_built(&build_dir) {
+        let submodule_path = format!("thirdparty/{name}");
+        if markers::is_built(root, &build_dir, &submodule_path) {
             println!("Skipping {name} (already built)...");
             continue;
         }
@@ -84,7 +85,7 @@ fn build_libraries(thirdparty_dir: &Path) -> Result<()> {
         source::apply_patches(&build_dir, name, root)?;
         recipes::build_library(name, &build_dir)?;
 
-        markers::mark_built(&build_dir, name)?;
+        markers::mark_built(root, &build_dir, name, &submodule_path)?;
     }
 
     Ok(())
@@ -155,9 +156,13 @@ pub fn ensure_kobo_artifacts(root: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Returns `true` when the Kobo artefact cache is complete: every
-/// [`SONAMES`] entry is present in `libs/` and the `mupdf_wrapper`
-/// archive has been built for the Kobo target.
+/// Returns `true` when the Kobo artefact cache is complete:
+///
+/// * every [`SONAMES`] entry is present in `libs/`,
+/// * the `mupdf_wrapper` archive has been built for the Kobo target, and
+/// * every per-library `.built` marker under
+///   `target/cadmus-build-deps/<TARGET>/` matches the current submodule
+///   gitlink SHA.
 fn kobo_artifacts_present(root: &Path) -> bool {
     let libs_dir = root.join("libs");
     if !libs_dir.exists() {
@@ -166,8 +171,19 @@ fn kobo_artifacts_present(root: &Path) -> bool {
     if !SONAMES.iter().all(|lib| libs_dir.join(lib).exists()) {
         return false;
     }
-    root.join("target/mupdf_wrapper/Kobo/libmupdf_wrapper.a")
+    if !root
+        .join("target/mupdf_wrapper/Kobo/libmupdf_wrapper.a")
         .exists()
+    {
+        return false;
+    }
+
+    let kobo_build_root = build_root(root);
+    versions::LIBRARY_NAMES.iter().all(|name| {
+        let build_dir = kobo_build_root.join(name);
+        let submodule_path = format!("thirdparty/{name}");
+        markers::is_built(root, &build_dir, &submodule_path)
+    })
 }
 
 /// Create the `.so` → versioned-SONAME symlinks the Cadmus runtime

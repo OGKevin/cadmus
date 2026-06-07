@@ -59,15 +59,15 @@ pub struct NativeArtifacts {
 /// Returns an error if submodules cannot be initialised, the MuPDF
 /// version does not match, or any of the underlying build steps fail.
 pub fn ensure_native_artifacts(root: &Path) -> Result<NativeArtifacts> {
-    if !native_cache_complete(root) {
-        crate::ensure_submodules(root).context("failed to initialise git submodules")?;
-    }
-
     let mupdf_src = root.join("thirdparty/mupdf");
     let mupdf_build = build_root(root).join("mupdf");
-    let version_header = mupdf_src.join("include/mupdf/fitz/version.h");
 
-    if !native_cache_complete(root) {
+    let cache_hit = native_cache_complete(root);
+
+    if !cache_hit {
+        crate::ensure_submodules(root).context("failed to initialise git submodules")?;
+
+        let version_header = mupdf_src.join("include/mupdf/fitz/version.h");
         let current_version = read_mupdf_version(&version_header);
         if current_version.as_deref() != Some(MUPDF_VERSION) {
             bail!(
@@ -100,9 +100,14 @@ pub fn ensure_native_artifacts(root: &Path) -> Result<NativeArtifacts> {
 }
 
 /// Returns `true` when every native build artefact is already on disk
-/// and a fresh build can be skipped. Used by
+/// and **matches the current submodule revision**.  Used by
 /// [`ensure_native_artifacts`] to avoid `git submodule update
 /// --init --recursive` on warm CI caches.
+///
+/// Each `.built` marker now stores the submodule gitlink SHA that was
+/// used for the last successful build.  If the submodule pointer has
+/// moved (e.g. after a `git submodule update`), the cache is stale and
+/// a full rebuild is triggered.
 fn native_cache_complete(root: &Path) -> bool {
     let build_root = build_root(root);
     let libwebp_dir = build_root.join("libwebp");
@@ -111,8 +116,8 @@ fn native_cache_complete(root: &Path) -> bool {
     let mupdf_third_a = mupdf_dir.join("build/release/libmupdf-third.a");
     let mupdf_include = mupdf_dir.join("include");
 
-    markers::is_built(&libwebp_dir)
-        && markers::is_built(&mupdf_dir)
+    markers::is_built(root, &libwebp_dir, "thirdparty/libwebp")
+        && markers::is_built(root, &mupdf_dir, "thirdparty/mupdf")
         && mupdf_a.exists()
         && mupdf_third_a.exists()
         && mupdf_include.is_dir()
@@ -137,7 +142,7 @@ pub fn build_libwebp_native(root: &Path) -> Result<()> {
     let build_root = build_root(root);
     let libwebp_dir = build_root.join("libwebp");
 
-    if markers::is_built(&libwebp_dir) {
+    if markers::is_built(root, &libwebp_dir, "thirdparty/libwebp") {
         println!("libwebp already built for native.");
         return Ok(());
     }
@@ -177,15 +182,16 @@ pub fn build_libwebp_native(root: &Path) -> Result<()> {
     combine_libwebp_static_archives(&libwebp_dir)?;
 
     let libwebp_a = libwebp_dir.join("src/.libs/libwebp.a");
+    let ranlib_tool = resolve_ranlib_tool();
     cmd::run(
-        "ranlib",
+        &ranlib_tool,
         &[libwebp_a.to_str().context("non-UTF-8 libwebp.a path")?],
         &libwebp_dir,
         &[],
     )
     .context("failed to ranlib libwebp.a")?;
 
-    markers::mark_built(&libwebp_dir, "libwebp")?;
+    markers::mark_built(root, &libwebp_dir, "libwebp", "thirdparty/libwebp")?;
     println!("✓ libwebp built successfully");
     Ok(())
 }
@@ -338,7 +344,7 @@ pub fn build_mupdf_native(root: &Path) -> Result<()> {
     let build_root = build_root(root);
     let mupdf_dir = build_root.join("mupdf");
 
-    if markers::is_built(&mupdf_dir) {
+    if markers::is_built(root, &mupdf_dir, "thirdparty/mupdf") {
         println!("MuPDF already built for native.");
         return Ok(());
     }
@@ -398,7 +404,7 @@ pub fn build_mupdf_native(root: &Path) -> Result<()> {
     )
     .context("failed to build MuPDF libs")?;
 
-    markers::mark_built(&mupdf_dir, "mupdf")?;
+    markers::mark_built(root, &mupdf_dir, "mupdf", "thirdparty/mupdf")?;
     Ok(())
 }
 

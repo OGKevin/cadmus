@@ -16,8 +16,12 @@ on:
       - ".github/workflows/cargo.yml"
       - ".github/actions/build-kobo/**"
       - ".github/actions/build-docs-epub/**"
+      - ".github/actions/cargo-cache/**"
       - ".github/actions/install-doc-tools/**"
       - "build-scripts/**"
+      - ".gitmodules"
+      - "mupdf_wrapper/**"
+      - "thirdparty/**"
 
 concurrency:
   group: "cargo-${{ github.event_name }}-${{ github.event.number || github.ref }}"
@@ -34,20 +38,10 @@ jobs:
         id: rust-toolchain
         with:
           components: rustfmt
-      - &restore-shared-cache
-        name: Restore shared cargo cache
-        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae
+      - name: Restore shared cargo cache
+        uses: ./.github/actions/cargo-cache
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-            libs/
-          key: ${{ runner.os }}-cargo-shared-${{ steps.rust-toolchain.outputs.cachekey }}-${{ hashFiles('**/Cargo.lock', 'crates/build-deps/**', 'build-scripts/**', '.gitmodules', 'mupdf_wrapper/mupdf_wrapper.c', 'crates/core/build.rs') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-shared-${{ steps.rust-toolchain.outputs.cachekey }}-
+          cachekey: ${{ steps.rust-toolchain.outputs.cachekey }}
       - name: Check formatting
         run: cargo xtask fmt
 
@@ -62,7 +56,10 @@ jobs:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         id: rust-toolchain
-      - *restore-shared-cache
+      - name: Restore shared cargo cache
+        uses: ./.github/actions/cargo-cache
+        with:
+          cachekey: ${{ steps.rust-toolchain.outputs.cachekey }}
       - name: Generate feature matrix
         id: matrix
         run: cargo xtask ci matrix
@@ -75,7 +72,10 @@ jobs:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         id: rust-toolchain
-      - *restore-shared-cache
+      - name: Restore shared cargo cache
+        uses: ./.github/actions/cargo-cache
+        with:
+          cachekey: ${{ steps.rust-toolchain.outputs.cachekey }}
       - name: Build documentation EPUB
         uses: ./.github/actions/build-docs-epub
         with:
@@ -125,18 +125,10 @@ jobs:
         run: echo "$HOME/linaro-toolchain/bin" >> "$GITHUB_PATH"
       - name: Cache shared cargo artifacts
         id: cache
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        uses: ./.github/actions/cargo-cache
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-            libs/
-          key: ${{ runner.os }}-cargo-shared-${{ steps.rust-toolchain.outputs.cachekey }}-${{ hashFiles('**/Cargo.lock', 'crates/build-deps/**', 'build-scripts/**', '.gitmodules', 'mupdf_wrapper/mupdf_wrapper.c', 'crates/core/build.rs') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-shared-${{ steps.rust-toolchain.outputs.cachekey }}-
+          cachekey: ${{ steps.rust-toolchain.outputs.cachekey }}
+          mode: save
 
       - name: Cache cargo-nextest
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
@@ -191,7 +183,10 @@ jobs:
         with:
           components: clippy
       - *set-build-metadata
-      - *restore-shared-cache
+      - name: Restore shared cargo cache
+        uses: ./.github/actions/cargo-cache
+        with:
+          cachekey: ${{ steps.rust-toolchain.outputs.cachekey }}
       - name: Download documentation EPUB
         uses: actions/download-artifact@v8
         with:
@@ -231,7 +226,10 @@ jobs:
         with:
           components: clippy
       - *set-build-metadata
-      - *restore-shared-cache
+      - name: Restore shared cargo cache
+        uses: ./.github/actions/cargo-cache
+        with:
+          cachekey: ${{ steps.rust-toolchain.outputs.cachekey }}
       - name: Download all clippy JSON artifacts
         uses: actions/download-artifact@v8
         with:
@@ -295,7 +293,10 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install sdl2 freetype harfbuzz openjpeg jpeg-turbo libpng jbig2dec gumbo-parser djvulibre pkg-config
 
-      - *restore-shared-cache
+      - name: Restore shared cargo cache
+        uses: ./.github/actions/cargo-cache
+        with:
+          cachekey: ${{ steps.rust-toolchain.outputs.cachekey }}
 
       - name: Cache cargo-nextest
         uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae
@@ -333,7 +334,10 @@ jobs:
         with:
           targets: arm-unknown-linux-gnueabihf
 
-      - *restore-shared-cache
+      - name: Restore shared cargo cache
+        uses: ./.github/actions/cargo-cache
+        with:
+          cachekey: ${{ steps.rust-toolchain.outputs.cachekey }}
       - name: Download documentation EPUB
         uses: actions/download-artifact@v8
         with:
@@ -400,7 +404,10 @@ jobs:
         with:
           targets: arm-unknown-linux-gnueabihf
 
-      - *restore-shared-cache
+      - name: Restore shared cargo cache
+        uses: ./.github/actions/cargo-cache
+        with:
+          cachekey: ${{ steps.rust-toolchain.outputs.cachekey }}
       - name: Download documentation EPUB
         uses: actions/download-artifact@v8
         with:

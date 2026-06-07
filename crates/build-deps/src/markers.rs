@@ -4,6 +4,14 @@
 //! Marker files live next to the artifacts they describe. Removing
 //! them is the supported way to force a rebuild of just the affected
 //! library without clearing the whole target directory.
+//!
+//! # Version-aware markers
+//!
+//! [`mark_built`] writes the current submodule gitlink SHA into
+//! the `.built` marker. [`is_built`] compares the stored SHA
+//! against the live submodule revision. When the submodule pointer
+//! changes (e.g. after `git submodule update`), the marker becomes
+//! stale and the library is rebuilt automatically.
 
 use std::path::{Path, PathBuf};
 
@@ -24,19 +32,66 @@ pub fn built_marker_path(dir: &Path) -> PathBuf {
     dir.join(BUILT_MARKER)
 }
 
-/// Returns `true` if [`BUILT_MARKER`] is present in `dir`.
-pub fn is_built(dir: &Path) -> bool {
-    built_marker_path(dir).exists()
+/// Returns the current gitlink (tree-entry) SHA for the submodule at
+/// `submodule_path` relative to `root`. Returns `None` when git is
+/// unavailable or the path does not track a submodule.
+///
+/// The output for ls-tree is:
+/// `160000 commit <sha>\t<path>`
+pub fn submodule_commit(root: &Path, submodule_path: &str) -> Option<String> {
+    let output = std::process::Command::new("git")
+        .args(["ls-tree", "HEAD", submodule_path])
+        .current_dir(root)
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    stdout.split_whitespace().nth(2).map(|s| s.to_owned())
 }
 
-/// Write [`BUILT_MARKER`] in `dir`, recording that `name` has been
-/// built successfully.
+/// Returns `true` when `dir` has a `.built` marker whose content
+/// matches the current gitlink SHA for `submodule_path`.
+///
+/// An empty or missing marker is treated as stale, so old-style
+/// markers (written by a previous version of this crate) will
+/// trigger a rebuild.
+pub fn is_built(root: &Path, dir: &Path, submodule_path: &str) -> bool {
+    let marker_path = built_marker_path(dir);
+    let stored_hash = match std::fs::read_to_string(&marker_path) {
+        Ok(s) => s.trim().to_owned(),
+        Err(_) => return false,
+    };
+    if stored_hash.is_empty() {
+        return false;
+    }
+
+    let current_hash = match submodule_commit(root, submodule_path) {
+        Some(h) => h,
+        None => return false,
+    };
+
+    stored_hash == current_hash
+}
+
+/// Write `.built` marker in `dir` with the current gitlink SHA
+/// for `submodule_path`, recording that `name` has been built
+/// successfully against that revision.
 ///
 /// # Errors
 ///
-/// Returns an error if the marker file cannot be written.
-pub fn mark_built(dir: &Path, name: &str) -> Result<()> {
-    write_marker(dir, BUILT_MARKER, name, "build")
+/// Returns an error if the submodule commit cannot be resolved or the
+/// marker file cannot be written.
+pub fn mark_built(root: &Path, dir: &Path, name: &str, submodule_path: &str) -> Result<()> {
+    let hash = submodule_commit(root, submodule_path)
+        .with_context(|| format!("failed to resolve submodule commit for {submodule_path}"))?;
+    let marker_path = dir.join(BUILT_MARKER);
+    std::fs::write(&marker_path, hash.as_bytes())
+        .with_context(|| format!("failed to write build marker for {name}"))?;
+    Ok(())
 }
 
 /// Returns `true` if [`WEBP_PATCHED_MARKER`] is present in `mupdf_dir`.
@@ -53,4 +108,23 @@ pub fn is_webp_patched(mupdf_dir: &Path) -> bool {
 pub fn write_marker(dir: &Path, marker: &str, name: &str, state: &str) -> Result<()> {
     std::fs::write(dir.join(marker), "")
         .with_context(|| format!("failed to write {state} marker for {name}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn submodule_commit_returns_sha_for_known_path() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap();
+        let sha = submodule_commit(root, "thirdparty/mupdf");
+        assert!(sha.is_some(), "mupdf submodule should resolve");
+        let sha = sha.unwrap();
+        assert_eq!(sha.len(), 40);
+        assert!(sha.chars().all(|c| c.is_ascii_hexdigit()));
+    }
 }

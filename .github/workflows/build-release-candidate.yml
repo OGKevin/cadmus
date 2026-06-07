@@ -47,19 +47,10 @@ jobs:
         with:
           targets: arm-unknown-linux-gnueabihf
 
-      - name: Restore shared cargo cache
-        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae
+      - uses: ./.github/actions/cargo-cache
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-            libs/
-          key: ${{ runner.os }}-cargo-shared-${{ steps.rust-toolchain.outputs.cachekey }}-${{ hashFiles('**/Cargo.lock', 'crates/build-deps/**', 'build-scripts/**', '.gitmodules', 'mupdf_wrapper/mupdf_wrapper.c', 'crates/core/build.rs') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-shared-${{ steps.rust-toolchain.outputs.cachekey }}-
+          cachekey: ${{ steps.rust-toolchain.outputs.cachekey }}
+          mode: restore
 
       - name: Build Kobo artifacts
         uses: ./.github/actions/build-kobo

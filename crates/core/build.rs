@@ -21,7 +21,7 @@ use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Ok, Result, bail};
 use build_deps::build::kobo;
 use build_deps::build::{mupdf_wrapper, native};
 
@@ -88,23 +88,34 @@ fn try_main() -> Result<()> {
 
     let root = workspace_root()?;
 
-    if !skip_thirdparty_deps() {
-        if target == "arm-unknown-linux-gnueabihf" {
-            emit_kobo_link_directives();
-            kobo::ensure_kobo_artifacts(&root)?;
-        } else {
-            let artifacts =
-                native::ensure_native_artifacts(&root).context("failed to build native deps")?;
-            mupdf_wrapper::build_native_if_needed(&root, &artifacts.include)
-                .context("failed to build mupdf_wrapper")?;
-            emit_native_link_directives(&root, &target)?;
-        }
-
-        emit_common_link_directives();
-    }
-
     generate_locales()?;
     generate_bundled_assets()?;
+
+    if skip_thirdparty_deps() {
+        println!("Skipping thirdparty deps");
+
+        return Ok(());
+    }
+
+    let host = env::var("HOST").context("HOST not set")?;
+    if target == "arm-unknown-linux-gnueabihf" {
+        emit_kobo_link_directives();
+        kobo::ensure_kobo_artifacts(&root)?;
+    } else {
+        if host != target {
+            bail!(
+                "cross-compilation detected: HOST={host} != TARGET={target}. Run with CADMUS_SKIP_THIRDPARTY_DEPS=1 or set up cross-compilation support."
+            );
+        }
+
+        let artifacts =
+            native::ensure_native_artifacts(&root).context("failed to build native deps")?;
+        mupdf_wrapper::build_native_if_needed(&root, &artifacts.include)
+            .context("failed to build mupdf_wrapper")?;
+        emit_native_link_directives(&root, &target)?;
+    }
+
+    emit_common_link_directives();
 
     Ok(())
 }
