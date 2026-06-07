@@ -1,7 +1,7 @@
 name: Cargo
 
 env:
-  NEXTEST_VERSION: "0.9.94"
+  NEXTEST_VERSION: "0.9.137"
   NODE_VERSION: "24"
   SQLX_OFFLINE: true
 
