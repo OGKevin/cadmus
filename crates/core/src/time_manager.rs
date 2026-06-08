@@ -25,11 +25,12 @@ impl TimeManager {
     pub fn sync(&self, ntp_host: &str, manual: bool, hub: &Sender<Event>) -> Result<(), Error> {
         if let Err(e) = self.detect_and_set_timezone() {
             if manual {
-                hub.send(Event::Notification(NotificationEvent::Show(e.to_string())))
-                    .ok();
-            } else {
-                tracing::warn!(error = %e, "timezone detection failed");
+                hub.send(Event::Notification(NotificationEvent::Show(crate::fl!(
+                    "notification-timezone-detection-failed"
+                ))))
+                .ok();
             }
+            tracing::warn!(error = %e, "timezone detection failed");
         }
 
         let ntp_time = match self.query_ntp(ntp_host) {
@@ -47,13 +48,27 @@ impl TimeManager {
             }
         };
 
-        self.set_system_clock(ntp_time)?;
-        self.rtc.set_time(ntp_time)?;
+        let result = self
+            .set_system_clock(ntp_time)
+            .and_then(|()| self.rtc.set_time(ntp_time));
 
-        tracing::info!(time = %ntp_time, "time synced");
-        hub.send(Event::ClockTick).ok();
-
-        Ok(())
+        match result {
+            Ok(()) => {
+                tracing::info!(time = %ntp_time, "time synced");
+                hub.send(Event::ClockTick).ok();
+                Ok(())
+            }
+            Err(e) => {
+                if manual {
+                    hub.send(Event::Notification(NotificationEvent::Show(crate::fl!(
+                        "notification-time-sync-failed"
+                    ))))
+                    .ok();
+                }
+                tracing::warn!(error = %e, "set_system_clock or rtc.set_time failed");
+                Err(e)
+            }
+        }
     }
 
     fn detect_and_set_timezone(&self) -> Result<chrono_tz::Tz, Error> {
@@ -95,22 +110,43 @@ impl TimeManager {
 }
 
 fn query_ntp(host: &str) -> Result<DateTime<Utc>, Error> {
-    let socket = UdpSocket::bind("0.0.0.0:0")?;
-    socket.set_read_timeout(Some(NTP_TIMEOUT))?;
-    let socket = UdpSocketWrapper::new(socket);
-    let context = NtpContext::new(StdTimestampGen::default());
+    let addrs: Vec<_> = host.to_socket_addrs()?.collect();
 
-    let addr = host
-        .to_socket_addrs()?
-        .next()
-        .ok_or_else(|| anyhow::anyhow!("DNS resolution failed for NTP host: {host}"))?;
+    let mut last_err = None;
+    for addr in &addrs {
+        let bind_addr = match addr {
+            std::net::SocketAddr::V4(_) => "0.0.0.0:0",
+            std::net::SocketAddr::V6(_) => "[::]:0",
+        };
 
-    let result = sntpc::sync::get_time(addr, &socket, context)
-        .map_err(|e| anyhow::anyhow!("NTP error: {:?}", e))?;
+        let socket = match UdpSocket::bind(bind_addr) {
+            Ok(s) => s,
+            Err(e) => {
+                last_err = Some(anyhow::anyhow!("UDP bind failed for {bind_addr}: {e}"));
+                continue;
+            }
+        };
 
-    let now = Utc::now();
-    let offset = chrono::Duration::microseconds(result.offset());
-    Ok(now + offset)
+        if socket.set_read_timeout(Some(NTP_TIMEOUT)).is_err() {
+            continue;
+        }
+
+        let socket = UdpSocketWrapper::new(socket);
+        let context = NtpContext::new(StdTimestampGen::default());
+
+        match sntpc::sync::get_time(*addr, &socket, context) {
+            Ok(result) => {
+                let now = Utc::now();
+                let offset = chrono::Duration::microseconds(result.offset());
+                return Ok(now + offset);
+            }
+            Err(e) => {
+                last_err = Some(anyhow::anyhow!("NTP error: {e:?}"));
+            }
+        }
+    }
+
+    Err(last_err.unwrap_or_else(|| anyhow::anyhow!("DNS resolution failed for NTP host: {host}")))
 }
 
 #[cfg(test)]

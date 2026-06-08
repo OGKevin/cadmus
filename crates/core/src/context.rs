@@ -68,10 +68,13 @@ impl Context {
         let dims = fb.dims();
         let rotation = CURRENT_DEVICE.transformed_rotation(fb.rotation());
         let rng = Xoroshiro128Plus::seed_from_u64(Local::now().timestamp_subsec_nanos() as u64);
-        let alarm_manager = CURRENT_DEVICE
-            .rtc()
-            .ok()
-            .map(|rtc| AlarmManager::new(rtc.clone()));
+        let alarm_manager = match CURRENT_DEVICE.rtc() {
+            Ok(rtc) => Some(AlarmManager::new(rtc.clone())),
+            Err(e) => {
+                tracing::warn!(error = %e, "RTC init failed, alarm manager unavailable");
+                None
+            }
+        };
         Context {
             fb,
             alarm_manager,

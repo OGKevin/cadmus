@@ -527,15 +527,20 @@ impl TaskManager {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
     fn schedule_time_sync(&mut self, manual: bool, hub: &Sender<Event>) {
         if self.is_running(&TaskId::TimeSync) {
-            tracing::warn!("Time sync task alredy running, not scheduling");
+            tracing::warn!("Time sync task already running, not scheduling");
 
             return;
         }
 
-        if let Ok(time_manager) = crate::device::CURRENT_DEVICE.time_manager() {
-            let task = Box::new(time_sync::TimeSyncTask::new(time_manager, manual));
-            if let Err(e) = self.start(task, hub.clone()) {
-                tracing::warn!(error = %e, "failed to start time sync task");
+        match crate::device::CURRENT_DEVICE.time_manager() {
+            Ok(time_manager) => {
+                let task = Box::new(time_sync::TimeSyncTask::new(time_manager, manual));
+                if let Err(e) = self.start(task, hub.clone()) {
+                    tracing::warn!(error = %e, "failed to start time sync task");
+                }
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "time manager unavailable, cannot sync time");
             }
         }
     }
