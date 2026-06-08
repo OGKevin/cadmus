@@ -4,7 +4,8 @@ pub mod versioned;
 use crate::color::{BLACK, Color};
 use crate::device::CURRENT_DEVICE;
 use crate::fl;
-use crate::frontlight::LightLevels;
+use crate::frontlight::{LightLevel, LightLevels};
+use crate::geolocation::Coordinates;
 use crate::i18n::I18nDisplay;
 use crate::metadata::{SortMethod, TextAlign};
 use crate::unit::mm_to_px;
@@ -257,6 +258,28 @@ pub struct Settings {
     pub sleep_cover: bool,
     pub auto_share: bool,
     pub auto_time: bool,
+    /// Whether frontlight levels should be managed automatically.
+    ///
+    /// When enabled, Cadmus derives brightness and warmth from the current
+    /// time and a known location.
+    pub auto_frontlight: bool,
+    /// The brightness to use after sunset and before sunrise when automatic
+    /// frontlight control is enabled.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auto_frontlight_night_brightness: Option<LightLevel>,
+    /// A user-specified location for automatic frontlight calculations.
+    ///
+    /// When present, this takes precedence over coordinates discovered from
+    /// automatic time syncing.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auto_frontlight_manual_coordinates: Option<Coordinates>,
+    /// The last automatically discovered location for automatic frontlight
+    /// calculations.
+    ///
+    /// This is typically refreshed during automatic time synchronization and
+    /// is used only when no manual coordinates are configured.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auto_frontlight_last_coordinates: Option<Coordinates>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rotation_lock: Option<RotationLock>,
     pub button_scheme: ButtonScheme,
@@ -997,6 +1020,10 @@ impl Default for Settings {
             sleep_cover: true,
             auto_share: false,
             auto_time: false,
+            auto_frontlight: false,
+            auto_frontlight_night_brightness: Some(LightLevel::default()),
+            auto_frontlight_manual_coordinates: None,
+            auto_frontlight_last_coordinates: None,
             rotation_lock: None,
             button_scheme: ButtonScheme::Natural,
             auto_suspend: 30.0,
@@ -1023,6 +1050,16 @@ impl Default for Settings {
             locale: None,
         }
     }
+}
+
+/// Returns the coordinates to use for automatic frontlight calculations.
+///
+/// Manual coordinates take precedence over the last automatically discovered
+/// location.
+pub fn resolve_coordinates(settings: &Settings) -> Option<Coordinates> {
+    settings
+        .auto_frontlight_manual_coordinates
+        .or(settings.auto_frontlight_last_coordinates)
 }
 
 #[cfg(test)]

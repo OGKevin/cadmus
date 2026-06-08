@@ -45,6 +45,11 @@ settings-finished-action-close = Close
 settings-finished-action-goto-next = Go to Next
 
 # Settings - General
+settings-general-auto-frontlight = Automatic Frontlight
+settings-general-auto-frontlight-brightness = Auto Night Brightness
+settings-general-auto-frontlight-brightness-input = Night Brightness (% 0-100)
+settings-general-auto-frontlight-manual-coordinates = Manual Coordinates
+settings-general-auto-frontlight-manual-coordinates-input = lat,lon | coordinates
 settings-general-auto-power-off = Auto Power Off (days)
 settings-general-auto-power-off-input = Auto Power Off (days, 0 = never)
 settings-general-auto-suspend = Auto Suspend (minutes)

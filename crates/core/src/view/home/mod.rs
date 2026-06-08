@@ -2362,6 +2362,18 @@ impl View for Home {
                 }
                 true
             }
+
+            Event::AutoFrontlightCoordinates(coordinates) => {
+                if context
+                    .settings
+                    .auto_frontlight_manual_coordinates
+                    .is_none()
+                {
+                    context.settings.auto_frontlight_last_coordinates = Some(coordinates);
+                    hub.send(Event::AutoFrontlightConfigChanged).ok();
+                }
+                true
+            }
             Event::Reseed => {
                 self.reseed(rq, context);
                 true

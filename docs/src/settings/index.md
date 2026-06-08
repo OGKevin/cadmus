@@ -59,6 +59,56 @@ Automatically synchronize the device time via NTP when WiFi connects. This will 
 auto-time = false
 ```
 
+### `auto-frontlight`
+
+✏️
+
+Automatically adjust the frontlight warmth and brightness based on the sun's position at the device's location.
+
+- During the day warmth is at its minimum.
+- Around sunrise and sunset warmth ramps gradually between zero and full.
+- After sunset brightness is reduced to `auto-frontlight-night-brightness` and warmth stays at its maximum until sunrise.
+
+Coordinates are auto-detected during each time sync (via ipapi.co) and stored in `auto-frontlight-last-coordinates`. Set `auto-frontlight-manual-coordinates` to override the detected location.
+
+```toml
+auto-frontlight = false
+```
+
+### `auto-frontlight-night-brightness`
+
+✏️
+
+Frontlight brightness level (0.0–100.0) applied when the sun is below the horizon.
+
+This setting is optional. When not set, a default of `1.0` is used.
+
+```toml
+auto-frontlight-night-brightness = 10.0
+```
+
+### `auto-frontlight-manual-coordinates`
+
+✏️
+
+GPS coordinates `[latitude, longitude]` to use for sun-position calculations instead of the auto-detected location. Takes priority over `auto-frontlight-last-coordinates`.
+
+This setting is optional.
+
+```toml
+auto-frontlight-manual-coordinates = [51.5074, -0.1278]
+```
+
+### `auto-frontlight-last-coordinates`
+
+GPS coordinates `[latitude, longitude]` last detected during a time sync. Written automatically — do not edit this by hand; set `auto-frontlight-manual-coordinates` to override the location instead.
+
+This setting is optional and managed automatically.
+
+```toml
+# auto-frontlight-last-coordinates = [48.8566, 2.3522]
+```
+
 ### `auto-suspend`
 
 ✏️

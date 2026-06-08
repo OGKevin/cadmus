@@ -7,6 +7,8 @@ use std::sync::mpsc::Sender;
 use std::time::Duration;
 
 use crate::device::CURRENT_DEVICE;
+use crate::geolocation;
+use crate::geolocation::GeoLocation;
 use crate::http::Client as HttpClient;
 use crate::rtc::Rtc;
 use crate::view::{Event, NotificationEvent};
@@ -22,8 +24,14 @@ impl TimeManager {
         TimeManager { rtc }
     }
 
-    pub fn sync(&self, ntp_host: &str, manual: bool, hub: &Sender<Event>) -> Result<(), Error> {
-        if let Err(e) = self.detect_and_set_timezone() {
+    pub fn sync(
+        &self,
+        ntp_host: &str,
+        manual: bool,
+        geolocation: Option<GeoLocation>,
+        hub: &Sender<Event>,
+    ) -> Result<(), Error> {
+        if let Err(e) = self.detect_and_set_timezone(geolocation) {
             if manual {
                 hub.send(Event::Notification(NotificationEvent::Show(crate::fl!(
                     "notification-timezone-detection-failed"
@@ -71,22 +79,19 @@ impl TimeManager {
         }
     }
 
-    fn detect_and_set_timezone(&self) -> Result<chrono_tz::Tz, Error> {
-        let client = HttpClient::new()?;
-        let resp: serde_json::Value = client
-            .get("https://ipapi.co/json/")
-            .timeout(Duration::from_secs(10))
-            .send()?
-            .json()?;
+    fn detect_and_set_timezone(&self, geolocation: Option<GeoLocation>) -> Result<(), Error> {
+        let geo = match geolocation {
+            Some(geo) => geo,
+            None => {
+                let client = HttpClient::new()?;
 
-        let tz = resp["timezone"]
-            .as_str()
-            .ok_or_else(|| anyhow::anyhow!("timezone field missing from ipapi response"))?
-            .parse::<chrono_tz::Tz>()
-            .map_err(|e| anyhow::anyhow!("invalid timezone from ipapi: {e}"))?;
+                geolocation::fetch_geolocation(&client)?
+            }
+        };
 
-        CURRENT_DEVICE.set_system_timezone(tz)?;
-        Ok(tz)
+        CURRENT_DEVICE.set_system_timezone(geo.timezone)?;
+
+        Ok(())
     }
 
     fn query_ntp(&self, host: &str) -> Result<DateTime<Utc>, Error> {

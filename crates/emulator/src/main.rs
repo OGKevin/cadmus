@@ -381,11 +381,19 @@ fn run() -> Result<(), Error> {
 
     if context.settings.frontlight {
         let levels = context.settings.frontlight_levels;
-        context.frontlight.set_intensity(levels.intensity);
-        context.frontlight.set_warmth(levels.warmth);
+        context
+            .frontlight
+            .set_intensity(levels.intensity)
+            .expect("failed to set emulator frontlight intensity");
+        context
+            .frontlight
+            .set_warmth(levels.warmth)
+            .expect("failed to set emulator frontlight warmth");
     } else {
-        context.frontlight.set_warmth(0.0);
-        context.frontlight.set_intensity(0.0);
+        context
+            .frontlight
+            .turn_off()
+            .expect("failed to turn off emulator frontlight");
     }
 
     info!(

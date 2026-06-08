@@ -36,6 +36,8 @@
 //! }
 //! ```
 
+#[cfg(any(feature = "kobo", doc))]
+pub mod auto_frontlight;
 #[cfg(any(all(feature = "test", feature = "kobo"), doc))]
 mod dbus_monitor;
 pub mod dictionary_index;
@@ -98,6 +100,9 @@ pub enum TaskId {
     /// Time synchronization via NTP (kobo builds only).
     #[cfg(any(feature = "kobo", doc))]
     TimeSync,
+    /// Auto frontlight adjustment (kobo builds only).
+    #[cfg(any(feature = "kobo", doc))]
+    AutoFrontlight,
     /// Test-only task for unit tests.
     #[cfg(test)]
     TestTask,
@@ -121,6 +126,8 @@ impl std::fmt::Display for TaskId {
             TaskId::WifiStatusMonitor => write!(f, "wifi_status_monitor"),
             #[cfg(feature = "kobo")]
             TaskId::TimeSync => write!(f, "time_sync"),
+            #[cfg(feature = "kobo")]
+            TaskId::AutoFrontlight => write!(f, "auto_frontlight"),
             #[cfg(test)]
             TaskId::TestTask => write!(f, "test_task"),
             #[cfg(test)]
@@ -275,7 +282,8 @@ impl TaskManager {
     /// [`ShutdownSignal`] for graceful termination.
     ///
     /// Returns an error if a task with the same ID is already running.
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, task, hub), fields(task_id = tracing::field::Empty), ret))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, task, hub), fields(task_id = tracing::field::Empty
+    ), ret))]
     pub fn start(
         &mut self,
         task: Box<dyn BackgroundTask>,
@@ -340,7 +348,8 @@ impl TaskManager {
     /// Stops all running tasks.
     ///
     /// Sends shutdown signals to all tasks and waits for them to finish.
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(task_count = tracing::field::Empty)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(task_count = tracing::field::Empty
+    )))]
     pub fn stop_all(&mut self) {
         let tasks: Vec<_> = self.tasks.drain().collect();
 
@@ -437,6 +446,10 @@ impl TaskManager {
                     }
                 }
             }
+            #[cfg(feature = "kobo")]
+            Event::AutoFrontlightConfigChanged => {
+                self.sync_auto_frontlight(hub, &context.settings);
+            }
             Event::Select(EntryId::SyncTime) => {
                 #[cfg(feature = "kobo")]
                 {
@@ -520,6 +533,28 @@ impl TaskManager {
 
         if let Err(e) = self.start(task, hub.clone()) {
             tracing::warn!(error = %e, "failed to start dictionary_index task");
+        }
+    }
+
+    #[cfg(feature = "kobo")]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
+    fn sync_auto_frontlight(&mut self, hub: &Sender<Event>, settings: &Settings) {
+        if self.is_running(&TaskId::AutoFrontlight) {
+            tracing::debug!("stopping running auto_frontlight task for restart");
+            if let Err(e) = self.stop(&TaskId::AutoFrontlight) {
+                tracing::warn!(error = %e, "failed to stop auto_frontlight task for restart");
+            }
+        }
+
+        if !settings.auto_frontlight {
+            return;
+        }
+
+        self.flush_buffered_events(hub);
+
+        let task = Box::new(auto_frontlight::AutoFrontlightTask);
+        if let Err(e) = self.start(task, hub.clone()) {
+            tracing::warn!(error = %e, "failed to start auto_frontlight task");
         }
     }
 
@@ -635,9 +670,17 @@ pub fn register_startup_tasks(
 ) {
     #[cfg(feature = "kobo")]
     {
-        let task = Box::new(wifi_status_monitor::WifiStatusMonitorTask);
-        if let Err(e) = manager.start(task, hub.clone()) {
-            tracing::warn!(error = %e, "failed to start wifi_status_monitor task");
+        {
+            let task = Box::new(wifi_status_monitor::WifiStatusMonitorTask);
+            if let Err(e) = manager.start(task, hub.clone()) {
+                tracing::warn!(error = %e, "failed to start wifi_status_monitor task");
+            }
+        }
+        if settings.auto_frontlight {
+            let task = Box::new(auto_frontlight::AutoFrontlightTask);
+            if let Err(e) = manager.start(task, hub.clone()) {
+                tracing::warn!(error = %e, "failed to start auto_frontlight task");
+            }
         }
     }
 

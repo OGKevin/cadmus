@@ -1,4 +1,4 @@
-use super::{Frontlight, LightLevels};
+use super::{Frontlight, LightLevel, LightLevels};
 use crate::device::{CURRENT_DEVICE, Model};
 use anyhow::Error;
 use fxhash::FxHashMap;
@@ -61,15 +61,15 @@ lazy_static! {
 }
 
 pub struct NaturalFrontlight {
-    intensity: f32,
-    warmth: f32,
+    intensity: LightLevel,
+    warmth: LightLevel,
     values: FxHashMap<LightColor, File>,
     powers: FxHashMap<LightColor, File>,
     maxima: FxHashMap<LightColor, i16>,
 }
 
 impl NaturalFrontlight {
-    pub fn new(intensity: f32, warmth: f32) -> Result<NaturalFrontlight, Error> {
+    pub fn new(intensity: LightLevel, warmth: LightLevel) -> Result<NaturalFrontlight, Error> {
         let mut maxima = FxHashMap::default();
         let mut values = FxHashMap::default();
         let mut powers = FxHashMap::default();
@@ -98,25 +98,26 @@ impl NaturalFrontlight {
         })
     }
 
-    fn set(&mut self, c: LightColor, percent: f32) {
+    fn set(&mut self, c: LightColor, percent: f32) -> Result<(), Error> {
         let max_value = self.maxima[&c] as f32;
         let value = (percent.clamp(0.0, 100.0) / 100.0 * max_value) as i16;
         let mut file = &self.values[&c];
-        write!(file, "{}", value).unwrap();
+        write!(file, "{}", value)?;
         let mut file = &self.powers[&c];
         let power = if value > 0 {
             FRONTLIGHT_POWER_ON
         } else {
             FRONTLIGHT_POWER_OFF
         };
-        write!(file, "{}", power).unwrap();
+        write!(file, "{}", power)?;
+        Ok(())
     }
 
-    fn update(&mut self, intensity: f32, warmth: f32) {
-        let i = intensity / 100.0;
-        let w = warmth / 100.0;
+    fn update(&mut self, intensity: LightLevel, warmth: LightLevel) -> Result<(), Error> {
+        let i = intensity.as_fraction();
+        let w = warmth.as_fraction();
         let white = 80.0 * i * (1.0 - w).sqrt();
-        self.set(LightColor::White, white);
+        self.set(LightColor::White, white)?;
 
         if self.values.len() == 3 {
             let green = 64.0 * (w * i).sqrt();
@@ -125,27 +126,28 @@ impl NaturalFrontlight {
             } else {
                 green + 20.0 + 7.0 * (1.0 - green / 64.0) + w * 4.0
             };
-            self.set(LightColor::Red, red);
-            self.set(LightColor::Green, green);
+            self.set(LightColor::Red, red)?;
+            self.set(LightColor::Green, green)?;
         } else {
             let orange = 95.0 * (w * i).sqrt();
-            self.set(LightColor::Orange, orange);
+            self.set(LightColor::Orange, orange)?;
         }
 
         self.intensity = intensity;
         self.warmth = warmth;
+        Ok(())
     }
 }
 
 impl Frontlight for NaturalFrontlight {
-    fn set_intensity(&mut self, value: f32) {
+    fn set_intensity(&mut self, value: LightLevel) -> Result<(), Error> {
         let warmth = self.warmth;
-        self.update(value, warmth);
+        self.update(value, warmth)
     }
 
-    fn set_warmth(&mut self, value: f32) {
+    fn set_warmth(&mut self, value: LightLevel) -> Result<(), Error> {
         let intensity = self.intensity;
-        self.update(intensity, value);
+        self.update(intensity, value)
     }
 
     fn levels(&self) -> LightLevels {

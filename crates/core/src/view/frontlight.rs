@@ -26,6 +26,7 @@ pub struct FrontlightWindow {
     id: Id,
     rect: Rectangle,
     children: Vec<Box<dyn View>>,
+    frontlight_levels: LightLevels,
 }
 
 impl FrontlightWindow {
@@ -140,7 +141,7 @@ impl FrontlightWindow {
                         min_y + small_height
                     ],
                     *slider_id,
-                    value,
+                    value.into(),
                     0.0,
                     100.0,
                 );
@@ -158,7 +159,7 @@ impl FrontlightWindow {
                     min_y + small_height
                 ],
                 SliderId::LightIntensity,
-                levels.intensity,
+                levels.intensity.into(),
                 0.0,
                 100.0,
             );
@@ -213,7 +214,12 @@ impl FrontlightWindow {
             children.push(Box::new(presets_list) as Box<dyn View>);
         }
 
-        FrontlightWindow { id, rect, children }
+        FrontlightWindow {
+            id,
+            rect,
+            children,
+            frontlight_levels: levels,
+        }
     }
 
     fn toggle_presets(&mut self, enable: bool, rq: &mut RenderQueue, context: &mut Context) {
@@ -250,24 +256,18 @@ impl FrontlightWindow {
         }
     }
 
-    fn set_frontlight_levels(
-        &mut self,
-        frontlight_levels: LightLevels,
-        rq: &mut RenderQueue,
-        context: &mut Context,
-    ) {
+    fn set_frontlight_levels(&mut self, frontlight_levels: LightLevels, rq: &mut RenderQueue) {
+        self.frontlight_levels = frontlight_levels;
         let LightLevels { intensity, warmth } = frontlight_levels;
-        context.frontlight.set_intensity(intensity);
-        context.frontlight.set_warmth(warmth);
         if CURRENT_DEVICE.has_natural_light() {
             if let Some(slider_intensity) = self.child_mut(3).downcast_mut::<Slider>() {
-                slider_intensity.update(intensity, rq);
+                slider_intensity.update(intensity.into(), rq);
             }
             if let Some(slider_warmth) = self.child_mut(5).downcast_mut::<Slider>() {
-                slider_warmth.update(warmth, rq);
+                slider_warmth.update(warmth.into(), rq);
             }
         } else if let Some(slider_intensity) = self.child_mut(2).downcast_mut::<Slider>() {
-            slider_intensity.update(intensity, rq);
+            slider_intensity.update(intensity.into(), rq);
         }
     }
 
@@ -280,7 +280,8 @@ impl FrontlightWindow {
 }
 
 impl View for FrontlightWindow {
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, _bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, _bus, rq, context), fields(event = ?evt
+    ), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
@@ -291,11 +292,17 @@ impl View for FrontlightWindow {
     ) -> bool {
         match *evt {
             Event::Slider(SliderId::LightIntensity, value, _) => {
-                context.frontlight.set_intensity(value);
+                let mut levels = self.frontlight_levels;
+                levels.intensity = value.into();
+                self.frontlight_levels = levels;
+                hub.send(Event::SetFrontlightLevels(levels)).ok();
                 true
             }
             Event::Slider(SliderId::LightWarmth, value, _) => {
-                context.frontlight.set_warmth(value);
+                let mut levels = self.frontlight_levels;
+                levels.warmth = value.into();
+                self.frontlight_levels = levels;
+                hub.send(Event::SetFrontlightLevels(levels)).ok();
                 true
             }
             Event::Gesture(GestureEvent::Tap(center)) if !self.rect.includes(center) => {
@@ -364,7 +371,8 @@ impl View for FrontlightWindow {
             Event::LoadPreset(index) => {
                 let frontlight_levels =
                     context.settings.frontlight_presets[index].frontlight_levels;
-                self.set_frontlight_levels(frontlight_levels, rq, context);
+                self.set_frontlight_levels(frontlight_levels, rq);
+                hub.send(Event::SetFrontlightLevels(frontlight_levels)).ok();
                 true
             }
             Event::Guess => {
@@ -376,7 +384,9 @@ impl View for FrontlightWindow {
                 if let Some(ref frontlight_levels) =
                     guess_frontlight(lightsensor_level, &context.settings.frontlight_presets)
                 {
-                    self.set_frontlight_levels(*frontlight_levels, rq, context);
+                    self.set_frontlight_levels(*frontlight_levels, rq);
+                    hub.send(Event::SetFrontlightLevels(*frontlight_levels))
+                        .ok();
                 }
                 true
             }
@@ -384,7 +394,8 @@ impl View for FrontlightWindow {
         }
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fb, _fonts, _rect), fields(rect = ?_rect)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fb, _fonts, _rect), fields(rect = ?_rect
+    )))]
     fn render(&self, fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {
         let dpi = CURRENT_DEVICE.dpi;
 

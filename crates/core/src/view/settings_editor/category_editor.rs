@@ -797,6 +797,8 @@ impl CategoryEditor {
             | ViewId::LibraryEditor
             | ViewId::DictionaryDownloadConfirm
             | ViewId::ForceImportConfirm
+            | ViewId::AutoFrontlightBrightnessInput
+            | ViewId::AutoFrontlightManualCoordinatesInput
             | ViewId::RefreshRateByKindEditor => {
                 if let Some(index) = locate_by_id(self, *view_id) {
                     let input_rect = *self.children[index].rect();
@@ -832,7 +834,8 @@ impl CategoryEditor {
 }
 
 impl View for CategoryEditor {
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, _bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, _bus, rq, context), fields(event = ?evt
+    ), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
@@ -934,7 +937,8 @@ impl View for CategoryEditor {
         }
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _fb, _fonts), fields(rect = ?_rect)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _fb, _fonts), fields(rect = ?_rect
+    )))]
     fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut crate::font::Fonts) {
     }
 
@@ -1007,6 +1011,13 @@ mod tests {
         let mut rq = RenderQueue::new();
 
         CategoryEditor::new(rect, Category::Import, &mut rq, context)
+    }
+
+    fn create_test_general_category_editor(context: &mut Context) -> CategoryEditor {
+        let rect = rect![0, 0, 600, 800];
+        let mut rq = RenderQueue::new();
+
+        CategoryEditor::new(rect, Category::General, &mut rq, context)
     }
 
     #[test]
@@ -1550,6 +1561,57 @@ mod tests {
             "Force import confirmation dialog should be removed"
         );
         assert!(!rq.is_empty());
+    }
+
+    #[test]
+    fn test_close_auto_frontlight_named_inputs_removes_overlay_and_clears_focus() {
+        let mut context = create_test_context();
+        let mut editor = create_test_general_category_editor(&mut context);
+
+        for view_id in [
+            ViewId::AutoFrontlightBrightnessInput,
+            ViewId::AutoFrontlightManualCoordinatesInput,
+        ] {
+            let (hub, receiver) = channel();
+            let mut bus = VecDeque::new();
+            let mut rq = RenderQueue::new();
+
+            let handled = editor.handle_event(
+                &Event::OpenNamedInput {
+                    view_id,
+                    label: "Test".to_string(),
+                    max_chars: 16,
+                    initial_text: "1".to_string(),
+                },
+                &hub,
+                &mut bus,
+                &mut rq,
+                &mut context,
+            );
+
+            assert!(handled, "OpenNamedInput event should be handled");
+            assert!(locate_by_id(&editor, view_id).is_some());
+
+            let focus_event = receiver.recv().unwrap();
+            assert!(matches!(focus_event, Event::Focus(Some(id)) if id == view_id));
+            editor.focus = Some(view_id);
+
+            let handled = editor.handle_event(
+                &Event::Close(view_id),
+                &hub,
+                &mut bus,
+                &mut rq,
+                &mut context,
+            );
+
+            assert!(handled, "Close event should be handled");
+            assert!(locate_by_id(&editor, view_id).is_none());
+
+            let focus_event = receiver.recv().unwrap();
+            assert!(matches!(focus_event, Event::Focus(None)));
+            editor.handle_event(&focus_event, &hub, &mut bus, &mut rq, &mut context);
+            assert_eq!(editor.focus, None);
+        }
     }
 
     #[test]

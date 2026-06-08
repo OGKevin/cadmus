@@ -476,6 +476,7 @@ dependencies = [
  "sntpc",
  "sntpc-net-std",
  "sqlx",
+ "sunrise",
  "tempfile",
  "thiserror 2.0.18",
  "tikv-jemallocator",
@@ -4227,6 +4228,15 @@ name = "subtle"
 version = "2.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
+
+[[package]]
+name = "sunrise"
+version = "1.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "08871f1db1390f915b7bb2ab2f1ac7370e8c78667857a15ae5cfea25da3262f2"
+dependencies = [
+ "chrono",
+]
 
 [[package]]
 name = "symbolic-common"

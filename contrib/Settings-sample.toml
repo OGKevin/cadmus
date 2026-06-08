@@ -13,6 +13,16 @@ auto-share = false
 # This will also set the correct timezone, it uses
 # time.cloudflare.com and ipapi.co
 auto-time = false
+# Automatically adjust frontlight warmth based on sun position.
+# Coordinates are auto-detected during time sync (via ipapi.co)
+# unless manually specified below.
+auto-frontlight = false
+# Night brightness level when the sun is down (0.0 to 100.0).
+auto-frontlight-night-brightness = 10
+# Manual GPS coordinates override (latitude, longitude).
+# auto-frontlight-manual-coordinates = [51.5074, -0.1278]
+# Last auto-detected coordinates from time sync (written automatically).
+# auto-frontlight-last-coordinates = [48.8566, 2.3522]
 # Defines how the back and forward buttons are mapped to the
 # *page forward* and *page backward* actions.
 # Possible values: "natural", "inverted".

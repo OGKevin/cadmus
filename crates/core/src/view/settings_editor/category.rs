@@ -1,8 +1,9 @@
 use super::kinds::SettingKind;
 use super::kinds::dictionary::DictionaryInfo;
 use super::kinds::general::{
-    AutoPowerOff, AutoShare, AutoSuspend, AutoTime, ButtonScheme, KeyboardLayout, Locale,
-    SettingsRetention, SleepCover,
+    AutoFrontlight, AutoFrontlightBrightness, AutoFrontlightManualCoordinates, AutoPowerOff,
+    AutoShare, AutoSuspend, AutoTime, ButtonScheme, KeyboardLayout, Locale, SettingsRetention,
+    SleepCover,
 };
 use super::kinds::import::{AllowedKindsSetting, ForceFullImport, ImportSyncMetadata};
 use super::kinds::intermission::{IntermissionPowerOff, IntermissionShare, IntermissionSuspend};
@@ -65,6 +66,9 @@ impl Category {
                 Box::new(Locale),
                 Box::new(AutoShare),
                 Box::new(AutoTime),
+                Box::new(AutoFrontlight),
+                Box::new(AutoFrontlightBrightness),
+                Box::new(AutoFrontlightManualCoordinates),
                 Box::new(AutoSuspend),
                 Box::new(AutoPowerOff),
                 Box::new(ButtonScheme),

@@ -5,6 +5,8 @@ use super::{
 };
 use crate::device::CURRENT_DEVICE;
 use crate::fl;
+use crate::frontlight::LightLevel;
+use crate::geolocation::Coordinates;
 use crate::i18n::I18nDisplay;
 use crate::settings::Settings;
 use crate::view::{Bus, EntryId, EntryKind, Event, ToggleEvent, ViewId};
@@ -417,6 +419,240 @@ impl SettingKind for ButtonScheme {
     }
 }
 
+/// Setting kind for toggling automatic frontlight adjustment.
+///
+/// Changing this setting triggers a re-evaluation of the active frontlight
+/// configuration so the device can immediately react to the new mode.
+pub struct AutoFrontlight;
+
+impl SettingKind for AutoFrontlight {
+    fn identity(&self) -> SettingIdentity {
+        SettingIdentity::AutoFrontlight
+    }
+
+    fn label(&self, _settings: &Settings) -> String {
+        fl!("settings-general-auto-frontlight")
+    }
+
+    fn fetch(&self, settings: &Settings) -> SettingData {
+        SettingData {
+            value: settings.auto_frontlight.to_string(),
+            widget: WidgetKind::Toggle {
+                left_label: fl!("settings-general-toggle-on"),
+                right_label: fl!("settings-general-toggle-off"),
+                enabled: settings.auto_frontlight,
+                tap_event: Event::Toggle(ToggleEvent::Setting(ToggleSettings::AutoFrontlight)),
+            },
+        }
+    }
+
+    fn handle(
+        &self,
+        evt: &Event,
+        settings: &mut Settings,
+        bus: &mut Bus,
+    ) -> (Option<String>, bool) {
+        if let Event::Toggle(ToggleEvent::Setting(ToggleSettings::AutoFrontlight)) = evt {
+            settings.auto_frontlight = !settings.auto_frontlight;
+            bus.push_back(Event::AutoFrontlightConfigChanged);
+            return (Some(settings.auto_frontlight.to_string()), true);
+        }
+        (None, false)
+    }
+}
+
+/// Setting kind for configuring the brightness used while the sun is down.
+///
+/// This value is applied by automatic frontlight mode after sunset and before
+/// sunrise.
+pub struct AutoFrontlightBrightness;
+
+impl SettingKind for AutoFrontlightBrightness {
+    fn identity(&self) -> SettingIdentity {
+        SettingIdentity::AutoFrontlightBrightness
+    }
+
+    fn label(&self, _settings: &Settings) -> String {
+        fl!("settings-general-auto-frontlight-brightness")
+    }
+
+    fn fetch(&self, settings: &Settings) -> SettingData {
+        SettingData {
+            value: self.display_value(settings),
+            widget: WidgetKind::ActionLabel(Event::Select(EntryId::EditAutoFrontlightBrightness)),
+        }
+    }
+
+    fn handle(
+        &self,
+        evt: &Event,
+        settings: &mut Settings,
+        bus: &mut Bus,
+    ) -> (Option<String>, bool) {
+        if let Event::Submit(ViewId::AutoFrontlightBrightnessInput, text) = evt {
+            let display = self.apply_text(text, settings);
+            bus.push_back(Event::AutoFrontlightConfigChanged);
+            return (Some(display), true);
+        }
+
+        (None, false)
+    }
+
+    fn as_input_kind(&self) -> Option<&dyn InputSettingKind> {
+        Some(self)
+    }
+}
+
+impl AutoFrontlightBrightness {
+    fn display_value(&self, settings: &Settings) -> String {
+        settings
+            .auto_frontlight_night_brightness
+            .map(|brightness| brightness.to_string())
+            .unwrap_or_else(|| LightLevel::default().to_string())
+    }
+}
+
+impl InputSettingKind for AutoFrontlightBrightness {
+    fn submit_view_id(&self) -> ViewId {
+        ViewId::AutoFrontlightBrightnessInput
+    }
+
+    fn open_entry_id(&self) -> EntryId {
+        EntryId::EditAutoFrontlightBrightness
+    }
+
+    fn input_label(&self) -> String {
+        fl!("settings-general-auto-frontlight-brightness-input")
+    }
+
+    fn input_max_chars(&self) -> usize {
+        3
+    }
+
+    fn current_text(&self, settings: &Settings) -> String {
+        settings
+            .auto_frontlight_night_brightness
+            .map(|b| b.into())
+            .unwrap_or_else(|| LightLevel::default().into())
+    }
+
+    fn apply_text(&self, text: &str, settings: &mut Settings) -> String {
+        if let Ok(value) = text.trim().parse::<f32>() {
+            settings.auto_frontlight_night_brightness = Some(value.into());
+        }
+        self.display_value(settings)
+    }
+}
+
+/// Setting kind for overriding automatic frontlight coordinates manually.
+///
+/// Users can enter a `latitude, longitude` pair to control which sunrise and
+/// sunset times automatic frontlight should follow.
+pub struct AutoFrontlightManualCoordinates;
+
+impl SettingKind for AutoFrontlightManualCoordinates {
+    fn identity(&self) -> SettingIdentity {
+        SettingIdentity::AutoFrontlightManualCoordinates
+    }
+
+    fn label(&self, _settings: &Settings) -> String {
+        fl!("settings-general-auto-frontlight-manual-coordinates")
+    }
+
+    fn fetch(&self, settings: &Settings) -> SettingData {
+        SettingData {
+            value: self.display_value(settings),
+            widget: WidgetKind::ActionLabel(Event::Select(
+                EntryId::EditAutoFrontlightManualCoordinates,
+            )),
+        }
+    }
+
+    fn handle(
+        &self,
+        evt: &Event,
+        settings: &mut Settings,
+        bus: &mut Bus,
+    ) -> (Option<String>, bool) {
+        if let Event::Submit(ViewId::AutoFrontlightManualCoordinatesInput, text) = evt {
+            let display = self.apply_text(text, settings);
+            bus.push_back(Event::AutoFrontlightConfigChanged);
+            return (Some(display), true);
+        }
+
+        (None, false)
+    }
+
+    fn as_input_kind(&self) -> Option<&dyn InputSettingKind> {
+        Some(self)
+    }
+}
+
+impl AutoFrontlightManualCoordinates {
+    fn display_value(&self, settings: &Settings) -> String {
+        settings
+            .auto_frontlight_manual_coordinates
+            .map(|coordinates| {
+                format!(
+                    "{:.4}, {:.4}",
+                    coordinates.latitude(),
+                    coordinates.longitude()
+                )
+            })
+            .unwrap_or_else(|| fl!("settings-general-not-set"))
+    }
+}
+
+impl InputSettingKind for AutoFrontlightManualCoordinates {
+    fn submit_view_id(&self) -> ViewId {
+        ViewId::AutoFrontlightManualCoordinatesInput
+    }
+
+    fn open_entry_id(&self) -> EntryId {
+        EntryId::EditAutoFrontlightManualCoordinates
+    }
+
+    fn input_label(&self) -> String {
+        fl!("settings-general-auto-frontlight-manual-coordinates-input")
+    }
+
+    fn input_max_chars(&self) -> usize {
+        32
+    }
+
+    fn current_text(&self, settings: &Settings) -> String {
+        settings
+            .auto_frontlight_manual_coordinates
+            .map(|coordinates| coordinates.to_string())
+            .unwrap_or_default()
+    }
+
+    fn apply_text(&self, text: &str, settings: &mut Settings) -> String {
+        let trimmed = text.trim();
+        if trimmed.is_empty() {
+            settings.auto_frontlight_manual_coordinates = None;
+            return self.display_value(settings);
+        }
+
+        let mut parts = trimmed.split(',').map(str::trim);
+        let parsed_coordinates =
+            parts
+                .next()
+                .zip(parts.next())
+                .and_then(|(latitude, longitude)| {
+                    let latitude = latitude.parse::<f64>().ok()?;
+                    let longitude = longitude.parse::<f64>().ok()?;
+                    Coordinates::new(latitude, longitude).ok()
+                });
+
+        if parsed_coordinates.is_some() && parts.next().is_none() {
+            settings.auto_frontlight_manual_coordinates = parsed_coordinates;
+        }
+
+        self.display_value(settings)
+    }
+}
+
 /// Settings retention count setting
 pub struct SettingsRetention;
 
@@ -711,6 +947,145 @@ mod tests {
             let result = setting.handle(&Event::Select(EntryId::About), &mut settings, &mut bus);
 
             assert!(result.0.is_none());
+        }
+    }
+
+    mod auto_frontlight {
+        use super::*;
+
+        #[test]
+        fn brightness_apply_text_parses_and_updates() {
+            let setting = AutoFrontlightBrightness;
+            let mut settings = Settings::default();
+            let mut bus: Bus = VecDeque::new();
+
+            let display = setting.apply_text("25", &mut settings);
+            let result = setting.handle(
+                &Event::Submit(ViewId::AutoFrontlightBrightnessInput, "25".to_string()),
+                &mut settings,
+                &mut bus,
+            );
+
+            assert_eq!(display, "25%");
+            assert_eq!(settings.auto_frontlight_night_brightness, Some(25.0.into()));
+            assert_eq!(result, (Some("25%".to_string()), true));
+            assert!(matches!(
+                bus.pop_front(),
+                Some(Event::AutoFrontlightConfigChanged)
+            ));
+        }
+
+        #[test]
+        fn brightness_apply_text_ignores_invalid_input() {
+            let setting = AutoFrontlightBrightness;
+            let mut settings = Settings {
+                auto_frontlight_night_brightness: Some(10.0.into()),
+                ..Default::default()
+            };
+            let mut bus: Bus = VecDeque::new();
+
+            let display = setting.apply_text("invalid", &mut settings);
+            let result = setting.handle(
+                &Event::Submit(ViewId::AutoFrontlightBrightnessInput, "invalid".to_string()),
+                &mut settings,
+                &mut bus,
+            );
+
+            assert_eq!(display, "10%");
+            assert_eq!(settings.auto_frontlight_night_brightness, Some(10.0.into()));
+            assert_eq!(result, (Some("10%".to_string()), true));
+            assert!(matches!(
+                bus.pop_front(),
+                Some(Event::AutoFrontlightConfigChanged)
+            ));
+        }
+
+        #[test]
+        fn manual_coordinates_apply_text_parses_and_updates() {
+            let setting = AutoFrontlightManualCoordinates;
+            let mut settings = Settings::default();
+            let mut bus: Bus = VecDeque::new();
+
+            let display = setting.apply_text("51.5074, -0.1278", &mut settings);
+            let result = setting.handle(
+                &Event::Submit(
+                    ViewId::AutoFrontlightManualCoordinatesInput,
+                    "51.5074, -0.1278".to_string(),
+                ),
+                &mut settings,
+                &mut bus,
+            );
+
+            assert_eq!(display, "51.5074, -0.1278");
+            assert_eq!(
+                settings.auto_frontlight_manual_coordinates,
+                Some(Coordinates::new(51.5074, -0.1278).unwrap())
+            );
+            assert_eq!(result, (Some("51.5074, -0.1278".to_string()), true));
+            assert!(matches!(
+                bus.pop_front(),
+                Some(Event::AutoFrontlightConfigChanged)
+            ));
+        }
+
+        #[test]
+        fn manual_coordinates_apply_text_clears_on_empty_input() {
+            let setting = AutoFrontlightManualCoordinates;
+            let mut settings = Settings {
+                auto_frontlight_manual_coordinates: Some(
+                    Coordinates::new(51.5074, -0.1278).unwrap(),
+                ),
+                ..Default::default()
+            };
+            let mut bus: Bus = VecDeque::new();
+
+            let display = setting.apply_text("", &mut settings);
+            let result = setting.handle(
+                &Event::Submit(ViewId::AutoFrontlightManualCoordinatesInput, "".to_string()),
+                &mut settings,
+                &mut bus,
+            );
+
+            assert_eq!(display, "Not set");
+            assert_eq!(settings.auto_frontlight_manual_coordinates, None);
+            assert_eq!(result, (Some("Not set".to_string()), true));
+            assert!(matches!(
+                bus.pop_front(),
+                Some(Event::AutoFrontlightConfigChanged)
+            ));
+        }
+
+        #[test]
+        fn manual_coordinates_apply_text_ignores_invalid_input() {
+            let setting = AutoFrontlightManualCoordinates;
+            let mut settings = Settings {
+                auto_frontlight_manual_coordinates: Some(
+                    Coordinates::new(51.5074, -0.1278).unwrap(),
+                ),
+                ..Default::default()
+            };
+            let mut bus: Bus = VecDeque::new();
+
+            let display = setting.apply_text("invalid", &mut settings);
+            let result = setting.handle(
+                &Event::Submit(
+                    ViewId::AutoFrontlightManualCoordinatesInput,
+                    "invalid".to_string(),
+                ),
+                &mut settings,
+                &mut bus,
+            );
+
+            assert_eq!(display, "51.5074, -0.1278");
+            assert_eq!(
+                settings.auto_frontlight_manual_coordinates,
+                Some(Coordinates::new(51.5074, -0.1278).unwrap())
+            );
+            assert_eq!(result, (Some("51.5074, -0.1278".to_string()), true));
+            assert!(matches!(
+                bus.pop_front(),
+                Some(Event::AutoFrontlightConfigChanged)
+            ));
         }
     }
 

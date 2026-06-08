@@ -37,6 +37,8 @@ pub enum ToggleSettings {
     AutoShare,
     /// Auto time sync enable/disable setting
     AutoTime,
+    /// Auto frontlight adjustment enable/disable setting
+    AutoFrontlight,
     /// Button scheme selection (natural or inverted)
     ButtonScheme,
     /// Logging enabled setting

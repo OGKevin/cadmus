@@ -4032,8 +4032,13 @@ impl View for Reader {
                                     &context.settings.frontlight_presets,
                                 ) {
                                     let LightLevels { intensity, warmth } = *frontlight_levels;
-                                    context.frontlight.set_intensity(intensity);
-                                    context.frontlight.set_warmth(warmth);
+                                    if let Err(error) = context.frontlight.set_intensity(intensity)
+                                    {
+                                        tracing::error!(error = %error, "failed to set frontlight intensity");
+                                    }
+                                    if let Err(error) = context.frontlight.set_warmth(warmth) {
+                                        tracing::error!(error = %error, "failed to set frontlight warmth");
+                                    }
                                 }
                             }
                         } else {

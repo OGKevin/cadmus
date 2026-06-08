@@ -1,4 +1,4 @@
-use super::{Frontlight, LightLevels};
+use super::{Frontlight, LightLevel, LightLevels};
 use crate::device::CURRENT_DEVICE;
 use anyhow::Error;
 use std::fs::File;
@@ -16,14 +16,14 @@ const FRONTLIGHT_ORANGE_B: &str = "/sys/class/backlight/lm3630a_led/color";
 const FRONTLIGHT_ORANGE_C: &str = "/sys/class/leds/aw99703-bl_FL1/color";
 
 pub struct PremixedFrontlight {
-    intensity: f32,
-    warmth: f32,
+    intensity: LightLevel,
+    warmth: LightLevel,
     white: File,
     orange: File,
 }
 
 impl PremixedFrontlight {
-    pub fn new(intensity: f32, warmth: f32) -> Result<PremixedFrontlight, Error> {
+    pub fn new(intensity: LightLevel, warmth: LightLevel) -> Result<PremixedFrontlight, Error> {
         let white = OpenOptions::new().write(true).open(FRONTLIGHT_WHITE)?;
         let orange_path = if Path::new(FRONTLIGHT_ORANGE_C).exists() {
             FRONTLIGHT_ORANGE_C
@@ -43,19 +43,20 @@ impl PremixedFrontlight {
 }
 
 impl Frontlight for PremixedFrontlight {
-    fn set_intensity(&mut self, intensity: f32) {
-        let white = intensity.round() as i16;
-        write!(self.white, "{}", white).unwrap();
+    fn set_intensity(&mut self, intensity: LightLevel) -> Result<(), Error> {
+        write!(self.white, "{}", i16::from(intensity))?;
         self.intensity = intensity;
+        Ok(())
     }
 
-    fn set_warmth(&mut self, warmth: f32) {
-        let mut orange = (warmth / 10.0).round() as i16;
+    fn set_warmth(&mut self, warmth: LightLevel) -> Result<(), Error> {
         if CURRENT_DEVICE.mark() != 8 {
-            orange = 10 - orange;
+            write!(self.orange, "{}", warmth.as_10_base_inverted())?;
+        } else {
+            write!(self.orange, "{}", warmth.as_10_base())?;
         }
-        write!(self.orange, "{}", orange).unwrap();
         self.warmth = warmth;
+        Ok(())
     }
 
     fn levels(&self) -> LightLevels {

@@ -198,11 +198,7 @@ fn resume(
     debug!(task = ?id, "resume called");
     if id == TaskId::Suspend {
         tasks.retain(|task| task.id != TaskId::Suspend);
-        if context.settings.frontlight {
-            let levels = context.settings.frontlight_levels;
-            context.frontlight.set_warmth(levels.warmth);
-            context.frontlight.set_intensity(levels.intensity);
-        }
+        context.set_frontlight(context.settings.frontlight);
         if context.settings.wifi {
             if let Ok(wifi) = CURRENT_DEVICE.wifi_manager() {
                 thread::spawn(move || {
@@ -367,9 +363,7 @@ fn prepare_share_for_usb(
     context.database.close();
 
     if context.settings.frontlight {
-        context.settings.frontlight_levels = context.frontlight.levels();
-        context.frontlight.set_intensity(0.0);
-        context.frontlight.set_warmth(0.0);
+        context.set_frontlight(false);
     }
     #[cfg(not(feature = "test"))]
     if context.settings.wifi {
@@ -724,14 +718,7 @@ pub fn run() -> Result<(), Error> {
         }
     }
 
-    if context.settings.frontlight {
-        let levels = context.settings.frontlight_levels;
-        context.frontlight.set_warmth(levels.warmth);
-        context.frontlight.set_intensity(levels.intensity);
-    } else {
-        context.frontlight.set_intensity(0.0);
-        context.frontlight.set_warmth(0.0);
-    }
+    context.set_frontlight(context.settings.frontlight);
 
     let mut tasks: Vec<Task> = Vec::new();
     let mut background_tasks = TaskManager::new();
@@ -1106,8 +1093,9 @@ pub fn run() -> Result<(), Error> {
 
                 if context.settings.frontlight {
                     context.settings.frontlight_levels = context.frontlight.levels();
-                    context.frontlight.set_intensity(0.0);
-                    context.frontlight.set_warmth(0.0);
+                    if let Err(error) = context.frontlight.turn_off() {
+                        tracing::error!(error = %error, "failed to turn off frontlight for suspend");
+                    }
                 }
                 if context.settings.wifi {
                     if let Ok(wifi) = CURRENT_DEVICE.wifi_manager() {
@@ -1323,6 +1311,57 @@ pub fn run() -> Result<(), Error> {
                     &mut rq,
                     &mut context,
                 );
+            }
+            Event::SetFrontlightLevels(levels) => {
+                #[cfg(feature = "kobo")]
+                if let Err(e) = background_tasks.stop(&cadmus_core::task::TaskId::AutoFrontlight)
+                    && !matches!(
+                        e,
+                        cadmus_core::task::TaskError::NotRunning(
+                            cadmus_core::task::TaskId::AutoFrontlight
+                        )
+                    )
+                {
+                    tracing::warn!(error = %e, "failed to stop auto_frontlight task after manual adjustment");
+                }
+
+                if let Err(error) = context.frontlight.set_intensity(levels.intensity) {
+                    tracing::error!(error = %error, "failed to set frontlight intensity");
+                }
+                if let Err(error) = context.frontlight.set_warmth(levels.warmth) {
+                    tracing::error!(error = %error, "failed to set frontlight warmth");
+                }
+                context.settings.frontlight_levels = levels;
+            }
+            // TODO(OGKevin): once https://github.com/OGKevin/cadmus/issues/582 is done
+            //                this shall be refactored accordingly.
+            Event::UpdateAutoFrontlight => {
+                if context.settings.auto_frontlight && context.settings.frontlight {
+                    if let Some(coords) =
+                        cadmus_core::settings::resolve_coordinates(&context.settings)
+                    {
+                        let night_brightness = context
+                            .settings
+                            .auto_frontlight_night_brightness
+                            .unwrap_or_default();
+                        let current_intensity = context.frontlight.levels().intensity;
+                        let levels = cadmus_core::frontlight::auto::compute_auto_frontlight_levels(
+                            Local::now(),
+                            coords,
+                            night_brightness,
+                            current_intensity,
+                        );
+                        if let Err(error) = context.frontlight.set_intensity(levels.intensity) {
+                            tracing::error!(error = %error, "failed to set auto frontlight intensity");
+                        }
+                        if let Err(error) = context.frontlight.set_warmth(levels.warmth) {
+                            tracing::error!(error = %error, "failed to set auto frontlight warmth");
+                        }
+                        context.settings.frontlight_levels = levels;
+                    } else {
+                        tracing::debug!("no coordinates available for auto-frontlight");
+                    }
+                }
             }
             Event::Open(info) => {
                 let rotation = context.display.rotation;

@@ -42,6 +42,7 @@ pub struct Context {
     pub dictionaries: BTreeMap<String, Dictionary>,
     pub keyboard_layouts: BTreeMap<String, Layout>,
     pub input_history: FxHashMap<ViewId, VecDeque<String>>,
+    // TODO(OGKevin): this shall be on the device struct, instead of on context
     pub frontlight: Box<dyn Frontlight>,
     pub battery: Box<dyn Battery>,
     pub lightsensor: Box<dyn LightSensor>,
@@ -209,17 +210,46 @@ impl Context {
         }
     }
 
+    /// Enables or disables the device frontlight and keeps the persisted
+    /// frontlight settings in sync.
+    ///
+    /// When automatic frontlight is enabled and coordinates are available,
+    /// turning the light on recomputes the effective levels for the current
+    /// time before applying them.
     pub fn set_frontlight(&mut self, enable: bool) {
         self.settings.frontlight = enable;
 
         if enable {
-            let levels = self.settings.frontlight_levels;
-            self.frontlight.set_warmth(levels.warmth);
-            self.frontlight.set_intensity(levels.intensity);
+            let levels = if self.settings.auto_frontlight {
+                if let Some(coords) = crate::settings::resolve_coordinates(&self.settings) {
+                    let night_brightness = self
+                        .settings
+                        .auto_frontlight_night_brightness
+                        .unwrap_or_default();
+                    crate::frontlight::auto::compute_auto_frontlight_levels(
+                        Local::now(),
+                        coords,
+                        night_brightness,
+                        self.settings.frontlight_levels.intensity,
+                    )
+                } else {
+                    self.settings.frontlight_levels
+                }
+            } else {
+                self.settings.frontlight_levels
+            };
+            if let Err(error) = self.frontlight.set_warmth(levels.warmth) {
+                tracing::error!(error = %error, "failed to set frontlight warmth");
+            }
+            if let Err(error) = self.frontlight.set_intensity(levels.intensity) {
+                tracing::error!(error = %error, "failed to set frontlight intensity");
+            }
+            self.settings.frontlight_levels = levels;
         } else {
             self.settings.frontlight_levels = self.frontlight.levels();
-            self.frontlight.set_intensity(0.0);
-            self.frontlight.set_warmth(0.0);
+            if let Err(error) = self.frontlight.turn_off() {
+                tracing::error!(error = %error, "failed to turn off frontlight");
+            }
         }
     }
 }

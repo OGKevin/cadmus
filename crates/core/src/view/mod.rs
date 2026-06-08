@@ -64,6 +64,7 @@ use crate::context::Context;
 use crate::document::{Location, TextLocation};
 use crate::font::Fonts;
 use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::frontlight::LightLevels;
 use crate::geom::{Boundary, CycleDir, LinearDir, Rectangle};
 use crate::gesture::GestureEvent;
 use crate::input::{DeviceEvent, FingerStatus};
@@ -487,6 +488,8 @@ pub enum Event {
     ClockTick,
     BatteryTick,
     ToggleFrontlight,
+    SetFrontlightLevels(LightLevels),
+    UpdateAutoFrontlight,
     Load(PathBuf),
     LoadPreset(usize),
     Scroll(i32),
@@ -506,6 +509,8 @@ pub enum Event {
     Quit,
     WakeUp,
     Hold(EntryId),
+    AutoFrontlightCoordinates(crate::geolocation::Coordinates),
+    AutoFrontlightConfigChanged,
     /// The file chooser was closed.
     ///  The `Option<PathBuf>` contains the selected path, if any.
     FileChooserClosed(Option<PathBuf>),
@@ -638,6 +643,8 @@ pub enum ViewId {
     LibraryRenameInput,
     AutoSuspendInput,
     AutoPowerOffInput,
+    AutoFrontlightBrightnessInput,
+    AutoFrontlightManualCoordinatesInput,
     SettingsRetentionInput,
     IntermissionSuspendInput,
     IntermissionPowerOffInput,
@@ -823,6 +830,8 @@ pub enum EntryId {
     ToggleAutoShare,
     EditAutoSuspend,
     EditAutoPowerOff,
+    EditAutoFrontlightBrightness,
+    EditAutoFrontlightManualCoordinates,
     EditSettingsRetention,
     SetLogLevel(tracing::Level),
     EditOtlpEndpoint,

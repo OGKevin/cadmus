@@ -17,6 +17,7 @@
 - [Library](library/index.md)
   - [Importing](library/importing.md)
 - [Automatic Time Syncing](time-sync.md)
+- [Automatic Frontlight](auto-frontlight.md)
 - [Troubleshooting](troubleshooting/index.md)
 
 ---

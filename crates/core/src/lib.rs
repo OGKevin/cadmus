@@ -16,6 +16,7 @@ pub mod document;
 pub mod font;
 pub mod framebuffer;
 pub mod frontlight;
+pub mod geolocation;
 pub mod gesture;
 pub mod github;
 pub mod helpers;
