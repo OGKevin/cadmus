@@ -1,8 +1,8 @@
 # MuPDF Patches for Cadmus
 
 This directory contains the upstream MuPDF source tree (currently 1.27.0) plus
-Cadmus-specific patches. The patches are applied by `cargo xtask setup-native`
-and by the Kobo build scripts.
+Cadmus-specific patches. The patches are applied automatically by the
+`build-deps` crate's `build.rs` during compilation.
 
 ## Patch overview
 

@@ -9,7 +9,7 @@ lives in the `crates/build-deps` crate.
 ## Build order
 
 Libraries are built in dependency order as defined by `LIBRARY_NAMES` in
-`build-deps/src/versions.rs`. A library later in the list may link against
+`crates/build-deps/src/versions.rs`. A library later in the list may link against
 libraries earlier in the list. Respect this ordering when adding new entries.
 
 ## Per-library layout
@@ -58,7 +58,7 @@ library:
 1. Add the submodule under `thirdparty/<name>` and pin it to a release branch
    or tag in `.gitmodules`.
 2. Add build logic in `crates/build-deps/src/build/kobo/recipes.rs`.
-3. Add the library name to `LIBRARY_NAMES` in `build-deps/src/versions.rs`,
+3. Add the library name to `LIBRARY_NAMES` in `crates/build-deps/src/versions.rs`,
    respecting dependency order.
 
 Renovate's `git-submodules` manager will automatically track the new
