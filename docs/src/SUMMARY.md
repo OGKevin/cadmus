@@ -16,6 +16,7 @@
     - [Dictionaries](ui/settings/dictionaries.md)
 - [Library](library/index.md)
   - [Importing](library/importing.md)
+- [Automatic Time Syncing](time-sync.md)
 - [Troubleshooting](troubleshooting/index.md)
 
 ---
