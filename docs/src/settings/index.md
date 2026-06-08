@@ -49,6 +49,16 @@ Automatically enter shared mode when connected to a computer, skipping the
 auto-share = false
 ```
 
+### `auto-time`
+
+✏️
+
+Automatically synchronize the device time via NTP when WiFi connects. This will also set the correct timezone. Uses time.cloudflare.com and ipapi.co.
+
+```toml
+auto-time = false
+```
+
 ### `auto-suspend`
 
 ✏️
