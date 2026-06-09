@@ -45,19 +45,13 @@ pub fn run(args: SetupArgs) -> Result<()> {
 
     build_deps::ensure_submodules(&root).context("failed to initialise git submodules")?;
 
-    let target = args
-        .target
-        .unwrap_or_else(|| guess_host_triple());
+    let target = args.target.unwrap_or_else(|| guess_host_triple());
 
-    let artifacts =
-        sqlite::ensure_sqlite(&root, &target).context("failed to build sqlite")?;
+    let artifacts = sqlite::ensure_sqlite(&root, &target).context("failed to build sqlite")?;
 
     println!();
     println!("SQLite artifacts ready. Set the following env vars before cargo build:");
-    println!(
-        "  export SQLITE3_LIB_DIR={}",
-        artifacts.lib_dir.display()
-    );
+    println!("  export SQLITE3_LIB_DIR={}", artifacts.lib_dir.display());
     println!(
         "  export SQLITE3_INCLUDE_DIR={}",
         artifacts.include_dir.display()
