@@ -34,6 +34,7 @@
 pub mod build;
 pub mod cmd;
 pub mod markers;
+pub mod utils;
 pub mod versions;
 
 use std::path::Path;
