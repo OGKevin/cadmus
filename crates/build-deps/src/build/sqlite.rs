@@ -151,7 +151,11 @@ fn verify_version(src_dir: &Path) -> Result<()> {
 
 /// Run `./configure --enable-update-limit` in the build directory.
 fn configure(build_dir: &Path, is_cross: bool) -> Result<()> {
-    let mut args = vec!["--enable-update-limit", "--disable-tcl", "--disable-readline"];
+    let mut args = vec![
+        "--enable-update-limit",
+        "--disable-tcl",
+        "--disable-readline",
+    ];
     if is_cross {
         args.push("--host=arm-linux-gnueabihf");
     }
@@ -203,13 +207,8 @@ fn compile_amalgamation(
     }
     cmd::run(cc, &compile_args, build_dir, &[]).context("failed to compile sqlite3.c")?;
 
-    cmd::run(
-        ar,
-        &["rcs", "libsqlite3.a", "sqlite3.o"],
-        build_dir,
-        &[],
-    )
-    .context("failed to archive libsqlite3.a")?;
+    cmd::run(ar, &["rcs", "libsqlite3.a", "sqlite3.o"], build_dir, &[])
+        .context("failed to archive libsqlite3.a")?;
 
     // Move artefacts into the standard layout.
     std::fs::copy(build_dir.join("libsqlite3.a"), lib_dir.join("libsqlite3.a"))
