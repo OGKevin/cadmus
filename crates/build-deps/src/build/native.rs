@@ -12,9 +12,10 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 
-use crate::build::{kobo, mupdf};
+use crate::build::mupdf;
 use crate::cmd;
 use crate::markers;
+use crate::utils;
 use crate::versions::MUPDF_VERSION;
 
 /// Default Cargo target triple when `TARGET` is unset (build script context
@@ -80,7 +81,7 @@ pub fn ensure_native_artifacts(root: &Path) -> Result<NativeArtifacts> {
         build_libwebp_native(root)?;
 
         if !mupdf_build.exists() {
-            kobo::cp_r(&mupdf_src, &mupdf_build).context("failed to copy mupdf source")?;
+            utils::cp_r(&mupdf_src, &mupdf_build).context("failed to copy mupdf source")?;
         }
 
         mupdf::apply_webp_patches_if_needed(&mupdf_build, root)
@@ -151,7 +152,7 @@ pub fn build_libwebp_native(root: &Path) -> Result<()> {
 
     let src_dir = root.join("thirdparty/libwebp");
     if !libwebp_dir.join("configure").exists() {
-        kobo::cp_r(&src_dir, &libwebp_dir)?;
+        utils::cp_r(&src_dir, &libwebp_dir)?;
     }
 
     cmd::run("make", &["distclean"], &libwebp_dir, &[]).ok();
@@ -351,7 +352,7 @@ pub fn build_mupdf_native(root: &Path) -> Result<()> {
 
     let src_dir = root.join("thirdparty/mupdf");
     if !mupdf_dir.exists() {
-        kobo::cp_r(&src_dir, &mupdf_dir)?;
+        utils::cp_r(&src_dir, &mupdf_dir)?;
     }
 
     println!("Building MuPDF for native development...");

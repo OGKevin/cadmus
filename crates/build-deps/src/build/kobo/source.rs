@@ -15,17 +15,18 @@ use anyhow::{Context, Result};
 
 use crate::build::mupdf;
 use crate::cmd;
+use crate::utils;
 
 /// Copy a library's source tree into `build_dir` and overlay any
 /// build scripts kept under `build-scripts/<lib>/` (typically
 /// `kobo.patch`, `kobo-options.txt`, etc.).
 ///
 /// Skips git metadata, `build/`, `objs/` and `autom4te.cache/` via
-/// [`super::cp_r`].
+/// [`utils::cp_r`].
 pub fn copy_source(src_dir: &Path, build_dir: &Path, name: &str, root: &Path) -> Result<()> {
     println!("Copying {name} source...");
 
-    super::cp_r(src_dir, build_dir)?;
+    utils::cp_r(src_dir, build_dir)?;
 
     let scripts_dir = root.join("build-scripts").join(name);
     if scripts_dir.exists() {
