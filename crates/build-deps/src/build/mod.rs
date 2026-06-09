@@ -20,3 +20,4 @@ pub mod kobo;
 pub mod mupdf;
 pub mod mupdf_wrapper;
 pub mod native;
+pub mod sqlite;

@@ -105,7 +105,7 @@ jobs:
       - name: Install apt packages
         uses: awalsh128/cache-apt-pkgs-action@acb598e5ddbc6f68a970c5da0688d2f3a9f04d05
         with:
-          packages: git wget curl pkg-config gcc g++ make cmake meson ninja-build autoconf automake libtool gperf python3 zlib1g-dev libbz2-dev libpng-dev libjpeg-dev libopenjp2-7-dev libjbig2dec0-dev libgumbo-dev libfreetype6-dev libharfbuzz-dev libdjvulibre-dev libsdl2-dev
+          packages: git wget curl pkg-config gcc g++ make cmake meson ninja-build autoconf automake libtool gperf python3 tcl zlib1g-dev libbz2-dev libpng-dev libjpeg-dev libopenjp2-7-dev libjbig2dec0-dev libgumbo-dev libfreetype6-dev libharfbuzz-dev libdjvulibre-dev libsdl2-dev
           version: 1.0
       - name: Cache Linaro toolchain
         id: cache-linaro
@@ -155,9 +155,19 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: cargo xtask download-assets
+      - name: Build SQLite from source
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: cargo xtask setup
       - name: Warmup build (native)
         if: steps.cache.outputs.cache-hit != 'true'
         run: cargo check --workspace --all-features --all-targets
+        env:
+          SQLITE3_LIB_DIR: target/cadmus-build-deps/x86_64-unknown-linux-gnu/sqlite/lib
+          SQLITE3_INCLUDE_DIR: target/cadmus-build-deps/x86_64-unknown-linux-gnu/sqlite/include
+          SQLITE3_STATIC: "1"
+      - name: Build SQLite from source (Kobo)
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: cargo xtask setup --target arm-unknown-linux-gnueabihf
       - name: Warmup build (Kobo release)
         if: steps.cache.outputs.cache-hit != 'true'
         run: cargo build --release --target arm-unknown-linux-gnueabihf -p cadmus
@@ -199,6 +209,10 @@ jobs:
           slug="${{ matrix.features }}"
           slug="${slug:-default}"
           cargo xtask clippy --features "${{ matrix.label }}" --save-json "clippy-json/${slug}.json"
+        env:
+          SQLITE3_LIB_DIR: target/cadmus-build-deps/x86_64-unknown-linux-gnu/sqlite/lib
+          SQLITE3_INCLUDE_DIR: target/cadmus-build-deps/x86_64-unknown-linux-gnu/sqlite/include
+          SQLITE3_STATIC: "1"
 
       - name: Upload clippy JSON artifact
         if: github.event_name == 'pull_request'
@@ -278,7 +292,7 @@ jobs:
         if: runner.os == 'Linux'
         uses: awalsh128/cache-apt-pkgs-action@acb598e5ddbc6f68a970c5da0688d2f3a9f04d05
         with:
-          packages: git wget curl pkg-config gcc g++ make cmake meson ninja-build autoconf automake libtool gperf python3 zlib1g-dev libbz2-dev libpng-dev libjpeg-dev libopenjp2-7-dev libjbig2dec0-dev libgumbo-dev libfreetype6-dev libharfbuzz-dev libdjvulibre-dev libsdl2-dev
+          packages: git wget curl pkg-config gcc g++ make cmake meson ninja-build autoconf automake libtool gperf python3 tcl zlib1g-dev libbz2-dev libpng-dev libjpeg-dev libopenjp2-7-dev libjbig2dec0-dev libgumbo-dev libfreetype6-dev libharfbuzz-dev libdjvulibre-dev libsdl2-dev
           version: 1.0
       - name: Cache Homebrew packages (macOS)
         if: runner.os == 'macOS'
@@ -311,6 +325,10 @@ jobs:
 
       - name: Run cargo test (${{ matrix.label }})
         run: cargo xtask test --features "${{ matrix.label }}"
+        env:
+          SQLITE3_LIB_DIR: target/cadmus-build-deps/x86_64-unknown-linux-gnu/sqlite/lib
+          SQLITE3_INCLUDE_DIR: target/cadmus-build-deps/x86_64-unknown-linux-gnu/sqlite/include
+          SQLITE3_STATIC: "1"
 
   build-kobo:
     needs: [cache-warmup, build-docs-epub]
