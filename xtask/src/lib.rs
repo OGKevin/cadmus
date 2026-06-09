@@ -28,6 +28,7 @@
 //! | [`download-assets`](tasks::download_assets) | Download static asset dirs from the latest release |
 //! | [`dist`](tasks::dist) | Assemble the Kobo distribution directory |
 //! | [`bundle`](tasks::bundle) | Package a `KoboRoot.tgz` ready for device installation |
+//! | [`setup`](tasks::setup) | Build thirdparty deps (SQLite) needed before `cargo build` |
 //! | [`ci`](tasks::ci) | CI-specific setup tasks (e.g. `install-doc-tools`) |
 //!
 //! ## Design
@@ -46,7 +47,8 @@ pub use clap::Parser;
 pub use tasks::{
     bench::BenchArgs, build_kobo::BuildKoboArgs, bundle::BundleArgs, ci::CiArgs,
     clippy::ClippyArgs, dist::DistArgs, docs::DocsArgs, fmt::FmtArgs,
-    install_importer::InstallImporterArgs, run_emulator::RunEmulatorArgs, test::TestArgs,
+    install_importer::InstallImporterArgs, run_emulator::RunEmulatorArgs, setup::SetupArgs,
+    test::TestArgs,
 };
 
 /// Cadmus build automation.
@@ -83,6 +85,8 @@ pub enum Command {
     Dist(DistArgs),
     /// Package a KoboRoot.tgz ready for device installation.
     Bundle(BundleArgs),
+    /// Build thirdparty deps (SQLite) that must exist before `cargo build`.
+    Setup(SetupArgs),
     /// CI-specific setup tasks (install-doc-tools, etc.).
     Ci(CiArgs),
 }
@@ -106,6 +110,7 @@ pub fn run() -> Result<()> {
         Command::DownloadAssets => tasks::download_assets::run(),
         Command::Dist(args) => tasks::dist::run(args),
         Command::Bundle(args) => tasks::bundle::run(args),
+        Command::Setup(args) => tasks::setup::run(args),
         Command::Ci(args) => tasks::ci::run(args),
     }
 }

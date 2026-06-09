@@ -282,6 +282,7 @@ in
     pkgs.libtool
     pkgs.gperf
     pkgs.python3
+    pkgs.tcl
 
     # Libraries for native builds (emulator/tests)
     pkgs.djvulibre

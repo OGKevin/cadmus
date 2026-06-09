@@ -9,6 +9,8 @@
 //!
 //! 1. Verify the Linaro ARM toolchain (`arm-linux-gnueabihf-gcc`)
 //!    is on `PATH`.
+//! 2. Build SQLite from source with UDL support for the ARM target
+//!    (placed in `target/cadmus-build-deps/arm-unknown-linux-gnueabihf/sqlite/`).
 //!
 //! Git submodules are not initialised up-front here: the Rust build
 //! script clones them lazily, only when the cached Kobo build
@@ -18,9 +20,10 @@
 //!
 //! The Kobo build is only available on Linux and macOS hosts.
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use clap::Args;
 
+use build_deps::build::sqlite;
 use build_deps::versions::CROSS_ENV;
 
 use super::util::{cmd, workspace};
@@ -56,6 +59,10 @@ pub fn run(args: BuildKoboArgs) -> Result<()> {
     let root = workspace::root()?;
 
     ensure_linaro_toolchain()?;
+
+    build_deps::ensure_submodules(&root).context("failed to initialise git submodules")?;
+    sqlite::ensure_sqlite(&root, "arm-unknown-linux-gnueabihf")
+        .context("failed to build SQLite for Kobo")?;
 
     cargo_build_kobo(&root, args.features.as_deref())?;
 

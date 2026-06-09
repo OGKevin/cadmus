@@ -6,6 +6,12 @@
 //! that the build code needs to know about at run time are kept
 //! here.
 
+/// SQLite version expected in `thirdparty/sqlite/VERSION`.
+///
+/// Checked at build time against the submodule contents. Update this
+/// constant and the submodule pin in `.gitmodules` together.
+pub const SQLITE_VERSION: &str = "3.49.2";
+
 /// MuPDF version expected in `thirdparty/mupdf/include/mupdf/fitz/version.h`.
 ///
 /// Changing this constant will cause the native build to panic on
@@ -76,6 +82,15 @@ pub const CROSS_ENV: &[(&str, &str)] = &[
     ),
     ("CC_arm_unknown_linux_gnueabihf", "arm-linux-gnueabihf-gcc"),
     ("AR_arm_unknown_linux_gnueabihf", "arm-linux-gnueabihf-ar"),
+    (
+        "SQLITE3_LIB_DIR",
+        "target/cadmus-build-deps/arm-unknown-linux-gnueabihf/sqlite/lib",
+    ),
+    (
+        "SQLITE3_INCLUDE_DIR",
+        "target/cadmus-build-deps/arm-unknown-linux-gnueabihf/sqlite/include",
+    ),
+    ("SQLITE3_STATIC", "1"),
 ];
 
 /// Mapping from built `.so` paths to their destination names in the
