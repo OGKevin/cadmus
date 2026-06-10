@@ -390,9 +390,6 @@ in
     CC_arm_unknown_linux_gnueabihf = "arm-linux-gnueabihf-gcc";
     AR_arm_unknown_linux_gnueabihf = "arm-linux-gnueabihf-ar";
 
-    # Point libsqlite3-sys at the custom SQLite build (cargo xtask setup)
-    SQLITE3_LIB_DIR = "target/cadmus-build-deps/${pkgs.stdenv.hostPlatform.rust.rustcTargetSpec}/sqlite/lib";
-    SQLITE3_INCLUDE_DIR = "target/cadmus-build-deps/${pkgs.stdenv.hostPlatform.rust.rustcTargetSpec}/sqlite/include";
     SQLITE3_STATIC = "1";
   };
 
@@ -758,6 +755,12 @@ in
 
   enterShell = ''
     export RUSTDOCFLAGS="''${RUSTDOCFLAGS:+''$RUSTDOCFLAGS }-D warnings"
+
+    # Point libsqlite3-sys at the custom SQLite build (cargo xtask setup).
+    # Must be absolute so that cargo build scripts (which run in the crate's
+    # registry directory, not the workspace root) can resolve the paths.
+    export SQLITE3_LIB_DIR="$DEVENV_ROOT/target/cadmus-build-deps/${pkgs.stdenv.hostPlatform.rust.rustcTargetSpec}/sqlite/lib"
+    export SQLITE3_INCLUDE_DIR="$DEVENV_ROOT/target/cadmus-build-deps/${pkgs.stdenv.hostPlatform.rust.rustcTargetSpec}/sqlite/include"
 
     echo "Cadmus development environment"
     echo ""

@@ -4,8 +4,8 @@ env:
   NEXTEST_VERSION: "0.9.94"
   NODE_VERSION: "24"
   SQLX_OFFLINE: true
-  SQLITE3_LIB_DIR: target/cadmus-build-deps/x86_64-unknown-linux-gnu/sqlite/lib
-  SQLITE3_INCLUDE_DIR: target/cadmus-build-deps/x86_64-unknown-linux-gnu/sqlite/include
+  SQLITE3_LIB_DIR: ${{ github.workspace }}/target/cadmus-build-deps/x86_64-unknown-linux-gnu/sqlite/lib
+  SQLITE3_INCLUDE_DIR: ${{ github.workspace }}/target/cadmus-build-deps/x86_64-unknown-linux-gnu/sqlite/include
   SQLITE3_STATIC: "1"
 
 on:
