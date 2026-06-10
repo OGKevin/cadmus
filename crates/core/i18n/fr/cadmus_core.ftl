@@ -72,9 +72,9 @@ settings-intermission-cover = Couverture
 settings-intermission-custom = Personnalisé
 settings-intermission-custom-image = Image Personnalisée...
 settings-intermission-logo = Logo
-settings-intermission-power-off-screen = Éteindre Écran
-settings-intermission-share-screen = Partager Écran
-settings-intermission-suspend-screen = Suspendre Écran
+settings-intermission-power-off-screen = Écran d'extinction
+settings-intermission-share-screen = Écran de partage des données
+settings-intermission-suspend-screen = Écran de veille
 
 # Settings - Library
 settings-library-name = Nom
