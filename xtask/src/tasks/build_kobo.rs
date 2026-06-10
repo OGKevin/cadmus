@@ -61,7 +61,7 @@ pub fn run(args: BuildKoboArgs) -> Result<()> {
     ensure_linaro_toolchain()?;
 
     build_deps::ensure_submodules(&root).context("failed to initialise git submodules")?;
-    sqlite::ensure_sqlite(&root, "arm-unknown-linux-gnueabihf")
+    sqlite::ensure_sqlite(&root, sqlite::KOBO_TARGET)
         .context("failed to build SQLite for Kobo")?;
 
     cargo_build_kobo(&root, args.features.as_deref())?;

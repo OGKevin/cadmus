@@ -6,12 +6,6 @@
 //! that the build code needs to know about at run time are kept
 //! here.
 
-/// SQLite version expected in `thirdparty/sqlite/VERSION`.
-///
-/// Checked at build time against the submodule contents. Update this
-/// constant and the submodule pin in `.gitmodules` together.
-pub const SQLITE_VERSION: &str = "3.49.2";
-
 /// MuPDF version expected in `thirdparty/mupdf/include/mupdf/fitz/version.h`.
 ///
 /// Changing this constant will cause the native build to panic on

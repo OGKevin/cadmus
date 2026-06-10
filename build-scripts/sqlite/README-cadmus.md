@@ -25,7 +25,7 @@ submodule automatically via its `git-submodules` manager.
 ## Build flow
 
 ```text
-cargo xtask setup [--target <triple>]
+cargo xtask setup [--host | --kobo | --all | --target <triple>]
   └─ build_deps::build::sqlite::ensure_sqlite()
        ├─ cp_r thirdparty/sqlite → target/cadmus-build-deps/<TARGET>/sqlite/
        ├─ ./configure --enable-update-limit
@@ -59,6 +59,6 @@ automatically for the `arm-unknown-linux-gnueabihf` target.
 | `SQLITE3_INCLUDE_DIR` | `target/cadmus-build-deps/<TARGET>/sqlite/include` |
 | `SQLITE3_STATIC` | `1` |
 
-For native development these must be set before `cargo build` (e.g. in
-`devenv.nix` or `.envrc`). For Kobo cross-compilation they are injected
-via `CROSS_ENV` in `crates/build-deps/src/versions.rs`.
+For native development these are set automatically by `devenv.nix`.
+For Kobo cross-compilation they are injected via `CROSS_ENV` in
+`crates/build-deps/src/versions.rs` and the `build-kobo` GitHub Action.

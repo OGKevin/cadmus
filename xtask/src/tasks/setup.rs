@@ -10,8 +10,11 @@
 //! ## Usage
 //!
 //! ```text
-//! cargo xtask setup                 # build for the native host
-//! cargo xtask setup --target arm-unknown-linux-gnueabihf  # Kobo cross-build
+//! cargo xtask setup           # build for all known targets (host + Kobo)
+//! cargo xtask setup --host    # build for the native host only
+//! cargo xtask setup --kobo    # build for Kobo (ARM) only
+//! cargo xtask setup --all     # explicitly build for all known targets
+//! cargo xtask setup --target <triple>  # build for an arbitrary target
 //! ```
 //!
 //! After running, set the printed environment variables before
@@ -27,12 +30,28 @@ use super::util::workspace;
 /// Arguments for `cargo xtask setup`.
 #[derive(Debug, Args)]
 pub struct SetupArgs {
-    /// Target triple to build for. Defaults to the host triple.
+    /// Build for the native host target only.
+    #[arg(long)]
+    pub host: bool,
+
+    /// Build for the Kobo ARM target only.
+    #[arg(long)]
+    pub kobo: bool,
+
+    /// Build for all known targets (host + Kobo). Implied when no
+    /// flags are passed.
+    #[arg(long)]
+    pub all: bool,
+
+    /// Build for an arbitrary target triple (advanced).
     #[arg(long)]
     pub target: Option<String>,
 }
 
 /// Build thirdparty dependencies that must exist before `cargo build`.
+///
+/// When no target flags are supplied the default is `--all`, which
+/// builds for every known target (native host + Kobo ARM).
 ///
 /// # Errors
 ///
@@ -45,26 +64,48 @@ pub fn run(args: SetupArgs) -> Result<()> {
 
     build_deps::ensure_submodules(&root).context("failed to initialise git submodules")?;
 
-    let target = args.target.unwrap_or_else(guess_host_triple);
+    let targets = resolve_targets(&args);
 
-    let artifacts = sqlite::ensure_sqlite(&root, &target).context("failed to build sqlite")?;
+    for target in &targets {
+        let artifacts =
+            sqlite::ensure_sqlite(&root, target).context("failed to build sqlite")?;
 
-    println!();
-    println!("SQLite artifacts ready. Set the following env vars before cargo build:");
-    println!("  export SQLITE3_LIB_DIR={}", artifacts.lib_dir.display());
-    println!(
-        "  export SQLITE3_INCLUDE_DIR={}",
-        artifacts.include_dir.display()
-    );
-    println!("  export SQLITE3_STATIC=1");
+        println!();
+        println!("SQLite artifacts ready for {target}:");
+        println!("  export SQLITE3_LIB_DIR={}", artifacts.lib_dir.display());
+        println!(
+            "  export SQLITE3_INCLUDE_DIR={}",
+            artifacts.include_dir.display()
+        );
+        println!("  export SQLITE3_STATIC=1");
+    }
 
     Ok(())
 }
 
+/// Determine which target triples to build based on CLI flags.
+///
+/// `--target` takes precedence; otherwise `--host` / `--kobo` select
+/// individual targets. When none are given `--all` is implied.
+fn resolve_targets(args: &SetupArgs) -> Vec<String> {
+    if let Some(ref t) = args.target {
+        return vec![t.clone()];
+    }
+
+    let build_all = args.all || (!args.host && !args.kobo);
+
+    let mut targets = Vec::new();
+    if build_all || args.host {
+        targets.push(guess_host_triple());
+    }
+    if build_all || args.kobo {
+        targets.push(sqlite::KOBO_TARGET.to_string());
+    }
+    targets
+}
+
 /// Best-effort detection of the host target triple.
 fn guess_host_triple() -> String {
-    // In a cargo context TARGET is always set; outside of it we fall
-    // back to a compile-time constant matching the xtask binary.
     std::env::var("TARGET").unwrap_or_else(|_| {
         if cfg!(target_arch = "x86_64") && cfg!(target_os = "linux") {
             "x86_64-unknown-linux-gnu".to_string()

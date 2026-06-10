@@ -50,10 +50,9 @@ runs:
       uses: ./.github/actions/cache-assets
 
     - name: Install system packages
-      uses: awalsh128/cache-apt-pkgs-action@latest
+      uses: ./.github/actions/apt
       with:
-        packages: git wget curl pkg-config unzip jq patchelf gcc g++ make cmake meson ninja-build autoconf automake libtool gperf python3 tcl zlib1g-dev libbz2-dev libpng-dev libjpeg-dev libopenjp2-7-dev libjbig2dec0-dev libgumbo-dev libfreetype6-dev libharfbuzz-dev libdjvulibre-dev libsdl2-dev
-        version: 1.0
+        extra-packages: unzip jq patchelf
 
     - name: Setup Linaro toolchain
       shell: bash
@@ -69,6 +68,9 @@ runs:
       shell: bash
       env:
         GH_OAUTH_CLIENT_ID: ${{ inputs.gh-oauth-client-id }}
+        SQLITE3_LIB_DIR: target/cadmus-build-deps/arm-unknown-linux-gnueabihf/sqlite/lib
+        SQLITE3_INCLUDE_DIR: target/cadmus-build-deps/arm-unknown-linux-gnueabihf/sqlite/include
+        SQLITE3_STATIC: "1"
       run: |
         if [ "${{ inputs.test }}" = "true" ]; then
           cargo xtask build-kobo --features test

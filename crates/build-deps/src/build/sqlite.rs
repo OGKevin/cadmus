@@ -8,6 +8,17 @@
 //! parser grammar via Lemon (requires TCL) and bakes in
 //! `SQLITE_UDL_CAPABLE_PARSER`.
 //!
+//! # Why this must run before `cargo build`
+//!
+//! `libsqlite3-sys`'s build script runs before `cadmus-core`'s
+//! `build.rs`, so the custom SQLite library must already be on disk
+//! when Cargo resolves the dependency graph. There is no way to
+//! trigger the build from `cadmus-core`'s own build script because
+//! it executes too late in the chain. `cargo xtask setup` (or the
+//! Kobo build flow) must be run first to place the artefacts where
+//! `libsqlite3-sys` can find them via `SQLITE3_LIB_DIR` /
+//! `SQLITE3_INCLUDE_DIR`.
+//!
 //! # Output layout
 //!
 //! ```text
@@ -18,11 +29,6 @@
 //! └── lib/
 //!     └── libsqlite3.a
 //! ```
-//!
-//! Consumers (the `cadmus-core` build and `xtask build-kobo`) must set
-//! `SQLITE3_LIB_DIR` and `SQLITE3_INCLUDE_DIR` so that
-//! `libsqlite3-sys` links against the custom build instead of the
-//! system library.
 
 use std::path::{Path, PathBuf};
 
@@ -31,7 +37,9 @@ use anyhow::{Context, Result};
 use crate::cmd;
 use crate::markers;
 use crate::utils;
-use crate::versions::SQLITE_VERSION;
+
+/// Kobo ARM target triple.
+pub const KOBO_TARGET: &str = "arm-unknown-linux-gnueabihf";
 
 /// Compile-time defines passed when compiling the amalgamation.
 ///
@@ -60,6 +68,9 @@ pub struct SqliteArtifacts {
 ///
 /// The build is skipped when a `.built` marker matching the current
 /// submodule SHA already exists.
+///
+/// Stale build directories are removed before starting so that
+/// submodule updates always produce a clean build.
 ///
 /// # Arguments
 ///
@@ -96,31 +107,21 @@ pub fn ensure_sqlite(root: &Path, target: &str) -> Result<SqliteArtifacts> {
         );
     }
 
-    verify_version(&src_dir)?;
-
     println!("Building sqlite for {target}...");
 
-    // Clean previous build if the submodule moved.
     if build_dir.exists() {
         std::fs::remove_dir_all(&build_dir)
             .context("failed to remove stale sqlite build directory")?;
     }
 
-    // Copy source tree into build directory.
     utils::cp_r(&src_dir, &build_dir).context("failed to copy sqlite source")?;
 
-    let is_cross = target == "arm-unknown-linux-gnueabihf";
-
-    // Step 1: Configure with --enable-update-limit (generates UDL parser).
-    configure(&build_dir, is_cross)?;
-
-    // Step 2: Generate the UDL-enabled amalgamation.
+    configure(&build_dir, target)?;
     generate_amalgamation(&build_dir)?;
 
-    // Step 3: Compile sqlite3.c → libsqlite3.a.
     std::fs::create_dir_all(&lib_dir)?;
     std::fs::create_dir_all(&include_dir)?;
-    compile_amalgamation(&build_dir, &lib_dir, &include_dir, is_cross)?;
+    compile_amalgamation(&build_dir, &lib_dir, &include_dir, target)?;
 
     markers::mark_built(root, &build_dir, "sqlite", submodule_path)?;
 
@@ -130,36 +131,20 @@ pub fn ensure_sqlite(root: &Path, target: &str) -> Result<SqliteArtifacts> {
     })
 }
 
-/// Verify the submodule version matches [`SQLITE_VERSION`].
-fn verify_version(src_dir: &Path) -> Result<()> {
-    let header = src_dir.join("VERSION");
-    if !header.exists() {
-        // Fall back to checking manifest.uuid or sqlite3.h if VERSION is missing.
-        return Ok(());
-    }
-    let version = std::fs::read_to_string(&header)
-        .context("failed to read sqlite VERSION file")?
-        .trim()
-        .to_owned();
-    if version != SQLITE_VERSION {
-        anyhow::bail!(
-            "SQLite version mismatch: submodule has {version}, expected {SQLITE_VERSION}"
-        );
-    }
-    Ok(())
-}
-
 /// Run `./configure --enable-update-limit` in the build directory.
-fn configure(build_dir: &Path, is_cross: bool) -> Result<()> {
+///
+/// For cross-compilation targets the appropriate `--host`, `CC`, `AR`,
+/// `RANLIB`, `STRIP`, and `CFLAGS` overrides are applied automatically.
+fn configure(build_dir: &Path, target: &str) -> Result<()> {
     let mut args = vec![
         "--enable-update-limit",
         "--disable-tcl",
         "--disable-readline",
     ];
-    if is_cross {
+    if target == KOBO_TARGET {
         args.push("--host=arm-linux-gnueabihf");
     }
-    let env: &[(&str, &str)] = if is_cross {
+    let env: &[(&str, &str)] = if target == KOBO_TARGET {
         &[
             ("CC", "arm-linux-gnueabihf-gcc"),
             ("AR", "arm-linux-gnueabihf-ar"),
@@ -179,27 +164,27 @@ fn generate_amalgamation(build_dir: &Path) -> Result<()> {
         .context("failed to generate sqlite amalgamation (is tclsh installed?)")
 }
 
-/// Compile `sqlite3.c` into a static `libsqlite3.a` and copy
-/// `sqlite3.h` into `include_dir`.
+/// Compile `sqlite3.c` into a static `libsqlite3.a` and install
+/// `sqlite3.h` into `include_dir` and the archive into `lib_dir`.
 fn compile_amalgamation(
     build_dir: &Path,
     lib_dir: &Path,
     include_dir: &Path,
-    is_cross: bool,
+    target: &str,
 ) -> Result<()> {
-    let cc = if is_cross {
+    let cc = if target == KOBO_TARGET {
         "arm-linux-gnueabihf-gcc"
     } else {
         "cc"
     };
-    let ar = if is_cross {
+    let ar = if target == KOBO_TARGET {
         "arm-linux-gnueabihf-ar"
     } else {
         "ar"
     };
 
     let mut compile_args: Vec<&str> = vec!["-c", "sqlite3.c", "-o", "sqlite3.o", "-O2"];
-    if is_cross {
+    if target == KOBO_TARGET {
         compile_args.extend_from_slice(&["-mcpu=cortex-a9", "-mfpu=neon"]);
     }
     for define in SQLITE_DEFINES {
@@ -210,7 +195,6 @@ fn compile_amalgamation(
     cmd::run(ar, &["rcs", "libsqlite3.a", "sqlite3.o"], build_dir, &[])
         .context("failed to archive libsqlite3.a")?;
 
-    // Move artefacts into the standard layout.
     std::fs::copy(build_dir.join("libsqlite3.a"), lib_dir.join("libsqlite3.a"))
         .context("failed to copy libsqlite3.a")?;
     std::fs::copy(build_dir.join("sqlite3.h"), include_dir.join("sqlite3.h"))
