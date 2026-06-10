@@ -39,15 +39,17 @@ automatically for the `arm-unknown-linux-gnueabihf` target.
 
 ## Compile-time defines
 
-| Flag                                | Purpose                                         |
-| ----------------------------------- | ----------------------------------------------- |
-| `SQLITE_ENABLE_UPDATE_DELETE_LIMIT` | Enables `DELETE … LIMIT` / `UPDATE … LIMIT`     |
-| `SQLITE_DEFAULT_WAL_SYNCHRONOUS=1`  | WAL mode uses NORMAL sync (faster writes)       |
-| `SQLITE_OMIT_DEPRECATED`            | Removes deprecated API symbols                  |
-| `SQLITE_DQS=0`                      | Disallows double-quoted string literals         |
-| `SQLITE_DEFAULT_MEMSTATUS=0`        | Disables memory usage tracking (lower overhead) |
-| `SQLITE_LIKE_DOESNT_MATCH_BLOBS`    | `LIKE` skips BLOBs (marginal speedup)           |
-| `SQLITE_OMIT_SHARED_CACHE`          | Removes shared-cache mode (unused by Cadmus)    |
+| Flag                                | Purpose                                                    |
+| ----------------------------------- | ---------------------------------------------------------- |
+| `SQLITE_ENABLE_UPDATE_DELETE_LIMIT` | Enables `DELETE … LIMIT` / `UPDATE … LIMIT`                |
+| `SQLITE_ENABLE_COLUMN_METADATA`     | Exposes column origin metadata (required by `sqlx-sqlite`) |
+| `SQLITE_ENABLE_UNLOCK_NOTIFY`       | Enables unlock-notify API (required by `sqlx-sqlite`)      |
+| `SQLITE_DEFAULT_WAL_SYNCHRONOUS=1`  | WAL mode uses NORMAL sync (faster writes)                  |
+| `SQLITE_OMIT_DEPRECATED`            | Removes deprecated API symbols                             |
+| `SQLITE_DQS=0`                      | Disallows double-quoted string literals                    |
+| `SQLITE_DEFAULT_MEMSTATUS=0`        | Disables memory usage tracking (lower overhead)            |
+| `SQLITE_LIKE_DOESNT_MATCH_BLOBS`    | `LIKE` skips BLOBs (marginal speedup)                      |
+| `SQLITE_OMIT_SHARED_CACHE`          | Removes shared-cache mode (unused by Cadmus)               |
 
 ## Environment variables
 

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM dictionary_index_entry WHERE dict_id = ? LIMIT ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "8cbf73c5365d86fbc42959f30555ac5a3169404e401cc439fd4f31e349a92626"
+}

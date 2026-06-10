@@ -518,8 +518,8 @@ impl DictionaryIndexTask {
     /// `.index` file in `on_disk_fingerprints`, this method marks the meta row as
     /// incomplete before deletion begins. This ensures that if the process is
     /// interrupted mid-deletion, the next startup does not treat a partially
-    /// deleted dictionary as fully indexed. Entries are then removed in batches
-    /// via [`delete_entries_for_dict`], after which the meta row itself is deleted.
+    /// deleted dictionary as fully indexed. Entries are then removed via
+    /// [`delete_entries_for_dict`], after which the meta row itself is deleted.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(on_disk_count = on_disk_fingerprints.len())))]
     fn delete_stale_entries(
         &self,
@@ -601,13 +601,8 @@ impl DictionaryIndexTask {
 
 /// Deletes all index entries for a single dictionary in batches.
 ///
-/// Each batch selects up to `BATCH_SIZE` primary key pairs `(word, offset)`
-/// for the given `dict_id`, then deletes those specific rows in a single
-/// transaction. This keeps write locks short while avoiding per-row overhead.
-///
-/// `DELETE … LIMIT` is not used because the bundled SQLite amalgamation in
-/// `libsqlite3-sys` was not generated with `SQLITE_UDL_CAPABLE_PARSER`, so
-/// the parser grammar does not support that syntax regardless of compile flags.
+/// Each batch issues a single `DELETE … LIMIT` statement, keeping write locks
+/// short while avoiding per-row overhead.
 ///
 /// Returns the total number of rows deleted, or an error if any batch fails.
 /// Respects the shutdown signal between batches: if a shutdown is requested
@@ -625,34 +620,20 @@ async fn delete_entries_for_dict(
     let mut total_deleted: u64 = 0;
 
     loop {
-        let keys = sqlx::query!(
-            "SELECT word, offset FROM dictionary_index_entry WHERE dict_id = ? LIMIT ?",
+        let rows_affected = sqlx::query!(
+            "DELETE FROM dictionary_index_entry WHERE dict_id = ? LIMIT ?",
             dict_id,
             batch_size,
         )
-        .fetch_all(pool)
-        .await?;
+        .execute(pool)
+        .await?
+        .rows_affected();
 
-        if keys.is_empty() {
+        if rows_affected == 0 {
             break;
         }
 
-        let mut tx = pool.begin().await?;
-
-        for key in &keys {
-            sqlx::query!(
-                "DELETE FROM dictionary_index_entry WHERE dict_id = ? AND word = ? AND offset = ?",
-                dict_id,
-                key.word,
-                key.offset,
-            )
-            .execute(&mut *tx)
-            .await?;
-        }
-
-        tx.commit().await?;
-
-        total_deleted += keys.len() as u64;
+        total_deleted += rows_affected;
 
         if shutdown.should_stop() {
             tracing::info!(total_deleted, "entry deletion interrupted by shutdown");
