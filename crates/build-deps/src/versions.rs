@@ -68,6 +68,10 @@ pub const MUPDF_WEBP_PATCHES: &[&str] = &[
 
 /// Cross-compilation environment variables injected when `cargo xtask
 /// build-kobo` runs `cargo build` for the Kobo ARM target.
+///
+/// SQLite discovery uses `PKG_CONFIG_PATH_<target>` vars set in devenv and CI,
+/// which are target-aware and route each build (host proc-macro + ARM) to its
+/// own `libsqlite3.a` via pkg-config. No SQLite vars are needed here.
 pub const CROSS_ENV: &[(&str, &str)] = &[
     ("PKG_CONFIG_ALLOW_CROSS", "1"),
     (
@@ -76,15 +80,6 @@ pub const CROSS_ENV: &[(&str, &str)] = &[
     ),
     ("CC_arm_unknown_linux_gnueabihf", "arm-linux-gnueabihf-gcc"),
     ("AR_arm_unknown_linux_gnueabihf", "arm-linux-gnueabihf-ar"),
-    (
-        "SQLITE3_LIB_DIR",
-        "target/cadmus-build-deps/arm-unknown-linux-gnueabihf/sqlite/lib",
-    ),
-    (
-        "SQLITE3_INCLUDE_DIR",
-        "target/cadmus-build-deps/arm-unknown-linux-gnueabihf/sqlite/include",
-    ),
-    ("SQLITE3_STATIC", "1"),
 ];
 
 /// Mapping from built `.so` paths to their destination names in the

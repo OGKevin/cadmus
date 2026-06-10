@@ -390,7 +390,26 @@ in
     CC_arm_unknown_linux_gnueabihf = "arm-linux-gnueabihf-gcc";
     AR_arm_unknown_linux_gnueabihf = "arm-linux-gnueabihf-ar";
 
+    # Point libsqlite3-sys at the custom SQLite build (cargo xtask setup).
+    # Absolute paths are required: build scripts run in the crate registry
+    # directory, not the workspace root, so relative paths don't resolve.
+    #
+    # SQLITE3_LIB_DIR is the non-target-aware fallback used by native builds.
+    # For cross-compilation, PKG_CONFIG_PATH_<target> gives each build
+    # (host proc-macro + ARM target) its own sqlite via pkg-config.
+    SQLITE3_LIB_DIR = "${config.devenv.root}/target/cadmus-build-deps/${pkgs.stdenv.hostPlatform.rust.rustcTargetSpec}/sqlite/lib";
+    SQLITE3_INCLUDE_DIR = "${config.devenv.root}/target/cadmus-build-deps/${pkgs.stdenv.hostPlatform.rust.rustcTargetSpec}/sqlite/include";
     SQLITE3_STATIC = "1";
+    "PKG_CONFIG_PATH_${builtins.replaceStrings ["-"] ["_"] pkgs.stdenv.hostPlatform.rust.rustcTargetSpec}" =
+      "${config.devenv.root}/target/cadmus-build-deps/${pkgs.stdenv.hostPlatform.rust.rustcTargetSpec}/sqlite/lib/pkgconfig";
+    PKG_CONFIG_PATH_arm_unknown_linux_gnueabihf =
+      "${config.devenv.root}/target/cadmus-build-deps/arm-unknown-linux-gnueabihf/sqlite/lib/pkgconfig";
+
+    # bindgen (used by libsqlite3-sys) requires LIBCLANG_PATH to locate
+    # libclang. In the Nix devenv the clang wrapper on PATH does not have a
+    # sibling lib/ directory, so we point directly at the clang-tools package
+    # that ships libclang.dylib / libclang.so.
+    LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
   };
 
   services.opentelemetry-collector = {
@@ -755,12 +774,6 @@ in
 
   enterShell = ''
     export RUSTDOCFLAGS="''${RUSTDOCFLAGS:+''$RUSTDOCFLAGS }-D warnings"
-
-    # Point libsqlite3-sys at the custom SQLite build (cargo xtask setup).
-    # Must be absolute so that cargo build scripts (which run in the crate's
-    # registry directory, not the workspace root) can resolve the paths.
-    export SQLITE3_LIB_DIR="$DEVENV_ROOT/target/cadmus-build-deps/${pkgs.stdenv.hostPlatform.rust.rustcTargetSpec}/sqlite/lib"
-    export SQLITE3_INCLUDE_DIR="$DEVENV_ROOT/target/cadmus-build-deps/${pkgs.stdenv.hostPlatform.rust.rustcTargetSpec}/sqlite/include"
 
     echo "Cadmus development environment"
     echo ""
