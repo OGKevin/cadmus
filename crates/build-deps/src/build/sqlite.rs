@@ -47,6 +47,8 @@ pub const KOBO_TARGET: &str = "arm-unknown-linux-gnueabihf";
 /// require parser regeneration.
 const SQLITE_DEFINES: &[&str] = &[
     "-DSQLITE_ENABLE_UPDATE_DELETE_LIMIT",
+    "-DSQLITE_ENABLE_COLUMN_METADATA",
+    "-DSQLITE_ENABLE_UNLOCK_NOTIFY",
     "-DSQLITE_DEFAULT_WAL_SYNCHRONOUS=1",
     "-DSQLITE_OMIT_DEPRECATED",
     "-DSQLITE_DQS=0",

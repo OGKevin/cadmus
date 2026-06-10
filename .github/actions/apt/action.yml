@@ -19,8 +19,17 @@ runs:
         packages: >-
           git wget curl pkg-config gcc g++ make cmake meson ninja-build
           autoconf automake libtool gperf python3 tcl
+          clang libclang-dev
           zlib1g-dev libbz2-dev libpng-dev libjpeg-dev libopenjp2-7-dev
           libjbig2dec0-dev libgumbo-dev libfreetype6-dev libharfbuzz-dev
           libdjvulibre-dev libsdl2-dev
           ${{ inputs.extra-packages }}
         version: 1.0
+    - name: Set LIBCLANG_PATH
+      shell: bash
+      run: |
+        libdir=$(llvm-config --libdir 2>/dev/null || echo "")
+        if [ -z "$libdir" ]; then
+          libdir=$(dirname "$(find /usr/lib -name 'libclang.so*' -o -name 'libclang-*.so*' 2>/dev/null | head -1)")
+        fi
+        echo "LIBCLANG_PATH=$libdir" >> "$GITHUB_ENV"
