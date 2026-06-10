@@ -67,8 +67,7 @@ pub fn run(args: SetupArgs) -> Result<()> {
     let targets = resolve_targets(&args);
 
     for target in &targets {
-        let artifacts =
-            sqlite::ensure_sqlite(&root, target).context("failed to build sqlite")?;
+        let artifacts = sqlite::ensure_sqlite(&root, target).context("failed to build sqlite")?;
 
         println!();
         println!("SQLite artifacts ready for {target}:");
