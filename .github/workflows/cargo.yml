@@ -10,6 +10,7 @@ on:
   pull_request:
     paths:
       - "**/*.rs"
+      - crates/core/i18n/**
       - "Cargo.*"
       - "**/Cargo.*"
       - ".github/workflows/cargo.yml"
