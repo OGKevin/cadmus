@@ -51,8 +51,6 @@ runs:
 
     - name: Install system packages
       uses: ./.github/actions/apt
-      with:
-        extra-packages: unzip jq patchelf
 
     - name: Setup Linaro toolchain
       shell: bash

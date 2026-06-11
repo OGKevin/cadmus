@@ -4,12 +4,6 @@ description: >
   its thirdparty dependencies. Wraps awalsh128/cache-apt-pkgs-action so
   the package list lives in one place.
 
-inputs:
-  extra-packages:
-    description: "Space-separated list of additional packages to install alongside the base set"
-    required: false
-    default: ""
-
 runs:
   using: composite
   steps:
@@ -17,10 +11,9 @@ runs:
       uses: awalsh128/cache-apt-pkgs-action@acb598e5ddbc6f68a970c5da0688d2f3a9f04d05
       with:
         packages: >-
-          git wget curl pkg-config gcc g++ make cmake meson ninja-build
-          autoconf automake libtool gperf python3 tcl
+          git wget curl pkg-config unzip jq patchelf gcc g++ make cmake
+          meson ninja-build autoconf automake libtool gperf python3 tcl
           zlib1g-dev libbz2-dev libpng-dev libjpeg-dev libopenjp2-7-dev
           libjbig2dec0-dev libgumbo-dev libfreetype6-dev libharfbuzz-dev
           libdjvulibre-dev libsdl2-dev
-          ${{ inputs.extra-packages }}
         version: 1.0
