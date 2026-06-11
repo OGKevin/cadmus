@@ -1,22 +1,18 @@
 //! `cargo xtask build-kobo` — cross-compile Cadmus for Kobo devices.
 //!
 //! This task is a thin wrapper around `cargo build --release
-//! --target arm-unknown-linux-gnueabihf -p cadmus`. All dependency
+//! --target arm-unknown-linux-gnueabihf -p cadmus`. Most dependency
 //! building (thirdparty libs, MuPDF, libwebp, mupdf_wrapper) is
 //! handled automatically by `build.rs` when cargo build runs.
 //!
-//! Pre-flight steps performed before invoking cargo:
+//! In addition, `run()` performs these eager preflight steps
+//! before invoking cargo:
 //!
 //! 1. Verify the Linaro ARM toolchain (`arm-linux-gnueabihf-gcc`)
 //!    is on `PATH`.
-//! 2. Build SQLite from source with UDL support for the ARM target
+//! 2. Initialize git submodules.
+//! 3. Build SQLite from source with UDL support for the ARM target
 //!    (placed in `target/cadmus-build-deps/arm-unknown-linux-gnueabihf/sqlite/`).
-//!
-//! Git submodules are not initialised up-front here: the Rust build
-//! script clones them lazily, only when the cached Kobo build
-//! artefacts in `libs/` and `target/cadmus-build-deps/...` are
-//! missing. This keeps warm-cache CI runs fast by avoiding the
-//! recursive submodule clone done by `actions/checkout`.
 //!
 //! The Kobo build is only available on Linux and macOS hosts.
 
@@ -45,9 +41,9 @@ pub struct BuildKoboArgs {
 /// - The Linaro ARM toolchain is not on `PATH`.
 /// - The underlying `cargo build` invocation fails.
 ///
-/// Git submodules are initialised lazily by the Rust build script
-/// when the cached Kobo artefacts are missing; this task no longer
-/// triggers a recursive submodule clone unconditionally.
+/// The `ensure_submodules` and `ensure_sqlite` preflight steps run
+/// eagerly so that `libs/` and `target/cadmus-build-deps/...` are
+/// populated before `cargo build` starts.
 pub fn run(args: BuildKoboArgs) -> Result<()> {
     if !cfg!(any(target_os = "linux", target_os = "macos")) {
         bail!(
