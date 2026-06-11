@@ -1,5 +1,5 @@
 use super::html::css::CssParser;
-use super::html::dom::{NodeRef, XmlTree};
+use super::html::dom::NodeRef;
 use super::html::engine::{Engine, Page, ResourceFetcher};
 use super::html::layout::TextAlign;
 use super::html::layout::{DrawCommand, DrawState, ImageCommand, RootData, TextCommand};
@@ -14,12 +14,15 @@ use crate::helpers::{Normalize, decode_entities};
 use crate::unit::pt_to_px;
 use anyhow::{Error, format_err};
 use fxhash::FxHashMap;
+use opf::{ManifestEntry, OpfDocument, opf_path_from_container, parse_toc};
 use percent_encoding::percent_decode_str;
 use std::collections::BTreeSet;
 use std::fs::{self, File};
 use std::io::{Cursor, Read, Seek};
 use std::path::{Path, PathBuf};
 use zip::ZipArchive;
+
+mod opf;
 
 const VIEWER_STYLESHEET: &str = "css/epub.css";
 const USER_STYLESHEET: &str = "css/epub-user.css";
@@ -38,7 +41,7 @@ impl<R: Read + Seek> ResourceFetcher for ZipArchive<R> {
 /// Generic EPUB document that works with any Read + Seek source.
 pub struct EpubDocument<R: Read + Seek> {
     archive: ZipArchive<R>,
-    info: XmlTree,
+    info: OpfDocument,
     parent: PathBuf,
     engine: Engine,
     spine: Vec<Chunk>,
@@ -61,6 +64,54 @@ struct Chunk {
 unsafe impl<R: Read + Seek> Send for EpubDocument<R> {}
 unsafe impl<R: Read + Seek> Sync for EpubDocument<R> {}
 
+/// Resolves spine `idref` values to [`Chunk`]s by probing the zip archive.
+///
+/// For each `idref` the function:
+/// 1. Looks up the matching [`ManifestEntry`] to get the file's `href`.
+/// 2. Decodes the `href` (HTML entities + percent-encoding) and resolves it
+///    relative to `opf_parent` to obtain the archive-relative path.
+/// 3. Opens the entry in the archive to read its **uncompressed byte size**.
+///    The size is stored on [`Chunk`] and used as the chapter's contribution
+///    to the global byte-offset coordinate system (reading positions, bookmarks).
+///
+/// Entries with no matching manifest item or with a non-UTF-8 path are silently
+/// skipped — those indicate a structurally malformed EPUB. Entries whose file
+/// is missing from the archive are logged at error level and skipped.
+fn build_spine<R: Read + Seek>(
+    archive: &mut ZipArchive<R>,
+    manifest: &[ManifestEntry],
+    idrefs: &[String],
+    opf_parent: &Path,
+) -> Vec<Chunk> {
+    idrefs
+        .iter()
+        .filter_map(|idref| {
+            let entry = manifest.iter().find(|e| e.id == *idref)?;
+            let href = decode_entities(&entry.href);
+            let href = percent_decode_str(&href).decode_utf8_lossy();
+            let path = opf_parent.join::<&str>(href.as_ref()).normalize();
+            let path = path.to_str()?.to_string();
+
+            let result = archive.by_name(&path).map(|zf| Chunk {
+                path: path.clone(),
+                size: zf.size() as usize,
+            });
+
+            match result {
+                Ok(chunk) => Some(chunk),
+                Err(e) => {
+                    tracing::error!(
+                        path,
+                        error = %e,
+                        "spine entry missing from archive"
+                    );
+                    None
+                }
+            }
+        })
+        .collect()
+}
+
 impl<R: Read + Seek> EpubDocument<R> {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
     fn from_archive(mut archive: ZipArchive<R>, install_dir: &Path) -> Result<Self, Error> {
@@ -68,11 +119,7 @@ impl<R: Read + Seek> EpubDocument<R> {
             let mut zf = archive.by_name("META-INF/container.xml")?;
             let mut text = String::new();
             zf.read_to_string(&mut text)?;
-            let root = XmlParser::new(&text).parse();
-            root.root()
-                .find("rootfile")
-                .and_then(|e| e.attribute("full-path"))
-                .map(String::from)
+            opf_path_from_container(&text)
         }
         .ok_or_else(|| format_err!("can't get the OPF path"))?;
 
@@ -80,57 +127,18 @@ impl<R: Read + Seek> EpubDocument<R> {
             .parent()
             .unwrap_or_else(|| Path::new(""));
 
-        let text = {
+        let opf_text = {
             let mut zf = archive.by_name(&opf_path)?;
             let mut text = String::new();
             zf.read_to_string(&mut text)?;
             text
         };
 
-        let info = XmlParser::new(&text).parse();
-        let mut spine = Vec::new();
+        let info = OpfDocument::parse(opf_text)
+            .ok_or_else(|| format_err!("failed to parse OPF document"))?;
 
-        {
-            let manifest = info
-                .root()
-                .find("manifest")
-                .ok_or_else(|| format_err!("the manifest is missing"))?;
-
-            let spn = info
-                .root()
-                .find("spine")
-                .ok_or_else(|| format_err!("the spine is missing"))?;
-
-            for child in spn.children() {
-                let vertebra_opt = child
-                    .attribute("idref")
-                    .and_then(|idref| manifest.find_by_id(idref))
-                    .and_then(|entry| entry.attribute("href"))
-                    .and_then(|href| {
-                        let href = decode_entities(href);
-                        let href = percent_decode_str(&href).decode_utf8_lossy();
-                        let href_path = parent.join::<&str>(href.as_ref());
-                        href_path.to_str().and_then(|path| {
-                            archive
-                                .by_name(path)
-                                .map_err(|e| {
-                                    tracing::error!(
-                                        "Can't retrieve '{}' from the archive: {:#}.",
-                                        path,
-                                        e
-                                    )
-                                    // We're assuming that the size of the spine is less than 4 GiB.
-                                })
-                                .map(|zf| (zf.size() as usize, path.to_string()))
-                                .ok()
-                        })
-                    });
-
-                if let Some((size, path)) = vertebra_opt {
-                    spine.push(Chunk { path, size });
-                }
-            }
-        }
+        let (idrefs, _) = info.spine_idrefs();
+        let spine = build_spine(&mut archive, &info.manifest, idrefs, parent);
 
         if spine.is_empty() {
             return Err(format_err!("the spine is empty"));
@@ -181,119 +189,6 @@ impl<R: Read + Seek> EpubDocument<R> {
 
     fn vertebra_coordinates_from_name(&self, name: &str) -> Option<(usize, usize)> {
         self.vertebra_coordinates_with(|index, _| self.spine[index].path == name)
-    }
-
-    fn walk_toc_ncx(
-        &mut self,
-        node: NodeRef,
-        toc_dir: &Path,
-        index: &mut usize,
-        cache: &mut UriCache,
-    ) -> Vec<TocEntry> {
-        let mut entries = Vec::new();
-        // TODO: Take `playOrder` into account?
-
-        for child in node.children() {
-            if child.tag_name() == Some("navPoint") {
-                let title = child
-                    .find("navLabel")
-                    .and_then(|label| label.find("text"))
-                    .map(|text| decode_entities(&text.text()).into_owned())
-                    .unwrap_or_default();
-
-                // Example URI: pr03.html#codecomma_and_what_to_do_with_it
-                let rel_uri = child
-                    .find("content")
-                    .and_then(|content| {
-                        content.attribute("src").map(|src| {
-                            percent_decode_str(&decode_entities(src))
-                                .decode_utf8_lossy()
-                                .into_owned()
-                        })
-                    })
-                    .unwrap_or_default();
-
-                let loc = toc_dir
-                    .join(&rel_uri)
-                    .normalize()
-                    .to_str()
-                    .map(|uri| Location::Uri(uri.to_string()));
-
-                let current_index = *index;
-                *index += 1;
-
-                let sub_entries = if child.children().count() > 2 {
-                    self.walk_toc_ncx(child, toc_dir, index, cache)
-                } else {
-                    Vec::new()
-                };
-
-                if let Some(location) = loc {
-                    entries.push(TocEntry {
-                        title,
-                        location,
-                        index: current_index,
-                        children: sub_entries,
-                    });
-                }
-            }
-        }
-
-        entries
-    }
-
-    fn walk_toc_nav(
-        &mut self,
-        node: NodeRef,
-        toc_dir: &Path,
-        index: &mut usize,
-        cache: &mut UriCache,
-    ) -> Vec<TocEntry> {
-        let mut entries = Vec::new();
-
-        for child in node.children() {
-            if child.tag_name() == Some("li") {
-                let link = child.children().find(|child| child.tag_name() == Some("a"));
-                let title = link
-                    .map(|link| decode_entities(&link.text()).into_owned())
-                    .unwrap_or_default();
-                let rel_uri = link
-                    .and_then(|link| {
-                        link.attribute("href").map(|href| {
-                            percent_decode_str(&decode_entities(href))
-                                .decode_utf8_lossy()
-                                .into_owned()
-                        })
-                    })
-                    .unwrap_or_default();
-
-                let loc = toc_dir
-                    .join(&rel_uri)
-                    .normalize()
-                    .to_str()
-                    .map(|uri| Location::Uri(uri.to_string()));
-
-                let current_index = *index;
-                *index += 1;
-
-                let sub_entries = if let Some(sub_list) = child.find("ol") {
-                    self.walk_toc_nav(sub_list, toc_dir, index, cache)
-                } else {
-                    Vec::new()
-                };
-
-                if let Some(location) = loc {
-                    entries.push(TocEntry {
-                        title,
-                        location,
-                        index: current_index,
-                        children: sub_entries,
-                    });
-                }
-            }
-        }
-
-        entries
     }
 
     #[inline]
@@ -488,31 +383,7 @@ impl<R: Read + Seek> EpubDocument<R> {
     }
 
     pub fn categories(&self) -> BTreeSet<String> {
-        let mut result = BTreeSet::new();
-
-        if let Some(md) = self.info.root().find("metadata") {
-            for child in md.children() {
-                if child.tag_qualified_name() == Some("dc:subject") {
-                    let text = child.text();
-                    let subject = decode_entities(&text);
-                    // Pipe separated list of BISAC categories
-                    if subject.contains(" / ") {
-                        for categ in subject.split('|') {
-                            let start_index = if let Some(index) = categ.find(" - ") {
-                                index + 3
-                            } else {
-                                0
-                            };
-                            result.insert(categ[start_index..].trim().replace(" / ", "."));
-                        }
-                    } else {
-                        result.insert(subject.into_owned());
-                    }
-                }
-            }
-        }
-
-        result
+        self.info.categories()
     }
 
     fn chapter_aux<'a>(
@@ -625,70 +496,11 @@ impl<R: Read + Seek> EpubDocument<R> {
     }
 
     pub fn series(&self) -> Option<(String, String)> {
-        self.info.root().find("metadata").and_then(|md| {
-            let mut title = None;
-            let mut index = None;
-
-            for child in md.children() {
-                if child.tag_name() == Some("meta") {
-                    if child.attribute("name") == Some("calibre:series") {
-                        title = child
-                            .attribute("content")
-                            .map(|s| decode_entities(s).into_owned());
-                    } else if child.attribute("name") == Some("calibre:series_index") {
-                        index = child
-                            .attribute("content")
-                            .map(|s| decode_entities(s).into_owned());
-                    } else if child.attribute("property") == Some("belongs-to-collection") {
-                        title = Some(decode_entities(&child.text()).into_owned());
-                    } else if child.attribute("property") == Some("group-position") {
-                        index = Some(decode_entities(&child.text()).into_owned());
-                    }
-                }
-
-                if title.is_some() && index.is_some() {
-                    break;
-                }
-            }
-
-            title.into_iter().zip(index).next()
-        })
+        self.info.series()
     }
 
-    pub fn cover_image(&self) -> Option<&str> {
-        self.info
-            .root()
-            .find("metadata")
-            .and_then(|md| {
-                md.children().find(|child| {
-                    child.tag_name() == Some("meta") && child.attribute("name") == Some("cover")
-                })
-            })
-            .and_then(|entry| entry.attribute("content"))
-            .and_then(|cover_id| {
-                self.info
-                    .root()
-                    .find("manifest")
-                    .and_then(|entry| entry.find_by_id(cover_id))
-                    .and_then(|entry| entry.attribute("href"))
-            })
-            .or_else(|| {
-                self.info
-                    .root()
-                    .find("manifest")
-                    .and_then(|mf| {
-                        mf.children().find(|child| {
-                            (child
-                                .attribute("href")
-                                .map_or(false, |hr| hr.contains("cover") || hr.contains("Cover"))
-                                || child.id().map_or(false, |id| id.contains("cover")))
-                                && child
-                                    .attribute("media-type")
-                                    .map_or(false, |mt| mt.starts_with("image/"))
-                        })
-                    })
-                    .and_then(|entry| entry.attribute("href"))
-            })
+    pub fn cover_image(&self) -> Option<String> {
+        self.info.cover_image_href()
     }
 
     pub fn description(&self) -> Option<String> {
@@ -762,41 +574,13 @@ impl<R: Read + Seek> Document for EpubDocument<R> {
     }
 
     fn toc(&mut self) -> Option<Vec<TocEntry>> {
-        let name = self
-            .info
-            .root()
-            .find("spine")
-            .and_then(|spine| spine.attribute("toc"))
-            .and_then(|toc_id| {
-                self.info
-                    .root()
-                    .find("manifest")
-                    .and_then(|manifest| manifest.find_by_id(toc_id))
-                    .and_then(|entry| entry.attribute("href"))
-            })
-            .or_else(|| {
-                self.info
-                    .root()
-                    .find("manifest")
-                    .and_then(|manifest| {
-                        manifest.children().find(|child| {
-                            child
-                                .attribute("properties")
-                                .iter()
-                                .any(|props| props.split_whitespace().any(|prop| prop == "nav"))
-                        })
-                    })
-                    .and_then(|entry| entry.attribute("href"))
-            })
-            .map(|href| {
-                self.parent
-                    .join(href)
-                    .normalize()
-                    .to_string_lossy()
-                    .into_owned()
-            })?;
-
-        let toc_dir = Path::new(&name).parent().unwrap_or_else(|| Path::new(""));
+        let name = self.info.toc_href().map(|href| {
+            self.parent
+                .join(href)
+                .normalize()
+                .to_string_lossy()
+                .into_owned()
+        })?;
 
         let mut text = String::new();
         if let Ok(mut zf) = self.archive.by_name(&name) {
@@ -805,21 +589,7 @@ impl<R: Read + Seek> Document for EpubDocument<R> {
             return None;
         }
 
-        let root = XmlParser::new(&text).parse();
-
-        if name.ends_with(".ncx") {
-            root.root()
-                .find("navMap")
-                .map(|map| self.walk_toc_ncx(map, toc_dir, &mut 0, &mut FxHashMap::default()))
-        } else {
-            root.root()
-                .descendants()
-                .find(|desc| {
-                    desc.tag_name() == Some("nav") && desc.attribute("epub:type") == Some("toc")
-                })
-                .and_then(|map| map.find("ol"))
-                .map(|map| self.walk_toc_nav(map, toc_dir, &mut 0, &mut FxHashMap::default()))
-        }
+        parse_toc(&text, &name).map(|toc| toc.into_entries())
     }
 
     fn chapter<'a>(&mut self, offset: usize, toc: &'a [TocEntry]) -> Option<(&'a TocEntry, f32)> {
@@ -1134,14 +904,7 @@ impl<R: Read + Seek> Document for EpubDocument<R> {
     }
 
     fn metadata(&self, key: &str) -> Option<String> {
-        self.info
-            .root()
-            .find("metadata")
-            .and_then(|md| {
-                md.children()
-                    .find(|child| child.tag_qualified_name() == Some(key))
-            })
-            .map(|child| decode_entities(&child.text()).into_owned())
+        self.info.metadata_value(key)
     }
 
     fn is_reflowable(&self) -> bool {
@@ -1157,7 +920,10 @@ impl<R: Read + Seek> Document for EpubDocument<R> {
 mod tests {
     use super::*;
     use crate::document::html::layout::DrawCommand;
+    use std::io::Write;
     use std::path::PathBuf;
+    use zip::write::SimpleFileOptions;
+
     fn setup_epub() -> EpubDocumentFile {
         let root_dir = PathBuf::from(
             std::env::var("TEST_ROOT_DIR").expect("TEST_ROOT_DIR must be set for epub tests"),
@@ -1302,5 +1068,117 @@ mod tests {
             assert!(has_content, "spine chapter {} has only empty pages", i);
             start_offset += doc.spine[i].size;
         }
+    }
+
+    /// Build a minimal in-memory zip with arbitrary named entries and return it
+    /// as a `ZipArchive` ready for `build_spine`.
+    fn zip_with_entries(entries: &[(&str, &[u8])]) -> ZipArchive<std::io::Cursor<Vec<u8>>> {
+        let buf = std::io::Cursor::new(Vec::new());
+        let mut zip = zip::ZipWriter::new(buf);
+        let opts = SimpleFileOptions::default();
+        for (name, data) in entries {
+            zip.start_file(*name, opts).unwrap();
+            zip.write_all(data).unwrap();
+        }
+        ZipArchive::new(zip.finish().unwrap()).unwrap()
+    }
+
+    fn manifest_entry(id: &str, href: &str) -> ManifestEntry {
+        ManifestEntry {
+            id: id.to_string(),
+            href: href.to_string(),
+            media_type: "application/xhtml+xml".to_string(),
+            properties: String::new(),
+        }
+    }
+
+    #[test]
+    fn build_spine_resolves_all_entries_in_order() {
+        let ch1 = b"chapter one content";
+        let ch2 = b"chapter two content longer";
+        let mut archive = zip_with_entries(&[("OEBPS/ch1.xhtml", ch1), ("OEBPS/ch2.xhtml", ch2)]);
+
+        let manifest = vec![
+            manifest_entry("id1", "ch1.xhtml"),
+            manifest_entry("id2", "ch2.xhtml"),
+        ];
+        let idrefs = vec!["id1".to_string(), "id2".to_string()];
+        let parent = Path::new("OEBPS");
+
+        let spine = build_spine(&mut archive, &manifest, &idrefs, parent);
+
+        assert_eq!(spine.len(), 2);
+        assert_eq!(spine[0].path, "OEBPS/ch1.xhtml");
+        assert_eq!(spine[0].size, ch1.len());
+        assert_eq!(spine[1].path, "OEBPS/ch2.xhtml");
+        assert_eq!(spine[1].size, ch2.len());
+    }
+
+    #[test]
+    fn build_spine_preserves_spine_order_not_manifest_order() {
+        let mut archive =
+            zip_with_entries(&[("OEBPS/ch1.xhtml", b"a"), ("OEBPS/ch2.xhtml", b"bb")]);
+
+        // Manifest lists ch2 before ch1, but spine references ch1 first.
+        let manifest = vec![
+            manifest_entry("id2", "ch2.xhtml"),
+            manifest_entry("id1", "ch1.xhtml"),
+        ];
+        let idrefs = vec!["id1".to_string(), "id2".to_string()];
+        let parent = Path::new("OEBPS");
+
+        let spine = build_spine(&mut archive, &manifest, &idrefs, parent);
+
+        assert_eq!(spine.len(), 2);
+        assert_eq!(spine[0].path, "OEBPS/ch1.xhtml");
+        assert_eq!(spine[1].path, "OEBPS/ch2.xhtml");
+    }
+
+    #[test]
+    fn build_spine_skips_idref_with_no_manifest_entry() {
+        let mut archive = zip_with_entries(&[("OEBPS/ch1.xhtml", b"content")]);
+
+        let manifest = vec![manifest_entry("id1", "ch1.xhtml")];
+        // "ghost" has no matching manifest entry.
+        let idrefs = vec!["id1".to_string(), "ghost".to_string()];
+        let parent = Path::new("OEBPS");
+
+        let spine = build_spine(&mut archive, &manifest, &idrefs, parent);
+
+        assert_eq!(spine.len(), 1);
+        assert_eq!(spine[0].path, "OEBPS/ch1.xhtml");
+    }
+
+    #[test]
+    fn build_spine_skips_entry_absent_from_archive() {
+        // Manifest references ch2.xhtml but it is not in the zip.
+        let mut archive = zip_with_entries(&[("OEBPS/ch1.xhtml", b"content")]);
+
+        let manifest = vec![
+            manifest_entry("id1", "ch1.xhtml"),
+            manifest_entry("id2", "ch2.xhtml"),
+        ];
+        let idrefs = vec!["id1".to_string(), "id2".to_string()];
+        let parent = Path::new("OEBPS");
+
+        let spine = build_spine(&mut archive, &manifest, &idrefs, parent);
+
+        assert_eq!(spine.len(), 1, "missing archive entry should be skipped");
+        assert_eq!(spine[0].path, "OEBPS/ch1.xhtml");
+    }
+
+    #[test]
+    fn build_spine_decodes_percent_encoded_href() {
+        // Space encoded as %20 in the manifest href.
+        let mut archive = zip_with_entries(&[("OEBPS/chapter one.xhtml", b"hello")]);
+
+        let manifest = vec![manifest_entry("id1", "chapter%20one.xhtml")];
+        let idrefs = vec!["id1".to_string()];
+        let parent = Path::new("OEBPS");
+
+        let spine = build_spine(&mut archive, &manifest, &idrefs, parent);
+
+        assert_eq!(spine.len(), 1);
+        assert_eq!(spine[0].path, "OEBPS/chapter one.xhtml");
     }
 }
