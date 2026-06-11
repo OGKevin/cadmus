@@ -46,6 +46,7 @@ jobs:
               - '.github/actions/cargo-cache/**'
               - '.github/actions/cargo-cache-warmup/**'
               - '.github/actions/cache-fonts/**'
+              - '.github/actions/clone-needed-cargo-submodules/**'
               - '.github/actions/install-doc-tools/**'
               - '.github/actions/install-cadmuscli/**'
               - 'build-scripts/**'
@@ -70,6 +71,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: ./.github/actions/clone-needed-cargo-submodules
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
         id: rust-toolchain
       - name: Install cadmuscli
@@ -96,6 +98,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: ./.github/actions/clone-needed-cargo-submodules
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
         id: rust-toolchain
         with:
@@ -128,6 +131,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: ./.github/actions/clone-needed-cargo-submodules
       - name: Install cadmuscli
         uses: ./.github/actions/install-cadmuscli
         with:
@@ -146,6 +150,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: ./.github/actions/clone-needed-cargo-submodules
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
         id: rust-toolchain
       - name: Install cadmuscli
@@ -173,6 +178,9 @@ jobs:
         if: github.event_name != 'pull_request'
         with:
           persist-credentials: false
+
+      - uses: ./.github/actions/clone-needed-cargo-submodules
+        if: github.event_name != 'pull_request'
 
       - name: Set build metadata
         if: github.event_name != 'pull_request'
@@ -204,6 +212,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: ./.github/actions/clone-needed-cargo-submodules
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
         id: rust-toolchain
         with:
@@ -256,6 +265,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: ./.github/actions/clone-needed-cargo-submodules
       - name: Install cadmuscli
         uses: ./.github/actions/install-cadmuscli
         with:
@@ -303,6 +313,7 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
           persist-credentials: false
+      - uses: ./.github/actions/clone-needed-cargo-submodules
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
         id: rust-toolchain
         with:
@@ -463,6 +474,8 @@ jobs:
           fetch-tags: true
           persist-credentials: false
 
+      - uses: ./.github/actions/clone-needed-cargo-submodules
+
       - *set-build-metadata
 
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
@@ -556,6 +569,8 @@ jobs:
           fetch-tags: true
           persist-credentials: false
 
+      - uses: ./.github/actions/clone-needed-cargo-submodules
+
       - *set-build-metadata
 
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
@@ -627,6 +642,8 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
           persist-credentials: false
+
+      - uses: ./.github/actions/clone-needed-cargo-submodules
 
       - *set-build-metadata
 

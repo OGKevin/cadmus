@@ -13,6 +13,7 @@ on:
   pull_request:
     paths:
       - .github/workflows/release.yml
+      - .github/actions/clone-needed-cargo-submodules/**
 
 permissions:
   contents: write
@@ -115,6 +116,8 @@ jobs:
           ref: ${{ needs.release-please.outputs.tag_name }}
           fetch-depth: 0
           fetch-tags: true
+
+      - uses: ./.github/actions/clone-needed-cargo-submodules
 
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
         id: rust-toolchain

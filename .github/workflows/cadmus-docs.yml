@@ -15,12 +15,23 @@ on:
       - crates/**/*.rs
       - .github/actions/install-doc-tools/**
       - .github/actions/install-cadmuscli/**
+      - .github/actions/clone-needed-cargo-submodules/**
       - .github/workflows/cadmus-docs.yml
       - wrangler.toml
       - package.json
       - package-lock.json
   pull_request:
     types: [opened, synchronize, reopened]
+    paths:
+      - docs/**
+      - docs-portal/**
+      - website/**
+      - crates/**/*.rs
+      - .github/actions/install-doc-tools/**
+      - .github/actions/clone-needed-cargo-submodules/**
+      - .github/workflows/cadmus-docs.yml
+      - package.json
+      - package-lock.json
   workflow_dispatch:
 
 permissions:
@@ -49,6 +60,7 @@ jobs:
               - 'crates/**/*.rs'
               - '.github/actions/install-doc-tools/**'
               - '.github/actions/install-cadmuscli/**'
+              - '.github/actions/clone-needed-cargo-submodules/**'
               - '.github/workflows/cadmus-docs.yml'
               - 'wrangler.toml'
               - 'package.json'
@@ -64,6 +76,7 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
           persist-credentials: false
+      - uses: ./.github/actions/clone-needed-cargo-submodules
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
         id: rust-toolchain
 
