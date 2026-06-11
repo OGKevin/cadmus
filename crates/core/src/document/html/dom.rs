@@ -337,6 +337,8 @@ impl XmlTree {
         }
     }
 
+    // TODO(OGKevin): determine if this is actually still needed
+    //                with the move to external parser.
     pub fn wrap_lost_inlines(&mut self) {
         self.promote_blockish_inlines();
 

@@ -5,7 +5,7 @@ use super::html::layout::TextAlign;
 use super::html::layout::{DrawCommand, DrawState, ImageCommand, RootData, TextCommand};
 use super::html::layout::{LoopContext, StyleData};
 use super::html::style::StyleSheet;
-use super::html::xml::XmlParser;
+use super::html::xml::parse_html5;
 use super::pdf::PdfOpener;
 use crate::document::{BoundedText, Document, Location, TextLocation, TocEntry, chapter_from_uri};
 use crate::framebuffer::Pixmap;
@@ -233,7 +233,7 @@ impl<R: Read + Seek> EpubDocument<R> {
                 let mut zf = self.archive.by_name(name).ok()?;
                 zf.read_to_string(&mut text).ok()?;
             }
-            let root = XmlParser::new(&text).parse();
+            let root = parse_html5(&text);
             self.cache_uris(root.root(), name, start_offset, cache);
             cache.get(uri).cloned()
         } else {
@@ -273,7 +273,7 @@ impl<R: Read + Seek> EpubDocument<R> {
             }
         }
 
-        let mut root = XmlParser::new(&text).parse();
+        let mut root = parse_html5(&text);
         root.wrap_lost_inlines();
 
         let mut stylesheet = StyleSheet::new();
@@ -919,11 +919,287 @@ impl<R: Read + Seek> Document for EpubDocument<R> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::document::html::dom::XmlTree;
     use crate::document::html::layout::DrawCommand;
+    use crate::document::html::xml::XmlParser;
+    use opf::OpfDocument;
     use std::io::Write;
     use std::path::PathBuf;
     use zip::write::SimpleFileOptions;
 
+    /// Minimal EPUB chapter that resembles a real spine file: XML declaration,
+    /// DOCTYPE, explicit html/head/body, paragraphs with `id` attributes
+    /// (needed for `cache_uris` and `DrawCommand::Marker`), and a text span.
+    const CHAPTER_HTML: &str = concat!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n",
+        "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.1//EN\" \"\">\n",
+        "<html xmlns=\"http://www.w3.org/1999/xhtml\">",
+        "<head><title>Test</title></head>",
+        "<body>",
+        "<p id=\"s1\">First paragraph.</p>",
+        "<p id=\"s2\">Second <em>emphasis</em> paragraph.</p>",
+        "<p id=\"s3\">Third paragraph with <span>inline</span> content.</p>",
+        "</body></html>",
+    );
+
+    /// Variant of `CHAPTER_HTML` containing only block-level structure with no
+    /// inline text nodes.  Used by the display-list Marker test because the
+    /// engine's inline-text layout path requires loaded fonts, whereas the
+    /// block path that emits `DrawCommand::Marker` does not.
+    const CHAPTER_HTML_BLOCK_ONLY: &str = concat!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n",
+        "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.1//EN\" \"\">\n",
+        "<html xmlns=\"http://www.w3.org/1999/xhtml\">",
+        "<head></head>",
+        "<body>",
+        "<div id=\"s1\"><div id=\"s1a\"><div id=\"s1b\"></div></div></div>",
+        "<div id=\"s2\"><div id=\"s2a\"></div></div>",
+        "<div id=\"s3\"></div>",
+        "</body></html>",
+    );
+
+    /// Collect `(tag_name, id_attr_value, byte_offset)` for every element that
+    /// has an `id` attribute, in document order.  Used to compare bookmark /
+    /// annotation anchor points between parsers.
+    fn collect_id_offsets(tree: &XmlTree) -> Vec<(String, String, usize)> {
+        tree.root()
+            .descendants()
+            .filter_map(|n| {
+                let tag = n.tag_name()?;
+                let id = n.attribute("id")?;
+                Some((tag.to_string(), id.to_string(), n.offset()))
+            })
+            .collect()
+    }
+
+    /// Collect all `DrawCommand::Marker` offsets from a flat display list, in
+    /// order.  Marker offsets are exactly what gets stored as reading positions
+    /// and bookmark targets.
+    fn collect_marker_offsets(pages: &[Page]) -> Vec<usize> {
+        pages
+            .iter()
+            .flatten()
+            .filter_map(|cmd| match cmd {
+                DrawCommand::Marker(offset) => Some(*offset),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Build an in-memory EPUB zip containing a single spine chapter and
+    /// return it as a `Vec<u8>` suitable for `EpubDocument::from_archive`.
+    fn build_minimal_epub(chapter_html: &str) -> Vec<u8> {
+        let buf = Vec::new();
+        let cursor = std::io::Cursor::new(buf);
+        let mut zip = zip::ZipWriter::new(cursor);
+        let opts = SimpleFileOptions::default();
+
+        zip.start_file("META-INF/container.xml", opts).unwrap();
+        zip.write_all(
+            br#"<?xml version="1.0"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>"#,
+        )
+        .unwrap();
+
+        let chapter_bytes = chapter_html.as_bytes();
+        zip.start_file("OEBPS/chapter.xhtml", opts).unwrap();
+        zip.write_all(chapter_bytes).unwrap();
+
+        let opf = r#"<?xml version="1.0"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="2.0">
+  <metadata/>
+  <manifest>
+    <item id="ch1" href="chapter.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine>
+    <itemref idref="ch1"/>
+  </spine>
+</package>"#;
+        zip.start_file("OEBPS/content.opf", opts).unwrap();
+        zip.write_all(opf.as_bytes()).unwrap();
+
+        zip.finish().unwrap().into_inner()
+    }
+
+    /// Verify that `parse_html5` and `XmlParser` assign identical byte offsets
+    /// to every element that carries an `id` attribute in a realistic EPUB
+    /// chapter.  These offsets are what gets stored as reading positions,
+    /// bookmark targets, and annotation anchors.
+    #[test]
+    fn epub_spine_chapter_id_offsets_match_between_parsers() {
+        let xml_offsets = {
+            let mut tree = XmlParser::new(CHAPTER_HTML).parse();
+            tree.wrap_lost_inlines();
+            collect_id_offsets(&tree)
+        };
+
+        let h5_offsets = {
+            let mut tree = parse_html5(CHAPTER_HTML);
+            tree.wrap_lost_inlines();
+            collect_id_offsets(&tree)
+        };
+
+        assert_eq!(
+            xml_offsets, h5_offsets,
+            "id-attribute node offsets differ between XmlParser and parse_html5\n\
+             XmlParser: {xml_offsets:?}\n\
+             html5ever: {h5_offsets:?}"
+        );
+    }
+
+    /// Verify that `cache_uris` (the `#anchor-id` → byte-offset map used for
+    /// in-book link resolution) produces identical mappings from both parsers.
+    #[test]
+    fn epub_spine_chapter_cache_uris_match_between_parsers() {
+        let root_dir = PathBuf::from(
+            std::env::var("TEST_ROOT_DIR").expect("TEST_ROOT_DIR must be set for epub tests"),
+        );
+        let name = "OEBPS/chapter.xhtml";
+        let start_offset: usize = 0;
+
+        let xml_cache = {
+            let mut cache = UriCache::default();
+            let tree = XmlParser::new(CHAPTER_HTML).parse();
+            let mut dummy_doc: EpubDocument<std::io::Cursor<Vec<u8>>> = EpubDocument {
+                archive: ZipArchive::new(std::io::Cursor::new(build_minimal_epub(CHAPTER_HTML)))
+                    .unwrap(),
+                info: OpfDocument::empty(),
+                parent: PathBuf::default(),
+                engine: Engine::new(&root_dir),
+                spine: vec![Chunk {
+                    path: name.to_string(),
+                    size: CHAPTER_HTML.len(),
+                }],
+                cache: FxHashMap::default(),
+                ignore_document_css: false,
+            };
+            dummy_doc.cache_uris(tree.root(), name, start_offset, &mut cache);
+            cache
+        };
+
+        let h5_cache = {
+            let mut cache = UriCache::default();
+            let tree = parse_html5(CHAPTER_HTML);
+            let mut dummy_doc: EpubDocument<std::io::Cursor<Vec<u8>>> = EpubDocument {
+                archive: ZipArchive::new(std::io::Cursor::new(build_minimal_epub(CHAPTER_HTML)))
+                    .unwrap(),
+                info: OpfDocument::empty(),
+                parent: PathBuf::default(),
+                engine: Engine::new(&root_dir),
+                spine: vec![Chunk {
+                    path: name.to_string(),
+                    size: CHAPTER_HTML.len(),
+                }],
+                cache: FxHashMap::default(),
+                ignore_document_css: false,
+            };
+            dummy_doc.cache_uris(tree.root(), name, start_offset, &mut cache);
+            cache
+        };
+
+        assert_eq!(
+            xml_cache, h5_cache,
+            "cache_uris maps differ between XmlParser and parse_html5\n\
+             XmlParser: {xml_cache:?}\n\
+             html5ever: {h5_cache:?}"
+        );
+    }
+
+    /// Verify that `build_display_list` emits `DrawCommand::Marker` commands
+    /// with identical offsets whether the spine chapter was parsed by
+    /// `XmlParser` or `parse_html5`.  Marker offsets are stored as reading
+    /// positions and bookmark byte offsets, so they must be parser-independent.
+    ///
+    /// Uses a block-only chapter variant (no inline text nodes) so the engine
+    /// does not require loaded fonts — the Marker path is font-free.
+    #[test]
+    fn epub_spine_chapter_marker_offsets_match_between_parsers() {
+        let start_offset: usize = 512;
+
+        let xml_markers = {
+            let mut tree = XmlParser::new(CHAPTER_HTML_BLOCK_ONLY).parse();
+            tree.wrap_lost_inlines();
+            marker_offsets_from_tree(tree, start_offset)
+        };
+
+        let h5_markers = {
+            let mut tree = parse_html5(CHAPTER_HTML_BLOCK_ONLY);
+            tree.wrap_lost_inlines();
+            marker_offsets_from_tree(tree, start_offset)
+        };
+
+        assert!(
+            !xml_markers.is_empty(),
+            "no Marker commands produced — check id attributes"
+        );
+        assert_eq!(
+            xml_markers, h5_markers,
+            "Marker offsets differ between XmlParser and parse_html5\n\
+             XmlParser: {xml_markers:?}\n\
+             html5ever: {h5_markers:?}"
+        );
+    }
+
+    /// Drive `Engine::build_display_list` directly for a pre-parsed tree and
+    /// collect all `DrawCommand::Marker` offsets.  Uses a no-op resource
+    /// fetcher since the test chapter has no external assets.
+    fn marker_offsets_from_tree(tree: XmlTree, start_offset: usize) -> Vec<usize> {
+        let root_dir = PathBuf::from(
+            std::env::var("TEST_ROOT_DIR").expect("TEST_ROOT_DIR must be set for epub tests"),
+        );
+        struct NoopFetcher;
+        impl ResourceFetcher for NoopFetcher {
+            fn fetch(&mut self, _name: &str) -> Result<Vec<u8>, Error> {
+                Ok(Vec::new())
+            }
+        }
+
+        let mut engine = Engine::new(root_dir);
+        engine.layout(600, 800, 12.0, 265);
+
+        let rect = engine.rect();
+        let mut draw_state = DrawState {
+            position: rect.min,
+            ..Default::default()
+        };
+        let root_data = RootData {
+            start_offset,
+            spine_dir: PathBuf::default(),
+            rect,
+        };
+        let stylesheet = StyleSheet::new();
+        let style = StyleData {
+            font_size: engine.font_size,
+            line_height: crate::unit::pt_to_px(engine.line_height * engine.font_size, engine.dpi)
+                .round() as i32,
+            text_align: engine.text_align,
+            start_x: rect.min.x,
+            end_x: rect.max.x,
+            width: rect.max.x - rect.min.x,
+            ..Default::default()
+        };
+        let loop_context = LoopContext::default();
+        let mut pages: Vec<Page> = vec![Vec::new()];
+
+        if let Some(body) = tree.root().find("body") {
+            engine.build_display_list(
+                body,
+                &style,
+                &loop_context,
+                &stylesheet,
+                &root_data,
+                &mut NoopFetcher,
+                &mut draw_state,
+                &mut pages,
+            );
+        }
+
+        collect_marker_offsets(&pages)
+    }
     fn setup_epub() -> EpubDocumentFile {
         let root_dir = PathBuf::from(
             std::env::var("TEST_ROOT_DIR").expect("TEST_ROOT_DIR must be set for epub tests"),

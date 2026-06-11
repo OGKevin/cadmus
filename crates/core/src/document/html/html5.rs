@@ -3,13 +3,6 @@
 //! This module exposes a single public type, [`Html5Document`], which wraps
 //! the shared [`HtmlBase`] rendering pipeline and uses [`parse_html5`] to
 //! build the document tree.
-//!
-//! Use [`Html5Document`] when HTML5 conformance matters more than offset
-//! precision — for example, the dictionary view, which renders content from
-//! third-party dictionaries that may contain entities, void elements, and
-//! implicitly-closed tags. Because node offsets are synthetic (not byte
-//! positions), reading positions must **not** be persisted when using this
-//! type.
 
 use super::HtmlBase;
 use super::layout::TextAlign;
@@ -28,13 +21,10 @@ const USER_STYLESHEET: &str = "css/dictionary-user.css";
 /// HTML document backed by the html5ever spec-compliant parser.
 ///
 /// Handles HTML entities, void elements (`<br>`, `<img>`), and implicitly-
-/// closed block tags correctly per the HTML5 spec. Node offsets are **synthetic**
-/// (not byte positions in the source), so this type is **not** suitable for
-/// persisting reading positions to disk. Use it for ephemeral rendering such
-/// as the dictionary view.
-///
-/// For documents where offset accuracy matters (EPUB spine chapters, standalone
-/// HTML files) use [`HtmlDocument`](super::HtmlDocument) instead.
+/// closed block tags correctly per the HTML5 spec. Node offsets are
+/// byte-accurate source positions supplied by the `source-positions` feature
+/// of `html5ever`, matching those produced by [`XmlParser`](super::xml::XmlParser)
+/// for the same input.
 pub struct Html5Document {
     /// Shared rendering state (tree, engine, page cache, stylesheets).
     pub(super) base: HtmlBase,
@@ -52,7 +42,8 @@ impl Html5Document {
     /// [`set_user_stylesheet`](Self::set_user_stylesheet) to override them.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(text), fields(len = text.len())))]
     pub fn new_from_memory(text: &str, install_dir: &Path) -> Html5Document {
-        let content = parse_html5(text);
+        let mut content = parse_html5(text);
+        content.wrap_lost_inlines();
         Html5Document {
             base: HtmlBase::new(
                 content,
@@ -70,7 +61,9 @@ impl Html5Document {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, text), fields(len = text.len())))]
     pub fn update(&mut self, text: &str) {
         self.base.size = text.len();
-        self.base.content = parse_html5(text);
+        let mut content = parse_html5(text);
+        content.wrap_lost_inlines();
+        self.base.content = content;
         self.base.pages.clear();
     }
 
