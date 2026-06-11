@@ -62,13 +62,17 @@ runs:
         GH_TOKEN: ${{ inputs.gh-token }}
       run: cargo xtask download-assets
 
+    - name: Setup project
+      shell: bash
+      run: cargo xtask setup
+
     - name: Build for Kobo
       shell: bash
       env:
         GH_OAUTH_CLIENT_ID: ${{ inputs.gh-oauth-client-id }}
-        SQLITE3_LIB_DIR: target/cadmus-build-deps/arm-unknown-linux-gnueabihf/sqlite/lib
-        SQLITE3_INCLUDE_DIR: target/cadmus-build-deps/arm-unknown-linux-gnueabihf/sqlite/include
-        SQLITE3_STATIC: "1"
+        PKG_CONFIG_PATH_x86_64_unknown_linux_gnu: ${{ github.workspace }}/target/cadmus-build-deps/x86_64-unknown-linux-gnu/sqlite/lib/pkgconfig
+        PKG_CONFIG_PATH_arm_unknown_linux_gnueabihf: ${{ github.workspace }}/target/cadmus-build-deps/arm-unknown-linux-gnueabihf/sqlite/lib/pkgconfig
+        PKG_CONFIG_ALLOW_CROSS: 1
       run: |
         if [ "${{ inputs.test }}" = "true" ]; then
           cargo xtask build-kobo --features test

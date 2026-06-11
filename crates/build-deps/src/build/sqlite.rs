@@ -38,6 +38,10 @@ use crate::cmd;
 use crate::markers;
 use crate::utils;
 
+#[derive(rust_embed::RustEmbed)]
+#[folder = "assets/"]
+struct Assets;
+
 /// Kobo ARM target triple.
 pub const KOBO_TARGET: &str = "arm-unknown-linux-gnueabihf";
 
@@ -54,7 +58,6 @@ const SQLITE_DEFINES: &[&str] = &[
     "-DSQLITE_DQS=0",
     "-DSQLITE_DEFAULT_MEMSTATUS=0",
     "-DSQLITE_LIKE_DOESNT_MATCH_BLOBS",
-    "-DSQLITE_OMIT_SHARED_CACHE",
 ];
 
 /// Artefact paths produced by [`ensure_sqlite`].
@@ -91,11 +94,17 @@ pub fn ensure_sqlite(root: &Path, target: &str) -> Result<SqliteArtifacts> {
     let include_dir = build_dir.join("include");
 
     let submodule_path = "thirdparty/sqlite";
+    let sqlite_version = std::fs::read_to_string(root.join(submodule_path).join("VERSION"))
+        .context("failed to read thirdparty/sqlite/VERSION")?;
+    let sqlite_version = sqlite_version.trim();
+
     if markers::is_built(root, &build_dir, submodule_path)
         && lib_dir.join("libsqlite3.a").exists()
         && include_dir.join("sqlite3.h").exists()
     {
         println!("Skipping sqlite (already built for {target})...");
+        write_pkgconfig(&lib_dir, &include_dir, sqlite_version)
+            .context("failed to write sqlite3.pc for cached build")?;
         return Ok(SqliteArtifacts {
             lib_dir,
             include_dir,
@@ -125,12 +134,41 @@ pub fn ensure_sqlite(root: &Path, target: &str) -> Result<SqliteArtifacts> {
     std::fs::create_dir_all(&include_dir)?;
     compile_amalgamation(&build_dir, &lib_dir, &include_dir, target)?;
 
+    write_pkgconfig(&lib_dir, &include_dir, sqlite_version)
+        .context("failed to write sqlite3.pc")?;
+
     markers::mark_built(root, &build_dir, "sqlite", submodule_path)?;
 
     Ok(SqliteArtifacts {
         lib_dir,
         include_dir,
     })
+}
+
+/// Writes a `pkgconfig/sqlite3.pc` file describing the custom static build.
+///
+/// `libsqlite3-sys` (used via sqlx's `sqlite-unbundled` feature) supports
+/// per-target library discovery only through pkg-config, since its
+/// `SQLITE3_LIB_DIR` lookup is not target-aware. During cross-compilation the
+/// host proc-macro build and the ARM target build each need a different
+/// `libsqlite3.a`; pointing `PKG_CONFIG_PATH_<target>` at the matching `.pc`
+/// resolves the conflict.
+///
+/// Only `libsqlite3.a` exists in `lib_dir`, so the linker resolves `-lsqlite3`
+/// to the static archive automatically without needing an explicit
+/// `static=` directive.
+fn write_pkgconfig(lib_dir: &Path, include_dir: &Path, version: &str) -> Result<()> {
+    let pkgconfig_dir = lib_dir.join("pkgconfig");
+    std::fs::create_dir_all(&pkgconfig_dir).context("failed to create pkgconfig directory")?;
+
+    let template = Assets::get("sqlite3.pc.template").expect("sqlite3.pc.template not embedded");
+    let contents = std::str::from_utf8(template.data.as_ref())
+        .context("sqlite3.pc.template is not valid UTF-8")?
+        .replace("{lib}", &lib_dir.display().to_string())
+        .replace("{inc}", &include_dir.display().to_string())
+        .replace("{version}", version);
+
+    std::fs::write(pkgconfig_dir.join("sqlite3.pc"), contents).context("failed to write sqlite3.pc")
 }
 
 /// Run `./configure --enable-update-limit` in the build directory.
@@ -185,7 +223,10 @@ fn compile_amalgamation(
         "ar"
     };
 
-    let mut compile_args: Vec<&str> = vec!["-c", "sqlite3.c", "-o", "sqlite3.o", "-O2"];
+    // `-fPIC` is required because the final Cadmus binaries are linked as
+    // position-independent executables (`-pie`); a non-PIC static archive
+    // triggers `R_ARM_*` relocation errors at link time on the ARM target.
+    let mut compile_args: Vec<&str> = vec!["-c", "sqlite3.c", "-o", "sqlite3.o", "-O2", "-fPIC"];
     if target == KOBO_TARGET {
         compile_args.extend_from_slice(&["-mcpu=cortex-a9", "-mfpu=neon"]);
     }

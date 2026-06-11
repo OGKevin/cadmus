@@ -104,6 +104,7 @@ fn resolve_targets(args: &SetupArgs) -> Vec<String> {
 }
 
 /// Best-effort detection of the host target triple.
+#[must_use]
 fn guess_host_triple() -> String {
     std::env::var("TARGET").unwrap_or_else(|_| {
         if cfg!(target_arch = "x86_64") && cfg!(target_os = "linux") {

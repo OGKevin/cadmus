@@ -1,0 +1,9 @@
+libdir={lib}
+includedir={inc}
+
+Name: SQLite
+Description: Cadmus UDL-capable SQLite static build
+Version: {version}
+Libs: -L${libdir} -lsqlite3
+Libs.private: -lm
+Cflags: -I${includedir}

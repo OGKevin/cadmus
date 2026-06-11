@@ -378,6 +378,7 @@ version = "0.10.1"
 dependencies = [
  "anyhow",
  "cc",
+ "rust-embed",
  "tempfile",
 ]
 

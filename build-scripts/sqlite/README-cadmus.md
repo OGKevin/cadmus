@@ -49,7 +49,6 @@ automatically for the `arm-unknown-linux-gnueabihf` target.
 | `SQLITE_DQS=0`                      | Disallows double-quoted string literals                    |
 | `SQLITE_DEFAULT_MEMSTATUS=0`        | Disables memory usage tracking (lower overhead)            |
 | `SQLITE_LIKE_DOESNT_MATCH_BLOBS`    | `LIKE` skips BLOBs (marginal speedup)                      |
-| `SQLITE_OMIT_SHARED_CACHE`          | Removes shared-cache mode (unused by Cadmus)               |
 
 ## Environment variables
 
