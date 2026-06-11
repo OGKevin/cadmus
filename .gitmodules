@@ -64,3 +64,6 @@
 	url = https://github.com/google/fonts
 	branch = main
 	shallow = true
+[submodule "thirdparty/html5ever"]
+	path = thirdparty/html5ever
+	url = https://github.com/OGKevin/html5ever
