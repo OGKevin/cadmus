@@ -79,6 +79,23 @@ impl OpfDocument {
         })
     }
 
+    /// Returns an empty `OpfDocument` with no manifest, spine, or metadata.
+    ///
+    /// Used in tests that construct a stub [`super::EpubDocument`] without a
+    /// real OPF file.
+    #[cfg(test)]
+    pub fn empty() -> Self {
+        OpfDocument {
+            manifest: Vec::new(),
+            spine_idrefs: Vec::new(),
+            spine_toc_id: None,
+            dc_metadata: HashMap::new(),
+            cover_href: None,
+            series: None,
+            categories: BTreeSet::new(),
+        }
+    }
+
     /// Returns the `idref` values of all `<itemref>` children of `<spine>`,
     /// together with the `<spine toc="...">` attribute value if present.
     pub fn spine_idrefs(&self) -> (&[String], Option<&str>) {
