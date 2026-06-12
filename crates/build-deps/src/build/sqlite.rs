@@ -161,7 +161,8 @@ fn write_pkgconfig(lib_dir: &Path, include_dir: &Path, version: &str) -> Result<
     let pkgconfig_dir = lib_dir.join("pkgconfig");
     std::fs::create_dir_all(&pkgconfig_dir).context("failed to create pkgconfig directory")?;
 
-    let template = Assets::get("sqlite3.pc.template").expect("sqlite3.pc.template not embedded");
+    let template = Assets::get("sqlite3.pc.template")
+        .ok_or_else(|| anyhow::anyhow!("sqlite3.pc.template not embedded"))?;
     let contents = std::str::from_utf8(template.data.as_ref())
         .context("sqlite3.pc.template is not valid UTF-8")?
         .replace("{lib}", &lib_dir.display().to_string())

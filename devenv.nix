@@ -397,8 +397,6 @@ in
     # SQLITE3_LIB_DIR is the non-target-aware fallback used by native builds.
     # For cross-compilation, PKG_CONFIG_PATH_<target> gives each build
     # (host proc-macro + ARM target) its own sqlite via pkg-config.
-    SQLITE3_LIB_DIR = "${config.devenv.root}/target/cadmus-build-deps/${pkgs.stdenv.hostPlatform.rust.rustcTargetSpec}/sqlite/lib";
-    SQLITE3_INCLUDE_DIR = "${config.devenv.root}/target/cadmus-build-deps/${pkgs.stdenv.hostPlatform.rust.rustcTargetSpec}/sqlite/include";
     SQLITE3_STATIC = "1";
     "PKG_CONFIG_PATH_${builtins.replaceStrings ["-"] ["_"] pkgs.stdenv.hostPlatform.rust.rustcTargetSpec}" =
       "${config.devenv.root}/target/cadmus-build-deps/${pkgs.stdenv.hostPlatform.rust.rustcTargetSpec}/sqlite/lib/pkgconfig";
