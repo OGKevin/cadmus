@@ -19,57 +19,61 @@ pub struct ElementData {
     pub name: String,
     pub qualified_name: Option<String>,
     pub attributes: Attributes,
+    /// Set when an otherwise inline element contains block-level descendants
+    /// (invalid block-in-inline markup); it is then laid out as a block.
+    pub force_block: bool,
 }
 
 impl ElementData {
     fn is_block(&self) -> bool {
-        matches!(
-            self.name.as_str(),
-            "address"
-                | "article"
-                | "aside"
-                | "blockquote"
-                | "body"
-                | "head"
-                | "details"
-                | "dialog"
-                | "dd"
-                | "div"
-                | "dl"
-                | "dt"
-                | "fieldset"
-                | "figcaption"
-                | "figure"
-                | "footer"
-                | "form"
-                | "h1"
-                | "h2"
-                | "h3"
-                | "h4"
-                | "h5"
-                | "h6"
-                | "header"
-                | "hgroup"
-                | "hr"
-                | "html"
-                | "li"
-                | "main"
-                | "nav"
-                | "ol"
-                | "p"
-                | "pre"
-                | "section"
-                | "table"
-                | "thead"
-                | "colgroup"
-                | "tbody"
-                | "tfoot"
-                | "tr"
-                | "caption"
-                | "td"
-                | "th"
-                | "ul"
-        )
+        self.force_block
+            || matches!(
+                self.name.as_str(),
+                "address"
+                    | "article"
+                    | "aside"
+                    | "blockquote"
+                    | "body"
+                    | "head"
+                    | "details"
+                    | "dialog"
+                    | "dd"
+                    | "div"
+                    | "dl"
+                    | "dt"
+                    | "fieldset"
+                    | "figcaption"
+                    | "figure"
+                    | "footer"
+                    | "form"
+                    | "h1"
+                    | "h2"
+                    | "h3"
+                    | "h4"
+                    | "h5"
+                    | "h6"
+                    | "header"
+                    | "hgroup"
+                    | "hr"
+                    | "html"
+                    | "li"
+                    | "main"
+                    | "nav"
+                    | "ol"
+                    | "p"
+                    | "pre"
+                    | "section"
+                    | "table"
+                    | "thead"
+                    | "colgroup"
+                    | "tbody"
+                    | "tfoot"
+                    | "tr"
+                    | "caption"
+                    | "td"
+                    | "th"
+                    | "ul"
+            )
     }
 }
 
@@ -106,6 +110,7 @@ pub fn element(name: &str, offset: usize, attributes: Attributes) -> NodeData {
         name: name[colon.map(|index| index + 1).unwrap_or(0)..].to_string(),
         qualified_name: colon.map(|_| name.to_string()),
         attributes,
+        force_block: false,
     })
 }
 
@@ -305,7 +310,36 @@ impl XmlTree {
         }
     }
 
+    /// Promote inline elements that contain block-level descendants to blocks.
+    ///
+    /// Such block-in-inline nesting is invalid HTML (e.g.
+    /// `<span><div>…</div></span>`, common in EPUB converter output) and would
+    /// otherwise be flattened into a single inline run by
+    /// `gather_inline_material`, silently dropping the block content. Must run
+    /// before `wrap_lost_inlines` so the promoted elements are not wrapped as
+    /// lost inlines.
+    fn promote_blockish_inlines(&mut self) {
+        let ids: Vec<NodeId> = self
+            .root()
+            .descendants()
+            .filter(|n| {
+                matches!(n.data(), NodeData::Element(..))
+                    && n.is_inline()
+                    && n.descendants().any(|d| d.is_block())
+            })
+            .map(|n| n.id)
+            .collect();
+
+        for id in ids {
+            if let NodeData::Element(e) = &mut self.node_mut(id).data {
+                e.force_block = true;
+            }
+        }
+    }
+
     pub fn wrap_lost_inlines(&mut self) {
+        self.promote_blockish_inlines();
+
         let mut ids = Vec::new();
         let mut known_ids = FxHashSet::default();
 
