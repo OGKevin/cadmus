@@ -402,6 +402,7 @@ in
       "${config.devenv.root}/target/cadmus-build-deps/${pkgs.stdenv.hostPlatform.rust.rustcTargetSpec}/sqlite/lib/pkgconfig";
     PKG_CONFIG_PATH_arm_unknown_linux_gnueabihf =
       "${config.devenv.root}/target/cadmus-build-deps/arm-unknown-linux-gnueabihf/sqlite/lib/pkgconfig";
+    PKG_CONFIG_arm_unknown_linux_gnueabihf = "${pkgs.pkg-config-unwrapped}/bin/pkg-config";
 
     # bindgen (used by libsqlite3-sys) requires LIBCLANG_PATH to locate
     # libclang. In the Nix devenv the clang wrapper on PATH does not have a
