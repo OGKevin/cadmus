@@ -156,17 +156,12 @@ impl I18nDisplay for ButtonScheme {
     }
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum StartupMode {
+    #[default]
     Home,
     LastFile,
-}
-
-impl Default for StartupMode {
-    fn default() -> Self {
-        Self::Home
-    }
 }
 
 impl fmt::Display for StartupMode {

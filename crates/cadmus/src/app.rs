@@ -133,14 +133,13 @@ fn open_document(
         if let Some(n) = reader_info
             .rotation
             .map(|n| CURRENT_DEVICE.from_canonical(n))
+            && CURRENT_DEVICE.orientation(n) != CURRENT_DEVICE.orientation(rotation)
         {
-            if CURRENT_DEVICE.orientation(n) != CURRENT_DEVICE.orientation(rotation) {
-                wait_for_all(updating, context);
-                if let Ok(dims) = context.fb.set_rotation(n) {
-                    raw_sender.send(display_rotate_event(n)).ok();
-                    context.display.rotation = n;
-                    context.display.dims = dims;
-                }
+            wait_for_all(updating, context);
+            if let Ok(dims) = context.fb.set_rotation(n) {
+                raw_sender.send(display_rotate_event(n)).ok();
+                context.display.rotation = n;
+                context.display.dims = dims;
             }
         }
         context.fb.set_dithered(reader_info.dithered);
@@ -171,12 +170,12 @@ fn open_document(
         }
         true
     } else {
-        if context.display.rotation != rotation {
-            if let Ok(dims) = context.fb.set_rotation(rotation) {
-                raw_sender.send(display_rotate_event(rotation)).ok();
-                context.display.rotation = rotation;
-                context.display.dims = dims;
-            }
+        if context.display.rotation != rotation
+            && let Ok(dims) = context.fb.set_rotation(rotation)
+        {
+            raw_sender.send(display_rotate_event(rotation)).ok();
+            context.display.rotation = rotation;
+            context.display.dims = dims;
         }
         context.fb.set_dithered(dithered);
         warn!(
@@ -832,20 +831,20 @@ pub fn run() -> Result<(), Error> {
 
     let mut bus = VecDeque::with_capacity(4);
 
-    if context.settings.startup_mode == StartupMode::LastFile {
-        if let Some(info) = context.library.most_recently_opened_reading_book() {
-            open_document(
-                Box::new(info),
-                &mut view,
-                &mut history,
-                &mut updating,
-                &raw_sender,
-                &tx,
-                &mut bus,
-                &mut rq,
-                &mut context,
-            );
-        }
+    if context.settings.startup_mode == StartupMode::LastFile
+        && let Some(info) = context.library.most_recently_opened_reading_book()
+    {
+        open_document(
+            Box::new(info),
+            &mut view,
+            &mut history,
+            &mut updating,
+            &raw_sender,
+            &tx,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        );
     }
 
     schedule_task(
