@@ -72,7 +72,7 @@ use crate::metadata::{
     Info, Margin, PageScheme, ScrollMode, SimpleStatus, SortMethod, TextAlign, ZoomMode,
 };
 use crate::settings::{
-    self, ButtonScheme, FinishedAction, FirstColumn, RotationLock, SecondColumn,
+    self, ButtonScheme, FinishedAction, FirstColumn, RotationLock, SecondColumn, StartupMode,
 };
 use crate::view::ota::OtaEntryId;
 use downcast_rs::{Downcast, impl_downcast};
@@ -829,6 +829,7 @@ pub enum EntryId {
     #[deprecated(note = "Use ToggleEvent::Settings instead")]
     ToggleAutoShare,
     EditAutoSuspend,
+    SetStartupMode(StartupMode),
     EditAutoPowerOff,
     EditAutoFrontlightBrightness,
     EditAutoFrontlightManualCoordinates,

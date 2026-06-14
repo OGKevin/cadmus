@@ -156,6 +156,37 @@ impl I18nDisplay for ButtonScheme {
     }
 }
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum StartupMode {
+    Home,
+    LastFile,
+}
+
+impl Default for StartupMode {
+    fn default() -> Self {
+        Self::Home
+    }
+}
+
+impl fmt::Display for StartupMode {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            StartupMode::Home => write!(f, "Home"),
+            StartupMode::LastFile => write!(f, "Last File"),
+        }
+    }
+}
+
+impl I18nDisplay for StartupMode {
+    fn to_i18n_string(&self) -> String {
+        match self {
+            StartupMode::Home => fl!("settings-startup-mode-home"),
+            StartupMode::LastFile => fl!("settings-startup-mode-last-file"),
+        }
+    }
+}
+
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum IntermKind {
@@ -305,6 +336,7 @@ pub struct Settings {
     pub ota: OtaSettings,
     pub logging: LoggingSettings,
     pub settings_retention: usize,
+    pub startup_mode: StartupMode,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub locale: Option<LanguageIdentifier>,
 }
@@ -1047,6 +1079,7 @@ impl Default for Settings {
             ota: OtaSettings::default(),
             logging: LoggingSettings::default(),
             settings_retention: 3,
+            startup_mode: StartupMode::default(),
             locale: None,
         }
     }

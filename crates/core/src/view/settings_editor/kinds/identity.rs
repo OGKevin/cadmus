@@ -62,4 +62,5 @@ pub enum SettingIdentity {
     /// Inverted refresh rate inside a per-kind editor.
     RefreshRateByKindInverted(String),
     DitheredKinds,
+    StartupMode,
 }

@@ -3,7 +3,7 @@ use super::kinds::dictionary::DictionaryInfo;
 use super::kinds::general::{
     AutoFrontlight, AutoFrontlightBrightness, AutoFrontlightManualCoordinates, AutoPowerOff,
     AutoShare, AutoSuspend, AutoTime, ButtonScheme, KeyboardLayout, Locale, SettingsRetention,
-    SleepCover,
+    SleepCover, StartupModeSetting,
 };
 use super::kinds::import::{AllowedKindsSetting, ForceFullImport, ImportSyncMetadata};
 use super::kinds::intermission::{IntermissionPowerOff, IntermissionShare, IntermissionSuspend};
@@ -75,6 +75,7 @@ impl Category {
                 Box::new(KeyboardLayout),
                 Box::new(SleepCover),
                 Box::new(SettingsRetention),
+                Box::new(StartupModeSetting),
             ],
             Category::Reader => vec![
                 Box::new(FinishedActionSetting),

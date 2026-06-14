@@ -63,10 +63,15 @@ settings-general-language = Language
 settings-general-never = Never
 settings-general-not-set = Not set
 settings-general-settings-retention = Settings Retention
+settings-general-startup-mode = Startup Mode
 settings-general-toggle-off = off
 settings-general-toggle-on = on
 settings-general-trigger = Trigger
 settings-general-unknown = Unknown
+
+# Settings - Startup Mode
+settings-startup-mode-home = Home
+settings-startup-mode-last-file = Last File
 
 # Settings - Reader
 settings-reader-end-of-book-action = End of Book Action

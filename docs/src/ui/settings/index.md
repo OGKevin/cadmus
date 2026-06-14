@@ -9,7 +9,7 @@ Settings are organised into tabs — tap a category to open it.
 
 ## Categories
 
-- **General** — language, sleep, auto-suspend, button layout
+- **General** — language, sleep, auto-suspend, button layout, startup mode
 - **Reader** — what happens when you finish a book
 - **Libraries** — add, edit, or remove your book libraries
 - **Dictionaries** — download and manage offline dictionaries

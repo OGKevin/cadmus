@@ -8,7 +8,7 @@ use crate::fl;
 use crate::frontlight::LightLevel;
 use crate::geolocation::Coordinates;
 use crate::i18n::I18nDisplay;
-use crate::settings::Settings;
+use crate::settings::{Settings, StartupMode};
 use crate::view::{Bus, EntryId, EntryKind, Event, ToggleEvent, ViewId};
 use anyhow::Error;
 use std::fs;
@@ -703,6 +703,53 @@ impl InputSettingKind for SettingsRetention {
             settings.settings_retention = value;
         }
         settings.settings_retention.to_string()
+    }
+}
+
+/// Startup mode selection setting (Home or Last File)
+pub struct StartupModeSetting;
+
+impl SettingKind for StartupModeSetting {
+    fn identity(&self) -> SettingIdentity {
+        SettingIdentity::StartupMode
+    }
+
+    fn label(&self, _settings: &Settings) -> String {
+        fl!("settings-general-startup-mode")
+    }
+
+    fn fetch(&self, settings: &Settings) -> SettingData {
+        let current = settings.startup_mode;
+        let entries = vec![
+            EntryKind::RadioButton(
+                StartupMode::Home.to_i18n_string(),
+                EntryId::SetStartupMode(StartupMode::Home),
+                current == StartupMode::Home,
+            ),
+            EntryKind::RadioButton(
+                StartupMode::LastFile.to_i18n_string(),
+                EntryId::SetStartupMode(StartupMode::LastFile),
+                current == StartupMode::LastFile,
+            ),
+        ];
+
+        SettingData {
+            value: current.to_i18n_string(),
+            widget: WidgetKind::SubMenu(entries),
+        }
+    }
+
+    fn handle(
+        &self,
+        evt: &Event,
+        settings: &mut Settings,
+        _bus: &mut Bus,
+    ) -> (Option<String>, bool) {
+        if let Event::Select(EntryId::SetStartupMode(mode)) = evt {
+            settings.startup_mode = *mode;
+            return (Some(mode.to_i18n_string()), true);
+        }
+        (None, false)
     }
 }
 

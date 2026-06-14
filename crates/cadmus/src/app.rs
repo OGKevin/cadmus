@@ -24,8 +24,10 @@ use cadmus_core::library::Library;
 use cadmus_core::lightsensor::{KoboLightSensor, LightSensor};
 use cadmus_core::rtc::{AlarmType, EnsureAlarmOutcome, PastDueAction};
 use cadmus_core::settings::versioned::SettingsManager;
+use cadmus_core::metadata::Info;
 use cadmus_core::settings::{
     ButtonScheme, IntermKind, IntermissionDisplay, LoggingSettings, RotationLock, Settings,
+    StartupMode,
 };
 use cadmus_core::task::TaskManager;
 use cadmus_core::version::{get_current_version, get_version};
@@ -49,8 +51,8 @@ use cadmus_core::view::sketch::Sketch;
 use cadmus_core::view::startup::StartupScreen;
 use cadmus_core::view::touch_events::TouchEvents;
 use cadmus_core::view::{
-    AppCmd, EntryId, EntryKind, Event, NotificationEvent, RenderData, RenderQueue, UpdateData,
-    View, ViewId,
+    AppCmd, Bus, EntryId, EntryKind, Event, Hub, NotificationEvent, RenderData, RenderQueue,
+    UpdateData, View, ViewId,
 };
 use cadmus_core::view::{handle_event, process_render_queue, wait_for_all};
 use std::collections::VecDeque;
@@ -110,6 +112,86 @@ struct HistoryItem {
     rotation: i8,
     monochrome: bool,
     dithered: bool,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn open_document(
+    info: Box<Info>,
+    view: &mut Box<dyn View>,
+    history: &mut Vec<HistoryItem>,
+    updating: &mut Vec<UpdateData>,
+    raw_sender: &Sender<InputEvent>,
+    tx: &Hub,
+    bus: &mut Bus,
+    rq: &mut RenderQueue,
+    context: &mut Context,
+) -> bool {
+    let rotation = context.display.rotation;
+    let dithered = context.fb.dithered();
+
+    if let Some(reader_info) = info.reader.as_ref() {
+        if let Some(n) = reader_info
+            .rotation
+            .map(|n| CURRENT_DEVICE.from_canonical(n))
+        {
+            if CURRENT_DEVICE.orientation(n) != CURRENT_DEVICE.orientation(rotation) {
+                wait_for_all(updating, context);
+                if let Ok(dims) = context.fb.set_rotation(n) {
+                    raw_sender.send(display_rotate_event(n)).ok();
+                    context.display.rotation = n;
+                    context.display.dims = dims;
+                }
+            }
+        }
+        context.fb.set_dithered(reader_info.dithered);
+    } else {
+        context
+            .fb
+            .set_dithered(info.file.kind.parse().ok().is_some_and(|kind| {
+                context.settings.reader.dithered_kinds.contains(&kind)
+            }));
+    }
+
+    let path = info.file.path.clone();
+    if let Some(r) = Reader::new(context.fb.rect(), *info, tx, context) {
+        let mut next_view = Box::new(r) as Box<dyn View>;
+        transfer_notifications(view.as_mut(), next_view.as_mut(), rq, context);
+        if view.is::<Reader>() {
+            *view = next_view;
+        } else {
+            let prev = std::mem::replace(view, next_view);
+            history.push(HistoryItem {
+                view: prev,
+                rotation,
+                monochrome: context.fb.monochrome(),
+                dithered,
+            });
+        }
+        true
+    } else {
+        if context.display.rotation != rotation {
+            if let Ok(dims) = context.fb.set_rotation(rotation) {
+                raw_sender.send(display_rotate_event(rotation)).ok();
+                context.display.rotation = rotation;
+                context.display.dims = dims;
+            }
+        }
+        context.fb.set_dithered(dithered);
+        warn!(
+            path = %path.display(),
+            library_home = %context.library.home.display(),
+            "Reader::new returned None, dispatching Event::Invalid"
+        );
+        handle_event(
+            view.as_mut(),
+            &Event::Invalid(path),
+            tx,
+            bus,
+            rq,
+            context,
+        );
+        false
+    }
 }
 
 fn build_context(
@@ -755,6 +837,22 @@ pub fn run() -> Result<(), Error> {
 
     let mut bus = VecDeque::with_capacity(4);
 
+    if context.settings.startup_mode == StartupMode::LastFile {
+        if let Some(info) = context.library.most_recently_opened_reading_book() {
+            open_document(
+                Box::new(info),
+                &mut view,
+                &mut history,
+                &mut updating,
+                &raw_sender,
+                &tx,
+                &mut bus,
+                &mut rq,
+                &mut context,
+            );
+        }
+    }
+
     schedule_task(
         TaskId::CheckBattery,
         Event::CheckBattery,
@@ -1364,73 +1462,17 @@ pub fn run() -> Result<(), Error> {
                 }
             }
             Event::Open(info) => {
-                let rotation = context.display.rotation;
-                let dithered = context.fb.dithered();
-                if let Some(reader_info) = info.reader.as_ref() {
-                    if let Some(n) = reader_info
-                        .rotation
-                        .map(|n| CURRENT_DEVICE.from_canonical(n))
-                    {
-                        if CURRENT_DEVICE.orientation(n) != CURRENT_DEVICE.orientation(rotation) {
-                            wait_for_all(&mut updating, &mut context);
-                            if let Ok(dims) = context.fb.set_rotation(n) {
-                                raw_sender.send(display_rotate_event(n)).ok();
-                                context.display.rotation = n;
-                                context.display.dims = dims;
-                            }
-                        }
-                    }
-                    context.fb.set_dithered(reader_info.dithered);
-                } else {
-                    context
-                        .fb
-                        .set_dithered(info.file.kind.parse().ok().is_some_and(|kind| {
-                            context.settings.reader.dithered_kinds.contains(&kind)
-                        }));
-                }
-                let path = info.file.path.clone();
-                if let Some(r) = Reader::new(context.fb.rect(), *info, &tx, &mut context) {
-                    let mut next_view = Box::new(r) as Box<dyn View>;
-                    transfer_notifications(
-                        view.as_mut(),
-                        next_view.as_mut(),
-                        &mut rq,
-                        &mut context,
-                    );
-                    if view.is::<Reader>() {
-                        view = next_view;
-                    } else {
-                        history.push(HistoryItem {
-                            view,
-                            rotation,
-                            monochrome: context.fb.monochrome(),
-                            dithered,
-                        });
-                        view = next_view;
-                    }
-                } else {
-                    if context.display.rotation != rotation {
-                        if let Ok(dims) = context.fb.set_rotation(rotation) {
-                            raw_sender.send(display_rotate_event(rotation)).ok();
-                            context.display.rotation = rotation;
-                            context.display.dims = dims;
-                        }
-                    }
-                    context.fb.set_dithered(dithered);
-                    warn!(
-                        path = %path.display(),
-                        library_home = %context.library.home.display(),
-                        "Reader::new returned None, dispatching Event::Invalid"
-                    );
-                    handle_event(
-                        view.as_mut(),
-                        &Event::Invalid(path),
-                        &tx,
-                        &mut bus,
-                        &mut rq,
-                        &mut context,
-                    );
-                }
+                open_document(
+                    info,
+                    &mut view,
+                    &mut history,
+                    &mut updating,
+                    &raw_sender,
+                    &tx,
+                    &mut bus,
+                    &mut rq,
+                    &mut context,
+                );
             }
             Event::Select(EntryId::About) => {
                 let version_text = format!("{} {}", APP_NAME, get_version());
