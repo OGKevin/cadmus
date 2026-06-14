@@ -22,9 +22,9 @@ use cadmus_core::input::{
 };
 use cadmus_core::library::Library;
 use cadmus_core::lightsensor::{KoboLightSensor, LightSensor};
+use cadmus_core::metadata::Info;
 use cadmus_core::rtc::{AlarmType, EnsureAlarmOutcome, PastDueAction};
 use cadmus_core::settings::versioned::SettingsManager;
-use cadmus_core::metadata::Info;
 use cadmus_core::settings::{
     ButtonScheme, IntermKind, IntermissionDisplay, LoggingSettings, RotationLock, Settings,
     StartupMode,
@@ -145,11 +145,13 @@ fn open_document(
         }
         context.fb.set_dithered(reader_info.dithered);
     } else {
-        context
-            .fb
-            .set_dithered(info.file.kind.parse().ok().is_some_and(|kind| {
-                context.settings.reader.dithered_kinds.contains(&kind)
-            }));
+        context.fb.set_dithered(
+            info.file
+                .kind
+                .parse()
+                .ok()
+                .is_some_and(|kind| context.settings.reader.dithered_kinds.contains(&kind)),
+        );
     }
 
     let path = info.file.path.clone();
@@ -182,14 +184,7 @@ fn open_document(
             library_home = %context.library.home.display(),
             "Reader::new returned None, dispatching Event::Invalid"
         );
-        handle_event(
-            view.as_mut(),
-            &Event::Invalid(path),
-            tx,
-            bus,
-            rq,
-            context,
-        );
+        handle_event(view.as_mut(), &Event::Invalid(path), tx, bus, rq, context);
         false
     }
 }
