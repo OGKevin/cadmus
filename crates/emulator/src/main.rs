@@ -82,7 +82,6 @@ fn open_document(
     info: Box<Info>,
     view: &mut Box<dyn View>,
     history: &mut Vec<Box<dyn View>>,
-    updating: &mut Vec<UpdateData>,
     tx: &Hub,
     bus: &mut Bus,
     rq: &mut RenderQueue,
@@ -94,11 +93,10 @@ fn open_document(
         .as_ref()
         .and_then(|r| r.rotation.map(|n| CURRENT_DEVICE.from_canonical(n)))
         && n != rotation
+        && let Ok(dims) = context.fb.set_rotation(n)
     {
-        if let Ok(dims) = context.fb.set_rotation(n) {
-            context.display.rotation = n;
-            context.display.dims = dims;
-        }
+        context.display.rotation = n;
+        context.display.dims = dims;
     }
     let path = info.file.path.clone();
     if let Some(r) = Reader::new(context.fb.rect(), *info, tx, context) {
@@ -468,7 +466,6 @@ fn run() -> Result<(), Error> {
             Box::new(info),
             &mut view,
             &mut history,
-            &mut updating,
             &tx,
             &mut bus,
             &mut rq,
@@ -645,7 +642,6 @@ fn run() -> Result<(), Error> {
                         info,
                         &mut view,
                         &mut history,
-                        &mut updating,
                         &tx,
                         &mut bus,
                         &mut rq,
