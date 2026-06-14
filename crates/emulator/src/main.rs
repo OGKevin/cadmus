@@ -55,7 +55,7 @@ use cadmus_core::view::{
     AppCmd, Bus, EntryId, EntryKind, Event, Hub, NotificationEvent, View, ViewId,
 };
 use cadmus_core::view::{
-    RenderData, RenderQueue, UpdateData, handle_event, process_render_queue, wait_for_all,
+    RenderData, RenderQueue, handle_event, process_render_queue, wait_for_all,
 };
 use cadmus_core::{i18n, png};
 use sdl2::event::Event as SdlEvent;
