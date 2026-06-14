@@ -26,9 +26,10 @@ use cadmus_core::gesture::{GestureEvent, gesture_events};
 use cadmus_core::input::{ButtonCode, ButtonStatus, DeviceEvent, FingerStatus};
 use cadmus_core::library::Library;
 use cadmus_core::lightsensor::LightSensor;
+use cadmus_core::metadata::Info;
 use cadmus_core::pt;
 use cadmus_core::settings::versioned::SettingsManager;
-use cadmus_core::settings::{IntermKind, Settings};
+use cadmus_core::settings::{IntermKind, Settings, StartupMode};
 use cadmus_core::task::TaskManager;
 use cadmus_core::version::{get_current_version, get_version};
 use cadmus_core::view::calculator::Calculator;
@@ -50,9 +51,11 @@ use cadmus_core::view::settings_editor::SettingsEditor;
 use cadmus_core::view::sketch::Sketch;
 use cadmus_core::view::startup::StartupScreen;
 use cadmus_core::view::touch_events::TouchEvents;
-use cadmus_core::view::{AppCmd, EntryId, EntryKind, Event, NotificationEvent, View, ViewId};
 use cadmus_core::view::{
-    RenderData, RenderQueue, handle_event, process_render_queue, wait_for_all,
+    AppCmd, Bus, EntryId, EntryKind, Event, Hub, NotificationEvent, View, ViewId,
+};
+use cadmus_core::view::{
+    RenderData, RenderQueue, UpdateData, handle_event, process_render_queue, wait_for_all,
 };
 use cadmus_core::{i18n, png};
 use sdl2::event::Event as SdlEvent;
@@ -74,6 +77,56 @@ pub const APP_NAME: &str = "Cadmus";
 const DEFAULT_ROTATION: i8 = 1;
 
 const CLOCK_REFRESH_INTERVAL: Duration = Duration::from_secs(60);
+
+fn open_document(
+    info: Box<Info>,
+    view: &mut Box<dyn View>,
+    history: &mut Vec<Box<dyn View>>,
+    updating: &mut Vec<UpdateData>,
+    tx: &Hub,
+    bus: &mut Bus,
+    rq: &mut RenderQueue,
+    context: &mut Context,
+) -> bool {
+    let rotation = context.display.rotation;
+    if let Some(n) = info
+        .reader
+        .as_ref()
+        .and_then(|r| r.rotation.map(|n| CURRENT_DEVICE.from_canonical(n)))
+        && n != rotation
+    {
+        if let Ok(dims) = context.fb.set_rotation(n) {
+            context.display.rotation = n;
+            context.display.dims = dims;
+        }
+    }
+    let path = info.file.path.clone();
+    if let Some(r) = Reader::new(context.fb.rect(), *info, tx, context) {
+        let mut next_view = Box::new(r) as Box<dyn View>;
+        transfer_notifications(view.as_mut(), next_view.as_mut(), rq, context);
+        if view.is::<Reader>() {
+            *view = next_view;
+        } else {
+            let prev = std::mem::replace(view, next_view);
+            history.push(prev);
+        }
+        true
+    } else {
+        if context.display.rotation != rotation
+            && let Ok(dims) = context.fb.set_rotation(rotation)
+        {
+            context.display.rotation = rotation;
+            context.display.dims = dims;
+        }
+        warn!(
+            path = %path.display(),
+            library_home = %context.library.home.display(),
+            "Reader::new returned None, dispatching Event::Invalid"
+        );
+        handle_event(view.as_mut(), &Event::Invalid(path), tx, bus, rq, context);
+        false
+    }
+}
 
 pub fn build_context(
     fb: Box<dyn Framebuffer>,
@@ -408,6 +461,21 @@ fn run() -> Result<(), Error> {
 
     let mut bus = VecDeque::with_capacity(4);
 
+    if context.settings.startup_mode == StartupMode::LastFile
+        && let Some(info) = context.library.most_recently_opened_reading_book()
+    {
+        open_document(
+            Box::new(info),
+            &mut view,
+            &mut history,
+            &mut updating,
+            &tx,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        );
+    }
+
     'outer: loop {
         let mut event_pump = sdl_context.event_pump().unwrap();
         while let Some(sdl_evt) = event_pump.poll_event() {
@@ -573,55 +641,16 @@ fn run() -> Result<(), Error> {
             background_tasks.handle_event(&evt, &tx, &context);
             match evt {
                 Event::Open(info) => {
-                    let rotation = context.display.rotation;
-                    if let Some(n) = info
-                        .reader
-                        .as_ref()
-                        .and_then(|r| r.rotation.map(|n| CURRENT_DEVICE.from_canonical(n)))
-                    {
-                        if n != rotation {
-                            if let Ok(dims) = context.fb.set_rotation(n) {
-                                context.display.rotation = n;
-                                context.display.dims = dims;
-                            }
-                        }
-                    }
-                    let path = info.file.path.clone();
-                    if let Some(r) = Reader::new(context.fb.rect(), *info, &tx, &mut context) {
-                        let mut next_view = Box::new(r) as Box<dyn View>;
-                        transfer_notifications(
-                            view.as_mut(),
-                            next_view.as_mut(),
-                            &mut rq,
-                            &mut context,
-                        );
-                        if view.is::<Reader>() {
-                            view = next_view;
-                        } else {
-                            history.push(view as Box<dyn View>);
-                            view = next_view;
-                        }
-                    } else {
-                        if context.display.rotation != rotation {
-                            if let Ok(dims) = context.fb.set_rotation(rotation) {
-                                context.display.rotation = rotation;
-                                context.display.dims = dims;
-                            }
-                        }
-                        warn!(
-                            path = %path.display(),
-                            library_home = %context.library.home.display(),
-                            "Reader::new returned None, dispatching Event::Invalid"
-                        );
-                        handle_event(
-                            view.as_mut(),
-                            &Event::Invalid(path),
-                            &tx,
-                            &mut bus,
-                            &mut rq,
-                            &mut context,
-                        );
-                    }
+                    open_document(
+                        info,
+                        &mut view,
+                        &mut history,
+                        &mut updating,
+                        &tx,
+                        &mut bus,
+                        &mut rq,
+                        &mut context,
+                    );
                 }
                 Event::OpenHtml(ref html, ref link_uri) => {
                     view.children_mut().retain(|child| !child.is::<Menu>());

@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Cadmus Documentation\n"
-"POT-Creation-Date: 2026-06-14T18:58:49Z\n"
+"POT-Creation-Date: 2026-06-14T19:13:07Z\n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -99,7 +99,7 @@ msgstr ""
 msgid "Event System"
 msgstr ""
 
-#: src/SUMMARY.md:29 src/settings/index.md:309
+#: src/SUMMARY.md:29 src/settings/index.md:307
 #: src/contributing/telemetry/index.md:1
 msgid "Telemetry"
 msgstr ""
@@ -889,7 +889,7 @@ msgid ""
 "see [Moving data to an SD card](#moving-data-to-an-sd-card) below."
 msgstr ""
 
-#: src/installation/migration.md:27 src/settings/index.md:164
+#: src/installation/migration.md:27 src/settings/index.md:162
 msgid ""
 "```toml\n"
 "[[libraries]]\n"
@@ -1178,14 +1178,14 @@ msgstr ""
 #: src/settings/index.md:17 src/settings/index.md:29 src/settings/index.md:39
 #: src/settings/index.md:54 src/settings/index.md:64 src/settings/index.md:76
 #: src/settings/index.md:88 src/settings/index.md:100 src/settings/index.md:112
-#: src/settings/index.md:132 src/settings/index.md:149
-#: src/settings/index.md:160 src/settings/index.md:173
-#: src/settings/index.md:179 src/settings/index.md:185
-#: src/settings/index.md:193 src/settings/index.md:214
-#: src/settings/index.md:227 src/settings/index.md:239
-#: src/settings/index.md:247 src/settings/index.md:264
-#: src/settings/index.md:284 src/settings/index.md:333
-#: src/settings/index.md:344
+#: src/settings/index.md:130 src/settings/index.md:147
+#: src/settings/index.md:158 src/settings/index.md:171
+#: src/settings/index.md:177 src/settings/index.md:183
+#: src/settings/index.md:191 src/settings/index.md:212
+#: src/settings/index.md:225 src/settings/index.md:237
+#: src/settings/index.md:245 src/settings/index.md:262
+#: src/settings/index.md:282 src/settings/index.md:331
+#: src/settings/index.md:342
 msgid "✏️"
 msgstr ""
 
@@ -1317,51 +1317,49 @@ msgstr ""
 #: src/settings/index.md:117
 msgid ""
 "`\"last-file\"` — re-open the last book you were reading. If there is no "
-"unfinished book in the selected library, the home screen is shown instead. "
-"The home screen is still in the navigation history, so you can press "
-"**Back** to return to it."
+"unfinished book in the selected library, the home screen is shown instead."
 msgstr ""
 
-#: src/settings/index.md:122
+#: src/settings/index.md:120
 msgid ""
 "```toml\n"
 "startup-mode = \"home\"\n"
 "```"
 msgstr ""
 
-#: src/settings/index.md:126
+#: src/settings/index.md:124
 msgid "Reader"
 msgstr ""
 
-#: src/settings/index.md:128
+#: src/settings/index.md:126
 msgid "Settings that control the reading experience."
 msgstr ""
 
-#: src/settings/index.md:130
+#: src/settings/index.md:128
 msgid "`reader.finished`"
 msgstr ""
 
-#: src/settings/index.md:134
+#: src/settings/index.md:132
 msgid "What to do when you finish reading a book."
 msgstr ""
 
-#: src/settings/index.md:136 src/settings/index.md:198
+#: src/settings/index.md:134 src/settings/index.md:196
 msgid "Possible values:"
 msgstr ""
 
-#: src/settings/index.md:138
+#: src/settings/index.md:136
 msgid "`\"notify\"` (show a notification)"
 msgstr ""
 
-#: src/settings/index.md:139
+#: src/settings/index.md:137
 msgid "`\"close\"` (close the book and go back)"
 msgstr ""
 
-#: src/settings/index.md:140
+#: src/settings/index.md:138
 msgid "`\"go-to-next\"` (open the next book in the library)."
 msgstr ""
 
-#: src/settings/index.md:142
+#: src/settings/index.md:140
 msgid ""
 "```toml\n"
 "[reader]\n"
@@ -1369,15 +1367,15 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:147
+#: src/settings/index.md:145
 msgid "`reader.dithered-kinds`"
 msgstr ""
 
-#: src/settings/index.md:151
+#: src/settings/index.md:149
 msgid "File extensions rendered with dithering by default."
 msgstr ""
 
-#: src/settings/index.md:153
+#: src/settings/index.md:151
 msgid ""
 "```toml\n"
 "[reader]\n"
@@ -1385,69 +1383,69 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:158
+#: src/settings/index.md:156
 msgid "Libraries"
 msgstr ""
 
-#: src/settings/index.md:162
+#: src/settings/index.md:160
 msgid "Document library configuration. Each library has a name, path, and mode."
 msgstr ""
 
-#: src/settings/index.md:171
+#: src/settings/index.md:169
 msgid "`libraries.name`"
 msgstr ""
 
-#: src/settings/index.md:175
+#: src/settings/index.md:173
 msgid "Display name for the library."
 msgstr ""
 
-#: src/settings/index.md:177
+#: src/settings/index.md:175
 msgid "`libraries.path`"
 msgstr ""
 
-#: src/settings/index.md:181
+#: src/settings/index.md:179
 msgid "Directory path containing documents."
 msgstr ""
 
-#: src/settings/index.md:183
+#: src/settings/index.md:181
 msgid "`libraries.mode`"
 msgstr ""
 
-#: src/settings/index.md:187
+#: src/settings/index.md:185
 msgid "Library indexing mode."
 msgstr ""
 
-#: src/settings/index.md:189
+#: src/settings/index.md:187
 msgid "Possible values: `\"database\"`, `\"filesystem\"`."
 msgstr ""
 
-#: src/settings/index.md:191
+#: src/settings/index.md:189
 msgid "`libraries.finished`"
 msgstr ""
 
-#: src/settings/index.md:195
+#: src/settings/index.md:193
 msgid ""
 "Override the `reader.finished` setting for this specific library. When set, "
 "this takes precedence over the global reader setting."
 msgstr ""
 
-#: src/settings/index.md:200
+#: src/settings/index.md:198
 msgid "`\"notify\"`"
 msgstr ""
 
-#: src/settings/index.md:201
+#: src/settings/index.md:199
 msgid "`\"close\"`"
 msgstr ""
 
-#: src/settings/index.md:202
+#: src/settings/index.md:200
 msgid "`\"go-to-next\"`."
 msgstr ""
 
-#: src/settings/index.md:203
+#: src/settings/index.md:201
 msgid "Leave unset to inherit the global `reader.finished` setting."
 msgstr ""
 
-#: src/settings/index.md:205
+#: src/settings/index.md:203
 msgid ""
 "```toml\n"
 "[[libraries]]\n"
@@ -1457,15 +1455,15 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:212
+#: src/settings/index.md:210
 msgid "Intermissions"
 msgstr ""
 
-#: src/settings/index.md:216
+#: src/settings/index.md:214
 msgid "Defines the images displayed when entering an intermission state."
 msgstr ""
 
-#: src/settings/index.md:218
+#: src/settings/index.md:216
 msgid ""
 "```toml\n"
 "[intermissions]\n"
@@ -1475,90 +1473,90 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:225
+#: src/settings/index.md:223
 msgid "`intermissions.suspend`"
 msgstr ""
 
-#: src/settings/index.md:229
+#: src/settings/index.md:227
 msgid "Image displayed when the device enters sleep mode."
 msgstr ""
 
-#: src/settings/index.md:231
+#: src/settings/index.md:229
 msgid ""
 "Setting this to `\"calendar:\"` also enables the calendar refresh: every 5 "
 "minutes, the device wakes, shows the calendar, and then goes back to sleep "
 "automatically."
 msgstr ""
 
-#: src/settings/index.md:235
+#: src/settings/index.md:233
 msgid ""
 "Possible values: `\"logo:\"` (built-in logo), `\"cover:\"` (current book "
 "cover), `\"calendar:\"` (built-in calendar), or a path to a custom image "
 "file."
 msgstr ""
 
-#: src/settings/index.md:237
+#: src/settings/index.md:235
 msgid "`intermissions.power-off`"
 msgstr ""
 
-#: src/settings/index.md:241
+#: src/settings/index.md:239
 msgid "Image displayed when the device powers off."
 msgstr ""
 
-#: src/settings/index.md:243 src/settings/index.md:251
+#: src/settings/index.md:241 src/settings/index.md:249
 msgid ""
 "Possible values: `\"logo:\"` (built-in logo), `\"cover:\"` (current book "
 "cover), or a path to a custom image file."
 msgstr ""
 
-#: src/settings/index.md:245
+#: src/settings/index.md:243
 msgid "`intermissions.share`"
 msgstr ""
 
-#: src/settings/index.md:249
+#: src/settings/index.md:247
 msgid "Image displayed when entering USB sharing mode."
 msgstr ""
 
-#: src/settings/index.md:253
+#: src/settings/index.md:251
 msgid "Import"
 msgstr ""
 
-#: src/settings/index.md:255
+#: src/settings/index.md:253
 msgid ""
 "These settings control how Cadmus imports documents from your device. They "
 "are available in the **Settings → Import** menu."
 msgstr ""
 
-#: src/settings/index.md:258
+#: src/settings/index.md:256
 msgid ""
 "Import scanning happens automatically on startup using incremental file "
 "checking — files are only re-scanned if their modification time or size has "
 "changed since the last import."
 msgstr ""
 
-#: src/settings/index.md:260
+#: src/settings/index.md:258
 msgid ""
 "To trigger a full re-scan of all files regardless of cached values, use the "
 "**Force Full Import** action button in the Import settings category."
 msgstr ""
 
-#: src/settings/index.md:262
+#: src/settings/index.md:260
 msgid "`import.sync-metadata`"
 msgstr ""
 
-#: src/settings/index.md:266
+#: src/settings/index.md:264
 msgid "Re-extract metadata (title, author, etc.) whenever a document changes."
 msgstr ""
 
-#: src/settings/index.md:273
+#: src/settings/index.md:271
 msgid "`import.metadata-kinds`"
 msgstr ""
 
-#: src/settings/index.md:275
+#: src/settings/index.md:273
 msgid "File extensions of documents whose metadata is extracted during import."
 msgstr ""
 
-#: src/settings/index.md:277
+#: src/settings/index.md:275
 msgid ""
 "```toml\n"
 "[import]\n"
@@ -1566,15 +1564,15 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:282
+#: src/settings/index.md:280
 msgid "`import.allowed-kinds`"
 msgstr ""
 
-#: src/settings/index.md:286
+#: src/settings/index.md:284
 msgid "File extensions of documents considered during the import process."
 msgstr ""
 
-#: src/settings/index.md:288
+#: src/settings/index.md:286
 msgid ""
 "```toml\n"
 "[import]\n"
@@ -1583,15 +1581,15 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:293
+#: src/settings/index.md:291
 msgid "OTA"
 msgstr ""
 
-#: src/settings/index.md:295
+#: src/settings/index.md:293
 msgid "The OTA feature downloads builds from GitHub."
 msgstr ""
 
-#: src/settings/index.md:297
+#: src/settings/index.md:295
 msgid ""
 "Authentication for main branch and PR builds uses **GitHub device auth "
 "flow**. When you select a build that requires authentication, Cadmus will "
@@ -1600,39 +1598,39 @@ msgid ""
 "once you authorize."
 msgstr ""
 
-#: src/settings/index.md:303
+#: src/settings/index.md:301
 msgid ""
 "The token is saved to disk after the first authorization so you will not be "
 "prompted again on subsequent downloads."
 msgstr ""
 
-#: src/settings/index.md:306
+#: src/settings/index.md:304
 msgid ""
 "For step-by-step instructions with screenshots, see the [OTA "
 "updates](../installation/ota.md) guide."
 msgstr ""
 
-#: src/settings/index.md:311
+#: src/settings/index.md:309
 msgid ""
 "Cadmus writes JSON logs to disk. When the build enables the `tracing` "
 "feature, it can also export logs to an OpenTelemetry endpoint."
 msgstr ""
 
-#: src/settings/index.md:314
+#: src/settings/index.md:312
 msgid "These settings are available in the **Settings → Telemetry** menu."
 msgstr ""
 
-#: src/settings/index.md:316
+#: src/settings/index.md:314
 msgid ""
 "\\[!IMPORTANT\\] Changes to these settings only take effect after restarting "
 "Cadmus. The application initializes telemetry on startup."
 msgstr ""
 
-#: src/settings/index.md:320
+#: src/settings/index.md:318
 msgid "`logging`"
 msgstr ""
 
-#: src/settings/index.md:322
+#: src/settings/index.md:320
 msgid ""
 "```toml\n"
 "[logging]\n"
@@ -1644,29 +1642,29 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:331 src/contributing/telemetry/logging.md:50
+#: src/settings/index.md:329 src/contributing/telemetry/logging.md:50
 msgid "`logging.enabled`"
 msgstr ""
 
-#: src/settings/index.md:335
+#: src/settings/index.md:333
 msgid "Enable or disable structured JSON logging."
 msgstr ""
 
-#: src/settings/index.md:342 src/contributing/telemetry/logging.md:51
+#: src/settings/index.md:340 src/contributing/telemetry/logging.md:51
 msgid "`logging.level`"
 msgstr ""
 
-#: src/settings/index.md:346
+#: src/settings/index.md:344
 msgid "Minimum log level to record."
 msgstr ""
 
-#: src/settings/index.md:348
+#: src/settings/index.md:346
 msgid ""
 "Possible values: `\"trace\"`, `\"debug\"`, `\"info\"`, `\"warn\"`, "
 "`\"error\"`."
 msgstr ""
 
-#: src/settings/index.md:350
+#: src/settings/index.md:348
 msgid ""
 "```toml\n"
 "[logging]\n"
@@ -1674,37 +1672,37 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:355 src/contributing/telemetry/logging.md:52
+#: src/settings/index.md:353 src/contributing/telemetry/logging.md:52
 msgid "`logging.max-files`"
 msgstr ""
 
-#: src/settings/index.md:357
+#: src/settings/index.md:355
 msgid ""
 "Number of log files to keep. Only the most recent N files are kept — older "
 "ones are deleted automatically when Cadmus starts."
 msgstr ""
 
-#: src/settings/index.md:360 src/settings/index.md:433
+#: src/settings/index.md:358 src/settings/index.md:431
 msgid "Default: `3`"
 msgstr ""
 
-#: src/settings/index.md:361
+#: src/settings/index.md:359
 msgid "Set to `0` to keep all log files."
 msgstr ""
 
-#: src/settings/index.md:368 src/contributing/telemetry/logging.md:54
+#: src/settings/index.md:366 src/contributing/telemetry/logging.md:54
 msgid "`logging.otlp-endpoint`"
 msgstr ""
 
-#: src/settings/index.md:370
+#: src/settings/index.md:368
 msgid "✏️ (only when the `tracing` feature is enabled)"
 msgstr ""
 
-#: src/settings/index.md:372
+#: src/settings/index.md:370
 msgid "Optional OTLP endpoint for exporting logs to an OpenTelemetry collector."
 msgstr ""
 
-#: src/settings/index.md:374
+#: src/settings/index.md:372
 msgid ""
 "```toml\n"
 "[logging]\n"
@@ -1712,31 +1710,31 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:379 src/settings/index.md:396
+#: src/settings/index.md:377 src/settings/index.md:394
 msgid "Environment override:"
 msgstr ""
 
-#: src/settings/index.md:381
+#: src/settings/index.md:379
 msgid ""
 "`OTEL_EXPORTER_OTLP_ENDPOINT` takes precedence over `logging.otlp-endpoint`."
 msgstr ""
 
-#: src/settings/index.md:383 src/contributing/telemetry/profiling.md:32
+#: src/settings/index.md:381 src/contributing/telemetry/profiling.md:32
 msgid "`logging.pyroscope-endpoint`"
 msgstr ""
 
-#: src/settings/index.md:385
+#: src/settings/index.md:383
 msgid "✏️ (only when the `profiling` feature is enabled)"
 msgstr ""
 
-#: src/settings/index.md:387
+#: src/settings/index.md:385
 msgid ""
 "Optional Pyroscope server URL for continuous profiling. When set, Cadmus "
 "starts both a heap profiling agent (via jemalloc) and a CPU profiling agent "
 "(via pprof) that push profiles to this endpoint."
 msgstr ""
 
-#: src/settings/index.md:391
+#: src/settings/index.md:389
 msgid ""
 "```toml\n"
 "[logging]\n"
@@ -1744,58 +1742,58 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:398
+#: src/settings/index.md:396
 msgid ""
 "`PYROSCOPE_SERVER_URL` takes precedence over `logging.pyroscope-endpoint`."
 msgstr ""
 
-#: src/settings/index.md:400
+#: src/settings/index.md:398
 msgid "`logging.enable-kern-log`"
 msgstr ""
 
-#: src/settings/index.md:402 src/settings/index.md:414
+#: src/settings/index.md:400 src/settings/index.md:412
 msgid "🧪 📱 ✏️"
 msgstr ""
 
-#: src/settings/index.md:404
+#: src/settings/index.md:402
 msgid ""
 "Captures kernel logs via `logread -F` and forwards them to structured "
 "logging with the target `cadmus_core::logging:kern`."
 msgstr ""
 
-#: src/settings/index.md:412
+#: src/settings/index.md:410
 msgid "`logging.enable-dbus-log`"
 msgstr ""
 
-#: src/settings/index.md:416
+#: src/settings/index.md:414
 msgid ""
 "Captures D-Bus signals via the built-in zbus-based DbusMonitorTask and "
 "forwards them to structured logging."
 msgstr ""
 
-#: src/settings/index.md:424
+#: src/settings/index.md:422
 msgid "Settings Retention"
 msgstr ""
 
-#: src/settings/index.md:426
+#: src/settings/index.md:424
 msgid ""
 "Cadmus stores each version's settings in a separate file in the `Settings/` "
 "directory (for example, `Settings-v1.2.3.toml`). This ensures backward and "
 "forward compatibility when you upgrade."
 msgstr ""
 
-#: src/settings/index.md:429
+#: src/settings/index.md:427
 msgid "`settings-retention`"
 msgstr ""
 
-#: src/settings/index.md:431
+#: src/settings/index.md:429
 msgid ""
 "Number of recent version settings files to keep. Only the most recent N "
 "version files are kept. When a new version is saved, older versions beyond "
 "this limit are deleted automatically."
 msgstr ""
 
-#: src/settings/index.md:434
+#: src/settings/index.md:432
 msgid "Set to `0` to keep all version files"
 msgstr ""
 
