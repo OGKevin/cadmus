@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Cadmus Documentation\n"
-"POT-Creation-Date: 2026-06-07T18:53:20Z\n"
+"POT-Creation-Date: 2026-06-14T18:58:49Z\n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -74,81 +74,85 @@ msgstr ""
 msgid "Importing"
 msgstr ""
 
-#: src/SUMMARY.md:19 src/installation/ota.md:86 src/troubleshooting/index.md:1
+#: src/SUMMARY.md:19 src/time-sync.md:1
+msgid "Automatic Time Syncing"
+msgstr ""
+
+#: src/SUMMARY.md:20 src/installation/ota.md:86 src/troubleshooting/index.md:1
 #: src/contributing/devenv-setup.md:221
 msgid "Troubleshooting"
 msgstr ""
 
-#: src/SUMMARY.md:23
+#: src/SUMMARY.md:24
 msgid "Contributor Guide"
 msgstr ""
 
-#: src/SUMMARY.md:25
+#: src/SUMMARY.md:26
 msgid "Development Environment"
 msgstr ""
 
-#: src/SUMMARY.md:26 src/contributing/code-style.md:1
+#: src/SUMMARY.md:27 src/contributing/code-style.md:1
 msgid "Code Style and Linting"
 msgstr ""
 
-#: src/SUMMARY.md:27 src/contributing/event-system.md:1
+#: src/SUMMARY.md:28 src/contributing/event-system.md:1
 msgid "Event System"
 msgstr ""
 
-#: src/SUMMARY.md:28 src/settings/index.md:283
+#: src/SUMMARY.md:29 src/settings/index.md:309
 #: src/contributing/telemetry/index.md:1
 msgid "Telemetry"
 msgstr ""
 
-#: src/SUMMARY.md:29 src/contributing/telemetry/logging.md:1
+#: src/SUMMARY.md:30 src/contributing/telemetry/logging.md:1
 msgid "Logging"
 msgstr ""
 
-#: src/SUMMARY.md:30 src/contributing/telemetry/tracing.md:1
+#: src/SUMMARY.md:31 src/contributing/telemetry/tracing.md:1
 msgid "Tracing"
 msgstr ""
 
-#: src/SUMMARY.md:31 src/contributing/telemetry/profiling.md:1
+#: src/SUMMARY.md:32 src/contributing/telemetry/profiling.md:1
 msgid "Profiling"
 msgstr ""
 
-#: src/SUMMARY.md:32 src/index.md:9
+#: src/SUMMARY.md:33 src/index.md:9
 msgid "Documentation"
 msgstr ""
 
-#: src/SUMMARY.md:33 src/contributing/translations/index.md:1
+#: src/SUMMARY.md:34 src/contributing/translations/index.md:1
 msgid "Translations"
 msgstr ""
 
-#: src/SUMMARY.md:34
+#: src/SUMMARY.md:35
 msgid "UI Strings"
 msgstr ""
 
-#: src/SUMMARY.md:35
+#: src/SUMMARY.md:36
 msgid "Guide"
 msgstr ""
 
-#: src/SUMMARY.md:36 src/contributing/sqlite-sqlx.md:1
+#: src/SUMMARY.md:37 src/contributing/sqlite-sqlx.md:1
 msgid "SQLite & SQLx"
 msgstr ""
 
-#: src/SUMMARY.md:37 src/contributing/library-database.md:1
+#: src/SUMMARY.md:38 src/contributing/library-database.md:1
 msgid "Library Database"
 msgstr ""
 
-#: src/SUMMARY.md:38 src/contributing/runtime-migrations.md:1
+#: src/SUMMARY.md:39 src/contributing/runtime-migrations.md:1
 msgid "Runtime Migrations"
 msgstr ""
 
-#: src/SUMMARY.md:42 src/investigations/index.md:1
+#: src/SUMMARY.md:43 src/investigations/index.md:1
 msgid "Investigations"
 msgstr ""
 
-#: src/SUMMARY.md:44
+#: src/SUMMARY.md:45
 msgid "Intro"
 msgstr ""
 
-#: src/SUMMARY.md:45 src/investigations/kobo/issue-51-dhcp-investigation.md:1
+#: src/SUMMARY.md:46 src/investigations/kobo/issue-51-dhcp-investigation.md:1
 msgid "DHCP IP Address Changes on WiFi Toggle"
 msgstr ""
 
@@ -885,7 +889,7 @@ msgid ""
 "see [Moving data to an SD card](#moving-data-to-an-sd-card) below."
 msgstr ""
 
-#: src/installation/migration.md:27 src/settings/index.md:138
+#: src/installation/migration.md:27 src/settings/index.md:164
 msgid ""
 "```toml\n"
 "[[libraries]]\n"
@@ -1172,15 +1176,16 @@ msgid "`keyboard-layout`"
 msgstr ""
 
 #: src/settings/index.md:17 src/settings/index.md:29 src/settings/index.md:39
-#: src/settings/index.md:54 src/settings/index.md:66 src/settings/index.md:78
-#: src/settings/index.md:90 src/settings/index.md:106 src/settings/index.md:123
-#: src/settings/index.md:134 src/settings/index.md:147
-#: src/settings/index.md:153 src/settings/index.md:159
-#: src/settings/index.md:167 src/settings/index.md:188
-#: src/settings/index.md:201 src/settings/index.md:213
-#: src/settings/index.md:221 src/settings/index.md:238
-#: src/settings/index.md:258 src/settings/index.md:307
-#: src/settings/index.md:318
+#: src/settings/index.md:54 src/settings/index.md:64 src/settings/index.md:76
+#: src/settings/index.md:88 src/settings/index.md:100 src/settings/index.md:112
+#: src/settings/index.md:132 src/settings/index.md:149
+#: src/settings/index.md:160 src/settings/index.md:173
+#: src/settings/index.md:179 src/settings/index.md:185
+#: src/settings/index.md:193 src/settings/index.md:214
+#: src/settings/index.md:227 src/settings/index.md:239
+#: src/settings/index.md:247 src/settings/index.md:264
+#: src/settings/index.md:284 src/settings/index.md:333
+#: src/settings/index.md:344
 msgid "✏️"
 msgstr ""
 
@@ -1224,102 +1229,139 @@ msgid ""
 msgstr ""
 
 #: src/settings/index.md:52
-msgid "`auto-suspend`"
+msgid "`auto-time`"
 msgstr ""
 
 #: src/settings/index.md:56
+msgid ""
+"Automatically synchronize the device time via NTP when WiFi connects. This "
+"will also set the correct timezone. Uses time.cloudflare.com and ipapi.co."
+msgstr ""
+
+#: src/settings/index.md:62
+msgid "`auto-suspend`"
+msgstr ""
+
+#: src/settings/index.md:66
 msgid ""
 "Number of minutes of inactivity after which the device will automatically go "
 "to sleep."
 msgstr ""
 
-#: src/settings/index.md:58 src/settings/index.md:70
+#: src/settings/index.md:68 src/settings/index.md:80
 msgid "Zero means never."
 msgstr ""
 
-#: src/settings/index.md:64
+#: src/settings/index.md:74
 msgid "`auto-power-off`"
 msgstr ""
 
-#: src/settings/index.md:68
+#: src/settings/index.md:78
 msgid "Delay in days after which a suspended device will power off."
 msgstr ""
 
-#: src/settings/index.md:76
+#: src/settings/index.md:86
 msgid "`button-scheme`"
 msgstr ""
 
-#: src/settings/index.md:80
+#: src/settings/index.md:90
 msgid ""
 "Defines how the back and forward buttons are mapped to page forward and page "
 "backward actions."
 msgstr ""
 
-#: src/settings/index.md:82
+#: src/settings/index.md:92
 msgid "Possible values: `\"natural\"`, `\"inverted\"`."
 msgstr ""
 
-#: src/settings/index.md:84
+#: src/settings/index.md:94
 msgid ""
 "```toml\n"
 "button-scheme = \"natural\"\n"
 "```"
 msgstr ""
 
-#: src/settings/index.md:88
+#: src/settings/index.md:98
 msgid "`locale`"
 msgstr ""
 
-#: src/settings/index.md:92
+#: src/settings/index.md:102
 msgid ""
 "The preferred language for the user interface, using BCP 47 format (e.g., "
 "`\"en-US\"`, `\"de-DE\"`)."
 msgstr ""
 
-#: src/settings/index.md:94
+#: src/settings/index.md:104
 msgid "This setting is optional. When not set, `en-GB` is used."
 msgstr ""
 
-#: src/settings/index.md:96
+#: src/settings/index.md:106
 msgid ""
 "```toml\n"
 "locale = \"en-GB\"\n"
 "```"
 msgstr ""
 
-#: src/settings/index.md:100
-msgid "Reader"
-msgstr ""
-
-#: src/settings/index.md:102
-msgid "Settings that control the reading experience."
-msgstr ""
-
-#: src/settings/index.md:104
-msgid "`reader.finished`"
-msgstr ""
-
-#: src/settings/index.md:108
-msgid "What to do when you finish reading a book."
-msgstr ""
-
-#: src/settings/index.md:110 src/settings/index.md:172
-msgid "Possible values:"
-msgstr ""
-
-#: src/settings/index.md:112
-msgid "`\"notify\"` (show a notification)"
-msgstr ""
-
-#: src/settings/index.md:113
-msgid "`\"close\"` (close the book and go back)"
+#: src/settings/index.md:110
+msgid "`startup-mode`"
 msgstr ""
 
 #: src/settings/index.md:114
-msgid "`\"go-to-next\"` (open the next book in the library)."
+msgid "What to show when Cadmus starts."
 msgstr ""
 
 #: src/settings/index.md:116
+msgid "`\"home\"` — open the home screen (default)."
+msgstr ""
+
+#: src/settings/index.md:117
+msgid ""
+"`\"last-file\"` — re-open the last book you were reading. If there is no "
+"unfinished book in the selected library, the home screen is shown instead. "
+"The home screen is still in the navigation history, so you can press "
+"**Back** to return to it."
+msgstr ""
+
+#: src/settings/index.md:122
+msgid ""
+"```toml\n"
+"startup-mode = \"home\"\n"
+"```"
+msgstr ""
+
+#: src/settings/index.md:126
+msgid "Reader"
+msgstr ""
+
+#: src/settings/index.md:128
+msgid "Settings that control the reading experience."
+msgstr ""
+
+#: src/settings/index.md:130
+msgid "`reader.finished`"
+msgstr ""
+
+#: src/settings/index.md:134
+msgid "What to do when you finish reading a book."
+msgstr ""
+
+#: src/settings/index.md:136 src/settings/index.md:198
+msgid "Possible values:"
+msgstr ""
+
+#: src/settings/index.md:138
+msgid "`\"notify\"` (show a notification)"
+msgstr ""
+
+#: src/settings/index.md:139
+msgid "`\"close\"` (close the book and go back)"
+msgstr ""
+
+#: src/settings/index.md:140
+msgid "`\"go-to-next\"` (open the next book in the library)."
+msgstr ""
+
+#: src/settings/index.md:142
 msgid ""
 "```toml\n"
 "[reader]\n"
@@ -1327,15 +1369,15 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:121
+#: src/settings/index.md:147
 msgid "`reader.dithered-kinds`"
 msgstr ""
 
-#: src/settings/index.md:125
+#: src/settings/index.md:151
 msgid "File extensions rendered with dithering by default."
 msgstr ""
 
-#: src/settings/index.md:127
+#: src/settings/index.md:153
 msgid ""
 "```toml\n"
 "[reader]\n"
@@ -1343,69 +1385,69 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:132
+#: src/settings/index.md:158
 msgid "Libraries"
 msgstr ""
 
-#: src/settings/index.md:136
+#: src/settings/index.md:162
 msgid "Document library configuration. Each library has a name, path, and mode."
 msgstr ""
 
-#: src/settings/index.md:145
+#: src/settings/index.md:171
 msgid "`libraries.name`"
 msgstr ""
 
-#: src/settings/index.md:149
+#: src/settings/index.md:175
 msgid "Display name for the library."
 msgstr ""
 
-#: src/settings/index.md:151
+#: src/settings/index.md:177
 msgid "`libraries.path`"
 msgstr ""
 
-#: src/settings/index.md:155
+#: src/settings/index.md:181
 msgid "Directory path containing documents."
 msgstr ""
 
-#: src/settings/index.md:157
+#: src/settings/index.md:183
 msgid "`libraries.mode`"
 msgstr ""
 
-#: src/settings/index.md:161
+#: src/settings/index.md:187
 msgid "Library indexing mode."
 msgstr ""
 
-#: src/settings/index.md:163
+#: src/settings/index.md:189
 msgid "Possible values: `\"database\"`, `\"filesystem\"`."
 msgstr ""
 
-#: src/settings/index.md:165
+#: src/settings/index.md:191
 msgid "`libraries.finished`"
 msgstr ""
 
-#: src/settings/index.md:169
+#: src/settings/index.md:195
 msgid ""
 "Override the `reader.finished` setting for this specific library. When set, "
 "this takes precedence over the global reader setting."
 msgstr ""
 
-#: src/settings/index.md:174
+#: src/settings/index.md:200
 msgid "`\"notify\"`"
 msgstr ""
 
-#: src/settings/index.md:175
+#: src/settings/index.md:201
 msgid "`\"close\"`"
 msgstr ""
 
-#: src/settings/index.md:176
+#: src/settings/index.md:202
 msgid "`\"go-to-next\"`."
 msgstr ""
 
-#: src/settings/index.md:177
+#: src/settings/index.md:203
 msgid "Leave unset to inherit the global `reader.finished` setting."
 msgstr ""
 
-#: src/settings/index.md:179
+#: src/settings/index.md:205
 msgid ""
 "```toml\n"
 "[[libraries]]\n"
@@ -1415,15 +1457,15 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:186
+#: src/settings/index.md:212
 msgid "Intermissions"
 msgstr ""
 
-#: src/settings/index.md:190
+#: src/settings/index.md:216
 msgid "Defines the images displayed when entering an intermission state."
 msgstr ""
 
-#: src/settings/index.md:192
+#: src/settings/index.md:218
 msgid ""
 "```toml\n"
 "[intermissions]\n"
@@ -1433,90 +1475,90 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:199
+#: src/settings/index.md:225
 msgid "`intermissions.suspend`"
 msgstr ""
 
-#: src/settings/index.md:203
+#: src/settings/index.md:229
 msgid "Image displayed when the device enters sleep mode."
 msgstr ""
 
-#: src/settings/index.md:205
+#: src/settings/index.md:231
 msgid ""
 "Setting this to `\"calendar:\"` also enables the calendar refresh: every 5 "
 "minutes, the device wakes, shows the calendar, and then goes back to sleep "
 "automatically."
 msgstr ""
 
-#: src/settings/index.md:209
+#: src/settings/index.md:235
 msgid ""
 "Possible values: `\"logo:\"` (built-in logo), `\"cover:\"` (current book "
 "cover), `\"calendar:\"` (built-in calendar), or a path to a custom image "
 "file."
 msgstr ""
 
-#: src/settings/index.md:211
+#: src/settings/index.md:237
 msgid "`intermissions.power-off`"
 msgstr ""
 
-#: src/settings/index.md:215
+#: src/settings/index.md:241
 msgid "Image displayed when the device powers off."
 msgstr ""
 
-#: src/settings/index.md:217 src/settings/index.md:225
+#: src/settings/index.md:243 src/settings/index.md:251
 msgid ""
 "Possible values: `\"logo:\"` (built-in logo), `\"cover:\"` (current book "
 "cover), or a path to a custom image file."
 msgstr ""
 
-#: src/settings/index.md:219
+#: src/settings/index.md:245
 msgid "`intermissions.share`"
 msgstr ""
 
-#: src/settings/index.md:223
+#: src/settings/index.md:249
 msgid "Image displayed when entering USB sharing mode."
 msgstr ""
 
-#: src/settings/index.md:227
+#: src/settings/index.md:253
 msgid "Import"
 msgstr ""
 
-#: src/settings/index.md:229
+#: src/settings/index.md:255
 msgid ""
 "These settings control how Cadmus imports documents from your device. They "
 "are available in the **Settings → Import** menu."
 msgstr ""
 
-#: src/settings/index.md:232
+#: src/settings/index.md:258
 msgid ""
 "Import scanning happens automatically on startup using incremental file "
 "checking — files are only re-scanned if their modification time or size has "
 "changed since the last import."
 msgstr ""
 
-#: src/settings/index.md:234
+#: src/settings/index.md:260
 msgid ""
 "To trigger a full re-scan of all files regardless of cached values, use the "
 "**Force Full Import** action button in the Import settings category."
 msgstr ""
 
-#: src/settings/index.md:236
+#: src/settings/index.md:262
 msgid "`import.sync-metadata`"
 msgstr ""
 
-#: src/settings/index.md:240
+#: src/settings/index.md:266
 msgid "Re-extract metadata (title, author, etc.) whenever a document changes."
 msgstr ""
 
-#: src/settings/index.md:247
+#: src/settings/index.md:273
 msgid "`import.metadata-kinds`"
 msgstr ""
 
-#: src/settings/index.md:249
+#: src/settings/index.md:275
 msgid "File extensions of documents whose metadata is extracted during import."
 msgstr ""
 
-#: src/settings/index.md:251
+#: src/settings/index.md:277
 msgid ""
 "```toml\n"
 "[import]\n"
@@ -1524,15 +1566,15 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:256
+#: src/settings/index.md:282
 msgid "`import.allowed-kinds`"
 msgstr ""
 
-#: src/settings/index.md:260
+#: src/settings/index.md:286
 msgid "File extensions of documents considered during the import process."
 msgstr ""
 
-#: src/settings/index.md:262
+#: src/settings/index.md:288
 msgid ""
 "```toml\n"
 "[import]\n"
@@ -1541,15 +1583,15 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:267
+#: src/settings/index.md:293
 msgid "OTA"
 msgstr ""
 
-#: src/settings/index.md:269
+#: src/settings/index.md:295
 msgid "The OTA feature downloads builds from GitHub."
 msgstr ""
 
-#: src/settings/index.md:271
+#: src/settings/index.md:297
 msgid ""
 "Authentication for main branch and PR builds uses **GitHub device auth "
 "flow**. When you select a build that requires authentication, Cadmus will "
@@ -1558,39 +1600,39 @@ msgid ""
 "once you authorize."
 msgstr ""
 
-#: src/settings/index.md:277
+#: src/settings/index.md:303
 msgid ""
 "The token is saved to disk after the first authorization so you will not be "
 "prompted again on subsequent downloads."
 msgstr ""
 
-#: src/settings/index.md:280
+#: src/settings/index.md:306
 msgid ""
 "For step-by-step instructions with screenshots, see the [OTA "
 "updates](../installation/ota.md) guide."
 msgstr ""
 
-#: src/settings/index.md:285
+#: src/settings/index.md:311
 msgid ""
 "Cadmus writes JSON logs to disk. When the build enables the `tracing` "
 "feature, it can also export logs to an OpenTelemetry endpoint."
 msgstr ""
 
-#: src/settings/index.md:288
+#: src/settings/index.md:314
 msgid "These settings are available in the **Settings → Telemetry** menu."
 msgstr ""
 
-#: src/settings/index.md:290
+#: src/settings/index.md:316
 msgid ""
 "\\[!IMPORTANT\\] Changes to these settings only take effect after restarting "
 "Cadmus. The application initializes telemetry on startup."
 msgstr ""
 
-#: src/settings/index.md:294
+#: src/settings/index.md:320
 msgid "`logging`"
 msgstr ""
 
-#: src/settings/index.md:296
+#: src/settings/index.md:322
 msgid ""
 "```toml\n"
 "[logging]\n"
@@ -1602,29 +1644,29 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:305 src/contributing/telemetry/logging.md:50
+#: src/settings/index.md:331 src/contributing/telemetry/logging.md:50
 msgid "`logging.enabled`"
 msgstr ""
 
-#: src/settings/index.md:309
+#: src/settings/index.md:335
 msgid "Enable or disable structured JSON logging."
 msgstr ""
 
-#: src/settings/index.md:316 src/contributing/telemetry/logging.md:51
+#: src/settings/index.md:342 src/contributing/telemetry/logging.md:51
 msgid "`logging.level`"
 msgstr ""
 
-#: src/settings/index.md:320
+#: src/settings/index.md:346
 msgid "Minimum log level to record."
 msgstr ""
 
-#: src/settings/index.md:322
+#: src/settings/index.md:348
 msgid ""
 "Possible values: `\"trace\"`, `\"debug\"`, `\"info\"`, `\"warn\"`, "
 "`\"error\"`."
 msgstr ""
 
-#: src/settings/index.md:324
+#: src/settings/index.md:350
 msgid ""
 "```toml\n"
 "[logging]\n"
@@ -1632,37 +1674,37 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:329 src/contributing/telemetry/logging.md:52
+#: src/settings/index.md:355 src/contributing/telemetry/logging.md:52
 msgid "`logging.max-files`"
 msgstr ""
 
-#: src/settings/index.md:331
+#: src/settings/index.md:357
 msgid ""
 "Number of log files to keep. Only the most recent N files are kept — older "
 "ones are deleted automatically when Cadmus starts."
 msgstr ""
 
-#: src/settings/index.md:334 src/settings/index.md:407
+#: src/settings/index.md:360 src/settings/index.md:433
 msgid "Default: `3`"
 msgstr ""
 
-#: src/settings/index.md:335
+#: src/settings/index.md:361
 msgid "Set to `0` to keep all log files."
 msgstr ""
 
-#: src/settings/index.md:342 src/contributing/telemetry/logging.md:54
+#: src/settings/index.md:368 src/contributing/telemetry/logging.md:54
 msgid "`logging.otlp-endpoint`"
 msgstr ""
 
-#: src/settings/index.md:344
+#: src/settings/index.md:370
 msgid "✏️ (only when the `tracing` feature is enabled)"
 msgstr ""
 
-#: src/settings/index.md:346
+#: src/settings/index.md:372
 msgid "Optional OTLP endpoint for exporting logs to an OpenTelemetry collector."
 msgstr ""
 
-#: src/settings/index.md:348
+#: src/settings/index.md:374
 msgid ""
 "```toml\n"
 "[logging]\n"
@@ -1670,31 +1712,31 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:353 src/settings/index.md:370
+#: src/settings/index.md:379 src/settings/index.md:396
 msgid "Environment override:"
 msgstr ""
 
-#: src/settings/index.md:355
+#: src/settings/index.md:381
 msgid ""
 "`OTEL_EXPORTER_OTLP_ENDPOINT` takes precedence over `logging.otlp-endpoint`."
 msgstr ""
 
-#: src/settings/index.md:357 src/contributing/telemetry/profiling.md:32
+#: src/settings/index.md:383 src/contributing/telemetry/profiling.md:32
 msgid "`logging.pyroscope-endpoint`"
 msgstr ""
 
-#: src/settings/index.md:359
+#: src/settings/index.md:385
 msgid "✏️ (only when the `profiling` feature is enabled)"
 msgstr ""
 
-#: src/settings/index.md:361
+#: src/settings/index.md:387
 msgid ""
 "Optional Pyroscope server URL for continuous profiling. When set, Cadmus "
 "starts both a heap profiling agent (via jemalloc) and a CPU profiling agent "
 "(via pprof) that push profiles to this endpoint."
 msgstr ""
 
-#: src/settings/index.md:365
+#: src/settings/index.md:391
 msgid ""
 "```toml\n"
 "[logging]\n"
@@ -1702,58 +1744,58 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:372
+#: src/settings/index.md:398
 msgid ""
 "`PYROSCOPE_SERVER_URL` takes precedence over `logging.pyroscope-endpoint`."
 msgstr ""
 
-#: src/settings/index.md:374
+#: src/settings/index.md:400
 msgid "`logging.enable-kern-log`"
 msgstr ""
 
-#: src/settings/index.md:376 src/settings/index.md:388
+#: src/settings/index.md:402 src/settings/index.md:414
 msgid "🧪 📱 ✏️"
 msgstr ""
 
-#: src/settings/index.md:378
+#: src/settings/index.md:404
 msgid ""
 "Captures kernel logs via `logread -F` and forwards them to structured "
 "logging with the target `cadmus_core::logging:kern`."
 msgstr ""
 
-#: src/settings/index.md:386
+#: src/settings/index.md:412
 msgid "`logging.enable-dbus-log`"
 msgstr ""
 
-#: src/settings/index.md:390
+#: src/settings/index.md:416
 msgid ""
 "Captures D-Bus signals via the built-in zbus-based DbusMonitorTask and "
 "forwards them to structured logging."
 msgstr ""
 
-#: src/settings/index.md:398
+#: src/settings/index.md:424
 msgid "Settings Retention"
 msgstr ""
 
-#: src/settings/index.md:400
+#: src/settings/index.md:426
 msgid ""
 "Cadmus stores each version's settings in a separate file in the `Settings/` "
 "directory (for example, `Settings-v1.2.3.toml`). This ensures backward and "
 "forward compatibility when you upgrade."
 msgstr ""
 
-#: src/settings/index.md:403
+#: src/settings/index.md:429
 msgid "`settings-retention`"
 msgstr ""
 
-#: src/settings/index.md:405
+#: src/settings/index.md:431
 msgid ""
 "Number of recent version settings files to keep. Only the most recent N "
 "version files are kept. When a new version is saved, older versions beyond "
 "this limit are deleted automatically."
 msgstr ""
 
-#: src/settings/index.md:408
+#: src/settings/index.md:434
 msgid "Set to `0` to keep all version files"
 msgstr ""
 
@@ -3100,7 +3142,7 @@ msgid "Categories"
 msgstr ""
 
 #: src/ui/settings/index.md:12
-msgid "**General** — language, sleep, auto-suspend, button layout"
+msgid "**General** — language, sleep, auto-suspend, button layout, startup mode"
 msgstr ""
 
 #: src/ui/settings/index.md:13
@@ -3472,6 +3514,88 @@ msgid ""
 "This bypasses the incremental import cache and re-fingerprints all files in "
 "your library directories. Be aware that this can take time and drain the "
 "battery for large libraries, so keep your device plugged in while it runs."
+msgstr ""
+
+#: src/time-sync.md:3
+msgid ""
+"Cadmus can keep your Kobo's clock accurate by syncing it automatically "
+"whenever WiFi connects."
+msgstr ""
+
+#: src/time-sync.md:6 src/contributing/translations/source-code.md:7
+msgid "How it works"
+msgstr ""
+
+#: src/time-sync.md:8
+msgid "When enabled, Cadmus will:"
+msgstr ""
+
+#: src/time-sync.md:10
+msgid "Detect your timezone based on your IP address."
+msgstr ""
+
+#: src/time-sync.md:11
+msgid "Fetch the current time from an internet time server."
+msgstr ""
+
+#: src/time-sync.md:12
+msgid "Update the system clock and hardware clock on your Kobo."
+msgstr ""
+
+#: src/time-sync.md:14
+msgid "After syncing, the clock in the status bar updates immediately."
+msgstr ""
+
+#: src/time-sync.md:16
+msgid "Enabling automatic sync"
+msgstr ""
+
+#: src/time-sync.md:18
+msgid "Open **Main Menu → Settings → General** and turn on **Auto Time**."
+msgstr ""
+
+#: src/time-sync.md:20
+msgid "You can also enable it manually in your settings file:"
+msgstr ""
+
+#: src/time-sync.md:26
+msgid "Manual sync"
+msgstr ""
+
+#: src/time-sync.md:28
+msgid "You can trigger a one-time sync without enabling the automatic option:"
+msgstr ""
+
+#: src/time-sync.md:30
+msgid "Tap the clock in the top bar."
+msgstr ""
+
+#: src/time-sync.md:31
+msgid "Select **Sync Time**."
+msgstr ""
+
+#: src/time-sync.md:33
+msgid ""
+"If the sync fails (for example, WiFi is not connected), a notification will "
+"let you know."
+msgstr ""
+
+#: src/time-sync.md:36
+msgid "Privacy"
+msgstr ""
+
+#: src/time-sync.md:38
+msgid ""
+"\\[!NOTE\\] Time syncing sends a request to `ipapi.co` to determine your "
+"timezone based on your IP address. No personal data is sent — only your "
+"device's public IP address is visible to that service as part of the network "
+"request."
+msgstr ""
+
+#: src/time-sync.md:43
+msgid ""
+"The actual time is fetched from `time.cloudflare.com` using the standard NTP "
+"protocol."
 msgstr ""
 
 #: src/troubleshooting/index.md:5
@@ -5785,10 +5909,6 @@ msgid ""
 "The Cadmus UI uses [Fluent](https://projectfluent.org) for all user-visible "
 "strings. Translations are embedded directly into the binary at compile time "
 "— no external files are needed on the device."
-msgstr ""
-
-#: src/contributing/translations/source-code.md:7
-msgid "How it works"
 msgstr ""
 
 #: src/contributing/translations/source-code.md:9
