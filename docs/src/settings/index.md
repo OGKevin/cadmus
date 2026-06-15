@@ -10,6 +10,17 @@ Settings can be changed via **Main Menu → Settings**, which opens the built-in
 - 🧪 Only available in test builds
 - 📱 Kobo
 
+## Example Full Config
+
+<details>
+<summary>Expand Me</summary>
+
+```toml
+{{#include ../../../contrib/Settings-sample.toml}}
+```
+
+</details>
+
 ## General Settings
 
 ### `keyboard-layout`
