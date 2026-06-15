@@ -47,6 +47,8 @@ external-urls-queue = "bin/article_fetcher/urls.txt"
 settings-retention = 3
 # The preferred language for the user interface, using BCP 47 format.
 locale = "en-US"
+# What to show when Cadmus starts. Possible values: "home", "last-file".
+startup-mode = "home"
 
 [logging]
 # Enable or disable structured JSON logging.
