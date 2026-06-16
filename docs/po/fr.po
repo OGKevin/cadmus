@@ -2,7 +2,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: cadmus\n"
 "POT-Creation-Date: 2026-06-14T19:13:07Z\n"
-"PO-Revision-Date: 2026-06-16 19:10\n"
+"PO-Revision-Date: 2026-06-16 20:42\n"
 "Last-Translator: \n"
 "Language-Team: French\n"
 "MIME-Version: 1.0\n"
@@ -18,23 +18,23 @@ msgstr ""
 
 #: src/SUMMARY.md:1 src/contributing/event-system.md:14
 msgid "Overview"
-msgstr ""
+msgstr "Vue d'ensemble"
 
 #: src/SUMMARY.md:3
 msgid "User Guide"
-msgstr ""
+msgstr "Guide de l'utilisateur"
 
 #: src/SUMMARY.md:5 src/installation/index.md:1
 msgid "Installation"
-msgstr ""
+msgstr "Installation"
 
 #: src/SUMMARY.md:6 src/installation/test-builds.md:1
 msgid "Test builds"
-msgstr ""
+msgstr "Build de test"
 
 #: src/SUMMARY.md:7 src/installation/ota.md:1
 msgid "OTA updates"
-msgstr ""
+msgstr "Mises à jour OTA"
 
 #: src/SUMMARY.md:8
 msgid "Manually install PR builds"
@@ -42,20 +42,20 @@ msgstr ""
 
 #: src/SUMMARY.md:9 src/installation/migration.md:1
 msgid "Migrating from Plato"
-msgstr ""
+msgstr "Migrer depuis Plato"
 
 #: src/SUMMARY.md:10 src/installation/uninstall.md:1
 msgid "Uninstalling Cadmus"
-msgstr ""
+msgstr "Désinstaller Cadmus"
 
 #: src/SUMMARY.md:11 src/SUMMARY.md:15 src/settings/index.md:1
 #: src/ui/settings/index.md:1
 msgid "Settings"
-msgstr ""
+msgstr "Réglages"
 
 #: src/SUMMARY.md:12 src/ui/index.md:1
 msgid "User Interface"
-msgstr ""
+msgstr "Interface Utilisateur"
 
 #: src/SUMMARY.md:13 src/ui/filechooser.md:1
 msgid "File Chooser"
@@ -63,24 +63,24 @@ msgstr ""
 
 #: src/SUMMARY.md:14 src/ui/keyboard.md:1
 msgid "Keyboard"
-msgstr ""
+msgstr "Clavier"
 
 #: src/SUMMARY.md:16 src/installation/migration.md:100
 #: src/ui/settings/dictionaries.md:1
 msgid "Dictionaries"
-msgstr ""
+msgstr "Dictionnaires"
 
 #: src/SUMMARY.md:17 src/library/index.md:1
 msgid "Library"
-msgstr ""
+msgstr "Bibliothèque"
 
 #: src/SUMMARY.md:18
 msgid "Importing"
-msgstr ""
+msgstr "Importation en cours"
 
 #: src/SUMMARY.md:19 src/time-sync.md:1
 msgid "Automatic Time Syncing"
-msgstr ""
+msgstr "Synchronisation automatique de l'horloge"
 
 #: src/SUMMARY.md:20 src/installation/ota.md:86 src/troubleshooting/index.md:1
 #: src/contributing/devenv-setup.md:221
@@ -89,7 +89,7 @@ msgstr ""
 
 #: src/SUMMARY.md:24
 msgid "Contributor Guide"
-msgstr ""
+msgstr "Guide du contributeur"
 
 #: src/SUMMARY.md:26
 msgid "Development Environment"
@@ -106,7 +106,7 @@ msgstr ""
 #: src/SUMMARY.md:29 src/settings/index.md:307
 #: src/contributing/telemetry/index.md:1
 msgid "Telemetry"
-msgstr ""
+msgstr "Télémétrie"
 
 #: src/SUMMARY.md:30 src/contributing/telemetry/logging.md:1
 msgid "Logging"
@@ -118,15 +118,15 @@ msgstr ""
 
 #: src/SUMMARY.md:32 src/contributing/telemetry/profiling.md:1
 msgid "Profiling"
-msgstr ""
+msgstr "Profiling"
 
 #: src/SUMMARY.md:33 src/index.md:9
 msgid "Documentation"
-msgstr ""
+msgstr "Documentation"
 
 #: src/SUMMARY.md:34 src/contributing/translations/index.md:1
 msgid "Translations"
-msgstr ""
+msgstr "Traductions"
 
 #: src/SUMMARY.md:35
 msgid "UI Strings"
@@ -138,7 +138,7 @@ msgstr ""
 
 #: src/SUMMARY.md:37 src/contributing/sqlite-sqlx.md:1
 msgid "SQLite & SQLx"
-msgstr ""
+msgstr "SQLite & SQLx"
 
 #: src/SUMMARY.md:38 src/contributing/library-database.md:1
 msgid "Library Database"
@@ -162,7 +162,7 @@ msgstr ""
 
 #: src/index.md:3
 msgid "Cadmus"
-msgstr ""
+msgstr "Cadmus"
 
 #: src/index.md:5
 msgid "_Cadmus_ is a document reader for _Kobo_'s e-readers."
@@ -174,7 +174,7 @@ msgstr ""
 
 #: src/index.md:14
 msgid "Supported firmwares"
-msgstr ""
+msgstr "Versions supportées"
 
 #: src/index.md:16
 msgid "Any 4._X_._Y_ firmware, with _X_ ≥ 6, will do."
@@ -182,7 +182,7 @@ msgstr ""
 
 #: src/index.md:18
 msgid "Supported devices"
-msgstr ""
+msgstr "Appareils supportés"
 
 #: src/index.md:20
 msgid "_Libra Colour_."
