@@ -16,10 +16,10 @@ notification-downloading-dictionary-progress = Téléchargement { $lang } en cou
 notification-dictionary-indexing = Indexation de "{ $name }" en cours
 notification-not-online = Le WiFi doit être connecté pour cette action.
 notification-refresh-rate-invalid = Le taux de rafraîchissement doit être compris entre 0 et 255.
-notification-time-sync-failed = Time sync failed
-notification-timezone-detection-failed = Timezone detection failed
+notification-time-sync-failed = Échec de synchronisation de l'horloge
+notification-timezone-detection-failed = Échec de la détection du fuseau horaire
 # Common
-cancel = Cancel
+cancel = Annuler
 delete = Supprimer
 # Top Menu Strings
 top-menu-exit = Sortir
@@ -28,7 +28,7 @@ top-menu-restart-app = Redémarrer { -app-name }
 top-menu-suspend = Mise en veille
 top-menu-quit = Quitter
 top-menu-power-off = Éteindre
-top-menu-sync-time = Sync Time
+top-menu-sync-time = Synchroniser l'horloge
 # Settings - Button Scheme
 settings-button-scheme-natural = Naturel
 settings-button-scheme-inverted = Inversé
@@ -58,11 +58,11 @@ settings-general-settings-retention = Settings Retention
 settings-general-startup-mode = Startup Mode
 settings-general-toggle-off = off
 settings-general-toggle-on = on
-settings-general-trigger = Trigger
+settings-general-trigger = Déclencher
 settings-general-unknown = Inconnu
 # Settings - Startup Mode
-settings-startup-mode-home = Home
-settings-startup-mode-last-file = Last File
+settings-startup-mode-home = Page d'accueil
+settings-startup-mode-last-file = Fichier précédent
 # Settings - Reader
 settings-reader-end-of-book-action = Action Fin de Livre
 settings-reader-dithered-kinds = Dithered File Types
@@ -92,13 +92,10 @@ settings-library-end-of-book-action = Action Fin de Livre
 settings-library-inherit = Hériter
 # Settings - Import
 settings-import-allowed-kinds = Indexed File Types
-settings-import-force-full-import = Force Full Import
+settings-import-force-full-import = Importation totale forcée
 settings-import-force-full-import-cancel = { cancel }
-settings-import-force-full-import-confirm =
-    Re-import all the files from all your libraries.
-    This could take time and consume battery, it's
-    advisable to keep your device plugged in while this runs.
-settings-import-force-full-import-confirm-button = Re-import All
+settings-import-force-full-import-confirm = Réimporte tous les fichiers de toutes vos bibliothèques. Cela peut prendre du temps et vider la batterie, il est conseillé de laisser votre appareil branché le temps de l'opération.
+settings-import-force-full-import-confirm-button = Tout réimporter
 settings-import-sync-metadata = Synchroniser Metadata
 # Importer
 importer-importing-library = Importation de la bibliothèque en cours…
@@ -116,9 +113,9 @@ settings-telemetry-pyroscope-endpoint = Pyroscope Endpoint
 settings-telemetry-enable-kernel-log = Activer les Logs Kernel
 settings-telemetry-enable-dbus-log = Activer les Logs D-Bus
 # Settings - Dictionaries
-settings-dictionaries-confirm-download = Download dictionary for "{ $lang }"?
-settings-dictionaries-confirm-download-cancel = Cancel
-settings-dictionaries-confirm-download-confirm = Download
+settings-dictionaries-confirm-download = Télécharger le dictionnaire "{ $lang}" ?
+settings-dictionaries-confirm-download-cancel = Annuler
+settings-dictionaries-confirm-download-confirm = Télécharger
 settings-dictionaries-delete = { delete }
 settings-dictionaries-download = Télécharger
 settings-dictionaries-downloading = Téléchargement
