@@ -2,7 +2,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: cadmus\n"
 "POT-Creation-Date: 2026-06-14T19:13:07Z\n"
-"PO-Revision-Date: 2026-06-17 17:32\n"
+"PO-Revision-Date: 2026-06-17 18:37\n"
 "Last-Translator: \n"
 "Language-Team: French\n"
 "MIME-Version: 1.0\n"
@@ -449,7 +449,7 @@ msgstr "Mise à jour"
 
 #: src/installation/index.md:37
 msgid "There are two ways to update Cadmus once it's installed."
-msgstr ""
+msgstr "Il existe deux façons de mettre à jour Cadmus une fois installé."
 
 #: src/installation/index.md:39
 msgid "Wirelessly (OTA)"
@@ -457,7 +457,7 @@ msgstr "Sans-fil (OTA)"
 
 #: src/installation/index.md:41
 msgid "The easiest way — no computer needed, just WiFi. Open **Main Menu → Check for Updates** and follow the prompts. See [OTA updates](./ota.md) for details."
-msgstr ""
+msgstr "La façon la plus simple — aucun ordinateur n'est nécessaire, juste du WiFi. Ouvrez **Menu Principal → Vérifier les mises à jour** et suivez les instructions à l'écran. Plus de détails sur la page [Mises à jour OTA](./ota.md)."
 
 #: src/installation/index.md:45
 msgid "Via USB"
@@ -489,15 +489,15 @@ msgstr ""
 
 #: src/installation/index.md:60
 msgid "Cadmus detects the file automatically and reboots your Kobo to install the update. You don't need to do anything else."
-msgstr ""
+msgstr "Cadmus détecte automatiquement le fichier et redémarre votre Kobo pour installer la mise à jour. Vous n'avez pas besoin d'intervenir."
 
 #: src/installation/index.md:63
 msgid "Uninstalling"
-msgstr ""
+msgstr "Désinstallation"
 
 #: src/installation/index.md:65
 msgid "See [Uninstalling Cadmus](./uninstall.md)."
-msgstr ""
+msgstr "Voir [Désinstaller Cadmus](./uninstall.md)."
 
 #: src/installation/test-builds.md:3
 msgid "First-time install"
@@ -666,7 +666,7 @@ msgstr ""
 
 #: src/installation/ota.md:69
 msgid "Normal vs test builds"
-msgstr ""
+msgstr "Version normale vs test"
 
 #: src/installation/ota.md:71
 msgid "OTA works for both types of builds. The type you're currently using determines what gets downloaded:"
@@ -1622,7 +1622,7 @@ msgstr ""
 
 #: src/ui/filechooser.md:8
 msgid "How It Works"
-msgstr ""
+msgstr "Comment cela marche"
 
 #: src/ui/filechooser.md:10
 msgid "The file chooser has three main parts:"
@@ -1642,7 +1642,7 @@ msgstr ""
 
 #: src/ui/filechooser.md:16
 msgid "Navigation"
-msgstr ""
+msgstr "Navigation"
 
 #: src/ui/filechooser.md:18
 msgid "Tap any folder name in the navigation bar to open it. The bar expands automatically if there are many folders. Tap and drag the separator line below the folders to resize the navigation area."
@@ -3195,7 +3195,7 @@ msgstr ""
 
 #: src/library/importing.md:17
 msgid "Force full import"
-msgstr ""
+msgstr "Forcer l'importation totale"
 
 #: src/library/importing.md:19
 msgid "If you suspect the import cache is stale or corrupted, you can force a full re-import:"
@@ -3271,7 +3271,7 @@ msgstr ""
 
 #: src/time-sync.md:30
 msgid "Tap the clock in the top bar."
-msgstr ""
+msgstr "Touchez l'horloge dans la barre du haut."
 
 #: src/time-sync.md:31
 msgid "Select **Sync Time**."
@@ -3283,7 +3283,7 @@ msgstr ""
 
 #: src/time-sync.md:36
 msgid "Privacy"
-msgstr ""
+msgstr "Confidentialité"
 
 #: src/time-sync.md:38
 msgid "\\[!NOTE\\] Time syncing sends a request to `ipapi.co` to determine your timezone based on your IP address. No personal data is sent — only your device's public IP address is visible to that service as part of the network request."
@@ -3299,7 +3299,7 @@ msgstr ""
 
 #: src/troubleshooting/index.md:9
 msgid "Where to find Cadmus logs"
-msgstr ""
+msgstr "Où trouver les logs de Cadmus"
 
 #: src/troubleshooting/index.md:11
 msgid "Cadmus saves logs in a `logs` folder. Here's where to find it on each platform:"
