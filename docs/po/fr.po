@@ -2,7 +2,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: cadmus\n"
 "POT-Creation-Date: 2026-06-14T19:13:07Z\n"
-"PO-Revision-Date: 2026-06-16 20:42\n"
+"PO-Revision-Date: 2026-06-17 17:32\n"
 "Last-Translator: \n"
 "Language-Team: French\n"
 "MIME-Version: 1.0\n"
@@ -85,7 +85,7 @@ msgstr "Synchronisation automatique de l'horloge"
 #: src/SUMMARY.md:20 src/installation/ota.md:86 src/troubleshooting/index.md:1
 #: src/contributing/devenv-setup.md:221
 msgid "Troubleshooting"
-msgstr ""
+msgstr "Résolution des problèmes"
 
 #: src/SUMMARY.md:24
 msgid "Contributor Guide"
@@ -110,7 +110,7 @@ msgstr "Télémétrie"
 
 #: src/SUMMARY.md:30 src/contributing/telemetry/logging.md:1
 msgid "Logging"
-msgstr ""
+msgstr "Logs"
 
 #: src/SUMMARY.md:31 src/contributing/telemetry/tracing.md:1
 msgid "Tracing"
@@ -178,7 +178,7 @@ msgstr "Versions supportées"
 
 #: src/index.md:16
 msgid "Any 4._X_._Y_ firmware, with _X_ ≥ 6, will do."
-msgstr ""
+msgstr "N'importe quel logiciel 4._X_._Y_ dont _X_ ≥ 6 fonctionne."
 
 #: src/index.md:18
 msgid "Supported devices"
@@ -270,11 +270,11 @@ msgstr ""
 
 #: src/index.md:42
 msgid "Supported formats"
-msgstr ""
+msgstr "Formats compatibles"
 
 #: src/index.md:44
 msgid "PDF, CBZ, FB2, MOBI, XPS, TXT, JPEG, JPG, PNG, WEBP and SVG via [MuPDF](https://mupdf.com/index.html)."
-msgstr ""
+msgstr "PDF, CBZ, FB2, MOBI, XPS, TXT, JPEG, JPG, PNG, WEBP et SVG via [MuPDF](https://mupdf.com/index.html)."
 
 #: src/index.md:45
 msgid "ePUB through a built-in renderer."
@@ -286,11 +286,11 @@ msgstr ""
 
 #: src/index.md:48
 msgid "Features"
-msgstr ""
+msgstr "Fonctionnalités"
 
 #: src/index.md:50
 msgid "Crop the margins."
-msgstr ""
+msgstr "Recadrez les marges."
 
 #: src/index.md:51
 msgid "Continuous fit-to-width zoom mode with line preserving cuts."
@@ -298,11 +298,11 @@ msgstr ""
 
 #: src/index.md:52
 msgid "Rotate the screen (portrait ↔ landscape)."
-msgstr ""
+msgstr "Tourner l'écran (portrait ↔ paysage)."
 
 #: src/index.md:53
 msgid "Adjust the contrast."
-msgstr ""
+msgstr "Ajuster le contraste."
 
 #: src/index.md:54
 msgid "Define words using _dictd_ dictionaries."
@@ -310,7 +310,7 @@ msgstr ""
 
 #: src/index.md:55
 msgid "Annotations, highlights and bookmarks."
-msgstr ""
+msgstr "Annotations, surlignements et marque-pages."
 
 #: src/index.md:56
 msgid "Retrieve articles from online sources through hooks."
@@ -318,19 +318,19 @@ msgstr ""
 
 #: src/index.md:58
 msgid "Screenshots"
-msgstr ""
+msgstr "Captures d'écran"
 
 #: src/index.md:60
 msgid "![Tn01](artworks/thumbnail01.png) ![Tn02](artworks/thumbnail02.png) ![Tn03](artworks/thumbnail03.png) ![Tn04](artworks/thumbnail04.png)"
-msgstr ""
+msgstr "![Tn01](artworks/thumbnail01.png) ![Tn02](artworks/thumbnail02.png) ![Tn03](artworks/thumbnail03.png) ![Tn04](artworks/thumbnail04.png)"
 
 #: src/index.md:65
 msgid "Acknowledgments"
-msgstr ""
+msgstr "Remerciements"
 
 #: src/index.md:67
 msgid "Cadmus is a fork of [Plato](https://github.com/baskerville/plato), a document reader created by Bastien Dejean."
-msgstr ""
+msgstr "Cadmus est une fork de [Plato](https://github.com/baskerville/plato), un lecteur de documents créé par Bastien Dejean."
 
 #: src/installation/index.md:3
 msgid "Cadmus comes in different packages. Pick the one that matches your needs."
@@ -445,7 +445,7 @@ msgstr ""
 
 #: src/installation/index.md:35
 msgid "Updating"
-msgstr ""
+msgstr "Mise à jour"
 
 #: src/installation/index.md:37
 msgid "There are two ways to update Cadmus once it's installed."
@@ -453,7 +453,7 @@ msgstr ""
 
 #: src/installation/index.md:39
 msgid "Wirelessly (OTA)"
-msgstr ""
+msgstr "Sans-fil (OTA)"
 
 #: src/installation/index.md:41
 msgid "The easiest way — no computer needed, just WiFi. Open **Main Menu → Check for Updates** and follow the prompts. See [OTA updates](./ota.md) for details."
