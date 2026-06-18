@@ -1,0 +1,60 @@
+name: Crowdin
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    paths:
+      - 'crates/core/i18n/**'
+      - 'docs/po/**'
+      - '.github/workflows/crowdin.yml'
+    branches: [main, master]
+
+concurrency:
+  group: "crowdin-${{ github.event_name }}-${{ github.event.number || github.ref }}"
+  cancel-in-progress: false
+
+jobs:
+  synchronize-with-crowdin:
+    name: Sync translations
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write       # push the l10n branch
+      pull-requests: write  # open / update the translations PR
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
+
+      - name: Upload sources and existing translations, download new translations
+        uses: crowdin/github-action@v2
+        with:
+          dryrun_action: ${{ github.event_name == 'pull_request' }}
+
+          upload_sources: true
+
+          upload_translations: true
+          auto_approve_imported: true
+
+          download_translations: true
+          skip_untranslated_strings: true
+          export_only_approved: false
+
+          localization_branch_name: l10n/${{ github.ref_name }}
+          commit_message: "l10n: sync translations from Crowdin"
+          create_pull_request: true
+          pull_request_title: "l10n: new Crowdin translations"
+          pull_request_body: >
+            This pull request contains new translations from Crowdin.
+
+            To help with translations, please visit [Crowdin](https://crowdin.com/project/cadmus).
+          pull_request_base_branch_name: ${{ github.ref_name }}
+          pull_request_labels: l10n, crowdin
+          pull_request_reviewers: OGkevin
+
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CROWDIN_PROJECT_ID: ${{ secrets.CROWDIN_PROJECT_ID }}
+          CROWDIN_PERSONAL_TOKEN: ${{ secrets.CROWDIN_PERSONAL_TOKEN }}
