@@ -5,9 +5,9 @@ on:
     branches: [main, master]
   pull_request:
     paths:
-      - 'crates/core/i18n/**'
-      - 'docs/po/**'
-      - '.github/workflows/crowdin.yml'
+      - "crates/core/i18n/**"
+      - "docs/po/**"
+      - ".github/workflows/crowdin.yml"
     branches: [main, master]
 
 concurrency:
@@ -19,8 +19,8 @@ jobs:
     name: Sync translations
     runs-on: ubuntu-latest
     permissions:
-      contents: write       # push the l10n branch
-      pull-requests: write  # open / update the translations PR
+      contents: write # push the l10n branch
+      pull-requests: write # open / update the translations PR
 
     steps:
       - name: Checkout
