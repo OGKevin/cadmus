@@ -272,8 +272,8 @@ pub mod test_helpers {
     use crate::frontlight::LightLevels;
 
     pub fn create_test_context() -> Context {
-        let database = Database::new(":memory:").expect("failed to create in-memory database");
-        database.migrate().expect("failed to run migrations");
+        let mut database = Database::new(":memory:").expect("failed to create in-memory database");
+        database.init(0).expect("failed to run migrations");
         Context::new(
             Box::new(Pixmap::new(600, 800, 1)),
             Library::new(Path::new("/tmp"), &database, "test").unwrap(),

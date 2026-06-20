@@ -1024,8 +1024,8 @@ mod tests {
     use tempfile::tempdir;
 
     fn create_test_db() -> (Database, Db) {
-        let db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.migrate().expect("failed to run migrations");
+        let mut db = Database::new(":memory:").expect("failed to create in-memory database");
+        db.init(0).expect("failed to run migrations");
         let libdb = Db::new(&db);
 
         (db, libdb)

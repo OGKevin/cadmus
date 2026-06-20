@@ -450,6 +450,7 @@ dependencies = [
  "lazy_static",
  "levenshtein",
  "libc",
+ "libsqlite3-sys",
  "log",
  "nix 0.31.3",
  "once_cell",

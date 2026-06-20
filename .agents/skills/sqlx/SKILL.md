@@ -1,3 +1,8 @@
+---
+name: sqlx
+description: Regenerate `.sqlx/` cached metadata when adding or modifying `sqlx::query!`, `sqlx::query_as!`, or `sqlx::query_scalar!` macros.
+---
+
 # SQLx Offline Query Cache
 
 Regenerate `.sqlx/` cached metadata when adding or modifying `sqlx::query!`,

@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "PRAGMA quick_check",
+  "describe": {
+    "columns": [
+      {
+        "name": "quick_check",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "c21fff1dea8cab2b5d33f21a187befd59cf7318858d8f844e4e268095c22bcce"
+}

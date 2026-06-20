@@ -331,6 +331,7 @@ pub struct Settings {
     pub ota: OtaSettings,
     pub logging: LoggingSettings,
     pub settings_retention: usize,
+    pub db_backup_retention: usize,
     pub startup_mode: StartupMode,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub locale: Option<LanguageIdentifier>,
@@ -1074,6 +1075,7 @@ impl Default for Settings {
             ota: OtaSettings::default(),
             logging: LoggingSettings::default(),
             settings_retention: 3,
+            db_backup_retention: 2,
             startup_mode: StartupMode::default(),
             locale: None,
         }

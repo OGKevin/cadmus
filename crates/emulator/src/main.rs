@@ -377,7 +377,7 @@ fn run() -> Result<(), Error> {
     i18n::init(settings.locale.as_ref());
 
     let mut fonts = Fonts::load().context("can't load fonts")?;
-    let database =
+    let mut database =
         Database::new(CURRENT_DEVICE.resolve_db_path()).context("can't open database")?;
 
     let mut fb = Box::new(FBCanvas(fb));
@@ -386,10 +386,11 @@ fn run() -> Result<(), Error> {
     startup.render(fb.as_mut(), *startup.rect(), &mut fonts);
     fb.update(startup.rect(), UpdateMode::Full).ok();
 
-    let db = database.clone();
-    if let Err(e) = db.migrate() {
+    if let Err(e) = database.init(settings.db_backup_retention) {
         panic!("migrations failed: {e}");
     }
+
+    let database = database;
 
     let mut context = build_context(fb, settings, fonts, database)?;
 

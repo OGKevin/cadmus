@@ -672,7 +672,7 @@ pub fn run() -> Result<(), Error> {
     }
 
     let mut fonts = Fonts::load().context("can't load fonts")?;
-    let database = Database::new(CURRENT_DEVICE.resolve_db_path())
+    let mut database = Database::new(CURRENT_DEVICE.resolve_db_path())
         .map_err(|e| {
             error!(error = %e, "can't open database");
             e
@@ -683,10 +683,12 @@ pub fn run() -> Result<(), Error> {
     startup.render(fb.as_mut(), *startup.rect(), &mut fonts);
     fb.update(startup.rect(), UpdateMode::Full).ok();
 
-    let db = database.clone();
-    if let Err(e) = db.migrate() {
+    if let Err(e) = database.init(settings.db_backup_retention) {
         error!(error = %e, "migrations failed");
+        panic!("failed to initialize database: {}", e);
     }
+
+    let database = database;
 
     let mut context =
         build_context(fb, settings, fonts, database).context("can't build context")?;

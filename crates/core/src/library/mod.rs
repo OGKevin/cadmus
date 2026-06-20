@@ -759,8 +759,8 @@ mod tests {
     fn copy_to_sets_absolute_path_in_destination() {
         let src_dir = tempfile::tempdir().expect("failed to create src temp dir");
         let dst_dir = tempfile::tempdir().expect("failed to create dst temp dir");
-        let db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.migrate().expect("failed to run migrations");
+        let mut db = Database::new(":memory:").expect("failed to create in-memory database");
+        db.init(0).expect("failed to run migrations");
 
         let (mut src_lib, rel_path) =
             setup_library_with_book(src_dir.path(), &db, "Source", "book.epub");
@@ -805,8 +805,8 @@ mod tests {
     fn move_to_sets_absolute_path_in_destination() {
         let src_dir = tempfile::tempdir().expect("failed to create src temp dir");
         let dst_dir = tempfile::tempdir().expect("failed to create dst temp dir");
-        let db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.migrate().expect("failed to run migrations");
+        let mut db = Database::new(":memory:").expect("failed to create in-memory database");
+        db.init(0).expect("failed to run migrations");
 
         let (mut src_lib, rel_path) =
             setup_library_with_book(src_dir.path(), &db, "Source", "book.epub");
@@ -859,8 +859,8 @@ mod tests {
     #[test]
     fn neighbor_status_change_page_finds_next_and_previous_boundaries() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
-        let db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.migrate().expect("failed to run migrations");
+        let mut db = Database::new(":memory:").expect("failed to create in-memory database");
+        db.init(0).expect("failed to run migrations");
 
         let lib =
             Library::new(dir.path(), &db, "Status Library").expect("failed to create library");
@@ -912,8 +912,8 @@ mod tests {
     #[test]
     fn next_book_after_returns_following_book_in_title_order() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
-        let db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.migrate().expect("failed to run migrations");
+        let mut db = Database::new(":memory:").expect("failed to create in-memory database");
+        db.init(0).expect("failed to run migrations");
 
         let mut lib =
             Library::new(dir.path(), &db, "Next Book Library").expect("failed to create library");
@@ -953,8 +953,8 @@ mod tests {
     #[test]
     fn compute_sort_keys_assigns_correct_title_ranks() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
-        let db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.migrate().expect("failed to run migrations");
+        let mut db = Database::new(":memory:").expect("failed to create in-memory database");
+        db.init(0).expect("failed to run migrations");
 
         let lib =
             Library::new(dir.path(), &db, "Sort Keys Library").expect("failed to create library");
@@ -1001,8 +1001,8 @@ mod tests {
     #[test]
     fn page_books_paginates_correctly() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
-        let db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.migrate().expect("failed to run migrations");
+        let mut db = Database::new(":memory:").expect("failed to create in-memory database");
+        db.init(0).expect("failed to run migrations");
 
         let lib =
             Library::new(dir.path(), &db, "Pagination Library").expect("failed to create library");
@@ -1072,8 +1072,8 @@ mod tests {
     #[test]
     fn page_books_reverse_order_reverses_results() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
-        let db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.migrate().expect("failed to run migrations");
+        let mut db = Database::new(":memory:").expect("failed to create in-memory database");
+        db.init(0).expect("failed to run migrations");
 
         let lib =
             Library::new(dir.path(), &db, "Reverse Library").expect("failed to create library");
@@ -1114,8 +1114,8 @@ mod tests {
     #[test]
     fn page_method_uses_db_pagination_without_query() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
-        let db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.migrate().expect("failed to run migrations");
+        let mut db = Database::new(":memory:").expect("failed to create in-memory database");
+        db.init(0).expect("failed to run migrations");
 
         let mut lib =
             Library::new(dir.path(), &db, "Page Method Library").expect("failed to create library");
@@ -1148,8 +1148,8 @@ mod tests {
     #[test]
     fn list_subdirectory_returns_correct_absolute_paths() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
-        let db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.migrate().expect("failed to run migrations");
+        let mut db = Database::new(":memory:").expect("failed to create in-memory database");
+        db.init(0).expect("failed to run migrations");
 
         let lib =
             Library::new(dir.path(), &db, "Dir Nav Library").expect("failed to create library");
@@ -1199,8 +1199,8 @@ mod tests {
     #[test]
     fn page_books_status_sort_orders_finished_new_reading() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
-        let db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.migrate().expect("failed to run migrations");
+        let mut db = Database::new(":memory:").expect("failed to create in-memory database");
+        db.init(0).expect("failed to run migrations");
 
         let lib =
             Library::new(dir.path(), &db, "Status Sort Library").expect("failed to create library");
@@ -1259,8 +1259,8 @@ mod tests {
     #[test]
     fn page_books_progress_sort_orders_by_completion() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
-        let db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.migrate().expect("failed to run migrations");
+        let mut db = Database::new(":memory:").expect("failed to create in-memory database");
+        db.init(0).expect("failed to run migrations");
 
         let lib = Library::new(dir.path(), &db, "Progress Sort Library")
             .expect("failed to create library");
@@ -1325,8 +1325,8 @@ mod tests {
     #[test]
     fn page_books_pages_sort_orders_by_page_count() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
-        let db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.migrate().expect("failed to run migrations");
+        let mut db = Database::new(":memory:").expect("failed to create in-memory database");
+        db.init(0).expect("failed to run migrations");
 
         let lib =
             Library::new(dir.path(), &db, "Pages Sort Library").expect("failed to create library");
@@ -1373,8 +1373,8 @@ mod tests {
     #[test]
     fn page_books_size_sort_orders_by_file_size() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
-        let db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.migrate().expect("failed to run migrations");
+        let mut db = Database::new(":memory:").expect("failed to create in-memory database");
+        db.init(0).expect("failed to run migrations");
 
         let lib =
             Library::new(dir.path(), &db, "Size Sort Library").expect("failed to create library");
@@ -1417,8 +1417,8 @@ mod tests {
     #[test]
     fn page_books_kind_sort_orders_alphabetically_by_file_kind() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
-        let db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.migrate().expect("failed to run migrations");
+        let mut db = Database::new(":memory:").expect("failed to create in-memory database");
+        db.init(0).expect("failed to run migrations");
 
         let lib =
             Library::new(dir.path(), &db, "Kind Sort Library").expect("failed to create library");
@@ -1463,8 +1463,8 @@ mod tests {
     fn page_books_added_sort_orders_by_insertion_time() {
         use chrono::NaiveDateTime;
         let dir = tempfile::tempdir().expect("failed to create temp dir");
-        let db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.migrate().expect("failed to run migrations");
+        let mut db = Database::new(":memory:").expect("failed to create in-memory database");
+        db.init(0).expect("failed to run migrations");
 
         let lib =
             Library::new(dir.path(), &db, "Added Sort Library").expect("failed to create library");
@@ -1515,8 +1515,8 @@ mod tests {
     fn page_books_opened_sort_orders_by_last_opened_time() {
         use chrono::NaiveDateTime;
         let dir = tempfile::tempdir().expect("failed to create temp dir");
-        let db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.migrate().expect("failed to run migrations");
+        let mut db = Database::new(":memory:").expect("failed to create in-memory database");
+        db.init(0).expect("failed to run migrations");
 
         let lib =
             Library::new(dir.path(), &db, "Opened Sort Library").expect("failed to create library");
@@ -1571,8 +1571,8 @@ mod tests {
     #[test]
     fn page_books_year_sort_orders_by_publication_year() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
-        let db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.migrate().expect("failed to run migrations");
+        let mut db = Database::new(":memory:").expect("failed to create in-memory database");
+        db.init(0).expect("failed to run migrations");
 
         let lib =
             Library::new(dir.path(), &db, "Year Sort Library").expect("failed to create library");
@@ -1615,8 +1615,8 @@ mod tests {
     #[test]
     fn page_books_count_query_respects_prefix_filter() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
-        let db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.migrate().expect("failed to run migrations");
+        let mut db = Database::new(":memory:").expect("failed to create in-memory database");
+        db.init(0).expect("failed to run migrations");
 
         let lib = Library::new(dir.path(), &db, "Prefix Count Library")
             .expect("failed to create library");
@@ -1656,8 +1656,8 @@ mod tests {
     #[test]
     fn resolve_fingerprint_prefers_db_and_falls_back_to_filesystem() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
-        let db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.migrate().expect("failed to run migrations");
+        let mut db = Database::new(":memory:").expect("failed to create in-memory database");
+        db.init(0).expect("failed to run migrations");
 
         let lib =
             Library::new(dir.path(), &db, "Fingerprint Library").expect("failed to create library");

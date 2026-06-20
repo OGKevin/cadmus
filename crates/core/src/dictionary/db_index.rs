@@ -206,8 +206,8 @@ mod tests {
     use crate::db::runtime::RUNTIME;
 
     fn setup_db() -> Database {
-        let db = Database::new(":memory:").expect("in-memory db");
-        db.migrate().expect("migrations");
+        let mut db = Database::new(":memory:").expect("in-memory db");
+        db.init(0).expect("migrations");
         db
     }
 

@@ -827,8 +827,8 @@ mod tests {
     fn test_thumbnail_extraction_task_lifecycle() {
         let mut manager = TaskManager::new();
         let (hub, _rx) = mpsc::channel();
-        let database = Database::new(":memory:").unwrap();
-        database.migrate().unwrap();
+        let mut database = Database::new(":memory:").unwrap();
+        database.init(0).unwrap();
         let settings = Settings::default();
 
         manager.schedule_thumbnail_extraction(None, &hub, &database, &settings);
@@ -864,8 +864,8 @@ mod tests {
             },
         );
 
-        let database = Database::new(":memory:").unwrap();
-        database.migrate().unwrap();
+        let mut database = Database::new(":memory:").unwrap();
+        database.init(0).unwrap();
         let settings = Settings::default();
 
         manager.schedule_thumbnail_extraction(Some(0), &hub, &database, &settings);

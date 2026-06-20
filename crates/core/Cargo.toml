@@ -77,6 +77,7 @@ sqlx = { version = "0.8", features = [
     "chrono",
     "macros",
 ], default-features = false }
+libsqlite3-sys = { version = "0.30", default-features = false }
 tokio = { version = "1.40", features = ["fs", "macros", "rt", "rt-multi-thread", "sync"] }
 
 tracing = "0.1"

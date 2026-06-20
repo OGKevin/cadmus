@@ -497,8 +497,8 @@ mod tests {
     fn create_test_service() -> (MonolingualDictionaryService, TempDir, Database) {
         crate::crypto::init_crypto_provider();
         let dir = TempDir::new().expect("failed to create temp dir");
-        let database = Database::new(":memory:").expect("failed to create in-memory database");
-        database.migrate().expect("failed to run migrations");
+        let mut database = Database::new(":memory:").expect("failed to create in-memory database");
+        database.init(0).expect("failed to run migrations");
         let service = MonolingualDictionaryService::new(&database, dir.path())
             .expect("failed to create service");
         (service, dir, database)

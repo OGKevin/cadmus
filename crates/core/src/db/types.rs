@@ -1,4 +1,5 @@
 use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use sqlx::encode::IsNull;
 use sqlx::error::BoxDynError;
 use sqlx::sqlite::{Sqlite, SqliteArgumentValue, SqliteTypeInfo, SqliteValueRef};
@@ -13,6 +14,18 @@ use uuid::Uuid;
 /// intermediaries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct UnixTimestamp(i64);
+
+impl Serialize for UnixTimestamp {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_i64(self.0)
+    }
+}
+
+impl<'de> Deserialize<'de> for UnixTimestamp {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        i64::deserialize(deserializer).map(Self)
+    }
+}
 
 impl UnixTimestamp {
     /// Returns the current UTC time as a `UnixTimestamp`.

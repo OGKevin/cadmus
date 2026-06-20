@@ -222,8 +222,8 @@ mod tests {
         case_sensitive: bool,
         all_chars: bool,
     ) -> Result<Dictionary, errors::DictError> {
-        let db = Database::new(":memory:").expect("in-memory db");
-        db.migrate().expect("migrations");
+        let mut db = Database::new(":memory:").expect("in-memory db");
+        db.init(0).expect("migrations");
 
         let fp = Fp::from_u64(1);
         let fp_str = fp.to_string();

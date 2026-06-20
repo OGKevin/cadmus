@@ -57,6 +57,57 @@ pub struct GitVersion {
     dirty: bool,
 }
 
+/// Ordering is based on semver components (major, minor, patch) followed by
+/// the number of commits ahead of the tag. This is a purely local comparison
+/// that does not require network access.
+///
+/// When two versions share the same semver and commit count but have different
+/// git hashes (divergent branches), this ordering treats them as equal. Use
+/// [`GitVersion::compare`] instead if you need GitHub-based ancestry checks to
+/// distinguish divergent development builds.
+///
+/// # Dirty-flag ordering
+///
+/// A dirty build (`v0.10.0-dirty`) is treated as strictly newer than its clean
+/// counterpart (`v0.10.0`). This means that switching from a dirty dev build
+/// back to the clean release of the same version will be detected as a
+/// **downgrade** by the version gate, triggering a backup restore. This is
+/// intentional for production use but can be surprising during local
+/// development.
+///
+/// # Examples
+///
+/// ```
+/// use cadmus_core::version::GitVersion;
+///
+/// let v1: GitVersion = "v0.9.46".parse().unwrap();
+/// let v2: GitVersion = "v0.10.0".parse().unwrap();
+/// let v3: GitVersion = "v0.10.0-5-gabc123".parse().unwrap();
+/// let v3_dirty: GitVersion = "v0.10.0-5-gabc123-dirty".parse().unwrap();
+///
+/// assert!(v1 < v2);
+/// assert!(v2 < v3);
+/// assert!(v1 < v3);
+/// assert!(v3 < v3_dirty);
+/// assert_eq!(v2, v2);
+/// ```
+impl PartialOrd for GitVersion {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for GitVersion {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.major
+            .cmp(&other.major)
+            .then_with(|| self.minor.cmp(&other.minor))
+            .then_with(|| self.patch.cmp(&other.patch))
+            .then_with(|| self.commits_ahead.cmp(&other.commits_ahead))
+            .then_with(|| self.dirty.cmp(&other.dirty))
+    }
+}
+
 /// Complete compile-time version metadata for display.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Version {
@@ -314,6 +365,9 @@ impl GitVersion {
     ///
     /// If both versions contain different git hashes, this method will
     /// use the GitHub API to check ancestry relationships.
+    ///
+    /// For local-only comparison without network access, use the [`Ord`]
+    /// implementation which compares semantic version numbers and commit count.
     ///
     /// # Examples
     ///
@@ -740,6 +794,34 @@ mod tests {
         assert!(GitVersion::parse("v1.2").is_err());
         assert!(GitVersion::parse("v1.2.3.4").is_err());
         assert!(GitVersion::parse("v1.2.3-abc").is_err());
+    }
+
+    #[test]
+    fn test_ord_dirty_is_newer_than_clean() {
+        let clean: GitVersion = "v0.9.46-5-gabc123".parse().unwrap();
+        let dirty: GitVersion = "v0.9.46-5-gabc123-dirty".parse().unwrap();
+
+        assert!(dirty > clean);
+        assert!(clean < dirty);
+
+        let clean_release: GitVersion = "v0.9.46".parse().unwrap();
+        let dirty_release: GitVersion = "v0.9.46-dirty".parse().unwrap();
+
+        assert!(dirty_release > clean_release);
+    }
+
+    #[test]
+    fn test_ord_by_semver_and_commits_ahead() {
+        let v094: GitVersion = "v0.9.46".parse().unwrap();
+        let v095: GitVersion = "v0.9.46-5-gabc123".parse().unwrap();
+        let v100: GitVersion = "v0.10.0".parse().unwrap();
+        let v100_dev: GitVersion = "v0.10.0-3-gdef456".parse().unwrap();
+
+        assert!(v094 < v095);
+        assert!(v095 < v100);
+        assert!(v100 < v100_dev);
+        assert!(v094 < v100_dev);
+        assert_eq!(v094.cmp(&v094), std::cmp::Ordering::Equal);
     }
 
     #[test]

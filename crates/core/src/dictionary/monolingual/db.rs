@@ -239,8 +239,8 @@ mod tests {
     use super::*;
 
     fn create_test_db() -> (Database, Db) {
-        let database = Database::new(":memory:").expect("failed to create in-memory database");
-        database.migrate().expect("failed to run migrations");
+        let mut database = Database::new(":memory:").expect("failed to create in-memory database");
+        database.init(0).expect("failed to run migrations");
         let db = Db::new(&database);
         (database, db)
     }
