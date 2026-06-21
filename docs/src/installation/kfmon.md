@@ -63,9 +63,9 @@ blocks other launches while Cadmus is already running.
 ## Pick one launcher method
 
 Cadmus can be launched by either NickelMenu or KFMon, but try to avoid both at
-once. If you use KFMon, install a non-NickelMenu bundle from the
+once. If you use KFMon, install a non-NickelMenu package from the
 [Installation page](./index.md) (`KoboRoot.tgz` or `KoboRoot-test.tgz`)
-instead of the `KoboRoot-nm.tgz` or `KoboRoot-nm-test.tgz` bundles.
+instead of the `KoboRoot-nm.tgz` or `KoboRoot-nm-test.tgz` packages.
 Using both can create duplicate icons and make conflicts harder to diagnose.
 
 ## Temporarily disable KFMon
