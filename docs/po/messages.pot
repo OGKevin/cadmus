@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Cadmus Documentation\n"
-"POT-Creation-Date: 2026-06-18T20:24:23+02:00\n"
+"POT-Creation-Date: 2026-06-21T15:37:33+02:00\n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -40,123 +40,127 @@ msgstr ""
 msgid "Migrating from Plato"
 msgstr ""
 
-#: src/SUMMARY.md:10 src/installation/uninstall.md:1
+#: src/SUMMARY.md:10
+msgid "Using with KFMon"
+msgstr ""
+
+#: src/SUMMARY.md:11 src/installation/uninstall.md:1
 msgid "Uninstalling Cadmus"
 msgstr ""
 
-#: src/SUMMARY.md:11 src/SUMMARY.md:15 src/settings/index.md:1
+#: src/SUMMARY.md:12 src/SUMMARY.md:16 src/settings/index.md:1
 #: src/ui/settings/index.md:1
 msgid "Settings"
 msgstr ""
 
-#: src/SUMMARY.md:12 src/ui/index.md:1
+#: src/SUMMARY.md:13 src/ui/index.md:1
 msgid "User Interface"
 msgstr ""
 
-#: src/SUMMARY.md:13 src/ui/filechooser.md:1
+#: src/SUMMARY.md:14 src/ui/filechooser.md:1
 msgid "File Chooser"
 msgstr ""
 
-#: src/SUMMARY.md:14 src/ui/keyboard.md:1
+#: src/SUMMARY.md:15 src/ui/keyboard.md:1
 msgid "Keyboard"
 msgstr ""
 
-#: src/SUMMARY.md:16 src/installation/migration.md:100
+#: src/SUMMARY.md:17 src/installation/migration.md:100
 #: src/ui/settings/dictionaries.md:1
 msgid "Dictionaries"
 msgstr ""
 
-#: src/SUMMARY.md:17 src/library/index.md:1
+#: src/SUMMARY.md:18 src/library/index.md:1
 msgid "Library"
 msgstr ""
 
-#: src/SUMMARY.md:18
+#: src/SUMMARY.md:19
 msgid "Importing"
 msgstr ""
 
-#: src/SUMMARY.md:19 src/time-sync.md:1
+#: src/SUMMARY.md:20 src/time-sync.md:1
 msgid "Automatic Time Syncing"
 msgstr ""
 
-#: src/SUMMARY.md:20 src/auto-frontlight.md:1
+#: src/SUMMARY.md:21 src/auto-frontlight.md:1
 msgid "Automatic Frontlight"
 msgstr ""
 
-#: src/SUMMARY.md:21 src/installation/ota.md:86 src/troubleshooting/index.md:1
+#: src/SUMMARY.md:22 src/installation/ota.md:86 src/troubleshooting/index.md:1
 #: src/contributing/devenv-setup.md:221
 msgid "Troubleshooting"
 msgstr ""
 
-#: src/SUMMARY.md:25
+#: src/SUMMARY.md:26
 msgid "Contributor Guide"
 msgstr ""
 
-#: src/SUMMARY.md:27
+#: src/SUMMARY.md:28
 msgid "Development Environment"
 msgstr ""
 
-#: src/SUMMARY.md:28 src/contributing/code-style.md:1
+#: src/SUMMARY.md:29 src/contributing/code-style.md:1
 msgid "Code Style and Linting"
 msgstr ""
 
-#: src/SUMMARY.md:29 src/contributing/event-system.md:1
+#: src/SUMMARY.md:30 src/contributing/event-system.md:1
 msgid "Event System"
 msgstr ""
 
-#: src/SUMMARY.md:30 src/settings/index.md:631
+#: src/SUMMARY.md:31 src/settings/index.md:631
 #: src/contributing/telemetry/index.md:1
 msgid "Telemetry"
 msgstr ""
 
-#: src/SUMMARY.md:31 src/contributing/telemetry/logging.md:1
+#: src/SUMMARY.md:32 src/contributing/telemetry/logging.md:1
 msgid "Logging"
 msgstr ""
 
-#: src/SUMMARY.md:32 src/contributing/telemetry/tracing.md:1
+#: src/SUMMARY.md:33 src/contributing/telemetry/tracing.md:1
 msgid "Tracing"
 msgstr ""
 
-#: src/SUMMARY.md:33 src/contributing/telemetry/profiling.md:1
+#: src/SUMMARY.md:34 src/contributing/telemetry/profiling.md:1
 msgid "Profiling"
 msgstr ""
 
-#: src/SUMMARY.md:34 src/index.md:9
+#: src/SUMMARY.md:35 src/index.md:9
 msgid "Documentation"
 msgstr ""
 
-#: src/SUMMARY.md:35 src/contributing/translations/index.md:1
+#: src/SUMMARY.md:36 src/contributing/translations/index.md:1
 msgid "Translations"
 msgstr ""
 
-#: src/SUMMARY.md:36
+#: src/SUMMARY.md:37
 msgid "UI Strings"
 msgstr ""
 
-#: src/SUMMARY.md:37
+#: src/SUMMARY.md:38
 msgid "Guide"
 msgstr ""
 
-#: src/SUMMARY.md:38 src/contributing/sqlite-sqlx.md:1
+#: src/SUMMARY.md:39 src/contributing/sqlite-sqlx.md:1
 msgid "SQLite & SQLx"
 msgstr ""
 
-#: src/SUMMARY.md:39 src/contributing/library-database.md:1
+#: src/SUMMARY.md:40 src/contributing/library-database.md:1
 msgid "Library Database"
 msgstr ""
 
-#: src/SUMMARY.md:40 src/contributing/runtime-migrations.md:1
+#: src/SUMMARY.md:41 src/contributing/runtime-migrations.md:1
 msgid "Runtime Migrations"
 msgstr ""
 
-#: src/SUMMARY.md:44 src/investigations/index.md:1
+#: src/SUMMARY.md:45 src/investigations/index.md:1
 msgid "Investigations"
 msgstr ""
 
-#: src/SUMMARY.md:46
+#: src/SUMMARY.md:47
 msgid "Intro"
 msgstr ""
 
-#: src/SUMMARY.md:47 src/investigations/kobo/issue-51-dhcp-investigation.md:1
+#: src/SUMMARY.md:48 src/investigations/kobo/issue-51-dhcp-investigation.md:1
 msgid "DHCP IP Address Changes on WiFi Toggle"
 msgstr ""
 
@@ -1102,6 +1106,98 @@ msgstr ""
 
 #: src/installation/migration.md:106
 msgid "Restart Cadmus. It will pick up the files from the SD card automatically."
+msgstr ""
+
+#: src/installation/kfmon.md:1
+msgid "Using Cadmus with KFMon"
+msgstr ""
+
+#: src/installation/kfmon.md:3
+msgid ""
+"[KFMon](https://github.com/NiLuJe/kfmon) is a launcher that starts apps when "
+"you open certain icon files on your Kobo. If you already use KFMon with "
+"readers like Plato or KOReader, you may run into a conflict when you install "
+"Cadmus."
+msgstr ""
+
+#: src/installation/kfmon.md:8
+msgid "The problem"
+msgstr ""
+
+#: src/installation/kfmon.md:10
+msgid ""
+"KFMon watches PNG files in the library. When Cadmus opens one of those "
+"watched PNG files — for example, while showing a cover or importing a book — "
+"KFMon thinks you tapped the icon and launches the matching reader. This can "
+"leave you with two readers running at the same time, such as both Plato and "
+"Cadmus."
+msgstr ""
+
+#: src/installation/kfmon.md:15
+msgid "The fix: add a Cadmus KFMon watch"
+msgstr ""
+
+#: src/installation/kfmon.md:17
+msgid ""
+"Add a KFMon watch that points to Cadmus. This tells KFMon about Cadmus, so "
+"it blocks other launches while Cadmus is already running."
+msgstr ""
+
+#: src/installation/kfmon.md:20
+msgid "Place the Cadmus icon somewhere on your Kobo, for example:"
+msgstr ""
+
+#: src/installation/kfmon.md:26
+msgid ""
+"If you don't have an icon, create or copy a PNG image to use as the launcher "
+"icon."
+msgstr ""
+
+#: src/installation/kfmon.md:29
+msgid "Create a new file on your Kobo:"
+msgstr ""
+
+#: src/installation/kfmon.md:35
+msgid ""
+"Paste this into the file, changing the `filename` value to match your icon "
+"path:"
+msgstr ""
+
+#: src/installation/kfmon.md:57
+msgid "Reboot your Kobo."
+msgstr ""
+
+#: src/installation/kfmon.md:59
+msgid ""
+"\\[!IMPORTANT\\] The `block_spawns = 1` line is the key setting. It stops "
+"KFMon from launching another reader while Cadmus is already open."
+msgstr ""
+
+#: src/installation/kfmon.md:63
+msgid "Pick one launcher method"
+msgstr ""
+
+#: src/installation/kfmon.md:65
+msgid ""
+"Cadmus can be launched by either NickelMenu or KFMon, but try to avoid both "
+"at once. If you use KFMon, install a non-NickelMenu bundle from the "
+"[Installation page](./index.md) (`KoboRoot.tgz` or `KoboRoot-test.tgz`) "
+"instead of the `KoboRoot-nm.tgz` or `KoboRoot-nm-test.tgz` bundles. Using "
+"both can create duplicate icons and make conflicts harder to diagnose."
+msgstr ""
+
+#: src/installation/kfmon.md:71
+msgid "Temporarily disable KFMon"
+msgstr ""
+
+#: src/installation/kfmon.md:73
+msgid ""
+"If you need to stop KFMon from launching anything for a short time — for "
+"example, while troubleshooting — you can create a blank `BLOCK` file:"
+msgstr ""
+
+#: src/installation/kfmon.md:80
+msgid "Remove the file when you want KFMon to work again:"
 msgstr ""
 
 #: src/installation/uninstall.md:3
