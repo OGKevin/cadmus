@@ -35,6 +35,7 @@ pub enum SettingIdentity {
     IntermissionPowerOff,
     IntermissionShare,
     SettingsRetention,
+    DbBackupRetention,
     LogLevel,
     ImportSyncMetadata,
     AllowedKinds,

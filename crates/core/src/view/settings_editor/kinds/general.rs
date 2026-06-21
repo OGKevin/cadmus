@@ -706,6 +706,59 @@ impl InputSettingKind for SettingsRetention {
     }
 }
 
+/// Database backup retention count setting
+pub struct DbBackupRetentionSetting;
+
+impl SettingKind for DbBackupRetentionSetting {
+    fn identity(&self) -> SettingIdentity {
+        SettingIdentity::DbBackupRetention
+    }
+
+    fn label(&self, _settings: &Settings) -> String {
+        fl!("settings-general-db-backup-retention")
+    }
+
+    fn fetch(&self, settings: &Settings) -> SettingData {
+        SettingData {
+            value: settings.db_backup_retention.to_string(),
+            widget: WidgetKind::ActionLabel(Event::Select(EntryId::EditDbBackupRetention)),
+        }
+    }
+
+    fn as_input_kind(&self) -> Option<&dyn InputSettingKind> {
+        Some(self)
+    }
+}
+
+impl InputSettingKind for DbBackupRetentionSetting {
+    fn submit_view_id(&self) -> ViewId {
+        ViewId::DbBackupRetentionInput
+    }
+
+    fn open_entry_id(&self) -> EntryId {
+        EntryId::EditDbBackupRetention
+    }
+
+    fn input_label(&self) -> String {
+        fl!("settings-general-db-backup-retention")
+    }
+
+    fn input_max_chars(&self) -> usize {
+        3
+    }
+
+    fn current_text(&self, settings: &Settings) -> String {
+        settings.db_backup_retention.to_string()
+    }
+
+    fn apply_text(&self, text: &str, settings: &mut Settings) -> String {
+        if let Ok(value) = text.parse::<usize>() {
+            settings.db_backup_retention = value;
+        }
+        settings.db_backup_retention.to_string()
+    }
+}
+
 /// Startup mode selection setting (Home or Last File)
 pub struct StartupModeSetting;
 

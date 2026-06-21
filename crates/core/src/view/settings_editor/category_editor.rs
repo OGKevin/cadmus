@@ -793,6 +793,7 @@ impl CategoryEditor {
             ViewId::AutoSuspendInput
             | ViewId::AutoPowerOffInput
             | ViewId::SettingsRetentionInput
+            | ViewId::DbBackupRetentionInput
             | ViewId::SettingsValueMenu
             | ViewId::LibraryEditor
             | ViewId::DictionaryDownloadConfirm
