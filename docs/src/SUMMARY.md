@@ -19,6 +19,7 @@
   - [Importing](library/importing.md)
 - [Automatic Time Syncing](time-sync.md)
 - [Automatic Frontlight](auto-frontlight.md)
+- [Database Backup](database-backup.md)
 - [Troubleshooting](troubleshooting/index.md)
 
 ---

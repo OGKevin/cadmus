@@ -495,3 +495,17 @@ Number of recent version settings files to keep. Only the most recent N version 
 ```toml
 settings-retention = 3
 ```
+
+### `db-backup-retention`
+
+Number of database backups to keep. When a new backup is created and the total
+would exceed this limit, the oldest backups are deleted automatically.
+
+- Default: `2`
+- Set to `0` to disable backups entirely.
+
+See [Database Backup](../database-backup.md) for more details.
+
+```toml
+db-backup-retention = 2
+```

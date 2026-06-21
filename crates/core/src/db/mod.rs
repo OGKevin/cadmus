@@ -137,6 +137,12 @@ impl Database {
     ///
     /// Returns an error if a restore is needed but no backup directory or
     /// compatible backup exists.
+    ///
+    /// # Invariant
+    ///
+    /// `db_path` is always a real file path at the point where the pool is
+    /// reopened. This is guaranteed because `db_dir` is `None` only for
+    /// `:memory:` databases, which return early before reaching that point.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     async fn restore_if_needed(
         &mut self,
@@ -176,7 +182,9 @@ impl Database {
         };
 
         let db_version = if integrity.is_ok() {
-            version::read_db_version(&self.pool).await?.unwrap_or_else(|| app_version.clone())
+            version::read_db_version(&self.pool)
+                .await?
+                .unwrap_or_else(|| app_version.clone())
         } else {
             app_version.clone()
         };
@@ -211,9 +219,6 @@ impl Database {
                 Error::from(e).context(restore_context)
             })?;
 
-        // Safety: we only reach this point when `db_dir` is `Some`, which is
-        // never the case for `:memory:` databases (their `db_dir` is `None` and
-        // they return early above). `db_path` is therefore always a real file path.
         self.pool = open_pool(&self.db_path).await?;
 
         tracing::info!(backup_path = %backup_path.display(), "database restored from backup");
