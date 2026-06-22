@@ -2,7 +2,7 @@ use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use sqlx::encode::IsNull;
 use sqlx::error::BoxDynError;
-use sqlx::sqlite::{Sqlite, SqliteArgumentValue, SqliteTypeInfo, SqliteValueRef};
+use sqlx::sqlite::{Sqlite, SqliteArgumentsBuffer, SqliteTypeInfo, SqliteValueRef};
 use uuid::Uuid;
 
 /// A Unix epoch timestamp (seconds since 1970-01-01 00:00:00 UTC) as stored in
@@ -104,8 +104,8 @@ impl sqlx::Type<Sqlite> for UnixTimestamp {
     }
 }
 
-impl<'q> sqlx::Encode<'q, Sqlite> for UnixTimestamp {
-    fn encode_by_ref(&self, buf: &mut Vec<SqliteArgumentValue<'q>>) -> Result<IsNull, BoxDynError> {
+impl sqlx::Encode<'_, Sqlite> for UnixTimestamp {
+    fn encode_by_ref(&self, buf: &mut SqliteArgumentsBuffer) -> Result<IsNull, BoxDynError> {
         self.0.encode_by_ref(buf)
     }
 }
@@ -147,8 +147,8 @@ impl sqlx::Type<Sqlite> for FileSize {
     }
 }
 
-impl<'q> sqlx::Encode<'q, Sqlite> for FileSize {
-    fn encode_by_ref(&self, buf: &mut Vec<SqliteArgumentValue<'q>>) -> Result<IsNull, BoxDynError> {
+impl sqlx::Encode<'_, Sqlite> for FileSize {
+    fn encode_by_ref(&self, buf: &mut SqliteArgumentsBuffer) -> Result<IsNull, BoxDynError> {
         self.0.encode_by_ref(buf)
     }
 }
@@ -220,8 +220,8 @@ impl sqlx::Type<Sqlite> for Uuid7 {
     }
 }
 
-impl<'q> sqlx::Encode<'q, Sqlite> for Uuid7 {
-    fn encode_by_ref(&self, buf: &mut Vec<SqliteArgumentValue<'q>>) -> Result<IsNull, BoxDynError> {
+impl sqlx::Encode<'_, Sqlite> for Uuid7 {
+    fn encode_by_ref(&self, buf: &mut SqliteArgumentsBuffer) -> Result<IsNull, BoxDynError> {
         self.to_string().encode_by_ref(buf)
     }
 }
@@ -263,8 +263,8 @@ impl sqlx::Type<Sqlite> for OptionalUuid7 {
     }
 }
 
-impl<'q> sqlx::Encode<'q, Sqlite> for OptionalUuid7 {
-    fn encode_by_ref(&self, buf: &mut Vec<SqliteArgumentValue<'q>>) -> Result<IsNull, BoxDynError> {
+impl sqlx::Encode<'_, Sqlite> for OptionalUuid7 {
+    fn encode_by_ref(&self, buf: &mut SqliteArgumentsBuffer) -> Result<IsNull, BoxDynError> {
         self.0.as_ref().map(|id| id.to_string()).encode_by_ref(buf)
     }
 }

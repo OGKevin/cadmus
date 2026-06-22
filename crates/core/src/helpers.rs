@@ -279,10 +279,10 @@ impl sqlx::Type<sqlx::Sqlite> for Fp {
     }
 }
 
-impl<'q> sqlx::Encode<'q, sqlx::Sqlite> for Fp {
+impl sqlx::Encode<'_, sqlx::Sqlite> for Fp {
     fn encode_by_ref(
         &self,
-        buf: &mut Vec<sqlx::sqlite::SqliteArgumentValue<'q>>,
+        buf: &mut sqlx::sqlite::SqliteArgumentsBuffer,
     ) -> Result<sqlx::encode::IsNull, sqlx::error::BoxDynError> {
         self.to_string().encode_by_ref(buf)
     }

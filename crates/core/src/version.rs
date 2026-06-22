@@ -14,7 +14,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor};
 use sqlx::encode::IsNull;
 use sqlx::error::BoxDynError;
-use sqlx::sqlite::{Sqlite, SqliteArgumentValue, SqliteTypeInfo, SqliteValueRef};
+use sqlx::sqlite::{Sqlite, SqliteArgumentsBuffer, SqliteTypeInfo, SqliteValueRef};
 
 /// Result of comparing two versions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -517,8 +517,8 @@ impl sqlx::Type<Sqlite> for GitVersion {
     }
 }
 
-impl<'q> sqlx::Encode<'q, Sqlite> for GitVersion {
-    fn encode_by_ref(&self, buf: &mut Vec<SqliteArgumentValue<'q>>) -> Result<IsNull, BoxDynError> {
+impl sqlx::Encode<'_, Sqlite> for GitVersion {
+    fn encode_by_ref(&self, buf: &mut SqliteArgumentsBuffer) -> Result<IsNull, BoxDynError> {
         self.to_string().encode_by_ref(buf)
     }
 }

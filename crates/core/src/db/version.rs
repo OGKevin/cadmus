@@ -49,10 +49,10 @@ impl sqlx::Type<sqlx::Sqlite> for MigrationHash {
     }
 }
 
-impl<'q> sqlx::Encode<'q, sqlx::Sqlite> for MigrationHash {
+impl sqlx::Encode<'_, sqlx::Sqlite> for MigrationHash {
     fn encode_by_ref(
         &self,
-        buf: &mut Vec<sqlx::sqlite::SqliteArgumentValue<'q>>,
+        buf: &mut sqlx::sqlite::SqliteArgumentsBuffer,
     ) -> Result<sqlx::encode::IsNull, sqlx::error::BoxDynError> {
         self.0.encode_by_ref(buf)
     }

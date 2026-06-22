@@ -18,6 +18,7 @@ use conversion::{
 };
 use fxhash::{FxHashMap, FxHashSet};
 use models::TocEntryRow;
+use sqlx::AssertSqlSafe;
 use sqlx::sqlite::SqlitePool;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
@@ -1098,7 +1099,7 @@ impl Db {
                     // Multiply by SORT_RANK_STRIDE to leave gaps for cheap
                     // single-book insertions via insert_sort_rank.
                     let rank = (rank as i64 + 1) * SORT_RANK_STRIDE;
-                    sqlx::query(&sql)
+                    sqlx::query(AssertSqlSafe(sql.as_str()))
                         .bind(rank)
                         .bind(library_id)
                         .bind(&fp)
@@ -1568,7 +1569,7 @@ impl Db {
             .fetch_one(&self.pool)
             .await?;
 
-            let rows: Vec<StoredBookRow> = sqlx::query_as(&data_sql)
+            let rows: Vec<StoredBookRow> = sqlx::query_as(AssertSqlSafe(data_sql.as_str()))
                 .bind(library_id)
                 .bind(&prefix_str)
                 .bind(&prefix_str)

@@ -12,7 +12,7 @@ use crate::unit::mm_to_px;
 use fxhash::FxHashSet;
 use sqlx::encode::IsNull;
 use sqlx::error::BoxDynError;
-use sqlx::sqlite::{Sqlite, SqliteArgumentValue, SqliteTypeInfo, SqliteValueRef};
+use sqlx::sqlite::{Sqlite, SqliteArgumentsBuffer, SqliteTypeInfo, SqliteValueRef};
 use unic_langid::LanguageIdentifier;
 
 pub use self::preset::{LightPreset, guess_frontlight};
@@ -657,8 +657,8 @@ impl sqlx::Type<Sqlite> for FileExtension {
     }
 }
 
-impl<'q> sqlx::Encode<'q, Sqlite> for FileExtension {
-    fn encode_by_ref(&self, buf: &mut Vec<SqliteArgumentValue<'q>>) -> Result<IsNull, BoxDynError> {
+impl sqlx::Encode<'_, Sqlite> for FileExtension {
+    fn encode_by_ref(&self, buf: &mut SqliteArgumentsBuffer) -> Result<IsNull, BoxDynError> {
         self.as_str().encode_by_ref(buf)
     }
 }
