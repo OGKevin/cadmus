@@ -33,7 +33,7 @@
 [submodule "thirdparty/harfbuzz"]
 	path = thirdparty/harfbuzz
 	url = https://github.com/harfbuzz/harfbuzz
-	branch = 14.2.0
+	branch = 14.2.1
 [submodule "thirdparty/gumbo"]
 	path = thirdparty/gumbo
 	url = https://github.com/google/gumbo-parser
