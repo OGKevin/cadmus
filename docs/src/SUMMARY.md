@@ -37,7 +37,7 @@
   - [UI Strings](contributing/translations/source-code.md)
   - [Guide](contributing/translations/docs.md)
 - [SQLite & SQLx](contributing/sqlite-sqlx.md)
-  - [Library Database](contributing/library-database.md)
+  - [Library Layout](contributing/library-database.md)
   - [Runtime Migrations](contributing/runtime-migrations.md)
 
 ---
