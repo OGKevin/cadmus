@@ -38,7 +38,7 @@ jobs:
       contents: read
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         id: rust-toolchain
         with:
@@ -58,7 +58,7 @@ jobs:
       matrix: ${{ steps.matrix.outputs.matrix }}
       test-matrix: ${{ steps.matrix.outputs.test-matrix }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         id: rust-toolchain
       - name: Restore shared cargo cache
@@ -74,7 +74,7 @@ jobs:
       contents: read
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         id: rust-toolchain
       - name: Restore shared cargo cache
@@ -92,7 +92,7 @@ jobs:
       contents: read
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         id: rust-toolchain
         with:
@@ -182,7 +182,7 @@ jobs:
     name: clippy (${{ matrix.label }}, ${{ matrix.os }})
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         id: rust-toolchain
         with:
@@ -225,7 +225,7 @@ jobs:
     name: clippy-report
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         id: rust-toolchain
         with:
@@ -266,7 +266,7 @@ jobs:
     name: test (${{ matrix.label }}, ${{ matrix.os }})
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           fetch-tags: true
@@ -324,7 +324,7 @@ jobs:
       attestations: write
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           fetch-tags: true
@@ -394,7 +394,7 @@ jobs:
     permissions: *build-permissions
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           fetch-tags: true
