@@ -4,7 +4,8 @@ Cadmus has two distinct migration pipelines:
 
 1. **Schema migrations** — plain `.sql` files in `crates/core/migrations/`,
    applied by SQLx's `migrate!` macro at startup. Use these for `CREATE TABLE`,
-   `ALTER TABLE`, and similar DDL changes.
+   `ALTER TABLE`, and similar DDL changes. The core build script hashes these
+   files and embeds the hash in the database version stamp.
 2. **Runtime migrations** — Rust `async fn` blocks declared with the
    `migration!` macro. Use these for one-time **data** operations: backfilling
    columns, importing legacy files, cleaning up obsolete rows, or any procedural

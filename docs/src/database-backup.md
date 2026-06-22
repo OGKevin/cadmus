@@ -8,7 +8,8 @@ When Cadmus starts up it runs through these steps in order:
 
 1. **Integrity check** — Cadmus checks the database file for corruption.
 2. **Version check** — Cadmus compares the version stamp stored in the database
-   against the app version that is currently running.
+   against the app version and database layout used by the version that is
+   currently running.
 3. **Restore (if needed)** — If the database is corrupted, or if it was last
    written by a _newer_ version of Cadmus than the one running now, Cadmus
    restores the best available backup before continuing.
@@ -39,9 +40,12 @@ Each backup file is named after the Cadmus version that created it, for example
 When you install an older version of Cadmus on top of a newer one, the database
 already on disk was written by the newer version.
 
-Cadmus detects this situation and automatically restores the most
-recent backup that is compatible with the older version. Data such as reading progress
-etc that was only written on the newer version will be lost.
+Cadmus checks whether the older version uses the same database layout as the
+newer version. If it does, Cadmus keeps using the database normally.
+
+If the database layout changed, Cadmus automatically restores the most recent
+backup that is compatible with the older version. Data such as reading progress
+that was only written on the newer version will be lost.
 
 Before the restore happens, the current database file is renamed to
 `cadmus-<newer-version>-demoted.sqlite` in the `backups/` folder. This demoted

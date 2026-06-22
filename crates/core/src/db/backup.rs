@@ -1,3 +1,4 @@
+use crate::db::version::{MigrationHash, current_migration_hash};
 use crate::version::GitVersion;
 use anyhow::{Context, Error};
 use chrono::{DateTime, Utc};
@@ -49,8 +50,8 @@ pub struct BackupEntry {
     pub file: String,
     /// The UTC datetime when the backup was created.
     pub created_at: DateTime<Utc>,
-    /// The number of applied schema migrations at the time of backup.
-    pub migration_count: i64,
+    /// The schema migration hash embedded in the build that created this backup.
+    pub migration_hash: MigrationHash,
 }
 
 /// Errors that can occur when restoring a database backup.
@@ -130,10 +131,10 @@ impl DbBackupManager {
 
         online_backup(pool, &backup_path).await?;
 
-        let migration_count = current_migration_count(pool).await?;
         let created_at = Utc::now();
+        let migration_hash = current_migration_hash();
 
-        self.update_manifest_and_cleanup(&filename, created_at, migration_count, retention)
+        self.update_manifest_and_cleanup(&filename, created_at, migration_hash, retention)
             .await?;
 
         tracing::info!(
@@ -276,7 +277,7 @@ impl DbBackupManager {
         &self,
         filename: &str,
         created_at: DateTime<Utc>,
-        migration_count: i64,
+        migration_hash: MigrationHash,
         retention: usize,
     ) -> Result<(), Error> {
         let mut manifest = self.read_manifest()?;
@@ -289,7 +290,7 @@ impl DbBackupManager {
             version: self.current_version.clone(),
             file: filename.to_string(),
             created_at,
-            migration_count,
+            migration_hash,
         };
 
         manifest.entries.push(new_entry);
@@ -414,17 +415,6 @@ fn add_suffix(path: &Path, suffix: &str) -> PathBuf {
     let mut s = path.as_os_str().to_os_string();
     s.push(suffix);
     PathBuf::from(s)
-}
-
-/// Returns the number of applied schema migrations.
-#[cfg_attr(feature = "tracing", tracing::instrument(skip(pool)))]
-async fn current_migration_count(pool: &SqlitePool) -> Result<i64, Error> {
-    let count = sqlx::query_scalar!("SELECT COUNT(*) FROM _sqlx_migrations")
-        .fetch_one(pool)
-        .await
-        .context("failed to count applied schema migrations")?;
-
-    Ok(count)
 }
 
 /// Creates an online backup of `src_pool` at `dest_path`.
@@ -589,6 +579,7 @@ mod tests {
         let manifest = manager.read_manifest().expect("failed to read manifest");
         assert_eq!(manifest.entries.len(), 1);
         assert_eq!(manifest.entries[0].version, version);
+        assert_eq!(manifest.entries[0].migration_hash, current_migration_hash());
         assert!(manifest.entries[0].file.contains("v0.10.0"));
     }
 
@@ -643,8 +634,9 @@ mod tests {
         });
 
         // Simulate a newer database by stamping it and closing it.
+        let migration_hash = crate::db::version::current_migration_hash();
         RUNTIME.block_on(async {
-            crate::db::version::stamp_db_version(db.pool(), &newer_version)
+            crate::db::version::stamp_db_version(db.pool(), &newer_version, &migration_hash)
                 .await
                 .unwrap();
         });
@@ -689,9 +681,10 @@ mod tests {
         db.init(0).expect("failed to run migrations");
 
         let test_version = GitVersion::from_str("v1.2.3").unwrap();
+        let migration_hash = crate::db::version::current_migration_hash();
 
         RUNTIME.block_on(async {
-            crate::db::version::stamp_db_version(db.pool(), &test_version)
+            crate::db::version::stamp_db_version(db.pool(), &test_version, &migration_hash)
                 .await
                 .expect("failed to stamp test version");
 
@@ -705,14 +698,13 @@ mod tests {
                 .await
                 .expect("failed to open backup database");
 
-            let version = sqlx::query_scalar!("SELECT version FROM _cadmus_version WHERE id = 1")
-                .fetch_one(&backup_pool)
+            let version = crate::db::version::read_db_version(&backup_pool)
                 .await
-                .expect("failed to query backup");
+                .expect("failed to query backup")
+                .expect("backup should have a version stamp");
 
             assert_eq!(
-                version,
-                test_version.to_string(),
+                version, test_version,
                 "backup should contain the stamped version"
             );
 

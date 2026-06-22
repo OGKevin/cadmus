@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Cadmus Documentation\n"
-"POT-Creation-Date: 2026-06-22T16:35:57+02:00\n"
+"POT-Creation-Date: 2026-06-22T16:36:33+02:00\n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -2281,11 +2281,11 @@ msgid ""
 "total would exceed this limit, the oldest backups are deleted automatically."
 msgstr ""
 
-#: src/settings/index.md:771 src/database-backup.md:68
+#: src/settings/index.md:771 src/database-backup.md:72
 msgid "Default: `2`"
 msgstr ""
 
-#: src/settings/index.md:772 src/database-backup.md:69
+#: src/settings/index.md:772 src/database-backup.md:73
 msgid "Set to `0` to disable backups entirely."
 msgstr ""
 
@@ -4232,62 +4232,69 @@ msgstr ""
 #: src/database-backup.md:10
 msgid ""
 "**Version check** — Cadmus compares the version stamp stored in the database "
-"against the app version that is currently running."
+"against the app version and database layout used by the version that is "
+"currently running."
 msgstr ""
 
-#: src/database-backup.md:12
+#: src/database-backup.md:13
 msgid ""
 "**Restore (if needed)** — If the database is corrupted, or if it was last "
 "written by a _newer_ version of Cadmus than the one running now, Cadmus "
 "restores the best available backup before continuing."
 msgstr ""
 
-#: src/database-backup.md:15
+#: src/database-backup.md:16
 msgid ""
 "**Migrations** — Schema and data migrations run against the (possibly "
 "restored) database."
 msgstr ""
 
-#: src/database-backup.md:17
+#: src/database-backup.md:18
 msgid ""
 "**Backup** — A fresh backup of the now-migrated database is saved to disk."
 msgstr ""
 
-#: src/database-backup.md:19
+#: src/database-backup.md:20
 msgid "Where backups are stored"
 msgstr ""
 
-#: src/database-backup.md:21
+#: src/database-backup.md:22
 msgid ""
 "Backups live in a `backups/` folder inside the directory that contains "
 "`cadmus.sqlite`. A small index file called `.cadmus-db-index.toml` in that "
 "same folder tracks every backup."
 msgstr ""
 
-#: src/database-backup.md:34
+#: src/database-backup.md:35
 msgid ""
 "Each backup file is named after the Cadmus version that created it, for "
 "example `cadmus-v1.2.3.sqlite`."
 msgstr ""
 
-#: src/database-backup.md:37
+#: src/database-backup.md:38
 msgid "Downgrade protection"
 msgstr ""
 
-#: src/database-backup.md:39
+#: src/database-backup.md:40
 msgid ""
 "When you install an older version of Cadmus on top of a newer one, the "
 "database already on disk was written by the newer version."
 msgstr ""
 
-#: src/database-backup.md:42
+#: src/database-backup.md:43
 msgid ""
-"Cadmus detects this situation and automatically restores the most recent "
-"backup that is compatible with the older version. Data such as reading "
-"progress etc that was only written on the newer version will be lost."
+"Cadmus checks whether the older version uses the same database layout as the "
+"newer version. If it does, Cadmus keeps using the database normally."
 msgstr ""
 
 #: src/database-backup.md:46
+msgid ""
+"If the database layout changed, Cadmus automatically restores the most "
+"recent backup that is compatible with the older version. Data such as "
+"reading progress that was only written on the newer version will be lost."
+msgstr ""
+
+#: src/database-backup.md:50
 msgid ""
 "Before the restore happens, the current database file is renamed to "
 "`cadmus-<newer-version>-demoted.sqlite` in the `backups/` folder. This "
@@ -4295,29 +4302,29 @@ msgid ""
 "deletes it automatically, so you can recover it manually if you ever need to."
 msgstr ""
 
-#: src/database-backup.md:51
+#: src/database-backup.md:55
 msgid "Corruption recovery"
 msgstr ""
 
-#: src/database-backup.md:53
+#: src/database-backup.md:57
 msgid ""
 "If the database file fails its integrity check, Cadmus restores the most "
 "recent backup and re-runs migrations. The corrupt file is replaced and "
 "Cadmus continues normally."
 msgstr ""
 
-#: src/database-backup.md:57
+#: src/database-backup.md:61
 msgid ""
 "\\[!WARNING\\] If the database is corrupted _and_ no backup exists (for "
 "example on a fresh install), Cadmus cannot start. You would have to manually "
 "delete the database file to allow Cadmus to start."
 msgstr ""
 
-#: src/database-backup.md:62
+#: src/database-backup.md:66
 msgid "Controlling how many backups to keep"
 msgstr ""
 
-#: src/database-backup.md:64
+#: src/database-backup.md:68
 msgid ""
 "Use the `db-backup-retention` setting to control how many backup files are "
 "kept on disk. When a new backup is created and the total number of backups "
@@ -7126,35 +7133,54 @@ msgid ""
 msgstr ""
 
 #: src/contributing/sqlite-sqlx.md:113
-#: src/contributing/runtime-migrations.md:164
-msgid "API reference"
+msgid "Keep schema migration files stable"
 msgstr ""
 
 #: src/contributing/sqlite-sqlx.md:115
+msgid ""
+"`cadmus-core` hashes every file under `crates/core/migrations/` at build "
+"time and stores that hash in the database version stamp. Downgrade "
+"protection uses the hash to allow newer-to-older app version moves only when "
+"both builds have the same schema migration set."
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:120
+msgid ""
+"Do not edit a schema migration after it has shipped. Add a new numbered "
+"migration instead so existing databases keep passing SQLx migration checksum "
+"validation."
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:124
+#: src/contributing/runtime-migrations.md:165
+msgid "API reference"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:126
 msgid "The primary database types live in the `cadmus_core::db` module:"
 msgstr ""
 
-#: src/contributing/sqlite-sqlx.md:117
+#: src/contributing/sqlite-sqlx.md:128
 msgid ""
 "<a "
 "href=\"/api/cadmus_core/db/struct.Database\">`cadmus_core::db::Database`</a> "
 "— the top-level sync/async bridge that owns the connection pool"
 msgstr ""
 
-#: src/contributing/sqlite-sqlx.md:119
+#: src/contributing/sqlite-sqlx.md:130
 msgid ""
 "<a "
 "href=\"/api/cadmus_core/db/migrations/struct.MigrationRunner\">`cadmus_core::db::migrations::MigrationRunner`</a> "
 "— executes all pending runtime migrations"
 msgstr ""
 
-#: src/contributing/sqlite-sqlx.md:121
+#: src/contributing/sqlite-sqlx.md:132
 msgid ""
 "<a href=\"/api/cadmus_core/macro.migration\">`cadmus_core::migration!`</a> — "
 "macro for declaring one-time runtime migrations"
 msgstr ""
 
-#: src/contributing/sqlite-sqlx.md:124
+#: src/contributing/sqlite-sqlx.md:135
 msgid ""
 "See [Library Database](library-database.md) for how the library subsystem "
 "uses the database, and [Runtime Migrations](runtime-migrations.md) for how "
@@ -7416,10 +7442,11 @@ msgstr ""
 msgid ""
 "**Schema migrations** — plain `.sql` files in `crates/core/migrations/`, "
 "applied by SQLx's `migrate!` macro at startup. Use these for `CREATE TABLE`, "
-"`ALTER TABLE`, and similar DDL changes."
+"`ALTER TABLE`, and similar DDL changes. The core build script hashes these "
+"files and embeds the hash in the database version stamp."
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:8
+#: src/contributing/runtime-migrations.md:9
 msgid ""
 "**Runtime migrations** — Rust `async fn` blocks declared with the "
 "`migration!` macro. Use these for one-time **data** operations: backfilling "
@@ -7427,11 +7454,11 @@ msgid ""
 "procedural work that goes beyond SQL DDL."
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:13
+#: src/contributing/runtime-migrations.md:14
 msgid "How runtime migrations work"
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:15
+#: src/contributing/runtime-migrations.md:16
 msgid ""
 "```mermaid\n"
 "flowchart TD\n"
@@ -7455,7 +7482,7 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:36
+#: src/contributing/runtime-migrations.md:37
 msgid ""
 "At process start the `#[ctor]` attribute runs for every `migration!` call "
 "and inserts the migration function into a global `HashMap`. When "
@@ -7464,79 +7491,79 @@ msgid ""
 "which:"
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:41
+#: src/contributing/runtime-migrations.md:42
 msgid "Reads `_cadmus_migrations` and collects IDs that already succeeded."
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:42
+#: src/contributing/runtime-migrations.md:43
 msgid "Skips those; runs the remaining ones sorted by ID."
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:43
+#: src/contributing/runtime-migrations.md:44
 msgid "Records each result (`success` or `failed`) before moving on."
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:44
+#: src/contributing/runtime-migrations.md:45
 msgid "Continues past failures so one broken migration does not block others."
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:46
+#: src/contributing/runtime-migrations.md:47
 msgid ""
 "A failed migration can be retried by deleting its tracking row (see "
 "[Re-running a migration](#re-running-a-migration))."
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:49
+#: src/contributing/runtime-migrations.md:50
 msgid "The `migration!` macro"
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:51
+#: src/contributing/runtime-migrations.md:52
 msgid ""
 "<a href=\"/api/cadmus_core/macro.migration\">`cadmus_core::migration!`</a> "
 "takes a stable string ID and an `async fn` definition:"
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:56
+#: src/contributing/runtime-migrations.md:57
 msgid "/// One-line doc comment forwarded to rustdoc.\n    \"v1_my_migration\""
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:59
+#: src/contributing/runtime-migrations.md:60
 msgid "\"UPDATE books SET title = TRIM(title)\""
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:67
+#: src/contributing/runtime-migrations.md:68
 msgid "The macro:"
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:69
+#: src/contributing/runtime-migrations.md:70
 msgid "Generates the `async fn` with the provided body."
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:70
+#: src/contributing/runtime-migrations.md:71
 msgid ""
 "Creates a public submodule named after the function that exposes a "
 "`MIGRATION_ID` constant — useful for tests and cross-references."
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:72
+#: src/contributing/runtime-migrations.md:73
 msgid ""
 "Registers the function in the global `REGISTRY` via `#[ctor]` so it runs "
 "automatically without any manual wiring."
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:74
+#: src/contributing/runtime-migrations.md:75
 msgid "Forwards doc comments onto the generated items so rustdoc picks them up."
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:75
+#: src/contributing/runtime-migrations.md:76
 msgid "Appends the migration ID and a re-run SQL snippet to the generated docs."
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:77
+#: src/contributing/runtime-migrations.md:78
 msgid "Where to put migration code"
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:79
+#: src/contributing/runtime-migrations.md:80
 msgid ""
 "Co-locate migrations with the feature they belong to. The library "
 "subsystem's migrations live in `crates/core/src/library/migrations.rs`; a "
@@ -7544,130 +7571,130 @@ msgid ""
 "`crates/core/src/reader/migrations.rs`."
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:84
+#: src/contributing/runtime-migrations.md:85
 msgid ""
 "The module only needs to be declared once so the `#[ctor]` registration "
 "runs. There is no central registry file to update."
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:87
+#: src/contributing/runtime-migrations.md:88
 msgid "Writing a migration step by step"
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:89
+#: src/contributing/runtime-migrations.md:90
 msgid "1. Choose a stable ID"
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:91
+#: src/contributing/runtime-migrations.md:92
 msgid ""
 "The ID is the primary key in `_cadmus_migrations`. Once a migration has been "
 "deployed it must never be renamed, because existing installations track it "
 "by this string."
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:95
+#: src/contributing/runtime-migrations.md:96
 msgid ""
 "Convention: `v<N>_<short_description>`, for example "
 "`v1_backfill_book_language`."
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:97
+#: src/contributing/runtime-migrations.md:98
 msgid "2. Create the migration file (or add to an existing one)"
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:100
+#: src/contributing/runtime-migrations.md:101
 msgid "// crates/core/src/my_feature/migrations.rs\n"
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:105
+#: src/contributing/runtime-migrations.md:106
 msgid ""
 "/// Backfills the `language` column for books that were imported before\n"
 "    /// language detection was added.\n"
 "    \"v1_backfill_book_language\""
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:110
+#: src/contributing/runtime-migrations.md:111
 msgid ""
 "\"UPDATE books SET language = 'en' WHERE language = '' OR language IS NULL\""
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:120
+#: src/contributing/runtime-migrations.md:121
 msgid "3. Use SQLx typed macros"
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:122
+#: src/contributing/runtime-migrations.md:123
 msgid ""
 "All SQL inside a migration must use the typed macros for compile-time "
 "verification (see [SQLite & SQLx](sqlite-sqlx.md)):"
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:126
+#: src/contributing/runtime-migrations.md:127
 msgid "// ✅ Good — compile-time checked\n"
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:127
-#: src/contributing/runtime-migrations.md:132
+#: src/contributing/runtime-migrations.md:128
+#: src/contributing/runtime-migrations.md:133
 msgid "\"DELETE FROM books WHERE file_path = ?\""
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:130
+#: src/contributing/runtime-migrations.md:131
 msgid "// ❌ Bad — untyped, bypasses verification\n"
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:138
+#: src/contributing/runtime-migrations.md:139
 msgid "4. Make it idempotent"
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:140
+#: src/contributing/runtime-migrations.md:141
 msgid ""
 "Use `INSERT OR IGNORE`, `ON CONFLICT DO NOTHING`, or guard with a `WHERE` "
 "clause so the migration is safe to re-run without corrupting data."
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:143
+#: src/contributing/runtime-migrations.md:144
 msgid "5. Regenerate `.sqlx` metadata"
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:145
+#: src/contributing/runtime-migrations.md:146
 msgid ""
 "After adding or changing any query in the migration, regenerate the "
 "compile-time metadata:"
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:152
+#: src/contributing/runtime-migrations.md:153
 msgid "Commit the updated `.sqlx/` files alongside your migration code."
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:154
+#: src/contributing/runtime-migrations.md:155
 msgid "Re-running a migration"
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:156
+#: src/contributing/runtime-migrations.md:157
 msgid "Delete the tracking row, then restart the application:"
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:159
+#: src/contributing/runtime-migrations.md:160
 msgid "'v1_my_migration'"
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:162
+#: src/contributing/runtime-migrations.md:163
 msgid "The next startup will treat the migration as pending and run it again."
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:166
+#: src/contributing/runtime-migrations.md:167
 msgid ""
 "<a href=\"/api/cadmus_core/macro.migration\">`cadmus_core::migration!`</a> — "
 "macro for declaring runtime migrations"
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:168
+#: src/contributing/runtime-migrations.md:169
 msgid ""
 "<a "
 "href=\"/api/cadmus_core/db/migrations/struct.MigrationRunner\">`cadmus_core::db::migrations::MigrationRunner`</a> "
 "— executes all pending registered migrations"
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:170
+#: src/contributing/runtime-migrations.md:171
 msgid ""
 "<a "
 "href=\"/api/cadmus_core/db/struct.Database\">`cadmus_core::db::Database`</a> "

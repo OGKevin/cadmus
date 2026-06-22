@@ -121,7 +121,8 @@ impl Database {
         RUNTIME.block_on(async {
             self.restore_if_needed(&app_version).await?;
             self.migrate().await?;
-            version::stamp_db_version(&self.pool, &app_version).await?;
+            version::stamp_db_version(&self.pool, &app_version, &version::current_migration_hash())
+                .await?;
             tracing::info!(app_version = %app_version, "database version stamped");
             self.create_version_backup(&app_version, backup_retention)
                 .await?;
@@ -323,6 +324,11 @@ fn log_version_gate(gate: version::VersionGateResult) {
         version::VersionGateResult::Current => {
             tracing::info!("database version matches current app version");
         }
+        version::VersionGateResult::CompatibleDowngrade => {
+            tracing::info!(
+                "database was written by a newer Cadmus version with matching migrations"
+            );
+        }
         version::VersionGateResult::Downgrade => unreachable!(),
     }
 }
@@ -394,8 +400,11 @@ mod tests {
         db.init(0).expect("initial migrate");
 
         let older = crate::version::GitVersion::parse("v0.0.1").unwrap();
+        let migration_hash = version::current_migration_hash();
         RUNTIME.block_on(async {
-            version::stamp_db_version(&db.pool, &older).await.unwrap();
+            version::stamp_db_version(&db.pool, &older, &migration_hash)
+                .await
+                .unwrap();
         });
 
         db.init(0).expect("migrate should succeed (Upgrade path)");
@@ -414,8 +423,11 @@ mod tests {
         db.init(0).expect("initial migrate");
 
         let newer = crate::version::GitVersion::parse("v99.99.99").unwrap();
+        let migration_hash = incompatible_migration_hash();
         RUNTIME.block_on(async {
-            version::stamp_db_version(&db.pool, &newer).await.unwrap();
+            version::stamp_db_version(&db.pool, &newer, &migration_hash)
+                .await
+                .unwrap();
         });
 
         let err = db
@@ -440,8 +452,11 @@ mod tests {
         db.init(0).expect("initial migrate");
 
         let newer = crate::version::GitVersion::parse("v99.99.99").unwrap();
+        let migration_hash = incompatible_migration_hash();
         RUNTIME.block_on(async {
-            version::stamp_db_version(&db.pool, &newer).await.unwrap();
+            version::stamp_db_version(&db.pool, &newer, &migration_hash)
+                .await
+                .unwrap();
         });
 
         let err = db
@@ -473,8 +488,11 @@ mod tests {
         });
 
         let newer = crate::version::GitVersion::parse("v99.99.99").unwrap();
+        let migration_hash = incompatible_migration_hash();
         RUNTIME.block_on(async {
-            version::stamp_db_version(&db.pool, &newer).await.unwrap();
+            version::stamp_db_version(&db.pool, &newer, &migration_hash)
+                .await
+                .unwrap();
         });
 
         db.init(0)
@@ -579,5 +597,13 @@ mod tests {
                 || err_msg.contains("wal_checkpoint"),
             "expected integrity-related failure, got: {err_msg}"
         );
+    }
+
+    fn incompatible_migration_hash() -> version::MigrationHash {
+        blake3::hash(uuid::Uuid::now_v7().as_bytes())
+            .to_hex()
+            .to_string()
+            .parse()
+            .unwrap()
     }
 }

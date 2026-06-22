@@ -110,6 +110,17 @@ Every index must be used by at least one query in the codebase. Unused indexes
 waste write performance and storage without any read benefit. Before adding an
 index, verify a query filters, sorts, or joins on the indexed column(s).
 
+### Keep schema migration files stable
+
+`cadmus-core` hashes every file under `crates/core/migrations/` at build time
+and stores that hash in the database version stamp. Downgrade protection uses
+the hash to allow newer-to-older app version moves only when both builds have
+the same schema migration set.
+
+Do not edit a schema migration after it has shipped. Add a new numbered
+migration instead so existing databases keep passing SQLx migration checksum
+validation.
+
 ## API reference
 
 The primary database types live in the `cadmus_core::db` module:

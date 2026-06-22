@@ -16,6 +16,7 @@
 //! expected non-zero exit.
 
 use std::env;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -88,6 +89,7 @@ fn try_main() -> Result<()> {
 
     let root = workspace_root()?;
 
+    generate_migration_hash()?;
     generate_locales()?;
     generate_bundled_assets()?;
 
@@ -196,6 +198,79 @@ fn generate_locales() -> Result<()> {
     let generated = format!("pub const AVAILABLE_LOCALES: &[&str] = &[\n{entries}];\n");
     std::fs::write(Path::new(&out_dir).join("locales.rs"), generated)
         .context("failed to write locales.rs")?;
+    Ok(())
+}
+
+/// Generates the schema migration content hash.
+///
+/// The hash is embedded in database version stamps so a downgrade is allowed
+/// when the running build and database were produced from the same migration
+/// set, even if their application versions differ.
+fn generate_migration_hash() -> Result<()> {
+    let out_dir = env::var("OUT_DIR").context("OUT_DIR not set")?;
+    let migrations_dir = Path::new("migrations");
+    let mut migration_files = Vec::new();
+
+    println!("cargo:rerun-if-changed={}", migrations_dir.display());
+    collect_migration_files(migrations_dir, migrations_dir, &mut migration_files)?;
+    migration_files.sort_by(|a, b| a.0.cmp(&b.0));
+
+    let doc_entries: String = migration_files
+        .iter()
+        .map(|(relative_path, _)| format!("/// - `{relative_path}`\n"))
+        .collect();
+
+    let mut hasher = blake3::Hasher::new();
+    for (relative_path, path) in &migration_files {
+        hasher.update(relative_path.as_bytes());
+        hasher.update(&[0]);
+        hasher.update(
+            &fs::read(path)
+                .with_context(|| format!("failed to read migration {}", path.display()))?,
+        );
+        hasher.update(&[0]);
+    }
+
+    let generated = format!(
+        "/// BLAKE3 hash of schema migration files.\n///\n/// Files included in this hash:\n{doc_entries}pub const MIGRATION_HASH: &str = {:?};\n",
+        hasher.finalize().to_hex().to_string()
+    );
+
+    fs::write(Path::new(&out_dir).join("migration_hash.rs"), generated)
+        .context("failed to write migration_hash.rs")?;
+
+    Ok(())
+}
+
+fn collect_migration_files(
+    root: &Path,
+    dir: &Path,
+    migration_files: &mut Vec<(String, PathBuf)>,
+) -> Result<()> {
+    for entry in fs::read_dir(dir).with_context(|| format!("failed to read {}", dir.display()))? {
+        let entry = entry.with_context(|| format!("failed to read entry in {}", dir.display()))?;
+        let path = entry.path();
+        let file_type = entry
+            .file_type()
+            .with_context(|| format!("failed to read type for {}", path.display()))?;
+
+        if file_type.is_dir() {
+            println!("cargo:rerun-if-changed={}", path.display());
+            collect_migration_files(root, &path, migration_files)?;
+            continue;
+        }
+
+        if !file_type.is_file() {
+            continue;
+        }
+
+        println!("cargo:rerun-if-changed={}", path.display());
+        let relative_path = path
+            .strip_prefix(root)
+            .with_context(|| format!("{} is not under {}", path.display(), root.display()))?;
+        migration_files.push((relative_path.to_string_lossy().replace('\\', "/"), path));
+    }
+
     Ok(())
 }
 

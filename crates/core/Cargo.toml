@@ -116,6 +116,7 @@ harness = false
 
 [build-dependencies]
 anyhow = "1"
+blake3 = "1"
 build-deps = { path = "../build-deps" }
 cc = { workspace = true }
 uuid = { version = "1.20.0", features = ["v7"] }
