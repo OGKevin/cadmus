@@ -33,7 +33,7 @@ jobs:
           fetch-depth: 0
 
       - name: Shfmt
-        uses: reviewdog/action-shfmt@v1.0.4
+        uses: reviewdog/action-shfmt@v1.1.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           filter_mode: added
