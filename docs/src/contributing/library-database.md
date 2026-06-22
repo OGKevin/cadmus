@@ -1,207 +1,126 @@
 # Library Database
 
-The library subsystem stores all book metadata, reading progress, and
-table-of-contents data in SQLite. This page explains the schema, the key
-database types, and how data flows from disk into the database.
+Cadmus stores library roots, scanned files, book metadata, reading progress,
+thumbnails, and table-of-contents data in SQLite. This page explains where each
+category of library data belongs and how scans move data from disk into the
+database.
 
-## Schema overview
+## Core Shape
 
-The database is created and versioned by the SQL migration files in
-`crates/core/migrations/`. The initial schema defines eleven tables plus one
-aggregating view:
+The library database separates four concerns:
 
 ```mermaid
 erDiagram
-    books {
-        TEXT fingerprint PK
-        TEXT title
-        TEXT file_path
-        TEXT file_kind
-        INTEGER file_size
-        INTEGER added_at
-    }
-
-    authors {
-        INTEGER id PK
-        TEXT name
-    }
-
-    book_authors {
-        TEXT book_fingerprint FK
-        INTEGER author_id FK
-        INTEGER position
-    }
-
-    categories {
-        INTEGER id PK
-        TEXT name
-    }
-
-    book_categories {
-        TEXT book_fingerprint FK
-        INTEGER category_id FK
-    }
-
-    reading_states {
-        TEXT fingerprint PK
-        INTEGER opened
-        INTEGER current_page
-        INTEGER pages_count
-        INTEGER finished
-    }
-
-    thumbnails {
-        TEXT fingerprint PK
-        BLOB thumbnail_data
-    }
-
-    toc_entries {
-        TEXT id PK
-        TEXT book_fingerprint FK
-        TEXT parent_id FK
-        INTEGER position
-        TEXT title
-        TEXT location_kind
-    }
-
-    libraries {
-        INTEGER id PK
-        TEXT path
-        TEXT name
-        INTEGER created_at
-    }
-
-    library_books {
-        INTEGER library_id FK
-        TEXT book_fingerprint FK
-        INTEGER added_to_library_at
-        TEXT file_path
-        TEXT absolute_path
-        INTEGER mtime
-        INTEGER file_size
-    }
-
-    _cadmus_migrations {
-        TEXT id PK
-        INTEGER executed_at
-        TEXT status
-    }
-
-    books ||--o{ book_authors : ""
-    authors ||--o{ book_authors : ""
-    books ||--o{ book_categories : ""
-    categories ||--o{ book_categories : ""
-    books ||--o| reading_states : ""
-    books ||--o| thumbnails : ""
-    books ||--o{ toc_entries : ""
-    toc_entries ||--o{ toc_entries : "parent_id"
-    libraries ||--o{ library_books : ""
-    books ||--o{ library_books : ""
+    libraries ||--o{ library_books : contains
+    books ||--o{ library_books : appears_in
+    books ||--o{ book_authors : has
+    authors ||--o{ book_authors : names
+    books ||--o{ book_categories : tagged_with
+    categories ||--o{ book_categories : names
+    books ||--o| reading_states : tracks
+    books ||--o| thumbnails : caches
+    books ||--o{ toc_entries : contains
+    toc_entries ||--o{ toc_entries : parent
 ```
 
-### Key design choices
+### Libraries
 
-- **`books` is the main table.** Every other per-book table references
-  `books.fingerprint` with `ON DELETE CASCADE`, so deleting a book row removes
-  all associated data automatically.
-- **Authors are normalised.** `authors` holds unique author names;
-  `book_authors` is the join table and carries a `position` column that
-  preserves display order.
-- **All tables use `STRICT` mode.** SQLite's `STRICT` pragma enforces column
-  type constraints at the storage layer, catching type mismatches early.
-- **Timestamps are Unix epoch integers.** `added_at`, `created_at`, and similar
-  columns are `INTEGER NOT NULL`; never `TEXT`.
-- **TOC tree via adjacency list.** `toc_entries.parent_id` is a self-reference;
-  `position` preserves sibling order. The `id` is a UUID7 (generated in Rust) so
-  `ORDER BY id ASC` gives stable insertion order without a growing rowid.
-- **Incremental import via `mtime` and `file_size`.** The `library_books` table
-  stores the file's last modification time (ceiling-rounded to 2-second FAT32
-  precision) and size in bytes. During import scans, files whose `mtime` and
-  `file_size` have not changed are skipped without re-fingerprinting, improving
-  startup performance. An index on `(library_id, absolute_path)` enables
-  efficient per-path lookups. Both columns are nullable to support books
-  imported before migration 011.
-- **`library_books_full_info` view.** An aggregating view joins `books`,
-  `reading_states`, `book_authors`, `authors`, `book_categories`, and
-  `categories` in one query. The `library_id` column from `library_books` is
-  exposed so callers can filter with a plain `WHERE library_id = ?`.
+`libraries` represents scan roots. A row answers: "which directory did Cadmus
+index as a library?"
 
-## Data access layer
+Keep library-level data here only when it describes the library itself, such as
+its path, display name, or creation metadata.
+
+### Library Membership
+
+`library_books` connects a library to the book files found under it. It is the
+place for data that depends on a specific file within a specific library scan,
+including relative paths, absolute paths, timestamps, sizes, and other scan-cache
+metadata.
+
+This table is deliberately separate from `books` because one canonical book can
+appear in more than one library or at more than one path over time. File-system
+state belongs to the membership row, not to the canonical book row.
+
+### Canonical Books
+
+`books` is the canonical per-book record, keyed by fingerprint. It holds data
+that should be the same regardless of which library found the file, such as
+title and file kind.
+
+Per-book tables reference `books` and are removed with the book when cascading
+deletes apply. New per-book data should usually live in a dedicated table rather
+than being mixed into library membership.
+
+### Derived Per-Book Data
+
+Authors, categories, reading state, thumbnails, and table-of-contents entries
+are derived from either metadata extraction, reader state, or generated assets.
+They are tied to the canonical book fingerprint, not to a specific library path.
+
+Use join tables for many-to-many relationships such as authors and categories.
+Use child tables for optional or repeatable data such as reading state,
+thumbnails, and TOC entries.
+
+## Scan Flow
+
+Library scans move from the filesystem toward canonical book data:
+
+```mermaid
+flowchart TD
+    root[Library root] --> files[Discover supported book files]
+    files --> membership[Update library membership and scan cache]
+    membership --> fingerprint[Fingerprint changed or new files]
+    fingerprint --> book[Upsert canonical book metadata]
+    book --> derived[Refresh derived per-book data]
+```
+
+The membership row is checked before expensive work. If the scan-cache data says
+the file has not changed, Cadmus can skip re-fingerprinting and metadata
+extraction. If the file is new or changed, Cadmus updates the canonical book row
+and any derived data collected during import.
+
+## What Goes Where
+
+Use these rules when adding or reviewing library database changes:
+
+| Data kind                               | Belongs in                                           |
+| --------------------------------------- | ---------------------------------------------------- |
+| Library root path or display name       | `libraries`                                          |
+| File path inside one scanned library    | `library_books`                                      |
+| File modification or size cache         | `library_books`                                      |
+| Stable book identity or extracted title | `books`                                              |
+| Data shared by all copies of a book     | `books` or a per-book child table                    |
+| Many-to-many metadata                   | Named entity table plus join table                   |
+| Reading progress                        | `reading_states`                                     |
+| Generated cover image                   | `thumbnails`                                         |
+| Nested table of contents                | `toc_entries`, using parent references and positions |
+| Migration bookkeeping                   | Migration tables managed by the migration runner     |
+
+If data describes a file's current location, put it in library membership. If it
+describes the book identified by its fingerprint, put it in canonical book data
+or a per-book child table.
+
+## Schema Details
+
+For exact schema details, read the migrations in `crates/core/migrations/` in
+order. They define the tables, views, indexes, constraints, and data migrations
+that exist at each database version.
+
+## Data Access
 
 The
 <a href="/api/cadmus_core/library/db/struct.Db">`cadmus_core::library::db::Db`</a>
-struct is the entry point for all library database operations. It wraps the
-shared `SqlitePool` and exposes a **synchronous** API by bridging every async
-SQLx call through the global Tokio runtime:
+type is the entry point for library database operations. It wraps the shared
+SQLite pool and presents a synchronous API to the rest of the app.
 
-```mermaid
-flowchart LR
-    caller["Caller (sync event loop)"]
-    Db["library::db::Db"]
-    RUNTIME["RUNTIME.block_on()"]
-    SQLx["SQLx async query"]
-    SQLite[("SQLite")]
+Keep database access behind this layer so callers work with domain types instead
+of raw SQL rows. For SQLx conventions, type overrides, and migration review
+rules, see the related pages below.
 
-    caller -->|sync call| Db
-    Db -->|wraps in| RUNTIME
-    RUNTIME -->|awaits| SQLx
-    SQLx -->|reads/writes| SQLite
-    SQLx -->|result| RUNTIME
-    RUNTIME -->|returns| caller
-```
+## Related Pages
 
-The sync bridge exists because Cadmus's UI event loop is single-threaded and
-synchronous. The global `RUNTIME` (a `tokio::runtime::Runtime` singleton) lets
-the rest of the codebase call database methods without needing to be async.
-
-Key methods on `Db`:
-
-| Method                                                                                               | Purpose                                              |
-| ---------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| <a href="/api/cadmus_core/library/db/struct.Db#method.register_library">`register_library`</a>       | Insert a new library row and return its id           |
-| <a href="/api/cadmus_core/library/db/struct.Db#method.get_library_by_path">`get_library_by_path`</a> | Look up a library id by filesystem path              |
-| <a href="/api/cadmus_core/library/db/struct.Db#method.get_all_books">`get_all_books`</a>             | Fetch every book in a library via the full-info view |
-| <a href="/api/cadmus_core/library/db/struct.Db#method.insert_book">`insert_book`</a>                 | Write a new book and its authors/categories          |
-| <a href="/api/cadmus_core/library/db/struct.Db#method.save_reading_state">`save_reading_state`</a>   | Save or update reading progress for a book           |
-| <a href="/api/cadmus_core/library/db/struct.Db#method.save_toc">`save_toc`</a>                       | Bulk-write a book's table of contents                |
-| <a href="/api/cadmus_core/library/db/struct.Db#method.get_thumbnail">`get_thumbnail`</a>             | Retrieve the stored cover thumbnail BLOB             |
-| <a href="/api/cadmus_core/library/db/struct.Db#method.save_thumbnail">`save_thumbnail`</a>           | Save or replace a cover thumbnail                    |
-
-## How a book scan flows into the database
-
-When a library directory is scanned, Cadmus follows this sequence:
-
-```mermaid
-sequenceDiagram
-    participant Scanner as Library Scanner
-    participant Db as library::db::Db
-    participant SQLite
-
-    Scanner->>Db: register_library(path, name)
-    Db->>SQLite: INSERT INTO libraries
-    SQLite-->>Db: library_id
-
-    loop for each book file
-        Scanner->>Db: insert_book(library_id, fp, info)
-        Db->>SQLite: INSERT INTO books
-        Db->>SQLite: INSERT INTO authors / book_authors
-        Db->>SQLite: INSERT INTO book_categories
-        Db->>SQLite: INSERT INTO library_books
-    end
-
-    loop for each book with reading progress
-        Scanner->>Db: save_reading_state(fp, reader_info)
-        Db->>SQLite: INSERT OR REPLACE INTO reading_states
-    end
-
-    loop for each book with a TOC
-        Scanner->>Db: save_toc(fp, entries)
-        Db->>SQLite: INSERT INTO toc_entries
-    end
-```
-
-## Related pages
-
-- [SQLite & SQLx](sqlite-sqlx.md) — compile-time query verification, review rules
+- [SQLite & SQLx](sqlite-sqlx.md) — compile-time query verification and review
+  rules
 - [Runtime Migrations](runtime-migrations.md) — one-time data migrations using
   the `migration!` macro

@@ -23,7 +23,7 @@
 
 ---
 
-## Contributor Guide
+# Contributor Guide
 
 - [Development Environment](contributing/devenv-setup.md)
 - [Code Style and Linting](contributing/code-style.md)
@@ -42,7 +42,7 @@
 
 ---
 
-## Investigations
+# Investigations
 
 - [Intro](investigations/index.md)
   - [DHCP IP Address Changes on WiFi Toggle](investigations/kobo/issue-51-dhcp-investigation.md)
