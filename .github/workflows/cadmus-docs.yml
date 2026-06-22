@@ -42,7 +42,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           fetch-tags: true
@@ -98,7 +98,7 @@ jobs:
       name: cloudflare-pages-production
       url: https://cadmus-dt6.pages.dev/
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Download build artifact
         uses: actions/download-artifact@v8
@@ -122,7 +122,7 @@ jobs:
       name: cloudflare-pages-preview
       url: ${{ steps.deploy.outputs.pages-deployment-alias-url }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Download build artifact
         uses: actions/download-artifact@v8
