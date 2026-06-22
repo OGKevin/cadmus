@@ -141,7 +141,7 @@ jobs:
 
       - name: Install cargo-nextest
         if: steps.cargo-nextest-cache.outputs.cache-hit != 'true'
-        run: cargo install cargo-nextest --version "$NEXTEST_VERSION" --locked
+        run: cargo install cargo-nextest --version "$NEXTEST_VERSION" --locked --force
 
       - name: Download documentation EPUB
         if: steps.cache.outputs.cache-hit != 'true'
@@ -309,7 +309,7 @@ jobs:
 
       - name: Install cargo-nextest
         if: steps.cargo-nextest-cache.outputs.cache-hit != 'true'
-        run: cargo install cargo-nextest --version "$NEXTEST_VERSION" --locked
+        run: cargo install cargo-nextest --version "$NEXTEST_VERSION" --locked --force
 
       - name: Run cargo test (${{ matrix.label }})
         run: cargo xtask test --features "${{ matrix.label }}"
