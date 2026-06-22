@@ -9,7 +9,7 @@
 [submodule "thirdparty/libpng"]
 	path = thirdparty/libpng
 	url = https://github.com/pnggroup/libpng
-	branch = v1.6.53
+	branch = v1.6.58
 [submodule "thirdparty/libjpeg"]
 	path = thirdparty/libjpeg
 	url = https://github.com/libjpeg-turbo/libjpeg-turbo
