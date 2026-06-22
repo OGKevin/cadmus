@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Cadmus Documentation\n"
-"POT-Creation-Date: 2026-06-21T15:37:33+02:00\n"
+"POT-Creation-Date: 2026-06-22T15:46:29+02:00\n"
 "PO-Revision-Date: \n"
 "Last-Translator: \n"
 "Language-Team: \n"
@@ -144,7 +144,7 @@ msgstr ""
 msgid "SQLite & SQLx"
 msgstr ""
 
-#: src/SUMMARY.md:40 src/contributing/library-database.md:1
+#: src/SUMMARY.md:40
 msgid "Library Database"
 msgstr ""
 
@@ -1180,9 +1180,9 @@ msgstr ""
 #: src/installation/kfmon.md:65
 msgid ""
 "Cadmus can be launched by either NickelMenu or KFMon, but try to avoid both "
-"at once. If you use KFMon, install a non-NickelMenu bundle from the "
+"at once. If you use KFMon, install a non-NickelMenu package from the "
 "[Installation page](./index.md) (`KoboRoot.tgz` or `KoboRoot-test.tgz`) "
-"instead of the `KoboRoot-nm.tgz` or `KoboRoot-nm-test.tgz` bundles. Using "
+"instead of the `KoboRoot-nm.tgz` or `KoboRoot-nm-test.tgz` packages. Using "
 "both can create duplicate icons and make conflicts harder to diagnose."
 msgstr ""
 
@@ -1847,7 +1847,7 @@ msgid ""
 "```"
 msgstr ""
 
-#: src/settings/index.md:480
+#: src/settings/index.md:480 src/contributing/library-database.md:26
 msgid "Libraries"
 msgstr ""
 
@@ -4795,7 +4795,6 @@ msgid "URL"
 msgstr ""
 
 #: src/contributing/devenv-setup.md:210
-#: src/contributing/library-database.md:159
 msgid "Purpose"
 msgstr ""
 
@@ -5680,7 +5679,6 @@ msgid "**Comparison:**"
 msgstr ""
 
 #: src/contributing/event-system.md:325
-#: src/contributing/library-database.md:159
 msgid "Method"
 msgstr ""
 
@@ -7024,316 +7022,252 @@ msgid ""
 "to write one-time data migrations."
 msgstr ""
 
+#: src/contributing/library-database.md:1
+msgid "Library Layout"
+msgstr ""
+
 #: src/contributing/library-database.md:3
 msgid ""
-"The library subsystem stores all book metadata, reading progress, and "
-"table-of-contents data in SQLite. This page explains the schema, the key "
-"database types, and how data flows from disk into the database."
+"Cadmus stores library roots, scanned files, book metadata, reading progress, "
+"thumbnails, and table-of-contents data in SQLite. This page explains where "
+"each category of library data belongs and how scans move data from disk into "
+"the database."
 msgstr ""
 
-#: src/contributing/library-database.md:7
-msgid "Schema overview"
+#: src/contributing/library-database.md:8
+msgid "Core Shape"
 msgstr ""
 
-#: src/contributing/library-database.md:9
+#: src/contributing/library-database.md:10
+msgid "The library database separates four concerns:"
+msgstr ""
+
+#: src/contributing/library-database.md:28
 msgid ""
-"The database is created and versioned by the SQL migration files in "
-"`crates/core/migrations/`. The initial schema defines eleven tables plus one "
-"aggregating view:"
+"`libraries` represents scan roots. A row answers: \"which directory did "
+"Cadmus index as a library?\""
 msgstr ""
 
-#: src/contributing/library-database.md:13
+#: src/contributing/library-database.md:31
 msgid ""
-"```mermaid\n"
-"erDiagram\n"
-"    books {\n"
-"        TEXT fingerprint PK\n"
-"        TEXT title\n"
-"        TEXT file_path\n"
-"        TEXT file_kind\n"
-"        INTEGER file_size\n"
-"        INTEGER added_at\n"
-"    }\n"
-"\n"
-"    authors {\n"
-"        INTEGER id PK\n"
-"        TEXT name\n"
-"    }\n"
-"\n"
-"    book_authors {\n"
-"        TEXT book_fingerprint FK\n"
-"        INTEGER author_id FK\n"
-"        INTEGER position\n"
-"    }\n"
-"\n"
-"    categories {\n"
-"        INTEGER id PK\n"
-"        TEXT name\n"
-"    }\n"
-"\n"
-"    book_categories {\n"
-"        TEXT book_fingerprint FK\n"
-"        INTEGER category_id FK\n"
-"    }\n"
-"\n"
-"    reading_states {\n"
-"        TEXT fingerprint PK\n"
-"        INTEGER opened\n"
-"        INTEGER current_page\n"
-"        INTEGER pages_count\n"
-"        INTEGER finished\n"
-"    }\n"
-"\n"
-"    thumbnails {\n"
-"        TEXT fingerprint PK\n"
-"        BLOB thumbnail_data\n"
-"    }\n"
-"\n"
-"    toc_entries {\n"
-"        TEXT id PK\n"
-"        TEXT book_fingerprint FK\n"
-"        TEXT parent_id FK\n"
-"        INTEGER position\n"
-"        TEXT title\n"
-"        TEXT location_kind\n"
-"    }\n"
-"\n"
-"    libraries {\n"
-"        INTEGER id PK\n"
-"        TEXT path\n"
-"        TEXT name\n"
-"        INTEGER created_at\n"
-"    }\n"
-"\n"
-"    library_books {\n"
-"        INTEGER library_id FK\n"
-"        TEXT book_fingerprint FK\n"
-"        INTEGER added_to_library_at\n"
-"        TEXT file_path\n"
-"        TEXT absolute_path\n"
-"        INTEGER mtime\n"
-"        INTEGER file_size\n"
-"    }\n"
-"\n"
-"    _cadmus_migrations {\n"
-"        TEXT id PK\n"
-"        INTEGER executed_at\n"
-"        TEXT status\n"
-"    }\n"
-"\n"
-"    books ||--o{ book_authors : \"\"\n"
-"    authors ||--o{ book_authors : \"\"\n"
-"    books ||--o{ book_categories : \"\"\n"
-"    categories ||--o{ book_categories : \"\"\n"
-"    books ||--o| reading_states : \"\"\n"
-"    books ||--o| thumbnails : \"\"\n"
-"    books ||--o{ toc_entries : \"\"\n"
-"    toc_entries ||--o{ toc_entries : \"parent_id\"\n"
-"    libraries ||--o{ library_books : \"\"\n"
-"    books ||--o{ library_books : \"\"\n"
-"```"
+"Keep library-level data here only when it describes the library itself, such "
+"as its path, display name, or creation metadata."
 msgstr ""
 
-#: src/contributing/library-database.md:102
-msgid "Key design choices"
+#: src/contributing/library-database.md:34
+msgid "Library Membership"
+msgstr ""
+
+#: src/contributing/library-database.md:36
+msgid ""
+"`library_books` connects a library to the book files found under it. It is "
+"the place for data that depends on a specific file within a specific library "
+"scan, including relative paths, absolute paths, timestamps, sizes, and other "
+"scan-cache metadata."
+msgstr ""
+
+#: src/contributing/library-database.md:41
+msgid ""
+"This table is deliberately separate from `books` because one canonical book "
+"can appear in more than one library or at more than one path over time. "
+"File-system state belongs to the membership row, not to the canonical book "
+"row."
+msgstr ""
+
+#: src/contributing/library-database.md:45
+msgid "Canonical Books"
+msgstr ""
+
+#: src/contributing/library-database.md:47
+msgid ""
+"`books` is the canonical per-book record, keyed by fingerprint. It holds "
+"data that should be the same regardless of which library found the file, "
+"such as title and file kind."
+msgstr ""
+
+#: src/contributing/library-database.md:51
+msgid ""
+"Per-book tables reference `books` and are removed with the book when "
+"cascading deletes apply. New per-book data should usually live in a "
+"dedicated table rather than being mixed into library membership."
+msgstr ""
+
+#: src/contributing/library-database.md:55
+msgid "Derived Per-Book Data"
+msgstr ""
+
+#: src/contributing/library-database.md:57
+msgid ""
+"Authors, categories, reading state, thumbnails, and table-of-contents "
+"entries are derived from either metadata extraction, reader state, or "
+"generated assets. They are tied to the canonical book fingerprint, not to a "
+"specific library path."
+msgstr ""
+
+#: src/contributing/library-database.md:61
+msgid ""
+"Use join tables for many-to-many relationships such as authors and "
+"categories. Use child tables for optional or repeatable data such as reading "
+"state, thumbnails, and TOC entries."
+msgstr ""
+
+#: src/contributing/library-database.md:65
+msgid "Scan Flow"
+msgstr ""
+
+#: src/contributing/library-database.md:67
+msgid "Library scans move from the filesystem toward canonical book data:"
+msgstr ""
+
+#: src/contributing/library-database.md:78
+msgid ""
+"The membership row is checked before expensive work. If the scan-cache data "
+"says the file has not changed, Cadmus can skip re-fingerprinting and "
+"metadata extraction. If the file is new or changed, Cadmus updates the "
+"canonical book row and any derived data collected during import."
+msgstr ""
+
+#: src/contributing/library-database.md:83
+msgid "What Goes Where"
+msgstr ""
+
+#: src/contributing/library-database.md:85
+msgid "Use these rules when adding or reviewing library database changes:"
+msgstr ""
+
+#: src/contributing/library-database.md:87
+msgid "Data kind"
+msgstr ""
+
+#: src/contributing/library-database.md:87
+msgid "Belongs in"
+msgstr ""
+
+#: src/contributing/library-database.md:89
+msgid "Library root path or display name"
+msgstr ""
+
+#: src/contributing/library-database.md:89
+msgid "`libraries`"
+msgstr ""
+
+#: src/contributing/library-database.md:90
+msgid "File path inside one scanned library"
+msgstr ""
+
+#: src/contributing/library-database.md:90
+#: src/contributing/library-database.md:91
+msgid "`library_books`"
+msgstr ""
+
+#: src/contributing/library-database.md:91
+msgid "File modification or size cache"
+msgstr ""
+
+#: src/contributing/library-database.md:92
+msgid "Stable book identity or extracted title"
+msgstr ""
+
+#: src/contributing/library-database.md:92
+msgid "`books`"
+msgstr ""
+
+#: src/contributing/library-database.md:93
+msgid "Data shared by all copies of a book"
+msgstr ""
+
+#: src/contributing/library-database.md:93
+msgid "`books` or a per-book child table"
+msgstr ""
+
+#: src/contributing/library-database.md:94
+msgid "Many-to-many metadata"
+msgstr ""
+
+#: src/contributing/library-database.md:94
+msgid "Named entity table plus join table"
+msgstr ""
+
+#: src/contributing/library-database.md:95
+msgid "Reading progress"
+msgstr ""
+
+#: src/contributing/library-database.md:95
+msgid "`reading_states`"
+msgstr ""
+
+#: src/contributing/library-database.md:96
+msgid "Generated cover image"
+msgstr ""
+
+#: src/contributing/library-database.md:96
+msgid "`thumbnails`"
+msgstr ""
+
+#: src/contributing/library-database.md:97
+msgid "Nested table of contents"
+msgstr ""
+
+#: src/contributing/library-database.md:97
+msgid "`toc_entries`, using parent references and positions"
+msgstr ""
+
+#: src/contributing/library-database.md:98
+msgid "Migration bookkeeping"
+msgstr ""
+
+#: src/contributing/library-database.md:98
+msgid "Migration tables managed by the migration runner"
+msgstr ""
+
+#: src/contributing/library-database.md:100
+msgid ""
+"If data describes a file's current location, put it in library membership. "
+"If it describes the book identified by its fingerprint, put it in canonical "
+"book data or a per-book child table."
 msgstr ""
 
 #: src/contributing/library-database.md:104
-msgid ""
-"**`books` is the main table.** Every other per-book table references "
-"`books.fingerprint` with `ON DELETE CASCADE`, so deleting a book row removes "
-"all associated data automatically."
+msgid "Schema Details"
 msgstr ""
 
-#: src/contributing/library-database.md:107
+#: src/contributing/library-database.md:106
 msgid ""
-"**Authors are normalised.** `authors` holds unique author names; "
-"`book_authors` is the join table and carries a `position` column that "
-"preserves display order."
+"For exact schema details, read the migrations in `crates/core/migrations/` "
+"in order. They define the tables, views, indexes, constraints, and data "
+"migrations that exist at each database version."
 msgstr ""
 
 #: src/contributing/library-database.md:110
-msgid ""
-"**All tables use `STRICT` mode.** SQLite's `STRICT` pragma enforces column "
-"type constraints at the storage layer, catching type mismatches early."
+msgid "Data Access"
 msgstr ""
 
 #: src/contributing/library-database.md:112
 msgid ""
-"**Timestamps are Unix epoch integers.** `added_at`, `created_at`, and "
-"similar columns are `INTEGER NOT NULL`; never `TEXT`."
-msgstr ""
-
-#: src/contributing/library-database.md:114
-msgid ""
-"**TOC tree via adjacency list.** `toc_entries.parent_id` is a "
-"self-reference; `position` preserves sibling order. The `id` is a UUID7 "
-"(generated in Rust) so `ORDER BY id ASC` gives stable insertion order "
-"without a growing rowid."
+"The <a "
+"href=\"/api/cadmus_core/library/db/struct.Db\">`cadmus_core::library::db::Db`</a> "
+"type is the entry point for library database operations. It wraps the shared "
+"SQLite pool and presents a synchronous API to the rest of the app."
 msgstr ""
 
 #: src/contributing/library-database.md:117
 msgid ""
-"**Incremental import via `mtime` and `file_size`.** The `library_books` "
-"table stores the file's last modification time (ceiling-rounded to 2-second "
-"FAT32 precision) and size in bytes. During import scans, files whose `mtime` "
-"and `file_size` have not changed are skipped without re-fingerprinting, "
-"improving startup performance. An index on `(library_id, absolute_path)` "
-"enables efficient per-path lookups. Both columns are nullable to support "
-"books imported before migration 011."
+"Keep database access behind this layer so callers work with domain types "
+"instead of raw SQL rows. For SQLx conventions, type overrides, and migration "
+"review rules, see the related pages below."
 msgstr ""
 
-#: src/contributing/library-database.md:124
+#: src/contributing/library-database.md:121
+msgid "Related Pages"
+msgstr ""
+
+#: src/contributing/library-database.md:123
 msgid ""
-"**`library_books_full_info` view.** An aggregating view joins `books`, "
-"`reading_states`, `book_authors`, `authors`, `book_categories`, and "
-"`categories` in one query. The `library_id` column from `library_books` is "
-"exposed so callers can filter with a plain `WHERE library_id = ?`."
-msgstr ""
-
-#: src/contributing/library-database.md:129
-msgid "Data access layer"
-msgstr ""
-
-#: src/contributing/library-database.md:131
-msgid ""
-"The <a "
-"href=\"/api/cadmus_core/library/db/struct.Db\">`cadmus_core::library::db::Db`</a> "
-"struct is the entry point for all library database operations. It wraps the "
-"shared `SqlitePool` and exposes a **synchronous** API by bridging every "
-"async SQLx call through the global Tokio runtime:"
-msgstr ""
-
-#: src/contributing/library-database.md:137
-msgid ""
-"```mermaid\n"
-"flowchart LR\n"
-"    caller[\"Caller (sync event loop)\"]\n"
-"    Db[\"library::db::Db\"]\n"
-"    RUNTIME[\"RUNTIME.block_on()\"]\n"
-"    SQLx[\"SQLx async query\"]\n"
-"    SQLite[(\"SQLite\")]\n"
-"\n"
-"    caller -->|sync call| Db\n"
-"    Db -->|wraps in| RUNTIME\n"
-"    RUNTIME -->|awaits| SQLx\n"
-"    SQLx -->|reads/writes| SQLite\n"
-"    SQLx -->|result| RUNTIME\n"
-"    RUNTIME -->|returns| caller\n"
-"```"
-msgstr ""
-
-#: src/contributing/library-database.md:153
-msgid ""
-"The sync bridge exists because Cadmus's UI event loop is single-threaded and "
-"synchronous. The global `RUNTIME` (a `tokio::runtime::Runtime` singleton) "
-"lets the rest of the codebase call database methods without needing to be "
-"async."
-msgstr ""
-
-#: src/contributing/library-database.md:157
-msgid "Key methods on `Db`:"
-msgstr ""
-
-#: src/contributing/library-database.md:161
-msgid ""
-"<a "
-"href=\"/api/cadmus_core/library/db/struct.Db#method.register_library\">`register_library`</a>"
-msgstr ""
-
-#: src/contributing/library-database.md:161
-msgid "Insert a new library row and return its id"
-msgstr ""
-
-#: src/contributing/library-database.md:162
-msgid ""
-"<a "
-"href=\"/api/cadmus_core/library/db/struct.Db#method.get_library_by_path\">`get_library_by_path`</a>"
-msgstr ""
-
-#: src/contributing/library-database.md:162
-msgid "Look up a library id by filesystem path"
-msgstr ""
-
-#: src/contributing/library-database.md:163
-msgid ""
-"<a "
-"href=\"/api/cadmus_core/library/db/struct.Db#method.get_all_books\">`get_all_books`</a>"
-msgstr ""
-
-#: src/contributing/library-database.md:163
-msgid "Fetch every book in a library via the full-info view"
-msgstr ""
-
-#: src/contributing/library-database.md:164
-msgid ""
-"<a "
-"href=\"/api/cadmus_core/library/db/struct.Db#method.insert_book\">`insert_book`</a>"
-msgstr ""
-
-#: src/contributing/library-database.md:164
-msgid "Write a new book and its authors/categories"
-msgstr ""
-
-#: src/contributing/library-database.md:165
-msgid ""
-"<a "
-"href=\"/api/cadmus_core/library/db/struct.Db#method.save_reading_state\">`save_reading_state`</a>"
-msgstr ""
-
-#: src/contributing/library-database.md:165
-msgid "Save or update reading progress for a book"
-msgstr ""
-
-#: src/contributing/library-database.md:166
-msgid ""
-"<a "
-"href=\"/api/cadmus_core/library/db/struct.Db#method.save_toc\">`save_toc`</a>"
-msgstr ""
-
-#: src/contributing/library-database.md:166
-msgid "Bulk-write a book's table of contents"
-msgstr ""
-
-#: src/contributing/library-database.md:167
-msgid ""
-"<a "
-"href=\"/api/cadmus_core/library/db/struct.Db#method.get_thumbnail\">`get_thumbnail`</a>"
-msgstr ""
-
-#: src/contributing/library-database.md:167
-msgid "Retrieve the stored cover thumbnail BLOB"
-msgstr ""
-
-#: src/contributing/library-database.md:168
-msgid ""
-"<a "
-"href=\"/api/cadmus_core/library/db/struct.Db#method.save_thumbnail\">`save_thumbnail`</a>"
-msgstr ""
-
-#: src/contributing/library-database.md:168
-msgid "Save or replace a cover thumbnail"
-msgstr ""
-
-#: src/contributing/library-database.md:170
-msgid "How a book scan flows into the database"
-msgstr ""
-
-#: src/contributing/library-database.md:172
-msgid "When a library directory is scanned, Cadmus follows this sequence:"
-msgstr ""
-
-#: src/contributing/library-database.md:203
-msgid "Related pages"
-msgstr ""
-
-#: src/contributing/library-database.md:205
-msgid ""
-"[SQLite & SQLx](sqlite-sqlx.md) — compile-time query verification, review "
+"[SQLite & SQLx](sqlite-sqlx.md) — compile-time query verification and review "
 "rules"
 msgstr ""
 
-#: src/contributing/library-database.md:206
+#: src/contributing/library-database.md:125
 msgid ""
 "[Runtime Migrations](runtime-migrations.md) — one-time data migrations using "
 "the `migration!` macro"
