@@ -264,6 +264,10 @@ fn collect_migration_files(
             continue;
         }
 
+        if path.extension().and_then(|e| e.to_str()) != Some("sql") {
+            continue;
+        }
+
         println!("cargo:rerun-if-changed={}", path.display());
         let relative_path = path
             .strip_prefix(root)

@@ -685,7 +685,7 @@ pub fn run() -> Result<(), Error> {
 
     if let Err(e) = database.init(settings.db_backup_retention) {
         error!(error = %e, "migrations failed");
-        panic!("failed to initialize database: {}", e);
+        return Err(e);
     }
 
     let database = database;

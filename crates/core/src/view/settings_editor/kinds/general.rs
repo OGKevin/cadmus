@@ -740,7 +740,7 @@ impl InputSettingKind for DbBackupRetentionSetting {
     }
 
     fn input_label(&self) -> String {
-        fl!("settings-general-db-backup-retention")
+        fl!("settings-general-db-backup-retention-input")
     }
 
     fn input_max_chars(&self) -> usize {

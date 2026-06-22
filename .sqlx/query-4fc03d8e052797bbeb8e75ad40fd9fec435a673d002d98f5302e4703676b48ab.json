@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT version AS \"version: GitVersion\", migration_hash AS \"migration_hash: MigrationHash\"\n           FROM _cadmus_version\n           WHERE id = 1",
+  "describe": {
+    "columns": [
+      {
+        "name": "version: GitVersion",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "migration_hash: MigrationHash",
+        "ordinal": 1,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "4fc03d8e052797bbeb8e75ad40fd9fec435a673d002d98f5302e4703676b48ab"
+}

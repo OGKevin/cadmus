@@ -386,9 +386,7 @@ fn run() -> Result<(), Error> {
     startup.render(fb.as_mut(), *startup.rect(), &mut fonts);
     fb.update(startup.rect(), UpdateMode::Full).ok();
 
-    if let Err(e) = database.init(settings.db_backup_retention) {
-        panic!("migrations failed: {e}");
-    }
+    database.init(settings.db_backup_retention)?;
 
     let database = database;
 

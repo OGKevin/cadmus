@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM _cadmus_version",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": []
+  },
+  "hash": "9bde2adc2830a8426a8b9598e7b68d9b96f0676764368b7f836c8c5cb5466c10"
+}

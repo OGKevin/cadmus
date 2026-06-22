@@ -1,6 +1,7 @@
 use crate::db::types::UnixTimestamp;
+use crate::helpers::Fp;
 use crate::version::GitVersion;
-use anyhow::{Context, Error, bail};
+use anyhow::{Context, Error};
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use std::str::FromStr;
@@ -8,9 +9,12 @@ use std::str::FromStr;
 include!(concat!(env!("OUT_DIR"), "/migration_hash.rs"));
 
 /// BLAKE3 hash of all schema migration file paths and contents.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// Backed by [`Fp`] so it shares the same hex encoding, parsing, and sqlx
+/// serialisation behaviour as book content fingerprints.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct MigrationHash(String);
+pub struct MigrationHash(Fp);
 
 impl MigrationHash {
     /// Returns the migration hash embedded in the running build.
@@ -18,11 +22,6 @@ impl MigrationHash {
         MIGRATION_HASH
             .parse()
             .expect("generated migration hash should be valid")
-    }
-
-    /// Returns the hash as a string slice.
-    pub fn as_str(&self) -> &str {
-        &self.0
     }
 }
 
@@ -36,11 +35,32 @@ impl FromStr for MigrationHash {
     type Err = Error;
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
-        if value.len() != 64 || !value.chars().all(|c| c.is_ascii_hexdigit()) {
-            bail!("migration hash must be a 64-character hex string");
-        }
+        value.parse::<Fp>().map(Self).map_err(Error::from)
+    }
+}
 
-        Ok(Self(value.to_ascii_lowercase()))
+impl sqlx::Type<sqlx::Sqlite> for MigrationHash {
+    fn type_info() -> sqlx::sqlite::SqliteTypeInfo {
+        <Fp as sqlx::Type<sqlx::Sqlite>>::type_info()
+    }
+
+    fn compatible(ty: &sqlx::sqlite::SqliteTypeInfo) -> bool {
+        <Fp as sqlx::Type<sqlx::Sqlite>>::compatible(ty)
+    }
+}
+
+impl<'q> sqlx::Encode<'q, sqlx::Sqlite> for MigrationHash {
+    fn encode_by_ref(
+        &self,
+        buf: &mut Vec<sqlx::sqlite::SqliteArgumentValue<'q>>,
+    ) -> Result<sqlx::encode::IsNull, sqlx::error::BoxDynError> {
+        self.0.encode_by_ref(buf)
+    }
+}
+
+impl<'r> sqlx::Decode<'r, sqlx::Sqlite> for MigrationHash {
+    fn decode(value: sqlx::sqlite::SqliteValueRef<'r>) -> Result<Self, sqlx::error::BoxDynError> {
+        Fp::decode(value).map(Self)
     }
 }
 
@@ -75,7 +95,7 @@ pub async fn read_db_version(pool: &SqlitePool) -> Result<Option<GitVersion>, Er
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(pool)))]
 pub async fn read_db_version_stamp(pool: &SqlitePool) -> Result<Option<DbVersionStamp>, Error> {
     let result = sqlx::query!(
-        r#"SELECT version, migration_hash AS "migration_hash!: String"
+        r#"SELECT version AS "version: GitVersion", migration_hash AS "migration_hash: MigrationHash"
            FROM _cadmus_version
            WHERE id = 1"#,
     )
@@ -84,14 +104,8 @@ pub async fn read_db_version_stamp(pool: &SqlitePool) -> Result<Option<DbVersion
 
     match result {
         Ok(Some(row)) => Ok(Some(DbVersionStamp {
-            version: row
-                .version
-                .parse::<GitVersion>()
-                .context("failed to parse stored _cadmus_version.version")?,
-            migration_hash: row
-                .migration_hash
-                .parse()
-                .context("failed to parse stored _cadmus_version.migration_hash")?,
+            version: row.version,
+            migration_hash: row.migration_hash,
         })),
         Ok(None) => Ok(None),
         Err(sqlx::Error::Database(e)) if e.message().contains("no such table") => Ok(None),
@@ -108,7 +122,7 @@ pub async fn stamp_db_version(
 ) -> Result<(), Error> {
     let migrated_at = UnixTimestamp::now();
     let version_str = version.to_string();
-    let migration_hash_str = migration_hash.as_str();
+    let migration_hash_str = migration_hash.to_string();
     sqlx::query!(
         "INSERT INTO _cadmus_version (id, version, migration_hash, migrated_at)
          VALUES (1, ?, ?, ?)
@@ -166,7 +180,13 @@ pub async fn check_version_gate(
                 Ok(VersionGateResult::Downgrade)
             }
             std::cmp::Ordering::Less => Ok(VersionGateResult::Upgrade),
-            std::cmp::Ordering::Equal => Ok(VersionGateResult::Current),
+            std::cmp::Ordering::Equal => {
+                if db_stamp.migration_hash == current_migration_hash() {
+                    Ok(VersionGateResult::Current)
+                } else {
+                    Ok(VersionGateResult::Downgrade)
+                }
+            }
         },
     }
 }
@@ -282,11 +302,26 @@ mod tests {
     }
 
     #[test]
+    fn check_version_gate_detects_downgrade_on_equal_version_different_hash() {
+        let db = setup_db();
+        let version = GitVersion::from_str("v0.10.0").unwrap();
+        let migration_hash = different_migration_hash();
+
+        RUNTIME.block_on(async {
+            stamp_db_version(db.pool(), &version, &migration_hash)
+                .await
+                .unwrap();
+            let gate = check_version_gate(db.pool(), &version).await.unwrap();
+            assert_eq!(gate, VersionGateResult::Downgrade);
+        });
+    }
+
+    #[test]
     fn check_version_gate_unknown_when_table_is_empty() {
         let db = setup_db();
 
         RUNTIME.block_on(async {
-            sqlx::query("DELETE FROM _cadmus_version")
+            sqlx::query!("DELETE FROM _cadmus_version")
                 .execute(db.pool())
                 .await
                 .unwrap();

@@ -12,6 +12,9 @@
 use crate::github::GithubClient;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor};
+use sqlx::encode::IsNull;
+use sqlx::error::BoxDynError;
+use sqlx::sqlite::{Sqlite, SqliteArgumentValue, SqliteTypeInfo, SqliteValueRef};
 
 /// Result of comparing two versions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -501,6 +504,29 @@ impl<'de> Deserialize<'de> for GitVersion {
         }
 
         deserializer.deserialize_str(GitVersionVisitor)
+    }
+}
+
+impl sqlx::Type<Sqlite> for GitVersion {
+    fn type_info() -> SqliteTypeInfo {
+        <String as sqlx::Type<Sqlite>>::type_info()
+    }
+
+    fn compatible(ty: &SqliteTypeInfo) -> bool {
+        <String as sqlx::Type<Sqlite>>::compatible(ty)
+    }
+}
+
+impl<'q> sqlx::Encode<'q, Sqlite> for GitVersion {
+    fn encode_by_ref(&self, buf: &mut Vec<SqliteArgumentValue<'q>>) -> Result<IsNull, BoxDynError> {
+        self.to_string().encode_by_ref(buf)
+    }
+}
+
+impl<'r> sqlx::Decode<'r, Sqlite> for GitVersion {
+    fn decode(value: SqliteValueRef<'r>) -> Result<Self, BoxDynError> {
+        let s = <String as sqlx::Decode<'r, Sqlite>>::decode(value)?;
+        s.parse().map_err(Into::into)
     }
 }
 

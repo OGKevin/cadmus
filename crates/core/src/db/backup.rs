@@ -124,12 +124,17 @@ impl DbBackupManager {
 
         let filename = format!("cadmus-{}.sqlite", self.current_version);
         let backup_path = self.backup_dir().join(&filename);
+        let tmp_path = self.backup_dir().join(format!("{filename}.tmp"));
 
-        remove_sqlite_files(&backup_path)
+        remove_sqlite_files(&tmp_path)
             .await
-            .context("failed to clean up old backup files")?;
+            .context("failed to clean up temporary backup files")?;
 
-        online_backup(pool, &backup_path).await?;
+        online_backup(pool, &tmp_path).await?;
+
+        rename_sqlite_files(&tmp_path, &backup_path)
+            .await
+            .context("failed to promote completed backup")?;
 
         let created_at = Utc::now();
         let migration_hash = current_migration_hash();
@@ -149,13 +154,19 @@ impl DbBackupManager {
 
     /// Restores the best available backup for the target version.
     ///
-    /// The active database is renamed to `cadmus-v<newer_version>-demoted.sqlite`
-    /// before the backup is copied into place. Returns the path of the restored
-    /// backup file on success.
+    /// The restore is performed in three steps to avoid losing the active
+    /// database if an error occurs mid-way:
     ///
-    /// Demoted files are not tracked in the manifest and are never automatically
-    /// deleted. They remain in the backup directory as a safety net for manual
+    /// 1. Copy the backup to a staging path (`cadmus-v<version>-restore-staged.sqlite`).
+    /// 2. Rename the active database to `cadmus-v<newer_version>-demoted.sqlite`.
+    /// 3. Rename the staged copy to the active path.
+    ///
+    /// If step 3 fails the demoted database is renamed back to `active_path` as
+    /// a best-effort rollback. Demoted files are not tracked in the manifest and
+    /// are never automatically deleted — they remain as a safety net for manual
     /// recovery.
+    ///
+    /// Returns the path of the restored backup file on success.
     ///
     /// # Errors
     ///
@@ -193,13 +204,33 @@ impl DbBackupManager {
         let demoted_filename = format!("cadmus-{}-demoted.sqlite", newer_version);
         let demoted_path = self.backup_dir().join(&demoted_filename);
 
+        let staged_path = self.backup_dir().join(format!(
+            "cadmus-{}-restore-staged.sqlite",
+            self.current_version
+        ));
+        remove_sqlite_files(&staged_path)
+            .await
+            .context("failed to clean up staged restore files")?;
+
+        copy_sqlite_files(&backup_path, &staged_path)
+            .await
+            .context("failed to stage backup files for restore")?;
+
         rename_sqlite_files(active_path, &demoted_path)
             .await
             .context("failed to demote active database")?;
 
-        copy_sqlite_files(&backup_path, active_path)
-            .await
-            .context("failed to copy backup files to active database path")?;
+        if let Err(e) = rename_sqlite_files(&staged_path, active_path).await {
+            if let Err(rollback_err) = rename_sqlite_files(&demoted_path, active_path).await {
+                tracing::error!(
+                    error = %rollback_err,
+                    "failed to roll back demoted database after restore promotion failure"
+                );
+            }
+            return Err(RestoreError::Io(
+                e.context("failed to promote staged restore"),
+            ));
+        }
 
         tracing::info!(
             was_version = %newer_version,
@@ -222,10 +253,24 @@ impl DbBackupManager {
     ) -> Result<Option<BackupEntry>, Error> {
         let manifest = self.read_manifest()?;
 
+        let current_hash = current_migration_hash();
         let candidates: Vec<_> = manifest
             .entries
             .into_iter()
             .filter(|e| e.version <= *target_version)
+            .filter(|e| {
+                let compatible = e.migration_hash == current_hash;
+                if !compatible {
+                    tracing::warn!(
+                        version = %e.version,
+                        file = %e.file,
+                        backup_migration_hash = %e.migration_hash,
+                        current_migration_hash = %current_hash,
+                        "skipping backup with incompatible migration hash"
+                    );
+                }
+                compatible
+            })
             .filter(|e| {
                 let exists = self.backup_dir().join(&e.file).exists();
                 if !exists {
@@ -486,6 +531,8 @@ fn run_backup_steps(
         )));
     }
 
+    let max_retries: u32 = (30_000 / BACKUP_BUSY_SLEEP_MS) as u32;
+    let mut busy_retries: u32 = 0;
     let mut rc: c_int;
     let mut done = false;
 
@@ -498,6 +545,16 @@ fn run_backup_steps(
                 done = true;
             }
             SQLITE_BUSY | SQLITE_LOCKED => {
+                busy_retries += 1;
+                if busy_retries > max_retries {
+                    unsafe {
+                        libsqlite3_sys::sqlite3_backup_finish(backup);
+                    }
+                    return Err(Error::msg(format!(
+                        "online backup timed out waiting for SQLite lock for {}",
+                        dest_path.display()
+                    )));
+                }
                 unsafe { libsqlite3_sys::sqlite3_sleep(BACKUP_BUSY_SLEEP_MS as c_int) };
             }
             _ => {

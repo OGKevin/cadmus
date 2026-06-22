@@ -57,6 +57,7 @@ settings-general-auto-suspend-input = Auto Suspend (minutes, 0 = never)
 settings-general-auto-time = Automatic Time Sync
 settings-general-button-scheme = Button Scheme
 settings-general-db-backup-retention = DB Backup Retention
+settings-general-db-backup-retention-input = DB Backup Retention (number of backups)
 settings-general-enable-auto-share = Enable Auto Share
 settings-general-enable-sleep-cover = Enable Sleep Cover
 settings-general-keyboard-layout = Keyboard Layout
