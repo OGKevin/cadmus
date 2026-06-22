@@ -18,6 +18,11 @@ const WARMTH_TRANSITION_HOURS: f64 = 1.5;
 /// `night_brightness` while the sun is down. Warmth ramps over a fixed
 /// transition window before sunrise and before sunset, reaching fully cool at
 /// sunrise and fully warm at sunset.
+///
+/// When sunrise or sunset cannot be determined (polar regions), the function
+/// falls back to constant levels: polar night (no sunrise) returns
+/// `night_brightness` with full warmth, polar day (no sunset) returns
+/// `current_intensity` with zero warmth.
 pub fn compute_auto_frontlight_levels(
     now: DateTime<Local>,
     coordinates: Coordinates,
@@ -32,14 +37,12 @@ pub fn compute_auto_frontlight_levels(
 
     let (sunrise_utc, sunset_utc) = match (sunrise_utc, sunset_utc) {
         (Some(sr), Some(ss)) => (sr, ss),
-        // Polar night: sun never rises — keep night brightness, full warmth.
         (None, None) | (None, Some(_)) => {
             return LightLevels {
                 intensity: night_brightness,
                 warmth: LightLevel::from_fraction(1.0),
             };
         }
-        // Polar day: sun never sets — keep current brightness, zero warmth.
         (Some(_), None) => {
             return LightLevels {
                 intensity: current_intensity,
