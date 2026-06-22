@@ -1,8 +1,8 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: cadmus\n"
-"POT-Creation-Date: 2026-06-21T15:37:33+02:00\n"
-"PO-Revision-Date: 2026-06-21 13:56\n"
+"POT-Creation-Date: 2026-06-22T16:42:29+02:00\n"
+"PO-Revision-Date: 2026-06-22 16:17\n"
 "Last-Translator: \n"
 "Language-Team: French\n"
 "MIME-Version: 1.0\n"
@@ -90,81 +90,85 @@ msgstr "Synchronisation automatique de l'horloge"
 msgid "Automatic Frontlight"
 msgstr ""
 
-#: src/SUMMARY.md:22 src/installation/ota.md:86 src/troubleshooting/index.md:1
+#: src/SUMMARY.md:22 src/database-backup.md:1
+msgid "Database Backup"
+msgstr ""
+
+#: src/SUMMARY.md:23 src/installation/ota.md:86 src/troubleshooting/index.md:1
 #: src/contributing/devenv-setup.md:221
 msgid "Troubleshooting"
 msgstr "Résolution des problèmes"
 
-#: src/SUMMARY.md:26
+#: src/SUMMARY.md:27
 msgid "Contributor Guide"
 msgstr "Guide du contributeur"
 
-#: src/SUMMARY.md:28
+#: src/SUMMARY.md:29
 msgid "Development Environment"
 msgstr ""
 
-#: src/SUMMARY.md:29 src/contributing/code-style.md:1
+#: src/SUMMARY.md:30 src/contributing/code-style.md:1
 msgid "Code Style and Linting"
 msgstr ""
 
-#: src/SUMMARY.md:30 src/contributing/event-system.md:1
+#: src/SUMMARY.md:31 src/contributing/event-system.md:1
 msgid "Event System"
 msgstr ""
 
-#: src/SUMMARY.md:31 src/settings/index.md:631
+#: src/SUMMARY.md:32 src/settings/index.md:635
 #: src/contributing/telemetry/index.md:1
 msgid "Telemetry"
 msgstr "Télémétrie"
 
-#: src/SUMMARY.md:32 src/contributing/telemetry/logging.md:1
+#: src/SUMMARY.md:33 src/contributing/telemetry/logging.md:1
 msgid "Logging"
 msgstr "Logs"
 
-#: src/SUMMARY.md:33 src/contributing/telemetry/tracing.md:1
+#: src/SUMMARY.md:34 src/contributing/telemetry/tracing.md:1
 msgid "Tracing"
 msgstr ""
 
-#: src/SUMMARY.md:34 src/contributing/telemetry/profiling.md:1
+#: src/SUMMARY.md:35 src/contributing/telemetry/profiling.md:1
 msgid "Profiling"
 msgstr ""
 
-#: src/SUMMARY.md:35 src/index.md:9
+#: src/SUMMARY.md:36 src/index.md:9
 msgid "Documentation"
 msgstr ""
 
-#: src/SUMMARY.md:36 src/contributing/translations/index.md:1
+#: src/SUMMARY.md:37 src/contributing/translations/index.md:1
 msgid "Translations"
 msgstr "Traductions"
 
-#: src/SUMMARY.md:37
+#: src/SUMMARY.md:38
 msgid "UI Strings"
 msgstr ""
 
-#: src/SUMMARY.md:38
+#: src/SUMMARY.md:39
 msgid "Guide"
 msgstr ""
 
-#: src/SUMMARY.md:39 src/contributing/sqlite-sqlx.md:1
+#: src/SUMMARY.md:40 src/contributing/sqlite-sqlx.md:1
 msgid "SQLite & SQLx"
 msgstr ""
 
-#: src/SUMMARY.md:40 src/contributing/library-database.md:1
+#: src/SUMMARY.md:41 src/contributing/library-database.md:1
 msgid "Library Database"
 msgstr ""
 
-#: src/SUMMARY.md:41 src/contributing/runtime-migrations.md:1
+#: src/SUMMARY.md:42 src/contributing/runtime-migrations.md:1
 msgid "Runtime Migrations"
 msgstr ""
 
-#: src/SUMMARY.md:45 src/investigations/index.md:1
+#: src/SUMMARY.md:46 src/investigations/index.md:1
 msgid "Investigations"
 msgstr ""
 
-#: src/SUMMARY.md:47
+#: src/SUMMARY.md:48
 msgid "Intro"
 msgstr ""
 
-#: src/SUMMARY.md:48 src/investigations/kobo/issue-51-dhcp-investigation.md:1
+#: src/SUMMARY.md:49 src/investigations/kobo/issue-51-dhcp-investigation.md:1
 msgid "DHCP IP Address Changes on WiFi Toggle"
 msgstr ""
 
@@ -807,7 +811,7 @@ msgstr ""
 msgid "\\[!NOTE\\] If you insert an SD card **after** Cadmus has already run, the automatic migration will not run. You will need to copy your data manually — see [Moving data to an SD card](#moving-data-to-an-sd-card) below."
 msgstr ""
 
-#: src/installation/migration.md:27 src/settings/index.md:486
+#: src/installation/migration.md:27 src/settings/index.md:490
 msgid "```toml\n"
 "[[libraries]]\n"
 "name = \"On Board\"\n"
@@ -1045,7 +1049,7 @@ msgid "Pick one launcher method"
 msgstr ""
 
 #: src/installation/kfmon.md:65
-msgid "Cadmus can be launched by either NickelMenu or KFMon, but try to avoid both at once. If you use KFMon, install a non-NickelMenu bundle from the [Installation page](./index.md) (`KoboRoot.tgz` or `KoboRoot-test.tgz`) instead of the `KoboRoot-nm.tgz` or `KoboRoot-nm-test.tgz` bundles. Using both can create duplicate icons and make conflicts harder to diagnose."
+msgid "Cadmus can be launched by either NickelMenu or KFMon, but try to avoid both at once. If you use KFMon, install a non-NickelMenu package from the [Installation page](./index.md) (`KoboRoot.tgz` or `KoboRoot-test.tgz`) instead of the `KoboRoot-nm.tgz` or `KoboRoot-nm-test.tgz` packages. Using both can create duplicate icons and make conflicts harder to diagnose."
 msgstr ""
 
 #: src/installation/kfmon.md:71
@@ -1173,6 +1177,10 @@ msgid "```toml\n"
 "# for backward and forward compatibility across version upgrades.\n"
 "# Files older than this count are automatically removed. Set to 0 to keep all files.\n"
 "settings-retention = 3\n"
+"# The number of database backup files to keep.\n"
+"# A fresh backup is created on every startup. When the count exceeds this limit,\n"
+"# the oldest backups are deleted automatically. Set to 0 to disable backups.\n"
+"db-backup-retention = 2\n"
 "# The preferred language for the user interface, using BCP 47 format.\n"
 "locale = \"en-US\"\n"
 "# What to show when Cadmus starts. Possible values: \"home\", \"last-file\".\n"
@@ -1373,326 +1381,326 @@ msgid "```toml\n"
 "```"
 msgstr ""
 
-#: src/settings/index.md:287
+#: src/settings/index.md:291
 msgid "General Settings"
 msgstr ""
 
-#: src/settings/index.md:289
+#: src/settings/index.md:293
 msgid "`keyboard-layout`"
 msgstr ""
 
-#: src/settings/index.md:291 src/settings/index.md:303
-#: src/settings/index.md:313 src/settings/index.md:328
-#: src/settings/index.md:338 src/settings/index.md:354
-#: src/settings/index.md:366 src/settings/index.md:388
-#: src/settings/index.md:400 src/settings/index.md:412
-#: src/settings/index.md:424 src/settings/index.md:436
-#: src/settings/index.md:454 src/settings/index.md:471
-#: src/settings/index.md:482 src/settings/index.md:495
-#: src/settings/index.md:501 src/settings/index.md:507
-#: src/settings/index.md:515 src/settings/index.md:536
-#: src/settings/index.md:549 src/settings/index.md:561
-#: src/settings/index.md:569 src/settings/index.md:586
-#: src/settings/index.md:606 src/settings/index.md:655
-#: src/settings/index.md:666
+#: src/settings/index.md:295 src/settings/index.md:307
+#: src/settings/index.md:317 src/settings/index.md:332
+#: src/settings/index.md:342 src/settings/index.md:358
+#: src/settings/index.md:370 src/settings/index.md:392
+#: src/settings/index.md:404 src/settings/index.md:416
+#: src/settings/index.md:428 src/settings/index.md:440
+#: src/settings/index.md:458 src/settings/index.md:475
+#: src/settings/index.md:486 src/settings/index.md:499
+#: src/settings/index.md:505 src/settings/index.md:511
+#: src/settings/index.md:519 src/settings/index.md:540
+#: src/settings/index.md:553 src/settings/index.md:565
+#: src/settings/index.md:573 src/settings/index.md:590
+#: src/settings/index.md:610 src/settings/index.md:659
+#: src/settings/index.md:670
 msgid "✏️"
 msgstr ""
 
-#: src/settings/index.md:293
+#: src/settings/index.md:297
 msgid "Keyboard layout to use for text input."
 msgstr ""
 
-#: src/settings/index.md:295
+#: src/settings/index.md:299
 msgid "Possible values: `\"English\"`, `\"Russian\"`."
 msgstr ""
 
-#: src/settings/index.md:297
+#: src/settings/index.md:301
 msgid "```toml\n"
 "keyboard-layout = \"English\"\n"
 "```"
 msgstr ""
 
-#: src/settings/index.md:301
+#: src/settings/index.md:305
 msgid "`sleep-cover`"
 msgstr ""
 
-#: src/settings/index.md:305
+#: src/settings/index.md:309
 msgid "Handle the magnetic sleep cover event."
 msgstr ""
 
-#: src/settings/index.md:311
+#: src/settings/index.md:315
 msgid "`auto-share`"
 msgstr ""
 
-#: src/settings/index.md:315
+#: src/settings/index.md:319
 msgid "Automatically enter shared mode when connected to a computer, skipping the \"Share storage via USB?\" prompt."
 msgstr ""
 
-#: src/settings/index.md:318
+#: src/settings/index.md:322
 msgid "\\[!TIP\\] Turn this on if you update Cadmus via USB often — you won't have to confirm the sharing dialog each time you plug in."
 msgstr ""
 
-#: src/settings/index.md:326
+#: src/settings/index.md:330
 msgid "`auto-time`"
 msgstr ""
 
-#: src/settings/index.md:330
+#: src/settings/index.md:334
 msgid "Automatically synchronize the device time via NTP when WiFi connects. This will also set the correct timezone. Uses time.cloudflare.com and ipapi.co."
 msgstr ""
 
-#: src/settings/index.md:336
+#: src/settings/index.md:340
 msgid "`auto-frontlight`"
 msgstr ""
 
-#: src/settings/index.md:340
+#: src/settings/index.md:344
 msgid "Automatically adjust the frontlight warmth and brightness based on the sun's position at the device's location."
 msgstr ""
 
-#: src/settings/index.md:342
+#: src/settings/index.md:346
 msgid "During the day warmth is at its minimum."
 msgstr ""
 
-#: src/settings/index.md:343
+#: src/settings/index.md:347
 msgid "Around sunrise and sunset warmth ramps gradually between zero and full."
 msgstr ""
 
-#: src/settings/index.md:344
+#: src/settings/index.md:348
 msgid "After sunset brightness is reduced to `auto-frontlight-night-brightness` and warmth stays at its maximum until sunrise."
 msgstr ""
 
-#: src/settings/index.md:346
+#: src/settings/index.md:350
 msgid "Coordinates are auto-detected during each time sync (via ipapi.co) and stored in `auto-frontlight-last-coordinates`. Set `auto-frontlight-manual-coordinates` to override the detected location."
 msgstr ""
 
-#: src/settings/index.md:352
+#: src/settings/index.md:356
 msgid "`auto-frontlight-night-brightness`"
 msgstr ""
 
-#: src/settings/index.md:356
+#: src/settings/index.md:360
 msgid "Frontlight brightness level (0.0–100.0) applied when the sun is below the horizon."
 msgstr ""
 
-#: src/settings/index.md:358
+#: src/settings/index.md:362
 msgid "This setting is optional. When not set, a default of `1.0` is used."
 msgstr ""
 
-#: src/settings/index.md:364
+#: src/settings/index.md:368
 msgid "`auto-frontlight-manual-coordinates`"
 msgstr ""
 
-#: src/settings/index.md:368
+#: src/settings/index.md:372
 msgid "GPS coordinates `[latitude, longitude]` to use for sun-position calculations instead of the auto-detected location. Takes priority over `auto-frontlight-last-coordinates`."
 msgstr ""
 
-#: src/settings/index.md:370
+#: src/settings/index.md:374
 msgid "This setting is optional."
 msgstr ""
 
-#: src/settings/index.md:376
+#: src/settings/index.md:380
 msgid "`auto-frontlight-last-coordinates`"
 msgstr ""
 
-#: src/settings/index.md:378
+#: src/settings/index.md:382
 msgid "GPS coordinates `[latitude, longitude]` last detected during a time sync. Written automatically — do not edit this by hand; set `auto-frontlight-manual-coordinates` to override the location instead."
 msgstr ""
 
-#: src/settings/index.md:380
+#: src/settings/index.md:384
 msgid "This setting is optional and managed automatically."
 msgstr ""
 
-#: src/settings/index.md:386
+#: src/settings/index.md:390
 msgid "`auto-suspend`"
 msgstr ""
 
-#: src/settings/index.md:390
+#: src/settings/index.md:394
 msgid "Number of minutes of inactivity after which the device will automatically go to sleep."
 msgstr ""
 
-#: src/settings/index.md:392 src/settings/index.md:404
+#: src/settings/index.md:396 src/settings/index.md:408
 msgid "Zero means never."
 msgstr ""
 
-#: src/settings/index.md:398
+#: src/settings/index.md:402
 msgid "`auto-power-off`"
 msgstr ""
 
-#: src/settings/index.md:402
+#: src/settings/index.md:406
 msgid "Delay in days after which a suspended device will power off."
 msgstr ""
 
-#: src/settings/index.md:410
+#: src/settings/index.md:414
 msgid "`button-scheme`"
 msgstr ""
 
-#: src/settings/index.md:414
+#: src/settings/index.md:418
 msgid "Defines how the back and forward buttons are mapped to page forward and page backward actions."
 msgstr ""
 
-#: src/settings/index.md:416
+#: src/settings/index.md:420
 msgid "Possible values: `\"natural\"`, `\"inverted\"`."
 msgstr ""
 
-#: src/settings/index.md:418
+#: src/settings/index.md:422
 msgid "```toml\n"
 "button-scheme = \"natural\"\n"
 "```"
 msgstr ""
 
-#: src/settings/index.md:422
+#: src/settings/index.md:426
 msgid "`locale`"
 msgstr ""
 
-#: src/settings/index.md:426
+#: src/settings/index.md:430
 msgid "The preferred language for the user interface, using BCP 47 format (e.g., `\"en-US\"`, `\"de-DE\"`)."
 msgstr ""
 
-#: src/settings/index.md:428
+#: src/settings/index.md:432
 msgid "This setting is optional. When not set, `en-GB` is used."
 msgstr ""
 
-#: src/settings/index.md:430
+#: src/settings/index.md:434
 msgid "```toml\n"
 "locale = \"en-GB\"\n"
 "```"
 msgstr ""
 
-#: src/settings/index.md:434
+#: src/settings/index.md:438
 msgid "`startup-mode`"
 msgstr ""
 
-#: src/settings/index.md:438
+#: src/settings/index.md:442
 msgid "What to show when Cadmus starts."
 msgstr ""
 
-#: src/settings/index.md:440
+#: src/settings/index.md:444
 msgid "`\"home\"` — open the home screen (default)."
 msgstr ""
 
-#: src/settings/index.md:441
+#: src/settings/index.md:445
 msgid "`\"last-file\"` — re-open the last book you were reading. If there is no unfinished book in the selected library, the home screen is shown instead."
 msgstr ""
 
-#: src/settings/index.md:444
+#: src/settings/index.md:448
 msgid "```toml\n"
 "startup-mode = \"home\"\n"
 "```"
 msgstr ""
 
-#: src/settings/index.md:448
+#: src/settings/index.md:452
 msgid "Reader"
 msgstr ""
 
-#: src/settings/index.md:450
+#: src/settings/index.md:454
 msgid "Settings that control the reading experience."
 msgstr ""
 
-#: src/settings/index.md:452
+#: src/settings/index.md:456
 msgid "`reader.finished`"
 msgstr ""
 
-#: src/settings/index.md:456
+#: src/settings/index.md:460
 msgid "What to do when you finish reading a book."
 msgstr ""
 
-#: src/settings/index.md:458 src/settings/index.md:520
+#: src/settings/index.md:462 src/settings/index.md:524
 msgid "Possible values:"
 msgstr ""
 
-#: src/settings/index.md:460
+#: src/settings/index.md:464
 msgid "`\"notify\"` (show a notification)"
 msgstr ""
 
-#: src/settings/index.md:461
+#: src/settings/index.md:465
 msgid "`\"close\"` (close the book and go back)"
 msgstr ""
 
-#: src/settings/index.md:462
+#: src/settings/index.md:466
 msgid "`\"go-to-next\"` (open the next book in the library)."
 msgstr ""
 
-#: src/settings/index.md:464
+#: src/settings/index.md:468
 msgid "```toml\n"
 "[reader]\n"
 "finished = \"close\"\n"
 "```"
 msgstr ""
 
-#: src/settings/index.md:469
+#: src/settings/index.md:473
 msgid "`reader.dithered-kinds`"
 msgstr ""
 
-#: src/settings/index.md:473
+#: src/settings/index.md:477
 msgid "File extensions rendered with dithering by default."
 msgstr ""
 
-#: src/settings/index.md:475
+#: src/settings/index.md:479
 msgid "```toml\n"
 "[reader]\n"
 "dithered-kinds = [\"cbz\", \"png\", \"jpg\", \"jpeg\", \"webp\"]\n"
 "```"
 msgstr ""
 
-#: src/settings/index.md:480
+#: src/settings/index.md:484 src/contributing/library-database.md:26
 msgid "Libraries"
 msgstr ""
 
-#: src/settings/index.md:484
+#: src/settings/index.md:488
 msgid "Document library configuration. Each library has a name, path, and mode."
 msgstr ""
 
-#: src/settings/index.md:493
+#: src/settings/index.md:497
 msgid "`libraries.name`"
 msgstr ""
 
-#: src/settings/index.md:497
+#: src/settings/index.md:501
 msgid "Display name for the library."
 msgstr ""
 
-#: src/settings/index.md:499
+#: src/settings/index.md:503
 msgid "`libraries.path`"
 msgstr ""
 
-#: src/settings/index.md:503
+#: src/settings/index.md:507
 msgid "Directory path containing documents."
 msgstr ""
 
-#: src/settings/index.md:505
+#: src/settings/index.md:509
 msgid "`libraries.mode`"
 msgstr ""
 
-#: src/settings/index.md:509
+#: src/settings/index.md:513
 msgid "Library indexing mode."
 msgstr ""
 
-#: src/settings/index.md:511
+#: src/settings/index.md:515
 msgid "Possible values: `\"database\"`, `\"filesystem\"`."
 msgstr ""
 
-#: src/settings/index.md:513
+#: src/settings/index.md:517
 msgid "`libraries.finished`"
 msgstr ""
 
-#: src/settings/index.md:517
+#: src/settings/index.md:521
 msgid "Override the `reader.finished` setting for this specific library. When set, this takes precedence over the global reader setting."
 msgstr ""
 
-#: src/settings/index.md:522
+#: src/settings/index.md:526
 msgid "`\"notify\"`"
 msgstr ""
 
-#: src/settings/index.md:523
+#: src/settings/index.md:527
 msgid "`\"close\"`"
 msgstr ""
 
-#: src/settings/index.md:524
+#: src/settings/index.md:528
 msgid "`\"go-to-next\"`."
 msgstr ""
 
-#: src/settings/index.md:525
+#: src/settings/index.md:529
 msgid "Leave unset to inherit the global `reader.finished` setting."
 msgstr ""
 
-#: src/settings/index.md:527
+#: src/settings/index.md:531
 msgid "```toml\n"
 "[[libraries]]\n"
 "name = \"KePub\"\n"
@@ -1701,15 +1709,15 @@ msgid "```toml\n"
 "```"
 msgstr ""
 
-#: src/settings/index.md:534
+#: src/settings/index.md:538
 msgid "Intermissions"
 msgstr ""
 
-#: src/settings/index.md:538
+#: src/settings/index.md:542
 msgid "Defines the images displayed when entering an intermission state."
 msgstr ""
 
-#: src/settings/index.md:540
+#: src/settings/index.md:544
 msgid "```toml\n"
 "[intermissions]\n"
 "suspend = \"logo:\"\n"
@@ -1718,133 +1726,133 @@ msgid "```toml\n"
 "```"
 msgstr ""
 
-#: src/settings/index.md:547
+#: src/settings/index.md:551
 msgid "`intermissions.suspend`"
 msgstr ""
 
-#: src/settings/index.md:551
+#: src/settings/index.md:555
 msgid "Image displayed when the device enters sleep mode."
 msgstr ""
 
-#: src/settings/index.md:553
+#: src/settings/index.md:557
 msgid "Setting this to `\"calendar:\"` also enables the calendar refresh: every 5 minutes, the device wakes, shows the calendar, and then goes back to sleep automatically."
 msgstr ""
 
-#: src/settings/index.md:557
+#: src/settings/index.md:561
 msgid "Possible values: `\"logo:\"` (built-in logo), `\"cover:\"` (current book cover), `\"calendar:\"` (built-in calendar), or a path to a custom image file."
 msgstr ""
 
-#: src/settings/index.md:559
+#: src/settings/index.md:563
 msgid "`intermissions.power-off`"
 msgstr ""
 
-#: src/settings/index.md:563
+#: src/settings/index.md:567
 msgid "Image displayed when the device powers off."
 msgstr ""
 
-#: src/settings/index.md:565 src/settings/index.md:573
+#: src/settings/index.md:569 src/settings/index.md:577
 msgid "Possible values: `\"logo:\"` (built-in logo), `\"cover:\"` (current book cover), or a path to a custom image file."
 msgstr ""
 
-#: src/settings/index.md:567
+#: src/settings/index.md:571
 msgid "`intermissions.share`"
 msgstr ""
 
-#: src/settings/index.md:571
+#: src/settings/index.md:575
 msgid "Image displayed when entering USB sharing mode."
 msgstr ""
 
-#: src/settings/index.md:575
+#: src/settings/index.md:579
 msgid "Import"
 msgstr ""
 
-#: src/settings/index.md:577
+#: src/settings/index.md:581
 msgid "These settings control how Cadmus imports documents from your device. They are available in the **Settings → Import** menu."
 msgstr ""
 
-#: src/settings/index.md:580
+#: src/settings/index.md:584
 msgid "Import scanning happens automatically on startup using incremental file checking — files are only re-scanned if their modification time or size has changed since the last import."
 msgstr ""
 
-#: src/settings/index.md:582
+#: src/settings/index.md:586
 msgid "To trigger a full re-scan of all files regardless of cached values, use the **Force Full Import** action button in the Import settings category."
 msgstr ""
 
-#: src/settings/index.md:584
+#: src/settings/index.md:588
 msgid "`import.sync-metadata`"
 msgstr ""
 
-#: src/settings/index.md:588
+#: src/settings/index.md:592
 msgid "Re-extract metadata (title, author, etc.) whenever a document changes."
 msgstr ""
 
-#: src/settings/index.md:595
+#: src/settings/index.md:599
 msgid "`import.metadata-kinds`"
 msgstr ""
 
-#: src/settings/index.md:597
+#: src/settings/index.md:601
 msgid "File extensions of documents whose metadata is extracted during import."
 msgstr ""
 
-#: src/settings/index.md:599
+#: src/settings/index.md:603
 msgid "```toml\n"
 "[import]\n"
 "metadata-kinds = [\"epub\", \"pdf\", \"djvu\"]\n"
 "```"
 msgstr ""
 
-#: src/settings/index.md:604
+#: src/settings/index.md:608
 msgid "`import.allowed-kinds`"
 msgstr ""
 
-#: src/settings/index.md:608
+#: src/settings/index.md:612
 msgid "File extensions of documents considered during the import process."
 msgstr ""
 
-#: src/settings/index.md:610
+#: src/settings/index.md:614
 msgid "```toml\n"
 "[import]\n"
 "allowed-kinds = [\"djvu\", \"xps\", \"fb2\", \"txt\", \"pdf\", \"oxps\", \"cbz\", \"epub\"]\n"
 "```"
 msgstr ""
 
-#: src/settings/index.md:615
+#: src/settings/index.md:619
 msgid "OTA"
 msgstr ""
 
-#: src/settings/index.md:617
+#: src/settings/index.md:621
 msgid "The OTA feature downloads builds from GitHub."
 msgstr ""
 
-#: src/settings/index.md:619
+#: src/settings/index.md:623
 msgid "Authentication for main branch and PR builds uses **GitHub device auth flow**. When you select a build that requires authentication, Cadmus will display a short code and a URL. Visit `github.com/login/device` on any device, enter the code, and Cadmus will automatically continue the download once you authorize."
 msgstr ""
 
-#: src/settings/index.md:625
+#: src/settings/index.md:629
 msgid "The token is saved to disk after the first authorization so you will not be prompted again on subsequent downloads."
 msgstr ""
 
-#: src/settings/index.md:628
+#: src/settings/index.md:632
 msgid "For step-by-step instructions with screenshots, see the [OTA updates](../installation/ota.md) guide."
 msgstr ""
 
-#: src/settings/index.md:633
+#: src/settings/index.md:637
 msgid "Cadmus writes JSON logs to disk. When the build enables the `tracing` feature, it can also export logs to an OpenTelemetry endpoint."
 msgstr ""
 
-#: src/settings/index.md:636
+#: src/settings/index.md:640
 msgid "These settings are available in the **Settings → Telemetry** menu."
 msgstr ""
 
-#: src/settings/index.md:638
+#: src/settings/index.md:642
 msgid "\\[!IMPORTANT\\] Changes to these settings only take effect after restarting Cadmus. The application initializes telemetry on startup."
 msgstr ""
 
-#: src/settings/index.md:642
+#: src/settings/index.md:646
 msgid "`logging`"
 msgstr ""
 
-#: src/settings/index.md:644
+#: src/settings/index.md:648
 msgid "```toml\n"
 "[logging]\n"
 "enabled = true\n"
@@ -1855,137 +1863,157 @@ msgid "```toml\n"
 "```"
 msgstr ""
 
-#: src/settings/index.md:653 src/contributing/telemetry/logging.md:50
+#: src/settings/index.md:657 src/contributing/telemetry/logging.md:50
 msgid "`logging.enabled`"
 msgstr ""
 
-#: src/settings/index.md:657
+#: src/settings/index.md:661
 msgid "Enable or disable structured JSON logging."
 msgstr ""
 
-#: src/settings/index.md:664 src/contributing/telemetry/logging.md:51
+#: src/settings/index.md:668 src/contributing/telemetry/logging.md:51
 msgid "`logging.level`"
 msgstr ""
 
-#: src/settings/index.md:668
+#: src/settings/index.md:672
 msgid "Minimum log level to record."
 msgstr ""
 
-#: src/settings/index.md:670
+#: src/settings/index.md:674
 msgid "Possible values: `\"trace\"`, `\"debug\"`, `\"info\"`, `\"warn\"`, `\"error\"`."
 msgstr ""
 
-#: src/settings/index.md:672
+#: src/settings/index.md:676
 msgid "```toml\n"
 "[logging]\n"
 "level = \"info\"\n"
 "```"
 msgstr ""
 
-#: src/settings/index.md:677 src/contributing/telemetry/logging.md:52
+#: src/settings/index.md:681 src/contributing/telemetry/logging.md:52
 msgid "`logging.max-files`"
 msgstr ""
 
-#: src/settings/index.md:679
+#: src/settings/index.md:683
 msgid "Number of log files to keep. Only the most recent N files are kept — older ones are deleted automatically when Cadmus starts."
 msgstr ""
 
-#: src/settings/index.md:682 src/settings/index.md:755
+#: src/settings/index.md:686 src/settings/index.md:759
 msgid "Default: `3`"
 msgstr ""
 
-#: src/settings/index.md:683
+#: src/settings/index.md:687
 msgid "Set to `0` to keep all log files."
 msgstr ""
 
-#: src/settings/index.md:690 src/contributing/telemetry/logging.md:54
+#: src/settings/index.md:694 src/contributing/telemetry/logging.md:54
 msgid "`logging.otlp-endpoint`"
 msgstr ""
 
-#: src/settings/index.md:692
+#: src/settings/index.md:696
 msgid "✏️ (only when the `tracing` feature is enabled)"
 msgstr ""
 
-#: src/settings/index.md:694
+#: src/settings/index.md:698
 msgid "Optional OTLP endpoint for exporting logs to an OpenTelemetry collector."
 msgstr ""
 
-#: src/settings/index.md:696
+#: src/settings/index.md:700
 msgid "```toml\n"
 "[logging]\n"
 "otlp-endpoint = \"https://otel.example.com:4318\"\n"
 "```"
 msgstr ""
 
-#: src/settings/index.md:701 src/settings/index.md:718
+#: src/settings/index.md:705 src/settings/index.md:722
 msgid "Environment override:"
 msgstr ""
 
-#: src/settings/index.md:703
+#: src/settings/index.md:707
 msgid "`OTEL_EXPORTER_OTLP_ENDPOINT` takes precedence over `logging.otlp-endpoint`."
 msgstr ""
 
-#: src/settings/index.md:705 src/contributing/telemetry/profiling.md:32
+#: src/settings/index.md:709 src/contributing/telemetry/profiling.md:32
 msgid "`logging.pyroscope-endpoint`"
 msgstr ""
 
-#: src/settings/index.md:707
+#: src/settings/index.md:711
 msgid "✏️ (only when the `profiling` feature is enabled)"
 msgstr ""
 
-#: src/settings/index.md:709
+#: src/settings/index.md:713
 msgid "Optional Pyroscope server URL for continuous profiling. When set, Cadmus starts both a heap profiling agent (via jemalloc) and a CPU profiling agent (via pprof) that push profiles to this endpoint."
 msgstr ""
 
-#: src/settings/index.md:713
+#: src/settings/index.md:717
 msgid "```toml\n"
 "[logging]\n"
 "pyroscope-endpoint = \"http://localhost:4040\"\n"
 "```"
 msgstr ""
 
-#: src/settings/index.md:720
+#: src/settings/index.md:724
 msgid "`PYROSCOPE_SERVER_URL` takes precedence over `logging.pyroscope-endpoint`."
 msgstr ""
 
-#: src/settings/index.md:722
+#: src/settings/index.md:726
 msgid "`logging.enable-kern-log`"
 msgstr ""
 
-#: src/settings/index.md:724 src/settings/index.md:736
+#: src/settings/index.md:728 src/settings/index.md:740
 msgid "🧪 📱 ✏️"
 msgstr ""
 
-#: src/settings/index.md:726
+#: src/settings/index.md:730
 msgid "Captures kernel logs via `logread -F` and forwards them to structured logging with the target `cadmus_core::logging:kern`."
 msgstr ""
 
-#: src/settings/index.md:734
+#: src/settings/index.md:738
 msgid "`logging.enable-dbus-log`"
 msgstr ""
 
-#: src/settings/index.md:738
+#: src/settings/index.md:742
 msgid "Captures D-Bus signals via the built-in zbus-based DbusMonitorTask and forwards them to structured logging."
 msgstr ""
 
-#: src/settings/index.md:746
+#: src/settings/index.md:750
 msgid "Settings Retention"
 msgstr ""
 
-#: src/settings/index.md:748
+#: src/settings/index.md:752
 msgid "Cadmus stores each version's settings in a separate file in the `Settings/` directory (for example, `Settings-v1.2.3.toml`). This ensures backward and forward compatibility when you upgrade."
 msgstr ""
 
-#: src/settings/index.md:751
+#: src/settings/index.md:755
 msgid "`settings-retention`"
 msgstr ""
 
-#: src/settings/index.md:753
+#: src/settings/index.md:757
 msgid "Number of recent version settings files to keep. Only the most recent N version files are kept. When a new version is saved, older versions beyond this limit are deleted automatically."
 msgstr ""
 
-#: src/settings/index.md:756
+#: src/settings/index.md:760
 msgid "Set to `0` to keep all version files"
+msgstr ""
+
+#: src/settings/index.md:766
+msgid "`db-backup-retention`"
+msgstr ""
+
+#: src/settings/index.md:768
+msgid "Number of database backups to keep. When a new backup is created and the total would exceed this limit, the oldest backups are deleted automatically."
+msgstr ""
+
+#: src/settings/index.md:771 src/database-backup.md:72
+msgid "Default: `2`"
+msgstr ""
+
+#: src/settings/index.md:772 src/database-backup.md:73
+msgid "Set to `0` to disable backups entirely."
+msgstr ""
+
+#: src/settings/index.md:774
+msgid "See [Database Backup](../database-backup.md) for more details."
 msgstr ""
 
 #: src/ui/index.md:3
@@ -3617,7 +3645,7 @@ msgstr ""
 msgid "Cadmus can keep your Kobo's clock accurate by syncing it automatically whenever WiFi connects."
 msgstr ""
 
-#: src/time-sync.md:6 src/auto-frontlight.md:6
+#: src/time-sync.md:6 src/auto-frontlight.md:6 src/database-backup.md:5
 #: src/contributing/translations/source-code.md:7
 msgid "How it works"
 msgstr ""
@@ -3772,6 +3800,86 @@ msgstr ""
 
 #: src/auto-frontlight.md:77
 msgid "\\[!NOTE\\] When [automatic time syncing](time-sync.md) is enabled, a request is sent to `ipapi.co` to resolve your timezone. That same response includes an approximate latitude and longitude derived from your public IP address, which Cadmus stores as `auto-frontlight-last-coordinates`."
+msgstr ""
+
+#: src/database-backup.md:3
+msgid "Cadmus automatically backs up its SQLite database every time it starts."
+msgstr ""
+
+#: src/database-backup.md:7
+msgid "When Cadmus starts up it runs through these steps in order:"
+msgstr ""
+
+#: src/database-backup.md:9
+msgid "**Integrity check** — Cadmus checks the database file for corruption."
+msgstr ""
+
+#: src/database-backup.md:10
+msgid "**Version check** — Cadmus compares the version stamp stored in the database against the app version and database layout used by the version that is currently running."
+msgstr ""
+
+#: src/database-backup.md:13
+msgid "**Restore (if needed)** — If the database is corrupted, or if it was last written by a _newer_ version of Cadmus than the one running now, Cadmus restores the best available backup before continuing."
+msgstr ""
+
+#: src/database-backup.md:16
+msgid "**Migrations** — Schema and data migrations run against the (possibly restored) database."
+msgstr ""
+
+#: src/database-backup.md:18
+msgid "**Backup** — A fresh backup of the now-migrated database is saved to disk."
+msgstr ""
+
+#: src/database-backup.md:20
+msgid "Where backups are stored"
+msgstr ""
+
+#: src/database-backup.md:22
+msgid "Backups live in a `backups/` folder inside the directory that contains `cadmus.sqlite`. A small index file called `.cadmus-db-index.toml` in that same folder tracks every backup."
+msgstr ""
+
+#: src/database-backup.md:35
+msgid "Each backup file is named after the Cadmus version that created it, for example `cadmus-v1.2.3.sqlite`."
+msgstr ""
+
+#: src/database-backup.md:38
+msgid "Downgrade protection"
+msgstr ""
+
+#: src/database-backup.md:40
+msgid "When you install an older version of Cadmus on top of a newer one, the database already on disk was written by the newer version."
+msgstr ""
+
+#: src/database-backup.md:43
+msgid "Cadmus checks whether the older version uses the same database layout as the newer version. If it does, Cadmus keeps using the database normally."
+msgstr ""
+
+#: src/database-backup.md:46
+msgid "If the database layout changed, Cadmus automatically restores the most recent backup that is compatible with the older version. Data such as reading progress that was only written on the newer version will be lost."
+msgstr ""
+
+#: src/database-backup.md:50
+msgid "Before the restore happens, the current database file is renamed to `cadmus-<newer-version>-demoted.sqlite` in the `backups/` folder. This demoted file is kept on disk indefinitely as a safety net — Cadmus never deletes it automatically, so you can recover it manually if you ever need to."
+msgstr ""
+
+#: src/database-backup.md:55
+msgid "Corruption recovery"
+msgstr ""
+
+#: src/database-backup.md:57
+msgid "If the database file fails its integrity check, Cadmus restores the most recent backup and re-runs migrations. The corrupt file is replaced and Cadmus continues normally."
+msgstr ""
+
+#: src/database-backup.md:61
+msgid "\\[!WARNING\\] If the database is corrupted _and_ no backup exists (for example on a fresh install), Cadmus cannot start. You would have to manually delete the database file to allow Cadmus to start."
+msgstr ""
+
+#: src/database-backup.md:66
+msgid "Controlling how many backups to keep"
+msgstr ""
+
+#: src/database-backup.md:68
+msgid "Use the `db-backup-retention` setting to control how many backup files are kept on disk. When a new backup is created and the total number of backups would exceed this limit, the oldest backups are deleted automatically."
 msgstr ""
 
 #: src/troubleshooting/index.md:5
@@ -4311,7 +4419,6 @@ msgid "URL"
 msgstr ""
 
 #: src/contributing/devenv-setup.md:210
-#: src/contributing/library-database.md:159
 msgid "Purpose"
 msgstr ""
 
@@ -5065,7 +5172,6 @@ msgid "**Comparison:**"
 msgstr ""
 
 #: src/contributing/event-system.md:325
-#: src/contributing/library-database.md:159
 msgid "Method"
 msgstr ""
 
@@ -6206,268 +6312,236 @@ msgid "Every index must be used by at least one query in the codebase. Unused in
 msgstr ""
 
 #: src/contributing/sqlite-sqlx.md:113
-#: src/contributing/runtime-migrations.md:164
-msgid "API reference"
+msgid "Keep schema migration files stable"
 msgstr ""
 
 #: src/contributing/sqlite-sqlx.md:115
-msgid "The primary database types live in the `cadmus_core::db` module:"
+msgid "`cadmus-core` hashes every file under `crates/core/migrations/` at build time and stores that hash in the database version stamp. Downgrade protection uses the hash to allow newer-to-older app version moves only when both builds have the same schema migration set."
 msgstr ""
 
-#: src/contributing/sqlite-sqlx.md:117
-msgid "<a href=\"/api/cadmus_core/db/struct.Database\">`cadmus_core::db::Database`</a> — the top-level sync/async bridge that owns the connection pool"
-msgstr ""
-
-#: src/contributing/sqlite-sqlx.md:119
-msgid "<a href=\"/api/cadmus_core/db/migrations/struct.MigrationRunner\">`cadmus_core::db::migrations::MigrationRunner`</a> — executes all pending runtime migrations"
-msgstr ""
-
-#: src/contributing/sqlite-sqlx.md:121
-msgid "<a href=\"/api/cadmus_core/macro.migration\">`cadmus_core::migration!`</a> — macro for declaring one-time runtime migrations"
+#: src/contributing/sqlite-sqlx.md:120
+msgid "Do not edit a schema migration after it has shipped. Add a new numbered migration instead so existing databases keep passing SQLx migration checksum validation."
 msgstr ""
 
 #: src/contributing/sqlite-sqlx.md:124
+#: src/contributing/runtime-migrations.md:165
+msgid "API reference"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:126
+msgid "The primary database types live in the `cadmus_core::db` module:"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:128
+msgid "<a href=\"/api/cadmus_core/db/struct.Database\">`cadmus_core::db::Database`</a> — the top-level sync/async bridge that owns the connection pool"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:130
+msgid "<a href=\"/api/cadmus_core/db/migrations/struct.MigrationRunner\">`cadmus_core::db::migrations::MigrationRunner`</a> — executes all pending runtime migrations"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:132
+msgid "<a href=\"/api/cadmus_core/macro.migration\">`cadmus_core::migration!`</a> — macro for declaring one-time runtime migrations"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:135
 msgid "See [Library Database](library-database.md) for how the library subsystem uses the database, and [Runtime Migrations](runtime-migrations.md) for how to write one-time data migrations."
 msgstr ""
 
 #: src/contributing/library-database.md:3
-msgid "The library subsystem stores all book metadata, reading progress, and table-of-contents data in SQLite. This page explains the schema, the key database types, and how data flows from disk into the database."
+msgid "Cadmus stores library roots, scanned files, book metadata, reading progress, thumbnails, and table-of-contents data in SQLite. This page explains where each category of library data belongs and how scans move data from disk into the database."
 msgstr ""
 
-#: src/contributing/library-database.md:7
-msgid "Schema overview"
+#: src/contributing/library-database.md:8
+msgid "Core Shape"
 msgstr ""
 
-#: src/contributing/library-database.md:9
-msgid "The database is created and versioned by the SQL migration files in `crates/core/migrations/`. The initial schema defines eleven tables plus one aggregating view:"
+#: src/contributing/library-database.md:10
+msgid "The library database separates four concerns:"
 msgstr ""
 
-#: src/contributing/library-database.md:13
-msgid "```mermaid\n"
-"erDiagram\n"
-"    books {\n"
-"        TEXT fingerprint PK\n"
-"        TEXT title\n"
-"        TEXT file_path\n"
-"        TEXT file_kind\n"
-"        INTEGER file_size\n"
-"        INTEGER added_at\n"
-"    }\n\n"
-"    authors {\n"
-"        INTEGER id PK\n"
-"        TEXT name\n"
-"    }\n\n"
-"    book_authors {\n"
-"        TEXT book_fingerprint FK\n"
-"        INTEGER author_id FK\n"
-"        INTEGER position\n"
-"    }\n\n"
-"    categories {\n"
-"        INTEGER id PK\n"
-"        TEXT name\n"
-"    }\n\n"
-"    book_categories {\n"
-"        TEXT book_fingerprint FK\n"
-"        INTEGER category_id FK\n"
-"    }\n\n"
-"    reading_states {\n"
-"        TEXT fingerprint PK\n"
-"        INTEGER opened\n"
-"        INTEGER current_page\n"
-"        INTEGER pages_count\n"
-"        INTEGER finished\n"
-"    }\n\n"
-"    thumbnails {\n"
-"        TEXT fingerprint PK\n"
-"        BLOB thumbnail_data\n"
-"    }\n\n"
-"    toc_entries {\n"
-"        TEXT id PK\n"
-"        TEXT book_fingerprint FK\n"
-"        TEXT parent_id FK\n"
-"        INTEGER position\n"
-"        TEXT title\n"
-"        TEXT location_kind\n"
-"    }\n\n"
-"    libraries {\n"
-"        INTEGER id PK\n"
-"        TEXT path\n"
-"        TEXT name\n"
-"        INTEGER created_at\n"
-"    }\n\n"
-"    library_books {\n"
-"        INTEGER library_id FK\n"
-"        TEXT book_fingerprint FK\n"
-"        INTEGER added_to_library_at\n"
-"        TEXT file_path\n"
-"        TEXT absolute_path\n"
-"        INTEGER mtime\n"
-"        INTEGER file_size\n"
-"    }\n\n"
-"    _cadmus_migrations {\n"
-"        TEXT id PK\n"
-"        INTEGER executed_at\n"
-"        TEXT status\n"
-"    }\n\n"
-"    books ||--o{ book_authors : \"\"\n"
-"    authors ||--o{ book_authors : \"\"\n"
-"    books ||--o{ book_categories : \"\"\n"
-"    categories ||--o{ book_categories : \"\"\n"
-"    books ||--o| reading_states : \"\"\n"
-"    books ||--o| thumbnails : \"\"\n"
-"    books ||--o{ toc_entries : \"\"\n"
-"    toc_entries ||--o{ toc_entries : \"parent_id\"\n"
-"    libraries ||--o{ library_books : \"\"\n"
-"    books ||--o{ library_books : \"\"\n"
-"```"
+#: src/contributing/library-database.md:28
+msgid "`libraries` represents scan roots. A row answers: \"which directory did Cadmus index as a library?\""
 msgstr ""
 
-#: src/contributing/library-database.md:102
-msgid "Key design choices"
+#: src/contributing/library-database.md:31
+msgid "Keep library-level data here only when it describes the library itself, such as its path, display name, or creation metadata."
+msgstr ""
+
+#: src/contributing/library-database.md:34
+msgid "Library Membership"
+msgstr ""
+
+#: src/contributing/library-database.md:36
+msgid "`library_books` connects a library to the book files found under it. It is the place for data that depends on a specific file within a specific library scan, including relative paths, absolute paths, timestamps, sizes, and other scan-cache metadata."
+msgstr ""
+
+#: src/contributing/library-database.md:41
+msgid "This table is deliberately separate from `books` because one canonical book can appear in more than one library or at more than one path over time. File-system state belongs to the membership row, not to the canonical book row."
+msgstr ""
+
+#: src/contributing/library-database.md:45
+msgid "Canonical Books"
+msgstr ""
+
+#: src/contributing/library-database.md:47
+msgid "`books` is the canonical per-book record, keyed by fingerprint. It holds data that should be the same regardless of which library found the file, such as title and file kind."
+msgstr ""
+
+#: src/contributing/library-database.md:51
+msgid "Per-book tables reference `books` and are removed with the book when cascading deletes apply. New per-book data should usually live in a dedicated table rather than being mixed into library membership."
+msgstr ""
+
+#: src/contributing/library-database.md:55
+msgid "Derived Per-Book Data"
+msgstr ""
+
+#: src/contributing/library-database.md:57
+msgid "Authors, categories, reading state, thumbnails, and table-of-contents entries are derived from either metadata extraction, reader state, or generated assets. They are tied to the canonical book fingerprint, not to a specific library path."
+msgstr ""
+
+#: src/contributing/library-database.md:61
+msgid "Use join tables for many-to-many relationships such as authors and categories. Use child tables for optional or repeatable data such as reading state, thumbnails, and TOC entries."
+msgstr ""
+
+#: src/contributing/library-database.md:65
+msgid "Scan Flow"
+msgstr ""
+
+#: src/contributing/library-database.md:67
+msgid "Library scans move from the filesystem toward canonical book data:"
+msgstr ""
+
+#: src/contributing/library-database.md:78
+msgid "The membership row is checked before expensive work. If the scan-cache data says the file has not changed, Cadmus can skip re-fingerprinting and metadata extraction. If the file is new or changed, Cadmus updates the canonical book row and any derived data collected during import."
+msgstr ""
+
+#: src/contributing/library-database.md:83
+msgid "What Goes Where"
+msgstr ""
+
+#: src/contributing/library-database.md:85
+msgid "Use these rules when adding or reviewing library database changes:"
+msgstr ""
+
+#: src/contributing/library-database.md:87
+msgid "Data kind"
+msgstr ""
+
+#: src/contributing/library-database.md:87
+msgid "Belongs in"
+msgstr ""
+
+#: src/contributing/library-database.md:89
+msgid "Library root path or display name"
+msgstr ""
+
+#: src/contributing/library-database.md:89
+msgid "`libraries`"
+msgstr ""
+
+#: src/contributing/library-database.md:90
+msgid "File path inside one scanned library"
+msgstr ""
+
+#: src/contributing/library-database.md:90
+#: src/contributing/library-database.md:91
+msgid "`library_books`"
+msgstr ""
+
+#: src/contributing/library-database.md:91
+msgid "File modification or size cache"
+msgstr ""
+
+#: src/contributing/library-database.md:92
+msgid "Stable book identity or extracted title"
+msgstr ""
+
+#: src/contributing/library-database.md:92
+msgid "`books`"
+msgstr ""
+
+#: src/contributing/library-database.md:93
+msgid "Data shared by all copies of a book"
+msgstr ""
+
+#: src/contributing/library-database.md:93
+msgid "`books` or a per-book child table"
+msgstr ""
+
+#: src/contributing/library-database.md:94
+msgid "Many-to-many metadata"
+msgstr ""
+
+#: src/contributing/library-database.md:94
+msgid "Named entity table plus join table"
+msgstr ""
+
+#: src/contributing/library-database.md:95
+msgid "Reading progress"
+msgstr ""
+
+#: src/contributing/library-database.md:95
+msgid "`reading_states`"
+msgstr ""
+
+#: src/contributing/library-database.md:96
+msgid "Generated cover image"
+msgstr ""
+
+#: src/contributing/library-database.md:96
+msgid "`thumbnails`"
+msgstr ""
+
+#: src/contributing/library-database.md:97
+msgid "Nested table of contents"
+msgstr ""
+
+#: src/contributing/library-database.md:97
+msgid "`toc_entries`, using parent references and positions"
+msgstr ""
+
+#: src/contributing/library-database.md:98
+msgid "Migration bookkeeping"
+msgstr ""
+
+#: src/contributing/library-database.md:98
+msgid "Migration tables managed by the migration runner"
+msgstr ""
+
+#: src/contributing/library-database.md:100
+msgid "If data describes a file's current location, put it in library membership. If it describes the book identified by its fingerprint, put it in canonical book data or a per-book child table."
 msgstr ""
 
 #: src/contributing/library-database.md:104
-msgid "**`books` is the main table.** Every other per-book table references `books.fingerprint` with `ON DELETE CASCADE`, so deleting a book row removes all associated data automatically."
+msgid "Schema Details"
 msgstr ""
 
-#: src/contributing/library-database.md:107
-msgid "**Authors are normalised.** `authors` holds unique author names; `book_authors` is the join table and carries a `position` column that preserves display order."
+#: src/contributing/library-database.md:106
+msgid "For exact schema details, read the migrations in `crates/core/migrations/` in order. They define the tables, views, indexes, constraints, and data migrations that exist at each database version."
 msgstr ""
 
 #: src/contributing/library-database.md:110
-msgid "**All tables use `STRICT` mode.** SQLite's `STRICT` pragma enforces column type constraints at the storage layer, catching type mismatches early."
+msgid "Data Access"
 msgstr ""
 
 #: src/contributing/library-database.md:112
-msgid "**Timestamps are Unix epoch integers.** `added_at`, `created_at`, and similar columns are `INTEGER NOT NULL`; never `TEXT`."
-msgstr ""
-
-#: src/contributing/library-database.md:114
-msgid "**TOC tree via adjacency list.** `toc_entries.parent_id` is a self-reference; `position` preserves sibling order. The `id` is a UUID7 (generated in Rust) so `ORDER BY id ASC` gives stable insertion order without a growing rowid."
+msgid "The <a href=\"/api/cadmus_core/library/db/struct.Db\">`cadmus_core::library::db::Db`</a> type is the entry point for library database operations. It wraps the shared SQLite pool and presents a synchronous API to the rest of the app."
 msgstr ""
 
 #: src/contributing/library-database.md:117
-msgid "**Incremental import via `mtime` and `file_size`.** The `library_books` table stores the file's last modification time (ceiling-rounded to 2-second FAT32 precision) and size in bytes. During import scans, files whose `mtime` and `file_size` have not changed are skipped without re-fingerprinting, improving startup performance. An index on `(library_id, absolute_path)` enables efficient per-path lookups. Both columns are nullable to support books imported before migration 011."
+msgid "Keep database access behind this layer so callers work with domain types instead of raw SQL rows. For SQLx conventions, type overrides, and migration review rules, see the related pages below."
 msgstr ""
 
-#: src/contributing/library-database.md:124
-msgid "**`library_books_full_info` view.** An aggregating view joins `books`, `reading_states`, `book_authors`, `authors`, `book_categories`, and `categories` in one query. The `library_id` column from `library_books` is exposed so callers can filter with a plain `WHERE library_id = ?`."
+#: src/contributing/library-database.md:121
+msgid "Related Pages"
 msgstr ""
 
-#: src/contributing/library-database.md:129
-msgid "Data access layer"
+#: src/contributing/library-database.md:123
+msgid "[SQLite & SQLx](sqlite-sqlx.md) — compile-time query verification and review rules"
 msgstr ""
 
-#: src/contributing/library-database.md:131
-msgid "The <a href=\"/api/cadmus_core/library/db/struct.Db\">`cadmus_core::library::db::Db`</a> struct is the entry point for all library database operations. It wraps the shared `SqlitePool` and exposes a **synchronous** API by bridging every async SQLx call through the global Tokio runtime:"
-msgstr ""
-
-#: src/contributing/library-database.md:137
-msgid "```mermaid\n"
-"flowchart LR\n"
-"    caller[\"Caller (sync event loop)\"]\n"
-"    Db[\"library::db::Db\"]\n"
-"    RUNTIME[\"RUNTIME.block_on()\"]\n"
-"    SQLx[\"SQLx async query\"]\n"
-"    SQLite[(\"SQLite\")]\n\n"
-"    caller -->|sync call| Db\n"
-"    Db -->|wraps in| RUNTIME\n"
-"    RUNTIME -->|awaits| SQLx\n"
-"    SQLx -->|reads/writes| SQLite\n"
-"    SQLx -->|result| RUNTIME\n"
-"    RUNTIME -->|returns| caller\n"
-"```"
-msgstr ""
-
-#: src/contributing/library-database.md:153
-msgid "The sync bridge exists because Cadmus's UI event loop is single-threaded and synchronous. The global `RUNTIME` (a `tokio::runtime::Runtime` singleton) lets the rest of the codebase call database methods without needing to be async."
-msgstr ""
-
-#: src/contributing/library-database.md:157
-msgid "Key methods on `Db`:"
-msgstr ""
-
-#: src/contributing/library-database.md:161
-msgid "<a href=\"/api/cadmus_core/library/db/struct.Db#method.register_library\">`register_library`</a>"
-msgstr ""
-
-#: src/contributing/library-database.md:161
-msgid "Insert a new library row and return its id"
-msgstr ""
-
-#: src/contributing/library-database.md:162
-msgid "<a href=\"/api/cadmus_core/library/db/struct.Db#method.get_library_by_path\">`get_library_by_path`</a>"
-msgstr ""
-
-#: src/contributing/library-database.md:162
-msgid "Look up a library id by filesystem path"
-msgstr ""
-
-#: src/contributing/library-database.md:163
-msgid "<a href=\"/api/cadmus_core/library/db/struct.Db#method.get_all_books\">`get_all_books`</a>"
-msgstr ""
-
-#: src/contributing/library-database.md:163
-msgid "Fetch every book in a library via the full-info view"
-msgstr ""
-
-#: src/contributing/library-database.md:164
-msgid "<a href=\"/api/cadmus_core/library/db/struct.Db#method.insert_book\">`insert_book`</a>"
-msgstr ""
-
-#: src/contributing/library-database.md:164
-msgid "Write a new book and its authors/categories"
-msgstr ""
-
-#: src/contributing/library-database.md:165
-msgid "<a href=\"/api/cadmus_core/library/db/struct.Db#method.save_reading_state\">`save_reading_state`</a>"
-msgstr ""
-
-#: src/contributing/library-database.md:165
-msgid "Save or update reading progress for a book"
-msgstr ""
-
-#: src/contributing/library-database.md:166
-msgid "<a href=\"/api/cadmus_core/library/db/struct.Db#method.save_toc\">`save_toc`</a>"
-msgstr ""
-
-#: src/contributing/library-database.md:166
-msgid "Bulk-write a book's table of contents"
-msgstr ""
-
-#: src/contributing/library-database.md:167
-msgid "<a href=\"/api/cadmus_core/library/db/struct.Db#method.get_thumbnail\">`get_thumbnail`</a>"
-msgstr ""
-
-#: src/contributing/library-database.md:167
-msgid "Retrieve the stored cover thumbnail BLOB"
-msgstr ""
-
-#: src/contributing/library-database.md:168
-msgid "<a href=\"/api/cadmus_core/library/db/struct.Db#method.save_thumbnail\">`save_thumbnail`</a>"
-msgstr ""
-
-#: src/contributing/library-database.md:168
-msgid "Save or replace a cover thumbnail"
-msgstr ""
-
-#: src/contributing/library-database.md:170
-msgid "How a book scan flows into the database"
-msgstr ""
-
-#: src/contributing/library-database.md:172
-msgid "When a library directory is scanned, Cadmus follows this sequence:"
-msgstr ""
-
-#: src/contributing/library-database.md:203
-msgid "Related pages"
-msgstr ""
-
-#: src/contributing/library-database.md:205
-msgid "[SQLite & SQLx](sqlite-sqlx.md) — compile-time query verification, review rules"
-msgstr ""
-
-#: src/contributing/library-database.md:206
+#: src/contributing/library-database.md:125
 msgid "[Runtime Migrations](runtime-migrations.md) — one-time data migrations using the `migration!` macro"
 msgstr ""
 
@@ -6476,18 +6550,18 @@ msgid "Cadmus has two distinct migration pipelines:"
 msgstr ""
 
 #: src/contributing/runtime-migrations.md:5
-msgid "**Schema migrations** — plain `.sql` files in `crates/core/migrations/`, applied by SQLx's `migrate!` macro at startup. Use these for `CREATE TABLE`, `ALTER TABLE`, and similar DDL changes."
+msgid "**Schema migrations** — plain `.sql` files in `crates/core/migrations/`, applied by SQLx's `migrate!` macro at startup. Use these for `CREATE TABLE`, `ALTER TABLE`, and similar DDL changes. The core build script hashes these files and embeds the hash in the database version stamp."
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:8
+#: src/contributing/runtime-migrations.md:9
 msgid "**Runtime migrations** — Rust `async fn` blocks declared with the `migration!` macro. Use these for one-time **data** operations: backfilling columns, importing legacy files, cleaning up obsolete rows, or any procedural work that goes beyond SQL DDL."
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:13
+#: src/contributing/runtime-migrations.md:14
 msgid "How runtime migrations work"
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:15
+#: src/contributing/runtime-migrations.md:16
 msgid "```mermaid\n"
 "flowchart TD\n"
 "    ctor[\"#[ctor] runs at process start\"]\n"
@@ -6509,183 +6583,183 @@ msgid "```mermaid\n"
 "```"
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:36
+#: src/contributing/runtime-migrations.md:37
 msgid "At process start the `#[ctor]` attribute runs for every `migration!` call and inserts the migration function into a global `HashMap`. When `Database::migrate` is called during application startup, it first applies all pending SQL schema migrations, then calls `MigrationRunner::run_all()`, which:"
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:41
+#: src/contributing/runtime-migrations.md:42
 msgid "Reads `_cadmus_migrations` and collects IDs that already succeeded."
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:42
+#: src/contributing/runtime-migrations.md:43
 msgid "Skips those; runs the remaining ones sorted by ID."
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:43
+#: src/contributing/runtime-migrations.md:44
 msgid "Records each result (`success` or `failed`) before moving on."
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:44
+#: src/contributing/runtime-migrations.md:45
 msgid "Continues past failures so one broken migration does not block others."
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:46
+#: src/contributing/runtime-migrations.md:47
 msgid "A failed migration can be retried by deleting its tracking row (see [Re-running a migration](#re-running-a-migration))."
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:49
+#: src/contributing/runtime-migrations.md:50
 msgid "The `migration!` macro"
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:51
+#: src/contributing/runtime-migrations.md:52
 msgid "<a href=\"/api/cadmus_core/macro.migration\">`cadmus_core::migration!`</a> takes a stable string ID and an `async fn` definition:"
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:56
+#: src/contributing/runtime-migrations.md:57
 msgid "/// One-line doc comment forwarded to rustdoc.\n"
 "    \"v1_my_migration\""
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:59
+#: src/contributing/runtime-migrations.md:60
 msgid "\"UPDATE books SET title = TRIM(title)\""
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:67
+#: src/contributing/runtime-migrations.md:68
 msgid "The macro:"
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:69
+#: src/contributing/runtime-migrations.md:70
 msgid "Generates the `async fn` with the provided body."
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:70
+#: src/contributing/runtime-migrations.md:71
 msgid "Creates a public submodule named after the function that exposes a `MIGRATION_ID` constant — useful for tests and cross-references."
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:72
+#: src/contributing/runtime-migrations.md:73
 msgid "Registers the function in the global `REGISTRY` via `#[ctor]` so it runs automatically without any manual wiring."
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:74
+#: src/contributing/runtime-migrations.md:75
 msgid "Forwards doc comments onto the generated items so rustdoc picks them up."
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:75
+#: src/contributing/runtime-migrations.md:76
 msgid "Appends the migration ID and a re-run SQL snippet to the generated docs."
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:77
+#: src/contributing/runtime-migrations.md:78
 msgid "Where to put migration code"
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:79
+#: src/contributing/runtime-migrations.md:80
 msgid "Co-locate migrations with the feature they belong to. The library subsystem's migrations live in `crates/core/src/library/migrations.rs`; a hypothetical reader subsystem would put its migrations in `crates/core/src/reader/migrations.rs`."
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:84
+#: src/contributing/runtime-migrations.md:85
 msgid "The module only needs to be declared once so the `#[ctor]` registration runs. There is no central registry file to update."
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:87
+#: src/contributing/runtime-migrations.md:88
 msgid "Writing a migration step by step"
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:89
+#: src/contributing/runtime-migrations.md:90
 msgid "1. Choose a stable ID"
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:91
+#: src/contributing/runtime-migrations.md:92
 msgid "The ID is the primary key in `_cadmus_migrations`. Once a migration has been deployed it must never be renamed, because existing installations track it by this string."
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:95
+#: src/contributing/runtime-migrations.md:96
 msgid "Convention: `v<N>_<short_description>`, for example `v1_backfill_book_language`."
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:97
+#: src/contributing/runtime-migrations.md:98
 msgid "2. Create the migration file (or add to an existing one)"
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:100
+#: src/contributing/runtime-migrations.md:101
 msgid "// crates/core/src/my_feature/migrations.rs\n"
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:105
+#: src/contributing/runtime-migrations.md:106
 msgid "/// Backfills the `language` column for books that were imported before\n"
 "    /// language detection was added.\n"
 "    \"v1_backfill_book_language\""
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:110
+#: src/contributing/runtime-migrations.md:111
 msgid "\"UPDATE books SET language = 'en' WHERE language = '' OR language IS NULL\""
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:120
+#: src/contributing/runtime-migrations.md:121
 msgid "3. Use SQLx typed macros"
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:122
+#: src/contributing/runtime-migrations.md:123
 msgid "All SQL inside a migration must use the typed macros for compile-time verification (see [SQLite & SQLx](sqlite-sqlx.md)):"
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:126
+#: src/contributing/runtime-migrations.md:127
 msgid "// ✅ Good — compile-time checked\n"
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:127
-#: src/contributing/runtime-migrations.md:132
+#: src/contributing/runtime-migrations.md:128
+#: src/contributing/runtime-migrations.md:133
 msgid "\"DELETE FROM books WHERE file_path = ?\""
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:130
+#: src/contributing/runtime-migrations.md:131
 msgid "// ❌ Bad — untyped, bypasses verification\n"
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:138
+#: src/contributing/runtime-migrations.md:139
 msgid "4. Make it idempotent"
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:140
+#: src/contributing/runtime-migrations.md:141
 msgid "Use `INSERT OR IGNORE`, `ON CONFLICT DO NOTHING`, or guard with a `WHERE` clause so the migration is safe to re-run without corrupting data."
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:143
+#: src/contributing/runtime-migrations.md:144
 msgid "5. Regenerate `.sqlx` metadata"
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:145
+#: src/contributing/runtime-migrations.md:146
 msgid "After adding or changing any query in the migration, regenerate the compile-time metadata:"
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:152
+#: src/contributing/runtime-migrations.md:153
 msgid "Commit the updated `.sqlx/` files alongside your migration code."
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:154
+#: src/contributing/runtime-migrations.md:155
 msgid "Re-running a migration"
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:156
+#: src/contributing/runtime-migrations.md:157
 msgid "Delete the tracking row, then restart the application:"
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:159
+#: src/contributing/runtime-migrations.md:160
 msgid "'v1_my_migration'"
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:162
+#: src/contributing/runtime-migrations.md:163
 msgid "The next startup will treat the migration as pending and run it again."
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:166
+#: src/contributing/runtime-migrations.md:167
 msgid "<a href=\"/api/cadmus_core/macro.migration\">`cadmus_core::migration!`</a> — macro for declaring runtime migrations"
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:168
+#: src/contributing/runtime-migrations.md:169
 msgid "<a href=\"/api/cadmus_core/db/migrations/struct.MigrationRunner\">`cadmus_core::db::migrations::MigrationRunner`</a> — executes all pending registered migrations"
 msgstr ""
 
-#: src/contributing/runtime-migrations.md:170
+#: src/contributing/runtime-migrations.md:171
 msgid "<a href=\"/api/cadmus_core/db/struct.Database\">`cadmus_core::db::Database`</a> — owns the connection pool and orchestrates both migration stages"
 msgstr ""
 
