@@ -27,6 +27,7 @@
 # Contributor Guide
 
 - [Development Environment](contributing/devenv-setup.md)
+- [SSH](contributing/ssh.md)
 - [Code Style and Linting](contributing/code-style.md)
 - [Event System](contributing/event-system.md)
 - [Telemetry](contributing/telemetry/index.md)
