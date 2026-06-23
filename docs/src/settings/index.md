@@ -15,9 +15,13 @@ Settings can be changed via **Main Menu → Settings**, which opens the built-in
 <details>
 <summary>Expand Me</summary>
 
+<!-- i18n:skip-start -->
+
 ```toml
 {{#include ../../../contrib/Settings-sample.toml}}
 ```
+
+<!-- i18n:skip-end -->
 
 </details>
 

@@ -17,6 +17,8 @@ Any 4._X_._Y_ firmware, with _X_ ≥ 6, will do.
 
 ## Supported devices
 
+<!-- i18n:skip-start -->
+
 - _Libra Colour_.
 - _Clara Colour_.
 - _Clara BW_.
@@ -39,6 +41,8 @@ Any 4._X_._Y_ firmware, with _X_ ≥ 6, will do.
 - _Touch C_.
 - _Touch B_.
 
+<!-- i18n:skip-end -->
+
 ## Supported formats
 
 - PDF, CBZ, FB2, MOBI, XPS, TXT, JPEG, JPG, PNG, WEBP and SVG via [MuPDF](https://mupdf.com/index.html).
@@ -57,10 +61,14 @@ Any 4._X_._Y_ firmware, with _X_ ≥ 6, will do.
 
 ## Screenshots
 
+<!-- i18n:skip-start -->
+
 ![Tn01](artworks/thumbnail01.png)
 ![Tn02](artworks/thumbnail02.png)
 ![Tn03](artworks/thumbnail03.png)
 ![Tn04](artworks/thumbnail04.png)
+
+<!-- i18n:skip-end -->
 
 ## Acknowledgments
 

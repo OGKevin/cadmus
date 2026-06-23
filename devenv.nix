@@ -198,6 +198,21 @@ let
     doCheck = false;
   };
 
+  mdbook-i18n-helpers-custom = pkgs.rustPlatform.buildRustPackage {
+    pname = "mdbook-i18n-helpers";
+    version = "0.4.0-ogkevin";
+
+    src = ./thirdparty/mdbook-i18n-helpers;
+
+    cargoLock.lockFile = ./thirdparty/mdbook-i18n-helpers/Cargo.lock;
+    cargoBuildFlags = [
+      "-p"
+      "mdbook-i18n-helpers"
+    ];
+
+    doCheck = true;
+  };
+
   poedit-fixed = pkgs.poedit.override { boost = pkgs.boost186; };
 
   # Grafana datasource provisioning
@@ -263,7 +278,7 @@ in
     mdbook-epub-custom
     pkgs.zola
     pkgs.mdbook-mermaid
-    pkgs.mdbook-i18n-helpers
+    mdbook-i18n-helpers-custom
     pkgs.gettext
 
     cargo-diff-tools

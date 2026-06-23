@@ -2,7 +2,7 @@ name: Install doc tools
 description: >
   Install and cache mdBook, mdbook-epub, mdbook-mermaid, mdbook-i18n-helpers, Zola,
   and npm dependencies (including puppeteer chrome-headless-shell).
-  Versions are pinned here so Renovate tracks them in one place.
+  Versions and source revisions are pinned here so Renovate tracks them in one place.
 
 inputs:
   node-version:
@@ -26,7 +26,7 @@ runs:
           echo "MDBOOK_VERSION=0.5.3"
           echo "MDBOOK_EPUB_REV=21a1c8134134201a2d555313447c96e56e2a8996"
           echo "MDBOOK_MERMAID_VERSION=0.17.0"
-          echo "MDBOOK_I18N_HELPERS_VERSION=0.4.0"
+          echo "MDBOOK_I18N_HELPERS_REV=$(git rev-parse HEAD:thirdparty/mdbook-i18n-helpers)"
           echo "ZOLA_VERSION=0.22.1"
         } >> "$GITHUB_ENV"
 
@@ -38,7 +38,7 @@ runs:
           ~/.cache/mdbook-epub
           ~/.cache/mdbook-mermaid
           ~/.cache/mdbook-i18n-helpers
-        key: ${{ runner.os }}-mdbook-${{ env.MDBOOK_VERSION }}-epub-${{ env.MDBOOK_EPUB_REV }}-mermaid-${{ env.MDBOOK_MERMAID_VERSION }}-i18n-${{ env.MDBOOK_I18N_HELPERS_VERSION }}
+        key: ${{ runner.os }}-mdbook-${{ env.MDBOOK_VERSION }}-epub-${{ env.MDBOOK_EPUB_REV }}-mermaid-${{ env.MDBOOK_MERMAID_VERSION }}-i18n-${{ env.MDBOOK_I18N_HELPERS_REV }}
 
     - name: Cache Zola
       uses: actions/cache@v5
@@ -56,6 +56,10 @@ runs:
       shell: bash
       run: npm ci
 
+    - name: Checkout mdbook-i18n-helpers submodule
+      shell: bash
+      run: git submodule update --init thirdparty/mdbook-i18n-helpers
+
     - name: Install doc tools
       shell: bash
       run: |
@@ -63,5 +67,5 @@ runs:
           --mdbook-version "$MDBOOK_VERSION" \
           --mdbook-epub-rev "$MDBOOK_EPUB_REV" \
           --mdbook-mermaid-version "$MDBOOK_MERMAID_VERSION" \
-          --mdbook-i18n-helpers-version "$MDBOOK_I18N_HELPERS_VERSION" \
+          --mdbook-i18n-helpers-rev "$MDBOOK_I18N_HELPERS_REV" \
           --zola-version "$ZOLA_VERSION"

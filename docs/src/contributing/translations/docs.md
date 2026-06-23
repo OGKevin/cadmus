@@ -12,8 +12,9 @@ available:
 - `msginit` / `msgmerge` / `msgfmt` — gettext utilities (from `gettext`)
 - `poedit` — graphical PO editor
 
-Install them outside devenv with `cargo install mdbook-i18n-helpers` and your
-system's `gettext` package.
+Install them outside devenv from the vendored fork with
+`cargo install --path thirdparty/mdbook-i18n-helpers/i18n-helpers --locked` and
+your system's `gettext` package.
 
 ## Adding a new language
 

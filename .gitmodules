@@ -50,3 +50,7 @@
 	path = thirdparty/sqlite
 	url = https://github.com/sqlite/sqlite
 	branch = version-3.49.2
+[submodule "thirdparty/mdbook-i18n-helpers"]
+	path = thirdparty/mdbook-i18n-helpers
+	url = https://github.com/OGKevin/mdbook-i18n-helpers.git
+	branch = ogkevin/push/qsonrqyvotux
