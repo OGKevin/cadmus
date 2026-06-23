@@ -5,4 +5,3 @@
 {{#include ../../CHANGELOG.md:2:}}
 
 <!-- i18n:skip-end -->
-
