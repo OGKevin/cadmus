@@ -2,44 +2,41 @@
 
 ## [0.11.0](https://github.com/OGKevin/cadmus/compare/v0.10.1...v0.11.0) (2026-06-22)
 
-
 ### ⚠ BREAKING CHANGES
 
-* **Import:** The database options from the library menu have been removed. There is no longer a need to manually flush data. To manually trigger a full import scan, there is a new button in the settings menu under the import category.
-* **Library:** Unsupported files are no longer fingerprinted and indexed into the sqlite DB. This is configured via the `allowed_kinds` setting.
+- **Import:** The database options from the library menu have been removed. There is no longer a need to manually flush data. To manually trigger a full import scan, there is a new button in the settings menu under the import category.
+- **Library:** Unsupported files are no longer fingerprinted and indexed into the sqlite DB. This is configured via the `allowed_kinds` setting.
 
 ### Features
 
-* **Core:** add automatic date and time sync via NTP ([#576](https://github.com/OGKevin/cadmus/issues/576)) ([a7fa6e8](https://github.com/OGKevin/cadmus/commit/a7fa6e89ea9c63578eebb676859d206035d57e12))
-* **Core:** build SQLite from source with DELETE … LIMIT support ([#584](https://github.com/OGKevin/cadmus/issues/584)) ([ac5daf0](https://github.com/OGKevin/cadmus/commit/ac5daf0042e4af045a5f6ce7f531e35592ae3330))
-* **Device:** route data files to SD card ([#553](https://github.com/OGKevin/cadmus/issues/553)) ([f19d901](https://github.com/OGKevin/cadmus/commit/f19d901640c6945272d43bfba30fd60021b4363d))
-* **Frontlight:** auto brightness and warmth ([#590](https://github.com/OGKevin/cadmus/issues/590)) ([7e1414d](https://github.com/OGKevin/cadmus/commit/7e1414d5fe5ccb9494d593060d112a08aa6c1191))
-* **Import:** add incremental library import ([1ee4218](https://github.com/OGKevin/cadmus/commit/1ee421815a229679067ba7a0036e3ad02c01866d))
-* **Kobo:** enable multi-core when possible ([#542](https://github.com/OGKevin/cadmus/issues/542)) ([8817d6e](https://github.com/OGKevin/cadmus/commit/8817d6e3cc3b8217f3d953d2653d93173bc245db))
-* **Library:** async thumbnail extraction ([#517](https://github.com/OGKevin/cadmus/issues/517)) ([86a0a36](https://github.com/OGKevin/cadmus/commit/86a0a3687ffa90034ca5bd839a5961ca6dfbf3e7))
-* **Reader:** support webp via MuPDF ([#456](https://github.com/OGKevin/cadmus/issues/456)) ([bf96995](https://github.com/OGKevin/cadmus/commit/bf9699588a2aaae707de72482b2d1eda65c05fba))
-* **Settings Editor:** add allowed and dithered file kinds  ([#545](https://github.com/OGKevin/cadmus/issues/545)) ([ab4e408](https://github.com/OGKevin/cadmus/commit/ab4e4086134c6240e787d026adeeaf00a353d1ce))
-* **Settings Editor:** confirmation before dictionary downloads ([#533](https://github.com/OGKevin/cadmus/issues/533)) ([2ba249b](https://github.com/OGKevin/cadmus/commit/2ba249bf201a3c10c6eab30629f1e4f84058f697))
-* show build provenance in About ([#534](https://github.com/OGKevin/cadmus/issues/534)) ([28642f6](https://github.com/OGKevin/cadmus/commit/28642f60efea27a22ffad42151530e3a961118ba))
-* **SQLite:** auto database backup and restore ([#605](https://github.com/OGKevin/cadmus/issues/605)) ([ddd29c9](https://github.com/OGKevin/cadmus/commit/ddd29c9b35b2acd45264094cd7f38b33c59c00ce))
-* **Startup:** open last read file on startup ([#592](https://github.com/OGKevin/cadmus/issues/592)) ([a2f89ef](https://github.com/OGKevin/cadmus/commit/a2f89ef0098e67cb6b080750dd8d967aa8a3678a))
-* **Translation:** init for French ([#509](https://github.com/OGKevin/cadmus/issues/509)) ([786b651](https://github.com/OGKevin/cadmus/commit/786b651c545c4a5659d91e4571862b4780430e86))
-
+- **Core:** add automatic date and time sync via NTP ([#576](https://github.com/OGKevin/cadmus/issues/576)) ([a7fa6e8](https://github.com/OGKevin/cadmus/commit/a7fa6e89ea9c63578eebb676859d206035d57e12))
+- **Core:** build SQLite from source with DELETE … LIMIT support ([#584](https://github.com/OGKevin/cadmus/issues/584)) ([ac5daf0](https://github.com/OGKevin/cadmus/commit/ac5daf0042e4af045a5f6ce7f531e35592ae3330))
+- **Device:** route data files to SD card ([#553](https://github.com/OGKevin/cadmus/issues/553)) ([f19d901](https://github.com/OGKevin/cadmus/commit/f19d901640c6945272d43bfba30fd60021b4363d))
+- **Frontlight:** auto brightness and warmth ([#590](https://github.com/OGKevin/cadmus/issues/590)) ([7e1414d](https://github.com/OGKevin/cadmus/commit/7e1414d5fe5ccb9494d593060d112a08aa6c1191))
+- **Import:** add incremental library import ([1ee4218](https://github.com/OGKevin/cadmus/commit/1ee421815a229679067ba7a0036e3ad02c01866d))
+- **Kobo:** enable multi-core when possible ([#542](https://github.com/OGKevin/cadmus/issues/542)) ([8817d6e](https://github.com/OGKevin/cadmus/commit/8817d6e3cc3b8217f3d953d2653d93173bc245db))
+- **Library:** async thumbnail extraction ([#517](https://github.com/OGKevin/cadmus/issues/517)) ([86a0a36](https://github.com/OGKevin/cadmus/commit/86a0a3687ffa90034ca5bd839a5961ca6dfbf3e7))
+- **Reader:** support webp via MuPDF ([#456](https://github.com/OGKevin/cadmus/issues/456)) ([bf96995](https://github.com/OGKevin/cadmus/commit/bf9699588a2aaae707de72482b2d1eda65c05fba))
+- **Settings Editor:** add allowed and dithered file kinds ([#545](https://github.com/OGKevin/cadmus/issues/545)) ([ab4e408](https://github.com/OGKevin/cadmus/commit/ab4e4086134c6240e787d026adeeaf00a353d1ce))
+- **Settings Editor:** confirmation before dictionary downloads ([#533](https://github.com/OGKevin/cadmus/issues/533)) ([2ba249b](https://github.com/OGKevin/cadmus/commit/2ba249bf201a3c10c6eab30629f1e4f84058f697))
+- show build provenance in About ([#534](https://github.com/OGKevin/cadmus/issues/534)) ([28642f6](https://github.com/OGKevin/cadmus/commit/28642f60efea27a22ffad42151530e3a961118ba))
+- **SQLite:** auto database backup and restore ([#605](https://github.com/OGKevin/cadmus/issues/605)) ([ddd29c9](https://github.com/OGKevin/cadmus/commit/ddd29c9b35b2acd45264094cd7f38b33c59c00ce))
+- **Startup:** open last read file on startup ([#592](https://github.com/OGKevin/cadmus/issues/592)) ([a2f89ef](https://github.com/OGKevin/cadmus/commit/a2f89ef0098e67cb6b080750dd8d967aa8a3678a))
+- **Translation:** init for French ([#509](https://github.com/OGKevin/cadmus/issues/509)) ([786b651](https://github.com/OGKevin/cadmus/commit/786b651c545c4a5659d91e4571862b4780430e86))
 
 ### Bug Fixes
 
-* **Import:** stop renaming legacy library data files ([#538](https://github.com/OGKevin/cadmus/issues/538)) ([b4b106f](https://github.com/OGKevin/cadmus/commit/b4b106f148842575dd026511efb8b49b08ab474b))
-* **Library:** only import allowed_kinds ([45b03c6](https://github.com/OGKevin/cadmus/commit/45b03c68253f29b3529827acd35b3c63b0147704))
-* **Notifications:** transfer on back navigation ([#550](https://github.com/OGKevin/cadmus/issues/550)) ([63349b1](https://github.com/OGKevin/cadmus/commit/63349b1b9ccb4a2c58f7c8ed3a326bdb564954f3))
-* **OTA:** clean bundled assets before ota install ([#511](https://github.com/OGKevin/cadmus/issues/511)) ([cf89a70](https://github.com/OGKevin/cadmus/commit/cf89a70b15f08aff88c23cd776ffacb6bcf9312d))
-* **ota:** increase artifacts per_page to 50 to avoid pagination truncation ([#560](https://github.com/OGKevin/cadmus/issues/560)) ([a5c78cf](https://github.com/OGKevin/cadmus/commit/a5c78cf951b762147d7768543c7001963832beb5))
-* **Settings Editor:** Reset dictionary display on download failure ([#532](https://github.com/OGKevin/cadmus/issues/532)) ([9415fe5](https://github.com/OGKevin/cadmus/commit/9415fe5cb00602821ddf36a4492f058cd51b39f3))
-
+- **Import:** stop renaming legacy library data files ([#538](https://github.com/OGKevin/cadmus/issues/538)) ([b4b106f](https://github.com/OGKevin/cadmus/commit/b4b106f148842575dd026511efb8b49b08ab474b))
+- **Library:** only import allowed_kinds ([45b03c6](https://github.com/OGKevin/cadmus/commit/45b03c68253f29b3529827acd35b3c63b0147704))
+- **Notifications:** transfer on back navigation ([#550](https://github.com/OGKevin/cadmus/issues/550)) ([63349b1](https://github.com/OGKevin/cadmus/commit/63349b1b9ccb4a2c58f7c8ed3a326bdb564954f3))
+- **OTA:** clean bundled assets before ota install ([#511](https://github.com/OGKevin/cadmus/issues/511)) ([cf89a70](https://github.com/OGKevin/cadmus/commit/cf89a70b15f08aff88c23cd776ffacb6bcf9312d))
+- **ota:** increase artifacts per_page to 50 to avoid pagination truncation ([#560](https://github.com/OGKevin/cadmus/issues/560)) ([a5c78cf](https://github.com/OGKevin/cadmus/commit/a5c78cf951b762147d7768543c7001963832beb5))
+- **Settings Editor:** Reset dictionary display on download failure ([#532](https://github.com/OGKevin/cadmus/issues/532)) ([9415fe5](https://github.com/OGKevin/cadmus/commit/9415fe5cb00602821ddf36a4492f058cd51b39f3))
 
 ### Performance Improvements
 
-* **Library:** due to book cover extraction is part of the indexing process now, you should no longer see app stuttering when navigating the library view. ([86a0a36](https://github.com/OGKevin/cadmus/commit/86a0a3687ffa90034ca5bd839a5961ca6dfbf3e7))
-* **Library:** emit import progress in 5% steps ([#561](https://github.com/OGKevin/cadmus/issues/561)) ([3184937](https://github.com/OGKevin/cadmus/commit/31849371c05eb66965ffc0fa372b59df37e39168))
+- **Library:** due to book cover extraction is part of the indexing process now, you should no longer see app stuttering when navigating the library view. ([86a0a36](https://github.com/OGKevin/cadmus/commit/86a0a3687ffa90034ca5bd839a5961ca6dfbf3e7))
+- **Library:** emit import progress in 5% steps ([#561](https://github.com/OGKevin/cadmus/issues/561)) ([3184937](https://github.com/OGKevin/cadmus/commit/31849371c05eb66965ffc0fa372b59df37e39168))
 
 ## [0.10.1](https://github.com/OGKevin/cadmus/compare/v0.10.0...v0.10.1) (2026-05-23)
 

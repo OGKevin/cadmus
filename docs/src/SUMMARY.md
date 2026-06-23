@@ -21,6 +21,7 @@
 - [Automatic Frontlight](auto-frontlight.md)
 - [Database Backup](database-backup.md)
 - [Troubleshooting](troubleshooting/index.md)
+- [CHANGELOG](CHANGELOG.md)
 
 ---
 
