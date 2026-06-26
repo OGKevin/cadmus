@@ -4,12 +4,16 @@ Cadmus comes in different packages. Pick the one that matches your needs.
 
 ## Available packages
 
+<!-- i18n:skip-start -->
+
 | Package                | What's included         | Installs to                     |
 | ---------------------- | ----------------------- | ------------------------------- |
 | `KoboRoot.tgz`         | Cadmus only             | `/mnt/onboard/.adds/cadmus`     |
 | `KoboRoot-nm.tgz`      | Cadmus + NickelMenu     | `/mnt/onboard/.adds/cadmus`     |
 | `KoboRoot-test.tgz`    | Test build only         | `/mnt/onboard/.adds/cadmus-tst` |
 | `KoboRoot-nm-test.tgz` | Test build + NickelMenu | `/mnt/onboard/.adds/cadmus-tst` |
+
+<!-- i18n:skip-end -->
 
 ## Which one should I pick?
 

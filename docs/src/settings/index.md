@@ -35,9 +35,13 @@ Keyboard layout to use for text input.
 
 - Possible values: `"English"`, `"Russian"`.
 
+<!-- i18n:skip-start -->
+
 ```toml
 keyboard-layout = "English"
 ```
+
+<!-- i18n:skip-end -->
 
 ### `sleep-cover`
 
@@ -45,9 +49,13 @@ keyboard-layout = "English"
 
 Handle the magnetic sleep cover event.
 
+<!-- i18n:skip-start -->
+
 ```toml
 sleep-cover = true
 ```
+
+<!-- i18n:skip-end -->
 
 ### `auto-share`
 
@@ -60,9 +68,13 @@ Automatically enter shared mode when connected to a computer, skipping the
 > Turn this on if you update Cadmus via USB often — you won't have to
 > confirm the sharing dialog each time you plug in.
 
+<!-- i18n:skip-start -->
+
 ```toml
 auto-share = false
 ```
+
+<!-- i18n:skip-end -->
 
 ### `auto-time`
 
@@ -70,9 +82,13 @@ auto-share = false
 
 Automatically synchronize the device time via NTP when WiFi connects. This will also set the correct timezone. Uses time.cloudflare.com and ipapi.co.
 
+<!-- i18n:skip-start -->
+
 ```toml
 auto-time = false
 ```
+
+<!-- i18n:skip-end -->
 
 ### `auto-frontlight`
 
@@ -86,9 +102,13 @@ Automatically adjust the frontlight warmth and brightness based on the sun's pos
 
 Coordinates are auto-detected during each time sync (via ipapi.co) and stored in `auto-frontlight-last-coordinates`. Set `auto-frontlight-manual-coordinates` to override the detected location.
 
+<!-- i18n:skip-start -->
+
 ```toml
 auto-frontlight = false
 ```
+
+<!-- i18n:skip-end -->
 
 ### `auto-frontlight-night-brightness`
 
@@ -98,9 +118,13 @@ Frontlight brightness level (0.0–100.0) applied when the sun is below the hori
 
 This setting is optional. When not set, a default of `1.0` is used.
 
+<!-- i18n:skip-start -->
+
 ```toml
 auto-frontlight-night-brightness = 10.0
 ```
+
+<!-- i18n:skip-end -->
 
 ### `auto-frontlight-manual-coordinates`
 
@@ -110,9 +134,13 @@ GPS coordinates `[latitude, longitude]` to use for sun-position calculations ins
 
 This setting is optional.
 
+<!-- i18n:skip-start -->
+
 ```toml
 auto-frontlight-manual-coordinates = [51.5074, -0.1278]
 ```
+
+<!-- i18n:skip-end -->
 
 ### `auto-frontlight-last-coordinates`
 
@@ -120,9 +148,13 @@ GPS coordinates `[latitude, longitude]` last detected during a time sync. Writte
 
 This setting is optional and managed automatically.
 
+<!-- i18n:skip-start -->
+
 ```toml
 # auto-frontlight-last-coordinates = [48.8566, 2.3522]
 ```
+
+<!-- i18n:skip-end -->
 
 ### `auto-suspend`
 
@@ -132,9 +164,13 @@ Number of minutes of inactivity after which the device will automatically go to 
 
 - Zero means never.
 
+<!-- i18n:skip-start -->
+
 ```toml
 auto-suspend = 30.0
 ```
+
+<!-- i18n:skip-end -->
 
 ### `auto-power-off`
 
@@ -144,9 +180,13 @@ Delay in days after which a suspended device will power off.
 
 - Zero means never.
 
+<!-- i18n:skip-start -->
+
 ```toml
 auto-power-off = 3.0
 ```
+
+<!-- i18n:skip-end -->
 
 ### `button-scheme`
 
@@ -156,9 +196,13 @@ Defines how the back and forward buttons are mapped to page forward and page bac
 
 - Possible values: `"natural"`, `"inverted"`.
 
+<!-- i18n:skip-start -->
+
 ```toml
 button-scheme = "natural"
 ```
+
+<!-- i18n:skip-end -->
 
 ### `locale`
 
@@ -168,9 +212,13 @@ The preferred language for the user interface, using BCP 47 format (e.g., `"en-U
 
 This setting is optional. When not set, `en-GB` is used.
 
+<!-- i18n:skip-start -->
+
 ```toml
 locale = "en-GB"
 ```
+
+<!-- i18n:skip-end -->
 
 ### `startup-mode`
 
@@ -182,9 +230,13 @@ What to show when Cadmus starts.
 - `"last-file"` — re-open the last book you were reading. If there is no
   unfinished book in the selected library, the home screen is shown instead.
 
+<!-- i18n:skip-start -->
+
 ```toml
 startup-mode = "home"
 ```
+
+<!-- i18n:skip-end -->
 
 ## Reader
 
@@ -202,10 +254,14 @@ Possible values:
 - `"close"` (close the book and go back)
 - `"go-to-next"` (open the next book in the library).
 
+<!-- i18n:skip-start -->
+
 ```toml
 [reader]
 finished = "close"
 ```
+
+<!-- i18n:skip-end -->
 
 ### `reader.dithered-kinds`
 
@@ -213,10 +269,14 @@ finished = "close"
 
 File extensions rendered with dithering by default.
 
+<!-- i18n:skip-start -->
+
 ```toml
 [reader]
 dithered-kinds = ["cbz", "png", "jpg", "jpeg", "webp"]
 ```
+
+<!-- i18n:skip-end -->
 
 ## Libraries
 
@@ -224,12 +284,16 @@ dithered-kinds = ["cbz", "png", "jpg", "jpeg", "webp"]
 
 Document library configuration. Each library has a name, path, and mode.
 
+<!-- i18n:skip-start -->
+
 ```toml
 [[libraries]]
 name = "On Board"
 path = "/mnt/onboard"
 mode = "database"
 ```
+
+<!-- i18n:skip-end -->
 
 ### `libraries.name`
 
@@ -265,6 +329,8 @@ Possible values:
 - `"go-to-next"`.
 - Leave unset to inherit the global `reader.finished` setting.
 
+<!-- i18n:skip-start -->
+
 ```toml
 [[libraries]]
 name = "KePub"
@@ -272,11 +338,15 @@ path = "/mnt/onboard/.kobo/kepub"
 finished = "go-to-next"
 ```
 
+<!-- i18n:skip-end -->
+
 ## Intermissions
 
 ✏️
 
 Defines the images displayed when entering an intermission state.
+
+<!-- i18n:skip-start -->
 
 ```toml
 [intermissions]
@@ -284,6 +354,8 @@ suspend = "logo:"
 power-off = "logo:"
 share = "logo:"
 ```
+
+<!-- i18n:skip-end -->
 
 ### `intermissions.suspend`
 
@@ -328,19 +400,27 @@ To trigger a full re-scan of all files regardless of cached values, use the **Fo
 
 Re-extract metadata (title, author, etc.) whenever a document changes.
 
+<!-- i18n:skip-start -->
+
 ```toml
 [import]
 sync-metadata = true
 ```
 
+<!-- i18n:skip-end -->
+
 ### `import.metadata-kinds`
 
 File extensions of documents whose metadata is extracted during import.
+
+<!-- i18n:skip-start -->
 
 ```toml
 [import]
 metadata-kinds = ["epub", "pdf", "djvu"]
 ```
+
+<!-- i18n:skip-end -->
 
 ### `import.allowed-kinds`
 
@@ -348,10 +428,14 @@ metadata-kinds = ["epub", "pdf", "djvu"]
 
 File extensions of documents considered during the import process.
 
+<!-- i18n:skip-start -->
+
 ```toml
 [import]
 allowed-kinds = ["djvu", "xps", "fb2", "txt", "pdf", "oxps", "cbz", "epub"]
 ```
+
+<!-- i18n:skip-end -->
 
 ## OTA
 
@@ -382,6 +466,8 @@ These settings are available in the **Settings → Telemetry** menu.
 
 ### `logging`
 
+<!-- i18n:skip-start -->
+
 ```toml
 [logging]
 enabled = true
@@ -391,16 +477,22 @@ directory = "logs"
 # otlp-endpoint = "https://otel.example.com:4318"
 ```
 
+<!-- i18n:skip-end -->
+
 ### `logging.enabled`
 
 ✏️
 
 Enable or disable structured JSON logging.
 
+<!-- i18n:skip-start -->
+
 ```toml
 [logging]
 enabled = true
 ```
+
+<!-- i18n:skip-end -->
 
 ### `logging.level`
 
@@ -410,10 +502,14 @@ Minimum log level to record.
 
 - Possible values: `"trace"`, `"debug"`, `"info"`, `"warn"`, `"error"`.
 
+<!-- i18n:skip-start -->
+
 ```toml
 [logging]
 level = "info"
 ```
+
+<!-- i18n:skip-end -->
 
 ### `logging.max-files`
 
@@ -423,10 +519,14 @@ are deleted automatically when Cadmus starts.
 - Default: `3`
 - Set to `0` to keep all log files.
 
+<!-- i18n:skip-start -->
+
 ```toml
 [logging]
 max-files = 3
 ```
+
+<!-- i18n:skip-end -->
 
 ### `logging.otlp-endpoint`
 
@@ -434,10 +534,14 @@ max-files = 3
 
 Optional OTLP endpoint for exporting logs to an OpenTelemetry collector.
 
+<!-- i18n:skip-start -->
+
 ```toml
 [logging]
 otlp-endpoint = "https://otel.example.com:4318"
 ```
+
+<!-- i18n:skip-end -->
 
 Environment override:
 
@@ -451,10 +555,14 @@ Optional Pyroscope server URL for continuous profiling. When set, Cadmus starts
 both a heap profiling agent (via jemalloc) and a CPU profiling agent (via
 pprof) that push profiles to this endpoint.
 
+<!-- i18n:skip-start -->
+
 ```toml
 [logging]
 pyroscope-endpoint = "http://localhost:4040"
 ```
+
+<!-- i18n:skip-end -->
 
 Environment override:
 
@@ -467,10 +575,14 @@ Environment override:
 Captures kernel logs via `logread -F` and forwards them to structured logging
 with the target `cadmus_core::logging:kern`.
 
+<!-- i18n:skip-start -->
+
 ```toml
 [logging]
 enable-kern-log = false
 ```
+
+<!-- i18n:skip-end -->
 
 ### `logging.enable-dbus-log`
 
@@ -479,10 +591,14 @@ enable-kern-log = false
 Captures D-Bus signals via the built-in zbus-based DbusMonitorTask and forwards
 them to structured logging.
 
+<!-- i18n:skip-start -->
+
 ```toml
 [logging]
 enable-dbus-log = false
 ```
+
+<!-- i18n:skip-end -->
 
 ## Settings Retention
 
@@ -496,9 +612,13 @@ Number of recent version settings files to keep. Only the most recent N version 
 - Default: `3`
 - Set to `0` to keep all version files
 
+<!-- i18n:skip-start -->
+
 ```toml
 settings-retention = 3
 ```
+
+<!-- i18n:skip-end -->
 
 ### `db-backup-retention`
 
@@ -510,6 +630,10 @@ would exceed this limit, the oldest backups are deleted automatically.
 
 See [Database Backup](../database-backup.md) for more details.
 
+<!-- i18n:skip-start -->
+
 ```toml
 db-backup-retention = 2
 ```
+
+<!-- i18n:skip-end -->

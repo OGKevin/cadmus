@@ -1,3 +1,5 @@
+<!-- i18n:skip-start -->
+
 # Tracing
 
 Cadmus uses `tracing` instrumentation to capture execution flow through the
@@ -108,3 +110,5 @@ cargo build --features tracing
 
 - [Logging](logging.md)
 - [Profiling](profiling.md)
+
+<!-- i18n:skip-end -->

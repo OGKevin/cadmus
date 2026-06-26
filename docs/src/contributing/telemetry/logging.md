@@ -1,3 +1,5 @@
+<!-- i18n:skip-start -->
+
 # Logging
 
 Cadmus writes structured JSON logs to disk and can export logs to an OTLP
@@ -79,3 +81,5 @@ on top when an endpoint is configured.
 
 - [Tracing](tracing.md)
 - [Profiling](profiling.md)
+
+<!-- i18n:skip-end -->

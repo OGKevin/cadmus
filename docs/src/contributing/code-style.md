@@ -1,3 +1,5 @@
+<!-- i18n:skip-start -->
+
 # Code Style and Linting
 
 Cadmus enforces a consistent code style across all languages using
@@ -131,3 +133,5 @@ The following CI workflows enforce style:
 CI uses `filter_mode: added` for shell checks, meaning only lines changed in
 the PR are flagged. Running `treefmt` locally before pushing will catch
 everything.
+
+<!-- i18n:skip-end -->

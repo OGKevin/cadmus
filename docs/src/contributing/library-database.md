@@ -1,3 +1,5 @@
+<!-- i18n:skip-start -->
+
 # Library Database
 
 Cadmus stores library roots, scanned files, book metadata, reading progress,
@@ -124,3 +126,5 @@ rules, see the related pages below.
   rules
 - [Runtime Migrations](runtime-migrations.md) — one-time data migrations using
   the `migration!` macro
+
+<!-- i18n:skip-end -->

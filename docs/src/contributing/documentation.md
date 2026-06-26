@@ -1,3 +1,5 @@
+<!-- i18n:skip-start -->
+
 # Documentation Deployment
 
 Cadmus documentation is deployed to Cloudflare Pages.
@@ -46,3 +48,5 @@ Documentation is built from three sources:
 The build is orchestrated by `cargo xtask docs` (see `xtask/src/tasks/docs.rs`). The GitHub
 Actions workflow (`.github/workflows/cadmus-docs.yml`) runs this command automatically on every
 push to `main` and for every pull request.
+
+<!-- i18n:skip-end -->

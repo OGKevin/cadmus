@@ -1,3 +1,5 @@
+<!-- i18n:skip-start -->
+
 # Translating Source Strings
 
 The Cadmus UI uses [Fluent] for all user-visible strings. Translations are
@@ -102,3 +104,5 @@ For the full syntax reference see the [Fluent syntax guide].
 
 [Fluent]: https://projectfluent.org
 [Fluent syntax guide]: https://projectfluent.org/fluent/guide/
+
+<!-- i18n:skip-end -->

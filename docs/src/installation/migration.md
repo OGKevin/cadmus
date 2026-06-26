@@ -5,10 +5,14 @@ migrating is mostly a matter of copying your settings file across.
 
 ## Copy your settings
 
+<!-- i18n:skip-start -->
+
 | Build  | Plato settings                           | Cadmus settings                               |
 | ------ | ---------------------------------------- | --------------------------------------------- |
 | Stable | `/mnt/onboard/.adds/plato/Settings.toml` | `/mnt/onboard/.adds/cadmus/Settings.toml`     |
 | Test   | `/mnt/onboard/.adds/plato/Settings.toml` | `/mnt/onboard/.adds/cadmus-tst/Settings.toml` |
+
+<!-- i18n:skip-end -->
 
 Copy the file as-is into the Cadmus folder so it is named `Settings.toml` (for example, `/mnt/onboard/.adds/cadmus/Settings.toml` or `/mnt/onboard/.adds/cadmus-tst/Settings.toml`).
 The `[[libraries]]` section is the most important part, it tells Cadmus where your books live and drives the reading-progress import on
@@ -24,12 +28,16 @@ first launch. On first launch, Cadmus will move this file into its `Settings/` f
 > migration will not run. You will need to copy your data manually — see
 > [Moving data to an SD card](#moving-data-to-an-sd-card) below.
 
+<!-- i18n:skip-start -->
+
 ```toml
 [[libraries]]
 name = "On Board"
 path = "/mnt/onboard"
 mode = "database"
 ```
+
+<!-- i18n:skip-end -->
 
 > [!IMPORTANT]
 > Make sure each `[[libraries]]` entry has the correct `path` and `name`.
@@ -68,10 +76,14 @@ settings), you can start it fresh:
 
 1. Delete the Cadmus SQLite database:
 
+   <!-- i18n:skip-start -->
+
    | Build  | Database path (with SD card)        | Database path (without SD card)               |
    | ------ | ----------------------------------- | --------------------------------------------- |
    | Stable | `/mnt/sd/.cadmus/cadmus.sqlite`     | `/mnt/onboard/.adds/cadmus/cadmus.sqlite`     |
    | Test   | `/mnt/sd/.cadmus-tst/cadmus.sqlite` | `/mnt/onboard/.adds/cadmus-tst/cadmus.sqlite` |
+
+   <!-- i18n:skip-end -->
 
 2. Restart Cadmus — the import will run again from scratch.
 

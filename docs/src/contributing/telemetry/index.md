@@ -1,3 +1,5 @@
+<!-- i18n:skip-start -->
+
 # Telemetry
 
 Cadmus has three related observability paths:
@@ -43,3 +45,5 @@ development this matches the default observability stack exposed by
 
 The development environment includes a full observability stack. Use the
 `cadmus-dev-otel` command to run the emulator with telemetry enabled.
+
+<!-- i18n:skip-end -->

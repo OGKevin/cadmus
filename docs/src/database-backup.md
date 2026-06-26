@@ -23,6 +23,8 @@ Backups live in a `backups/` folder inside the directory that contains
 `cadmus.sqlite`. A small index file called `.cadmus-db-index.toml` in that same
 folder tracks every backup.
 
+<!-- i18n:skip-start -->
+
 ```tree
 <data dir>/
 ├── cadmus.sqlite
@@ -31,6 +33,8 @@ folder tracks every backup.
     ├── cadmus-v1.2.0.sqlite
     └── cadmus-v1.3.0.sqlite
 ```
+
+<!-- i18n:skip-end -->
 
 Each backup file is named after the Cadmus version that created it, for example
 `cadmus-v1.2.3.sqlite`.
@@ -72,6 +76,10 @@ exceed this limit, the oldest backups are deleted automatically.
 - Default: `2`
 - Set to `0` to disable backups entirely.
 
+<!-- i18n:skip-start -->
+
 ```toml
 db-backup-retention = 2
 ```
+
+<!-- i18n:skip-end -->

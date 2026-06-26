@@ -24,9 +24,13 @@ Open **Main Menu → Settings → General** and turn on **Auto Frontlight**.
 
 You can also enable it directly in your settings file:
 
+<!-- i18n:skip-start -->
+
 ```toml
 auto-frontlight = true
 ```
+
+<!-- i18n:skip-end -->
 
 See [`auto-frontlight`](settings/index.md#auto-frontlight) and related entries
 in the Settings reference for all available options.
@@ -52,9 +56,13 @@ time sync), automatic adjustment is skipped until a location is known.
 If you prefer not to rely on IP-based location, or if the detected location is
 inaccurate, you can set your own coordinates:
 
+<!-- i18n:skip-start -->
+
 ```toml
 auto-frontlight-manual-coordinates = [51.5074, -0.1278]
 ```
+
+<!-- i18n:skip-end -->
 
 Manual coordinates take priority over auto-detected ones.
 
@@ -66,9 +74,13 @@ Frontlight Manual Coordinates**.
 The brightness level used after sunset defaults to `1.0` (1%). You can raise
 this if you find the screen too dim for nighttime reading:
 
+<!-- i18n:skip-start -->
+
 ```toml
 auto-frontlight-night-brightness = 10.0
 ```
+
+<!-- i18n:skip-end -->
 
 The value is a percentage from `0.0` to `100.0`.
 

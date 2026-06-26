@@ -10,9 +10,13 @@ If you're reporting an issue, sharing your logs makes it much easier to debug.
 
 Cadmus saves logs in a `logs` folder. Here's where to find it on each platform:
 
+<!-- i18n:skip-start -->
+
 | Platform | Stable build                     | Test build                           |
 | -------- | -------------------------------- | ------------------------------------ |
 | Kobo     | `/mnt/onboard/.adds/cadmus/logs` | `/mnt/onboard/.adds/cadmus-tst/logs` |
+
+<!-- i18n:skip-end -->
 
 Each time you start Cadmus, it creates a new log file with a unique ID. By
 default, only the 3 most recent log files are kept — older ones are deleted
@@ -21,9 +25,13 @@ automatically. You can change this with the
 
 The log files look like this:
 
+<!-- i18n:skip-start -->
+
 ```txt
 cadmus-019cf7e3-ef3a-7752-846f-83b92ac90634.json
 ```
+
+<!-- i18n:skip-end -->
 
 ### Finding your run ID
 
@@ -36,9 +44,13 @@ You can find this in:
 
    For example:
 
+<!-- i18n:skip-start -->
+
    ```txt
    Cadmus run started with ID: 019cf7e3-ef3a-7752-846f-83b92ac90634 (version 0.10.0)
    ```
+
+<!-- i18n:skip-end -->
 
    Copy only the UUID part — the string of letters and numbers between `ID:` and
    the `(version` text.

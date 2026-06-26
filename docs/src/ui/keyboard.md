@@ -31,6 +31,8 @@ Example: `CMB e '` produces **é**.
 Press _CMB_ followed by the two keys listed below to produce the corresponding
 character.
 
+<!-- i18n:skip-start -->
+
 | Keys   | Result | Keys   | Result | Keys    | Result | Keys    | Result |
 | ------ | ------ | ------ | ------ | ------- | ------ | ------- | ------ |
 | `a '`  | á      | `A '`  | Á      | `a `` ` | à      | `A `` ` | À      |
@@ -69,6 +71,8 @@ character.
 | `3 4`  | ¾      | `1 5`  | ⅕      | `2 5`   | ⅖      | `3 5`   | ⅗      |
 | `4 5`  | ⅘      | `1 6`  | ⅙      | `5 6`   | ⅚      | `1 8`   | ⅛      |
 | `3 8`  | ⅜      | `5 8`  | ⅝      | `7 8`   | ⅞      |         |        |
+
+<!-- i18n:skip-end -->
 
 ## Custom Keyboard Layouts
 

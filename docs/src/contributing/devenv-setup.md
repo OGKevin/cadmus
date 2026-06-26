@@ -1,3 +1,5 @@
+<!-- i18n:skip-start -->
+
 # Development Environment Setup
 
 Cadmus uses [devenv](https://devenv.sh/) with Nix to provide a reproducible development environment.
@@ -249,3 +251,5 @@ Create `devenv.local.nix` to override settings without modifying the tracked con
 ```
 
 This file is gitignored and won't affect other contributors.
+
+<!-- i18n:skip-end -->

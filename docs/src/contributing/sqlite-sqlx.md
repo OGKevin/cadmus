@@ -1,3 +1,5 @@
+<!-- i18n:skip-start -->
+
 # SQLite & SQLx
 
 Cadmus uses [SQLite](https://sqlite.org) as its embedded database and
@@ -135,3 +137,5 @@ The primary database types live in the `cadmus_core::db` module:
 See [Library Database](library-database.md) for how the library subsystem uses
 the database, and [Runtime Migrations](runtime-migrations.md) for how to write
 one-time data migrations.
+
+<!-- i18n:skip-end -->

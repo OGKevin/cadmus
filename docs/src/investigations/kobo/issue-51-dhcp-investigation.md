@@ -1,3 +1,5 @@
+<!-- i18n:skip-start -->
+
 # DHCP IP Address Changes on WiFi Toggle
 
 After identifying that killing the original `dhcpcd` and replacing it with
@@ -196,3 +198,5 @@ The fix is twofold:
 
 The result: one long-lived `dhcpcd` daemon manages the lease for the entire session, renews it in the
 background, and requests the same IP on every reconnect using the persisted `/var/db/*.lease` file.
+
+<!-- i18n:skip-end -->

@@ -1,3 +1,5 @@
+<!-- i18n:skip-start -->
+
 # Runtime Migrations
 
 Cadmus has two distinct migration pipelines:
@@ -170,3 +172,5 @@ The next startup will treat the migration as pending and run it again.
   executes all pending registered migrations
 - <a href="/api/cadmus_core/db/struct.Database">`cadmus_core::db::Database`</a> —
   owns the connection pool and orchestrates both migration stages
+
+<!-- i18n:skip-end -->

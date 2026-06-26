@@ -1,3 +1,5 @@
+<!-- i18n:skip-start -->
+
 # Translating Cadmus Documentation
 
 This guide explains how to translate the Cadmus documentation into other
@@ -87,7 +89,11 @@ msgmerge --update docs/po/fr.po docs/po/messages.pot
 
 ## Excluding content from extraction
 
-Wrap any block you want to keep in English with `<!-- i18n:skip -->` comments:
+Two forms are available depending on how much content you need to skip.
+
+### Single block
+
+Use `<!-- i18n:skip -->` before a single block (paragraph, code block, table):
 
 <!-- i18n:skip -->
 
@@ -95,6 +101,43 @@ Wrap any block you want to keep in English with `<!-- i18n:skip -->` comments:
 <!-- i18n:skip -->
 
 This paragraph will not appear in the POT file.
+```
+
+### Range
+
+Use `<!-- i18n:skip-start -->` / `<!-- i18n:skip-end -->` to exclude multiple
+consecutive blocks, or an entire file section:
+
+<!-- i18n:skip -->
+
+```markdown
+<!-- i18n:skip-start -->
+
+This paragraph is excluded.
+
+And so is this one.
+
+<!-- i18n:skip-end -->
+```
+
+When the skip directives appear inside an ordered or unordered list, indent
+them to match the list continuation level so markdownlint does not treat them
+as list-breaking elements:
+
+<!-- i18n:skip -->
+
+```markdown
+1. Step one.
+
+   <!-- i18n:skip-start -->
+
+   | Path | Value |
+   | ---- | ----- |
+   | `/mnt/onboard` | stable |
+
+   <!-- i18n:skip-end -->
+
+2. Step two.
 ```
 
 ## How the build works
@@ -107,3 +150,5 @@ This paragraph will not appear in the POT file.
    `lang-picker.js` fetches it at runtime to populate the language dropdown.
 4. Symlinks under `docs-portal/static/guide/<lang>/` expose each locale build
    to Zola so it is served at `/guide/<lang>/`.
+
+<!-- i18n:skip-end -->

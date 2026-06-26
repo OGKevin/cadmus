@@ -1,3 +1,5 @@
+<!-- i18n:skip-start -->
+
 # Event System
 
 Cadmus uses a tree-based event system where views are organized hierarchically and events flow
@@ -351,3 +353,5 @@ impl View for Dialog {
 | Direction        | View → Main loop               | Child → Parent                  |
 | Unhandled events | Processed by main loop `match` | Forwarded to hub                |
 | Use for          | Close, Focus, Notifications    | Submit, child-to-parent signals |
+
+<!-- i18n:skip-end -->

@@ -19,21 +19,31 @@ blocks other launches while Cadmus is already running.
 
 1. Place the Cadmus icon somewhere on your Kobo, for example:
 
+   <!-- i18n:skip-start -->
+
    ```text
    /mnt/onboard/icons/cadmus.png
    ```
+
+   <!-- i18n:skip-end -->
 
    If you don't have an icon, create or copy a PNG image to use as the
    launcher icon.
 
 2. Create a new file on your Kobo:
 
+   <!-- i18n:skip-start -->
+
    ```text
    /mnt/onboard/.adds/kfmon/config/cadmus.ini
    ```
 
+   <!-- i18n:skip-end -->
+
 3. Paste this into the file, changing the `filename` value to match your icon
    path:
+
+   <!-- i18n:skip-start -->
 
    ```ini
    [watch]
@@ -54,6 +64,8 @@ blocks other launches while Cadmus is already running.
    do_db_update = 0
    ```
 
+   <!-- i18n:skip-end -->
+
 4. Reboot your Kobo.
 
 > [!IMPORTANT]
@@ -73,12 +85,20 @@ Using both can create duplicate icons and make conflicts harder to diagnose.
 If you need to stop KFMon from launching anything for a short time — for
 example, while troubleshooting — you can create a blank `BLOCK` file:
 
+<!-- i18n:skip-start -->
+
 ```sh
 touch /mnt/onboard/.adds/kfmon/config/BLOCK
 ```
 
+<!-- i18n:skip-end -->
+
 Remove the file when you want KFMon to work again:
+
+<!-- i18n:skip-start -->
 
 ```sh
 rm /mnt/onboard/.adds/kfmon/config/BLOCK
 ```
+
+<!-- i18n:skip-end -->

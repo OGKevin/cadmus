@@ -1,3 +1,5 @@
+<!-- i18n:skip-start -->
+
 # Profiling
 
 Cadmus supports continuous profiling with Pyroscope when the `profiling`
@@ -64,3 +66,5 @@ the local Pyroscope service available at <http://localhost:4040>.
 With the full devenv stack running, traces go to Tempo, logs go to Loki, and
 profiles go to Pyroscope. That makes it possible to correlate a single run
 across all three observability backends.
+
+<!-- i18n:skip-end -->

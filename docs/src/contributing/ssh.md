@@ -1,3 +1,5 @@
+<!-- i18n:skip-start -->
+
 # SSH-ing into your Kobo
 
 To enable SSH, mount your kobo normally, and follow the instructions in the file
@@ -22,3 +24,5 @@ allowing convenient passwordless login using your key.
 
 As of May 2026, the SSH implementation is
 OpenSSH (Currently OpenSSH_8.9p1, OpenSSL 3.0.8 7 Feb 2023).
+
+<!-- i18n:skip-end -->

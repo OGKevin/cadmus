@@ -1,3 +1,5 @@
+<!-- i18n:skip-start -->
+
 # Translations
 
 Cadmus has two separate translation systems, each covering a different part of
@@ -9,3 +11,5 @@ the project.
 | [UI strings](source-code.md) | Fluent (FTL)     | `crates/core/i18n/**/*.ftl` |
 
 Pick the guide that matches what you want to translate.
+
+<!-- i18n:skip-end -->

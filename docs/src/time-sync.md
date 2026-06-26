@@ -19,9 +19,13 @@ Open **Main Menu → Settings → General** and turn on **Auto Time**.
 
 You can also enable it manually in your settings file:
 
+<!-- i18n:skip-start -->
+
 ```toml
 auto-time = true
 ```
+
+<!-- i18n:skip-end -->
 
 ## Manual sync
 
