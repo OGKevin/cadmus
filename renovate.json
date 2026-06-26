@@ -34,6 +34,16 @@
     {
       "matchManagers": ["git-submodules"],
       "addLabels": ["thirdparty"]
+    },
+    {
+      "description": "Keep mdbook-i18n-helpers submodule and devenv.nix fetchFromGitHub pin in sync",
+      "matchManagers": ["git-submodules", "custom.regex"],
+      "matchPackageNames": [
+        "thirdparty/mdbook-i18n-helpers",
+        "ogkevin/mdbook-i18n-helpers"
+      ],
+      "groupName": "mdbook-i18n-helpers",
+      "groupSlug": "mdbook-i18n-helpers"
     }
   ],
   "customManagers": [
@@ -81,10 +91,23 @@
     {
       "customType": "regex",
       "managerFilePatterns": ["/^devenv\\.nix$/"],
-      "matchStrings": ["rev = \\\"(?<currentValue>[a-f0-9]{40})\\\""],
+      "matchStrings": [
+        "owner = \"Michael-F-Bryan\";\\s*\\n\\s*repo = \"mdbook-epub\";\\s*\\n\\s*rev = \\\"(?<currentValue>[a-f0-9]{40})\\\""
+      ],
       "datasourceTemplate": "git-refs",
       "depNameTemplate": "Michael-F-Bryan/mdbook-epub",
       "packageNameTemplate": "https://github.com/Michael-F-Bryan/mdbook-epub",
+      "versioningTemplate": "git"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/^devenv\\.nix$/"],
+      "matchStrings": [
+        "owner = \"ogkevin\";\\s*\\n\\s*repo = \"mdbook-i18n-helpers\";\\s*\\n\\s*rev = \\\"(?<currentValue>[a-f0-9]{40})\\\""
+      ],
+      "datasourceTemplate": "git-refs",
+      "depNameTemplate": "ogkevin/mdbook-i18n-helpers",
+      "packageNameTemplate": "https://github.com/ogkevin/mdbook-i18n-helpers",
       "versioningTemplate": "git"
     },
     {

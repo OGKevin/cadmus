@@ -202,9 +202,23 @@ let
     pname = "mdbook-i18n-helpers";
     version = "0.4.0-ogkevin";
 
-    src = ./thirdparty/mdbook-i18n-helpers;
+    # Nix cannot use the git submodule checkout here. Pin the same commit as
+    # thirdparty/mdbook-i18n-helpers via fetchFromGitHub; Renovate keeps rev in
+    # sync with the submodule — update hash (and cargoHash if needed).
+    src = pkgs.fetchFromGitHub {
+      owner = "ogkevin";
+      repo = "mdbook-i18n-helpers";
+      rev = "0ddd35244156456c0a1a785306b8ecf469a067f6";
+      hash = "sha256-AE2JTIO8fgGshma6PDQTUBh12m2qaZdYoO7WiAw9iC8=";
+    };
 
-    cargoLock.lockFile = ./thirdparty/mdbook-i18n-helpers/Cargo.lock;
+    # Use the below code with `devenv --impure` for local development
+    # src = builtins.path {
+    #   path = "${config.devenv.root}/thirdparty/mdbook-i18n-helpers";
+    #   name = "mdbook-i18n-helpers-src";
+    # };
+
+    cargoHash = "sha256-LG5au6TQK2XnLswr/fBLwE6hLfz9/YJQ5MOunvVRHZw=";
     cargoBuildFlags = [
       "-p"
       "mdbook-i18n-helpers"
