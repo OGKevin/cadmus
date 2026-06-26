@@ -1,0 +1,10 @@
+.next/
+out/
+node_modules/
+pnpm-lock.yaml
+storybook-static/
+# Generated at build time
+generated/
+public/api
+public/guide
+public/storybook

@@ -1,5 +1,5 @@
 //! `cargo xtask ci install-doc-tools` — install mdBook, mdbook-epub,
-//! mdbook-mermaid, mdbook-i18n-helpers, and optionally Zola into `~/.cache/` with pinned revisions.
+//! mdbook-mermaid, and mdbook-i18n-helpers into `~/.cache/` with pinned revisions.
 //!
 //! This task is the Rust replacement for the bash install script that previously
 //! lived in `.github/actions/install-doc-tools/action.yml`.  It is designed to
@@ -14,12 +14,11 @@
 //! | mdbook-epub | `~/.cache/mdbook-epub/` | `~/.cache/mdbook-epub/.rev` |
 //! | mdbook-mermaid | `~/.cache/mdbook-mermaid/` | `~/.cache/mdbook-mermaid/.version` |
 //! | mdbook-i18n-helpers | `~/.cache/mdbook-i18n-helpers/` | `~/.cache/mdbook-i18n-helpers/.rev` |
-//! | Zola | `~/.cache/zola/` | binary presence |
 //!
 //! ## PATH update
 //!
 //! After installation, `~/.local/bin` is appended to the file pointed to by
-//! `$GITHUB_PATH`.  This makes all four tools available to subsequent GitHub
+//! `$GITHUB_PATH`.  This makes all tools available to subsequent GitHub
 //! Actions steps without any additional shell configuration.
 
 use std::path::{Path, PathBuf};
@@ -47,12 +46,6 @@ pub struct InstallDocToolsArgs {
     /// Full git SHA of the `thirdparty/mdbook-i18n-helpers` commit to build.
     #[arg(long)]
     pub mdbook_i18n_helpers_rev: String,
-
-    /// Zola release version to install (e.g. `"0.22.1"`).
-    ///
-    /// When omitted, Zola installation is skipped.
-    #[arg(long)]
-    pub zola_version: Option<String>,
 }
 
 /// Installs doc tools and appends `~/.local/bin` to `$GITHUB_PATH`.
@@ -71,11 +64,6 @@ pub fn run(args: InstallDocToolsArgs) -> Result<()> {
     install_mdbook_epub(&cache, &local_bin, &args.mdbook_epub_rev)?;
     install_mdbook_mermaid(&cache, &local_bin, &args.mdbook_mermaid_version)?;
     install_mdbook_i18n_helpers(&cache, &local_bin, &args.mdbook_i18n_helpers_rev)?;
-
-    if let Some(ref version) = args.zola_version {
-        install_zola(&cache, &local_bin, version)?;
-    }
-
     append_to_github_path(&local_bin)?;
 
     println!("\nDoc tools installed successfully.");
@@ -244,32 +232,6 @@ fn install_mdbook_i18n_helpers(cache: &Path, local_bin: &Path, rev: &str) -> Res
     }
 
     Ok(())
-}
-
-/// Downloads and extracts the Zola binary if not already cached.
-///
-/// The binary is placed at `~/.cache/zola/zola` and symlinked into
-/// `~/.local/bin/`.
-fn install_zola(cache: &Path, local_bin: &Path, version: &str) -> Result<()> {
-    let zola_dir = cache.join("zola");
-    let zola_bin = zola_dir.join("zola");
-
-    if zola_bin.exists() {
-        println!("Zola {version} already cached, skipping download.");
-    } else {
-        println!("Installing Zola {version}…");
-        std::fs::create_dir_all(&zola_dir).context("failed to create ~/.cache/zola")?;
-
-        let url = format!(
-            "https://github.com/getzola/zola/releases/download/v{version}/zola-v{version}-x86_64-unknown-linux-gnu.tar.gz"
-        );
-
-        let tarball = std::env::temp_dir().join("zola.tar.gz");
-        http::download(&url, &tarball)?;
-        fs::extract_tarball(&tarball, &zola_dir)?;
-    }
-
-    symlink_bin(&zola_bin, &local_bin.join("zola"))
 }
 
 /// Appends `path` to the file referenced by `$GITHUB_PATH`.

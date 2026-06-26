@@ -36,10 +36,7 @@ pub fn run(args: RunEmulatorArgs) -> Result<()> {
 
     if !mdbook_epub_built(&root) {
         println!("Documentation EPUB not found — building mdBook…");
-        docs::run(DocsArgs {
-            base_url: "http://localhost".to_string(),
-            mdbook_only: true,
-        })?;
+        docs::run(DocsArgs { mdbook_only: true })?;
     }
 
     let mut cargo_args = vec!["run", "-p", "emulator"];

@@ -276,7 +276,6 @@ in
 
     pkgs.mdbook
     mdbook-epub-custom
-    pkgs.zola
     pkgs.mdbook-mermaid
     mdbook-i18n-helpers-custom
     pkgs.gettext
@@ -718,6 +717,16 @@ in
       after = [ "docs:build" ];
     };
 
+    # Install website npm dependencies (only when package files change)
+    "website:install" = {
+      exec = "cd ${config.devenv.root}/website && npm install";
+      execIfModified = [
+        "website/package.json"
+        "website/package-lock.json"
+      ];
+      before = [ "devenv:enterShell" ];
+    };
+
   };
 
   # Scripts are simple aliases that invoke xtask commands
@@ -727,12 +736,13 @@ in
       cargo xtask docs
     '';
 
-    # Serve documentation locally
+    # Serve website locally (run cargo xtask docs --mdbook-only first to build mdBook)
     cadmus-docs-serve.exec = ''
-      echo "Starting documentation server..."
+      echo "Starting website dev server..."
+      echo "Note: run 'cargo xtask docs --mdbook-only' first to build mdBook output."
       echo ""
-      cd docs-portal
-      zola serve --base-url http://localhost
+      cd website
+      npm run dev
     '';
 
     # Build for Kobo device
@@ -793,7 +803,7 @@ in
     echo ""
     echo "Available commands:"
     echo "  cadmus-docs-build     - Build complete documentation portal"
-    echo "  cadmus-docs-serve     - Serve documentation locally (http://localhost:1111)"
+    echo "  cadmus-docs-serve     - Serve website locally (http://localhost:3000)"
     echo "  cargo test            - Run tests (after setup)"
     echo "  cargo xtask run-emulator - Run the emulator (after setup)"
     echo "  cadmus-translate      - Extract translatable strings from documentation"
@@ -933,6 +943,22 @@ in
       entry = "${pkgs.markdownlint-cli}/bin/markdownlint";
       files = "^((docs/.+)|(\\.agents/skills/.+)|((.*/)?AGENTS)|((.*/)?REVIEW)|(thirdparty/.+-(kobo|cadmus)))\\.md$";
       language = "system";
+    };
+    eslint = {
+      enable = true;
+      name = "eslint";
+      entry = "sh -c 'cd website && ./node_modules/.bin/eslint .'";
+      files = "^website/.*\\.(ts|tsx|mjs)$";
+      language = "system";
+      pass_filenames = false;
+    };
+    stylelint = {
+      enable = true;
+      name = "stylelint";
+      entry = "sh -c 'cd website && ./node_modules/.bin/stylelint \"**/*.css\"'";
+      files = "^website/.*\\.css$";
+      language = "system";
+      pass_filenames = false;
     };
   };
 }

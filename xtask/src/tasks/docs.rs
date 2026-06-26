@@ -6,12 +6,13 @@
 //! 4. Generates Rust API documentation (`target/doc/`).
 //! 5. Optionally injects the git version string into the generated HTML.
 //! 6. Writes `locales.json` with available locales.
-//! 7. Creates symlinks so Zola can find the mdBook and cargo-doc outputs.
-//! 8. Builds the Zola documentation portal (`docs-portal/public/`).
+//! 7. Creates symlinks in `website/public/` so Next.js includes mdBook and
+//!    cargo-doc outputs in the static export.
+//! 8. Builds the Next.js website (`website/out/`).
 //!
 //! ## Output
 //!
-//! The final portal is written to `docs-portal/public/` and is ready to be
+//! The final portal is written to `website/out/` and is ready to be
 //! deployed to Cloudflare Pages or GitHub Pages.
 
 use std::path::Path;
@@ -33,13 +34,7 @@ struct LocaleEntry {
 /// Arguments for `cargo xtask docs`.
 #[derive(Debug, Args)]
 pub struct DocsArgs {
-    /// Base URL for the Zola build (e.g. `https://cadmus-dt6.pages.dev/`).
-    ///
-    /// Defaults to `http://localhost` for local development.
-    #[arg(long, default_value = "http://localhost")]
-    pub base_url: String,
-
-    /// Skip the Zola portal build (useful when only the mdBook output is
+    /// Skip the website build (useful when only the mdBook output is
     /// needed, e.g. for embedding the EPUB in the binary).
     #[arg(long)]
     pub mdbook_only: bool,
@@ -61,7 +56,7 @@ struct CargoPackage {
 ///
 /// # Errors
 ///
-/// Returns an error if any build tool (`mdbook`, `cargo doc`, `zola`) is not
+/// Returns an error if any build tool (`mdbook`, `cargo doc`, `npm`) is not
 /// on `PATH` or exits with a non-zero status.
 pub fn run(args: DocsArgs) -> Result<()> {
     let root = workspace::root()?;
@@ -77,11 +72,11 @@ pub fn run(args: DocsArgs) -> Result<()> {
     build_cargo_doc(&root)?;
     inject_git_version(&root)?;
     write_locales_json(&root)?;
-    create_portal_symlinks(&root)?;
-    build_zola(&root, &args.base_url)?;
+    create_website_symlinks(&root)?;
+    build_website(&root)?;
 
     println!("\nDocumentation built successfully!");
-    println!("Output: docs-portal/public/");
+    println!("Output: website/out/");
 
     Ok(())
 }
@@ -187,15 +182,15 @@ fn replace_version_in_html(
     Ok(())
 }
 
-/// Builds the Zola documentation portal.
-fn build_zola(root: &Path, base_url: &str) -> Result<()> {
-    println!("Building Zola documentation portal…");
-    cmd::run(
-        "zola",
-        &["build", "--base-url", base_url],
-        &root.join("docs-portal"),
-        &[],
-    )
+/// Builds the Next.js website.
+///
+/// Runs `npm run build` inside `website/`, which chains `build-storybook`
+/// followed by `next build`.  The static export lands in `website/out/` and
+/// includes the mdBook and cargo-doc outputs via the symlinks created by
+/// `create_website_symlinks`.
+fn build_website(root: &Path) -> Result<()> {
+    println!("Building Next.js website…");
+    cmd::run("npm", &["run", "build"], &root.join("website"), &[])
 }
 
 /// Runs `cargo metadata` and returns the parsed result.
@@ -330,13 +325,16 @@ fn extract_lang_name(po_path: &Path) -> Option<String> {
     None
 }
 
-/// Creates symlinks in `docs-portal/static/` so Zola can serve the mdBook
-/// and cargo-doc outputs as static assets.
-fn create_portal_symlinks(root: &Path) -> Result<()> {
+/// Creates symlinks in `website/public/` so Next.js includes the mdBook and
+/// cargo-doc outputs in the static export.
+///
+/// These paths are gitignored in `website/.gitignore` — they are generated at
+/// build time and must not be committed.
+fn create_website_symlinks(root: &Path) -> Result<()> {
     let metadata = cargo_metadata(root)?;
 
-    let api_link = root.join("docs-portal/static/api");
-    let guide_link = root.join("docs-portal/static/guide");
+    let api_link = root.join("website/public/api");
+    let guide_link = root.join("website/public/guide");
 
     symlink_force(
         Path::new(&format!("{}/doc", metadata.target_directory)),
@@ -344,7 +342,6 @@ fn create_portal_symlinks(root: &Path) -> Result<()> {
     )?;
     symlink_force(&root.join("docs/book/html"), &guide_link)?;
 
-    // Create locale symlinks
     let po_dir = root.join("docs/po");
     if po_dir.exists() {
         for entry in WalkDir::new(&po_dir)
@@ -361,7 +358,7 @@ fn create_portal_symlinks(root: &Path) -> Result<()> {
                     .context("Invalid locale filename")?;
 
                 let target = root.join("docs/book").join(lang).join("html");
-                let link = root.join("docs-portal/static/guide").join(lang);
+                let link = root.join("website/public/guide").join(lang);
                 symlink_force(&target, &link)?;
             }
         }

@@ -51,3 +51,4 @@ crates/core/.sqlx-dev.db
 cadmus.sqlite
 
 .idea
+.wrangler

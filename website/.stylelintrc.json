@@ -1,0 +1,6 @@
+{
+  "extends": [
+    "stylelint-config-standard",
+    "@dreamsicle.io/stylelint-config-tailwindcss"
+  ]
+}
