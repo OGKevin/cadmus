@@ -3,11 +3,13 @@ import { Browsers } from "@phosphor-icons/react/dist/ssr/Browsers";
 import { Code } from "@phosphor-icons/react/dist/ssr/Code";
 import { DocCard, type DocCardProps } from "../doc-card/index";
 
+const BASE = process.env.NEXT_PUBLIC_BASE_PATH || "";
+
 const DOCS: DocCardProps[] = [
   {
     label: "User Guide",
     description: "Installation, configuration, and usage",
-    href: "/guide/",
+    href: `${BASE}/guide/`,
     icon: BookOpen,
   },
   {
@@ -19,13 +21,13 @@ const DOCS: DocCardProps[] = [
   {
     label: "API Reference",
     description: "Rust crate documentation",
-    href: "/api/cadmus_core/",
+    href: `${BASE}/api/cadmus_core/`,
     icon: Code,
   },
   {
     label: "Browser Component Library",
     description: "Browse UI components",
-    href: "/storybook/",
+    href: `${BASE}/storybook/`,
     icon: Browsers,
   },
 ];

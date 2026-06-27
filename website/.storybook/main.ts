@@ -18,7 +18,7 @@ const config: StorybookConfig = {
   },
   viteFinal: (viteConfig): InlineConfig => ({
     ...viteConfig,
-    base: "/storybook/",
+    base: `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/storybook/`,
     plugins: [...(viteConfig.plugins ?? []), tailwindcss()],
   }),
 };

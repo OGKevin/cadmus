@@ -8,7 +8,11 @@ export function NotFoundPage() {
         404
       </Text>
       <Text variant="secondary">Page not found.</Text>
-      <LinkButton href="/" variant="secondary" size="base">
+      <LinkButton
+        href={`${process.env.NEXT_PUBLIC_BASE_PATH || ""}/`}
+        variant="secondary"
+        size="base"
+      >
         Back to home
       </LinkButton>
     </main>

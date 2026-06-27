@@ -56,17 +56,15 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   const guideBase = "/guide/";
-  const localePrefix =
-    language === "en" ? guideBase : `${guideBase}${language}/`;
 
   let path = window.location.pathname;
-  if (path.startsWith(localePrefix)) {
-    path = path.slice(localePrefix.length);
-  } else {
-    const guideIndex = path.indexOf(guideBase);
-    if (guideIndex !== -1) {
-      path = path.slice(guideIndex + guideBase.length);
-    }
+  const guideIndex = path.indexOf(guideBase);
+  if (guideIndex !== -1) {
+    path = path.slice(guideIndex + guideBase.length);
+  }
+
+  if (language !== "en" && path.startsWith(`${language}/`)) {
+    path = path.slice(`${language}/`.length);
   }
 
   path = path.replace(/^$/, "index.html");
