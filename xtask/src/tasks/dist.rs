@@ -216,11 +216,11 @@ fn remove_matching(dir: &Path, pattern: &str) -> Result<()> {
 
     for entry in std::fs::read_dir(dir)? {
         let path = entry?.path();
-        if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-            if matcher.matches(name) {
-                std::fs::remove_file(&path)
-                    .with_context(|| format!("failed to remove {}", path.display()))?;
-            }
+        if let Some(name) = path.file_name().and_then(|n| n.to_str())
+            && matcher.matches(name)
+        {
+            std::fs::remove_file(&path)
+                .with_context(|| format!("failed to remove {}", path.display()))?;
         }
     }
     Ok(())

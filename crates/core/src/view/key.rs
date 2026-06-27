@@ -1,13 +1,12 @@
 use super::BORDER_RADIUS_LARGE;
-use super::icon::ICONS_PIXMAPS;
+use super::icon::load_icon_pixmap;
 use super::{
     Bus, Event, Hub, ID_FEEDER, Id, KeyboardEvent, RenderData, RenderQueue, TextKind, View, ViewId,
 };
 use crate::color::{Color, KEYBOARD_BG, TEXT_INVERTED_HARD, TEXT_NORMAL};
-use crate::context::Context;
-use crate::device::CURRENT_DEVICE;
-use crate::font::{Fonts, KBD_CHAR, KBD_LABEL, font_from_style};
-use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::device::{AppContext, DevicePaths};
+use crate::font::{KBD_CHAR, KBD_LABEL, font_from_style};
+use crate::framebuffer::UpdateMode;
 use crate::geom::{CornerSpec, LinearDir, Rectangle};
 use crate::gesture::GestureEvent;
 use crate::input::{DeviceEvent, FingerStatus};
@@ -203,14 +202,15 @@ impl Key {
 }
 
 impl View for Key {
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, bus, rq, _context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, bus, rq, _context), fields(event = ?evt
+    ), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
         hub: &Hub,
         bus: &mut Bus,
         rq: &mut RenderQueue,
-        _context: &mut Context,
+        _context: &mut AppContext,
     ) -> bool {
         match *evt {
             Event::Device(DeviceEvent::Finger {
@@ -273,9 +273,11 @@ impl View for Key {
         }
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fb, fonts, _rect), fields(rect = ?_rect)))]
-    fn render(&self, fb: &mut dyn Framebuffer, _rect: Rectangle, fonts: &mut Fonts) {
-        let dpi = CURRENT_DEVICE.dpi;
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, context, _rect), fields(rect = ?_rect
+    )))]
+    fn render(&self, context: &mut AppContext, _rect: Rectangle) {
+        let install_dir = context.device.install_dir();
+        let (fb, fonts, dpi) = context.framebuffer_and_fonts();
         fb.draw_rectangle(&self.rect, KEYBOARD_BG);
         let scheme: [Color; 3] = if self.active ^ (self.pressure == 2) {
             TEXT_INVERTED_HARD
@@ -307,11 +309,11 @@ impl View for Key {
                 font.render(fb, scheme[1], &plan, pt);
             }
             KeyLabel::Icon(name) => {
-                let pixmap = ICONS_PIXMAPS.get(name).unwrap();
+                let pixmap = load_icon_pixmap(name, dpi, &install_dir).unwrap();
                 let dx = (self.rect.width() as i32 - pixmap.width as i32) / 2;
                 let dy = (self.rect.height() as i32 - pixmap.height as i32) / 2;
                 let pt = self.rect.min + pt!(dx, dy);
-                fb.draw_blended_pixmap(pixmap, pt, scheme[1]);
+                fb.draw_blended_pixmap(&pixmap, pt, scheme[1]);
             }
         }
     }

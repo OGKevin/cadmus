@@ -1,8 +1,8 @@
 use super::{Bus, Event, Hub, ID_FEEDER, Id, RenderQueue, View};
 use crate::color::Color;
-use crate::context::Context;
-use crate::font::Fonts;
-use crate::framebuffer::Framebuffer;
+use crate::device::AppContext;
+use crate::device::DeviceHardware as _;
+use crate::framebuffer::Framebuffer as _;
 use crate::geom::Rectangle;
 
 pub struct Filler {
@@ -31,13 +31,14 @@ impl View for Filler {
         _hub: &Hub,
         _bus: &mut Bus,
         _rq: &mut RenderQueue,
-        _context: &mut Context,
+        _context: &mut AppContext,
     ) -> bool {
         false
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fb, _fonts), fields(rect = ?rect)))]
-    fn render(&self, fb: &mut dyn Framebuffer, rect: Rectangle, _fonts: &mut Fonts) {
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, context), fields(rect = ?rect)))]
+    fn render(&self, context: &mut AppContext, rect: Rectangle) {
+        let fb = context.device.framebuffer_mut();
         if let Some(r) = self.rect.intersection(&rect) {
             fb.draw_rectangle(&r, self.color);
         }

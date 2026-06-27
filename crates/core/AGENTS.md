@@ -9,14 +9,14 @@ OpenTelemetry tracing attributes, gated behind the `tracing` feature.
 
 ```rust
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
-fn handle_event(&mut self, evt: &Event, hub: &Hub, bus: &mut Bus, rq: &mut RenderQueue, context: &mut Context) -> bool {
+fn handle_event(&mut self, evt: &Event, hub: &Hub, bus: &mut Bus, rq: &mut RenderQueue, context: &mut AppContext) -> bool {
 ```
 
 ### `render`
 
 ```rust
-#[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fb, fonts), fields(rect = ?rect)))]
-fn render(&self, fb: &mut dyn Framebuffer, rect: Rectangle, fonts: &mut Fonts) {
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(self, context, _rect), fields(rect = ?_rect)))]
+fn render(&self, context: &mut AppContext, _rect: Rectangle) {
 ```
 
 ### Rules

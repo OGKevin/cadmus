@@ -1,5 +1,6 @@
 use std::sync::mpsc::Sender;
 
+use crate::device::rtc::Rtc;
 use crate::geolocation::fetch_geolocation;
 use crate::http::Client;
 use crate::task::{BackgroundTask, ShutdownSignal, TaskId};
@@ -8,13 +9,13 @@ use crate::view::Event;
 
 const NTP_HOST: &str = "time.cloudflare.com:123";
 
-pub struct TimeSyncTask {
-    time_manager: &'static TimeManager,
+pub struct TimeSyncTask<R: Rtc> {
+    time_manager: TimeManager<R>,
     manual: bool,
 }
 
-impl TimeSyncTask {
-    pub fn new(time_manager: &'static TimeManager, manual: bool) -> Self {
+impl<R: Rtc> TimeSyncTask<R> {
+    pub fn new(time_manager: TimeManager<R>, manual: bool) -> Self {
         TimeSyncTask {
             time_manager,
             manual,
@@ -22,7 +23,7 @@ impl TimeSyncTask {
     }
 }
 
-impl BackgroundTask for TimeSyncTask {
+impl<R: Rtc + Send + 'static> BackgroundTask for TimeSyncTask<R> {
     fn id(&self) -> TaskId {
         TaskId::TimeSync
     }

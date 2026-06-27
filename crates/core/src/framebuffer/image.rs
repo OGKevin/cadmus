@@ -229,7 +229,7 @@ impl Framebuffer for Pixmap {
     }
 
     fn set_rotation(&mut self, _n: i8) -> Result<(u32, u32), Error> {
-        Err(format_err!("unsupported"))
+        Ok((self.width, self.height))
     }
 
     fn set_monochrome(&mut self, _enable: bool) {}
@@ -248,6 +248,10 @@ impl Framebuffer for Pixmap {
 
     fn inverted(&self) -> bool {
         false
+    }
+
+    fn rotation(&self) -> i8 {
+        0
     }
 
     fn width(&self) -> u32 {

@@ -1,8 +1,6 @@
 use crate::color::{SEPARATOR_NORMAL, TEXT_BUMP_SMALL};
-use crate::context::Context;
-use crate::device::CURRENT_DEVICE;
-use crate::font::Fonts;
-use crate::framebuffer::Framebuffer;
+use crate::device::AppContext;
+use crate::device::DeviceIdentity;
 use crate::geom::{CycleDir, Rectangle};
 use crate::gesture::GestureEvent;
 use crate::input::DeviceEvent;
@@ -19,10 +17,15 @@ pub struct InputBar {
 }
 
 impl InputBar {
-    pub fn new(rect: Rectangle, placeholder: &str, text: &str, context: &mut Context) -> InputBar {
+    pub fn new(
+        rect: Rectangle,
+        placeholder: &str,
+        text: &str,
+        context: &mut AppContext,
+    ) -> InputBar {
         let id = ID_FEEDER.next();
         let mut children = Vec::new();
-        let dpi = CURRENT_DEVICE.dpi;
+        let dpi = context.device.dpi();
         let thickness = scale_by_dpi(THICKNESS_MEDIUM, dpi) as i32;
         let side = rect.height() as i32;
 
@@ -83,7 +86,7 @@ impl InputBar {
         text: &str,
         move_cursor: bool,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if let Some(input_field) = self.children[2].downcast_mut::<InputField>() {
             input_field.set_text(text, move_cursor, rq, context);
@@ -99,14 +102,18 @@ impl InputBar {
 }
 
 impl View for InputBar {
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, _bus, _rq, _context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(
+        skip(self, _hub, _bus, _rq, _context),
+        fields(event = ?evt),
+        ret(level=tracing::Level::TRACE)
+    ))]
     fn handle_event(
         &mut self,
         evt: &Event,
         _hub: &Hub,
         _bus: &mut Bus,
         _rq: &mut RenderQueue,
-        _context: &mut Context,
+        _context: &mut AppContext,
     ) -> bool {
         match *evt {
             Event::Gesture(GestureEvent::Tap(center))
@@ -123,11 +130,18 @@ impl View for InputBar {
         }
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _fb, _fonts, _rect), fields(rect = ?_rect)))]
-    fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {}
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _context, _rect), fields(rect = ?_rect
+    )))]
+    fn render(&self, _context: &mut AppContext, _rect: Rectangle) {}
 
-    fn resize(&mut self, rect: Rectangle, hub: &Hub, rq: &mut RenderQueue, context: &mut Context) {
-        let dpi = CURRENT_DEVICE.dpi;
+    fn resize(
+        &mut self,
+        rect: Rectangle,
+        hub: &Hub,
+        rq: &mut RenderQueue,
+        context: &mut AppContext,
+    ) {
+        let dpi = context.device.dpi();
         let thickness = scale_by_dpi(THICKNESS_MEDIUM, dpi) as i32;
         let side = rect.height() as i32;
         self.children[0].resize(rect![rect.min, rect.min + side], hub, rq, context);

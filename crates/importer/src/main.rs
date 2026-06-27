@@ -1,7 +1,6 @@
 use cadmus_core::anyhow::{Context, Error, format_err};
 use cadmus_core::chrono::NaiveDateTime;
 use cadmus_core::db::Database;
-use cadmus_core::device::CURRENT_DEVICE;
 use cadmus_core::helpers::datetime_format;
 // use cadmus_core::library::importer;
 use cadmus_core::library::Library;
@@ -11,7 +10,7 @@ use cadmus_core::settings::ImportSettings;
 // use cadmus_core::view::{Event, ViewId, ID_FEEDER};
 use getopts::Options;
 use std::env;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 // use std::sync::mpsc;
 
 fn main() -> Result<(), Error> {
@@ -70,13 +69,14 @@ fn main() -> Result<(), Error> {
         "The library mode (`database` or `filesystem`).",
         "LIBRARY_MODE",
     );
+    opts.optopt("d", "db", "Path to the Cadmus SQLite database.", "DB_PATH");
 
     let matches = opts
         .parse(&args)
         .context("failed to parse the command line arguments")?;
 
     if matches.opt_present("h") {
-        println!("{}", opts.usage("Usage: cadmus-import -h|-I|-C|-EFSN [-k ALLOWED_KINDS] [-e METADATA_KINDS] [-a ADDED_DATETIME] [-m LIBRARY_MODE] LIBRARY_PATH"));
+        println!("{}", opts.usage("Usage: cadmus-import -h|-I|-C|-EFSN [-k ALLOWED_KINDS] [-e METADATA_KINDS] [-a ADDED_DATETIME] [-m LIBRARY_MODE] [-d DB_PATH] LIBRARY_PATH"));
         return Ok(());
     }
 
@@ -119,7 +119,11 @@ fn main() -> Result<(), Error> {
         .as_ref()
         .and_then(|v| NaiveDateTime::parse_from_str(v, datetime_format::FORMAT).ok());
 
-    let database = Database::new(CURRENT_DEVICE.resolve_db_path())?;
+    let db_path = matches
+        .opt_str("d")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| library_path.join("cadmus.sqlite"));
+    let database = Database::new(db_path)?;
     let library_name = library_path
         .file_name()
         .and_then(|n| n.to_str())
@@ -154,7 +158,7 @@ fn main() -> Result<(), Error> {
                 if opt_extract_metadata_document
                     && import_settings.metadata_kinds.contains(&info.file.kind)
                 {
-                    extract_metadata_from_document(path, info);
+                    extract_metadata_from_document(path, info, Path::new(""));
                 }
 
                 if opt_extract_metadata_filename {

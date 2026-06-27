@@ -1,14 +1,13 @@
 use super::directory::Directory;
 use crate::color::TEXT_BUMP_SMALL;
-use crate::context::Context;
-use crate::device::CURRENT_DEVICE;
+use crate::device::AppContext;
 use crate::font::{Font, Fonts, NORMAL_STYLE, font_from_style};
-use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::framebuffer::UpdateMode;
 use crate::geom::{CycleDir, Dir, Point, Rectangle, big_half, divide, small_half};
 use crate::gesture::GestureEvent;
 use crate::unit::scale_by_dpi;
 use crate::view::filler::Filler;
-use crate::view::icon::{ICONS_PIXMAPS, Icon};
+use crate::view::icon::{Icon, load_icon_pixmap};
 use crate::view::{Align, Bus, Event, Hub, ID_FEEDER, Id, RenderData, RenderQueue, View};
 use crate::view::{SMALL_BAR_HEIGHT, THICKNESS_MEDIUM};
 use std::collections::BTreeSet;
@@ -153,12 +152,13 @@ impl DirectoriesBar {
         directories: &BTreeSet<PathBuf>,
         current_directory: &Path,
         fonts: &mut Fonts,
+        dpi: u16,
+        install_dir: &Path,
     ) {
-        let dpi = CURRENT_DEVICE.dpi;
         let thickness = scale_by_dpi(THICKNESS_MEDIUM, dpi) as i32;
         let min_height = scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32 - thickness;
         let mut start_index = 0;
-        let mut font = font_from_style(fonts, &NORMAL_STYLE, dpi);
+        let font = font_from_style(fonts, &NORMAL_STYLE, dpi);
         let x_height = font.x_heights.0 as i32;
         let padding = font.em() as i32;
         let vertical_padding = min_height - x_height;
@@ -180,7 +180,8 @@ impl DirectoriesBar {
         loop {
             let mut has_selection = false;
             let (children, end_index) = {
-                let page = self.make_page(start_index, &layout, directories, &mut font);
+                let page =
+                    self.make_page(start_index, &layout, directories, font, dpi, install_dir);
                 let children = self.make_children(
                     &page,
                     &layout,
@@ -217,6 +218,8 @@ impl DirectoriesBar {
         layout: &Layout,
         directories: &'a BTreeSet<PathBuf>,
         font: &mut Font,
+        dpi: u16,
+        install_dir: &Path,
     ) -> Page<'a> {
         let Layout {
             padding,
@@ -229,7 +232,7 @@ impl DirectoriesBar {
         let mut page = Page::default();
 
         if start_index > 0 {
-            let pixmap = ICONS_PIXMAPS.get("angle-left-small").unwrap();
+            let pixmap = load_icon_pixmap("angle-left-small", dpi, install_dir).unwrap();
             line.width += pixmap.width as i32 + padding;
             line.items.push(Item::Icon {
                 name: "angle-left-small",
@@ -302,7 +305,7 @@ impl DirectoriesBar {
 
         if end_index < directories.len() {
             if let Some(mut line) = page.lines.pop() {
-                let pixmap = ICONS_PIXMAPS.get("angle-right-small").unwrap();
+                let pixmap = load_icon_pixmap("angle-right-small", dpi, install_dir).unwrap();
                 line.width += pixmap.width as i32 + padding;
 
                 if line.labels_count > 1 {
@@ -526,14 +529,18 @@ impl DirectoriesBar {
 }
 
 impl View for DirectoriesBar {
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, _bus, rq, _context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(
+        skip(self, _hub, _bus, rq, _context),
+        fields(event = ?evt),
+        ret(level=tracing::Level::TRACE)
+    ))]
     fn handle_event(
         &mut self,
         evt: &Event,
         _hub: &Hub,
         _bus: &mut Bus,
         rq: &mut RenderQueue,
-        _context: &mut Context,
+        _context: &mut AppContext,
     ) -> bool {
         match *evt {
             Event::Gesture(GestureEvent::Swipe { dir, start, .. }) if self.rect.includes(start) => {
@@ -587,8 +594,9 @@ impl View for DirectoriesBar {
         }
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _fb, _fonts, _rect), fields(rect = ?_rect)))]
-    fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {}
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _context, _rect), fields(rect = ?_rect
+    )))]
+    fn render(&self, _context: &mut AppContext, _rect: Rectangle) {}
 
     fn rect(&self) -> &Rectangle {
         &self.rect

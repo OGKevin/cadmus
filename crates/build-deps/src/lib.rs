@@ -34,6 +34,7 @@
 pub mod build;
 pub mod cargo_features;
 pub mod cmd;
+pub mod manifest;
 pub mod markers;
 pub mod utils;
 pub mod versions;

@@ -66,3 +66,12 @@ pub trait WifiManager: Send + Sync {
     /// ```
     fn disable(&self) -> Result<(), WifiError>;
 }
+
+impl<T: WifiManager + ?Sized> WifiManager for Box<T> {
+    fn enable(&self) -> Result<(), WifiError> {
+        (**self).enable()
+    }
+    fn disable(&self) -> Result<(), WifiError> {
+        (**self).disable()
+    }
+}

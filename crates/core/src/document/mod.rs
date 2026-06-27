@@ -11,7 +11,6 @@ use self::djvu::DjvuOpener;
 use self::epub::EpubDocument;
 use self::html::HtmlDocument;
 use self::pdf::PdfOpener;
-use crate::device::CURRENT_DEVICE;
 use crate::framebuffer::Pixmap;
 use crate::geom::{Boundary, CycleDir};
 use crate::metadata::{Annotation, TextAlign};
@@ -257,18 +256,20 @@ pub fn asciify(name: &str) -> String {
         .replace('’', "'")
 }
 
-#[cfg_attr(feature = "tracing", tracing::instrument(skip(path), fields(path = %path.as_ref().display())))]
-pub fn open<P: AsRef<Path>>(path: P) -> Option<Box<dyn Document>> {
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(path, install_dir), fields(path = %path.as_ref().display())))]
+pub fn open<P: AsRef<Path>>(path: P, install_dir: &Path) -> Option<Box<dyn Document>> {
+    tracing::trace!(path = %path.as_ref().display() , install_dir = %install_dir.display(), "Opening document");
+
     let kind = file_kind(path.as_ref());
     if kind.is_none() {
         warn!(path = %path.as_ref().display(), "Failed to determine file kind");
     }
     kind.and_then(|k| match k {
-        FileExtension::Epub => EpubDocument::new(&path)
+        FileExtension::Epub => EpubDocument::new(&path, install_dir)
             .map_err(|e| error!(path = %path.as_ref().display(), error = %e, "Failed to open epub document"))
             .map(|d| Box::new(d) as Box<dyn Document>)
             .ok(),
-        FileExtension::Html => HtmlDocument::new(&path)
+        FileExtension::Html => HtmlDocument::new(&path, install_dir)
             .map_err(|e| error!(path = %path.as_ref().display(), error = %e, "Failed to open html document"))
             .map(|d| Box::new(d) as Box<dyn Document>)
             .ok(),
@@ -600,7 +601,7 @@ const HWINFO_KEYS: [&str; 19] = [
     "Wifi",
 ];
 
-pub fn sys_info_as_html() -> String {
+pub fn sys_info_as_html(model: crate::device::Model, mark: u8) -> String {
     let mut buf = "<html>\n\t<head>\n\t\t<title>System Info</title>\n\t\t\
                    <link rel=\"stylesheet\" type=\"text/css\" \
                    href=\"css/sysinfo.css\"/>\n\t</head>\n\t<body>\n"
@@ -612,18 +613,12 @@ pub fn sys_info_as_html() -> String {
 
     buf.push_str("\t\t\t<tr>\n");
     buf.push_str("\t\t\t\t<td class=\"key\">Model name</td>\n");
-    buf.push_str(&format!(
-        "\t\t\t\t<td class=\"value\">{}</td>\n",
-        CURRENT_DEVICE.model
-    ));
+    buf.push_str(&format!("\t\t\t\t<td class=\"value\">{}</td>\n", model));
     buf.push_str("\t\t\t</tr>\n");
 
     buf.push_str("\t\t\t<tr>\n");
     buf.push_str("\t\t\t\t<td class=\"key\">Hardware</td>\n");
-    buf.push_str(&format!(
-        "\t\t\t\t<td class=\"value\">Mark {}</td>\n",
-        CURRENT_DEVICE.mark()
-    ));
+    buf.push_str(&format!("\t\t\t\t<td class=\"value\">Mark {}</td>\n", mark));
     buf.push_str("\t\t\t</tr>\n");
     buf.push_str("\t\t\t<tr class=\"sep\"></tr>\n");
 

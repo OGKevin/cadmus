@@ -623,7 +623,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
         let db_path = dir.path().join("cadmus.sqlite");
         let mut db = Database::new(&db_path).expect("failed to create database");
-        db.init(0).expect("failed to run migrations");
+        db.init_for_test(0).expect("failed to run migrations");
 
         let version = GitVersion::from_str("v0.10.0").unwrap();
         let manager = DbBackupManager::new(dir.path().to_path_buf(), version.clone());
@@ -645,7 +645,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
         let db_path = dir.path().join("cadmus.sqlite");
         let mut db = Database::new(&db_path).expect("failed to create database");
-        db.init(0).expect("failed to run migrations");
+        db.init_for_test(0).expect("failed to run migrations");
 
         let v1 = GitVersion::from_str("v0.9.0").unwrap();
         let v2 = GitVersion::from_str("v0.10.0").unwrap();
@@ -680,7 +680,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
         let db_path = dir.path().join("cadmus.sqlite");
         let mut db = Database::new(&db_path).expect("failed to create database");
-        db.init(0).expect("failed to run migrations");
+        db.init_for_test(0).expect("failed to run migrations");
 
         let older_version = GitVersion::from_str("v0.9.0").unwrap();
         let newer_version = GitVersion::from_str("v0.10.0").unwrap();
@@ -735,7 +735,7 @@ mod tests {
 
         let db_path = src_dir.path().join("cadmus.sqlite");
         let mut db = Database::new(&db_path).expect("failed to create database");
-        db.init(0).expect("failed to run migrations");
+        db.init_for_test(0).expect("failed to run migrations");
 
         let test_version = GitVersion::from_str("v1.2.3").unwrap();
         let migration_hash = crate::db::version::current_migration_hash();
@@ -774,7 +774,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
         let db_path = dir.path().join("cadmus.sqlite");
         let mut db = Database::new(&db_path).expect("failed to create database");
-        db.init(0).expect("failed to run migrations");
+        db.init_for_test(0).expect("failed to run migrations");
 
         let v090 = GitVersion::from_str("v0.9.0").unwrap();
         let v095 = GitVersion::from_str("v0.9.5").unwrap();
@@ -814,7 +814,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
         let db_path = dir.path().join("cadmus.sqlite");
         let mut db = Database::new(&db_path).expect("failed to create database");
-        db.init(0).expect("failed to run migrations");
+        db.init_for_test(0).expect("failed to run migrations");
 
         let v090 = GitVersion::from_str("v0.9.0").unwrap();
         let v095 = GitVersion::from_str("v0.9.5").unwrap();

@@ -2,12 +2,12 @@ mod bottom_bar;
 
 use self::bottom_bar::BottomBar;
 use crate::color::BLACK;
-use crate::context::Context;
-use crate::device::CURRENT_DEVICE;
+use crate::device::AppContext;
+use crate::device::DeviceCapabilities as _;
+use crate::device::{DeviceIdentity as _, DevicePaths as _};
 use crate::document::html::Html5Document;
 use crate::document::{Document, Location};
-use crate::font::Fonts;
-use crate::framebuffer::{Framebuffer, Pixmap, UpdateMode};
+use crate::framebuffer::{Pixmap, UpdateMode};
 use crate::geom::{CycleDir, Dir, Point, Rectangle, halves};
 use crate::gesture::GestureEvent;
 use crate::input::{ButtonCode, ButtonStatus, DeviceEvent};
@@ -70,7 +70,7 @@ fn query_to_content(
     language: &String,
     fuzzy: bool,
     target: Option<&String>,
-    context: &mut Context,
+    context: &mut AppContext,
 ) -> String {
     let mut content = String::new();
 
@@ -135,11 +135,11 @@ impl Dictionary {
         language: &str,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> Dictionary {
         let id = ID_FEEDER.next();
         let mut children = Vec::new();
-        let dpi = CURRENT_DEVICE.dpi;
+        let dpi = context.device.dpi();
         let small_height = scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32;
         let thickness = scale_by_dpi(THICKNESS_MEDIUM, dpi) as i32;
         let (small_thickness, big_thickness) = halves(thickness);
@@ -219,7 +219,7 @@ impl Dictionary {
         let image = Image::new(image_rect, Pixmap::new(1, 1, 1));
         children.push(Box::new(image) as Box<dyn View>);
 
-        let mut doc = Html5Document::new_from_memory("");
+        let mut doc = Html5Document::new_from_memory("", &context.device.install_dir());
         doc.layout(
             image_rect.width(),
             image_rect.height(),
@@ -283,7 +283,7 @@ impl Dictionary {
         rect: Rectangle,
         enable: Option<bool>,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if let Some(index) = locate_by_id(self, ViewId::TitleMenu) {
             if let Some(true) = enable {
@@ -325,7 +325,7 @@ impl Dictionary {
         rect: Rectangle,
         enable: Option<bool>,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if let Some(index) = locate_by_id(self, ViewId::SearchMenu) {
             if let Some(true) = enable {
@@ -368,7 +368,7 @@ impl Dictionary {
         rect: Rectangle,
         enable: Option<bool>,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if let Some(index) = locate_by_id(self, ViewId::SearchTargetMenu) {
             if let Some(true) = enable {
@@ -427,7 +427,7 @@ impl Dictionary {
         id: Option<ViewId>,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if let Some(index) = locate::<Keyboard>(self) {
             if enable {
@@ -446,7 +446,7 @@ impl Dictionary {
                 return;
             }
 
-            let dpi = CURRENT_DEVICE.dpi;
+            let dpi = context.device.dpi();
             let (small_height, big_height) = (
                 scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32,
                 scale_by_dpi(BIG_BAR_HEIGHT, dpi) as i32,
@@ -496,7 +496,7 @@ impl Dictionary {
         enable: Option<bool>,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if let Some(index) = locate_by_id(self, ViewId::EditLanguages) {
             if let Some(true) = enable {
@@ -551,7 +551,7 @@ impl Dictionary {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, rq, context)))]
-    fn reseed(&mut self, rq: &mut RenderQueue, context: &mut Context) {
+    fn reseed(&mut self, rq: &mut RenderQueue, context: &mut AppContext) {
         if let Some(top_bar) = self.child_mut(0).downcast_mut::<TopBar>() {
             top_bar.reseed(rq, context);
         }
@@ -559,8 +559,11 @@ impl Dictionary {
         rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, rq), fields(dir = ?dir)))]
-    fn go_to_neighbor(&mut self, dir: CycleDir, rq: &mut RenderQueue) {
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(skip(self, rq, context), fields(dir = ?dir))
+    )]
+    fn go_to_neighbor(&mut self, dir: CycleDir, rq: &mut RenderQueue, context: &AppContext) {
         let location = match dir {
             CycleDir::Previous => Location::Previous(self.location),
             CycleDir::Next => Location::Next(self.location),
@@ -568,7 +571,7 @@ impl Dictionary {
         if let Some(image) = self.children[4].downcast_mut::<Image>() {
             if let Some((pixmap, loc)) =
                 self.doc
-                    .pixmap(location, 1.0, CURRENT_DEVICE.color_samples())
+                    .pixmap(location, 1.0, context.device.color_samples())
             {
                 image.update(pixmap, rq);
                 self.location = loc;
@@ -588,7 +591,7 @@ impl Dictionary {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-    fn define(&mut self, text: Option<&str>, rq: &mut RenderQueue, context: &mut Context) {
+    fn define(&mut self, text: Option<&str>, rq: &mut RenderQueue, context: &mut AppContext) {
         if let Some(query) = text {
             self.query = query.to_string();
             if let Some(search_bar) = self.children[2].downcast_mut::<SearchBar>() {
@@ -606,7 +609,7 @@ impl Dictionary {
         if let Some(image) = self.children[4].downcast_mut::<Image>() {
             if let Some((pixmap, loc)) =
                 self.doc
-                    .pixmap(Location::Exact(0), 1.0, CURRENT_DEVICE.color_samples())
+                    .pixmap(Location::Exact(0), 1.0, context.device.color_samples())
             {
                 image.update(pixmap, rq);
                 self.location = loc;
@@ -624,8 +627,7 @@ impl Dictionary {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(pt = ?pt)))]
-    fn underlying_word(&mut self, pt: Point) -> Option<String> {
-        let dpi = CURRENT_DEVICE.dpi;
+    fn underlying_word(&mut self, pt: Point, dpi: u16) -> Option<String> {
         let small_height = scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32;
         let thickness = scale_by_dpi(THICKNESS_MEDIUM, dpi) as i32;
         let (_, big_thickness) = halves(thickness);
@@ -647,8 +649,8 @@ impl Dictionary {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, rq, context), fields(pt = ?pt)))]
-    fn follow_link(&mut self, pt: Point, rq: &mut RenderQueue, context: &mut Context) {
-        let dpi = CURRENT_DEVICE.dpi;
+    fn follow_link(&mut self, pt: Point, rq: &mut RenderQueue, context: &mut AppContext) {
+        let dpi = context.device.dpi();
         let small_height = scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32;
         let thickness = scale_by_dpi(THICKNESS_MEDIUM, dpi) as i32;
         let (_, big_thickness) = halves(thickness);
@@ -669,22 +671,23 @@ impl Dictionary {
 
         let half_width = self.rect.width() as i32 / 2;
         if pt.x - offset.x < half_width {
-            self.go_to_neighbor(CycleDir::Previous, rq);
+            self.go_to_neighbor(CycleDir::Previous, rq, context);
         } else {
-            self.go_to_neighbor(CycleDir::Next, rq);
+            self.go_to_neighbor(CycleDir::Next, rq, context);
         }
     }
 }
 
 impl View for Dictionary {
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, _bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, _bus, rq, context), fields(event = ?evt
+    ), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
         hub: &Hub,
         _bus: &mut Bus,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
         match *evt {
             Event::Define(ref query) => {
@@ -699,13 +702,13 @@ impl View for Dictionary {
                 true
             }
             Event::Page(dir) => {
-                self.go_to_neighbor(dir, rq);
+                self.go_to_neighbor(dir, rq, context);
                 true
             }
             Event::Gesture(GestureEvent::Swipe { dir, start, .. }) if self.rect.includes(start) => {
                 match dir {
-                    Dir::West => self.go_to_neighbor(CycleDir::Next, rq),
-                    Dir::East => self.go_to_neighbor(CycleDir::Previous, rq),
+                    Dir::West => self.go_to_neighbor(CycleDir::Next, rq, context),
+                    Dir::East => self.go_to_neighbor(CycleDir::Previous, rq, context),
                     _ => (),
                 }
                 true
@@ -722,7 +725,7 @@ impl View for Dictionary {
                 };
                 if let Some(cd) = cd {
                     let loc = self.location;
-                    self.go_to_neighbor(cd, rq);
+                    self.go_to_neighbor(cd, rq, context);
                     if self.location == loc {
                         hub.send(Event::Back).ok();
                     }
@@ -734,7 +737,7 @@ impl View for Dictionary {
                 true
             }
             Event::Gesture(GestureEvent::HoldFingerLong(pt, _)) => {
-                if let Some(text) = self.underlying_word(pt) {
+                if let Some(text) = self.underlying_word(pt, context.device.dpi()) {
                     let query = text
                         .trim_matches(|c: char| !c.is_alphanumeric())
                         .to_string();
@@ -846,12 +849,20 @@ impl View for Dictionary {
         }
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _fb, _fonts, _rect), fields(rect = ?_rect)))]
-    fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {}
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _context, _rect), fields(rect = ?_rect
+    )))]
+    fn render(&self, _context: &mut AppContext, _rect: Rectangle) {}
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, rq, context), fields(rect = ?rect)))]
-    fn resize(&mut self, rect: Rectangle, hub: &Hub, rq: &mut RenderQueue, context: &mut Context) {
-        let dpi = CURRENT_DEVICE.dpi;
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, rq, context), fields(rect = ?rect
+    )))]
+    fn resize(
+        &mut self,
+        rect: Rectangle,
+        hub: &Hub,
+        rq: &mut RenderQueue,
+        context: &mut AppContext,
+    ) {
+        let dpi = context.device.dpi();
         let (small_height, big_height) = (
             scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32,
             scale_by_dpi(BIG_BAR_HEIGHT, dpi) as i32,
@@ -923,7 +934,7 @@ impl View for Dictionary {
             if let Some((pixmap, loc)) = self.doc.pixmap(
                 Location::Exact(self.location),
                 1.0,
-                CURRENT_DEVICE.color_samples(),
+                context.device.color_samples(),
             ) {
                 image.update(pixmap, &mut RenderQueue::new());
                 self.location = loc;

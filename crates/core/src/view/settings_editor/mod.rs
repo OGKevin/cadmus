@@ -113,7 +113,7 @@
 //! ```rust,ignore
 //! // This example shows a method inside a CategoryEditor impl block — it is a
 //! // partial snippet and cannot compile standalone.
-//! fn handle_my_new_setting(&mut self, value: f32, hub: &Hub, context: &mut Context) -> bool {
+//! fn handle_my_new_setting(&mut self, value: f32, hub: &Hub, context: &mut AppContext) -> bool {
 //!     context.settings.my_new_setting = value;
 //!     hub.send(Event::Settings(SettingsEvent::UpdateValue {
 //!         kind: SettingIdentity::MyNewSetting,
@@ -125,9 +125,9 @@
 //! ```
 
 use crate::color::{BLACK, SEPARATOR_NORMAL};
-use crate::context::Context;
-use crate::device::CURRENT_DEVICE;
-use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::device::AppContext;
+use crate::device::DeviceIdentity as _;
+use crate::framebuffer::UpdateMode;
 use crate::geom::{Rectangle, halves};
 use crate::unit::scale_by_dpi;
 use crate::view::common::toggle_main_menu;
@@ -193,12 +193,12 @@ pub struct SettingsEditor {
 
 impl SettingsEditor {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(rq, context)))]
-    pub fn new(rect: Rectangle, rq: &mut RenderQueue, context: &mut Context) -> Self {
+    pub fn new(rect: Rectangle, rq: &mut RenderQueue, context: &mut AppContext) -> Self {
         let id = ID_FEEDER.next();
         let mut children = Vec::new();
 
         let (bar_height, separator_thickness, separator_top_half, separator_bottom_half) =
-            Self::calculate_dimensions();
+            Self::calculate_dimensions(context.device.dpi());
 
         children.push(Self::build_top_bar(
             &rect,
@@ -274,8 +274,7 @@ impl SettingsEditor {
         }
     }
 
-    fn calculate_dimensions() -> (i32, i32, i32, i32) {
-        let dpi = CURRENT_DEVICE.dpi;
+    fn calculate_dimensions(dpi: u16) -> (i32, i32, i32, i32) {
         let small_height = scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32;
         let separator_thickness = scale_by_dpi(THICKNESS_MEDIUM, dpi) as i32;
         let (separator_top_half, separator_bottom_half) = halves(separator_thickness);
@@ -293,7 +292,7 @@ impl SettingsEditor {
         rect: &Rectangle,
         bar_height: i32,
         separator_top_half: i32,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> Box<dyn View> {
         let top_bar = TopBar::new(
             rect![
@@ -354,7 +353,7 @@ impl View for SettingsEditor {
         _hub: &Hub,
         _bus: &mut Bus,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
         match evt {
             Event::FileChooserClosed(_) => {
@@ -370,7 +369,8 @@ impl View for SettingsEditor {
                     nav_bar.rect.max.y
                 };
 
-                let (_, separator_thickness, _, _) = Self::calculate_dimensions();
+                let (_, separator_thickness, _, _) =
+                    Self::calculate_dimensions(context.device.dpi());
                 let (sep_top_half, sep_bottom_half) = halves(separator_thickness);
                 let sep_index = self.nav_bar_index + 1;
                 *self.children[sep_index].rect_mut() = rect![
@@ -435,9 +435,8 @@ impl View for SettingsEditor {
         }
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _fb, _fonts), fields(rect = ?_rect)))]
-    fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut crate::font::Fonts) {
-    }
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _context), fields(rect = ?_rect)))]
+    fn render(&self, _context: &mut AppContext, _rect: Rectangle) {}
 
     fn rect(&self) -> &Rectangle {
         &self.rect

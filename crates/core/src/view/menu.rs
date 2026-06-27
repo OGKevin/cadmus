@@ -5,10 +5,12 @@ use super::{BORDER_RADIUS_MEDIUM, SMALL_BAR_HEIGHT, THICKNESS_LARGE, THICKNESS_M
 use super::{Bus, Event, Hub, RenderData, RenderQueue, View};
 use super::{CLOSE_IGNITION_DELAY, EntryKind, ID_FEEDER, Id, ViewId};
 use crate::color::{BLACK, SEPARATOR_NORMAL, SEPARATOR_STRONG, WHITE};
-use crate::context::Context;
-use crate::device::CURRENT_DEVICE;
-use crate::font::{Fonts, NORMAL_STYLE, font_from_style};
-use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::device::AppContext;
+use crate::device::DeviceHardware as _;
+use crate::device::DeviceIdentity;
+use crate::font::{NORMAL_STYLE, font_from_style};
+use crate::framebuffer::Framebuffer as _;
+use crate::framebuffer::UpdateMode;
 use crate::geom::{BorderSpec, CornerSpec, Point, Rectangle, big_half, small_half};
 use crate::gesture::GestureEvent;
 use crate::unit::scale_by_dpi;
@@ -45,11 +47,11 @@ impl Menu {
         view_id: ViewId,
         kind: MenuKind,
         mut entries: Vec<EntryKind>,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> Menu {
         let id = ID_FEEDER.next();
         let mut children = Vec::new();
-        let dpi = CURRENT_DEVICE.dpi;
+        let dpi = context.device.dpi();
         let (width, height) = context.display.dims;
         let small_height = scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32;
 
@@ -57,7 +59,7 @@ impl Menu {
         let border_thickness = scale_by_dpi(THICKNESS_LARGE, dpi) as i32;
         let border_radius = scale_by_dpi(BORDER_RADIUS_MEDIUM - THICKNESS_LARGE, dpi) as i32;
 
-        let sep_color = if context.fb.monochrome() {
+        let sep_color = if context.device.framebuffer().monochrome() {
             SEPARATOR_STRONG
         } else {
             SEPARATOR_NORMAL
@@ -260,14 +262,15 @@ impl Menu {
 }
 
 impl View for Menu {
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, bus, rq, context), fields(event = ?evt
+    ), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
         hub: &Hub,
         bus: &mut Bus,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
         match *evt {
             Event::Select(ref entry_id) if self.root => {
@@ -339,9 +342,10 @@ impl View for Menu {
         }
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fb, fonts, _rect), fields(rect = ?_rect)))]
-    fn render(&self, fb: &mut dyn Framebuffer, _rect: Rectangle, fonts: &mut Fonts) {
-        let dpi = CURRENT_DEVICE.dpi;
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, context, _rect), fields(rect = ?_rect
+    )))]
+    fn render(&self, context: &mut AppContext, _rect: Rectangle) {
+        let (fb, fonts, dpi) = context.framebuffer_and_fonts();
         let border_radius = scale_by_dpi(BORDER_RADIUS_MEDIUM, dpi) as i32;
         let border_thickness = scale_by_dpi(THICKNESS_LARGE, dpi) as u16;
 

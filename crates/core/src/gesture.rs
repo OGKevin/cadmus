@@ -1,4 +1,3 @@
-use crate::device::CURRENT_DEVICE;
 use crate::geom::{Axis, DiagDir, Dir, Point, Vec2, elbow, nearest_segment_point};
 use crate::input::{ButtonCode, ButtonStatus, DeviceEvent, FingerStatus};
 use crate::unit::mm_to_px;
@@ -124,20 +123,20 @@ pub struct TouchState {
     positions: Vec<Point>,
 }
 
-pub fn gesture_events(rx: Receiver<DeviceEvent>) -> Receiver<Event> {
+pub fn gesture_events(rx: Receiver<DeviceEvent>, dpi: u16) -> Receiver<Event> {
     let (ty, ry) = mpsc::channel();
-    thread::spawn(move || parse_gesture_events(&rx, &ty));
+    thread::spawn(move || parse_gesture_events(&rx, &ty, dpi));
     ry
 }
 
-pub fn parse_gesture_events(rx: &Receiver<DeviceEvent>, ty: &Sender<Event>) {
+pub fn parse_gesture_events(rx: &Receiver<DeviceEvent>, ty: &Sender<Event>, dpi: u16) {
     let contacts: Arc<Mutex<FxHashMap<i32, TouchState>>> =
         Arc::new(Mutex::new(FxHashMap::default()));
     let buttons: Arc<Mutex<FxHashMap<ButtonCode, f64>>> =
         Arc::new(Mutex::new(FxHashMap::default()));
     let segments: Arc<Mutex<Vec<Vec<Point>>>> = Arc::new(Mutex::new(Vec::new()));
-    let tap_jitter = mm_to_px(TAP_JITTER_MM, CURRENT_DEVICE.dpi);
-    let hold_jitter = mm_to_px(HOLD_JITTER_MM, CURRENT_DEVICE.dpi);
+    let tap_jitter = mm_to_px(TAP_JITTER_MM, dpi);
+    let hold_jitter = mm_to_px(HOLD_JITTER_MM, dpi);
 
     while let Ok(evt) = rx.recv() {
         ty.send(Event::Device(evt)).ok();

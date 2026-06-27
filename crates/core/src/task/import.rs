@@ -1,5 +1,6 @@
 //! Background task that imports library contents from disk.
 
+use std::path::PathBuf;
 use std::sync::mpsc::Sender;
 
 use crate::db::Database;
@@ -21,6 +22,7 @@ pub struct ImportTask {
     library_index: Option<usize>,
     /// When `true`, skip the mtime/size cache and re-fingerprint every file.
     force: bool,
+    install_dir: PathBuf,
 }
 
 impl ImportTask {
@@ -29,12 +31,14 @@ impl ImportTask {
         settings: Settings,
         library_index: Option<usize>,
         force: bool,
+        install_dir: impl Into<PathBuf>,
     ) -> Self {
         Self {
             database,
             settings,
             library_index,
             force,
+            install_dir: install_dir.into(),
         }
     }
 
@@ -64,6 +68,7 @@ impl ImportTask {
             &library.db,
             library.library_id,
             &library.home,
+            &self.install_dir,
             &self.settings.import,
             self.force,
             hub,

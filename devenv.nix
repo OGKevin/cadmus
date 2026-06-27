@@ -405,7 +405,7 @@ in
     # override this in devenv.local.nix to the right place for your test cadmus root dir
     # TEST_ROOT_DIR = "$DEVENV_ROOT" ;
 
-    RUST_LOG = "emulator=debug,cadmus_core=debug";
+    RUST_LOG = "cadmus_core=trace,cadmus=trace";
     RUST_BACKTRACE = "1";
     OTEL_EXPORTER_OTLP_ENDPOINT = "http://localhost:4318";
     PYROSCOPE_SERVER_URL = "http://localhost:4040";
@@ -806,8 +806,7 @@ in
 
       export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4318"
       export PYROSCOPE_SERVER_URL="http://localhost:4040"
-      export RUST_LOG="emulator=trace,cadmus_core=trace"
-      cargo xtask run-emulator --features telemetry,test,emulator
+      cargo xtask run-emulator --features telemetry,test
     '';
 
     # Extract translatable strings from documentation

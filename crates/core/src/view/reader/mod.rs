@@ -11,8 +11,10 @@ use self::results_bar::ResultsBar;
 use self::tool_bar::ToolBar;
 use super::top_bar::{TopBar, TopBarVariant};
 use crate::color::{BLACK, WHITE};
-use crate::context::Context;
-use crate::device::CURRENT_DEVICE;
+use crate::device::AppContext;
+use crate::device::DeviceHardware as _;
+use crate::device::{DeviceCapabilities as _, DeviceRotation as _};
+use crate::device::{DeviceIdentity as _, DevicePaths as _};
 use crate::document::epub::EpubDocumentStatic;
 use crate::document::html::HtmlDocument;
 use crate::document::{
@@ -21,15 +23,17 @@ use crate::document::{
 use crate::document::{
     SimpleTocEntry, TocEntry, TocLocation, annotations_as_html, bookmarks_as_html, toc_as_html,
 };
-use crate::font::Fonts;
 use crate::font::family_names;
-use crate::framebuffer::{Framebuffer, Pixmap, UpdateMode};
+use crate::framebuffer::Framebuffer as _;
+use crate::framebuffer::{Pixmap, UpdateMode};
+use crate::frontlight::Frontlight as _;
 use crate::frontlight::LightLevels;
 use crate::geom::{Axis, CycleDir, DiagDir, Dir, LinearDir, Region, halves};
 use crate::geom::{BorderSpec, Boundary, CornerSpec, Point, Rectangle, Vec2};
 use crate::gesture::GestureEvent;
 use crate::helpers::AsciiExtension;
 use crate::input::{ButtonCode, ButtonStatus, DeviceEvent, FingerStatus};
+use crate::lightsensor::LightSensor as _;
 use crate::metadata::{
     Annotation, FileInfo, Info, PageScheme, ReaderInfo, ScrollMode, TextAlign, ZoomMode,
 };
@@ -214,7 +218,12 @@ fn scaling_factor(
     }
 }
 
-fn build_pixmap(rect: &Rectangle, doc: &mut dyn Document, location: usize) -> (Pixmap, usize) {
+fn build_pixmap(
+    rect: &Rectangle,
+    doc: &mut dyn Document,
+    location: usize,
+    color_samples: usize,
+) -> (Pixmap, usize) {
     let scale = scaling_factor(
         rect,
         &Margin::default(),
@@ -222,12 +231,8 @@ fn build_pixmap(rect: &Rectangle, doc: &mut dyn Document, location: usize) -> (P
         doc.dims(location).unwrap(),
         ZoomMode::FitToPage,
     );
-    doc.pixmap(
-        Location::Exact(location),
-        scale,
-        CURRENT_DEVICE.color_samples(),
-    )
-    .unwrap()
+    doc.pixmap(Location::Exact(location), scale, color_samples)
+        .unwrap()
 }
 
 fn find_cut(
@@ -277,7 +282,7 @@ impl Reader {
         rect: Rectangle,
         mut info: Info,
         hub: &Hub,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> Option<Reader> {
         let id = ID_FEEDER.next();
         let settings = &context.settings;
@@ -293,7 +298,7 @@ impl Reader {
             "Opening document"
         );
 
-        let doc = open(&path);
+        let doc = open(&path, &context.device.install_dir());
         if doc.is_none() {
             warn!(
                 resolved_path = %path.display(),
@@ -309,7 +314,7 @@ impl Reader {
                 .and_then(|r| r.font_size)
                 .unwrap_or(settings.reader.font_size);
 
-            doc.layout(width, height, font_size, CURRENT_DEVICE.dpi);
+            doc.layout(width, height, font_size, context.device.dpi());
 
             let margin_width = info
                 .reader
@@ -416,7 +421,7 @@ impl Reader {
                 if !doc.is_reflowable() {
                     view_port.margin_width = mm_to_px(
                         r.screen_margin_width.unwrap_or(0) as f32,
-                        CURRENT_DEVICE.dpi,
+                        context.device.dpi(),
                     ) as i32;
                 }
 
@@ -492,7 +497,7 @@ impl Reader {
         html: &str,
         link_uri: Option<&str>,
         hub: &Hub,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> Reader {
         let id = ID_FEEDER.next();
 
@@ -506,10 +511,10 @@ impl Reader {
             ..Default::default()
         };
 
-        let mut doc = HtmlDocument::new_from_memory(html);
+        let mut doc = HtmlDocument::new_from_memory(html, &context.device.install_dir());
         let (width, height) = context.display.dims;
         let font_size = context.settings.reader.font_size;
-        doc.layout(width, height, font_size, CURRENT_DEVICE.dpi);
+        doc.layout(width, height, font_size, context.device.dpi());
         let pages_count = doc.pages_count();
         info.title = doc.title().unwrap_or_default();
 
@@ -563,11 +568,12 @@ impl Reader {
         rect: Rectangle,
         epub_bytes: &'static [u8],
         hub: &Hub,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> Option<Reader> {
         let id = ID_FEEDER.next();
 
-        let mut doc = EpubDocumentStatic::new_from_static(epub_bytes).ok()?;
+        let mut doc =
+            EpubDocumentStatic::new_from_static(epub_bytes, &context.device.install_dir()).ok()?;
 
         let info = Info {
             file: FileInfo {
@@ -581,8 +587,8 @@ impl Reader {
         };
 
         let (width, height) = context.display.dims;
-        doc.layout(width, height, 7.0, CURRENT_DEVICE.dpi);
-        doc.set_margin_width(mm_to_px(0.0, CURRENT_DEVICE.dpi) as i32);
+        doc.layout(width, height, 7.0, context.device.dpi());
+        doc.set_margin_width(mm_to_px(0.0, context.device.dpi()) as i32);
         let pages_count = doc.pages_count();
 
         hub.send(Event::Update(UpdateMode::Partial)).ok();
@@ -618,7 +624,7 @@ impl Reader {
         })
     }
 
-    fn load_pixmap(&mut self, location: usize) {
+    fn load_pixmap(&mut self, location: usize, context: &AppContext) {
         if self.cache.contains_key(&location) {
             return;
         }
@@ -643,7 +649,7 @@ impl Reader {
         if let Some((pixmap, _)) = doc.pixmap(
             Location::Exact(location),
             scale,
-            CURRENT_DEVICE.color_samples(),
+            context.device.color_samples(),
         ) {
             let frame = rect![
                 (cropping_margin.left * pixmap.width as f32).ceil() as i32,
@@ -662,7 +668,7 @@ impl Reader {
         } else {
             let width = (dims.0 as f32 * scale).max(1.0) as u32;
             let height = (dims.1 as f32 * scale).max(1.0) as u32;
-            let pixmap = Pixmap::empty(width, height, CURRENT_DEVICE.color_samples());
+            let pixmap = Pixmap::empty(width, height, context.device.color_samples());
             let frame = pixmap.rect();
             self.cache.insert(
                 location,
@@ -692,7 +698,7 @@ impl Reader {
         record: bool,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &Context,
+        context: &AppContext,
     ) {
         let loc = {
             let mut doc = self.doc.lock().unwrap();
@@ -724,7 +730,13 @@ impl Reader {
         }
     }
 
-    fn go_to_chapter(&mut self, dir: CycleDir, hub: &Hub, rq: &mut RenderQueue, context: &Context) {
+    fn go_to_chapter(
+        &mut self,
+        dir: CycleDir,
+        hub: &Hub,
+        rq: &mut RenderQueue,
+        context: &AppContext,
+    ) {
         let current_page = self.current_page;
         let loc = {
             let mut doc = self.doc.lock().unwrap();
@@ -788,7 +800,7 @@ impl Reader {
         dir: CycleDir,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &Context,
+        context: &AppContext,
     ) {
         let loc_bkm = self.info.reader.as_ref().and_then(|r| match dir {
             CycleDir::Next => r.bookmarks.range(self.current_page + 1..).next().cloned(),
@@ -805,7 +817,7 @@ impl Reader {
         dir: CycleDir,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &Context,
+        context: &AppContext,
     ) {
         let loc_annot = self.info.reader.as_ref().and_then(|r| match dir {
             CycleDir::Next => self.text_location_range().and_then(|[_, max]| {
@@ -831,7 +843,7 @@ impl Reader {
         }
     }
 
-    fn go_to_last_page(&mut self, hub: &Hub, rq: &mut RenderQueue, context: &Context) {
+    fn go_to_last_page(&mut self, hub: &Hub, rq: &mut RenderQueue, context: &AppContext) {
         if let Some(location) = self.history.pop_back() {
             self.go_to_page(location, false, hub, rq, context);
         }
@@ -842,7 +854,7 @@ impl Reader {
         delta_y: i32,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if delta_y == 0 || self.view_port.zoom_mode == ZoomMode::FitToPage || self.cache.is_empty()
         {
@@ -938,7 +950,7 @@ impl Reader {
         delta: Point,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if delta == pt!(0) || self.cache.is_empty() {
             return;
@@ -961,7 +973,7 @@ impl Reader {
         dir: CycleDir,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if self.chunks.is_empty() {
             return;
@@ -983,7 +995,7 @@ impl Reader {
                             let mut height = 0;
 
                             loop {
-                                self.load_pixmap(location);
+                                self.load_pixmap(location, context);
                                 self.load_text(location);
                                 let Resource { mut frame, .. } = self.cache[&location];
                                 if location == first_chunk.location {
@@ -1038,7 +1050,7 @@ impl Reader {
                                     .unwrap()
                                     .resolve_location(Location::Previous(current_page));
                                 if let Some(location) = previous_location {
-                                    self.load_pixmap(location);
+                                    self.load_pixmap(location, context);
                                     let frame = self.cache[&location].frame;
                                     self.view_port.page_offset.y =
                                         (frame.height() as i32 - available_height).max(0);
@@ -1059,7 +1071,7 @@ impl Reader {
                             let &RenderChunk {
                                 location, frame, ..
                             } = self.chunks.last().unwrap();
-                            self.load_pixmap(location);
+                            self.load_pixmap(location, context);
                             self.load_text(location);
                             let pixmap_frame = self.cache[&location].frame;
                             let next_top_offset = frame.max.y - pixmap_frame.min.y;
@@ -1181,7 +1193,7 @@ impl Reader {
         index: usize,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &Context,
+        context: &AppContext,
     ) {
         let mut loc = None;
         if let Some(ref mut s) = self.search {
@@ -1206,7 +1218,7 @@ impl Reader {
         dir: CycleDir,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &Context,
+        context: &AppContext,
     ) {
         let loc = self.search.as_ref().and_then(|s| match dir {
             CycleDir::Next => s
@@ -1254,7 +1266,7 @@ impl Reader {
         }
     }
 
-    fn update_tool_bar(&mut self, rq: &mut RenderQueue, context: &mut Context) {
+    fn update_tool_bar(&mut self, rq: &mut RenderQueue, context: &mut AppContext) {
         if let Some(index) = locate::<ToolBar>(self) {
             let tool_bar = self.children[index]
                 .as_mut()
@@ -1385,7 +1397,7 @@ impl Reader {
         update_mode: Option<UpdateMode>,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &Context,
+        context: &AppContext,
     ) {
         self.page_turns += 1;
         let update_mode = update_mode.unwrap_or_else(|| {
@@ -1396,7 +1408,7 @@ impl Reader {
                 .by_kind
                 .get(&self.info.file.kind)
                 .unwrap_or_else(|| &context.settings.reader.refresh_rate.global);
-            let refresh_rate = if context.fb.inverted() {
+            let refresh_rate = if context.device.framebuffer().inverted() {
                 pair.inverted
             } else {
                 pair.regular
@@ -1414,7 +1426,7 @@ impl Reader {
 
         match self.view_port.zoom_mode {
             ZoomMode::FitToPage => {
-                self.load_pixmap(location);
+                self.load_pixmap(location, context);
                 self.load_text(location);
                 let Resource { frame, scale, .. } = self.cache[&location];
                 let dx = smw + ((self.rect.width() - frame.width()) as i32 - 2 * smw) / 2;
@@ -1431,7 +1443,7 @@ impl Reader {
                     let available_height = self.rect.height() as i32 - 2 * smw;
                     let mut height = 0;
                     while height < available_height {
-                        self.load_pixmap(location);
+                        self.load_pixmap(location, context);
                         self.load_text(location);
                         let Resource {
                             mut frame, scale, ..
@@ -1486,7 +1498,7 @@ impl Reader {
                     }
                 }
                 ScrollMode::Page => {
-                    self.load_pixmap(location);
+                    self.load_pixmap(location, context);
                     self.load_text(location);
                     let available_height = self.rect.height() as i32 - 2 * smw;
                     let Resource {
@@ -1504,7 +1516,7 @@ impl Reader {
                 }
             },
             ZoomMode::Custom(_) => {
-                self.load_pixmap(location);
+                self.load_pixmap(location, context);
                 self.load_text(location);
                 let Resource { frame, scale, .. } = self.cache[&location];
                 let vpw = self.rect.width() as i32 - 2 * smw;
@@ -1538,7 +1550,7 @@ impl Reader {
         }
 
         self.update_annotations();
-        self.update_noninverted_regions(context.fb.inverted());
+        self.update_noninverted_regions(context.device.framebuffer().inverted());
 
         if self.view_port.zoom_mode == ZoomMode::FitToPage
             || self.view_port.zoom_mode == ZoomMode::FitToWidth
@@ -1648,7 +1660,7 @@ impl Reader {
         id: Option<ViewId>,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if let Some(index) = locate::<Keyboard>(self) {
             if enable {
@@ -1690,7 +1702,7 @@ impl Reader {
                 return;
             }
 
-            let dpi = CURRENT_DEVICE.dpi;
+            let dpi = context.device.dpi();
             let (small_height, big_height) = (
                 scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32,
                 scale_by_dpi(BIG_BAR_HEIGHT, dpi) as i32,
@@ -1777,7 +1789,7 @@ impl Reader {
         }
     }
 
-    fn toggle_tool_bar(&mut self, enable: bool, rq: &mut RenderQueue, context: &mut Context) {
+    fn toggle_tool_bar(&mut self, enable: bool, rq: &mut RenderQueue, context: &mut AppContext) {
         if let Some(index) = locate::<ToolBar>(self) {
             if enable {
                 return;
@@ -1792,7 +1804,7 @@ impl Reader {
                 return;
             }
 
-            let dpi = CURRENT_DEVICE.dpi;
+            let dpi = context.device.dpi();
             let big_height = scale_by_dpi(BIG_BAR_HEIGHT, dpi) as i32;
             let tb_height = 2 * big_height;
 
@@ -1808,6 +1820,7 @@ impl Reader {
                 self.reflowable,
                 self.info.reader.as_ref(),
                 &context.settings.reader,
+                context.device.dpi(),
             );
             self.children.insert(2, Box::new(tool_bar) as Box<dyn View>);
 
@@ -1817,7 +1830,13 @@ impl Reader {
         }
     }
 
-    fn toggle_results_bar(&mut self, enable: bool, rq: &mut RenderQueue, _context: &mut Context) {
+    fn toggle_results_bar(
+        &mut self,
+        enable: bool,
+        rq: &mut RenderQueue,
+        _context: &mut AppContext,
+        dpi: u16,
+    ) {
         if let Some(index) = locate::<ResultsBar>(self) {
             if enable {
                 return;
@@ -1832,7 +1851,6 @@ impl Reader {
                 return;
             }
 
-            let dpi = CURRENT_DEVICE.dpi;
             let thickness = scale_by_dpi(THICKNESS_MEDIUM, dpi) as i32;
             let small_height = scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32;
             let index = locate::<TopBar>(self).map(|index| index + 2).unwrap_or(0);
@@ -1870,7 +1888,7 @@ impl Reader {
         enable: bool,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if let Some(index) = locate::<SearchBar>(self) {
             if enable {
@@ -1897,7 +1915,7 @@ impl Reader {
 
             self.toggle_tool_bar(false, rq, context);
 
-            let dpi = CURRENT_DEVICE.dpi;
+            let dpi = context.device.dpi();
             let thickness = scale_by_dpi(THICKNESS_MEDIUM, dpi) as i32;
             let (small_thickness, big_thickness) = halves(thickness);
             let small_height = scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32;
@@ -1965,7 +1983,7 @@ impl Reader {
         enable: Option<bool>,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if let Some(top_index) = locate::<TopBar>(self) {
             if let Some(true) = enable {
@@ -1991,7 +2009,7 @@ impl Reader {
                 return;
             }
 
-            let dpi = CURRENT_DEVICE.dpi;
+            let dpi = context.device.dpi();
             let thickness = scale_by_dpi(THICKNESS_MEDIUM, dpi) as i32;
             let (small_thickness, big_thickness) = halves(thickness);
             let (small_height, big_height) = (
@@ -2118,6 +2136,7 @@ impl Reader {
                     self.reflowable,
                     self.info.reader.as_ref(),
                     &context.settings.reader,
+                    context.device.dpi(),
                 );
                 self.children
                     .insert(index, Box::new(tool_bar) as Box<dyn View>);
@@ -2174,7 +2193,7 @@ impl Reader {
         enable: bool,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if let Some(index) = locate::<MarginCropper>(self) {
             if enable {
@@ -2193,7 +2212,7 @@ impl Reader {
 
             self.toggle_bars(Some(false), hub, rq, context);
 
-            let dpi = CURRENT_DEVICE.dpi;
+            let dpi = context.device.dpi();
             let padding = scale_by_dpi(BUTTON_DIAMETER / 2.0, dpi) as i32;
             let pixmap_rect = rect![self.rect.min + pt!(padding), self.rect.max - pt!(padding)];
 
@@ -2210,9 +2229,15 @@ impl Reader {
                 .unwrap_or_default();
 
             let mut doc = self.doc.lock().unwrap();
-            let (pixmap, _) = build_pixmap(&pixmap_rect, doc.as_mut(), self.current_page);
+            let (pixmap, _) = build_pixmap(
+                &pixmap_rect,
+                doc.as_mut(),
+                self.current_page,
+                context.device.color_samples(),
+            );
 
-            let margin_cropper = MarginCropper::new(self.rect, pixmap, &margin, context);
+            let margin_cropper =
+                MarginCropper::new(self.rect, pixmap, &margin, context, context.device.dpi());
             rq.add(RenderData::new(
                 margin_cropper.id(),
                 *margin_cropper.rect(),
@@ -2229,7 +2254,7 @@ impl Reader {
         enable: Option<bool>,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if let Some(index) = locate_by_id(self, ViewId::EditNote) {
             if let Some(true) = enable {
@@ -2281,7 +2306,7 @@ impl Reader {
         enable: Option<bool>,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if let Some(index) = locate_by_id(self, ViewId::NamePage) {
             if let Some(true) = enable {
@@ -2330,7 +2355,7 @@ impl Reader {
         id: ViewId,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         let (text, input_id) = if id == ViewId::GoToPage {
             ("Go to page", ViewId::GoToPageInput)
@@ -2379,7 +2404,7 @@ impl Reader {
         rect: Rectangle,
         enable: Option<bool>,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if let Some(index) = locate_by_id(self, ViewId::AnnotationMenu) {
             if let Some(true) = enable {
@@ -2447,7 +2472,7 @@ impl Reader {
         rect: Rectangle,
         enable: Option<bool>,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if let Some(index) = locate_by_id(self, ViewId::SelectionMenu) {
             if let Some(true) = enable {
@@ -2518,7 +2543,7 @@ impl Reader {
         rect: Rectangle,
         enable: Option<bool>,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if let Some(index) = locate_by_id(self, ViewId::TitleMenu) {
             if let Some(true) = enable {
@@ -2633,7 +2658,7 @@ impl Reader {
             entries.push(EntryKind::CheckBox(
                 "Apply Dithering".to_string(),
                 EntryId::ToggleDithered,
-                context.fb.dithered(),
+                context.device.framebuffer().dithered(),
             ));
 
             let mut title_menu = Menu::new(
@@ -2663,7 +2688,7 @@ impl Reader {
         rect: Rectangle,
         enable: Option<bool>,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if let Some(index) = locate_by_id(self, ViewId::FontFamilyMenu) {
             if let Some(true) = enable {
@@ -2722,7 +2747,7 @@ impl Reader {
         rect: Rectangle,
         enable: Option<bool>,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if let Some(index) = locate_by_id(self, ViewId::FontSizeMenu) {
             if let Some(true) = enable {
@@ -2783,7 +2808,7 @@ impl Reader {
         rect: Rectangle,
         enable: Option<bool>,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if let Some(index) = locate_by_id(self, ViewId::TextAlignMenu) {
             if let Some(true) = enable {
@@ -2844,7 +2869,7 @@ impl Reader {
         rect: Rectangle,
         enable: Option<bool>,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if let Some(index) = locate_by_id(self, ViewId::LineHeightMenu) {
             if let Some(true) = enable {
@@ -2899,7 +2924,7 @@ impl Reader {
         rect: Rectangle,
         enable: Option<bool>,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if let Some(index) = locate_by_id(self, ViewId::ContrastExponentMenu) {
             if let Some(true) = enable {
@@ -2948,7 +2973,7 @@ impl Reader {
         rect: Rectangle,
         enable: Option<bool>,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if let Some(index) = locate_by_id(self, ViewId::ContrastGrayMenu) {
             if let Some(true) = enable {
@@ -2997,7 +3022,7 @@ impl Reader {
         rect: Rectangle,
         enable: Option<bool>,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if let Some(index) = locate_by_id(self, ViewId::MarginWidthMenu) {
             if let Some(true) = enable {
@@ -3066,7 +3091,7 @@ impl Reader {
         rect: Rectangle,
         enable: Option<bool>,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if let Some(index) = locate_by_id(self, ViewId::PageMenu) {
             if let Some(true) = enable {
@@ -3127,7 +3152,7 @@ impl Reader {
         rect: Rectangle,
         enable: Option<bool>,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if let Some(index) = locate_by_id(self, ViewId::MarginCropperMenu) {
             if let Some(true) = enable {
@@ -3199,7 +3224,7 @@ impl Reader {
         rect: Rectangle,
         enable: Option<bool>,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if let Some(index) = locate_by_id(self, ViewId::SearchMenu) {
             if let Some(true) = enable {
@@ -3250,7 +3275,7 @@ impl Reader {
         font_size: f32,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if Arc::strong_count(&self.doc) > 1 {
             return;
@@ -3264,7 +3289,7 @@ impl Reader {
         {
             let mut doc = self.doc.lock().unwrap();
 
-            doc.layout(width, height, font_size, CURRENT_DEVICE.dpi);
+            doc.layout(width, height, font_size, context.device.dpi());
 
             if self.synthetic {
                 let current_page = self.current_page.min(doc.pages_count() - 1);
@@ -3290,7 +3315,7 @@ impl Reader {
         text_align: TextAlign,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if Arc::strong_count(&self.doc) > 1 {
             return;
@@ -3327,7 +3352,7 @@ impl Reader {
         font_family: &str,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if Arc::strong_count(&self.doc) > 1 {
             return;
@@ -3370,7 +3395,7 @@ impl Reader {
         line_height: f32,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if Arc::strong_count(&self.doc) > 1 {
             return;
@@ -3407,7 +3432,7 @@ impl Reader {
         width: i32,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if Arc::strong_count(&self.doc) > 1 {
             return;
@@ -3439,7 +3464,7 @@ impl Reader {
                 self.current_page = self.current_page.min(self.pages_count - 1);
             }
         } else {
-            let next_margin_width = mm_to_px(width as f32, CURRENT_DEVICE.dpi) as i32;
+            let next_margin_width = mm_to_px(width as f32, context.device.dpi()) as i32;
             if self.view_port.zoom_mode == ZoomMode::FitToWidth {
                 // Apply the scale change.
                 let ratio = (self.rect.width() as i32 - 2 * next_margin_width) as f32
@@ -3459,13 +3484,13 @@ impl Reader {
         self.update_bottom_bar(rq);
     }
 
-    fn toggle_bookmark(&mut self, rq: &mut RenderQueue) {
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, rq, dpi)))]
+    fn toggle_bookmark(&mut self, rq: &mut RenderQueue, dpi: u16) {
         if let Some(ref mut r) = self.info.reader {
             if !r.bookmarks.insert(self.current_page) {
                 r.bookmarks.remove(&self.current_page);
             }
         }
-        let dpi = CURRENT_DEVICE.dpi;
         let thickness = scale_by_dpi(3.0, dpi) as u16;
         let radius = mm_to_px(0.4, dpi) as i32 + thickness as i32;
         let center = pt!(self.rect.max.x - 5 * radius, self.rect.min.y + 5 * radius);
@@ -3478,7 +3503,7 @@ impl Reader {
         exponent: f32,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if let Some(ref mut r) = self.info.reader {
             r.contrast_exponent = Some(exponent);
@@ -3493,7 +3518,7 @@ impl Reader {
         gray: f32,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if let Some(ref mut r) = self.info.reader {
             r.contrast_gray = Some(gray);
@@ -3509,7 +3534,7 @@ impl Reader {
         reset_page_offset: bool,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &Context,
+        context: &AppContext,
     ) {
         if self.view_port.zoom_mode == zoom_mode {
             return;
@@ -3536,7 +3561,7 @@ impl Reader {
         scroll_mode: ScrollMode,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &Context,
+        context: &AppContext,
     ) {
         if self.view_port.scroll_mode == scroll_mode
             || self.view_port.zoom_mode != ZoomMode::FitToWidth
@@ -3554,7 +3579,7 @@ impl Reader {
         margin: &Margin,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &Context,
+        context: &AppContext,
     ) {
         if self.view_port.zoom_mode != ZoomMode::FitToPage {
             let Resource { pixmap, frame, .. } = self.cache.get(&index).unwrap();
@@ -3777,7 +3802,7 @@ impl Reader {
         })
     }
 
-    fn reseed(&mut self, rq: &mut RenderQueue, context: &mut Context) {
+    fn reseed(&mut self, rq: &mut RenderQueue, context: &mut AppContext) {
         if let Some(index) = locate::<TopBar>(self) {
             if let Some(top_bar) = self.child_mut(index).downcast_mut::<TopBar>() {
                 top_bar.reseed(rq, context);
@@ -3787,7 +3812,7 @@ impl Reader {
         rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
     }
 
-    fn quit(&mut self, context: &mut Context) {
+    fn quit(&mut self, context: &mut AppContext) {
         if let Some(ref mut s) = self.search {
             s.running.store(false, AtomicOrdering::Relaxed);
         }
@@ -3800,7 +3825,7 @@ impl Reader {
             r.current_page = self.current_page;
             r.pages_count = self.pages_count;
             r.finished = self.finished;
-            r.dithered = context.fb.dithered();
+            r.dithered = context.device.framebuffer().dithered();
 
             if self.view_port.zoom_mode == ZoomMode::FitToPage {
                 r.zoom_mode = None;
@@ -3816,7 +3841,7 @@ impl Reader {
                 r.scroll_mode = None;
             }
 
-            r.rotation = Some(CURRENT_DEVICE.to_canonical(context.display.rotation));
+            r.rotation = Some(context.device.to_canonical(context.display.rotation));
 
             if (self.contrast.exponent - DEFAULT_CONTRAST_EXPONENT).abs() > f32::EPSILON {
                 r.contrast_exponent = Some(self.contrast.exponent);
@@ -3840,7 +3865,7 @@ impl Reader {
         factor: f32,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if self.cache.is_empty() {
             return;
@@ -3878,18 +3903,19 @@ impl Reader {
 }
 
 impl View for Reader {
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, _bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, _bus, rq, context), fields(event = ?evt
+    ), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
         hub: &Hub,
         _bus: &mut Bus,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
         match *evt {
             Event::Gesture(GestureEvent::Rotate { quarter_turns, .. }) if quarter_turns != 0 => {
-                let (_, dir) = CURRENT_DEVICE.mirroring_scheme();
+                let (_, dir) = context.device.mirroring_scheme();
                 let n = (4 + (context.display.rotation - dir * quarter_turns)) % 4;
                 hub.send(Event::Select(EntryId::Rotate(n))).ok();
                 true
@@ -4022,8 +4048,8 @@ impl View for Reader {
                     DiagDir::SouthWest => {
                         if context.settings.frontlight_presets.len() > 1 {
                             if context.settings.frontlight {
-                                let lightsensor_level = if CURRENT_DEVICE.has_lightsensor() {
-                                    context.lightsensor.level().ok()
+                                let lightsensor_level = if context.device.has_lightsensor() {
+                                    context.device.lightsensor_mut().level().ok()
                                 } else {
                                     None
                                 };
@@ -4032,11 +4058,14 @@ impl View for Reader {
                                     &context.settings.frontlight_presets,
                                 ) {
                                     let LightLevels { intensity, warmth } = *frontlight_levels;
-                                    if let Err(error) = context.frontlight.set_intensity(intensity)
+                                    if let Err(error) =
+                                        context.device.frontlight_mut().set_intensity(intensity)
                                     {
                                         tracing::error!(error = %error, "failed to set frontlight intensity");
                                     }
-                                    if let Err(error) = context.frontlight.set_warmth(warmth) {
+                                    if let Err(error) =
+                                        context.device.frontlight_mut().set_warmth(warmth)
+                                    {
                                         tracing::error!(error = %error, "failed to set frontlight warmth");
                                     }
                                 }
@@ -4113,7 +4142,7 @@ impl View for Reader {
                 let mut nearest_word = None;
                 let mut dmin = u32::MAX;
                 let dmax =
-                    (scale_by_dpi(RECT_DIST_JITTER, CURRENT_DEVICE.dpi) as i32).pow(2) as u32;
+                    (scale_by_dpi(RECT_DIST_JITTER, context.device.dpi()) as i32).pow(2) as u32;
                 let mut rects = Vec::new();
 
                 for chunk in &self.chunks {
@@ -4213,7 +4242,7 @@ impl View for Reader {
                 ..
             }) if self.state == State::Selection(id) => {
                 self.state = State::Idle;
-                let radius = scale_by_dpi(24.0, CURRENT_DEVICE.dpi) as i32;
+                let radius = scale_by_dpi(24.0, context.device.dpi()) as i32;
                 self.toggle_selection_menu(
                     Rectangle::from_disk(position, radius),
                     Some(true),
@@ -4228,7 +4257,7 @@ impl View for Reader {
                 let mut found = None;
                 let mut dmin = u32::MAX;
                 let dmax =
-                    (scale_by_dpi(RECT_DIST_JITTER, CURRENT_DEVICE.dpi) as i32).pow(2) as u32;
+                    (scale_by_dpi(RECT_DIST_JITTER, context.device.dpi()) as i32).pow(2) as u32;
                 let mut rects = Vec::new();
 
                 for chunk in &self.chunks {
@@ -4347,7 +4376,7 @@ impl View for Reader {
                 let mut nearest_link = None;
                 let mut dmin = u32::MAX;
                 let dmax =
-                    (scale_by_dpi(RECT_DIST_JITTER, CURRENT_DEVICE.dpi) as i32).pow(2) as u32;
+                    (scale_by_dpi(RECT_DIST_JITTER, context.device.dpi()) as i32).pow(2) as u32;
 
                 for chunk in &self.chunks {
                     let (links, _) = self
@@ -4404,7 +4433,7 @@ impl View for Reader {
                         } else if link.text.starts_with("https:") || link.text.starts_with("http:")
                         {
                             if let Some(path) = context.settings.external_urls_queue.as_ref() {
-                                let path = CURRENT_DEVICE.install_path(path);
+                                let path = context.device.install_path(path);
                                 if let Ok(mut file) =
                                     OpenOptions::new().create(true).append(true).open(&path)
                                 {
@@ -4469,7 +4498,7 @@ impl View for Reader {
                 ) {
                     Region::Corner(diag_dir) => match diag_dir {
                         DiagDir::NorthWest => self.go_to_last_page(hub, rq, context),
-                        DiagDir::NorthEast => self.toggle_bookmark(rq),
+                        DiagDir::NorthEast => self.toggle_bookmark(rq, context.device.dpi()),
                         DiagDir::SouthEast => {
                             if self.search.is_none() {
                                 match context.settings.reader.south_east_corner {
@@ -4558,13 +4587,13 @@ impl View for Reader {
                 let mut found = None;
                 let mut dmin = u32::MAX;
                 let dmax =
-                    (scale_by_dpi(RECT_DIST_JITTER, CURRENT_DEVICE.dpi) as i32).pow(2) as u32;
+                    (scale_by_dpi(RECT_DIST_JITTER, context.device.dpi()) as i32).pow(2) as u32;
 
                 if let Some(rect) = self.selection_rect() {
                     let d = center.rdist2(&rect);
                     if d < dmax {
                         self.state = State::Idle;
-                        let radius = scale_by_dpi(24.0, CURRENT_DEVICE.dpi) as i32;
+                        let radius = scale_by_dpi(24.0, context.device.dpi()) as i32;
                         self.toggle_selection_menu(
                             Rectangle::from_disk(center, radius),
                             Some(true),
@@ -4596,7 +4625,7 @@ impl View for Reader {
                         .find(|annot| anchor >= annot.selection[0] && anchor <= annot.selection[1])
                         .cloned()
                     {
-                        let radius = scale_by_dpi(24.0, CURRENT_DEVICE.dpi) as i32;
+                        let radius = scale_by_dpi(24.0, context.device.dpi()) as i32;
                         self.toggle_annotation_menu(
                             &annot,
                             Rectangle::from_disk(center, radius),
@@ -4640,7 +4669,7 @@ impl View for Reader {
                 true
             }
             Event::LoadPixmap(location) => {
-                self.load_pixmap(location);
+                self.load_pixmap(location, context);
                 true
             }
             Event::Submit(ViewId::GoToPageInput, ref text) => {
@@ -4742,7 +4771,7 @@ impl View for Reader {
                     Some(query) => {
                         self.search(text, query, hub, rq);
                         self.toggle_keyboard(false, None, hub, rq, context);
-                        self.toggle_results_bar(true, rq, context);
+                        self.toggle_results_bar(true, rq, context, context.device.dpi());
                     }
                     None => {
                         let notif = Notification::new(
@@ -4874,7 +4903,7 @@ impl View for Reader {
                 true
             }
             Event::Close(ViewId::SearchBar) => {
-                self.toggle_results_bar(false, rq, context);
+                self.toggle_results_bar(false, rq, context, context.device.dpi());
                 self.toggle_search_bar(false, hub, rq, context);
                 if let Some(ref mut s) = self.search {
                     s.running.store(false, AtomicOrdering::Relaxed);
@@ -5009,7 +5038,7 @@ impl View for Reader {
                 self.update_results_bar(rq);
 
                 if results_count == 1 {
-                    self.toggle_results_bar(false, rq, context);
+                    self.toggle_results_bar(false, rq, context, context.device.dpi());
                     self.toggle_search_bar(false, hub, rq, context);
                     self.go_to_page(location, true, hub, rq, context);
                 } else if location == self.current_page {
@@ -5251,7 +5280,7 @@ impl View for Reader {
                 true
             }
             Event::Select(EntryId::ToggleInverted) => {
-                self.update_noninverted_regions(!context.fb.inverted());
+                self.update_noninverted_regions(!context.device.framebuffer().inverted());
                 false
             }
             Event::Reseed => {
@@ -5287,7 +5316,7 @@ impl View for Reader {
             Event::Focus(v) => {
                 if self.focus != v {
                     if let Some(ViewId::ReaderSearchInput) = v {
-                        self.toggle_results_bar(false, rq, context);
+                        self.toggle_results_bar(false, rq, context, context.device.dpi());
                         if let Some(ref mut s) = self.search {
                             s.running.store(false, AtomicOrdering::Relaxed);
                         }
@@ -5305,8 +5334,9 @@ impl View for Reader {
         }
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fb, _fonts), fields(rect = ?rect)))]
-    fn render(&self, fb: &mut dyn Framebuffer, rect: Rectangle, _fonts: &mut Fonts) {
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, context), fields(rect = ?rect)))]
+    fn render(&self, context: &mut AppContext, rect: Rectangle) {
+        let (fb, dpi) = context.framebuffer_with_dpi();
         fb.draw_rectangle(&rect, WHITE);
 
         for chunk in &self.chunks {
@@ -5479,7 +5509,6 @@ impl View for Reader {
             .as_ref()
             .map_or(false, |r| r.bookmarks.contains(&self.current_page))
         {
-            let dpi = CURRENT_DEVICE.dpi;
             let thickness = scale_by_dpi(3.0, dpi) as u16;
             let radius = mm_to_px(0.4, dpi) as i32 + thickness as i32;
             let center = pt!(self.rect.max.x - 5 * radius, self.rect.min.y + 5 * radius);
@@ -5499,9 +5528,15 @@ impl View for Reader {
         rect.intersection(&self.rect).unwrap_or(self.rect)
     }
 
-    fn resize(&mut self, rect: Rectangle, hub: &Hub, rq: &mut RenderQueue, context: &mut Context) {
+    fn resize(
+        &mut self,
+        rect: Rectangle,
+        hub: &Hub,
+        rq: &mut RenderQueue,
+        context: &mut AppContext,
+    ) {
         if !self.children.is_empty() {
-            let dpi = CURRENT_DEVICE.dpi;
+            let dpi = context.device.dpi();
             let thickness = scale_by_dpi(THICKNESS_MEDIUM, dpi) as i32;
             let (small_thickness, big_thickness) = halves(thickness);
             let (small_height, big_height) = (
@@ -5662,7 +5697,7 @@ impl View for Reader {
                 .and_then(|r| r.font_size)
                 .unwrap_or(context.settings.reader.font_size);
             let mut doc = self.doc.lock().unwrap();
-            doc.layout(rect.width(), rect.height(), font_size, CURRENT_DEVICE.dpi);
+            doc.layout(rect.width(), rect.height(), font_size, context.device.dpi());
             let current_page = self.current_page.min(doc.pages_count() - 1);
             if let Some(location) = doc.resolve_location(Location::Exact(current_page)) {
                 self.current_page = location;

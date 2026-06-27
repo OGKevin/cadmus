@@ -1,6 +1,8 @@
 //! Setting kinds for the Import category.
 
-use super::{SettingData, SettingIdentity, SettingKind, ToggleSettings, WidgetKind};
+use super::{
+    SettingData, SettingIdentity, SettingKind, SettingsFetchData, ToggleSettings, WidgetKind,
+};
 use crate::fl;
 use crate::settings::{FileExtension, Settings};
 use crate::view::{Bus, EntryId, EntryKind, Event, ToggleEvent};
@@ -17,7 +19,7 @@ impl SettingKind for ForceFullImport {
         fl!("settings-import-force-full-import")
     }
 
-    fn fetch(&self, _settings: &Settings) -> SettingData {
+    fn fetch(&self, _data: SettingsFetchData) -> SettingData {
         SettingData {
             value: fl!("settings-general-trigger"),
             widget: WidgetKind::ActionLabel(Event::Select(EntryId::RequestForceImport)),
@@ -46,13 +48,13 @@ impl SettingKind for ImportSyncMetadata {
         fl!("settings-import-sync-metadata")
     }
 
-    fn fetch(&self, settings: &Settings) -> SettingData {
+    fn fetch(&self, data: SettingsFetchData) -> SettingData {
         SettingData {
-            value: settings.import.sync_metadata.to_string(),
+            value: data.settings.import.sync_metadata.to_string(),
             widget: WidgetKind::Toggle {
                 left_label: fl!("settings-general-toggle-on"),
                 right_label: fl!("settings-general-toggle-off"),
-                enabled: settings.import.sync_metadata,
+                enabled: data.settings.import.sync_metadata,
                 tap_event: Event::Toggle(ToggleEvent::Setting(ToggleSettings::ImportSyncMetadata)),
             },
         }
@@ -84,7 +86,7 @@ impl SettingKind for AllowedKindsSetting {
         fl!("settings-import-allowed-kinds")
     }
 
-    fn fetch(&self, settings: &Settings) -> SettingData {
+    fn fetch(&self, data: SettingsFetchData) -> SettingData {
         let entries = FileExtension::all()
             .iter()
             .copied()
@@ -92,13 +94,13 @@ impl SettingKind for AllowedKindsSetting {
                 EntryKind::CheckBox(
                     kind.to_string().to_uppercase(),
                     EntryId::ToggleAllowedKind(kind),
-                    settings.import.allowed_kinds.contains(&kind),
+                    data.settings.import.allowed_kinds.contains(&kind),
                 )
             })
             .collect();
 
         SettingData {
-            value: kinds_summary(settings.import.allowed_kinds.len()),
+            value: kinds_summary(data.settings.import.allowed_kinds.len()),
             widget: WidgetKind::SubMenu(entries),
         }
     }
@@ -152,7 +154,10 @@ mod tests {
         fn fetch_builds_action_label_requesting_force_import() {
             let setting = ForceFullImport;
             let settings = Settings::default();
-            let data = setting.fetch(&settings);
+            let data = setting.fetch(super::SettingsFetchData {
+                settings: &settings,
+                install_dir: None,
+            });
 
             match data.widget {
                 WidgetKind::ActionLabel(Event::Select(EntryId::RequestForceImport)) => {}
@@ -240,7 +245,10 @@ mod tests {
             let setting = AllowedKindsSetting;
             let settings = Settings::default();
 
-            let data = setting.fetch(&settings);
+            let data = setting.fetch(super::SettingsFetchData {
+                settings: &settings,
+                install_dir: None,
+            });
 
             assert_eq!(
                 data.value,

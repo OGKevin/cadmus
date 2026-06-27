@@ -10,7 +10,7 @@ use super::kinds::intermission::{IntermissionPowerOff, IntermissionShare, Interm
 use super::kinds::library::LibraryInfo;
 use super::kinds::reader::{DitheredKindsSetting, FinishedActionSetting, RefreshRateInfo};
 use super::kinds::telemetry::{LogLevel, LoggingEnabled};
-use crate::context::Context;
+use crate::device::AppContext;
 use crate::dictionary::MonolingualDictionaryService;
 use std::collections::BTreeSet;
 
@@ -58,7 +58,7 @@ impl Category {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(context, dict_service)))]
     pub fn settings(
         &self,
-        context: &Context,
+        context: &AppContext,
         dict_service: Option<&MonolingualDictionaryService>,
     ) -> Vec<Box<dyn SettingKind>> {
         match self {

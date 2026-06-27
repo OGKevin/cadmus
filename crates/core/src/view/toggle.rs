@@ -1,9 +1,7 @@
 use super::{Align, Bus, Event, Hub, ID_FEEDER, Id, RenderQueue, View};
 use crate::color::{BLACK, GRAY08, TEXT_NORMAL};
-use crate::context::Context;
-use crate::device::CURRENT_DEVICE;
+use crate::device::AppContext;
 use crate::font::{Fonts, NORMAL_STYLE, font_from_style};
-use crate::framebuffer::Framebuffer;
 use crate::geom::{BorderSpec, Rectangle};
 use crate::unit::scale_by_dpi;
 use crate::view::filler::Filler;
@@ -44,20 +42,25 @@ impl SelectionBox {
 }
 
 impl View for SelectionBox {
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, _bus, _rq, _context), fields(event = ?_evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(
+        skip(self, _hub, _bus, _rq, _context),
+        fields(event = ?_evt),
+        ret(level=tracing::Level::TRACE)
+    ))]
     fn handle_event(
         &mut self,
         _evt: &Event,
         _hub: &Hub,
         _bus: &mut Bus,
         _rq: &mut RenderQueue,
-        _context: &mut Context,
+        _context: &mut AppContext,
     ) -> bool {
         false
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fb, fonts), fields(rect = ?rect)))]
-    fn render(&self, fb: &mut dyn Framebuffer, rect: Rectangle, fonts: &mut Fonts) {
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, context), fields(rect = ?rect)))]
+    fn render(&self, context: &mut AppContext, rect: Rectangle) {
+        let (fb, fonts, dpi) = context.framebuffer_and_fonts();
         if !self.visible {
             return;
         }
@@ -67,7 +70,6 @@ impl View for SelectionBox {
             return;
         }
 
-        let dpi = CURRENT_DEVICE.dpi;
         let font = font_from_style(fonts, &NORMAL_STYLE, dpi);
 
         let padding = font.em() as i32 / 2 - scale_by_dpi(3.0, dpi) as i32;
@@ -168,7 +170,8 @@ impl View for SelectionBox {
 ///     true,       // Initial state (On selected)
 ///     Event::Toggle(ToggleEvent::View(ViewId::SettingsMenu)),
 ///     fonts,
-///     Align::Right(10)
+///     Align::Right(10),
+///     300,
 /// );
 /// ```
 ///
@@ -224,8 +227,8 @@ impl Toggle {
         event: Event,
         fonts: &mut Fonts,
         align: Align,
+        dpi: u16,
     ) -> Toggle {
-        let dpi = CURRENT_DEVICE.dpi;
         let separator_width = scale_by_dpi(THICKNESS_MEDIUM, dpi) as i32;
 
         let font = font_from_style(fonts, &NORMAL_STYLE, dpi);
@@ -339,14 +342,15 @@ impl Toggle {
 }
 
 impl View for Toggle {
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, bus, rq, _context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, bus, rq, _context), fields(event = ?evt
+    ), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
         _hub: &Hub,
         bus: &mut Bus,
         rq: &mut RenderQueue,
-        _context: &mut Context,
+        _context: &mut AppContext,
     ) -> bool {
         if let (Event::Toggle(incoming), Event::Toggle(stored)) = (evt, &self.event) {
             if incoming == stored {
@@ -361,8 +365,11 @@ impl View for Toggle {
         false
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _fb, _fonts), fields(rect = ?_rect)))]
-    fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {}
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(skip(self, _context), fields(rect = ?_rect))
+    )]
+    fn render(&self, _context: &mut AppContext, _rect: Rectangle) {}
 
     fn rect(&self) -> &Rectangle {
         &self.rect
@@ -389,6 +396,7 @@ impl View for Toggle {
 mod tests {
     use super::*;
     use crate::context::test_helpers::create_test_context;
+    use crate::device::DeviceIdentity as _;
     use crate::view::{ToggleEvent, ViewId};
     use std::collections::VecDeque;
     use std::sync::mpsc::channel;
@@ -406,6 +414,7 @@ mod tests {
             toggle_event,
             &mut context.fonts,
             Align::Center,
+            context.device.dpi(),
         );
         assert!(toggle.is_enabled());
     }
@@ -423,6 +432,7 @@ mod tests {
             toggle_event,
             &mut context.fonts,
             Align::Center,
+            context.device.dpi(),
         );
         assert!(!toggle.is_enabled());
     }
@@ -440,6 +450,7 @@ mod tests {
             toggle_event.clone(),
             &mut context.fonts,
             Align::Center,
+            context.device.dpi(),
         );
 
         let (hub, _receiver) = channel();
@@ -473,6 +484,7 @@ mod tests {
             toggle_event,
             &mut context.fonts,
             Align::Center,
+            context.device.dpi(),
         );
 
         let left_label = toggle.children[0].downcast_ref::<Label>().unwrap();
@@ -495,6 +507,7 @@ mod tests {
             toggle_event,
             &mut context.fonts,
             Align::Center,
+            context.device.dpi(),
         );
 
         let left_label = toggle.children[0].downcast_ref::<Label>().unwrap();
@@ -517,6 +530,7 @@ mod tests {
             toggle_event,
             &mut context.fonts,
             Align::Center,
+            context.device.dpi(),
         );
 
         assert!(toggle.children[1].is::<Filler>());
@@ -535,6 +549,7 @@ mod tests {
             toggle_event.clone(),
             &mut context.fonts,
             Align::Center,
+            context.device.dpi(),
         );
 
         let (hub, _receiver) = channel();
@@ -564,6 +579,7 @@ mod tests {
             toggle_event,
             &mut context.fonts,
             Align::Center,
+            context.device.dpi(),
         );
 
         let (hub, _receiver) = channel();
@@ -591,6 +607,7 @@ mod tests {
             toggle_event.clone(),
             &mut context.fonts,
             Align::Center,
+            context.device.dpi(),
         );
 
         let (hub, _receiver) = channel();
@@ -620,6 +637,7 @@ mod tests {
             toggle_event,
             &mut context.fonts,
             Align::Center,
+            context.device.dpi(),
         );
 
         assert_eq!(toggle.children.len(), 4);

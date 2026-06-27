@@ -4,10 +4,9 @@
 //! providing a clean API for managing keyboard visibility in parent views.
 
 use crate::color::BLACK;
-use crate::context::Context;
-use crate::device::CURRENT_DEVICE;
-use crate::font::Fonts;
-use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::device::AppContext;
+use crate::device::DeviceIdentity as _;
+use crate::framebuffer::UpdateMode;
 use crate::geom::{Rectangle, halves};
 use crate::unit::scale_by_dpi;
 use crate::view::filler::Filler;
@@ -78,7 +77,7 @@ impl ToggleableKeyboard {
     /// * `hub` - Event hub for sending focus events
     /// * `rq` - Render queue for scheduling redraws
     /// * `context` - Application context for updating keyboard state
-    pub fn toggle(&mut self, hub: &Hub, rq: &mut RenderQueue, context: &mut Context) {
+    pub fn toggle(&mut self, hub: &Hub, rq: &mut RenderQueue, context: &mut AppContext) {
         if self.visible {
             self.hide(hub, rq, context);
         } else {
@@ -103,7 +102,7 @@ impl ToggleableKeyboard {
         visible: bool,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if self.visible == visible {
             return;
@@ -142,8 +141,8 @@ impl ToggleableKeyboard {
     ///
     /// This method calculates the proper positioning based on the parent rect
     /// and creates both the separator line and the keyboard itself.
-    fn show(&mut self, rq: &mut RenderQueue, context: &mut Context) {
-        let dpi = CURRENT_DEVICE.dpi;
+    fn show(&mut self, rq: &mut RenderQueue, context: &mut AppContext) {
+        let dpi = context.device.dpi();
         let (small_height, big_height) = (
             scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32,
             scale_by_dpi(BIG_BAR_HEIGHT, dpi) as i32,
@@ -184,7 +183,7 @@ impl ToggleableKeyboard {
     ///
     /// This method also clears the focus and updates the context to reflect
     /// that no keyboard is active.
-    fn hide(&mut self, hub: &Hub, rq: &mut RenderQueue, context: &mut Context) {
+    fn hide(&mut self, hub: &Hub, rq: &mut RenderQueue, context: &mut AppContext) {
         let rect = self.rect;
 
         self.children.clear();
@@ -206,7 +205,7 @@ impl View for ToggleableKeyboard {
         hub: &Hub,
         bus: &mut Bus,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
         if !self.visible {
             return false;
@@ -220,14 +219,14 @@ impl View for ToggleableKeyboard {
 
         false
     }
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fb, fonts), fields(rect = ?rect)))]
-    fn render(&self, fb: &mut dyn Framebuffer, rect: Rectangle, fonts: &mut Fonts) {
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, context), fields(rect = ?rect)))]
+    fn render(&self, context: &mut AppContext, rect: Rectangle) {
         if !self.visible {
             return;
         }
 
         for child in &self.children {
-            child.render(fb, rect, fonts);
+            child.render(context, rect);
         }
     }
 
@@ -263,7 +262,7 @@ mod tests {
         ToggleableKeyboard::new(parent_rect, false)
     }
 
-    fn create_test_context_with_keyboard_data() -> Context {
+    fn create_test_context_with_keyboard_data() -> AppContext {
         let mut context = create_test_context();
         context.load_keyboard_layouts();
         context.load_dictionaries();

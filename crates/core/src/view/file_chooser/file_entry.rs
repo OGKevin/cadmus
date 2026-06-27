@@ -1,9 +1,10 @@
 use super::FileEntryData;
 use crate::color::{TEXT_NORMAL, WHITE};
-use crate::context::Context;
-use crate::device::CURRENT_DEVICE;
-use crate::font::{Fonts, NORMAL_STYLE, font_from_style};
-use crate::framebuffer::Framebuffer;
+use crate::device::AppContext;
+use crate::device::DeviceHardware as _;
+use crate::device::DeviceIdentity as _;
+use crate::font::{NORMAL_STYLE, font_from_style};
+use crate::framebuffer::Framebuffer as _;
 use crate::geom::Rectangle;
 use crate::gesture::GestureEvent;
 use crate::view::label::Label;
@@ -48,9 +49,9 @@ impl FileEntry {
     /// * `rect` - The bounding rectangle for the entire entry
     /// * `data` - The file entry data containing name, size, modification date, and directory flag
     /// * `context` - Mutable reference to the application context for font access
-    pub fn new(rect: Rectangle, data: FileEntryData, context: &mut Context) -> FileEntry {
+    pub fn new(rect: Rectangle, data: FileEntryData, context: &mut AppContext) -> FileEntry {
         let mut children: Vec<Box<dyn View>> = Vec::new();
-        let dpi = CURRENT_DEVICE.dpi;
+        let dpi = context.device.dpi();
         let font = font_from_style(&mut context.fonts, &NORMAL_STYLE, dpi);
         let padding = font.em() as i32;
 
@@ -173,7 +174,7 @@ impl View for FileEntry {
         _hub: &Hub,
         bus: &mut Bus,
         _rq: &mut RenderQueue,
-        _context: &mut Context,
+        _context: &mut AppContext,
     ) -> bool {
         match evt {
             Event::Gesture(GestureEvent::Tap(center)) if self.rect.includes(*center) => {
@@ -184,8 +185,9 @@ impl View for FileEntry {
         }
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fb, _fonts), fields(rect = ?_rect)))]
-    fn render(&self, fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, context), fields(rect = ?_rect)))]
+    fn render(&self, context: &mut AppContext, _rect: Rectangle) {
+        let fb = context.device.framebuffer_mut();
         fb.draw_rectangle(&self.rect, WHITE);
     }
 

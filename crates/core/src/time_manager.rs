@@ -6,22 +6,28 @@ use std::net::{ToSocketAddrs, UdpSocket};
 use std::sync::mpsc::Sender;
 use std::time::Duration;
 
-use crate::device::CURRENT_DEVICE;
+use crate::device::rtc::Rtc;
 use crate::geolocation;
 use crate::geolocation::GeoLocation;
 use crate::http::Client as HttpClient;
-use crate::rtc::Rtc;
 use crate::view::{Event, NotificationEvent};
+
+use std::sync::Arc;
 
 const NTP_TIMEOUT: Duration = Duration::from_secs(5);
 
-pub struct TimeManager {
-    rtc: Rtc,
+#[derive(Clone)]
+pub struct TimeManager<R: Rtc> {
+    rtc: Arc<R>,
+    set_timezone_fn: fn(chrono_tz::Tz) -> Result<(), Error>,
 }
 
-impl TimeManager {
-    pub fn new(rtc: Rtc) -> Self {
-        TimeManager { rtc }
+impl<R: Rtc> TimeManager<R> {
+    pub fn new(rtc: Arc<R>, set_timezone_fn: fn(chrono_tz::Tz) -> Result<(), Error>) -> Self {
+        TimeManager {
+            rtc,
+            set_timezone_fn,
+        }
     }
 
     pub fn sync(
@@ -89,7 +95,7 @@ impl TimeManager {
             }
         };
 
-        CURRENT_DEVICE.set_system_timezone(geo.timezone)?;
+        (self.set_timezone_fn)(geo.timezone)?;
 
         Ok(())
     }

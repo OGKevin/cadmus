@@ -16,6 +16,8 @@
 //!
 //! The Kobo build is only available on Linux and macOS hosts.
 
+use std::collections::BTreeSet;
+
 use anyhow::{Context, Result, bail};
 use clap::Args;
 
@@ -79,26 +81,54 @@ fn ensure_linaro_toolchain() -> Result<()> {
     })
 }
 
+fn kobo_features(extra: Option<&str>) -> String {
+    let mut features = BTreeSet::from(["kobo"]);
+    if let Some(extra) = extra {
+        for part in extra.split([',', '+']) {
+            let part = part.trim();
+            if !part.is_empty() {
+                features.insert(part);
+            }
+        }
+    }
+    features.into_iter().collect::<Vec<_>>().join(",")
+}
+
 fn cargo_build_kobo(root: &std::path::Path, features: Option<&str>) -> Result<()> {
-    let mut cargo_args = vec![
+    let features = kobo_features(features);
+    let cargo_args = [
         "build",
         "--release",
         "--target",
         "arm-unknown-linux-gnueabihf",
         "-p",
         "cadmus",
+        "--features",
+        features.as_str(),
     ];
-
-    if let Some(f) = features {
-        cargo_args.push("--features");
-        cargo_args.push(f);
-    }
 
     cmd::run("cargo", &cargo_args, root, CROSS_ENV)
 }
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    #[test]
+    fn kobo_features_defaults_to_kobo() {
+        assert_eq!(kobo_features(None), "kobo");
+    }
+
+    #[test]
+    fn kobo_features_merges_extra_features() {
+        assert_eq!(kobo_features(Some("telemetry,test")), "kobo,telemetry,test");
+    }
+
+    #[test]
+    fn kobo_features_deduplicates_kobo() {
+        assert_eq!(kobo_features(Some("kobo,test")), "kobo,test");
+    }
+
     #[test]
     fn symlink_list_has_no_duplicates() {
         let mut link_names: Vec<&str> = build_deps::versions::SONAMES.to_vec();

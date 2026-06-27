@@ -2,10 +2,12 @@ use super::image::Pixmap;
 use crate::color::Color;
 use lazy_static::lazy_static;
 
+#[cfg(any(feature = "kobo", docsrs))]
 pub type ColorTransform = fn(u32, u32, Color) -> Color;
 
 const DITHER_PITCH: u32 = 128;
 
+#[cfg(any(feature = "kobo", docsrs))]
 lazy_static! {
     // Tileable blue noise matrix.
     pub static ref DITHER_G16_DRIFTS: Vec<i8> = {
@@ -20,7 +22,9 @@ lazy_static! {
             }
         }).collect()
     };
+}
 
+lazy_static! {
     // Tileable blue noise matrix.
     pub static ref DITHER_G2_DRIFTS: Vec<i8> = {
         let pixmap = Pixmap::from_png("resources/blue_noise-128.png").unwrap();
@@ -38,6 +42,7 @@ lazy_static! {
 // The input color is in {0 .. 255}.
 // The output color is in G16.
 // G16 := {17 * i | i ∈ {0 .. 15}}.
+#[cfg(any(feature = "kobo", docsrs))]
 pub fn transform_dither_g16(x: u32, y: u32, color: Color) -> Color {
     let gray = color.gray();
     // Get the address of the drift value.
@@ -67,6 +72,7 @@ pub fn transform_dither_g2(x: u32, y: u32, color: Color) -> Color {
     Color::Gray(if c < 128 { 0 } else { 255 })
 }
 
+#[cfg(any(feature = "kobo", docsrs))]
 pub fn transform_identity(_x: u32, _y: u32, color: Color) -> Color {
     color
 }

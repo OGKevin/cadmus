@@ -1,7 +1,8 @@
 use crate::color::WHITE;
-use crate::context::Context;
-use crate::font::Fonts;
-use crate::framebuffer::{Framebuffer, Pixmap, UpdateMode};
+use crate::device::AppContext;
+use crate::device::DeviceHardware as _;
+use crate::framebuffer::Framebuffer as _;
+use crate::framebuffer::{Pixmap, UpdateMode};
 use crate::geom::Rectangle;
 use crate::view::{Bus, Event, Hub, ID_FEEDER, Id, RenderData, RenderQueue, View};
 
@@ -36,13 +37,14 @@ impl View for Image {
         _hub: &Hub,
         _bus: &mut Bus,
         _rq: &mut RenderQueue,
-        _context: &mut Context,
+        _context: &mut AppContext,
     ) -> bool {
         false
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fb, _fonts), fields(rect = ?rect)))]
-    fn render(&self, fb: &mut dyn Framebuffer, rect: Rectangle, _fonts: &mut Fonts) {
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, context), fields(rect = ?rect)))]
+    fn render(&self, context: &mut AppContext, rect: Rectangle) {
+        let fb = context.device.framebuffer_mut();
         let x0 = self.rect.min.x + (self.rect.width() - self.pixmap.width) as i32 / 2;
         let y0 = self.rect.min.y + (self.rect.height() - self.pixmap.height) as i32 / 2;
         let x1 = x0 + self.pixmap.width as i32;

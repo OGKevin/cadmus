@@ -1,9 +1,9 @@
 //! Setting kinds for the General category.
 
 use super::{
-    InputSettingKind, SettingData, SettingIdentity, SettingKind, ToggleSettings, WidgetKind,
+    InputSettingKind, SettingData, SettingIdentity, SettingKind, SettingsFetchData, ToggleSettings,
+    WidgetKind,
 };
-use crate::device::CURRENT_DEVICE;
 use crate::fl;
 use crate::frontlight::LightLevel;
 use crate::geolocation::Coordinates;
@@ -12,6 +12,7 @@ use crate::settings::{Settings, StartupMode};
 use crate::view::{Bus, EntryId, EntryKind, Event, ToggleEvent, ViewId};
 use anyhow::Error;
 use std::fs;
+use std::path::Path;
 
 /// Language and locale selection setting
 pub struct Locale;
@@ -25,8 +26,8 @@ impl SettingKind for Locale {
         fl!("settings-general-language")
     }
 
-    fn fetch(&self, settings: &Settings) -> SettingData {
-        let current = settings.locale.as_ref().map(|l| l.to_string());
+    fn fetch(&self, data: SettingsFetchData) -> SettingData {
+        let current = data.settings.locale.as_ref().map(|l| l.to_string());
         let display = current
             .as_deref()
             .unwrap_or(crate::i18n::DEFAULT_LOCALE)
@@ -81,9 +82,13 @@ impl SettingKind for KeyboardLayout {
         fl!("settings-general-keyboard-layout")
     }
 
-    fn fetch(&self, settings: &Settings) -> SettingData {
-        let current_layout = settings.keyboard_layout.clone();
-        let available_layouts = get_available_layouts().unwrap_or_default();
+    fn fetch(&self, data: SettingsFetchData) -> SettingData {
+        let current_layout = data.settings.keyboard_layout.clone();
+        let layouts_dir = data
+            .install_dir
+            .map(|d| d.join("keyboard-layouts"))
+            .expect("install_dir should not be None");
+        let available_layouts = get_available_layouts(&layouts_dir).unwrap_or_default();
 
         let entries = available_layouts
             .iter()
@@ -128,11 +133,11 @@ impl SettingKind for AutoSuspend {
         fl!("settings-general-auto-suspend")
     }
 
-    fn fetch(&self, settings: &Settings) -> SettingData {
-        let value = if settings.auto_suspend == 0.0 {
+    fn fetch(&self, data: SettingsFetchData) -> SettingData {
+        let value = if data.settings.auto_suspend == 0.0 {
             fl!("settings-general-never")
         } else {
-            format!("{:.1}", settings.auto_suspend)
+            format!("{:.1}", data.settings.auto_suspend)
         };
 
         SettingData {
@@ -195,11 +200,11 @@ impl SettingKind for AutoPowerOff {
         fl!("settings-general-auto-power-off")
     }
 
-    fn fetch(&self, settings: &Settings) -> SettingData {
-        let value = if settings.auto_power_off == 0.0 {
+    fn fetch(&self, data: SettingsFetchData) -> SettingData {
+        let value = if data.settings.auto_power_off == 0.0 {
             fl!("settings-general-never")
         } else {
-            format!("{:.1}", settings.auto_power_off)
+            format!("{:.1}", data.settings.auto_power_off)
         };
 
         SettingData {
@@ -262,13 +267,13 @@ impl SettingKind for SleepCover {
         fl!("settings-general-enable-sleep-cover")
     }
 
-    fn fetch(&self, settings: &Settings) -> SettingData {
+    fn fetch(&self, data: SettingsFetchData) -> SettingData {
         SettingData {
-            value: settings.sleep_cover.to_string(),
+            value: data.settings.sleep_cover.to_string(),
             widget: WidgetKind::Toggle {
                 left_label: fl!("settings-general-toggle-on"),
                 right_label: fl!("settings-general-toggle-off"),
-                enabled: settings.sleep_cover,
+                enabled: data.settings.sleep_cover,
                 tap_event: Event::Toggle(ToggleEvent::Setting(ToggleSettings::SleepCover)),
             },
         }
@@ -300,13 +305,13 @@ impl SettingKind for AutoShare {
         fl!("settings-general-enable-auto-share")
     }
 
-    fn fetch(&self, settings: &Settings) -> SettingData {
+    fn fetch(&self, data: SettingsFetchData) -> SettingData {
         SettingData {
-            value: settings.auto_share.to_string(),
+            value: data.settings.auto_share.to_string(),
             widget: WidgetKind::Toggle {
                 left_label: fl!("settings-general-toggle-on"),
                 right_label: fl!("settings-general-toggle-off"),
-                enabled: settings.auto_share,
+                enabled: data.settings.auto_share,
                 tap_event: Event::Toggle(ToggleEvent::Setting(ToggleSettings::AutoShare)),
             },
         }
@@ -338,13 +343,13 @@ impl SettingKind for AutoTime {
         fl!("settings-general-auto-time")
     }
 
-    fn fetch(&self, settings: &Settings) -> SettingData {
+    fn fetch(&self, data: SettingsFetchData) -> SettingData {
         SettingData {
-            value: settings.auto_time.to_string(),
+            value: data.settings.auto_time.to_string(),
             widget: WidgetKind::Toggle {
                 left_label: fl!("settings-general-toggle-on"),
                 right_label: fl!("settings-general-toggle-off"),
-                enabled: settings.auto_time,
+                enabled: data.settings.auto_time,
                 tap_event: Event::Toggle(ToggleEvent::Setting(ToggleSettings::AutoTime)),
             },
         }
@@ -376,10 +381,10 @@ impl SettingKind for ButtonScheme {
         fl!("settings-general-button-scheme")
     }
 
-    fn fetch(&self, settings: &Settings) -> SettingData {
-        let enabled = settings.button_scheme == crate::settings::ButtonScheme::Natural;
+    fn fetch(&self, data: SettingsFetchData) -> SettingData {
+        let enabled = data.settings.button_scheme == crate::settings::ButtonScheme::Natural;
         SettingData {
-            value: settings.button_scheme.to_i18n_string(),
+            value: data.settings.button_scheme.to_i18n_string(),
             widget: WidgetKind::Toggle {
                 left_label: crate::settings::ButtonScheme::Natural.to_i18n_string(),
                 right_label: crate::settings::ButtonScheme::Inverted.to_i18n_string(),
@@ -434,13 +439,13 @@ impl SettingKind for AutoFrontlight {
         fl!("settings-general-auto-frontlight")
     }
 
-    fn fetch(&self, settings: &Settings) -> SettingData {
+    fn fetch(&self, data: SettingsFetchData) -> SettingData {
         SettingData {
-            value: settings.auto_frontlight.to_string(),
+            value: data.settings.auto_frontlight.to_string(),
             widget: WidgetKind::Toggle {
                 left_label: fl!("settings-general-toggle-on"),
                 right_label: fl!("settings-general-toggle-off"),
-                enabled: settings.auto_frontlight,
+                enabled: data.settings.auto_frontlight,
                 tap_event: Event::Toggle(ToggleEvent::Setting(ToggleSettings::AutoFrontlight)),
             },
         }
@@ -476,9 +481,9 @@ impl SettingKind for AutoFrontlightBrightness {
         fl!("settings-general-auto-frontlight-brightness")
     }
 
-    fn fetch(&self, settings: &Settings) -> SettingData {
+    fn fetch(&self, data: SettingsFetchData) -> SettingData {
         SettingData {
-            value: self.display_value(settings),
+            value: self.display_value(data.settings),
             widget: WidgetKind::ActionLabel(Event::Select(EntryId::EditAutoFrontlightBrightness)),
         }
     }
@@ -559,9 +564,9 @@ impl SettingKind for AutoFrontlightManualCoordinates {
         fl!("settings-general-auto-frontlight-manual-coordinates")
     }
 
-    fn fetch(&self, settings: &Settings) -> SettingData {
+    fn fetch(&self, data: SettingsFetchData) -> SettingData {
         SettingData {
-            value: self.display_value(settings),
+            value: self.display_value(data.settings),
             widget: WidgetKind::ActionLabel(Event::Select(
                 EntryId::EditAutoFrontlightManualCoordinates,
             )),
@@ -665,9 +670,9 @@ impl SettingKind for SettingsRetention {
         fl!("settings-general-settings-retention")
     }
 
-    fn fetch(&self, settings: &Settings) -> SettingData {
+    fn fetch(&self, data: SettingsFetchData) -> SettingData {
         SettingData {
-            value: settings.settings_retention.to_string(),
+            value: data.settings.settings_retention.to_string(),
             widget: WidgetKind::ActionLabel(Event::Select(EntryId::EditSettingsRetention)),
         }
     }
@@ -718,9 +723,9 @@ impl SettingKind for DbBackupRetentionSetting {
         fl!("settings-general-db-backup-retention")
     }
 
-    fn fetch(&self, settings: &Settings) -> SettingData {
+    fn fetch(&self, data: SettingsFetchData) -> SettingData {
         SettingData {
-            value: settings.db_backup_retention.to_string(),
+            value: data.settings.db_backup_retention.to_string(),
             widget: WidgetKind::ActionLabel(Event::Select(EntryId::EditDbBackupRetention)),
         }
     }
@@ -771,8 +776,8 @@ impl SettingKind for StartupModeSetting {
         fl!("settings-general-startup-mode")
     }
 
-    fn fetch(&self, settings: &Settings) -> SettingData {
-        let current = settings.startup_mode;
+    fn fetch(&self, data: SettingsFetchData) -> SettingData {
+        let current = data.settings.startup_mode;
         let entries = vec![
             EntryKind::RadioButton(
                 StartupMode::Home.to_i18n_string(),
@@ -807,8 +812,7 @@ impl SettingKind for StartupModeSetting {
 }
 
 /// Scans the keyboard-layouts directory for available keyboard layouts
-fn get_available_layouts() -> Result<Vec<String>, Error> {
-    let layouts_dir = CURRENT_DEVICE.install_path("keyboard-layouts");
+fn get_available_layouts(layouts_dir: &Path) -> Result<Vec<String>, Error> {
     let mut layouts = Vec::new();
 
     if layouts_dir.exists() {

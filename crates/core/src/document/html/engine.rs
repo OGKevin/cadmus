@@ -1,6 +1,6 @@
 use super::dom::{ElementData, NodeData, NodeRef, TextData, WRAPPER_TAG_NAME};
 use super::layout::{ChildArtifact, GlueMaterial, LoopContext, PenaltyMaterial, SiblingStyle};
-use super::layout::{DEFAULT_HYPH_LANG, HYPHENATION_PATTERNS, collapse_margins, hyph_lang};
+use super::layout::{DEFAULT_HYPH_LANG, collapse_margins, hyph_lang, hyphenation_patterns};
 use super::layout::{Display, Float, ImageElement, ParagraphElement, TextAlign, TextElement};
 use super::layout::{DrawCommand, DrawState, FontKind, Fonts, ImageCommand, RootData, TextCommand};
 use super::layout::{EM_SPACE_RATIOS, FONT_SPACES, WORD_SPACE_RATIOS};
@@ -15,7 +15,6 @@ use super::parse::{
 use super::parse::{parse_letter_spacing, parse_word_spacing};
 use super::style::{StyleSheet, specified_values};
 use super::xml::XmlExt;
-use crate::device::CURRENT_DEVICE;
 use crate::document::pdf::PdfOpener;
 use crate::document::{Document, Location};
 use crate::font::{FontFamily, FontOpener};
@@ -28,13 +27,15 @@ use crate::settings::{
 use crate::settings::{HYPHEN_PENALTY, STRETCH_TOLERANCE};
 use crate::unit::{mm_to_px, pt_to_px};
 use anyhow::Error;
-use kl_hyphenate::{Hyphenator, Iter, Standard};
+use fxhash::FxHashMap;
+use kl_hyphenate::{Hyphenator, Iter, Language, Standard};
 use paragraph_breaker::{Breakpoint, INFINITE_PENALTY, Item as ParagraphItem};
 use paragraph_breaker::{standard_fit, total_fit};
 use percent_encoding::percent_decode_str;
 use septem::Roman;
 use std::convert::TryFrom;
 use std::path::PathBuf;
+use std::sync::Arc;
 use xi_unicode::LineBreakIterator;
 
 const DEFAULT_DPI: u16 = 300;
@@ -67,10 +68,14 @@ pub struct Engine {
     pub dims: (u32, u32),
     // Device DPI.
     pub dpi: u16,
+    // Directory containing bundled assets (fonts, hyphenation patterns).
+    pub install_dir: PathBuf,
+    // Lazily loaded hyphenation patterns.
+    hyphenation_patterns: Option<Arc<FxHashMap<Language, Standard>>>,
 }
 
 impl Engine {
-    pub fn new() -> Engine {
+    pub fn new(install_dir: impl Into<PathBuf>) -> Engine {
         let margin =
             Edge::uniform(mm_to_px(DEFAULT_MARGIN_WIDTH as f32, DEFAULT_DPI).round() as i32);
         let line_height = DEFAULT_LINE_HEIGHT;
@@ -85,19 +90,28 @@ impl Engine {
             line_height,
             dims: (DEFAULT_WIDTH, DEFAULT_HEIGHT),
             dpi: DEFAULT_DPI,
+            install_dir: install_dir.into(),
+            hyphenation_patterns: None,
         }
+    }
+
+    fn hyphenation_patterns(&mut self) -> Arc<FxHashMap<Language, Standard>> {
+        if self.hyphenation_patterns.is_none() {
+            self.hyphenation_patterns = Some(hyphenation_patterns(&self.install_dir));
+        }
+        self.hyphenation_patterns.clone().unwrap()
     }
 
     #[inline]
     pub fn load_fonts(&mut self) {
         if self.fonts.is_none() {
-            self.fonts = build_fonts(None).ok();
+            self.fonts = build_fonts(&self.install_dir).ok();
         }
     }
 
     pub fn load_fonts_from(&mut self, root_dir: std::path::PathBuf) {
         if self.fonts.is_none() {
-            self.fonts = build_fonts(Some(root_dir)).ok();
+            self.fonts = build_fonts(&root_dir).ok();
         }
     }
 
@@ -1635,13 +1649,14 @@ impl Engine {
         let mut glue_drifts = Vec::new();
 
         if bps.is_empty() && style.text_align != TextAlign::Center {
+            let patterns = self.hyphenation_patterns();
             if let Some(dictionary) = hyph_lang(
                 style
                     .language
                     .as_ref()
                     .map_or(DEFAULT_HYPH_LANG, String::as_str),
             )
-            .and_then(|lang| HYPHENATION_PATTERNS.get(&lang))
+            .and_then(|lang| patterns.get(&lang))
             {
                 items = self.hyphenate_paragraph(style, dictionary, items, &mut hyph_indices);
                 bps = total_fit(&items, &line_lengths, self.stretch_tolerance, 0);
@@ -2446,14 +2461,9 @@ fn format_list_prefix(kind: ListStyleType, index: usize) -> Option<String> {
     }
 }
 
-fn build_fonts(root_dir: Option<std::path::PathBuf>) -> Result<Fonts, Error> {
+fn build_fonts(install_dir: &std::path::Path) -> Result<Fonts, Error> {
     let opener = FontOpener::new()?;
-    let font_path = |name: &str| -> std::path::PathBuf {
-        match &root_dir {
-            Some(root) => root.join("fonts").join(name),
-            None => CURRENT_DEVICE.install_path("fonts").join(name),
-        }
-    };
+    let font_path = |name: &str| -> std::path::PathBuf { install_dir.join("fonts").join(name) };
     let mut fonts = Fonts {
         serif: FontFamily {
             regular: opener.open(font_path("LibertinusSerif-Regular.otf").as_path())?,

@@ -2,17 +2,18 @@
 
 mod error;
 mod manager;
+#[cfg(any(test, not(feature = "kobo")))]
+mod stub;
 
 cfg_select! {
-    feature = "kobo" => {
+    any(feature = "kobo", docsrs) => {
         mod kobo;
-        pub(crate) use kobo::create_usb_manager;
+        pub use kobo::KoboUsbManager;
     }
-    _ => {
-        mod stub;
-        pub(crate) use stub::StubUsbManager;
-    }
+    _ => {}
 }
 
 pub(crate) use error::UsbError;
 pub use manager::UsbManager;
+#[cfg(any(test, not(feature = "kobo")))]
+pub use stub::StubUsbManager;

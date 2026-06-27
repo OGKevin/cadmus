@@ -1,8 +1,6 @@
-use crate::device::CURRENT_DEVICE;
 use secrecy::{ExposeSecret, SecretString};
 use std::fs::{self, File};
 use std::io::{Read, Write};
-use std::path::PathBuf;
 
 const TOKEN_FILENAME: &str = ".github_token";
 
@@ -13,8 +11,8 @@ const TOKEN_FILENAME: &str = ".github_token";
 /// # Errors
 ///
 /// Returns an error string if directory creation or file write fails.
-pub fn save_token(token: &SecretString) -> Result<(), String> {
-    let path = token_path();
+pub fn save_token(token: &SecretString, install_dir: &std::path::Path) -> Result<(), String> {
+    let path = install_dir.join(TOKEN_FILENAME);
     tracing::debug!(path = %path.display(), "Saving GitHub token");
 
     if let Some(parent) = path.parent() {
@@ -44,8 +42,8 @@ pub fn save_token(token: &SecretString) -> Result<(), String> {
 /// # Errors
 ///
 /// Returns an error string if the file exists but cannot be read.
-pub fn load_token() -> Result<Option<SecretString>, String> {
-    let path = token_path();
+pub fn load_token(install_dir: &std::path::Path) -> Result<Option<SecretString>, String> {
+    let path = install_dir.join(TOKEN_FILENAME);
     tracing::debug!(path = %path.display(), "Loading GitHub token");
 
     if !path.exists() {
@@ -79,8 +77,8 @@ pub fn load_token() -> Result<Option<SecretString>, String> {
 /// # Errors
 ///
 /// Returns an error string if the file exists but cannot be removed.
-pub fn delete_token() -> Result<(), String> {
-    let path = token_path();
+pub fn delete_token(install_dir: &std::path::Path) -> Result<(), String> {
+    let path = install_dir.join(TOKEN_FILENAME);
     tracing::debug!(path = %path.display(), "Deleting GitHub token");
 
     if !path.exists() {
@@ -90,8 +88,4 @@ pub fn delete_token() -> Result<(), String> {
     fs::remove_file(&path).map_err(|e| format!("Failed to delete token file: {}", e))?;
     tracing::info!("GitHub token deleted");
     Ok(())
-}
-
-fn token_path() -> PathBuf {
-    CURRENT_DEVICE.install_path(TOKEN_FILENAME)
 }

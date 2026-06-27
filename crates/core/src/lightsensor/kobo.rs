@@ -5,7 +5,16 @@ use std::io::{Read, Seek, SeekFrom};
 
 // The Aura ONE uses a Silicon Graphics light sensor,
 // the model code is si114x (where x is 5, 6, or 7).
+cfg_select! {
+    test => {
+
+const VISIBLE_PHOTODIODE: &str = "/dev/null";
+    }
+    _ => {
+
 const VISIBLE_PHOTODIODE: &str = "/sys/devices/virtual/input/input3/als_vis_data";
+    }
+}
 
 pub struct KoboLightSensor(File);
 

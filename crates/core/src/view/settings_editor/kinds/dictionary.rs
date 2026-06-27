@@ -1,6 +1,6 @@
 //! Setting kinds for the Dictionaries category.
 
-use super::{SettingData, SettingIdentity, SettingKind, WidgetKind};
+use super::{SettingData, SettingIdentity, SettingKind, SettingsFetchData, WidgetKind};
 use crate::fl;
 use crate::settings::Settings;
 use crate::view::{EntryId, EntryKind, Event};
@@ -50,7 +50,7 @@ impl SettingKind for DictionaryInfo {
         }
     }
 
-    fn fetch(&self, _settings: &Settings) -> SettingData {
+    fn fetch(&self, _data: SettingsFetchData) -> SettingData {
         if self.is_installing {
             return SettingData {
                 value: fl!("settings-dictionaries-downloading"),
@@ -121,7 +121,10 @@ mod tests {
                 update_available: false,
                 is_installing: false,
             };
-            let data = info.fetch(&make_settings());
+            let data = info.fetch(SettingsFetchData {
+                settings: &make_settings(),
+                install_dir: None,
+            });
 
             assert!(matches!(
                 data.widget,
@@ -138,7 +141,10 @@ mod tests {
                 update_available: false,
                 is_installing: false,
             };
-            let data = info.fetch(&make_settings());
+            let data = info.fetch(SettingsFetchData {
+                settings: &make_settings(),
+                install_dir: None,
+            });
 
             let WidgetKind::SubMenu(entries) = data.widget else {
                 panic!("expected SubMenu");
@@ -162,7 +168,10 @@ mod tests {
                 update_available: true,
                 is_installing: false,
             };
-            let data = info.fetch(&make_settings());
+            let data = info.fetch(SettingsFetchData {
+                settings: &make_settings(),
+                install_dir: None,
+            });
 
             let WidgetKind::SubMenu(entries) = data.widget else {
                 panic!("expected SubMenu");
@@ -188,7 +197,10 @@ mod tests {
                 update_available: false,
                 is_installing: true,
             };
-            let data = info.fetch(&make_settings());
+            let data = info.fetch(SettingsFetchData {
+                settings: &make_settings(),
+                install_dir: None,
+            });
 
             assert!(matches!(data.widget, WidgetKind::None));
         }
@@ -201,7 +213,10 @@ mod tests {
                 update_available: true,
                 is_installing: true,
             };
-            let data = info.fetch(&make_settings());
+            let data = info.fetch(SettingsFetchData {
+                settings: &make_settings(),
+                install_dir: None,
+            });
 
             assert!(matches!(data.widget, WidgetKind::None));
         }

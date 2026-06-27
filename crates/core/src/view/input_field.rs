@@ -4,10 +4,9 @@ use super::{
     View, ViewId,
 };
 use crate::color::{BLACK, TEXT_NORMAL};
-use crate::context::Context;
-use crate::device::CURRENT_DEVICE;
+use crate::device::{AppContext, DeviceIdentity};
 use crate::font::{FONT_SIZES, Fonts, NORMAL_STYLE, font_from_style};
-use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::framebuffer::UpdateMode;
 use crate::geom::{BorderSpec, LinearDir, Point, Rectangle, halves};
 use crate::gesture::GestureEvent;
 use crate::unit::scale_by_dpi;
@@ -110,7 +109,7 @@ impl InputField {
         self
     }
 
-    pub fn text(mut self, text: &str, context: &mut Context) -> InputField {
+    pub fn text(mut self, text: &str, context: &mut AppContext) -> InputField {
         self.text = text.to_string();
         self.cursor = self.text.len();
         context.record_input(text, self.view_id);
@@ -122,7 +121,7 @@ impl InputField {
         text: &str,
         move_cursor: bool,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if self.text != text {
             self.text = text.to_string();
@@ -196,11 +195,10 @@ impl InputField {
         }
     }
 
-    fn index_from_position(&self, position: Point, fonts: &mut Fonts) -> usize {
+    fn index_from_position(&self, position: Point, fonts: &mut Fonts, dpi: u16) -> usize {
         if self.text.is_empty() {
             return 0;
         }
-        let dpi = CURRENT_DEVICE.dpi;
         let font = font_from_style(fonts, &NORMAL_STYLE, dpi);
         let padding = font.em() as i32;
         let max_width = self.rect.width().saturating_sub(2 * padding as u32) as i32;
@@ -214,21 +212,23 @@ impl InputField {
 }
 
 impl View for InputField {
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, bus, rq, context), fields(event = ?evt
+    ), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
         hub: &Hub,
         bus: &mut Bus,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
         match *evt {
             Event::Gesture(GestureEvent::Tap(center)) if self.rect.includes(center) => {
                 if !self.focused {
                     hub.send(Event::Focus(Some(self.view_id))).ok();
                 } else {
-                    let index = self.index_from_position(center, &mut context.fonts);
+                    let index =
+                        self.index_from_position(center, &mut context.fonts, context.device.dpi());
                     self.cursor = self
                         .text
                         .char_indices()
@@ -314,9 +314,10 @@ impl View for InputField {
         }
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fb, fonts, _rect), fields(rect = ?_rect)))]
-    fn render(&self, fb: &mut dyn Framebuffer, _rect: Rectangle, fonts: &mut Fonts) {
-        let dpi = CURRENT_DEVICE.dpi;
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, context, _rect), fields(rect = ?_rect
+    )))]
+    fn render(&self, context: &mut AppContext, _rect: Rectangle) {
+        let (fb, fonts, dpi) = context.framebuffer_and_fonts();
         let font = font_from_style(fonts, &NORMAL_STYLE, dpi);
         let padding = font.em() as i32;
         let x_height = font.x_heights.0 as i32;

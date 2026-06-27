@@ -11,10 +11,10 @@ use self::bottom_bar::BottomBar;
 use self::shelf::Shelf;
 use super::top_bar::{TopBar, TopBarVariant};
 use crate::color::BLACK;
-use crate::context::Context;
-use crate::device::CURRENT_DEVICE;
-use crate::font::Fonts;
-use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::device::AppContext;
+use crate::device::DeviceRotation as _;
+use crate::device::{DeviceIdentity as _, DevicePaths as _};
+use crate::framebuffer::UpdateMode;
 use crate::geom::{CycleDir, DiagDir, Dir, Rectangle, halves};
 use crate::gesture::GestureEvent;
 use crate::input::{ButtonCode, ButtonStatus, DeviceEvent};
@@ -84,10 +84,10 @@ impl Home {
     pub fn new(
         rect: Rectangle,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> Result<Home, Error> {
         let id = ID_FEEDER.next();
-        let dpi = CURRENT_DEVICE.dpi;
+        let dpi = context.device.dpi();
         let mut children = Vec::new();
 
         let thickness = scale_by_dpi(THICKNESS_MEDIUM, dpi) as i32;
@@ -199,6 +199,7 @@ impl Home {
             library_settings.first_column,
             library_settings.second_column,
             library_settings.thumbnail_previews,
+            context.device.dpi(),
         );
 
         let max_lines = shelf.max_lines;
@@ -265,7 +266,7 @@ impl Home {
         path: &Path,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if self.current_directory == path {
             return;
@@ -340,7 +341,7 @@ impl Home {
         path: &Path,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if self.current_directory.starts_with(path) {
             if let Some(parent) = path.parent() {
@@ -351,7 +352,7 @@ impl Home {
         }
     }
 
-    fn go_to_page(&mut self, index: usize, rq: &mut RenderQueue, context: &mut Context) {
+    fn go_to_page(&mut self, index: usize, rq: &mut RenderQueue, context: &mut AppContext) {
         if index >= self.pages_count {
             return;
         }
@@ -360,7 +361,7 @@ impl Home {
         self.update_bottom_bar(rq, context);
     }
 
-    fn go_to_neighbor(&mut self, dir: CycleDir, rq: &mut RenderQueue, context: &mut Context) {
+    fn go_to_neighbor(&mut self, dir: CycleDir, rq: &mut RenderQueue, context: &mut AppContext) {
         match dir {
             CycleDir::Next if self.current_page < self.pages_count.saturating_sub(1) => {
                 self.current_page += 1;
@@ -375,7 +376,12 @@ impl Home {
         self.update_bottom_bar(rq, context);
     }
 
-    fn go_to_status_change(&mut self, dir: CycleDir, rq: &mut RenderQueue, context: &mut Context) {
+    fn go_to_status_change(
+        &mut self,
+        dir: CycleDir,
+        rq: &mut RenderQueue,
+        context: &mut AppContext,
+    ) {
         if self.pages_count < 2 {
             return;
         }
@@ -410,7 +416,7 @@ impl Home {
         update: bool,
         reset_page: bool,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         let max_lines = {
             let shelf = self
@@ -466,7 +472,7 @@ impl Home {
         }
     }
 
-    fn update_first_column(&mut self, rq: &mut RenderQueue, context: &mut Context) {
+    fn update_first_column(&mut self, rq: &mut RenderQueue, context: &mut AppContext) {
         let selected_library = context.settings.selected_library;
         self.children[self.shelf_index]
             .as_mut()
@@ -476,7 +482,7 @@ impl Home {
         self.update_shelf(false, rq, context);
     }
 
-    fn update_second_column(&mut self, rq: &mut RenderQueue, context: &mut Context) {
+    fn update_second_column(&mut self, rq: &mut RenderQueue, context: &mut AppContext) {
         let selected_library = context.settings.selected_library;
         self.children[self.shelf_index]
             .as_mut()
@@ -486,7 +492,7 @@ impl Home {
         self.update_shelf(false, rq, context);
     }
 
-    fn update_thumbnail_previews(&mut self, rq: &mut RenderQueue, context: &mut Context) {
+    fn update_thumbnail_previews(&mut self, rq: &mut RenderQueue, context: &mut AppContext) {
         let selected_library = context.settings.selected_library;
         self.children[self.shelf_index]
             .as_mut()
@@ -498,8 +504,8 @@ impl Home {
         self.update_shelf(false, rq, context);
     }
 
-    fn update_shelf(&mut self, was_resized: bool, rq: &mut RenderQueue, context: &mut Context) {
-        let dpi = CURRENT_DEVICE.dpi;
+    fn update_shelf(&mut self, was_resized: bool, rq: &mut RenderQueue, context: &mut AppContext) {
+        let dpi = context.device.dpi();
         let big_height = scale_by_dpi(BIG_BAR_HEIGHT, dpi) as i32;
         let thickness = scale_by_dpi(THICKNESS_MEDIUM, dpi) as i32;
         let shelf = self.children[self.shelf_index]
@@ -560,7 +566,7 @@ impl Home {
         }
     }
 
-    fn update_bottom_bar(&mut self, rq: &mut RenderQueue, context: &Context) {
+    fn update_bottom_bar(&mut self, rq: &mut RenderQueue, context: &AppContext) {
         if let Some(index) = rlocate::<BottomBar>(self) {
             let bottom_bar = self.children[index]
                 .as_mut()
@@ -582,9 +588,9 @@ impl Home {
         id: Option<ViewId>,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
-        let dpi = CURRENT_DEVICE.dpi;
+        let dpi = context.device.dpi();
         let (small_height, big_height) = (
             scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32,
             scale_by_dpi(BIG_BAR_HEIGHT, dpi) as i32,
@@ -701,9 +707,9 @@ impl Home {
         update: bool,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
-        let dpi = CURRENT_DEVICE.dpi;
+        let dpi = context.device.dpi();
         let (small_height, big_height) = (
             scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32,
             scale_by_dpi(BIG_BAR_HEIGHT, dpi) as i32,
@@ -791,7 +797,12 @@ impl Home {
 
                 // Shrink the nav bar.
                 if y_shift < 0 {
-                    let y_shift = nav_bar.shrink(y_shift, &mut context.fonts);
+                    let y_shift = nav_bar.shrink(
+                        y_shift,
+                        &mut context.fonts,
+                        context.device.dpi(),
+                        &context.device.install_dir(),
+                    );
                     self.children[self.shelf_index].rect_mut().min.y += y_shift;
                     *self.children[self.shelf_index - 1].rect_mut() += pt!(0, y_shift);
                 }
@@ -819,9 +830,9 @@ impl Home {
         enable: Option<bool>,
         update: bool,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
-        let dpi = CURRENT_DEVICE.dpi;
+        let dpi = context.device.dpi();
         let (small_height, big_height) = (
             scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32,
             scale_by_dpi(BIG_BAR_HEIGHT, dpi) as i32,
@@ -905,9 +916,9 @@ impl Home {
         update: bool,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
-        let dpi = CURRENT_DEVICE.dpi;
+        let dpi = context.device.dpi();
         let (small_height, big_height) = (
             scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32,
             scale_by_dpi(BIG_BAR_HEIGHT, dpi) as i32,
@@ -986,7 +997,12 @@ impl Home {
 
                 // Shrink the nav bar.
                 if y_shift < 0 {
-                    let y_shift = nav_bar.shrink(y_shift, &mut context.fonts);
+                    let y_shift = nav_bar.shrink(
+                        y_shift,
+                        &mut context.fonts,
+                        context.device.dpi(),
+                        &context.device.install_dir(),
+                    );
                     self.children[self.shelf_index].rect_mut().min.y += y_shift;
                     *self.children[self.shelf_index - 1].rect_mut() += pt!(0, y_shift);
                 }
@@ -1061,7 +1077,7 @@ impl Home {
         enable: Option<bool>,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if let Some(index) = locate_by_id(self, ViewId::RenameDocument) {
             if let Some(true) = enable {
@@ -1118,7 +1134,7 @@ impl Home {
         enable: Option<bool>,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if let Some(index) = locate_by_id(self, ViewId::GoToPage) {
             if let Some(true) = enable {
@@ -1161,7 +1177,7 @@ impl Home {
         rect: Rectangle,
         enable: Option<bool>,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if let Some(index) = locate_by_id(self, ViewId::SortMenu) {
             if let Some(true) = enable {
@@ -1260,7 +1276,7 @@ impl Home {
         rect: Rectangle,
         enable: Option<bool>,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if let Some(index) = locate_by_id(self, ViewId::BookMenu) {
             if let Some(true) = enable {
@@ -1370,7 +1386,7 @@ impl Home {
         rect: Rectangle,
         enable: Option<bool>,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if let Some(index) = locate_by_id(self, ViewId::LibraryMenu) {
             if let Some(true) = enable {
@@ -1492,7 +1508,7 @@ impl Home {
         }
     }
 
-    fn add_document(&mut self, info: Info, rq: &mut RenderQueue, context: &mut Context) {
+    fn add_document(&mut self, info: Info, rq: &mut RenderQueue, context: &mut AppContext) {
         context.library.add_document(info);
         self.sort(false, rq, context);
         self.refresh_visibles(true, false, rq, context);
@@ -1503,7 +1519,7 @@ impl Home {
         path: &Path,
         status: SimpleStatus,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         context.library.set_status(path, status);
 
@@ -1515,7 +1531,7 @@ impl Home {
         self.refresh_visibles(true, false, rq, context);
     }
 
-    fn empty_trash(&mut self, hub: &Hub, rq: &mut RenderQueue, context: &mut Context) {
+    fn empty_trash(&mut self, hub: &Hub, rq: &mut RenderQueue, context: &mut AppContext) {
         let trash_path = context.library.home.join(TRASH_DIRNAME);
 
         let trash = Library::new(trash_path, &context.database, "Trash")
@@ -1552,7 +1568,7 @@ impl Home {
         path: &Path,
         file_name: &str,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> Result<(), Error> {
         context.library.rename(path, file_name)?;
         self.refresh_visibles(true, false, rq, context);
@@ -1563,7 +1579,7 @@ impl Home {
         &mut self,
         path: &Path,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> Result<(), Error> {
         let full_path = context.library.home.join(path);
         if full_path.exists() {
@@ -1592,7 +1608,12 @@ impl Home {
         Ok(())
     }
 
-    fn copy_to(&mut self, path: &Path, index: usize, context: &mut Context) -> Result<(), Error> {
+    fn copy_to(
+        &mut self,
+        path: &Path,
+        index: usize,
+        context: &mut AppContext,
+    ) -> Result<(), Error> {
         let library_settings = &context.settings.libraries[index];
         let mut library = Library::new(
             &library_settings.path,
@@ -1608,7 +1629,7 @@ impl Home {
         path: &Path,
         index: usize,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> Result<(), Error> {
         let library_settings = &context.settings.libraries[index];
         let mut library = Library::new(
@@ -1621,7 +1642,7 @@ impl Home {
         Ok(())
     }
 
-    fn set_reverse_order(&mut self, value: bool, rq: &mut RenderQueue, context: &mut Context) {
+    fn set_reverse_order(&mut self, value: bool, rq: &mut RenderQueue, context: &mut AppContext) {
         self.reverse_order = value;
         self.current_page = 0;
         self.sort(true, rq, context);
@@ -1631,7 +1652,7 @@ impl Home {
         &mut self,
         sort_method: SortMethod,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         self.sort_method = sort_method;
         self.reverse_order = sort_method.reverse_order();
@@ -1650,7 +1671,7 @@ impl Home {
         self.sort(true, rq, context);
     }
 
-    fn sort(&mut self, update: bool, rq: &mut RenderQueue, context: &mut Context) {
+    fn sort(&mut self, update: bool, rq: &mut RenderQueue, context: &mut AppContext) {
         context
             .library
             .set_sort(self.sort_method, self.reverse_order);
@@ -1668,7 +1689,7 @@ impl Home {
         index: usize,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if index == context.settings.selected_library {
             return;
@@ -1739,12 +1760,18 @@ impl Home {
         self.select_directory(&home, hub, rq, context);
     }
 
-    fn clean_up(&mut self, rq: &mut RenderQueue, context: &mut Context) {
+    fn clean_up(&mut self, rq: &mut RenderQueue, context: &mut AppContext) {
         context.library.clean_up();
         self.refresh_visibles(true, false, rq, context);
     }
 
-    fn terminate_fetchers(&mut self, path: &Path, update: bool, hub: &Hub, context: &mut Context) {
+    fn terminate_fetchers(
+        &mut self,
+        path: &Path,
+        update: bool,
+        hub: &Hub,
+        context: &mut AppContext,
+    ) {
         self.background_fetchers.retain(|id, fetcher| {
             if fetcher.full_path == path {
                 unsafe { libc::kill(*id as libc::pid_t, libc::SIGTERM) };
@@ -1780,10 +1807,10 @@ impl Home {
         });
     }
 
-    fn insert_fetcher(&mut self, hook: &Hook, hub: &Hub, context: &Context) {
+    fn insert_fetcher(&mut self, hook: &Hook, hub: &Hub, context: &AppContext) {
         let library_path = &context.library.home;
         let save_path = context.library.home.join(&hook.path);
-        let program = CURRENT_DEVICE.install_path(&hook.program);
+        let program = context.device.install_path(&hook.program);
         match self.spawn_child(
             library_path,
             &save_path,
@@ -1928,7 +1955,7 @@ impl Home {
         Ok(process)
     }
 
-    fn reseed(&mut self, rq: &mut RenderQueue, context: &mut Context) {
+    fn reseed(&mut self, rq: &mut RenderQueue, context: &mut AppContext) {
         context
             .library
             .set_sort(self.sort_method, self.reverse_order);
@@ -1943,14 +1970,15 @@ impl Home {
 }
 
 impl View for Home {
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, _bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, _bus, rq, context), fields(event = ?evt
+    ), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
         hub: &Hub,
         _bus: &mut Bus,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
         match *evt {
             Event::Gesture(GestureEvent::Swipe {
@@ -1982,7 +2010,7 @@ impl View for Home {
                 true
             }
             Event::Gesture(GestureEvent::Rotate { quarter_turns, .. }) if quarter_turns != 0 => {
-                let (_, dir) = CURRENT_DEVICE.mirroring_scheme();
+                let (_, dir) = context.device.mirroring_scheme();
                 let n = (4 + (context.display.rotation - dir * quarter_turns)) % 4;
                 hub.send(Event::Select(EntryId::Rotate(n))).ok();
                 true
@@ -2393,11 +2421,18 @@ impl View for Home {
         }
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _fb, _fonts, _rect), fields(rect = ?_rect)))]
-    fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {}
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _context, _rect), fields(rect = ?_rect
+    )))]
+    fn render(&self, _context: &mut AppContext, _rect: Rectangle) {}
 
-    fn resize(&mut self, rect: Rectangle, hub: &Hub, rq: &mut RenderQueue, context: &mut Context) {
-        let dpi = CURRENT_DEVICE.dpi;
+    fn resize(
+        &mut self,
+        rect: Rectangle,
+        hub: &Hub,
+        rq: &mut RenderQueue,
+        context: &mut AppContext,
+    ) {
+        let dpi = context.device.dpi();
         let thickness = scale_by_dpi(THICKNESS_MEDIUM, dpi) as i32;
         let (small_thickness, big_thickness) = halves(thickness);
         let (small_height, big_height) = (

@@ -1,71 +1,72 @@
 //! Device model definitions.
 
+// #[cfg(all(feature = "kobo", not(test)))]
+#[cfg(any(feature = "kobo", docsrs))]
+use crate::device::kobo;
+
+use crate::device::AppDevice;
 use std::fmt;
 
 /// Kobo device model identifiers.
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum Model {
-    LibraColour,
-    ClaraColour,
-    ClaraBW,
-    Elipsa2E,
-    Clara2E,
-    Libra2,
-    Sage,
-    Elipsa,
-    Nia,
-    LibraH2O,
-    Forma32GB,
-    Forma,
-    ClaraHD,
-    AuraH2OEd2V2,
-    AuraH2OEd2V1,
-    AuraEd2V2,
-    AuraEd2V1,
-    AuraONELimEd,
-    AuraONE,
-    Touch2,
-    GloHD,
-    AuraH2O,
-    Aura,
-    AuraHD,
-    Mini,
-    Glo,
-    TouchC,
-    TouchAB,
+    #[cfg(any(feature = "kobo", docsrs))]
+    Kobo(kobo::Model),
+    #[cfg(any(feature = "emulator", docsrs))]
+    Emulator,
+    TestDevice,
 }
 
 impl fmt::Display for Model {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            Model::LibraColour => write!(f, "Libra Colour"),
-            Model::ClaraColour => write!(f, "Clara Colour"),
-            Model::ClaraBW => write!(f, "Clara BW"),
-            Model::Elipsa2E => write!(f, "Elipsa 2E"),
-            Model::Clara2E => write!(f, "Clara 2E"),
-            Model::Libra2 => write!(f, "Libra 2"),
-            Model::Sage => write!(f, "Sage"),
-            Model::Elipsa => write!(f, "Elipsa"),
-            Model::Nia => write!(f, "Nia"),
-            Model::LibraH2O => write!(f, "Libra H₂O"),
-            Model::Forma32GB => write!(f, "Forma 32GB"),
-            Model::Forma => write!(f, "Forma"),
-            Model::ClaraHD => write!(f, "Clara HD"),
-            Model::AuraH2OEd2V1 => write!(f, "Aura H₂O Edition 2 Version 1"),
-            Model::AuraH2OEd2V2 => write!(f, "Aura H₂O Edition 2 Version 2"),
-            Model::AuraEd2V1 => write!(f, "Aura Edition 2 Version 1"),
-            Model::AuraEd2V2 => write!(f, "Aura Edition 2 Version 2"),
-            Model::AuraONELimEd => write!(f, "Aura ONE Limited Edition"),
-            Model::AuraONE => write!(f, "Aura ONE"),
-            Model::Touch2 => write!(f, "Touch 2.0"),
-            Model::GloHD => write!(f, "Glo HD"),
-            Model::AuraH2O => write!(f, "Aura H₂O"),
-            Model::Aura => write!(f, "Aura"),
-            Model::AuraHD => write!(f, "Aura HD"),
-            Model::Mini => write!(f, "Mini"),
-            Model::Glo => write!(f, "Glo"),
-            Model::TouchC => write!(f, "Touch C"),
-            Model::TouchAB => write!(f, "Touch A/B"),
+            #[cfg(any(feature = "kobo", docsrs))]
+            Model::Kobo(m) => {
+                write!(f, "{}", m)
+            }
+            #[cfg(any(feature = "emulator", docsrs))]
+            Model::Emulator => {
+                write!(f, "Emulator")
+            }
+            Model::TestDevice => {
+                write!(f, "TestDevice")
+            }
+        }
+    }
+}
+
+impl Model {
+    /// Creates a `Model` from product and model number strings.
+    pub fn new(product: &str, model_number: &str) -> Model {
+        cfg_select! {
+            all(feature = "kobo", not(test)) => {
+                Model::Kobo(kobo::Model::new(product, model_number))
+            }
+            _ => {
+                panic!("Model::new is not implemented for this platform: {} {}", product, model_number)
+            }
+        }
+    }
+
+    /// Creates a `KoboDevice` for this model with the correct hardware properties.
+    pub fn device(self) -> anyhow::Result<AppDevice> {
+        match self {
+            #[cfg(all(feature = "kobo", not(test)))]
+            Model::Kobo(m) => m.device(),
+            #[cfg(all(feature = "kobo", test))]
+            Model::Kobo(_) => {
+                panic!(
+                    "Model::device is not implemented for this platform: {}",
+                    self
+                );
+            }
+            #[cfg(feature = "emulator")]
+            Model::Emulator => {
+                unimplemented!()
+            }
+            Model::TestDevice => {
+                unimplemented!("TestDevice shall be created in tests")
+            }
         }
     }
 }

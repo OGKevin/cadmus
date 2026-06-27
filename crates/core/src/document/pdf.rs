@@ -70,8 +70,23 @@ impl PdfOpener {
         }
     }
 
+    // TODO(OGKevin): atm, if the path does not exist, this yields an unhandled exception:
+    // warning: UNHANDLED EXCEPTION!
+    // system error: cannot open /home/kevin/code/github.com/ogkevin/plato/icons/.svg: No such file or directory
+    // This should be handled gracefully, but not sure what the consequences are for returning an error.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, path), fields(path = %path.as_ref().display())))]
     pub fn open<P: AsRef<Path>>(&self, path: P) -> Result<PdfDocument, PdfOpenError> {
+        tracing::trace!(path = %path.as_ref().display(), "Opening PDF document");
+
+        #[cfg(debug_assertions)]
+        {
+            let exists = path.as_ref().exists();
+            tracing::trace!(path = %path.as_ref().display(), "Path exists: {}", exists);
+            if !exists {
+                tracing::warn!(path = %path.as_ref().display(), "Path does not exist");
+            }
+        }
+
         unsafe {
             let c_path = CString::new(path.as_ref().as_os_str().as_bytes()).unwrap();
             let mut err_buf: [libc::c_char; 256] = [0; 256];

@@ -1013,11 +1013,11 @@ lazy_static! {
 
 #[inline]
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(info)))]
-pub fn extract_metadata_from_document(prefix: &Path, info: &mut Info) {
+pub fn extract_metadata_from_document(prefix: &Path, info: &mut Info, install_dir: &Path) {
     let path = prefix.join(&info.file.path);
 
     match info.file.kind.as_ref() {
-        "epub" => match EpubDocument::new(&path) {
+        "epub" => match EpubDocument::new(&path, install_dir) {
             Ok(doc) => {
                 info.title = doc.title().unwrap_or_default();
                 info.author = doc.author().unwrap_or_default();
@@ -1032,7 +1032,7 @@ pub fn extract_metadata_from_document(prefix: &Path, info: &mut Info) {
             }
             Err(e) => error!("Can't open {}: {:#}.", info.file.path.display(), e),
         },
-        "html" | "htm" => match HtmlDocument::new(&path) {
+        "html" | "htm" => match HtmlDocument::new(&path, install_dir) {
             Ok(doc) => {
                 info.title = doc.title().unwrap_or_default();
                 info.author = doc.author().unwrap_or_default();

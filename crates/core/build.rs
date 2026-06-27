@@ -22,10 +22,10 @@ use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
-use anyhow::{Context, Ok, Result, bail};
+use anyhow::{Context, Result, bail};
 use build_deps::build::kobo;
 use build_deps::build::{mupdf_wrapper, native};
-use build_deps::cargo_features::{cargo_feature_env_key, collect_cargo_feature_names};
+use build_deps::cargo_features::{cargo_feature_env_key, collect_enabled_feature_names};
 
 const BUNDLED_ASSET_DIRS: &[&str] = &[
     "bin",
@@ -59,8 +59,11 @@ fn skip_thirdparty_deps() -> bool {
 }
 
 fn try_main() -> Result<()> {
+    ensure_device_feature()?;
+
     let target = env::var("TARGET").context("TARGET not set")?;
 
+    println!("cargo:rerun-if-changed=Cargo.toml");
     println!("cargo:rerun-if-changed=.git/HEAD");
     println!("cargo:rerun-if-env-changed={FORCE_REBUILD_ENV}");
     println!("cargo:rerun-if-env-changed={SKIP_THIRDPARTY_DEPS_ENV}");
@@ -419,7 +422,8 @@ fn build_timestamp() -> Result<String> {
 }
 
 fn generate_cargo_features() -> Result<()> {
-    let features = collect_cargo_feature_names(env::vars());
+    let features =
+        collect_enabled_feature_names(env::var("CARGO_CFG_FEATURE").ok().as_deref(), env::vars());
     for feature in &features {
         println!(
             "cargo:rerun-if-env-changed={}",
@@ -473,4 +477,15 @@ fn get_version_info() -> Result<(String, Option<String>)> {
         git_version,
         Some(format!("PR #{} ({})", pr_number, pr_head_short)),
     ))
+}
+
+fn ensure_device_feature() -> Result<()> {
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR").context("CARGO_MANIFEST_DIR not set")?;
+    let content = fs::read_to_string(Path::new(&manifest_dir).join("Cargo.toml"))
+        .context("failed to read Cargo.toml for device features")?;
+    build_deps::manifest::ensure_device_feature(
+        &content,
+        env::var("CARGO_CFG_FEATURE").ok().as_deref(),
+        env::vars(),
+    )
 }

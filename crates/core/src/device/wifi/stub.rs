@@ -17,7 +17,3 @@ impl WifiManager for StubWifiManager {
         unimplemented!("There isn o implementation for disabling WiFi on this build.")
     }
 }
-
-pub fn create_wifi_manager() -> Result<Box<dyn WifiManager>, WifiError> {
-    Ok(Box::new(StubWifiManager))
-}

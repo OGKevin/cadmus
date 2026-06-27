@@ -1,10 +1,11 @@
+// TODO(OGKevin): this shall be under device/kobo
+
 use super::ion_sys::*;
 use super::linuxfb_sys::*;
 use super::sunxi_sys::*;
 use super::transform::*;
 use super::{Framebuffer, UpdateMode};
 use crate::color::Color;
-use crate::device::CURRENT_DEVICE;
 use crate::geom::Rectangle;
 use anyhow::{Context, Error};
 use std::fs::File;
@@ -16,6 +17,7 @@ use std::os::unix::io::AsRawFd;
 use std::path::Path;
 use std::ptr;
 use std::slice;
+use tracing::error;
 
 impl From<Rectangle> for AreaInfo {
     fn from(rect: Rectangle) -> Self {
@@ -45,6 +47,8 @@ pub struct KoboFramebuffer2 {
     dithered: bool,
 }
 
+unsafe impl Send for KoboFramebuffer2 {}
+
 const MEM_ALIGN: u32 = 4096;
 
 #[inline]
@@ -54,7 +58,7 @@ fn align(value: u32, align: u32) -> u32 {
 }
 
 impl KoboFramebuffer2 {
-    pub fn new<P: AsRef<Path>>(path: P) -> Result<KoboFramebuffer2, Error> {
+    pub fn new<P: AsRef<Path>>(path: P, startup_rotation: i8) -> Result<KoboFramebuffer2, Error> {
         let file = File::open(&path).with_context(|| {
             format!("can't open framebuffer device {}", path.as_ref().display())
         })?;
@@ -62,7 +66,7 @@ impl KoboFramebuffer2 {
         let mut var_info = var_screen_info(&file)?;
         let mut fix_info = fix_screen_info(&file)?;
 
-        var_info.rotate = CURRENT_DEVICE.startup_rotation() as u32;
+        var_info.rotate = startup_rotation as u32;
 
         if var_info.xres > var_info.yres {
             mem::swap(&mut var_info.xres, &mut var_info.yres);
@@ -236,6 +240,11 @@ impl KoboFramebuffer2 {
         let c = unsafe { *(self.frame.offset(addr) as *const u8) };
         Color::Gray(if self.inverted { 255 - c } else { c })
     }
+
+    fn refresh_var_info(&mut self) -> Result<(), Error> {
+        self.var_info = var_screen_info(&self.display)?;
+        Ok(())
+    }
 }
 
 impl Framebuffer for KoboFramebuffer2 {
@@ -376,6 +385,12 @@ impl Framebuffer for KoboFramebuffer2 {
     #[inline]
     fn rotation(&self) -> i8 {
         self.var_info.rotate as i8
+    }
+
+    fn refresh_from_kernel(&mut self) {
+        if let Err(error) = self.refresh_var_info() {
+            error!(error = %error, "failed to refresh KoboFramebuffer2 from kernel");
+        }
     }
 
     fn set_rotation(&mut self, n: i8) -> Result<(u32, u32), Error> {

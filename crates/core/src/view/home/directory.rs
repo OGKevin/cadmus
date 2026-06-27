@@ -1,8 +1,6 @@
 use crate::color::{BLACK, TEXT_BUMP_SMALL, WHITE};
-use crate::context::Context;
-use crate::device::CURRENT_DEVICE;
-use crate::font::{Fonts, NORMAL_STYLE, font_from_style};
-use crate::framebuffer::Framebuffer;
+use crate::device::AppContext;
+use crate::font::{NORMAL_STYLE, font_from_style};
 use crate::geom::{BorderSpec, CornerSpec, Rectangle};
 use crate::gesture::GestureEvent;
 use crate::unit::scale_by_dpi;
@@ -47,14 +45,18 @@ impl Directory {
 }
 
 impl View for Directory {
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, bus, _rq, _context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(
+        skip(self, _hub, bus, _rq, _context),
+        fields(event = ?evt),
+        ret(level=tracing::Level::TRACE)
+    ))]
     fn handle_event(
         &mut self,
         evt: &Event,
         _hub: &Hub,
         bus: &mut Bus,
         _rq: &mut RenderQueue,
-        _context: &mut Context,
+        _context: &mut AppContext,
     ) -> bool {
         match *evt {
             Event::Gesture(GestureEvent::Tap(center)) if self.rect.includes(center) => {
@@ -64,9 +66,10 @@ impl View for Directory {
             _ => false,
         }
     }
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fb, fonts, _rect), fields(rect = ?_rect)))]
-    fn render(&self, fb: &mut dyn Framebuffer, _rect: Rectangle, fonts: &mut Fonts) {
-        let dpi = CURRENT_DEVICE.dpi;
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, context, _rect), fields(rect = ?_rect
+    )))]
+    fn render(&self, context: &mut AppContext, _rect: Rectangle) {
+        let (fb, fonts, dpi) = context.framebuffer_and_fonts();
         fb.draw_rectangle(&self.rect, TEXT_BUMP_SMALL[0]);
         let font = font_from_style(fonts, &NORMAL_STYLE, dpi);
         let x_height = font.x_heights.0 as i32;

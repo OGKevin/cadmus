@@ -52,10 +52,9 @@ use super::label::Label;
 use super::{Align, Bus, Event, Hub, ID_FEEDER, Id, RenderQueue, View, ViewId};
 use super::{BORDER_RADIUS_MEDIUM, THICKNESS_LARGE};
 use crate::color::{BLACK, WHITE};
-use crate::context::Context;
-use crate::device::CURRENT_DEVICE;
+use crate::device::AppContext;
+use crate::device::DeviceIdentity as _;
 use crate::font::{Fonts, NORMAL_STYLE, font_from_style};
-use crate::framebuffer::Framebuffer;
 use crate::geom::{BorderSpec, CornerSpec, Rectangle};
 use crate::gesture::GestureEvent;
 use crate::unit::scale_by_dpi;
@@ -126,10 +125,11 @@ impl DialogBuilder {
     /// # Returns
     ///
     /// A new [`Dialog`] instance ready to be displayed.
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, context), fields(view_id = ?self.view_id, title = ?self.title)))]
-    pub fn build(self, context: &mut Context) -> Dialog {
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, context), fields(view_id = ?self.view_id, title = ?self.title
+    )))]
+    pub fn build(self, context: &mut AppContext) -> Dialog {
         let id = ID_FEEDER.next();
-        let dpi = CURRENT_DEVICE.dpi;
+        let dpi = context.device.dpi();
         let (width, height) = context.display.dims;
 
         let font = font_from_style(&mut context.fonts, &NORMAL_STYLE, dpi);
@@ -190,7 +190,7 @@ impl DialogBuilder {
             button_width,
         };
 
-        dialog.layout_children(&mut context.fonts);
+        dialog.layout_children(&mut context.fonts, context.device.dpi());
 
         dialog
     }
@@ -281,8 +281,7 @@ impl Dialog {
     ///
     /// Both [`DialogBuilder::build`] and [`Dialog::resize`] delegate to this
     /// method so the layout algorithm is defined in a single place.
-    fn layout_children(&mut self, fonts: &mut Fonts) {
-        let dpi = CURRENT_DEVICE.dpi;
+    fn layout_children(&mut self, fonts: &mut Fonts, dpi: u16) {
         let font = font_from_style(fonts, &NORMAL_STYLE, dpi);
         let x_height = font.x_heights.0 as i32;
         let padding = font.em() as i32;
@@ -321,14 +320,18 @@ impl Dialog {
 }
 
 impl View for Dialog {
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, _bus, _rq, _context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(
+        skip(self, hub, _bus, _rq, _context),
+        fields(event = ?evt),
+        ret(level=tracing::Level::TRACE)
+    ))]
     fn handle_event(
         &mut self,
         evt: &Event,
         hub: &Hub,
         _bus: &mut Bus,
         _rq: &mut RenderQueue,
-        _context: &mut Context,
+        _context: &mut AppContext,
     ) -> bool {
         match *evt {
             Event::Gesture(GestureEvent::Tap(center)) if !self.rect.includes(center) => {
@@ -340,9 +343,10 @@ impl View for Dialog {
         }
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fb, _fonts, _rect), fields(rect = ?_rect)))]
-    fn render(&self, fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {
-        let dpi = CURRENT_DEVICE.dpi;
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, context, _rect), fields(rect = ?_rect
+    )))]
+    fn render(&self, context: &mut AppContext, _rect: Rectangle) {
+        let (fb, dpi) = context.framebuffer_with_dpi();
 
         let border_radius = scale_by_dpi(BORDER_RADIUS_MEDIUM, dpi) as i32;
         let border_thickness = scale_by_dpi(THICKNESS_LARGE, dpi) as u16;
@@ -358,7 +362,13 @@ impl View for Dialog {
         );
     }
 
-    fn resize(&mut self, _rect: Rectangle, hub: &Hub, rq: &mut RenderQueue, context: &mut Context) {
+    fn resize(
+        &mut self,
+        _rect: Rectangle,
+        hub: &Hub,
+        rq: &mut RenderQueue,
+        context: &mut AppContext,
+    ) {
         let (width, height) = context.display.dims;
         let dialog_width = self.rect.width() as i32;
         let dialog_height = self.rect.height() as i32;
@@ -367,7 +377,7 @@ impl View for Dialog {
         let dy = (height as i32 - dialog_height) / 2;
         self.rect = rect![dx, dy, dx + dialog_width, dy + dialog_height];
 
-        self.layout_children(&mut context.fonts);
+        self.layout_children(&mut context.fonts, context.device.dpi());
 
         for child in &mut self.children {
             let rect = *child.rect();

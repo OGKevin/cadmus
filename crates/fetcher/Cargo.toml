@@ -9,7 +9,7 @@ name = "article_fetcher"
 path = "src/main.rs"
 
 [dependencies]
-cadmus-core = { path = "../core" }
+cadmus-core = { path = "../core", features = ["deviceless"] }
 signal-hook = "0.4.1"
 
 [dependencies.reqwest]

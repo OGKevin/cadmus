@@ -1,10 +1,9 @@
 use super::BORDER_RADIUS_MEDIUM;
 use super::{Bus, Event, Hub, ID_FEEDER, Id, RenderData, RenderQueue, View};
 use crate::color::{TEXT_INVERTED_HARD, TEXT_NORMAL};
-use crate::context::Context;
-use crate::device::CURRENT_DEVICE;
-use crate::font::{Fonts, NORMAL_STYLE, font_from_style};
-use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::device::AppContext;
+use crate::font::{NORMAL_STYLE, font_from_style};
+use crate::framebuffer::UpdateMode;
 use crate::geom::{CornerSpec, CycleDir, Rectangle};
 use crate::gesture::GestureEvent;
 use crate::input::{DeviceEvent, FingerStatus};
@@ -36,14 +35,15 @@ impl Preset {
 }
 
 impl View for Preset {
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, bus, rq, _context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, bus, rq, _context), fields(event = ?evt
+    ), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
         _hub: &Hub,
         bus: &mut Bus,
         rq: &mut RenderQueue,
-        _context: &mut Context,
+        _context: &mut AppContext,
     ) -> bool {
         match *evt {
             Event::Device(DeviceEvent::Finger {
@@ -80,9 +80,10 @@ impl View for Preset {
         }
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fb, fonts, _rect), fields(rect = ?_rect)))]
-    fn render(&self, fb: &mut dyn Framebuffer, _rect: Rectangle, fonts: &mut Fonts) {
-        let dpi = CURRENT_DEVICE.dpi;
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, context, _rect), fields(rect = ?_rect
+    )))]
+    fn render(&self, context: &mut AppContext, _rect: Rectangle) {
+        let (fb, fonts, dpi) = context.framebuffer_and_fonts();
 
         let (scheme, border_radius) = if self.active {
             (

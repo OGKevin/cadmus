@@ -42,6 +42,7 @@ pub fn language_loader() -> &'static FluentLanguageLoader {
 /// keeps the English fallback active.
 ///
 /// [`Settings`]: crate::settings::Settings
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(locale), level = tracing::Level::TRACE))]
 pub fn init(locale: Option<&LanguageIdentifier>) {
     let requested: Vec<LanguageIdentifier> = locale.cloned().into_iter().collect();
 

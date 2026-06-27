@@ -4,22 +4,22 @@ members = [
   "crates/build-deps",
   "crates/core",
   "crates/cadmus",
-  "crates/emulator",
   "crates/fetcher",
   "crates/importer",
   "xtask",
 ]
 
 [workspace.dependencies]
+cc = "1"
+io_tee = "0.1"
+rust-embed = "8"
 rustls = { version = "0.23", default-features = false, features = [
   "ring",
   "logging",
   "std",
   "tls12",
 ] }
-cc = "1"
-io_tee = "0.1"
-rust-embed = "8"
+sdl2 = "0.38.0"
 
 [workspace.lints]
 rustdoc.private_intra_doc_links = "allow"

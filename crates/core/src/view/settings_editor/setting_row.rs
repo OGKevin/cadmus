@@ -3,8 +3,7 @@ use super::super::label::Label;
 use super::super::{Bus, Event, Hub, ID_FEEDER, Id, RenderQueue, View};
 use super::kinds::{SettingIdentity, SettingKind};
 use super::setting_value::SettingValue;
-use crate::context::Context;
-use crate::framebuffer::Framebuffer;
+use crate::device::AppContext;
 use crate::geom::Rectangle;
 use crate::settings::Settings;
 
@@ -30,6 +29,8 @@ impl SettingRow {
         rect: Rectangle,
         settings: &Settings,
         fonts: &mut crate::font::Fonts,
+        dpi: u16,
+        install_dir: &std::path::Path,
     ) -> SettingRow {
         let mut children = Vec::new();
 
@@ -45,8 +46,8 @@ impl SettingRow {
             Label::new(label_rect, label_text, Align::Left(50)).hold_event(hold_event.clone());
         children.push(Box::new(label) as Box<dyn View>);
 
-        let setting_value =
-            SettingValue::new(kind, value_rect, settings, fonts).hold_event(hold_event);
+        let setting_value = SettingValue::new(kind, value_rect, settings, fonts, dpi, install_dir)
+            .hold_event(hold_event);
         children.push(Box::new(setting_value) as Box<dyn View>);
 
         SettingRow {
@@ -59,14 +60,18 @@ impl SettingRow {
 }
 
 impl View for SettingRow {
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, _bus, rq, _context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(
+        skip(self, _hub, _bus, rq, _context),
+        fields(event = ?evt),
+        ret(level=tracing::Level::TRACE)
+    ))]
     fn handle_event(
         &mut self,
         evt: &Event,
         _hub: &Hub,
         _bus: &mut Bus,
         rq: &mut RenderQueue,
-        _context: &mut Context,
+        _context: &mut AppContext,
     ) -> bool {
         match evt {
             Event::UpdateLibrary(index, library) => {
@@ -87,9 +92,11 @@ impl View for SettingRow {
         }
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _fb, _fonts), fields(rect = ?_rect)))]
-    fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut crate::font::Fonts) {
-    }
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(skip(self, _context), fields(rect = ?_rect))
+    )]
+    fn render(&self, _context: &mut AppContext, _rect: Rectangle) {}
 
     fn rect(&self) -> &Rectangle {
         &self.rect
@@ -116,6 +123,7 @@ impl View for SettingRow {
 mod tests {
     use super::*;
     use crate::context::test_helpers::create_test_context;
+    use crate::device::{DeviceIdentity as _, DevicePaths as _};
     use crate::gesture::GestureEvent;
     use crate::settings::LibrarySettings;
     use crate::view::settings_editor::kinds::library::LibraryInfo;
@@ -145,7 +153,14 @@ mod tests {
         let settings = create_test_settings();
         let rect = rect![0, 0, 400, 60];
 
-        let mut row = SettingRow::new(LibraryInfo(0), rect, &settings, &mut context.fonts);
+        let mut row = SettingRow::new(
+            LibraryInfo(0),
+            rect,
+            &settings,
+            &mut context.fonts,
+            context.device.dpi(),
+            &context.device.install_dir(),
+        );
 
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
@@ -170,7 +185,14 @@ mod tests {
         let settings = create_test_settings();
         let rect = rect![0, 0, 400, 60];
 
-        let mut row = SettingRow::new(LibraryInfo(0), rect, &settings, &mut context.fonts);
+        let mut row = SettingRow::new(
+            LibraryInfo(0),
+            rect,
+            &settings,
+            &mut context.fonts,
+            context.device.dpi(),
+            &context.device.install_dir(),
+        );
 
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
@@ -200,6 +222,8 @@ mod tests {
             rect,
             &settings,
             &mut context.fonts,
+            context.device.dpi(),
+            &context.device.install_dir(),
         ));
 
         let (hub, _receiver) = channel();

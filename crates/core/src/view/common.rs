@@ -1,9 +1,12 @@
 use super::menu::{Menu, MenuKind};
 use super::notification::Notification;
 use super::{AppCmd, EntryId, EntryKind, RenderData, RenderQueue, View, ViewId};
-use crate::context::Context;
-use crate::device::CURRENT_DEVICE;
+use crate::battery::Battery as _;
+use crate::device::AppContext;
+use crate::device::DeviceHardware as _;
+use crate::device::{DeviceCapabilities as _, DeviceRotation as _};
 use crate::fl;
+use crate::framebuffer::Framebuffer as _;
 use crate::framebuffer::UpdateMode;
 use crate::geom::{Point, Rectangle};
 use crate::settings::{ButtonScheme, RotationLock};
@@ -54,7 +57,7 @@ pub fn transfer_notifications(
     view1: &mut dyn View,
     view2: &mut dyn View,
     rq: &mut RenderQueue,
-    context: &mut Context,
+    context: &mut AppContext,
 ) {
     for index in (0..view1.len()).rev() {
         if view1.child(index).is::<Notification>() {
@@ -102,7 +105,7 @@ pub fn toggle_main_menu(
     rect: Rectangle,
     enable: Option<bool>,
     rq: &mut RenderQueue,
-    context: &mut Context,
+    context: &mut AppContext,
 ) {
     if let Some(index) = locate_by_id(view, ViewId::MainMenu) {
         if let Some(true) = enable {
@@ -118,12 +121,12 @@ pub fn toggle_main_menu(
             return;
         }
 
-        let rotation = CURRENT_DEVICE.to_canonical(context.display.rotation);
+        let rotation = context.device.to_canonical(context.display.rotation);
         let rotate = (0..4)
             .map(|n| {
                 EntryKind::RadioButton(
                     (n as i16 * 90).to_string(),
-                    EntryId::Rotate(CURRENT_DEVICE.from_canonical(n)),
+                    EntryId::Rotate(context.device.to_native(n)),
                     n == rotation,
                 )
             })
@@ -163,7 +166,7 @@ pub fn toggle_main_menu(
             EntryKind::Separator,
         ];
 
-        if CURRENT_DEVICE.has_gyroscope() {
+        if context.device.has_gyroscope() {
             let rotation_lock = context.settings.rotation_lock;
             let gyro = vec![
                 EntryKind::RadioButton(
@@ -191,7 +194,7 @@ pub fn toggle_main_menu(
             entries.push(EntryKind::SubMenu("Gyroscope".to_string(), gyro));
         }
 
-        if CURRENT_DEVICE.has_page_turn_buttons() {
+        if context.device.has_page_turn_buttons() {
             let button_scheme = context.settings.button_scheme;
             let button_schemes = vec![
                 EntryKind::RadioButton(
@@ -215,7 +218,7 @@ pub fn toggle_main_menu(
             EntryKind::CheckBox(
                 "Invert Colors".to_string(),
                 EntryId::ToggleInverted,
-                context.fb.inverted(),
+                context.device.framebuffer().inverted(),
             ),
             EntryKind::CheckBox(
                 "Enable WiFi".to_string(),
@@ -256,7 +259,7 @@ pub fn toggle_battery_menu(
     rect: Rectangle,
     enable: Option<bool>,
     rq: &mut RenderQueue,
-    context: &mut Context,
+    context: &mut AppContext,
 ) {
     if let Some(index) = locate_by_id(view, ViewId::BatteryMenu) {
         if let Some(true) = enable {
@@ -275,10 +278,11 @@ pub fn toggle_battery_menu(
         let mut entries = Vec::new();
 
         match context
-            .battery
+            .device
+            .battery_mut()
             .status()
             .ok()
-            .zip(context.battery.capacity().ok())
+            .zip(context.device.battery_mut().capacity().ok())
         {
             Some((status, capacity)) => {
                 for (i, (s, c)) in status.iter().zip(capacity.iter()).enumerate() {
@@ -322,7 +326,7 @@ pub fn toggle_clock_menu(
     rect: Rectangle,
     enable: Option<bool>,
     rq: &mut RenderQueue,
-    context: &mut Context,
+    context: &mut AppContext,
 ) {
     if let Some(index) = locate_by_id(view, ViewId::ClockMenu) {
         if let Some(true) = enable {
@@ -369,7 +373,7 @@ pub fn toggle_input_history_menu(
     rect: Rectangle,
     enable: Option<bool>,
     rq: &mut RenderQueue,
-    context: &mut Context,
+    context: &mut AppContext,
 ) {
     if let Some(index) = locate_by_id(view, ViewId::InputHistoryMenu) {
         if let Some(true) = enable {
@@ -417,7 +421,7 @@ pub fn toggle_keyboard_layout_menu(
     rect: Rectangle,
     enable: Option<bool>,
     rq: &mut RenderQueue,
-    context: &mut Context,
+    context: &mut AppContext,
 ) {
     if let Some(index) = locate_by_id(view, ViewId::KeyboardLayoutMenu) {
         if let Some(true) = enable {

@@ -1,8 +1,7 @@
 use crate::color::{SEPARATOR_NORMAL, WHITE};
-use crate::context::Context;
-use crate::device::CURRENT_DEVICE;
-use crate::font::Fonts;
-use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::device::AppContext;
+use crate::device::DeviceIdentity;
+use crate::framebuffer::UpdateMode;
 use crate::geom::Rectangle;
 use crate::gesture::GestureEvent;
 use crate::input::DeviceEvent;
@@ -32,10 +31,10 @@ impl ToolBar {
         reflowable: bool,
         reader_info: Option<&ReaderInfo>,
         reader_settings: &ReaderSettings,
+        dpi: u16,
     ) -> ToolBar {
         let id = ID_FEEDER.next();
         let mut children = Vec::new();
-        let dpi = CURRENT_DEVICE.dpi;
         let thickness = scale_by_dpi(THICKNESS_MEDIUM, dpi) as i32;
         let side = (rect.height() as i32 + thickness) / 2 - thickness;
 
@@ -350,14 +349,18 @@ impl ToolBar {
 }
 
 impl View for ToolBar {
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, _bus, _rq, _context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(
+        skip(self, _hub, _bus, _rq, _context),
+        fields(event = ?evt),
+        ret(level=tracing::Level::TRACE)
+    ))]
     fn handle_event(
         &mut self,
         evt: &Event,
         _hub: &Hub,
         _bus: &mut Bus,
         _rq: &mut RenderQueue,
-        _context: &mut Context,
+        _context: &mut AppContext,
     ) -> bool {
         match *evt {
             Event::Gesture(GestureEvent::Tap(center))
@@ -374,11 +377,18 @@ impl View for ToolBar {
         }
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _fb, _fonts, _rect), fields(rect = ?_rect)))]
-    fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {}
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _rect, _context), fields(rect = ?_rect
+    )))]
+    fn render(&self, _context: &mut AppContext, _rect: Rectangle) {}
 
-    fn resize(&mut self, rect: Rectangle, hub: &Hub, rq: &mut RenderQueue, context: &mut Context) {
-        let dpi = CURRENT_DEVICE.dpi;
+    fn resize(
+        &mut self,
+        rect: Rectangle,
+        hub: &Hub,
+        rq: &mut RenderQueue,
+        context: &mut AppContext,
+    ) {
+        let dpi = context.device.dpi();
         let thickness = scale_by_dpi(THICKNESS_MEDIUM, dpi) as i32;
         let side = (rect.height() as i32 + thickness) / 2 - thickness;
 

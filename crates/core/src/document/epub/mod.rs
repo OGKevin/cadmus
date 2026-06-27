@@ -63,7 +63,7 @@ unsafe impl<R: Read + Seek> Sync for EpubDocument<R> {}
 
 impl<R: Read + Seek> EpubDocument<R> {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-    fn from_archive(mut archive: ZipArchive<R>) -> Result<Self, Error> {
+    fn from_archive(mut archive: ZipArchive<R>, install_dir: &Path) -> Result<Self, Error> {
         let opf_path = {
             let mut zf = archive.by_name("META-INF/container.xml")?;
             let mut text = String::new();
@@ -140,7 +140,7 @@ impl<R: Read + Seek> EpubDocument<R> {
             archive,
             info,
             parent: parent.to_path_buf(),
-            engine: Engine::new(),
+            engine: Engine::new(install_dir),
             spine,
             cache: FxHashMap::default(),
             ignore_document_css: false,
@@ -710,19 +710,19 @@ impl<R: Read + Seek> EpubDocument<R> {
 }
 
 impl EpubDocumentFile {
-    pub fn new<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
+    pub fn new<P: AsRef<Path>>(path: P, install_dir: &Path) -> Result<Self, Error> {
         let file = File::open(path)?;
         let archive = ZipArchive::new(file)?;
-        Self::from_archive(archive)
+        Self::from_archive(archive, install_dir)
     }
 }
 
 impl EpubDocumentStatic {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-    pub fn new_from_static(bytes: &'static [u8]) -> Result<Self, Error> {
+    pub fn new_from_static(bytes: &'static [u8], install_dir: &Path) -> Result<Self, Error> {
         let cursor = Cursor::new(bytes);
         let archive = ZipArchive::new(cursor)?;
-        Self::from_archive(archive)
+        Self::from_archive(archive, install_dir)
     }
 }
 
@@ -1163,7 +1163,8 @@ mod tests {
             std::env::var("TEST_ROOT_DIR").expect("TEST_ROOT_DIR must be set for epub tests"),
         );
         let epub_path = root_dir.join("docs/book/epub/Cadmus Documentation.epub");
-        let mut doc = EpubDocumentFile::new(&epub_path).expect("failed to open test epub");
+        let mut doc =
+            EpubDocumentFile::new(&epub_path, &root_dir).expect("failed to open test epub");
         doc.engine.layout(600, 800, 12.0, 265);
         doc.engine.set_margin_width(3);
         doc.engine.load_fonts_from(root_dir);

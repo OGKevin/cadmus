@@ -1,6 +1,6 @@
 //! Setting kinds for the Intermissions category.
 
-use super::{SettingData, SettingIdentity, SettingKind, WidgetKind};
+use super::{SettingData, SettingIdentity, SettingKind, SettingsFetchData, WidgetKind};
 use crate::fl;
 use crate::i18n::I18nDisplay;
 use crate::settings::{IntermKind, IntermissionDisplay, Settings};
@@ -97,8 +97,8 @@ impl SettingKind for IntermissionSuspend {
         fl!("settings-intermission-suspend-screen")
     }
 
-    fn fetch(&self, settings: &Settings) -> SettingData {
-        fetch_intermission(IntermKind::Suspend, settings)
+    fn fetch(&self, data: SettingsFetchData) -> SettingData {
+        fetch_intermission(IntermKind::Suspend, data.settings)
     }
 
     fn handle(
@@ -144,8 +144,8 @@ impl SettingKind for IntermissionPowerOff {
         fl!("settings-intermission-power-off-screen")
     }
 
-    fn fetch(&self, settings: &Settings) -> SettingData {
-        fetch_intermission(IntermKind::PowerOff, settings)
+    fn fetch(&self, data: SettingsFetchData) -> SettingData {
+        fetch_intermission(IntermKind::PowerOff, data.settings)
     }
 
     fn handle(
@@ -191,8 +191,8 @@ impl SettingKind for IntermissionShare {
         fl!("settings-intermission-share-screen")
     }
 
-    fn fetch(&self, settings: &Settings) -> SettingData {
-        fetch_intermission(IntermKind::Share, settings)
+    fn fetch(&self, data: SettingsFetchData) -> SettingData {
+        fetch_intermission(IntermKind::Share, data.settings)
     }
 
     fn handle(
@@ -304,7 +304,10 @@ mod tests {
         fn fetch_includes_calendar_option() {
             let setting = IntermissionSuspend;
             let settings = Settings::default();
-            let data = setting.fetch(&settings);
+            let data = setting.fetch(super::SettingsFetchData {
+                settings: &settings,
+                install_dir: None,
+            });
 
             let WidgetKind::SubMenu(entries) = data.widget else {
                 panic!("expected submenu widget");
@@ -329,7 +332,10 @@ mod tests {
         fn fetch_includes_blank_options() {
             let setting = IntermissionSuspend;
             let settings = Settings::default();
-            let data = setting.fetch(&settings);
+            let data = setting.fetch(super::SettingsFetchData {
+                settings: &settings,
+                install_dir: None,
+            });
 
             let WidgetKind::SubMenu(entries) = data.widget else {
                 panic!("expected submenu widget");
@@ -470,7 +476,10 @@ mod tests {
         fn fetch_excludes_calendar_option() {
             let setting = IntermissionPowerOff;
             let settings = Settings::default();
-            let data = setting.fetch(&settings);
+            let data = setting.fetch(super::SettingsFetchData {
+                settings: &settings,
+                install_dir: None,
+            });
 
             let WidgetKind::SubMenu(entries) = data.widget else {
                 panic!("expected submenu widget");
@@ -603,7 +612,10 @@ mod tests {
         fn fetch_excludes_calendar_option() {
             let setting = IntermissionShare;
             let settings = Settings::default();
-            let data = setting.fetch(&settings);
+            let data = setting.fetch(super::SettingsFetchData {
+                settings: &settings,
+                install_dir: None,
+            });
 
             let WidgetKind::SubMenu(entries) = data.widget else {
                 panic!("expected submenu widget");

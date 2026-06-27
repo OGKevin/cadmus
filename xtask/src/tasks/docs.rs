@@ -114,11 +114,23 @@ fn build_mdbook(root: &Path) -> Result<()> {
 /// Generates Rust API documentation for all workspace crates.
 fn build_cargo_doc(root: &Path) -> Result<()> {
     println!("Building Rust API documentation…");
+    let rustdocflags = std::env::var("RUSTDOCFLAGS")
+        .map(|flags| format!("{flags} --cfg docsrs"))
+        .unwrap_or_else(|_| "--cfg docsrs".to_owned());
     cmd::run(
         "cargo",
-        &["doc", "--no-deps", "--document-private-items"],
+        &[
+            "doc",
+            "--no-deps",
+            "--document-private-items",
+            "--features",
+            "docs",
+        ],
         root,
-        &[("CADMUS_SKIP_THIRDPARTY_DEPS", "1")],
+        &[
+            ("CADMUS_SKIP_THIRDPARTY_DEPS", "1"),
+            ("RUSTDOCFLAGS", rustdocflags.as_str()),
+        ],
     )
 }
 

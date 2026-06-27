@@ -1,12 +1,13 @@
-use super::icon::ICONS_PIXMAPS;
+use super::icon::load_icon_pixmap;
 use super::{BORDER_RADIUS_SMALL, THICKNESS_LARGE, THICKNESS_MEDIUM};
 use super::{Bus, Event, Hub, ID_FEEDER, Id, RenderData, RenderQueue, View, ViewId};
+use crate::battery::Battery as _;
 use crate::battery::Status;
 use crate::color::{BATTERY_FILL, BLACK, WHITE};
-use crate::context::Context;
-use crate::device::CURRENT_DEVICE;
-use crate::font::Fonts;
-use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::device::DeviceHardware as _;
+use crate::device::{AppContext, DeviceIdentity, DevicePaths};
+use crate::framebuffer::Framebuffer as _;
+use crate::framebuffer::UpdateMode;
 use crate::geom::{BorderSpec, CornerSpec, Rectangle};
 use crate::gesture::GestureEvent;
 use crate::unit::scale_by_dpi;
@@ -35,22 +36,31 @@ impl Battery {
         }
     }
 
-    pub fn update(&mut self, rq: &mut RenderQueue, context: &mut Context) {
-        self.capacity = context.battery.capacity().map_or(self.capacity, |v| v[0]);
-        self.status = context.battery.status().map_or(self.status, |v| v[0]);
+    pub fn update(&mut self, rq: &mut RenderQueue, context: &mut AppContext) {
+        self.capacity = context
+            .device
+            .battery_mut()
+            .capacity()
+            .map_or(self.capacity, |v| v[0]);
+        self.status = context
+            .device
+            .battery_mut()
+            .status()
+            .map_or(self.status, |v| v[0]);
         rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
     }
 }
 
 impl View for Battery {
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, bus, rq, context), fields(event = ?evt
+    ), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
         _hub: &Hub,
         bus: &mut Bus,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
         match *evt {
             Event::BatteryTick => {
@@ -65,9 +75,12 @@ impl View for Battery {
         }
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fb, _fonts, _rect), fields(rect = ?_rect)))]
-    fn render(&self, fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {
-        let dpi = CURRENT_DEVICE.dpi;
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _rect, context), fields(rect = ?_rect
+    )))]
+    fn render(&self, context: &mut AppContext, _rect: Rectangle) {
+        let dpi = context.device.dpi();
+        let install_dir = context.device.install_dir();
+        let fb = context.device.framebuffer_mut();
 
         let border_radius = scale_by_dpi(BORDER_RADIUS_SMALL, dpi) as i32;
         let border_thickness = scale_by_dpi(THICKNESS_LARGE, dpi) as i32;
@@ -136,12 +149,12 @@ impl View for Battery {
             } else {
                 "check_mark-small"
             };
-            let pixmap = ICONS_PIXMAPS.get(name).unwrap();
+            let pixmap = load_icon_pixmap(name, dpi, &install_dir).unwrap();
             pt += pt!(
                 (max_fill_width - pixmap.width as i32) / 2,
                 (fill_height - pixmap.height as i32) / 2
             );
-            fb.draw_blended_pixmap(pixmap, pt, BLACK);
+            fb.draw_blended_pixmap(&pixmap, pt, BLACK);
         }
     }
 

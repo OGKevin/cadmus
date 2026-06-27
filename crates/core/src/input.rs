@@ -1,4 +1,3 @@
-use crate::device::CURRENT_DEVICE;
 use crate::framebuffer::Display;
 use crate::geom::{LinearDir, Point};
 use crate::settings::ButtonScheme;
@@ -86,6 +85,7 @@ pub const MULTI_TOUCH_CODES_B: TouchCodes = TouchCodes {
 };
 
 #[repr(C)]
+#[derive(Debug)]
 pub struct InputEvent {
     pub time: libc::timeval,
     pub kind: u16, // type
@@ -147,13 +147,31 @@ pub enum ButtonCode {
 }
 
 impl ButtonCode {
-    fn from_raw(code: u16, rotation: i8, button_scheme: ButtonScheme) -> ButtonCode {
+    fn from_raw(
+        code: u16,
+        rotation: i8,
+        button_scheme: ButtonScheme,
+        startup_rotation: i8,
+        dir: i8,
+    ) -> ButtonCode {
         match code {
             KEY_POWER => ButtonCode::Power,
             KEY_HOME => ButtonCode::Home,
             KEY_LIGHT => ButtonCode::Light,
-            KEY_BACKWARD => resolve_button_direction(LinearDir::Backward, rotation, button_scheme),
-            KEY_FORWARD => resolve_button_direction(LinearDir::Forward, rotation, button_scheme),
+            KEY_BACKWARD => resolve_button_direction(
+                LinearDir::Backward,
+                rotation,
+                button_scheme,
+                startup_rotation,
+                dir,
+            ),
+            KEY_FORWARD => resolve_button_direction(
+                LinearDir::Forward,
+                rotation,
+                button_scheme,
+                startup_rotation,
+                dir,
+            ),
             PEN_ERASE => ButtonCode::Erase,
             PEN_HIGHLIGHT => ButtonCode::Highlight,
             _ => ButtonCode::Raw(code),
@@ -165,9 +183,12 @@ fn resolve_button_direction(
     mut direction: LinearDir,
     rotation: i8,
     button_scheme: ButtonScheme,
+    startup_rotation: i8,
+    dir: i8,
 ) -> ButtonCode {
-    if (CURRENT_DEVICE.should_invert_buttons(rotation)) ^ (button_scheme == ButtonScheme::Inverted)
-    {
+    let should_invert = rotation == (4 + startup_rotation - dir) % 4
+        || rotation == (4 + startup_rotation - 2 * dir) % 4;
+    if should_invert ^ (button_scheme == ButtonScheme::Inverted) {
         direction = direction.opposite();
     }
 
@@ -225,9 +246,27 @@ pub enum DeviceEvent {
     },
     Plug(PowerSource),
     Unplug(PowerSource),
+    /// Screen rotation request (`0`, `90`, `180`, or `270` degrees).
+    ///
+    /// On Kobo, handled by the lifecycle path to rotate the framebuffer. In the
+    /// emulator lifecycle, the event is swallowed because rotation is
+    /// unsupported, avoiding partial state.
     RotateScreen(i8),
     CoverOn,
     CoverOff,
+    /// Network interface is up (DHCP complete).
+    ///
+    /// Emitted when WiFi monitoring detects a completed interface binding.
+    ///
+    /// Dispatch is two-phase:
+    ///
+    /// 1. **Lifecycle** — On Kobo, the lifecycle `handle_net_up` handler sets
+    ///    `context.online`, shows a notification, and returns
+    ///    [`EventOutcome::Continue`](crate::device::EventOutcome) when the
+    ///    network was previously offline.
+    /// 2. **Main loop** — The application main loop forwards the event to the
+    ///    background [`Home`](crate::view::home::Home) view (history slot 0) when
+    ///    another screen is active, so library fetchers can resume.
     NetUp,
     UserActivity,
 }
@@ -345,16 +384,134 @@ fn parse_usb_events(tx: &Sender<DeviceEvent>) {
     }
 }
 
+fn compute_mirror_axes(rotation: i8, mirroring_scheme: (i8, i8)) -> (bool, bool) {
+    let (mxy, dir) = mirroring_scheme;
+    let mx = (4 + (mxy + dir)) % 4;
+    let my = (4 + (mxy - dir)) % 4;
+    let mirror_x = mxy == rotation || mx == rotation;
+    let mirror_y = mxy == rotation || my == rotation;
+    (mirror_x, mirror_y)
+}
+
+/// Captures the subset of device properties needed for input event processing.
+#[derive(Clone, Copy)]
+pub struct DeviceInputInfo {
+    pub proto: TouchProto,
+    pub mark: u8,
+    pub mirroring_scheme: (i8, i8),
+    pub swapping_scheme: i8,
+    pub startup_rotation: i8,
+    pub gyro_rotation_transform: GyroRotationTransform,
+    /// When true, the input thread swaps logical screen dimensions on 90° rotations.
+    /// KoboFramebuffer2 does this in hardware; KoboFramebuffer1 does not.
+    pub swap_dims_on_rotation: bool,
+}
+
+#[derive(Clone, Copy)]
+pub struct GyroRotationTransform(fn(i8) -> i8);
+
+impl GyroRotationTransform {
+    pub fn new(f: fn(i8) -> i8) -> Self {
+        Self(f)
+    }
+
+    pub fn transform(&self, n: i8) -> i8 {
+        (self.0)(n)
+    }
+}
+
+impl Default for GyroRotationTransform {
+    fn default() -> Self {
+        Self(|n| n)
+    }
+}
+
 pub fn device_events(
     rx: Receiver<InputEvent>,
     display: Display,
     button_scheme: ButtonScheme,
+    info: DeviceInputInfo,
 ) -> Receiver<DeviceEvent> {
+    let Display { dims, rotation } = display;
+    tracing::trace!(
+        rotation,
+        screen_dims = ?dims,
+        proto = ?info.proto,
+        mark = info.mark,
+        mirroring_scheme = ?info.mirroring_scheme,
+        swapping_scheme = info.swapping_scheme,
+        startup_rotation = info.startup_rotation,
+        "starting device event pipeline"
+    );
     let (ty, ry) = mpsc::channel();
-    thread::spawn(move || parse_device_events(&rx, &ty, display, button_scheme));
+    thread::spawn(move || {
+        parse_device_events(&rx, &ty, Display { dims, rotation }, button_scheme, info)
+    });
     ry
 }
 
+#[repr(C)]
+#[derive(Debug)]
+struct InputAbsInfo {
+    value: i32,
+    minimum: i32,
+    maximum: i32,
+    fuzz: i32,
+    flat: i32,
+    resolution: i32,
+}
+
+fn evdev_abs_info(path: &str, axis: u16) -> Option<InputAbsInfo> {
+    let file = File::open(path).ok()?;
+    let fd = file.as_raw_fd();
+    let mut absinfo = MaybeUninit::<InputAbsInfo>::uninit();
+    let request = evdev_abs_ioctl(axis);
+    let ret = unsafe { libc::ioctl(fd, request as libc::c_ulong, absinfo.as_mut_ptr()) };
+    if ret < 0 {
+        return None;
+    }
+    Some(unsafe { absinfo.assume_init() })
+}
+
+const fn evdev_abs_ioctl(axis: u16) -> u32 {
+    const IOC_READ: u32 = 2;
+    const IOC_TYPE_E: u32 = b'E' as u32;
+    const ABSINFO_SIZE: u32 = mem::size_of::<InputAbsInfo>() as u32;
+    (IOC_READ << 30) | (ABSINFO_SIZE << 16) | (IOC_TYPE_E << 8) | (0x40 + axis as u32)
+}
+
+pub fn gsensor_rotation_from_raw(value: i32, transform: GyroRotationTransform) -> Option<i8> {
+    if !(MSC_RAW_GSENSOR_PORTRAIT_DOWN..=MSC_RAW_GSENSOR_LANDSCAPE_LEFT).contains(&value) {
+        return None;
+    }
+    GYROSCOPE_ROTATIONS
+        .iter()
+        .position(|&v| v == value)
+        .map(|i| transform.transform(i as i8))
+}
+
+pub fn trace_touch_device_geometry(path: &str, proto: TouchProto, screen: Display) {
+    let Display { dims, rotation } = screen;
+    let (x_axis, y_axis) = match proto {
+        TouchProto::Single => (ABS_X, ABS_Y),
+        TouchProto::MultiA | TouchProto::MultiB | TouchProto::MultiC => {
+            (ABS_MT_POSITION_X, ABS_MT_POSITION_Y)
+        }
+    };
+    let abs_x = evdev_abs_info(path, x_axis);
+    let abs_y = evdev_abs_info(path, y_axis);
+    tracing::trace!(
+        path,
+        proto = ?proto,
+        screen_rotation = rotation,
+        screen_dims = ?dims,
+        abs_x = ?abs_x,
+        abs_y = ?abs_y,
+        "evdev vs display geometry"
+    );
+}
+
+#[derive(Debug)]
 struct TouchState {
     position: Point,
     pressure: i32,
@@ -369,12 +526,30 @@ impl Default for TouchState {
     }
 }
 
+#[cfg_attr(
+    feature = "tracing",
+    tracing::instrument(
+        skip(rx, ty, display, button_scheme, info),
+        level = tracing::Level::TRACE,
+    )
+)]
 pub fn parse_device_events(
     rx: &Receiver<InputEvent>,
     ty: &Sender<DeviceEvent>,
     display: Display,
     button_scheme: ButtonScheme,
+    info: DeviceInputInfo,
 ) {
+    let DeviceInputInfo {
+        proto,
+        mark,
+        mirroring_scheme,
+        swapping_scheme,
+        startup_rotation,
+        gyro_rotation_transform,
+        swap_dims_on_rotation,
+    } = info;
+    let (_, dir) = mirroring_scheme;
     let mut id = 0;
     let mut last_activity = -60;
     let Display {
@@ -383,7 +558,6 @@ pub fn parse_device_events(
     } = display;
     let mut fingers: FxHashMap<i32, Point> = FxHashMap::default();
     let mut packets: FxHashMap<i32, TouchState> = FxHashMap::default();
-    let proto = CURRENT_DEVICE.proto;
 
     let mut tc = match proto {
         TouchProto::Single => SINGLE_TOUCH_CODES,
@@ -396,14 +570,34 @@ pub fn parse_device_events(
         packets.insert(id, TouchState::default());
     }
 
-    let (mut mirror_x, mut mirror_y) = CURRENT_DEVICE.should_mirror_axes(rotation);
-    if CURRENT_DEVICE.should_swap_axes(rotation) {
+    let (mut mirror_x, mut mirror_y) = compute_mirror_axes(rotation, mirroring_scheme);
+    if rotation % 2 == swapping_scheme {
         mem::swap(&mut tc.x, &mut tc.y);
     }
+
+    let axes_swapped = rotation % 2 == swapping_scheme;
+    tracing::trace!(
+        rotation,
+        dims = ?dims,
+        mirror_x,
+        mirror_y,
+        mirroring_scheme = ?mirroring_scheme,
+        swapping_scheme,
+        startup_rotation,
+        swap_dims_on_rotation,
+        proto = ?proto,
+        mark,
+        tc_x = tc.x,
+        tc_y = tc.y,
+        axes_swapped,
+        "parse_device_events started"
+    );
 
     let mut button_scheme = button_scheme;
 
     while let Ok(evt) = rx.recv() {
+        let _span = tracing::trace_span!("processing input event", event = ?evt).entered();
+
         if evt.kind == EV_ABS {
             if evt.code == ABS_MT_TRACKING_ID {
                 if evt.value >= 0 {
@@ -417,6 +611,18 @@ pub fn parse_device_events(
                     } else {
                         evt.value
                     };
+                    tracing::trace!(
+                        raw = evt.value,
+                        evt_code = evt.code,
+                        tc_x = tc.x,
+                        tc_y = tc.y,
+                        axis = "screen_x",
+                        mirrored = mirror_x,
+                        dim_used = dims.0,
+                        result = state.position.x,
+                        axes_swapped = rotation % 2 == swapping_scheme,
+                        "touch axis raw"
+                    );
                 }
             } else if evt.code == tc.y {
                 if let Some(state) = packets.get_mut(&id) {
@@ -425,14 +631,23 @@ pub fn parse_device_events(
                     } else {
                         evt.value
                     };
+                    tracing::trace!(
+                        raw = evt.value,
+                        evt_code = evt.code,
+                        tc_x = tc.x,
+                        tc_y = tc.y,
+                        axis = "screen_y",
+                        mirrored = mirror_y,
+                        dim_used = dims.1,
+                        result = state.position.y,
+                        axes_swapped = rotation % 2 == swapping_scheme,
+                        "touch axis raw"
+                    );
                 }
             } else if evt.code == tc.pressure {
                 if let Some(state) = packets.get_mut(&id) {
                     state.pressure = evt.value;
-                    if proto == TouchProto::Single
-                        && CURRENT_DEVICE.mark() == 3
-                        && state.pressure == 0
-                    {
+                    if proto == TouchProto::Single && mark == 3 && state.pressure == 0 {
                         state.position.x = dims.0 as i32 - 1 - state.position.x;
                         mem::swap(&mut state.position.x, &mut state.position.y);
                     }
@@ -461,6 +676,21 @@ pub fn parse_device_events(
             }
 
             for (&id, state) in &packets {
+                if state.pressure > 0 {
+                    tracing::trace!(
+                        id,
+                        raw_packet = ?state,
+                        final_position = ?state.position,
+                        tc_x = tc.x,
+                        tc_y = tc.y,
+                        axes_swapped = rotation % 2 == swapping_scheme,
+                        rotation,
+                        mirror_x,
+                        mirror_y,
+                        dims = ?dims,
+                        "touch packet"
+                    );
+                }
                 if let Some(&pos) = fingers.get(&id) {
                     if state.pressure > 0 {
                         if state.position != pos {
@@ -484,6 +714,16 @@ pub fn parse_device_events(
                         fingers.remove(&id);
                     }
                 } else if state.pressure > 0 {
+                    tracing::trace!(
+                        id,
+                        position = ?state.position,
+                        pressure = state.pressure,
+                        rotation,
+                        mirror_x,
+                        mirror_y,
+                        dims = ?dims,
+                        "finger down"
+                    );
                     ty.send(DeviceEvent::Finger {
                         id,
                         time: seconds(evt.time),
@@ -515,38 +755,70 @@ pub fn parse_device_events(
                 }
             } else if evt.code == KEY_ROTATE_DISPLAY {
                 let next_rotation = evt.value as i8;
+                tracing::trace!(
+                    from_rotation = rotation,
+                    to_rotation = next_rotation,
+                    dims_before = ?dims,
+                    tc_x = tc.x,
+                    tc_y = tc.y,
+                    "KEY_ROTATE_DISPLAY received"
+                );
                 if next_rotation != rotation {
                     let delta = (rotation - next_rotation).abs();
-                    if delta % 2 == 1 {
+                    let will_swap_axes = delta % 2 == 1;
+                    tracing::trace!(
+                        delta,
+                        will_swap_axes,
+                        "KEY_ROTATE_DISPLAY applying rotation"
+                    );
+                    if will_swap_axes {
                         mem::swap(&mut tc.x, &mut tc.y);
-                        mem::swap(&mut dims.0, &mut dims.1);
+                        if swap_dims_on_rotation {
+                            mem::swap(&mut dims.0, &mut dims.1);
+                        }
                     }
                     rotation = next_rotation;
-                    let should_mirror = CURRENT_DEVICE.should_mirror_axes(rotation);
+                    let should_mirror = compute_mirror_axes(rotation, mirroring_scheme);
                     mirror_x = should_mirror.0;
                     mirror_y = should_mirror.1;
+                    tracing::trace!(
+                        rotation,
+                        mirror_x,
+                        mirror_y,
+                        dims_after = ?dims,
+                        tc_x = tc.x,
+                        tc_y = tc.y,
+                        axes_swapped = rotation % 2 == swapping_scheme,
+                        "rotation applied"
+                    );
                 }
             } else if evt.code != BTN_TOUCH {
                 if let Some(button_status) = ButtonStatus::try_from_raw(evt.value) {
                     ty.send(DeviceEvent::Button {
                         time: seconds(evt.time),
-                        code: ButtonCode::from_raw(evt.code, rotation, button_scheme),
+                        code: ButtonCode::from_raw(
+                            evt.code,
+                            rotation,
+                            button_scheme,
+                            startup_rotation,
+                            dir,
+                        ),
                         status: button_status,
                     })
                     .unwrap();
                 }
             }
         } else if evt.kind == EV_MSC && evt.code == MSC_RAW {
-            if evt.value >= MSC_RAW_GSENSOR_PORTRAIT_DOWN
-                && evt.value <= MSC_RAW_GSENSOR_LANDSCAPE_LEFT
+            if let Some(next_rotation) =
+                gsensor_rotation_from_raw(evt.value, gyro_rotation_transform)
             {
-                let next_rotation = GYROSCOPE_ROTATIONS
-                    .iter()
-                    .position(|&v| v == evt.value)
-                    .map(|i| CURRENT_DEVICE.transformed_gyroscope_rotation(i as i8));
-                if let Some(next_rotation) = next_rotation {
-                    ty.send(DeviceEvent::RotateScreen(next_rotation)).ok();
-                }
+                tracing::trace!(
+                    raw_value = evt.value,
+                    next_rotation,
+                    current_rotation = rotation,
+                    "gyroscope rotation event"
+                );
+                ty.send(DeviceEvent::RotateScreen(next_rotation)).ok();
             }
         }
     }

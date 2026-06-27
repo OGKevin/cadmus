@@ -1,7 +1,5 @@
 use crate::color::WHITE;
-use crate::context::Context;
-use crate::font::Fonts;
-use crate::framebuffer::Framebuffer;
+use crate::device::AppContext;
 use crate::geom::{Rectangle, divide};
 use crate::gesture::GestureEvent;
 use crate::input::DeviceEvent;
@@ -90,14 +88,18 @@ impl BottomBar {
 }
 
 impl View for BottomBar {
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, _bus, _rq, _context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(
+        skip(self, _hub, _bus, _rq, _context),
+        fields(event = ?evt),
+        ret(level=tracing::Level::TRACE)
+    ))]
     fn handle_event(
         &mut self,
         evt: &Event,
         _hub: &Hub,
         _bus: &mut Bus,
         _rq: &mut RenderQueue,
-        _context: &mut Context,
+        _context: &mut AppContext,
     ) -> bool {
         match *evt {
             Event::Gesture(GestureEvent::Tap(center))
@@ -114,10 +116,17 @@ impl View for BottomBar {
         }
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _fb, _fonts, _rect), fields(rect = ?_rect)))]
-    fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {}
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _rect, _context), fields(rect = ?_rect
+    )))]
+    fn render(&self, _context: &mut AppContext, _rect: Rectangle) {}
 
-    fn resize(&mut self, rect: Rectangle, hub: &Hub, rq: &mut RenderQueue, context: &mut Context) {
+    fn resize(
+        &mut self,
+        rect: Rectangle,
+        hub: &Hub,
+        rq: &mut RenderQueue,
+        context: &mut AppContext,
+    ) {
         let labelled_icon_width = 5 * rect.height() as i32 / 2;
         let paddings = divide(rect.width() as i32 - 2 * labelled_icon_width, 3);
 

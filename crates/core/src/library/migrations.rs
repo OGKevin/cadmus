@@ -13,7 +13,6 @@
 use crate::db::types::OptionalUuid7;
 use crate::db::types::UnixTimestamp;
 use crate::db::types::Uuid7;
-use crate::device::CURRENT_DEVICE;
 use crate::document::SimpleTocEntry;
 use crate::helpers::{Fingerprint, Fp};
 #[cfg(not(feature = "test"))]
@@ -48,8 +47,9 @@ crate::migration!(
     ///
     /// The migration is idempotent (all inserts use `ON CONFLICT … DO NOTHING`).
     "v1_import_legacy_filesystem_data",
-    async fn import_legacy_filesystem_data(pool: &SqlitePool) {
-        let settings = SettingsManager::new(CURRENT_DEVICE.data_dir(), get_current_version()).load();
+    async fn import_legacy_filesystem_data(ctx: &crate::db::migrations::MigrationContext<'_>) {
+        let pool = ctx.pool;
+        let settings = SettingsManager::new(ctx.device.data_dir.clone(), get_current_version()).load();
 
         if settings.libraries.is_empty() {
             info!("no libraries in settings, skipping legacy data import");
@@ -101,7 +101,8 @@ crate::migration!(
     /// fingerprint in the database so their data remains readable until the next
     /// `import()` scan removes them as orphans.
     "v2_rehash_fingerprints",
-    async fn rehash_fingerprints(pool: &SqlitePool) {
+    async fn rehash_fingerprints(ctx: &crate::db::migrations::MigrationContext<'_>) {
+        let pool = ctx.pool;
         let books: Vec<(String, Option<String>)> = sqlx::query(
                 r#"
                 SELECT
@@ -1014,6 +1015,7 @@ async fn insert_reading_state(
 mod tests {
     use super::*;
     use crate::db::Database;
+    use crate::db::migrations::{MigrationContext, MigrationDevice};
     use crate::db::runtime::RUNTIME;
     use crate::document::{SimpleTocEntry, TocLocation};
     use crate::library::db::Db;
@@ -1025,10 +1027,20 @@ mod tests {
 
     fn create_test_db() -> (Database, Db) {
         let mut db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.init(0).expect("failed to run migrations");
+        db.init_for_test(0).expect("failed to run migrations");
         let libdb = Db::new(&db);
 
         (db, libdb)
+    }
+
+    async fn run_rehash_fingerprints(db: &Database) {
+        let ctx = MigrationContext {
+            pool: db.pool(),
+            device: MigrationDevice::new(&crate::device::test_device::TestDevice::new()),
+        };
+        rehash_fingerprints(&ctx)
+            .await
+            .expect("failed to run rehash migration");
     }
 
     fn create_info(
@@ -1267,9 +1279,7 @@ mod tests {
                 .await
                 .expect("failed to commit legacy insert transaction");
 
-            rehash_fingerprints(db.pool())
-                .await
-                .expect("failed to run rehash migration");
+            run_rehash_fingerprints(&db).await;
         });
 
         let books = libdb
@@ -1354,9 +1364,7 @@ mod tests {
             .await
             .expect("failed to insert library book row");
 
-            rehash_fingerprints(db.pool())
-                .await
-                .expect("failed to run rehash migration");
+            run_rehash_fingerprints(&db).await;
         });
 
         let books = libdb

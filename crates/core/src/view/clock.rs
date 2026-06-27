@@ -1,9 +1,8 @@
 use super::{Bus, Event, Hub, ID_FEEDER, Id, RenderData, RenderQueue, View, ViewId};
 use crate::color::{BLACK, WHITE};
-use crate::context::Context;
-use crate::device::CURRENT_DEVICE;
-use crate::font::{Fonts, NORMAL_STYLE, font_from_style};
-use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::device::{AppContext, DeviceIdentity};
+use crate::font::{NORMAL_STYLE, font_from_style};
+use crate::framebuffer::UpdateMode;
 use crate::geom::Rectangle;
 use crate::gesture::GestureEvent;
 use chrono::{DateTime, Local};
@@ -17,10 +16,10 @@ pub struct Clock {
 }
 
 impl Clock {
-    pub fn new(rect: &mut Rectangle, context: &mut Context) -> Clock {
+    pub fn new(rect: &mut Rectangle, context: &mut AppContext) -> Clock {
         let time = Local::now();
         let format = context.settings.time_format.clone();
-        let font = font_from_style(&mut context.fonts, &NORMAL_STYLE, CURRENT_DEVICE.dpi);
+        let font = font_from_style(&mut context.fonts, &NORMAL_STYLE, context.device.dpi());
         let width = font
             .plan(&time.format(&format).to_string(), None, None)
             .width
@@ -42,14 +41,15 @@ impl Clock {
 }
 
 impl View for Clock {
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, bus, rq, _context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, bus, rq, _context), fields(event = ?evt
+    ), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
         _hub: &Hub,
         bus: &mut Bus,
         rq: &mut RenderQueue,
-        _context: &mut Context,
+        _context: &mut AppContext,
     ) -> bool {
         match *evt {
             Event::ClockTick => {
@@ -64,9 +64,10 @@ impl View for Clock {
         }
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fb, fonts, _rect), fields(rect = ?_rect)))]
-    fn render(&self, fb: &mut dyn Framebuffer, _rect: Rectangle, fonts: &mut Fonts) {
-        let dpi = CURRENT_DEVICE.dpi;
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _rect, context), fields(rect = ?_rect
+    )))]
+    fn render(&self, context: &mut AppContext, _rect: Rectangle) {
+        let (fb, fonts, dpi) = context.framebuffer_and_fonts();
         let font = font_from_style(fonts, &NORMAL_STYLE, dpi);
         let plan = font.plan(&self.time.format(&self.format).to_string(), None, None);
         let dx = (self.rect.width() as i32 - plan.width) / 2;

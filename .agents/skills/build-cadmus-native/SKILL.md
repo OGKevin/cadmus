@@ -102,7 +102,7 @@ Patch HTML uses `diff-cover` (see `devenv.nix` scripts).
 - **`fmt`** — runs `cargo fmt --check` (or `--apply` in CI) across the workspace
 - **`clippy`** — iterates the full feature matrix; use `--features` to narrow it
 - **`test`** — iterates the test feature matrix; `--coverage` enables llvm-cov instrumentation
-- **`run-emulator`** — ensures the documentation EPUB exists, then runs `cargo run -p emulator`
+- **`run-emulator`** — ensures the documentation EPUB exists, then runs `cargo run -p cadmus --features emulator`
 - **`install-importer`** — runs `cargo install --path crates/importer`
 
 ## Common mistakes

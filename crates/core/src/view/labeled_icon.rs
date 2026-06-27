@@ -1,6 +1,4 @@
-use crate::context::Context;
-use crate::font::Fonts;
-use crate::framebuffer::Framebuffer;
+use crate::device::AppContext;
 use crate::geom::Rectangle;
 use crate::view::icon::Icon;
 use crate::view::label::Label;
@@ -50,14 +48,18 @@ impl LabeledIcon {
 }
 
 impl View for LabeledIcon {
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, bus, _rq, _context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(
+        skip(self, _hub, bus, _rq, _context),
+        fields(event = ?evt),
+        ret(level=tracing::Level::TRACE)
+    ))]
     fn handle_event(
         &mut self,
         evt: &Event,
         _hub: &Hub,
         bus: &mut Bus,
         _rq: &mut RenderQueue,
-        _context: &mut Context,
+        _context: &mut AppContext,
     ) -> bool {
         match *evt {
             Event::Validate => {
@@ -72,10 +74,17 @@ impl View for LabeledIcon {
         }
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _fb, _fonts, _rect), fields(rect = ?_rect)))]
-    fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {}
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _context, _rect), fields(rect = ?_rect
+    )))]
+    fn render(&self, _context: &mut AppContext, _rect: Rectangle) {}
 
-    fn resize(&mut self, rect: Rectangle, hub: &Hub, rq: &mut RenderQueue, context: &mut Context) {
+    fn resize(
+        &mut self,
+        rect: Rectangle,
+        hub: &Hub,
+        rq: &mut RenderQueue,
+        context: &mut AppContext,
+    ) {
         let side = rect.height() as i32;
         self.children[0].resize(
             rect![rect.min.x, rect.min.y, rect.min.x + side, rect.max.y],

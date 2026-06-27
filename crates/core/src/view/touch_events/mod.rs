@@ -1,8 +1,9 @@
 use crate::color::{BLACK, GRAY05, GRAY10, WHITE};
-use crate::context::Context;
-use crate::device::CURRENT_DEVICE;
-use crate::font::Fonts;
-use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::device::AppContext;
+use crate::device::DeviceHardware as _;
+use crate::device::DeviceIdentity as _;
+use crate::framebuffer::Framebuffer as _;
+use crate::framebuffer::UpdateMode;
 use crate::geom::{CornerSpec, Dir, Rectangle, Region};
 use crate::unit::scale_by_dpi;
 use crate::view::SMALL_BAR_HEIGHT;
@@ -20,10 +21,10 @@ pub struct TouchEvents {
 }
 
 impl TouchEvents {
-    pub fn new(rect: Rectangle, rq: &mut RenderQueue, context: &mut Context) -> TouchEvents {
+    pub fn new(rect: Rectangle, rq: &mut RenderQueue, context: &mut AppContext) -> TouchEvents {
         let id = ID_FEEDER.next();
         let mut children = Vec::new();
-        let dpi = CURRENT_DEVICE.dpi;
+        let dpi = context.device.dpi();
         let small_height = scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32;
         let dx = (rect.width() as i32 - small_height) / 2;
         let dy = (rect.height() as i32 - small_height) / 3;
@@ -57,7 +58,7 @@ impl View for TouchEvents {
         hub: &Hub,
         _bus: &mut Bus,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
         match *evt {
             Event::Gesture(ge) => {
@@ -69,8 +70,9 @@ impl View for TouchEvents {
         }
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fb, _fonts), fields(rect = ?rect)))]
-    fn render(&self, fb: &mut dyn Framebuffer, rect: Rectangle, _fonts: &mut Fonts) {
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, context), fields(rect = ?rect)))]
+    fn render(&self, context: &mut AppContext, rect: Rectangle) {
+        let fb = context.device.framebuffer_mut();
         for x in rect.min.x..rect.max.x {
             for y in rect.min.y..rect.max.y {
                 let color = match Region::from_point(
@@ -97,8 +99,14 @@ impl View for TouchEvents {
         true
     }
 
-    fn resize(&mut self, rect: Rectangle, hub: &Hub, rq: &mut RenderQueue, context: &mut Context) {
-        let dpi = CURRENT_DEVICE.dpi;
+    fn resize(
+        &mut self,
+        rect: Rectangle,
+        hub: &Hub,
+        rq: &mut RenderQueue,
+        context: &mut AppContext,
+    ) {
+        let dpi = context.device.dpi();
         let small_height = scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32;
         let dx = (rect.width() as i32 - small_height) / 2;
         let dy = (rect.height() as i32 - small_height) / 3;

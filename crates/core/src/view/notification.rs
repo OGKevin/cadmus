@@ -38,10 +38,10 @@
 use super::{BORDER_RADIUS_MEDIUM, SMALL_BAR_HEIGHT, THICKNESS_LARGE};
 use super::{Bus, Event, Hub, ID_FEEDER, Id, RenderData, RenderQueue, View, ViewId};
 use crate::color::{BLACK, TEXT_NORMAL, WHITE};
-use crate::context::Context;
-use crate::device::CURRENT_DEVICE;
-use crate::font::{Fonts, NORMAL_STYLE, font_from_style};
-use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::device::AppContext;
+use crate::device::DeviceIdentity;
+use crate::font::{NORMAL_STYLE, font_from_style};
+use crate::framebuffer::UpdateMode;
 use crate::geom::{BorderSpec, CornerSpec, Rectangle};
 use crate::gesture::GestureEvent;
 use crate::input::DeviceEvent;
@@ -104,7 +104,7 @@ impl Notification {
         pinned: bool,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> Notification {
         let id = ID_FEEDER.next();
         let view_id = view_id.unwrap_or(ViewId::MessageNotif(id));
@@ -118,7 +118,7 @@ impl Notification {
             });
         }
 
-        let dpi = CURRENT_DEVICE.dpi;
+        let dpi = context.device.dpi();
         let (width, _) = context.display.dims;
         let small_height = scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32;
 
@@ -191,14 +191,18 @@ impl Notification {
 }
 
 impl View for Notification {
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, _bus, _rq, _context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(
+        skip(self, _hub, _bus, _rq, _context),
+        fields(event = ?evt),
+        ret(level=tracing::Level::TRACE)
+    ))]
     fn handle_event(
         &mut self,
         evt: &Event,
         _hub: &Hub,
         _bus: &mut Bus,
         _rq: &mut RenderQueue,
-        _context: &mut Context,
+        _context: &mut AppContext,
     ) -> bool {
         match *evt {
             Event::Gesture(GestureEvent::Tap(center)) if self.rect.includes(center) => true,
@@ -210,9 +214,10 @@ impl View for Notification {
         }
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fb, fonts, _rect), fields(rect = ?_rect)))]
-    fn render(&self, fb: &mut dyn Framebuffer, _rect: Rectangle, fonts: &mut Fonts) {
-        let dpi = CURRENT_DEVICE.dpi;
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, context, _rect), fields(rect = ?_rect
+    )))]
+    fn render(&self, context: &mut AppContext, _rect: Rectangle) {
+        let (fb, fonts, dpi) = context.framebuffer_and_fonts();
 
         let border_radius = scale_by_dpi(BORDER_RADIUS_MEDIUM, dpi) as i32;
         let border_thickness = scale_by_dpi(THICKNESS_LARGE, dpi) as u16;
@@ -270,9 +275,9 @@ impl View for Notification {
         _rect: Rectangle,
         _hub: &Hub,
         _rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
-        let dpi = CURRENT_DEVICE.dpi;
+        let dpi = context.device.dpi();
         let (width, height) = context.display.dims;
         let small_height = scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32;
         let side = (self.index / 3) % 2;

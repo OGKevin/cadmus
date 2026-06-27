@@ -1,11 +1,17 @@
 /// Automatic frontlight calculations based on sunrise and sunset.
 pub mod auto;
+#[cfg(any(feature = "kobo", docsrs))]
 mod natural;
+#[cfg(any(feature = "kobo", docsrs))]
 mod premixed;
+#[cfg(any(feature = "kobo", docsrs))]
 mod standard;
 
+#[cfg(any(feature = "kobo", docsrs))]
 pub use self::natural::NaturalFrontlight;
+#[cfg(any(feature = "kobo", docsrs))]
 pub use self::premixed::PremixedFrontlight;
+#[cfg(any(feature = "kobo", docsrs))]
 pub use self::standard::StandardFrontlight;
 use crate::geom::lerp;
 use libc::c_int;
@@ -150,7 +156,7 @@ impl LightLevels {
     }
 }
 
-pub trait Frontlight {
+pub trait Frontlight: Send {
     // value is a percentage.
     fn set_intensity(&mut self, value: LightLevel) -> anyhow::Result<()>;
     fn set_warmth(&mut self, value: LightLevel) -> anyhow::Result<()>;
@@ -160,6 +166,18 @@ pub trait Frontlight {
         self.set_intensity(LightLevel::off())?;
         self.set_warmth(LightLevel::off())?;
         Ok(())
+    }
+}
+
+impl<T: Frontlight + ?Sized> Frontlight for Box<T> {
+    fn set_intensity(&mut self, value: LightLevel) -> anyhow::Result<()> {
+        (**self).set_intensity(value)
+    }
+    fn set_warmth(&mut self, value: LightLevel) -> anyhow::Result<()> {
+        (**self).set_warmth(value)
+    }
+    fn levels(&self) -> LightLevels {
+        (**self).levels()
     }
 }
 

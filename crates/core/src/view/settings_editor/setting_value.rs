@@ -1,8 +1,8 @@
 use super::super::action_label::ActionLabel;
 use super::super::{Align, Bus, Event, Hub, ID_FEEDER, Id, RenderQueue, View, ViewId};
-use super::kinds::{SettingIdentity, SettingKind, WidgetKind};
-use crate::context::Context;
-use crate::framebuffer::{Framebuffer, UpdateMode};
+use super::kinds::{SettingIdentity, SettingKind, SettingsFetchData, WidgetKind};
+use crate::device::AppContext;
+use crate::framebuffer::UpdateMode;
 use crate::geom::Rectangle;
 use crate::settings::Settings;
 use crate::view::common::locate_by_id;
@@ -46,6 +46,8 @@ pub struct SettingValue {
     /// state each time UpdateValue is received, and to provide identity for
     /// routing [`SettingsEvent::UpdateValue`] without a separate field.
     kind: Box<dyn SettingKind>,
+    /// Directory containing bundled assets (keyboard layouts, etc.).
+    install_dir: std::path::PathBuf,
     /// Current SubMenu entries, exposed for test inspection.
     #[cfg(test)]
     pub entries: Vec<EntryKind>,
@@ -82,9 +84,14 @@ impl SettingValue {
         rect: Rectangle,
         settings: &Settings,
         fonts: &mut crate::font::Fonts,
+        dpi: u16,
+        install_dir: &std::path::Path,
     ) -> SettingValue {
         let kind: Box<dyn SettingKind> = Box::new(kind);
-        let data = kind.fetch(settings);
+        let data = kind.fetch(SettingsFetchData {
+            settings,
+            install_dir: Some(install_dir),
+        });
 
         let entries = if let WidgetKind::SubMenu(ref e) = data.widget {
             e.clone()
@@ -97,6 +104,7 @@ impl SettingValue {
             rect,
             children: vec![],
             kind,
+            install_dir: install_dir.to_path_buf(),
             entries,
             active_input: None,
             active_file_chooser: false,
@@ -105,7 +113,7 @@ impl SettingValue {
         };
 
         setting_value.children =
-            vec![setting_value.build_child_view(data.value, data.widget, fonts)];
+            vec![setting_value.build_child_view(data.value, data.widget, fonts, dpi)];
 
         setting_value
     }
@@ -115,6 +123,7 @@ impl SettingValue {
         value: String,
         widget: WidgetKind,
         fonts: &mut crate::font::Fonts,
+        dpi: u16,
     ) -> Box<dyn View> {
         match widget {
             WidgetKind::None => Box::new(Label::new(self.rect, value, Align::Right(10))),
@@ -131,6 +140,7 @@ impl SettingValue {
                 tap_event,
                 fonts,
                 Align::Right(10),
+                dpi,
             )),
             WidgetKind::ActionLabel(tap_event) => Box::new(
                 ActionLabel::new(self.rect, value, Align::Right(10)).event(Some(tap_event)),
@@ -146,7 +156,14 @@ impl SettingValue {
         if let Some(action_label) = self.children[0].downcast_mut::<ActionLabel>() {
             action_label.update(&value, rq);
 
-            if let WidgetKind::SubMenu(entries) = self.kind.fetch(settings).widget {
+            if let WidgetKind::SubMenu(entries) = self
+                .kind
+                .fetch(SettingsFetchData {
+                    settings,
+                    install_dir: Some(&self.install_dir),
+                })
+                .widget
+            {
                 self.entries = entries.clone();
                 action_label.set_event(Some(Event::SubMenu(self.rect, entries)));
             }
@@ -187,14 +204,15 @@ impl View for SettingValue {
     ///    without going through the event bus.
     ///
     /// [`NamedInput`]: crate::view::named_input::NamedInput
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, bus, rq, context), fields(event = ?evt
+    ), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
         hub: &Hub,
         bus: &mut Bus,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
         if let Event::Select(entry_id) = evt
             && Some(entry_id) == self.kind.file_chooser_entry_id().as_ref()
@@ -304,9 +322,11 @@ impl View for SettingValue {
         false
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _fb, _fonts), fields(rect = ?_rect)))]
-    fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut crate::font::Fonts) {
-    }
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(skip(self, _context), fields(rect = ?_rect))
+    )]
+    fn render(&self, _context: &mut AppContext, _rect: Rectangle) {}
 
     fn rect(&self) -> &Rectangle {
         &self.rect
@@ -333,6 +353,7 @@ impl View for SettingValue {
 mod tests {
     use super::*;
     use crate::context::test_helpers::create_test_context;
+    use crate::device::{DeviceIdentity as _, DevicePaths as _};
     use crate::gesture::GestureEvent;
     use crate::settings::Settings;
     use crate::view::settings_editor::kinds::general::{
@@ -355,12 +376,30 @@ mod tests {
         let settings = Settings::default();
         let rect = rect![0, 0, 200, 50];
 
-        let mut suspend_value =
-            SettingValue::new(&IntermissionSuspend, rect, &settings, &mut context.fonts);
-        let mut power_off_value =
-            SettingValue::new(&IntermissionPowerOff, rect, &settings, &mut context.fonts);
-        let mut share_value =
-            SettingValue::new(&IntermissionShare, rect, &settings, &mut context.fonts);
+        let mut suspend_value = SettingValue::new(
+            &IntermissionSuspend,
+            rect,
+            &settings,
+            &mut context.fonts,
+            context.device.dpi(),
+            &context.device.install_dir(),
+        );
+        let mut power_off_value = SettingValue::new(
+            &IntermissionPowerOff,
+            rect,
+            &settings,
+            &mut context.fonts,
+            context.device.dpi(),
+            &context.device.install_dir(),
+        );
+        let mut share_value = SettingValue::new(
+            &IntermissionShare,
+            rect,
+            &settings,
+            &mut context.fonts,
+            context.device.dpi(),
+            &context.device.install_dir(),
+        );
 
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
@@ -387,12 +426,30 @@ mod tests {
         let settings = Settings::default();
         let rect = rect![0, 0, 200, 50];
 
-        let mut suspend_value =
-            SettingValue::new(&IntermissionSuspend, rect, &settings, &mut context.fonts);
-        let mut power_off_value =
-            SettingValue::new(&IntermissionPowerOff, rect, &settings, &mut context.fonts);
-        let mut share_value =
-            SettingValue::new(&IntermissionShare, rect, &settings, &mut context.fonts);
+        let mut suspend_value = SettingValue::new(
+            &IntermissionSuspend,
+            rect,
+            &settings,
+            &mut context.fonts,
+            context.device.dpi(),
+            &context.device.install_dir(),
+        );
+        let mut power_off_value = SettingValue::new(
+            &IntermissionPowerOff,
+            rect,
+            &settings,
+            &mut context.fonts,
+            context.device.dpi(),
+            &context.device.install_dir(),
+        );
+        let mut share_value = SettingValue::new(
+            &IntermissionShare,
+            rect,
+            &settings,
+            &mut context.fonts,
+            context.device.dpi(),
+            &context.device.install_dir(),
+        );
 
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
@@ -446,7 +503,14 @@ mod tests {
         };
         let rect = rect![0, 0, 200, 50];
 
-        let mut value = SettingValue::new(&KeyboardLayout, rect, &settings, &mut context.fonts);
+        let mut value = SettingValue::new(
+            &KeyboardLayout,
+            rect,
+            &settings,
+            &mut context.fonts,
+            context.device.dpi(),
+            &context.device.install_dir(),
+        );
         let mut rq = RenderQueue::new();
 
         let update_event = Event::Settings(SettingsEvent::UpdateValue {
@@ -467,7 +531,14 @@ mod tests {
         let settings = Settings::default();
         let rect = rect![0, 0, 200, 50];
 
-        let mut value = SettingValue::new(&AutoSuspend, rect, &settings, &mut context.fonts);
+        let mut value = SettingValue::new(
+            &AutoSuspend,
+            rect,
+            &settings,
+            &mut context.fonts,
+            context.device.dpi(),
+            &context.device.install_dir(),
+        );
         let mut rq = RenderQueue::new();
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
@@ -488,7 +559,14 @@ mod tests {
         let settings = Settings::default();
         let rect = rect![0, 0, 200, 50];
 
-        let mut value = SettingValue::new(&AutoPowerOff, rect, &settings, &mut context.fonts);
+        let mut value = SettingValue::new(
+            &AutoPowerOff,
+            rect,
+            &settings,
+            &mut context.fonts,
+            context.device.dpi(),
+            &context.device.install_dir(),
+        );
         let mut rq = RenderQueue::new();
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
@@ -515,7 +593,14 @@ mod tests {
         let rect = rect![0, 0, 200, 50];
 
         let mut context = create_test_context();
-        let mut value = SettingValue::new(LibraryName(0), rect, &settings, &mut context.fonts);
+        let mut value = SettingValue::new(
+            LibraryName(0),
+            rect,
+            &settings,
+            &mut context.fonts,
+            context.device.dpi(),
+            &context.device.install_dir(),
+        );
         let mut rq = RenderQueue::new();
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
@@ -542,7 +627,14 @@ mod tests {
         let rect = rect![0, 0, 200, 50];
 
         let mut context = create_test_context();
-        let mut value = SettingValue::new(LibraryPath(0), rect, &settings, &mut context.fonts);
+        let mut value = SettingValue::new(
+            LibraryPath(0),
+            rect,
+            &settings,
+            &mut context.fonts,
+            context.device.dpi(),
+            &context.device.install_dir(),
+        );
         let mut rq = RenderQueue::new();
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
@@ -570,7 +662,14 @@ mod tests {
         let rect = rect![0, 0, 200, 50];
 
         let mut context = create_test_context();
-        let value = SettingValue::new(LibraryInfo(0), rect, &settings, &mut context.fonts);
+        let value = SettingValue::new(
+            LibraryInfo(0),
+            rect,
+            &settings,
+            &mut context.fonts,
+            context.device.dpi(),
+            &context.device.install_dir(),
+        );
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
@@ -608,8 +707,14 @@ mod tests {
         });
         let rect = rect![0, 0, 200, 50];
 
-        let mut value =
-            SettingValue::new(LibraryName(0), rect, &context.settings, &mut context.fonts);
+        let mut value = SettingValue::new(
+            LibraryName(0),
+            rect,
+            &context.settings,
+            &mut context.fonts,
+            context.device.dpi(),
+            &context.device.install_dir(),
+        );
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
@@ -641,8 +746,14 @@ mod tests {
         });
         let rect = rect![0, 0, 200, 50];
 
-        let mut value =
-            SettingValue::new(LibraryPath(0), rect, &context.settings, &mut context.fonts);
+        let mut value = SettingValue::new(
+            LibraryPath(0),
+            rect,
+            &context.settings,
+            &mut context.fonts,
+            context.device.dpi(),
+            &context.device.install_dir(),
+        );
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
@@ -674,8 +785,14 @@ mod tests {
         });
         let rect = rect![0, 0, 200, 50];
 
-        let mut value =
-            SettingValue::new(LibraryName(0), rect, &context.settings, &mut context.fonts);
+        let mut value = SettingValue::new(
+            LibraryName(0),
+            rect,
+            &context.settings,
+            &mut context.fonts,
+            context.device.dpi(),
+            &context.device.install_dir(),
+        );
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
@@ -716,8 +833,14 @@ mod tests {
         });
         let rect = rect![0, 0, 200, 50];
 
-        let mut value =
-            SettingValue::new(LibraryName(0), rect, &context.settings, &mut context.fonts);
+        let mut value = SettingValue::new(
+            LibraryName(0),
+            rect,
+            &context.settings,
+            &mut context.fonts,
+            context.device.dpi(),
+            &context.device.install_dir(),
+        );
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
@@ -745,8 +868,14 @@ mod tests {
     fn test_update_value_event_updates_auto_suspend() {
         let rect = rect![0, 0, 200, 50];
         let mut context = create_test_context();
-        let mut value =
-            SettingValue::new(&AutoSuspend, rect, &context.settings, &mut context.fonts);
+        let mut value = SettingValue::new(
+            &AutoSuspend,
+            rect,
+            &context.settings,
+            &mut context.fonts,
+            context.device.dpi(),
+            &context.device.install_dir(),
+        );
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
@@ -770,8 +899,14 @@ mod tests {
     fn test_update_value_event_updates_auto_power_off() {
         let rect = rect![0, 0, 200, 50];
         let mut context = create_test_context();
-        let mut value =
-            SettingValue::new(&AutoPowerOff, rect, &context.settings, &mut context.fonts);
+        let mut value = SettingValue::new(
+            &AutoPowerOff,
+            rect,
+            &context.settings,
+            &mut context.fonts,
+            context.device.dpi(),
+            &context.device.install_dir(),
+        );
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
@@ -800,6 +935,8 @@ mod tests {
             rect,
             &context.settings,
             &mut context.fonts,
+            context.device.dpi(),
+            &context.device.install_dir(),
         );
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
@@ -826,7 +963,14 @@ mod tests {
         let mut context = create_test_context();
         context.settings.logging.level = "INFO".to_string();
 
-        let mut value = SettingValue::new(&LogLevel, rect, &context.settings, &mut context.fonts);
+        let mut value = SettingValue::new(
+            &LogLevel,
+            rect,
+            &context.settings,
+            &mut context.fonts,
+            context.device.dpi(),
+            &context.device.install_dir(),
+        );
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
@@ -871,6 +1015,8 @@ mod tests {
             rect,
             &context.settings,
             &mut context.fonts,
+            context.device.dpi(),
+            &context.device.install_dir(),
         );
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();

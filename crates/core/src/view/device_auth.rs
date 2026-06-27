@@ -13,10 +13,9 @@ use super::filler::Filler;
 use super::label::Label;
 use super::{Align, Bus, Event, Hub, ID_FEEDER, Id, RenderQueue, View, ViewId};
 use crate::color::WHITE;
-use crate::context::Context;
-use crate::device::CURRENT_DEVICE;
-use crate::font::{Fonts, NORMAL_STYLE, font_from_style};
-use crate::framebuffer::Framebuffer;
+use crate::device::AppContext;
+use crate::device::DeviceIdentity as _;
+use crate::font::{NORMAL_STYLE, font_from_style};
 use crate::geom::Rectangle;
 use crate::gesture::GestureEvent;
 use crate::github::{GithubClient, GithubError, TokenPollResult};
@@ -62,10 +61,10 @@ impl DeviceAuthView {
     /// If the device flow initiation fails, sends [`Event::Github`] with [`GithubEvent::DeviceAuthError`]
     /// immediately and returns a view with an error message.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-    pub fn new(hub: &Hub, context: &mut Context) -> Self {
+    pub fn new(hub: &Hub, context: &mut AppContext) -> Self {
         let id = ID_FEEDER.next();
         let view_id = ViewId::Ota(OtaViewId::DeviceAuth);
-        let (width, height) = CURRENT_DEVICE.dims;
+        let (width, height) = context.device.dims();
         let full_rect = rect![0, 0, width as i32, height as i32];
         let cancelled = Arc::new(AtomicBool::new(false));
 
@@ -85,7 +84,7 @@ impl DeviceAuthView {
             }
         };
 
-        let dpi = CURRENT_DEVICE.dpi;
+        let dpi = context.device.dpi();
         let font = font_from_style(&mut context.fonts, &NORMAL_STYLE, dpi);
         let x_height = font.x_heights.0 as i32;
         let padding = font.em() as i32;
@@ -250,7 +249,7 @@ impl View for DeviceAuthView {
         _hub: &Hub,
         bus: &mut Bus,
         _rq: &mut RenderQueue,
-        _context: &mut Context,
+        _context: &mut AppContext,
     ) -> bool {
         match evt {
             Event::Close(id) if *id == self.view_id => {
@@ -265,9 +264,9 @@ impl View for DeviceAuthView {
 
     #[cfg_attr(
         feature = "tracing",
-        tracing::instrument(skip(self, _fb, _fonts, _rect), fields(rect = ?_rect))
+        tracing::instrument(skip(self, _context, _rect), fields(rect = ?_rect))
     )]
-    fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {}
+    fn render(&self, _context: &mut AppContext, _rect: Rectangle) {}
 
     fn rect(&self) -> &Rectangle {
         &self.rect
@@ -298,7 +297,7 @@ impl View for DeviceAuthView {
         _rect: Rectangle,
         _hub: &Hub,
         _rq: &mut RenderQueue,
-        _context: &mut Context,
+        _context: &mut AppContext,
     ) {
     }
 }

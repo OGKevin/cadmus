@@ -36,19 +36,19 @@
 //! }
 //! ```
 
-#[cfg(any(feature = "kobo", doc))]
+#[cfg(any(feature = "kobo", docsrs))]
 pub mod auto_frontlight;
-#[cfg(any(all(feature = "test", feature = "kobo"), doc))]
-mod dbus_monitor;
+#[cfg(any(all(feature = "test", feature = "kobo"), docsrs))]
+pub mod dbus_monitor;
 pub mod dictionary_index;
-#[cfg(any(feature = "test", doc))]
-mod hello_world;
+#[cfg(any(feature = "test", docsrs))]
+pub mod hello_world;
 pub mod import;
 pub mod thumbnail;
-#[cfg(any(feature = "kobo", doc))]
+#[cfg(any(feature = "kobo", docsrs))]
 pub mod time_sync;
-#[cfg(any(feature = "kobo", doc))]
-mod wifi_status_monitor;
+#[cfg(any(feature = "kobo", docsrs))]
+pub mod wifi_status_monitor;
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -58,12 +58,18 @@ use std::time::Duration;
 
 use thiserror::Error;
 
-use crate::context::Context;
 use crate::db::Database;
+use crate::device::DeviceCapabilities as _;
+#[cfg(feature = "kobo")]
+use crate::device::DeviceHardware as _;
+use crate::device::{AppContext, DeviceIdentity as _, DevicePaths as _};
+#[cfg(feature = "kobo")]
 use crate::fl;
 use crate::input::DeviceEvent;
 use crate::settings::Settings;
-use crate::view::{EntryId, Event, NotificationEvent};
+#[cfg(feature = "kobo")]
+use crate::view::NotificationEvent;
+use crate::view::{EntryId, Event};
 
 /// Errors that can occur during task management operations.
 #[derive(Error, Debug)]
@@ -89,19 +95,19 @@ pub enum TaskId {
     /// Dictionary index background task.
     DictionaryIndex,
     /// The example task that prints periodically (test builds only).
-    #[cfg(any(feature = "test", doc))]
+    #[cfg(any(feature = "test", docsrs))]
     HelloWorld,
     /// D-Bus system bus monitor (test + kobo builds only).
-    #[cfg(any(all(feature = "test", feature = "kobo"), doc))]
+    #[cfg(any(all(feature = "test", feature = "kobo"), docsrs))]
     DbusMonitor,
     /// WiFi status monitor using dhcpcd-dbus (kobo builds only).
-    #[cfg(any(feature = "kobo", doc))]
+    #[cfg(any(feature = "kobo", docsrs))]
     WifiStatusMonitor,
     /// Time synchronization via NTP (kobo builds only).
-    #[cfg(any(feature = "kobo", doc))]
+    #[cfg(any(feature = "kobo", docsrs))]
     TimeSync,
     /// Auto frontlight adjustment (kobo builds only).
-    #[cfg(any(feature = "kobo", doc))]
+    #[cfg(any(feature = "kobo", docsrs))]
     AutoFrontlight,
     /// Test-only task for unit tests.
     #[cfg(test)]
@@ -406,7 +412,7 @@ impl TaskManager {
     /// Must be called for every event before passing it to the view tree.
     /// Always returns `false` — it never consumes events.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, context)))]
-    pub fn handle_event(&mut self, evt: &Event, hub: &Sender<Event>, context: &Context) -> bool {
+    pub fn handle_event(&mut self, evt: &Event, hub: &Sender<Event>, context: &AppContext) -> bool {
         self.cleanup_finished();
         self.flush_buffered_events(hub);
 
@@ -421,28 +427,44 @@ impl TaskManager {
                     hub,
                     &context.database,
                     &context.settings,
+                    &context.device.install_dir(),
                 );
             }
             Event::ImportFinished { library_index } => {
-                self.drain_pending_imports(hub, &context.database, &context.settings);
+                self.drain_pending_imports(
+                    hub,
+                    &context.database,
+                    &context.settings,
+                    &context.device.install_dir(),
+                );
                 self.schedule_thumbnail_extraction(
                     *library_index,
                     hub,
                     &context.database,
                     &context.settings,
+                    context.device.dpi(),
+                    context.device.color_samples(),
+                    &context.device.install_dir(),
                 );
             }
             Event::ThumbnailExtractionFinished { .. } => {
-                self.drain_pending_thumbnails(hub, &context.database, &context.settings);
+                self.drain_pending_thumbnails(
+                    hub,
+                    &context.database,
+                    &context.settings,
+                    context.device.dpi(),
+                    context.device.color_samples(),
+                    &context.device.install_dir(),
+                );
             }
             Event::ReindexDictionaries => {
-                self.schedule_dictionary_index(hub, &context.database);
+                self.schedule_dictionary_index(hub, &context.database, context.device.data_dir());
             }
             Event::Device(DeviceEvent::NetUp) => {
                 #[cfg(feature = "kobo")]
                 {
                     if context.settings.auto_time {
-                        self.schedule_time_sync(false, hub);
+                        self.schedule_time_sync(false, hub, context);
                     }
                 }
             }
@@ -459,7 +481,7 @@ impl TaskManager {
                         ))))
                         .ok();
                     } else {
-                        self.schedule_time_sync(true, hub);
+                        self.schedule_time_sync(true, hub, context);
                     }
                 }
             }
@@ -477,6 +499,7 @@ impl TaskManager {
         hub: &Sender<Event>,
         database: &Database,
         settings: &Settings,
+        install_dir: &std::path::Path,
     ) {
         if self.is_running(&TaskId::Import) {
             tracing::info!(library_index = ?library_index, force, "import already running, queueing");
@@ -492,6 +515,7 @@ impl TaskManager {
             settings.clone(),
             library_index,
             force,
+            install_dir,
         ));
 
         if let Err(e) = self.start(task, hub.clone()) {
@@ -506,6 +530,7 @@ impl TaskManager {
         hub: &Sender<Event>,
         database: &Database,
         settings: &Settings,
+        install_dir: &std::path::Path,
     ) {
         if self.is_running(&TaskId::Import) || self.pending_import_indices.is_empty() {
             return;
@@ -514,12 +539,17 @@ impl TaskManager {
         let Some((next, force)) = self.pending_import_indices.pop_front() else {
             return;
         };
-        self.schedule_import(next, force, hub, database, settings);
+        self.schedule_import(next, force, hub, database, settings, install_dir);
     }
 
     /// Schedules a dictionary index scan, stopping any running instance first.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-    fn schedule_dictionary_index(&mut self, hub: &Sender<Event>, database: &Database) {
+    fn schedule_dictionary_index(
+        &mut self,
+        hub: &Sender<Event>,
+        database: &Database,
+        data_path: std::path::PathBuf,
+    ) {
         if self.is_running(&TaskId::DictionaryIndex) {
             tracing::debug!("stopping running dictionary index task for restart");
             if let Err(e) = self.stop(&TaskId::DictionaryIndex) {
@@ -529,7 +559,10 @@ impl TaskManager {
 
         self.flush_buffered_events(hub);
 
-        let task = Box::new(dictionary_index::DictionaryIndexTask::new(database.clone()));
+        let task = Box::new(dictionary_index::DictionaryIndexTask::new(
+            database.clone(),
+            data_path,
+        ));
 
         if let Err(e) = self.start(task, hub.clone()) {
             tracing::warn!(error = %e, "failed to start dictionary_index task");
@@ -560,16 +593,16 @@ impl TaskManager {
 
     #[cfg(feature = "kobo")]
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-    fn schedule_time_sync(&mut self, manual: bool, hub: &Sender<Event>) {
+    fn schedule_time_sync(&mut self, manual: bool, hub: &Sender<Event>, context: &AppContext) {
         if self.is_running(&TaskId::TimeSync) {
             tracing::warn!("Time sync task already running, not scheduling");
 
             return;
         }
 
-        match crate::device::CURRENT_DEVICE.time_manager() {
+        match context.device.time_manager() {
             Ok(time_manager) => {
-                let task = Box::new(time_sync::TimeSyncTask::new(time_manager, manual));
+                let task = Box::new(time_sync::TimeSyncTask::new(time_manager.clone(), manual));
                 if let Err(e) = self.start(task, hub.clone()) {
                     tracing::warn!(error = %e, "failed to start time sync task");
                 }
@@ -588,6 +621,9 @@ impl TaskManager {
         hub: &Sender<Event>,
         database: &Database,
         settings: &Settings,
+        dpi: u16,
+        color_samples: usize,
+        install_dir: &std::path::Path,
     ) {
         if self.is_running(&TaskId::ThumbnailExtraction) {
             tracing::info!(library_index = ?library_index, "thumbnail extraction already running, queueing");
@@ -601,6 +637,9 @@ impl TaskManager {
             database.clone(),
             settings.clone(),
             library_index,
+            dpi,
+            color_samples,
+            install_dir,
         ));
 
         if let Err(e) = self.start(task, hub.clone()) {
@@ -615,6 +654,9 @@ impl TaskManager {
         hub: &Sender<Event>,
         database: &Database,
         settings: &Settings,
+        dpi: u16,
+        color_samples: usize,
+        install_dir: &std::path::Path,
     ) {
         if self.is_running(&TaskId::ThumbnailExtraction)
             || self.pending_thumbnail_indices.is_empty()
@@ -625,7 +667,16 @@ impl TaskManager {
         let Some(next) = self.pending_thumbnail_indices.pop_front() else {
             return;
         };
-        self.schedule_thumbnail_extraction(next, hub, database, settings);
+
+        self.schedule_thumbnail_extraction(
+            next,
+            hub,
+            database,
+            settings,
+            dpi,
+            color_samples,
+            install_dir,
+        );
     }
 
     /// Returns `true` if a task with the given ID is running.
@@ -662,11 +713,14 @@ impl Drop for TaskManager {
 /// - [`dbus_monitor::DbusMonitorTask`] - monitors D-Bus signals (test + kobo only, when `settings.logging.enable_dbus_log` is true)
 /// - [`import::ImportTask`] - runs an incremental import of all libraries on startup
 /// - [`dictionary_index::DictionaryIndexTask`] - indexes `.index` dictionary files into SQLite
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(manager, hub, settings, database, data_path, install_dir), level = tracing::Level::TRACE))]
 pub fn register_startup_tasks(
     manager: &mut TaskManager,
     hub: Sender<Event>,
     settings: &Settings,
     database: &Database,
+    data_path: std::path::PathBuf,
+    install_dir: &std::path::Path,
 ) {
     #[cfg(feature = "kobo")]
     {
@@ -700,9 +754,12 @@ pub fn register_startup_tasks(
         }
     }
 
-    manager.schedule_import(None, false, &hub, database, settings);
+    manager.schedule_import(None, false, &hub, database, settings, install_dir);
 
-    let task = Box::new(dictionary_index::DictionaryIndexTask::new(database.clone()));
+    let task = Box::new(dictionary_index::DictionaryIndexTask::new(
+        database.clone(),
+        data_path,
+    ));
     if let Err(e) = manager.start(task, hub.clone()) {
         tracing::warn!(error = %e, "failed to start dictionary_index task");
     }
@@ -712,6 +769,7 @@ pub fn register_startup_tasks(
 mod tests {
     use super::*;
     use crate::context::test_helpers::create_test_context;
+    use std::path::Path;
     use std::sync::mpsc;
     use std::time::{Duration, Instant};
 
@@ -828,10 +886,18 @@ mod tests {
         let mut manager = TaskManager::new();
         let (hub, _rx) = mpsc::channel();
         let mut database = Database::new(":memory:").unwrap();
-        database.init(0).unwrap();
+        database.init_for_test(0).unwrap();
         let settings = Settings::default();
 
-        manager.schedule_thumbnail_extraction(None, &hub, &database, &settings);
+        manager.schedule_thumbnail_extraction(
+            None,
+            &hub,
+            &database,
+            &settings,
+            300,
+            1,
+            Path::new(""),
+        );
 
         // Task exits quickly on an unseeded database, so wait for
         // completion rather than asserting the transient running state.
@@ -865,22 +931,38 @@ mod tests {
         );
 
         let mut database = Database::new(":memory:").unwrap();
-        database.init(0).unwrap();
+        database.init_for_test(0).unwrap();
         let settings = Settings::default();
 
-        manager.schedule_thumbnail_extraction(Some(0), &hub, &database, &settings);
-        manager.schedule_thumbnail_extraction(Some(1), &hub, &database, &settings);
+        manager.schedule_thumbnail_extraction(
+            Some(0),
+            &hub,
+            &database,
+            &settings,
+            300,
+            1,
+            Path::new(""),
+        );
+        manager.schedule_thumbnail_extraction(
+            Some(1),
+            &hub,
+            &database,
+            &settings,
+            300,
+            1,
+            Path::new(""),
+        );
 
         assert_eq!(manager.pending_thumbnail_indices.len(), 2);
 
         manager.stop(&TaskId::ThumbnailExtraction).unwrap();
 
-        manager.drain_pending_thumbnails(&hub, &database, &settings);
+        manager.drain_pending_thumbnails(&hub, &database, &settings, 300, 1, Path::new(""));
         assert_eq!(manager.pending_thumbnail_indices.len(), 1);
 
         wait_until_not_running(&mut manager, &TaskId::ThumbnailExtraction);
 
-        manager.drain_pending_thumbnails(&hub, &database, &settings);
+        manager.drain_pending_thumbnails(&hub, &database, &settings, 300, 1, Path::new(""));
         assert!(manager.pending_thumbnail_indices.is_empty());
 
         wait_until_not_running(&mut manager, &TaskId::ThumbnailExtraction);

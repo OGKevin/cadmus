@@ -5,7 +5,6 @@ use self::freetype_sys::*;
 use self::harfbuzz_sys::*;
 
 use crate::color::Color;
-use crate::device::CURRENT_DEVICE;
 use crate::framebuffer::Framebuffer;
 use crate::geom::{Point, Vec2};
 use crate::helpers::IsHidden;
@@ -13,7 +12,6 @@ use anyhow::{Error, format_err};
 use bitflags::bitflags;
 use fxhash::FxHashMap;
 use globset::Glob;
-use lazy_static::lazy_static;
 use std::collections::BTreeSet;
 use std::ffi::{CStr, CString};
 use std::os::unix::ffi::OsStrExt;
@@ -64,20 +62,16 @@ pub const DISPLAY_STYLE: Style = Style {
     size: DISPLAY_FONT_SIZE,
 };
 
-lazy_static! {
-    pub static ref MD_TITLE: Style = {
-        // Compute the ratio between the physical width of the
-        // current device and that of the Aura ONE.
-        let ratio = (CURRENT_DEVICE.dims.0 as f32 * 300.0) /
-                    (CURRENT_DEVICE.dpi as f32 * 1404.0);
-        let size = ((FONT_SIZES[2] as f32 * ratio) as u32).clamp(FONT_SIZES[1],
-                                                                 FONT_SIZES[2]);
-        Style {
-            family: Family::Serif,
-            variant: Variant::ITALIC,
-            size,
-        }
-    };
+pub fn md_title(dpi: u16, screen_width: u32) -> Style {
+    // Compute the ratio between the physical width of the
+    // current device and that of the Aura ONE.
+    let ratio = (screen_width as f32 * 300.0) / (dpi as f32 * 1404.0);
+    let size = ((FONT_SIZES[2] as f32 * ratio) as u32).clamp(FONT_SIZES[1], FONT_SIZES[2]);
+    Style {
+        family: Family::Serif,
+        variant: Variant::ITALIC,
+        size,
+    }
 }
 
 pub const MD_AUTHOR: Style = Style {
@@ -681,11 +675,12 @@ pub struct Fonts {
 }
 
 impl Fonts {
-    fn _load(root_dir: Option<PathBuf>) -> Result<Fonts, Error> {
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(root_dir, install_dir), level = tracing::Level::TRACE))]
+    fn _load(root_dir: Option<PathBuf>, install_dir: &Path) -> Result<Fonts, Error> {
         let search_path = if let Some(root_dir) = root_dir {
             root_dir.join("fonts")
         } else {
-            CURRENT_DEVICE.install_path("fonts")
+            install_dir.join("fonts")
         };
 
         let opener = FontOpener::new()?;
@@ -717,12 +712,13 @@ impl Fonts {
         Ok(fonts)
     }
 
-    pub fn load() -> Result<Fonts, Error> {
-        Fonts::_load(None)
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(install_dir), level = tracing::Level::TRACE))]
+    pub fn load(install_dir: &Path) -> Result<Fonts, Error> {
+        Fonts::_load(None, install_dir)
     }
 
     pub fn load_from(root_dir: PathBuf) -> Result<Fonts, Error> {
-        Fonts::_load(Some(root_dir))
+        Fonts::_load(Some(root_dir), Path::new(""))
     }
 }
 

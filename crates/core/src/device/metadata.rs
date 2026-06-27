@@ -52,7 +52,9 @@
 //! | 393             | `0x4238`   | [`ClaraColour`](crate::device::Model::ClaraColour)                     |
 
 use crate::device::error::DeviceError;
+#[cfg(not(test))]
 use std::env;
+#[cfg(not(test))]
 use std::fs;
 use tracing::{debug, error, info, warn};
 
@@ -99,6 +101,7 @@ impl std::fmt::Display for Platform {
     }
 }
 
+#[cfg(not(test))]
 const VERSION_PATH: &str = "/mnt/onboard/.kobo/version";
 const VENDOR_ID: u16 = 0x2237;
 
@@ -139,13 +142,28 @@ impl DeviceMetadata {
     /// - the version file cannot be read or has fewer than 6 fields, or
     /// - the `PLATFORM` environment variable is not set.
     pub fn read() -> Result<Self, DeviceError> {
-        let content = fs::read_to_string(VERSION_PATH).map_err(|e| {
-            error!(path = VERSION_PATH, error = %e, "Failed to read Kobo version file");
-            DeviceError::Metadata(format!("Cannot read version file: {}", e))
-        })?;
+        cfg_select! {
+            test => {
+                Ok(Self {
+                    vendor_id: VENDOR_ID,
+                    product_id: 0x4237,
+                    serial_number: "TESTSERIAL0000".to_string(),
+                    firmware_version: "0.0.0".to_string(),
+                    partition: "/dev/mmcblk0p3".to_string(),
+                    manufacturer: "Kobo".to_string(),
+                    product: "eReader-test".to_string(),
+                })
+            }
+            _ => {
+                let content = fs::read_to_string(VERSION_PATH).map_err(|e| {
+                    error!(path = VERSION_PATH, error = %e, "Failed to read Kobo version file");
+                    DeviceError::Metadata(format!("Cannot read version file: {}", e))
+                })?;
 
-        let platform = detect_platform()?;
-        Self::parse(&content, &platform)
+                let platform = detect_platform()?;
+                Self::parse(&content, &platform)
+            }
+        }
     }
 
     fn parse(content: &str, platform: &Platform) -> Result<Self, DeviceError> {
@@ -238,10 +256,18 @@ fn model_to_product_id(model_number: &str) -> u16 {
 }
 
 /// Detects the platform type from the PLATFORM environment variable.
+#[cfg(any(feature = "kobo", not(test)))]
 pub(crate) fn detect_platform() -> Result<Platform, DeviceError> {
-    env::var("PLATFORM")
-        .map(Platform::from)
-        .map_err(|_| DeviceError::Metadata("PLATFORM environment variable not set".to_string()))
+    cfg_select! {
+        test => {
+            Ok(Platform::Other("test".to_string()))
+        }
+        _ => {
+            env::var("PLATFORM")
+                .map(Platform::from)
+                .map_err(|_| DeviceError::Metadata("PLATFORM environment variable not set".to_string()))
+        }
+    }
 }
 
 fn platform_to_partition(platform: &Platform) -> &'static str {

@@ -1,308 +1,470 @@
 //! Device detection and management.
-
-use crate::device::error::DeviceError;
-use crate::device::metadata::DeviceMetadata;
-use crate::input::TouchProto;
-use crate::rtc::Rtc;
-use crate::time_manager::TimeManager;
-use lazy_static::lazy_static;
-use once_cell::sync::OnceCell;
-use std::env;
-use std::fmt::Debug;
-use std::path::{Path, PathBuf};
+//!
+//! Device traits, [`InputSource`], and [`EventOutcome`] live in this module.
+//! The [`Device`] trait is split into focused sub-traits. A type that
+//! implements all sub-traits automatically implements [`Device`].
+//! Feature flags ensure exactly one implementation is compiled per binary,
+//! selected by `kobo` or `emulator`.
 
 mod error;
+mod forward;
 mod metadata;
 pub mod migration;
 mod model;
-mod power;
+pub mod power;
+pub mod rtc;
 pub mod time;
 mod types;
-mod usb;
-mod wifi;
+pub mod usb;
+pub mod wifi;
 
-const RTC_DEVICE: &str = "/dev/rtc0";
+#[cfg(any(feature = "emulator", docsrs))]
+mod emulator;
+
+#[cfg(any(
+    test,
+    docsrs,
+    all(
+        feature = "deviceless",
+        not(any(feature = "kobo", feature = "emulator"))
+    )
+))]
+pub(crate) mod test_device;
+
+#[cfg(any(all(feature = "kobo", not(feature = "emulator")), docsrs,))]
+pub(crate) mod kobo;
 
 pub use model::Model;
 pub use types::{FrontlightKind, Orientation};
 
-pub struct Device {
-    pub model: Model,
-    pub proto: TouchProto,
-    pub dims: (u32, u32),
-    pub dpi: u16,
-    metadata: OnceCell<DeviceMetadata>,
-    wifi_manager: OnceCell<Box<dyn crate::device::wifi::WifiManager>>,
-    power_manager: OnceCell<Box<dyn crate::device::power::PowerManager>>,
-    rtc: OnceCell<Rtc>,
-    time_manager: OnceCell<TimeManager>,
+#[cfg(any(feature = "emulator", docsrs))]
+pub use emulator::{EmulatorDevice, code_from_key, device_event};
+
+#[cfg(any(
+    test,
+    docsrs,
+    all(
+        feature = "deviceless",
+        not(any(feature = "kobo", feature = "emulator"))
+    )
+))]
+use crate::device::test_device::TestDevice;
+
+#[cfg(not(docsrs))]
+#[cfg(any(
+    test,
+    all(
+        feature = "deviceless",
+        not(any(feature = "kobo", feature = "emulator"))
+    )
+))]
+pub type AppDevice = TestDevice;
+
+#[cfg(not(docsrs))]
+#[cfg(all(not(test), feature = "emulator", not(feature = "kobo")))]
+pub type AppDevice = EmulatorDevice;
+
+#[cfg(not(docsrs))]
+#[cfg(all(not(test), feature = "kobo", not(feature = "emulator")))]
+pub type AppDevice = kobo::Device;
+
+#[cfg(docsrs)]
+pub use test_device::TestDevice as AppDevice;
+
+/// The active context type for the current build.
+pub type AppContext = crate::context::Context<AppDevice>;
+
+use crate::device::metadata::DeviceMetadata;
+use crate::input::TouchProto;
+use crate::input::{DeviceEvent, InputEvent};
+use crate::settings::ButtonScheme;
+use crate::settings::versioned::SettingsManager;
+use crate::task::TaskManager;
+use crate::time_manager::TimeManager;
+use crate::view::{Bus, Event, Hub, RenderQueue, UpdateData, View};
+use std::fmt::Debug;
+use std::path::{Path, PathBuf};
+use std::sync::mpsc::Receiver;
+use std::time::Instant;
+
+pub struct HistoryItem {
+    pub view: Box<dyn View>,
+    pub rotation: i8,
+    pub monochrome: bool,
+    pub dithered: bool,
 }
 
-impl Debug for Device {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Device")
-            .field("model", &self.model)
-            .field("proto", &self.proto)
-            .field("dims", &self.dims)
-            .field("dpi", &self.dpi)
-            .finish()
+pub struct DeviceTask {
+    pub id: DeviceTaskId,
+    pub _chan: Receiver<()>,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum DeviceTaskId {
+    CheckBattery,
+    PrepareSuspend,
+    Exit,
+    Suspend,
+}
+
+pub struct DeviceRuntime<'a> {
+    pub view: &'a mut Box<dyn View>,
+    pub history: &'a mut Vec<HistoryItem>,
+    pub tasks: &'a mut Vec<DeviceTask>,
+    pub updating: &'a mut Vec<UpdateData>,
+    pub inactive_since: &'a mut Instant,
+    pub settings_manager: Option<&'a SettingsManager>,
+    pub startup_cwd: Option<&'a Option<PathBuf>>,
+    pub background_tasks: Option<&'a mut TaskManager>,
+}
+
+/// Outcome of [`DeviceLifecycle::handle_event`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EventOutcome {
+    /// The lifecycle consumed the event; the main loop should skip view dispatch.
+    Handled,
+    /// The lifecycle did not handle the event; the main loop should pass it to the view.
+    Unhandled,
+    /// The lifecycle applied platform state but the main loop should still dispatch
+    /// the event to views (for example after toggling frontlight hardware).
+    Continue,
+    /// Device lifecycle could not proceed; the main loop should log and skip view dispatch.
+    Error,
+    /// The lifecycle requests application termination with the given [`ExitStatus`].
+    Exit(ExitStatus),
+}
+
+/// How the application should terminate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExitStatus {
+    Quit,
+    Restart,
+    Reboot,
+    PowerOff,
+}
+
+/// Trait for device input sources.
+///
+/// Each platform implements this to provide event channels to the main loop.
+pub trait InputSource: Send {
+    /// Starts the input pipeline and returns the event hub and receiver.
+    ///
+    /// The hub allows other parts of the system to send events into the loop,
+    /// and the receiver yields all events for the main loop.
+    fn start(
+        &mut self,
+        display: crate::framebuffer::Display,
+        button_scheme: ButtonScheme,
+    ) -> (Hub, Receiver<Event>);
+
+    /// Injects a raw [`InputEvent`] into the input pipeline.
+    ///
+    /// Callers use this after [`Self::start`] to push synthetic kernel-style
+    /// events without going through hardware.
+    ///
+    /// Default: no-op.
+    fn send_raw(&self, _event: InputEvent) {}
+
+    /// Injects a [`DeviceEvent`] into the device-event channel.
+    ///
+    /// Callers use this after [`Self::start`] to enqueue high-level device
+    /// events that the gesture pipeline turns into [`Event`] values.
+    ///
+    /// Default: no-op.
+    fn send_device(&self, _event: DeviceEvent) {}
+
+    /// Updates the rotation used when mapping touch coordinates.
+    ///
+    /// Input sources that transform touch positions must stay in sync with the
+    /// framebuffer rotation applied elsewhere in the application.
+    ///
+    /// Default: no-op.
+    fn set_rotation(&self, _n: i8) {}
+}
+
+/// Device identity: model, touch protocol, screen dimensions, and mark.
+///
+/// Callers use these values to select assets, interpret touch coordinates, and
+/// distinguish hardware variants. Values are fixed for the lifetime of the
+/// device instance.
+pub trait DeviceIdentity: Send {
+    /// Returns the device model enum for this hardware.
+    fn model(&self) -> crate::device::Model;
+
+    /// Returns the touch input protocol the kernel reports for this device.
+    fn proto(&self) -> TouchProto;
+
+    /// Returns the native screen dimensions as `(width, height)` in pixels.
+    ///
+    /// This is the unrotated framebuffer size; callers that need the effective
+    /// layout size must account for rotation separately.
+    // TODO(OGKevin): this should be a newtype
+    fn dims(&self) -> (u32, u32);
+
+    /// Returns the screen DPI used for scaling icons and typography.
+    // TODO(OGKevin): this should be a newtype
+    fn dpi(&self) -> u16;
+
+    /// Returns the device mark byte used by the input stack to select
+    /// coordinate transforms and button maps.
+    // TODO(OGKevin): this should be a newtype
+    fn mark(&self) -> u8;
+}
+
+/// Device capabilities: frontlight kind, sensors, buttons, and color.
+///
+/// Defaults assume a minimal device (no sensors, single gray channel). Platform
+/// implementations override only the capabilities they provide.
+pub trait DeviceCapabilities: Send {
+    /// Returns the kind of frontlight hardware on this device.
+    fn frontlight_kind(&self) -> FrontlightKind;
+
+    /// Returns whether the device supports adjustable color temperature.
+    ///
+    /// Default: derived from [`Self::frontlight_kind`] — anything other than
+    /// [`FrontlightKind::Standard`] counts as natural light.
+    fn has_natural_light(&self) -> bool {
+        self.frontlight_kind() != FrontlightKind::Standard
+    }
+
+    /// Returns whether an ambient light sensor is present.
+    ///
+    /// Default: `false`.
+    fn has_lightsensor(&self) -> bool {
+        false
+    }
+
+    /// Returns whether a gyroscope is available for auto-rotation.
+    ///
+    /// Default: `false`.
+    fn has_gyroscope(&self) -> bool {
+        false
+    }
+
+    /// Returns whether dedicated page-turn buttons exist.
+    ///
+    /// Default: `false`.
+    fn has_page_turn_buttons(&self) -> bool {
+        false
+    }
+
+    /// Returns whether a magnetic power cover is supported.
+    ///
+    /// Default: `false`.
+    fn has_power_cover(&self) -> bool {
+        false
+    }
+
+    /// Returns whether the device can store user data on removable media.
+    ///
+    /// When `true`, [`DevicePaths::data_dir`] may resolve to external storage.
+    /// Default: `false`.
+    fn has_removable_storage(&self) -> bool {
+        false
+    }
+
+    /// Returns the number of framebuffer color samples per pixel.
+    ///
+    /// Most devices use `1` (grayscale). Color panels may report `3`.
+    /// Default: `1`.
+    // TODO(OGKevin): this should be a newtype
+    fn color_samples(&self) -> usize {
+        1
     }
 }
-impl Device {
-    /// Creates a new device from product and model number strings.
-    fn new(product: &str, model_number: &str) -> Device {
-        let (model, proto, dims, dpi) = match product {
-            "kraken" => (Model::Glo, TouchProto::Single, (758, 1024), 212),
-            "pixie" => (Model::Mini, TouchProto::Single, (600, 800), 200),
-            "dragon" => (Model::AuraHD, TouchProto::Single, (1080, 1440), 265),
-            "phoenix" => (Model::Aura, TouchProto::MultiA, (758, 1024), 212),
-            "dahlia" => (Model::AuraH2O, TouchProto::MultiA, (1080, 1440), 265),
-            "alyssum" => (Model::GloHD, TouchProto::MultiA, (1072, 1448), 300),
-            "pika" => (Model::Touch2, TouchProto::MultiA, (600, 800), 167),
-            "daylight" => {
-                let model = if model_number == "381" {
-                    Model::AuraONELimEd
-                } else {
-                    Model::AuraONE
-                };
-                (model, TouchProto::MultiA, (1404, 1872), 300)
-            }
-            "star" => {
-                let model = if model_number == "379" {
-                    Model::AuraEd2V2
-                } else {
-                    Model::AuraEd2V1
-                };
-                (model, TouchProto::MultiA, (758, 1024), 212)
-            }
-            "snow" => {
-                let model = if model_number == "378" {
-                    Model::AuraH2OEd2V2
-                } else {
-                    Model::AuraH2OEd2V1
-                };
-                (model, TouchProto::MultiB, (1080, 1440), 265)
-            }
-            "nova" => (Model::ClaraHD, TouchProto::MultiB, (1072, 1448), 300),
-            "frost" => {
-                let model = if model_number == "380" {
-                    Model::Forma32GB
-                } else {
-                    Model::Forma
-                };
-                (model, TouchProto::MultiB, (1440, 1920), 300)
-            }
-            "storm" => (Model::LibraH2O, TouchProto::MultiB, (1264, 1680), 300),
-            "luna" => (Model::Nia, TouchProto::MultiA, (758, 1024), 212),
-            "europa" => (Model::Elipsa, TouchProto::MultiC, (1404, 1872), 227),
-            "cadmus" => (Model::Sage, TouchProto::MultiC, (1440, 1920), 300),
-            "io" => (Model::Libra2, TouchProto::MultiC, (1264, 1680), 300),
-            "goldfinch" => (Model::Clara2E, TouchProto::MultiB, (1072, 1448), 300),
-            "condor" => (Model::Elipsa2E, TouchProto::MultiC, (1404, 1872), 227),
-            "spaBW" | "spaBWTPV" => (Model::ClaraBW, TouchProto::MultiB, (1072, 1448), 300),
-            "spaColour" => (Model::ClaraColour, TouchProto::MultiB, (1072, 1448), 300),
-            "monza" => (Model::LibraColour, TouchProto::MultiB, (1264, 1680), 300),
-            _ => {
-                let model = if model_number == "320" {
-                    Model::TouchC
-                } else {
-                    Model::TouchAB
-                };
-                (model, TouchProto::Single, (600, 800), 167)
-            }
-        };
 
-        Device {
-            model,
+/// Rotation algebra: canonicalization, mirroring, and orientation.
+///
+/// Each device reports display rotation as a quarter-turn index `0..=3`. These
+/// methods define how that native value maps to a shared canonical space and how
+/// touch, button, and layout code should transform coordinates at a given
+/// rotation. Implementations supply device-specific constants; default methods
+/// derive the rest from [`Self::mirroring_scheme`] and [`Self::startup_rotation`].
+pub trait DeviceRotation: Send {
+    /// Returns the rotation index the device reports at startup.
+    ///
+    /// Callers treat this as the hardware's "home" orientation before any user
+    /// rotation is applied.
+    // TODO(OGKevin): these should be newtypes
+    fn startup_rotation(&self) -> i8;
+
+    /// Returns the mirroring pattern as `(center, direction)`.
+    ///
+    /// `center` is a rotation index that acts as the pivot for axis mirroring;
+    /// `direction` is `1` or `-1` and controls how rotations step around that
+    /// pivot when converting to and from canonical space.
+    // TODO(OGKevin): these should be newtypes
+    fn mirroring_scheme(&self) -> (i8, i8);
+
+    /// Returns the parity used by [`Self::should_swap_axes`].
+    ///
+    /// When `rotation % 2 == swapping_scheme()`, width and height are swapped.
+    /// Default: `1`.
+    // TODO(OGKevin): these should be newtypes
+    fn swapping_scheme(&self) -> i8 {
+        1
+    }
+
+    /// Maps a native rotation index to the shared canonical space.
+    ///
+    /// Canonical values let UI and settings refer to orientation without
+    /// device-specific offsets. [`Self::to_native`] inverts this map.
+    /// Default: derived from [`Self::startup_rotation`] and
+    /// [`Self::mirroring_scheme`].
+    // TODO(OGKevin): these should be newtypes
+    fn to_canonical(&self, n: i8) -> i8 {
+        let (_, dir) = self.mirroring_scheme();
+        (4 + dir * (n - self.startup_rotation())) % 4
+    }
+
+    /// Maps a canonical rotation index back to the device's native space.
+    ///
+    /// Default: inverse of [`Self::to_canonical`].
+    // TODO(OGKevin): these should be newtypes
+    fn to_native(&self, n: i8) -> i8 {
+        let (_, dir) = self.mirroring_scheme();
+        (self.startup_rotation() + (4 + dir * n) % 4) % 4
+    }
+
+    /// Maps the kernel framebuffer rotation to the initial display rotation at boot.
+    ///
+    /// Some panels report rotation differently from the logical display index.
+    /// [`Context::new`](crate::context::Context::new) applies this once when reading
+    /// the boot framebuffer state. Runtime rotation writes the same index to both
+    /// framebuffer and display via [`Context::set_rotation`](crate::context::Context::set_rotation).
+    ///
+    /// Implementations must be **self-inverse** on `{0, 1, 2, 3}` so that
+    /// `f(f(n)) == n`. Default: identity (`n`).
+    // TODO(OGKevin): these should be newtypes
+    fn transformed_rotation(&self, n: i8) -> i8 {
+        n
+    }
+
+    /// Returns the transformed rotation read from the framebuffer at device init,
+    /// before any startup adjustment is applied.
+    ///
+    /// On quit, non-gyro devices restore this orientation so the panel returns to
+    /// the state Cadmus observed at launch. Default: [`Self::transformed_rotation`]
+    /// of [`Self::startup_rotation`].
+    fn boot_transformed_rotation(&self) -> i8 {
+        self.transformed_rotation(self.startup_rotation())
+    }
+
+    /// Applies a gyroscope-specific rotation remap.
+    ///
+    /// Auto-rotation from the accelerometer may need a different transform than
+    /// the value used for rendering. Default: identity (`n`).
+    // TODO(OGKevin): these should be newtypes
+    fn transformed_gyroscope_rotation(&self, n: i8) -> i8 {
+        n
+    }
+
+    /// Returns whether width and height should be swapped at `rotation`.
+    ///
+    /// Default: `rotation % 2 == self.swapping_scheme()`.
+    fn should_swap_axes(&self, rotation: i8) -> bool {
+        rotation % 2 == self.swapping_scheme()
+    }
+
+    /// Returns whether touch X and/or Y should be mirrored at `rotation`.
+    ///
+    /// The tuple is `(mirror_x, mirror_y)`. Default: derived from
+    /// [`Self::mirroring_scheme`].
+    fn should_mirror_axes(&self, rotation: i8) -> (bool, bool) {
+        let (mxy, dir) = self.mirroring_scheme();
+        let mx = (4 + (mxy + dir)) % 4;
+        let my = (4 + (mxy - dir)) % 4;
+        let mirror_x = mxy == rotation || mx == rotation;
+        let mirror_y = mxy == rotation || my == rotation;
+        (mirror_x, mirror_y)
+    }
+
+    /// Returns whether page-turn buttons should use inverted mapping at `rotation`.
+    ///
+    /// Default: `true` at the two rotations that are mirror-symmetric around
+    /// the startup orientation.
+    fn should_invert_buttons(&self, rotation: i8) -> bool {
+        let sr = self.startup_rotation();
+        let (_, dir) = self.mirroring_scheme();
+        rotation == (4 + sr - dir) % 4 || rotation == (4 + sr - 2 * dir) % 4
+    }
+
+    /// Returns the layout orientation at `rotation`.
+    ///
+    /// Default: [`Orientation::Portrait`] when [`Self::should_swap_axes`] is
+    /// `true`, otherwise [`Orientation::Landscape`].
+    fn orientation(&self, rotation: i8) -> Orientation {
+        if self.should_swap_axes(rotation) {
+            Orientation::Portrait
+        } else {
+            Orientation::Landscape
+        }
+    }
+
+    /// Bundles rotation parameters for the input subsystem.
+    ///
+    /// Default: collects [`Self::mirroring_scheme`], [`Self::swapping_scheme`],
+    /// and [`Self::startup_rotation`], and sets `swap_dims_on_rotation` when
+    /// `mark == 8`.
+    fn device_input_info(
+        &self,
+        proto: crate::input::TouchProto,
+        mark: u8,
+    ) -> crate::input::DeviceInputInfo {
+        crate::input::DeviceInputInfo {
             proto,
-            dims,
-            dpi,
-            metadata: OnceCell::new(),
-            wifi_manager: OnceCell::new(),
-            power_manager: OnceCell::new(),
-            rtc: OnceCell::new(),
-            time_manager: OnceCell::new(),
+            mark,
+            mirroring_scheme: self.mirroring_scheme(),
+            swapping_scheme: self.swapping_scheme(),
+            startup_rotation: self.startup_rotation(),
+            gyro_rotation_transform: crate::input::GyroRotationTransform::default(),
+            swap_dims_on_rotation: mark == 8,
         }
     }
+}
 
-    /// Gets device metadata (lazy initialization).
-    pub fn metadata(&self) -> Result<&DeviceMetadata, DeviceError> {
-        self.metadata.get_or_try_init(DeviceMetadata::read)
-    }
+/// Filesystem paths: install directory, data directory, and tmp management.
+///
+/// Install paths hold static bundled assets; data paths hold mutable runtime
+/// state (database, settings, logs). Callers should use [`Self::install_path`]
+/// and [`Self::data_path`] rather than joining manually so platform-specific
+/// roots stay consistent.
+pub trait DevicePaths: Send {
+    /// Returns the relative subdirectory name under the install root.
+    fn install_subdir(&self) -> &'static str;
 
-    /// Creates USB manager for this device.
-    pub fn usb_manager(
-        &self,
-    ) -> Result<Box<dyn crate::device::usb::UsbManager>, crate::device::usb::UsbError> {
-        cfg_select! {
-            feature = "kobo" => {
-               let metadata = self
-                   .metadata()
-                   .map_err(|e| crate::device::usb::UsbError::DeviceInfo(e.to_string()))?
-                   .clone();
-               crate::device::usb::create_usb_manager(metadata)
-            }
-            _ => {
-               Ok(Box::new(crate::device::usb::StubUsbManager))
-            }
-        }
-    }
-
-    /// Returns the WiFi manager for this device.
-    pub fn wifi_manager(
-        &self,
-    ) -> Result<&dyn crate::device::wifi::WifiManager, crate::device::wifi::WifiError> {
-        self.wifi_manager
-            .get_or_try_init(crate::device::wifi::create_wifi_manager)
-            .map(|b| b.as_ref())
-    }
-
-    /// Returns the Power manager for this device.
-    pub fn power_manager(
-        &self,
-    ) -> Result<&dyn crate::device::power::PowerManager, crate::device::power::PowerError> {
-        self.power_manager
-            .get_or_try_init(|| crate::device::power::create_power_manager(self.model))
-            .map(|b| b.as_ref())
-    }
-
-    /// Returns the shared RTC instance for this device.
-    pub fn rtc(&self) -> Result<&Rtc, anyhow::Error> {
-        cfg_select! {
-          feature = "kobo" => {
-            self.rtc.get_or_try_init(|| Rtc::new(RTC_DEVICE))
-          }
-          _ => {
-            unimplemented!("The current device does not support rtc.")
-          }
-        }
-    }
-
-    /// Returns the time manager for this device.
-    pub fn time_manager(&self) -> Result<&TimeManager, anyhow::Error> {
-        self.time_manager
-            .get_or_try_init(|| Ok(TimeManager::new(self.rtc()?.clone())))
-    }
-
-    /// Sets the system timezone.
+    /// Returns the absolute install directory for static assets.
     ///
-    /// On Kobo devices this updates `/etc/localtime`, `/etc/timezone`, and
-    /// calls `tzset()`. On other platforms this is a no-op.
-    pub fn set_system_timezone(&self, tz: chrono_tz::Tz) -> Result<(), anyhow::Error> {
-        time::set_system_timezone(tz)?;
-        Ok(())
+    /// Must be stable regardless of process working directory.
+    fn install_dir(&self) -> PathBuf;
+
+    /// Returns the relative subdirectory name under the data root.
+    fn data_subdir(&self) -> &'static str;
+
+    /// Returns the absolute directory for mutable runtime data.
+    ///
+    /// May equal [`Self::install_dir`] when external storage is unavailable.
+    fn data_dir(&self) -> PathBuf;
+
+    /// Joins `relative` under [`Self::install_dir`].
+    fn install_path(&self, relative: impl AsRef<Path>) -> PathBuf {
+        self.install_dir().join(relative)
     }
 
-    /// Returns the install subdirectory for this build.
-    ///
-    /// Kobo devices install Cadmus under `.adds/` on the user-visible storage.
-    /// Test builds use a separate sibling directory so they can coexist with
-    /// stable builds.
-    pub fn install_subdir(&self) -> &'static str {
-        cfg_select! {
-            feature = "emulator" => {""}
-            feature = "test" => { ".adds/cadmus-tst" }
-            _ => { ".adds/cadmus" }
-        }
+    /// Joins `relative` under [`Self::data_dir`].
+    fn data_path(&self, relative: impl AsRef<Path>) -> PathBuf {
+        self.data_dir().join(relative)
     }
 
-    /// Returns the absolute install directory for this device.
+    /// Resolves the SQLite database path, preferring the data directory.
     ///
-    /// The path is determined at compile time and does not depend on the
-    /// process's current working directory, so it remains stable even when
-    /// callers change `cwd`.
-    ///
-    /// - Normal device builds: `/mnt/onboard/.adds/cadmus`
-    /// - Test device builds: `/mnt/onboard/.adds/cadmus-tst`
-    /// - Emulator builds: `/tmp/.adds/cadmus` (or `cadmus-tst` with `test`)
-    /// - Unit tests: `<temp_dir>/test-kobo-installation/.adds/cadmus-tst`
-    pub fn install_dir(&self) -> PathBuf {
-        cfg_select! {
-            test => {
-                std::env::temp_dir()
-                    .join("test-kobo-installation")
-                    .join(self.install_subdir())
-            }
-            feature = "emulator" => {
-                PathBuf::from(".").join(self.install_subdir())
-            }
-            _ => {
-                PathBuf::from(crate::settings::INTERNAL_CARD_ROOT).join(self.install_subdir())
-            }
-        }
-    }
-
-    /// Returns a path inside the device install directory.
-    ///
-    /// Use this for files and directories that Cadmus owns under its install
-    /// root, such as `tmp/` or `.github_token`.
-    pub fn install_path(&self, relative_path: impl AsRef<Path>) -> PathBuf {
-        self.install_dir().join(relative_path)
-    }
-
-    /// Returns the subdirectory name used for dynamic data on removable storage.
-    ///
-    /// Mirrors [`Device::install_subdir`] but for the SD card, using the
-    /// `.cadmus` prefix instead of `.adds/cadmus`.
-    pub fn data_subdir(&self) -> &'static str {
-        cfg_select! {
-            feature = "test" => { ".cadmus-tst" }
-            _ => { ".cadmus" }
-        }
-    }
-
-    /// Returns the directory where dynamic data files are stored.
-    ///
-    /// On device builds for models with removable storage and an SD card
-    /// currently mounted, this returns `/mnt/sd/.cadmus` (or `.cadmus-tst`
-    /// for test builds). Otherwise it falls back to [`Device::install_dir`].
-    ///
-    /// Dynamic files include the SQLite database, settings, logs, and
-    /// dictionaries. Static assets (fonts, icons, bundled resources) always
-    /// live under [`Device::install_dir`].
-    pub fn data_dir(&self) -> PathBuf {
-        cfg_select! {
-            test => { self.install_dir() }
-            feature = "emulator" => {
-                std::env::current_dir()
-                    .map(|cwd| cwd.join(self.install_dir()))
-                    .unwrap_or_else(|_| self.install_dir())
-            }
-            _ => {
-                if self.has_removable_storage()
-                    && Path::new(crate::settings::EXTERNAL_CARD_ROOT).is_dir()
-                {
-                    PathBuf::from(crate::settings::EXTERNAL_CARD_ROOT)
-                        .join(self.data_subdir())
-                } else {
-                    self.install_dir()
-                }
-            }
-        }
-    }
-
-    /// Returns a path inside the dynamic data directory.
-    ///
-    /// Use this for files and directories that Cadmus writes at runtime:
-    /// the SQLite database, versioned settings, log files, and downloaded
-    /// dictionaries.
-    pub fn data_path(&self, relative_path: impl AsRef<Path>) -> PathBuf {
-        self.data_dir().join(relative_path)
-    }
-
-    /// Resolves the path to the SQLite database.
-    ///
-    /// Lookup order:
-    /// 1. `data_dir/cadmus.sqlite` — preferred location (SD card when available).
-    /// 2. `install_dir/cadmus.sqlite` — legacy location; logs a warning so the
-    ///    user knows to copy the database manually to free internal storage.
-    /// 3. `data_dir/cadmus.sqlite` — new install; the file does not exist yet.
-    pub fn resolve_db_path(&self) -> PathBuf {
+    /// Lookup order: existing file in data dir, then legacy install-dir copy
+    /// (with a warning), then the data-dir path for a new install.
+    fn resolve_db_path(&self) -> PathBuf {
         let data_path = self.data_path(crate::db::DB_FILENAME);
         if data_path.exists() {
             return data_path;
         }
-
         let install_path = self.install_path(crate::db::DB_FILENAME);
         if install_path.exists() {
             tracing::warn!(
@@ -312,276 +474,230 @@ impl Device {
             );
             return install_path;
         }
-
         data_path
     }
 
-    /// Returns the path to the device-managed tmp directory.
+    /// Returns the device-managed temporary directory under the data root.
     ///
-    /// The returned path is rooted under [`Device::data_dir`], so large
-    /// temporary downloads (e.g. OTA bundles) consume SD card space rather
-    /// than internal storage when a card is present.
-    pub fn tmp_dir(&self) -> PathBuf {
-        self.data_path("tmp")
+    /// Default: `data_dir/tmp`.
+    fn tmp_dir(&self) -> PathBuf {
+        self.data_path(Path::new("tmp"))
     }
 
-    /// Removes stale contents left by a previous run and recreates the tmp
-    /// directory.
+    /// Removes stale tmp contents and recreates the directory.
     ///
-    /// `Device` owns the lifecycle of the tmp directory: callers may assume
-    /// the directory exists after this runs and should not create it
-    /// themselves. Call this once at startup before any feature that writes
-    /// to `tmp_dir()` to ensure a clean slate.
-    pub fn clean_tmp_dir(&self) {
+    /// Call once at startup before any writer uses [`Self::tmp_dir`]. Missing
+    /// directories are not an error. Default: best-effort remove and recreate
+    /// with warnings on failure.
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), level = tracing::Level::TRACE))]
+    fn clean_tmp_dir(&self) {
         let dir = self.tmp_dir();
-        if let Err(e) = std::fs::remove_dir_all(&dir) {
-            if e.kind() != std::io::ErrorKind::NotFound {
-                tracing::warn!(path = ?dir, error = %e, "Failed to clean tmp dir");
-            }
+        if let Err(e) = std::fs::remove_dir_all(&dir)
+            && e.kind() != std::io::ErrorKind::NotFound
+        {
+            tracing::warn!(path = ?dir, error = %e, "Failed to clean tmp dir");
         }
         if let Err(e) = std::fs::create_dir_all(&dir) {
             tracing::warn!(path = ?dir, error = %e, "Failed to create tmp dir");
         }
     }
+}
 
-    /// Returns the number of color samples for the device screen.
-    pub fn color_samples(&self) -> usize {
-        match self.model {
-            Model::ClaraColour | Model::LibraColour => 3,
-            _ => 1,
-        }
+/// Hardware subsystem accessors with associated types.
+///
+/// Associated types resolve to platform-specific implementations at compile time.
+/// Manager accessors return shared handles so concurrent tasks can use Wi-Fi,
+/// USB, and power subsystems without borrowing the whole device.
+pub trait DeviceHardware: Send {
+    type Framebuffer: crate::framebuffer::Framebuffer + Send;
+    type Battery: crate::battery::Battery + Send;
+    type Frontlight: crate::frontlight::Frontlight + Send;
+    type LightSensor: crate::lightsensor::LightSensor + Send;
+    type WifiManager: crate::device::wifi::WifiManager + Send + Sync;
+    type UsbManager: crate::device::usb::UsbManager + Send + Sync;
+    type PowerManager: crate::device::power::PowerManager + Send + Sync;
+    type Rtc: crate::device::rtc::Rtc + Send + Sync + 'static;
+
+    /// Returns a shared reference to the display framebuffer.
+    fn framebuffer(&self) -> &Self::Framebuffer;
+    /// Returns a mutable reference to the display framebuffer.
+    fn framebuffer_mut(&mut self) -> &mut Self::Framebuffer;
+    /// Returns a shared reference to the battery interface.
+    fn battery(&self) -> &Self::Battery;
+    /// Returns a mutable reference to the battery interface.
+    fn battery_mut(&mut self) -> &mut Self::Battery;
+    /// Returns a shared reference to the frontlight controller.
+    fn frontlight(&self) -> &Self::Frontlight;
+    /// Returns a mutable reference to the frontlight controller.
+    fn frontlight_mut(&mut self) -> &mut Self::Frontlight;
+    /// Returns a shared reference to the ambient light sensor.
+    fn lightsensor(&self) -> &Self::LightSensor;
+    /// Returns a mutable reference to the ambient light sensor.
+    fn lightsensor_mut(&mut self) -> &mut Self::LightSensor;
+
+    /// Returns a shared Wi-Fi manager handle.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::device::wifi::WifiError`] when Wi-Fi is unavailable.
+    fn wifi_manager(
+        &self,
+    ) -> Result<std::sync::Arc<Self::WifiManager>, crate::device::wifi::WifiError>;
+
+    /// Returns a shared USB manager handle.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::device::usb::UsbError`] when USB management is unavailable.
+    fn usb_manager(&self)
+    -> Result<std::sync::Arc<Self::UsbManager>, crate::device::usb::UsbError>;
+
+    /// Returns a shared power manager handle.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::device::power::PowerError`] when power management is unavailable.
+    fn power_manager(
+        &self,
+    ) -> Result<std::sync::Arc<Self::PowerManager>, crate::device::power::PowerError>;
+
+    /// Returns a shared RTC handle.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the RTC subsystem cannot be opened.
+    fn rtc(&self) -> Result<std::sync::Arc<Self::Rtc>, anyhow::Error>;
+
+    /// Returns the time manager that coordinates NTP sync and RTC writes.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the time manager is not initialized.
+    fn time_manager(&self) -> Result<&TimeManager<Self::Rtc>, anyhow::Error>;
+
+    /// Applies `tz` as the system timezone.
+    ///
+    /// Default: no-op success. Platform implementations update OS state.
+    fn set_system_timezone(&self, tz: chrono_tz::Tz) -> Result<(), anyhow::Error> {
+        let _ = tz;
+        Ok(())
     }
 
-    /// Returns the frontlight kind for this device.
-    pub fn frontlight_kind(&self) -> FrontlightKind {
-        match self.model {
-            Model::ClaraHD
-            | Model::Forma
-            | Model::Forma32GB
-            | Model::LibraH2O
-            | Model::Sage
-            | Model::Libra2
-            | Model::Clara2E
-            | Model::Elipsa2E
-            | Model::ClaraBW
-            | Model::ClaraColour
-            | Model::LibraColour => FrontlightKind::Premixed,
-            Model::AuraONE | Model::AuraONELimEd | Model::AuraH2OEd2V1 | Model::AuraH2OEd2V2 => {
-                FrontlightKind::Natural
-            }
-            _ => FrontlightKind::Standard,
-        }
+    /// Refreshes the framebuffer from kernel state after resume or rotation.
+    ///
+    /// Default: no-op. Platform implementations remap the mmap or reload the
+    /// display buffer when the kernel reconfigures the panel.
+    fn refresh_framebuffer_from_kernel(&mut self) {
+        let _ = self;
     }
 
-    /// Returns true if the device has natural light capability.
-    pub fn has_natural_light(&self) -> bool {
-        self.frontlight_kind() != FrontlightKind::Standard
-    }
-
-    /// Returns true if the device has a light sensor.
-    pub fn has_lightsensor(&self) -> bool {
-        matches!(self.model, Model::AuraONE | Model::AuraONELimEd)
-    }
-
-    /// Returns true if the device has a gyroscope.
-    pub fn has_gyroscope(&self) -> bool {
-        matches!(
-            self.model,
-            Model::Forma
-                | Model::Forma32GB
-                | Model::LibraH2O
-                | Model::Elipsa
-                | Model::Sage
-                | Model::Libra2
-                | Model::Elipsa2E
-                | Model::LibraColour
-        )
-    }
-
-    /// Returns true if the device has page turn buttons.
-    pub fn has_page_turn_buttons(&self) -> bool {
-        matches!(
-            self.model,
-            Model::Forma
-                | Model::Forma32GB
-                | Model::LibraH2O
-                | Model::Sage
-                | Model::Libra2
-                | Model::LibraColour
-        )
-    }
-
-    /// Returns true if the device supports a power cover.
-    pub fn has_power_cover(&self) -> bool {
-        matches!(self.model, Model::Sage)
-    }
-
-    /// Returns true if the device has removable storage.
-    pub fn has_removable_storage(&self) -> bool {
-        matches!(
-            self.model,
-            Model::AuraH2O
-                | Model::Aura
-                | Model::AuraHD
-                | Model::Glo
-                | Model::TouchAB
-                | Model::TouchC
-        )
-    }
-
-    /// Returns true if buttons should be inverted for the given rotation.
-    pub fn should_invert_buttons(&self, rotation: i8) -> bool {
-        let sr = self.startup_rotation();
-        let (_, dir) = self.mirroring_scheme();
-
-        rotation == (4 + sr - dir) % 4 || rotation == (4 + sr - 2 * dir) % 4
-    }
-
-    /// Returns the orientation for the given rotation.
-    pub fn orientation(&self, rotation: i8) -> Orientation {
-        if self.should_swap_axes(rotation) {
-            Orientation::Portrait
-        } else {
-            Orientation::Landscape
-        }
-    }
-
-    /// Returns the device mark value.
-    pub fn mark(&self) -> u8 {
-        match self.model {
-            Model::LibraColour => 13,
-            Model::ClaraBW | Model::ClaraColour => 12,
-            Model::Elipsa2E => 11,
-            Model::Clara2E => 10,
-            Model::Libra2 => 9,
-            Model::Sage | Model::Elipsa => 8,
-            Model::Nia
-            | Model::LibraH2O
-            | Model::Forma32GB
-            | Model::Forma
-            | Model::ClaraHD
-            | Model::AuraH2OEd2V2
-            | Model::AuraEd2V2 => 7,
-            Model::AuraH2OEd2V1
-            | Model::AuraEd2V1
-            | Model::AuraONELimEd
-            | Model::AuraONE
-            | Model::Touch2
-            | Model::GloHD => 6,
-            Model::AuraH2O | Model::Aura => 5,
-            Model::AuraHD | Model::Mini | Model::Glo | Model::TouchC => 4,
-            Model::TouchAB => 3,
-        }
-    }
-
-    /// Returns whether axes should be mirrored for the given rotation.
-    pub fn should_mirror_axes(&self, rotation: i8) -> (bool, bool) {
-        let (mxy, dir) = self.mirroring_scheme();
-        let mx = (4 + (mxy + dir)) % 4;
-        let my = (4 + (mxy - dir)) % 4;
-        let mirror_x = mxy == rotation || mx == rotation;
-        let mirror_y = mxy == rotation || my == rotation;
-        (mirror_x, mirror_y)
-    }
-
-    /// Returns the center and direction of the mirroring pattern.
-    pub fn mirroring_scheme(&self) -> (i8, i8) {
-        match self.model {
-            Model::AuraH2OEd2V1 | Model::LibraH2O | Model::Libra2 => (3, 1),
-            Model::Sage => (0, 1),
-            Model::AuraH2OEd2V2 => (0, -1),
-            Model::Forma | Model::Forma32GB => (2, -1),
-            _ => (2, 1),
-        }
-    }
-
-    /// Returns true if axes should be swapped for the given rotation.
-    pub fn should_swap_axes(&self, rotation: i8) -> bool {
-        rotation % 2 == self.swapping_scheme()
-    }
-
-    /// Returns the swapping scheme value.
-    fn swapping_scheme(&self) -> i8 {
-        match self.model {
-            Model::LibraH2O => 0,
-            _ => 1,
-        }
-    }
-
-    /// Returns the startup rotation value.
-    pub fn startup_rotation(&self) -> i8 {
-        match self.model {
-            Model::LibraH2O => 0,
-            Model::AuraH2OEd2V1
-            | Model::Forma
-            | Model::Forma32GB
-            | Model::Sage
-            | Model::Libra2
-            | Model::Elipsa2E
-            | Model::LibraColour => 1,
-            _ => 3,
-        }
-    }
-
-    /// Returns a device independent rotation value.
-    pub fn to_canonical(&self, n: i8) -> i8 {
-        let (_, dir) = self.mirroring_scheme();
-        (4 + dir * (n - self.startup_rotation())) % 4
-    }
-
-    /// Returns a device dependent rotation value from canonical.
-    pub fn from_canonical(&self, n: i8) -> i8 {
-        let (_, dir) = self.mirroring_scheme();
-        (self.startup_rotation() + (4 + dir * n) % 4) % 4
-    }
-
-    /// Returns the transformed rotation value.
-    pub fn transformed_rotation(&self, n: i8) -> i8 {
-        match self.model {
-            Model::AuraHD | Model::AuraH2O => n ^ 2,
-            Model::AuraH2OEd2V2 | Model::Forma | Model::Forma32GB => (4 - n) % 4,
-            _ => n,
-        }
-    }
-
-    /// Returns the transformed gyroscope rotation value.
-    pub fn transformed_gyroscope_rotation(&self, n: i8) -> i8 {
-        match self.model {
-            Model::LibraH2O => n ^ 1,
-            Model::Libra2 | Model::Sage | Model::Elipsa2E | Model::LibraColour => (6 - n) % 4,
-            Model::Elipsa => (4 - n) % 4,
-            _ => n,
-        }
+    /// Returns static device metadata (serial, firmware version, etc.).
+    ///
+    /// Default: [`crate::device::error::DeviceError::Metadata`] with
+    /// `"no metadata available"`.
+    fn metadata(&self) -> Result<&DeviceMetadata, crate::device::error::DeviceError> {
+        Err(crate::device::error::DeviceError::Metadata(
+            "no metadata available".to_string(),
+        ))
     }
 }
 
-lazy_static! {
-    // TODO(OGKevin): we shan't rely on these env variables to construct the device, and instead
-    //                do discovery here instead of in the bash script.
-    /// Global singleton for the current device.
-    pub static ref CURRENT_DEVICE: Device = {
-        let product = env::var("PRODUCT").unwrap_or_default();
-        let model_number = env::var("MODEL_NUMBER").unwrap_or_default();
+/// Input source ownership and access.
+pub trait DeviceInput: Send {
+    type Input: InputSource;
 
-        Device::new(&product, &model_number)
-    };
+    /// Returns a shared reference to the input source.
+    fn input(&self) -> &Self::Input;
+    /// Returns a mutable reference to the input source.
+    fn input_mut(&mut self) -> &mut Self::Input;
 }
 
-#[cfg(test)]
-mod tests {
-    use super::Device;
+/// Event handling and application lifecycle.
+pub trait DeviceLifecycle:
+    DeviceIdentity
+    + DeviceCapabilities
+    + DeviceRotation
+    + DevicePaths
+    + DeviceHardware
+    + DeviceInput
+    + Send
+    + Sized
+{
+    /// Dispatches a platform-specific device event from the main event loop.
+    ///
+    /// Called after background tasks see the event and before the root view
+    /// when the outcome is [`EventOutcome::Unhandled`] or
+    /// [`EventOutcome::Continue`]. Return [`EventOutcome::Handled`] or
+    /// [`EventOutcome::Error`] to skip view dispatch, [`EventOutcome::Continue`]
+    /// when platform state was updated but views should still see the event, or
+    /// [`EventOutcome::Exit`] to terminate the loop with the given
+    /// [`ExitStatus`].
+    fn handle_event(
+        event: &Event,
+        hub: &Hub,
+        bus: &mut Bus,
+        rq: &mut RenderQueue,
+        context: &mut AppContext,
+        runtime: &mut DeviceRuntime<'_>,
+    ) -> EventOutcome;
 
-    #[test]
-    fn test_device_canonical_rotation() {
-        let forma = Device::new("frost", "377");
-        let aura_one = Device::new("daylight", "373");
-        for n in 0..4 {
-            assert_eq!(forma.from_canonical(forma.to_canonical(n)), n);
-        }
-        assert_eq!(aura_one.from_canonical(0), aura_one.startup_rotation());
-        assert_eq!(
-            forma.from_canonical(1) - forma.from_canonical(0),
-            aura_one.from_canonical(2) - aura_one.from_canonical(3)
-        );
+    /// Runs once after the UI is initialized and before the main event loop.
+    ///
+    /// Platform implementations typically configure hardware (Wi-Fi, power,
+    /// frontlight), schedule periodic device tasks, and emit startup events.
+    ///
+    /// Default: no-op success.
+    fn on_startup(
+        context: &mut AppContext,
+        hub: &Hub,
+        runtime: &mut DeviceRuntime<'_>,
+    ) -> Result<(), anyhow::Error> {
+        let _ = (context, hub, runtime);
+        Ok(())
     }
+
+    /// Runs once when the main event loop exits, before settings are persisted.
+    ///
+    /// `status` reflects how the application is terminating (quit, restart,
+    /// reboot, or power off). Platform implementations tear down hardware and
+    /// may write marker files consumed by the device init system.
+    ///
+    /// Default: no-op success.
+    fn on_shutdown(
+        context: &mut AppContext,
+        status: ExitStatus,
+        runtime: &mut DeviceRuntime<'_>,
+    ) -> Result<(), anyhow::Error> {
+        let _ = (context, status, runtime);
+        Ok(())
+    }
+}
+
+/// Super-trait combining all device sub-traits.
+///
+/// A type that implements all sub-traits automatically implements `Device`.
+/// Feature flags ensure exactly one implementation is compiled per binary,
+/// so associated types resolve to concrete types with no vtable overhead.
+pub trait Device:
+    DeviceIdentity
+    + DeviceCapabilities
+    + DeviceRotation
+    + DevicePaths
+    + DeviceHardware
+    + DeviceInput
+    + DeviceLifecycle
+    + Sized
+{
+}
+
+impl<T> Device for T where
+    T: DeviceIdentity
+        + DeviceCapabilities
+        + DeviceRotation
+        + DevicePaths
+        + DeviceHardware
+        + DeviceInput
+        + DeviceLifecycle
+        + Sized
+{
 }

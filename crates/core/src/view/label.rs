@@ -1,9 +1,8 @@
 use super::{Align, Bus, Event, Hub, ID_FEEDER, Id, RenderData, RenderQueue, View};
 use crate::color::{Color, TEXT_NORMAL};
-use crate::context::Context;
-use crate::device::CURRENT_DEVICE;
-use crate::font::{Fonts, NORMAL_STYLE, font_from_style};
-use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::device::AppContext;
+use crate::font::{NORMAL_STYLE, font_from_style};
+use crate::framebuffer::UpdateMode;
 use crate::geom::Rectangle;
 use crate::gesture::GestureEvent;
 
@@ -132,14 +131,18 @@ impl View for Label {
     /// # Returns
     ///
     /// Returns `true` if the event was handled (consumed), `false` otherwise.
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, bus, _rq, _context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(
+        skip(self, _hub, bus, _rq, _context),
+        fields(event = ?evt),
+        ret(level=tracing::Level::TRACE)
+    ))]
     fn handle_event(
         &mut self,
         evt: &Event,
         _hub: &Hub,
         bus: &mut Bus,
         _rq: &mut RenderQueue,
-        _context: &mut Context,
+        _context: &mut AppContext,
     ) -> bool {
         match *evt {
             Event::Gesture(GestureEvent::Tap(center)) if self.rect.includes(center) => {
@@ -173,9 +176,10 @@ impl View for Label {
     /// * `fb` - The framebuffer to render to
     /// * `_rect` - The clipping region (unused)
     /// * `fonts` - The font manager for text rendering
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fb, fonts, _rect), fields(rect = ?_rect)))]
-    fn render(&self, fb: &mut dyn Framebuffer, _rect: Rectangle, fonts: &mut Fonts) {
-        let dpi = CURRENT_DEVICE.dpi;
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, context, _rect), fields(rect = ?_rect
+    )))]
+    fn render(&self, context: &mut AppContext, _rect: Rectangle) {
+        let (fb, fonts, dpi) = context.framebuffer_and_fonts();
 
         fb.draw_rectangle(&self.rect, self.scheme[0]);
 
@@ -198,7 +202,7 @@ impl View for Label {
         rect: Rectangle,
         _hub: &Hub,
         _rq: &mut RenderQueue,
-        _context: &mut Context,
+        _context: &mut AppContext,
     ) {
         if let Some(Event::ToggleNear(_, event_rect)) = self.event.as_mut() {
             *event_rect = rect;

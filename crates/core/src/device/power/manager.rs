@@ -42,3 +42,18 @@ pub trait PowerManager: Send + Sync {
         Ok(())
     }
 }
+
+impl<T: PowerManager + ?Sized> PowerManager for Box<T> {
+    fn suspend(&self) -> Result<(), PowerError> {
+        (**self).suspend()
+    }
+    fn resume(&self) -> Result<(), PowerError> {
+        (**self).resume()
+    }
+    fn init_cores(&self) -> Result<(), PowerError> {
+        (**self).init_cores()
+    }
+    fn restore_cores(&self) -> Result<(), PowerError> {
+        (**self).restore_cores()
+    }
+}

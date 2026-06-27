@@ -1,8 +1,10 @@
 use crate::color::{BLACK, GRAY07, WHITE};
-use crate::context::Context;
-use crate::device::CURRENT_DEVICE;
-use crate::font::{DISPLAY_STYLE, Fonts, NORMAL_STYLE, font_from_style};
-use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::device::AppContext;
+use crate::device::DeviceHardware as _;
+use crate::device::DeviceRotation as _;
+use crate::font::{DISPLAY_STYLE, NORMAL_STYLE, font_from_style};
+use crate::framebuffer::Framebuffer as _;
+use crate::framebuffer::UpdateMode;
 use crate::geom::{Point, Rectangle};
 use crate::gesture::GestureEvent;
 use crate::view::{Bus, Event, Hub, RenderData, RenderQueue, View};
@@ -34,12 +36,12 @@ pub struct RotationValues {
 }
 
 impl RotationValues {
-    pub fn new(rect: Rectangle, rq: &mut RenderQueue, context: &mut Context) -> RotationValues {
+    pub fn new(rect: Rectangle, rq: &mut RenderQueue, context: &mut AppContext) -> RotationValues {
         let id = ID_FEEDER.next();
         let rotation = context.display.rotation;
         let (width, height) = context.display.dims;
-        let (mirror_x, mirror_y) = CURRENT_DEVICE.should_mirror_axes(rotation);
-        let swap_xy = CURRENT_DEVICE.should_swap_axes(rotation);
+        let (mirror_x, mirror_y) = context.device.should_mirror_axes(rotation);
+        let swap_xy = context.device.should_swap_axes(rotation);
         rq.add(RenderData::new(id, rect, UpdateMode::Full));
         RotationValues {
             id,
@@ -50,7 +52,7 @@ impl RotationValues {
             swap_xy,
             width: width as i32,
             height: height as i32,
-            read_rotation: context.fb.rotation(),
+            read_rotation: context.device.framebuffer().rotation(),
             written_rotation: rotation,
             finished: false,
             taps: Vec::new(),
@@ -59,14 +61,15 @@ impl RotationValues {
 }
 
 impl View for RotationValues {
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, _bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, _bus, rq, context), fields(event = ?evt
+    ), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
         hub: &Hub,
         _bus: &mut Bus,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
         match *evt {
             Event::Gesture(GestureEvent::Tap(mut pt)) if !self.finished => {
@@ -82,7 +85,7 @@ impl View for RotationValues {
                     mem::swap(&mut pt.x, &mut pt.y);
                 }
 
-                debug!("Tap {} {:?}", pt, context.fb.dims());
+                debug!("Tap {} {:?}", pt, context.device.framebuffer().dims());
 
                 self.taps.push(pt);
                 self.finished = self.taps.len() >= 2 * CORNERS_COUNT;
@@ -94,15 +97,16 @@ impl View for RotationValues {
                         (self.taps.len() - CORNERS_COUNT) as i8
                     };
                     context
-                        .fb
+                        .device
+                        .framebuffer_mut()
                         .set_rotation(rotation)
                         .map_err(|e| error!("Can't set rotation: {:#}.", e))
                         .ok();
-                    if context.fb.rotation() == self.read_rotation {
+                    if context.device.framebuffer().rotation() == self.read_rotation {
                         self.written_rotation = rotation;
                     }
                     self.children.clear();
-                    self.rect = context.fb.rect();
+                    self.rect = context.device.framebuffer().rect();
                 }
 
                 if self.finished {
@@ -137,9 +141,10 @@ impl View for RotationValues {
         }
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fb, fonts, _rect), fields(rect = ?_rect)))]
-    fn render(&self, fb: &mut dyn Framebuffer, _rect: Rectangle, fonts: &mut Fonts) {
-        let dpi = CURRENT_DEVICE.dpi;
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, context, _rect), fields(rect = ?_rect
+    )))]
+    fn render(&self, context: &mut AppContext, _rect: Rectangle) {
+        let (fb, fonts, dpi) = context.framebuffer_and_fonts();
         let width = self.rect.width() as i32;
         let height = self.rect.height() as i32;
         let side = width.min(height) / 4;

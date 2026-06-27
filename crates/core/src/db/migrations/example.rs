@@ -26,7 +26,7 @@ crate::migration!(
     /// }
     /// ```
     "example_hello_world",
-    async fn hello_world(_pool: &sqlx::SqlitePool) {
+    async fn hello_world(_ctx: &crate::db::migrations::MigrationContext<'_>) {
         println!("hello world");
         Ok(())
     }

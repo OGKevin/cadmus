@@ -1,6 +1,5 @@
 use crate::color::BLACK;
 use crate::color::Color;
-use crate::device::CURRENT_DEVICE;
 use crate::font::{Font, FontFamily, RenderPlan};
 use crate::geom::{Edge, Point, Rectangle};
 pub use crate::metadata::TextAlign;
@@ -10,6 +9,7 @@ use lazy_static::lazy_static;
 use std::fmt::Debug;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 pub const DEFAULT_HYPH_LANG: &str = "en";
 
@@ -444,6 +444,14 @@ mod tests {
         assert_eq!(hyph_lang("de-CH-uuu"), Some(Language::GermanSwiss));
         assert_eq!(hyph_lang("y"), None);
     }
+
+    #[test]
+    fn hyphenation_patterns_are_cached_per_install_dir() {
+        let install_dir = std::path::Path::new("/nonexistent-hyphenation-cache-test");
+        let first = hyphenation_patterns(install_dir);
+        let second = hyphenation_patterns(install_dir);
+        assert!(Arc::ptr_eq(&first, &second));
+    }
 }
 
 pub fn hyph_lang(name: &str) -> Option<Language> {
@@ -466,104 +474,120 @@ pub fn hyph_lang(name: &str) -> Option<Language> {
 }
 
 lazy_static! {
-pub static ref HYPHENATION_LANGUAGES: FxHashMap<&'static str, Language> = [
-    ("af", Language::Afrikaans),
-    ("hy", Language::Armenian),
-    ("as", Language::Assamese),
-    ("eu", Language::Basque),
-    ("be", Language::Belarusian),
-    ("bn", Language::Bengali),
-    ("bg", Language::Bulgarian),
-    ("ca", Language::Catalan),
-    ("zh-latn-pinyin", Language::Chinese),
-    ("cop", Language::Coptic),
-    ("hr", Language::Croatian),
-    ("cs", Language::Czech),
-    ("da", Language::Danish),
-    ("nl", Language::Dutch),
-    ("en-gb", Language::EnglishGB),
-    ("en-us", Language::EnglishUS),
-    ("en", Language::EnglishUS),
-    ("eo", Language::Esperanto),
-    ("et", Language::Estonian),
-    ("mul-ethi", Language::Ethiopic),
-    ("fi", Language::Finnish),
-    ("fr", Language::French),
-    ("fur", Language::Friulan),
-    ("gl", Language::Galician),
-    ("ka", Language::Georgian),
-    ("de", Language::German1996),
-    ("de-1901", Language::German1901),
-    ("de-1996", Language::German1996),
-    ("de-ch-1901", Language::GermanSwiss),
-    ("de-ch", Language::GermanSwiss),
-    ("grc", Language::GreekAncient),
-    ("el-monoton", Language::GreekMono),
-    ("el-polyton", Language::GreekPoly),
-    ("gu", Language::Gujarati),
-    ("hi", Language::Hindi),
-    ("hu", Language::Hungarian),
-    ("is", Language::Icelandic),
-    ("id", Language::Indonesian),
-    ("ia", Language::Interlingua),
-    ("ga", Language::Irish),
-    ("it", Language::Italian),
-    ("kn", Language::Kannada),
-    ("kmr", Language::Kurmanji),
-    ("la", Language::Latin),
-    ("la-x-classic", Language::LatinClassic),
-    ("la-x-liturgic", Language::LatinLiturgical),
-    ("lv", Language::Latvian),
-    ("lt", Language::Lithuanian),
-    ("mk", Language::Macedonian),
-    ("ml", Language::Malayalam),
-    ("mr", Language::Marathi),
-    ("mn-cyrl", Language::Mongolian),
-    ("nb", Language::NorwegianBokmal),
-    ("nn", Language::NorwegianNynorsk),
-    ("oc", Language::Occitan),
-    ("or", Language::Oriya),
-    ("pi", Language::Pali),
-    ("pa", Language::Panjabi),
-    ("pms", Language::Piedmontese),
-    ("pl", Language::Polish),
-    ("pt", Language::Portuguese),
-    ("ro", Language::Romanian),
-    ("rm", Language::Romansh),
-    ("ru", Language::Russian),
-    ("sa", Language::Sanskrit),
-    ("sr-cyrl", Language::SerbianCyrillic),
-    ("sh-cyrl", Language::SerbocroatianCyrillic),
-    ("sh-latn", Language::SerbocroatianLatin),
-    ("cu", Language::SlavonicChurch),
-    ("sk", Language::Slovak),
-    ("sl", Language::Slovenian),
-    ("es", Language::Spanish),
-    ("sv", Language::Swedish),
-    ("ta", Language::Tamil),
-    ("te", Language::Telugu),
-    ("th", Language::Thai),
-    ("tr", Language::Turkish),
-    ("tk", Language::Turkmen),
-    ("uk", Language::Ukrainian),
-    ("hsb", Language::Uppersorbian),
-    ("cy", Language::Welsh)].iter().cloned().collect();
+    pub static ref HYPHENATION_LANGUAGES: FxHashMap<&'static str, Language> = [
+        ("af", Language::Afrikaans),
+        ("hy", Language::Armenian),
+        ("as", Language::Assamese),
+        ("eu", Language::Basque),
+        ("be", Language::Belarusian),
+        ("bn", Language::Bengali),
+        ("bg", Language::Bulgarian),
+        ("ca", Language::Catalan),
+        ("zh-latn-pinyin", Language::Chinese),
+        ("cop", Language::Coptic),
+        ("hr", Language::Croatian),
+        ("cs", Language::Czech),
+        ("da", Language::Danish),
+        ("nl", Language::Dutch),
+        ("en-gb", Language::EnglishGB),
+        ("en-us", Language::EnglishUS),
+        ("en", Language::EnglishUS),
+        ("eo", Language::Esperanto),
+        ("et", Language::Estonian),
+        ("mul-ethi", Language::Ethiopic),
+        ("fi", Language::Finnish),
+        ("fr", Language::French),
+        ("fur", Language::Friulan),
+        ("gl", Language::Galician),
+        ("ka", Language::Georgian),
+        ("de", Language::German1996),
+        ("de-1901", Language::German1901),
+        ("de-1996", Language::German1996),
+        ("de-ch-1901", Language::GermanSwiss),
+        ("de-ch", Language::GermanSwiss),
+        ("grc", Language::GreekAncient),
+        ("el-monoton", Language::GreekMono),
+        ("el-polyton", Language::GreekPoly),
+        ("gu", Language::Gujarati),
+        ("hi", Language::Hindi),
+        ("hu", Language::Hungarian),
+        ("is", Language::Icelandic),
+        ("id", Language::Indonesian),
+        ("ia", Language::Interlingua),
+        ("ga", Language::Irish),
+        ("it", Language::Italian),
+        ("kn", Language::Kannada),
+        ("kmr", Language::Kurmanji),
+        ("la", Language::Latin),
+        ("la-x-classic", Language::LatinClassic),
+        ("la-x-liturgic", Language::LatinLiturgical),
+        ("lv", Language::Latvian),
+        ("lt", Language::Lithuanian),
+        ("mk", Language::Macedonian),
+        ("ml", Language::Malayalam),
+        ("mr", Language::Marathi),
+        ("mn-cyrl", Language::Mongolian),
+        ("nb", Language::NorwegianBokmal),
+        ("nn", Language::NorwegianNynorsk),
+        ("oc", Language::Occitan),
+        ("or", Language::Oriya),
+        ("pi", Language::Pali),
+        ("pa", Language::Panjabi),
+        ("pms", Language::Piedmontese),
+        ("pl", Language::Polish),
+        ("pt", Language::Portuguese),
+        ("ro", Language::Romanian),
+        ("rm", Language::Romansh),
+        ("ru", Language::Russian),
+        ("sa", Language::Sanskrit),
+        ("sr-cyrl", Language::SerbianCyrillic),
+        ("sh-cyrl", Language::SerbocroatianCyrillic),
+        ("sh-latn", Language::SerbocroatianLatin),
+        ("cu", Language::SlavonicChurch),
+        ("sk", Language::Slovak),
+        ("sl", Language::Slovenian),
+        ("es", Language::Spanish),
+        ("sv", Language::Swedish),
+        ("ta", Language::Tamil),
+        ("te", Language::Telugu),
+        ("th", Language::Thai),
+        ("tr", Language::Turkish),
+        ("tk", Language::Turkmen),
+        ("uk", Language::Ukrainian),
+        ("hsb", Language::Uppersorbian),
+        ("cy", Language::Welsh)
+    ]
+    .iter()
+    .cloned()
+    .collect();
+}
 
-pub static ref HYPHENATION_PATTERNS: FxHashMap<Language, Standard> = {
+lazy_static! {
+    static ref HYPHENATION_PATTERN_CACHE: Mutex<FxHashMap<PathBuf, Arc<FxHashMap<Language, Standard>>>> =
+        Mutex::new(FxHashMap::default());
+}
+
+pub fn hyphenation_patterns(install_dir: &std::path::Path) -> Arc<FxHashMap<Language, Standard>> {
+    let mut cache = HYPHENATION_PATTERN_CACHE.lock().unwrap();
+    if let Some(cached) = cache.get(install_dir) {
+        return Arc::clone(cached);
+    }
+
     let mut map = FxHashMap::default();
     for lang in HYPHENATION_LANGUAGES.values() {
         if map.contains_key(lang) {
             continue;
         }
-        let base = CURRENT_DEVICE.install_path("hyphenation-patterns")
-                        .join(lang.code());
+        let base = install_dir.join("hyphenation-patterns").join(lang.code());
         let path = base.with_extension("standard.bincode");
         if let Ok(mut patterns) = Standard::from_path(*lang, path) {
             let path = base.with_extension("bounds");
             if let Ok(pair) = fs::read_to_string(path) {
-                let bounds = pair.trim_end().split(' ')
-                                 .filter_map(|s| s.parse().ok())
-                                 .collect::<Vec<usize>>();
+                let bounds = pair
+                    .trim_end()
+                    .split(' ')
+                    .filter_map(|s| s.parse().ok())
+                    .collect::<Vec<usize>>();
                 if bounds.len() == 2 {
                     patterns.minima.0 = bounds[0];
                     patterns.minima.1 = bounds[1];
@@ -572,36 +596,39 @@ pub static ref HYPHENATION_PATTERNS: FxHashMap<Language, Standard> = {
             map.insert(*lang, patterns);
         }
     }
-    map
-};
+    let arc = Arc::new(map);
+    cache.insert(install_dir.to_path_buf(), Arc::clone(&arc));
+    arc
+}
 
-pub static ref EM_SPACE_RATIOS: FxHashMap<char, f32> = [
-    // En quad.
-    ('\u{2000}', 0.5),
-    // Em quad.
-    ('\u{2001}', 1.0),
-    // En space.
-    ('\u{2002}', 0.5),
-    // Em space.
-    ('\u{2003}', 1.0),
-    // Three-per-em space.
-    ('\u{2004}', 0.33),
-    // Four-per-em space.
-    ('\u{2005}', 0.25),
-    // Six-per-em space.
-    ('\u{2006}', 0.16)].iter().cloned().collect();
+lazy_static! {
+    pub static ref EM_SPACE_RATIOS: FxHashMap<char, f32> = [
+        // En quad.
+        ('\u{2000}', 0.5),
+        // Em quad.
+        ('\u{2001}', 1.0),
+        // En space.
+        ('\u{2002}', 0.5),
+        // Em space.
+        ('\u{2003}', 1.0),
+        // Three-per-em space.
+        ('\u{2004}', 0.33),
+        // Four-per-em space.
+        ('\u{2005}', 0.25),
+        // Six-per-em space.
+        ('\u{2006}', 0.16)].iter().cloned().collect();
 
-pub static ref WORD_SPACE_RATIOS: FxHashMap<char, f32> = [
-    // Tabulation
-    ('\t', 4.0),
-    // No-break space
-    ('\u{00A0}', 1.0),
-    // Narrow no-break space
-    ('\u{202F}', 0.5),
-    // Thin space.
-    ('\u{2009}', 0.5),
-    // Hair space.
-    ('\u{200A}', 0.25)].iter().cloned().collect();
+    pub static ref WORD_SPACE_RATIOS: FxHashMap<char, f32> = [
+        // Tabulation
+        ('\t', 4.0),
+        // No-break space
+        ('\u{00A0}', 1.0),
+        // Narrow no-break space
+        ('\u{202F}', 0.5),
+        // Thin space.
+        ('\u{2009}', 0.5),
+        // Hair space.
+        ('\u{200A}', 0.25)].iter().cloned().collect();
 }
 
 pub const FONT_SPACES: &str = " \u{2007}\u{2008}";

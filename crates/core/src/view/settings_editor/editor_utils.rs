@@ -5,7 +5,6 @@
 //! chrome-building code across every sub-editor.
 
 use crate::color::BLACK;
-use crate::device::CURRENT_DEVICE;
 use crate::geom::{Rectangle, halves};
 use crate::unit::scale_by_dpi;
 use crate::view::filler::Filler;
@@ -15,8 +14,7 @@ use super::bottom_bar::{BottomBarVariant, SettingsEditorBottomBar};
 
 /// Returns `(bar_height, separator_thickness, separator_top_half, separator_bottom_half)`
 /// based on the current device DPI.
-pub fn calculate_dimensions() -> (i32, i32, i32, i32) {
-    let dpi = CURRENT_DEVICE.dpi;
+pub fn calculate_dimensions(dpi: u16) -> (i32, i32, i32, i32) {
     let small_height = scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32;
     let separator_thickness = scale_by_dpi(THICKNESS_MEDIUM, dpi) as i32;
     let (separator_top_half, separator_bottom_half) = halves(separator_thickness);

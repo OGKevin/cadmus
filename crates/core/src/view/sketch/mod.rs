@@ -1,15 +1,15 @@
 use crate::color::{BLACK, Color, WHITE};
-use crate::context::Context;
-use crate::device::CURRENT_DEVICE;
-use crate::font::Fonts;
+use crate::device::AppContext;
+use crate::device::DeviceHardware as _;
+use crate::device::{DeviceIdentity as _, DevicePaths as _};
 use crate::framebuffer::{Framebuffer, Pixmap, UpdateMode};
 use crate::geom::{CornerSpec, Point, Rectangle};
 use crate::helpers::IsHidden;
 use crate::input::{DeviceEvent, FingerStatus};
 use crate::settings::Pen;
-use crate::unit::scale_by_dpi;
+use crate::unit::{mm_to_px, scale_by_dpi};
 use crate::view::common::locate_by_id;
-use crate::view::icon::{ICONS_PIXMAPS, Icon};
+use crate::view::icon::{Icon, load_icon_pixmap};
 use crate::view::menu::{Menu, MenuKind};
 use crate::view::notification::Notification;
 use crate::view::{BORDER_RADIUS_SMALL, SMALL_BAR_HEIGHT};
@@ -53,13 +53,13 @@ pub struct Sketch {
 }
 
 impl Sketch {
-    pub fn new(rect: Rectangle, rq: &mut RenderQueue, context: &mut Context) -> Sketch {
+    pub fn new(rect: Rectangle, rq: &mut RenderQueue, context: &mut AppContext) -> Sketch {
         let id = ID_FEEDER.next();
         let mut children = Vec::new();
-        let dpi = CURRENT_DEVICE.dpi;
+        let dpi = context.device.dpi();
         let small_height = scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32;
         let border_radius = scale_by_dpi(BORDER_RADIUS_SMALL, dpi) as i32;
-        let pixmap = &ICONS_PIXMAPS[ICON_NAME];
+        let pixmap = load_icon_pixmap(ICON_NAME, dpi, &context.device.install_dir()).unwrap();
         let icon_padding = (small_height - pixmap.width.max(pixmap.height) as i32) / 2;
         let width = pixmap.width as i32 + icon_padding;
         let height = pixmap.height as i32 + icon_padding;
@@ -100,7 +100,7 @@ impl Sketch {
         rect: Rectangle,
         enable: Option<bool>,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if let Some(index) = locate_by_id(self, ViewId::SketchMenu) {
             if let Some(true) = enable {
@@ -236,7 +236,7 @@ impl Sketch {
         Ok(())
     }
 
-    fn quit(&self, hub: &Hub, context: &Context) {
+    fn quit(&self, hub: &Hub, context: &AppContext) {
         hub.send(Event::ImportLibrary {
             library_index: Some(context.settings.selected_library),
             force: false,
@@ -245,6 +245,7 @@ impl Sketch {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 #[inline]
 fn draw_segment(
     pixmap: &mut Pixmap,
@@ -252,6 +253,7 @@ fn draw_segment(
     position: Point,
     time: f64,
     pen: &Pen,
+    dpi: u16,
     id: Id,
     fb_rect: &Rectangle,
     rq: &mut RenderQueue,
@@ -260,11 +262,13 @@ fn draw_segment(
         if time > ts.time {
             let d = vec2!((position.x - ts.pt.x) as f32, (position.y - ts.pt.y) as f32).length();
             let speed = d / (time - ts.time) as f32;
+            let min_speed_px = mm_to_px(pen.min_speed, dpi);
+            let max_speed_px = mm_to_px(pen.max_speed, dpi);
             let base_radius = pen.size as f32 / 2.0;
             let radius = base_radius
                 * (1.0
-                    + (pen.amplitude / base_radius) * speed.clamp(pen.min_speed, pen.max_speed)
-                        / (pen.max_speed - pen.min_speed));
+                    + (pen.amplitude / base_radius) * speed.clamp(min_speed_px, max_speed_px)
+                        / (max_speed_px - min_speed_px));
             (ts.radius, radius)
         } else {
             (ts.radius, ts.radius)
@@ -300,7 +304,7 @@ impl View for Sketch {
         hub: &Hub,
         _bus: &mut Bus,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
         match *evt {
             Event::Device(DeviceEvent::Finger {
@@ -316,6 +320,7 @@ impl View for Sketch {
                         position,
                         time,
                         &self.pen,
+                        context.device.dpi(),
                         self.id,
                         &self.rect,
                         rq,
@@ -347,6 +352,7 @@ impl View for Sketch {
                         position,
                         time,
                         &self.pen,
+                        context.device.dpi(),
                         self.id,
                         &self.rect,
                         rq,
@@ -417,8 +423,9 @@ impl View for Sketch {
         }
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fb, _fonts), fields(rect = ?rect)))]
-    fn render(&self, fb: &mut dyn Framebuffer, rect: Rectangle, _fonts: &mut Fonts) {
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, context), fields(rect = ?rect)))]
+    fn render(&self, context: &mut AppContext, rect: Rectangle) {
+        let fb = context.device.framebuffer_mut();
         fb.draw_framed_pixmap_halftone(&self.pixmap, &rect, rect.min);
     }
 

@@ -16,10 +16,3 @@ impl PowerManager for StubPowerManager {
         unimplemented!("There is no implementation for resuming on this build.")
     }
 }
-
-/// Creates a stub PowerManager instance.
-pub fn create_power_manager(
-    _model: crate::device::Model,
-) -> Result<Box<dyn PowerManager>, PowerError> {
-    Ok(Box::new(StubPowerManager))
-}

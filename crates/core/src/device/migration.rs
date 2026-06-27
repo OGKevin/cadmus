@@ -31,12 +31,11 @@ crate::migration!(
     /// `install_dir`). It will be recorded as succeeded so it does not re-run
     /// on subsequent boots without a card.
     "v1_migrate_data_to_sd_card",
-    async fn migrate_data_to_sd_card(_pool: &sqlx::SqlitePool) {
-        let install_dir = crate::device::CURRENT_DEVICE.install_dir();
-        let data_dir = crate::device::CURRENT_DEVICE.data_dir();
-
-        migrate_data_to_sd(install_dir, data_dir)
-
+    async fn migrate_data_to_sd_card(ctx: &crate::db::migrations::MigrationContext<'_>) {
+        migrate_data_to_sd(
+            ctx.device.install_dir.clone(),
+            ctx.device.data_dir.clone(),
+        )
     }
 );
 

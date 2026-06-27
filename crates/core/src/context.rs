@@ -1,15 +1,13 @@
-use crate::battery::Battery;
 use crate::db::Database;
-use crate::device::CURRENT_DEVICE;
+use crate::device::Device;
+use crate::device::rtc::AlarmManager;
 use crate::dictionary::{Dictionary, load_dictionary_from_db};
 use crate::font::Fonts;
 use crate::framebuffer::{Display, Framebuffer};
-use crate::frontlight::Frontlight;
+use crate::frontlight::Frontlight as _;
 use crate::geom::Rectangle;
 use crate::helpers::{Fingerprint, Fp, IsHidden, load_json};
 use crate::library::Library;
-use crate::lightsensor::LightSensor;
-use crate::rtc::AlarmManager;
 use crate::settings::Settings;
 use crate::view::ViewId;
 use crate::view::keyboard::Layout;
@@ -31,9 +29,9 @@ const KEYBOARD_LAYOUTS_DIRNAME: &str = "keyboard-layouts";
 pub(crate) const DICTIONARIES_DIRNAME: &str = "dictionaries";
 const INPUT_HISTORY_SIZE: usize = 32;
 
-pub struct Context {
-    pub fb: Box<dyn Framebuffer>,
-    pub alarm_manager: Option<AlarmManager>,
+pub struct Context<D: Device> {
+    pub device: D,
+    pub alarm_manager: Option<AlarmManager<D::Rtc>>,
     pub display: Display,
     pub settings: Settings,
     pub library: Library,
@@ -42,10 +40,6 @@ pub struct Context {
     pub dictionaries: BTreeMap<String, Dictionary>,
     pub keyboard_layouts: BTreeMap<String, Layout>,
     pub input_history: FxHashMap<ViewId, VecDeque<String>>,
-    // TODO(OGKevin): this shall be on the device struct, instead of on context
-    pub frontlight: Box<dyn Frontlight>,
-    pub battery: Box<dyn Battery>,
-    pub lightsensor: Box<dyn LightSensor>,
     pub notification_index: u8,
     pub kb_rect: Rectangle,
     pub rng: Xoroshiro128Plus,
@@ -55,29 +49,36 @@ pub struct Context {
     pub online: bool,
 }
 
-impl Context {
+impl<D: Device> Context<D> {
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
     pub fn new(
-        fb: Box<dyn Framebuffer>,
+        mut device: D,
         library: Library,
         database: Database,
         settings: Settings,
         fonts: Fonts,
-        battery: Box<dyn Battery>,
-        frontlight: Box<dyn Frontlight>,
-        lightsensor: Box<dyn LightSensor>,
-    ) -> Context {
+    ) -> Context<D> {
+        device.refresh_framebuffer_from_kernel();
+        let fb = device.framebuffer();
+        let fb_rotation = fb.rotation();
         let dims = fb.dims();
-        let rotation = CURRENT_DEVICE.transformed_rotation(fb.rotation());
+        let rotation = device.transformed_rotation(fb_rotation);
+        tracing::trace!(
+            fb_rotation,
+            transformed_rotation = rotation,
+            dims = ?dims,
+            "Context::new framebuffer state"
+        );
         let rng = Xoroshiro128Plus::seed_from_u64(Local::now().timestamp_subsec_nanos() as u64);
-        let alarm_manager = match CURRENT_DEVICE.rtc() {
-            Ok(rtc) => Some(AlarmManager::new(rtc.clone())),
+        let alarm_manager = match device.rtc() {
+            Ok(rtc) => Some(AlarmManager::new(rtc)),
             Err(e) => {
                 tracing::warn!(error = %e, "RTC init failed, alarm manager unavailable");
                 None
             }
         };
         Context {
-            fb,
+            device,
             alarm_manager,
             display: Display { dims, rotation },
             library,
@@ -87,9 +88,6 @@ impl Context {
             dictionaries: BTreeMap::new(),
             keyboard_layouts: BTreeMap::new(),
             input_history: FxHashMap::default(),
-            battery,
-            frontlight,
-            lightsensor,
             notification_index: 0,
             kb_rect: Rectangle::default(),
             rng,
@@ -100,6 +98,7 @@ impl Context {
         }
     }
 
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), level = tracing::Level::TRACE))]
     pub fn load_keyboard_layouts(&mut self) {
         let glob = Glob::new("**/*.json").unwrap().compile_matcher();
 
@@ -111,7 +110,7 @@ impl Context {
         .join(KEYBOARD_LAYOUTS_DIRNAME);
 
         #[cfg(not(test))]
-        let path = CURRENT_DEVICE.install_path(KEYBOARD_LAYOUTS_DIRNAME);
+        let path = self.device.install_path(KEYBOARD_LAYOUTS_DIRNAME);
 
         for entry in WalkDir::new(path)
             .min_depth(1)
@@ -149,7 +148,7 @@ impl Context {
         .join(DICTIONARIES_DIRNAME);
 
         #[cfg(not(test))]
-        let path = CURRENT_DEVICE.data_path(DICTIONARIES_DIRNAME);
+        let path = self.device.data_path(DICTIONARIES_DIRNAME);
 
         for entry in WalkDir::new(path)
             .min_depth(1)
@@ -238,18 +237,61 @@ impl Context {
             } else {
                 self.settings.frontlight_levels
             };
-            if let Err(error) = self.frontlight.set_warmth(levels.warmth) {
+            if let Err(error) = self.device.frontlight_mut().set_warmth(levels.warmth) {
                 tracing::error!(error = %error, "failed to set frontlight warmth");
             }
-            if let Err(error) = self.frontlight.set_intensity(levels.intensity) {
+            if let Err(error) = self.device.frontlight_mut().set_intensity(levels.intensity) {
                 tracing::error!(error = %error, "failed to set frontlight intensity");
             }
             self.settings.frontlight_levels = levels;
         } else {
-            self.settings.frontlight_levels = self.frontlight.levels();
-            if let Err(error) = self.frontlight.turn_off() {
+            self.settings.frontlight_levels = self.device.frontlight().levels();
+            if let Err(error) = self.device.frontlight_mut().turn_off() {
                 tracing::error!(error = %error, "failed to turn off frontlight");
             }
+        }
+    }
+
+    pub fn framebuffer_with_dpi(&mut self) -> (&mut dyn Framebuffer, u16) {
+        let dpi = self.device.dpi();
+        let fb = self.device.framebuffer_mut();
+        (fb, dpi)
+    }
+
+    pub fn framebuffer_and_fonts(&mut self) -> (&mut dyn Framebuffer, &mut Fonts, u16) {
+        let dpi = self.device.dpi();
+        let Context { device, fonts, .. } = self;
+        let fb = device.framebuffer_mut();
+        (fb, fonts, dpi)
+    }
+
+    /// Sets rotation at runtime using the same index for framebuffer and display.
+    ///
+    /// Writes `rotation` to the framebuffer and sets [`Display::rotation`](crate::framebuffer::Display::rotation)
+    /// to the same value. [`crate::device::DeviceRotation::transformed_rotation`] applies only when
+    /// reading the boot framebuffer state in [`Self::new`], not on runtime writes.
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), level = tracing::Level::TRACE))]
+    pub fn set_rotation(&mut self, rotation: i8) -> anyhow::Result<(u32, u32)> {
+        let fb_rotation = self.device.framebuffer().rotation();
+        let fb_dims = self.device.framebuffer().dims();
+        let result = self.device.framebuffer_mut().set_rotation(rotation);
+        if let Ok(new_dims) = result {
+            self.device.refresh_framebuffer_from_kernel();
+            self.display.rotation = rotation;
+            self.display.dims = new_dims;
+            tracing::trace!(
+                rotation,
+                fb_rotation_before = fb_rotation,
+                fb_dims_before = ?fb_dims,
+                context_rotation = self.display.rotation,
+                context_dims = ?self.display.dims,
+                new_fb_dims = ?new_dims,
+                fb_rotation_after = self.device.framebuffer().rotation(),
+                "set_rotation"
+            );
+            Ok(new_dims)
+        } else {
+            result
         }
     }
 }
@@ -266,16 +308,21 @@ fn fingerprint_dict_pair(index_path: &Path) -> io::Result<Fp> {
 #[cfg(test)]
 pub mod test_helpers {
     use super::*;
-    use crate::battery::FakeBattery;
+    use crate::battery::Battery as _;
     use crate::db::Database;
-    use crate::framebuffer::Pixmap;
+    use crate::device::test_device::TestDevice;
+    use crate::device::{AppContext, DeviceHardware as _};
     use crate::frontlight::LightLevels;
 
-    pub fn create_test_context() -> Context {
+    pub fn create_test_context() -> AppContext {
+        create_test_context_from_device(TestDevice::new())
+    }
+
+    pub fn create_test_context_from_device(device: TestDevice) -> AppContext {
         let mut database = Database::new(":memory:").expect("failed to create in-memory database");
-        database.init(0).expect("failed to run migrations");
+        database.init(&device, 0).expect("failed to run migrations");
         Context::new(
-            Box::new(Pixmap::new(600, 800, 1)),
+            device,
             Library::new(Path::new("/tmp"), &database, "test").unwrap(),
             database,
             Settings::default(),
@@ -286,9 +333,65 @@ pub mod test_helpers {
                 .to_path_buf(),
             )
             .expect("Failed to load fonts"),
-            Box::new(FakeBattery::new()),
-            Box::new(LightLevels::default()),
-            Box::new(0u16),
         )
+    }
+
+    #[test]
+    fn test_create_test_context_defaults() {
+        let context = create_test_context();
+        assert_eq!(context.display.dims, (600, 800));
+        assert!(!context.plugged);
+        assert!(!context.covered);
+        assert!(!context.shared);
+        assert!(!context.online);
+        assert_eq!(context.notification_index, 0);
+        assert!(context.dictionaries.is_empty());
+        assert!(context.keyboard_layouts.is_empty());
+        assert!(context.input_history.is_empty());
+        assert_eq!(context.kb_rect, Rectangle::default());
+    }
+
+    #[test]
+    fn test_create_test_context_frontlight() {
+        let mut context = create_test_context();
+        let levels = context.device.frontlight().levels();
+        assert_eq!(levels.intensity, LightLevels::default().intensity);
+        assert_eq!(levels.warmth, LightLevels::default().warmth);
+
+        context.set_frontlight(false);
+        assert!(!context.settings.frontlight);
+
+        context.set_frontlight(true);
+        assert!(context.settings.frontlight);
+    }
+
+    #[test]
+    fn test_create_test_context_battery() {
+        let mut context = create_test_context();
+        let capacity = context
+            .device
+            .battery_mut()
+            .capacity()
+            .expect("battery capacity");
+        assert_eq!(capacity, vec![50.0]);
+    }
+
+    #[test]
+    fn test_create_test_context_record_input() {
+        let mut context = create_test_context();
+        context.record_input("hello", ViewId::SearchBar);
+        context.record_input("world", ViewId::SearchBar);
+
+        let history = context.input_history.get(&ViewId::SearchBar).unwrap();
+        assert_eq!(history.len(), 2);
+        assert_eq!(history.front(), Some(&"world".to_string()));
+    }
+
+    #[test]
+    fn set_rotation_updates_display_rotation() {
+        let mut context = create_test_context();
+        context.set_rotation(1).expect("rotation should succeed");
+        assert_eq!(context.display.rotation, 1);
+        assert_eq!(context.device.framebuffer().rotation(), 0);
     }
 }

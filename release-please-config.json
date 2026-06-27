@@ -26,12 +26,6 @@
       "skip-github-release": true,
       "skip-changelog": true
     },
-    "crates/emulator": {
-      "release-type": "rust",
-      "component": "emulator",
-      "skip-github-release": true,
-      "skip-changelog": true
-    },
     "crates/importer": {
       "release-type": "rust",
       "component": "importer",
@@ -60,7 +54,6 @@
         "cadmus",
         "cadmus-core",
         "cadmus-bin",
-        "emulator",
         "importer",
         "fetcher",
         "xtask"

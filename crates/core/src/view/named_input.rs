@@ -4,10 +4,9 @@ use super::label::Label;
 use super::{Align, Bus, Event, Hub, ID_FEEDER, Id, RenderQueue, View, ViewId};
 use super::{BORDER_RADIUS_MEDIUM, THICKNESS_LARGE};
 use crate::color::{BLACK, WHITE};
-use crate::context::Context;
-use crate::device::CURRENT_DEVICE;
-use crate::font::{Fonts, NORMAL_STYLE, font_from_style};
-use crate::framebuffer::Framebuffer;
+use crate::device::AppContext;
+use crate::device::DeviceIdentity;
+use crate::font::{NORMAL_STYLE, font_from_style};
 use crate::geom::{BorderSpec, CornerSpec, Rectangle, big_half, halves};
 use crate::gesture::GestureEvent;
 use crate::unit::scale_by_dpi;
@@ -25,10 +24,10 @@ impl NamedInput {
         view_id: ViewId,
         input_id: ViewId,
         input_size: usize,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> NamedInput {
         let id = ID_FEEDER.next();
-        let dpi = CURRENT_DEVICE.dpi;
+        let dpi = context.device.dpi();
         let (width, height) = context.display.dims;
 
         let input_size = input_size.max(3);
@@ -93,7 +92,7 @@ impl NamedInput {
         }
     }
 
-    pub fn set_text(&mut self, text: &str, rq: &mut RenderQueue, context: &mut Context) {
+    pub fn set_text(&mut self, text: &str, rq: &mut RenderQueue, context: &mut AppContext) {
         if let Some(input_field) = self.children[1].downcast_mut::<InputField>() {
             input_field.set_text(text, true, rq, context);
         }
@@ -101,14 +100,15 @@ impl NamedInput {
 }
 
 impl View for NamedInput {
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, bus, _rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, bus, _rq, context), fields(event = ?evt
+    ), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
         _hub: &Hub,
         bus: &mut Bus,
         _rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
         match *evt {
             Event::Submit(..) => {
@@ -131,9 +131,10 @@ impl View for NamedInput {
         }
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fb, _fonts, _rect), fields(rect = ?_rect)))]
-    fn render(&self, fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {
-        let dpi = CURRENT_DEVICE.dpi;
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, context, _rect), fields(rect = ?_rect
+    )))]
+    fn render(&self, context: &mut AppContext, _rect: Rectangle) {
+        let (fb, dpi) = context.framebuffer_with_dpi();
         let border_radius = scale_by_dpi(BORDER_RADIUS_MEDIUM, dpi) as i32;
         let border_thickness = scale_by_dpi(THICKNESS_LARGE, dpi) as u16;
         fb.draw_rounded_rectangle_with_border(
@@ -152,7 +153,7 @@ impl View for NamedInput {
         _rect: Rectangle,
         _hub: &Hub,
         _rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         let (width, height) = context.display.dims;
         let dx = (width as i32 - height as i32) / 2;

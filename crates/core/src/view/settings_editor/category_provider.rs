@@ -1,9 +1,10 @@
 use super::category::Category;
 use super::category_navigation_bar::CategoryNavigationBar;
-use crate::context::Context;
+use crate::device::AppContext;
 use crate::font::Fonts;
 use crate::geom::{Point, Rectangle};
 use crate::view::navigation::stack_navigation_bar::NavigationProvider;
+use std::path::Path;
 
 /// Navigation provider for settings categories.
 ///
@@ -27,11 +28,16 @@ impl NavigationProvider for SettingsCategoryProvider {
         ancestor == descendant
     }
 
-    fn is_root(&self, _key: &Self::LevelKey, _context: &Context) -> bool {
+    fn is_root(&self, _key: &Self::LevelKey, _context: &AppContext) -> bool {
         true
     }
 
-    fn fetch_level_data(&self, _key: &Self::LevelKey, _context: &mut Context) -> Self::LevelData {}
+    fn fetch_level_data(
+        &self,
+        _key: &Self::LevelKey,
+        _context: &mut AppContext,
+    ) -> Self::LevelData {
+    }
 
     /// Categories no longer fit on a single row, so allocate 2 rows.
     fn estimate_line_count(&self, _key: &Self::LevelKey, _data: &Self::LevelData) -> usize {
@@ -52,15 +58,24 @@ impl NavigationProvider for SettingsCategoryProvider {
         _data: &Self::LevelData,
         selected: &Self::LevelKey,
         fonts: &mut Fonts,
+        dpi: u16,
+        _install_dir: &Path,
     ) {
-        bar.update_content(*selected, fonts);
+        bar.update_content(*selected, fonts, dpi);
     }
 
     fn update_bar_selection(&self, bar: &mut Self::Bar, selected: &Self::LevelKey) {
         bar.selected = *selected;
     }
 
-    fn resize_bar_by(&self, bar: &mut Self::Bar, delta_y: i32, fonts: &mut Fonts) -> i32 {
+    fn resize_bar_by(
+        &self,
+        bar: &mut Self::Bar,
+        delta_y: i32,
+        fonts: &mut Fonts,
+        _dpi: u16,
+        _install_dir: &Path,
+    ) -> i32 {
         bar.resize_by(delta_y, fonts)
     }
 

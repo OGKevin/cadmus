@@ -1,3 +1,14 @@
+#![cfg_attr(
+    docsrs,
+    allow(rustdoc::broken_intra_doc_links, rustdoc::private_intra_doc_links)
+)]
+
+#[cfg(all(not(test), not(feature = "device")))]
+compile_error!("A device feature must be enabled");
+
+#[cfg(all(feature = "test", not(any(feature = "kobo", feature = "emulator"))))]
+compile_error!("The test feature requires a device feature flag");
+
 #[macro_use]
 pub mod geom;
 
@@ -28,9 +39,7 @@ pub mod lightsensor;
 pub mod logging;
 pub mod metadata;
 pub mod ota;
-pub mod rtc;
-
-pub use rtc::{AlarmManager, AlarmType};
+pub use device::rtc::{AlarmManager, AlarmType};
 pub mod settings;
 pub mod task;
 #[cfg(any(feature = "profiling", feature = "tracing"))]

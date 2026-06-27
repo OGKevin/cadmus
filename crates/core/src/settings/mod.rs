@@ -1,14 +1,13 @@
+mod migrations;
 mod preset;
 pub mod versioned;
 
 use crate::color::{BLACK, Color};
-use crate::device::CURRENT_DEVICE;
 use crate::fl;
 use crate::frontlight::{LightLevel, LightLevels};
 use crate::geolocation::Coordinates;
 use crate::i18n::I18nDisplay;
 use crate::metadata::{SortMethod, TextAlign};
-use crate::unit::mm_to_px;
 use fxhash::FxHashSet;
 use sqlx::encode::IsNull;
 use sqlx::error::BoxDynError;
@@ -27,6 +26,7 @@ pub const SETTINGS_PATH: &str = "Settings.toml";
 pub const DEFAULT_FONT_PATH: &str = "/mnt/onboard/fonts";
 pub const INTERNAL_CARD_ROOT: &str = "/mnt/onboard";
 pub const EXTERNAL_CARD_ROOT: &str = "/mnt/sd";
+pub const PEN_MAX_SPEED_MM: f32 = 254.0;
 const LOGO_SPECIAL_PATH: &str = "logo:";
 const COVER_SPECIAL_PATH: &str = "cover:";
 const CALENDAR_SPECIAL_PATH: &str = "calendar:";
@@ -440,7 +440,7 @@ impl Default for Pen {
             dynamic: true,
             amplitude: 4.0,
             min_speed: 0.0,
-            max_speed: mm_to_px(254.0, CURRENT_DEVICE.dpi),
+            max_speed: PEN_MAX_SPEED_MM,
         }
     }
 }

@@ -13,7 +13,6 @@ use walkdir::WalkDir;
 use crate::context::DICTIONARIES_DIRNAME;
 use crate::db::Database;
 use crate::db::runtime::RUNTIME;
-use crate::device::CURRENT_DEVICE;
 use crate::dictionary::{Entry, Metadata, normalize};
 use crate::fl;
 use crate::helpers::{Fingerprint, IsHidden};
@@ -73,12 +72,16 @@ fn decode_number(word: &str) -> Option<u64> {
 /// dictionaries are indexed incrementally across restarts.
 pub struct DictionaryIndexTask {
     database: Database,
+    data_path: std::path::PathBuf,
 }
 
 impl DictionaryIndexTask {
     /// Creates a new [`DictionaryIndexTask`].
-    pub fn new(database: Database) -> Self {
-        Self { database }
+    pub fn new(database: Database, data_path: std::path::PathBuf) -> Self {
+        Self {
+            database,
+            data_path,
+        }
     }
 
     /// Detects dictionary metadata by scanning the first lines of the `.index`
@@ -659,7 +662,15 @@ impl BackgroundTask for DictionaryIndexTask {
             }
         };
 
-        let path = CURRENT_DEVICE.data_path(DICTIONARIES_DIRNAME);
+        let path = self.data_path.join(DICTIONARIES_DIRNAME);
+
+        if !path.is_dir() {
+            tracing::warn!(
+                path = %path.display(),
+                "dictionaries directory not found, skipping index"
+            );
+            return;
+        }
 
         let mut on_disk_fingerprints: Vec<String> = Vec::new();
 
@@ -706,7 +717,7 @@ mod tests {
 
     fn setup_db() -> Database {
         let mut db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.init(0).expect("failed to run migrations");
+        db.init_for_test(0).expect("failed to run migrations");
         db
     }
 

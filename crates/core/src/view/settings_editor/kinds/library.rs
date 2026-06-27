@@ -1,6 +1,6 @@
 //! Setting kinds for the Libraries category.
 
-use super::{SettingData, SettingIdentity, SettingKind, WidgetKind};
+use super::{SettingData, SettingIdentity, SettingKind, SettingsFetchData, WidgetKind};
 use crate::fl;
 use crate::geom::Rectangle;
 use crate::i18n::I18nDisplay;
@@ -23,8 +23,9 @@ impl SettingKind for LibraryInfo {
             .unwrap_or_else(|| fl!("settings-general-unknown"))
     }
 
-    fn fetch(&self, settings: &Settings) -> SettingData {
-        let value = settings
+    fn fetch(&self, data: SettingsFetchData) -> SettingData {
+        let value = data
+            .settings
             .libraries
             .get(self.0)
             .map(|lib| lib.path.display().to_string())
@@ -58,8 +59,9 @@ impl SettingKind for LibraryName {
         fl!("settings-library-name")
     }
 
-    fn fetch(&self, settings: &Settings) -> SettingData {
-        let value = settings
+    fn fetch(&self, data: SettingsFetchData) -> SettingData {
+        let value = data
+            .settings
             .libraries
             .get(self.0)
             .map(|lib| lib.name.clone())
@@ -84,8 +86,9 @@ impl SettingKind for LibraryPath {
         fl!("settings-library-path")
     }
 
-    fn fetch(&self, settings: &Settings) -> SettingData {
-        let value = settings
+    fn fetch(&self, data: SettingsFetchData) -> SettingData {
+        let value = data
+            .settings
             .libraries
             .get(self.0)
             .map(|lib| lib.path.display().to_string())
@@ -110,9 +113,13 @@ impl SettingKind for LibraryFinishedAction {
         fl!("settings-library-end-of-book-action")
     }
 
-    fn fetch(&self, settings: &Settings) -> SettingData {
+    fn fetch(&self, data: SettingsFetchData) -> SettingData {
         let index = self.0;
-        let current = settings.libraries.get(index).and_then(|lib| lib.finished);
+        let current = data
+            .settings
+            .libraries
+            .get(index)
+            .and_then(|lib| lib.finished);
 
         let value = current
             .map(|action| action.to_i18n_string())

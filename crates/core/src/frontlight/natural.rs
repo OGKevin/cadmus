@@ -1,14 +1,17 @@
+// TODO(OGkevin): this shall also be under device/ with implementaitons in sub modules
 use super::{Frontlight, LightLevel, LightLevels};
-use crate::device::{CURRENT_DEVICE, Model};
+use crate::device::Model;
 use anyhow::Error;
 use fxhash::FxHashMap;
-use lazy_static::lazy_static;
 use std::fs::File;
 use std::fs::OpenOptions;
+#[cfg(not(test))]
 use std::io::Read;
 use std::io::Write;
+#[cfg(not(test))]
 use std::path::PathBuf;
 
+#[cfg(not(test))]
 const FRONTLIGHT_INTERFACE: &str = "/sys/class/backlight";
 
 // Aura ONE
@@ -20,8 +23,11 @@ const FRONTLIGHT_GREEN_A: &str = "lm3630a_ledb";
 const FRONTLIGHT_WHITE_B: &str = "lm3630a_ledb";
 const FRONTLIGHT_ORANGE_B: &str = "lm3630a_leda";
 
+#[cfg(not(test))]
 const FRONTLIGHT_VALUE: &str = "brightness";
+#[cfg(not(test))]
 const FRONTLIGHT_MAX_VALUE: &str = "max_brightness";
+#[cfg(not(test))]
 const FRONTLIGHT_POWER: &str = "bl_power";
 
 const FRONTLIGHT_POWER_ON: i16 = 31;
@@ -35,29 +41,30 @@ pub enum LightColor {
     Orange,
 }
 
-lazy_static! {
-    pub static ref FRONTLIGHT_DIRS: FxHashMap<LightColor, &'static str> = match CURRENT_DEVICE.model
-    {
-        Model::AuraONE | Model::AuraONELimEd => {
-            [
+fn frontlight_dirs(model: Model) -> FxHashMap<LightColor, &'static str> {
+    match model {
+        #[cfg(feature = "kobo")]
+        Model::Kobo(m) => match m {
+            crate::device::kobo::Model::AuraONE | crate::device::kobo::Model::AuraONELimEd => [
                 (LightColor::White, FRONTLIGHT_WHITE_A),
                 (LightColor::Red, FRONTLIGHT_RED_A),
                 (LightColor::Green, FRONTLIGHT_GREEN_A),
             ]
             .iter()
             .cloned()
-            .collect()
-        }
-        _ => {
-            [
+            .collect(),
+            _ => [
                 (LightColor::White, FRONTLIGHT_WHITE_B),
                 (LightColor::Orange, FRONTLIGHT_ORANGE_B),
             ]
             .iter()
             .cloned()
-            .collect()
-        }
-    };
+            .collect(),
+        },
+        #[cfg(feature = "emulator")]
+        Model::Emulator => unimplemented!(),
+        Model::TestDevice => todo!(),
+    }
 }
 
 pub struct NaturalFrontlight {
@@ -69,25 +76,34 @@ pub struct NaturalFrontlight {
 }
 
 impl NaturalFrontlight {
-    pub fn new(intensity: LightLevel, warmth: LightLevel) -> Result<NaturalFrontlight, Error> {
+    pub fn new(
+        intensity: LightLevel,
+        warmth: LightLevel,
+        model: Model,
+    ) -> Result<NaturalFrontlight, Error> {
         let mut maxima = FxHashMap::default();
         let mut values = FxHashMap::default();
         let mut powers = FxHashMap::default();
-        let base = PathBuf::from(FRONTLIGHT_INTERFACE);
-        for (light, name) in FRONTLIGHT_DIRS.iter() {
-            let dir = base.join(name);
-            let mut buf = String::new();
-            let mut file = File::open(dir.join(FRONTLIGHT_MAX_VALUE))?;
-            file.read_to_string(&mut buf)?;
-            maxima.insert(*light, buf.trim_end().parse()?);
-            let file = OpenOptions::new()
-                .write(true)
-                .open(dir.join(FRONTLIGHT_VALUE))?;
-            values.insert(*light, file);
-            let file = OpenOptions::new()
-                .write(true)
-                .open(dir.join(FRONTLIGHT_POWER))?;
-            powers.insert(*light, file);
+        for (light, name) in frontlight_dirs(model).iter() {
+            cfg_select! {
+                test => {
+                    let _ = name;
+                    maxima.insert(*light, 100);
+                    values.insert(*light, OpenOptions::new().write(true).open("/dev/null")?);
+                    powers.insert(*light, OpenOptions::new().write(true).open("/dev/null")?);
+                }
+                _ => {
+                    let dir = PathBuf::from(FRONTLIGHT_INTERFACE).join(name);
+                    let mut buf = String::new();
+                    let mut file = File::open(dir.join(FRONTLIGHT_MAX_VALUE))?;
+                    file.read_to_string(&mut buf)?;
+                    maxima.insert(*light, buf.trim_end().parse()?);
+                    let file = OpenOptions::new().write(true).open(dir.join(FRONTLIGHT_VALUE))?;
+                    values.insert(*light, file);
+                    let file = OpenOptions::new().write(true).open(dir.join(FRONTLIGHT_POWER))?;
+                    powers.insert(*light, file);
+                }
+            }
         }
         Ok(NaturalFrontlight {
             intensity,

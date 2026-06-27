@@ -1,8 +1,7 @@
 use super::library_label::LibraryLabel;
 use crate::color::WHITE;
-use crate::context::Context;
-use crate::font::Fonts;
-use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::device::AppContext;
+use crate::framebuffer::UpdateMode;
 use crate::geom::{CycleDir, Rectangle, halves};
 use crate::view::filler::Filler;
 use crate::view::icon::Icon;
@@ -155,22 +154,33 @@ impl BottomBar {
 }
 
 impl View for BottomBar {
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _evt, _hub, _bus, _rq, _context), fields(event = ?_evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(
+        skip(self, _evt, _hub, _bus, _rq, _context),
+        fields(event = ?_evt),
+        ret(level=tracing::Level::TRACE)
+    ))]
     fn handle_event(
         &mut self,
         _evt: &Event,
         _hub: &Hub,
         _bus: &mut Bus,
         _rq: &mut RenderQueue,
-        _context: &mut Context,
+        _context: &mut AppContext,
     ) -> bool {
         false
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _fb, _fonts, _rect), fields(rect = ?_rect)))]
-    fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {}
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _rect, _context), fields(rect = ?_rect
+    )))]
+    fn render(&self, _context: &mut AppContext, _rect: Rectangle) {}
 
-    fn resize(&mut self, rect: Rectangle, hub: &Hub, rq: &mut RenderQueue, context: &mut Context) {
+    fn resize(
+        &mut self,
+        rect: Rectangle,
+        hub: &Hub,
+        rq: &mut RenderQueue,
+        context: &mut AppContext,
+    ) {
         let side = rect.height() as i32;
         let prev_rect = rect![rect.min, rect.min + side];
         self.children[0].resize(prev_rect, hub, rq, context);

@@ -79,6 +79,7 @@ sqlx = { version = "0.9", features = [
 ], default-features = false }
 libsqlite3-sys = { version = "0.30", default-features = false }
 tokio = { version = "1.40", features = ["fs", "macros", "rt", "rt-multi-thread", "sync"] }
+sdl2 = { workspace = true, optional = true }
 
 tracing = "0.1"
 tracing-log = "0.2"
@@ -95,7 +96,7 @@ tikv-jemallocator = { version = "0.6", features = ["profiling"], optional = true
 
 log = "0.4.29"
 uuid = { version = "1.20.0", features = ["v7"] }
-gethostname = {version = "1.1.0", optional = true }
+gethostname = { version = "1.1.0", optional = true }
 zbus = { version = "5", default-features = false, features = ["tokio"], optional = true }
 futures-util = { version = "0.3", optional = true }
 
@@ -122,10 +123,15 @@ cc = { workspace = true }
 uuid = { version = "1.20.0", features = ["v7"] }
 
 [features]
-default = ["kobo"]
-emulator = []
-kobo = ["procfs", "zbus", "futures-util"]
+default = []
+device = []
+# device-list-start
+emulator = ["sdl2", "device"]
+deviceless = ["device"]
+kobo = ["procfs", "zbus", "futures-util", "device"]
+# device-list-end
 test = []
+bench = []
 tracing = [
     "tracing-opentelemetry",
     "opentelemetry",
@@ -137,8 +143,14 @@ tracing = [
 ]
 profiling = ["pyroscope", "tikv-jemallocator"]
 telemetry = ["tracing", "profiling"]
-
-bench = []
+docs = [
+    "deviceless",
+    "zbus",
+    "futures-util",
+    "sdl2",
+    "procfs",
+    "device",
+]
 
 [lints]
 workspace = true

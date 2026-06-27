@@ -10,11 +10,11 @@ use super::kinds::reader::{
 use super::setting_row::SettingRow;
 use super::setting_value::SettingsEvent;
 use crate::color::WHITE;
-use crate::context::Context;
-use crate::device::CURRENT_DEVICE;
+use crate::device::AppContext;
+use crate::device::{DeviceIdentity as _, DevicePaths as _};
 use crate::fl;
 use crate::font::Fonts;
-use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::framebuffer::UpdateMode;
 use crate::geom::Rectangle;
 use crate::settings::{FileExtension, RefreshRatePair, Settings};
 use crate::unit::scale_by_dpi;
@@ -58,7 +58,7 @@ impl RefreshRateByKindEditor {
         rect: Rectangle,
         _hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> RefreshRateByKindEditor {
         let id = ID_FEEDER.next();
         let mut children = Vec::new();
@@ -66,7 +66,7 @@ impl RefreshRateByKindEditor {
         children.push(Box::new(Filler::new(rect, WHITE)) as Box<dyn View>);
 
         let (bar_height, separator_thickness, separator_top_half, separator_bottom_half) =
-            calculate_dimensions();
+            calculate_dimensions(context.device.dpi());
 
         children.extend(Self::build_content_rows(
             rect,
@@ -74,6 +74,8 @@ impl RefreshRateByKindEditor {
             separator_thickness,
             &context.settings,
             &mut context.fonts,
+            context.device.dpi(),
+            &context.device.install_dir(),
         ));
 
         children.push(build_bottom_separator(
@@ -118,8 +120,9 @@ impl RefreshRateByKindEditor {
         separator_thickness: i32,
         settings: &Settings,
         fonts: &mut Fonts,
+        dpi: u16,
+        install_dir: &std::path::Path,
     ) -> Vec<Box<dyn View>> {
-        let dpi = CURRENT_DEVICE.dpi;
         let row_height = scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32;
 
         let content_end_y = rect.max.y - bar_height - separator_thickness;
@@ -133,6 +136,8 @@ impl RefreshRateByKindEditor {
                 row_rect,
                 settings,
                 fonts,
+                dpi,
+                install_dir,
             )));
             current_y += row_height;
         }
@@ -144,6 +149,8 @@ impl RefreshRateByKindEditor {
                 row_rect,
                 settings,
                 fonts,
+                dpi,
+                install_dir,
             )));
             current_y += row_height;
         }
@@ -169,6 +176,8 @@ impl RefreshRateByKindEditor {
                     row_rect,
                     settings,
                     fonts,
+                    dpi,
+                    install_dir,
                 )));
                 current_y += row_height;
             }
@@ -201,9 +210,9 @@ impl RefreshRateByKindEditor {
     const FIXED_TAIL_LEN: usize = 3;
 
     /// Rebuilds the content rows after settings change.
-    fn rebuild_rows(&mut self, rq: &mut RenderQueue, context: &mut Context) {
+    fn rebuild_rows(&mut self, rq: &mut RenderQueue, context: &mut AppContext) {
         let (bar_height, separator_thickness, separator_top_half, separator_bottom_half) =
-            calculate_dimensions();
+            calculate_dimensions(context.device.dpi());
 
         let new_rows = Self::build_content_rows(
             self.rect,
@@ -211,6 +220,8 @@ impl RefreshRateByKindEditor {
             separator_thickness,
             &context.settings,
             &mut context.fonts,
+            context.device.dpi(),
+            &context.device.install_dir(),
         );
 
         let rows_end = self.children.len() - Self::FIXED_TAIL_LEN;
@@ -240,7 +251,7 @@ impl RefreshRateByKindEditor {
         focus: Option<ViewId>,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
         if self.focus != focus {
             self.focus = focus;
@@ -258,7 +269,7 @@ impl RefreshRateByKindEditor {
 
     #[inline]
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, rq, context)))]
-    fn handle_add_by_kind_event(&mut self, rq: &mut RenderQueue, context: &mut Context) -> bool {
+    fn handle_add_by_kind_event(&mut self, rq: &mut RenderQueue, context: &mut AppContext) -> bool {
         let already: std::collections::HashSet<String> = context
             .settings
             .reader
@@ -303,7 +314,7 @@ impl RefreshRateByKindEditor {
         ext: FileExtension,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
         if let Some(index) = locate_by_id(self, ViewId::SettingsValueMenu) {
             self.children.remove(index);
@@ -328,7 +339,7 @@ impl RefreshRateByKindEditor {
         ext: FileExtension,
         pair: &RefreshRatePair,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
         if let Some(index) = locate_by_id(self, ViewId::RefreshRateKindPairEditor) {
             self.children.remove(index);
@@ -357,7 +368,7 @@ impl RefreshRateByKindEditor {
         &mut self,
         ext: FileExtension,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
         context
             .settings
@@ -385,7 +396,7 @@ impl RefreshRateByKindEditor {
         rect: Rectangle,
         entries: &[crate::view::EntryKind],
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
         let menu = Menu::new(
             rect,
@@ -410,7 +421,7 @@ impl RefreshRateByKindEditor {
         initial_text: &str,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
         let mut named_input =
             NamedInput::new(label.to_string(), view_id, view_id, max_chars, context);
@@ -454,7 +465,7 @@ impl View for RefreshRateByKindEditor {
         hub: &Hub,
         bus: &mut Bus,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
         match evt {
             Event::Focus(v) => self.handle_focus_event(*v, hub, rq, context),
@@ -493,8 +504,8 @@ impl View for RefreshRateByKindEditor {
         }
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _fb, _fonts), fields(rect = ?_rect)))]
-    fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {}
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _context), fields(rect = ?_rect)))]
+    fn render(&self, _context: &mut AppContext, _rect: Rectangle) {}
 
     fn rect(&self) -> &Rectangle {
         &self.rect
@@ -541,7 +552,7 @@ impl RefreshRateKindPairEditor {
         ext: FileExtension,
         _hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> RefreshRateKindPairEditor {
         let id = ID_FEEDER.next();
         let mut children: Vec<Box<dyn View>> = Vec::new();
@@ -549,9 +560,9 @@ impl RefreshRateKindPairEditor {
         children.push(Box::new(Filler::new(rect, WHITE)) as Box<dyn View>);
 
         let (bar_height, separator_thickness, separator_top_half, separator_bottom_half) =
-            calculate_dimensions();
+            calculate_dimensions(context.device.dpi());
 
-        let dpi = CURRENT_DEVICE.dpi;
+        let dpi = context.device.dpi();
         let row_height = scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32;
         let content_end_y = rect.max.y - bar_height - separator_thickness;
         let mut current_y = rect.min.y;
@@ -575,6 +586,8 @@ impl RefreshRateKindPairEditor {
                 row_rect,
                 &context.settings,
                 &mut context.fonts,
+                dpi,
+                &context.device.install_dir(),
             )));
             current_y += row_height;
         }
@@ -586,6 +599,8 @@ impl RefreshRateKindPairEditor {
                 row_rect,
                 &context.settings,
                 &mut context.fonts,
+                dpi,
+                &context.device.install_dir(),
             )));
         }
 
@@ -634,7 +649,7 @@ impl RefreshRateKindPairEditor {
         focus: Option<ViewId>,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
         if self.focus != focus {
             self.focus = focus;
@@ -710,7 +725,7 @@ impl RefreshRateKindPairEditor {
         initial_text: &str,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
         let mut named_input =
             NamedInput::new(label.to_string(), view_id, view_id, max_chars, context);
@@ -747,7 +762,7 @@ impl View for RefreshRateKindPairEditor {
         hub: &Hub,
         bus: &mut Bus,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
         match evt {
             Event::Focus(v) => self.handle_focus_event(*v, hub, rq, context),
@@ -780,8 +795,8 @@ impl View for RefreshRateKindPairEditor {
         }
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _fb, _fonts), fields(rect = ?_rect)))]
-    fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {}
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _context), fields(rect = ?_rect)))]
+    fn render(&self, _context: &mut AppContext, _rect: Rectangle) {}
 
     fn rect(&self) -> &Rectangle {
         &self.rect

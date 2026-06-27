@@ -1,8 +1,7 @@
 use super::label::Label;
 use super::{Align, Bus, Event, Hub, ID_FEEDER, Id, RenderQueue, View};
 use crate::color::{TEXT_INVERTED_HARD, TEXT_NORMAL};
-use crate::context::Context;
-use crate::framebuffer::Framebuffer;
+use crate::device::AppContext;
 use crate::geom::Rectangle;
 use crate::input::{DeviceEvent, FingerStatus};
 
@@ -111,7 +110,7 @@ impl View for ActionLabel {
         _hub: &Hub,
         _bus: &mut Bus,
         rq: &mut RenderQueue,
-        _context: &mut Context,
+        _context: &mut AppContext,
     ) -> bool {
         match *evt {
             Event::Device(DeviceEvent::Finger {
@@ -133,9 +132,8 @@ impl View for ActionLabel {
         }
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _fb, _fonts), fields(rect = ?_rect)))]
-    fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut crate::font::Fonts) {
-    }
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _context), fields(rect = ?_rect)))]
+    fn render(&self, _context: &mut AppContext, _rect: Rectangle) {}
 
     fn rect(&self) -> &Rectangle {
         &self.rect

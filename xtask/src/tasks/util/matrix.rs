@@ -1,9 +1,10 @@
 //! Feature matrix generation for `cargo xtask test` and `cargo xtask clippy`.
 //!
 //! Scans every `Cargo.toml` in the workspace, collects the union of all
-//! non-excluded feature names (see [`is_excluded_feature`]), and produces every
-//! power-set combination crossed with a list of target operating systems. Each
-//! combination becomes one [`MatrixEntry`] that maps to a single CI job.
+//! non-excluded feature names (see [`is_excluded_feature`]), and produces one
+//! CI job per device feature crossed with every power-set combination of the
+//! remaining features. Device features are read from the `# device-list-start`
+//! block in `crates/core/Cargo.toml` via [`build_deps::manifest`].
 //!
 //! The same entries are used locally (by `test` and `clippy` tasks) and in CI
 //! (by `cargo xtask ci matrix`, which serialises them to GitHub Actions JSON).
@@ -45,24 +46,28 @@ impl MatrixEntry {
 
 /// Scans the workspace and returns the full feature × OS matrix.
 ///
-/// Features excluded from the matrix (see [`is_excluded_feature`]) are
-/// skipped — for example `default` (enabled by Cargo automatically), `bench`
-/// (only affects module visibility for benchmarks), and `telemetry` (an alias
-/// for `tracing + profiling` with no direct `cfg(feature = "telemetry")`
-/// branches to validate separately). Runtime features such as `tracing` and
-/// `profiling` stay in the matrix so CI checks them both standalone and in
-/// combinations.
-/// The matrix always starts with the default (no explicit features) entry,
-/// followed by every non-empty power-set combination in a stable order.
-/// Each feature combination is repeated once per OS in `os_list`.
+/// Each entry enables exactly one device feature from the core manifest
+/// device-list plus a power-set combination of all other workspace features
+/// (excluding `default`, `bench`, `telemetry`, the `device` parent feature,
+/// and device-list features).
 ///
 /// # Errors
 ///
 /// Returns an error if the workspace root cannot be located or any
 /// `Cargo.toml` cannot be read or parsed.
 pub fn scan(root: &Path, os_list: &[&str]) -> Result<Vec<MatrixEntry>> {
-    let features = collect_workspace_features(root)?;
-    Ok(build_matrix(features, os_list))
+    let device_features = device_features_from_core_manifest(root)?;
+    let all_features = collect_workspace_features(root)?;
+    let device_set: BTreeSet<String> = device_features.iter().cloned().collect();
+    let non_device_features = all_features
+        .into_iter()
+        .filter(|feature| !device_set.contains(feature) && feature != "device")
+        .collect();
+    Ok(build_device_matrix(
+        &device_features,
+        non_device_features,
+        os_list,
+    ))
 }
 
 /// Serialises the matrix to a JSON shape for the `test` job.
@@ -206,9 +211,65 @@ fn is_ignored(entry: &walkdir::DirEntry) -> bool {
 /// - `telemetry` only aliases `tracing + profiling`, so adding it to the
 ///   powerset would duplicate combinations that already compile the same code.
 fn is_excluded_feature(name: &str) -> bool {
-    matches!(name, "default" | "bench" | "telemetry")
+    matches!(name, "default" | "bench" | "docs" | "telemetry")
 }
 
+fn device_features_from_core_manifest(root: &Path) -> Result<Vec<String>> {
+    let manifest = root.join("crates/core/Cargo.toml");
+    let content = std::fs::read_to_string(&manifest)
+        .with_context(|| format!("failed to read {}", manifest.display()))?;
+    build_deps::manifest::parse_device_features(&content)
+}
+
+fn build_device_matrix(
+    device_features: &[String],
+    non_device_features: BTreeSet<String>,
+    os_list: &[&str],
+) -> Vec<MatrixEntry> {
+    let ancillary: Vec<String> = non_device_features.into_iter().collect();
+    let n = ancillary.len();
+    let mut entries = Vec::with_capacity(device_features.len() * (1 << n) * os_list.len());
+
+    for device in device_features {
+        for mask in 0u32..(1 << n) {
+            let extra: Vec<&str> = (0..n)
+                .filter(|&i| mask & (1 << i) != 0)
+                .map(|i| ancillary[i].as_str())
+                .collect();
+
+            let mut label_parts = vec![device.as_str()];
+            label_parts.extend(&extra);
+            let label = label_parts.join(" + ");
+
+            let mut feature_parts = vec![device.as_str()];
+            feature_parts.extend(&extra);
+            if !is_valid_device_combo(device, &extra) {
+                continue;
+            }
+            let features = feature_parts.join(",");
+
+            for os in os_list {
+                entries.push(MatrixEntry {
+                    label: label.clone(),
+                    features: features.clone(),
+                    os: os.to_string(),
+                });
+            }
+        }
+    }
+
+    entries
+}
+
+/// Returns `false` for feature combinations that `cadmus-core` rejects at compile time.
+fn is_valid_device_combo(device: &str, ancillary: &[&str]) -> bool {
+    if ancillary.contains(&"test") {
+        return matches!(device, "kobo" | "emulator");
+    }
+    true
+}
+
+#[cfg(test)]
 fn build_matrix(features: BTreeSet<String>, os_list: &[&str]) -> Vec<MatrixEntry> {
     let features: Vec<String> = features.into_iter().collect();
     let n = features.len();
@@ -274,6 +335,39 @@ mod tests {
         assert!(labels.contains(&"tracing"));
         assert!(labels.contains(&"test"));
         assert!(labels.contains(&"test + tracing"));
+    }
+
+    #[test]
+    fn build_device_matrix_one_device_and_two_ancillary_yields_four_entries() {
+        let device_features = vec!["kobo".to_owned()];
+        let ancillary = BTreeSet::from(["test".to_owned(), "tracing".to_owned()]);
+        let entries = build_device_matrix(&device_features, ancillary, ONE_OS);
+        assert_eq!(entries.len(), 4);
+        let labels: Vec<&str> = entries.iter().map(|e| e.label.as_str()).collect();
+        assert!(labels.contains(&"kobo"));
+        assert!(labels.contains(&"kobo + test"));
+        assert!(labels.contains(&"kobo + tracing"));
+        assert!(labels.contains(&"kobo + test + tracing"));
+    }
+
+    #[test]
+    fn build_device_matrix_three_devices_and_three_ancillary_yields_twenty_four_entries() {
+        let device_features = vec![
+            "emulator".to_owned(),
+            "deviceless".to_owned(),
+            "kobo".to_owned(),
+        ];
+        let ancillary = BTreeSet::from([
+            "profiling".to_owned(),
+            "test".to_owned(),
+            "tracing".to_owned(),
+        ]);
+        let entries = build_device_matrix(&device_features, ancillary, ONE_OS);
+        assert_eq!(
+            entries.len(),
+            20,
+            "3 devices × 2³ ancillary − 4 invalid deviceless+test combos × 1 OS = 20 entries"
+        );
     }
 
     #[test]
@@ -359,17 +453,27 @@ mod tests {
         let entries = scan(&root, ONE_OS).expect("scan must succeed");
 
         let labels: Vec<&str> = entries.iter().map(|e| e.label.as_str()).collect();
-        assert!(labels.contains(&"default"));
-        assert!(labels.contains(&"emulator"));
         assert!(labels.contains(&"kobo"));
-        assert!(labels.contains(&"profiling"));
-        assert!(labels.contains(&"tracing"));
-        assert!(labels.contains(&"test"));
+        assert!(labels.contains(&"emulator + test"));
+        assert!(labels.contains(&"deviceless + profiling"));
+        assert!(labels.contains(&"kobo + profiling + test + tracing"));
+        assert!(!labels.contains(&"default"));
         assert!(!labels.contains(&"telemetry"));
+        assert!(
+            !labels.iter().any(|label| {
+                let parts: Vec<_> = label.split(" + ").collect();
+                let device_count = parts
+                    .iter()
+                    .filter(|part| matches!(**part, "kobo" | "emulator" | "deviceless"))
+                    .count();
+                device_count > 1
+            }),
+            "matrix must not combine multiple device features in one entry"
+        );
         assert_eq!(
             entries.len(),
-            32,
-            "5 CI features after excluding telemetry alias and bench → 2⁵ = 32 combos × 1 OS = 32 entries"
+            20,
+            "3 device features × 2³ ancillary combos − 4 invalid deviceless+test × 1 OS = 20 entries"
         );
     }
 }

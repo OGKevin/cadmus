@@ -1,8 +1,7 @@
 use crate::color::SEPARATOR_NORMAL;
-use crate::context::Context;
-use crate::device::CURRENT_DEVICE;
+use crate::device::AppContext;
+use crate::device::{DeviceIdentity as _, DevicePaths as _};
 use crate::font::{Fonts, NORMAL_STYLE, font_from_style};
-use crate::framebuffer::Framebuffer;
 use crate::geom::{Dir, Point, Rectangle};
 use crate::unit::scale_by_dpi;
 use crate::view::UpdateMode;
@@ -11,6 +10,7 @@ use crate::view::{Bus, Event, Hub, ID_FEEDER, Id, RenderData, RenderQueue, View}
 use crate::view::{SMALL_BAR_HEIGHT, THICKNESS_MEDIUM};
 use std::collections::BTreeMap;
 use std::fmt::Debug;
+use std::path::Path;
 
 /// Domain adapter for [`StackNavigationBar`].
 ///
@@ -49,7 +49,7 @@ pub trait NavigationProvider {
     fn leaf_for_bar_traversal(
         &self,
         selected: &Self::LevelKey,
-        _context: &Context,
+        _context: &AppContext,
     ) -> Self::LevelKey {
         self.selected_leaf_key(selected)
     }
@@ -61,10 +61,10 @@ pub trait NavigationProvider {
     fn is_ancestor(&self, ancestor: &Self::LevelKey, descendant: &Self::LevelKey) -> bool;
 
     /// Returns true if the key is the root of the stack.
-    fn is_root(&self, key: &Self::LevelKey, context: &Context) -> bool;
+    fn is_root(&self, key: &Self::LevelKey, context: &AppContext) -> bool;
 
     /// Fetch the data for a level.
-    fn fetch_level_data(&self, key: &Self::LevelKey, context: &mut Context) -> Self::LevelData;
+    fn fetch_level_data(&self, key: &Self::LevelKey, context: &mut AppContext) -> Self::LevelData;
 
     /// Estimates how many visual lines (rows) the bar will need to display its content.
     ///
@@ -144,6 +144,8 @@ pub trait NavigationProvider {
         data: &Self::LevelData,
         selected: &Self::LevelKey,
         fonts: &mut Fonts,
+        dpi: u16,
+        install_dir: &Path,
     );
 
     /// Update bar selection when the content is unchanged.
@@ -170,7 +172,14 @@ pub trait NavigationProvider {
     ///
     /// Do NOT pre-modify the bar's rect before calling this method. The provider
     /// will handle the entire resize operation, including constraint enforcement.
-    fn resize_bar_by(&self, bar: &mut Self::Bar, delta_y: i32, fonts: &mut Fonts) -> i32;
+    fn resize_bar_by(
+        &self,
+        bar: &mut Self::Bar,
+        delta_y: i32,
+        fonts: &mut Fonts,
+        dpi: u16,
+        install_dir: &Path,
+    ) -> i32;
 
     /// Shift a bar by a delta.
     fn shift_bar(&self, bar: &mut Self::Bar, delta: Point);
@@ -344,7 +353,7 @@ impl<P: NavigationProvider + 'static> StackNavigationBar<P> {
         &mut self,
         selected: P::LevelKey,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         let layout = Layout::new(context);
 
@@ -413,6 +422,8 @@ impl<P: NavigationProvider + 'static> StackNavigationBar<P> {
             &last_key,
             rq,
             &mut context.fonts,
+            context.device.dpi(),
+            &context.device.install_dir(),
         );
 
         self.rect.max.y = self.children[self.children.len() - 1].rect().max.y;
@@ -479,7 +490,7 @@ impl<P: NavigationProvider + 'static> StackNavigationBar<P> {
     fn prefetch_needed_levels(
         &self,
         selected: &P::LevelKey,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> BTreeMap<P::LevelKey, P::LevelData> {
         let leaf_key = self.provider.selected_leaf_key(selected);
         let mut data_by_level = BTreeMap::new();
@@ -719,11 +730,15 @@ impl<P: NavigationProvider + 'static> StackNavigationBar<P> {
             return;
         }
 
+        let height = layout
+            .min_height
+            .min(self.vertical_limit.saturating_sub(self.rect.min.y));
+
         let rect = rect![
             self.rect.min.x,
             self.rect.min.y,
             self.rect.max.x,
-            self.rect.min.y + layout.min_height
+            self.rect.min.y + height
         ];
 
         self.children
@@ -748,6 +763,8 @@ impl<P: NavigationProvider + 'static> StackNavigationBar<P> {
         last: &Option<P::LevelKey>,
         rq: &mut RenderQueue,
         fonts: &mut Fonts,
+        dpi: u16,
+        install_dir: &Path,
     ) {
         let mut current = leaf.clone();
         let y_shift = self.rect.min.y - self.children[0].rect().min.y;
@@ -774,7 +791,8 @@ impl<P: NavigationProvider + 'static> StackNavigationBar<P> {
 
             if !reuse_ok {
                 if let Some(data) = data_by_level.get(&current) {
-                    self.provider.update_bar(bar, data, selected, fonts);
+                    self.provider
+                        .update_bar(bar, data, selected, fonts, dpi, install_dir);
                 }
             } else if last.as_ref().is_some_and(|last| *last == current) {
                 self.provider.update_bar_selection(bar, selected);
@@ -822,8 +840,8 @@ impl<P: NavigationProvider + 'static> StackNavigationBar<P> {
     ///
     /// Actual shrink amount achieved (maybe less than requested if minimum heights
     /// prevent further shrinking)
-    pub fn shrink(&mut self, delta_y: i32, fonts: &mut Fonts) -> i32 {
-        let layout = Layout::new_for_fonts(fonts);
+    pub fn shrink(&mut self, delta_y: i32, fonts: &mut Fonts, dpi: u16, install_dir: &Path) -> i32 {
+        let layout = Layout::new_for_fonts(fonts, dpi);
         let bars_count = self.children.len().div_ceil(2);
         let mut values = vec![0; bars_count];
 
@@ -837,7 +855,7 @@ impl<P: NavigationProvider + 'static> StackNavigationBar<P> {
         if sum > 0 {
             for i in (0..bars_count).rev() {
                 let local_delta_y = ((values[i] as f32 / sum as f32) * delta_y as f32) as i32;
-                y_shift += self.resize_child(2 * i, local_delta_y, fonts);
+                y_shift += self.resize_child(2 * i, local_delta_y, fonts, dpi, install_dir);
                 if y_shift <= delta_y {
                     break;
                 }
@@ -867,8 +885,15 @@ impl<P: NavigationProvider + 'static> StackNavigationBar<P> {
     }
 
     #[inline]
-    fn resize_child(&mut self, child_index: usize, delta_y: i32, fonts: &mut Fonts) -> i32 {
-        let layout = Layout::new_for_fonts(fonts);
+    fn resize_child(
+        &mut self,
+        child_index: usize,
+        delta_y: i32,
+        fonts: &mut Fonts,
+        dpi: u16,
+        install_dir: &Path,
+    ) -> i32 {
+        let layout = Layout::new_for_fonts(fonts, dpi);
         let rect = *self.children[child_index].rect();
 
         let delta_y_max = (self.vertical_limit - self.rect.max.y).max(0);
@@ -883,7 +908,9 @@ impl<P: NavigationProvider + 'static> StackNavigationBar<P> {
         let y_shift = y_max - rect.max.y;
 
         let bar = self.children[child_index].downcast_mut::<P::Bar>().unwrap();
-        let resized = self.provider.resize_bar_by(bar, y_shift, fonts);
+        let resized = self
+            .provider
+            .resize_bar_by(bar, y_shift, fonts, dpi, install_dir);
 
         for i in child_index + 1..self.children.len() {
             if let Some(bar) = self.children[i].downcast_mut::<P::Bar>() {
@@ -923,8 +950,8 @@ struct Layout {
 }
 
 impl Layout {
-    fn new(context: &mut Context) -> Self {
-        let dpi = CURRENT_DEVICE.dpi;
+    fn new(context: &mut AppContext) -> Self {
+        let dpi = context.device.dpi();
         let thickness = scale_by_dpi(THICKNESS_MEDIUM, dpi) as i32;
         let min_height = scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32 - thickness;
         let font = font_from_style(&mut context.fonts, &NORMAL_STYLE, dpi);
@@ -939,8 +966,7 @@ impl Layout {
         }
     }
 
-    fn new_for_fonts(fonts: &mut Fonts) -> Self {
-        let dpi = CURRENT_DEVICE.dpi;
+    fn new_for_fonts(fonts: &mut Fonts, dpi: u16) -> Self {
         let thickness = scale_by_dpi(THICKNESS_MEDIUM, dpi) as i32;
         let min_height = scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32 - thickness;
         let font = font_from_style(fonts, &NORMAL_STYLE, dpi);
@@ -1012,7 +1038,7 @@ impl<P: NavigationProvider + 'static> View for StackNavigationBar<P> {
         _hub: &Hub,
         bus: &mut Bus,
         _rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
         match *evt {
             Event::Gesture(crate::gesture::GestureEvent::Swipe {
@@ -1028,7 +1054,13 @@ impl<P: NavigationProvider + 'static> View for StackNavigationBar<P> {
 
                         if let Some(index) = bar_index {
                             let delta_y = end.y - start.y;
-                            let resized = self.resize_child(index, delta_y, &mut context.fonts);
+                            let resized = self.resize_child(
+                                index,
+                                delta_y,
+                                &mut context.fonts,
+                                context.device.dpi(),
+                                &context.device.install_dir(),
+                            );
                             bus.push_back(Event::NavigationBarResized(resized));
                         }
 
@@ -1041,8 +1073,8 @@ impl<P: NavigationProvider + 'static> View for StackNavigationBar<P> {
         }
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _fb, _fonts), fields(rect = ?_rect)))]
-    fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {}
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _context), fields(rect = ?_rect)))]
+    fn render(&self, _context: &mut AppContext, _rect: Rectangle) {}
 
     fn rect(&self) -> &Rectangle {
         &self.rect
@@ -1092,14 +1124,14 @@ mod tests {
             ancestor.0 <= descendant.0
         }
 
-        fn is_root(&self, key: &Self::LevelKey, _context: &Context) -> bool {
+        fn is_root(&self, key: &Self::LevelKey, _context: &AppContext) -> bool {
             key.0 == 0
         }
 
         fn fetch_level_data(
             &self,
             key: &Self::LevelKey,
-            _context: &mut Context,
+            _context: &mut AppContext,
         ) -> Self::LevelData {
             key.0 as usize
         }
@@ -1122,14 +1154,22 @@ mod tests {
             _data: &Self::LevelData,
             _selected: &Self::LevelKey,
             _fonts: &mut Fonts,
+            _dpi: u16,
+            _install_dir: &Path,
         ) {
         }
 
         fn update_bar_selection(&self, _bar: &mut Self::Bar, _selected: &Self::LevelKey) {}
 
-        fn resize_bar_by(&self, bar: &mut Self::Bar, delta_y: i32, _fonts: &mut Fonts) -> i32 {
+        fn resize_bar_by(
+            &self,
+            bar: &mut Self::Bar,
+            delta_y: i32,
+            _fonts: &mut Fonts,
+            dpi: u16,
+            _install_dir: &Path,
+        ) -> i32 {
             let rect = *bar.rect();
-            let dpi = CURRENT_DEVICE.dpi;
             let thickness = scale_by_dpi(THICKNESS_MEDIUM, dpi) as i32;
             let min_height = scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32 - thickness;
 
@@ -1268,9 +1308,15 @@ mod tests {
         let initial_height = initial_rect.height() as i32;
 
         let aggressive_delta_y = -(initial_height * 2);
-        nav_bar.resize_child(0, aggressive_delta_y, &mut context.fonts);
+        nav_bar.resize_child(
+            0,
+            aggressive_delta_y,
+            &mut context.fonts,
+            context.device.dpi(),
+            &context.device.install_dir(),
+        );
 
-        let dpi = CURRENT_DEVICE.dpi;
+        let dpi = context.device.dpi();
         let thickness = scale_by_dpi(THICKNESS_MEDIUM, dpi) as i32;
         let min_height = scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32 - thickness;
 
@@ -1316,7 +1362,12 @@ mod tests {
             .collect();
 
         let shrink_amount = -50;
-        let actual_shrink = nav_bar.shrink(shrink_amount, &mut context.fonts);
+        let actual_shrink = nav_bar.shrink(
+            shrink_amount,
+            &mut context.fonts,
+            context.device.dpi(),
+            &context.device.install_dir(),
+        );
 
         let final_heights: Vec<i32> = (0..nav_bar.children.len())
             .step_by(2)
@@ -1353,7 +1404,12 @@ mod tests {
         let initial_bar_count = nav_bar.children.len().div_ceil(2);
 
         let aggressive_shrink = -500;
-        nav_bar.shrink(aggressive_shrink, &mut context.fonts);
+        nav_bar.shrink(
+            aggressive_shrink,
+            &mut context.fonts,
+            context.device.dpi(),
+            &context.device.install_dir(),
+        );
 
         let final_bar_count = nav_bar.children.len().div_ceil(2);
 
@@ -1375,7 +1431,7 @@ mod tests {
 
         nav_bar.set_selected(Key(1), &mut rq, &mut context);
 
-        let dpi = CURRENT_DEVICE.dpi;
+        let dpi = context.device.dpi();
         let thickness = scale_by_dpi(THICKNESS_MEDIUM, dpi) as i32;
         let min_height = scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32 - thickness;
 
@@ -1385,7 +1441,12 @@ mod tests {
         }
 
         let shrink_amount = -20;
-        let actual_shrink = nav_bar.shrink(shrink_amount, &mut context.fonts);
+        let actual_shrink = nav_bar.shrink(
+            shrink_amount,
+            &mut context.fonts,
+            context.device.dpi(),
+            &context.device.install_dir(),
+        );
 
         assert!(
             actual_shrink <= 0,
@@ -1409,8 +1470,13 @@ mod tests {
         let initial_container_max = nav_bar.rect.max.y;
 
         let large_expansion = 200;
-        let actual_resize =
-            nav_bar.resize_child(last_bar_index, large_expansion, &mut context.fonts);
+        let actual_resize = nav_bar.resize_child(
+            last_bar_index,
+            large_expansion,
+            &mut context.fonts,
+            context.device.dpi(),
+            &context.device.install_dir(),
+        );
 
         let final_container_max = nav_bar.rect.max.y;
         let expected_max = (initial_container_max + actual_resize).min(vertical_limit);
@@ -1452,7 +1518,13 @@ mod tests {
             .collect();
 
         let expansion = 20;
-        let actual_resize = nav_bar.resize_child(target_index, expansion, &mut context.fonts);
+        let actual_resize = nav_bar.resize_child(
+            target_index,
+            expansion,
+            &mut context.fonts,
+            context.device.dpi(),
+            &context.device.install_dir(),
+        );
 
         let final_rects: Vec<Rectangle> = nav_bar
             .children

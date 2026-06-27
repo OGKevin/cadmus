@@ -73,12 +73,11 @@ fn remove_empty_dir_if_exists(path: &Path) -> io::Result<bool> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::device::CURRENT_DEVICE;
 
     #[test]
     fn cleanup_removes_bundled_files_but_keeps_user_files() {
         let tmp = tempfile::tempdir().unwrap();
-        let install_dir = tmp.path().join(CURRENT_DEVICE.install_subdir());
+        let install_dir = tmp.path().join("install");
 
         std::fs::create_dir_all(install_dir.join("fonts")).unwrap();
         std::fs::create_dir_all(install_dir.join("icons")).unwrap();

@@ -1,6 +1,8 @@
 //! Setting kinds for the Telemetry category.
 
-use super::{SettingData, SettingIdentity, SettingKind, ToggleSettings, WidgetKind};
+use super::{
+    SettingData, SettingIdentity, SettingKind, SettingsFetchData, ToggleSettings, WidgetKind,
+};
 use crate::fl;
 use crate::settings::Settings;
 use crate::view::{Bus, EntryId, EntryKind, Event, ToggleEvent};
@@ -23,13 +25,13 @@ impl SettingKind for LoggingEnabled {
         fl!("settings-telemetry-enable-logging")
     }
 
-    fn fetch(&self, settings: &Settings) -> SettingData {
+    fn fetch(&self, data: SettingsFetchData) -> SettingData {
         SettingData {
-            value: settings.logging.enabled.to_string(),
+            value: data.settings.logging.enabled.to_string(),
             widget: WidgetKind::Toggle {
                 left_label: fl!("settings-general-toggle-on"),
                 right_label: fl!("settings-general-toggle-off"),
-                enabled: settings.logging.enabled,
+                enabled: data.settings.logging.enabled,
                 tap_event: Event::Toggle(ToggleEvent::Setting(ToggleSettings::LoggingEnabled)),
             },
         }
@@ -73,8 +75,8 @@ impl SettingKind for LogLevel {
         fl!("settings-telemetry-log-level")
     }
 
-    fn fetch(&self, settings: &Settings) -> SettingData {
-        let current = tracing::Level::from_str(settings.logging.level.as_str())
+    fn fetch(&self, data: SettingsFetchData) -> SettingData {
+        let current = tracing::Level::from_str(data.settings.logging.level.as_str())
             .unwrap_or(tracing::Level::INFO);
 
         let entries = vec![
@@ -139,8 +141,9 @@ impl SettingKind for OtlpEndpoint {
         fl!("settings-telemetry-otlp-endpoint")
     }
 
-    fn fetch(&self, settings: &Settings) -> SettingData {
-        let value = settings
+    fn fetch(&self, data: SettingsFetchData) -> SettingData {
+        let value = data
+            .settings
             .logging
             .otlp_endpoint
             .clone()
@@ -208,8 +211,9 @@ impl SettingKind for PyroscopeEndpoint {
         fl!("settings-telemetry-pyroscope-endpoint")
     }
 
-    fn fetch(&self, settings: &Settings) -> SettingData {
-        let value = settings
+    fn fetch(&self, data: SettingsFetchData) -> SettingData {
+        let value = data
+            .settings
             .logging
             .pyroscope_endpoint
             .clone()
@@ -281,13 +285,13 @@ impl SettingKind for EnableKernLog {
         fl!("settings-telemetry-enable-kernel-log")
     }
 
-    fn fetch(&self, settings: &Settings) -> SettingData {
+    fn fetch(&self, data: SettingsFetchData) -> SettingData {
         SettingData {
-            value: settings.logging.enable_kern_log.to_string(),
+            value: data.settings.logging.enable_kern_log.to_string(),
             widget: WidgetKind::Toggle {
                 left_label: fl!("settings-general-toggle-on"),
                 right_label: fl!("settings-general-toggle-off"),
-                enabled: settings.logging.enable_kern_log,
+                enabled: data.settings.logging.enable_kern_log,
                 tap_event: Event::Toggle(ToggleEvent::Setting(ToggleSettings::EnableKernLog)),
             },
         }
@@ -321,13 +325,13 @@ impl SettingKind for EnableDbusLog {
         fl!("settings-telemetry-enable-dbus-log")
     }
 
-    fn fetch(&self, settings: &Settings) -> SettingData {
+    fn fetch(&self, data: SettingsFetchData) -> SettingData {
         SettingData {
-            value: settings.logging.enable_dbus_log.to_string(),
+            value: data.settings.logging.enable_dbus_log.to_string(),
             widget: WidgetKind::Toggle {
                 left_label: fl!("settings-general-toggle-on"),
                 right_label: fl!("settings-general-toggle-off"),
-                enabled: settings.logging.enable_dbus_log,
+                enabled: data.settings.logging.enable_dbus_log,
                 tap_event: Event::Toggle(ToggleEvent::Setting(ToggleSettings::EnableDbusLog)),
             },
         }
@@ -519,7 +523,7 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "test")]
+    #[cfg(all(feature = "test", feature = "kobo"))]
     mod enable_kern_log {
         use super::*;
 

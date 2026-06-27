@@ -1,6 +1,5 @@
 use crate::color::WHITE;
-use crate::font::Fonts;
-use crate::framebuffer::Framebuffer;
+use crate::device::AppContext;
 use crate::geom::{CycleDir, Rectangle};
 use crate::view::filler::Filler;
 use crate::view::icon::Icon;
@@ -196,13 +195,13 @@ impl View for SettingsEditorBottomBar {
         _hub: &crate::view::Hub,
         _bus: &mut crate::view::Bus,
         _rq: &mut crate::view::RenderQueue,
-        _context: &mut crate::context::Context,
+        _context: &mut crate::device::AppContext,
     ) -> bool {
         false
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _fb, _fonts), fields(rect = ?_rect)))]
-    fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {}
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _context), fields(rect = ?_rect)))]
+    fn render(&self, _context: &mut AppContext, _rect: Rectangle) {}
 
     fn rect(&self) -> &Rectangle {
         &self.rect

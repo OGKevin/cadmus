@@ -40,7 +40,7 @@ impl LegacyUsbManager {
     ///
     /// Accepts the platform detected by the caller. No USB operations
     /// are performed until [`enable`](UsbManager::enable) is called.
-    pub fn new(metadata: DeviceMetadata, platform: Platform) -> Self {
+    pub(crate) fn new(metadata: DeviceMetadata, platform: Platform) -> Self {
         Self { metadata, platform }
     }
 

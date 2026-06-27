@@ -50,7 +50,6 @@
 //! # Example Usage
 //!
 //! ```no_run
-//! use cadmus_core::device::CURRENT_DEVICE;
 //! use cadmus_core::settings::LoggingSettings;
 //! use cadmus_core::logging::{init_logging, shutdown_logging, get_run_id};
 //!
@@ -66,7 +65,7 @@
 //! };
 //!
 //! // Initialize at application startup
-//! let log_dir = CURRENT_DEVICE.data_path(&settings.directory);
+//! let log_dir = std::path::PathBuf::from("/mnt/onboard/logs");
 //! init_logging(&settings, log_dir)?;
 //! eprintln!("Started with run ID: {}", get_run_id());
 //!
@@ -261,8 +260,7 @@ fn is_run_log_entry(entry: &DirEntry) -> bool {
 /// * `log_dir` - Absolute path to the directory where log files are written.
 ///   The caller is responsible for computing this from
 ///   [`Device::data_path`](crate::device::Device::data_path) so that logs land
-///   on the SD card when one is present. Pass
-///   `CURRENT_DEVICE.data_path(&settings.directory)` at call sites.
+///   on the SD card when one is present.
 ///
 /// # Returns
 ///
@@ -280,7 +278,6 @@ fn is_run_log_entry(entry: &DirEntry) -> bool {
 /// # Example
 ///
 /// ```no_run
-/// use cadmus_core::device::CURRENT_DEVICE;
 /// use cadmus_core::settings::LoggingSettings;
 /// use cadmus_core::logging::init_logging;
 ///
@@ -295,7 +292,7 @@ fn is_run_log_entry(entry: &DirEntry) -> bool {
 ///     enable_dbus_log: false,
 /// };
 ///
-/// let log_dir = CURRENT_DEVICE.data_path(&settings.directory);
+/// let log_dir = std::path::PathBuf::from("/mnt/onboard/logs");
 /// init_logging(&settings, log_dir)?;
 /// # Ok::<(), anyhow::Error>(())
 /// ```
@@ -386,13 +383,12 @@ pub fn init_logging(settings: &LoggingSettings, log_dir: std::path::PathBuf) -> 
 /// # Example
 ///
 /// ```no_run
-/// use cadmus_core::device::CURRENT_DEVICE;
 /// use cadmus_core::logging::{init_logging, shutdown_logging};
 /// use cadmus_core::settings::LoggingSettings;
 ///
 /// // At application start
 /// let settings = LoggingSettings::default();
-/// let log_dir = CURRENT_DEVICE.data_path(&settings.directory);
+/// let log_dir = std::path::PathBuf::from("/mnt/onboard/logs");
 /// init_logging(&settings, log_dir)?;
 ///
 /// // ... application runs ...
@@ -532,6 +528,7 @@ mod tests {
     fn ensure_logging_init() -> &'static std::path::Path {
         LOGGING_INIT
             .get_or_init(|| {
+                crate::crypto::init_crypto_provider();
                 let dir = TempDir::new().expect("failed to create temp dir for logging init");
                 let settings = LoggingSettings {
                     enabled: true,

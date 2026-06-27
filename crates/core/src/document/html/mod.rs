@@ -89,10 +89,11 @@ impl HtmlBase {
         parent: PathBuf,
         viewer_stylesheet: PathBuf,
         user_stylesheet: PathBuf,
+        install_dir: PathBuf,
     ) -> Self {
         HtmlBase {
             content,
-            engine: Engine::new(),
+            engine: Engine::new(&install_dir),
             pages: Vec::new(),
             parent,
             size,
@@ -475,7 +476,7 @@ impl HtmlDocument {
     /// Opens the file at `path`, parses it with [`XmlParser`], and returns a
     /// ready-to-render document.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(path), fields(path = %path.as_ref().display())))]
-    pub fn new<P: AsRef<Path>>(path: P) -> Result<HtmlDocument, Error> {
+    pub fn new<P: AsRef<Path>>(path: P, install_dir: &Path) -> Result<HtmlDocument, Error> {
         let mut file = File::open(&path)?;
         let size = file.metadata()?.len() as usize;
         let mut text = String::new();
@@ -492,6 +493,7 @@ impl HtmlDocument {
                 parent.to_path_buf(),
                 PathBuf::from(VIEWER_STYLESHEET),
                 PathBuf::from(USER_STYLESHEET),
+                install_dir.to_path_buf(),
             ),
         })
     }
@@ -501,7 +503,7 @@ impl HtmlDocument {
     /// The document has no parent directory, so relative resource references
     /// (images, linked stylesheets) will not be resolved.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(text), fields(len = text.len())))]
-    pub fn new_from_memory(text: &str) -> HtmlDocument {
+    pub fn new_from_memory(text: &str, install_dir: &Path) -> HtmlDocument {
         let size = text.len();
         let mut content = XmlParser::new(text).parse();
         content.wrap_lost_inlines();
@@ -514,6 +516,7 @@ impl HtmlDocument {
                 PathBuf::default(),
                 PathBuf::from(VIEWER_STYLESHEET),
                 PathBuf::from(USER_STYLESHEET),
+                install_dir.to_path_buf(),
             ),
         }
     }
@@ -721,7 +724,7 @@ mod tests {
         let root_dir = PathBuf::from(
             std::env::var("TEST_ROOT_DIR").expect("TEST_ROOT_DIR must be set for html tests"),
         );
-        let mut doc = HtmlDocument::new_from_memory(html);
+        let mut doc = HtmlDocument::new_from_memory(html, &root_dir);
         doc.base.engine.layout(600, 800, 12.0, 265);
         doc.base.engine.set_margin_width(3);
         doc.base.engine.load_fonts_from(root_dir);

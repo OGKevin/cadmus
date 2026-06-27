@@ -23,6 +23,7 @@ pub use identity::SettingIdentity;
 use crate::geom::Rectangle;
 use crate::settings::Settings;
 use crate::view::{Bus, EntryId, EntryKind, Event, ViewId};
+use std::path::Path;
 
 /// Identifies which boolean setting a toggle widget controls.
 ///
@@ -91,6 +92,11 @@ pub struct SettingData {
     pub widget: WidgetKind,
 }
 
+pub struct SettingsFetchData<'a> {
+    pub settings: &'a Settings,
+    pub install_dir: Option<&'a Path>,
+}
+
 /// A self-contained description of a single setting.
 ///
 /// Implementing this trait is sufficient to add a new setting to the editor.
@@ -105,7 +111,7 @@ pub trait SettingKind {
     fn label(&self, settings: &Settings) -> String;
 
     /// Fetch the current display value and widget configuration from `settings`.
-    fn fetch(&self, settings: &Settings) -> SettingData;
+    fn fetch(&self, data: SettingsFetchData) -> SettingData;
 
     /// Handle an incoming event that may apply a change to this setting.
     ///
@@ -161,8 +167,8 @@ impl<T: SettingKind + ?Sized> SettingKind for &T {
         (**self).label(settings)
     }
 
-    fn fetch(&self, settings: &Settings) -> SettingData {
-        (**self).fetch(settings)
+    fn fetch(&self, data: SettingsFetchData) -> SettingData {
+        (**self).fetch(data)
     }
 
     fn handle(
@@ -200,8 +206,8 @@ impl<T: SettingKind + ?Sized> SettingKind for Box<T> {
         (**self).label(settings)
     }
 
-    fn fetch(&self, settings: &Settings) -> SettingData {
-        (**self).fetch(settings)
+    fn fetch(&self, data: SettingsFetchData) -> SettingData {
+        (**self).fetch(data)
     }
 
     fn handle(

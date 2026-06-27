@@ -2,21 +2,24 @@
 
 mod error;
 mod manager;
+#[cfg(any(test, not(feature = "kobo")))]
+mod stub;
 
 cfg_select! {
-    feature = "kobo" => {
+    any(feature = "kobo", docsrs) => {
         mod kobo;
-        pub(crate) use kobo::create_power_manager;
+        pub use kobo::KoboPowerManager;
     }
-    _ => {
-        mod stub;
-        pub(crate) use stub::create_power_manager;
-    }
+    _ => {}
 }
+
+#[cfg(any(test, not(feature = "kobo")))]
+pub use stub::StubPowerManager;
 
 pub use error::PowerError;
 pub use manager::PowerManager;
 
+#[cfg(any(feature = "kobo", test))]
 pub(crate) fn discover_cores(
     cpu_dir: &std::path::Path,
 ) -> Result<Vec<(std::path::PathBuf, String)>, std::io::Error> {
@@ -62,26 +65,6 @@ pub(crate) fn discover_cores(
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(not(feature = "kobo"))]
-    use crate::device::Model;
-
-    #[cfg(not(feature = "kobo"))]
-    #[test]
-    #[should_panic(expected = "There is no implementation for suspending on this build.")]
-    fn test_power_manager_stub_suspend_panics() {
-        let manager = create_power_manager(Model::Sage).expect("failed to create power manager");
-
-        let _ = manager.suspend();
-    }
-
-    #[cfg(not(feature = "kobo"))]
-    #[test]
-    #[should_panic(expected = "There is no implementation for resuming on this build.")]
-    fn test_power_manager_stub_resume_panics() {
-        let manager = create_power_manager(Model::Sage).expect("failed to create power manager");
-
-        let _ = manager.resume();
-    }
 
     #[test]
     fn test_discover_cores() {

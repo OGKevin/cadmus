@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::time::Duration;
 
+use crate::device::AppDevice;
 use crate::version::get_current_version;
 
 /// The filename of the SQLite database used by Cadmus.
@@ -114,13 +115,13 @@ impl Database {
     ///
     /// Must be called once after [`Database::new`] before the database is used.
     /// Intended for use in the synchronous startup path.
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
-    pub fn init(&mut self, backup_retention: usize) -> Result<(), Error> {
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, device)))]
+    pub fn init(&mut self, device: &AppDevice, backup_retention: usize) -> Result<(), Error> {
         let app_version = get_current_version();
 
         RUNTIME.block_on(async {
             self.restore_if_needed(&app_version).await?;
-            self.migrate().await?;
+            self.migrate(device).await?;
             version::stamp_db_version(&self.pool, &app_version, &version::current_migration_hash())
                 .await?;
             tracing::info!(app_version = %app_version, "database version stamped");
@@ -128,6 +129,13 @@ impl Database {
                 .await?;
             Ok(())
         })
+    }
+
+    /// Runs database initialization using a default [`TestDevice`](crate::device::test_device::TestDevice) for migrations.
+    #[cfg(test)]
+    pub fn init_for_test(&mut self, backup_retention: usize) -> Result<(), Error> {
+        let device = crate::device::test_device::TestDevice::new();
+        self.init(&device, backup_retention)
     }
 
     /// Checks integrity and the version gate, restoring a backup when either fails.
@@ -257,8 +265,8 @@ impl Database {
     }
 
     /// Runs schema migrations (sqlx) followed by runtime migrations.
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
-    async fn migrate(&mut self) -> Result<(), Error> {
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, device)))]
+    async fn migrate(&mut self, device: &AppDevice) -> Result<(), Error> {
         tracing::info!("running schema migrations");
         #[cfg(feature = "tracing")]
         let span = tracing::info_span!("sqlx_migrations").entered();
@@ -267,7 +275,7 @@ impl Database {
         span.exit();
 
         tracing::info!("running runtime migrations");
-        self.migration_runner().run_all().await?;
+        self.migration_runner().run_all(device).await?;
 
         Ok(())
     }
@@ -356,7 +364,7 @@ mod tests {
     #[test]
     fn test_database_creation() {
         let mut db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.init(0).expect("failed to run migrations");
+        db.init_for_test(0).expect("failed to run migrations");
 
         RUNTIME.block_on(async {
             let result: (i64,) = sqlx::query_as(
@@ -373,7 +381,7 @@ mod tests {
     #[test]
     fn test_migrate_stamps_version_on_first_run() {
         let mut db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.init(0).expect("failed to run migrations");
+        db.init_for_test(0).expect("failed to run migrations");
 
         let version = RUNTIME.block_on(async { version::read_db_version(&db.pool).await.unwrap() });
         assert_eq!(
@@ -386,8 +394,8 @@ mod tests {
     #[test]
     fn test_migrate_current_version_is_idempotent() {
         let mut db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.init(0).expect("first migrate");
-        db.init(0)
+        db.init_for_test(0).expect("first migrate");
+        db.init_for_test(0)
             .expect("second migrate should succeed (Current path)");
 
         let version = RUNTIME.block_on(async { version::read_db_version(&db.pool).await.unwrap() });
@@ -397,7 +405,7 @@ mod tests {
     #[test]
     fn test_migrate_upgrade_from_older_version() {
         let mut db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.init(0).expect("initial migrate");
+        db.init_for_test(0).expect("initial migrate");
 
         let older = crate::version::GitVersion::parse("v0.0.1").unwrap();
         let migration_hash = version::current_migration_hash();
@@ -407,7 +415,8 @@ mod tests {
                 .unwrap();
         });
 
-        db.init(0).expect("migrate should succeed (Upgrade path)");
+        db.init_for_test(0)
+            .expect("migrate should succeed (Upgrade path)");
 
         let version = RUNTIME.block_on(async { version::read_db_version(&db.pool).await.unwrap() });
         assert_eq!(
@@ -420,7 +429,7 @@ mod tests {
     #[test]
     fn test_migrate_downgrade_without_db_dir_errors() {
         let mut db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.init(0).expect("initial migrate");
+        db.init_for_test(0).expect("initial migrate");
 
         let newer = crate::version::GitVersion::parse("v99.99.99").unwrap();
         let migration_hash = incompatible_migration_hash();
@@ -431,7 +440,7 @@ mod tests {
         });
 
         let err = db
-            .init(0)
+            .init_for_test(0)
             .expect_err("init should fail on downgrade without db_dir");
         assert!(
             err.to_string().contains("no database directory available"),
@@ -449,7 +458,7 @@ mod tests {
         let db_path = dir.path().join("test.sqlite");
 
         let mut db = Database::new(db_path.to_str().unwrap()).expect("failed to create database");
-        db.init(0).expect("initial migrate");
+        db.init_for_test(0).expect("initial migrate");
 
         let newer = crate::version::GitVersion::parse("v99.99.99").unwrap();
         let migration_hash = incompatible_migration_hash();
@@ -460,7 +469,7 @@ mod tests {
         });
 
         let err = db
-            .init(0)
+            .init_for_test(0)
             .expect_err("init should fail when no backup is available");
         assert!(
             err.to_string().contains("no compatible backup found"),
@@ -478,7 +487,7 @@ mod tests {
         let db_path = dir.path().join("test.sqlite");
 
         let mut db = Database::new(db_path.to_str().unwrap()).expect("failed to create database");
-        db.init(0).expect("initial migrate");
+        db.init_for_test(0).expect("initial migrate");
 
         let app_version = get_current_version();
         RUNTIME.block_on(async {
@@ -495,7 +504,7 @@ mod tests {
                 .unwrap();
         });
 
-        db.init(0)
+        db.init_for_test(0)
             .expect("migrate should succeed on downgrade with db_dir (restore path)");
 
         let version = RUNTIME.block_on(async { version::read_db_version(&db.pool).await.unwrap() });
@@ -535,7 +544,8 @@ mod tests {
         let db_path = dir.path().join("cadmus.sqlite");
 
         let mut db = Database::new(db_path.to_str().unwrap()).expect("failed to create database");
-        db.init(0).expect("failed to run initial migrations");
+        db.init_for_test(0)
+            .expect("failed to run initial migrations");
 
         let app_version = get_current_version();
         RUNTIME.block_on(async {
@@ -555,7 +565,7 @@ mod tests {
         }
 
         let mut db = Database::new(db_path.to_str().unwrap()).expect("failed to reopen database");
-        db.init(0)
+        db.init_for_test(0)
             .expect("init should restore from backup on corruption");
 
         let version = RUNTIME.block_on(async { version::read_db_version(&db.pool).await.unwrap() });
@@ -575,7 +585,7 @@ mod tests {
         let db_path = dir.path().join("corrupt.sqlite");
 
         let mut db = Database::new(db_path.to_str().unwrap()).expect("failed to create database");
-        db.init(0).expect("failed to run migrations");
+        db.init_for_test(0).expect("failed to run migrations");
 
         RUNTIME.block_on(async { db.pool.close().await });
 

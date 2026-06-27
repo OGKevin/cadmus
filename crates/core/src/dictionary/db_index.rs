@@ -207,7 +207,7 @@ mod tests {
 
     fn setup_db() -> Database {
         let mut db = Database::new(":memory:").expect("in-memory db");
-        db.init(0).expect("migrations");
+        db.init_for_test(0).expect("migrations");
         db
     }
 

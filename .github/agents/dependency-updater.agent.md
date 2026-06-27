@@ -140,7 +140,7 @@ cargo build --all-features
 # Build each crate individually (catches workspace issues)
 cargo build -p cadmus-core
 cargo build -p cadmus
-cargo build -p emulator
+cargo build -p cadmus --features emulator
 cargo build -p importer
 cargo build -p fetcher
 

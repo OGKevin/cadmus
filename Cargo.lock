@@ -464,6 +464,7 @@ dependencies = [
  "reqwest",
  "rust-embed",
  "rustls",
+ "sdl2",
  "secrecy",
  "septem",
  "serde",
@@ -986,16 +987,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "48c757948c5ede0e46177b7add2e67155f70e33c07fea8284df6576da70b3719"
 dependencies = [
  "serde",
-]
-
-[[package]]
-name = "emulator"
-version = "0.11.0"
-dependencies = [
- "cadmus-core",
- "sdl2",
- "tikv-jemallocator",
- "tracing",
 ]
 
 [[package]]

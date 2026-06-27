@@ -238,9 +238,9 @@ color = { gray = 0 }
 dynamic = true
 # The amplitude of the diameter variation when `dynamic` is set.
 amplitude = 4.0
-# The pen speeds, in pixels per seconds, that clamps the pen's speed.
+# The pen speeds, in millimeters per second, that clamp the pen's speed.
 # min-speed = 0.0
-# max-speed = 3000.0
+# max-speed = 254.0
 
 [calculator]
 # The default font size and margin width, for the Calculator application.

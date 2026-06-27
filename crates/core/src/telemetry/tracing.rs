@@ -38,13 +38,14 @@
 //! # Ok::<(), anyhow::Error>(())
 //! ```
 
+use crate::http;
 use crate::settings::LoggingSettings;
 use crate::version::get_current_version;
 use anyhow::{Context, Error};
 use gethostname::gethostname;
 use opentelemetry::trace::TracerProvider;
 use opentelemetry::{KeyValue, global};
-use opentelemetry_otlp::{LogExporter, SpanExporter, WithExportConfig};
+use opentelemetry_otlp::{LogExporter, SpanExporter, WithExportConfig, WithHttpConfig};
 use opentelemetry_sdk::Resource;
 use opentelemetry_sdk::logs::{BatchLogProcessor, SdkLoggerProvider};
 use opentelemetry_sdk::trace::{BatchSpanProcessor, SdkTracerProvider};
@@ -109,6 +110,8 @@ pub fn init_telemetry<S>(
 where
     S: tracing::Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a> + Send + Sync,
 {
+    crate::crypto::init_crypto_provider();
+
     let endpoint = match otel_endpoint(settings) {
         Some(endpoint) => endpoint,
         None => return Ok(None),
@@ -230,6 +233,7 @@ fn otel_endpoint(settings: &LoggingSettings) -> Option<String> {
 fn build_tracer_provider(endpoint: &str, resource: Resource) -> Result<SdkTracerProvider, Error> {
     let exporter = SpanExporter::builder()
         .with_http()
+        .with_http_client(http::Client::new()?.into_reqwest())
         .with_endpoint(format!("{}/v1/traces", endpoint.trim_end_matches('/')))
         .with_timeout(Duration::from_secs(3))
         .build()
@@ -270,6 +274,7 @@ fn build_tracer_provider(endpoint: &str, resource: Resource) -> Result<SdkTracer
 fn build_logger_provider(endpoint: &str, resource: Resource) -> Result<SdkLoggerProvider, Error> {
     let exporter = LogExporter::builder()
         .with_http()
+        .with_http_client(http::Client::new()?.into_reqwest())
         .with_endpoint(format!("{}/v1/logs", endpoint.trim_end_matches('/')))
         .with_timeout(Duration::from_secs(3))
         .build()

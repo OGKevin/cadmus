@@ -1,6 +1,9 @@
 mod image;
+#[cfg(any(feature = "kobo", docsrs))]
 mod ion_sys;
+#[cfg(any(feature = "kobo", docsrs))]
 mod kobo1;
+#[cfg(any(feature = "kobo", docsrs))]
 mod kobo2;
 mod linuxfb_sys;
 mod mxcfb_sys;
@@ -13,7 +16,9 @@ use crate::geom::{Point, Rectangle, lerp, nearest_segment_point, surface_area};
 use anyhow::Error;
 
 pub use self::image::Pixmap;
+#[cfg(any(feature = "kobo", docsrs))]
 pub use self::kobo1::KoboFramebuffer1;
+#[cfg(any(feature = "kobo", docsrs))]
 pub use self::kobo2::KoboFramebuffer2;
 
 #[derive(Debug, Copy, Clone)]
@@ -61,8 +66,10 @@ pub trait Framebuffer {
         self.set_dithered(!self.dithered());
     }
 
-    fn rotation(&self) -> i8 {
-        0
+    fn rotation(&self) -> i8;
+
+    fn refresh_from_kernel(&mut self) {
+        let _ = self;
     }
 
     fn dims(&self) -> (u32, u32) {
@@ -446,5 +453,62 @@ pub trait Framebuffer {
                 }
             }
         }
+    }
+}
+
+impl<T: Framebuffer + ?Sized> Framebuffer for Box<T> {
+    fn set_pixel(&mut self, x: u32, y: u32, color: Color) {
+        (**self).set_pixel(x, y, color);
+    }
+    fn set_blended_pixel(&mut self, x: u32, y: u32, color: Color, alpha: f32) {
+        (**self).set_blended_pixel(x, y, color, alpha);
+    }
+    fn invert_region(&mut self, rect: &Rectangle) {
+        (**self).invert_region(rect);
+    }
+    fn shift_region(&mut self, rect: &Rectangle, drift: u8) {
+        (**self).shift_region(rect, drift);
+    }
+    fn update(&mut self, rect: &Rectangle, mode: UpdateMode) -> Result<u32, Error> {
+        (**self).update(rect, mode)
+    }
+    fn wait(&self, token: u32) -> Result<i32, Error> {
+        (**self).wait(token)
+    }
+    fn save(&self, path: &str) -> Result<(), Error> {
+        (**self).save(path)
+    }
+    fn set_rotation(&mut self, n: i8) -> Result<(u32, u32), Error> {
+        (**self).set_rotation(n)
+    }
+    fn set_monochrome(&mut self, enable: bool) {
+        (**self).set_monochrome(enable);
+    }
+    fn set_dithered(&mut self, enable: bool) {
+        (**self).set_dithered(enable);
+    }
+    fn set_inverted(&mut self, enable: bool) {
+        (**self).set_inverted(enable);
+    }
+    fn monochrome(&self) -> bool {
+        (**self).monochrome()
+    }
+    fn dithered(&self) -> bool {
+        (**self).dithered()
+    }
+    fn inverted(&self) -> bool {
+        (**self).inverted()
+    }
+    fn rotation(&self) -> i8 {
+        (**self).rotation()
+    }
+    fn refresh_from_kernel(&mut self) {
+        (**self).refresh_from_kernel();
+    }
+    fn width(&self) -> u32 {
+        (**self).width()
+    }
+    fn height(&self) -> u32 {
+        (**self).height()
     }
 }

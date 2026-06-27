@@ -1,16 +1,17 @@
 mod calendar;
 
 use super::{Bus, Event, Hub, ID_FEEDER, Id, RenderQueue, View};
+use crate::AlarmType;
 use crate::color::{BLACK, Color, TEXT_INVERTED_HARD, TEXT_NORMAL, WHITE};
-use crate::context::Context;
-use crate::device::CURRENT_DEVICE;
+use crate::device::AppContext;
+use crate::device::DeviceCapabilities as _;
+use crate::device::DevicePaths as _;
 use crate::document::{Location, open};
 use crate::fl;
-use crate::font::{DISPLAY_STYLE, Fonts, font_from_style};
+use crate::font::{DISPLAY_STYLE, font_from_style};
 use crate::framebuffer::Framebuffer;
 use crate::geom::Rectangle;
 use crate::i18n::I18nDisplay;
-use crate::rtc::AlarmType;
 use crate::settings::{IntermKind, IntermissionDisplay};
 use calendar::CalendarView;
 use std::path::PathBuf;
@@ -34,7 +35,7 @@ enum Message {
 }
 
 impl Intermission {
-    pub fn new(rect: Rectangle, kind: IntermKind, context: &Context) -> Intermission {
+    pub fn new(rect: Rectangle, kind: IntermKind, context: &AppContext) -> Intermission {
         let halt = kind == IntermKind::PowerOff;
 
         let (message, children): (Message, Vec<Box<dyn View>>) =
@@ -87,20 +88,28 @@ impl I18nDisplay for IntermissionDisplay {
 }
 
 impl View for Intermission {
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _evt, _hub, _bus, _rq, _context), fields(event = ?_evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(
+        skip(self, _evt, _hub, _bus, _rq, _context),
+        fields(event = ?_evt),
+        ret(level=tracing::Level::TRACE)
+    ))]
     fn handle_event(
         &mut self,
         _evt: &Event,
         _hub: &Hub,
         _bus: &mut Bus,
         _rq: &mut RenderQueue,
-        _context: &mut Context,
+        _context: &mut AppContext,
     ) -> bool {
         true
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fb, fonts, _rect), fields(rect = ?_rect)))]
-    fn render(&self, fb: &mut dyn Framebuffer, _rect: Rectangle, fonts: &mut Fonts) {
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, context, _rect), fields(rect = ?_rect
+    )))]
+    fn render(&self, context: &mut AppContext, _rect: Rectangle) {
+        let install_dir = context.device.install_dir();
+        let color_samples = context.device.color_samples();
+        let (fb, fonts, dpi) = context.framebuffer_and_fonts();
         let scheme = if self.halt {
             TEXT_INVERTED_HARD
         } else {
@@ -111,8 +120,6 @@ impl View for Intermission {
 
         match self.message {
             Message::Text(ref text) => {
-                let dpi = CURRENT_DEVICE.dpi;
-
                 let font = font_from_style(fonts, &DISPLAY_STYLE, dpi);
                 let padding = font.em() as i32;
                 let max_width = self.rect.width() as i32 - 3 * padding;
@@ -132,8 +139,8 @@ impl View for Intermission {
 
                 font.render(fb, scheme[1], &plan, pt!(dx, dy));
 
-                let logo_path = CURRENT_DEVICE.install_path("icons/dodecahedron.svg");
-                match open(&logo_path) {
+                let logo_path = install_dir.join("icons/dodecahedron.svg");
+                match open(&logo_path, &install_dir) {
                     None => warn!(path = %logo_path.display(), "failed to open logo icon"),
                     Some(mut doc) => match doc.dims(0) {
                         None => warn!("failed to read dimensions from dodecahedron.svg"),
@@ -153,33 +160,14 @@ impl View for Intermission {
                 }
             }
             Message::Image(ref path) => {
-                if let Some(mut doc) = open(path) {
-                    if let Some((width, height)) = doc.dims(0) {
-                        let w_ratio = self.rect.width() as f32 / width;
-                        let h_ratio = self.rect.height() as f32 / height;
-                        let scale = w_ratio.min(h_ratio);
-                        if let Some((pixmap, _)) =
-                            doc.pixmap(Location::Exact(0), scale, CURRENT_DEVICE.color_samples())
-                        {
-                            let dx = (self.rect.width() as i32 - pixmap.width as i32) / 2;
-                            let dy = (self.rect.height() as i32 - pixmap.height as i32) / 2;
-                            let pt = self.rect.min + pt!(dx, dy);
-                            fb.draw_pixmap(&pixmap, pt);
-                            if fb.inverted() {
-                                let rect = pixmap.rect() + pt;
-                                fb.invert_region(&rect);
-                            }
-                        }
-                    }
-                }
-            }
-            Message::Cover(ref path) => {
-                if let Some(mut doc) = open(path) {
-                    if let Some(pixmap) = doc.preview_pixmap(
-                        self.rect.width() as f32,
-                        self.rect.height() as f32,
-                        CURRENT_DEVICE.color_samples(),
-                    ) {
+                if let Some(mut doc) = open(path, &install_dir)
+                    && let Some((width, height)) = doc.dims(0)
+                {
+                    let w_ratio = self.rect.width() as f32 / width;
+                    let h_ratio = self.rect.height() as f32 / height;
+                    let scale = w_ratio.min(h_ratio);
+                    if let Some((pixmap, _)) = doc.pixmap(Location::Exact(0), scale, color_samples)
+                    {
                         let dx = (self.rect.width() as i32 - pixmap.width as i32) / 2;
                         let dy = (self.rect.height() as i32 - pixmap.height as i32) / 2;
                         let pt = self.rect.min + pt!(dx, dy);
@@ -188,6 +176,24 @@ impl View for Intermission {
                             let rect = pixmap.rect() + pt;
                             fb.invert_region(&rect);
                         }
+                    }
+                }
+            }
+            Message::Cover(ref path) => {
+                if let Some(mut doc) = open(path, &install_dir)
+                    && let Some(pixmap) = doc.preview_pixmap(
+                        self.rect.width() as f32,
+                        self.rect.height() as f32,
+                        color_samples,
+                    )
+                {
+                    let dx = (self.rect.width() as i32 - pixmap.width as i32) / 2;
+                    let dy = (self.rect.height() as i32 - pixmap.height as i32) / 2;
+                    let pt = self.rect.min + pt!(dx, dy);
+                    fb.draw_pixmap(&pixmap, pt);
+                    if fb.inverted() {
+                        let rect = pixmap.rect() + pt;
+                        fb.invert_region(&rect);
                     }
                 }
             }

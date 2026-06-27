@@ -1,9 +1,7 @@
 use super::{Bus, Event, Hub, ID_FEEDER, Id, RenderData, RenderQueue, View};
 use crate::color::{BLACK, PROGRESS_EMPTY, PROGRESS_FULL, WHITE};
-use crate::context::Context;
-use crate::device::CURRENT_DEVICE;
-use crate::font::Fonts;
-use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::device::AppContext;
+use crate::framebuffer::UpdateMode;
 use crate::geom::{BorderSpec, CornerSpec, Rectangle, halves};
 use crate::unit::scale_by_dpi;
 
@@ -46,21 +44,26 @@ impl ProgressBar {
 }
 
 impl View for ProgressBar {
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, _bus, _rq, _context), fields(event = ?_evt), ret(level = tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(
+        skip(self, _hub, _bus, _rq, _context),
+        fields(event = ?_evt),
+        ret(level = tracing::Level::TRACE)
+    ))]
     fn handle_event(
         &mut self,
         _evt: &Event,
         _hub: &Hub,
         _bus: &mut Bus,
         _rq: &mut RenderQueue,
-        _context: &mut Context,
+        _context: &mut AppContext,
     ) -> bool {
         false
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fb, _fonts, _rect), fields(rect = ?_rect)))]
-    fn render(&self, fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {
-        let dpi = CURRENT_DEVICE.dpi;
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _rect, context), fields(rect = ?_rect
+    )))]
+    fn render(&self, context: &mut AppContext, _rect: Rectangle) {
+        let (fb, dpi) = context.framebuffer_with_dpi();
         let progress_height = scale_by_dpi(PROGRESS_HEIGHT, dpi) as i32;
         let border_thickness = scale_by_dpi(BORDER_THICKNESS, dpi) as u16;
 

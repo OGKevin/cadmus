@@ -9,12 +9,13 @@ name = "cadmus"
 path = "src/main.rs"
 
 [features]
-default = ["kobo"]
+default = []
 test = ["cadmus-core/test"]
 tracing = ["cadmus-core/tracing"]
 profiling = ["cadmus-core/profiling", "tikv-jemallocator"]
 telemetry = ["cadmus-core/telemetry", "tracing", "profiling", "tikv-jemallocator"]
 kobo = ["cadmus-core/kobo"]
+emulator = ["cadmus-core/emulator"]
 
 [dependencies]
 cadmus-core = { path = "../core" }

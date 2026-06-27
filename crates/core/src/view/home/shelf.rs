@@ -1,9 +1,8 @@
 use super::book::Book;
 use crate::color::{SEPARATOR_NORMAL, WHITE};
-use crate::context::Context;
-use crate::device::CURRENT_DEVICE;
-use crate::font::Fonts;
-use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::device::AppContext;
+use crate::device::DeviceIdentity as _;
+use crate::framebuffer::UpdateMode;
 use crate::geom::divide;
 use crate::geom::{CycleDir, Dir, Rectangle, halves};
 use crate::gesture::GestureEvent;
@@ -30,8 +29,8 @@ impl Shelf {
         first_column: FirstColumn,
         second_column: SecondColumn,
         thumbnail_previews: bool,
+        dpi: u16,
     ) -> Shelf {
-        let dpi = CURRENT_DEVICE.dpi;
         let big_height = scale_by_dpi(BIG_BAR_HEIGHT, dpi) as i32;
         let thickness = scale_by_dpi(THICKNESS_MEDIUM, dpi) as i32;
         let max_lines = ((rect.height() as i32 + thickness) / big_height) as usize;
@@ -59,9 +58,9 @@ impl Shelf {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, rq, context)))]
-    pub fn update(&mut self, metadata: &[Info], rq: &mut RenderQueue, context: &Context) {
+    pub fn update(&mut self, metadata: &[Info], rq: &mut RenderQueue, context: &AppContext) {
         self.children.clear();
-        let dpi = CURRENT_DEVICE.dpi;
+        let dpi = context.device.dpi();
         let big_height = scale_by_dpi(BIG_BAR_HEIGHT, dpi) as i32;
         let thickness = scale_by_dpi(THICKNESS_MEDIUM, dpi) as i32;
         let (small_thickness, big_thickness) = halves(thickness);
@@ -129,14 +128,18 @@ impl Shelf {
 }
 
 impl View for Shelf {
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, bus, _rq, _context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(
+        skip(self, _hub, bus, _rq, _context),
+        fields(event = ?evt),
+        ret(level=tracing::Level::TRACE)
+    ))]
     fn handle_event(
         &mut self,
         evt: &Event,
         _hub: &Hub,
         bus: &mut Bus,
         _rq: &mut RenderQueue,
-        _context: &mut Context,
+        _context: &mut AppContext,
     ) -> bool {
         match *evt {
             Event::Gesture(GestureEvent::Swipe { dir, start, .. }) if self.rect.includes(start) => {
@@ -156,8 +159,9 @@ impl View for Shelf {
         }
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _fb, _fonts, _rect), fields(rect = ?_rect)))]
-    fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {}
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _rect, _context), fields(rect = ?_rect
+    )))]
+    fn render(&self, _context: &mut AppContext, _rect: Rectangle) {}
 
     fn rect(&self) -> &Rectangle {
         &self.rect

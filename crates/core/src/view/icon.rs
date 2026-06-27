@@ -1,10 +1,11 @@
 use super::{Align, Bus, Event, Hub, ID_FEEDER, Id, RenderData, RenderQueue, View, ViewId};
 use crate::color::{Color, TEXT_INVERTED_HARD, TEXT_NORMAL};
-use crate::context::Context;
-use crate::device::CURRENT_DEVICE;
+use crate::device::AppContext;
+use crate::device::DeviceHardware as _;
+use crate::device::{DeviceIdentity, DevicePaths};
 use crate::document::pdf::PdfOpener;
-use crate::font::Fonts;
-use crate::framebuffer::{Framebuffer, Pixmap, UpdateMode};
+use crate::framebuffer::Framebuffer as _;
+use crate::framebuffer::{Pixmap, UpdateMode};
 use crate::geom::{CornerSpec, Rectangle};
 use crate::gesture::GestureEvent;
 use crate::input::{DeviceEvent, FingerStatus};
@@ -14,74 +15,42 @@ use lazy_static::lazy_static;
 
 const ICON_SCALE: f32 = 1.0 / 32.0;
 
+type IconCacheKey = (String, u16, std::path::PathBuf);
+
 lazy_static! {
-    pub static ref ICONS_PIXMAPS: FxHashMap<&'static str, Pixmap> = {
-        let mut m = FxHashMap::default();
-        let scale = scale_by_dpi_raw(ICON_SCALE, CURRENT_DEVICE.dpi);
-        #[cfg(test)]
-        let dir = std::path::Path::new(
-            &std::env::var("TEST_ROOT_DIR").expect("TEST_ROOT_DIR must be set for tests."),
-        )
-        .join("icons");
-        #[cfg(not(test))]
-        let dir = CURRENT_DEVICE.install_path("icons");
-        for name in [
-            "home",
-            "search",
-            "back",
-            "frontlight",
-            "frontlight-disabled",
-            "menu",
-            "angle-left",
-            "angle-right",
-            "angle-left-small",
-            "angle-right-small",
-            "return",
-            "shift",
-            "combine",
-            "alternate",
-            "delete-backward",
-            "delete-forward",
-            "move-backward",
-            "move-backward-short",
-            "move-forward",
-            "move-forward-short",
-            "close",
-            "check_mark-small",
-            "check_mark",
-            "check_mark-large",
-            "bullet",
-            "arrow-left",
-            "arrow-right",
-            "angle-down",
-            "angle-up",
-            "crop",
-            "toc",
-            "font_family",
-            "font_size",
-            "line_height",
-            "align-justify",
-            "align-left",
-            "align-right",
-            "align-center",
-            "margin",
-            "plug",
-            "cover",
-            "enclosed_menu",
-            "contrast",
-            "gray",
-            "plus",
-        ]
-        .iter()
-        .cloned()
-        {
-            let path = dir.join(format!("{}.svg", name));
-            let doc = PdfOpener::new().and_then(|o| o.open(&path).ok()).unwrap();
-            let pixmap = doc.page(0).and_then(|p| p.pixmap(scale, 1)).unwrap();
-            m.insert(name, pixmap);
+    static ref ICONS_CACHE: std::sync::Mutex<FxHashMap<IconCacheKey, Pixmap>> =
+        std::sync::Mutex::new(FxHashMap::default());
+}
+
+#[cfg_attr(feature = "tracing", tracing::instrument())]
+pub fn load_icon_pixmap(name: &str, dpi: u16, install_dir: &std::path::Path) -> Option<Pixmap> {
+    if name.is_empty() {
+        return None;
+    }
+
+    let key: IconCacheKey = (name.to_string(), dpi, install_dir.to_path_buf());
+    {
+        let cache = ICONS_CACHE.lock().ok()?;
+        if let Some(pixmap) = cache.get(&key) {
+            return Some(pixmap.clone());
         }
-        m
-    };
+    }
+
+    let scale = scale_by_dpi_raw(ICON_SCALE, dpi);
+    #[cfg(test)]
+    let dir = std::path::Path::new(
+        &std::env::var("TEST_ROOT_DIR").expect("TEST_ROOT_DIR must be set for tests."),
+    )
+    .join("icons");
+    #[cfg(not(test))]
+    let dir = install_dir.join("icons");
+    let path = dir.join(format!("{}.svg", name));
+    let doc = PdfOpener::new().and_then(|o| o.open(&path).ok())?;
+    let pixmap = doc.page(0).and_then(|p| p.pixmap(scale, 1))?;
+
+    let mut cache = ICONS_CACHE.lock().ok()?;
+    cache.insert(key, pixmap.clone());
+    Some(pixmap)
 }
 
 pub struct Icon {
@@ -130,14 +99,15 @@ impl Icon {
 }
 
 impl View for Icon {
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, bus, rq, _context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, bus, rq, _context), fields(event = ?evt
+    ), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
         hub: &Hub,
         bus: &mut Bus,
         rq: &mut RenderQueue,
-        _context: &mut Context,
+        _context: &mut AppContext,
     ) -> bool {
         match *evt {
             Event::Device(DeviceEvent::Finger {
@@ -181,15 +151,19 @@ impl View for Icon {
         }
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fb, _fonts, _rect), fields(rect = ?_rect)))]
-    fn render(&self, fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, context, _rect), fields(rect = ?_rect
+    )))]
+    fn render(&self, context: &mut AppContext, _rect: Rectangle) {
+        let dpi = context.device.dpi();
+        let install_dir = context.device.install_dir();
+        let fb = context.device.framebuffer_mut();
         let scheme = if self.active {
             TEXT_INVERTED_HARD
         } else {
             TEXT_NORMAL
         };
 
-        let pixmap = ICONS_PIXMAPS.get(&self.name[..]).unwrap();
+        let pixmap = load_icon_pixmap(&self.name, dpi, &install_dir).unwrap();
         let dx = self
             .align
             .offset(pixmap.width as i32, self.rect.width() as i32);
@@ -208,7 +182,7 @@ impl View for Icon {
             fb.draw_rectangle(&self.rect, background);
         }
 
-        fb.draw_blended_pixmap(pixmap, pt, scheme[1]);
+        fb.draw_blended_pixmap(&pixmap, pt, scheme[1]);
     }
 
     fn resize(
@@ -216,7 +190,7 @@ impl View for Icon {
         rect: Rectangle,
         _hub: &Hub,
         _rq: &mut RenderQueue,
-        _context: &mut Context,
+        _context: &mut AppContext,
     ) {
         if let Event::ToggleNear(_, ref mut event_rect) = self.event {
             *event_rect = rect;

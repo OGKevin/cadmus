@@ -205,17 +205,25 @@ jobs:
         run: cargo xtask setup
       - name: Warmup build (native)
         if: steps.cache.outputs.cache-hit != 'true'
-        run: cargo check --workspace --all-features --all-targets
+        run: |
+          cargo check --workspace --features emulator,test,telemetry
+          cargo check --workspace --features kobo,test,telemetry
+          cargo check --workspace --features deviceless
       - name: Warmup llvm-cov build
         if: steps.cache.outputs.cache-hit != 'true'
         run: |
-          cargo llvm-cov nextest-archive \
-            --workspace --all-features --all-targets \
-            --archive-file target/llvm-cov-warmup.tar.zst
-          rm -f target/llvm-cov-warmup.tar.zst
+          for features in emulator kobo deviceless; do
+            cargo llvm-cov nextest-archive \
+              --workspace --all-targets \
+              --features "$features" \
+              --archive-file "target/llvm-cov-warmup-${features}.tar.zst"
+            rm -f "target/llvm-cov-warmup-${features}.tar.zst"
+          done
       - name: Warmup build (Kobo release)
         if: steps.cache.outputs.cache-hit != 'true'
-        run: cargo build --release --target arm-unknown-linux-gnueabihf -p cadmus
+        run: |
+          cargo build --release --target arm-unknown-linux-gnueabihf -p cadmus --features kobo
+          cargo build --release --target arm-unknown-linux-gnueabihf -p cadmus --features kobo,test
 
   clippy:
     if: github.event_name == 'pull_request' && needs.changes.outputs.cargo == 'true'

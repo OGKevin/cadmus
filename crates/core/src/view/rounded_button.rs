@@ -1,11 +1,9 @@
 use super::THICKNESS_MEDIUM;
-use super::icon::ICONS_PIXMAPS;
+use super::icon::load_icon_pixmap;
 use super::{Bus, Event, Hub, ID_FEEDER, Id, RenderData, RenderQueue, View};
 use crate::color::{TEXT_INVERTED_HARD, TEXT_NORMAL};
-use crate::context::Context;
-use crate::device::CURRENT_DEVICE;
-use crate::font::Fonts;
-use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::device::{AppContext, DevicePaths};
+use crate::framebuffer::UpdateMode;
 use crate::geom::{BorderSpec, CornerSpec, Rectangle};
 use crate::gesture::GestureEvent;
 use crate::input::{DeviceEvent, FingerStatus};
@@ -34,14 +32,15 @@ impl RoundedButton {
 }
 
 impl View for RoundedButton {
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, bus, rq, _context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, bus, rq, _context), fields(event = ?evt
+    ), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
         _hub: &Hub,
         bus: &mut Bus,
         rq: &mut RenderQueue,
-        _context: &mut Context,
+        _context: &mut AppContext,
     ) -> bool {
         match *evt {
             Event::Device(DeviceEvent::Finger {
@@ -66,9 +65,11 @@ impl View for RoundedButton {
             _ => false,
         }
     }
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fb, _fonts, _rect), fields(rect = ?_rect)))]
-    fn render(&self, fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {
-        let dpi = CURRENT_DEVICE.dpi;
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _rect, context), fields(rect = ?_rect
+    )))]
+    fn render(&self, context: &mut AppContext, _rect: Rectangle) {
+        let install_dir = context.device.install_dir();
+        let (fb, dpi) = context.framebuffer_with_dpi();
         let thickness = scale_by_dpi(THICKNESS_MEDIUM, dpi) as u16;
         let button_radius = self.rect.height() as i32 / 2;
 
@@ -78,7 +79,7 @@ impl View for RoundedButton {
             TEXT_NORMAL
         };
 
-        let pixmap = ICONS_PIXMAPS.get(&self.name[..]).unwrap();
+        let pixmap = load_icon_pixmap(&self.name, dpi, &install_dir).unwrap();
         let dx = (self.rect.width() as i32 - pixmap.width as i32) / 2;
         let dy = (self.rect.height() as i32 - pixmap.height as i32) / 2;
         let pt = self.rect.min + pt!(dx, dy);
@@ -93,7 +94,7 @@ impl View for RoundedButton {
             &scheme[0],
         );
 
-        fb.draw_blended_pixmap(pixmap, pt, scheme[1]);
+        fb.draw_blended_pixmap(&pixmap, pt, scheme[1]);
     }
 
     fn rect(&self) -> &Rectangle {

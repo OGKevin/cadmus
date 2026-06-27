@@ -754,30 +754,30 @@ impl WifiManager for KoboWifiManager {
     }
 }
 
-/// Creates a WiFi manager for the current platform.
-///
-/// Reads `WIFI_MODULE`, `PLATFORM`, and `INTERFACE` environment variables
-/// to determine the appropriate configuration.
-///
-/// # Errors
-///
-/// Returns [`WifiError`] if required environment variables are not set.
-///
-/// # Example
-///
-/// ```ignore
-/// use cadmus_core::device::wifi::create_wifi_manager;
-///
-/// # fn example() -> Result<(), cadmus_core::device::wifi::WifiError> {
-/// let wifi_manager = create_wifi_manager()?;
-/// # Ok(())
-/// # }
-/// ```
-#[cfg_attr(feature = "tracing", tracing::instrument)]
-pub fn create_wifi_manager() -> Result<Box<dyn WifiManager>, WifiError> {
-    let config = WifiModuleConfig::from_env().ok_or_else(|| {
-        WifiError::DeviceInfo("Missing WIFI_MODULE, PLATFORM, or INTERFACE env".to_string())
-    })?;
-
-    Ok(Box::new(KoboWifiManager::new(config)))
+impl KoboWifiManager {
+    /// Creates a `KoboWifiManager` from environment variables.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`WifiError`] if the required environment variables
+    /// (`WIFI_MODULE`, `PLATFORM`, `INTERFACE`) are not set.
+    pub fn from_env() -> Result<Self, WifiError> {
+        cfg_select! {
+            test => {
+                Ok(Self::new(WifiModuleConfig {
+                    module: WifiModule::Other("test".to_string()),
+                    power_toggle: PowerToggle::Module,
+                    wpa_supplicant_driver: "wext",
+                    interface: "wlan0".to_string(),
+                    module_path: "/drivers/test/wifi".to_string(),
+                }))
+            }
+            _ => {
+                let config = WifiModuleConfig::from_env().ok_or_else(|| {
+                    WifiError::DeviceInfo("Missing WIFI_MODULE, PLATFORM, or INTERFACE env".to_string())
+                })?;
+                Ok(Self::new(config))
+            }
+        }
+    }
 }

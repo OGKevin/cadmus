@@ -10,11 +10,10 @@ use super::{
     UpdateMode, View, ViewId,
 };
 use crate::color::WHITE;
-use crate::context::Context;
-use crate::device::CURRENT_DEVICE;
+use crate::device::AppContext;
+use crate::device::{DeviceIdentity as _, DevicePaths as _};
 use crate::fl;
-use crate::font::{Fonts, NORMAL_STYLE, font_from_style};
-use crate::framebuffer::Framebuffer;
+use crate::font::{NORMAL_STYLE, font_from_style};
 use crate::geom::Rectangle;
 use crate::gesture::GestureEvent;
 use crate::github::GithubClient;
@@ -72,7 +71,7 @@ pub fn show_ota_view(
     view: &mut dyn View,
     hub: &Hub,
     rq: &mut RenderQueue,
-    context: &mut Context,
+    context: &mut AppContext,
 ) -> bool {
     #[cfg(feature = "tracing")]
     tracing::trace!("showing ota view");
@@ -152,12 +151,12 @@ impl OtaView {
     ///
     /// * `context` - Application context containing fonts and device information
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-    pub fn new(context: &mut Context) -> OtaView {
+    pub fn new(context: &mut AppContext) -> OtaView {
         let id = ID_FEEDER.next();
         let view_id = ViewId::Ota(OtaViewId::Main);
-        let (width, height) = CURRENT_DEVICE.dims;
+        let (width, height) = context.device.dims();
 
-        let github_token = match device_flow::load_token() {
+        let github_token = match device_flow::load_token(&context.device.install_dir()) {
             Ok(token) => token,
             Err(e) => {
                 tracing::warn!(error = %e, "Failed to load saved GitHub token");
@@ -190,7 +189,7 @@ impl OtaView {
 
     /// Builds the source selection dialog.
     #[inline]
-    fn build_source_selection_dialog(context: &mut Context) -> Dialog {
+    fn build_source_selection_dialog(context: &mut AppContext) -> Dialog {
         let builder = Dialog::builder(
             ViewId::Ota(OtaViewId::Main),
             "Where to check for updates?".to_string(),
@@ -217,9 +216,9 @@ impl OtaView {
     }
 
     /// Builds the PR input screen with title, input field, and keyboard.
-    fn build_pr_input_screen(&mut self, context: &mut Context) {
-        let dpi = CURRENT_DEVICE.dpi;
-        let (width, height) = CURRENT_DEVICE.dims;
+    fn build_pr_input_screen(&mut self, context: &mut AppContext) {
+        let dpi = context.device.dpi();
+        let (width, height) = context.device.dims();
 
         self.children.clear();
         self.status_label_index = None;
@@ -280,9 +279,9 @@ impl OtaView {
     ///
     /// The indices of the label and progress bar are stored so they can be
     /// updated incrementally as progress events arrive.
-    fn build_progress_screen(&mut self, status: &str, context: &mut Context) {
-        let dpi = CURRENT_DEVICE.dpi;
-        let (width, height) = CURRENT_DEVICE.dims;
+    fn build_progress_screen(&mut self, status: &str, context: &mut AppContext) {
+        let dpi = context.device.dpi();
+        let (width, height) = context.device.dims();
 
         self.children.clear();
         self.status_label_index = None;
@@ -333,7 +332,7 @@ impl OtaView {
         visible: bool,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if let Some(idx) = self.keyboard_index {
             if let Some(keyboard) = self.children.get_mut(idx) {
@@ -354,13 +353,13 @@ impl OtaView {
         text: &str,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if let Ok(pr_number) = text.trim().parse::<u32>() {
             self.pending_download = Some(PendingDownload::Pr(pr_number));
             self.build_progress_screen(&format!("Downloading PR #{} build…", pr_number), context);
             rq.add(RenderData::new(self.id, self.rect, UpdateMode::Full));
-            self.start_pr_download(pr_number, hub);
+            self.start_pr_download(pr_number, hub, context);
         } else {
             hub.send(Event::Notification(NotificationEvent::Show(
                 "Invalid PR number".to_string(),
@@ -378,7 +377,12 @@ impl OtaView {
     /// * `tap_position` - The position where the tap occurred
     /// * `context` - Application context containing keyboard rectangle
     /// * `hub` - Event hub for sending close event
-    fn handle_outside_tap(&self, tap_position: crate::geom::Point, context: &Context, hub: &Hub) {
+    fn handle_outside_tap(
+        &self,
+        tap_position: crate::geom::Point,
+        context: &AppContext,
+        hub: &Hub,
+    ) {
         if !self.rect.includes(tap_position)
             && !context.kb_rect.includes(tap_position)
             && !context.kb_rect.is_empty()
@@ -397,7 +401,7 @@ impl OtaView {
         pending: PendingDownload,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
         if self.github_token.is_some() {
             return true;
@@ -418,8 +422,8 @@ impl OtaView {
     /// [`Event::Select`] with [`EntryId::Reboot`] to trigger an automatic reboot.
     /// On a 401 response, sends [`Event::Github`] with [`GithubEvent::TokenInvalid`] without closing
     /// the view so re-authentication can proceed.
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub)))]
-    fn start_pr_download(&mut self, pr_number: u32, hub: &Hub) {
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, context)))]
+    fn start_pr_download(&mut self, pr_number: u32, hub: &Hub, context: &AppContext) {
         let Some(github_token) = self.github_token.clone() else {
             tracing::error!(
                 "GitHub token is missing when starting download, this code path should be unreachable due to prior validation"
@@ -430,6 +434,8 @@ impl OtaView {
         let hub2 = hub.clone();
         let parent_span = tracing::Span::current();
         let ota_view_id = self.view_id;
+        let tmp_dir = context.device.tmp_dir();
+        let install_dir = context.device.install_dir();
 
         thread::spawn(move || {
             let _span =
@@ -447,7 +453,7 @@ impl OtaView {
                     return;
                 }
             };
-            let client = OtaClient::new(github, CURRENT_DEVICE.tmp_dir());
+            let client = OtaClient::new(github, tmp_dir);
 
             hub2.send(Event::OtaDownloadProgress {
                 label: format!("Downloading PR #{} build… 0%", pr_number),
@@ -471,7 +477,9 @@ impl OtaView {
                     info!(pr_number, "Download completed, starting extraction");
                     match client.extract_and_deploy(zip_path) {
                         Ok(_) => {
-                            clean_installation_before_reboot();
+                            if let Err(e) = clean_bundled_files(&install_dir) {
+                                tracing::warn!(path = ?install_dir, error = %e, "Failed to clean bundled OTA files");
+                            }
                             hub2.send(Event::OtaDownloadProgress {
                                 label: "Installing and rebooting…".to_string(),
                                 percent: 100,
@@ -514,8 +522,8 @@ impl OtaView {
     /// [`Event::Select`] with [`EntryId::Reboot`] to trigger an automatic reboot.
     /// On a 401 response, sends [`Event::Github`] with [`GithubEvent::TokenInvalid`] without closing
     /// the view so re-authentication can proceed.
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub)))]
-    fn start_default_branch_download(&mut self, hub: &Hub) {
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, context)))]
+    fn start_default_branch_download(&mut self, hub: &Hub, context: &AppContext) {
         let Some(github_token) = self.github_token.clone() else {
             tracing::error!(
                 "GitHub token is missing when starting download, this code path should be unreachable due to prior validation"
@@ -526,6 +534,8 @@ impl OtaView {
         let hub2 = hub.clone();
         let parent_span = tracing::Span::current();
         let ota_view_id = self.view_id;
+        let tmp_dir = context.device.tmp_dir();
+        let install_dir = context.device.install_dir();
 
         thread::spawn(move || {
             let _span = tracing::info_span!(parent: &parent_span, "default_branch_download_async")
@@ -543,7 +553,7 @@ impl OtaView {
                     return;
                 }
             };
-            let client = OtaClient::new(github, CURRENT_DEVICE.tmp_dir());
+            let client = OtaClient::new(github, tmp_dir);
 
             hub2.send(Event::OtaDownloadProgress {
                 label: "Downloading main branch build… 0%".to_string(),
@@ -567,7 +577,9 @@ impl OtaView {
                     info!("Main branch download completed, starting extraction");
                     match client.extract_and_deploy(zip_path) {
                         Ok(_) => {
-                            clean_installation_before_reboot();
+                            if let Err(e) = clean_bundled_files(&install_dir) {
+                                tracing::warn!(path = ?install_dir, error = %e, "Failed to clean bundled OTA files");
+                            }
                             hub2.send(Event::OtaDownloadProgress {
                                 label: "Installing and rebooting…".to_string(),
                                 percent: 100,
@@ -616,12 +628,14 @@ impl OtaView {
     /// # Arguments
     ///
     /// * `hub` - Event hub for sending notifications and status updates
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub)))]
-    fn start_stable_release_download(&mut self, hub: &Hub) {
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, context)))]
+    fn start_stable_release_download(&mut self, hub: &Hub, context: &AppContext) {
         let github_token = self.github_token.clone();
         let hub2 = hub.clone();
         let parent_span = tracing::Span::current();
         let ota_view_id = self.view_id;
+        let tmp_dir = context.device.tmp_dir();
+        let install_dir = context.device.install_dir();
 
         thread::spawn(move || {
             let _span = tracing::info_span!(parent: &parent_span, "stable_release_download_async")
@@ -639,7 +653,7 @@ impl OtaView {
                     return;
                 }
             };
-            let client = OtaClient::new(github, CURRENT_DEVICE.tmp_dir());
+            let client = OtaClient::new(github, tmp_dir);
 
             hub2.send(Event::OtaDownloadProgress {
                 label: "Downloading stable release… 0%".to_string(),
@@ -663,7 +677,9 @@ impl OtaView {
                     info!("Stable release download completed, deploying update");
                     match client.deploy(asset_path) {
                         Ok(_) => {
-                            clean_installation_before_reboot();
+                            if let Err(e) = clean_bundled_files(&install_dir) {
+                                tracing::warn!(path = ?install_dir, error = %e, "Failed to clean bundled OTA files");
+                            }
                             hub2.send(Event::OtaDownloadProgress {
                                 label: "Installing and rebooting…".to_string(),
                                 percent: 100,
@@ -711,21 +727,13 @@ fn send_reboot_after_delay(hub: Hub) {
     });
 }
 
-fn clean_installation_before_reboot() {
-    let install_dir = CURRENT_DEVICE.install_dir();
-
-    if let Err(e) = clean_bundled_files(&install_dir) {
-        tracing::warn!(path = ?install_dir, error = %e, "Failed to clean bundled OTA files");
-    }
-}
-
 impl OtaView {
     #[inline]
     fn on_select_default_branch(
         &mut self,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
         if !self.require_github_token(PendingDownload::DefaultBranch, hub, rq, context) {
             return true;
@@ -733,13 +741,13 @@ impl OtaView {
         self.pending_download = Some(PendingDownload::DefaultBranch);
         self.build_progress_screen("Downloading main branch build… 0%", context);
         rq.add(RenderData::new(self.id, self.rect, UpdateMode::Full));
-        self.start_default_branch_download(hub);
+        self.start_default_branch_download(hub, context);
         true
     }
 
     #[inline]
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub)))]
-    fn on_select_stable_release(&mut self, hub: &Hub) -> bool {
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, context)))]
+    fn on_select_stable_release(&mut self, hub: &Hub, context: &AppContext) -> bool {
         let github_token = self.github_token.clone();
         let ota_view_id = self.view_id;
 
@@ -757,7 +765,7 @@ impl OtaView {
             }
         };
 
-        let client = OtaClient::new(github, CURRENT_DEVICE.tmp_dir());
+        let client = OtaClient::new(github, context.device.tmp_dir());
         let remote_version = match client.fetch_latest_release_version() {
             Ok(version) => version,
             Err(e) => {
@@ -824,7 +832,12 @@ impl OtaView {
     }
 
     #[inline]
-    fn on_show_pr_input(&mut self, hub: &Hub, rq: &mut RenderQueue, context: &mut Context) -> bool {
+    fn on_show_pr_input(
+        &mut self,
+        hub: &Hub,
+        rq: &mut RenderQueue,
+        context: &mut AppContext,
+    ) -> bool {
         if !self.require_github_token(PendingDownload::PrInputPending, hub, rq, context) {
             return true;
         }
@@ -869,11 +882,11 @@ impl OtaView {
         token: &secrecy::SecretString,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
         tracing::info!("Device auth complete, saving token");
 
-        if let Err(e) = device_flow::save_token(token) {
+        if let Err(e) = device_flow::save_token(token, &context.device.install_dir()) {
             tracing::error!(error = %e, "Failed to save GitHub token");
         }
 
@@ -883,7 +896,7 @@ impl OtaView {
             Some(PendingDownload::DefaultBranch) => {
                 self.build_progress_screen("Downloading main branch build… 0%", context);
                 rq.add(RenderData::new(self.id, self.rect, UpdateMode::Full));
-                self.start_default_branch_download(hub);
+                self.start_default_branch_download(hub, context);
             }
             Some(PendingDownload::PrInputPending) => {
                 self.build_pr_input_screen(context);
@@ -898,7 +911,7 @@ impl OtaView {
                     context,
                 );
                 rq.add(RenderData::new(self.id, self.rect, UpdateMode::Full));
-                self.start_pr_download(pr_number, hub);
+                self.start_pr_download(pr_number, hub, context);
             }
             None => {}
         }
@@ -907,10 +920,15 @@ impl OtaView {
     }
 
     #[inline]
-    fn on_token_invalid(&mut self, hub: &Hub, rq: &mut RenderQueue, context: &mut Context) -> bool {
+    fn on_token_invalid(
+        &mut self,
+        hub: &Hub,
+        rq: &mut RenderQueue,
+        context: &mut AppContext,
+    ) -> bool {
         tracing::warn!("Saved GitHub token is invalid — clearing and re-authenticating");
 
-        if let Err(e) = device_flow::delete_token() {
+        if let Err(e) = device_flow::delete_token(&context.device.install_dir()) {
             tracing::error!(error = %e, "Failed to delete stale token");
         }
 
@@ -949,21 +967,22 @@ impl OtaView {
 }
 
 impl View for OtaView {
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, _bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, _bus, rq, context), fields(event = ?evt
+    ), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
         hub: &Hub,
         _bus: &mut Bus,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
         match evt {
             Event::Select(EntryId::Ota(OtaEntryId::DefaultBranch)) => {
                 self.on_select_default_branch(hub, rq, context)
             }
             Event::Select(EntryId::Ota(OtaEntryId::StableRelease)) => {
-                self.on_select_stable_release(hub)
+                self.on_select_stable_release(hub, context)
             }
             Event::Show(ViewId::Ota(OtaViewId::PrInput)) => self.on_show_pr_input(hub, rq, context),
             Event::Focus(None) => {
@@ -993,15 +1012,16 @@ impl View for OtaView {
             Event::StartStableReleaseDownload => {
                 self.build_progress_screen("Downloading stable release… 0%", context);
                 rq.add(RenderData::new(self.id, self.rect, UpdateMode::Full));
-                self.start_stable_release_download(hub);
+                self.start_stable_release_download(hub, context);
                 true
             }
             _ => false,
         }
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _fb, _fonts, _rect), fields(rect = ?_rect)))]
-    fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {}
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _context, _rect), fields(rect = ?_rect
+    )))]
+    fn render(&self, _context: &mut AppContext, _rect: Rectangle) {}
 
     fn rect(&self) -> &Rectangle {
         &self.rect
@@ -1032,7 +1052,7 @@ impl View for OtaView {
         _rect: Rectangle,
         _hub: &Hub,
         _rq: &mut RenderQueue,
-        _context: &mut Context,
+        _context: &mut AppContext,
     ) {
     }
 }
@@ -1046,7 +1066,7 @@ mod tests {
     use std::collections::VecDeque;
     use std::sync::mpsc::channel;
 
-    fn create_ota_view(context: &mut Context) -> OtaView {
+    fn create_ota_view(context: &mut AppContext) -> OtaView {
         OtaView::new(context)
     }
 
@@ -1084,7 +1104,7 @@ mod tests {
             _hub: &Hub,
             _bus: &mut Bus,
             _rq: &mut RenderQueue,
-            context: &mut Context,
+            context: &mut AppContext,
         ) -> bool {
             match *evt {
                 Event::Focus(Some(_)) => {
@@ -1102,7 +1122,7 @@ mod tests {
             }
         }
 
-        fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {}
+        fn render(&self, _context: &mut AppContext, _rect: Rectangle) {}
 
         fn rect(&self) -> &Rectangle {
             &self.rect

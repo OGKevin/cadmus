@@ -1,18 +1,46 @@
+//! Real-time clock and alarm management.
+
+mod manager;
+
+cfg_select! {
+    any(feature = "kobo", docsrs) => {
+        mod linux;
+        pub use linux::LinuxRtc;
+    }
+    _ => {}
+}
+
+#[cfg(any(
+    test,
+    all(
+        feature = "deviceless",
+        not(any(feature = "kobo", feature = "emulator"))
+    )
+))]
+mod test;
+
+#[cfg(any(feature = "emulator", not(feature = "kobo")))]
+mod stub;
+
+pub use manager::Rtc;
+
+#[cfg(any(
+    test,
+    all(
+        feature = "deviceless",
+        not(any(feature = "kobo", feature = "emulator"))
+    )
+))]
+pub use test::TestRtc;
+
+#[cfg(any(feature = "emulator", not(feature = "kobo")))]
+pub use stub::NoopRtc;
+
 use anyhow::Error;
 use chrono::{DateTime, Datelike, Duration, TimeZone, Timelike, Utc};
-use nix::{ioctl_none, ioctl_read, ioctl_write_ptr};
 use std::collections::BTreeMap;
-use std::fs::{File, OpenOptions};
 use std::mem;
-use std::os::unix::io::AsRawFd;
-use std::path::Path;
-use std::sync::{Arc, Mutex};
-
-ioctl_read!(rtc_read_alarm, b'p', 0x10, RtcWkalrm);
-ioctl_write_ptr!(rtc_write_alarm, b'p', 0x0f, RtcWkalrm);
-ioctl_none!(rtc_disable_alarm, b'p', 0x02);
-ioctl_read!(rtc_read_time, b'p', 0x09, RtcTime);
-ioctl_write_ptr!(rtc_set_time, b'p', 0x0a, RtcTime);
+use std::sync::Arc;
 
 #[repr(C)]
 #[derive(Debug, Clone)]
@@ -95,167 +123,6 @@ impl RtcWkalrm {
     }
 }
 
-/// Interface to the hardware real-time clock device.
-///
-/// `Rtc` provides access to both time and alarm functionality of the RTC.
-/// Operations are serialized via an internal mutex to ensure thread-safe access
-/// to the underlying device file.
-pub struct Rtc(Arc<Mutex<File>>);
-
-impl Clone for Rtc {
-    fn clone(&self) -> Self {
-        Rtc(Arc::clone(&self.0))
-    }
-}
-
-impl Rtc {
-    /// Opens the RTC device and creates a new interface handle.
-    ///
-    /// # Arguments
-    ///
-    /// * `path` - Path to the RTC device file (typically `/dev/rtc0` or `/dev/rtc`)
-    ///
-    /// # Returns
-    ///
-    /// A new `Rtc` handle on success, or an error if the device cannot be opened.
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// # use cadmus_core::rtc::Rtc;
-    /// let rtc = Rtc::new("/dev/rtc0")?;
-    /// # Ok::<(), Box<dyn std::error::Error>>(())
-    /// ```
-    pub fn new<P: AsRef<Path>>(path: P) -> Result<Rtc, Error> {
-        let file = OpenOptions::new().read(true).write(true).open(path)?;
-        Ok(Rtc(Arc::new(Mutex::new(file))))
-    }
-
-    /// Reads the current alarm settings from the hardware.
-    ///
-    /// Returns information about the wake alarm, including whether it is enabled
-    /// and any pending alarm status. The alarm time is stored as [`RtcWkalrm`].
-    ///
-    /// # Returns
-    ///
-    /// Alarm settings on success, or an error if the ioctl fails or the lock is poisoned.
-    pub fn alarm(&self) -> Result<RtcWkalrm, Error> {
-        let mut rwa = RtcWkalrm::default();
-        let file = self
-            .0
-            .lock()
-            .map_err(|e| anyhow::anyhow!("lock poisoned: {}", e))?;
-        unsafe {
-            rtc_read_alarm(file.as_raw_fd(), &mut rwa)
-                .map(|_| rwa)
-                .map_err(|e| e.into())
-        }
-    }
-
-    /// Programs the hardware to wake at the specified time.
-    ///
-    /// Enables a single-shot alarm that will fire at the given UTC time.
-    /// If an alarm is already scheduled, it is replaced.
-    ///
-    /// # Arguments
-    ///
-    /// * `wake_time` - The UTC time when the alarm should fire
-    ///
-    /// # Returns
-    ///
-    /// A status code on success (typically 0 if supported), or an error if
-    /// the ioctl fails or the lock is poisoned.
-    pub fn set_alarm(&self, wake_time: DateTime<Utc>) -> Result<i32, Error> {
-        let rwa = RtcWkalrm {
-            enabled: 1,
-            pending: 0,
-            time: wake_time.into(),
-        };
-        let file = self
-            .0
-            .lock()
-            .map_err(|e| anyhow::anyhow!("lock poisoned: {}", e))?;
-        unsafe { rtc_write_alarm(file.as_raw_fd(), &rwa).map_err(|e| e.into()) }
-    }
-
-    /// Disables the hardware alarm.
-    ///
-    /// Clears any pending alarm without affecting the alarm time itself.
-    ///
-    /// # Returns
-    ///
-    /// A status code on success (typically 0 if supported), or an error if
-    /// the ioctl fails or the lock is poisoned.
-    pub fn disable_alarm(&self) -> Result<i32, Error> {
-        let file = self
-            .0
-            .lock()
-            .map_err(|e| anyhow::anyhow!("lock poisoned: {}", e))?;
-        unsafe { rtc_disable_alarm(file.as_raw_fd()).map_err(|e| e.into()) }
-    }
-
-    /// Reads the current time from the hardware RTC.
-    ///
-    /// # Returns
-    ///
-    /// The current UTC time on success, or an error if the ioctl fails,
-    /// the RTC fields are invalid, or the lock is poisoned.
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// # use cadmus_core::rtc::Rtc;
-    /// # let rtc = Rtc::new("/dev/rtc0")?;
-    /// let now = rtc.read_time()?;
-    /// println!("RTC time: {}", now);
-    /// # Ok::<(), Box<dyn std::error::Error>>(())
-    /// ```
-    pub fn read_time(&self) -> Result<DateTime<Utc>, Error> {
-        let mut rt = unsafe { mem::zeroed::<RtcTime>() };
-        let file = self
-            .0
-            .lock()
-            .map_err(|e| anyhow::anyhow!("lock poisoned: {}", e))?;
-        unsafe {
-            rtc_read_time(file.as_raw_fd(), &mut rt)?;
-        }
-        rt.try_into()
-    }
-
-    /// Sets the hardware RTC to the specified time.
-    ///
-    /// Updates the RTC with a new UTC time. This typically requires elevated privileges.
-    ///
-    /// # Arguments
-    ///
-    /// * `time` - The UTC time to set
-    ///
-    /// # Returns
-    ///
-    /// Success with no value, or an error if the ioctl fails or the lock is poisoned.
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// # use cadmus_core::rtc::Rtc;
-    /// # use chrono::Utc;
-    /// # let rtc = Rtc::new("/dev/rtc0")?;
-    /// rtc.set_time(Utc::now())?;
-    /// # Ok::<(), Box<dyn std::error::Error>>(())
-    /// ```
-    pub fn set_time(&self, time: DateTime<Utc>) -> Result<(), Error> {
-        let rt: RtcTime = time.into();
-        let file = self
-            .0
-            .lock()
-            .map_err(|e| anyhow::anyhow!("lock poisoned: {}", e))?;
-        unsafe {
-            rtc_set_time(file.as_raw_fd(), &rt)?;
-        }
-        Ok(())
-    }
-}
-
 /// Identifies a logical alarm managed by [`AlarmManager`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum AlarmType {
@@ -307,13 +174,13 @@ pub struct ScheduledAlarm {
 /// programs the hardware with the earliest upcoming wake time. After each
 /// wake, [`AlarmManager::check_fired_alarms`] determines which logical alarms fired and
 /// reschedules the hardware for any remaining ones.
-pub struct AlarmManager {
-    rtc: Rtc,
+pub struct AlarmManager<R: Rtc> {
+    rtc: Arc<R>,
     scheduled_alarms: BTreeMap<AlarmType, ScheduledAlarm>,
 }
 
-impl AlarmManager {
-    pub fn new(rtc: Rtc) -> Self {
+impl<R: Rtc> AlarmManager<R> {
+    pub fn new(rtc: Arc<R>) -> Self {
         AlarmManager {
             rtc,
             scheduled_alarms: BTreeMap::new(),
@@ -365,15 +232,6 @@ impl AlarmManager {
     }
 
     /// Ensures an alarm of `alarm_type` is active and scheduled for the future.
-    ///
-    /// - If no alarm exists, one is scheduled for `now + duration`.
-    /// - If an alarm exists and is in the future, nothing changes.
-    /// - If an alarm exists but is past-due, the stale entry is always
-    ///   cancelled. `past_due_action` then controls whether a fresh alarm is
-    ///   scheduled: [`PastDueAction::Reschedule`] schedules a new one and
-    ///   returns [`EnsureAlarmOutcome::Scheduled`]; [`PastDueAction::Cancel`]
-    ///   stops there and returns [`EnsureAlarmOutcome::PastDue`] so the caller
-    ///   can decide what action to take.
     pub fn ensure_scheduled(
         &mut self,
         alarm_type: AlarmType,
@@ -412,13 +270,6 @@ impl AlarmManager {
     }
 
     /// Determines which logical alarms fired during the last sleep cycle.
-    ///
-    /// `before` is the timestamp just before the device went to sleep and
-    /// `after` is the timestamp just after it woke. A hardware alarm is
-    /// considered fired when it is disabled or when the sleep duration is
-    /// within 3 seconds of the expected wake time (accounting for RTC
-    /// granularity). Any fired logical alarms are removed from the schedule
-    /// and the hardware is reprogrammed for the next earliest alarm.
     pub fn check_fired_alarms(
         &mut self,
         before: DateTime<Utc>,
@@ -488,5 +339,128 @@ impl AlarmManager {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_alarm_manager() -> (TestRtc, AlarmManager<TestRtc>) {
+        let rtc = TestRtc::new();
+        let manager = AlarmManager::new(Arc::new(rtc.clone()));
+        (rtc, manager)
+    }
+
+    #[test]
+    fn ensure_scheduled_fresh() {
+        let (_rtc, mut manager) = test_alarm_manager();
+        let outcome = manager
+            .ensure_scheduled(
+                AlarmType::AutoPowerOff,
+                Duration::hours(1),
+                PastDueAction::Cancel,
+            )
+            .unwrap();
+        assert_eq!(outcome, EnsureAlarmOutcome::Scheduled);
+        assert!(manager.has_alarm(AlarmType::AutoPowerOff));
+    }
+
+    #[test]
+    fn ensure_scheduled_already_scheduled() {
+        let (_rtc, mut manager) = test_alarm_manager();
+        manager
+            .ensure_scheduled(
+                AlarmType::AutoPowerOff,
+                Duration::hours(1),
+                PastDueAction::Cancel,
+            )
+            .unwrap();
+        let outcome = manager
+            .ensure_scheduled(
+                AlarmType::AutoPowerOff,
+                Duration::hours(1),
+                PastDueAction::Cancel,
+            )
+            .unwrap();
+        assert_eq!(outcome, EnsureAlarmOutcome::AlreadyScheduled);
+    }
+
+    #[test]
+    fn ensure_scheduled_past_due_reschedule() {
+        let (rtc, mut manager) = test_alarm_manager();
+        let past = Utc::now() - Duration::hours(2);
+        rtc.set_current_time(past + Duration::minutes(30));
+        manager
+            .schedule_alarm(AlarmType::CalendarUpdate, Duration::minutes(-90))
+            .unwrap();
+        rtc.set_current_time(Utc::now());
+        let outcome = manager
+            .ensure_scheduled(
+                AlarmType::CalendarUpdate,
+                Duration::minutes(5),
+                PastDueAction::Reschedule,
+            )
+            .unwrap();
+        assert_eq!(outcome, EnsureAlarmOutcome::Scheduled);
+        assert!(manager.is_alarm_scheduled(AlarmType::CalendarUpdate));
+    }
+
+    #[test]
+    fn ensure_scheduled_past_due_cancel() {
+        let (rtc, mut manager) = test_alarm_manager();
+        manager
+            .schedule_alarm(AlarmType::AutoPowerOff, Duration::seconds(-10))
+            .unwrap();
+        rtc.set_current_time(Utc::now());
+        let outcome = manager
+            .ensure_scheduled(
+                AlarmType::AutoPowerOff,
+                Duration::hours(1),
+                PastDueAction::Cancel,
+            )
+            .unwrap();
+        assert_eq!(outcome, EnsureAlarmOutcome::PastDue);
+        assert!(!manager.has_alarm(AlarmType::AutoPowerOff));
+    }
+
+    #[test]
+    fn check_fired_alarms_detects_fired() {
+        let (rtc, mut manager) = test_alarm_manager();
+        let before = Utc::now();
+        manager
+            .schedule_alarm(AlarmType::AutoPowerOff, Duration::minutes(5))
+            .unwrap();
+        rtc.simulate_alarm_fired();
+        let after = before + Duration::minutes(5);
+        let fired = manager.check_fired_alarms(before, after).unwrap();
+        assert!(fired.contains(&AlarmType::AutoPowerOff));
+    }
+
+    #[test]
+    fn check_fired_alarms_not_fired() {
+        let (rtc, mut manager) = test_alarm_manager();
+        let before = Utc::now();
+        manager
+            .schedule_alarm(AlarmType::AutoPowerOff, Duration::hours(1))
+            .unwrap();
+        let after = before + Duration::minutes(1);
+        let fired = manager.check_fired_alarms(before, after).unwrap();
+        assert!(fired.is_empty());
+        assert!(!rtc.alarm_enabled() || manager.has_alarm(AlarmType::AutoPowerOff));
+    }
+
+    #[test]
+    fn multiplexing_earliest_alarm_wins() {
+        let (rtc, mut manager) = test_alarm_manager();
+        manager
+            .schedule_alarm(AlarmType::AutoPowerOff, Duration::hours(2))
+            .unwrap();
+        manager
+            .schedule_alarm(AlarmType::CalendarUpdate, Duration::minutes(30))
+            .unwrap();
+        let wake = rtc.scheduled_wake_time().unwrap();
+        let expected = Utc::now() + Duration::minutes(30);
+        assert!((wake - expected).num_seconds().abs() < 2);
     }
 }

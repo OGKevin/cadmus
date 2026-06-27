@@ -13,11 +13,13 @@ startup-loading = Cadmus starting up…
 
 # Notifications
 
+notification-battery-low = The battery capacity is getting low.
 notification-dictionary-install-failed = Failed to install dictionary for "{ $lang }"
 notification-downloading-dictionary = Downloading dictionary for "{ $lang }"
 notification-downloading-dictionary-completed = Downloading dictionary for "{ $lang }" completed
 notification-downloading-dictionary-progress = Downloading { $lang } ({ $downloaded }/{ $total })
 notification-dictionary-indexing = Indexing "{ $name }"
+notification-network-up = Network is up ({ $ip }, { $essid }).
 notification-not-online = WiFi must be connected for this action.
 notification-refresh-rate-invalid = Refresh rate must be a number between 0 and 255.
 notification-time-sync-failed = Time sync failed

@@ -614,7 +614,14 @@ impl OtaClient {
     }
 
     fn ensure_deploy_dir(&self, deploy_path: &Path) -> Result<(), OtaError> {
-        #[cfg(any(test, feature = "emulator"))]
+        #[cfg(any(
+            test,
+            feature = "emulator",
+            all(
+                feature = "deviceless",
+                not(any(feature = "kobo", feature = "emulator"))
+            )
+        ))]
         {
             if let Some(parent) = deploy_path.parent() {
                 tracing::debug!(directory = ?parent, "Creating parent directory");

@@ -3,10 +3,9 @@ mod file_entry;
 pub use self::file_entry::FileEntry;
 
 use crate::color::{BLACK, WHITE};
-use crate::context::Context;
-use crate::device::CURRENT_DEVICE;
-use crate::font::Fonts;
-use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::device::AppContext;
+use crate::device::DeviceIdentity as _;
+use crate::framebuffer::UpdateMode;
 use crate::geom::{CycleDir, Rectangle, halves};
 use crate::gesture::GestureEvent;
 use crate::unit::scale_by_dpi;
@@ -143,7 +142,7 @@ impl FileChooser {
         initial_path: &Path,
         mode: SelectionMode,
         layout: &FileChooserLayout,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> (Vec<Box<dyn View>>, usize) {
         let mut children = Vec::new();
 
@@ -183,10 +182,10 @@ impl FileChooser {
         mode: SelectionMode,
         _hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> FileChooser {
         let id = ID_FEEDER.next();
-        let dpi = CURRENT_DEVICE.dpi;
+        let dpi = context.device.dpi();
         let layout = FileChooserLayout::new(dpi);
 
         let (children, nav_bar_index) =
@@ -275,7 +274,7 @@ impl FileChooser {
         Ok(entries)
     }
 
-    fn navigate_to(&mut self, path: PathBuf, rq: &mut RenderQueue, context: &mut Context) {
+    fn navigate_to(&mut self, path: PathBuf, rq: &mut RenderQueue, context: &mut AppContext) {
         self.current_path = path;
         match self.list_directory(&self.current_path) {
             Ok(entries) => {
@@ -302,16 +301,16 @@ impl FileChooser {
             .unwrap();
         nav_bar.set_selected(self.current_path.clone(), rq, context);
 
-        self.update_nav_bar_separator();
+        self.update_nav_bar_separator(context.device.dpi());
         self.update_entries_list(context);
 
         rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
     }
 
     #[inline]
-    fn update_nav_bar_separator(&mut self) {
+    fn update_nav_bar_separator(&mut self, dpi: u16) {
         let nav_bar_bottom = self.children[self.nav_bar_index].rect().max.y;
-        let thickness = scale_by_dpi(THICKNESS_MEDIUM, CURRENT_DEVICE.dpi) as i32;
+        let thickness = scale_by_dpi(THICKNESS_MEDIUM, dpi) as i32;
         let separator_rect = rect![
             self.rect.min.x,
             nav_bar_bottom,
@@ -409,7 +408,7 @@ impl FileChooser {
         big_thickness: i32,
         small_thickness: i32,
         max_lines: usize,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         let mut y_pos = nav_bar_bottom + thickness;
 
@@ -434,10 +433,10 @@ impl FileChooser {
         }
     }
 
-    fn update_entries_list(&mut self, context: &mut Context) {
+    fn update_entries_list(&mut self, context: &mut AppContext) {
         self.children.drain(self.entries_start_index..);
 
-        let layout = FileChooserLayout::new(CURRENT_DEVICE.dpi);
+        let layout = FileChooserLayout::new(context.device.dpi());
         let nav_bar_bottom = self.children[self.nav_bar_index].rect().max.y;
         let available_height =
             self.rect.max.y - nav_bar_bottom - layout.thickness - layout.small_height;
@@ -477,11 +476,10 @@ impl FileChooser {
         ];
         self.children.push(Self::create_separator(separator_rect));
 
-        self.create_bottom_bar();
+        self.create_bottom_bar(context.device.dpi());
     }
 
-    fn create_bottom_bar(&mut self) {
-        let dpi = CURRENT_DEVICE.dpi;
+    fn create_bottom_bar(&mut self, dpi: u16) {
         let small_height = scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32;
         let thickness = scale_by_dpi(THICKNESS_MEDIUM, dpi) as i32;
         let (_, big_thickness) = halves(thickness);
@@ -565,7 +563,7 @@ impl FileChooser {
         }
     }
 
-    fn go_to_page(&mut self, dir: CycleDir, context: &mut Context) {
+    fn go_to_page(&mut self, dir: CycleDir, context: &mut AppContext) {
         match dir {
             CycleDir::Next => {
                 if self.current_page < self.pages_count - 1 {
@@ -590,7 +588,7 @@ impl View for FileChooser {
         _hub: &Hub,
         bus: &mut Bus,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
         match evt {
             Event::ToggleSelectDirectory(path) => {
@@ -609,7 +607,7 @@ impl View for FileChooser {
                 true
             }
             Event::NavigationBarResized(_) => {
-                self.update_nav_bar_separator();
+                self.update_nav_bar_separator(context.device.dpi());
                 self.update_entries_list(context);
 
                 rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
@@ -623,8 +621,8 @@ impl View for FileChooser {
         }
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _fb, _fonts), fields(rect = ?_rect)))]
-    fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {}
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _context), fields(rect = ?_rect)))]
+    fn render(&self, _context: &mut AppContext, _rect: Rectangle) {}
 
     fn rect(&self) -> &Rectangle {
         &self.rect
@@ -666,7 +664,7 @@ mod tests {
     use std::collections::VecDeque;
     use std::sync::mpsc::channel;
 
-    fn create_test_file_chooser(rq: &mut RenderQueue, context: &mut Context) -> FileChooser {
+    fn create_test_file_chooser(rq: &mut RenderQueue, context: &mut AppContext) -> FileChooser {
         let rect = rect![0, 0, 600, 800];
         let path = PathBuf::from("/tmp");
         let (hub, _receiver) = channel();
@@ -675,7 +673,7 @@ mod tests {
 
     fn create_test_file_chooser_with_path(
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
         path: PathBuf,
         mode: SelectionMode,
     ) -> FileChooser {

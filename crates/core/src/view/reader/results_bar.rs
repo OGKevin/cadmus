@@ -1,8 +1,7 @@
 use super::results_label::ResultsLabel;
 use crate::color::WHITE;
-use crate::context::Context;
-use crate::font::Fonts;
-use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::device::AppContext;
+use crate::framebuffer::UpdateMode;
 use crate::geom::{CycleDir, Rectangle, halves};
 use crate::gesture::GestureEvent;
 use crate::input::DeviceEvent;
@@ -156,14 +155,18 @@ impl ResultsBar {
 }
 
 impl View for ResultsBar {
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, bus, _rq, _context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(
+        skip(self, _hub, bus, _rq, _context),
+        fields(event = ?evt),
+        ret(level=tracing::Level::TRACE)
+    ))]
     fn handle_event(
         &mut self,
         evt: &Event,
         _hub: &Hub,
         bus: &mut Bus,
         _rq: &mut RenderQueue,
-        _context: &mut Context,
+        _context: &mut AppContext,
     ) -> bool {
         match *evt {
             Event::Toggle(ToggleEvent::View(ViewId::GoToPage)) => {
@@ -185,10 +188,17 @@ impl View for ResultsBar {
         }
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _fb, _fonts, _rect), fields(rect = ?_rect)))]
-    fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {}
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _context, _rect), fields(rect = ?_rect
+    )))]
+    fn render(&self, _context: &mut AppContext, _rect: Rectangle) {}
 
-    fn resize(&mut self, rect: Rectangle, hub: &Hub, rq: &mut RenderQueue, context: &mut Context) {
+    fn resize(
+        &mut self,
+        rect: Rectangle,
+        hub: &Hub,
+        rq: &mut RenderQueue,
+        context: &mut AppContext,
+    ) {
         let side = rect.height() as i32;
         let (small_half_width, big_half_width) = halves(rect.width() as i32 - 2 * side);
         let prev_rect = rect![rect.min, rect.min + side];

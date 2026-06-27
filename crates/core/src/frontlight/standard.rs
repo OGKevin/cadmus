@@ -1,3 +1,4 @@
+// TODO(OGKevin): this shall also be in device and devce/kobo
 use super::{Frontlight, LightLevel, LightLevels};
 use anyhow::Error;
 use nix::ioctl_write_int_bad;
@@ -6,7 +7,17 @@ use std::fs::OpenOptions;
 use std::os::unix::io::AsRawFd;
 
 ioctl_write_int_bad!(write_frontlight_intensity, 241);
+cfg_select! {
+    test => {
+
+
+const FRONTLIGHT_INTERFACE: &str = "/dev/null";
+    }
+    _ => {
+
 const FRONTLIGHT_INTERFACE: &str = "/dev/ntx_io";
+    }
+}
 
 pub struct StandardFrontlight {
     value: LightLevel,

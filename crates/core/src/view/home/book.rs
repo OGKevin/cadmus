@@ -1,10 +1,9 @@
 use crate::color::{BLACK, READING_PROGRESS, WHITE};
 use crate::color::{TEXT_INVERTED_HARD, TEXT_NORMAL};
-use crate::context::Context;
-use crate::device::CURRENT_DEVICE;
+use crate::device::AppContext;
 use crate::document::HumanSize;
-use crate::font::{Fonts, font_from_style};
-use crate::font::{MD_AUTHOR, MD_KIND, MD_SIZE, MD_TITLE, MD_YEAR};
+use crate::font::{MD_AUTHOR, MD_KIND, MD_SIZE, MD_YEAR};
+use crate::font::{font_from_style, md_title};
 use crate::framebuffer::{Framebuffer, UpdateMode};
 use crate::geom::{BorderSpec, CornerSpec, Rectangle, halves};
 use crate::gesture::GestureEvent;
@@ -51,14 +50,15 @@ impl Book {
 }
 
 impl View for Book {
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, bus, rq, context), fields(event = ?evt
+    ), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
         hub: &Hub,
         bus: &mut Bus,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
         match *evt {
             Event::Gesture(GestureEvent::Tap(center)) if self.rect.includes(center) => {
@@ -96,9 +96,11 @@ impl View for Book {
             _ => false,
         }
     }
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fb, fonts, _rect), fields(rect = ?_rect)))]
-    fn render(&self, fb: &mut dyn Framebuffer, _rect: Rectangle, fonts: &mut Fonts) {
-        let dpi = CURRENT_DEVICE.dpi;
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _rect, context), fields(rect = ?_rect
+    )))]
+    fn render(&self, context: &mut AppContext, _rect: Rectangle) {
+        let screen_width = context.display.dims.0;
+        let (fb, fonts, dpi) = context.framebuffer_and_fonts();
 
         let scheme = if self.active {
             TEXT_INVERTED_HARD
@@ -125,7 +127,7 @@ impl View for Book {
         let file_info = &self.info.file;
 
         let (x_height, padding, baseline) = {
-            let font = font_from_style(fonts, &MD_TITLE, dpi);
+            let font = font_from_style(fonts, &md_title(dpi, screen_width), dpi);
             let x_height = font.x_heights.0 as i32;
             (
                 x_height,
@@ -173,7 +175,7 @@ impl View for Book {
 
         // Title
         {
-            let font = font_from_style(fonts, &MD_TITLE, dpi);
+            let font = font_from_style(fonts, &md_title(dpi, screen_width), dpi);
             let mut plan = font.plan(&title, None, None);
             let mut title_lines = 1;
 

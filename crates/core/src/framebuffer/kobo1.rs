@@ -3,7 +3,6 @@ use super::mxcfb_sys::*;
 use super::transform::*;
 use super::{Framebuffer, UpdateMode};
 use crate::color::Color;
-use crate::device::{CURRENT_DEVICE, Model};
 use crate::geom::Rectangle;
 use anyhow::{Context, Error};
 use std::fs::{File, OpenOptions};
@@ -49,10 +48,20 @@ pub struct KoboFramebuffer1 {
     bytes_per_pixel: u8,
     var_info: VarScreenInfo,
     fix_info: FixScreenInfo,
+    mark: u8,
+    color_samples: usize,
+    model: crate::device::kobo::Model,
 }
 
+unsafe impl Send for KoboFramebuffer1 {}
+
 impl KoboFramebuffer1 {
-    pub fn new<P: AsRef<Path>>(path: P) -> Result<KoboFramebuffer1, Error> {
+    pub fn new<P: AsRef<Path>>(
+        path: P,
+        mark: u8,
+        color_samples: usize,
+        model: crate::device::kobo::Model,
+    ) -> Result<KoboFramebuffer1, Error> {
         let file = OpenOptions::new()
             .read(true)
             .write(true)
@@ -111,12 +120,20 @@ impl KoboFramebuffer1 {
                 bytes_per_pixel: bytes_per_pixel as u8,
                 var_info,
                 fix_info,
+                mark,
+                color_samples,
+                model,
             })
         }
     }
 
     fn as_bytes(&self) -> &[u8] {
         unsafe { slice::from_raw_parts(self.frame as *const u8, self.frame_size) }
+    }
+
+    fn refresh_var_info(&mut self) -> Result<(), Error> {
+        self.var_info = var_screen_info(&self.file)?;
+        Ok(())
     }
 }
 
@@ -164,8 +181,8 @@ impl Framebuffer for KoboFramebuffer1 {
     // Tell the driver that the screen needs to be redrawn.
     fn update(&mut self, rect: &Rectangle, mode: UpdateMode) -> Result<u32, Error> {
         let update_marker = self.token;
-        let mark = CURRENT_DEVICE.mark();
-        let color_samples = CURRENT_DEVICE.color_samples();
+        let mark = self.mark;
+        let color_samples = self.color_samples;
         let mut flags = self.flags;
         let mut monochrome = self.monochrome;
         let mut dithered = self.dithered;
@@ -179,7 +196,7 @@ impl Framebuffer for KoboFramebuffer1 {
                     (UPDATE_MODE_PARTIAL, HWTCON_WAVEFORM_MODE_GLR16)
                 } else if mark >= 7 {
                     (UPDATE_MODE_PARTIAL, NTX_WFM_MODE_GLR16)
-                } else if CURRENT_DEVICE.model == Model::Aura {
+                } else if self.model == crate::device::kobo::Model::Aura {
                     flags |= EPDC_FLAG_USE_AAD;
                     (UPDATE_MODE_FULL, NTX_WFM_MODE_GLD16)
                 } else {
@@ -318,7 +335,7 @@ impl Framebuffer for KoboFramebuffer1 {
 
     // Wait for a specific update to complete.
     fn wait(&self, token: u32) -> Result<i32, Error> {
-        let result = if CURRENT_DEVICE.mark() >= 7 {
+        let result = if self.mark >= 7 {
             let mut marker_data = MxcfbUpdateMarkerData {
                 update_marker: token,
                 collision_test: 0,
@@ -351,7 +368,14 @@ impl Framebuffer for KoboFramebuffer1 {
         self.var_info.rotate as i8
     }
 
+    fn refresh_from_kernel(&mut self) {
+        if let Err(error) = self.refresh_var_info() {
+            error!(error = %error, "failed to refresh KoboFramebuffer1 from kernel");
+        }
+    }
+
     fn set_rotation(&mut self, n: i8) -> Result<(u32, u32), Error> {
+        self.var_info = var_screen_info(&self.file)?;
         let read_rotation = self.rotation();
 
         // On the Aura H₂O, the first ioctl call will succeed but have no effect,
@@ -368,6 +392,8 @@ impl Framebuffer for KoboFramebuffer1 {
                 return Err(Error::from(e).context("can't set variable screen info"));
             }
 
+            self.var_info = var_screen_info(&self.file)?;
+
             // If the first call changed the rotation value, we can exit the loop.
             if i == 0 && read_rotation != self.rotation() {
                 break;
@@ -377,7 +403,11 @@ impl Framebuffer for KoboFramebuffer1 {
         self.fix_info = fix_screen_info(&self.file)?;
         self.frame_size = (self.var_info.yres * self.fix_info.line_length) as libc::size_t;
 
-        info!("Framebuffer rotation: {} -> {}.", n, self.rotation());
+        info!(
+            "Framebuffer rotation: {} -> {}.",
+            read_rotation,
+            self.rotation()
+        );
 
         Ok((self.var_info.xres, self.var_info.yres))
     }
@@ -387,7 +417,7 @@ impl Framebuffer for KoboFramebuffer1 {
             return;
         }
         self.inverted = enable;
-        if CURRENT_DEVICE.mark() < 11 {
+        if self.mark < 11 {
             if enable {
                 self.flags |= EPDC_FLAG_ENABLE_INVERSION;
             } else {
@@ -429,7 +459,7 @@ impl Framebuffer for KoboFramebuffer1 {
 
         self.dithered = enable;
 
-        if CURRENT_DEVICE.mark() < 7 {
+        if self.mark < 7 {
             if enable {
                 self.transform = transform_dither_g16;
             } else {

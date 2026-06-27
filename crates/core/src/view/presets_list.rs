@@ -1,10 +1,11 @@
 use super::preset::{Preset, PresetKind};
 use super::{Bus, Event, Hub, ID_FEEDER, Id, RenderData, RenderQueue, View};
 use crate::color::WHITE;
-use crate::context::Context;
-use crate::device::CURRENT_DEVICE;
+use crate::device::AppContext;
+use crate::device::DeviceHardware as _;
 use crate::font::{Fonts, NORMAL_STYLE, font_from_style};
-use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::framebuffer::Framebuffer as _;
+use crate::framebuffer::UpdateMode;
 use crate::geom::{CycleDir, Dir, Rectangle};
 use crate::gesture::GestureEvent;
 use crate::settings::LightPreset;
@@ -26,8 +27,13 @@ impl PresetsList {
         }
     }
 
-    pub fn update(&mut self, presets: &[LightPreset], rq: &mut RenderQueue, fonts: &mut Fonts) {
-        let dpi = CURRENT_DEVICE.dpi;
+    pub fn update(
+        &mut self,
+        presets: &[LightPreset],
+        rq: &mut RenderQueue,
+        fonts: &mut Fonts,
+        dpi: u16,
+    ) {
         let font = font_from_style(fonts, &NORMAL_STYLE, dpi);
         let x_height = font.x_heights.0 as i32;
         let preset_height = 4 * x_height;
@@ -101,14 +107,18 @@ impl PresetsList {
 }
 
 impl View for PresetsList {
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, _bus, rq, _context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(
+        skip(self, _hub, _bus, rq, _context),
+        fields(event = ?evt),
+        ret(level=tracing::Level::TRACE)
+    ))]
     fn handle_event(
         &mut self,
         evt: &Event,
         _hub: &Hub,
         _bus: &mut Bus,
         rq: &mut RenderQueue,
-        _context: &mut Context,
+        _context: &mut AppContext,
     ) -> bool {
         match *evt {
             Event::Gesture(GestureEvent::Swipe { dir, start, .. }) if self.rect.includes(start) => {
@@ -135,8 +145,10 @@ impl View for PresetsList {
         }
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fb, _fonts, _rect), fields(rect = ?_rect)))]
-    fn render(&self, fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, context, _rect), fields(rect = ?_rect
+    )))]
+    fn render(&self, context: &mut AppContext, _rect: Rectangle) {
+        let fb = context.device.framebuffer_mut();
         fb.draw_rectangle(&self.rect, WHITE);
     }
 

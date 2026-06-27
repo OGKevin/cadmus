@@ -6,12 +6,22 @@ pub struct FakeBattery {
     status: Status,
 }
 
-impl FakeBattery {
-    pub fn new() -> FakeBattery {
-        FakeBattery {
+impl Default for FakeBattery {
+    fn default() -> Self {
+        Self {
             capacity: 50.0,
             status: Status::Discharging,
         }
+    }
+}
+
+impl FakeBattery {
+    pub fn new() -> FakeBattery {
+        Self::default()
+    }
+
+    pub fn set_capacity(&mut self, capacity: f32) {
+        self.capacity = capacity;
     }
 }
 

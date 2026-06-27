@@ -7,11 +7,10 @@ use super::kinds::library::{LibraryFinishedAction, LibraryName, LibraryPath};
 use super::setting_row::SettingRow;
 use super::setting_value::SettingsEvent;
 use crate::color::WHITE;
-use crate::context::Context;
-use crate::device::CURRENT_DEVICE;
+use crate::device::AppContext;
+use crate::device::{DeviceIdentity, DevicePaths};
 use crate::fl;
-use crate::font::Fonts;
-use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::framebuffer::UpdateMode;
 use crate::geom::Rectangle;
 use crate::gesture::GestureEvent;
 use crate::settings::{FinishedAction, LibrarySettings, Settings};
@@ -61,7 +60,7 @@ impl LibraryEditor {
         library: LibrarySettings,
         _hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> LibraryEditor {
         let id = ID_FEEDER.next();
         let mut children = Vec::new();
@@ -75,7 +74,7 @@ impl LibraryEditor {
         children.push(Box::new(Filler::new(rect, WHITE)) as Box<dyn View>);
 
         let (bar_height, separator_thickness, separator_top_half, separator_bottom_half) =
-            calculate_dimensions();
+            calculate_dimensions(context.device.dpi());
 
         children.extend(Self::build_content_rows(
             rect,
@@ -84,6 +83,8 @@ impl LibraryEditor {
             library_index,
             &settings,
             &mut context.fonts,
+            context.device.dpi(),
+            &context.device.install_dir(),
         ));
 
         children.push(build_bottom_separator(
@@ -125,9 +126,10 @@ impl LibraryEditor {
         library_index: usize,
         settings: &Settings,
         fonts: &mut crate::font::Fonts,
+        dpi: u16,
+        install_dir: &std::path::Path,
     ) -> Vec<Box<dyn View>> {
         let mut children = Vec::new();
-        let dpi = CURRENT_DEVICE.dpi;
         let row_height = scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32;
 
         let content_start_y = rect.min.y;
@@ -142,6 +144,8 @@ impl LibraryEditor {
                 library_index,
                 settings,
                 fonts,
+                dpi,
+                install_dir,
             ));
             current_y += row_height;
         }
@@ -153,6 +157,8 @@ impl LibraryEditor {
                 library_index,
                 settings,
                 fonts,
+                dpi,
+                install_dir,
             ));
             current_y += row_height;
         }
@@ -165,6 +171,8 @@ impl LibraryEditor {
                 library_index,
                 settings,
                 fonts,
+                dpi,
+                install_dir,
             ));
         }
 
@@ -177,12 +185,16 @@ impl LibraryEditor {
         library_index: usize,
         settings: &Settings,
         fonts: &mut crate::font::Fonts,
+        dpi: u16,
+        install_dir: &std::path::Path,
     ) -> Box<dyn View> {
         Box::new(SettingRow::new(
             Box::new(LibraryName(library_index)),
             rect,
             settings,
             fonts,
+            dpi,
+            install_dir,
         )) as Box<dyn View>
     }
 
@@ -191,12 +203,16 @@ impl LibraryEditor {
         library_index: usize,
         settings: &Settings,
         fonts: &mut crate::font::Fonts,
+        dpi: u16,
+        install_dir: &std::path::Path,
     ) -> Box<dyn View> {
         Box::new(SettingRow::new(
             Box::new(LibraryPath(library_index)),
             rect,
             settings,
             fonts,
+            dpi,
+            install_dir,
         )) as Box<dyn View>
     }
 
@@ -206,12 +222,16 @@ impl LibraryEditor {
         library_index: usize,
         settings: &Settings,
         fonts: &mut crate::font::Fonts,
+        dpi: u16,
+        install_dir: &std::path::Path,
     ) -> Box<dyn View> {
         Box::new(SettingRow::new(
             Box::new(LibraryFinishedAction(library_index)),
             rect,
             settings,
             fonts,
+            dpi,
+            install_dir,
         )) as Box<dyn View>
     }
 
@@ -241,7 +261,7 @@ impl LibraryEditor {
         _id: Option<ViewId>,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         let keyboard = self.children[self.keyboard_index]
             .downcast_mut::<ToggleableKeyboard>()
@@ -255,7 +275,7 @@ impl LibraryEditor {
         focus: Option<ViewId>,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
         if self.focus != focus {
             self.focus = focus;
@@ -300,7 +320,7 @@ impl LibraryEditor {
         &mut self,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
         let mut name_input = NamedInput::new(
             "Library Name".to_string(),
@@ -324,7 +344,7 @@ impl LibraryEditor {
         &mut self,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
         let screen_rect = rect!(
             0,
@@ -410,7 +430,7 @@ impl LibraryEditor {
         rect: Rectangle,
         entries: &[crate::view::EntryKind],
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
         let menu = Menu::new(
             rect,
@@ -478,7 +498,7 @@ impl View for LibraryEditor {
         hub: &Hub,
         bus: &mut Bus,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
         match *evt {
             Event::Gesture(GestureEvent::HoldFingerShort(_, _)) => true,
@@ -508,8 +528,8 @@ impl View for LibraryEditor {
         }
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _fb, _fonts), fields(rect = ?_rect)))]
-    fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {}
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _context), fields(rect = ?_rect)))]
+    fn render(&self, _context: &mut AppContext, _rect: Rectangle) {}
 
     fn rect(&self) -> &Rectangle {
         &self.rect

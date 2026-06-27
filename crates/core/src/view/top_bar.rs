@@ -1,6 +1,7 @@
-use crate::context::Context;
-use crate::font::Fonts;
-use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::battery::Battery as _;
+use crate::device::AppContext;
+use crate::device::DeviceHardware as _;
+use crate::framebuffer::UpdateMode;
 use crate::geom::Rectangle;
 use crate::gesture::GestureEvent;
 use crate::input::DeviceEvent;
@@ -32,7 +33,7 @@ impl TopBar {
         rect: Rectangle,
         variant: TopBarVariant,
         title: String,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> TopBar {
         let id = ID_FEEDER.next();
         let mut children = Vec::new();
@@ -55,9 +56,14 @@ impl TopBar {
         children.push(Box::new(title_label) as Box<dyn View>);
         children.push(Box::new(clock_label) as Box<dyn View>);
 
-        let capacity = context.battery.capacity().map_or(0.0, |v| v[0]);
+        let capacity = context
+            .device
+            .battery_mut()
+            .capacity()
+            .map_or(0.0, |v| v[0]);
         let status = context
-            .battery
+            .device
+            .battery_mut()
             .status()
             .map_or(crate::battery::Status::Discharging, |v| v[0]);
         let battery_widget = Battery::new(
@@ -103,7 +109,7 @@ impl TopBar {
         title_label.update(title, rq);
     }
 
-    pub fn update_frontlight_icon(&mut self, rq: &mut RenderQueue, context: &mut Context) {
+    pub fn update_frontlight_icon(&mut self, rq: &mut RenderQueue, context: &mut AppContext) {
         let name = if context.settings.frontlight {
             "frontlight"
         } else {
@@ -120,13 +126,13 @@ impl TopBar {
         }
     }
 
-    pub fn update_battery_widget(&mut self, rq: &mut RenderQueue, context: &mut Context) {
+    pub fn update_battery_widget(&mut self, rq: &mut RenderQueue, context: &mut AppContext) {
         if let Some(battery_widget) = self.children[3].downcast_mut::<Battery>() {
             battery_widget.update(rq, context);
         }
     }
 
-    pub fn reseed(&mut self, rq: &mut RenderQueue, context: &mut Context) {
+    pub fn reseed(&mut self, rq: &mut RenderQueue, context: &mut AppContext) {
         self.update_frontlight_icon(rq, context);
         self.update_clock_label(rq);
         self.update_battery_widget(rq, context);
@@ -134,14 +140,18 @@ impl TopBar {
 }
 
 impl View for TopBar {
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, _bus, _rq, _context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(
+        skip(self, _hub, _bus, _rq, _context),
+        fields(event = ?evt),
+        ret(level=tracing::Level::TRACE)
+    ))]
     fn handle_event(
         &mut self,
         evt: &Event,
         _hub: &Hub,
         _bus: &mut Bus,
         _rq: &mut RenderQueue,
-        _context: &mut Context,
+        _context: &mut AppContext,
     ) -> bool {
         match *evt {
             Event::Gesture(GestureEvent::Tap(center))
@@ -162,10 +172,17 @@ impl View for TopBar {
         }
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _fb, _fonts, _rect), fields(rect = ?_rect)))]
-    fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {}
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _rect, _context), fields(rect = ?_rect
+    )))]
+    fn render(&self, _context: &mut AppContext, _rect: Rectangle) {}
 
-    fn resize(&mut self, rect: Rectangle, hub: &Hub, rq: &mut RenderQueue, context: &mut Context) {
+    fn resize(
+        &mut self,
+        rect: Rectangle,
+        hub: &Hub,
+        rq: &mut RenderQueue,
+        context: &mut AppContext,
+    ) {
         let side = rect.height() as i32;
         self.children[0].resize(rect![rect.min, rect.min + side], hub, rq, context);
         let clock_width = self.children[2].rect().width() as i32;

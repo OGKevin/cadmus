@@ -60,10 +60,11 @@ use self::calculator::LineOrigin;
 use self::github::GithubEvent;
 use self::key::KeyKind;
 use crate::color::Color;
-use crate::context::Context;
+use crate::device::AppContext;
+use crate::device::DeviceHardware as _;
 use crate::document::{Location, TextLocation};
-use crate::font::Fonts;
-use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::framebuffer::Framebuffer as _;
+use crate::framebuffer::UpdateMode;
 use crate::frontlight::LightLevels;
 use crate::geom::{Boundary, CycleDir, LinearDir, Rectangle};
 use crate::gesture::GestureEvent;
@@ -114,9 +115,9 @@ pub trait View: Downcast {
         hub: &Hub,
         bus: &mut Bus,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool;
-    fn render(&self, fb: &mut dyn Framebuffer, rect: Rectangle, fonts: &mut Fonts);
+    fn render(&self, context: &mut AppContext, rect: Rectangle);
     fn rect(&self) -> &Rectangle;
     fn rect_mut(&mut self) -> &mut Rectangle;
     fn children(&self) -> &Vec<Box<dyn View>>;
@@ -132,7 +133,7 @@ pub trait View: Downcast {
         rect: Rectangle,
         _hub: &Hub,
         _rq: &mut RenderQueue,
-        _context: &mut Context,
+        _context: &mut AppContext,
     ) {
         *self.rect_mut() = rect;
     }
@@ -187,7 +188,7 @@ pub fn handle_event(
     hub: &Hub,
     parent_bus: &mut Bus,
     rq: &mut RenderQueue,
-    context: &mut Context,
+    context: &mut AppContext,
 ) -> bool {
     if view.len() > 0 {
         let mut captured = false;
@@ -222,15 +223,14 @@ pub fn handle_event(
 // We render from bottom to top. For a view to render it has to either appear in `ids` or intersect
 // one of the rectangles in `bgs`. When we're about to render a view, if `wait` is true, we'll wait
 // for all the updates in `updating` that intersect with the view.
-#[cfg_attr(feature = "tracing", tracing::instrument(skip(view, ids, rects, bgs, fb, fonts, updating), fields(wait = wait)))]
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(view, ids, rects, bgs, context, updating), fields(wait = wait)))]
 pub fn render(
     view: &dyn View,
     wait: bool,
     ids: &FxHashMap<Id, Vec<Rectangle>>,
     rects: &mut Vec<Rectangle>,
     bgs: &mut Vec<Rectangle>,
-    fb: &mut dyn Framebuffer,
-    fonts: &mut Fonts,
+    context: &mut AppContext,
     updating: &mut Vec<UpdateData>,
 ) {
     let mut render_rects = Vec::new();
@@ -250,7 +250,10 @@ pub fn render(
                 updating.retain(|update| {
                     let overlaps = render_rect.overlaps(&update.rect);
                     if overlaps && !update.has_completed() {
-                        fb.wait(update.token)
+                        context
+                            .device
+                            .framebuffer()
+                            .wait(update.token)
                             .map_err(|e| {
                                 error!("Can't wait for {}, {}: {:#}", update.token, update.rect, e)
                             })
@@ -260,7 +263,7 @@ pub fn render(
                 });
             }
 
-            view.render(fb, rect, fonts);
+            view.render(context, rect);
             render_rects.push(render_rect);
 
             // Most views can't render a subrectangle of themselves.
@@ -303,7 +306,7 @@ pub fn render(
     }
 
     for i in 0..view.len() {
-        render(view.child(i), wait, ids, rects, bgs, fb, fonts, updating);
+        render(view.child(i), wait, ids, rects, bgs, context, updating);
     }
 }
 
@@ -311,7 +314,7 @@ pub fn render(
 pub fn process_render_queue(
     view: &dyn View,
     rq: &mut RenderQueue,
-    context: &mut Context,
+    context: &mut AppContext,
     updating: &mut Vec<UpdateData>,
 ) {
     for ((mode, wait), pairs) in rq.drain() {
@@ -327,19 +330,10 @@ pub fn process_render_queue(
             }
         }
 
-        render(
-            view,
-            wait,
-            &ids,
-            &mut rects,
-            &mut bgs,
-            context.fb.as_mut(),
-            &mut context.fonts,
-            updating,
-        );
+        render(view, wait, &ids, &mut rects, &mut bgs, context, updating);
 
         for rect in rects {
-            match context.fb.update(&rect, mode) {
+            match context.device.framebuffer_mut().update(&rect, mode) {
                 Ok(token) => {
                     updating.push(UpdateData {
                         token,
@@ -356,13 +350,14 @@ pub fn process_render_queue(
 }
 
 #[inline]
-pub fn wait_for_all(updating: &mut Vec<UpdateData>, context: &mut Context) {
+pub fn wait_for_all(updating: &mut Vec<UpdateData>, context: &mut AppContext) {
     for update in updating.drain(..) {
         if update.has_completed() {
             continue;
         }
         context
-            .fb
+            .device
+            .framebuffer()
             .wait(update.token)
             .map_err(|e| error!("Can't wait for {}, {}: {:#}", update.token, update.rect, e))
             .ok();
@@ -377,6 +372,10 @@ pub enum ToggleEvent {
 
 #[derive(Debug, Clone)]
 pub enum Event {
+    /// Device input event (touch, buttons, power, network, etc.).
+    ///
+    /// Lifecycle-specific handling is documented on individual [`DeviceEvent`]
+    /// variants (e.g. [`DeviceEvent::NetUp`]).
     Device(DeviceEvent),
     Gesture(GestureEvent),
     Keyboard(KeyboardEvent),
@@ -823,6 +822,7 @@ pub enum EntryId {
     SetLibraryFinishedAction(usize, FinishedAction),
     ClearLibraryFinishedAction(usize),
     SetIntermission(settings::IntermKind, settings::IntermissionDisplay),
+    ShowIntermission(settings::IntermKind),
     EditIntermissionImage(settings::IntermKind),
     ToggleShowHidden,
     #[deprecated(note = "Use ToggleEvent::Settings instead")]

@@ -51,7 +51,7 @@ impl Html5Document {
     /// [`set_viewer_stylesheet`](Self::set_viewer_stylesheet) and
     /// [`set_user_stylesheet`](Self::set_user_stylesheet) to override them.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(text), fields(len = text.len())))]
-    pub fn new_from_memory(text: &str) -> Html5Document {
+    pub fn new_from_memory(text: &str, install_dir: &Path) -> Html5Document {
         let content = parse_html5(text);
         Html5Document {
             base: HtmlBase::new(
@@ -60,6 +60,7 @@ impl Html5Document {
                 PathBuf::default(),
                 PathBuf::from(VIEWER_STYLESHEET),
                 PathBuf::from(USER_STYLESHEET),
+                install_dir.to_path_buf(),
             ),
         }
     }

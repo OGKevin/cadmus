@@ -9,13 +9,17 @@ use super::{
 };
 use super::{BORDER_RADIUS_MEDIUM, SMALL_BAR_HEIGHT, THICKNESS_LARGE};
 use crate::color::{BLACK, WHITE};
-use crate::context::Context;
-use crate::device::CURRENT_DEVICE;
-use crate::font::{Fonts, NORMAL_STYLE, font_from_style};
-use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::device::AppContext;
+use crate::device::DeviceCapabilities as _;
+use crate::device::DeviceHardware as _;
+use crate::device::DeviceIdentity as _;
+use crate::font::{NORMAL_STYLE, font_from_style};
+use crate::framebuffer::UpdateMode;
+use crate::frontlight::Frontlight as _;
 use crate::frontlight::LightLevels;
 use crate::geom::{BorderSpec, CornerSpec, Rectangle};
 use crate::gesture::GestureEvent;
+use crate::lightsensor::LightSensor as _;
 use crate::settings::{LightPreset, guess_frontlight};
 use crate::unit::scale_by_dpi;
 
@@ -30,13 +34,13 @@ pub struct FrontlightWindow {
 }
 
 impl FrontlightWindow {
-    pub fn new(context: &mut Context) -> FrontlightWindow {
+    pub fn new(context: &mut AppContext) -> FrontlightWindow {
         let id = ID_FEEDER.next();
+        let levels = context.device.frontlight().levels();
         let fonts = &mut context.fonts;
-        let levels = context.frontlight.levels();
         let presets = &context.settings.frontlight_presets;
         let mut children = Vec::new();
-        let dpi = CURRENT_DEVICE.dpi;
+        let dpi = context.device.dpi();
         let (width, height) = context.display.dims;
         let small_height = scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32;
         let thickness = scale_by_dpi(THICKNESS_LARGE, dpi) as i32;
@@ -51,7 +55,7 @@ impl FrontlightWindow {
 
         let mut window_height = small_height * 3 + 2 * padding;
 
-        if CURRENT_DEVICE.has_natural_light() {
+        if context.device.has_natural_light() {
             window_height += small_height;
         }
 
@@ -100,7 +104,7 @@ impl FrontlightWindow {
 
         let mut button_y = rect.min.y + 2 * small_height;
 
-        if CURRENT_DEVICE.has_natural_light() {
+        if context.device.has_natural_light() {
             let max_label_width = {
                 let font = font_from_style(fonts, &NORMAL_STYLE, dpi);
                 ["Intensity", "Warmth"]
@@ -210,7 +214,12 @@ impl FrontlightWindow {
                 rect.max.y - thickness - 2 * padding
             ];
             let mut presets_list = PresetsList::new(presets_rect);
-            presets_list.update(presets, &mut RenderQueue::new(), fonts);
+            presets_list.update(
+                presets,
+                &mut RenderQueue::new(),
+                fonts,
+                context.device.dpi(),
+            );
             children.push(Box::new(presets_list) as Box<dyn View>);
         }
 
@@ -222,8 +231,8 @@ impl FrontlightWindow {
         }
     }
 
-    fn toggle_presets(&mut self, enable: bool, rq: &mut RenderQueue, context: &mut Context) {
-        let dpi = CURRENT_DEVICE.dpi;
+    fn toggle_presets(&mut self, enable: bool, rq: &mut RenderQueue, context: &mut AppContext) {
+        let dpi = context.device.dpi();
         let small_height = scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32;
 
         if enable {
@@ -245,6 +254,7 @@ impl FrontlightWindow {
                 &context.settings.frontlight_presets,
                 &mut RenderQueue::new(),
                 &mut context.fonts,
+                context.device.dpi(),
             );
             self.children.push(Box::new(presets_list) as Box<dyn View>);
             rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
@@ -256,10 +266,15 @@ impl FrontlightWindow {
         }
     }
 
-    fn set_frontlight_levels(&mut self, frontlight_levels: LightLevels, rq: &mut RenderQueue) {
+    fn set_frontlight_levels(
+        &mut self,
+        frontlight_levels: LightLevels,
+        rq: &mut RenderQueue,
+        context: &AppContext,
+    ) {
         self.frontlight_levels = frontlight_levels;
         let LightLevels { intensity, warmth } = frontlight_levels;
-        if CURRENT_DEVICE.has_natural_light() {
+        if context.device.has_natural_light() {
             if let Some(slider_intensity) = self.child_mut(3).downcast_mut::<Slider>() {
                 slider_intensity.update(intensity.into(), rq);
             }
@@ -271,10 +286,15 @@ impl FrontlightWindow {
         }
     }
 
-    fn update_presets(&mut self, rq: &mut RenderQueue, context: &mut Context) {
+    fn update_presets(&mut self, rq: &mut RenderQueue, context: &mut AppContext) {
         let len = self.len();
         if let Some(presets_list) = self.child_mut(len - 1).downcast_mut::<PresetsList>() {
-            presets_list.update(&context.settings.frontlight_presets, rq, &mut context.fonts);
+            presets_list.update(
+                &context.settings.frontlight_presets,
+                rq,
+                &mut context.fonts,
+                context.device.dpi(),
+            );
         }
     }
 }
@@ -288,7 +308,7 @@ impl View for FrontlightWindow {
         hub: &Hub,
         _bus: &mut Bus,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
         match *evt {
             Event::Slider(SliderId::LightIntensity, value, _) => {
@@ -311,14 +331,14 @@ impl View for FrontlightWindow {
             }
             Event::Gesture(..) => true,
             Event::Save => {
-                let lightsensor_level = if CURRENT_DEVICE.has_lightsensor() {
-                    context.lightsensor.level().ok()
+                let lightsensor_level = if context.device.has_lightsensor() {
+                    context.device.lightsensor_mut().level().ok()
                 } else {
                     None
                 };
                 let light_preset = LightPreset {
                     lightsensor_level,
-                    frontlight_levels: context.frontlight.levels(),
+                    frontlight_levels: context.device.frontlight().levels(),
                     ..Default::default()
                 };
                 context.settings.frontlight_presets.push(light_preset);
@@ -371,20 +391,20 @@ impl View for FrontlightWindow {
             Event::LoadPreset(index) => {
                 let frontlight_levels =
                     context.settings.frontlight_presets[index].frontlight_levels;
-                self.set_frontlight_levels(frontlight_levels, rq);
+                self.set_frontlight_levels(frontlight_levels, rq, context);
                 hub.send(Event::SetFrontlightLevels(frontlight_levels)).ok();
                 true
             }
             Event::Guess => {
-                let lightsensor_level = if CURRENT_DEVICE.has_lightsensor() {
-                    context.lightsensor.level().ok()
+                let lightsensor_level = if context.device.has_lightsensor() {
+                    context.device.lightsensor_mut().level().ok()
                 } else {
                     None
                 };
                 if let Some(ref frontlight_levels) =
                     guess_frontlight(lightsensor_level, &context.settings.frontlight_presets)
                 {
-                    self.set_frontlight_levels(*frontlight_levels, rq);
+                    self.set_frontlight_levels(*frontlight_levels, rq, context);
                     hub.send(Event::SetFrontlightLevels(*frontlight_levels))
                         .ok();
                 }
@@ -394,10 +414,10 @@ impl View for FrontlightWindow {
         }
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fb, _fonts, _rect), fields(rect = ?_rect
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, context, _rect), fields(rect = ?_rect
     )))]
-    fn render(&self, fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {
-        let dpi = CURRENT_DEVICE.dpi;
+    fn render(&self, context: &mut AppContext, _rect: Rectangle) {
+        let (fb, dpi) = context.framebuffer_with_dpi();
 
         let border_radius = scale_by_dpi(BORDER_RADIUS_MEDIUM, dpi) as i32;
         let border_thickness = scale_by_dpi(THICKNESS_LARGE, dpi) as u16;
@@ -413,8 +433,14 @@ impl View for FrontlightWindow {
         );
     }
 
-    fn resize(&mut self, _rect: Rectangle, hub: &Hub, rq: &mut RenderQueue, context: &mut Context) {
-        let dpi = CURRENT_DEVICE.dpi;
+    fn resize(
+        &mut self,
+        _rect: Rectangle,
+        hub: &Hub,
+        rq: &mut RenderQueue,
+        context: &mut AppContext,
+    ) {
+        let dpi = context.device.dpi();
         let (width, height) = context.display.dims;
         let small_height = scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32;
         let thickness = scale_by_dpi(THICKNESS_LARGE, dpi) as i32;
@@ -428,7 +454,7 @@ impl View for FrontlightWindow {
 
         let mut window_height = small_height * 3 + 2 * padding;
 
-        if CURRENT_DEVICE.has_natural_light() {
+        if context.device.has_natural_light() {
             window_height += small_height;
         }
 
@@ -467,7 +493,7 @@ impl View for FrontlightWindow {
         let mut button_y = rect.min.y + 2 * small_height;
         let mut index = 2;
 
-        if CURRENT_DEVICE.has_natural_light() {
+        if context.device.has_natural_light() {
             let max_label_width = {
                 let font = font_from_style(&mut context.fonts, &NORMAL_STYLE, dpi);
                 ["Intensity", "Warmth"]

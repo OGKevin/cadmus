@@ -83,14 +83,14 @@ impl DocumentationAssets {
 ///
 /// ```no_run
 /// use cadmus_core::assets::open_documentation;
-/// use cadmus_core::context::Context;
+/// use cadmus_core::device::AppContext;
 /// use cadmus_core::view::Hub;
 /// use cadmus_core::geom::Rectangle;
 /// use std::sync::mpsc::channel;
 ///
 /// // Note: In actual use, context and hub are provided by the application.
 /// // This example shows the API pattern.
-/// # fn example(rect: Rectangle, hub: &Hub, context: &mut Context) {
+/// # fn example(rect: Rectangle, hub: &Hub, context: &mut AppContext) {
 /// if let Some(reader) = open_documentation(rect, hub, context) {
 ///     // Documentation opened successfully
 ///     // The reader can be used to display the embedded EPUB
@@ -100,7 +100,7 @@ impl DocumentationAssets {
 pub fn open_documentation(
     rect: crate::geom::Rectangle,
     hub: &crate::view::Hub,
-    context: &mut crate::context::Context,
+    context: &mut crate::device::AppContext,
 ) -> Option<crate::view::reader::Reader> {
     #[cfg(debug_assertions)]
     let static_bytes = DOCUMENTATION_CACHE.get_or_init(|| {

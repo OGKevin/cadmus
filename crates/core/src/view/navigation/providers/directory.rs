@@ -1,5 +1,4 @@
-use crate::context::Context;
-use crate::device::CURRENT_DEVICE;
+use crate::device::AppContext;
 use crate::font::Fonts;
 use crate::geom::Point;
 use crate::unit::scale_by_dpi;
@@ -99,7 +98,7 @@ impl DirectoryNavigationProvider {
 
     /// Lists directories using the configured source.
     #[inline]
-    fn list_directories(&self, path: &Path, context: &Context) -> BTreeSet<PathBuf> {
+    fn list_directories(&self, path: &Path, context: &AppContext) -> BTreeSet<PathBuf> {
         match self.source_type {
             SourceType::Filesystem => self.list_filesystem_dirs(path),
             SourceType::Library => self.list_library_dirs(path, context),
@@ -133,7 +132,7 @@ impl DirectoryNavigationProvider {
 
     /// Lists directories using the library's filtering rules.
     #[inline]
-    fn list_library_dirs(&self, path: &Path, context: &Context) -> BTreeSet<PathBuf> {
+    fn list_library_dirs(&self, path: &Path, context: &AppContext) -> BTreeSet<PathBuf> {
         context.library.list(path, None, true).1
     }
 
@@ -155,7 +154,7 @@ impl NavigationProvider for DirectoryNavigationProvider {
     fn leaf_for_bar_traversal(
         &self,
         selected: &Self::LevelKey,
-        context: &Context,
+        context: &AppContext,
     ) -> Self::LevelKey {
         let dirs = self.list_directories(selected, context);
 
@@ -177,11 +176,11 @@ impl NavigationProvider for DirectoryNavigationProvider {
         descendant.starts_with(ancestor)
     }
 
-    fn is_root(&self, key: &Self::LevelKey, _context: &Context) -> bool {
+    fn is_root(&self, key: &Self::LevelKey, _context: &AppContext) -> bool {
         *key == self.root
     }
 
-    fn fetch_level_data(&self, key: &Self::LevelKey, context: &mut Context) -> Self::LevelData {
+    fn fetch_level_data(&self, key: &Self::LevelKey, context: &mut AppContext) -> Self::LevelData {
         self.list_directories(key, context)
     }
 
@@ -203,17 +202,25 @@ impl NavigationProvider for DirectoryNavigationProvider {
         data: &Self::LevelData,
         selected: &Self::LevelKey,
         fonts: &mut Fonts,
+        dpi: u16,
+        install_dir: &Path,
     ) {
-        bar.update_content(data, Path::new(selected), fonts);
+        bar.update_content(data, Path::new(selected), fonts, dpi, install_dir);
     }
 
     fn update_bar_selection(&self, bar: &mut Self::Bar, selected: &Self::LevelKey) {
         bar.update_selected(Path::new(selected));
     }
 
-    fn resize_bar_by(&self, bar: &mut Self::Bar, delta_y: i32, fonts: &mut Fonts) -> i32 {
+    fn resize_bar_by(
+        &self,
+        bar: &mut Self::Bar,
+        delta_y: i32,
+        fonts: &mut Fonts,
+        dpi: u16,
+        install_dir: &Path,
+    ) -> i32 {
         let rectangle = *bar.rect();
-        let dpi = CURRENT_DEVICE.dpi;
         let thickness = scale_by_dpi(THICKNESS_MEDIUM, dpi) as i32;
         let min_height = scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32 - thickness;
 
@@ -224,7 +231,7 @@ impl NavigationProvider for DirectoryNavigationProvider {
 
         let dirs = bar.dirs();
         let path = bar.path.clone();
-        bar.update_content(&dirs, path.as_path(), fonts);
+        bar.update_content(&dirs, path.as_path(), fonts, dpi, install_dir);
 
         resized
     }

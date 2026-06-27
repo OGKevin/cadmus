@@ -1,6 +1,6 @@
 //! Setting kinds for the Reader category.
 
-use super::{SettingData, SettingIdentity, SettingKind, WidgetKind};
+use super::{SettingData, SettingIdentity, SettingKind, SettingsFetchData, WidgetKind};
 use crate::fl;
 use crate::geom::Rectangle;
 use crate::i18n::I18nDisplay;
@@ -22,7 +22,7 @@ impl SettingKind for DitheredKindsSetting {
         fl!("settings-reader-dithered-kinds")
     }
 
-    fn fetch(&self, settings: &Settings) -> SettingData {
+    fn fetch(&self, data: SettingsFetchData) -> SettingData {
         let entries = FileExtension::all()
             .iter()
             .copied()
@@ -30,13 +30,13 @@ impl SettingKind for DitheredKindsSetting {
                 EntryKind::CheckBox(
                     kind.to_string().to_uppercase(),
                     EntryId::ToggleDitheredKind(kind),
-                    settings.reader.dithered_kinds.contains(&kind),
+                    data.settings.reader.dithered_kinds.contains(&kind),
                 )
             })
             .collect();
 
         SettingData {
-            value: kinds_summary(settings.reader.dithered_kinds.len()),
+            value: kinds_summary(data.settings.reader.dithered_kinds.len()),
             widget: WidgetKind::SubMenu(entries),
         }
     }
@@ -79,8 +79,8 @@ impl SettingKind for FinishedActionSetting {
         fl!("settings-reader-end-of-book-action")
     }
 
-    fn fetch(&self, settings: &Settings) -> SettingData {
-        let current = settings.reader.finished;
+    fn fetch(&self, data: SettingsFetchData) -> SettingData {
+        let current = data.settings.reader.finished;
 
         let entries = vec![
             EntryKind::RadioButton(
@@ -132,8 +132,8 @@ impl SettingKind for RefreshRateInfo {
         fl!("settings-reader-refresh-rate")
     }
 
-    fn fetch(&self, settings: &Settings) -> SettingData {
-        let global = &settings.reader.refresh_rate.global;
+    fn fetch(&self, data: SettingsFetchData) -> SettingData {
+        let global = &data.settings.reader.refresh_rate.global;
         let value = format!("{} / {}", global.regular, global.inverted);
 
         SettingData {
@@ -194,8 +194,9 @@ impl SettingKind for RefreshRateByKindInfo {
         self.0.to_string().to_uppercase()
     }
 
-    fn fetch(&self, settings: &Settings) -> SettingData {
-        let pair = settings
+    fn fetch(&self, data: SettingsFetchData) -> SettingData {
+        let pair = data
+            .settings
             .reader
             .refresh_rate
             .by_kind
@@ -236,8 +237,8 @@ impl SettingKind for RefreshRateRegularSetting {
         fl!("settings-reader-refresh-rate-regular")
     }
 
-    fn fetch(&self, settings: &Settings) -> SettingData {
-        let value = settings.reader.refresh_rate.global.regular.to_string();
+    fn fetch(&self, data: SettingsFetchData) -> SettingData {
+        let value = data.settings.reader.refresh_rate.global.regular.to_string();
 
         SettingData {
             value,
@@ -245,7 +246,7 @@ impl SettingKind for RefreshRateRegularSetting {
                 view_id: crate::view::ViewId::RefreshRateRegularInput,
                 label: fl!("settings-reader-refresh-rate-regular-input"),
                 max_chars: 3,
-                initial_text: settings.reader.refresh_rate.global.regular.to_string(),
+                initial_text: data.settings.reader.refresh_rate.global.regular.to_string(),
             }),
         }
     }
@@ -279,8 +280,14 @@ impl SettingKind for RefreshRateInvertedSetting {
         fl!("settings-reader-refresh-rate-inverted")
     }
 
-    fn fetch(&self, settings: &Settings) -> SettingData {
-        let value = settings.reader.refresh_rate.global.inverted.to_string();
+    fn fetch(&self, data: SettingsFetchData) -> SettingData {
+        let value = data
+            .settings
+            .reader
+            .refresh_rate
+            .global
+            .inverted
+            .to_string();
 
         SettingData {
             value,
@@ -288,7 +295,13 @@ impl SettingKind for RefreshRateInvertedSetting {
                 view_id: crate::view::ViewId::RefreshRateInvertedInput,
                 label: fl!("settings-reader-refresh-rate-inverted-input"),
                 max_chars: 3,
-                initial_text: settings.reader.refresh_rate.global.inverted.to_string(),
+                initial_text: data
+                    .settings
+                    .reader
+                    .refresh_rate
+                    .global
+                    .inverted
+                    .to_string(),
             }),
         }
     }
@@ -322,8 +335,9 @@ impl SettingKind for RefreshRateByKindRegular {
         fl!("settings-reader-refresh-rate-regular")
     }
 
-    fn fetch(&self, settings: &Settings) -> SettingData {
-        let regular = settings
+    fn fetch(&self, data: SettingsFetchData) -> SettingData {
+        let regular = data
+            .settings
             .reader
             .refresh_rate
             .by_kind
@@ -383,8 +397,9 @@ impl SettingKind for RefreshRateByKindInverted {
         fl!("settings-reader-refresh-rate-inverted")
     }
 
-    fn fetch(&self, settings: &Settings) -> SettingData {
-        let inverted = settings
+    fn fetch(&self, data: SettingsFetchData) -> SettingData {
+        let inverted = data
+            .settings
             .reader
             .refresh_rate
             .by_kind
@@ -475,13 +490,19 @@ mod tests {
 
         mod dithered_kinds_setting {
             use super::*;
+            use crate::view::settings_editor::kinds::SettingsFetchData;
 
             #[test]
             fn fetch_builds_checkbox_submenu_for_all_extensions() {
                 let setting = DitheredKindsSetting;
                 let settings = Settings::default();
 
-                let data = setting.fetch(&settings);
+                let fetch_data = SettingsFetchData {
+                    settings: &settings,
+                    install_dir: None,
+                };
+
+                let data = setting.fetch(fetch_data);
 
                 assert_eq!(
                     data.value,

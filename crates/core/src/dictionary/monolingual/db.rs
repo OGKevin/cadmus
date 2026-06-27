@@ -240,7 +240,7 @@ mod tests {
 
     fn create_test_db() -> (Database, Db) {
         let mut database = Database::new(":memory:").expect("failed to create in-memory database");
-        database.init(0).expect("failed to run migrations");
+        database.init_for_test(0).expect("failed to run migrations");
         let db = Db::new(&database);
         (database, db)
     }

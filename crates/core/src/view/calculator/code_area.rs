@@ -1,9 +1,10 @@
 use super::{Line, LineOrigin};
 use crate::color::TEXT_NORMAL;
-use crate::context::Context;
-use crate::device::CURRENT_DEVICE;
-use crate::font::Fonts;
-use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::device::AppContext;
+use crate::device::DeviceHardware as _;
+use crate::device::DeviceIdentity as _;
+use crate::framebuffer::Framebuffer as _;
+use crate::framebuffer::UpdateMode;
 use crate::geom::{CycleDir, Dir, Rectangle};
 use crate::gesture::GestureEvent;
 use crate::input::{ButtonCode, ButtonStatus, DeviceEvent};
@@ -36,9 +37,9 @@ impl CodeArea {
         line: Line,
         added_lines: i32,
         screen_lines: i32,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
-        let dpi = CURRENT_DEVICE.dpi;
+        let dpi = context.device.dpi();
         let font = &mut context.fonts.monospace.regular;
         font.set_size((64.0 * self.font_size) as u32, dpi);
         let line_height = font.ascender() - font.descender();
@@ -52,14 +53,22 @@ impl CodeArea {
             min_y + added_lines * line_height
         ];
         self.data.push(line);
-        self.render(context.fb.as_mut(), rect, &mut context.fonts);
-        context.fb.update(&rect, UpdateMode::Gui).ok();
+        self.render(context, rect);
+        context
+            .device
+            .framebuffer_mut()
+            .update(&rect, UpdateMode::Gui)
+            .ok();
     }
 
-    pub fn set_data(&mut self, data: Vec<Line>, context: &mut Context) {
+    pub fn set_data(&mut self, data: Vec<Line>, context: &mut AppContext) {
         self.data = data;
-        self.render(context.fb.as_mut(), self.rect, &mut context.fonts);
-        context.fb.update(&self.rect, UpdateMode::Gui).ok();
+        self.render(context, self.rect);
+        context
+            .device
+            .framebuffer_mut()
+            .update(&self.rect, UpdateMode::Gui)
+            .ok();
     }
 
     pub fn update(&mut self, font_size: f32, margin_width: i32) {
@@ -76,7 +85,7 @@ impl View for CodeArea {
         _hub: &Hub,
         bus: &mut Bus,
         _rq: &mut RenderQueue,
-        _context: &mut Context,
+        _context: &mut AppContext,
     ) -> bool {
         match *evt {
             Event::Gesture(GestureEvent::Swipe {
@@ -114,9 +123,9 @@ impl View for CodeArea {
         }
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fb, fonts), fields(rect = ?rect)))]
-    fn render(&self, fb: &mut dyn Framebuffer, rect: Rectangle, fonts: &mut Fonts) {
-        let dpi = CURRENT_DEVICE.dpi;
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, context), fields(rect = ?rect)))]
+    fn render(&self, context: &mut AppContext, rect: Rectangle) {
+        let (fb, fonts, dpi) = context.framebuffer_and_fonts();
 
         if let Some(irect) = self.rect.intersection(&rect) {
             fb.draw_rectangle(&irect, TEXT_NORMAL[0]);

@@ -1,9 +1,9 @@
 //! Background task that extracts book cover thumbnails.
 
+use std::path::PathBuf;
 use std::sync::mpsc::Sender;
 
 use crate::db::Database;
-use crate::device::CURRENT_DEVICE;
 use crate::document::open;
 use crate::library::Library;
 use crate::settings::Settings;
@@ -18,14 +18,27 @@ pub struct ThumbnailExtractionTask {
     settings: Settings,
     /// Which library to process. `None` means all configured libraries.
     library_index: Option<usize>,
+    dpi: u16,
+    color_samples: usize,
+    install_dir: PathBuf,
 }
 
 impl ThumbnailExtractionTask {
-    pub fn new(database: Database, settings: Settings, library_index: Option<usize>) -> Self {
+    pub fn new(
+        database: Database,
+        settings: Settings,
+        library_index: Option<usize>,
+        dpi: u16,
+        color_samples: usize,
+        install_dir: impl Into<PathBuf>,
+    ) -> Self {
         Self {
             database,
             settings,
             library_index,
+            dpi,
+            color_samples,
+            install_dir: install_dir.into(),
         }
     }
 
@@ -72,7 +85,7 @@ impl ThumbnailExtractionTask {
             "starting thumbnail extraction for library"
         );
 
-        let dpi = CURRENT_DEVICE.dpi;
+        let dpi = self.dpi;
         let big_height = scale_by_dpi(BIG_BAR_HEIGHT, dpi) as i32;
         let th = big_height;
         let tw = 3 * th / 4;
@@ -86,10 +99,8 @@ impl ThumbnailExtractionTask {
             let full_path = library.home.join(&path);
             tracing::debug!(path = %path.display(), "extracting thumbnail");
 
-            match open(&full_path)
-                .and_then(|mut doc| {
-                    doc.preview_pixmap(tw as f32, th as f32, CURRENT_DEVICE.color_samples())
-                })
+            match open(&full_path, &self.install_dir)
+                .and_then(|mut doc| doc.preview_pixmap(tw as f32, th as f32, self.color_samples))
                 .and_then(|pixmap| pixmap.to_png_bytes().ok())
             {
                 Some(bytes) => {

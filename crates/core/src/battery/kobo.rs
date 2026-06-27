@@ -1,22 +1,31 @@
 use super::{Battery, Status};
-use crate::device::CURRENT_DEVICE;
-use anyhow::{Error, format_err};
+use anyhow::Error;
+#[cfg(not(test))]
+use anyhow::format_err;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
+#[cfg(not(test))]
 use std::path::Path;
 
+#[cfg(not(test))]
 const BATTERY_INTERFACES: [&str; 3] = [
     "/sys/class/power_supply/bd71827_bat",
     "/sys/class/power_supply/mc13892_bat",
     "/sys/class/power_supply/battery",
 ];
+#[cfg(not(test))]
 const POWER_COVER_INTERFACE: &str = "/sys/class/misc/cilix";
 
+#[cfg(not(test))]
 const BATTERY_CAPACITY: &str = "capacity";
+#[cfg(not(test))]
 const BATTERY_STATUS: &str = "status";
 
+#[cfg(not(test))]
 const POWER_COVER_CAPACITY: &str = "cilix_bat_capacity";
+#[cfg(not(test))]
 const POWER_COVER_STATUS: &str = "charge_status";
+#[cfg(not(test))]
 const POWER_COVER_CONNECTED: &str = "cilix_conn";
 
 pub struct PowerCover {
@@ -33,7 +42,13 @@ pub struct KoboBattery {
 }
 
 impl KoboBattery {
-    pub fn new() -> Result<KoboBattery, Error> {
+    pub fn new(has_power_cover: bool) -> Result<KoboBattery, Error> {
+        cfg_select! {
+            test => {
+                let _ = has_power_cover;
+                Ok(KoboBattery{capacity: File::open("/dev/null")?, power_cover: None, status: File::open("/dev/null")?})
+            }
+            _ => {
         let base = Path::new(
             BATTERY_INTERFACES
                 .iter()
@@ -42,7 +57,7 @@ impl KoboBattery {
         );
         let capacity = File::open(base.join(BATTERY_CAPACITY))?;
         let status = File::open(base.join(BATTERY_STATUS))?;
-        let power_cover = if CURRENT_DEVICE.has_power_cover() {
+        let power_cover = if has_power_cover {
             let base = Path::new(POWER_COVER_INTERFACE);
             let capacity = File::open(base.join(POWER_COVER_CAPACITY))?;
             let status = File::open(base.join(POWER_COVER_STATUS))?;
@@ -60,6 +75,8 @@ impl KoboBattery {
             status,
             power_cover,
         })
+            }
+        }
     }
 }
 

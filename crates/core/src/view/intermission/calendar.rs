@@ -1,10 +1,9 @@
 use super::super::{Bus, Event, Hub, ID_FEEDER, Id, RenderQueue, View};
 use crate::color::{Color, TEXT_INVERTED_HARD, TEXT_NORMAL};
-use crate::context::Context;
-use crate::device::CURRENT_DEVICE;
+use crate::device::AppContext;
+use crate::device::DeviceCapabilities as _;
 use crate::fl;
-use crate::font::{DISPLAY_FONT_SIZE, FONT_SIZES, Fonts, NORMAL_STYLE, font_from_style};
-use crate::framebuffer::Framebuffer;
+use crate::font::{DISPLAY_FONT_SIZE, FONT_SIZES, NORMAL_STYLE, font_from_style};
 use crate::geom::{CornerSpec, Point, Rectangle};
 use chrono::{Datelike, Local, NaiveDate, Timelike};
 use std::time::Duration;
@@ -137,13 +136,15 @@ impl View for CalendarView {
         _hub: &Hub,
         _bus: &mut Bus,
         _rq: &mut RenderQueue,
-        _context: &mut Context,
+        _context: &mut AppContext,
     ) -> bool {
         false
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fb, fonts), fields(rect = ?_rect)))]
-    fn render(&self, fb: &mut dyn Framebuffer, _rect: Rectangle, fonts: &mut Fonts) {
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, context), fields(rect = ?_rect)))]
+    fn render(&self, context: &mut AppContext, _rect: Rectangle) {
+        let is_color = context.device.color_samples() > 1;
+        let (fb, fonts, dpi) = context.framebuffer_and_fonts();
         let scheme = if self.halt {
             TEXT_INVERTED_HARD
         } else {
@@ -159,11 +160,9 @@ impl View for CalendarView {
         let month = now.month();
         let today = now.day() as i32;
 
-        let is_color = CURRENT_DEVICE.color_samples() > 1;
         let month_color = color_or(is_color, 180, 60, 40, scheme[1]);
         let today_bg = color_or(is_color, 70, 100, 150, scheme[1]);
 
-        let dpi = CURRENT_DEVICE.dpi;
         let screen_width = self.rect.width() as i32;
         let screen_height = self.rect.height() as i32;
 

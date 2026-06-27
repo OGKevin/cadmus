@@ -4,10 +4,11 @@ use super::{
     Bus, EntryId, Event, Hub, ID_FEEDER, Id, KeyboardEvent, RenderData, RenderQueue, TextKind, View,
 };
 use crate::color::KEYBOARD_BG;
-use crate::context::Context;
-use crate::device::CURRENT_DEVICE;
-use crate::font::Fonts;
-use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::device::AppContext;
+use crate::device::DeviceHardware as _;
+use crate::device::DeviceIdentity as _;
+use crate::framebuffer::Framebuffer as _;
+use crate::framebuffer::UpdateMode;
 use crate::geom::Rectangle;
 use crate::gesture::GestureEvent;
 use crate::input::DeviceEvent;
@@ -44,10 +45,10 @@ pub struct Keyboard {
 }
 
 impl Keyboard {
-    pub fn new(rect: &mut Rectangle, number: bool, context: &mut Context) -> Keyboard {
+    pub fn new(rect: &mut Rectangle, number: bool, context: &mut AppContext) -> Keyboard {
         let id = ID_FEEDER.next();
         let mut children = Vec::new();
-        let dpi = CURRENT_DEVICE.dpi;
+        let dpi = context.device.dpi();
 
         let layout = context.keyboard_layouts[&context.settings.keyboard_layout].clone();
 
@@ -218,7 +219,7 @@ impl View for Keyboard {
         hub: &Hub,
         _bus: &mut Bus,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
         match *evt {
             Event::Key(k) => {
@@ -310,8 +311,9 @@ impl View for Keyboard {
         )
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fb, _fonts), fields(rect = ?rect)))]
-    fn render(&self, fb: &mut dyn Framebuffer, rect: Rectangle, _fonts: &mut Fonts) {
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, context), fields(rect = ?rect)))]
+    fn render(&self, context: &mut AppContext, rect: Rectangle) {
+        let fb = context.device.framebuffer_mut();
         for child in &self.children {
             if *child.rect() == rect {
                 return;
@@ -332,9 +334,9 @@ impl View for Keyboard {
         mut rect: Rectangle,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
-        let dpi = CURRENT_DEVICE.dpi;
+        let dpi = context.device.dpi();
         let max_width = self
             .layout
             .widths

@@ -2,10 +2,9 @@ use super::{
     Bus, Event, Hub, ID_FEEDER, Id, RenderData, RenderQueue, SliderId, THICKNESS_SMALL, View,
 };
 use crate::color::{BLACK, PROGRESS_EMPTY, PROGRESS_FULL, PROGRESS_VALUE, WHITE};
-use crate::context::Context;
-use crate::device::CURRENT_DEVICE;
-use crate::font::{Fonts, SLIDER_VALUE, font_from_style};
-use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::device::{AppContext, DeviceIdentity};
+use crate::font::{SLIDER_VALUE, font_from_style};
+use crate::framebuffer::UpdateMode;
 use crate::geom::{BorderSpec, CornerSpec, Rectangle, halves};
 use crate::input::{DeviceEvent, FingerStatus};
 use crate::unit::scale_by_dpi;
@@ -46,8 +45,7 @@ impl Slider {
         }
     }
 
-    pub fn update_value(&mut self, x_hit: i32) {
-        let dpi = CURRENT_DEVICE.dpi;
+    pub fn update_value(&mut self, x_hit: i32, dpi: u16) {
         let button_diameter = scale_by_dpi(BUTTON_DIAMETER, dpi) as i32;
         let (small_radius, big_radius) = halves(button_diameter);
         let x_offset = x_hit
@@ -68,14 +66,15 @@ impl Slider {
 }
 
 impl View for Slider {
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, bus, rq, _context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, bus, rq, _context), fields(event = ?evt
+    ), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
         _hub: &Hub,
         bus: &mut Bus,
         rq: &mut RenderQueue,
-        _context: &mut Context,
+        _context: &mut AppContext,
     ) -> bool {
         match *evt {
             Event::Device(DeviceEvent::Finger {
@@ -83,14 +82,14 @@ impl View for Slider {
             }) => match status {
                 FingerStatus::Down if self.rect.includes(position) => {
                     self.active = true;
-                    self.update_value(position.x);
+                    self.update_value(position.x, _context.device.dpi());
                     rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
                     bus.push_back(Event::Slider(self.slider_id, self.value, status));
                     self.last_x = position.x;
                     true
                 }
                 FingerStatus::Motion if self.active && position.x != self.last_x => {
-                    self.update_value(position.x);
+                    self.update_value(position.x, _context.device.dpi());
                     rq.add(RenderData::no_wait(
                         self.id,
                         self.rect,
@@ -103,7 +102,7 @@ impl View for Slider {
                 FingerStatus::Up if self.active => {
                     self.active = false;
                     if position.x != self.last_x {
-                        self.update_value(position.x);
+                        self.update_value(position.x, _context.device.dpi());
                         self.last_x = position.x;
                     }
                     rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
@@ -116,9 +115,10 @@ impl View for Slider {
         }
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fb, fonts, _rect), fields(rect = ?_rect)))]
-    fn render(&self, fb: &mut dyn Framebuffer, _rect: Rectangle, fonts: &mut Fonts) {
-        let dpi = CURRENT_DEVICE.dpi;
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _rect, context), fields(rect = ?_rect
+    )))]
+    fn render(&self, context: &mut AppContext, _rect: Rectangle) {
+        let (fb, fonts, dpi) = context.framebuffer_and_fonts();
         let progress_height = scale_by_dpi(PROGRESS_HEIGHT, dpi) as i32;
         let button_diameter = scale_by_dpi(BUTTON_DIAMETER, dpi) as i32;
         let border_thickness = scale_by_dpi(THICKNESS_SMALL, dpi) as u16;

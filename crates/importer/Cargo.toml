@@ -9,7 +9,7 @@ name = "cadmus-import"
 path = "src/main.rs"
 
 [dependencies]
-cadmus-core = { path = "../core" }
+cadmus-core = { path = "../core", features = ["deviceless"] }
 getopts = "0.2.24"
 
 [lints]

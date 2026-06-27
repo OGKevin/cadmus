@@ -95,3 +95,12 @@ pub trait UsbManager: Send + Sync {
     /// ```
     fn disable(&self) -> Result<(), UsbError>;
 }
+
+impl<T: UsbManager + ?Sized> UsbManager for Box<T> {
+    fn enable(&self) -> Result<(), UsbError> {
+        (**self).enable()
+    }
+    fn disable(&self) -> Result<(), UsbError> {
+        (**self).disable()
+    }
+}

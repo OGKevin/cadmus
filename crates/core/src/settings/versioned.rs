@@ -88,11 +88,11 @@ impl SettingsManager {
     /// # Example
     ///
     /// ```no_run
-    /// use cadmus_core::device::CURRENT_DEVICE;
     /// use cadmus_core::settings::versioned::SettingsManager;
     /// use cadmus_core::version::get_current_version;
     ///
-    /// let manager = SettingsManager::new(CURRENT_DEVICE.data_dir(), get_current_version());
+    /// let data_dir = std::path::PathBuf::from("/mnt/onboard");
+    /// let manager = SettingsManager::new(data_dir, get_current_version());
     /// ```
     pub fn new(root_dir: PathBuf, current_version: GitVersion) -> Self {
         let settings_dir = root_dir.join(SETTINGS_DIR);

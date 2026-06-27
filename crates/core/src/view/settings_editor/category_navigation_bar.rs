@@ -1,10 +1,8 @@
 use super::category::Category;
 use super::category_button::CategoryButton;
 use crate::color::TEXT_BUMP_SMALL;
-use crate::context::Context;
-use crate::device::CURRENT_DEVICE;
+use crate::device::AppContext;
 use crate::font::{Fonts, NORMAL_STYLE, font_from_style};
-use crate::framebuffer::Framebuffer;
 use crate::geom::{Point, Rectangle, big_half, divide, small_half};
 use crate::view::filler::Filler;
 use crate::view::{Align, Bus, Event, Hub, ID_FEEDER, Id, RenderQueue, View};
@@ -46,10 +44,10 @@ impl CategoryNavigationBar {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fonts)))]
-    pub fn update_content(&mut self, selected: Category, fonts: &mut Fonts) {
+    pub fn update_content(&mut self, selected: Category, fonts: &mut Fonts, dpi: u16) {
         self.selected = selected;
         self.children.clear();
-        self.children = Self::build_category_buttons(self.rect, selected, fonts);
+        self.children = Self::build_category_buttons(self.rect, selected, fonts, dpi);
     }
 
     /// Layout all category buttons in rows, distributing vertical space evenly.
@@ -76,10 +74,10 @@ impl CategoryNavigationBar {
         rect: Rectangle,
         selected: Category,
         fonts: &mut Fonts,
+        dpi: u16,
     ) -> Vec<Box<dyn View>> {
         let mut children = Vec::new();
         let categories = Category::all();
-        let dpi = CURRENT_DEVICE.dpi;
         let font = font_from_style(fonts, &NORMAL_STYLE, dpi);
         let padding = font.em() as i32;
         let x_height = font.x_heights.0 as i32;
@@ -157,12 +155,12 @@ impl CategoryNavigationBar {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fonts)))]
-    pub fn update_selection(&mut self, selected: Category, fonts: &mut Fonts) {
+    pub fn update_selection(&mut self, selected: Category, fonts: &mut Fonts, dpi: u16) {
         if self.selected == selected {
             return;
         }
 
-        self.update_content(selected, fonts);
+        self.update_content(selected, fonts, dpi);
     }
 
     pub fn resize_by(&mut self, _delta_y: i32, _fonts: &mut Fonts) -> i32 {
@@ -185,13 +183,13 @@ impl View for CategoryNavigationBar {
         _hub: &Hub,
         _bus: &mut Bus,
         _rq: &mut RenderQueue,
-        _context: &mut Context,
+        _context: &mut AppContext,
     ) -> bool {
         false
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _fb, _fonts), fields(rect = ?_rect)))]
-    fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {}
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _context), fields(rect = ?_rect)))]
+    fn render(&self, _context: &mut AppContext, _rect: Rectangle) {}
 
     fn rect(&self) -> &Rectangle {
         &self.rect

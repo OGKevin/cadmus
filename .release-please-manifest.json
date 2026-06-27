@@ -2,7 +2,6 @@
   ".": "0.11.0",
   "crates/core": "0.11.0",
   "crates/cadmus": "0.11.0",
-  "crates/emulator": "0.11.0",
   "crates/importer": "0.11.0",
   "crates/fetcher": "0.11.0",
   "xtask": "0.11.0"

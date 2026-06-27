@@ -6,10 +6,10 @@ use self::bottom_bar::BottomBar;
 use self::code_area::CodeArea;
 use self::input_bar::InputBar;
 use crate::color::BLACK;
-use crate::context::Context;
-use crate::device::CURRENT_DEVICE;
-use crate::font::Fonts;
-use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::device::AppContext;
+use crate::device::DeviceIdentity as _;
+use crate::device::DeviceRotation as _;
+use crate::framebuffer::UpdateMode;
 use crate::geom::{CycleDir, Rectangle, halves};
 use crate::gesture::GestureEvent;
 use crate::unit::{mm_to_px, scale_by_dpi};
@@ -72,7 +72,7 @@ impl Calculator {
         rect: Rectangle,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> Result<Calculator, Error> {
         let id = ID_FEEDER.next();
         let path = Path::new(APP_DIR).join(APP_NAME).canonicalize()?;
@@ -124,7 +124,7 @@ impl Calculator {
         }
 
         let mut children = Vec::new();
-        let dpi = CURRENT_DEVICE.dpi;
+        let dpi = context.device.dpi();
         let (small_height, big_height) = (
             scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32,
             scale_by_dpi(BIG_BAR_HEIGHT, dpi) as i32,
@@ -266,7 +266,7 @@ impl Calculator {
         })
     }
 
-    fn append(&mut self, line: Line, context: &mut Context) {
+    fn append(&mut self, line: Line, context: &mut AppContext) {
         let (lines_count, columns_count) = self.size;
         let (mut current_line, mut current_column) = self.location;
         let mut screen_lines = 0;
@@ -331,7 +331,7 @@ impl Calculator {
         self.history.cursor = self.data.len();
     }
 
-    fn scroll(&mut self, mut delta_lines: i32, context: &mut Context) {
+    fn scroll(&mut self, mut delta_lines: i32, context: &mut AppContext) {
         if delta_lines == 0 || self.data.is_empty() {
             return;
         }
@@ -402,8 +402,8 @@ impl Calculator {
         self.refresh(context);
     }
 
-    fn scroll_pixels(&mut self, dy: i32, context: &mut Context) {
-        let dpi = CURRENT_DEVICE.dpi;
+    fn scroll_pixels(&mut self, dy: i32, context: &mut AppContext) {
+        let dpi = context.device.dpi();
         let line_height = {
             let font = &mut context.fonts.monospace.regular;
             font.set_size((64.0 * self.font_size) as u32, dpi);
@@ -414,13 +414,13 @@ impl Calculator {
         self.scroll(delta_lines, context);
     }
 
-    fn scroll_page(&mut self, dir: CycleDir, context: &mut Context) {
+    fn scroll_page(&mut self, dir: CycleDir, context: &mut AppContext) {
         let sgn = if dir == CycleDir::Previous { -1 } else { 1 };
         let delta_lines = sgn * self.size.0 as i32;
         self.scroll(delta_lines, context);
     }
 
-    fn refresh(&mut self, context: &mut Context) {
+    fn refresh(&mut self, context: &mut AppContext) {
         let mut data = Vec::new();
         let (mut current_line, mut current_column) = self.location;
         let (lines_count, columns_count) = self.size;
@@ -464,7 +464,7 @@ impl Calculator {
         dir: CycleDir,
         honor_prefix: bool,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         let beginning = if honor_prefix {
             self.children[4]
@@ -508,8 +508,8 @@ impl Calculator {
         }
     }
 
-    fn update_size(&mut self, rq: &mut RenderQueue, context: &mut Context) {
-        let dpi = CURRENT_DEVICE.dpi;
+    fn update_size(&mut self, rq: &mut RenderQueue, context: &mut AppContext) {
+        let dpi = context.device.dpi();
         let font = &mut context.fonts.monospace.regular;
         font.set_size((64.0 * self.font_size) as u32, dpi);
         let char_width = font.plan(" ", None, None).width;
@@ -529,13 +529,18 @@ impl Calculator {
         }
     }
 
-    fn set_font_size(&mut self, font_size: f32, rq: &mut RenderQueue, context: &mut Context) {
+    fn set_font_size(&mut self, font_size: f32, rq: &mut RenderQueue, context: &mut AppContext) {
         self.font_size = font_size;
         self.update_size(rq, context);
         self.refresh(context);
     }
 
-    fn set_margin_width(&mut self, margin_width: i32, rq: &mut RenderQueue, context: &mut Context) {
+    fn set_margin_width(
+        &mut self,
+        margin_width: i32,
+        rq: &mut RenderQueue,
+        context: &mut AppContext,
+    ) {
         self.margin_width = margin_width;
         self.update_size(rq, context);
         self.refresh(context);
@@ -546,7 +551,7 @@ impl Calculator {
         rect: Rectangle,
         enable: Option<bool>,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if let Some(index) = locate_by_id(self, ViewId::MarginWidthMenu) {
             if let Some(true) = enable {
@@ -594,7 +599,7 @@ impl Calculator {
         rect: Rectangle,
         enable: Option<bool>,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         if let Some(index) = locate_by_id(self, ViewId::FontSizeMenu) {
             if let Some(true) = enable {
@@ -638,7 +643,7 @@ impl Calculator {
         }
     }
 
-    fn reseed(&mut self, rq: &mut RenderQueue, context: &mut Context) {
+    fn reseed(&mut self, rq: &mut RenderQueue, context: &mut AppContext) {
         if let Some(top_bar) = self.child_mut(0).downcast_mut::<TopBar>() {
             top_bar.reseed(rq, context);
         }
@@ -646,7 +651,7 @@ impl Calculator {
         rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
     }
 
-    fn quit(&mut self, context: &mut Context) {
+    fn quit(&mut self, context: &mut AppContext) {
         unsafe { libc::kill(self.process.id() as libc::pid_t, libc::SIGTERM) };
         self.process
             .wait()
@@ -658,14 +663,15 @@ impl Calculator {
 }
 
 impl View for Calculator {
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, _bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, _bus, rq, context), fields(event = ?evt
+    ), ret(level=tracing::Level::TRACE)))]
     fn handle_event(
         &mut self,
         evt: &Event,
         hub: &Hub,
         _bus: &mut Bus,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
         match *evt {
             Event::Submit(ViewId::CalculatorInput, ref line) => {
@@ -716,7 +722,7 @@ impl View for Calculator {
                 true
             }
             Event::Gesture(GestureEvent::Rotate { quarter_turns, .. }) if quarter_turns != 0 => {
-                let (_, dir) = CURRENT_DEVICE.mirroring_scheme();
+                let (_, dir) = context.device.mirroring_scheme();
                 let n = (4 + (context.display.rotation - dir * quarter_turns)) % 4;
                 hub.send(Event::Select(EntryId::Rotate(n))).ok();
                 true
@@ -760,11 +766,18 @@ impl View for Calculator {
         }
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _fb, _fonts, _rect), fields(rect = ?_rect)))]
-    fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut Fonts) {}
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _context, _rect), fields(rect = ?_rect
+    )))]
+    fn render(&self, _context: &mut AppContext, _rect: Rectangle) {}
 
-    fn resize(&mut self, rect: Rectangle, hub: &Hub, rq: &mut RenderQueue, context: &mut Context) {
-        let dpi = CURRENT_DEVICE.dpi;
+    fn resize(
+        &mut self,
+        rect: Rectangle,
+        hub: &Hub,
+        rq: &mut RenderQueue,
+        context: &mut AppContext,
+    ) {
+        let dpi = context.device.dpi();
         let (small_height, big_height) = (
             scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32,
             scale_by_dpi(BIG_BAR_HEIGHT, dpi) as i32,

@@ -112,6 +112,7 @@ fn walk_files(home: &Path) -> Vec<DirEntry> {
     tracing::instrument(
         skip(
             home,
+            install_dir,
             settings,
             ctx,
             tracker,
@@ -124,6 +125,7 @@ fn walk_files(home: &Path) -> Vec<DirEntry> {
 )]
 fn scan_entries(
     home: &Path,
+    install_dir: &Path,
     entries: &[DirEntry],
     settings: &ImportSettings,
     force: bool,
@@ -298,7 +300,7 @@ fn scan_entries(
                 ..Default::default()
             };
             if settings.metadata_kinds.contains(&book_info.file.kind) {
-                extract_metadata_from_document(home, &mut book_info);
+                extract_metadata_from_document(home, &mut book_info, install_dir);
             }
             handles_by_fp.insert(fp, (relat.to_path_buf(), path.to_path_buf()));
             handles_by_path.insert(relat.to_path_buf(), fp);
@@ -344,12 +346,20 @@ fn send_progress(
 
 #[cfg_attr(
     feature = "tracing",
-    tracing::instrument(skip(db, home, settings, pending_relocations, books_to_insert))
+    tracing::instrument(skip(
+        db,
+        home,
+        install_dir,
+        settings,
+        pending_relocations,
+        books_to_insert
+    ))
 )]
 fn resolve_relocations(
     db: &LibraryDb,
     library_id: i64,
     home: &Path,
+    install_dir: &Path,
     settings: &ImportSettings,
     pending_relocations: Vec<PendingRelocation>,
     books_to_insert: &mut Vec<(Fp, Info)>,
@@ -372,7 +382,7 @@ fn resolve_relocations(
             } => {
                 if let Some(mut info) = fetched.remove(&old_fp) {
                     if settings.sync_metadata && settings.metadata_kinds.contains(&info.file.kind) {
-                        extract_metadata_from_document(home, &mut info);
+                        extract_metadata_from_document(home, &mut info, install_dir);
                     }
                     info.file.size = file_size;
                     books_to_insert.push((new_fp, info));
@@ -467,6 +477,7 @@ pub fn run(
     db: &LibraryDb,
     library_id: i64,
     home: &Path,
+    install_dir: &Path,
     settings: &ImportSettings,
     force: bool,
     hub: &Sender<Event>,
@@ -534,6 +545,7 @@ pub fn run(
 
     let Some(mut result) = scan_entries(
         home,
+        install_dir,
         &entries,
         settings,
         force,
@@ -555,6 +567,7 @@ pub fn run(
             db,
             library_id,
             home,
+            install_dir,
             settings,
             result.pending_relocations,
             &mut result.books_to_insert,
@@ -586,7 +599,7 @@ mod tests {
 
     fn create_migrated_db() -> Database {
         let mut db = Database::new(":memory:").expect("in-memory db");
-        db.init(0).expect("migrations");
+        db.init_for_test(0).expect("migrations");
         db
     }
 
@@ -598,6 +611,7 @@ mod tests {
             &lib.db,
             lib.library_id,
             dir,
+            Path::new(""),
             &ImportSettings::default(),
             false,
             &tx,
@@ -653,6 +667,7 @@ mod tests {
             &lib.db,
             lib.library_id,
             dir.path(),
+            Path::new(""),
             &ImportSettings::default(),
             false,
             &tx,
@@ -798,6 +813,7 @@ mod tests {
             &lib.db,
             lib.library_id,
             dir.path(),
+            Path::new(""),
             &settings,
             false,
             &tx,
@@ -840,6 +856,7 @@ mod tests {
             &lib.db,
             lib.library_id,
             dir.path(),
+            Path::new(""),
             &ImportSettings::default(),
             false,
             &tx,
@@ -865,6 +882,7 @@ mod tests {
             &lib.db,
             lib.library_id,
             dir.path(),
+            Path::new(""),
             &settings,
             false,
             &tx2,

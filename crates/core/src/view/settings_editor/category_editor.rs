@@ -1,9 +1,10 @@
 use crate::color::{BLACK, WHITE};
-use crate::context::{Context, DICTIONARIES_DIRNAME};
-use crate::device::CURRENT_DEVICE;
+use crate::context::DICTIONARIES_DIRNAME;
+use crate::device::AppContext;
+use crate::device::{DeviceIdentity as _, DevicePaths as _};
 use crate::dictionary::MonolingualDictionaryService;
 use crate::fl;
-use crate::framebuffer::{Framebuffer, UpdateMode};
+use crate::framebuffer::UpdateMode;
 use crate::geom::{CycleDir, Rectangle, halves};
 use crate::settings::{LibrarySettings, Settings};
 use crate::unit::scale_by_dpi;
@@ -75,12 +76,13 @@ impl CategoryEditor {
         rect: Rectangle,
         category: Category,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> CategoryEditor {
         let id = ID_FEEDER.next();
         let mut children = Vec::new();
 
-        let (bar_height, separator_top_half, separator_bottom_half) = Self::calculate_dimensions();
+        let (bar_height, separator_top_half, separator_bottom_half) =
+            Self::calculate_dimensions(context.device.dpi());
 
         let content_rect = rect![
             rect.min.x,
@@ -94,7 +96,7 @@ impl CategoryEditor {
 
         let first_row_index = children.len();
 
-        let row_height = scale_by_dpi(SMALL_BAR_HEIGHT, CURRENT_DEVICE.dpi) as i32;
+        let row_height = scale_by_dpi(SMALL_BAR_HEIGHT, context.device.dpi()) as i32;
 
         children.push(Self::build_bottom_separator(
             rect,
@@ -121,7 +123,7 @@ impl CategoryEditor {
         let dict_service = if category == Category::Dictionaries {
             match MonolingualDictionaryService::new(
                 &context.database,
-                CURRENT_DEVICE.data_path(DICTIONARIES_DIRNAME).as_path(),
+                context.device.data_path(DICTIONARIES_DIRNAME).as_path(),
             ) {
                 Ok(service) => Some(service),
                 Err(e) => {
@@ -159,8 +161,7 @@ impl CategoryEditor {
     }
 
     #[inline]
-    fn calculate_dimensions() -> (i32, i32, i32) {
-        let dpi = CURRENT_DEVICE.dpi;
+    fn calculate_dimensions(dpi: u16) -> (i32, i32, i32) {
         let small_height = scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32;
 
         let separator_thickness = scale_by_dpi(THICKNESS_MEDIUM, dpi) as i32;
@@ -176,8 +177,10 @@ impl CategoryEditor {
         row_rect: Rectangle,
         settings: &Settings,
         fonts: &mut crate::font::Fonts,
+        dpi: u16,
+        install_dir: &std::path::Path,
     ) -> Box<dyn View> {
-        let setting_row = SettingRow::new(kind, row_rect, settings, fonts);
+        let setting_row = SettingRow::new(kind, row_rect, settings, fonts, dpi, install_dir);
         Box::new(setting_row) as Box<dyn View>
     }
 
@@ -250,7 +253,7 @@ impl CategoryEditor {
     /// This is the single mutation point for page state — both `rebuild_library_rows`
     /// and the `Event::Page` handler delegate here.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-    fn update_rows_list(&mut self, rq: &mut RenderQueue, context: &mut Context) {
+    fn update_rows_list(&mut self, rq: &mut RenderQueue, context: &mut AppContext) {
         self.children
             .drain(self.first_row_index..self.separator_index);
 
@@ -281,6 +284,8 @@ impl CategoryEditor {
                 row_rect,
                 &context.settings,
                 &mut context.fonts,
+                context.device.dpi(),
+                &context.device.install_dir(),
             ));
             current_y += self.row_height;
         }
@@ -295,7 +300,8 @@ impl CategoryEditor {
         self.children.remove(bar_index);
         self.children.remove(self.separator_index);
 
-        let (bar_height, separator_top_half, separator_bottom_half) = Self::calculate_dimensions();
+        let (bar_height, separator_top_half, separator_bottom_half) =
+            Self::calculate_dimensions(context.device.dpi());
         let new_sep = Self::build_bottom_separator(
             self.rect,
             bar_height,
@@ -325,7 +331,7 @@ impl CategoryEditor {
     ///
     /// Resets to page 0 to avoid stale page state when the library list changes.
     #[inline]
-    fn rebuild_library_rows(&mut self, rq: &mut RenderQueue, context: &mut Context) {
+    fn rebuild_library_rows(&mut self, rq: &mut RenderQueue, context: &mut AppContext) {
         if self.category != Category::Libraries {
             return;
         }
@@ -341,7 +347,7 @@ impl CategoryEditor {
         _id: Option<ViewId>,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) {
         let keyboard = self.children[self.keyboard_index]
             .downcast_mut::<ToggleableKeyboard>()
@@ -355,7 +361,7 @@ impl CategoryEditor {
         view_id: &Option<ViewId>,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
         if self.focus != *view_id {
             self.focus = *view_id;
@@ -374,7 +380,7 @@ impl CategoryEditor {
         rect: &Rectangle,
         entries: &[EntryKind],
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
         let menu = Menu::new(
             *rect,
@@ -395,7 +401,7 @@ impl CategoryEditor {
         &mut self,
         index: usize,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
         if index < context.settings.libraries.len() {
             context.settings.libraries.remove(index);
@@ -421,7 +427,7 @@ impl CategoryEditor {
         &mut self,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
         let library = LibrarySettings {
             name: "untitled".to_string(),
@@ -455,7 +461,7 @@ impl CategoryEditor {
         index: usize,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
         if let Some(library) = context.settings.libraries.get(index).cloned() {
             let library_editor = LibraryEditor::new(self.rect, index, library, hub, rq, context);
@@ -471,7 +477,7 @@ impl CategoryEditor {
         index: usize,
         library: &LibrarySettings,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
         if index < context.settings.libraries.len() {
             context.settings.libraries[index] = library.clone();
@@ -495,7 +501,7 @@ impl CategoryEditor {
         initial_text: String,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
         let mut named_input =
             crate::view::named_input::NamedInput::new(label, view_id, view_id, max_chars, context);
@@ -511,7 +517,7 @@ impl CategoryEditor {
         &mut self,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
         let editor = RefreshRateByKindEditor::new(self.rect, hub, rq, context);
         self.children.push(Box::new(editor));
@@ -538,7 +544,7 @@ impl CategoryEditor {
         lang: &str,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
         let Some(service) = self.dict_service.clone() else {
             tracing::warn!(
@@ -633,7 +639,7 @@ impl CategoryEditor {
         lang: &str,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
         if !context.online {
             hub.send(Event::Notification(NotificationEvent::Show(fl!(
@@ -691,7 +697,11 @@ impl CategoryEditor {
 
     /// Shows the force-import confirmation dialog.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, rq, context)))]
-    fn handle_force_import_request(&mut self, rq: &mut RenderQueue, context: &mut Context) -> bool {
+    fn handle_force_import_request(
+        &mut self,
+        rq: &mut RenderQueue,
+        context: &mut AppContext,
+    ) -> bool {
         self.remove_force_import_confirm(rq);
 
         let dialog = Dialog::builder(
@@ -728,7 +738,7 @@ impl CategoryEditor {
         lang: &str,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
         self.remove_dictionary_download_confirm(rq);
 
@@ -754,9 +764,10 @@ impl CategoryEditor {
         lang: &str,
         hub: &Hub,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
-        let lang_dir = CURRENT_DEVICE
+        let lang_dir = context
+            .device
             .data_path(DICTIONARIES_DIRNAME)
             .join("reader-dict")
             .join(lang);
@@ -843,7 +854,7 @@ impl View for CategoryEditor {
         hub: &Hub,
         _bus: &mut Bus,
         rq: &mut RenderQueue,
-        context: &mut Context,
+        context: &mut AppContext,
     ) -> bool {
         match evt {
             Event::Focus(view_id) => self.handle_focus_event(view_id, hub, rq, context),
@@ -938,10 +949,9 @@ impl View for CategoryEditor {
         }
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _fb, _fonts), fields(rect = ?_rect
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _context), fields(rect = ?_rect
     )))]
-    fn render(&self, _fb: &mut dyn Framebuffer, _rect: Rectangle, _fonts: &mut crate::font::Fonts) {
-    }
+    fn render(&self, _context: &mut AppContext, _rect: Rectangle) {}
 
     fn rect(&self) -> &Rectangle {
         &self.rect
@@ -992,14 +1002,14 @@ mod tests {
         settings
     }
 
-    fn create_test_category_editor_with_context(context: &mut Context) -> CategoryEditor {
+    fn create_test_category_editor_with_context(context: &mut AppContext) -> CategoryEditor {
         let rect = rect![0, 0, 600, 800];
         let mut rq = RenderQueue::new();
 
         CategoryEditor::new(rect, Category::Libraries, &mut rq, context)
     }
 
-    fn create_test_dictionary_category_editor(context: &mut Context) -> CategoryEditor {
+    fn create_test_dictionary_category_editor(context: &mut AppContext) -> CategoryEditor {
         crypto::init_crypto_provider();
         let rect = rect![0, 0, 600, 800];
         let mut rq = RenderQueue::new();
@@ -1007,14 +1017,14 @@ mod tests {
         CategoryEditor::new(rect, Category::Dictionaries, &mut rq, context)
     }
 
-    fn create_test_import_category_editor(context: &mut Context) -> CategoryEditor {
+    fn create_test_import_category_editor(context: &mut AppContext) -> CategoryEditor {
         let rect = rect![0, 0, 600, 800];
         let mut rq = RenderQueue::new();
 
         CategoryEditor::new(rect, Category::Import, &mut rq, context)
     }
 
-    fn create_test_general_category_editor(context: &mut Context) -> CategoryEditor {
+    fn create_test_general_category_editor(context: &mut AppContext) -> CategoryEditor {
         let rect = rect![0, 0, 600, 800];
         let mut rq = RenderQueue::new();
 
@@ -1196,7 +1206,7 @@ mod tests {
         assert!(!rq.is_empty());
     }
 
-    fn create_test_intermissions_category_editor(context: &mut Context) -> CategoryEditor {
+    fn create_test_intermissions_category_editor(context: &mut AppContext) -> CategoryEditor {
         let rect = rect![0, 0, 600, 800];
         let mut rq = RenderQueue::new();
 
