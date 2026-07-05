@@ -1,6 +1,7 @@
 import { BookOpen } from "@phosphor-icons/react/dist/ssr/BookOpen";
 import { Browsers } from "@phosphor-icons/react/dist/ssr/Browsers";
 import { Code } from "@phosphor-icons/react/dist/ssr/Code";
+import { Kanban } from "@phosphor-icons/react/dist/ssr/Kanban";
 import { DocCard, type DocCardProps } from "../doc-card/index";
 
 const BASE = process.env.NEXT_PUBLIC_BASE_PATH || "";
@@ -29,6 +30,12 @@ const DOCS: DocCardProps[] = [
     description: "Browse UI components",
     href: `${BASE}/storybook/`,
     icon: Browsers,
+  },
+  {
+    label: "Planning",
+    description: "Roadmap, milestones, and active work",
+    href: "https://github.com/users/OGKevin/projects/5/views/4",
+    icon: Kanban,
   },
 ];
 
