@@ -5,4 +5,5 @@ reading and managing your books.
 
 - [File Chooser](filechooser.md)
 - [Keyboard](keyboard.md)
+- [Dictionary](dictionary.md)
 - [Settings](settings/index.md)

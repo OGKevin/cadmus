@@ -13,6 +13,7 @@
 - [User Interface](ui/index.md)
   - [File Chooser](ui/filechooser.md)
   - [Keyboard](ui/keyboard.md)
+  - [Dictionary](ui/dictionary.md)
   - [Settings](ui/settings/index.md)
     - [Dictionaries](ui/settings/dictionaries.md)
 - [Library](library/index.md)

@@ -1,8 +1,10 @@
 # Dictionaries
 
-Cadmus supports offline word definitions. You can look up any word while
-reading by long-pressing it. Dictionaries are stored on your device and work
-without an internet connection once downloaded.
+Cadmus supports offline word definitions. Dictionaries are stored on your
+device and work without an internet connection once downloaded.
+
+Once a dictionary is installed, see [Dictionary](../dictionary.md) for how to
+look up words while reading.
 
 Cadmus integrates with [reader-dict](https://github.com/reader-dict/monolingual),
 an open-source project that provides high-quality monolingual dictionaries
