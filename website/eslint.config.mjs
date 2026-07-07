@@ -9,11 +9,12 @@ const eslintConfig = defineConfig([
     ".next/**",
     "out/**",
     "build/**",
+    "storybook-static/**",
     "next-env.d.ts",
     "generated/**",
-    "public/storybook/**",
-    "public/api/**",
-    "public/guide/**",
+    "i18n/locales.generated.ts",
+    "public/_shared/**",
+    "public/*/**",
   ]),
 ]);
 

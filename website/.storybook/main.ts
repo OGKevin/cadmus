@@ -9,7 +9,7 @@ const __dirname = path.dirname(__filename);
 
 const config: StorybookConfig = {
   stories: ["../components/**/*.stories.@(ts|tsx)"],
-  addons: ["@storybook/addon-themes"],
+  addons: ["@storybook/addon-themes", "storybook-next-intl"],
   framework: {
     name: "@storybook/nextjs-vite",
     options: {
@@ -18,7 +18,8 @@ const config: StorybookConfig = {
   },
   viteFinal: (viteConfig): InlineConfig => ({
     ...viteConfig,
-    base: `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/storybook/`,
+    base: "./",
+    publicDir: false,
     plugins: [...(viteConfig.plugins ?? []), tailwindcss()],
   }),
 };

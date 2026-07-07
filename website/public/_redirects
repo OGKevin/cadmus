@@ -1,0 +1,4 @@
+/guide/ /en/guide/ 302
+/guide/:lang/ /:lang/guide/ 302
+/api/ /en/api/cadmus_core/ 302
+/storybook/ /en/storybook/ 302

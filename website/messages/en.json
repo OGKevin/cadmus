@@ -1,0 +1,47 @@
+{
+  "metadata": {
+    "title": "Cadmus",
+    "description": "Alternative reading application for Kobo devices"
+  },
+  "heading": {
+    "subtitle": "Alternative reading application for Kobo e-readers"
+  },
+  "actions": {
+    "viewOnGithub": "View on GitHub",
+    "latestRelease": "Latest Release",
+    "latestReleaseVersion": "Latest Release ({version})"
+  },
+  "docs": {
+    "userGuide": {
+      "label": "User Guide",
+      "description": "Installation, configuration, and usage"
+    },
+    "translations": {
+      "label": "Translations",
+      "description": "Help translate Cadmus"
+    },
+    "apiReference": {
+      "label": "API Reference",
+      "description": "Rust crate documentation"
+    },
+    "storybook": {
+      "label": "Browser Component Library",
+      "description": "Browse UI components"
+    },
+    "planning": {
+      "label": "Planning",
+      "description": "Roadmap, milestones, and active work"
+    }
+  },
+  "footer": {
+    "poweredBy": "{year} Cadmus — powered by <nextjs>Next.js</nextjs>, <mdbook>mdBook</mdbook>, <kumo>kumo</kumo> and <storybook>storybook.</storybook>"
+  },
+  "notFound": {
+    "message": "Page not found.",
+    "backHome": "Back to home"
+  },
+  "language": {
+    "name": "English",
+    "change": "Change language"
+  }
+}

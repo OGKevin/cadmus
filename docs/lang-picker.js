@@ -1,26 +1,30 @@
 document.addEventListener("DOMContentLoaded", async () => {
-  const pathToRoot = typeof path_to_root !== "undefined" ? path_to_root : "";
   const language = document.documentElement.getAttribute("lang") ?? "en";
-  const fullPathToRoot = language === "en" ? pathToRoot : `${pathToRoot}../`;
+  const pathname = window.location.pathname;
+  const parts = pathname.split("/").filter(Boolean);
+  const guideIndex = parts.indexOf("guide");
+
+  if (guideIndex < 0) {
+    return;
+  }
+
+  const sitePrefix = parts.slice(0, guideIndex - 1);
+  const siteRoot = sitePrefix.length > 0 ? `/${sitePrefix.join("/")}` : "";
+  const guideTail = parts.slice(guideIndex + 1);
 
   let locales;
   try {
-    const response = await fetch(`${fullPathToRoot}locales.json`);
+    const response = await fetch(`${siteRoot}/_shared/locales.json`);
     if (!response.ok) return;
     locales = await response.json();
   } catch {
     return;
   }
 
-  const allLocales = [
-    { code: "en", label: "English" },
-    ...locales.filter((l) => l.code !== "en"),
-  ];
-
-  const langItems = allLocales
+  const langItems = locales
     .map(
-      (l) =>
-        `<li role="none"><a role="menuitem" class="theme" id="${l.code}">${l.label ?? l.code}</a></li>`,
+      (entry) =>
+        `<li role="none"><a role="menuitem" class="theme" id="${entry.code}">${entry.label ?? entry.code}</a></li>`,
     )
     .join("");
 
@@ -44,6 +48,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   const langToggle = document.getElementById("language-toggle");
   const langList = document.getElementById("language-list");
+  if (!langToggle || !langList) return;
 
   langToggle.addEventListener("click", () => {
     langList.style.display =
@@ -51,29 +56,15 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   const selectedLang = document.getElementById(language);
-  if (selectedLang) {
+  if (selectedLang?.parentNode instanceof HTMLElement) {
     selectedLang.parentNode.classList.add("theme-selected");
   }
 
-  const guideBase = "/guide/";
-
-  let path = window.location.pathname;
-  const guideIndex = path.indexOf(guideBase);
-  if (guideIndex !== -1) {
-    path = path.slice(guideIndex + guideBase.length);
-  }
-
-  if (language !== "en" && path.startsWith(`${language}/`)) {
-    path = path.slice(`${language}/`.length);
-  }
-
-  path = path.replace(/^$/, "index.html");
+  const tail = guideTail.length > 0 ? guideTail.join("/") : "index.html";
 
   const langAnchors = Array.from(langList.querySelectorAll("a"));
   for (const lang of langAnchors) {
-    lang.href =
-      lang.id === "en"
-        ? `${fullPathToRoot}${path}`
-        : `${fullPathToRoot}${lang.id}/${path}`;
+    const localeParts = [...sitePrefix, lang.id, "guide", tail];
+    lang.href = `/${localeParts.join("/")}`;
   }
 });

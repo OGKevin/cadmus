@@ -129,9 +129,9 @@ documentation files or Rust code.
 
 The portal provides three integrated sections:
 
-- **Landing Page** (`/`) - Overview and feature highlights
-- **User Guide** (`/guide/`) - User-facing documentation from mdBook
-- **API Reference** (`/api/`) - Auto-generated Rust API documentation
+- **Landing Page** (`/en/`, `/fr/`, …) - Overview and feature highlights
+- **User Guide** (`/en/guide/`, `/fr/guide/`, …) - User-facing documentation from mdBook
+- **API Reference** (`/en/api/cadmus_core/`) - Auto-generated Rust API documentation
 
 All three sections are deployed as a single artifact to GitHub Pages at
 <https://ogkevin.github.io/cadmus/>.

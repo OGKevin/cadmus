@@ -4,7 +4,7 @@ import { LandingPage } from "./landing";
 const meta: Meta<typeof LandingPage> = {
   title: "Pages",
   component: LandingPage,
-  parameters: { layout: "fullscreen" },
+  parameters: { layout: "fullscreen", pageChrome: true },
 };
 
 export default meta;

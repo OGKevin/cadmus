@@ -5,6 +5,7 @@ pnpm-lock.yaml
 storybook-static/
 # Generated at build time
 generated/
-public/api
-public/guide
-public/storybook
+i18n/locales.generated.ts
+public/_shared/
+public/*/
+!public/_redirects

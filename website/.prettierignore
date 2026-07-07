@@ -3,6 +3,5 @@ out/
 node_modules/
 storybook-static/
 generated/
-public/api/
-public/guide/
-public/storybook/
+public/_shared/
+public/*/

@@ -74,7 +74,7 @@ cd docs-portal
 zola serve
 ```
 
-Navigate to `http://localhost:1111/guide/` and use the language picker in the sidebar
+Navigate to `http://localhost:1111/en/guide/` and use the language picker in the sidebar
 to switch to your locale.
 
 ## Keeping translations up to date
@@ -131,8 +131,8 @@ as list-breaking elements:
 
    <!-- i18n:skip-start -->
 
-   | Path | Value |
-   | ---- | ----- |
+   | Path           | Value  |
+   | -------------- | ------ |
    | `/mnt/onboard` | stable |
 
    <!-- i18n:skip-end -->
@@ -146,9 +146,10 @@ as list-breaking elements:
    found in `docs/po/`, passing `MDBOOK_BOOK__LANGUAGE=<lang>`.
 2. The `[preprocessor.gettext]` in `docs/book.toml` substitutes translated
    strings at build time.
-3. `locales.json` is written to `docs/book/html/` with the available locales;
-   `lang-picker.js` fetches it at runtime to populate the language dropdown.
-4. Symlinks under `docs-portal/static/guide/<lang>/` expose each locale build
-   to Zola so it is served at `/guide/<lang>/`.
+3. `locales.json` is written to `website/public/_shared/locales.json` with the
+   available locales; `lang-picker.js` fetches it at runtime to populate the
+   language dropdown.
+4. Symlinks under `website/public/<locale>/guide/` expose each locale build so
+   it is served at `/<locale>/guide/`.
 
 <!-- i18n:skip-end -->

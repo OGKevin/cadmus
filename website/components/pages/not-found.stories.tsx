@@ -4,7 +4,7 @@ import { NotFoundPage } from "./not-found";
 const meta: Meta<typeof NotFoundPage> = {
   title: "Pages",
   component: NotFoundPage,
-  parameters: { layout: "fullscreen" },
+  parameters: { layout: "fullscreen", pageChrome: true },
 };
 
 export default meta;

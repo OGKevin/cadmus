@@ -24,7 +24,7 @@
 //! | [`build-kobo`](tasks::build_kobo) | Cross-compile for Kobo (ARM, Linux & macOS) |
 //! | [`run-emulator`](tasks::run_emulator) | Run the Cadmus emulator |
 //! | [`install-importer`](tasks::install_importer) | Install the Cadmus importer crate |
-//! | [`docs`](tasks::docs) | Build the full documentation portal |
+//! | [`docs`](tasks::docs) | Build the full documentation website |
 //! | [`download-assets`](tasks::download_assets) | Download static asset dirs from the latest release |
 //! | [`dist`](tasks::dist) | Assemble the Kobo distribution directory |
 //! | [`bundle`](tasks::bundle) | Package a `KoboRoot.tgz` ready for device installation |
@@ -77,7 +77,7 @@ pub enum Command {
     RunEmulator(RunEmulatorArgs),
     /// Install the Cadmus importer crate.
     InstallImporter(InstallImporterArgs),
-    /// Build the full documentation portal (mdBook + cargo doc + Zola).
+    /// Build the full documentation website (mdBook + cargo doc + Next.js).
     Docs(DocsArgs),
     /// Download static asset directories from the latest GitHub release.
     DownloadAssets,

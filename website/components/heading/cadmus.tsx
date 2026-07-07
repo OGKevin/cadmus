@@ -1,10 +1,10 @@
+"use client";
+
+import { useTranslations } from "next-intl";
 import { Heading } from ".";
 
 export function Cadmus() {
-  return (
-    <Heading
-      title="Cadmus"
-      subtitle="Alternative reading application for Kobo e-readers"
-    />
-  );
+  const t = useTranslations("heading");
+
+  return <Heading title="Cadmus" subtitle={t("subtitle")} />;
 }
