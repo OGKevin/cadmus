@@ -72,7 +72,7 @@ Preview components locally:
 cd website && npm run storybook   # http://localhost:6006
 ```
 
-Run `npm run lint` before opening a PR.
+Run `cd website && npm run lint` before opening a PR.
 
 ### Translatable UI text
 
