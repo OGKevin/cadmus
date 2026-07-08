@@ -26,11 +26,10 @@ function resolveLocale(): string {
 
 export default function RootRedirectPage() {
   const router = useRouter();
-  const base = process.env.NEXT_PUBLIC_BASE_PATH || "";
 
   useEffect(() => {
-    router.replace(`${base}/${resolveLocale()}/`);
-  }, [router, base]);
+    router.replace(`/${resolveLocale()}/`);
+  }, [router]);
 
   return (
     <html lang={defaultLocale}>

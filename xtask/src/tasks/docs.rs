@@ -441,7 +441,7 @@ fn create_website_symlinks(root: &Path) -> Result<()> {
 /// (e.g. GitHub Pages).
 fn create_back_compat_redirects(root: &Path, website_locales: &[String]) -> Result<()> {
     let public_dir = root.join("website/public");
-    write_redirect_html(&public_dir.join("guide/index.html"), "/en/guide/")?;
+    write_redirect_html(&public_dir.join("guide/index.html"), "../en/guide/")?;
 
     for locale in website_locales {
         if locale == "en" {
@@ -449,12 +449,12 @@ fn create_back_compat_redirects(root: &Path, website_locales: &[String]) -> Resu
         }
         write_redirect_html(
             &public_dir.join("guide").join(locale).join("index.html"),
-            &format!("/{locale}/guide/"),
+            &format!("../../{locale}/guide/"),
         )?;
     }
 
-    write_redirect_html(&public_dir.join("api/index.html"), "/en/api/cadmus_core/")?;
-    write_redirect_html(&public_dir.join("storybook/index.html"), "/en/storybook/")?;
+    write_redirect_html(&public_dir.join("api/index.html"), "../en/api/cadmus_core/")?;
+    write_redirect_html(&public_dir.join("storybook/index.html"), "../en/storybook/")?;
     Ok(())
 }
 
@@ -465,18 +465,16 @@ fn write_redirect_html(path: &Path, target: &str) -> Result<()> {
         std::fs::create_dir_all(parent)?;
     }
 
-    let base_path = std::env::var("NEXT_PUBLIC_BASE_PATH").unwrap_or_default();
-    let destination = format!("{base_path}{target}");
     let html = format!(
         r#"<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="utf-8">
-    <meta http-equiv="refresh" content="0; url={destination}">
-    <link rel="canonical" href="{destination}">
-    <script>location.replace("{destination}");</script>
+    <meta http-equiv="refresh" content="0; url={target}">
+    <link rel="canonical" href="{target}">
+    <script>location.replace("{target}");</script>
   </head>
-  <body><p><a href="{destination}">Redirecting…</a></p></body>
+  <body><p><a href="{target}">Redirecting…</a></p></body>
 </html>
 "#
     );
@@ -666,6 +664,21 @@ mod tests {
 
         symlink_relative("../_shared/second", &link).unwrap();
         assert_symlink_to(&link, "../_shared/second");
+    }
+
+    #[test]
+    fn write_redirect_html_uses_relative_target_verbatim() {
+        let temp_dir = TempDir::new().unwrap();
+        let path = temp_dir.path().join("guide/index.html");
+        let target = "../en/guide/";
+
+        write_redirect_html(&path, target).unwrap();
+
+        let html = fs::read_to_string(&path).unwrap();
+        assert!(html.contains(r#"content="0; url=../en/guide/""#));
+        assert!(html.contains(r#"href="../en/guide/""#));
+        assert!(html.contains(r#"location.replace("../en/guide/")"#));
+        assert!(!html.contains("/cadmus"));
     }
 
     #[test]
