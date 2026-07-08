@@ -1,7 +1,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Cadmus Documentation\n"
-"POT-Creation-Date: 2026-07-06T21:36:35+02:00\n"
+"POT-Creation-Date: 2026-07-09T12:27:48+02:00\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
@@ -134,20 +134,20 @@ msgstr ""
 msgid "Profiling"
 msgstr ""
 
-#: src/SUMMARY.md:39 src/index.md:9
-msgid "Documentation"
+#: src/SUMMARY.md:39
+msgid "Website"
 msgstr ""
 
 #: src/SUMMARY.md:40
-msgid "Translations"
+msgid "User guide"
 msgstr ""
 
 #: src/SUMMARY.md:41
-msgid "UI Strings"
+msgid "Translations"
 msgstr ""
 
 #: src/SUMMARY.md:42
-msgid "Guide"
+msgid "For developers"
 msgstr ""
 
 #: src/SUMMARY.md:43
@@ -180,6 +180,10 @@ msgstr ""
 
 #: src/index.md:5
 msgid "_Cadmus_ is a document reader for _Kobo_'s e-readers."
+msgstr ""
+
+#: src/index.md:9
+msgid "Documentation"
 msgstr ""
 
 #: src/index.md:11
@@ -1008,21 +1012,21 @@ msgstr ""
 msgid "To remove Cadmus from your Kobo:"
 msgstr ""
 
-#: src/installation/uninstall.md:7
+#: src/installation/uninstall.md:6
 msgid "Delete the Cadmus folder from `.adds`:"
 msgstr ""
 
-#: src/installation/uninstall.md:18
+#: src/installation/uninstall.md:17
 msgid ""
 "If you installed a package that included NickelMenu, delete the Cadmus menu "
 "entry too:"
 msgstr ""
 
-#: src/installation/uninstall.md:30
+#: src/installation/uninstall.md:29
 msgid "Eject the device and disconnect the USB cable."
 msgstr ""
 
-#: src/installation/uninstall.md:33
+#: src/installation/uninstall.md:32
 msgid "If you no longer need NickelMenu at all, you can remove it separately."
 msgstr ""
 
@@ -1891,144 +1895,122 @@ msgid "Keep holding a moment longer until the dictionary opens with that word."
 msgstr ""
 
 #: src/ui/dictionary.md:17
-msgid ""
-"If you lift your finger right after the word highlights, you only select the "
-"word — the dictionary does not open."
-msgstr ""
-
-#: src/ui/dictionary.md:20
 msgid "From a text selection"
 msgstr ""
 
-#: src/ui/dictionary.md:22
-msgid "Tap and hold the first or last word of the passage you want."
+#: src/ui/dictionary.md:19
+msgid "Tap and hold a word want to define."
 msgstr ""
 
-#: src/ui/dictionary.md:23
-msgid ""
-"When the word highlights, drag to the other end of the selection and lift "
-"your finger."
+#: src/ui/dictionary.md:20
+msgid "When the word highlights, a menu opens"
 msgstr ""
 
-#: src/ui/dictionary.md:25
-msgid "Tap and hold the selection to open the menu."
-msgstr ""
-
-#: src/ui/dictionary.md:26
+#: src/ui/dictionary.md:21
 msgid "Tap **Define**."
 msgstr ""
 
-#: src/ui/dictionary.md:28
+#: src/ui/dictionary.md:23
 msgid "Opening the Dictionary App"
 msgstr ""
 
-#: src/ui/dictionary.md:30
+#: src/ui/dictionary.md:25
 msgid "You can also open the dictionary on its own:"
 msgstr ""
 
-#: src/ui/dictionary.md:32
+#: src/ui/dictionary.md:27
 msgid "Main Menu → Applications → Dictionary"
 msgstr ""
 
-#: src/ui/dictionary.md:34
+#: src/ui/dictionary.md:29
 msgid ""
 "The search field is focused automatically so you can type a word right away."
 msgstr ""
 
-#: src/ui/dictionary.md:36
+#: src/ui/dictionary.md:31
 msgid "Searching for a Word"
 msgstr ""
 
-#: src/ui/dictionary.md:38
+#: src/ui/dictionary.md:33
 msgid "Tap the search bar at the top of the screen."
 msgstr ""
 
-#: src/ui/dictionary.md:39
+#: src/ui/dictionary.md:34
 msgid "Type the word you want to look up."
 msgstr ""
 
-#: src/ui/dictionary.md:40
+#: src/ui/dictionary.md:35
 msgid "Press **Return**."
 msgstr ""
 
-#: src/ui/dictionary.md:42
+#: src/ui/dictionary.md:37
 msgid "To type accented characters, see the [Keyboard](keyboard.md) guide."
 msgstr ""
 
-#: src/ui/dictionary.md:44
+#: src/ui/dictionary.md:39
 msgid "Reading Results"
 msgstr ""
 
-#: src/ui/dictionary.md:46
+#: src/ui/dictionary.md:41
 msgid "Definitions may span more than one screen. To move between pages:"
 msgstr ""
 
-#: src/ui/dictionary.md:48
+#: src/ui/dictionary.md:43
 msgid "Swipe left or right, or"
 msgstr ""
 
-#: src/ui/dictionary.md:49
+#: src/ui/dictionary.md:44
 msgid "Tap the arrow icons in the bottom bar, or"
 msgstr ""
 
-#: src/ui/dictionary.md:50
+#: src/ui/dictionary.md:45
 msgid "Tap the left or right half of the definition area."
 msgstr ""
 
-#: src/ui/dictionary.md:52
+#: src/ui/dictionary.md:47
 msgid "To look up another word from a definition:"
 msgstr ""
 
-#: src/ui/dictionary.md:54
+#: src/ui/dictionary.md:49
 msgid "Tap a cross-reference link, or"
 msgstr ""
 
-#: src/ui/dictionary.md:55
+#: src/ui/dictionary.md:50
 msgid "Long-press a word in the definition text."
 msgstr ""
 
-#: src/ui/dictionary.md:57
+#: src/ui/dictionary.md:52
 msgid "Choosing Which Dictionary to Search"
 msgstr ""
 
-#: src/ui/dictionary.md:59
+#: src/ui/dictionary.md:54
 msgid "Tap the label in the bottom bar to pick a specific dictionary or **All**."
 msgstr ""
 
-#: src/ui/dictionary.md:61
+#: src/ui/dictionary.md:56
 msgid ""
 "When you open the dictionary from the reader, Cadmus may already pick a "
 "dictionary that matches the book's language."
 msgstr ""
 
-#: src/ui/dictionary.md:64
+#: src/ui/dictionary.md:59
 msgid "Fuzzy Search"
 msgstr ""
 
-#: src/ui/dictionary.md:66
+#: src/ui/dictionary.md:61
 msgid "If you are not sure how a word is spelled:"
 msgstr ""
 
-#: src/ui/dictionary.md:68
+#: src/ui/dictionary.md:63
 msgid "Tap the search icon."
 msgstr ""
 
-#: src/ui/dictionary.md:69
+#: src/ui/dictionary.md:64
 msgid "Toggle **Fuzzy**."
 msgstr ""
 
-#: src/ui/dictionary.md:71
+#: src/ui/dictionary.md:66
 msgid "Cadmus will also match words that differ by one letter."
-msgstr ""
-
-#: src/ui/dictionary.md:73
-msgid "Going Back"
-msgstr ""
-
-#: src/ui/dictionary.md:75
-msgid ""
-"Tap the back arrow in the top bar to return to the reader or the previous "
-"screen."
 msgstr ""
 
 #: src/ui/settings/index.md:3

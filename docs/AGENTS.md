@@ -55,6 +55,7 @@ When modifying `devenv.nix`, update `docs/src/contributing/devenv-setup.md`:
 
 ## Formatting
 
-- Format Markdown with Prettier.
-- Ensure Markdown passes markdownlint.
+- Format and lint Markdown with **rumdl** (via `treefmt`); see `.rumdl.toml`.
+- Docs markdown is excluded from Prettier (`.prettierignore`) to preserve i18n
+  list nesting.
 - Use code blocks with language tags.

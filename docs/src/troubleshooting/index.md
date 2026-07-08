@@ -44,13 +44,13 @@ You can find this in:
 
    For example:
 
-<!-- i18n:skip-start -->
+   <!-- i18n:skip-start -->
 
    ```txt
    Cadmus run started with ID: 019cf7e3-ef3a-7752-846f-83b92ac90634 (version 0.10.0)
    ```
 
-<!-- i18n:skip-end -->
+   <!-- i18n:skip-end -->
 
    Copy only the UUID part — the string of letters and numbers between `ID:` and
    the `(version` text.

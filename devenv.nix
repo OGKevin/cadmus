@@ -941,13 +941,6 @@ in
       pass_filenames = false;
       language = "system";
     };
-    markdownlint = {
-      enable = true;
-      name = "markdownlint";
-      entry = "${pkgs.markdownlint-cli}/bin/markdownlint";
-      files = "^((docs/.+)|(\\.agents/skills/.+)|((.*/)?AGENTS)|((.*/)?REVIEW)|(thirdparty/.+-(kobo|cadmus)))\\.md$";
-      language = "system";
-    };
     eslint = {
       enable = true;
       name = "eslint";

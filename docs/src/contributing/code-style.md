@@ -9,16 +9,16 @@ same rules on every pull request.
 
 ## Formatters and Linters
 
-| Tool         | Languages / Files             | Key Configuration                          |
-| ------------ | ----------------------------- | ------------------------------------------ |
-| `rustfmt`    | Rust (`*.rs`)                 | Workspace `rustfmt.toml`                   |
-| `prettier`   | JSON, YAML, Markdown, CSS, JS | `.prettierrc.json`                         |
-| `shfmt`      | Shell (`*.sh`, `*.bash`)      | `-i 2 -ci` (2-space, case-indent)          |
-| `shellcheck` | Shell (`*.sh`, `*.bash`)      | `.editorconfig`                            |
-| `yamllint`   | YAML                          | `extends: default`, several rules disabled |
-| `rumdl`      | Markdown (`*.md`)             | Default rules                              |
-| `actionlint` | GitHub Actions workflows      | `-ignore "rust-toolchain"`                 |
-| `clippy`     | Rust                          | `-D warnings`                              |
+| Tool         | Languages / Files                     | Key Configuration                          |
+| ------------ | ------------------------------------- | ------------------------------------------ |
+| `rustfmt`    | Rust (`*.rs`)                         | Workspace `rustfmt.toml`                   |
+| `prettier`   | JSON, YAML, CSS, JS (not docs `*.md`) | `.prettierrc.json`, `.prettierignore`      |
+| `shfmt`      | Shell (`*.sh`, `*.bash`)              | `-i 2 -ci` (2-space, case-indent)          |
+| `shellcheck` | Shell (`*.sh`, `*.bash`)              | `.editorconfig`                            |
+| `yamllint`   | YAML                                  | `extends: default`, several rules disabled |
+| `rumdl`      | Markdown (`*.md`)                     | `.rumdl.toml` (lint + format via `--fix`)  |
+| `actionlint` | GitHub Actions workflows              | `-ignore "rust-toolchain"`                 |
+| `clippy`     | Rust                                  | `-D warnings`                              |
 
 ## Running treefmt
 
@@ -34,6 +34,10 @@ treefmt --fail-on-change
 
 The pre-commit hook (`git-hooks.hooks.treefmt`) runs `treefmt --fail-on-change`
 automatically on every commit, so format issues are caught before they reach CI.
+
+Markdown is formatted by rumdl (`rumdl check --fix` via treefmt). Docs paths in
+`.prettierignore` are excluded from Prettier so i18n list nesting is preserved.
+CI runs `rumdl check` (lint only) via reviewdog in `docs-lint.yml`.
 
 ## Rust Style
 
@@ -128,10 +132,10 @@ The following CI workflows enforce style:
 | --------------- | ---------------------------------------------------- |
 | `cargo.yml`     | `rustfmt`, `clippy` (full feature matrix), tests     |
 | `shell.yml`     | `shellcheck`, `shfmt` (changed lines only)           |
-| `docs-lint.yml` | `prettier`, `markdownlint` (docs and markdown files) |
+| `docs-lint.yml` | `rumdl` via reviewdog (docs and markdown files)      |
 
 CI uses `filter_mode: added` for shell checks, meaning only lines changed in
-the PR are flagged. Running `treefmt` locally before pushing will catch
-everything.
+the PR are flagged. Docs lint validates whole files (`filter_mode: nofilter`).
+Running `treefmt` locally before pushing will catch everything.
 
 <!-- i18n:skip-end -->

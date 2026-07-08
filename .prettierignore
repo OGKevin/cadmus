@@ -1,0 +1,6 @@
+docs/**
+.agents/skills/**
+**/AGENTS.md
+**/REVIEW.md
+thirdparty/**/*-kobo.md
+thirdparty/**/*-cadmus.md

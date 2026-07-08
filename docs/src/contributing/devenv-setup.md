@@ -133,7 +133,7 @@ Linux provides full development capabilities including:
 
 - Native development (emulator, tests)
 - Cross-compilation for Kobo devices using the Linaro ARM toolchain
-- Git hooks (actionlint, shellcheck, shfmt, markdownlint, prettier)
+- Git hooks (actionlint, shellcheck, shfmt, rumdl, prettier)
 
 The Linaro toolchain is automatically added to `PATH` and provides `arm-linux-gnueabihf-*` commands.
 
@@ -143,7 +143,7 @@ macOS supports full development capabilities including:
 
 - Native development (emulator, tests)
 - Cross-compilation for Kobo devices using the Linaro ARM toolchain
-- Git hooks (actionlint, shellcheck, shfmt, markdownlint, prettier)
+- Git hooks (actionlint, shellcheck, shfmt, rumdl, prettier)
 
 #### macOS-Specific Notes
 

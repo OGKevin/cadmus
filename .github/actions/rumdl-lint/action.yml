@@ -1,0 +1,79 @@
+name: Run rumdl with reviewdog
+description: Lint Markdown with rumdl and report findings via reviewdog.
+
+inputs:
+  github_token:
+    description: GITHUB_TOKEN
+    default: ${{ github.token }}
+    required: false
+  reporter:
+    description: Reporter of reviewdog command [github-check, github-pr-review].
+    default: github-pr-review
+    required: false
+  filter_mode:
+    description: |
+      Filtering mode for the reviewdog command [added, diff_context, file, nofilter].
+    default: nofilter
+    required: false
+  fail_level:
+    description: |
+      Exit code 1 for reviewdog if it finds at least 1 issue at this severity or above.
+      Possible values: [none, any, info, warning, error]
+    default: error
+    required: false
+  rumdl_version:
+    description: Version of rumdl to install.
+    default: "0.1.42"
+    required: false
+  rumdl_flags:
+    description: Arguments passed to rumdl check (file list or paths).
+    default: "."
+    required: false
+
+runs:
+  using: composite
+  steps:
+    - uses: reviewdog/action-setup@d8a7baabd7f3e8544ee4dbde3ee41d0011c3a93f
+
+    - name: Cache rumdl
+      id: rumdl-cache
+      uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+      with:
+        path: ~/.cargo/bin/rumdl
+        key: ${{ runner.os }}-rumdl-${{ inputs.rumdl_version }}
+
+    - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
+      if: steps.rumdl-cache.outputs.cache-hit != 'true'
+
+    - name: Install rumdl
+      if: steps.rumdl-cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: cargo install rumdl --locked --version "${{ inputs.rumdl_version }}"
+
+    - name: Add rumdl to PATH
+      if: steps.rumdl-cache.outputs.cache-hit == 'true'
+      shell: bash
+      run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+    - name: rumdl
+      shell: bash
+      env:
+        REVIEWDOG_GITHUB_API_TOKEN: ${{ inputs.github_token }}
+      run: |
+        set -euo pipefail
+        sarif="${RUNNER_TEMP}/rumdl.sarif"
+        set +e
+        rumdl check --output-format sarif ${{ inputs.rumdl_flags }} > "${sarif}"
+        rumdl_exit=$?
+        set -e
+        reviewdog \
+          -f=sarif \
+          -name=rumdl \
+          -reporter="${{ inputs.reporter }}" \
+          -filter-mode="${{ inputs.filter_mode }}" \
+          -fail-level="${{ inputs.fail_level }}" \
+          -level=error \
+          < "${sarif}"
+        if [[ "${rumdl_exit}" -ne 0 && "${{ inputs.fail_level }}" != "none" ]]; then
+          exit "${rumdl_exit}"
+        fi

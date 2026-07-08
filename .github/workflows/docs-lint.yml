@@ -7,11 +7,11 @@ on:
       - ".agents/skills/**"
       - "**/AGENTS.md"
       - "**/REVIEW.md"
-      - ".github/lint/package.json"
+      - ".rumdl.toml"
+      - ".prettierignore"
       - "thirdparty/**/*-kobo.md"
       - "thirdparty/**/*-cadmus.md"
-      - "package.json"
-      - "package-lock.json"
+      - ".github/actions/rumdl-lint/**"
       - ".github/workflows/docs-lint.yml"
 
 jobs:
@@ -35,19 +35,11 @@ jobs:
           done
           echo "list=${files[*]}" >> "$GITHUB_OUTPUT"
 
-      - name: Prettier
-        uses: EPMatt/reviewdog-action-prettier@v1
+      - name: rumdl
+        uses: ./.github/actions/rumdl-lint
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           reporter: github-pr-review
           fail_level: error
-          prettier_flags: ${{ steps.files.outputs.list }}
-          workdir: .github/lint
-
-      - name: Markdownlint
-        uses: reviewdog/action-markdownlint@v0
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          reporter: github-pr-review
-          fail_level: error
-          markdownlint_flags: ${{ steps.files.outputs.list }}
+          filter_mode: added
+          rumdl_flags: ${{ steps.files.outputs.list }}

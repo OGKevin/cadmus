@@ -1,6 +1,15 @@
-# mdBook SUMMARY.md starts with [Overview](index.md), not an H1 (MD041), and
-# uses multiple `#` section titles (MD025). rumdl auto-discovers this file when
-# treefmt runs `rumdl check --fix` from the project root.
+[global]
+disable = ["MD013", "MD028", "MD033", "MD041", "MD076"]
+# MD013: long lines in contributor docs
+# MD028: blank line in blockquote
+# MD033: inline HTML (mdBook links, i18n comments)
+# MD041: YAML frontmatter in .agents/skills/*.md
+# MD076: blank lines between list items — conflicts with i18n-nested lists
 
 [per-file-ignores]
-"docs/src/SUMMARY.md" = ["MD025", "MD041"]
+"docs/src/SUMMARY.md" = ["MD025"]
+
+[MD060]
+enabled = true
+style = "aligned"
+max-width = 0

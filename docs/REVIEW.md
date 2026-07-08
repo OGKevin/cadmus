@@ -23,4 +23,4 @@ When `devenv.nix` changes, verify `docs/src/contributing/devenv-setup.md`:
 ## Formatting
 
 - [ ] Markdown formatted with Prettier.
-- [ ] Markdown passes markdownlint.
+- [ ] Markdown passes rumdl (`.rumdl.toml`).

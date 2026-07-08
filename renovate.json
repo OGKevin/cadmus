@@ -8,6 +8,13 @@
   },
   "packageRules": [
     {
+      "matchManagers": ["cargo", "custom.regex"],
+      "matchDepNames": ["rumdl"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "Rust non-major dependencies",
+      "groupSlug": "rust-non-major"
+    },
+    {
       "matchManagers": ["cargo"],
       "matchUpdateTypes": ["minor", "patch"],
       "matchJsonata": ["isBreaking != true"],
@@ -22,11 +29,7 @@
     },
     {
       "matchManagers": ["npm"],
-      "matchPackageNames": [
-        "@mermaid-js/mermaid-cli",
-        "markdownlint-cli",
-        "prettier"
-      ],
+      "matchPackageNames": ["@mermaid-js/mermaid-cli", "prettier"],
       "matchUpdateTypes": ["minor", "patch"],
       "groupName": "JavaScript tooling non-major dependencies",
       "groupSlug": "js-tooling-non-major"
@@ -47,6 +50,18 @@
     }
   ],
   "customManagers": [
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^\\.github\\/actions\\/rumdl-lint\\/action\\.yml$/"
+      ],
+      "matchStrings": [
+        "rumdl_version:[\\s\\S]*?default: \"(?<currentValue>[^\"]+)\""
+      ],
+      "datasourceTemplate": "crate",
+      "depNameTemplate": "rumdl",
+      "versioningTemplate": "semver"
+    },
     {
       "customType": "regex",
       "managerFilePatterns": [
