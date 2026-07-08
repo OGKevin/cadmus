@@ -38,7 +38,7 @@
 //! deduplicated and reported in a single `cargo xtask ci clippy-report` run.
 
 use std::fs;
-use std::io::{BufRead, BufReader, Write, copy};
+use std::io::{BufRead, BufReader, ErrorKind, Write, copy};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
@@ -240,8 +240,15 @@ fn run_with_reviewdog(
         .context("reviewdog stdin not captured")?;
     let mut buffer = Vec::new();
     let mut tee = reviewdog_stdin.tee(&mut buffer);
-    copy(&mut clippy_stdout, &mut tee)?;
+    let copy_result = copy(&mut clippy_stdout, &mut tee);
     drop(tee);
+    if let Err(e) = copy_result {
+        if e.kind() == ErrorKind::BrokenPipe {
+            let _ = copy(&mut clippy_stdout, &mut buffer);
+        } else {
+            return Err(e).context("failed to stream clippy output to reviewdog");
+        }
+    }
 
     let clippy_status = clippy.wait().context("failed to wait for `cargo clippy`")?;
     let reviewdog_status = reviewdog.wait().context("failed to wait for `reviewdog`")?;
