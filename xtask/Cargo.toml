@@ -17,6 +17,7 @@ anyhow = "1"
 build-deps = { path = "../crates/build-deps" }
 clap = { version = "4", features = ["derive"] }
 flate2 = "1"
+io_tee = { workspace = true }
 reqwest = { version = "0.13", default-features = false, features = [
     "blocking",
     "json",

@@ -18,6 +18,7 @@ rustls = { version = "0.23", default-features = false, features = [
   "tls12",
 ] }
 cc = "1"
+io_tee = "0.1"
 rust-embed = "8"
 
 [workspace.lints]

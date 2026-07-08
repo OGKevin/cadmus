@@ -38,12 +38,13 @@
 //! deduplicated and reported in a single `cargo xtask ci clippy-report` run.
 
 use std::fs;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Write, copy};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 use anyhow::{Context, Result, bail};
 use clap::Args;
+use io_tee::WriteExt;
 
 use super::util::{cmd, matrix, workspace};
 
@@ -180,8 +181,8 @@ pub(crate) fn save_json(
 /// reviewdog fetches the PR diff from the GitHub API and posts inline review
 /// comments via the `github-pr-review` reporter.
 ///
-/// Both processes run concurrently via a pipe so neither buffers the full
-/// output in memory.
+/// Clippy output is streamed to reviewdog via a tee; on compile failure the
+/// full output is also printed to stderr before returning an error.
 ///
 /// # Errors
 ///
@@ -219,26 +220,36 @@ fn run_with_reviewdog(
         .args(["-c", &format!("cargo {} 2>&1", clippy_args.join(" "))])
         .current_dir(root)
         .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
         .spawn()
         .context("failed to spawn `cargo clippy`")?;
 
-    let clippy_stdout = clippy.stdout.take().context("clippy stdout not captured")?;
+    let mut clippy_stdout = clippy.stdout.take().context("clippy stdout not captured")?;
 
     let mut reviewdog = Command::new("reviewdog")
         .args(&reviewdog_args)
         .current_dir(root)
-        .stdin(clippy_stdout)
+        .stdin(Stdio::piped())
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .spawn()
         .context("failed to spawn `reviewdog` — is it installed and on PATH?")?;
 
+    let reviewdog_stdin = reviewdog
+        .stdin
+        .take()
+        .context("reviewdog stdin not captured")?;
+    let mut buffer = Vec::new();
+    let mut tee = reviewdog_stdin.tee(&mut buffer);
+    copy(&mut clippy_stdout, &mut tee)?;
+    drop(tee);
+
     let clippy_status = clippy.wait().context("failed to wait for `cargo clippy`")?;
     let reviewdog_status = reviewdog.wait().context("failed to wait for `reviewdog`")?;
 
     if !clippy_status.success() {
-        bail!("`cargo clippy` exited with status {}", clippy_status);
+        eprintln!("\n--- cargo clippy failed (full output) ---\n");
+        eprint!("{}", String::from_utf8_lossy(&buffer));
+        bail!("`cargo clippy` failed to compile for this feature set ({clippy_status})");
     }
     if !reviewdog_status.success() {
         bail!("`reviewdog` exited with status {}", reviewdog_status);
