@@ -106,7 +106,19 @@ def render_mermaid_to_png(mermaid_code: str, output_path: Path) -> bool:
         return False
 
 
-def process_chapter_content(content: str, chapter_name: str, png_dir: Path) -> str:
+def relative_mermaid_path(chapter_path: str | None, img_filename: str) -> str:
+    """Return a POSIX path from the chapter file to a PNG in `src/mermaid-images/`."""
+    mermaid_dir = Path("mermaid-images")
+    if chapter_path:
+        chapter_dir = Path(chapter_path).parent
+        rel_dir = os.path.relpath(mermaid_dir, chapter_dir)
+        return f"{rel_dir}/{img_filename}".replace("\\", "/")
+    return f"../mermaid-images/{img_filename}"
+
+
+def process_chapter_content(
+    content: str, chapter_name: str, png_dir: Path, chapter_path: str | None
+) -> str:
     """
     Process chapter content, converting mermaid code blocks to PNG image references.
 
@@ -128,7 +140,7 @@ def process_chapter_content(content: str, chapter_name: str, png_dir: Path) -> s
         mermaid_code = match.group(1).strip()
         img_filename = f"{chapter_name}-diagram-{diagram_count}.png"
         img_path = png_dir / img_filename
-        rel_path = f"../mermaid-images/{img_filename}"
+        rel_path = relative_mermaid_path(chapter_path, img_filename)
 
         if render_mermaid_to_png(mermaid_code, img_path):
             return f"![Mermaid Diagram]({rel_path})"
@@ -163,11 +175,12 @@ def process_book(book_data: dict) -> dict:
             chapter = section["Chapter"]
             chapter_name = chapter.get("name", "unnamed")
             chapter_name = re.sub(r"[^\w\-]", "-", chapter_name.lower())
+            chapter_path = chapter.get("path")
 
             content = chapter.get("content", "")
             if "```mermaid" in content:
                 chapter["content"] = process_chapter_content(
-                    content, chapter_name, png_dir
+                    content, chapter_name, png_dir, chapter_path
                 )
 
             sub_items = chapter.get("sub_items", [])
