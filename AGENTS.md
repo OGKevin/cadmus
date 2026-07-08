@@ -233,9 +233,10 @@ misses `#[cfg(not(feature = "..."))]` paths.
 This environment is provisioned without Nix/devenv. The Cursor snapshot already
 has the full native host toolchain baked in (latest stable Rust via `rustup`,
 the SDL2/MuPDF/DjVuLibre/gcc build stack, `mdbook` + `mdbook-epub` +
-`mdbook-mermaid` + `mdbook-gettext`, and `cargo-nextest`). The startup update
-script only runs `git submodule update --init --recursive` to keep the vendored
-`thirdparty/` native sources in sync with the checked-out revision.
+`mdbook-mermaid` + `mdbook-gettext`, `cargo-nextest`, and the Kobo ARM
+cross toolchain — see below). The startup update script only runs
+`git submodule update --init --recursive` to keep the vendored `thirdparty/`
+native sources in sync with the checked-out revision.
 
 ### Build environment variables (already exported in `~/.bashrc`)
 
@@ -248,6 +249,9 @@ script only runs `git submodule update --init --recursive` to keep the vendored
   `target/cadmus-build-deps/x86_64-unknown-linux-gnu/sqlite/{lib,include}`
 - `PKG_CONFIG_PATH_x86_64_unknown_linux_gnu` → that sqlite `lib/pkgconfig`
 - `SQLX_OFFLINE=true`
+- Kobo cross-build vars: `PATH` includes `~/linaro-toolchain/bin`,
+  `PKG_CONFIG_ALLOW_CROSS=1`, and `PKG_CONFIG_PATH_arm_unknown_linux_gnueabihf`
+  → the ARM sqlite `lib/pkgconfig`.
 
 If a shell does not have them (e.g. a non-login shell), re-source `~/.bashrc` or
 export them manually before building.
@@ -265,6 +269,41 @@ export them manually before building.
   harmless; `mmdc` from npm is optional and only affects EPUB diagram images).
 - MuPDF/libwebp native artifacts are built lazily by `cadmus-core`'s `build.rs`
   the first time you build; they self-rebuild when their submodule SHA changes.
+
+### Kobo (ARM) cross-compilation
+
+The env is set up to cross-compile the device binary for Kobo
+(`arm-unknown-linux-gnueabihf`). Baked into the snapshot:
+
+- The Linaro GCC 4.9.4 (2017.01) toolchain in `~/linaro-toolchain/` (same
+  toolchain CI and Kobo use), on `PATH` via `~/.bashrc`.
+- The `arm-unknown-linux-gnueabihf` Rust std target (`rustup target add`).
+- `meson`, `ninja-build`, and `gperf` (needed to build the ARM thirdparty
+  libraries, e.g. harfbuzz/freetype, from source).
+- The Plato-sourced asset dirs `bin/`, `resources/`, `hyphenation-patterns/`
+  (via `cargo xtask download-assets`). Unlike the emulator, the `cadmus` device
+  binary's `build.rs` hard-requires these; without them the Kobo build panics
+  with "required asset directory missing". They are gitignored and persist in
+  the snapshot; re-run `cargo xtask download-assets` if they are absent.
+
+Build with `cargo xtask build-kobo` (add `--features test` for the test
+variant). It builds the ARM SQLite/MuPDF/thirdparty libs on first run
+(cached afterwards) and emits `target/arm-unknown-linux-gnueabihf/release/cadmus`
+(a 32-bit ARM ELF). The `-Ctarget-feature v7/vfp3/neon` warnings are expected.
+
+### Testing strategy — always verify the Kobo build
+
+Cadmus ships to Kobo e-readers, so after making changes you MUST confirm the
+Kobo cross build still compiles as part of testing (in addition to host
+`fmt`/`clippy`/`test`):
+
+```sh
+cargo xtask build-kobo
+```
+
+A clean host build can still break the ARM build (different target-cfg,
+thirdparty linkage, `#[cfg(...)]` paths), so treat a green `build-kobo` as a
+required check before considering a change done.
 
 ### Running the emulator
 
