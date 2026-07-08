@@ -16,6 +16,8 @@ use sqlx::encode::IsNull;
 use sqlx::error::BoxDynError;
 use sqlx::sqlite::{Sqlite, SqliteArgumentsBuffer, SqliteTypeInfo, SqliteValueRef};
 
+include!(concat!(env!("OUT_DIR"), "/cargo_features.rs"));
+
 /// Result of comparing two versions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VersionComparison {
@@ -117,6 +119,7 @@ pub struct Version {
     git: GitVersion,
     pull_request: Option<PullRequestInfo>,
     build: BuildAttributes,
+    features: BuildFeatures,
     build_kind: BuildKind,
 }
 
@@ -133,6 +136,12 @@ pub enum BuildKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PullRequestInfo {
     value: &'static str,
+}
+
+/// Cargo features enabled for this build.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BuildFeatures {
+    features: &'static [&'static str],
 }
 
 /// Compile-time build provenance attributes.
@@ -153,6 +162,35 @@ pub struct BuildTimestamp {
     datetime: Option<DateTime<Utc>>,
 }
 
+/// Formats compile-time version metadata for display in the About dialog.
+///
+/// The output contains one section per line:
+/// - Git describe version, prefixed with `Test` for test builds
+/// - Optional pull-request metadata
+/// - Build provenance (timestamp, user, host)
+///
+/// Cargo features are omitted. Use [`Version::to_string_with_features`] or
+/// [`Version::write_as_html_to`] when the feature list is needed.
+///
+/// # Examples
+///
+/// ```no_run
+/// use cadmus_core::version::get_version;
+///
+/// let output = get_version().to_string();
+/// assert!(output.lines().next().is_some_and(|line| {
+///     line.starts_with('v') || line.starts_with("Test v")
+/// }));
+/// ```
+///
+/// A test build with pull-request metadata renders like:
+///
+/// ```text
+/// Test v0.9.46-5-gabc123
+/// PR #12 (abc1234)
+/// Built 2009-02-13 23:31:30 UTC
+/// By builder@host
+/// ```
 impl std::fmt::Display for Version {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.build_kind {
@@ -188,6 +226,60 @@ impl Version {
     pub fn build_kind(&self) -> BuildKind {
         self.build_kind
     }
+
+    /// Returns the Cargo features enabled for this build.
+    pub fn features(&self) -> BuildFeatures {
+        self.features
+    }
+
+    /// Formats version metadata including the enabled Cargo feature list.
+    pub fn to_string_with_features(&self) -> String {
+        if self.features.is_empty() {
+            self.to_string()
+        } else {
+            format!("{self}\n{}", self.features)
+        }
+    }
+
+    /// Appends build-metadata rows to a System Info HTML table buffer.
+    pub fn write_as_html_to(&self, buf: &mut String) {
+        let version_line = match self.build_kind {
+            BuildKind::Test => format!("Cadmus Test {}", self.git),
+            BuildKind::Standard => format!("Cadmus {}", self.git),
+        };
+        push_sysinfo_row(buf, "Version", &version_line);
+
+        if let Some(pull_request) = self.pull_request {
+            push_sysinfo_row(buf, "Pull request", pull_request.as_str());
+        }
+
+        push_sysinfo_row(buf, "Built", &self.build.timestamp.to_string());
+        push_sysinfo_row(
+            buf,
+            "Built by",
+            &format!("{}@{}", self.build.user, self.build.host),
+        );
+
+        if !self.features.is_empty() {
+            buf.push_str("\t\t\t<tr>\n");
+            buf.push_str("\t\t\t\t<td class=\"key\">Features</td>\n");
+            buf.push_str("\t\t\t\t<td class=\"value\"><ul>\n");
+            for feature in self.features.as_slice() {
+                buf.push_str(&format!("\t\t\t\t\t<li>{feature}</li>\n"));
+            }
+            buf.push_str("\t\t\t\t</ul></td>\n");
+            buf.push_str("\t\t\t</tr>\n");
+        }
+
+        buf.push_str("\t\t\t<tr class=\"sep\"></tr>\n");
+    }
+}
+
+fn push_sysinfo_row(buf: &mut String, key: &str, value: &str) {
+    buf.push_str("\t\t\t<tr>\n");
+    buf.push_str(&format!("\t\t\t\t<td class=\"key\">{key}</td>\n"));
+    buf.push_str(&format!("\t\t\t\t<td class=\"value\">{value}</td>\n"));
+    buf.push_str("\t\t\t</tr>\n");
 }
 
 impl std::fmt::Display for PullRequestInfo {
@@ -200,6 +292,27 @@ impl PullRequestInfo {
     /// Returns the raw pull request metadata.
     pub fn as_str(&self) -> &'static str {
         self.value
+    }
+}
+
+impl std::fmt::Display for BuildFeatures {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&crate::fl!(
+            "build-features",
+            features = self.features.join(", ")
+        ))
+    }
+}
+
+impl BuildFeatures {
+    /// Returns whether any Cargo features were enabled for this build.
+    pub fn is_empty(&self) -> bool {
+        self.features.is_empty()
+    }
+
+    /// Returns the enabled Cargo features.
+    pub fn as_slice(&self) -> &'static [&'static str] {
+        self.features
     }
 }
 
@@ -568,6 +681,9 @@ pub fn get_version() -> Version {
         git: get_current_version(),
         pull_request: option_env!("PR_INFO").map(|value| PullRequestInfo { value }),
         build: get_build_attributes(),
+        features: BuildFeatures {
+            features: BUILD_FEATURES,
+        },
         build_kind: get_build_kind(),
     }
 }
@@ -729,6 +845,9 @@ mod tests {
                 host: "host",
                 timestamp: BuildTimestamp::parse("1234567890"),
             },
+            features: BuildFeatures {
+                features: &["kobo", "test"],
+            },
             build_kind: BuildKind::Test,
         };
         let build_attributes = crate::fl!(
@@ -745,6 +864,81 @@ mod tests {
     }
 
     #[test]
+    fn test_version_to_string_with_features() {
+        let version = Version {
+            git: GitVersion::parse("v0.9.46").unwrap(),
+            pull_request: None,
+            build: BuildAttributes {
+                user: "builder",
+                host: "host",
+                timestamp: BuildTimestamp::parse("1234567890"),
+            },
+            features: BuildFeatures {
+                features: &["kobo", "tracing"],
+            },
+            build_kind: BuildKind::Standard,
+        };
+        let build_attributes = crate::fl!(
+            "build-attributes",
+            timestamp = "2009-02-13 23:31:30 UTC",
+            user = "builder",
+            host = "host",
+        );
+        let build_features = crate::fl!("build-features", features = "kobo, tracing");
+
+        assert_eq!(
+            version.to_string_with_features(),
+            format!("v0.9.46\n{build_attributes}\n{build_features}")
+        );
+    }
+
+    #[test]
+    fn test_version_to_string_with_features_without_features() {
+        let version = Version {
+            git: GitVersion::parse("v0.9.46").unwrap(),
+            pull_request: None,
+            build: BuildAttributes {
+                user: "builder",
+                host: "host",
+                timestamp: BuildTimestamp::parse("1234567890"),
+            },
+            features: BuildFeatures { features: &[] },
+            build_kind: BuildKind::Standard,
+        };
+
+        assert_eq!(version.to_string_with_features(), version.to_string());
+    }
+
+    #[test]
+    fn test_version_write_as_html_to_includes_feature_list() {
+        let version = Version {
+            git: GitVersion::parse("v0.9.46").unwrap(),
+            pull_request: None,
+            build: BuildAttributes {
+                user: "builder",
+                host: "host",
+                timestamp: BuildTimestamp::parse("1234567890"),
+            },
+            features: BuildFeatures {
+                features: &["kobo", "tracing"],
+            },
+            build_kind: BuildKind::Standard,
+        };
+        let mut html = String::new();
+        version.write_as_html_to(&mut html);
+
+        assert!(html.contains("<td class=\"key\">Version</td>"));
+        assert!(html.contains("Cadmus v0.9.46"));
+        assert!(html.contains("<li>kobo</li>"));
+        assert!(html.contains("<li>tracing</li>"));
+        assert!(
+            html.find("<li>kobo</li>").unwrap() < html.find("<li>tracing</li>").unwrap(),
+            "features should be sorted alphabetically"
+        );
+        assert!(html.contains("<tr class=\"sep\"></tr>"));
+    }
+
+    #[test]
     fn test_version_display_without_pull_request() {
         let version = Version {
             git: GitVersion::parse("v0.9.46").unwrap(),
@@ -753,6 +947,9 @@ mod tests {
                 user: "builder",
                 host: "host",
                 timestamp: BuildTimestamp::parse("1234567890"),
+            },
+            features: BuildFeatures {
+                features: &["kobo"],
             },
             build_kind: BuildKind::Standard,
         };

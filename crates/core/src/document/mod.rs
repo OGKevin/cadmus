@@ -16,6 +16,7 @@ use crate::framebuffer::Pixmap;
 use crate::geom::{Boundary, CycleDir};
 use crate::metadata::{Annotation, TextAlign};
 use crate::settings::{FileExtension, INTERNAL_CARD_ROOT};
+use crate::version::get_version;
 use anyhow::{Error, format_err};
 use fxhash::FxHashMap;
 use nix::sys::statvfs;
@@ -606,6 +607,8 @@ pub fn sys_info_as_html() -> String {
         .to_string();
 
     buf.push_str("\t\t<table>\n");
+
+    get_version().write_as_html_to(&mut buf);
 
     buf.push_str("\t\t\t<tr>\n");
     buf.push_str("\t\t\t\t<td class=\"key\">Model name</td>\n");

@@ -32,6 +32,7 @@
 //! the working copy is ready before any other function is called.
 
 pub mod build;
+pub mod cargo_features;
 pub mod cmd;
 pub mod markers;
 pub mod utils;

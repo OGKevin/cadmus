@@ -5,6 +5,7 @@
 build-attributes =
     Built { $timestamp }
     By { $user }@{ $host }
+build-features = Features: { $features }
 
 english = English
 

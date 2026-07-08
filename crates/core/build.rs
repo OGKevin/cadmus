@@ -25,6 +25,7 @@ use uuid::Uuid;
 use anyhow::{Context, Ok, Result, bail};
 use build_deps::build::kobo;
 use build_deps::build::{mupdf_wrapper, native};
+use build_deps::cargo_features::{cargo_feature_env_key, collect_cargo_feature_names};
 
 const BUNDLED_ASSET_DIRS: &[&str] = &[
     "bin",
@@ -81,6 +82,8 @@ fn try_main() -> Result<()> {
         "cargo:rustc-env=BUILD_TIMESTAMP={}",
         build_attributes.timestamp
     );
+
+    generate_cargo_features()?;
 
     println!("cargo:rerun-if-env-changed=GH_OAUTH_CLIENT_ID");
     let client_id =
@@ -413,6 +416,28 @@ fn build_timestamp() -> Result<String> {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs().to_string())
         .or_else(|_| Ok("unknown".to_string()))
+}
+
+fn generate_cargo_features() -> Result<()> {
+    let features = collect_cargo_feature_names(env::vars());
+    for feature in &features {
+        println!(
+            "cargo:rerun-if-env-changed={}",
+            cargo_feature_env_key(feature)
+        );
+    }
+
+    let out_dir = env::var("OUT_DIR").context("OUT_DIR not set")?;
+    let entries: String = features
+        .iter()
+        .map(|feature| format!("    \"{feature}\",\n"))
+        .collect();
+    let generated = format!(
+        "/// Enabled Cargo features for this build (sorted at compile time).\nconst BUILD_FEATURES: &[&str] = &[\n{entries}];\n"
+    );
+    fs::write(Path::new(&out_dir).join("cargo_features.rs"), generated)
+        .context("failed to write cargo_features.rs")?;
+    Ok(())
 }
 
 /// Compute the Git version and PR info to embed in the build.
