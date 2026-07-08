@@ -6,8 +6,7 @@
 
 The easiest way to contribute translations is on
 [Crowdin](https://crowdin.com/project/cadmus). UI strings, the user guide, and
-the website are all translated there — no local setup or PO/FTL/JSON editing
-required.
+the website are all translated there.
 
 > [!NOTE]
 > Direct pull requests to `docs/po/*.po`, `crates/core/i18n/*/*.ftl`, or

@@ -3,8 +3,8 @@
 # Translations — for developers
 
 This page is for contributors who change English source strings or
-documentation. Translators should use
-[Crowdin](https://crowdin.com/project/cadmus) instead.
+documentation. Translators should use [Crowdin](https://crowdin.com/project/cadmus)
+or see the main [Translations](index.md) page.
 
 ## Adding UI strings
 
