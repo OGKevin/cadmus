@@ -227,3 +227,57 @@ misses `#[cfg(not(feature = "..."))]` paths.
   sure `bin/`, `resources/`, and `hyphenation-patterns/` are present before the
   Kobo build starts. In CI, `cargo xtask download-assets` must run before
   `cargo xtask build-kobo` for the generated asset list to stay accurate.
+
+## Cursor Cloud specific instructions
+
+This environment is provisioned without Nix/devenv. The Cursor snapshot already
+has the full native host toolchain baked in (latest stable Rust via `rustup`,
+the SDL2/MuPDF/DjVuLibre/gcc build stack, `mdbook` + `mdbook-epub` +
+`mdbook-mermaid` + `mdbook-gettext`, and `cargo-nextest`). The startup update
+script only runs `git submodule update --init --recursive` to keep the vendored
+`thirdparty/` native sources in sync with the checked-out revision.
+
+### Build environment variables (already exported in `~/.bashrc`)
+
+`cargo build` and every `cargo xtask` command require these; they point
+`libsqlite3-sys` at the custom SQLite (built with
+`SQLITE_ENABLE_UPDATE_DELETE_LIMIT`) and use the cached offline sqlx metadata:
+
+- `SQLITE3_STATIC=1`
+- `SQLITE3_LIB_DIR` / `SQLITE3_INCLUDE_DIR` →
+  `target/cadmus-build-deps/x86_64-unknown-linux-gnu/sqlite/{lib,include}`
+- `PKG_CONFIG_PATH_x86_64_unknown_linux_gnu` → that sqlite `lib/pkgconfig`
+- `SQLX_OFFLINE=true`
+
+If a shell does not have them (e.g. a non-login shell), re-source `~/.bashrc` or
+export them manually before building.
+
+### Non-obvious build prerequisites (persist in the snapshot; rebuild only if stale)
+
+- `cargo xtask setup --host` builds the custom static SQLite. `libsqlite3-sys`
+  runs before `cadmus-core`'s `build.rs`, so this MUST be done before any
+  `cargo build`. It is idempotent (skips when the submodule SHA is unchanged).
+  Re-run it if `thirdparty/sqlite` moves.
+- `cargo xtask docs --mdbook-only` generates
+  `docs/book/epub/Cadmus Documentation.epub`, which `cadmus-core` embeds at
+  compile time via `rust-embed`. Without it every `cargo build`/`check`/`test`
+  fails. Re-run only when `docs/src/**` changes (mermaid→PNG warnings are
+  harmless; `mmdc` from npm is optional and only affects EPUB diagram images).
+- MuPDF/libwebp native artifacts are built lazily by `cadmus-core`'s `build.rs`
+  the first time you build; they self-rebuild when their submodule SHA changes.
+
+### Running the emulator
+
+- The desktop X server is on `DISPLAY=:1`. Run the SDL2 GUI with
+  `DISPLAY=:1 ./target/debug/cadmus-emulator` (or `cargo xtask run-emulator`)
+  from the workspace root — the emulator loads `fonts/`, `icons/`, `css/`, and
+  `keyboard-layouts/` relative to the current directory, and its default
+  emulator library path is `.` (the workspace root).
+
+### Standard lint/test/build commands
+
+Use the existing `cargo xtask` wrappers (see `.agents/skills/` and the
+`build-cadmus-native` skill): `cargo xtask fmt`, `cargo xtask clippy --features
+default`, `cargo xtask test --features default`. Note the installed clippy is
+newer than CI's and may emit extra style warnings; they are non-fatal (CI
+filters to the diff via reviewdog).
