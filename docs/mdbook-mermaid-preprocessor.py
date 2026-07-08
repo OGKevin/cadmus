@@ -126,6 +126,8 @@ def process_chapter_content(
         content: The markdown content of the chapter
         chapter_name: Name of the chapter (for PNG filenames)
         png_dir: Directory where PNG files should be saved
+        chapter_path: Source path of the chapter relative to `src/`, used to
+            compute the image link path for nested chapters
 
     Returns:
         Modified content with mermaid blocks replaced by image references
