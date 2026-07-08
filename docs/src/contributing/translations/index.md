@@ -6,7 +6,7 @@
 
 The easiest way to contribute translations is on
 [Crowdin](https://crowdin.com/project/cadmus). UI strings, the user guide, and
-website chrome are all translated there — no local setup or PO/FTL/JSON editing
+the website are all translated there — no local setup or PO/FTL/JSON editing
 required.
 
 > [!NOTE]
@@ -22,9 +22,9 @@ required.
 | User guide (mdBook) | GNU gettext PO   | `docs/po/<lang>.po`                       | `docs/po/messages.pot`         |
 | Website             | [next-intl] JSON | `website/messages/<lang>.json`            | `website/messages/en.json`     |
 
-The website strings cover the portal chrome (landing page, nav, doc-grid cards,
-footer). The mdBook user guide is a separate, larger translation surface
-embedded into the site.
+The website strings cover the landing page, nav, doc-grid cards, and footer.
+The mdBook user guide is a separate, larger translation surface embedded into
+the site.
 
 ## How Crowdin sync works
 
@@ -86,7 +86,7 @@ flowchart LR
   scans `docs/po/*.po` (plus `en`) and writes
   [`website/i18n/locales.generated.ts`](https://github.com/ogkevin/cadmus/blob/master/website/i18n/locales.generated.ts)
   — the website locale list follows the mdBook translation set.
-- `cargo xtask docs` orchestrates the full portal build: mdBook per locale →
+- `cargo xtask docs` orchestrates the full website build: mdBook per locale →
   `generate-locales.mjs` / `generate-version.mjs` → symlinks under
   `website/public/<locale>/guide/` → `next build` → static export at
   `website/out/<locale>/`.

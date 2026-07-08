@@ -35,7 +35,7 @@ cadmus-translate   # devenv
 Commit the updated `docs/po/messages.pot` alongside your doc edits. Crowdin
 picks up the new template; translators update locale `.po` files there.
 
-When changing website chrome strings, update
+When changing website strings, update
 [`website/messages/en.json`](https://github.com/ogkevin/cadmus/blob/master/website/messages/en.json)
 only — Crowdin handles `website/messages/<lang>.json`.
 
@@ -49,7 +49,10 @@ back via the `crowdin` CI workflow (`skip_untranslated_strings: true` on
 export). Missing translations fall back to English at runtime or build time
 until translators catch up.
 
-## Excluding content from extraction
+## Excluding documentation from extraction
+
+These directives apply to the mdBook user guide only. They tell
+`cadmus-translate` which Markdown blocks to omit from `docs/po/messages.pot`.
 
 Use `<!-- i18n:skip -->` before a single block (paragraph, code block, table):
 
