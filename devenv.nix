@@ -741,7 +741,7 @@ in
 
   # Scripts are simple aliases that invoke xtask commands
   scripts = {
-    # Build complete documentation portal (mdBook + Cargo docs + Zola)
+    # Build complete documentation website (mdBook + Cargo docs + Next.js)
     cadmus-docs-build.exec = ''
       cargo xtask docs
     '';

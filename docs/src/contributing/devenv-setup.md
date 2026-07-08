@@ -56,8 +56,8 @@ Once inside the devenv shell, these commands are available:
 | `cargo xtask bundle`          | Package KoboRoot.tgz for installation            |
 | `cadmus-dev-otel`             | Run emulator with tracing and profiling enabled  |
 | `devenv up`                   | Start observability stack (Grafana, Tempo, Loki) |
-| `cargo xtask docs`            | Build documentation portal (mdBook + Cargo docs) |
-| `cadmus-docs-serve`           | Serve documentation portal locally on port 1111  |
+| `cargo xtask docs`            | Build docs site (mdBook, API docs, website)      |
+| `cadmus-docs-serve`           | Serve website locally on port 3000               |
 | `cadmus-translate`            | Generate the docs translation template (.pot)    |
 
 Run `cargo xtask --help` to see all available subcommands, or `cargo xtask <cmd> --help` for
@@ -97,53 +97,8 @@ The `docs:build` task uses `execIfModified` to only rebuild when documentation f
   extracts the new `KoboRoot.tgz` over the install directory.
 - User files outside the generated Cadmus-owned asset list must be preserved.
 
-## Documentation Portal
-
-Cadmus provides a unified documentation portal that combines user guides, API reference, and
-contribution guides in one place.
-
-### Building and Serving Locally
-
-To build the documentation portal:
-
-```bash
-cargo xtask docs
-```
-
-This runs the full build pipeline:
-
-1. Builds the mdBook user guide (`docs/book/html/`)
-2. Generates Rust API documentation (`target/doc/`)
-3. Builds the Zola landing page and integrates all documentation
-
-To serve the portal locally with live reload:
-
-```bash
-cadmus-docs-serve
-```
-
-The portal will be available at <http://localhost:1111> with automatic rebuilds when you change
-documentation files or Rust code.
-
-### Documentation Structure
-
-The portal provides three integrated sections:
-
-- **Landing Page** (`/en/`, `/fr/`, …) - Overview and feature highlights
-- **User Guide** (`/en/guide/`, `/fr/guide/`, …) - User-facing documentation from mdBook
-- **API Reference** (`/en/api/cadmus_core/`) - Auto-generated Rust API documentation
-
-All three sections are deployed as a single artifact to GitHub Pages at
-<https://ogkevin.github.io/cadmus/>.
-
-### Continuous Integration
-
-Documentation is automatically built and validated on every pull request and deployed on push
-to `main` or `master`. The CI pipeline checks:
-
-- mdBook documentation compiles
-- Rust code documentation is valid
-- Zola landing page builds successfully
+See [Website](website/index.md) and [User guide](website/user-guide.md) for building, serving,
+editing, and deploying the documentation site.
 
 ## Running Tests
 

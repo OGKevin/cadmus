@@ -1,0 +1,6 @@
+# mdBook SUMMARY.md starts with [Overview](index.md), not an H1 (MD041), and
+# uses multiple `#` section titles (MD025). rumdl auto-discovers this file when
+# treefmt runs `rumdl check --fix` from the project root.
+
+[per-file-ignores]
+"docs/src/SUMMARY.md" = ["MD025", "MD041"]
