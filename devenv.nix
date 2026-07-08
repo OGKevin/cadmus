@@ -227,8 +227,6 @@ let
     doCheck = true;
   };
 
-  poedit-fixed = pkgs.poedit.override { boost = pkgs.boost186; };
-
   # Grafana datasource provisioning
   grafanaDatasources = pkgs.writeText "datasources.yaml" ''
     apiVersion: 1
@@ -356,8 +354,6 @@ in
     pkgs.gcc
 
     # This seems to be borken on macos
-    # https://github.com/NixOS/nixpkgs/blob/ed142ab1b3a092c4d149245d0c4126a5d7ea00b0/pkgs/by-name/po/poedit/package.nix#L88
-    poedit-fixed
   ]
   # macOS-specific packages
   ++ pkgs.lib.optionals isDarwin [
@@ -804,9 +800,8 @@ in
       echo "Extracting translatable strings from documentation..."
       MDBOOK_OUTPUT='{"xgettext": {}}' mdbook build -d $DEVENV_ROOT/docs/po $DEVENV_ROOT/docs
       echo ""
-      echo "Translation files generated in docs/po/"
-      echo "Use Poedit or any gettext editor to translate"
-      echo "Then run 'devenv tasks run docs:build' to build translated books"
+      echo "Updated docs/po/messages.pot"
+      echo "Translate on Crowdin: https://crowdin.com/project/cadmus"
     '';
   };
 
@@ -820,12 +815,7 @@ in
     echo "  cadmus-docs-serve     - Serve website locally (http://localhost:3000)"
     echo "  cargo test            - Run tests (after setup)"
     echo "  cargo xtask run-emulator - Run the emulator (after setup)"
-    echo "  cadmus-translate      - Extract translatable strings from documentation"
-    echo ""
-    echo "Translation workflow:"
-    echo "  1. Run 'cadmus-translate' to extract strings into docs/po/"
-    echo "  2. Edit .po files with Poedit or any gettext editor"
-    echo "  3. Run 'devenv tasks run docs:build' to build translated books"
+    echo "  cadmus-translate      - Regenerate docs/po/messages.pot (translations on Crowdin)"
     echo ""
     echo "xtask commands (cargo xtask <cmd> --help for options):"
     echo "  cargo xtask fmt           - Check formatting"
