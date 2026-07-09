@@ -11,6 +11,9 @@
     <a href="https://github.com/OGKevin/cadmus/actions/workflows/cargo.yml?query=branch%3Amaster++">
       <img src="https://img.shields.io/github/actions/workflow/status/ogkevin/cadmus/cargo.yml?style=for-the-badge" />
     </a>
+    <a href="https://codecov.io/github/OGKevin/cadmus" alt="Coverage">
+      <img src="https://img.shields.io/codecov/c/github/OGKevin/cadmus/master?style=for-the-badge" />
+    </a>
     <a href="https://discord.gg/3AJHp6rV5a" alt="Discord">
         <img src="https://img.shields.io/discord/1459138935203565741?style=for-the-badge" /></a>
     <a href="https://github.com/OGKevin/cadmus/releases/latest" alt="Latest Release">

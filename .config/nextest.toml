@@ -1,0 +1,4 @@
+[profile.ci.junit]
+path = "junit.xml"
+report-name = "cadmus"
+store-failure-output = true

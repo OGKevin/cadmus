@@ -46,19 +46,22 @@ This guide covers setup on both Linux and macOS.
 
 Once inside the devenv shell, these commands are available:
 
-| Command                       | Description                                      |
-| ----------------------------- | ------------------------------------------------ |
-| `cargo xtask download-assets` | Download packaged Plato runtime assets           |
-| `cargo xtask test`            | Run the test suite across the feature matrix     |
-| `cargo xtask run-emulator`    | Run the emulator                                 |
-| `cargo xtask build-kobo`      | Cross-compile for Kobo device                    |
-| `cargo xtask dist`            | Assemble the Kobo distribution directory         |
-| `cargo xtask bundle`          | Package KoboRoot.tgz for installation            |
-| `cadmus-dev-otel`             | Run emulator with tracing and profiling enabled  |
-| `devenv up`                   | Start observability stack (Grafana, Tempo, Loki) |
-| `cargo xtask docs`            | Build docs site (mdBook, API docs, website)      |
-| `cadmus-docs-serve`           | Serve website locally on port 3000               |
-| `cadmus-translate`            | Generate the docs translation template (.pot)    |
+| Command                       | Description                                                 |
+| ----------------------------- | ----------------------------------------------------------- |
+| `cargo xtask download-assets` | Download packaged Plato runtime assets                      |
+| `cargo xtask test`            | Run the test suite across the feature matrix                |
+| `cargo xtask run-emulator`    | Run the emulator                                            |
+| `cargo xtask build-kobo`      | Cross-compile for Kobo device                               |
+| `cargo xtask dist`            | Assemble the Kobo distribution directory                    |
+| `cargo xtask bundle`          | Package KoboRoot.tgz for installation                       |
+| `cadmus-dev-otel`             | Run emulator with tracing and profiling enabled             |
+| `devenv up`                   | Start observability stack (Grafana, Tempo, Loki)            |
+| `cargo xtask docs`            | Build docs site (mdBook, API docs, website)                 |
+| `cadmus-docs-serve`           | Serve website locally on port 3000                          |
+| `cadmus-translate`            | Generate the docs translation template (.pot)               |
+| `cadmus-test-coverage`        | Run tests with coverage instrumentation                     |
+| `cadmus-coverage-show`        | Open project-wide HTML coverage report                      |
+| `cadmus-coverage-diff`        | Open patch coverage HTML vs `origin/$CADMUS_DEFAULT_BRANCH` |
 
 Run `cargo xtask --help` to see all available subcommands, or `cargo xtask <cmd> --help` for
 options on a specific command.
@@ -124,6 +127,38 @@ TEST_ROOT_DIR=$(pwd) cargo test
 
 `TEST_ROOT_DIR` is automatically configured in CI but must be set manually when running
 `cargo test` directly.
+
+## Test Coverage
+
+CI runs instrumented tests across the full feature matrix and uploads merged reports to
+[Codecov](https://codecov.io). Coverage status checks are informational only — test
+failures still block merges.
+
+CI also uploads nextest JUnit XML to [Codecov Test Analytics](https://docs.codecov.com/docs/test-analytics)
+(one upload per feature-matrix shard, with Codecov flags). Doctests are not included in
+JUnit output. View results in the Codecov Tests tab and in PR comments.
+
+Locally, use the devenv coverage commands (requires `devenv shell`):
+
+```bash
+# 1. Run instrumented tests (writes target/coverage/lcov.info)
+cadmus-test-coverage
+
+# 2. View results without re-running tests
+cadmus-coverage-show              # project-wide HTML in the browser
+cadmus-coverage-diff              # patch HTML vs origin/$CADMUS_DEFAULT_BRANCH
+cadmus-coverage-diff main         # or pass an explicit base branch
+```
+
+`CADMUS_DEFAULT_BRANCH` defaults to `master`. Override it in `devenv.local.nix` if needed.
+
+Outside devenv, the equivalent xtask invocation is:
+
+```bash
+cargo xtask test --coverage --features default
+```
+
+CI uploads require a `CODECOV_TOKEN` repository secret (one-time setup on codecov.io).
 
 ## Platform Support
 

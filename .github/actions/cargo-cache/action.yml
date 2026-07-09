@@ -3,7 +3,8 @@ description: >
   Restore or save the shared Cargo cache. The cache key incorporates the
   Rust toolchain fingerprint, the Cargo lockfile, build scripts, the
   mupdf_wrapper C glue, and the gitlink SHAs of every thirdparty
-  submodule so that the key changes when any submodule pointer moves.
+  submodule so that the key changes when any submodule pointer moves. The
+  workflow file is hashed so CI build-step changes invalidate stale target/ caches.
 
   Defaults to restore-only. Pass `mode: save` in the cache-warmup job to
   write a fresh cache.
@@ -46,7 +47,7 @@ runs:
           ~/.cargo/git/db/
           target/
           libs/
-        key: ${{ runner.os }}-cargo-shared-${{ inputs.cachekey }}-${{ hashFiles('**/Cargo.lock', 'crates/build-deps/**', 'build-scripts/**', '.gitmodules', 'mupdf_wrapper/mupdf_wrapper.c', 'crates/core/build.rs') }}-${{ steps.submodules.outputs.hash }}
+        key: ${{ runner.os }}-cargo-shared-${{ inputs.cachekey }}-${{ hashFiles('**/Cargo.lock', 'crates/build-deps/**', 'build-scripts/**', '.gitmodules', 'mupdf_wrapper/mupdf_wrapper.c', 'crates/core/build.rs', '.github/workflows/cargo.yml') }}-${{ steps.submodules.outputs.hash }}
         restore-keys: |
           ${{ runner.os }}-cargo-shared-${{ inputs.cachekey }}-
 
@@ -62,6 +63,6 @@ runs:
           ~/.cargo/git/db/
           target/
           libs/
-        key: ${{ runner.os }}-cargo-shared-${{ inputs.cachekey }}-${{ hashFiles('**/Cargo.lock', 'crates/build-deps/**', 'build-scripts/**', '.gitmodules', 'mupdf_wrapper/mupdf_wrapper.c', 'crates/core/build.rs') }}-${{ steps.submodules.outputs.hash }}
+        key: ${{ runner.os }}-cargo-shared-${{ inputs.cachekey }}-${{ hashFiles('**/Cargo.lock', 'crates/build-deps/**', 'build-scripts/**', '.gitmodules', 'mupdf_wrapper/mupdf_wrapper.c', 'crates/core/build.rs', '.github/workflows/cargo.yml') }}-${{ steps.submodules.outputs.hash }}
         restore-keys: |
           ${{ runner.os }}-cargo-shared-${{ inputs.cachekey }}-

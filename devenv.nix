@@ -9,6 +9,15 @@ let
   inherit (pkgs.stdenv) isLinux;
   inherit (pkgs.stdenv) isDarwin;
 
+  openHtml =
+    path:
+    if isLinux then
+      "xdg-open ${path}"
+    else if isDarwin then
+      "open ${path}"
+    else
+      "echo \"Open ${path} in a browser\"";
+
   # Rust 1.94+ changed lib/ in tarballs from a directory to a symlink.
   # devenv's rust module calls mk-aggregated.nix directly from the rust-overlay
   # source, bypassing pkgs overlays. lndir can't merge components when $out/lib
@@ -341,6 +350,8 @@ in
     pkgs.wrangler
 
     pkgs.cargo-llvm-cov
+    pkgs.python3Packages.diff-cover
+    pkgs.xdg-utils
 
     # Linaro ARM cross-compilation toolchain (provides arm-linux-gnueabihf-* commands)
     linaroToolchain
@@ -399,6 +410,10 @@ in
     OTEL_EXPORTER_OTLP_ENDPOINT = "http://localhost:4318";
     PYROSCOPE_SERVER_URL = "http://localhost:4040";
     NEXTEST_NO_TESTS = "pass";
+
+    # Default branch for patch coverage (cadmus-coverage-diff). Override in devenv.local.nix.
+    CADMUS_DEFAULT_BRANCH = "master";
+    CARGO_TARGET_DIR = "${config.devenv.root}/target";
 
     # jemalloc configure uses -O0 in debug builds, which triggers _FORTIFY_SOURCE warnings
     # treated as errors under Nix hardening. Disable hardening for jemalloc's build script.
@@ -803,6 +818,48 @@ in
       echo "Updated docs/po/messages.pot"
       echo "Translate on Crowdin: https://crowdin.com/project/cadmus"
     '';
+
+    # Run instrumented tests; writes target/coverage/lcov.info
+    cadmus-test-coverage.exec = ''
+      cd "$DEVENV_ROOT"
+      if [ $# -eq 0 ]; then
+        set -- --features default
+      fi
+      cargo xtask test --coverage "$@"
+    '';
+
+    # Project-wide HTML from last coverage run (no re-test)
+    cadmus-coverage-show.exec = ''
+      set -e
+      cd "$DEVENV_ROOT"
+      if ! cargo llvm-cov report --html \
+        --ignore-filename-regex '(thirdparty/|mupdf_wrapper/|build\.rs)'; then
+        echo "No coverage data. Run 'cadmus-test-coverage' first." >&2
+        exit 1
+      fi
+      ${openHtml "target/llvm-cov/html/index.html"}
+    '';
+
+    # Patch HTML vs base branch (no re-test). Branch from $1 or $CADMUS_DEFAULT_BRANCH.
+    cadmus-coverage-diff.exec = ''
+      set -e
+      cd "$DEVENV_ROOT"
+      BRANCH="''${1:-$CADMUS_DEFAULT_BRANCH}"
+      LCOV="target/coverage/lcov.info"
+      if [ ! -f "$LCOV" ]; then
+        echo "No coverage data. Run 'cadmus-test-coverage' first." >&2
+        exit 1
+      fi
+      case "$BRANCH" in
+        origin/*) COMPARE_BRANCH="$BRANCH" ;;
+        *) COMPARE_BRANCH="origin/$BRANCH" ;;
+      esac
+      mkdir -p target/coverage
+      diff-cover "$LCOV" \
+        --compare-branch "$COMPARE_BRANCH" \
+        --format "html:target/coverage/diff-coverage.html"
+      ${openHtml "target/coverage/diff-coverage.html"}
+    '';
   };
 
   enterShell = ''
@@ -816,6 +873,11 @@ in
     echo "  cargo test            - Run tests (after setup)"
     echo "  cargo xtask run-emulator - Run the emulator (after setup)"
     echo "  cadmus-translate      - Regenerate docs/po/messages.pot (translations on Crowdin)"
+    echo ""
+    echo "Coverage (diff base: $CADMUS_DEFAULT_BRANCH):"
+    echo "  cadmus-test-coverage  - Run tests with llvm-cov instrumentation"
+    echo "  cadmus-coverage-show  - Project-wide HTML report (after test-coverage)"
+    echo "  cadmus-coverage-diff  - Patch HTML vs origin/\$CADMUS_DEFAULT_BRANCH or [branch] arg"
     echo ""
     echo "xtask commands (cargo xtask <cmd> --help for options):"
     echo "  cargo xtask fmt           - Check formatting"

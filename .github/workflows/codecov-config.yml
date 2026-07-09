@@ -1,0 +1,20 @@
+name: Codecov config validation
+
+on:
+  pull_request:
+    paths:
+      - ".codecov.yml"
+      - ".github/workflows/codecov-config.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Validate Codecov YAML
+        run: curl -sf -X POST --data-binary @.codecov.yml https://codecov.io/validate

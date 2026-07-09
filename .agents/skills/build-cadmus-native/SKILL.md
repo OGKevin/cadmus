@@ -49,6 +49,9 @@ automatically by `build.rs` when you run any Cargo command that compiles
 | Check formatting               | `cargo xtask fmt`                                                   |
 | Run clippy                     | `cargo xtask clippy`                                                |
 | Run tests (default features)   | `cargo xtask test --features default`                               |
+| Run tests with coverage        | `cadmus-test-coverage --features default` (devenv)                  |
+| View coverage (project-wide)   | `cadmus-coverage-show` (after test-coverage)                        |
+| View coverage (patch diff)     | `cadmus-coverage-diff` (after test-coverage)                        |
 | Run tests with telemetry       | `cargo xtask test --features "profiling + test + tracing"`          |
 | Run the emulator               | `cargo xtask run-emulator` (builds the EPUB first if missing)       |
 | Install the importer CLI       | `cargo xtask install-importer`                                      |
@@ -75,11 +78,30 @@ cargo xtask test --features "profiling + test + tracing"
 Use `cargo xtask ci matrix` to see all available feature combinations if you
 need to verify a specific one.
 
+### Coverage locally
+
+In a devenv shell (`cadmus-test-coverage`, `cadmus-coverage-show`, `cadmus-coverage-diff`):
+
+```bash
+cadmus-test-coverage
+cadmus-coverage-show
+cadmus-coverage-diff
+```
+
+Without devenv:
+
+```bash
+cargo xtask test --coverage --features default
+```
+
+This writes `target/coverage/lcov.info`. Project HTML uses `cargo llvm-cov report --html`.
+Patch HTML uses `diff-cover` (see `devenv.nix` scripts).
+
 ## What the xtask wrappers do
 
 - **`fmt`** — runs `cargo fmt --check` (or `--apply` in CI) across the workspace
 - **`clippy`** — iterates the full feature matrix; use `--features` to narrow it
-- **`test`** — iterates the test feature matrix
+- **`test`** — iterates the test feature matrix; `--coverage` enables llvm-cov instrumentation
 - **`run-emulator`** — ensures the documentation EPUB exists, then runs `cargo run -p emulator`
 - **`install-importer`** — runs `cargo install --path crates/importer`
 

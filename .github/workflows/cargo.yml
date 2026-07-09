@@ -97,6 +97,7 @@ jobs:
         id: rust-toolchain
         with:
           targets: arm-unknown-linux-gnueabihf
+          components: llvm-tools
 
       - &set-build-metadata
         name: Set build metadata
@@ -143,6 +144,17 @@ jobs:
         if: steps.cargo-nextest-cache.outputs.cache-hit != 'true'
         run: cargo install cargo-nextest --version "$NEXTEST_VERSION" --locked --force
 
+      - name: Cache cargo-llvm-cov
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        id: cargo-llvm-cov-cache
+        with:
+          path: ~/.cargo/bin/cargo-llvm-cov
+          key: ${{ runner.os }}-cargo-llvm-cov
+
+      - name: Install cargo-llvm-cov
+        if: steps.cargo-llvm-cov-cache.outputs.cache-hit != 'true'
+        uses: taiki-e/install-action@cargo-llvm-cov
+
       - name: Download documentation EPUB
         if: steps.cache.outputs.cache-hit != 'true'
         uses: actions/download-artifact@v8
@@ -163,6 +175,13 @@ jobs:
       - name: Warmup build (native)
         if: steps.cache.outputs.cache-hit != 'true'
         run: cargo check --workspace --all-features --all-targets
+      - name: Warmup llvm-cov build
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          cargo llvm-cov nextest-archive \
+            --workspace --all-features --all-targets \
+            --archive-file target/llvm-cov-warmup.tar.zst
+          rm -f target/llvm-cov-warmup.tar.zst
       - name: Warmup build (Kobo release)
         if: steps.cache.outputs.cache-hit != 'true'
         run: cargo build --release --target arm-unknown-linux-gnueabihf -p cadmus
@@ -272,6 +291,8 @@ jobs:
           fetch-tags: true
       - uses: dtolnay/rust-toolchain@stable
         id: rust-toolchain
+        with:
+          components: llvm-tools
       - *set-build-metadata
       - name: Download documentation EPUB
         uses: actions/download-artifact@v8
@@ -311,8 +332,83 @@ jobs:
         if: steps.cargo-nextest-cache.outputs.cache-hit != 'true'
         run: cargo install cargo-nextest --version "$NEXTEST_VERSION" --locked --force
 
-      - name: Run cargo test (${{ matrix.label }})
-        run: cargo xtask test --features "${{ matrix.label }}"
+      - name: Restore cargo-llvm-cov
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        id: cargo-llvm-cov-cache
+        with:
+          path: ~/.cargo/bin/cargo-llvm-cov
+          key: ${{ runner.os }}-cargo-llvm-cov
+
+      - name: Install cargo-llvm-cov
+        if: steps.cargo-llvm-cov-cache.outputs.cache-hit != 'true'
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: Run cargo test with coverage (${{ matrix.label }})
+        id: test
+        continue-on-error: true
+        run: |
+          slug="${{ matrix.label }}"
+          slug="${slug// + /-}"
+          echo "slug=$slug" >> "$GITHUB_OUTPUT"
+          cargo xtask test \
+            --features "${{ matrix.label }}" \
+            --coverage \
+            --save-coverage "coverage-json/${slug}.json" \
+            --save-junit "test-results/${slug}.junit.xml"
+
+      - name: Upload test results to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@v7
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          report_type: test_results
+          files: test-results/${{ steps.test.outputs.slug }}.junit.xml
+          flags: ${{ matrix.label }}
+          disable_search: true
+          fail_ci_if_error: false
+
+      - name: Upload coverage artifact
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-json-${{ steps.test.outputs.slug }}
+          path: coverage-json/
+          retention-days: 1
+
+      - name: Fail if tests failed
+        if: steps.test.outcome == 'failure'
+        run: exit 1
+
+  coverage-report:
+    if: |
+      github.event_name == 'pull_request' ||
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    needs: test
+    permissions:
+      contents: read
+      pull-requests: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Download all coverage artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: coverage-json-*
+          path: coverage-json
+          merge-multiple: true
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v7
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          report_type: coverage
+          files: coverage-json/*.json
+          disable_search: true
+          fail_ci_if_error: false
 
   build-kobo:
     needs: [cache-warmup, build-docs-epub]
