@@ -3,9 +3,6 @@ name: fmt
 description: Check or apply rustfmt formatting across the workspace. Use this when asked to format code, check formatting, or fix rustfmt issues.
 ---
 
-Project conventions and testing policy: [AGENTS.md](../../AGENTS.md). Covers
-testing step 1 (formatting).
-
 Always use `cargo xtask fmt` to format or check formatting in this project —
 never bare `cargo fmt`.
 

@@ -3,9 +3,6 @@ name: clippy-diff-report
 description: Run clippy locally and report only issues in the current diff, matching the CI reviewdog flow. Use when asked how to lint changed code or get clippy feedback on a branch before pushing.
 ---
 
-Project conventions and testing policy: [AGENTS.md](../../AGENTS.md). Covers
-testing step 2 (lint). See also structured logging and sqlx conventions there.
-
 # Run Clippy on the Current Diff Only
 
 ## The problem

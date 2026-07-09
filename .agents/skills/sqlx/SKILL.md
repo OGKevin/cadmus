@@ -3,9 +3,6 @@ name: sqlx
 description: Regenerate `.sqlx/` cached metadata when adding or modifying `sqlx::query!`, `sqlx::query_as!`, or `sqlx::query_scalar!` macros.
 ---
 
-Project conventions and testing policy: [AGENTS.md](../../AGENTS.md). See the
-SQLite / sqlx conventions section for query and newtype patterns.
-
 # SQLx Offline Query Cache
 
 Regenerate `.sqlx/` cached metadata when adding or modifying `sqlx::query!`,
