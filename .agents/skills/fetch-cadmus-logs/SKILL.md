@@ -4,6 +4,9 @@ description: Fetch Cadmus application logs from Loki by run ID. Use when asked t
 compatibility: Requires curl and a running Loki instance at http://localhost:3100
 ---
 
+Project conventions and testing policy: [AGENTS.md](../../AGENTS.md). See the
+structured logging section for field formatters and log levels.
+
 # Fetch Cadmus Logs by Run ID
 
 ## Context

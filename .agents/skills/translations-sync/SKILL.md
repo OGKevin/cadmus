@@ -3,6 +3,9 @@ name: translations-sync
 description: Regenerate the translations POT file after modifying English documentation sources. Use when docs/src/**/*.md files are changed.
 ---
 
+Project conventions and testing policy: [AGENTS.md](../../AGENTS.md).
+Contributor doc conventions: [docs/AGENTS.md](../../docs/AGENTS.md).
+
 # Regenerate Translations POT File
 
 Run after modifying any English documentation source (`docs/src/**/*.md`).

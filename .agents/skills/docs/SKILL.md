@@ -3,6 +3,8 @@ name: docs
 description: Build the full Cadmus documentation website (mdBook + cargo doc + Storybook + Next.js). Use this when asked to build, preview, or update the documentation site.
 ---
 
+Project conventions and testing policy: [AGENTS.md](../../AGENTS.md).
+
 Always use `cargo xtask docs` to build documentation in this project.
 
 ## Basic usage

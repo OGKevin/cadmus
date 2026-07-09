@@ -3,6 +3,9 @@ name: build-cadmus-native
 description: Build Cadmus on Linux and macOS hosts using xtask. Use when asked how to compile, test, lint, or run the project locally.
 ---
 
+Project conventions and testing policy: [AGENTS.md](../../AGENTS.md). Covers
+testing steps 1–3 and verification after `Cargo.toml` changes.
+
 # Build Cadmus on Native Hosts (Linux / macOS)
 
 ## Critical prerequisite: generate the documentation EPUB

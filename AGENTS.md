@@ -173,12 +173,8 @@ If the same conversion appears in many places, create a newtype wrapper instead
 - Use `default-features = false` when fine-grained control is needed.
 - Keep related crate families at compatible versions (e.g. all
   `opentelemetry-*` crates).
-- After modifying `Cargo.toml`, run:
-
-  ```bash
-  cargo xtask clippy
-  cargo xtask test --features default
-  ```
+- After modifying `Cargo.toml`, run the verification steps in [Testing](#testing)
+  (see the `build-cadmus-native` skill).
 
 ## Feature Flags and CI Matrix
 
@@ -216,6 +212,36 @@ misses `#[cfg(not(feature = "..."))]` paths.
   `fl!` too. Fluent may add Unicode isolation marks around variables, so raw
   string literals can fail even when visible text matches.
 
+## Skills
+
+For workflows, load the matching skill from [`.agents/skills/`](.agents/skills/):
+
+| Skill | Use when |
+| ----- | -------- |
+| `build-cadmus-native` | Compile, test, lint, or run the emulator on a native host |
+| `build-kobo` | Cross-compile for Kobo (ARM); required after code changes |
+| `fmt` | Check or apply rustfmt |
+| `clippy-diff-report` | Lint only the current diff (matches CI reviewdog) |
+| `sqlx` | Regenerate `.sqlx/` after query macro changes |
+| `docs` | Build or preview the documentation site |
+| `translations-sync` | Regenerate the translations POT after doc edits |
+| `fetch-cadmus-logs` | Look up device logs in Loki by run ID |
+
+## Testing
+
+After code changes, complete every step before considering work done:
+
+1. Formatting — `fmt` skill
+2. Lint — `clippy-diff-report` or `build-cadmus-native` skill
+3. Tests — `build-cadmus-native` skill (`--features default` locally)
+4. Kobo ARM build — `build-kobo` skill (**required**; host builds can pass while
+   ARM fails)
+
+After modifying `Cargo.toml`, run the full verification sequence above.
+
+Local clippy may be newer than CI; extra style warnings are non-fatal (CI filters
+to the diff via reviewdog).
+
 ## OTA and Asset Build Order
 
 - OTA updates delete only Cadmus-owned bundled files before reboot. Do not
@@ -227,96 +253,3 @@ misses `#[cfg(not(feature = "..."))]` paths.
   sure `bin/`, `resources/`, and `hyphenation-patterns/` are present before the
   Kobo build starts. In CI, `cargo xtask download-assets` must run before
   `cargo xtask build-kobo` for the generated asset list to stay accurate.
-
-## Cursor Cloud specific instructions
-
-This environment is provisioned without Nix/devenv. The Cursor snapshot already
-has the full native host toolchain baked in (latest stable Rust via `rustup`,
-the SDL2/MuPDF/DjVuLibre/gcc build stack, `mdbook` + `mdbook-epub` +
-`mdbook-mermaid` + `mdbook-gettext`, `cargo-nextest`, and the Kobo ARM
-cross toolchain — see below). The startup update script only runs
-`git submodule update --init --recursive` to keep the vendored `thirdparty/`
-native sources in sync with the checked-out revision.
-
-### Build environment variables (already exported in `~/.bashrc`)
-
-`cargo build` and every `cargo xtask` command require these; they point
-`libsqlite3-sys` at the custom SQLite (built with
-`SQLITE_ENABLE_UPDATE_DELETE_LIMIT`) and use the cached offline sqlx metadata:
-
-- `SQLITE3_STATIC=1`
-- `SQLITE3_LIB_DIR` / `SQLITE3_INCLUDE_DIR` →
-  `target/cadmus-build-deps/x86_64-unknown-linux-gnu/sqlite/{lib,include}`
-- `PKG_CONFIG_PATH_x86_64_unknown_linux_gnu` → that sqlite `lib/pkgconfig`
-- `SQLX_OFFLINE=true`
-- Kobo cross-build vars: `PATH` includes `~/linaro-toolchain/bin`,
-  `PKG_CONFIG_ALLOW_CROSS=1`, and `PKG_CONFIG_PATH_arm_unknown_linux_gnueabihf`
-  → the ARM sqlite `lib/pkgconfig`.
-
-If a shell does not have them (e.g. a non-login shell), re-source `~/.bashrc` or
-export them manually before building.
-
-### Non-obvious build prerequisites (persist in the snapshot; rebuild only if stale)
-
-- `cargo xtask setup --host` builds the custom static SQLite. `libsqlite3-sys`
-  runs before `cadmus-core`'s `build.rs`, so this MUST be done before any
-  `cargo build`. It is idempotent (skips when the submodule SHA is unchanged).
-  Re-run it if `thirdparty/sqlite` moves.
-- `cargo xtask docs --mdbook-only` generates
-  `docs/book/epub/Cadmus Documentation.epub`, which `cadmus-core` embeds at
-  compile time via `rust-embed`. Without it every `cargo build`/`check`/`test`
-  fails. Re-run only when `docs/src/**` changes (mermaid→PNG warnings are
-  harmless; `mmdc` from npm is optional and only affects EPUB diagram images).
-- MuPDF/libwebp native artifacts are built lazily by `cadmus-core`'s `build.rs`
-  the first time you build; they self-rebuild when their submodule SHA changes.
-
-### Kobo (ARM) cross-compilation
-
-The env is set up to cross-compile the device binary for Kobo
-(`arm-unknown-linux-gnueabihf`). Baked into the snapshot:
-
-- The Linaro GCC 4.9.4 (2017.01) toolchain in `~/linaro-toolchain/` (same
-  toolchain CI and Kobo use), on `PATH` via `~/.bashrc`.
-- The `arm-unknown-linux-gnueabihf` Rust std target (`rustup target add`).
-- `meson`, `ninja-build`, and `gperf` (needed to build the ARM thirdparty
-  libraries, e.g. harfbuzz/freetype, from source).
-- The Plato-sourced asset dirs `bin/`, `resources/`, `hyphenation-patterns/`
-  (via `cargo xtask download-assets`). Unlike the emulator, the `cadmus` device
-  binary's `build.rs` hard-requires these; without them the Kobo build panics
-  with "required asset directory missing". They are gitignored and persist in
-  the snapshot; re-run `cargo xtask download-assets` if they are absent.
-
-Build with `cargo xtask build-kobo` (add `--features test` for the test
-variant). It builds the ARM SQLite/MuPDF/thirdparty libs on first run
-(cached afterwards) and emits `target/arm-unknown-linux-gnueabihf/release/cadmus`
-(a 32-bit ARM ELF). The `-Ctarget-feature v7/vfp3/neon` warnings are expected.
-
-### Testing strategy — always verify the Kobo build
-
-Cadmus ships to Kobo e-readers, so after making changes you MUST confirm the
-Kobo cross build still compiles as part of testing (in addition to host
-`fmt`/`clippy`/`test`):
-
-```sh
-cargo xtask build-kobo
-```
-
-A clean host build can still break the ARM build (different target-cfg,
-thirdparty linkage, `#[cfg(...)]` paths), so treat a green `build-kobo` as a
-required check before considering a change done.
-
-### Running the emulator
-
-- The desktop X server is on `DISPLAY=:1`. Run the SDL2 GUI with
-  `DISPLAY=:1 ./target/debug/cadmus-emulator` (or `cargo xtask run-emulator`)
-  from the workspace root — the emulator loads `fonts/`, `icons/`, `css/`, and
-  `keyboard-layouts/` relative to the current directory, and its default
-  emulator library path is `.` (the workspace root).
-
-### Standard lint/test/build commands
-
-Use the existing `cargo xtask` wrappers (see `.agents/skills/` and the
-`build-cadmus-native` skill): `cargo xtask fmt`, `cargo xtask clippy --features
-default`, `cargo xtask test --features default`. Note the installed clippy is
-newer than CI's and may emit extra style warnings; they are non-fatal (CI
-filters to the diff via reviewdog).
