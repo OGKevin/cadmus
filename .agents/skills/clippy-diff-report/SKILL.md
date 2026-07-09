@@ -18,7 +18,7 @@ You can run the same filter locally before pushing.
 
 - `reviewdog` on `PATH` (provided by the devenv shell)
 - Documentation EPUB already built (`cargo xtask docs --mdbook-only`)
-- Native dependencies already built (`cargo xtask setup-native`)
+- Native dependencies already built (`cargo xtask setup --host`)
 
 ## Run clippy filtered to your diff
 

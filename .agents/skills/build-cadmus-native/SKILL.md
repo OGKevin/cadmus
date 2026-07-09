@@ -50,7 +50,7 @@ automatically by `build.rs` when you run any Cargo command that compiles
 | Run clippy                   | `cargo xtask clippy`                                       |
 | Run tests (default features) | `cargo xtask test --features default`                      |
 | Run tests with telemetry     | `cargo xtask test --features "profiling + test + tracing"` |
-| Run the emulator             | `cargo xtask run-emulator`                                 |
+| Run the emulator             | `cargo xtask run-emulator` (builds the EPUB first if missing) |
 | Install the importer CLI     | `cargo xtask install-importer`                             |
 | Build docs portal (full)     | `cargo xtask docs`                                         |
 
@@ -80,7 +80,7 @@ need to verify a specific one.
 - **`fmt`** — runs `cargo fmt --check` (or `--apply` in CI) across the workspace
 - **`clippy`** — iterates the full feature matrix; use `--features` to narrow it
 - **`test`** — iterates the test feature matrix
-- **`run-emulator`** — runs `cargo run -p emulator`
+- **`run-emulator`** — ensures the documentation EPUB exists, then runs `cargo run -p emulator`
 - **`install-importer`** — runs `cargo install --path crates/importer`
 
 ## Common mistakes

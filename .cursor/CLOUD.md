@@ -30,5 +30,6 @@ If a fresh snapshot fails to compile, see the relevant skill:
 
 ## Emulator
 
-X server on `DISPLAY=:1` — see `build-cadmus-native` skill; prefix commands with
-`DISPLAY=:1` when running the emulator here.
+X server on `DISPLAY=:1`. `cargo xtask run-emulator` builds the EPUB if missing,
+then launches the emulator — prefix with `DISPLAY=:1` from the workspace root.
+See the `build-cadmus-native` skill for details.
