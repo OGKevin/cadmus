@@ -43,6 +43,8 @@ knowledge_base: {}
 code_generation: {}
 issue_enrichment:
   planning:
+    enabled: true
     auto_planning:
+      enabled: true
       labels:
-        - ai-plan
+        - "ai-plan"
