@@ -131,12 +131,13 @@ TEST_ROOT_DIR=$(pwd) cargo test
 ## Test Coverage
 
 CI runs instrumented tests across the full feature matrix and uploads merged reports to
-[Codecov](https://codecov.io). Coverage status checks are informational only — test
-failures still block merges.
+[Codecov](https://app.codecov.io/github/ogkevin/cadmus). Patch coverage is enforced as a required status check — the
+`codecov/patch` check must pass (auto target with 10% threshold) for PRs to be merged. Project
+coverage remains informational with a 10% threshold.
 
 CI also uploads nextest JUnit XML to [Codecov Test Analytics](https://docs.codecov.com/docs/test-analytics)
 (one upload per feature-matrix shard, with Codecov flags). Doctests are not included in
-JUnit output. View results in the Codecov Tests tab and in PR comments.
+JUnit output. View results in the Codecov Tests tab.
 
 Locally, use the devenv coverage commands (requires `devenv shell`):
 
