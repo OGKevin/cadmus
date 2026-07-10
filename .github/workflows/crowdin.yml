@@ -52,7 +52,7 @@ jobs:
 
             To help with translations, please visit [Crowdin](https://crowdin.com/project/cadmus).
           pull_request_base_branch_name: ${{ github.ref_name }}
-          pull_request_labels: l10n, crowdin
+          pull_request_labels: automated, l10n, crowdin
           pull_request_reviewers: OGkevin
 
         env:

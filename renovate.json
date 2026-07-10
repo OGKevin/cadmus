@@ -1,7 +1,7 @@
 {
   "extends": ["config:recommended"],
   "minimumReleaseAge": "7 days",
-  "labels": ["dependencies"],
+  "labels": ["automated", "dependencies"],
   "reviewers": ["OGKevin"],
   "git-submodules": {
     "enabled": true
