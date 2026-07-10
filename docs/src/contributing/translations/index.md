@@ -47,8 +47,8 @@ flowchart LR
   runs on pushes to `main` and on pull requests that touch
   `crates/core/i18n/**`, `docs/po/**`, or `website/messages/**`.
 - The action uploads sources and existing translations, downloads updates, and
-  opens or updates an `l10n/<branch>` pull request labelled `l10n` and
-  `crowdin`.
+  opens or updates an `l10n/<branch>` pull request labelled `automated`, `l10n`,
+  and `crowdin`.
 - **Open Crowdin sync PRs:**
   [github.com/ogkevin/cadmus/pulls?q=is%3Aopen+label%3Acrowdin](https://github.com/ogkevin/cadmus/pulls?q=is%3Aopen+label%3Acrowdin)
 
