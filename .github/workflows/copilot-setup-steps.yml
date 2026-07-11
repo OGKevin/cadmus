@@ -1,3 +1,5 @@
+name: Prepare Copilot Agent Environment
+
 env:
   NODE_VERSION: "24"
   SQLX_OFFLINE: true
@@ -6,8 +8,9 @@ env:
 on:
   workflow_call:
   pull_request:
-    paths:
-      - .github/workflows/copilot-setup-steps.yml
+
+permissions:
+  contents: read
 
 jobs:
   copilot-setup-steps:
@@ -15,11 +18,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           fetch-depth: 0
+          persist-credentials: false
+
+      - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590
+        id: filter
+        with:
+          filters: |
+            workflow:
+              - '.github/workflows/copilot-setup-steps.yml'
 
       - name: Install Rust toolchain
+        if: &run-copilot-steps steps.filter.outputs.workflow == 'true' || github.event_name == 'workflow_call'
         uses: dtolnay/rust-toolchain@stable
         id: rust-toolchain
         with:
@@ -27,11 +39,13 @@ jobs:
           targets: arm-unknown-linux-gnueabihf
 
       - uses: ./.github/actions/cargo-cache
+        if: *run-copilot-steps
         with:
           cachekey: ${{ steps.rust-toolchain.outputs.cachekey }}
           mode: restore
 
       - name: Restore Linaro toolchain
+        if: *run-copilot-steps
         id: cache-linaro
         uses: actions/cache@v5
         with:
@@ -39,13 +53,14 @@ jobs:
           key: linaro-gcc-4.9.4-2017.01
 
       - name: Install system packages
+        if: *run-copilot-steps
         uses: awalsh128/cache-apt-pkgs-action@latest
         with:
           packages: git wget curl pkg-config gcc g++ make cmake meson ninja-build autoconf automake libtool gperf python3 zlib1g-dev libbz2-dev libpng-dev libjpeg-dev libopenjp2-7-dev libjbig2dec0-dev libgumbo-dev libfreetype6-dev libharfbuzz-dev libdjvulibre-dev libsdl2-dev shellcheck zip unzip ca-certificates jq patchelf
           version: 1.0
 
       - name: Download Linaro toolchain
-        if: steps.cache-linaro.outputs.cache-hit != 'true'
+        if: (steps.filter.outputs.workflow == 'true' || github.event_name == 'workflow_call') && steps.cache-linaro.outputs.cache-hit != 'true'
         run: |
           mkdir -p ~/linaro-toolchain
           cd ~/linaro-toolchain
@@ -54,36 +69,45 @@ jobs:
           rm gcc-linaro-4.9.4-2017.01-x86_64_arm-linux-gnueabihf.tar.xz
 
       - name: Setup Linaro toolchain
+        if: *run-copilot-steps
         run: |
           echo "$HOME/linaro-toolchain/bin" >> "$GITHUB_PATH"
 
       - name: Setup Node.js
+        if: *run-copilot-steps
         uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
 
       - name: Setup Python
+        if: *run-copilot-steps
         uses: actions/setup-python@v6
         with:
           python-version: "3.x"
 
       - name: Install npm dependencies
+        if: *run-copilot-steps
         run: npm ci
 
       - name: Install mdBook tools
+        if: *run-copilot-steps
         uses: ./.github/actions/install-doc-tools
 
       - name: Install mdbook-mermaid assets
+        if: *run-copilot-steps
         run: mdbook-mermaid install docs
 
       - name: Build documentation
+        if: *run-copilot-steps
         run: cargo xtask docs --mdbook-only
 
       - name: Install reviewdog
+        if: *run-copilot-steps
         uses: reviewdog/action-setup@v1
 
       - name: Verify installation
+        if: *run-copilot-steps
         run: |
           rustc --version || true
           cargo --version || true
@@ -100,3 +124,7 @@ jobs:
           # Verify native test setup
           ls -la target/mupdf_wrapper/Linux/ || true
           cargo xtask --help || true
+
+      - name: No relevant changes
+        if: steps.filter.outputs.workflow != 'true' && github.event_name != 'workflow_call'
+        run: echo "No Copilot setup workflow changes — skipping"

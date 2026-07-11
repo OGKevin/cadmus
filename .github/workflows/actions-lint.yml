@@ -2,21 +2,37 @@ name: Actions lint
 
 on:
   pull_request:
-    paths:
-      - ".github/workflows/**"
-      - ".github/actions/**"
-      - ".github/lint/package.json"
-      - ".github/workflows/actions-lint.yml"
 
 permissions:
   contents: read
-  pull-requests: write
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      workflows: ${{ steps.filter.outputs.workflows }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
+      - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590
+        id: filter
+        with:
+          filters: |
+            workflows:
+              - '.github/workflows/**'
+              - '.github/actions/**'
+              - '.github/lint/package.json'
+
   actionlint:
+    needs: changes
+    if: needs.changes.outputs.workflows == 'true'
+    permissions:
+      contents: read
+      pull-requests: write
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           fetch-depth: 0
 
@@ -28,12 +44,16 @@ jobs:
           filter_mode: added
 
   prettier:
-    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.workflows == 'true'
     permissions:
       contents: read
       pull-requests: write
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
 
       - name: Prettier
         uses: EPMatt/reviewdog-action-prettier@v1
@@ -43,3 +63,14 @@ jobs:
           fail_level: error
           prettier_flags: ../.github/workflows/**/*.yml ../.github/actions/**/*.yml
           workdir: .github/lint
+
+  required:
+    name: required
+    permissions: {}
+    needs: [changes, actionlint, prettier]
+    if: ${{ always() && (cancelled() || contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "::error::One or more required jobs failed or were cancelled"
+          exit 1

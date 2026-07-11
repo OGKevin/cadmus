@@ -2,10 +2,6 @@ name: "Test devenv shell"
 
 on:
   pull_request:
-    paths:
-      - "devenv.nix"
-      - "devenv.lock"
-      - ".github/workflows/devenv-test.yml"
   push:
     branches:
       - main
@@ -14,8 +10,30 @@ on:
       - "devenv.lock"
       - ".github/workflows/devenv-test.yml"
 
+permissions:
+  contents: read
+
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      devenv: ${{ steps.filter.outputs.devenv }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
+      - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590
+        id: filter
+        with:
+          filters: |
+            devenv:
+              - 'devenv.nix'
+              - 'devenv.lock'
+              - '.github/workflows/devenv-test.yml'
+
   devenv:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.devenv == 'true'
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
@@ -25,7 +43,7 @@ jobs:
       cancel-in-progress: true
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           fetch-depth: 0
           submodules: recursive
@@ -42,3 +60,14 @@ jobs:
 
       - name: Test devenv shell builds correctly
         run: devenv shell whoami
+
+  required:
+    name: required
+    permissions: {}
+    needs: [changes, devenv]
+    if: ${{ always() && github.event_name == 'pull_request' && (cancelled() || contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "::error::One or more required jobs failed or were cancelled"
+          exit 1

@@ -1,10 +1,6 @@
 name: CodeRabbit config validation
 on:
   pull_request:
-    paths:
-      - ".coderabbit.yaml"
-      - ".yamllint.yml"
-      - ".github/workflows/coderabbit-config.yml"
 
 permissions:
   contents: read
@@ -13,15 +9,38 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
+
+      - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590
+        id: filter
+        with:
+          filters: |
+            config:
+              - '.coderabbit.yaml'
+              - '.yamllint.yml'
+              - '.github/workflows/coderabbit-config.yml'
+
       - name: Setup Python
+        if: steps.filter.outputs.config == 'true'
         uses: actions/setup-python@v6
         with:
           python-version: "3.x"
+
       - name: Install YAML validation tools
+        if: steps.filter.outputs.config == 'true'
         run: pip install yamllint check-jsonschema
+
       - name: Lint YAML files
+        if: steps.filter.outputs.config == 'true'
         run: yamllint .coderabbit.yaml
+
       - name: Validate CodeRabbit schema
+        if: steps.filter.outputs.config == 'true'
         run: >-
           check-jsonschema --schemafile https://coderabbit.ai/integrations/schema.v2.json .coderabbit.yaml
+
+      - name: No relevant changes
+        if: steps.filter.outputs.config != 'true'
+        run: echo "No CodeRabbit config changes — skipping"

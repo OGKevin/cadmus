@@ -2,19 +2,36 @@ name: Shell
 
 on:
   pull_request:
-    paths:
-      - "**/*.sh"
-      - ".github/workflows/shell.yml"
 
 permissions:
   contents: read
-  pull-requests: write
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      shell: ${{ steps.filter.outputs.shell }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
+      - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590
+        id: filter
+        with:
+          filters: |
+            shell:
+              - '**/*.sh'
+              - '.github/workflows/shell.yml'
+
   shellcheck:
+    needs: changes
+    if: needs.changes.outputs.shell == 'true'
+    permissions:
+      contents: read
+      pull-requests: write
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           fetch-depth: 0
 
@@ -26,9 +43,14 @@ jobs:
           filter_mode: added
 
   shfmt:
+    needs: changes
+    if: needs.changes.outputs.shell == 'true'
+    permissions:
+      contents: read
+      pull-requests: write
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           fetch-depth: 0
 
@@ -37,3 +59,14 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           filter_mode: added
+
+  required:
+    name: required
+    permissions: {}
+    needs: [changes, shellcheck, shfmt]
+    if: ${{ always() && (cancelled() || contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "::error::One or more required jobs failed or were cancelled"
+          exit 1

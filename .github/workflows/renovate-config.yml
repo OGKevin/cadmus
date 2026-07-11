@@ -2,27 +2,45 @@ name: Renovate config validation
 
 on:
   pull_request:
-    paths:
-      - "renovate.json"
+
+permissions:
+  contents: read
 
 jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
+
+      - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590
+        id: filter
+        with:
+          filters: |
+            config:
+              - 'renovate.json'
+              - '.github/workflows/renovate-config.yml'
 
       - name: Setup Node
+        if: steps.filter.outputs.config == 'true'
         uses: actions/setup-node@v6
         with:
           cache: "npm"
 
       - name: Cache npx
+        if: steps.filter.outputs.config == 'true'
         uses: actions/cache@v5
         with:
           path: ~/.npm/_npx
           key: ${{ runner.os }}-npx-renovate
 
       - name: Validate Renovate config
+        if: steps.filter.outputs.config == 'true'
         uses: suzuki-shunsuke/github-action-renovate-config-validator@v2.1.0
         with:
           config_file_path: renovate.json
+
+      - name: No relevant changes
+        if: steps.filter.outputs.config != 'true'
+        run: echo "No Renovate config changes — skipping"

@@ -2,17 +2,9 @@ name: Docs lint
 
 on:
   pull_request:
-    paths:
-      - "docs/**"
-      - ".agents/skills/**"
-      - "**/AGENTS.md"
-      - "**/REVIEW.md"
-      - ".rumdl.toml"
-      - ".prettierignore"
-      - "thirdparty/**/*-kobo.md"
-      - "thirdparty/**/*-cadmus.md"
-      - ".github/actions/rumdl-lint/**"
-      - ".github/workflows/docs-lint.yml"
+
+permissions:
+  contents: read
 
 jobs:
   lint:
@@ -21,9 +13,28 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
+
+      - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590
+        id: filter
+        with:
+          filters: |
+            docs:
+              - 'docs/**'
+              - '.agents/skills/**'
+              - '**/AGENTS.md'
+              - '**/REVIEW.md'
+              - '.rumdl.toml'
+              - '.prettierignore'
+              - 'thirdparty/**/*-kobo.md'
+              - 'thirdparty/**/*-cadmus.md'
+              - '.github/actions/rumdl-lint/**'
+              - '.github/workflows/docs-lint.yml'
 
       - name: Collect markdown files
+        if: steps.filter.outputs.docs == 'true'
         id: files
         run: |
           shopt -s globstar nullglob
@@ -36,6 +47,7 @@ jobs:
           echo "list=${files[*]}" >> "$GITHUB_OUTPUT"
 
       - name: rumdl
+        if: steps.filter.outputs.docs == 'true'
         uses: ./.github/actions/rumdl-lint
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -43,3 +55,7 @@ jobs:
           fail_level: error
           filter_mode: added
           rumdl_flags: ${{ steps.files.outputs.list }}
+
+      - name: No relevant changes
+        if: steps.filter.outputs.docs != 'true'
+        run: echo "No doc changes — skipping"

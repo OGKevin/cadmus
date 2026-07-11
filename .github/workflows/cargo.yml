@@ -12,33 +12,53 @@ on:
   push:
     branches: [main, master, "release/*"]
   pull_request:
-    paths:
-      - "**/*.rs"
-      - crates/core/i18n/**
-      - "Cargo.*"
-      - "**/Cargo.*"
-      - ".github/workflows/cargo.yml"
-      - ".github/actions/apt/**"
-      - ".github/actions/build-kobo/**"
-      - ".github/actions/build-docs-epub/**"
-      - ".github/actions/cargo-cache/**"
-      - ".github/actions/install-doc-tools/**"
-      - "build-scripts/**"
-      - ".gitmodules"
-      - "mupdf_wrapper/**"
-      - "thirdparty/**"
 
 concurrency:
   group: "cargo-${{ github.event_name }}-${{ github.event.number || github.ref }}"
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      cargo: ${{ steps.filter.outputs.cargo }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
+      - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590
+        id: filter
+        with:
+          filters: |
+            cargo:
+              - '**/*.rs'
+              - 'crates/core/i18n/**'
+              - 'Cargo.*'
+              - '**/Cargo.*'
+              - '.github/workflows/cargo.yml'
+              - '.github/actions/apt/**'
+              - '.github/actions/build-kobo/**'
+              - '.github/actions/build-docs-epub/**'
+              - '.github/actions/cargo-cache/**'
+              - '.github/actions/install-doc-tools/**'
+              - 'build-scripts/**'
+              - '.gitmodules'
+              - 'mupdf_wrapper/**'
+              - 'thirdparty/**'
+
   format:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.cargo == 'true'
     permissions:
       contents: read
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
         id: rust-toolchain
         with:
@@ -51,6 +71,8 @@ jobs:
         run: cargo xtask fmt
 
   generate-matrix:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.cargo == 'true'
     permissions:
       contents: read
     runs-on: ubuntu-latest
@@ -58,7 +80,9 @@ jobs:
       matrix: ${{ steps.matrix.outputs.matrix }}
       test-matrix: ${{ steps.matrix.outputs.test-matrix }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
         id: rust-toolchain
       - name: Restore shared cargo cache
@@ -70,11 +94,15 @@ jobs:
         run: cargo xtask ci matrix
 
   build-docs-epub:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.cargo == 'true'
     permissions:
       contents: read
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
         id: rust-toolchain
       - name: Restore shared cargo cache
@@ -87,12 +115,15 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
   cache-warmup:
-    needs: build-docs-epub
+    needs: [changes, build-docs-epub]
+    if: github.event_name != 'pull_request' || needs.changes.outputs.cargo == 'true'
     permissions:
       contents: read
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
         id: rust-toolchain
         with:
@@ -187,8 +218,8 @@ jobs:
         run: cargo build --release --target arm-unknown-linux-gnueabihf -p cadmus
 
   clippy:
-    if: github.event_name == 'pull_request'
-    needs: [generate-matrix, build-docs-epub, cache-warmup]
+    if: github.event_name == 'pull_request' && needs.changes.outputs.cargo == 'true'
+    needs: [changes, generate-matrix, build-docs-epub, cache-warmup]
     permissions:
       contents: read
 
@@ -201,7 +232,9 @@ jobs:
     name: clippy (${{ matrix.label }}, ${{ matrix.os }})
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
         id: rust-toolchain
         with:
@@ -233,8 +266,8 @@ jobs:
           retention-days: 1
 
   clippy-report:
-    if: github.event_name == 'pull_request'
-    needs: clippy
+    if: github.event_name == 'pull_request' && needs.changes.outputs.cargo == 'true'
+    needs: [changes, clippy]
 
     permissions:
       contents: read
@@ -244,7 +277,9 @@ jobs:
     name: clippy-report
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
         id: rust-toolchain
         with:
@@ -270,7 +305,8 @@ jobs:
           REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   test:
-    needs: [generate-matrix, build-docs-epub, cache-warmup]
+    needs: [changes, generate-matrix, build-docs-epub, cache-warmup]
+    if: github.event_name != 'pull_request' || needs.changes.outputs.cargo == 'true'
     permissions:
       contents: read
     env:
@@ -285,10 +321,11 @@ jobs:
     name: test (${{ matrix.label }}, ${{ matrix.os }})
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           fetch-depth: 0
           fetch-tags: true
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
         id: rust-toolchain
         with:
@@ -411,7 +448,8 @@ jobs:
           fail_ci_if_error: false
 
   build-kobo:
-    needs: [cache-warmup, build-docs-epub]
+    needs: [changes, cache-warmup, build-docs-epub]
+    if: github.event_name != 'pull_request' || needs.changes.outputs.cargo == 'true'
     runs-on: ubuntu-latest
 
     permissions: &build-permissions
@@ -420,10 +458,11 @@ jobs:
       attestations: write
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           fetch-depth: 0
           fetch-tags: true
+          persist-credentials: false
 
       - *set-build-metadata
 
@@ -484,16 +523,18 @@ jobs:
           retention-days: 7
 
   build-kobo-test:
-    needs: [cache-warmup, build-docs-epub]
+    needs: [changes, cache-warmup, build-docs-epub]
+    if: github.event_name != 'pull_request' || needs.changes.outputs.cargo == 'true'
     runs-on: ubuntu-latest
 
     permissions: *build-permissions
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           fetch-depth: 0
           fetch-tags: true
+          persist-credentials: false
 
       - *set-build-metadata
 
@@ -530,3 +571,24 @@ jobs:
           name: cadmus-kobo-test-${{ steps.artifact.outputs.suffix }}
           path: release-artifacts/*
           retention-days: 7
+
+  required:
+    name: required
+    permissions: {}
+    needs:
+      - changes
+      - format
+      - generate-matrix
+      - build-docs-epub
+      - cache-warmup
+      - clippy
+      - clippy-report
+      - test
+      - build-kobo
+      - build-kobo-test
+    if: ${{ always() && github.event_name == 'pull_request' && (cancelled() || contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "::error::One or more required jobs failed or were cancelled"
+          exit 1

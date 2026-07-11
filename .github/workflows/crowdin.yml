@@ -4,12 +4,10 @@ on:
   push:
     branches: [main, master]
   pull_request:
-    paths:
-      - "crates/core/i18n/**"
-      - "docs/po/**"
-      - "website/messages/**"
-      - ".github/workflows/crowdin.yml"
     branches: [main, master]
+
+permissions:
+  contents: read
 
 concurrency:
   group: "crowdin-${{ github.event_name }}-${{ github.event.number || github.ref }}"
@@ -25,11 +23,22 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           ref: ${{ github.head_ref || github.ref_name }}
 
+      - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590
+        id: filter
+        with:
+          filters: |
+            i18n:
+              - 'crates/core/i18n/**'
+              - 'docs/po/**'
+              - 'website/messages/**'
+              - '.github/workflows/crowdin.yml'
+
       - name: Upload sources and existing translations, download new translations
+        if: steps.filter.outputs.i18n == 'true' || github.event_name == 'push'
         uses: crowdin/github-action@v2
         with:
           dryrun_action: ${{ github.event_name == 'pull_request' }}
@@ -59,3 +68,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CROWDIN_PROJECT_ID: ${{ secrets.CROWDIN_PROJECT_ID }}
           CROWDIN_PERSONAL_TOKEN: ${{ secrets.CROWDIN_PERSONAL_TOKEN }}
+
+      - name: No relevant changes
+        if: steps.filter.outputs.i18n != 'true' && github.event_name == 'pull_request'
+        run: echo "No i18n changes — skipping"
