@@ -58,9 +58,9 @@ stable string ID and an `async fn` definition:
 cadmus_core::migration!(
     /// One-line doc comment forwarded to rustdoc.
     "v1_my_migration",
-    async fn my_migration(pool: &SqlitePool) {
+    async fn my_migration(ctx: &mut cadmus_core::db::migrations::MigrationContext<'_>) {
         sqlx::query!("UPDATE books SET title = TRIM(title)")
-            .execute(pool)
+            .execute(ctx.pool)
             .await?;
         Ok(())
     }
@@ -102,17 +102,17 @@ Convention: `v<N>_<short_description>`, for example `v1_backfill_book_language`.
 ```rust
 // crates/core/src/my_feature/migrations.rs
 
-use sqlx::SqlitePool;
+use cadmus_core::db::migrations::MigrationContext;
 
 cadmus_core::migration!(
     /// Backfills the `language` column for books that were imported before
     /// language detection was added.
     "v1_backfill_book_language",
-    async fn backfill_book_language(pool: &SqlitePool) {
+    async fn backfill_book_language(ctx: &mut MigrationContext<'_>) {
         sqlx::query!(
             "UPDATE books SET language = 'en' WHERE language = '' OR language IS NULL"
         )
-        .execute(pool)
+        .execute(ctx.pool)
         .await?;
 
         Ok(())
@@ -163,6 +163,11 @@ DELETE FROM _cadmus_migrations WHERE id = 'v1_my_migration';
 ```
 
 The next startup will treat the migration as pending and run it again.
+
+## Settings access
+
+`MigrationContext` includes the in-memory <a href="/api/cadmus_core/settings/struct.Settings.html">`Settings`</a>
+loaded at startup. Migrations that change settings should mutate `ctx.settings`.
 
 ## API reference
 

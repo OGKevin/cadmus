@@ -102,20 +102,23 @@ impl crate::device::power::PowerManager for EmulatorPowerManager {
 }
 
 pub struct EmulatorInputSource {
+    dpi: u16,
     sender: Option<Sender<DeviceEvent>>,
     sdl_context: Option<SendableSdl>,
 }
 
 impl EmulatorInputSource {
-    fn new() -> Self {
+    fn new(dpi: u16) -> Self {
         Self {
+            dpi,
             sender: None,
             sdl_context: None,
         }
     }
 
-    fn new_with_sdl(sdl_context: Sdl) -> Self {
+    fn new_with_sdl(dpi: u16, sdl_context: Sdl) -> Self {
         Self {
+            dpi,
             sender: None,
             sdl_context: Some(SendableSdl(sdl_context)),
         }
@@ -135,7 +138,7 @@ impl InputSource for EmulatorInputSource {
         let (device_tx, device_rx) = mpsc::channel();
         self.sender = Some(device_tx.clone());
 
-        let gesture_rx = crate::gesture::gesture_events(device_rx, 300);
+        let gesture_rx = crate::gesture::gesture_events(device_rx, self.dpi);
         let hub_clone = hub.clone();
 
         std::thread::spawn(move || {
@@ -451,11 +454,12 @@ impl Default for EmulatorDevice {
 impl EmulatorDevice {
     pub fn new(framebuffer: Box<dyn Framebuffer + Send>) -> Self {
         let dims = framebuffer.dims();
+        let dpi = 167;
         let rtc = Arc::new(NoopRtc);
         let time_manager = crate::time_manager::TimeManager::new(rtc.clone(), |_| Ok(()));
         Self {
             dims,
-            dpi: 167,
+            dpi,
             framebuffer,
             battery: FakeBattery::new(),
             frontlight: LightLevels::default(),
@@ -465,7 +469,7 @@ impl EmulatorDevice {
             power_manager: Arc::new(EmulatorPowerManager),
             rtc,
             time_manager,
-            input: EmulatorInputSource::new(),
+            input: EmulatorInputSource::new(dpi),
         }
     }
 
@@ -473,7 +477,7 @@ impl EmulatorDevice {
         let mut canvas = canvas;
         canvas.set_blend_mode(BlendMode::Blend);
         let mut device = Self::new(Box::new(FBCanvas(canvas)));
-        device.input = EmulatorInputSource::new_with_sdl(sdl_context);
+        device.input = EmulatorInputSource::new_with_sdl(device.dpi, sdl_context);
         device
     }
 }

@@ -8,9 +8,7 @@
 
 use crate::settings::PEN_MAX_SPEED_MM;
 use crate::settings::Pen;
-use crate::settings::versioned::SettingsManager;
 use crate::unit::MILLIMETERS_PER_INCH;
-use crate::version::get_current_version;
 
 fn px_per_sec_to_mm_per_sec(px: f32, dpi: u16) -> f32 {
     px * MILLIMETERS_PER_INCH / dpi as f32
@@ -45,13 +43,8 @@ crate::migration!(
     /// Converts sketch pen speed thresholds from legacy pixel/sec values
     /// (stored when defaults used device-native mm_to_px) to mm/s.
     "v1_migrate_sketch_pen_speed_mm",
-    async fn migrate_sketch_pen_speed_mm(ctx: &crate::db::migrations::MigrationContext<'_>) {
-        let manager = SettingsManager::new(ctx.device.data_dir.clone(), get_current_version());
-        let mut settings = manager.load();
-        if !migrate_pen_speed_units_from_px(&mut settings.sketch.pen, ctx.device.dpi) {
-            return Ok(());
-        }
-        manager.save(&settings)?;
+    async fn migrate_sketch_pen_speed_mm(ctx: &mut crate::db::migrations::MigrationContext<'_>) {
+        migrate_pen_speed_units_from_px(&mut ctx.settings.sketch.pen, ctx.device.dpi);
         Ok(())
     }
 );
@@ -180,6 +173,33 @@ mod tests {
         };
         assert!(migrate_pen_speed_units_from_px(&mut pen, 200));
         assert_eq!(pen.min_speed, 127.0);
+    }
+
+    #[test]
+    fn test_migrate_sketch_pen_speed_mm_updates_context_settings() {
+        use crate::db::Database;
+        use crate::db::migrations::{MigrationContext, MigrationDevice};
+        use crate::device::test_device::TestDevice;
+        use crate::settings::Settings;
+
+        let db = Database::new(":memory:").expect("database");
+        let mut settings = Settings::default();
+        settings.sketch.pen.max_speed = 3000.0;
+
+        let device = TestDevice::new();
+        let mut ctx = MigrationContext {
+            pool: db.pool(),
+            device: MigrationDevice::new(&device),
+            settings: &mut settings,
+        };
+
+        crate::db::runtime::RUNTIME.block_on(async {
+            migrate_sketch_pen_speed_mm(&mut ctx)
+                .await
+                .expect("pen speed migration should succeed");
+        });
+
+        assert_eq!(settings.sketch.pen.max_speed, 254.0);
     }
 
     #[test]

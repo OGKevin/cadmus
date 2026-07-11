@@ -14,6 +14,9 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::settings::versioned::SettingsManager;
+use crate::version::get_current_version;
+
 /// Directories and individual files to migrate from the install dir to the data
 /// dir. Dictionaries, settings, and logs are included; the SQLite database is
 /// excluded because it is already open when this runs.
@@ -31,11 +34,19 @@ crate::migration!(
     /// `install_dir`). It will be recorded as succeeded so it does not re-run
     /// on subsequent boots without a card.
     "v1_migrate_data_to_sd_card",
-    async fn migrate_data_to_sd_card(ctx: &crate::db::migrations::MigrationContext<'_>) {
+    async fn migrate_data_to_sd_card(ctx: &mut crate::db::migrations::MigrationContext<'_>) {
         migrate_data_to_sd(
             ctx.device.install_dir.clone(),
             ctx.device.data_dir.clone(),
-        )
+        )?;
+
+        if ctx.device.install_dir != ctx.device.data_dir {
+            let manager =
+                SettingsManager::new(ctx.device.data_dir.clone(), get_current_version());
+            *ctx.settings = manager.load();
+        }
+
+        Ok(())
     }
 );
 

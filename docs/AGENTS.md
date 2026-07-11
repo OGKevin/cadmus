@@ -1,4 +1,4 @@
-# Documentation — Agent Writing Conventions
+# Documentation
 
 ## User-Facing Docs (`docs/src/**/*.md` except `contributing/`)
 
@@ -59,3 +59,30 @@ When modifying `devenv.nix`, update `docs/src/contributing/devenv-setup.md`:
 - Docs markdown is excluded from Prettier (`.prettierignore`) to preserve i18n
   list nesting.
 - Use code blocks with language tags.
+
+## API doc links
+
+Cargo-generated API pages are not present in the source tree; they are produced
+during the docs portal build and symlinked into the deployed site at
+`/{locale}/api/cadmus_core/`.
+
+When linking to rustdoc pages from markdown under `docs/src/`, use absolute
+HTML anchors — not relative markdown links:
+
+```html
+<a href="/api/cadmus_core/settings/struct.Settings.html">`Settings`</a>
+```
+
+Do **not** use relative paths such as
+`[Settings](../../api/cadmus_core/settings/struct.Settings.html)`. rumdl rule
+MD057 validates relative links against the filesystem and will fail in CI and
+`treefmt` because `docs/api/` does not exist until after `cargo xtask docs`.
+
+Absolute `/api/...` paths are site routes; rumdl skips them by default. Inline
+HTML is allowed — MD033 is disabled globally in `.rumdl.toml`.
+
+Examples in contributor docs:
+
+- `docs/src/contributing/runtime-migrations.md`
+- `docs/src/contributing/sqlite-sqlx.md`
+- `docs/src/contributing/library-database.md`

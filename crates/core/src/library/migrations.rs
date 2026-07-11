@@ -24,8 +24,6 @@ use crate::library::db::conversion::{
 use crate::library::db::models::TocEntryRow;
 use crate::library::{METADATA_FILENAME, READING_STATES_DIRNAME};
 use crate::metadata::Info;
-use crate::settings::versioned::SettingsManager;
-use crate::version::get_current_version;
 use fxhash::FxBuildHasher;
 use indexmap::IndexMap;
 use sqlx::{Row, Sqlite, Transaction};
@@ -47,16 +45,15 @@ crate::migration!(
     ///
     /// The migration is idempotent (all inserts use `ON CONFLICT … DO NOTHING`).
     "v1_import_legacy_filesystem_data",
-    async fn import_legacy_filesystem_data(ctx: &crate::db::migrations::MigrationContext<'_>) {
+    async fn import_legacy_filesystem_data(ctx: &mut crate::db::migrations::MigrationContext<'_>) {
         let pool = ctx.pool;
-        let settings = SettingsManager::new(ctx.device.data_dir.clone(), get_current_version()).load();
 
-        if settings.libraries.is_empty() {
+        if ctx.settings.libraries.is_empty() {
             info!("no libraries in settings, skipping legacy data import");
             return Ok(());
         }
 
-        for lib in &settings.libraries {
+        for lib in &ctx.settings.libraries {
             let library_path = &lib.path;
             let library_name = &lib.name;
             let path_str = library_path.to_string_lossy();
@@ -101,7 +98,7 @@ crate::migration!(
     /// fingerprint in the database so their data remains readable until the next
     /// `import()` scan removes them as orphans.
     "v2_rehash_fingerprints",
-    async fn rehash_fingerprints(ctx: &crate::db::migrations::MigrationContext<'_>) {
+    async fn rehash_fingerprints(ctx: &mut crate::db::migrations::MigrationContext<'_>) {
         let pool = ctx.pool;
         let books: Vec<(String, Option<String>)> = sqlx::query(
                 r#"
@@ -1034,11 +1031,13 @@ mod tests {
     }
 
     async fn run_rehash_fingerprints(db: &Database) {
-        let ctx = MigrationContext {
+        let mut settings = crate::settings::Settings::default();
+        let mut ctx = MigrationContext {
             pool: db.pool(),
             device: MigrationDevice::new(&crate::device::test_device::TestDevice::new()),
+            settings: &mut settings,
         };
-        rehash_fingerprints(&ctx)
+        rehash_fingerprints(&mut ctx)
             .await
             .expect("failed to run rehash migration");
     }

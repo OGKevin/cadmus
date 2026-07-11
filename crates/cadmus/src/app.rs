@@ -229,7 +229,7 @@ pub fn run() -> Result<(), Error> {
     let mut device = AppDevice::default();
 
     let manager = SettingsManager::new(device.data_dir(), get_current_version());
-    let settings = manager.load();
+    let mut settings = manager.load();
 
     cadmus_core::crypto::init_crypto_provider();
 
@@ -277,8 +277,13 @@ pub fn run() -> Result<(), Error> {
         })
         .context("can't open database")?;
 
-    if let Err(e) = database.init(&device, settings.db_backup_retention) {
+    if let Err(e) = database.init(&device, settings.db_backup_retention, &mut settings) {
         error!(error = %e, "migrations failed");
+        return Err(e);
+    }
+
+    if let Err(e) = manager.save(&settings) {
+        error!(error = %e, "failed to save settings after migrations");
         return Err(e);
     }
 

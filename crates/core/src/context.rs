@@ -320,12 +320,15 @@ pub mod test_helpers {
 
     pub fn create_test_context_from_device(device: TestDevice) -> AppContext {
         let mut database = Database::new(":memory:").expect("failed to create in-memory database");
-        database.init(&device, 0).expect("failed to run migrations");
+        let mut settings = Settings::default();
+        database
+            .init(&device, 0, &mut settings)
+            .expect("failed to run migrations");
         Context::new(
             device,
             Library::new(Path::new("/tmp"), &database, "test").unwrap(),
             database,
-            Settings::default(),
+            settings,
             Fonts::load_from(
                 Path::new(
                     &env::var("TEST_ROOT_DIR").expect("TEST_ROOT_DIR must be set for this test."),

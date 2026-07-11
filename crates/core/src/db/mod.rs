@@ -14,6 +14,7 @@ use std::str::FromStr;
 use std::time::Duration;
 
 use crate::device::AppDevice;
+use crate::settings::Settings;
 use crate::version::get_current_version;
 
 /// The filename of the SQLite database used by Cadmus.
@@ -115,13 +116,18 @@ impl Database {
     ///
     /// Must be called once after [`Database::new`] before the database is used.
     /// Intended for use in the synchronous startup path.
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, device)))]
-    pub fn init(&mut self, device: &AppDevice, backup_retention: usize) -> Result<(), Error> {
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, device, settings)))]
+    pub fn init(
+        &mut self,
+        device: &AppDevice,
+        backup_retention: usize,
+        settings: &mut Settings,
+    ) -> Result<(), Error> {
         let app_version = get_current_version();
 
         RUNTIME.block_on(async {
             self.restore_if_needed(&app_version).await?;
-            self.migrate(device).await?;
+            self.migrate(device, settings).await?;
             version::stamp_db_version(&self.pool, &app_version, &version::current_migration_hash())
                 .await?;
             tracing::info!(app_version = %app_version, "database version stamped");
@@ -135,7 +141,8 @@ impl Database {
     #[cfg(test)]
     pub fn init_for_test(&mut self, backup_retention: usize) -> Result<(), Error> {
         let device = crate::device::test_device::TestDevice::new();
-        self.init(&device, backup_retention)
+        let mut settings = Settings::default();
+        self.init(&device, backup_retention, &mut settings)
     }
 
     /// Checks integrity and the version gate, restoring a backup when either fails.
@@ -265,8 +272,8 @@ impl Database {
     }
 
     /// Runs schema migrations (sqlx) followed by runtime migrations.
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, device)))]
-    async fn migrate(&mut self, device: &AppDevice) -> Result<(), Error> {
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, device, settings)))]
+    async fn migrate(&mut self, device: &AppDevice, settings: &mut Settings) -> Result<(), Error> {
         tracing::info!("running schema migrations");
         #[cfg(feature = "tracing")]
         let span = tracing::info_span!("sqlx_migrations").entered();
@@ -275,7 +282,7 @@ impl Database {
         span.exit();
 
         tracing::info!("running runtime migrations");
-        self.migration_runner().run_all(device).await?;
+        self.migration_runner().run_all(device, settings).await?;
 
         Ok(())
     }

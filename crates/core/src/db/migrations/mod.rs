@@ -2,6 +2,7 @@ use crate::db::types::UnixTimestamp;
 use crate::device::AppDevice;
 use crate::device::DeviceIdentity as _;
 use crate::device::DevicePaths as _;
+use crate::settings::Settings;
 use anyhow::Error;
 use once_cell::sync::Lazy;
 use sqlx::SqlitePool;
@@ -36,10 +37,11 @@ impl MigrationDevice {
 pub struct MigrationContext<'a> {
     pub pool: &'a SqlitePool,
     pub device: MigrationDevice,
+    pub settings: &'a mut Settings,
 }
 
 type MigrationFn = for<'a> fn(
-    &'a MigrationContext<'a>,
+    &'a mut MigrationContext<'a>,
 ) -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send + 'a>>;
 
 static REGISTRY: Lazy<Mutex<HashMap<&'static str, MigrationFn>>> =
@@ -63,7 +65,7 @@ static REGISTRY: Lazy<Mutex<HashMap<&'static str, MigrationFn>>> =
 ///
 /// * `$id` — Stable string literal identifying this migration in
 ///   `_cadmus_migrations`. Never change after deployment.
-/// * The `async fn` — Must accept `&MigrationContext` and return
+/// * The `async fn` — Must accept `&mut MigrationContext` and return
 ///   `Result<(), anyhow::Error>`.
 ///
 /// The generated inner module is named after `$name`, so `$name` must be
@@ -101,7 +103,7 @@ static REGISTRY: Lazy<Mutex<HashMap<&'static str, MigrationFn>>> =
 ///     cadmus_core::migration!(
 ///         /// Backfills metadata from legacy storage.
 ///         "v1_backfill_metadata",
-///         async fn backfill_metadata(ctx: &MigrationContext<'_>) {
+///         async fn backfill_metadata(ctx: &mut MigrationContext<'_>) {
 ///             // sqlx::query!(...).execute(ctx.pool).await?;
 ///             Ok(())
 ///         }
@@ -110,7 +112,7 @@ static REGISTRY: Lazy<Mutex<HashMap<&'static str, MigrationFn>>> =
 /// ```
 #[macro_export]
 macro_rules! migration {
-    ($(#[$attr:meta])* $id:literal, async fn $name:ident($ctx:ident : &$ctx_ty:ty) $body:block) => {
+    ($(#[$attr:meta])* $id:literal, async fn $name:ident($ctx:ident : &mut $ctx_ty:ty) $body:block) => {
         $crate::migration!(@internal $(#[$attr])* $id, $name, $ctx, $body);
     };
     (@internal $(#[$attr:meta])* $id:literal, $name:ident, $ctx:ident, $body:block) => {
@@ -121,7 +123,7 @@ macro_rules! migration {
         #[doc = "To re-run this migration, delete its tracking row:"]
         #[doc = concat!("```sql\nDELETE FROM _cadmus_migrations WHERE id = '", $id, "';\n```")]
         #[cfg_attr(feature = "tracing", tracing::instrument(skip($ctx), fields(migration_id = $id)))]
-        async fn $name($ctx: &$crate::db::migrations::MigrationContext<'_>) -> ::std::result::Result<(), ::anyhow::Error> {
+        async fn $name($ctx: &mut $crate::db::migrations::MigrationContext<'_>) -> ::std::result::Result<(), ::anyhow::Error> {
             $body
         }
 
@@ -141,7 +143,7 @@ macro_rules! migration {
             #[$crate::ctor::ctor(unsafe)]
             fn __register() {
                 fn __boxed<'a>(
-                    ctx: &'a $crate::db::migrations::MigrationContext<'a>,
+                    ctx: &'a mut $crate::db::migrations::MigrationContext<'a>,
                 ) -> ::std::pin::Pin<
                     ::std::boxed::Box<
                         dyn ::std::future::Future<
@@ -192,8 +194,8 @@ impl MigrationRunner {
     }
 
     /// Execute all pending registered migrations against the database.
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, device)))]
-    pub async fn run_all(&self, device: &AppDevice) -> Result<(), Error> {
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, device, settings)))]
+    pub async fn run_all(&self, device: &AppDevice, settings: &mut Settings) -> Result<(), Error> {
         let registry = REGISTRY
             .lock()
             .expect("migration registry lock should not be poisoned")
@@ -225,11 +227,12 @@ impl MigrationRunner {
         for (id, migration_fn) in pending {
             tracing::info!(migration_id = id, "running migration");
 
-            let ctx = MigrationContext {
+            let mut ctx = MigrationContext {
                 pool: &self.pool,
                 device: MigrationDevice::new(device),
+                settings,
             };
-            let result = migration_fn(&ctx).await;
+            let result = migration_fn(&mut ctx).await;
             let status = match &result {
                 Ok(_) => "success",
                 Err(_) => "failed",
