@@ -10,7 +10,15 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   const sitePrefix = parts.slice(0, guideIndex - 1);
   const siteRoot = sitePrefix.length > 0 ? `/${sitePrefix.join("/")}` : "";
+  const locale = parts[guideIndex - 1];
   const guideTail = parts.slice(guideIndex + 1);
+
+  for (const anchor of document.querySelectorAll('a[href^="/api/"]')) {
+    const path = anchor.getAttribute("href");
+    if (path) {
+      anchor.href = `${siteRoot}/${locale}${path}`;
+    }
+  }
 
   let locales;
   try {

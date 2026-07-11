@@ -81,6 +81,16 @@ MD057 validates relative links against the filesystem and will fail in CI and
 Absolute `/api/...` paths are site routes; rumdl skips them by default. Inline
 HTML is allowed — MD033 is disabled globally in `.rumdl.toml`.
 
+Do **not** embed a locale prefix (e.g. `en/`) in markdown links. Two mechanisms
+route them at deploy/runtime:
+
+1. **Direct URL access** — `cargo xtask docs` symlinks cargo-doc to
+   `website/public/api/` (GitHub Pages) and `_redirects` splat rules redirect
+   deep unprefixed paths to `/en/api/...` (Cloudflare Pages).
+2. **In-guide clicks** — [`docs/lang-picker.js`](lang-picker.js) rewrites
+   `a[href^="/api/"]` to `/{locale}/api/...` (and `/{basePath}/{locale}/api/...`
+   on GitHub Pages) based on the current guide URL.
+
 Examples in contributor docs:
 
 - `docs/src/contributing/runtime-migrations.md`

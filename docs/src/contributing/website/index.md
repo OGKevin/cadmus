@@ -27,7 +27,12 @@ and [`website/lib/doc-hrefs.ts`](https://github.com/ogkevin/cadmus/blob/master/w
 
 Legacy paths `/guide/`, `/api/`, and `/storybook/` redirect to `/en/...` via
 [`website/public/_redirects`](https://github.com/ogkevin/cadmus/blob/master/website/public/_redirects)
-on Cloudflare Pages and generated HTML redirects on GitHub Pages.
+on Cloudflare Pages (including splat rules for deep `/api/*` and `/storybook/*`
+paths) and generated HTML redirects on GitHub Pages. The docs build also
+symlinks cargo-doc to `website/public/api/` so GitHub Pages can serve deep API
+paths as static files. In-guide API links are rewritten client-side by
+[`docs/lang-picker.js`](https://github.com/ogkevin/cadmus/blob/master/docs/lang-picker.js)
+to preserve the reader's locale.
 
 ## Local development
 

@@ -445,6 +445,8 @@ fn create_website_symlinks(root: &Path) -> Result<()> {
         }
     }
 
+    symlink_relative("_shared/api", &public_dir.join("api"))?;
+
     create_back_compat_redirects(root, &website_locales)?;
     Ok(())
 }
@@ -465,7 +467,6 @@ fn create_back_compat_redirects(root: &Path, website_locales: &[String]) -> Resu
         )?;
     }
 
-    write_redirect_html(&public_dir.join("api/index.html"), "../en/api/cadmus_core/")?;
     write_redirect_html(&public_dir.join("storybook/index.html"), "../en/storybook/")?;
     Ok(())
 }
