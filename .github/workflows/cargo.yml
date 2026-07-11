@@ -572,8 +572,8 @@ jobs:
           path: release-artifacts/*
           retention-days: 7
 
-  required:
-    name: required
+  required-cargo:
+    name: required-cargo
     permissions: {}
     needs:
       - changes

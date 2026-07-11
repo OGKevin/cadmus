@@ -64,8 +64,8 @@ jobs:
           prettier_flags: ../.github/workflows/**/*.yml ../.github/actions/**/*.yml
           workdir: .github/lint
 
-  required:
-    name: required
+  required-actions-lint:
+    name: required-actions-lint
     permissions: {}
     needs: [changes, actionlint, prettier]
     if: ${{ always() && (cancelled() || contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) }}

@@ -31,10 +31,13 @@ Common elevations: `pull-requests: write` (reviewdog), `pages: write` +
 
 ### Rollup jobs
 
-`required` and other pass/fail-only rollup jobs should revoke token access:
+Rollup job names must be unique across workflows so branch protection can
+require them individually (e.g. `required-cargo`, `required-docs`). These
+pass/fail-only jobs should revoke token access:
 
 ```yaml
-  required:
+  required-cargo:
+    name: required-cargo
     permissions: {}
 ```
 

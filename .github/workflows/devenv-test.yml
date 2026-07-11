@@ -61,8 +61,8 @@ jobs:
       - name: Test devenv shell builds correctly
         run: devenv shell whoami
 
-  required:
-    name: required
+  required-devenv:
+    name: required-devenv
     permissions: {}
     needs: [changes, devenv]
     if: ${{ always() && github.event_name == 'pull_request' && (cancelled() || contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) }}

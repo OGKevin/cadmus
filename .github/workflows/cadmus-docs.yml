@@ -203,8 +203,8 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128
 
-  required:
-    name: required
+  required-docs:
+    name: required-docs
     permissions: {}
     needs: [changes, build, deploy-cloudflare-preview]
     if: ${{ always() && github.event_name == 'pull_request' && (cancelled() || contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')) }}
