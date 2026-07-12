@@ -92,7 +92,7 @@ opentelemetry-otlp = { version = "0.32", features = ["trace", "logs", "http-prot
 opentelemetry_sdk = { version = "0.32", features = ["trace", "logs", "rt-tokio-current-thread"], optional = true }
 opentelemetry-semantic-conventions = { version = "0.32", optional = true }
 pyroscope = { version = "2.0", default-features = false, features = ["backend-jemalloc", "backend-pprof-rs", "rustls-no-provider"], optional = true }
-tikv-jemallocator = { version = "0.6", features = ["profiling"], optional = true }
+tikv-jemallocator = { version = "0.7", features = ["profiling"], optional = true }
 
 log = "0.4.29"
 uuid = { version = "1.20.0", features = ["v7"] }

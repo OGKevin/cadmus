@@ -19,7 +19,7 @@ emulator = ["cadmus-core/emulator"]
 
 [dependencies]
 cadmus-core = { path = "../core" }
-tikv-jemallocator = { version = "0.6", features = ["profiling"], optional = true }
+tikv-jemallocator = { version = "0.7", features = ["profiling"], optional = true }
 tracing = "0.1"
 
 [lints]
