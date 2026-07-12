@@ -58,7 +58,8 @@
     {
       "description": "Keep mupdf submodule and version pins in sync",
       "matchManagers": ["git-submodules", "custom.regex"],
-      "matchDepNames": ["thirdparty/mupdf", "ArtifexSoftware/mupdf"],
+      "matchSourceUrls": ["https://github.com/ArtifexSoftware/mupdf"],
+      "matchDepNames": ["thirdparty/mupdf"],
       "groupName": "mupdf",
       "groupSlug": "mupdf",
       "addLabels": ["thirdparty"]
@@ -190,7 +191,8 @@
         "MUPDF_VERSION: &str = \\\"(?<currentValue>[^\\\"]+)\\\""
       ],
       "datasourceTemplate": "github-tags",
-      "depNameTemplate": "ArtifexSoftware/mupdf",
+      "depNameTemplate": "thirdparty/mupdf",
+      "packageNameTemplate": "ArtifexSoftware/mupdf",
       "versioningTemplate": "semver"
     },
     {
@@ -202,7 +204,8 @@
         "pub const FZ_VERSION: &str = \\\"(?<currentValue>[^\\\"]+)\\\""
       ],
       "datasourceTemplate": "github-tags",
-      "depNameTemplate": "ArtifexSoftware/mupdf",
+      "depNameTemplate": "thirdparty/mupdf",
+      "packageNameTemplate": "ArtifexSoftware/mupdf",
       "versioningTemplate": "semver"
     }
   ]
