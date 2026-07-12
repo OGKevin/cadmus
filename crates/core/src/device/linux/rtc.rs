@@ -1,4 +1,4 @@
-//! Linux ioctl RTC implementation for Kobo hardware.
+//! Linux ioctl RTC implementation.
 
 use anyhow::Error;
 use chrono::{DateTime, Utc};
@@ -9,8 +9,7 @@ use std::os::unix::io::AsRawFd;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use super::manager::Rtc;
-use super::{RtcTime, RtcWkalrm};
+use crate::device::rtc::{Rtc, RtcTime, RtcWkalrm};
 
 ioctl_read!(rtc_read_alarm, b'p', 0x10, RtcWkalrm);
 ioctl_write_ptr!(rtc_write_alarm, b'p', 0x0f, RtcWkalrm);
@@ -18,7 +17,7 @@ ioctl_none!(rtc_disable_alarm, b'p', 0x02);
 ioctl_read!(rtc_read_time, b'p', 0x09, RtcTime);
 ioctl_write_ptr!(rtc_set_time, b'p', 0x0a, RtcTime);
 
-/// Kobo hardware RTC accessed through the Linux kernel RTC character device.
+/// Hardware RTC accessed through the Linux kernel RTC character device.
 ///
 /// Opens a device path such as `/dev/rtc0` or `/dev/rtc` and drives it with
 /// `RTC_RD_TIME`, `RTC_SET_TIME`, `RTC_ALM_READ`, `RTC_ALM_SET`, and
@@ -29,7 +28,7 @@ ioctl_write_ptr!(rtc_set_time, b'p', 0x0a, RtcTime);
 /// # Examples
 ///
 /// ```no_run
-/// # use cadmus_core::device::rtc::LinuxRtc;
+/// # use cadmus_core::device::LinuxRtc;
 /// # use cadmus_core::device::rtc::Rtc;
 /// let rtc = LinuxRtc::new("/dev/rtc0")?;
 /// let now = rtc.read_time()?;
@@ -52,7 +51,7 @@ impl LinuxRtc {
     /// # Example
     ///
     /// ```no_run
-    /// # use cadmus_core::device::rtc::LinuxRtc;
+    /// # use cadmus_core::device::LinuxRtc;
     /// let rtc = LinuxRtc::new("/dev/rtc0")?;
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
@@ -79,11 +78,7 @@ impl Rtc for LinuxRtc {
 
     /// Issues `RTC_ALM_SET` with the alarm enabled and `pending` cleared.
     fn set_alarm(&self, wake_time: DateTime<Utc>) -> Result<i32, Error> {
-        let rwa = RtcWkalrm {
-            enabled: 1,
-            pending: 0,
-            time: wake_time.into(),
-        };
+        let rwa = RtcWkalrm::for_wake_time(wake_time);
         let file = self
             .0
             .lock()

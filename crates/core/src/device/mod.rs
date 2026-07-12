@@ -13,8 +13,12 @@ pub mod migration;
 mod model;
 pub mod power;
 pub mod rtc;
-pub mod time;
 mod types;
+
+#[cfg(unix)]
+mod linux;
+#[cfg(unix)]
+pub use linux::LinuxRtc;
 pub mod usb;
 pub mod wifi;
 

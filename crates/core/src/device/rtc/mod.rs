@@ -2,9 +2,6 @@
 
 mod manager;
 
-#[cfg(unix)]
-mod linux;
-
 #[cfg(any(
     test,
     all(
@@ -15,9 +12,6 @@ mod linux;
 mod test;
 
 pub use manager::Rtc;
-
-#[cfg(unix)]
-pub use linux::LinuxRtc;
 
 #[cfg(any(
     test,
@@ -102,6 +96,14 @@ impl From<DateTime<Utc>> for RtcTime {
 }
 
 impl RtcWkalrm {
+    pub(crate) fn for_wake_time(wake_time: DateTime<Utc>) -> Self {
+        Self {
+            enabled: 1,
+            pending: 0,
+            time: wake_time.into(),
+        }
+    }
+
     /// Returns whether the alarm is currently enabled.
     pub fn enabled(&self) -> bool {
         self.enabled == 1

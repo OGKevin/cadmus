@@ -1,26 +1,26 @@
 use super::input::InputSource;
 use super::model::Model;
 use crate::device::DeviceIdentity;
+use crate::device::linux::LinuxRtc;
 use crate::device::metadata::DeviceMetadata;
-use crate::device::rtc::LinuxRtc;
 use std::env;
 use std::fmt::Debug;
 use std::path::PathBuf;
 
 pub struct Device {
-    pub model: Model,
-    pub(super) metadata: DeviceMetadata,
-    pub(super) framebuffer: Box<dyn crate::framebuffer::Framebuffer + Send>,
-    pub(super) battery: Box<dyn crate::battery::Battery>,
-    pub(super) frontlight: Box<dyn crate::frontlight::Frontlight>,
-    pub(super) lightsensor: Box<dyn crate::lightsensor::LightSensor>,
-    pub(super) wifi_manager: std::sync::Arc<crate::device::kobo::wifi::KoboWifiManager>,
-    pub(super) usb_manager: std::sync::Arc<crate::device::kobo::usb::KoboUsbManager>,
-    pub(super) power_manager: std::sync::Arc<crate::device::kobo::power::KoboPowerManager>,
-    pub(super) rtc: std::sync::Arc<LinuxRtc>,
-    pub(super) time_manager: crate::time_manager::TimeManager<LinuxRtc>,
-    pub(super) input: InputSource,
-    pub(super) boot_transformed_rotation: i8,
+    model: Model,
+    metadata: DeviceMetadata,
+    framebuffer: Box<dyn crate::framebuffer::Framebuffer + Send>,
+    battery: Box<dyn crate::battery::Battery>,
+    frontlight: Box<dyn crate::frontlight::Frontlight>,
+    lightsensor: Box<dyn crate::lightsensor::LightSensor>,
+    wifi_manager: std::sync::Arc<crate::device::kobo::wifi::KoboWifiManager>,
+    usb_manager: std::sync::Arc<crate::device::kobo::usb::KoboUsbManager>,
+    power_manager: std::sync::Arc<crate::device::kobo::power::KoboPowerManager>,
+    rtc: std::sync::Arc<LinuxRtc>,
+    time_manager: crate::time_manager::TimeManager<LinuxRtc>,
+    input: InputSource,
+    boot_transformed_rotation: i8,
 }
 
 impl Debug for Device {
@@ -35,8 +35,44 @@ impl Debug for Device {
 }
 
 impl Device {
-    /// Creates a new device from product and model number strings.
-    fn new(product: &str, model_number: &str) -> anyhow::Result<Self> {
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "device bundles all hardware subsystems"
+    )]
+    pub(super) fn new(
+        model: Model,
+        metadata: DeviceMetadata,
+        framebuffer: Box<dyn crate::framebuffer::Framebuffer + Send>,
+        battery: Box<dyn crate::battery::Battery>,
+        frontlight: Box<dyn crate::frontlight::Frontlight>,
+        lightsensor: Box<dyn crate::lightsensor::LightSensor>,
+        wifi_manager: std::sync::Arc<crate::device::kobo::wifi::KoboWifiManager>,
+        usb_manager: std::sync::Arc<crate::device::kobo::usb::KoboUsbManager>,
+        power_manager: std::sync::Arc<crate::device::kobo::power::KoboPowerManager>,
+        rtc: std::sync::Arc<LinuxRtc>,
+        time_manager: crate::time_manager::TimeManager<LinuxRtc>,
+        boot_transformed_rotation: i8,
+        input: InputSource,
+    ) -> Self {
+        Self {
+            model,
+            metadata,
+            framebuffer,
+            battery,
+            frontlight,
+            lightsensor,
+            wifi_manager,
+            usb_manager,
+            power_manager,
+            rtc,
+            time_manager,
+            input,
+            boot_transformed_rotation,
+        }
+    }
+
+    /// Creates a device from product and model number strings.
+    fn from_product(product: &str, model_number: &str) -> anyhow::Result<Self> {
         Model::new(product, model_number).device()
     }
 }
@@ -128,7 +164,7 @@ impl Default for Device {
     fn default() -> Self {
         let product = env::var("PRODUCT").unwrap_or_default();
         let model_number = env::var("MODEL_NUMBER").unwrap_or_default();
-        Device::new(&product, &model_number).expect("failed to initialize device")
+        Device::from_product(&product, &model_number).expect("failed to initialize device")
     }
 }
 

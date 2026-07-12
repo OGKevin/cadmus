@@ -37,18 +37,18 @@
 //! ```
 
 #[cfg(any(feature = "kobo", docsrs))]
-pub mod auto_frontlight;
+mod auto_frontlight;
 #[cfg(any(all(feature = "test", feature = "kobo"), docsrs))]
-pub mod dbus_monitor;
-pub mod dictionary_index;
+mod dbus_monitor;
+mod dictionary_index;
 #[cfg(any(feature = "test", docsrs))]
-pub mod hello_world;
-pub mod import;
-pub mod thumbnail;
+mod hello_world;
+mod import;
+mod thumbnail;
 #[cfg(any(feature = "kobo", docsrs))]
-pub mod time_sync;
+mod time_sync;
 #[cfg(any(feature = "kobo", docsrs))]
-pub mod wifi_status_monitor;
+mod wifi_status_monitor;
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicBool, Ordering};

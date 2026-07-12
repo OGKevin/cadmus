@@ -1,8 +1,8 @@
 use super::device::Device;
 use super::input::InputSource;
 use super::model::Model;
+use crate::device::linux::LinuxRtc;
 use crate::device::metadata::DeviceMetadata;
-use crate::device::rtc::LinuxRtc;
 use crate::device::{DeviceCapabilities, DeviceIdentity, DeviceRotation, FrontlightKind};
 use crate::framebuffer::Framebuffer;
 #[cfg(not(test))]
@@ -94,11 +94,11 @@ impl Model {
         let rtc =
             std::sync::Arc::new(LinuxRtc::new(RTC_DEVICE).context("failed to initialize RTC")?);
         let time_manager = crate::time_manager::TimeManager::new(rtc.clone(), |tz| {
-            crate::device::time::set_system_timezone(tz)
+            crate::device::linux::set_system_timezone(tz)
         });
 
-        Ok(Device {
-            model: self,
+        Ok(Device::new(
+            self,
             metadata,
             framebuffer,
             battery,
@@ -109,8 +109,8 @@ impl Model {
             power_manager,
             rtc,
             time_manager,
-            boot_transformed_rotation: initial_rotation,
-            input: InputSource {
+            initial_rotation,
+            InputSource {
                 info: crate::input::DeviceInputInfo {
                     proto: self.proto(),
                     mark,
@@ -125,6 +125,6 @@ impl Model {
                 dpi: self.dpi(),
                 raw_sender: None,
             },
-        })
+        ))
     }
 }

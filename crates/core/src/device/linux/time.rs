@@ -1,26 +1,17 @@
 use anyhow::Error;
 use chrono_tz::Tz;
-
-#[cfg(feature = "kobo")]
 use std::ffi::CString;
-#[cfg(feature = "kobo")]
 use std::path::Path;
 
-#[cfg(feature = "kobo")]
 const ZONEINFO_DIR: &str = "/etc/zoneinfo";
-#[cfg(feature = "kobo")]
 const LOCALTIME: &str = "/etc/localtime";
-#[cfg(feature = "kobo")]
 const TIMEZONE_FILE: &str = "/etc/timezone";
 
-#[cfg(feature = "kobo")]
 unsafe extern "C" {
     fn tzset();
 }
 
-/// Sets the system timezone on Kobo devices.
-///
-/// # Kobo
+/// Sets the system timezone on Linux.
 ///
 /// This function performs three operations to ensure the timezone change is persistent and
 /// immediately reflected in the running process:
@@ -37,28 +28,19 @@ unsafe extern "C" {
 ///
 /// Returns an error if any filesystem operations fail.
 pub fn set_system_timezone(tz: Tz) -> Result<(), Error> {
-    #[cfg(feature = "kobo")]
-    {
-        let tz_name = tz.to_string();
-        let tz_path = Path::new(ZONEINFO_DIR).join(&tz_name);
+    let tz_name = tz.to_string();
+    let tz_path = Path::new(ZONEINFO_DIR).join(&tz_name);
 
-        std::fs::remove_file(LOCALTIME).ok();
-        std::os::unix::fs::symlink(&tz_path, LOCALTIME)?;
-        std::fs::write(TIMEZONE_FILE, &tz_name)?;
+    std::fs::remove_file(LOCALTIME).ok();
+    std::os::unix::fs::symlink(&tz_path, LOCALTIME)?;
+    std::fs::write(TIMEZONE_FILE, &tz_name)?;
 
-        unsafe {
-            let tz_cstr = CString::new(tz_name.as_str())?;
-            libc::setenv(c"TZ".as_ptr(), tz_cstr.as_ptr(), 1);
-            tzset();
-        }
-
-        tracing::info!(tz = %tz_name, "system timezone updated");
-        Ok(())
+    unsafe {
+        let tz_cstr = CString::new(tz_name.as_str())?;
+        libc::setenv(c"TZ".as_ptr(), tz_cstr.as_ptr(), 1);
+        tzset();
     }
 
-    #[cfg(not(feature = "kobo"))]
-    {
-        let _ = tz;
-        unimplemented!("set_system_timezone is only available on Kobo devices")
-    }
+    tracing::info!(tz = %tz_name, "system timezone updated");
+    Ok(())
 }

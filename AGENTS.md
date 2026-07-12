@@ -19,6 +19,36 @@ user experience.
 - Avoid premature `collect()` — keep iterators lazy.
 - Ensure code compiles without warnings.
 
+## Visibility
+
+Use the most restrictive visibility that works. Widen it only when code outside
+the parent module actually needs access.
+
+- Prefer `mod` (private) over `pub mod`, and `pub(crate)` over `pub`.
+- Mark a module or item `pub` only when non-doc code outside its parent imports
+  or calls it. Intra-crate doc comments and rustdoc intra-doc links do not
+  count.
+- Do not widen visibility for documentation. Feature-gated modules compiled
+  under `docsrs` can stay private; `cadmus-core` allows
+  `rustdoc::private_intra_doc_links` for doc builds.
+- When reviewing, grep for external usage (`use …::Item`, fully-qualified paths
+  in non-doc code) before accepting new `pub` items.
+
+```rust
+// ✅ Good — only the orchestration API is public
+pub mod task;
+
+mod import;
+mod thumbnail;
+
+pub struct TaskManager { /* … */ }
+pub fn register_startup_tasks(/* … */) { /* uses import::, thumbnail:: */ }
+
+// ❌ Bad — implementation modules exposed without external callers
+pub mod import;
+pub mod thumbnail;
+```
+
 ## Newtype Wrappers
 
 Prefer newtype wrappers over raw primitives for domain concepts. A

@@ -228,7 +228,7 @@ macro_rules! impl_device_hardware {
 
     (@hook set_system_timezone linux) => {
         fn set_system_timezone(&self, tz: chrono_tz::Tz) -> Result<(), anyhow::Error> {
-            $crate::device::time::set_system_timezone(tz)?;
+            $crate::device::linux::set_system_timezone(tz)?;
             Ok(())
         }
     };
