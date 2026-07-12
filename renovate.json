@@ -54,6 +54,14 @@
       ],
       "groupName": "mdbook-i18n-helpers",
       "groupSlug": "mdbook-i18n-helpers"
+    },
+    {
+      "description": "Keep mupdf submodule and version pins in sync",
+      "matchManagers": ["git-submodules", "custom.regex"],
+      "matchPackageNames": ["thirdparty/mupdf", "ArtifexSoftware/mupdf"],
+      "groupName": "mupdf",
+      "groupSlug": "mupdf",
+      "addLabels": ["thirdparty"]
     }
   ],
   "customManagers": [
@@ -181,8 +189,8 @@
       "matchStrings": [
         "MUPDF_VERSION: &str = \\\"(?<currentValue>[^\\\"]+)\\\""
       ],
-      "datasourceTemplate": "github-releases",
-      "depNameTemplate": "ArtifexSoftware/mupdf-downloads",
+      "datasourceTemplate": "github-tags",
+      "depNameTemplate": "ArtifexSoftware/mupdf",
       "versioningTemplate": "semver"
     },
     {
@@ -193,8 +201,8 @@
       "matchStrings": [
         "pub const FZ_VERSION: &str = \\\"(?<currentValue>[^\\\"]+)\\\""
       ],
-      "datasourceTemplate": "github-releases",
-      "depNameTemplate": "ArtifexSoftware/mupdf-downloads",
+      "datasourceTemplate": "github-tags",
+      "depNameTemplate": "ArtifexSoftware/mupdf",
       "versioningTemplate": "semver"
     }
   ]
