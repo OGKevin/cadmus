@@ -17,4 +17,6 @@ jobs:
         with:
           persist-credentials: false
       - name: Validate Codecov YAML
-        run: curl -sf -X POST --data-binary @.codecov.yml https://codecov.io/validate
+        run: |
+          curl -sf --retry 5 --retry-delay 2 --retry-all-errors \
+            -X POST --data-binary @.codecov.yml https://codecov.io/validate
