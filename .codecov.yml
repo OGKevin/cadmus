@@ -1,9 +1,46 @@
 comment: false
 
 ignore:
+  # Vendored and build scripts (also excluded by llvm-cov locally).
   - "thirdparty/**"
   - "mupdf_wrapper/**"
   - "**/build.rs"
+  # Non-Rust files are not instrumented by cargo llvm-cov.
+  - "**/*.c"
+  - "**/*.cc"
+  - "**/*.cpp"
+  - "**/*.css"
+  - "**/*.epub"
+  - "**/*.ftl"
+  - "**/*.gif"
+  - "**/*.h"
+  - "**/*.hpp"
+  - "**/*.html"
+  - "**/*.ico"
+  - "**/*.jpeg"
+  - "**/*.jpg"
+  - "**/*.js"
+  - "**/*.json"
+  - "**/*.lock"
+  - "**/*.md"
+  - "**/*.mjs"
+  - "**/*.nix"
+  - "**/*.png"
+  - "**/*.po"
+  - "**/*.pot"
+  - "**/*.sh"
+  - "**/*.sql"
+  - "**/*.svg"
+  - "**/*.toml"
+  - "**/*.ts"
+  - "**/*.tsx"
+  - "**/*.txt"
+  - "**/*.webp"
+  - "**/*.woff"
+  - "**/*.woff2"
+  - "**/*.xml"
+  - "**/*.yaml"
+  - "**/*.yml"
 
 coverage:
   status:
@@ -16,3 +53,7 @@ coverage:
         target: auto
         threshold: 10%
         only_pulls: true
+        paths:
+          - "**/*.rs"
+        if_no_uploads: success
+        if_not_found: success
