@@ -42,7 +42,9 @@
       "groupSlug": "stylelint"
     },
     {
+      "description": "Git submodules use git-refs, which has no releaseTimestamp; exempt from minimumReleaseAge",
       "matchManagers": ["git-submodules"],
+      "minimumReleaseAge": null,
       "addLabels": ["thirdparty"]
     },
     {
