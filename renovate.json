@@ -35,6 +35,13 @@
       "groupSlug": "js-tooling-non-major"
     },
     {
+      "description": "stylelint and stylelint-config-standard must stay in sync via peer dependencies",
+      "matchManagers": ["npm"],
+      "matchPackageNames": ["stylelint", "stylelint-config-standard"],
+      "groupName": "stylelint",
+      "groupSlug": "stylelint"
+    },
+    {
       "matchManagers": ["git-submodules"],
       "addLabels": ["thirdparty"]
     },
