@@ -47,7 +47,7 @@ jobs:
       - name: Restore Linaro toolchain
         if: *run-copilot-steps
         id: cache-linaro
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/linaro-toolchain
           key: linaro-gcc-4.9.4-2017.01
