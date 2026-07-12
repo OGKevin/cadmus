@@ -1,7 +1,7 @@
 name: Cargo
 
 env:
-  NEXTEST_VERSION: "0.9.137"
+  NEXTEST_VERSION: "0.9.138"
   NODE_VERSION: "24"
   SQLX_OFFLINE: true
   PKG_CONFIG_PATH_x86_64_unknown_linux_gnu: ${{ github.workspace }}/target/cadmus-build-deps/x86_64-unknown-linux-gnu/sqlite/lib/pkgconfig
