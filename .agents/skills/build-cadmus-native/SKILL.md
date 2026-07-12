@@ -33,10 +33,13 @@ it when documentation sources change.
 
 ```bash
 cargo xtask download-assets
+cargo xtask download-fonts
 ```
 
-Pulls static assets (fonts, icons, etc.) from the latest GitHub release. Not
-strictly required for compilation, but the emulator and some tests expect them.
+`download-assets` pulls Plato runtime directories (`bin/`, `resources/`,
+`hyphenation-patterns/`). `download-fonts` assembles the `fonts/` directory
+from Nico's ebook-fonts, Libertinus, and pinned UI upstreams. Both are required
+before Kobo builds and recommended for the emulator.
 
 Native dependencies (MuPDF, libwebp, and the C wrapper) are now built
 automatically by `build.rs` when you run any Cargo command that compiles

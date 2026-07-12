@@ -1,0 +1,56 @@
+name: Cache bundled fonts
+description: >
+  Restore or save the assembled fonts/ directory. The cache key incorporates
+  pinned release versions from download_fonts.rs and the gitlink SHAs of the
+  Noto and Google font submodules so the key changes when any font source
+  moves. On cache miss, downloads fonts via cargo xtask download-fonts.
+
+  Defaults to restore-only. Pass `mode: save` in the cache-warmup job to
+  write a fresh cache.
+
+inputs:
+  gh-token:
+    description: "GitHub token for downloading release assets"
+    required: true
+  mode:
+    description: "`restore` (default) or `save` (read-write)"
+    required: false
+    default: restore
+
+outputs:
+  cache-hit:
+    description: "Whether a matching cache entry was found"
+    value: ${{ steps.save.outputs.cache-hit || steps.restore.outputs.cache-hit }}
+
+runs:
+  using: composite
+  steps:
+    - name: Compute font submodule hash
+      id: font-submodules
+      shell: bash
+      run: |
+        sha=$(git ls-tree HEAD thirdparty/noto-fonts thirdparty/google-fonts | sha256sum | cut -c1-12)
+        echo "hash=$sha" >> "$GITHUB_OUTPUT"
+
+    - name: Restore bundled fonts cache
+      if: inputs.mode == 'restore'
+      id: restore
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: fonts/
+        key: fonts-${{ hashFiles('xtask/src/tasks/download_fonts/**') }}-${{ steps.font-submodules.outputs.hash }}
+
+    - name: Save bundled fonts cache
+      if: inputs.mode == 'save'
+      id: save
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: fonts/
+        key: fonts-${{ hashFiles('xtask/src/tasks/download_fonts/**') }}-${{ steps.font-submodules.outputs.hash }}
+
+    - name: Download bundled fonts
+      if: steps.restore.outputs.cache-hit != 'true' && steps.save.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.gh-token }}
+      run: cargo xtask download-fonts

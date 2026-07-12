@@ -24,7 +24,7 @@ use serde::Deserialize;
 /// when available, an `Authorization: Bearer` token from the environment.
 ///
 /// Checks `GH_TOKEN` first, then `GITHUB_TOKEN`.
-fn client() -> Result<reqwest::blocking::Client> {
+pub fn client() -> Result<reqwest::blocking::Client> {
     let mut builder = reqwest::blocking::Client::builder().user_agent("cargo-xtask/cadmus");
 
     if let Some(token) = std::env::var("GH_TOKEN")

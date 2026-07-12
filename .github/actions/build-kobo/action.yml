@@ -49,6 +49,11 @@ runs:
     - name: Cache Plato static assets
       uses: ./.github/actions/cache-assets
 
+    - name: Cache bundled fonts
+      uses: ./.github/actions/cache-fonts
+      with:
+        gh-token: ${{ inputs.gh-token }}
+
     - name: Install system packages
       uses: ./.github/actions/apt
 

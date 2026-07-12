@@ -11,6 +11,7 @@ pub mod clippy;
 pub mod dist;
 pub mod docs;
 pub mod download_assets;
+pub mod download_fonts;
 pub mod fmt;
 pub mod install_importer;
 pub mod run_emulator;

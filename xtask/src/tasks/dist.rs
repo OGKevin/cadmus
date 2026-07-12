@@ -126,9 +126,14 @@ fn copy_assets(root: &Path, dist_dir: &Path) -> Result<()> {
     for dir in dirs {
         let src = root.join(dir);
         if !src.exists() {
+            let hint = if dir == "fonts" {
+                "Run `cargo xtask download-fonts` to download it."
+            } else {
+                "Run `cargo xtask download-assets` to download it."
+            };
             bail!(
                 "Required asset directory '{}' not found.\n\
-                 Run `cargo xtask download-assets` to download it.",
+                 {hint}",
                 src.display()
             );
         }

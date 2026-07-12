@@ -24,13 +24,14 @@ This guide covers setup on both Linux and macOS.
 
    ```bash
    cargo xtask download-assets
+   cargo xtask download-fonts
    ```
 
    > [!NOTE]
    > `cadmus-core` generates some compile-time metadata from the bundled asset
-   > directories. For Kobo builds, make sure `bin/`, `resources/`, and
-   > `hyphenation-patterns/` are present before `cargo xtask build-kobo` so the
-   > generated asset list is complete.
+   > directories. For Kobo builds, make sure `bin/`, `resources/`,
+   > `hyphenation-patterns/`, and `fonts/` are present before
+   > `cargo xtask build-kobo` so the generated asset list is complete.
    >
    > Thirdparty C/C++ dependencies (MuPDF, libwebp, zlib, etc.) are tracked as git
    > submodules and built automatically by `build.rs` when you run `cargo build` or
@@ -49,6 +50,7 @@ Once inside the devenv shell, these commands are available:
 | Command                       | Description                                                 |
 | ----------------------------- | ----------------------------------------------------------- |
 | `cargo xtask download-assets` | Download packaged Plato runtime assets                      |
+| `cargo xtask download-fonts`  | Download bundled font files into `fonts/`                   |
 | `cargo xtask test`            | Run the test suite across the feature matrix                |
 | `cargo xtask run-emulator`    | Run the emulator                                            |
 | `cargo xtask build-kobo`      | Cross-compile for Kobo device                               |
@@ -95,7 +97,7 @@ The `docs:build` task uses `execIfModified` to only rebuild when documentation f
 
 ## Kobo Build Notes
 
-- `cargo xtask download-assets` must run before `cargo xtask build-kobo`.
+- `cargo xtask download-assets` and `cargo xtask download-fonts` must run before `cargo xtask build-kobo`.
 - OTA updates delete Cadmus-owned bundled files before reboot, then Kobo
   extracts the new `KoboRoot.tgz` over the install directory.
 - User files outside the generated Cadmus-owned asset list must be preserved.

@@ -43,6 +43,7 @@ jobs:
               - '.github/actions/build-kobo/**'
               - '.github/actions/build-docs-epub/**'
               - '.github/actions/cargo-cache/**'
+              - '.github/actions/cache-fonts/**'
               - '.github/actions/install-doc-tools/**'
               - 'build-scripts/**'
               - '.gitmodules'
@@ -186,6 +187,11 @@ jobs:
         if: steps.cargo-llvm-cov-cache.outputs.cache-hit != 'true'
         uses: taiki-e/install-action@9458fed45835344deb5e69e06e831be047c96abf # cargo-llvm-cov
 
+      - name: Cache bundled fonts
+        uses: ./.github/actions/cache-fonts
+        with:
+          mode: save
+          gh-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Download documentation EPUB
         if: steps.cache.outputs.cache-hit != 'true'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
@@ -360,6 +366,11 @@ jobs:
       - name: Install Homebrew packages (macOS)
         if: runner.os == 'macOS'
         run: brew install sdl2 freetype harfbuzz openjpeg jpeg-turbo libpng jbig2dec gumbo-parser djvulibre pkg-config
+
+      - name: Restore bundled fonts
+        uses: ./.github/actions/cache-fonts
+        with:
+          gh-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Restore shared cargo cache
         uses: ./.github/actions/cargo-cache

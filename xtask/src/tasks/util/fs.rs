@@ -289,6 +289,105 @@ pub fn extract_zip_paths(src: &Path, dest_dir: &Path, prefixes: &[&str]) -> Resu
     Ok(())
 }
 
+/// Extracts zip entries whose basename matches `prefix` and `suffix` into
+/// `dest_dir` using only the filename (no nested directories).
+///
+/// Existing destination files are skipped.
+///
+/// # Errors
+///
+/// Returns an error if the archive cannot be read or a matched entry fails to
+/// extract.
+pub fn extract_zip_matching_flat(
+    src: &Path,
+    dest_dir: &Path,
+    prefix: &str,
+    suffix: &str,
+) -> Result<()> {
+    std::fs::create_dir_all(dest_dir).with_context(|| {
+        format!(
+            "failed to create destination directory {}",
+            dest_dir.display()
+        )
+    })?;
+
+    let file = std::fs::File::open(src)
+        .with_context(|| format!("failed to open archive {}", src.display()))?;
+    let mut archive = zip::ZipArchive::new(file)
+        .with_context(|| format!("failed to read zip {}", src.display()))?;
+
+    for i in 0..archive.len() {
+        let mut entry = archive
+            .by_index(i)
+            .with_context(|| format!("failed to read entry {i} from {}", src.display()))?;
+        let name = entry.name().to_owned();
+        if entry.is_dir() {
+            continue;
+        }
+        let Some(filename) = Path::new(&name).file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        if !filename.starts_with(prefix) || !filename.ends_with(suffix) {
+            continue;
+        }
+        let dest = dest_dir.join(filename);
+        if dest.exists() {
+            continue;
+        }
+        let mut out = std::fs::File::create(&dest)
+            .with_context(|| format!("failed to create file {}", dest.display()))?;
+        std::io::copy(&mut entry, &mut out)
+            .with_context(|| format!("failed to write {}", dest.display()))?;
+    }
+
+    Ok(())
+}
+
+/// Extracts named zip entries into `dest_dir`, optionally renaming on extract.
+///
+/// Each `entries` pair is `(path_inside_zip, dest_filename)`.  Existing
+/// destination files are skipped.
+///
+/// # Errors
+///
+/// Returns an error if the archive cannot be read, an entry is missing, or
+/// extraction fails.
+pub fn extract_zip_entries_flat(
+    src: &Path,
+    dest_dir: &Path,
+    entries: &[(impl AsRef<str>, impl AsRef<str>)],
+) -> Result<()> {
+    std::fs::create_dir_all(dest_dir).with_context(|| {
+        format!(
+            "failed to create destination directory {}",
+            dest_dir.display()
+        )
+    })?;
+
+    let file = std::fs::File::open(src)
+        .with_context(|| format!("failed to open archive {}", src.display()))?;
+    let mut archive = zip::ZipArchive::new(file)
+        .with_context(|| format!("failed to read zip {}", src.display()))?;
+
+    for (zip_path, dest_name) in entries {
+        let zip_path = zip_path.as_ref();
+        let dest_name = dest_name.as_ref();
+        let dest = dest_dir.join(dest_name);
+        if dest.exists() {
+            continue;
+        }
+        let mut entry = archive
+            .by_name(zip_path)
+            .with_context(|| format!("entry '{zip_path}' not found in {}", src.display()))?;
+        let mut out = std::fs::File::create(&dest)
+            .with_context(|| format!("failed to create file {}", dest.display()))?;
+        std::io::copy(&mut entry, &mut out)
+            .with_context(|| format!("failed to write {}", dest.display()))?;
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -406,5 +505,141 @@ mod tests {
 
         assert!(extract_dir.join("libs/libfoo.so").exists());
         assert!(!extract_dir.join("other/skip.txt").exists());
+    }
+
+    fn write_test_zip(path: &Path, entries: &[(&str, &[u8])]) {
+        let file = std::fs::File::create(path).unwrap();
+        let mut writer = zip::ZipWriter::new(file);
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Stored);
+
+        for (name, contents) in entries {
+            writer.start_file(*name, options).unwrap();
+            std::io::Write::write_all(&mut writer, contents).unwrap();
+        }
+
+        writer.finish().unwrap();
+    }
+
+    #[test]
+    fn extract_zip_matching_flat_extracts_matching_basenames() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        let zip_path = tmp.path().join("fonts.zip");
+        write_test_zip(
+            &zip_path,
+            &[
+                ("nested/KF-Libron-Regular.otf", b"libron"),
+                ("nested/KF-Libron-Bold.otf", b"bold"),
+                ("nested/Other-Regular.otf", b"other"),
+                ("readme.txt", b"skip"),
+            ],
+        );
+
+        let extract_dir = tmp.path().join("fonts");
+        extract_zip_matching_flat(&zip_path, &extract_dir, "KF-Libron", ".otf").unwrap();
+
+        assert_eq!(
+            fs::read(extract_dir.join("KF-Libron-Regular.otf")).unwrap(),
+            b"libron"
+        );
+        assert_eq!(
+            fs::read(extract_dir.join("KF-Libron-Bold.otf")).unwrap(),
+            b"bold"
+        );
+        assert!(!extract_dir.join("Other-Regular.otf").exists());
+        assert!(!extract_dir.join("readme.txt").exists());
+    }
+
+    #[test]
+    fn extract_zip_matching_flat_skips_existing_files() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        let zip_path = tmp.path().join("fonts.zip");
+        write_test_zip(&zip_path, &[("nested/KF-Libron-Regular.otf", b"new")]);
+
+        let extract_dir = tmp.path().join("fonts");
+        fs::create_dir_all(&extract_dir).unwrap();
+        fs::write(extract_dir.join("KF-Libron-Regular.otf"), b"existing").unwrap();
+
+        extract_zip_matching_flat(&zip_path, &extract_dir, "KF-Libron", ".otf").unwrap();
+
+        assert_eq!(
+            fs::read(extract_dir.join("KF-Libron-Regular.otf")).unwrap(),
+            b"existing"
+        );
+    }
+
+    #[test]
+    fn extract_zip_entries_flat_extracts_and_renames_entries() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        let zip_path = tmp.path().join("release.zip");
+        write_test_zip(
+            &zip_path,
+            &[
+                ("SourceCodePro-Regular.otf", b"regular"),
+                ("SourceCodePro-Bold.otf", b"bold"),
+            ],
+        );
+
+        let extract_dir = tmp.path().join("fonts");
+        extract_zip_entries_flat(
+            &zip_path,
+            &extract_dir,
+            &[
+                ("SourceCodePro-Regular.otf", "Source Code Pro Regular.otf"),
+                ("SourceCodePro-Bold.otf", "Source Code Pro Bold.otf"),
+            ],
+        )
+        .unwrap();
+
+        assert_eq!(
+            fs::read(extract_dir.join("Source Code Pro Regular.otf")).unwrap(),
+            b"regular"
+        );
+        assert_eq!(
+            fs::read(extract_dir.join("Source Code Pro Bold.otf")).unwrap(),
+            b"bold"
+        );
+    }
+
+    #[test]
+    fn extract_zip_entries_flat_skips_existing_files() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        let zip_path = tmp.path().join("release.zip");
+        write_test_zip(&zip_path, &[("SourceCodePro-Regular.otf", b"new")]);
+
+        let extract_dir = tmp.path().join("fonts");
+        fs::create_dir_all(&extract_dir).unwrap();
+        fs::write(extract_dir.join("Source Code Pro Regular.otf"), b"existing").unwrap();
+
+        extract_zip_entries_flat(
+            &zip_path,
+            &extract_dir,
+            &[("SourceCodePro-Regular.otf", "Source Code Pro Regular.otf")],
+        )
+        .unwrap();
+
+        assert_eq!(
+            fs::read(extract_dir.join("Source Code Pro Regular.otf")).unwrap(),
+            b"existing"
+        );
+    }
+
+    #[test]
+    fn extract_zip_entries_flat_errors_on_missing_entry() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        let zip_path = tmp.path().join("release.zip");
+        write_test_zip(&zip_path, &[("SourceCodePro-Regular.otf", b"regular")]);
+
+        let extract_dir = tmp.path().join("fonts");
+        let err =
+            extract_zip_entries_flat(&zip_path, &extract_dir, &[("missing.otf", "missing.otf")])
+                .unwrap_err();
+
+        assert!(err.to_string().contains("entry 'missing.otf' not found"));
     }
 }

@@ -26,6 +26,7 @@
 //! | [`install-importer`](tasks::install_importer) | Install the Cadmus importer crate |
 //! | [`docs`](tasks::docs) | Build the full documentation website |
 //! | [`download-assets`](tasks::download_assets) | Download static asset dirs from the latest release |
+//! | [`download-fonts`](tasks::download_fonts) | Download bundled font files into `fonts/` |
 //! | [`dist`](tasks::dist) | Assemble the Kobo distribution directory |
 //! | [`bundle`](tasks::bundle) | Package a `KoboRoot.tgz` ready for device installation |
 //! | [`setup`](tasks::setup) | Build thirdparty deps (SQLite) needed before `cargo build` |
@@ -81,6 +82,8 @@ pub enum Command {
     Docs(DocsArgs),
     /// Download static asset directories from the latest GitHub release.
     DownloadAssets,
+    /// Download bundled font files into the workspace `fonts/` directory.
+    DownloadFonts,
     /// Assemble the Kobo distribution directory from build outputs.
     Dist(DistArgs),
     /// Package a KoboRoot.tgz ready for device installation.
@@ -108,6 +111,7 @@ pub fn run() -> Result<()> {
         Command::InstallImporter(args) => tasks::install_importer::run(args),
         Command::Docs(args) => tasks::docs::run(args),
         Command::DownloadAssets => tasks::download_assets::run(),
+        Command::DownloadFonts => tasks::download_fonts::run(),
         Command::Dist(args) => tasks::dist::run(args),
         Command::Bundle(args) => tasks::bundle::run(args),
         Command::Setup(args) => tasks::setup::run(args),

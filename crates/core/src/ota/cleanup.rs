@@ -83,7 +83,7 @@ mod tests {
         std::fs::create_dir_all(install_dir.join("icons")).unwrap();
         std::fs::create_dir_all(install_dir.join("libs")).unwrap();
 
-        std::fs::write(install_dir.join("fonts/NotoSans-Regular.ttf"), b"owned").unwrap();
+        std::fs::write(install_dir.join("fonts/Libron-Regular.ttf"), b"owned").unwrap();
         std::fs::write(install_dir.join("fonts/custom.ttf"), b"user").unwrap();
         std::fs::write(install_dir.join("icons/home.svg"), b"owned").unwrap();
         std::fs::write(install_dir.join("libs/libfoo.so.1"), b"owned").unwrap();
@@ -91,7 +91,7 @@ mod tests {
 
         clean_bundled_files(&install_dir).unwrap();
 
-        assert!(!install_dir.join("fonts/NotoSans-Regular.ttf").exists());
+        assert!(!install_dir.join("fonts/Libron-Regular.ttf").exists());
         assert!(install_dir.join("fonts/custom.ttf").exists());
         assert!(!install_dir.join("icons/home.svg").exists());
         assert!(!install_dir.join("libs/libfoo.so.1").exists());

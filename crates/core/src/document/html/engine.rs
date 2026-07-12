@@ -34,7 +34,7 @@ use paragraph_breaker::{standard_fit, total_fit};
 use percent_encoding::percent_decode_str;
 use septem::Roman;
 use std::convert::TryFrom;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use xi_unicode::LineBreakIterator;
 
@@ -102,16 +102,18 @@ impl Engine {
         self.hyphenation_patterns.clone().unwrap()
     }
 
+    /// Lazily loads [`build_default_reader_fonts`] from the install `fonts/` directory.
     #[inline]
     pub fn load_fonts(&mut self) {
         if self.fonts.is_none() {
-            self.fonts = build_fonts(&self.install_dir).ok();
+            self.fonts = build_default_reader_fonts(&self.install_dir).ok();
         }
     }
 
+    /// Lazily loads [`build_default_reader_fonts`] from `root_dir/fonts/`.
     pub fn load_fonts_from(&mut self, root_dir: std::path::PathBuf) {
         if self.fonts.is_none() {
-            self.fonts = build_fonts(&root_dir).ok();
+            self.fonts = build_default_reader_fonts(&root_dir).ok();
         }
     }
 
@@ -142,8 +144,14 @@ impl Engine {
         self.text_align = text_align;
     }
 
+    /// Sets the reading font from `family_name`, searching bundled install fonts
+    /// before `search_path`.
     pub fn set_font_family(&mut self, family_name: &str, search_path: &str) {
-        if let Ok(serif_family) = FontFamily::from_name(family_name, search_path) {
+        let install_fonts = self.install_dir.join("fonts");
+        if let Ok(serif_family) = FontFamily::from_name_in_paths(
+            family_name,
+            &[install_fonts.as_path(), Path::new(search_path)],
+        ) {
             self.load_fonts();
             if let Some(fonts) = self.fonts.as_mut() {
                 fonts.serif = serif_family;
@@ -2461,21 +2469,26 @@ fn format_list_prefix(kind: ListStyleType, index: usize) -> Option<String> {
     }
 }
 
-fn build_fonts(install_dir: &std::path::Path) -> Result<Fonts, Error> {
+/// Loads bundled default stacks for CSS generic font families (`serif`,
+/// `sans-serif`, `monospace`, `cursive`, `fantasy`) used by the HTML reader.
+///
+/// User-selected reading fonts replace only the `serif` stack via
+/// [`Engine::set_font_family`].
+fn build_default_reader_fonts(install_dir: &std::path::Path) -> Result<Fonts, Error> {
     let opener = FontOpener::new()?;
     let font_path = |name: &str| -> std::path::PathBuf { install_dir.join("fonts").join(name) };
     let mut fonts = Fonts {
         serif: FontFamily {
-            regular: opener.open(font_path("LibertinusSerif-Regular.otf").as_path())?,
-            italic: opener.open(font_path("LibertinusSerif-Italic.otf").as_path())?,
-            bold: opener.open(font_path("LibertinusSerif-Bold.otf").as_path())?,
-            bold_italic: opener.open(font_path("LibertinusSerif-BoldItalic.otf").as_path())?,
+            regular: opener.open(font_path("Libron-Regular.ttf").as_path())?,
+            italic: opener.open(font_path("Libron-Italic.ttf").as_path())?,
+            bold: opener.open(font_path("Libron-Bold.ttf").as_path())?,
+            bold_italic: opener.open(font_path("Libron-BoldItalic.ttf").as_path())?,
         },
         sans_serif: FontFamily {
-            regular: opener.open(font_path("NotoSans-Regular.ttf").as_path())?,
-            italic: opener.open(font_path("NotoSans-Italic.ttf").as_path())?,
-            bold: opener.open(font_path("NotoSans-Bold.ttf").as_path())?,
-            bold_italic: opener.open(font_path("NotoSans-BoldItalic.ttf").as_path())?,
+            regular: opener.open(font_path("NV_Jost-Regular.ttf").as_path())?,
+            italic: opener.open(font_path("NV_Jost-Italic.ttf").as_path())?,
+            bold: opener.open(font_path("NV_Jost-Bold.ttf").as_path())?,
+            bold_italic: opener.open(font_path("NV_Jost-BoldItalic.ttf").as_path())?,
         },
         monospace: FontFamily {
             regular: opener.open(font_path("SourceCodeVariable-Roman.otf").as_path())?,

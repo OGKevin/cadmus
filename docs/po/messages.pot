@@ -1,7 +1,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Cadmus Documentation\n"
-"POT-Creation-Date: 2026-07-09T12:27:48+02:00\n"
+"POT-Creation-Date: 2026-07-13T15:11:14+02:00\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
@@ -24,7 +24,7 @@ msgstr ""
 msgid "Test builds"
 msgstr ""
 
-#: src/SUMMARY.md:7 src/installation/ota.md:1
+#: src/SUMMARY.md:7 src/installation/ota.md:1 src/fonts.md:131
 msgid "OTA updates"
 msgstr ""
 
@@ -44,133 +44,137 @@ msgstr ""
 msgid "Uninstalling Cadmus"
 msgstr ""
 
-#: src/SUMMARY.md:12 src/SUMMARY.md:17 src/settings/index.md:1
+#: src/SUMMARY.md:12 src/SUMMARY.md:18 src/settings/index.md:1 src/fonts.md:125
 #: src/ui/settings/index.md:1
 msgid "Settings"
 msgstr ""
 
-#: src/SUMMARY.md:13 src/ui/index.md:1
+#: src/SUMMARY.md:13 src/fonts.md:1
+msgid "Fonts"
+msgstr ""
+
+#: src/SUMMARY.md:14 src/ui/index.md:1
 msgid "User Interface"
 msgstr ""
 
-#: src/SUMMARY.md:14 src/ui/filechooser.md:1
+#: src/SUMMARY.md:15 src/ui/filechooser.md:1
 msgid "File Chooser"
 msgstr ""
 
-#: src/SUMMARY.md:15 src/ui/keyboard.md:1
+#: src/SUMMARY.md:16 src/ui/keyboard.md:1
 msgid "Keyboard"
 msgstr ""
 
-#: src/SUMMARY.md:16 src/ui/dictionary.md:1
+#: src/SUMMARY.md:17 src/ui/dictionary.md:1
 msgid "Dictionary"
 msgstr ""
 
-#: src/SUMMARY.md:18 src/installation/migration.md:112
+#: src/SUMMARY.md:19 src/installation/migration.md:112
 #: src/ui/settings/dictionaries.md:1
 msgid "Dictionaries"
 msgstr ""
 
-#: src/SUMMARY.md:19 src/library/index.md:1
+#: src/SUMMARY.md:20 src/library/index.md:1
 msgid "Library"
 msgstr ""
 
-#: src/SUMMARY.md:20
+#: src/SUMMARY.md:21
 msgid "Importing"
 msgstr ""
 
-#: src/SUMMARY.md:21 src/time-sync.md:1
+#: src/SUMMARY.md:22 src/time-sync.md:1
 msgid "Automatic Time Syncing"
 msgstr ""
 
-#: src/SUMMARY.md:22 src/auto-frontlight.md:1
+#: src/SUMMARY.md:23 src/auto-frontlight.md:1
 msgid "Automatic Frontlight"
 msgstr ""
 
-#: src/SUMMARY.md:23 src/database-backup.md:1
+#: src/SUMMARY.md:24 src/database-backup.md:1
 msgid "Database Backup"
 msgstr ""
 
-#: src/SUMMARY.md:24 src/installation/ota.md:86 src/troubleshooting/index.md:1
+#: src/SUMMARY.md:25 src/installation/ota.md:86 src/troubleshooting/index.md:1
 msgid "Troubleshooting"
 msgstr ""
 
-#: src/SUMMARY.md:25
+#: src/SUMMARY.md:26
 msgid "CHANGELOG"
 msgstr ""
 
-#: src/SUMMARY.md:29
+#: src/SUMMARY.md:30
 msgid "Contributor Guide"
 msgstr ""
 
-#: src/SUMMARY.md:31
+#: src/SUMMARY.md:32
 msgid "Development Environment"
 msgstr ""
 
-#: src/SUMMARY.md:32
+#: src/SUMMARY.md:33
 msgid "SSH"
 msgstr ""
 
-#: src/SUMMARY.md:33
+#: src/SUMMARY.md:34
 msgid "Code Style and Linting"
 msgstr ""
 
-#: src/SUMMARY.md:34
+#: src/SUMMARY.md:35
 msgid "Event System"
 msgstr ""
 
-#: src/SUMMARY.md:35 src/settings/index.md:723
+#: src/SUMMARY.md:36 src/settings/index.md:770
 msgid "Telemetry"
 msgstr ""
 
-#: src/SUMMARY.md:36
+#: src/SUMMARY.md:37
 msgid "Logging"
 msgstr ""
 
-#: src/SUMMARY.md:37
+#: src/SUMMARY.md:38
 msgid "Tracing"
 msgstr ""
 
-#: src/SUMMARY.md:38
+#: src/SUMMARY.md:39
 msgid "Profiling"
 msgstr ""
 
-#: src/SUMMARY.md:39
+#: src/SUMMARY.md:40
 msgid "Website"
 msgstr ""
 
-#: src/SUMMARY.md:40
+#: src/SUMMARY.md:41
 msgid "User guide"
 msgstr ""
 
-#: src/SUMMARY.md:41
+#: src/SUMMARY.md:42
 msgid "Translations"
 msgstr ""
 
-#: src/SUMMARY.md:42
+#: src/SUMMARY.md:43
 msgid "For developers"
 msgstr ""
 
-#: src/SUMMARY.md:43
+#: src/SUMMARY.md:44
 msgid "SQLite & SQLx"
 msgstr ""
 
-#: src/SUMMARY.md:44
+#: src/SUMMARY.md:45
 msgid "Library Database"
 msgstr ""
 
-#: src/SUMMARY.md:45
+#: src/SUMMARY.md:46
 msgid "Runtime Migrations"
 msgstr ""
 
-#: src/SUMMARY.md:49
+#: src/SUMMARY.md:50
 msgid "Investigations"
 msgstr ""
 
-#: src/SUMMARY.md:51
+#: src/SUMMARY.md:52
 msgid "Intro"
 msgstr ""
 
-#: src/SUMMARY.md:52
+#: src/SUMMARY.md:53
 msgid "DHCP IP Address Changes on WiFi Toggle"
 msgstr ""
 
@@ -1076,13 +1080,13 @@ msgstr ""
 #: src/settings/index.md:444 src/settings/index.md:460
 #: src/settings/index.md:476 src/settings/index.md:492
 #: src/settings/index.md:514 src/settings/index.md:535
-#: src/settings/index.md:550 src/settings/index.md:567
-#: src/settings/index.md:573 src/settings/index.md:579
-#: src/settings/index.md:587 src/settings/index.md:612
-#: src/settings/index.md:629 src/settings/index.md:641
-#: src/settings/index.md:649 src/settings/index.md:666
-#: src/settings/index.md:694 src/settings/index.md:751
-#: src/settings/index.md:766
+#: src/settings/index.md:597 src/settings/index.md:614
+#: src/settings/index.md:620 src/settings/index.md:626
+#: src/settings/index.md:634 src/settings/index.md:659
+#: src/settings/index.md:676 src/settings/index.md:688
+#: src/settings/index.md:696 src/settings/index.md:713
+#: src/settings/index.md:741 src/settings/index.md:798
+#: src/settings/index.md:813
 msgid "✏️"
 msgstr ""
 
@@ -1287,7 +1291,7 @@ msgstr ""
 msgid "What to do when you finish reading a book."
 msgstr ""
 
-#: src/settings/index.md:518 src/settings/index.md:592
+#: src/settings/index.md:518 src/settings/index.md:639
 msgid "Possible values:"
 msgstr ""
 
@@ -1312,175 +1316,212 @@ msgid "File extensions rendered with dithering by default."
 msgstr ""
 
 #: src/settings/index.md:548
-msgid "Libraries"
+msgid "`reader.font-path`"
 msgstr ""
 
-#: src/settings/index.md:552
-msgid "Document library configuration. Each library has a name, path, and mode."
+#: src/settings/index.md:550
+msgid ""
+"The directory Cadmus scans for additional reading fonts. Bundled Cadmus "
+"fonts are always available regardless of this setting. See "
+"[Fonts](../fonts.md) for details on installing custom fonts."
+msgstr ""
+
+#: src/settings/index.md:563
+msgid "`reader.font-family`"
 msgstr ""
 
 #: src/settings/index.md:565
+msgid ""
+"The default reading font family name. New installs default to `Libron`. "
+"Existing configurations using `Libertinus Serif` continue to work because "
+"Libertinus remains bundled."
+msgstr ""
+
+#: src/settings/index.md:578
+msgid "`reader.font-size`"
+msgstr ""
+
+#: src/settings/index.md:580
+msgid "The default font size in points."
+msgstr ""
+
+#: src/settings/index.md:593
+msgid ""
+"See [Fonts](../fonts.md) for recommended reading families, [which books "
+"support font changes](../fonts.md#which-books-support-font-changes), and how "
+"to change fonts from the reader toolbar."
+msgstr ""
+
+#: src/settings/index.md:595
+msgid "Libraries"
+msgstr ""
+
+#: src/settings/index.md:599
+msgid "Document library configuration. Each library has a name, path, and mode."
+msgstr ""
+
+#: src/settings/index.md:612
 msgid "`libraries.name`"
 msgstr ""
 
-#: src/settings/index.md:569
+#: src/settings/index.md:616
 msgid "Display name for the library."
 msgstr ""
 
-#: src/settings/index.md:571
+#: src/settings/index.md:618
 msgid "`libraries.path`"
 msgstr ""
 
-#: src/settings/index.md:575
+#: src/settings/index.md:622
 msgid "Directory path containing documents."
 msgstr ""
 
-#: src/settings/index.md:577
+#: src/settings/index.md:624
 msgid "`libraries.mode`"
 msgstr ""
 
-#: src/settings/index.md:581
+#: src/settings/index.md:628
 msgid "Library indexing mode."
 msgstr ""
 
-#: src/settings/index.md:583
+#: src/settings/index.md:630
 msgid "Possible values: `\"database\"`, `\"filesystem\"`."
 msgstr ""
 
-#: src/settings/index.md:585
+#: src/settings/index.md:632
 msgid "`libraries.finished`"
 msgstr ""
 
-#: src/settings/index.md:589
+#: src/settings/index.md:636
 msgid ""
 "Override the `reader.finished` setting for this specific library. When set, "
 "this takes precedence over the global reader setting."
 msgstr ""
 
-#: src/settings/index.md:594
+#: src/settings/index.md:641
 msgid "`\"notify\"`"
 msgstr ""
 
-#: src/settings/index.md:595
+#: src/settings/index.md:642
 msgid "`\"close\"`"
 msgstr ""
 
-#: src/settings/index.md:596
+#: src/settings/index.md:643
 msgid "`\"go-to-next\"`."
 msgstr ""
 
-#: src/settings/index.md:597
+#: src/settings/index.md:644
 msgid "Leave unset to inherit the global `reader.finished` setting."
 msgstr ""
 
-#: src/settings/index.md:610
+#: src/settings/index.md:657
 msgid "Intermissions"
 msgstr ""
 
-#: src/settings/index.md:614
+#: src/settings/index.md:661
 msgid "Defines the images displayed when entering an intermission state."
 msgstr ""
 
-#: src/settings/index.md:627
+#: src/settings/index.md:674
 msgid "`intermissions.suspend`"
 msgstr ""
 
-#: src/settings/index.md:631
+#: src/settings/index.md:678
 msgid "Image displayed when the device enters sleep mode."
 msgstr ""
 
-#: src/settings/index.md:633
+#: src/settings/index.md:680
 msgid ""
 "Setting this to `\"calendar:\"` also enables the calendar refresh: every 5 "
 "minutes, the device wakes, shows the calendar, and then goes back to sleep "
 "automatically."
 msgstr ""
 
-#: src/settings/index.md:637
+#: src/settings/index.md:684
 msgid ""
 "Possible values: `\"logo:\"` (built-in logo), `\"cover:\"` (current book "
 "cover), `\"calendar:\"` (built-in calendar), or a path to a custom image "
 "file."
 msgstr ""
 
-#: src/settings/index.md:639
+#: src/settings/index.md:686
 msgid "`intermissions.power-off`"
 msgstr ""
 
-#: src/settings/index.md:643
+#: src/settings/index.md:690
 msgid "Image displayed when the device powers off."
 msgstr ""
 
-#: src/settings/index.md:645 src/settings/index.md:653
+#: src/settings/index.md:692 src/settings/index.md:700
 msgid ""
 "Possible values: `\"logo:\"` (built-in logo), `\"cover:\"` (current book "
 "cover), or a path to a custom image file."
 msgstr ""
 
-#: src/settings/index.md:647
+#: src/settings/index.md:694
 msgid "`intermissions.share`"
 msgstr ""
 
-#: src/settings/index.md:651
+#: src/settings/index.md:698
 msgid "Image displayed when entering USB sharing mode."
 msgstr ""
 
-#: src/settings/index.md:655
+#: src/settings/index.md:702
 msgid "Import"
 msgstr ""
 
-#: src/settings/index.md:657
+#: src/settings/index.md:704
 msgid ""
 "These settings control how Cadmus imports documents from your device. They "
 "are available in the **Settings → Import** menu."
 msgstr ""
 
-#: src/settings/index.md:660
+#: src/settings/index.md:707
 msgid ""
 "Import scanning happens automatically on startup using incremental file "
 "checking — files are only re-scanned if their modification time or size has "
 "changed since the last import."
 msgstr ""
 
-#: src/settings/index.md:662
+#: src/settings/index.md:709
 msgid ""
 "To trigger a full re-scan of all files regardless of cached values, use the "
 "**Force Full Import** action button in the Import settings category."
 msgstr ""
 
-#: src/settings/index.md:664
+#: src/settings/index.md:711
 msgid "`import.sync-metadata`"
 msgstr ""
 
-#: src/settings/index.md:668
+#: src/settings/index.md:715
 msgid "Re-extract metadata (title, author, etc.) whenever a document changes."
 msgstr ""
 
-#: src/settings/index.md:679
+#: src/settings/index.md:726
 msgid "`import.metadata-kinds`"
 msgstr ""
 
-#: src/settings/index.md:681
+#: src/settings/index.md:728
 msgid "File extensions of documents whose metadata is extracted during import."
 msgstr ""
 
-#: src/settings/index.md:692
+#: src/settings/index.md:739
 msgid "`import.allowed-kinds`"
 msgstr ""
 
-#: src/settings/index.md:696
+#: src/settings/index.md:743
 msgid "File extensions of documents considered during the import process."
 msgstr ""
 
-#: src/settings/index.md:707
+#: src/settings/index.md:754
 msgid "OTA"
 msgstr ""
 
-#: src/settings/index.md:709
+#: src/settings/index.md:756
 msgid "The OTA feature downloads builds from GitHub."
 msgstr ""
 
-#: src/settings/index.md:711
+#: src/settings/index.md:758
 msgid ""
 "Authentication for main branch and PR builds uses **GitHub device auth "
 "flow**. When you select a build that requires authentication, Cadmus will "
@@ -1489,189 +1530,534 @@ msgid ""
 "once you authorize."
 msgstr ""
 
-#: src/settings/index.md:717
+#: src/settings/index.md:764
 msgid ""
 "The token is saved to disk after the first authorization so you will not be "
 "prompted again on subsequent downloads."
 msgstr ""
 
-#: src/settings/index.md:720
+#: src/settings/index.md:767
 msgid ""
 "For step-by-step instructions with screenshots, see the [OTA "
 "updates](../installation/ota.md) guide."
 msgstr ""
 
-#: src/settings/index.md:725
+#: src/settings/index.md:772
 msgid ""
 "Cadmus writes JSON logs to disk. When the build enables the `tracing` "
 "feature, it can also export logs to an OpenTelemetry endpoint."
 msgstr ""
 
-#: src/settings/index.md:728
+#: src/settings/index.md:775
 msgid "These settings are available in the **Settings → Telemetry** menu."
 msgstr ""
 
-#: src/settings/index.md:731
+#: src/settings/index.md:778
 msgid ""
 "Changes to these settings only take effect after restarting Cadmus. The "
 "application initializes telemetry on startup."
 msgstr ""
 
-#: src/settings/index.md:734
+#: src/settings/index.md:781
 msgid "`logging`"
 msgstr ""
 
-#: src/settings/index.md:749
+#: src/settings/index.md:796
 msgid "`logging.enabled`"
 msgstr ""
 
-#: src/settings/index.md:753
+#: src/settings/index.md:800
 msgid "Enable or disable structured JSON logging."
 msgstr ""
 
-#: src/settings/index.md:764
+#: src/settings/index.md:811
 msgid "`logging.level`"
 msgstr ""
 
-#: src/settings/index.md:768
+#: src/settings/index.md:815
 msgid "Minimum log level to record."
 msgstr ""
 
-#: src/settings/index.md:770
+#: src/settings/index.md:817
 msgid ""
 "Possible values: `\"trace\"`, `\"debug\"`, `\"info\"`, `\"warn\"`, "
 "`\"error\"`."
 msgstr ""
 
-#: src/settings/index.md:781
+#: src/settings/index.md:828
 msgid "`logging.max-files`"
 msgstr ""
 
-#: src/settings/index.md:783
+#: src/settings/index.md:830
 msgid ""
 "Number of log files to keep. Only the most recent N files are kept — older "
 "ones are deleted automatically when Cadmus starts."
 msgstr ""
 
-#: src/settings/index.md:786 src/settings/index.md:879
+#: src/settings/index.md:833 src/settings/index.md:926
 msgid "Default: `3`"
 msgstr ""
 
-#: src/settings/index.md:787
+#: src/settings/index.md:834
 msgid "Set to `0` to keep all log files."
 msgstr ""
 
-#: src/settings/index.md:798
+#: src/settings/index.md:845
 msgid "`logging.otlp-endpoint`"
 msgstr ""
 
-#: src/settings/index.md:800
+#: src/settings/index.md:847
 msgid "✏️ (only when the `tracing` feature is enabled)"
 msgstr ""
 
-#: src/settings/index.md:802
+#: src/settings/index.md:849
 msgid "Optional OTLP endpoint for exporting logs to an OpenTelemetry collector."
 msgstr ""
 
-#: src/settings/index.md:813 src/settings/index.md:834
+#: src/settings/index.md:860 src/settings/index.md:881
 msgid "Environment override:"
 msgstr ""
 
-#: src/settings/index.md:815
+#: src/settings/index.md:862
 msgid ""
 "`OTEL_EXPORTER_OTLP_ENDPOINT` takes precedence over `logging.otlp-endpoint`."
 msgstr ""
 
-#: src/settings/index.md:817
+#: src/settings/index.md:864
 msgid "`logging.pyroscope-endpoint`"
 msgstr ""
 
-#: src/settings/index.md:819
+#: src/settings/index.md:866
 msgid "✏️ (only when the `profiling` feature is enabled)"
 msgstr ""
 
-#: src/settings/index.md:821
+#: src/settings/index.md:868
 msgid ""
 "Optional Pyroscope server URL for continuous profiling. When set, Cadmus "
 "starts both a heap profiling agent (via jemalloc) and a CPU profiling agent "
 "(via pprof) that push profiles to this endpoint."
 msgstr ""
 
-#: src/settings/index.md:836
+#: src/settings/index.md:883
 msgid ""
 "`PYROSCOPE_SERVER_URL` takes precedence over `logging.pyroscope-endpoint`."
 msgstr ""
 
-#: src/settings/index.md:838
+#: src/settings/index.md:885
 msgid "`logging.enable-kern-log`"
 msgstr ""
 
-#: src/settings/index.md:840 src/settings/index.md:856
+#: src/settings/index.md:887 src/settings/index.md:903
 msgid "🧪 📱 ✏️"
 msgstr ""
 
-#: src/settings/index.md:842
+#: src/settings/index.md:889
 msgid ""
 "Captures kernel logs via `logread -F` and forwards them to structured "
 "logging with the target `cadmus_core::logging:kern`."
 msgstr ""
 
-#: src/settings/index.md:854
+#: src/settings/index.md:901
 msgid "`logging.enable-dbus-log`"
 msgstr ""
 
-#: src/settings/index.md:858
+#: src/settings/index.md:905
 msgid ""
 "Captures D-Bus signals via the built-in zbus-based DbusMonitorTask and "
 "forwards them to structured logging."
 msgstr ""
 
-#: src/settings/index.md:870
+#: src/settings/index.md:917
 msgid "Settings Retention"
 msgstr ""
 
-#: src/settings/index.md:872
+#: src/settings/index.md:919
 msgid ""
 "Cadmus stores each version's settings in a separate file in the `Settings/` "
 "directory (for example, `Settings-v1.2.3.toml`). This ensures backward and "
 "forward compatibility when you upgrade."
 msgstr ""
 
-#: src/settings/index.md:875
+#: src/settings/index.md:922
 msgid "`settings-retention`"
 msgstr ""
 
-#: src/settings/index.md:877
+#: src/settings/index.md:924
 msgid ""
 "Number of recent version settings files to keep. Only the most recent N "
 "version files are kept. When a new version is saved, older versions beyond "
 "this limit are deleted automatically."
 msgstr ""
 
-#: src/settings/index.md:880
+#: src/settings/index.md:927
 msgid "Set to `0` to keep all version files"
 msgstr ""
 
-#: src/settings/index.md:890
+#: src/settings/index.md:937
 msgid "`db-backup-retention`"
 msgstr ""
 
-#: src/settings/index.md:892
+#: src/settings/index.md:939
 msgid ""
 "Number of database backups to keep. When a new backup is created and the "
 "total would exceed this limit, the oldest backups are deleted automatically."
 msgstr ""
 
-#: src/settings/index.md:895 src/database-backup.md:76
+#: src/settings/index.md:942 src/database-backup.md:76
 msgid "Default: `2`"
 msgstr ""
 
-#: src/settings/index.md:896 src/database-backup.md:77
+#: src/settings/index.md:943 src/database-backup.md:77
 msgid "Set to `0` to disable backups entirely."
 msgstr ""
 
-#: src/settings/index.md:898
+#: src/settings/index.md:945
 msgid "See [Database Backup](../database-backup.md) for more details."
+msgstr ""
+
+#: src/fonts.md:3
+msgid ""
+"Cadmus ships with recommended reading fonts optimized for e-ink displays, "
+"plus additional fonts for the app interface and in-book HTML fallbacks. You "
+"can switch fonts while reading or install your own."
+msgstr ""
+
+#: src/fonts.md:7
+msgid "Pre-installed reading fonts"
+msgstr ""
+
+#: src/fonts.md:9
+msgid "Cadmus's recommended reading fonts come from two open-source projects:"
+msgstr ""
+
+#: src/fonts.md:11
+msgid ""
+"[ebook-fonts](https://github.com/nicoverbruggen/ebook-fonts) by Nico "
+"Verbruggen — reading fonts tuned for e-ink displays. See the [interactive "
+"showcase](https://ebook-fonts.nicoverbruggen.be/) to preview them."
+msgstr ""
+
+#: src/fonts.md:14
+msgid ""
+"[Libertinus](https://github.com/alerque/libertinus) — classic serif, sans, "
+"and mono families, plus Nico's metric-tweaked **NV Libertinus** from the "
+"ebook-fonts extra collection."
+msgstr ""
+
+#: src/fonts.md:17
+msgid "ebook-fonts (Core Collection)"
+msgstr ""
+
+#: src/fonts.md:19 src/fonts.md:33 src/fonts.md:47
+msgid "Font"
+msgstr ""
+
+#: src/fonts.md:19 src/fonts.md:33
+msgid "Style"
+msgstr ""
+
+#: src/fonts.md:21
+msgid "Libron"
+msgstr ""
+
+#: src/fonts.md:21
+msgid "Serif (default)"
+msgstr ""
+
+#: src/fonts.md:22
+msgid "Sourcerer"
+msgstr ""
+
+#: src/fonts.md:22 src/fonts.md:23 src/fonts.md:24 src/fonts.md:25
+#: src/fonts.md:27 src/fonts.md:35 src/fonts.md:36
+msgid "Serif"
+msgstr ""
+
+#: src/fonts.md:23
+msgid "Cartisse"
+msgstr ""
+
+#: src/fonts.md:24
+msgid "NV Charis"
+msgstr ""
+
+#: src/fonts.md:25
+msgid "NV Garamond"
+msgstr ""
+
+#: src/fonts.md:26
+msgid "NV Bitter"
+msgstr ""
+
+#: src/fonts.md:26
+msgid "Slab serif"
+msgstr ""
+
+#: src/fonts.md:27
+msgid "NV Palatium"
+msgstr ""
+
+#: src/fonts.md:28
+msgid "NV Jost"
+msgstr ""
+
+#: src/fonts.md:28 src/fonts.md:37
+msgid "Sans"
+msgstr ""
+
+#: src/fonts.md:29
+msgid "NV Legible Next"
+msgstr ""
+
+#: src/fonts.md:29
+msgid "Sans (accessibility)"
+msgstr ""
+
+#: src/fonts.md:31
+msgid "Libertinus"
+msgstr ""
+
+#: src/fonts.md:35
+msgid "NV Libertinus"
+msgstr ""
+
+#: src/fonts.md:36
+msgid "Libertinus Serif"
+msgstr ""
+
+#: src/fonts.md:37
+msgid "Libertinus Sans"
+msgstr ""
+
+#: src/fonts.md:38
+msgid "Libertinus Mono"
+msgstr ""
+
+#: src/fonts.md:38
+msgid "Monospace"
+msgstr ""
+
+#: src/fonts.md:40
+msgid "Other packaged fonts"
+msgstr ""
+
+#: src/fonts.md:42
+msgid ""
+"Cadmus also ships fonts from "
+"[Noto](https://github.com/notofonts/noto-fonts), [Source Code "
+"Pro](https://github.com/adobe-fonts/source-code-pro), and [Google "
+"Fonts](https://github.com/googlefonts/google-fonts) for the app interface "
+"and HTML rendering fallbacks:"
+msgstr ""
+
+#: src/fonts.md:47
+msgid "Used for"
+msgstr ""
+
+#: src/fonts.md:49
+msgid "Noto Sans"
+msgstr ""
+
+#: src/fonts.md:49
+msgid "Menus, settings, and other app text"
+msgstr ""
+
+#: src/fonts.md:50
+msgid "Noto Serif"
+msgstr ""
+
+#: src/fonts.md:50
+msgid "Serif text in the app interface"
+msgstr ""
+
+#: src/fonts.md:51
+msgid "Source Code Pro"
+msgstr ""
+
+#: src/fonts.md:51
+msgid "Monospace in the app and code blocks in books"
+msgstr ""
+
+#: src/fonts.md:52
+msgid "Varela Round"
+msgstr ""
+
+#: src/fonts.md:52
+msgid "On-screen keyboard"
+msgstr ""
+
+#: src/fonts.md:53
+msgid "Cormorant"
+msgstr ""
+
+#: src/fonts.md:53
+msgid "Startup and intermission screens"
+msgstr ""
+
+#: src/fonts.md:54
+msgid "Parisienne"
+msgstr ""
+
+#: src/fonts.md:54
+msgid "Decorative cursive text in EPUB/HTML content"
+msgstr ""
+
+#: src/fonts.md:55
+msgid "Delius"
+msgstr ""
+
+#: src/fonts.md:55
+msgid "Decorative fantasy text in EPUB/HTML content"
+msgstr ""
+
+#: src/fonts.md:59
+msgid ""
+"The **font family** menu lists every font family found in Cadmus's packaged "
+"fonts and your custom font directory — not only the reading fonts above."
+msgstr ""
+
+#: src/fonts.md:61
+msgid ""
+"These extra fonts can be selected for reading, but they are not tuned for "
+"long-form reading."
+msgstr ""
+
+#: src/fonts.md:64
+msgid "Changing the font while reading"
+msgstr ""
+
+#: src/fonts.md:66
+msgid "Open a book in the reader."
+msgstr ""
+
+#: src/fonts.md:67
+msgid "Tap the **font family** button in the reader toolbar."
+msgstr ""
+
+#: src/fonts.md:68
+msgid "Select a font from the list."
+msgstr ""
+
+#: src/fonts.md:70
+msgid ""
+"The menu shows fonts from Cadmus's packaged collection and any fonts in your "
+"custom font directory (see below). When you select a font, Cadmus resolves "
+"the family name using the order described in [How Cadmus resolves "
+"fonts](#how-cadmus-resolves-fonts)."
+msgstr ""
+
+#: src/fonts.md:74
+msgid "Which books support font changes"
+msgstr ""
+
+#: src/fonts.md:76
+msgid ""
+"**EPUB and HTML** — Cadmus reflows the text and applies your chosen font to "
+"the default body text."
+msgstr ""
+
+#: src/fonts.md:78
+msgid ""
+"**PDF and DjVu** — pages use their embedded layout and fonts. Changing the "
+"font setting has no effect."
+msgstr ""
+
+#: src/fonts.md:80
+msgid ""
+"**MOBI, FB2, plain text, comic archives, and similar formats** — Cadmus "
+"renders these through [MuPDF](https://mupdf.com/), so font changes have no "
+"effect either."
+msgstr ""
+
+#: src/fonts.md:85
+msgid ""
+"Font selection only affects reflowable EPUB and HTML books. It does not "
+"change how PDFs, DjVu files, or other fixed-layout formats look."
+msgstr ""
+
+#: src/fonts.md:88
+msgid "How Cadmus resolves fonts"
+msgstr ""
+
+#: src/fonts.md:90
+msgid ""
+"When you pick a font in the reader or reopen a book with a saved "
+"[`font-family`](settings/index.md#readerfont-family), Cadmus looks for that "
+"family name in two places, **in this order**:"
+msgstr ""
+
+#: src/fonts.md:94
+msgid ""
+"**Packaged fonts** — shipped with Cadmus and updated via "
+"[OTA](installation/ota.md)"
+msgstr ""
+
+#: src/fonts.md:95
+msgid ""
+"**Your custom font directory** — "
+"[`reader.font-path`](settings/index.md#readerfont-path) (default "
+"`/mnt/onboard/fonts/`)"
+msgstr ""
+
+#: src/fonts.md:98
+msgid ""
+"If the same family name exists in both places, the **packaged** copy is used."
+msgstr ""
+
+#: src/fonts.md:100
+msgid ""
+"Your chosen family replaces Cadmus's default **serif** stack for reflowable "
+"books. Paragraphs the book styles as sans-serif, monospace, cursive, or "
+"fantasy keep those respective packaged fallbacks. If Cadmus cannot find the "
+"family name, the previous font is kept."
+msgstr ""
+
+#: src/fonts.md:105
+msgid "Installing additional fonts"
+msgstr ""
+
+#: src/fonts.md:107
+msgid ""
+"To add your own fonts, copy `.ttf` or `.otf` files into your custom font "
+"directory (by default at the root of your Kobo device):"
+msgstr ""
+
+#: src/fonts.md:118
+msgid ""
+"Cadmus scans that directory recursively, so fonts can live in subfolders. "
+"After copying new files, reopen the **font family** menu or the book to "
+"refresh the list."
+msgstr ""
+
+#: src/fonts.md:122
+msgid ""
+"Point Cadmus at your custom directory with "
+"[`reader.font-path`](settings/index.md#readerfont-path) if you use a "
+"different location."
+msgstr ""
+
+#: src/fonts.md:127
+msgid ""
+"Font options can also be set in your settings file. See the [Reader "
+"settings](settings/index.md#reader) section for `font-family`, `font-path`, "
+"`font-size`, and related entries."
+msgstr ""
+
+#: src/fonts.md:133
+msgid ""
+"[OTA updates](installation/ota.md) replace Cadmus-packaged fonts before "
+"installing the new release. Cadmus removes **each shipped font file "
+"individually** — it does not delete the whole `fonts/` directory — so any "
+"extra files you placed in Cadmus's install `fonts/` folder survive the "
+"update if they are not part of the release."
+msgstr ""
+
+#: src/fonts.md:139
+msgid ""
+"Under normal use, your custom fonts live in a **separate directory** "
+"([`reader.font-path`](settings/index.md#readerfont-path), default "
+"`/mnt/onboard/fonts/`) and are never touched by OTA. Packaged fonts stay in "
+"Cadmus's install directory."
 msgstr ""
 
 #: src/ui/index.md:3

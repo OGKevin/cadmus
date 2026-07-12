@@ -596,15 +596,39 @@ pub fn family_names<P: AsRef<Path>>(search_path: P) -> Result<BTreeSet<String>, 
 }
 
 impl FontFamily {
+    /// Resolves `family_name` by searching `search_paths` in order.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `search_paths` is empty or the family cannot be
+    /// found in any path.
+    pub fn from_name_in_paths(
+        family_name: &str,
+        search_paths: &[impl AsRef<Path>],
+    ) -> Result<FontFamily, Error> {
+        let mut last_err = None;
+        for path in search_paths {
+            match Self::from_name_in_directory(family_name, path.as_ref()) {
+                Ok(family) => return Ok(family),
+                Err(err) => last_err = Some(err),
+            }
+        }
+        Err(last_err.unwrap_or_else(|| format_err!("no font search paths provided")))
+    }
+
     pub fn from_name<P: AsRef<Path>>(
         family_name: &str,
         search_path: P,
     ) -> Result<FontFamily, Error> {
+        Self::from_name_in_paths(family_name, &[search_path.as_ref()])
+    }
+
+    fn from_name_in_directory(family_name: &str, search_path: &Path) -> Result<FontFamily, Error> {
         let opener = FontOpener::new()?;
         let glob = Glob::new("**/*.[ot]tf")?.compile_matcher();
         let mut styles = FxHashMap::default();
 
-        for entry in WalkDir::new(search_path.as_ref())
+        for entry in WalkDir::new(search_path)
             .min_depth(1)
             .into_iter()
             .filter_entry(|e| !e.is_hidden())
@@ -2775,5 +2799,40 @@ impl From<FtError> for FreetypeError {
             0xBA => FreetypeError::CorruptedFontGlyphs,
             _ => FreetypeError::UnknownError(code),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn workspace_fonts_dir() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fonts")
+    }
+
+    #[test]
+    fn from_name_in_paths_finds_family_in_later_path() {
+        let fonts = workspace_fonts_dir();
+        if !fonts.join("Libron-Regular.ttf").exists() {
+            return;
+        }
+        let empty = tempfile::tempdir().unwrap();
+        FontFamily::from_name_in_paths("Libron", &[empty.path(), fonts.as_path()]).unwrap();
+    }
+
+    #[test]
+    fn from_name_in_paths_errors_when_paths_empty() {
+        let result = FontFamily::from_name_in_paths("Libron", &[] as &[&Path]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn from_name_delegates_to_from_name_in_paths() {
+        let fonts = workspace_fonts_dir();
+        if !fonts.join("Libron-Regular.ttf").exists() {
+            return;
+        }
+        FontFamily::from_name("Libron", &fonts).unwrap();
     }
 }

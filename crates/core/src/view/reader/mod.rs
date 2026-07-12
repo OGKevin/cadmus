@@ -2708,6 +2708,9 @@ impl Reader {
             let mut families = family_names(&context.settings.reader.font_path)
                 .map_err(|e| error!("Can't get family names: {:#}.", e))
                 .unwrap_or_default();
+            if let Ok(install_families) = family_names(context.device.install_path("fonts")) {
+                families.extend(install_families);
+            }
             let current_family = self
                 .info
                 .reader
@@ -3364,13 +3367,7 @@ impl Reader {
 
         {
             let mut doc = self.doc.lock().unwrap();
-            let font_path = if font_family == DEFAULT_FONT_FAMILY {
-                "fonts"
-            } else {
-                &context.settings.reader.font_path
-            };
-
-            doc.set_font_family(font_family, font_path);
+            doc.set_font_family(font_family, &context.settings.reader.font_path);
 
             if self.synthetic {
                 let current_page = self.current_page.min(doc.pages_count() - 1);

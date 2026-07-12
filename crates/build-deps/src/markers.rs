@@ -90,9 +90,27 @@ pub fn is_built(root: &Path, dir: &Path, submodule_path: &str) -> bool {
 pub fn mark_built(root: &Path, dir: &Path, name: &str, submodule_path: &str) -> Result<()> {
     let hash = submodule_commit(root, submodule_path)
         .with_context(|| format!("failed to resolve submodule commit for {submodule_path}"))?;
-    let marker_path = dir.join(BUILT_MARKER);
-    std::fs::write(&marker_path, hash.as_bytes())
-        .with_context(|| format!("failed to write build marker for {name}"))?;
+    mark_version(dir, name, &hash)
+}
+
+/// Returns `true` when `dir` has a `.built` marker whose content matches
+/// `expected`.
+///
+/// Use this for pinned release tags or other version strings when there is no
+/// submodule gitlink to compare against.
+pub fn is_version_current(dir: &Path, expected: &str) -> bool {
+    std::fs::read_to_string(built_marker_path(dir)).is_ok_and(|stored| stored.trim() == expected)
+}
+
+/// Write a `.built` marker in `dir` with `version`, recording that `name`
+/// is up to date at that revision.
+///
+/// # Errors
+///
+/// Returns an error if the marker file cannot be written.
+pub fn mark_version(dir: &Path, name: &str, version: &str) -> Result<()> {
+    std::fs::write(built_marker_path(dir), version.as_bytes())
+        .with_context(|| format!("failed to write version marker for {name}"))?;
     Ok(())
 }
 

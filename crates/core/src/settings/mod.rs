@@ -120,7 +120,7 @@ pub const DEFAULT_MARGIN_WIDTH: i32 = 8;
 // Default line height in ems.
 pub const DEFAULT_LINE_HEIGHT: f32 = 1.2;
 // Default font family name.
-pub const DEFAULT_FONT_FAMILY: &str = "Libertinus Serif";
+pub const DEFAULT_FONT_FAMILY: &str = "Libron";
 // Default text alignment.
 pub const DEFAULT_TEXT_ALIGN: TextAlign = TextAlign::Left;
 pub const HYPHEN_PENALTY: i32 = 50;

@@ -402,8 +402,7 @@ in
   dotenv.enable = true;
 
   env = {
-    # override this in devenv.local.nix to the right place for your test cadmus root dir
-    # TEST_ROOT_DIR = "$DEVENV_ROOT" ;
+    TEST_ROOT_DIR = config.devenv.root;
 
     RUST_LOG = "cadmus_core=trace,cadmus=trace";
     RUST_BACKTRACE = "1";

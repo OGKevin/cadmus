@@ -10,6 +10,7 @@
   - [Using with KFMon](installation/kfmon.md)
   - [Uninstalling Cadmus](installation/uninstall.md)
 - [Settings](settings/index.md)
+- [Fonts](fonts.md)
 - [User Interface](ui/index.md)
   - [File Chooser](ui/filechooser.md)
   - [Keyboard](ui/keyboard.md)

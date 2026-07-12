@@ -166,7 +166,7 @@ corner-width = 0.4
 # Note: this does not exist by default.
 font-path = "/mnt/onboard/fonts"
 # The default serif font.
-font-family = "Libertinus Serif"
+font-family = "Libron"
 # The default, minimum and maximum font sizes, in points.
 font-size = 11.0
 min-font-size = 5.5

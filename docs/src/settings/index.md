@@ -278,6 +278,53 @@ dithered-kinds = ["cbz", "png", "jpg", "jpeg", "webp"]
 
 <!-- i18n:skip-end -->
 
+### `reader.font-path`
+
+The directory Cadmus scans for additional reading fonts. Bundled Cadmus fonts
+are always available regardless of this setting. See [Fonts](../fonts.md) for
+details on installing custom fonts.
+
+<!-- i18n:skip-start -->
+
+```toml
+[reader]
+font-path = "/mnt/onboard/fonts"
+```
+
+<!-- i18n:skip-end -->
+
+### `reader.font-family`
+
+The default reading font family name. New installs default to `Libron`.
+Existing configurations using `Libertinus Serif` continue to work because
+Libertinus remains bundled.
+
+<!-- i18n:skip-start -->
+
+```toml
+[reader]
+font-family = "Libron"
+```
+
+<!-- i18n:skip-end -->
+
+### `reader.font-size`
+
+The default font size in points.
+
+<!-- i18n:skip-start -->
+
+```toml
+[reader]
+font-size = 11.0
+min-font-size = 5.5
+max-font-size = 16.5
+```
+
+<!-- i18n:skip-end -->
+
+See [Fonts](../fonts.md) for recommended reading families, [which books support font changes](../fonts.md#which-books-support-font-changes), and how to change fonts from the reader toolbar.
+
 ## Libraries
 
 ✏️

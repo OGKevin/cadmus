@@ -65,6 +65,19 @@
       "groupName": "mupdf",
       "groupSlug": "mupdf",
       "addLabels": ["thirdparty"]
+    },
+    {
+      "description": "Group bundled font release pins and font git submodules",
+      "matchManagers": ["custom.regex", "git-submodules"],
+      "matchPackageNames": [
+        "nicoverbruggen/ebook-fonts",
+        "alerque/libertinus",
+        "adobe-fonts/source-code-pro",
+        "thirdparty/noto-fonts",
+        "thirdparty/google-fonts"
+      ],
+      "groupName": "bundled fonts",
+      "groupSlug": "bundled-fonts"
     }
   ],
   "customManagers": [
@@ -185,6 +198,42 @@
       "datasourceTemplate": "github-releases",
       "depNameTemplate": "baskerville/plato",
       "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^xtask\\/src\\/tasks\\/download_fonts\\/.*\\.rs$/"
+      ],
+      "matchStrings": [
+        "EBOOK_FONTS_VERSION: &str = \\\"(?<currentValue>[^\\\"]+)\\\""
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "nicoverbruggen/ebook-fonts",
+      "versioningTemplate": "semver-coerced"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^xtask\\/src\\/tasks\\/download_fonts\\/.*\\.rs$/"
+      ],
+      "matchStrings": [
+        "LIBERTINUS_VERSION: &str = \\\"(?<currentValue>[^\\\"]+)\\\""
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "alerque/libertinus",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^xtask\\/src\\/tasks\\/download_fonts\\/.*\\.rs$/"
+      ],
+      "matchStrings": [
+        "SOURCE_CODE_RELEASE: &str = \\\"(?<currentValue>[^\\\"]+)\\\""
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "adobe-fonts/source-code-pro",
+      "versioningTemplate": "semver-coerced"
     },
     {
       "customType": "regex",
