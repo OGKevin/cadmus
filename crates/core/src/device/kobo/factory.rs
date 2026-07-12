@@ -82,14 +82,15 @@ impl Model {
             )?) as Box<dyn Frontlight>,
         };
         let wifi_manager = std::sync::Arc::new(
-            crate::device::wifi::KoboWifiManager::from_env()
+            crate::device::kobo::wifi::KoboWifiManager::from_env()
                 .context("failed to create WiFi manager")?,
         );
         let usb_manager = std::sync::Arc::new(
-            crate::device::usb::KoboUsbManager::new(metadata.clone())
+            crate::device::kobo::usb::KoboUsbManager::new(metadata.clone())
                 .context("failed to create USB manager")?,
         );
-        let power_manager = std::sync::Arc::new(crate::device::power::KoboPowerManager::new(self));
+        let power_manager =
+            std::sync::Arc::new(crate::device::kobo::power::KoboPowerManager::new(self));
         let rtc =
             std::sync::Arc::new(LinuxRtc::new(RTC_DEVICE).context("failed to initialize RTC")?);
         let time_manager = crate::time_manager::TimeManager::new(rtc.clone(), |tz| {

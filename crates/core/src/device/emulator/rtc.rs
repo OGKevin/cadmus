@@ -1,10 +1,7 @@
-//! No-op RTC for emulator builds.
-
 use anyhow::Error;
 use chrono::{DateTime, Utc};
 
-use super::RtcWkalrm;
-use super::manager::Rtc;
+use crate::device::rtc::{Rtc, RtcWkalrm};
 
 /// Emulator RTC that performs no hardware operations.
 #[derive(Clone, Copy, Default)]

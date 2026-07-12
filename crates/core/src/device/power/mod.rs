@@ -2,24 +2,11 @@
 
 mod error;
 mod manager;
-#[cfg(any(test, not(feature = "kobo")))]
-mod stub;
-
-cfg_select! {
-    any(feature = "kobo", docsrs) => {
-        mod kobo;
-        pub use kobo::KoboPowerManager;
-    }
-    _ => {}
-}
-
-#[cfg(any(test, not(feature = "kobo")))]
-pub use stub::StubPowerManager;
 
 pub use error::PowerError;
 pub use manager::PowerManager;
 
-#[cfg(any(feature = "kobo", test))]
+#[cfg(unix)]
 pub(crate) fn discover_cores(
     cpu_dir: &std::path::Path,
 ) -> Result<Vec<(std::path::PathBuf, String)>, std::io::Error> {
@@ -62,7 +49,7 @@ pub(crate) fn discover_cores(
     Ok(discovered)
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
 

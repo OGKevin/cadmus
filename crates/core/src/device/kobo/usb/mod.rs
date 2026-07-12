@@ -22,8 +22,7 @@
 //! ```
 
 use crate::device::metadata::{DeviceMetadata, Platform, detect_platform};
-use crate::device::usb::error::UsbError;
-use crate::device::usb::manager::UsbManager;
+use crate::device::usb::{UsbError, UsbManager};
 
 mod operations;
 

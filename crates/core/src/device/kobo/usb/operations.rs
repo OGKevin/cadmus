@@ -1,7 +1,7 @@
 //! Common USB operations trait for Kobo devices.
 
 use crate::device::metadata::DeviceMetadata;
-use crate::device::usb::error::UsbError;
+use crate::device::usb::UsbError;
 use std::fs;
 use std::process::Command;
 use tracing::{debug, error, info, warn};
@@ -24,7 +24,7 @@ use std::path::Path;
 /// # Example
 ///
 /// ```ignore
-/// use cadmus_core::device::usb::kobo::operations::KoboUsbOperations;
+/// use cadmus_core::device::kobo::usb::operations::KoboUsbOperations;
 /// use cadmus_core::device::DeviceMetadata;
 ///
 /// struct MyUsbManager {

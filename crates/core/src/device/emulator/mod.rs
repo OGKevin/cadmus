@@ -4,10 +4,15 @@
 //! reports [`DEFAULT_ROTATION`] and rotation APIs are no-ops. This avoids
 //! inconsistent state until faithful framebuffer and input tracking exists.
 
+mod power;
+mod rtc;
+mod usb;
+mod wifi;
+
 use crate::battery::FakeBattery;
 use crate::color::Color;
 use crate::device::DeviceHardware as _;
-use crate::device::rtc::NoopRtc;
+use crate::device::emulator::rtc::NoopRtc;
 use crate::device::types::FrontlightKind;
 use crate::device::{AppContext, Model};
 use crate::device::{
@@ -62,42 +67,6 @@ impl std::ops::Deref for SendableEventPump {
 impl std::ops::DerefMut for SendableEventPump {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
-    }
-}
-
-pub struct EmulatorWifiManager;
-
-impl crate::device::wifi::WifiManager for EmulatorWifiManager {
-    fn enable(&self) -> Result<(), crate::device::wifi::WifiError> {
-        Ok(())
-    }
-
-    fn disable(&self) -> Result<(), crate::device::wifi::WifiError> {
-        Ok(())
-    }
-}
-
-pub struct EmulatorUsbManager;
-
-impl crate::device::usb::UsbManager for EmulatorUsbManager {
-    fn enable(&self) -> Result<(), crate::device::usb::UsbError> {
-        unimplemented!("USB not available in emulator")
-    }
-
-    fn disable(&self) -> Result<(), crate::device::usb::UsbError> {
-        unimplemented!("USB not available in emulator")
-    }
-}
-
-pub struct EmulatorPowerManager;
-
-impl crate::device::power::PowerManager for EmulatorPowerManager {
-    fn suspend(&self) -> Result<(), crate::device::power::PowerError> {
-        unimplemented!("Power management not available in emulator")
-    }
-
-    fn resume(&self) -> Result<(), crate::device::power::PowerError> {
-        unimplemented!("Power management not available in emulator")
     }
 }
 
@@ -427,9 +396,9 @@ pub struct EmulatorDevice {
     battery: FakeBattery,
     frontlight: LightLevels,
     lightsensor: u16,
-    wifi_manager: Arc<EmulatorWifiManager>,
-    usb_manager: Arc<EmulatorUsbManager>,
-    power_manager: Arc<EmulatorPowerManager>,
+    wifi_manager: Arc<crate::device::emulator::wifi::EmulatorWifiManager>,
+    usb_manager: Arc<crate::device::emulator::usb::EmulatorUsbManager>,
+    power_manager: Arc<crate::device::emulator::power::EmulatorPowerManager>,
     rtc: Arc<NoopRtc>,
     time_manager: crate::time_manager::TimeManager<NoopRtc>,
     input: EmulatorInputSource,
@@ -464,9 +433,9 @@ impl EmulatorDevice {
             battery: FakeBattery::new(),
             frontlight: LightLevels::default(),
             lightsensor: 0,
-            wifi_manager: Arc::new(EmulatorWifiManager),
-            usb_manager: Arc::new(EmulatorUsbManager),
-            power_manager: Arc::new(EmulatorPowerManager),
+            wifi_manager: Arc::new(crate::device::emulator::wifi::EmulatorWifiManager),
+            usb_manager: Arc::new(crate::device::emulator::usb::EmulatorUsbManager),
+            power_manager: Arc::new(crate::device::emulator::power::EmulatorPowerManager),
             rtc,
             time_manager,
             input: EmulatorInputSource::new(dpi),
@@ -536,10 +505,10 @@ crate::impl_device_hardware!(
     Battery = FakeBattery,
     Frontlight = LightLevels,
     LightSensor = u16,
-    WifiManager = EmulatorWifiManager,
-    UsbManager = EmulatorUsbManager,
-    PowerManager = EmulatorPowerManager,
-    Rtc = NoopRtc,
+    WifiManager = crate::device::emulator::wifi::EmulatorWifiManager,
+    UsbManager = crate::device::emulator::usb::EmulatorUsbManager,
+    PowerManager = crate::device::emulator::power::EmulatorPowerManager,
+    Rtc = crate::device::emulator::rtc::NoopRtc,
 );
 
 impl DeviceInput for EmulatorDevice {
@@ -713,7 +682,7 @@ pub fn code_from_key(key: Scancode) -> Option<ButtonCode> {
 }
 
 #[cfg(all(test, feature = "emulator"))]
-mod wifi {
+mod wifi_tests {
     use super::{handle_net_up, handle_set_wifi};
     use crate::context::test_helpers::create_test_context;
     use crate::device::EventOutcome;

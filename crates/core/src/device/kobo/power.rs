@@ -5,8 +5,7 @@
 //! and writing to kernel sysfs nodes to trigger suspend to RAM.
 
 use crate::device::kobo::Model;
-use crate::device::power::error::PowerError;
-use crate::device::power::manager::PowerManager;
+use crate::device::power::{PowerError, PowerManager};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -126,7 +125,7 @@ impl PowerManager for KoboPowerManager {
 
     fn init_cores(&self) -> Result<(), PowerError> {
         let cpu_dir = Path::new("/sys/devices/system/cpu");
-        let discovered = super::discover_cores(cpu_dir).map_err(|e| {
+        let discovered = crate::device::power::discover_cores(cpu_dir).map_err(|e| {
             tracing::warn!(error = %e, "Failed to discover CPU cores");
             e
         })?;

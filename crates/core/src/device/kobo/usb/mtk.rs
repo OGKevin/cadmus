@@ -12,10 +12,9 @@
 //! it caused the UDC bind to silently fail on the Libra Colour (MTK platform)
 //! in practice.
 
+use crate::device::kobo::usb::operations::KoboUsbOperations;
 use crate::device::metadata::DeviceMetadata;
-use crate::device::usb::error::UsbError;
-use crate::device::usb::kobo::operations::KoboUsbOperations;
-use crate::device::usb::manager::UsbManager;
+use crate::device::usb::{UsbError, UsbManager};
 use std::fs;
 use std::path::Path;
 use tracing::{debug, error, info, warn};

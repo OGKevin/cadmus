@@ -71,9 +71,8 @@ mod types;
 #[cfg(target_os = "linux")]
 use procfs;
 
-use crate::device::wifi::error::WifiError;
-use crate::device::wifi::kobo::types::{PowerToggle, WifiModule, WifiModuleConfig};
-use crate::device::wifi::manager::WifiManager;
+use crate::device::kobo::wifi::types::{PowerToggle, WifiModule, WifiModuleConfig};
+use crate::device::wifi::{WifiError, WifiManager};
 use nix::ioctl_write_int_bad;
 use std::fs;
 use std::os::fd::AsRawFd;

@@ -5,10 +5,9 @@
 //! `g_file_storage`). It handles the platform-specific module loading and
 //! unloading sequences.
 
+use crate::device::kobo::usb::operations::KoboUsbOperations;
 use crate::device::metadata::{DeviceMetadata, Platform};
-use crate::device::usb::error::UsbError;
-use crate::device::usb::kobo::operations::KoboUsbOperations;
-use crate::device::usb::manager::UsbManager;
+use crate::device::usb::{UsbError, UsbManager};
 use std::fs;
 use std::path::Path;
 use std::process::Command;

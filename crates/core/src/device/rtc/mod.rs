@@ -2,13 +2,8 @@
 
 mod manager;
 
-cfg_select! {
-    any(feature = "kobo", docsrs) => {
-        mod linux;
-        pub use linux::LinuxRtc;
-    }
-    _ => {}
-}
+#[cfg(unix)]
+mod linux;
 
 #[cfg(any(
     test,
@@ -19,10 +14,10 @@ cfg_select! {
 ))]
 mod test;
 
-#[cfg(any(feature = "emulator", not(feature = "kobo")))]
-mod stub;
-
 pub use manager::Rtc;
+
+#[cfg(unix)]
+pub use linux::LinuxRtc;
 
 #[cfg(any(
     test,
@@ -32,9 +27,6 @@ pub use manager::Rtc;
     )
 ))]
 pub use test::TestRtc;
-
-#[cfg(any(feature = "emulator", not(feature = "kobo")))]
-pub use stub::NoopRtc;
 
 use anyhow::Error;
 use chrono::{DateTime, Datelike, Duration, TimeZone, Timelike, Utc};
