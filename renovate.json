@@ -58,7 +58,7 @@
     {
       "description": "Keep mupdf submodule and version pins in sync",
       "matchManagers": ["git-submodules", "custom.regex"],
-      "matchPackageNames": ["thirdparty/mupdf", "ArtifexSoftware/mupdf"],
+      "matchDepNames": ["thirdparty/mupdf", "ArtifexSoftware/mupdf"],
       "groupName": "mupdf",
       "groupSlug": "mupdf",
       "addLabels": ["thirdparty"]
