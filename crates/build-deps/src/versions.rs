@@ -13,7 +13,7 @@
 /// updated. The CI cache key in
 /// The shared cargo cache key in `.github/workflows/cargo.yml` includes
 /// so caches stay consistent.
-pub const MUPDF_VERSION: &str = "1.27.2";
+pub const MUPDF_VERSION: &str = "1.28.0";
 
 /// All thirdparty libraries in dependency order for cross-compiling
 /// to the Kobo target. Order matters: each library is built with the
