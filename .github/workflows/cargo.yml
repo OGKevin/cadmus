@@ -359,7 +359,7 @@ jobs:
           cachekey: ${{ steps.rust-toolchain.outputs.cachekey }}
 
       - name: Cache cargo-nextest
-        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         id: cargo-nextest-cache
         with:
           path: ~/.cargo/bin/cargo-nextest
@@ -370,7 +370,7 @@ jobs:
         run: cargo install cargo-nextest --version "$NEXTEST_VERSION" --locked --force
 
       - name: Restore cargo-llvm-cov
-        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         id: cargo-llvm-cov-cache
         with:
           path: ~/.cargo/bin/cargo-llvm-cov
