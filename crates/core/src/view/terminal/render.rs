@@ -40,7 +40,7 @@ impl TerminalRenderer {
         let line_height = (font.ascender() - font.descender()).max(1);
 
         let cols = (available_width / char_width).max(20) as u16;
-        let rows = (available_height / line_height).max(10) as u16;
+        let rows = (available_height / line_height).max(1) as u16;
 
         (rows, cols)
     }
@@ -88,10 +88,15 @@ impl TerminalRenderer {
         let cursor_pos = screen.cursor_position();
         let mut dirty_rect: Option<Rectangle> = None;
 
+        // Use the minimum of screen size and our buffer size
+        let render_rows = (current_rows as usize).min(self.previous_screen.len());
+        let render_cols =
+            (current_cols as usize).min(self.previous_screen.first().map(|r| r.len()).unwrap_or(0));
+
         // Check for cursor movement
         if cursor_pos != self.previous_cursor {
             let (old_row, old_col) = self.previous_cursor;
-            if old_row < current_rows && old_col < current_cols {
+            if (old_row as usize) < render_rows && (old_col as usize) < render_cols {
                 let old_cell = screen.cell(old_row, old_col);
                 self.render_vt100_cell(old_row, old_col, old_cell, pixmap, font);
                 let cell_rect = Rectangle::new(
@@ -110,9 +115,9 @@ impl TerminalRenderer {
         }
 
         // Compare cells and render only changed ones
-        for row in 0..current_rows {
-            for col in 0..current_cols {
-                let cell = screen.cell(row, col);
+        for row in 0..render_rows {
+            for col in 0..render_cols {
+                let cell = screen.cell(row as u16, col as u16);
                 let current_state = cell
                     .map(|c| CellState {
                         contents: c.contents().to_string(),
@@ -124,9 +129,9 @@ impl TerminalRenderer {
                     })
                     .unwrap_or_default();
 
-                if current_state != self.previous_screen[row as usize][col as usize] {
-                    self.render_vt100_cell(row, col, cell, pixmap, font);
-                    self.previous_screen[row as usize][col as usize] = current_state;
+                if current_state != self.previous_screen[row][col] {
+                    self.render_vt100_cell(row as u16, col as u16, cell, pixmap, font);
+                    self.previous_screen[row][col] = current_state;
                     let cell_rect = Rectangle::new(
                         Point::new(col as i32 * self.char_width, row as i32 * self.char_height),
                         Point::new(
@@ -145,7 +150,7 @@ impl TerminalRenderer {
 
         // Draw cursor on current position
         let (cursor_row, cursor_col) = cursor_pos;
-        if cursor_row < current_rows && cursor_col < current_cols {
+        if (cursor_row as usize) < render_rows && (cursor_col as usize) < render_cols {
             let x = cursor_col as i32 * self.char_width;
             let y = cursor_row as i32 * self.char_height;
             let cursor_rect = Rectangle::new(
@@ -161,6 +166,15 @@ impl TerminalRenderer {
         }
 
         dirty_rect
+    }
+
+    pub fn clear_screen_state(&mut self) {
+        for row in &mut self.previous_screen {
+            for cell in row {
+                *cell = CellState::default();
+            }
+        }
+        self.previous_cursor = (0, 0);
     }
 
     fn render_vt100_cell(
