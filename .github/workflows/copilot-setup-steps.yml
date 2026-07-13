@@ -47,7 +47,7 @@ jobs:
       - name: Restore Linaro toolchain
         if: *run-copilot-steps
         id: cache-linaro
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/linaro-toolchain
           key: linaro-gcc-4.9.4-2017.01
@@ -75,14 +75,14 @@ jobs:
 
       - name: Setup Node.js
         if: *run-copilot-steps
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
 
       - name: Setup Python
         if: *run-copilot-steps
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.x"
 
@@ -104,7 +104,7 @@ jobs:
 
       - name: Install reviewdog
         if: *run-copilot-steps
-        uses: reviewdog/action-setup@v1
+        uses: reviewdog/action-setup@d8a7baabd7f3e8544ee4dbde3ee41d0011c3a93f # v1
 
       - name: Verify installation
         if: *run-copilot-steps

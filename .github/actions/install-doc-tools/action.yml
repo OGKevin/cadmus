@@ -14,7 +14,7 @@ runs:
   using: composite
   steps:
     - name: Setup Node.js
-      uses: actions/setup-node@v6
+      uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
       with:
         node-version: ${{ inputs.node-version }}
         cache: npm
@@ -30,7 +30,7 @@ runs:
         } >> "$GITHUB_ENV"
 
     - name: Cache mdBook tools
-      uses: actions/cache@v6
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
       with:
         path: |
           ~/.cache/mdbook
@@ -40,7 +40,7 @@ runs:
         key: ${{ runner.os }}-mdbook-${{ env.MDBOOK_VERSION }}-epub-${{ env.MDBOOK_EPUB_REV }}-mermaid-${{ env.MDBOOK_MERMAID_VERSION }}-i18n-${{ env.MDBOOK_I18N_HELPERS_REV }}
 
     - name: Cache puppeteer browsers
-      uses: actions/cache@v6
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
       with:
         path: ~/.cache/puppeteer
         key: ${{ runner.os }}-puppeteer-${{ hashFiles('package-lock.json') }}

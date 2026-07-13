@@ -37,7 +37,7 @@ jobs:
           echo "branch=$(echo "$pr_data" | jq -r '.headRefName')" >> "$GITHUB_OUTPUT"
           echo "repo=$(echo "$pr_data" | jq -r '.headRepositoryOwner.login + "/" + .headRepository.name')" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           repository: ${{ steps.pr.outputs.repo }}
           ref: ${{ steps.pr.outputs.branch }}
@@ -63,7 +63,7 @@ jobs:
         run: echo "short_sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Generate artifact attestation
-        uses: actions/attest-build-provenance@v4
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4
         with:
           subject-path: |
             dist/cadmus
@@ -74,7 +74,7 @@ jobs:
             release-artifacts/*.tgz
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: cadmus-kobo-pr${{ inputs.pr_number }}-${{ steps.commit.outputs.short_sha }}
           path: release-artifacts/*

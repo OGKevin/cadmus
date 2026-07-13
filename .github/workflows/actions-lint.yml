@@ -37,7 +37,7 @@ jobs:
           fetch-depth: 0
 
       - name: Actionlint
-        uses: reviewdog/action-actionlint@v1.72.0
+        uses: reviewdog/action-actionlint@6fb7acc99f4a1008869fa8a0f09cfca740837d9d # v1.72.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           reporter: github-pr-review
@@ -56,7 +56,7 @@ jobs:
           persist-credentials: false
 
       - name: Prettier
-        uses: EPMatt/reviewdog-action-prettier@v1
+        uses: EPMatt/reviewdog-action-prettier@f691104cbeb4b0299df971275444c64be93c03ae # v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           reporter: github-pr-review

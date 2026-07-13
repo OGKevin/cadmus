@@ -36,7 +36,7 @@ jobs:
           fetch-depth: 0
 
       - name: ShellCheck
-        uses: reviewdog/action-shellcheck@v1.32.0
+        uses: reviewdog/action-shellcheck@4c07458293ac342d477251099501a718ae5ef86e # v1.32.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           reporter: github-pr-review
@@ -55,7 +55,7 @@ jobs:
           fetch-depth: 0
 
       - name: Shfmt
-        uses: reviewdog/action-shfmt@v1.1.0
+        uses: reviewdog/action-shfmt@c5e3ba7497c338866921924691aef4fa18bc1fe0 # v1.1.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           filter_mode: added

@@ -188,7 +188,7 @@ jobs:
 
       - name: Download documentation EPUB
         if: steps.cache.outputs.cache-hit != 'true'
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: docs-epub
           path: docs/book/epub
@@ -253,7 +253,7 @@ jobs:
         with:
           cachekey: ${{ steps.rust-toolchain.outputs.cachekey }}
       - name: Download documentation EPUB
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: docs-epub
           path: docs/book/epub
@@ -267,7 +267,7 @@ jobs:
 
       - name: Upload clippy JSON artifact
         if: github.event_name == 'pull_request'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: clippy-json-${{ matrix.features || 'default' }}
           path: clippy-json/
@@ -298,14 +298,14 @@ jobs:
         with:
           cachekey: ${{ steps.rust-toolchain.outputs.cachekey }}
       - name: Download all clippy JSON artifacts
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           pattern: clippy-json-*
           path: clippy-json
           merge-multiple: true
 
       - name: Install reviewdog
-        uses: reviewdog/action-setup@v1
+        uses: reviewdog/action-setup@d8a7baabd7f3e8544ee4dbde3ee41d0011c3a93f # v1
 
       - name: Run clippy-report
         run: cargo xtask ci clippy-report --artifacts-dir clippy-json
@@ -340,7 +340,7 @@ jobs:
           components: llvm-tools
       - *set-build-metadata
       - name: Download documentation EPUB
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: docs-epub
           path: docs/book/epub
@@ -403,7 +403,7 @@ jobs:
 
       - name: Upload test results to Codecov
         if: ${{ !cancelled() }}
-        uses: codecov/codecov-action@v7
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           report_type: test_results
@@ -414,7 +414,7 @@ jobs:
 
       - name: Upload coverage artifact
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: coverage-json-${{ steps.test.outputs.slug }}
           path: coverage-json/
@@ -434,20 +434,20 @@ jobs:
       pull-requests: write
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           fetch-depth: 0
           persist-credentials: false
 
       - name: Download all coverage artifacts
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           pattern: coverage-json-*
           path: coverage-json
           merge-multiple: true
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v7
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           report_type: coverage
@@ -503,7 +503,7 @@ jobs:
         with:
           cachekey: ${{ steps.rust-toolchain.outputs.cachekey }}
       - name: Download documentation EPUB
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: docs-epub
           path: docs/book/epub
@@ -532,7 +532,7 @@ jobs:
       - &generate-attestation
         name: Generate artifact attestation
         if: github.event_name != 'pull_request'
-        uses: actions/attest-build-provenance@v4
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4
         with:
           subject-path: |
             dist/cadmus
@@ -543,7 +543,7 @@ jobs:
             release-artifacts/*.tgz
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: cadmus-kobo-${{ steps.artifact.outputs.suffix }}
           path: release-artifacts/*
@@ -575,7 +575,7 @@ jobs:
         with:
           cachekey: ${{ steps.rust-toolchain.outputs.cachekey }}
       - name: Download documentation EPUB
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: docs-epub
           path: docs/book/epub
@@ -593,7 +593,7 @@ jobs:
       - *generate-attestation
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: cadmus-kobo-test-${{ steps.artifact.outputs.suffix }}
           path: release-artifacts/*
