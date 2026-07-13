@@ -69,8 +69,7 @@ not tracked. Non-semver refs use the ref name as the comment (`# stable`,
 `# cargo-llvm-cov`, `# latest`).
 
 Do not add bare semver tags (`@v6`) or bare SHAs. Renovate's
-`helpers:pinGitHubActionDigests` preset converts remaining tag pins and keeps
-digest pins current.
+`helpers:pinGitHubActionDigests` preset keeps digest pins current.
 
 ## Formatting
 
