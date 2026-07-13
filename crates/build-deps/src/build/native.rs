@@ -18,6 +18,9 @@ use crate::markers;
 use crate::utils;
 use crate::versions::MUPDF_VERSION;
 
+const XCFLAGS_NATIVE: &str = "-DFZ_ENABLE_ICC=0 -DFZ_ENABLE_SPOT_RENDERING=0 \
+    -DFZ_ENABLE_ODT_OUTPUT=0 -DFZ_ENABLE_OCR_OUTPUT=0";
+
 /// Default Cargo target triple when `TARGET` is unset (build script context
 /// outside of `cargo build`).
 fn target_triple() -> String {
@@ -370,9 +373,9 @@ pub fn build_mupdf_native(root: &Path) -> Result<()> {
     let target = target_triple();
     let sys_cflags = collect_system_cflags()?;
     let xcflags = format!(
-        "-DFZ_ENABLE_ICC=0 -DFZ_ENABLE_SPOT_RENDERING=0 \
-         -DFZ_ENABLE_ODT_OUTPUT=0 -DFZ_ENABLE_OCR_OUTPUT=0 \
-         -DHAVE_WEBP=1 -I{root}/target/cadmus-build-deps/{target}/libwebp/src {sys_cflags}",
+        "{} {} -I{root}/target/cadmus-build-deps/{target}/libwebp/src {sys_cflags}",
+        XCFLAGS_NATIVE,
+        mupdf::XCFLAGS_SHARED,
         root = root.display(),
         target = target
     );
@@ -384,26 +387,9 @@ pub fn build_mupdf_native(root: &Path) -> Result<()> {
         target = target
     );
 
-    cmd::run(
-        "make",
-        &[
-            "verbose=yes",
-            "mujs=no",
-            "tesseract=no",
-            "extract=no",
-            "archive=no",
-            "brotli=no",
-            "barcode=no",
-            "commercial=no",
-            "USE_SYSTEM_LIBS=yes",
-            &format!("XCFLAGS={xcflags}"),
-            &format!("XLIBS={xlibs}"),
-            "libs",
-        ],
-        &mupdf_dir,
-        &[],
-    )
-    .context("failed to build MuPDF libs")?;
+    let make_args = mupdf::make_libs_invocation(&xcflags, &[], Some(&xlibs));
+    let make_refs: Vec<&str> = make_args.iter().map(String::as_str).collect();
+    cmd::run("make", &make_refs, &mupdf_dir, &[]).context("failed to build MuPDF libs")?;
 
     markers::mark_built(root, &mupdf_dir, "mupdf", "thirdparty/mupdf")?;
     Ok(())

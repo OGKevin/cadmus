@@ -23,28 +23,11 @@ pub fn build_mupdf(build_dir: &Path) -> Result<()> {
     cmd::run("make", &["verbose=yes", "generate"], build_dir, &[])
         .context("failed to run make generate for mupdf")?;
 
-    let xcflags = "-I../libwebp/src -DHAVE_WEBP=1";
-    cmd::run(
-        "make",
-        &[
-            "verbose=yes",
-            "mujs=no",
-            "tesseract=no",
-            "extract=no",
-            "archive=no",
-            "brotli=no",
-            "barcode=no",
-            "commercial=no",
-            "USE_SYSTEM_LIBS=yes",
-            "OS=kobo",
-            "build=release",
-            &format!("XCFLAGS={xcflags}"),
-            "libs",
-        ],
-        build_dir,
-        &[],
-    )
-    .context("failed to build mupdf libs")?;
+    let xcflags = format!("-I../libwebp/src {}", crate::build::mupdf::XCFLAGS_SHARED);
+    let make_args =
+        crate::build::mupdf::make_libs_invocation(&xcflags, &["OS=kobo", "build=release"], None);
+    let make_refs: Vec<&str> = make_args.iter().map(String::as_str).collect();
+    cmd::run("make", &make_refs, build_dir, &[]).context("failed to build mupdf libs")?;
 
     let obj_files = collect_object_files(build_dir)?;
     let libmupdf_so = build_dir.join("build/release/libmupdf.so");

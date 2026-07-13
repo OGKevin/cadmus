@@ -1,8 +1,12 @@
-//! Shared MuPDF source preparation.
+//! Shared MuPDF build configuration and source preparation.
 //!
-//! Both the native and Kobo build flows need to apply the Cadmus
-//! WebP support patch series to a MuPDF source tree before it is
-//! compiled. The series is defined in
+//! Both the native and Kobo build flows share the same `make libs`
+//! feature flags and core `XCFLAGS`, defined in this module so each
+//! target only supplies its platform-specific pieces (WebP include
+//! path, `OS=kobo`, native-only output disables, …).
+//!
+//! Both flows also apply the Cadmus WebP support patch series to a
+//! MuPDF source tree before it is compiled. The series is defined in
 //! [`crate::versions::MUPDF_WEBP_PATCHES`] and is identical for both
 //! targets, so the application logic lives here in one place.
 //!
@@ -18,6 +22,34 @@ use anyhow::{Context, Result};
 
 use crate::cmd;
 use crate::markers;
+
+/// `make` variables passed to every MuPDF `libs` build (native and Kobo).
+pub const MAKE_LIBS_ARGS: &[&str] = &[
+    "verbose=yes",
+    "mujs=no",
+    "tesseract=no",
+    "extract=no",
+    "archive=no",
+    "brotli=no",
+    "barcode=no",
+    "commercial=no",
+    "USE_SYSTEM_LIBS=yes",
+];
+
+/// C flags appended to `XCFLAGS` for every MuPDF build.
+pub const XCFLAGS_SHARED: &str = "-DHAVE_WEBP=1";
+
+/// Build the argument list for `make ... libs`.
+pub fn make_libs_invocation(xcflags: &str, extra: &[&str], xlibs: Option<&str>) -> Vec<String> {
+    let mut args: Vec<String> = MAKE_LIBS_ARGS.iter().copied().map(str::to_owned).collect();
+    args.extend(extra.iter().copied().map(str::to_owned));
+    args.push(format!("XCFLAGS={xcflags}"));
+    if let Some(xlibs) = xlibs {
+        args.push(format!("XLIBS={xlibs}"));
+    }
+    args.push("libs".into());
+    args
+}
 
 /// Apply the Cadmus WebP support patch series to a MuPDF source tree
 /// if the patches have not been applied yet.
