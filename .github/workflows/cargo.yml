@@ -143,7 +143,7 @@ jobs:
         uses: ./.github/actions/apt
       - name: Cache Linaro toolchain
         id: cache-linaro
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: ~/linaro-toolchain
           key: linaro-gcc-4.9.4-2017.01
@@ -165,7 +165,7 @@ jobs:
           mode: save
 
       - name: Cache cargo-nextest
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         id: cargo-nextest-cache
         with:
           path: ~/.cargo/bin/cargo-nextest
@@ -176,7 +176,7 @@ jobs:
         run: cargo install cargo-nextest --version "$NEXTEST_VERSION" --locked --force
 
       - name: Cache cargo-llvm-cov
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         id: cargo-llvm-cov-cache
         with:
           path: ~/.cargo/bin/cargo-llvm-cov
@@ -350,7 +350,7 @@ jobs:
         uses: ./.github/actions/apt
       - name: Cache Homebrew packages (macOS)
         if: runner.os == 'macOS'
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: |
             ~/Library/Caches/Homebrew/downloads
@@ -367,7 +367,7 @@ jobs:
           cachekey: ${{ steps.rust-toolchain.outputs.cachekey }}
 
       - name: Cache cargo-nextest
-        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         id: cargo-nextest-cache
         with:
           path: ~/.cargo/bin/cargo-nextest
@@ -378,7 +378,7 @@ jobs:
         run: cargo install cargo-nextest --version "$NEXTEST_VERSION" --locked --force
 
       - name: Restore cargo-llvm-cov
-        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         id: cargo-llvm-cov-cache
         with:
           path: ~/.cargo/bin/cargo-llvm-cov
