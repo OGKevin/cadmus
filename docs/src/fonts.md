@@ -1,12 +1,12 @@
 # Fonts
 
-Cadmus ships with recommended reading fonts optimized for e-ink displays, plus
+Cadmus ships with reading fonts optimized for e-ink displays, plus
 additional fonts for the app interface and in-book HTML fallbacks. You can switch
 fonts while reading or install your own.
 
 ## Pre-installed reading fonts
 
-Cadmus's recommended reading fonts come from two open-source projects:
+Cadmus's reading fonts come from two open-source projects:
 
 - [ebook-fonts](https://github.com/nicoverbruggen/ebook-fonts) by Nico Verbruggen —
   reading fonts tuned for e-ink displays. See the [interactive showcase](https://ebook-fonts.nicoverbruggen.be/)
@@ -44,22 +44,15 @@ Cadmus also ships fonts from [Noto](https://github.com/notofonts/noto-fonts),
 [Google Fonts](https://github.com/googlefonts/google-fonts) for the app interface
 and HTML rendering fallbacks:
 
-| Font            | Used for                                       |
-| --------------- | ---------------------------------------------- |
-| Noto Sans       | Menus, settings, and other app text            |
-| Noto Serif      | Serif text in the app interface                |
-| Source Code Pro | Monospace in the app and code blocks in books  |
-| Varela Round    | On-screen keyboard                             |
-| Cormorant       | Startup and intermission screens               |
-| Parisienne      | Decorative cursive text in EPUB/HTML content   |
-| Delius          | Decorative fantasy text in EPUB/HTML content   |
-
-> [!NOTE]
->
-> - The **font family** menu lists every font family found in Cadmus's packaged
->   fonts and your custom font directory — not only the reading fonts above.
-> - These extra fonts can be selected for reading, but they are not tuned for
->   long-form reading.
+| Font            | Used for                                      |
+| --------------- | --------------------------------------------- |
+| Noto Sans       | Menus, settings, and other app text           |
+| Noto Serif      | Serif text in the app interface               |
+| Source Code Pro | Monospace in the app and code blocks in books |
+| Varela Round    | On-screen keyboard                            |
+| Cormorant       | Startup and intermission screens              |
+| Parisienne      | Decorative cursive text in EPUB/HTML content  |
+| Delius          | Decorative fantasy text in EPUB/HTML content  |
 
 ## Changing the font while reading
 
@@ -70,20 +63,6 @@ and HTML rendering fallbacks:
 The menu shows fonts from Cadmus's packaged collection and any fonts in your
 custom font directory (see below). When you select a font, Cadmus resolves the
 family name using the order described in [How Cadmus resolves fonts](#how-cadmus-resolves-fonts).
-
-## Which books support font changes
-
-- **EPUB and HTML** — Cadmus reflows the text and applies your chosen font to
-  the default body text.
-- **PDF and DjVu** — pages use their embedded layout and fonts. Changing the
-  font setting has no effect.
-- **MOBI, FB2, plain text, comic archives, and similar formats** — Cadmus
-  renders these through [MuPDF](https://mupdf.com/), so font changes have no
-  effect either.
-
-> [!IMPORTANT]
-> Font selection only affects reflowable EPUB and HTML books. It does not change
-> how PDFs, DjVu files, or other fixed-layout formats look.
 
 ## How Cadmus resolves fonts
 
@@ -116,8 +95,6 @@ directory (by default at the root of your Kobo device):
 <!-- i18n:skip-end -->
 
 Cadmus scans that directory recursively, so fonts can live in subfolders.
-After copying new files, reopen the **font family** menu or the book to refresh
-the list.
 
 Point Cadmus at your custom directory with [`reader.font-path`](settings/index.md#readerfont-path)
 if you use a different location.

@@ -37,10 +37,10 @@ pub fn install(root: &Path, fonts_dir: &Path) -> Result<()> {
 }
 
 /// Returns `true` when every bundled font source is already present in `fonts_dir`.
-pub fn is_complete(fonts_dir: &Path) -> bool {
+pub fn is_complete(root: &Path, fonts_dir: &Path) -> bool {
     ebook::is_complete(fonts_dir)
         && libertinus::is_complete(fonts_dir)
-        && noto::is_complete(fonts_dir)
+        && noto::is_complete(root, fonts_dir)
         && source_code::is_complete(fonts_dir)
-        && google::is_complete(fonts_dir)
+        && google::is_complete(root, fonts_dir)
 }

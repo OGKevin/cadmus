@@ -2,6 +2,7 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 
+use crate::tasks::download_fonts::util;
 use crate::tasks::util::{fs, github};
 
 const REPO: &str = "adobe-fonts/source-code-pro";
@@ -37,20 +38,23 @@ pub fn install(root: &Path, fonts_dir: &Path) -> Result<()> {
     }
 
     let cache_dir = root.join(format!(".cache/source-code-pro/{SOURCE_CODE_RELEASE}"));
-    let archive = cache_dir.join(VF_ASSET);
+    let archive = util::ensure_cached_release_asset(&cache_dir, VF_ASSET, || {
+        println!("Fetching {VF_ASSET} from {REPO} {SOURCE_CODE_RELEASE}…");
+        github::fetch_release_asset(REPO, SOURCE_CODE_RELEASE, VF_ASSET)
+    })?;
 
-    if !archive.exists() {
-        std::fs::create_dir_all(&cache_dir)
-            .context("failed to create source-code-pro cache dir")?;
-        let asset = github::fetch_release_asset(REPO, SOURCE_CODE_RELEASE, VF_ASSET)?;
-        println!("Downloading {VF_ASSET} from {REPO} {SOURCE_CODE_RELEASE}…");
-        github::download_asset(&asset, &archive)
-            .context("failed to download Source Code VF archive")?;
-    } else {
-        println!("Using cached {VF_ASSET}");
-    }
-
-    fs::extract_zip_entries_flat(&archive, fonts_dir, ZIP_ENTRIES)
-        .context("failed to extract Source Code VF fonts")?;
-    Ok(())
+    util::extract_cached_archive(
+        &archive,
+        || {
+            util::ensure_cached_release_asset(&cache_dir, VF_ASSET, || {
+                println!("Re-fetching {VF_ASSET} from {REPO} {SOURCE_CODE_RELEASE}…");
+                github::fetch_release_asset(REPO, SOURCE_CODE_RELEASE, VF_ASSET)
+            })
+            .map(|_| ())
+        },
+        |archive| {
+            fs::extract_zip_entries_flat(archive, fonts_dir, ZIP_ENTRIES)
+                .context("failed to extract Source Code VF fonts")
+        },
+    )
 }

@@ -221,7 +221,7 @@
       ],
       "datasourceTemplate": "github-releases",
       "depNameTemplate": "alerque/libertinus",
-      "versioningTemplate": "semver"
+      "versioningTemplate": "semver-coerced"
     },
     {
       "customType": "regex",

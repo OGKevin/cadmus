@@ -4,9 +4,8 @@ use anyhow::Result;
 
 use super::super::util;
 
-/// Submodule path; revision is pinned via the parent repository gitlink and
-/// tracked by Renovate's `git-submodules` manager.
-pub const SUBMODULE: &str = "thirdparty/noto-fonts";
+const SUBMODULE: &str = "thirdparty/noto-fonts";
+const MARKER_NAME: &str = "noto-fonts";
 
 const FILES: &[(&str, &str)] = &[
     (
@@ -40,10 +39,10 @@ const FILES: &[(&str, &str)] = &[
     ),
 ];
 
-pub fn is_complete(fonts_dir: &Path) -> bool {
-    FILES.iter().all(|(dest, _)| fonts_dir.join(dest).exists())
+pub(crate) fn is_complete(root: &Path, fonts_dir: &Path) -> bool {
+    util::is_submodule_install_current(root, fonts_dir, SUBMODULE, MARKER_NAME, FILES)
 }
 
-pub fn install(root: &Path, fonts_dir: &Path) -> Result<()> {
-    util::install_from_submodule(root, SUBMODULE, fonts_dir, FILES)
+pub(crate) fn install(root: &Path, fonts_dir: &Path) -> Result<()> {
+    util::install_from_submodule(root, SUBMODULE, fonts_dir, MARKER_NAME, FILES)
 }

@@ -58,7 +58,9 @@
 	path = thirdparty/noto-fonts
 	url = https://github.com/notofonts/noto-fonts
 	branch = v20201206-phase3
+	shallow = true
 [submodule "thirdparty/google-fonts"]
 	path = thirdparty/google-fonts
 	url = https://github.com/google/fonts
 	branch = main
+	shallow = true

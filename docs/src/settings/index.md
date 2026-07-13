@@ -18,7 +18,7 @@ Settings can be changed via **Main Menu → Settings**, which opens the built-in
 <!-- i18n:skip-start -->
 
 ```toml
-{{#include ../../../contrib/Settings-sample.toml}}
+{{ #include ../../../contrib/Settings-sample.toml}}
 ```
 
 <!-- i18n:skip-end -->
@@ -80,7 +80,8 @@ auto-share = false
 
 ✏️
 
-Automatically synchronize the device time via NTP when WiFi connects. This will also set the correct timezone. Uses time.cloudflare.com and ipapi.co.
+Automatically synchronize the device time via NTP when WiFi connects. This will also set the correct timezone. Uses
+time.cloudflare.com and ipapi.co.
 
 <!-- i18n:skip-start -->
 
@@ -98,9 +99,11 @@ Automatically adjust the frontlight warmth and brightness based on the sun's pos
 
 - During the day warmth is at its minimum.
 - Around sunrise and sunset warmth ramps gradually between zero and full.
-- After sunset brightness is reduced to `auto-frontlight-night-brightness` and warmth stays at its maximum until sunrise.
+- After sunset brightness is reduced to `auto-frontlight-night-brightness` and warmth stays at its maximum until
+  sunrise.
 
-Coordinates are auto-detected during each time sync (via ipapi.co) and stored in `auto-frontlight-last-coordinates`. Set `auto-frontlight-manual-coordinates` to override the detected location.
+Coordinates are auto-detected during each time sync (via ipapi.co) and stored in `auto-frontlight-last-coordinates`. Set
+`auto-frontlight-manual-coordinates` to override the detected location.
 
 <!-- i18n:skip-start -->
 
@@ -130,7 +133,8 @@ auto-frontlight-night-brightness = 10.0
 
 ✏️
 
-GPS coordinates `[latitude, longitude]` to use for sun-position calculations instead of the auto-detected location. Takes priority over `auto-frontlight-last-coordinates`.
+GPS coordinates `[latitude, longitude]` to use for sun-position calculations instead of the auto-detected location.
+Takes priority over `auto-frontlight-last-coordinates`.
 
 This setting is optional.
 
@@ -144,7 +148,8 @@ auto-frontlight-manual-coordinates = [51.5074, -0.1278]
 
 ### `auto-frontlight-last-coordinates`
 
-GPS coordinates `[latitude, longitude]` last detected during a time sync. Written automatically — do not edit this by hand; set `auto-frontlight-manual-coordinates` to override the location instead.
+GPS coordinates `[latitude, longitude]` last detected during a time sync. Written automatically — do not edit this by
+hand; set `auto-frontlight-manual-coordinates` to override the location instead.
 
 This setting is optional and managed automatically.
 
@@ -323,7 +328,7 @@ max-font-size = 16.5
 
 <!-- i18n:skip-end -->
 
-See [Fonts](../fonts.md) for recommended reading families, [which books support font changes](../fonts.md#which-books-support-font-changes), and how to change fonts from the reader toolbar.
+See [Fonts](../fonts.md) for more info.
 
 ## Libraries
 
@@ -414,7 +419,8 @@ Setting this to `"calendar:"` also enables the calendar refresh: every 5
 minutes, the device wakes, shows the calendar, and then goes back to sleep
 automatically.
 
-- Possible values: `"logo:"` (built-in logo), `"cover:"` (current book cover), `"calendar:"` (built-in calendar), or a path to a custom image file.
+- Possible values: `"logo:"` (built-in logo), `"cover:"` (current book cover), `"calendar:"` (built-in calendar), or a
+  path to a custom image file.
 
 ### `intermissions.power-off`
 
@@ -437,9 +443,11 @@ Image displayed when entering USB sharing mode.
 These settings control how Cadmus imports documents from your device.
 They are available in the **Settings → Import** menu.
 
-Import scanning happens automatically on startup using incremental file checking — files are only re-scanned if their modification time or size has changed since the last import.
+Import scanning happens automatically on startup using incremental file checking — files are only re-scanned if their
+modification time or size has changed since the last import.
 
-To trigger a full re-scan of all files regardless of cached values, use the **Force Full Import** action button in the Import settings category.
+To trigger a full re-scan of all files regardless of cached values, use the **Force Full Import** action button in the
+Import settings category.
 
 ### `import.sync-metadata`
 
@@ -649,12 +657,14 @@ enable-dbus-log = false
 
 ## Settings Retention
 
-Cadmus stores each version's settings in a separate file in the `Settings/` directory (for example, `Settings-v1.2.3.toml`).
+Cadmus stores each version's settings in a separate file in the `Settings/` directory (for example,
+`Settings-v1.2.3.toml`).
 This ensures backward and forward compatibility when you upgrade.
 
 ### `settings-retention`
 
-Number of recent version settings files to keep. Only the most recent N version files are kept. When a new version is saved, older versions beyond this limit are deleted automatically.
+Number of recent version settings files to keep. Only the most recent N version files are kept. When a new version is
+saved, older versions beyond this limit are deleted automatically.
 
 - Default: `3`
 - Set to `0` to keep all version files

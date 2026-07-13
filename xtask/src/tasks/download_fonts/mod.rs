@@ -34,7 +34,7 @@ pub fn run() -> Result<()> {
     let root = workspace::root()?;
     let fonts_dir = root.join("fonts");
 
-    if all_fonts_present(&fonts_dir) {
+    if all_fonts_present(&root, &fonts_dir) {
         println!("All font files already present in fonts/, skipping download.");
         return Ok(());
     }
@@ -43,7 +43,7 @@ pub fn run() -> Result<()> {
 
     font::install(&root, &fonts_dir)?;
 
-    if !all_fonts_present(&fonts_dir) {
+    if !all_fonts_present(&root, &fonts_dir) {
         bail!("fonts/ is still incomplete after download-fonts");
     }
 
@@ -54,6 +54,6 @@ pub fn run() -> Result<()> {
     Ok(())
 }
 
-fn all_fonts_present(fonts_dir: &Path) -> bool {
-    fonts_dir.exists() && font::is_complete(fonts_dir)
+fn all_fonts_present(root: &Path, fonts_dir: &Path) -> bool {
+    fonts_dir.exists() && font::is_complete(root, fonts_dir)
 }

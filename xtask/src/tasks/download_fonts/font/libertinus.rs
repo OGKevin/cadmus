@@ -2,6 +2,7 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 
+use crate::tasks::download_fonts::util;
 use crate::tasks::util::{fs, github};
 
 const REPO: &str = "alerque/libertinus";
@@ -27,29 +28,39 @@ pub fn is_complete(fonts_dir: &Path) -> bool {
 }
 
 pub fn install(root: &Path, fonts_dir: &Path) -> Result<()> {
+    if is_complete(fonts_dir) {
+        return Ok(());
+    }
+
     let cache_dir = root.join(format!(".cache/libertinus/{LIBERTINUS_VERSION}"));
     let archive_version = LIBERTINUS_VERSION
         .strip_prefix('v')
         .unwrap_or(LIBERTINUS_VERSION);
     let asset_name = format!("Libertinus-{archive_version}.zip");
-    let archive = cache_dir.join(&asset_name);
 
-    if !archive.exists() {
-        std::fs::create_dir_all(&cache_dir).context("failed to create libertinus cache dir")?;
-        let asset = github::fetch_release_asset(REPO, LIBERTINUS_VERSION, &asset_name)?;
-        println!("Downloading {asset_name} from {REPO} {LIBERTINUS_VERSION}…");
-        github::download_asset(&asset, &archive)
-            .context("failed to download Libertinus archive")?;
-    } else {
-        println!("Using cached {asset_name}");
-    }
+    let archive = util::ensure_cached_release_asset(&cache_dir, &asset_name, || {
+        println!("Fetching {asset_name} from {REPO} {LIBERTINUS_VERSION}…");
+        github::fetch_release_asset(REPO, LIBERTINUS_VERSION, &asset_name)
+    })?;
 
     let otf_prefix = format!("Libertinus-{archive_version}/static/OTF/");
     let entries: Vec<(String, String)> = FILES
         .iter()
         .map(|name| (format!("{otf_prefix}{name}"), (*name).to_string()))
         .collect();
-    fs::extract_zip_entries_flat(&archive, fonts_dir, &entries)
-        .context("failed to extract Libertinus fonts")?;
-    Ok(())
+
+    util::extract_cached_archive(
+        &archive,
+        || {
+            util::ensure_cached_release_asset(&cache_dir, &asset_name, || {
+                println!("Re-fetching {asset_name} from {REPO} {LIBERTINUS_VERSION}…");
+                github::fetch_release_asset(REPO, LIBERTINUS_VERSION, &asset_name)
+            })
+            .map(|_| ())
+        },
+        |archive| {
+            fs::extract_zip_entries_flat(archive, fonts_dir, &entries)
+                .context("failed to extract Libertinus fonts")
+        },
+    )
 }

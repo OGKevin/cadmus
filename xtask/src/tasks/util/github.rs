@@ -15,7 +15,7 @@
 //! avoids 403 rate-limit errors in GitHub Actions where the token is always
 //! available.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use serde::Deserialize;
@@ -24,7 +24,7 @@ use serde::Deserialize;
 /// when available, an `Authorization: Bearer` token from the environment.
 ///
 /// Checks `GH_TOKEN` first, then `GITHUB_TOKEN`.
-pub fn client() -> Result<reqwest::blocking::Client> {
+pub(crate) fn client() -> Result<reqwest::blocking::Client> {
     let mut builder = reqwest::blocking::Client::builder().user_agent("cargo-xtask/cadmus");
 
     if let Some(token) = std::env::var("GH_TOKEN")
@@ -157,6 +157,12 @@ pub fn download_asset(asset: &Asset, dest: &Path) -> Result<()> {
             .with_context(|| format!("failed to create parent directory for {}", dest.display()))?;
     }
 
+    let temp = {
+        let mut path = dest.as_os_str().to_os_string();
+        path.push(".part");
+        PathBuf::from(path)
+    };
+
     let bytes = client()?
         .get(&asset.browser_download_url)
         .send()
@@ -176,8 +182,15 @@ pub fn download_asset(asset: &Asset, dest: &Path) -> Result<()> {
             )
         })?;
 
-    std::fs::write(dest, &bytes)
-        .with_context(|| format!("failed to write downloaded file to {}", dest.display()))
+    std::fs::write(&temp, &bytes)
+        .with_context(|| format!("failed to write downloaded file to {}", temp.display()))?;
+    std::fs::rename(&temp, dest).with_context(|| {
+        format!(
+            "failed to move downloaded file from {} to {}",
+            temp.display(),
+            dest.display()
+        )
+    })
 }
 
 fn fetch_release_from_url(url: &str) -> Result<Release> {
