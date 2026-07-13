@@ -12,6 +12,22 @@ on:
   push:
     branches: [main, master, "release/*"]
   pull_request:
+    paths:
+      - "**/*.rs"
+      - crates/core/i18n/**
+      - "Cargo.*"
+      - "**/Cargo.*"
+      - ".github/workflows/cargo.yml"
+      - ".github/actions/apt/**"
+      - ".github/actions/build-kobo/**"
+      - ".github/actions/build-docs-epub/**"
+      - ".github/actions/cargo-cache/**"
+      - ".github/actions/clone-needed-cargo-submodules/**"
+      - ".github/actions/install-doc-tools/**"
+      - "build-scripts/**"
+      - ".gitmodules"
+      - "mupdf_wrapper/**"
+      - "thirdparty/**"
 
 concurrency:
   group: "cargo-${{ github.event_name }}-${{ github.event.number || github.ref }}"
@@ -43,6 +59,7 @@ jobs:
               - '.github/actions/build-kobo/**'
               - '.github/actions/build-docs-epub/**'
               - '.github/actions/cargo-cache/**'
+              - '.github/actions/clone-needed-cargo-submodules/**'
               - '.github/actions/install-doc-tools/**'
               - 'build-scripts/**'
               - '.gitmodules'
@@ -59,6 +76,7 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+      - uses: ./.github/actions/clone-needed-cargo-submodules
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
         id: rust-toolchain
         with:
@@ -83,6 +101,7 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+      - uses: ./.github/actions/clone-needed-cargo-submodules
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
         id: rust-toolchain
       - name: Restore shared cargo cache
@@ -124,6 +143,7 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+      - uses: ./.github/actions/clone-needed-cargo-submodules
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
         id: rust-toolchain
         with:
@@ -243,6 +263,7 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+      - uses: ./.github/actions/clone-needed-cargo-submodules
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
         id: rust-toolchain
         with:
@@ -288,6 +309,7 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+      - uses: ./.github/actions/clone-needed-cargo-submodules
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
         id: rust-toolchain
         with:
@@ -334,6 +356,7 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
           persist-credentials: false
+      - uses: ./.github/actions/clone-needed-cargo-submodules
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
         id: rust-toolchain
         with:

@@ -54,3 +54,6 @@
 	path = thirdparty/mdbook-i18n-helpers
 	url = https://github.com/OGKevin/mdbook-i18n-helpers.git
 	branch = ogkevin/push/qsonrqyvotux
+[submodule "thirdparty/html5ever"]
+	path = thirdparty/html5ever
+	url = https://github.com/OGKevin/html5ever

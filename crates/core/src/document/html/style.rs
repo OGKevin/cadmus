@@ -227,12 +227,12 @@ fn expand_and_insert(name: &str, value: &str, props: &mut PropertyMap) {
 #[cfg(test)]
 mod tests {
     use super::super::css::CssParser;
-    use super::super::xml::XmlParser;
+    use super::super::xml::parse_html5;
     use super::specified_values;
 
     #[test]
     fn comma_selector_matches_ol() {
-        let xml = XmlParser::new("<ol><li>item</li></ol>").parse();
+        let xml = parse_html5("<ol><li>item</li></ol>");
         let mut css = CssParser::new("ul, ol { margin-left: 1.5em }").parse();
         css.sort();
         let ol = xml.root().find("ol").unwrap();
@@ -246,8 +246,8 @@ mod tests {
 
     #[test]
     fn simple_style() {
-        let xml1 = XmlParser::new("<a class='c x y' style='c: 7'/>").parse();
-        let xml2 = XmlParser::new("<a id='e' class='x y'/>").parse();
+        let xml1 = parse_html5("<a class='c x y' style='c: 7'></a>");
+        let xml2 = parse_html5("<a id='e' class='x y'></a>");
         let mut css = CssParser::new(
             "a { b: 23 }\
                                       .c.x.y { b: 6; c: 3 }\

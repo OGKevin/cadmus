@@ -24,6 +24,10 @@ sdl2 = "0.38.0"
 [workspace.lints]
 rustdoc.private_intra_doc_links = "allow"
 
+[patch.crates-io]
+html5ever  = { path = "thirdparty/html5ever/html5ever" }
+markup5ever = { path = "thirdparty/html5ever/markup5ever" }
+
 [profile.release-minsized]
 inherits = "release"
 panic = "abort"

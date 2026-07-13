@@ -14,11 +14,22 @@ on:
       - website/**
       - crates/**/*.rs
       - .github/actions/install-doc-tools/**
+      - .github/actions/clone-needed-cargo-submodules/**
       - .github/workflows/cadmus-docs.yml
       - package.json
       - package-lock.json
   pull_request:
     types: [opened, synchronize, reopened]
+    paths:
+      - docs/**
+      - docs-portal/**
+      - website/**
+      - crates/**/*.rs
+      - .github/actions/install-doc-tools/**
+      - .github/actions/clone-needed-cargo-submodules/**
+      - .github/workflows/cadmus-docs.yml
+      - package.json
+      - package-lock.json
   workflow_dispatch:
 
 permissions:

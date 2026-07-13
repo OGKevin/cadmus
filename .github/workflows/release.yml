@@ -13,6 +13,11 @@ on:
   pull_request:
     paths:
       - .github/workflows/release.yml
+      - .github/actions/build-docs-epub/**
+      - .github/actions/build-kobo/**
+      - .github/actions/cargo-cache/**
+      - .github/actions/clone-needed-cargo-submodules/**
+      - .github/actions/install-doc-tools/**
 
 permissions:
   contents: write
