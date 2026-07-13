@@ -23,7 +23,7 @@ runs:
       shell: bash
       run: |
         {
-          echo "MDBOOK_VERSION=0.5.3"
+          echo "MDBOOK_VERSION=0.5.4"
           echo "MDBOOK_EPUB_REV=21a1c8134134201a2d555313447c96e56e2a8996"
           echo "MDBOOK_MERMAID_VERSION=0.17.0"
           echo "MDBOOK_I18N_HELPERS_REV=$(git rev-parse HEAD:thirdparty/mdbook-i18n-helpers)"
