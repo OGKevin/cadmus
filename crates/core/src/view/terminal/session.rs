@@ -24,6 +24,11 @@ use tokio::io::unix::AsyncFd;
 
 const ICON_NAME: &str = "enclosed_menu";
 
+#[inline]
+fn scale_font_size(font_size: f32) -> u32 {
+    (font_size * 64.0) as u32
+}
+
 pub struct Terminal {
     id: Id,
     rect: Rectangle,
@@ -35,6 +40,8 @@ pub struct Terminal {
     /// main loop renders into this pixmap before blitting it to the framebuffer.
     pixmap: Pixmap,
     reader_job: Option<Job>,
+    keyboard_index: usize,
+    font_size_scaled: u32,
 }
 
 impl Terminal {
@@ -49,7 +56,7 @@ impl Terminal {
         let mut children = Vec::new();
         let dpi = context.device.dpi();
         let install_dir = context.device.install_dir();
-        let font_size_scaled = (font_size * 64.0) as u32;
+        let font_size_scaled = scale_font_size(font_size);
 
         // Setup menu icon in top right corner
         let small_height = scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32;
@@ -75,13 +82,16 @@ impl Terminal {
         .corners(Some(CornerSpec::Uniform(border_radius)));
         children.push(Box::new(icon) as Box<dyn View>);
 
+        // Add toggleable terminal keyboard with Terminal layout (no bottom bar)
         let mut keyboard = ToggleableKeyboard::new(rect, false)
             .with_layout(Layout::Terminal)
             .with_bottom_bar(false);
         let keyboard_height = keyboard.keyboard_height(context);
         keyboard.set_visible(true, tx, rq, context);
         children.push(Box::new(keyboard) as Box<dyn View>);
+        let keyboard_index = children.len() - 1;
 
+        // Grid size for the current layout (keyboard visible)
         let available_width = rect.width() as i32;
         let available_height = rect.height() as i32 - keyboard_height;
 
@@ -93,13 +103,23 @@ impl Terminal {
             dpi,
         );
 
+        // Max grid size (full screen without keyboard); the renderer clamps
+        // against the live screen size so it survives keyboard toggles.
+        let (max_rows, max_cols) = TerminalRenderer::calculate_grid_for_font_size(
+            rect.width() as i32,
+            rect.height() as i32,
+            font_size_scaled,
+            &mut context.fonts,
+            dpi,
+        );
+
         let pty = Pty::spawn(Some("/bin/sh"), rows, cols)?;
         let reader_fd = pty.take_reader_fd()?;
         let emulator = Arc::new(StdMutex::new(Emulator::new(rows, cols)));
         let renderer = TerminalRenderer::new_with_font_size(
             &mut context.fonts,
-            rows,
-            cols,
+            max_rows,
+            max_cols,
             font_size_scaled,
             dpi,
         );
@@ -117,7 +137,47 @@ impl Terminal {
             renderer,
             pixmap,
             reader_job: Some(reader_job),
+            keyboard_index,
+            font_size_scaled,
         })
+    }
+
+    fn toggle_keyboard(&mut self, hub: &Hub, rq: &mut RenderQueue, context: &mut AppContext) {
+        let dpi = context.device.dpi();
+        if let Some(keyboard) = self.children.get_mut(self.keyboard_index)
+            && let Some(kb) = keyboard.downcast_mut::<ToggleableKeyboard>()
+        {
+            kb.toggle(hub, rq, context);
+
+            let keyboard_height = if kb.is_visible() {
+                kb.keyboard_height(context)
+            } else {
+                0
+            };
+
+            let available_width = self.rect.width() as i32;
+            let available_height = self.rect.height() as i32 - keyboard_height;
+
+            let (rows, cols) = TerminalRenderer::calculate_grid_for_font_size(
+                available_width,
+                available_height,
+                self.font_size_scaled,
+                &mut context.fonts,
+                dpi,
+            );
+
+            if let Err(e) = self.pty.resize(rows, cols) {
+                tracing::warn!(error = %e, "terminal PTY resize failed");
+            }
+
+            if let Ok(mut emu) = self.emulator.lock() {
+                emu.resize(rows, cols);
+            }
+
+            // Force a full redraw of every cell against the new grid.
+            self.renderer.clear_screen_state();
+            rq.add(RenderData::new(self.id, self.rect, UpdateMode::Full));
+        }
     }
 
     fn toggle_title_menu(
@@ -142,7 +202,10 @@ impl Terminal {
                 return;
             }
 
-            let entries = vec![EntryKind::Command("Quit".to_string(), EntryId::Quit)];
+            let entries = vec![
+                EntryKind::Command("Toggle Keyboard".to_string(), EntryId::ToggleKeyboard),
+                EntryKind::Command("Quit".to_string(), EntryId::Quit),
+            ];
             let menu = Menu::new(
                 rect,
                 ViewId::TitleMenu,
@@ -277,6 +340,10 @@ impl View for Terminal {
             }
             Event::ToggleNear(ViewId::TitleMenu, rect) => {
                 self.toggle_title_menu(rect, None, rq, context);
+                true
+            }
+            Event::Select(EntryId::ToggleKeyboard) => {
+                self.toggle_keyboard(hub, rq, context);
                 true
             }
             Event::Select(EntryId::Quit) => {
