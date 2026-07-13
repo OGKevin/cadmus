@@ -56,6 +56,22 @@ Path-filter and validate jobs only need a read-only checkout. Prefer:
 Skip this on jobs that use reviewdog or other tools that rely on persisted
 credentials for PR comments.
 
+## Action pinning
+
+Pin every third-party action to a full commit SHA with a version comment:
+
+```yaml
+uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+```
+
+Renovate updates both the SHA and the comment. Bare SHAs without a comment are
+not tracked. Non-semver refs use the ref name as the comment (`# stable`,
+`# cargo-llvm-cov`, `# latest`).
+
+Do not add bare semver tags (`@v6`) or bare SHAs. Renovate's
+`helpers:pinGitHubActionDigests` preset converts remaining tag pins and keeps
+digest pins current.
+
 ## Formatting
 
 Lint with **rumdl** (via `treefmt` locally, `docs-lint.yml` in CI). See

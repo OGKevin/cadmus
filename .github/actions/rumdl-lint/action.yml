@@ -33,16 +33,16 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: reviewdog/action-setup@d8a7baabd7f3e8544ee4dbde3ee41d0011c3a93f
+    - uses: reviewdog/action-setup@d8a7baabd7f3e8544ee4dbde3ee41d0011c3a93f # v1.5.0
 
     - name: Cache rumdl
       id: rumdl-cache
-      uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+      uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
       with:
         path: ~/.cargo/bin/rumdl
         key: ${{ runner.os }}-rumdl-${{ inputs.rumdl_version }}
 
-    - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
+    - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
       if: steps.rumdl-cache.outputs.cache-hit != 'true'
 
     - name: Install rumdl

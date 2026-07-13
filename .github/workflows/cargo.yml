@@ -26,10 +26,10 @@ jobs:
     outputs:
       cargo: ${{ steps.filter.outputs.cargo }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
-      - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590
+      - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3.0.3
         id: filter
         with:
           filters: |
@@ -56,10 +56,10 @@ jobs:
       contents: read
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
         id: rust-toolchain
         with:
           components: rustfmt
@@ -80,10 +80,10 @@ jobs:
       matrix: ${{ steps.matrix.outputs.matrix }}
       test-matrix: ${{ steps.matrix.outputs.test-matrix }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
         id: rust-toolchain
       - name: Restore shared cargo cache
         uses: ./.github/actions/cargo-cache
@@ -100,10 +100,10 @@ jobs:
       contents: read
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
         id: rust-toolchain
       - name: Restore shared cargo cache
         uses: ./.github/actions/cargo-cache
@@ -121,10 +121,10 @@ jobs:
       contents: read
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
         id: rust-toolchain
         with:
           targets: arm-unknown-linux-gnueabihf
@@ -143,7 +143,7 @@ jobs:
         uses: ./.github/actions/apt
       - name: Cache Linaro toolchain
         id: cache-linaro
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ~/linaro-toolchain
           key: linaro-gcc-4.9.4-2017.01
@@ -165,7 +165,7 @@ jobs:
           mode: save
 
       - name: Cache cargo-nextest
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         id: cargo-nextest-cache
         with:
           path: ~/.cargo/bin/cargo-nextest
@@ -176,7 +176,7 @@ jobs:
         run: cargo install cargo-nextest --version "$NEXTEST_VERSION" --locked --force
 
       - name: Cache cargo-llvm-cov
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         id: cargo-llvm-cov-cache
         with:
           path: ~/.cargo/bin/cargo-llvm-cov
@@ -184,7 +184,7 @@ jobs:
 
       - name: Install cargo-llvm-cov
         if: steps.cargo-llvm-cov-cache.outputs.cache-hit != 'true'
-        uses: taiki-e/install-action@cargo-llvm-cov
+        uses: taiki-e/install-action@9458fed45835344deb5e69e06e831be047c96abf # cargo-llvm-cov
 
       - name: Download documentation EPUB
         if: steps.cache.outputs.cache-hit != 'true'
@@ -240,10 +240,10 @@ jobs:
     name: clippy (${{ matrix.label }}, ${{ matrix.os }})
 
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
         id: rust-toolchain
         with:
           components: clippy
@@ -285,10 +285,10 @@ jobs:
     name: clippy-report
 
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
         id: rust-toolchain
         with:
           components: clippy
@@ -329,12 +329,12 @@ jobs:
     name: test (${{ matrix.label }}, ${{ matrix.os }})
 
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
           fetch-tags: true
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
         id: rust-toolchain
         with:
           components: llvm-tools
@@ -350,7 +350,7 @@ jobs:
         uses: ./.github/actions/apt
       - name: Cache Homebrew packages (macOS)
         if: runner.os == 'macOS'
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: |
             ~/Library/Caches/Homebrew/downloads
@@ -367,7 +367,7 @@ jobs:
           cachekey: ${{ steps.rust-toolchain.outputs.cachekey }}
 
       - name: Cache cargo-nextest
-        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         id: cargo-nextest-cache
         with:
           path: ~/.cargo/bin/cargo-nextest
@@ -378,7 +378,7 @@ jobs:
         run: cargo install cargo-nextest --version "$NEXTEST_VERSION" --locked --force
 
       - name: Restore cargo-llvm-cov
-        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         id: cargo-llvm-cov-cache
         with:
           path: ~/.cargo/bin/cargo-llvm-cov
@@ -386,7 +386,7 @@ jobs:
 
       - name: Install cargo-llvm-cov
         if: steps.cargo-llvm-cov-cache.outputs.cache-hit != 'true'
-        uses: taiki-e/install-action@cargo-llvm-cov
+        uses: taiki-e/install-action@9458fed45835344deb5e69e06e831be047c96abf # cargo-llvm-cov
 
       - name: Run cargo test with coverage (${{ matrix.label }})
         id: test
@@ -462,13 +462,13 @@ jobs:
       contents: read
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
           persist-credentials: false
 
       - name: Notify Codecov of non-coverage changes
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           run_command: empty-upload
@@ -485,7 +485,7 @@ jobs:
       attestations: write
 
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
           fetch-tags: true
@@ -493,7 +493,7 @@ jobs:
 
       - *set-build-metadata
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
         id: rust-toolchain
         with:
           targets: arm-unknown-linux-gnueabihf
@@ -557,7 +557,7 @@ jobs:
     permissions: *build-permissions
 
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
           fetch-tags: true
@@ -565,7 +565,7 @@ jobs:
 
       - *set-build-metadata
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
         id: rust-toolchain
         with:
           targets: arm-unknown-linux-gnueabihf

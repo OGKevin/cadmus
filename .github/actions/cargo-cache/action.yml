@@ -38,7 +38,7 @@ runs:
     - name: Restore shared cargo cache
       if: inputs.mode == 'restore'
       id: restore
-      uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae
+      uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
       with:
         path: |
           ~/.cargo/bin/
@@ -54,7 +54,7 @@ runs:
     - name: Save shared cargo cache
       if: inputs.mode == 'save'
       id: save
-      uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+      uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
       with:
         path: |
           ~/.cargo/bin/
