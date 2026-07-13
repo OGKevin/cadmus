@@ -81,17 +81,19 @@ pub fn ensure_native_artifacts(root: &Path) -> Result<NativeArtifacts> {
             );
         }
 
-        build_libwebp_native(root)?;
+        let build_deps_root = build_root(root);
+        let libwebp_dir = build_deps_root.join("libwebp");
 
-        if !mupdf_build.exists() {
-            utils::cp_r(&mupdf_src, &mupdf_build).context("failed to copy mupdf source")?;
+        if !markers::is_built(root, &libwebp_dir, "thirdparty/libwebp") {
+            remove_build_dir(&libwebp_dir)?;
+            build_libwebp_native(root)?;
         }
 
-        mupdf::apply_webp_patches_if_needed(&mupdf_build, root)
-            .context("failed to apply MuPDF WebP patches")?;
-
-        let mupdf_a = build_root(root).join("mupdf/build/release/libmupdf.a");
-        if !mupdf_a.exists() {
+        if !markers::is_built(root, &mupdf_build, "thirdparty/mupdf") {
+            remove_build_dir(&mupdf_build)?;
+            utils::cp_r(&mupdf_src, &mupdf_build).context("failed to copy mupdf source")?;
+            mupdf::apply_webp_patches_if_needed(&mupdf_build, root)
+                .context("failed to apply MuPDF WebP patches")?;
             build_mupdf_native(root).context("failed to build MuPDF")?;
         }
     }
@@ -112,19 +114,37 @@ pub fn ensure_native_artifacts(root: &Path) -> Result<NativeArtifacts> {
 /// used for the last successful build.  If the submodule pointer has
 /// moved (e.g. after a `git submodule update`), the cache is stale and
 /// a full rebuild is triggered.
-fn native_cache_complete(root: &Path) -> bool {
-    let build_root = build_root(root);
-    let libwebp_dir = build_root.join("libwebp");
-    let mupdf_dir = build_root.join("mupdf");
+pub(crate) fn native_cache_complete(root: &Path) -> bool {
+    native_cache_complete_at(root, root)
+}
+
+pub(crate) fn native_cache_complete_at(git_root: &Path, artifact_root: &Path) -> bool {
+    let deps_root = build_root(artifact_root);
+    let libwebp_dir = deps_root.join("libwebp");
+    let libwebp_libs_dir = libwebp_dir.join("src/.libs");
+    let libwebp_a = libwebp_libs_dir.join("libwebp.a");
+    let libwebp_demux_libs_dir = libwebp_dir.join("src/demux/.libs");
+    let mupdf_dir = deps_root.join("mupdf");
     let mupdf_a = mupdf_dir.join("build/release/libmupdf.a");
     let mupdf_third_a = mupdf_dir.join("build/release/libmupdf-third.a");
     let mupdf_include = mupdf_dir.join("include");
 
-    markers::is_built(root, &libwebp_dir, "thirdparty/libwebp")
-        && markers::is_built(root, &mupdf_dir, "thirdparty/mupdf")
+    markers::is_built(git_root, &libwebp_dir, "thirdparty/libwebp")
+        && libwebp_a.exists()
+        && libwebp_libs_dir.is_dir()
+        && libwebp_demux_libs_dir.is_dir()
+        && markers::is_built(git_root, &mupdf_dir, "thirdparty/mupdf")
         && mupdf_a.exists()
         && mupdf_third_a.exists()
         && mupdf_include.is_dir()
+}
+
+fn remove_build_dir(dir: &Path) -> Result<()> {
+    if dir.exists() {
+        std::fs::remove_dir_all(dir)
+            .with_context(|| format!("failed to remove build directory {}", dir.display()))?;
+    }
+    Ok(())
 }
 
 /// Build libwebp from source for native development using the host
@@ -500,6 +520,96 @@ fn write_empty_archive(path: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const FAKE_SHA: &str = "0000000000000000000000000000000000000000";
+
+    fn workspace_root() -> &'static Path {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+    }
+
+    fn artifact_tempdir() -> tempfile::TempDir {
+        tempfile::Builder::new()
+            .prefix("native-cache-test-")
+            .tempdir()
+            .unwrap()
+    }
+
+    fn native_mupdf_dirs(artifact_root: &Path) -> (PathBuf, PathBuf) {
+        let mupdf_dir = build_root(artifact_root).join("mupdf");
+        let release = mupdf_dir.join("build/release");
+        (mupdf_dir, release)
+    }
+
+    struct NativeMupdfFixture {
+        mupdf_dir: PathBuf,
+    }
+
+    impl NativeMupdfFixture {
+        fn new(artifact_root: &Path) -> Self {
+            let (mupdf_dir, release) = native_mupdf_dirs(artifact_root);
+            std::fs::create_dir_all(&release).unwrap();
+            std::fs::create_dir_all(mupdf_dir.join("include")).unwrap();
+            std::fs::write(release.join("libmupdf.a"), b"").unwrap();
+            std::fs::write(release.join("libmupdf-third.a"), b"").unwrap();
+            Self { mupdf_dir }
+        }
+    }
+
+    #[test]
+    fn native_cache_complete_false_when_marker_stale_but_libmupdf_a_exists() {
+        let git_root = workspace_root();
+        let artifact_root = artifact_tempdir();
+        let fixture = NativeMupdfFixture::new(artifact_root.path());
+        let libwebp_dir = build_root(artifact_root.path()).join("libwebp");
+        let libwebp_libs_dir = libwebp_dir.join("src/.libs");
+        let libwebp_demux_libs_dir = libwebp_dir.join("src/demux/.libs");
+        std::fs::create_dir_all(&libwebp_libs_dir).unwrap();
+        std::fs::create_dir_all(&libwebp_demux_libs_dir).unwrap();
+        std::fs::write(libwebp_libs_dir.join("libwebp.a"), b"").unwrap();
+        markers::mark_built(git_root, &libwebp_dir, "libwebp", "thirdparty/libwebp").unwrap();
+        std::fs::write(markers::built_marker_path(&fixture.mupdf_dir), FAKE_SHA).unwrap();
+
+        assert!(!native_cache_complete_at(git_root, artifact_root.path()));
+    }
+
+    #[test]
+    fn native_cache_complete_false_when_artifacts_missing() {
+        let git_root = workspace_root();
+        let artifact_root = artifact_tempdir();
+        let fixture = NativeMupdfFixture::new(artifact_root.path());
+        let libwebp_dir = build_root(artifact_root.path()).join("libwebp");
+        let libwebp_libs_dir = libwebp_dir.join("src/.libs");
+        let libwebp_demux_libs_dir = libwebp_dir.join("src/demux/.libs");
+        std::fs::create_dir_all(&libwebp_libs_dir).unwrap();
+        std::fs::create_dir_all(&libwebp_demux_libs_dir).unwrap();
+        std::fs::write(libwebp_libs_dir.join("libwebp.a"), b"").unwrap();
+        markers::mark_built(git_root, &libwebp_dir, "libwebp", "thirdparty/libwebp").unwrap();
+        markers::mark_built(git_root, &fixture.mupdf_dir, "mupdf", "thirdparty/mupdf").unwrap();
+        std::fs::remove_file(fixture.mupdf_dir.join("build/release/libmupdf.a")).unwrap();
+
+        assert!(!native_cache_complete_at(git_root, artifact_root.path()));
+    }
+
+    #[test]
+    fn native_cache_complete_true_when_fresh() {
+        let git_root = workspace_root();
+        let artifact_root = artifact_tempdir();
+        let fixture = NativeMupdfFixture::new(artifact_root.path());
+        let libwebp_dir = build_root(artifact_root.path()).join("libwebp");
+        let libwebp_libs_dir = libwebp_dir.join("src/.libs");
+        let libwebp_demux_libs_dir = libwebp_dir.join("src/demux/.libs");
+        std::fs::create_dir_all(&libwebp_libs_dir).unwrap();
+        std::fs::create_dir_all(&libwebp_demux_libs_dir).unwrap();
+        std::fs::write(libwebp_libs_dir.join("libwebp.a"), b"").unwrap();
+        markers::mark_built(git_root, &libwebp_dir, "libwebp", "thirdparty/libwebp").unwrap();
+        markers::mark_built(git_root, &fixture.mupdf_dir, "mupdf", "thirdparty/mupdf").unwrap();
+
+        assert!(native_cache_complete_at(git_root, artifact_root.path()));
+    }
 
     #[test]
     fn read_mupdf_version_parses_define() {

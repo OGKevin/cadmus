@@ -163,26 +163,30 @@ pub fn ensure_kobo_artifacts(root: &Path) -> Result<()> {
 /// * every per-library `.built` marker under
 ///   `target/cadmus-build-deps/<TARGET>/` matches the current submodule
 ///   gitlink SHA.
-fn kobo_artifacts_present(root: &Path) -> bool {
-    let libs_dir = root.join("libs");
+pub(crate) fn kobo_artifacts_present(root: &Path) -> bool {
+    kobo_artifacts_present_at(root, root)
+}
+
+pub(crate) fn kobo_artifacts_present_at(git_root: &Path, artifact_root: &Path) -> bool {
+    let libs_dir = artifact_root.join("libs");
     if !libs_dir.exists() {
         return false;
     }
     if !SONAMES.iter().all(|lib| libs_dir.join(lib).exists()) {
         return false;
     }
-    if !root
+    if !artifact_root
         .join("target/mupdf_wrapper/Kobo/libmupdf_wrapper.a")
         .exists()
     {
         return false;
     }
 
-    let kobo_build_root = build_root(root);
+    let kobo_build_root = build_root(artifact_root);
     versions::LIBRARY_NAMES.iter().all(|name| {
         let build_dir = kobo_build_root.join(name);
         let submodule_path = format!("thirdparty/{name}");
-        markers::is_built(root, &build_dir, &submodule_path)
+        markers::is_built(git_root, &build_dir, &submodule_path)
     })
 }
 
@@ -272,6 +276,79 @@ fn find_versioned_soname(libs_dir: &Path, lib: &str) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const FAKE_SHA: &str = "0000000000000000000000000000000000000000";
+
+    fn workspace_root() -> &'static Path {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+    }
+
+    fn artifact_tempdir() -> tempfile::TempDir {
+        tempfile::Builder::new()
+            .prefix("kobo-cache-test-")
+            .tempdir()
+            .unwrap()
+    }
+
+    struct KoboCacheFixture;
+
+    impl KoboCacheFixture {
+        fn with_fresh_markers(git_root: &Path, artifact_root: &Path) -> Self {
+            let kobo_build_root = build_root(artifact_root);
+            for name in versions::LIBRARY_NAMES {
+                let build_dir = kobo_build_root.join(name);
+                std::fs::create_dir_all(&build_dir).unwrap();
+                markers::mark_built(git_root, &build_dir, name, &format!("thirdparty/{name}"))
+                    .unwrap();
+            }
+
+            let libs_dir = artifact_root.join("libs");
+            std::fs::create_dir_all(&libs_dir).unwrap();
+            for soname in SONAMES {
+                std::fs::write(libs_dir.join(soname), b"").unwrap();
+            }
+
+            let wrapper_path = artifact_root.join("target/mupdf_wrapper/Kobo/libmupdf_wrapper.a");
+            std::fs::create_dir_all(wrapper_path.parent().unwrap()).unwrap();
+            std::fs::write(&wrapper_path, b"").unwrap();
+
+            Self
+        }
+    }
+
+    #[test]
+    fn kobo_artifacts_present_false_when_marker_stale() {
+        let git_root = workspace_root();
+        let artifact_root = artifact_tempdir();
+        let _fixture = KoboCacheFixture::with_fresh_markers(git_root, artifact_root.path());
+        let mupdf_dir = build_root(artifact_root.path()).join("mupdf");
+        std::fs::write(markers::built_marker_path(&mupdf_dir), FAKE_SHA).unwrap();
+
+        assert!(!kobo_artifacts_present_at(git_root, artifact_root.path()));
+    }
+
+    #[test]
+    fn kobo_artifacts_present_false_when_lib_missing() {
+        let git_root = workspace_root();
+        let artifact_root = artifact_tempdir();
+        let _fixture = KoboCacheFixture::with_fresh_markers(git_root, artifact_root.path());
+        std::fs::remove_file(artifact_root.path().join("libs/libmupdf.so")).unwrap();
+
+        assert!(!kobo_artifacts_present_at(git_root, artifact_root.path()));
+    }
+
+    #[test]
+    fn kobo_artifacts_present_true_when_complete() {
+        let git_root = workspace_root();
+        let artifact_root = artifact_tempdir();
+        let _fixture = KoboCacheFixture::with_fresh_markers(git_root, artifact_root.path());
+
+        assert!(kobo_artifacts_present_at(git_root, artifact_root.path()));
+    }
 
     #[test]
     fn symlink_list_has_no_duplicates() {

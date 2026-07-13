@@ -53,6 +53,11 @@ pub fn submodule_commit(root: &Path, submodule_path: &str) -> Option<String> {
     stdout.split_whitespace().nth(2).map(|s| s.to_owned())
 }
 
+/// Returns `true` when `stored` is non-empty and equals `current`.
+pub(crate) fn marker_matches_commit(stored: &str, current: &str) -> bool {
+    !stored.is_empty() && stored == current
+}
+
 /// Returns `true` when `dir` has a `.built` marker whose content
 /// matches the current gitlink SHA for `submodule_path`.
 ///
@@ -65,16 +70,13 @@ pub fn is_built(root: &Path, dir: &Path, submodule_path: &str) -> bool {
         Ok(s) => s.trim().to_owned(),
         Err(_) => return false,
     };
-    if stored_hash.is_empty() {
-        return false;
-    }
 
     let current_hash = match submodule_commit(root, submodule_path) {
         Some(h) => h,
         None => return false,
     };
 
-    stored_hash == current_hash
+    marker_matches_commit(&stored_hash, &current_hash)
 }
 
 /// Write `.built` marker in `dir` with the current gitlink SHA
@@ -114,17 +116,61 @@ pub fn write_marker(dir: &Path, marker: &str, name: &str, state: &str) -> Result
 mod tests {
     use super::*;
 
-    #[test]
-    fn submodule_commit_returns_sha_for_known_path() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+    fn workspace_root() -> &'static Path {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .unwrap()
             .parent()
-            .unwrap();
+            .unwrap()
+    }
+
+    #[test]
+    fn submodule_commit_returns_sha_for_known_path() {
+        let root = workspace_root();
         let sha = submodule_commit(root, "thirdparty/mupdf");
         assert!(sha.is_some(), "mupdf submodule should resolve");
         let sha = sha.unwrap();
         assert_eq!(sha.len(), 40);
         assert!(sha.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn marker_matches_commit_accepts_equal_hashes() {
+        let hash = "a".repeat(40);
+        assert!(marker_matches_commit(&hash, &hash));
+    }
+
+    #[test]
+    fn marker_matches_commit_rejects_mismatch() {
+        let a = "a".repeat(40);
+        let b = "b".repeat(40);
+        assert!(!marker_matches_commit(&a, &b));
+    }
+
+    #[test]
+    fn marker_matches_commit_rejects_empty_stored() {
+        let current = "a".repeat(40);
+        assert!(!marker_matches_commit("", &current));
+    }
+
+    #[test]
+    fn is_built_false_when_stored_hash_differs_from_submodule() {
+        let root = workspace_root();
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            built_marker_path(tmp.path()),
+            "0000000000000000000000000000000000000000",
+        )
+        .unwrap();
+
+        assert!(!is_built(root, tmp.path(), "thirdparty/mupdf"));
+    }
+
+    #[test]
+    fn is_built_true_after_mark_built() {
+        let root = workspace_root();
+        let tmp = tempfile::tempdir().unwrap();
+        mark_built(root, tmp.path(), "mupdf", "thirdparty/mupdf").unwrap();
+        assert!(is_built(root, tmp.path(), "thirdparty/mupdf"));
     }
 }
