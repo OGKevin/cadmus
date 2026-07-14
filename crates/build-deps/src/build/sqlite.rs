@@ -68,6 +68,30 @@ pub struct SqliteArtifacts {
     pub include_dir: PathBuf,
 }
 
+const SQLITE_SUBMODULE: &str = "thirdparty/sqlite";
+
+fn sqlite_paths(root: &Path, target: &str) -> (PathBuf, PathBuf, PathBuf) {
+    let build_root = root.join("target/cadmus-build-deps").join(target);
+    let build_dir = build_root.join("sqlite");
+    let lib_dir = build_dir.join("lib");
+    let include_dir = build_dir.join("include");
+    (build_dir, lib_dir, include_dir)
+}
+
+/// Returns `true` when SQLite artefacts for `target` are already on
+/// disk and match the current `thirdparty/sqlite` gitlink SHA.
+///
+/// Does not access `thirdparty/sqlite` on disk, so callers can use
+/// this to skip `git submodule update` on warm CI caches.
+#[must_use]
+pub fn is_cached(root: &Path, target: &str) -> bool {
+    let (build_dir, lib_dir, include_dir) = sqlite_paths(root, target);
+    markers::is_built(root, &build_dir, SQLITE_SUBMODULE)
+        && lib_dir.join("libsqlite3.a").exists()
+        && include_dir.join("sqlite3.h").exists()
+        && lib_dir.join("pkgconfig/sqlite3.pc").exists()
+}
+
 /// Build SQLite from the canonical source for the given target,
 /// placing artefacts under `target/cadmus-build-deps/<target>/sqlite/`.
 ///
@@ -88,22 +112,13 @@ pub struct SqliteArtifacts {
 /// Returns an error if TCL is not installed, `./configure` fails, or
 /// any of the compilation steps fail.
 pub fn ensure_sqlite(root: &Path, target: &str) -> Result<SqliteArtifacts> {
-    let build_root = root.join("target/cadmus-build-deps").join(target);
-    let build_dir = build_root.join("sqlite");
-    let lib_dir = build_dir.join("lib");
-    let include_dir = build_dir.join("include");
+    let (build_dir, lib_dir, include_dir) = sqlite_paths(root, target);
 
-    let submodule_path = "thirdparty/sqlite";
-    let sqlite_version = std::fs::read_to_string(root.join(submodule_path).join("VERSION"))
-        .context("failed to read thirdparty/sqlite/VERSION")?;
-    let sqlite_version = sqlite_version.trim();
-
-    if markers::is_built(root, &build_dir, submodule_path)
-        && lib_dir.join("libsqlite3.a").exists()
-        && include_dir.join("sqlite3.h").exists()
-    {
+    if is_cached(root, target) {
+        let sqlite_version = read_pkgconfig_version(&lib_dir)
+            .or_else(|_| read_submodule_version(root, SQLITE_SUBMODULE))?;
         println!("Skipping sqlite (already built for {target})...");
-        write_pkgconfig(&lib_dir, &include_dir, sqlite_version)
+        write_pkgconfig(&lib_dir, &include_dir, &sqlite_version)
             .context("failed to write sqlite3.pc for cached build")?;
         return Ok(SqliteArtifacts {
             lib_dir,
@@ -111,12 +126,16 @@ pub fn ensure_sqlite(root: &Path, target: &str) -> Result<SqliteArtifacts> {
         });
     }
 
-    let src_dir = root.join(submodule_path);
-    if !src_dir.exists() {
+    let version_file = root.join(SQLITE_SUBMODULE).join("VERSION");
+    if !version_file.exists() {
         anyhow::bail!(
-            "{submodule_path} not found — run `git submodule update --init --recursive` first"
+            "{SQLITE_SUBMODULE} not found — run `git submodule update --init --recursive` first"
         );
     }
+
+    let sqlite_version = read_submodule_version(root, SQLITE_SUBMODULE)?;
+
+    let src_dir = root.join(SQLITE_SUBMODULE);
 
     println!("Building sqlite for {target}...");
 
@@ -134,15 +153,33 @@ pub fn ensure_sqlite(root: &Path, target: &str) -> Result<SqliteArtifacts> {
     std::fs::create_dir_all(&include_dir)?;
     compile_amalgamation(&build_dir, &lib_dir, &include_dir, target)?;
 
-    write_pkgconfig(&lib_dir, &include_dir, sqlite_version)
+    write_pkgconfig(&lib_dir, &include_dir, &sqlite_version)
         .context("failed to write sqlite3.pc")?;
 
-    markers::mark_built(root, &build_dir, "sqlite", submodule_path)?;
+    markers::mark_built(root, &build_dir, "sqlite", SQLITE_SUBMODULE)?;
 
     Ok(SqliteArtifacts {
         lib_dir,
         include_dir,
     })
+}
+
+fn read_submodule_version(root: &Path, submodule_path: &str) -> Result<String> {
+    let version = std::fs::read_to_string(root.join(submodule_path).join("VERSION"))
+        .with_context(|| format!("failed to read {submodule_path}/VERSION"))?;
+    Ok(version.trim().to_owned())
+}
+
+fn read_pkgconfig_version(lib_dir: &Path) -> Result<String> {
+    let pc_path = lib_dir.join("pkgconfig/sqlite3.pc");
+    let contents = std::fs::read_to_string(&pc_path)
+        .with_context(|| format!("failed to read {}", pc_path.display()))?;
+    contents
+        .lines()
+        .find_map(|line| line.strip_prefix("Version:").map(str::trim))
+        .filter(|version| !version.is_empty())
+        .map(ToOwned::to_owned)
+        .with_context(|| format!("no Version field in {}", pc_path.display()))
 }
 
 /// Writes a `pkgconfig/sqlite3.pc` file describing the custom static build.

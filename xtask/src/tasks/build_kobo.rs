@@ -10,7 +10,7 @@
 //!
 //! 1. Verify the Linaro ARM toolchain (`arm-linux-gnueabihf-gcc`)
 //!    is on `PATH`.
-//! 2. Initialize git submodules.
+//! 2. Initialize git submodules when SQLite is not already cached.
 //! 3. Build SQLite from source with UDL support for the ARM target
 //!    (placed in `target/cadmus-build-deps/arm-unknown-linux-gnueabihf/sqlite/`).
 //!
@@ -58,7 +58,9 @@ pub fn run(args: BuildKoboArgs) -> Result<()> {
 
     ensure_linaro_toolchain()?;
 
-    build_deps::ensure_submodules(&root).context("failed to initialise git submodules")?;
+    if !sqlite::is_cached(&root, sqlite::KOBO_TARGET) {
+        build_deps::ensure_submodules(&root).context("failed to initialise git submodules")?;
+    }
     sqlite::ensure_sqlite(&root, sqlite::KOBO_TARGET).context("failed to build SQLite for Kobo")?;
 
     cargo_build_kobo(&root, args.features.as_deref())?;

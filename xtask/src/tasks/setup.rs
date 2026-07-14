@@ -61,10 +61,12 @@ pub struct SetupArgs {
 /// - The SQLite build fails.
 pub fn run(args: SetupArgs) -> Result<()> {
     let root = workspace::root()?;
-
-    build_deps::ensure_submodules(&root).context("failed to initialise git submodules")?;
-
     let targets = resolve_targets(&args);
+
+    let all_cached = targets.iter().all(|t| sqlite::is_cached(&root, t));
+    if !all_cached {
+        build_deps::ensure_submodules(&root).context("failed to initialise git submodules")?;
+    }
 
     for target in &targets {
         let artifacts = sqlite::ensure_sqlite(&root, target).context("failed to build sqlite")?;
