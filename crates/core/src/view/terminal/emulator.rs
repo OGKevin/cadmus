@@ -1,39 +1,39 @@
 use vt100::Parser;
 
-pub struct Emulator {
+pub(super) struct Emulator {
     parser: Parser,
 }
 
 impl Emulator {
-    pub fn new(rows: u16, cols: u16) -> Self {
+    pub(super) fn new(rows: u16, cols: u16) -> Self {
         Emulator {
             parser: Parser::new(rows, cols, 1000),
         }
     }
 
-    pub fn feed(&mut self, data: &[u8]) {
+    pub(super) fn feed(&mut self, data: &[u8]) {
         self.parser.process(data);
     }
 
-    pub fn screen(&self) -> &vt100::Screen {
+    pub(super) fn screen(&self) -> &vt100::Screen {
         self.parser.screen()
     }
 
-    pub fn alternate_screen(&self) -> bool {
+    pub(super) fn alternate_screen(&self) -> bool {
         self.parser.screen().alternate_screen()
     }
 
-    pub fn scrollback(&self) -> usize {
+    pub(super) fn scrollback(&self) -> usize {
         self.parser.screen().scrollback()
     }
 
-    pub fn set_scrollback(&mut self, rows: usize) -> bool {
+    pub(super) fn set_scrollback(&mut self, rows: usize) -> bool {
         let previous = self.scrollback();
         self.parser.screen_mut().set_scrollback(rows);
         self.scrollback() != previous
     }
 
-    pub fn resize(&mut self, rows: u16, cols: u16) {
+    pub(super) fn resize(&mut self, rows: u16, cols: u16) {
         self.parser.screen_mut().set_size(rows, cols);
     }
 }

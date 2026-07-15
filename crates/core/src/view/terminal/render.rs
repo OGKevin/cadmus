@@ -13,7 +13,7 @@ struct CellState {
     has_bg: bool,
 }
 
-pub struct TerminalRenderer {
+pub(super) struct TerminalRenderer {
     char_width: i32,
     char_height: i32,
     baseline_offset: i32,
@@ -32,7 +32,7 @@ pub(super) struct TerminalGeometry {
 }
 
 impl TerminalRenderer {
-    pub fn calculate_geometry_for_font_size(
+    pub(super) fn calculate_geometry_for_font_size(
         available_width: i32,
         available_height: i32,
         font_size: u32,
@@ -55,7 +55,7 @@ impl TerminalRenderer {
         }
     }
 
-    pub fn new_with_font_size(
+    pub(super) fn new_with_font_size(
         fonts: &mut Fonts,
         rows: u16,
         cols: u16,
@@ -94,7 +94,7 @@ impl TerminalRenderer {
     }
 
     /// Render directly from a vt100 Screen to a Pixmap
-    pub fn render_screen(
+    pub(super) fn render_screen(
         &mut self,
         screen: &vt100::Screen,
         pixmap: &mut Pixmap,
