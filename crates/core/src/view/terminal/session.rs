@@ -245,6 +245,11 @@ fn mouse_tap_sequence(
     Some(output)
 }
 
+/// A terminal session that owns a shell PTY, its emulator state, and its views.
+///
+/// Input events are forwarded to the child shell while terminal output is
+/// rendered asynchronously. Resizing synchronizes the PTY, VT100 screen, and
+/// renderer before the new layout is displayed.
 pub struct Terminal {
     id: Id,
     rect: Rectangle,
@@ -263,6 +268,10 @@ pub struct Terminal {
 }
 
 impl Terminal {
+    /// Starts a terminal session within `rect` using the configured font size.
+    ///
+    /// The terminal starts with its on-screen keyboard visible. Failure to open
+    /// the PTY, spawn the shell, or create its reader is returned to the caller.
     pub fn new(
         rect: Rectangle,
         font_size: f32,
@@ -613,6 +622,8 @@ impl Terminal {
         ));
     }
 
+    /// Handles the title event locally because this menu controls the active
+    /// terminal instance; bubbling it would open a parent view's title menu.
     fn toggle_title_menu(
         &mut self,
         rect: Rectangle,

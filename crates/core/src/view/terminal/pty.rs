@@ -3,13 +3,13 @@ use portable_pty::{CommandBuilder, MasterPty, PtySize, native_pty_system};
 use std::io::Write;
 use std::os::fd::{FromRawFd as _, OwnedFd};
 
-pub struct Pty {
+pub(super) struct Pty {
     writer: Box<dyn Write + Send>,
     master: Box<dyn MasterPty + Send>,
 }
 
 impl Pty {
-    pub fn spawn(
+    pub(super) fn spawn(
         shell: Option<&str>,
         rows: u16,
         cols: u16,
@@ -65,7 +65,7 @@ impl Pty {
     ///
     /// The duplicate is independent of `master`'s lifetime, so the reader job can
     /// own it while the session keeps `Pty` for writes.
-    pub fn take_reader_fd(&self) -> Result<OwnedFd> {
+    pub(super) fn take_reader_fd(&self) -> Result<OwnedFd> {
         // SAFETY: `as_raw_fd` returns the live, owned PTY master fd; the
         // duplicate created here is an independent file description.
         let raw = self
@@ -80,13 +80,19 @@ impl Pty {
         }
     }
 
-    pub fn write(&mut self, data: &[u8]) -> Result<usize> {
+    pub(super) fn write(&mut self, data: &[u8]) -> Result<usize> {
         let n = self.writer.write(data).context("PTY write failed")?;
         self.writer.flush().context("PTY flush failed")?;
         Ok(n)
     }
 
-    pub fn resize(&self, rows: u16, cols: u16, pixel_width: u16, pixel_height: u16) -> Result<()> {
+    pub(super) fn resize(
+        &self,
+        rows: u16,
+        cols: u16,
+        pixel_width: u16,
+        pixel_height: u16,
+    ) -> Result<()> {
         let size = PtySize {
             rows,
             cols,
