@@ -15,18 +15,18 @@
       "groupSlug": "rust-non-major"
     },
     {
-      "description": "sntpc-net-std version pins to a matching sntpc release",
-      "matchManagers": ["cargo"],
-      "matchPackageNames": ["sntpc", "sntpc-net-std"],
-      "groupName": "sntpc",
-      "groupSlug": "sntpc"
-    },
-    {
       "matchManagers": ["cargo"],
       "matchUpdateTypes": ["minor", "patch"],
       "matchJsonata": ["isBreaking != true"],
       "groupName": "Rust non-major dependencies",
       "groupSlug": "rust-non-major"
+    },
+    {
+      "description": "sntpc-net-std version pins to a matching sntpc release",
+      "matchManagers": ["cargo"],
+      "matchPackageNames": ["sntpc", "sntpc-net-std"],
+      "groupName": "sntpc",
+      "groupSlug": "sntpc"
     },
     {
       "matchManagers": ["github-actions"],
