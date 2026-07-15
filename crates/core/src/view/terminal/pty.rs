@@ -9,14 +9,20 @@ pub struct Pty {
 }
 
 impl Pty {
-    pub fn spawn(shell: Option<&str>, rows: u16, cols: u16) -> Result<Self> {
+    pub fn spawn(
+        shell: Option<&str>,
+        rows: u16,
+        cols: u16,
+        pixel_width: u16,
+        pixel_height: u16,
+    ) -> Result<Self> {
         let pty_system = native_pty_system();
 
         let size = PtySize {
             rows,
             cols,
-            pixel_width: 0,
-            pixel_height: 0,
+            pixel_width,
+            pixel_height,
         };
 
         let pair = pty_system.openpty(size).context("Failed to open PTY")?;
@@ -80,12 +86,12 @@ impl Pty {
         Ok(n)
     }
 
-    pub fn resize(&self, rows: u16, cols: u16) -> Result<()> {
+    pub fn resize(&self, rows: u16, cols: u16, pixel_width: u16, pixel_height: u16) -> Result<()> {
         let size = PtySize {
             rows,
             cols,
-            pixel_width: 0,
-            pixel_height: 0,
+            pixel_width,
+            pixel_height,
         };
         self.master.resize(size).context("PTY resize failed")?;
         Ok(())

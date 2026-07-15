@@ -1,19 +1,30 @@
-use super::{emulator::Emulator, pty::Pty, render::TerminalRenderer};
+use super::{
+    emulator::Emulator,
+    pty::Pty,
+    render::{TerminalGeometry, TerminalRenderer},
+};
+use crate::color::BLACK;
 use crate::device::AppContext;
 use crate::device::DeviceHardware as _;
 use crate::device::DeviceIdentity as _;
-use crate::device::DevicePaths as _;
 use crate::framebuffer::{Framebuffer as _, Pixmap, UpdateMode};
-use crate::geom::{CornerSpec, Dir, Point, Rectangle};
+use crate::geom::{Dir, Point, Rectangle, halves};
+use crate::gesture::GestureEvent;
+use crate::input::FingerStatus;
 use crate::runtime::Job;
 use crate::unit::scale_by_dpi;
-use crate::view::common::locate_by_id;
-use crate::view::icon::{Icon, load_icon_pixmap};
+use crate::view::common::{
+    locate, locate_by_id, toggle_battery_menu, toggle_clock_menu, toggle_main_menu,
+};
+use crate::view::filler::Filler;
+use crate::view::label::Label;
 use crate::view::menu::{Menu, MenuKind};
+use crate::view::slider::Slider;
 use crate::view::toggleable_keyboard::{Layout, ToggleableKeyboard};
+use crate::view::top_bar::{TopBar, TopBarVariant};
 use crate::view::{
-    BORDER_RADIUS_SMALL, Bus, EntryId, EntryKind, Event, Hub, ID_FEEDER, Id, KeyboardEvent,
-    RenderData, RenderQueue, SMALL_BAR_HEIGHT, View, ViewId,
+    Align, Bus, EntryId, EntryKind, Event, Hub, ID_FEEDER, Id, KeyboardEvent, RenderData,
+    RenderQueue, SMALL_BAR_HEIGHT, SliderId, THICKNESS_MEDIUM, View, ViewId,
 };
 use anyhow::Result;
 use std::os::fd::OwnedFd;
@@ -22,16 +33,222 @@ use std::sync::{Arc, Mutex as StdMutex};
 use tokio::io::Interest;
 use tokio::io::unix::AsyncFd;
 
-const ICON_NAME: &str = "enclosed_menu";
+const MIN_FONT_SIZE: f32 = 6.0;
+const MAX_FONT_SIZE: f32 = 24.0;
+const TERMINAL_BAR_CHILD_COUNT: usize = 5;
+const PAGE_UP: &[u8] = b"\x1b[5~";
+const PAGE_DOWN: &[u8] = b"\x1b[6~";
 
 #[inline]
 fn scale_font_size(font_size: f32) -> u32 {
     (font_size * 64.0) as u32
 }
 
+fn normalized_font_size(current: f32, candidate: f32) -> Option<f32> {
+    if !candidate.is_finite() {
+        return None;
+    }
+    let resized = (candidate.clamp(MIN_FONT_SIZE, MAX_FONT_SIZE) * 2.0).round() / 2.0;
+    (resized != current).then_some(resized)
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct TerminalBarRects {
+    top_bar: Rectangle,
+    top_separator: Rectangle,
+    font_size_label: Rectangle,
+    slider: Rectangle,
+    bottom_separator: Rectangle,
+    overlay: Rectangle,
+}
+
+fn terminal_bar_rects(rect: Rectangle, dpi: u16) -> TerminalBarRects {
+    let bar_height = scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32;
+    let separator_thickness = scale_by_dpi(THICKNESS_MEDIUM, dpi) as i32;
+    let (separator_top_half, separator_bottom_half) = halves(separator_thickness);
+    let top_bar_bottom = rect.min.y + bar_height - separator_top_half;
+    let slider_top = rect.min.y + bar_height + separator_bottom_half;
+    let slider_bottom = rect.min.y + 2 * bar_height - separator_top_half;
+    let overlay_bottom = rect.min.y + 2 * bar_height + separator_bottom_half;
+    let font_size_label_right = (rect.min.x + 2 * bar_height).min(rect.max.x);
+    TerminalBarRects {
+        top_bar: rect![rect.min.x, rect.min.y, rect.max.x, top_bar_bottom],
+        top_separator: rect![rect.min.x, top_bar_bottom, rect.max.x, slider_top],
+        font_size_label: rect![rect.min.x, slider_top, font_size_label_right, slider_bottom],
+        slider: rect![font_size_label_right, slider_top, rect.max.x, slider_bottom],
+        bottom_separator: rect![rect.min.x, slider_bottom, rect.max.x, overlay_bottom],
+        overlay: rect![rect.min.x, rect.min.y, rect.max.x, overlay_bottom],
+    }
+}
+
+fn terminal_bar_children(
+    rect: Rectangle,
+    font_size: f32,
+    context: &mut AppContext,
+) -> Vec<Box<dyn View>> {
+    let bar_rects = terminal_bar_rects(rect, context.device.dpi());
+    vec![
+        Box::new(TopBar::new(
+            bar_rects.top_bar,
+            TopBarVariant::Back,
+            "Terminal".to_string(),
+            context,
+        )),
+        Box::new(Filler::new(bar_rects.top_separator, BLACK)),
+        Box::new(Label::new(
+            bar_rects.font_size_label,
+            "Font size:".to_string(),
+            Align::Center,
+        )),
+        Box::new(Slider::new(
+            bar_rects.slider,
+            SliderId::FontSize,
+            font_size,
+            MIN_FONT_SIZE,
+            MAX_FONT_SIZE,
+        )),
+        Box::new(Filler::new(bar_rects.bottom_separator, BLACK)),
+    ]
+}
+
+fn should_dismiss_terminal_bar(top_bar_visible: bool, overlay: Rectangle, point: Point) -> bool {
+    top_bar_visible && !overlay.includes(point)
+}
+
+fn toggles_terminal_bar(gesture: GestureEvent) -> bool {
+    matches!(
+        gesture,
+        GestureEvent::Arrow {
+            dir: Dir::South,
+            ..
+        }
+    )
+}
+
+fn requests_terminal_hard_refresh(gesture: GestureEvent, rect: Rectangle) -> bool {
+    matches!(gesture, GestureEvent::HoldFingerLong(point, _) if rect.includes(point))
+}
+
+fn application_scroll_sequence(dir: Dir) -> Option<&'static [u8]> {
+    match dir {
+        Dir::South => Some(PAGE_UP),
+        Dir::North => Some(PAGE_DOWN),
+        Dir::West | Dir::East => None,
+    }
+}
+
+fn scrollback_target(current: usize, visible_rows: u16, dir: Dir) -> Option<usize> {
+    let half_view = (usize::from(visible_rows) / 2).max(1);
+    match dir {
+        Dir::South => Some(current.saturating_add(half_view)),
+        Dir::North => Some(current.saturating_sub(half_view)),
+        Dir::West | Dir::East => None,
+    }
+}
+
+fn terminal_pixel_dimensions(rect: Rectangle, keyboard_height: i32) -> (u16, u16) {
+    (
+        rect.width().min(u16::MAX as u32) as u16,
+        (rect.height() as i32 - keyboard_height).clamp(0, u16::MAX as i32) as u16,
+    )
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct RendererConfiguration {
+    font_size: u32,
+    rows: u16,
+    cols: u16,
+    pixmap_width: u32,
+    pixmap_height: u32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct TerminalLayout {
+    renderer: RendererConfiguration,
+    pixel_width: u16,
+    pixel_height: u16,
+    char_width: i32,
+    char_height: i32,
+}
+
+impl TerminalLayout {
+    fn cell_at(self, rect: Rectangle, point: Point) -> Option<(u16, u16)> {
+        if !rect.includes(point) {
+            return None;
+        }
+        let local = point - rect.min;
+        if local.x >= i32::from(self.pixel_width) || local.y >= i32::from(self.pixel_height) {
+            return None;
+        }
+        let col = local.x / self.char_width;
+        let row = local.y / self.char_height;
+        if col >= i32::from(self.renderer.cols) || row >= i32::from(self.renderer.rows) {
+            return None;
+        }
+        Some((col as u16 + 1, row as u16 + 1))
+    }
+}
+
+fn append_utf8_mouse_value(output: &mut Vec<u8>, value: u16) -> Option<()> {
+    let character = char::from_u32(u32::from(value) + 32)?;
+    let mut encoded = [0; 4];
+    output.extend_from_slice(character.encode_utf8(&mut encoded).as_bytes());
+    Some(())
+}
+
+fn legacy_mouse_event(
+    button: u16,
+    col: u16,
+    row: u16,
+    encoding: vt100::MouseProtocolEncoding,
+) -> Option<Vec<u8>> {
+    let mut output = b"\x1b[M".to_vec();
+    match encoding {
+        vt100::MouseProtocolEncoding::Default => {
+            output.extend([
+                u8::try_from(button + 32).ok()?,
+                u8::try_from(col + 32).ok()?,
+                u8::try_from(row + 32).ok()?,
+            ]);
+        }
+        vt100::MouseProtocolEncoding::Utf8 => {
+            append_utf8_mouse_value(&mut output, button)?;
+            append_utf8_mouse_value(&mut output, col)?;
+            append_utf8_mouse_value(&mut output, row)?;
+        }
+        vt100::MouseProtocolEncoding::Sgr => return None,
+    }
+    Some(output)
+}
+
+fn mouse_tap_sequence(
+    mode: vt100::MouseProtocolMode,
+    encoding: vt100::MouseProtocolEncoding,
+    col: u16,
+    row: u16,
+) -> Option<Vec<u8>> {
+    if mode == vt100::MouseProtocolMode::None {
+        return None;
+    }
+    if encoding == vt100::MouseProtocolEncoding::Sgr {
+        let mut output = format!("\x1b[<0;{col};{row}M").into_bytes();
+        if mode != vt100::MouseProtocolMode::Press {
+            output.extend_from_slice(format!("\x1b[<0;{col};{row}m").as_bytes());
+        }
+        return Some(output);
+    }
+
+    let mut output = legacy_mouse_event(0, col, row, encoding)?;
+    if mode != vt100::MouseProtocolMode::Press {
+        output.extend(legacy_mouse_event(3, col, row, encoding)?);
+    }
+    Some(output)
+}
+
 pub struct Terminal {
     id: Id,
     rect: Rectangle,
+    terminal_rect: Rectangle,
     children: Vec<Box<dyn View>>,
     emulator: Arc<StdMutex<Emulator>>,
     pty: Pty,
@@ -40,8 +257,9 @@ pub struct Terminal {
     /// main loop renders into this pixmap before blitting it to the framebuffer.
     pixmap: Pixmap,
     reader_job: Option<Job>,
-    keyboard_index: usize,
-    font_size_scaled: u32,
+    top_bar_visible: bool,
+    font_size: f32,
+    layout: TerminalLayout,
 }
 
 impl Terminal {
@@ -53,131 +271,346 @@ impl Terminal {
         tx: &Hub,
     ) -> Result<Terminal> {
         let id = ID_FEEDER.next();
-        let mut children = Vec::new();
+        let mut children = terminal_bar_children(rect, font_size, context);
         let dpi = context.device.dpi();
-        let install_dir = context.device.install_dir();
         let font_size_scaled = scale_font_size(font_size);
 
-        // Setup menu icon in top right corner
-        let small_height = scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32;
-        let border_radius = scale_by_dpi(BORDER_RADIUS_SMALL, dpi) as i32;
-        let menu_pixmap = load_icon_pixmap(ICON_NAME, dpi, &install_dir)
-            .expect("terminal menu icon should exist in install icons directory");
-        let icon_padding = (small_height - menu_pixmap.width.max(menu_pixmap.height) as i32) / 2;
-        let width = menu_pixmap.width as i32 + icon_padding;
-        let height = menu_pixmap.height as i32 + icon_padding;
-        let dx = (small_height - width) / 2;
-        let dy = (small_height - height) / 2;
-        let icon_rect = rect![
-            rect.max.x - dx - width,
-            rect.min.y + dy,
-            rect.max.x - dx,
-            rect.min.y + dy + height
-        ];
-        let icon = Icon::new(
-            ICON_NAME,
-            icon_rect,
-            Event::ToggleNear(ViewId::TitleMenu, icon_rect),
-        )
-        .corners(Some(CornerSpec::Uniform(border_radius)));
-        children.push(Box::new(icon) as Box<dyn View>);
+        let terminal_rect = rect;
 
-        // Add toggleable terminal keyboard with Terminal layout (no bottom bar)
-        let mut keyboard = ToggleableKeyboard::new(rect, false)
+        let mut keyboard = ToggleableKeyboard::new(terminal_rect, false)
             .with_layout(Layout::Terminal)
             .with_bottom_bar(false);
         let keyboard_height = keyboard.keyboard_height(context);
         keyboard.set_visible(true, tx, rq, context);
         children.push(Box::new(keyboard) as Box<dyn View>);
-        let keyboard_index = children.len() - 1;
 
         // Grid size for the current layout (keyboard visible)
-        let available_width = rect.width() as i32;
-        let available_height = rect.height() as i32 - keyboard_height;
+        let available_width = terminal_rect.width() as i32;
+        let available_height = terminal_rect.height() as i32 - keyboard_height;
 
-        let (rows, cols) = TerminalRenderer::calculate_grid_for_font_size(
+        let geometry = TerminalRenderer::calculate_geometry_for_font_size(
             available_width,
             available_height,
             font_size_scaled,
             &mut context.fonts,
             dpi,
         );
+        let (rows, cols) = (geometry.rows, geometry.cols);
 
-        // Max grid size (full screen without keyboard); the renderer clamps
-        // against the live screen size so it survives keyboard toggles.
-        let (max_rows, max_cols) = TerminalRenderer::calculate_grid_for_font_size(
-            rect.width() as i32,
-            rect.height() as i32,
-            font_size_scaled,
-            &mut context.fonts,
-            dpi,
-        );
-
-        let pty = Pty::spawn(Some("/bin/sh"), rows, cols)?;
+        let (pixel_width, pixel_height) = terminal_pixel_dimensions(terminal_rect, keyboard_height);
+        let pty = Pty::spawn(Some("/bin/sh"), rows, cols, pixel_width, pixel_height)?;
         let reader_fd = pty.take_reader_fd()?;
         let emulator = Arc::new(StdMutex::new(Emulator::new(rows, cols)));
         let renderer = TerminalRenderer::new_with_font_size(
             &mut context.fonts,
-            max_rows,
-            max_cols,
+            rows,
+            cols,
             font_size_scaled,
             dpi,
         );
 
         let reader_job = spawn_reader_job(reader_fd, Arc::clone(&emulator), tx.clone());
-        let pixmap = Pixmap::new(rect.width(), rect.height(), 1);
+        let pixmap = Pixmap::new(terminal_rect.width(), terminal_rect.height(), 1);
+        let layout = TerminalLayout {
+            renderer: RendererConfiguration {
+                font_size: font_size_scaled,
+                rows,
+                cols,
+                pixmap_width: terminal_rect.width(),
+                pixmap_height: terminal_rect.height(),
+            },
+            pixel_width,
+            pixel_height,
+            char_width: geometry.char_width,
+            char_height: geometry.char_height,
+        };
 
         rq.add(RenderData::new(id, rect, UpdateMode::Full));
         Ok(Terminal {
             id,
             rect,
+            terminal_rect,
             children,
             emulator,
             pty,
             renderer,
             pixmap,
             reader_job: Some(reader_job),
-            keyboard_index,
-            font_size_scaled,
+            top_bar_visible: true,
+            font_size,
+            layout,
         })
     }
 
+    fn layout(
+        &self,
+        terminal_rect: Rectangle,
+        font_size: f32,
+        context: &mut AppContext,
+    ) -> TerminalLayout {
+        let keyboard_height = locate::<ToggleableKeyboard>(self)
+            .and_then(|index| self.children[index].downcast_ref::<ToggleableKeyboard>())
+            .filter(|keyboard| keyboard.is_visible())
+            .map(|keyboard| keyboard.keyboard_height(context))
+            .unwrap_or(0);
+        let (pixel_width, pixel_height) = terminal_pixel_dimensions(terminal_rect, keyboard_height);
+        let font_size = scale_font_size(font_size);
+        let TerminalGeometry {
+            rows,
+            cols,
+            char_width,
+            char_height,
+        } = TerminalRenderer::calculate_geometry_for_font_size(
+            i32::from(pixel_width),
+            i32::from(pixel_height),
+            font_size,
+            &mut context.fonts,
+            context.device.dpi(),
+        );
+        TerminalLayout {
+            renderer: RendererConfiguration {
+                font_size,
+                rows,
+                cols,
+                pixmap_width: terminal_rect.width(),
+                pixmap_height: terminal_rect.height(),
+            },
+            pixel_width,
+            pixel_height,
+            char_width,
+            char_height,
+        }
+    }
+
+    fn apply_layout(
+        &mut self,
+        font_size: f32,
+        persist_font_size: bool,
+        context: &mut AppContext,
+    ) -> bool {
+        self.apply_layout_for_rect(self.terminal_rect, font_size, persist_font_size, context)
+    }
+
+    fn apply_layout_for_rect(
+        &mut self,
+        terminal_rect: Rectangle,
+        font_size: f32,
+        persist_font_size: bool,
+        context: &mut AppContext,
+    ) -> bool {
+        let layout = self.layout(terminal_rect, font_size, context);
+        if let Err(error) = self.pty.resize(
+            layout.renderer.rows,
+            layout.renderer.cols,
+            layout.pixel_width,
+            layout.pixel_height,
+        ) {
+            tracing::warn!(
+                error = %error,
+                rows = layout.renderer.rows,
+                cols = layout.renderer.cols,
+                pixel_width = layout.pixel_width,
+                pixel_height = layout.pixel_height,
+                "Failed to resize terminal PTY"
+            );
+            return false;
+        }
+
+        if let Ok(mut emulator) = self.emulator.lock() {
+            emulator.resize(layout.renderer.rows, layout.renderer.cols);
+        }
+        // Rebuild the renderer for the new grid so every cell is redrawn.
+        self.renderer = TerminalRenderer::new_with_font_size(
+            &mut context.fonts,
+            layout.renderer.rows,
+            layout.renderer.cols,
+            layout.renderer.font_size,
+            context.device.dpi(),
+        );
+        self.pixmap = Pixmap::new(
+            layout.renderer.pixmap_width,
+            layout.renderer.pixmap_height,
+            1,
+        );
+        self.font_size = font_size;
+        self.layout = layout;
+        self.terminal_rect = terminal_rect;
+        if persist_font_size {
+            context.settings.terminal.font_size = font_size;
+        }
+        true
+    }
+
+    fn send_mouse_tap(&mut self, point: Point) -> bool {
+        let Some((col, row)) = self.layout.cell_at(self.terminal_rect, point) else {
+            return false;
+        };
+        let Some((mode, encoding)) = self.emulator.lock().ok().map(|emulator| {
+            let screen = emulator.screen();
+            (
+                screen.mouse_protocol_mode(),
+                screen.mouse_protocol_encoding(),
+            )
+        }) else {
+            return false;
+        };
+        let Some(sequence) = mouse_tap_sequence(mode, encoding, col, row) else {
+            return false;
+        };
+        if let Err(error) = self.pty.write(&sequence) {
+            tracing::warn!(error = %error, col, row, "Failed to send terminal mouse tap");
+        }
+        true
+    }
+
+    fn scroll_half_view(&mut self, dir: Dir, rq: &mut RenderQueue) -> bool {
+        let Some(application_sequence) = application_scroll_sequence(dir) else {
+            return false;
+        };
+        let (send_to_application, scrollback_changed) = {
+            let Ok(mut emulator) = self.emulator.lock() else {
+                return false;
+            };
+            if emulator.alternate_screen() {
+                (true, false)
+            } else {
+                let Some(target) =
+                    scrollback_target(emulator.scrollback(), self.layout.renderer.rows, dir)
+                else {
+                    return false;
+                };
+                (false, emulator.set_scrollback(target))
+            }
+        };
+
+        if send_to_application {
+            if let Err(error) = self.pty.write(application_sequence) {
+                tracing::warn!(error = %error, dir = ?dir, "Failed to send terminal page key");
+            }
+        } else if scrollback_changed {
+            self.request_full_redraw(rq);
+        }
+        true
+    }
+
+    fn return_to_live_output(&mut self, rq: &mut RenderQueue) {
+        let scrollback_changed = self
+            .emulator
+            .lock()
+            .is_ok_and(|mut emulator| emulator.set_scrollback(0));
+        if scrollback_changed {
+            self.request_full_redraw(rq);
+        }
+    }
+
+    /// Re-render the whole screen and queue a full terminal refresh.
+    fn request_full_redraw(&mut self, rq: &mut RenderQueue) {
+        self.renderer.clear_screen_state();
+        rq.add(RenderData::no_wait(
+            self.id,
+            self.terminal_rect,
+            UpdateMode::Gui,
+        ));
+    }
+
+    fn includes_terminal_content(&self, point: Point) -> bool {
+        Rectangle::new(
+            self.terminal_rect.min,
+            self.terminal_rect.min
+                + pt!(
+                    i32::from(self.layout.pixel_width),
+                    i32::from(self.layout.pixel_height)
+                ),
+        )
+        .includes(point)
+    }
+
     fn toggle_keyboard(&mut self, hub: &Hub, rq: &mut RenderQueue, context: &mut AppContext) {
-        let dpi = context.device.dpi();
-        if let Some(keyboard) = self.children.get_mut(self.keyboard_index)
+        if let Some(index) = locate::<ToggleableKeyboard>(self)
+            && let Some(keyboard) = self.children.get_mut(index)
             && let Some(kb) = keyboard.downcast_mut::<ToggleableKeyboard>()
         {
             kb.toggle(hub, rq, context);
-
-            let keyboard_height = if kb.is_visible() {
-                kb.keyboard_height(context)
-            } else {
-                0
-            };
-
-            let available_width = self.rect.width() as i32;
-            let available_height = self.rect.height() as i32 - keyboard_height;
-
-            let (rows, cols) = TerminalRenderer::calculate_grid_for_font_size(
-                available_width,
-                available_height,
-                self.font_size_scaled,
-                &mut context.fonts,
-                dpi,
-            );
-
-            if let Err(e) = self.pty.resize(rows, cols) {
-                tracing::warn!(error = %e, "terminal PTY resize failed");
-            }
-
-            if let Ok(mut emu) = self.emulator.lock() {
-                emu.resize(rows, cols);
-            }
-
-            // Force a full redraw of every cell against the new grid.
-            self.renderer.clear_screen_state();
-            rq.add(RenderData::new(self.id, self.rect, UpdateMode::Full));
         }
+        self.apply_layout(self.font_size, false, context);
+    }
+
+    fn resize_children(
+        &mut self,
+        rect: Rectangle,
+        hub: &Hub,
+        rq: &mut RenderQueue,
+        context: &mut AppContext,
+    ) {
+        let keyboard_visible = locate::<ToggleableKeyboard>(self)
+            .and_then(|index| self.children[index].downcast_ref::<ToggleableKeyboard>())
+            .is_some_and(ToggleableKeyboard::is_visible);
+
+        self.children.retain(|child| !child.is::<Menu>());
+        if let Some(index) = locate::<ToggleableKeyboard>(self) {
+            self.children.remove(index);
+        }
+        if let Some(index) = locate::<TopBar>(self) {
+            self.children.drain(index..index + TERMINAL_BAR_CHILD_COUNT);
+        }
+
+        let structural_children = if self.top_bar_visible {
+            let children = terminal_bar_children(rect, self.font_size, context);
+            let count = children.len();
+            self.children.splice(0..0, children);
+            count
+        } else {
+            0
+        };
+
+        let mut keyboard = ToggleableKeyboard::new(rect, false)
+            .with_layout(Layout::Terminal)
+            .with_bottom_bar(false);
+        if keyboard_visible {
+            keyboard.set_visible(true, hub, rq, context);
+        }
+        self.children
+            .insert(structural_children, Box::new(keyboard));
+    }
+
+    fn set_font_size(&mut self, candidate: f32, rq: &mut RenderQueue, context: &mut AppContext) {
+        if let Some(font_size) = normalized_font_size(self.font_size, candidate) {
+            self.apply_layout(font_size, true, context);
+        }
+        if let Some(index) = locate::<Slider>(self)
+            && let Some(slider) = self.children[index].downcast_mut::<Slider>()
+        {
+            slider.update(self.font_size, rq);
+        }
+    }
+
+    fn reseed(&mut self, rq: &mut RenderQueue, context: &mut AppContext) {
+        if let Some(index) = locate::<TopBar>(self)
+            && let Some(top_bar) = self.children[index].downcast_mut::<TopBar>()
+        {
+            top_bar.reseed(rq, context);
+        }
+
+        rq.add(RenderData::expose(self.rect, UpdateMode::Gui));
+    }
+
+    fn toggle_top_bar(&mut self, rq: &mut RenderQueue, context: &mut AppContext) {
+        let top_bar_visible = !self.top_bar_visible;
+        self.children.retain(|child| !child.is::<Menu>());
+        if top_bar_visible {
+            self.children.splice(
+                0..0,
+                terminal_bar_children(self.rect, self.font_size, context),
+            );
+        } else if let Some(top_bar_index) = locate::<TopBar>(self) {
+            self.children
+                .drain(top_bar_index..top_bar_index + TERMINAL_BAR_CHILD_COUNT);
+        }
+        self.top_bar_visible = top_bar_visible;
+        rq.add(RenderData::expose(
+            terminal_bar_rects(self.rect, context.device.dpi()).overlay,
+            UpdateMode::Gui,
+        ));
     }
 
     fn toggle_title_menu(
@@ -312,6 +745,7 @@ impl View for Terminal {
     ) -> bool {
         match *evt {
             Event::Keyboard(ke) => {
+                self.return_to_live_output(rq);
                 let bytes: &[u8] = match ke {
                     KeyboardEvent::Append(c) => {
                         let s = c.to_string();
@@ -342,14 +776,76 @@ impl View for Terminal {
                 self.toggle_title_menu(rect, None, rq, context);
                 true
             }
+            Event::ToggleNear(ViewId::MainMenu, rect) => {
+                toggle_main_menu(self, rect, None, rq, context);
+                true
+            }
+            Event::ToggleNear(ViewId::BatteryMenu, rect) => {
+                toggle_battery_menu(self, rect, None, rq, context);
+                true
+            }
+            Event::ToggleNear(ViewId::ClockMenu, rect) => {
+                toggle_clock_menu(self, rect, None, rq, context);
+                true
+            }
+            Event::Close(ViewId::TitleMenu) => {
+                self.toggle_title_menu(Rectangle::default(), Some(false), rq, context);
+                true
+            }
+            Event::Close(ViewId::MainMenu) => {
+                toggle_main_menu(self, Rectangle::default(), Some(false), rq, context);
+                true
+            }
+            Event::Close(ViewId::BatteryMenu) => {
+                toggle_battery_menu(self, Rectangle::default(), Some(false), rq, context);
+                true
+            }
+            Event::Close(ViewId::ClockMenu) => {
+                toggle_clock_menu(self, Rectangle::default(), Some(false), rq, context);
+                true
+            }
             Event::Select(EntryId::ToggleKeyboard) => {
                 self.toggle_keyboard(hub, rq, context);
+                true
+            }
+            Event::Slider(SliderId::FontSize, font_size, status) => {
+                if status == FingerStatus::Up {
+                    self.set_font_size(font_size, rq, context);
+                }
                 true
             }
             Event::Select(EntryId::Quit) => {
                 hub.send(Event::Back.into()).ok();
                 true
             }
+            Event::Reseed => {
+                self.reseed(rq, context);
+                true
+            }
+            Event::Gesture(gesture) if toggles_terminal_bar(gesture) => {
+                self.toggle_top_bar(rq, context);
+                true
+            }
+            Event::Gesture(gesture) if requests_terminal_hard_refresh(gesture, self.rect) => {
+                rq.add(RenderData::expose(self.rect, UpdateMode::Full));
+                true
+            }
+            Event::Gesture(GestureEvent::Swipe { dir, start, end })
+                if self.includes_terminal_content(start) && self.includes_terminal_content(end) =>
+            {
+                self.scroll_half_view(dir, rq)
+            }
+            Event::Gesture(GestureEvent::Tap(point)) if self.top_bar_visible => {
+                if should_dismiss_terminal_bar(
+                    self.top_bar_visible,
+                    terminal_bar_rects(self.rect, context.device.dpi()).overlay,
+                    point,
+                ) {
+                    self.toggle_top_bar(rq, context);
+                }
+                true
+            }
+            Event::Gesture(GestureEvent::Tap(point)) => self.send_mouse_tap(point),
             Event::WakeUp => {
                 if let Ok(emu) = self.emulator.lock() {
                     let dirty = self.renderer.render_screen(
@@ -360,12 +856,12 @@ impl View for Terminal {
                     if let Some(dirty) = dirty {
                         let update_rect = Rectangle::new(
                             Point::new(
-                                self.rect.min.x + dirty.min.x,
-                                self.rect.min.y + dirty.min.y,
+                                self.terminal_rect.min.x + dirty.min.x,
+                                self.terminal_rect.min.y + dirty.min.y,
                             ),
                             Point::new(
-                                self.rect.min.x + dirty.max.x,
-                                self.rect.min.y + dirty.max.y,
+                                self.terminal_rect.min.x + dirty.max.x,
+                                self.terminal_rect.min.y + dirty.max.y,
                             ),
                         );
                         rq.add(RenderData::no_wait(
@@ -389,20 +885,40 @@ impl View for Terminal {
         let fb = context.device.framebuffer_mut();
         let pixmap_rect = rect![0, 0, self.pixmap.width as i32, self.pixmap.height as i32];
         let local_rect = Rectangle::new(
-            Point::new(rect.min.x - self.rect.min.x, rect.min.y - self.rect.min.y),
-            Point::new(rect.max.x - self.rect.min.x, rect.max.y - self.rect.min.y),
+            Point::new(
+                rect.min.x - self.terminal_rect.min.x,
+                rect.min.y - self.terminal_rect.min.y,
+            ),
+            Point::new(
+                rect.max.x - self.terminal_rect.min.x,
+                rect.max.y - self.terminal_rect.min.y,
+            ),
         );
         if let Some(clipped) = local_rect.intersection(&pixmap_rect) {
             let dest = Point::new(
-                clipped.min.x + self.rect.min.x,
-                clipped.min.y + self.rect.min.y,
+                clipped.min.x + self.terminal_rect.min.x,
+                clipped.min.y + self.terminal_rect.min.y,
             );
             fb.draw_framed_pixmap(&self.pixmap, &clipped, dest);
         }
     }
 
     fn render_rect(&self, rect: &Rectangle) -> Rectangle {
-        rect.intersection(&self.rect).unwrap_or(self.rect)
+        rect.intersection(&self.terminal_rect)
+            .unwrap_or(self.terminal_rect)
+    }
+
+    fn resize(
+        &mut self,
+        rect: Rectangle,
+        hub: &Hub,
+        rq: &mut RenderQueue,
+        context: &mut AppContext,
+    ) {
+        self.resize_children(rect, hub, rq, context);
+        self.rect = rect;
+        self.apply_layout_for_rect(rect, self.font_size, false, context);
+        rq.add(RenderData::expose(rect, UpdateMode::Full));
     }
 
     fn is_background(&self) -> bool {
@@ -438,5 +954,203 @@ impl Drop for Terminal {
     fn drop(&mut self) {
         // The Job's Drop cancels the reader; it can never block here.
         let _ = self.reader_job.take();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        PAGE_DOWN, PAGE_UP, RendererConfiguration, TerminalLayout, application_scroll_sequence,
+        mouse_tap_sequence, normalized_font_size, requests_terminal_hard_refresh,
+        scrollback_target, should_dismiss_terminal_bar, terminal_bar_rects,
+        terminal_pixel_dimensions, toggles_terminal_bar,
+    };
+    use crate::geom::{Dir, Point, Rectangle};
+    use crate::gesture::GestureEvent;
+
+    #[test]
+    fn terminal_bar_is_an_overlay_at_the_top_of_the_terminal() {
+        let screen = Rectangle::new(Point::new(0, 0), Point::new(600, 800));
+        let bar = terminal_bar_rects(screen, 300);
+
+        assert_eq!(bar.overlay.min, screen.min);
+        assert_eq!(bar.overlay.max.x, screen.max.x);
+        assert!(bar.overlay.max.y < screen.max.y);
+        assert_eq!(bar.top_bar.min, screen.min);
+        assert_eq!(bar.slider.min.y, bar.top_separator.max.y);
+        assert_eq!(bar.slider.max.y, bar.bottom_separator.min.y);
+        assert_eq!(bar.font_size_label.max.x, bar.slider.min.x);
+        assert_eq!(bar.font_size_label.min.y, bar.slider.min.y);
+        assert_eq!(bar.font_size_label.max.y, bar.slider.max.y);
+    }
+
+    #[test]
+    fn rotation_recalculates_terminal_pixel_dimensions_around_the_keyboard() {
+        let portrait = Rectangle::new(Point::new(0, 0), Point::new(600, 800));
+        let landscape = Rectangle::new(Point::new(0, 0), Point::new(800, 600));
+
+        assert_eq!(terminal_pixel_dimensions(portrait, 300), (600, 500));
+        assert_eq!(terminal_pixel_dimensions(landscape, 300), (800, 300));
+        assert_eq!(terminal_pixel_dimensions(landscape, 0), (800, 600));
+    }
+
+    #[test]
+    fn taps_away_from_a_visible_bar_dismiss_it() {
+        let overlay = Rectangle::new(Point::new(0, 0), Point::new(600, 240));
+
+        assert!(!should_dismiss_terminal_bar(
+            true,
+            overlay,
+            Point::new(300, 120)
+        ));
+        assert!(should_dismiss_terminal_bar(
+            true,
+            overlay,
+            Point::new(300, 400)
+        ));
+        assert!(!should_dismiss_terminal_bar(
+            false,
+            overlay,
+            Point::new(300, 400)
+        ));
+    }
+
+    #[test]
+    fn only_a_downward_arrow_toggles_the_terminal_bar() {
+        let arrow = |dir| GestureEvent::Arrow {
+            dir,
+            start: Point::new(100, 100),
+            end: Point::new(100, 300),
+        };
+
+        assert!(toggles_terminal_bar(arrow(Dir::South)));
+        assert!(!toggles_terminal_bar(arrow(Dir::North)));
+        assert!(!toggles_terminal_bar(GestureEvent::Diamond(Point::new(
+            100, 100
+        ))));
+    }
+
+    #[test]
+    fn long_hold_inside_the_terminal_requests_a_hard_refresh() {
+        let terminal = Rectangle::new(Point::new(0, 0), Point::new(600, 800));
+
+        assert!(requests_terminal_hard_refresh(
+            GestureEvent::HoldFingerLong(Point::new(300, 400), 0),
+            terminal,
+        ));
+        assert!(!requests_terminal_hard_refresh(
+            GestureEvent::HoldFingerShort(Point::new(300, 400), 0),
+            terminal,
+        ));
+        assert!(!requests_terminal_hard_refresh(
+            GestureEvent::HoldFingerLong(Point::new(700, 400), 0),
+            terminal,
+        ));
+    }
+
+    #[test]
+    fn vertical_swipes_map_to_application_page_keys() {
+        assert_eq!(application_scroll_sequence(Dir::South), Some(PAGE_UP));
+        assert_eq!(application_scroll_sequence(Dir::North), Some(PAGE_DOWN));
+        assert_eq!(application_scroll_sequence(Dir::West), None);
+        assert_eq!(application_scroll_sequence(Dir::East), None);
+    }
+
+    #[test]
+    fn vertical_swipes_move_half_of_the_visible_rows() {
+        assert_eq!(scrollback_target(4, 20, Dir::South), Some(14));
+        assert_eq!(scrollback_target(14, 20, Dir::North), Some(4));
+        assert_eq!(scrollback_target(4, 20, Dir::West), None);
+        assert_eq!(scrollback_target(4, 20, Dir::East), None);
+    }
+
+    #[test]
+    fn slider_font_sizes_are_rounded_to_half_points() {
+        assert_eq!(normalized_font_size(12.0, 9.74), Some(9.5));
+        assert_eq!(normalized_font_size(12.0, 9.76), Some(10.0));
+        assert_eq!(normalized_font_size(12.0, 12.2), None);
+    }
+
+    #[test]
+    fn slider_font_sizes_are_clamped_and_non_finite_values_are_ignored() {
+        assert_eq!(normalized_font_size(12.0, 1.0), Some(6.0));
+        assert_eq!(normalized_font_size(12.0, 30.0), Some(24.0));
+        assert_eq!(normalized_font_size(12.0, f32::NAN), None);
+        assert_eq!(normalized_font_size(12.0, f32::INFINITY), None);
+    }
+
+    #[test]
+    fn mouse_tap_is_not_reported_when_tracking_is_disabled() {
+        assert_eq!(
+            mouse_tap_sequence(
+                vt100::MouseProtocolMode::None,
+                vt100::MouseProtocolEncoding::Sgr,
+                3,
+                4,
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn x10_mouse_tap_reports_only_the_press() {
+        assert_eq!(
+            mouse_tap_sequence(
+                vt100::MouseProtocolMode::Press,
+                vt100::MouseProtocolEncoding::Default,
+                5,
+                7,
+            ),
+            Some(vec![0x1b, b'[', b'M', 32, 37, 39])
+        );
+    }
+
+    #[test]
+    fn vt200_mouse_tap_reports_press_and_release() {
+        assert_eq!(
+            mouse_tap_sequence(
+                vt100::MouseProtocolMode::PressRelease,
+                vt100::MouseProtocolEncoding::Default,
+                5,
+                7,
+            ),
+            Some(vec![
+                0x1b, b'[', b'M', 32, 37, 39, 0x1b, b'[', b'M', 35, 37, 39,
+            ])
+        );
+    }
+
+    #[test]
+    fn sgr_mouse_tap_reports_press_and_release() {
+        assert_eq!(
+            mouse_tap_sequence(
+                vt100::MouseProtocolMode::ButtonMotion,
+                vt100::MouseProtocolEncoding::Sgr,
+                12,
+                3,
+            ),
+            Some(b"\x1b[<0;12;3M\x1b[<0;12;3m".to_vec())
+        );
+    }
+
+    #[test]
+    fn tap_position_is_converted_to_one_based_terminal_coordinates() {
+        let layout = TerminalLayout {
+            renderer: RendererConfiguration {
+                font_size: 768,
+                rows: 4,
+                cols: 10,
+                pixmap_width: 100,
+                pixmap_height: 80,
+            },
+            pixel_width: 100,
+            pixel_height: 80,
+            char_width: 10,
+            char_height: 20,
+        };
+        let rect = Rectangle::new(Point::new(10, 20), Point::new(110, 100));
+
+        assert_eq!(layout.cell_at(rect, Point::new(35, 61)), Some((3, 3)));
+        assert_eq!(layout.cell_at(rect, Point::new(110, 61)), None);
     }
 }

@@ -23,14 +23,22 @@ pub struct TerminalRenderer {
     previous_cursor: (u16, u16),
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct TerminalGeometry {
+    pub rows: u16,
+    pub cols: u16,
+    pub char_width: i32,
+    pub char_height: i32,
+}
+
 impl TerminalRenderer {
-    pub fn calculate_grid_for_font_size(
+    pub fn calculate_geometry_for_font_size(
         available_width: i32,
         available_height: i32,
         font_size: u32,
         fonts: &mut Fonts,
         dpi: u16,
-    ) -> (u16, u16) {
+    ) -> TerminalGeometry {
         let font = &mut fonts.monospace.bold;
 
         font.set_size(font_size, dpi);
@@ -39,10 +47,12 @@ impl TerminalRenderer {
         let char_width = plan.width.max(1);
         let line_height = (font.ascender() - font.descender()).max(1);
 
-        let cols = (available_width / char_width).max(20) as u16;
-        let rows = (available_height / line_height).max(1) as u16;
-
-        (rows, cols)
+        TerminalGeometry {
+            cols: (available_width / char_width).max(20) as u16,
+            rows: (available_height / line_height).max(1) as u16,
+            char_width,
+            char_height: line_height,
+        }
     }
 
     pub fn new_with_font_size(
@@ -72,6 +82,15 @@ impl TerminalRenderer {
             previous_screen,
             previous_cursor: (0, 0),
         }
+    }
+
+    /// Drop the incremental-render state so the next `render_screen` redraws
+    /// every cell (e.g. after a scrollback move or resize).
+    pub fn clear_screen_state(&mut self) {
+        for row in &mut self.previous_screen {
+            row.fill(CellState::default());
+        }
+        self.previous_cursor = (u16::MAX, u16::MAX);
     }
 
     /// Render directly from a vt100 Screen to a Pixmap
@@ -150,7 +169,11 @@ impl TerminalRenderer {
 
         // Draw cursor on current position
         let (cursor_row, cursor_col) = cursor_pos;
-        if (cursor_row as usize) < render_rows && (cursor_col as usize) < render_cols {
+        if screen.scrollback() == 0
+            && !screen.hide_cursor()
+            && (cursor_row as usize) < render_rows
+            && (cursor_col as usize) < render_cols
+        {
             let x = cursor_col as i32 * self.char_width;
             let y = cursor_row as i32 * self.char_height;
             let cursor_rect = Rectangle::new(
@@ -166,15 +189,6 @@ impl TerminalRenderer {
         }
 
         dirty_rect
-    }
-
-    pub fn clear_screen_state(&mut self) {
-        for row in &mut self.previous_screen {
-            for cell in row {
-                *cell = CellState::default();
-            }
-        }
-        self.previous_cursor = (0, 0);
     }
 
     fn render_vt100_cell(
