@@ -64,7 +64,7 @@ reqwest = { version = "0.13.1", default-features = false, features = [
     "rustls-no-provider",
 ] }
 rustls = { workspace = true }
-sntpc = { version = "0.10", features = ["std", "sync"] }
+sntpc = { version = "0.11", features = ["std", "sync"] }
 sntpc-net-std = "1.2"
 webpki-roots = "1.0.5"
 
