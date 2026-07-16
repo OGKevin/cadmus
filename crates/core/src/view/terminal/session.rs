@@ -293,7 +293,6 @@ impl Terminal {
         tx: &Hub,
     ) -> Result<Terminal> {
         let id = ID_FEEDER.next();
-        let mut children = terminal_bar_children(rect, font_size, context);
         let dpi = context.device.dpi();
         let font_size_scaled = scale_font_size(font_size);
 
@@ -304,7 +303,6 @@ impl Terminal {
             .with_bottom_bar(false);
         let keyboard_height = keyboard.keyboard_height(context);
         keyboard.set_visible(true, tx, rq, context);
-        children.push(Box::new(keyboard) as Box<dyn View>);
 
         // Grid size for the current layout (keyboard visible)
         let available_width = terminal_rect.width() as i32;
@@ -347,6 +345,8 @@ impl Terminal {
             char_height: geometry.char_height,
         };
 
+        let mut children = terminal_bar_children(rect, font_size, context);
+        children.push(Box::new(keyboard) as Box<dyn View>);
         rq.add(RenderData::new(id, rect, UpdateMode::Full));
         Ok(Terminal {
             id,
