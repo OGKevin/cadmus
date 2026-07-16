@@ -65,7 +65,7 @@ impl Slider {
 
     pub fn update(&mut self, value: f32, rq: &mut RenderQueue) {
         if (self.value - value).abs() >= f32::EPSILON {
-            self.value = value;
+            self.value = f32::max(f32::min(value, self.max_value), self.min_value);
             rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
         }
     }
@@ -322,6 +322,19 @@ mod tests {
     use crate::gesture::GestureEvent;
     use std::collections::VecDeque;
     use std::sync::mpsc::channel;
+
+    #[test]
+    fn test_slider_cannot_update_above_max() {
+        let bounds = rect![0, 0, 200, 50];
+        let mut slider = Slider::new(bounds, SliderId::LightIntensity, 7.0, 5.0, 10.0);
+        let mut rq = RenderQueue::new();
+
+        slider.update(100.0, &mut rq);
+        assert_eq!(slider.value, slider.max_value);
+
+        slider.update(0.0, &mut rq);
+        assert_eq!(slider.value, slider.min_value);
+    }
 
     #[test]
     fn test_tap_decrements_value_and_emits_event() {
