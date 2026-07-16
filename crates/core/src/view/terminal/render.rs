@@ -13,6 +13,45 @@ struct CellState {
     has_bg: bool,
 }
 
+impl CellState {
+    fn from_cell(cell: Option<&vt100::Cell>) -> Self {
+        cell.map(|cell| Self {
+            contents: cell.contents().to_string(),
+            inverse: cell.inverse(),
+            bold: cell.bold(),
+            is_wide: cell.is_wide(),
+            is_wide_continuation: cell.is_wide_continuation(),
+            has_bg: !matches!(cell.bgcolor(), vt100::Color::Default),
+        })
+        .unwrap_or_default()
+    }
+
+    fn columns(&self) -> usize {
+        if self.is_wide { 2 } else { 1 }
+    }
+}
+
+fn cells_that_fit(available: i32, cell_size: i32) -> u16 {
+    (available.max(0) / cell_size.max(1)).clamp(1, i32::from(u16::MAX)) as u16
+}
+
+fn cell_rectangle(
+    row: usize,
+    col: usize,
+    columns: usize,
+    render_cols: usize,
+    char_width: i32,
+    char_height: i32,
+) -> Rectangle {
+    Rectangle::new(
+        Point::new(col as i32 * char_width, row as i32 * char_height),
+        Point::new(
+            (col + columns).min(render_cols) as i32 * char_width,
+            (row + 1) as i32 * char_height,
+        ),
+    )
+}
+
 pub(super) struct TerminalRenderer {
     char_width: i32,
     char_height: i32,
@@ -48,8 +87,8 @@ impl TerminalRenderer {
         let line_height = (font.ascender() - font.descender()).max(1);
 
         TerminalGeometry {
-            cols: (available_width / char_width).max(20) as u16,
-            rows: (available_height / line_height).max(1) as u16,
+            cols: cells_that_fit(available_width, char_width),
+            rows: cells_that_fit(available_height, line_height),
             char_width,
             char_height: line_height,
         }
@@ -118,15 +157,13 @@ impl TerminalRenderer {
             if (old_row as usize) < render_rows && (old_col as usize) < render_cols {
                 let old_cell = screen.cell(old_row, old_col);
                 self.render_vt100_cell(old_row, old_col, old_cell, pixmap, font);
-                let cell_rect = Rectangle::new(
-                    Point::new(
-                        old_col as i32 * self.char_width,
-                        old_row as i32 * self.char_height,
-                    ),
-                    Point::new(
-                        (old_col as i32 + 1) * self.char_width,
-                        (old_row as i32 + 1) * self.char_height,
-                    ),
+                let cell_rect = cell_rectangle(
+                    old_row as usize,
+                    old_col as usize,
+                    CellState::from_cell(old_cell).columns(),
+                    render_cols,
+                    self.char_width,
+                    self.char_height,
                 );
                 dirty_rect = Some(cell_rect);
             }
@@ -137,26 +174,21 @@ impl TerminalRenderer {
         for row in 0..render_rows {
             for col in 0..render_cols {
                 let cell = screen.cell(row as u16, col as u16);
-                let current_state = cell
-                    .map(|c| CellState {
-                        contents: c.contents().to_string(),
-                        inverse: c.inverse(),
-                        bold: c.bold(),
-                        is_wide: c.is_wide(),
-                        is_wide_continuation: c.is_wide_continuation(),
-                        has_bg: !matches!(c.bgcolor(), vt100::Color::Default),
-                    })
-                    .unwrap_or_default();
+                let current_state = CellState::from_cell(cell);
 
                 if current_state != self.previous_screen[row][col] {
                     self.render_vt100_cell(row as u16, col as u16, cell, pixmap, font);
+                    let changed_columns = current_state
+                        .columns()
+                        .max(self.previous_screen[row][col].columns());
                     self.previous_screen[row][col] = current_state;
-                    let cell_rect = Rectangle::new(
-                        Point::new(col as i32 * self.char_width, row as i32 * self.char_height),
-                        Point::new(
-                            (col as i32 + 1) * self.char_width,
-                            (row as i32 + 1) * self.char_height,
-                        ),
+                    let cell_rect = cell_rectangle(
+                        row,
+                        col,
+                        changed_columns,
+                        render_cols,
+                        self.char_width,
+                        self.char_height,
                     );
                     if let Some(ref mut rect) = dirty_rect {
                         rect.absorb(&cell_rect);
@@ -240,5 +272,46 @@ impl TerminalRenderer {
             );
             pixmap.draw_rectangle(&cell_rect, WHITE);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CellState, cell_rectangle, cells_that_fit};
+    use crate::geom::{Point, Rectangle};
+
+    #[test]
+    fn grid_dimensions_never_claim_cells_that_do_not_fit() {
+        assert_eq!(cells_that_fit(599, 30), 19);
+        assert_eq!(cells_that_fit(29, 30), 1);
+        assert_eq!(cells_that_fit(0, 30), 1);
+        assert_eq!(cells_that_fit(i32::MAX, 1), u16::MAX);
+    }
+
+    #[test]
+    fn changed_wide_cells_dirty_both_columns() {
+        let wide = CellState {
+            is_wide: true,
+            ..CellState::default()
+        };
+        let replacement = CellState {
+            contents: "界".to_string(),
+            is_wide: true,
+            ..CellState::default()
+        };
+
+        assert_eq!(wide.columns().max(replacement.columns()), 2);
+        assert_eq!(
+            cell_rectangle(1, 2, 2, 10, 12, 20),
+            Rectangle::new(Point::new(24, 20), Point::new(48, 40))
+        );
+    }
+
+    #[test]
+    fn wide_dirty_regions_are_clipped_to_the_viewport() {
+        assert_eq!(
+            cell_rectangle(0, 9, 2, 10, 12, 20),
+            Rectangle::new(Point::new(108, 0), Point::new(120, 20))
+        );
     }
 }
