@@ -8,6 +8,7 @@ use crate::framebuffer::UpdateMode;
 use crate::geom::{BorderSpec, CornerSpec, Rectangle, halves};
 use crate::input::{DeviceEvent, FingerStatus};
 use crate::unit::scale_by_dpi;
+use crate::view::handle_event;
 use crate::view::icon::Icon;
 
 const PROGRESS_HEIGHT: f32 = 7.0;
@@ -309,5 +310,63 @@ impl View for SliderWithButtons {
     }
     fn id(&self) -> Id {
         self.id
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+    use crate::context::test_helpers::create_test_context;
+    use crate::geom::Point;
+    use crate::gesture::GestureEvent;
+    use std::collections::VecDeque;
+    use std::sync::mpsc::channel;
+
+    #[test]
+    fn test_tap_decrements_value_and_emits_event() {
+        let bounds = rect![0, 0, 200, 50];
+        let mut slider = SliderWithButtons::new(bounds, SliderId::LightIntensity, 7.0, 5.0, 6.0);
+
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+        let mut rq = RenderQueue::new();
+        let mut context = create_test_context();
+
+        let dec_bounds = slider.child(0).rect();
+        let point = Point::new(
+            dec_bounds.min.x + dec_bounds.max.x / 2,
+            dec_bounds.min.y + dec_bounds.max.y / 2,
+        );
+        let tap_event = Event::Gesture(GestureEvent::Tap(point));
+        crate::view::handle_event(
+            slider.child_mut(0),
+            &tap_event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        );
+        assert_eq!(bus.len(), 1);
+        let increment_event = bus.pop_front().unwrap();
+
+        crate::view::handle_event(
+            &mut slider,
+            &increment_event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        );
+        assert_eq!(bus.len(), 1);
+        let update_event = bus.pop_front();
+        assert!(matches!(
+            update_event,
+            Some(Event::Slider(
+                SliderId::LightIntensity,
+                6.0,
+                FingerStatus::Up
+            ))
+        ));
     }
 }
