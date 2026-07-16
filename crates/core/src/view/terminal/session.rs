@@ -1,6 +1,6 @@
 use super::{
     emulator::Emulator,
-    pty::Pty,
+    pty::{Pty, TerminalPty, TerminalSize},
     render::{TerminalGeometry, TerminalRenderer},
 };
 use crate::color::BLACK;
@@ -269,7 +269,7 @@ pub struct Terminal {
     terminal_rect: Rectangle,
     children: Vec<Box<dyn View>>,
     emulator: Arc<StdMutex<Emulator>>,
-    pty: Pty,
+    pty: Box<dyn TerminalPty>,
     renderer: TerminalRenderer,
     /// 1bpp staging surface; the reader job only feeds the emulator, and the
     /// main loop renders into this pixmap before blitting it to the framebuffer.
@@ -292,6 +292,23 @@ impl Terminal {
         context: &mut AppContext,
         tx: &Hub,
     ) -> Result<Terminal> {
+        Self::new_with_dependencies(rect, font_size, rq, context, tx, |size| {
+            Pty::spawn(Some("/bin/sh"), size).map(|pty| Box::new(pty) as Box<dyn TerminalPty>)
+        })
+    }
+
+    /// `pty_factory` exists so tests can substitute a fake PTY backend.
+    fn new_with_dependencies<P>(
+        rect: Rectangle,
+        font_size: f32,
+        rq: &mut RenderQueue,
+        context: &mut AppContext,
+        tx: &Hub,
+        pty_factory: P,
+    ) -> Result<Terminal>
+    where
+        P: FnOnce(TerminalSize) -> Result<Box<dyn TerminalPty>>,
+    {
         let id = ID_FEEDER.next();
         let dpi = context.device.dpi();
         let font_size_scaled = scale_font_size(font_size);
@@ -302,7 +319,6 @@ impl Terminal {
             .with_layout(Layout::Terminal)
             .with_bottom_bar(false);
         let keyboard_height = keyboard.keyboard_height(context);
-        keyboard.set_visible(true, tx, rq, context);
 
         // Grid size for the current layout (keyboard visible)
         let available_width = terminal_rect.width() as i32;
@@ -318,7 +334,12 @@ impl Terminal {
         let (rows, cols) = (geometry.rows, geometry.cols);
 
         let (pixel_width, pixel_height) = terminal_pixel_dimensions(terminal_rect, keyboard_height);
-        let pty = Pty::spawn(Some("/bin/sh"), rows, cols, pixel_width, pixel_height)?;
+        let pty = pty_factory(TerminalSize {
+            rows,
+            cols,
+            pixel_width,
+            pixel_height,
+        })?;
         let reader_fd = pty.take_reader_fd()?;
         let emulator = Arc::new(StdMutex::new(Emulator::new(rows, cols)));
         let renderer = TerminalRenderer::new_with_font_size(
@@ -330,6 +351,9 @@ impl Terminal {
         );
 
         let reader_job = spawn_reader_job(reader_fd, Arc::clone(&emulator), tx.clone());
+        // The PTY and reader are up; only now is it safe to publish render
+        // state, so a failed construction leaves the queue untouched.
+        keyboard.set_visible(true, tx, rq, context);
         let pixmap = Pixmap::new(terminal_rect.width(), terminal_rect.height(), 1);
         let layout = TerminalLayout {
             renderer: RendererConfiguration {
@@ -421,12 +445,12 @@ impl Terminal {
         context: &mut AppContext,
     ) -> bool {
         let layout = self.layout(terminal_rect, font_size, context);
-        if let Err(error) = self.pty.resize(
-            layout.renderer.rows,
-            layout.renderer.cols,
-            layout.pixel_width,
-            layout.pixel_height,
-        ) {
+        if let Err(error) = self.pty.resize(TerminalSize {
+            rows: layout.renderer.rows,
+            cols: layout.renderer.cols,
+            pixel_width: layout.pixel_width,
+            pixel_height: layout.pixel_height,
+        }) {
             tracing::warn!(
                 error = %error,
                 rows = layout.renderer.rows,
@@ -725,7 +749,10 @@ fn spawn_reader_job(reader_fd: OwnedFd, emulator: Arc<StdMutex<Emulator>>, tx: H
 
             loop {
                 match guard.try_io(|inner| read_fd(inner.get_ref().as_raw_fd(), &mut buf)) {
-                    Ok(Ok(0)) => return,
+                    Ok(Ok(0)) => {
+                        tx.send(Event::WakeUp.into()).ok();
+                        return;
+                    }
                     Ok(Ok(n)) => {
                         if let Ok(mut emu) = emulator.lock() {
                             emu.feed(&buf[..n]);
@@ -733,6 +760,7 @@ fn spawn_reader_job(reader_fd: OwnedFd, emulator: Arc<StdMutex<Emulator>>, tx: H
                     }
                     Ok(Err(error)) => {
                         tracing::warn!(error = %error, "terminal reader error");
+                        tx.send(Event::WakeUp.into()).ok();
                         return;
                     }
                     Err(_would_block) => break,
@@ -1008,13 +1036,394 @@ impl Drop for Terminal {
 #[cfg(test)]
 mod tests {
     use super::{
-        PAGE_DOWN, PAGE_UP, RendererConfiguration, TerminalLayout, application_scroll_sequence,
-        cursor_key_sequence, mouse_tap_sequence, normalized_font_size,
+        PAGE_DOWN, PAGE_UP, RendererConfiguration, Terminal, TerminalLayout,
+        application_scroll_sequence, cursor_key_sequence, mouse_tap_sequence, normalized_font_size,
         requests_terminal_hard_refresh, scrollback_target, should_dismiss_terminal_bar,
-        terminal_bar_rects, terminal_pixel_dimensions, toggles_terminal_bar,
+        spawn_reader_job, terminal_bar_rects, terminal_pixel_dimensions, toggles_terminal_bar,
     };
+    use crate::context::test_helpers::create_test_context;
+    use crate::device::AppContext;
+    use crate::framebuffer::UpdateMode;
     use crate::geom::{Dir, Point, Rectangle};
     use crate::gesture::GestureEvent;
+    use crate::view::terminal::emulator::Emulator;
+    use crate::view::terminal::pty::{TerminalPty, TerminalSize};
+    use crate::view::{Bus, Event, Hub, HubReceiver, KeyboardEvent, RenderQueue, View};
+    use anyhow::{Result, bail};
+    use std::io::Write;
+    use std::os::fd::{AsRawFd as _, FromRawFd as _, OwnedFd};
+    use std::os::unix::net::UnixStream;
+    use std::sync::{Arc, Mutex as StdMutex};
+    use std::time::Duration;
+
+    #[derive(Default)]
+    struct FakePtyState {
+        writes: Vec<Vec<u8>>,
+        resizes: Vec<TerminalSize>,
+        reader_requests: usize,
+        shutdowns: usize,
+        drops: usize,
+        fail_reader: bool,
+        fail_resize: bool,
+        peer: Option<UnixStream>,
+    }
+
+    struct FakePty {
+        state: Arc<StdMutex<FakePtyState>>,
+    }
+
+    impl FakePty {
+        /// Hands out a readable fd whose peer is dropped immediately, so the
+        /// reader job sees an idle fd (and EOF once both ends close).
+        fn reader_fd(&self) -> Result<OwnedFd> {
+            let (reader, peer) = UnixStream::pair()?;
+            self.state.lock().expect("fake PTY state poisoned").peer = Some(peer);
+            match unsafe { libc::dup(reader.as_raw_fd()) } {
+                fd if fd >= 0 => Ok(unsafe { OwnedFd::from_raw_fd(fd) }),
+                _ => bail!("failed to duplicate fake reader fd"),
+            }
+        }
+    }
+
+    impl TerminalPty for FakePty {
+        fn take_reader_fd(&self) -> Result<OwnedFd> {
+            let mut state = self.state.lock().expect("fake PTY state poisoned");
+            state.reader_requests += 1;
+            if state.fail_reader {
+                bail!("fake reader failure");
+            }
+            drop(state);
+            self.reader_fd()
+        }
+
+        fn write(&mut self, data: &[u8]) -> anyhow::Result<usize> {
+            self.state
+                .lock()
+                .expect("fake PTY state poisoned")
+                .writes
+                .push(data.to_vec());
+            Ok(data.len())
+        }
+
+        fn resize(&self, size: TerminalSize) -> anyhow::Result<()> {
+            let mut state = self.state.lock().expect("fake PTY state poisoned");
+            if state.fail_resize {
+                bail!("fake resize failure");
+            }
+            state.resizes.push(size);
+            Ok(())
+        }
+
+        fn shutdown(&mut self) -> anyhow::Result<()> {
+            self.state
+                .lock()
+                .expect("fake PTY state poisoned")
+                .shutdowns += 1;
+            Ok(())
+        }
+    }
+
+    impl Drop for FakePty {
+        fn drop(&mut self) {
+            self.state.lock().expect("fake PTY state poisoned").drops += 1;
+        }
+    }
+
+    async fn fake_terminal() -> (
+        Terminal,
+        Arc<StdMutex<FakePtyState>>,
+        AppContext,
+        Hub,
+        HubReceiver,
+        RenderQueue,
+    ) {
+        let state = Arc::new(StdMutex::new(FakePtyState::default()));
+        let factory_state = Arc::clone(&state);
+        let mut context = create_test_context().await;
+        context.load_keyboard_layouts().await;
+        let (hub, receiver) = tokio::sync::mpsc::unbounded_channel();
+        let mut render_queue = RenderQueue::new();
+        let terminal = Terminal::new_with_dependencies(
+            Rectangle::new(Point::new(0, 0), Point::new(600, 800)),
+            12.0,
+            &mut render_queue,
+            &mut context,
+            &hub,
+            move |_| {
+                Ok(Box::new(FakePty {
+                    state: factory_state,
+                }))
+            },
+        )
+        .expect("failed to construct terminal with fake PTY");
+        render_queue.clear();
+
+        (terminal, state, context, hub, receiver, render_queue)
+    }
+
+    async fn handle_terminal_event(
+        terminal: &mut Terminal,
+        event: Event,
+        hub: &Hub,
+        render_queue: &mut RenderQueue,
+        context: &mut AppContext,
+    ) -> bool {
+        terminal
+            .handle_event(&event, hub, &mut Bus::new(), render_queue, context)
+            .await
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn terminal_construction_is_transactional_when_pty_creation_fails() {
+        let mut context = create_test_context().await;
+        context.load_keyboard_layouts().await;
+        let original_keyboard_rect = context.kb_rect;
+        let (hub, _) = tokio::sync::mpsc::unbounded_channel();
+        let mut render_queue = RenderQueue::new();
+
+        let result = Terminal::new_with_dependencies(
+            Rectangle::new(Point::new(0, 0), Point::new(600, 800)),
+            12.0,
+            &mut render_queue,
+            &mut context,
+            &hub,
+            |_| bail!("fake PTY creation failure"),
+        );
+
+        assert!(result.is_err());
+        assert!(render_queue.is_empty());
+        assert_eq!(context.kb_rect, original_keyboard_rect);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn terminal_construction_is_transactional_when_reader_creation_fails() {
+        let state = Arc::new(StdMutex::new(FakePtyState {
+            fail_reader: true,
+            ..FakePtyState::default()
+        }));
+        let factory_state = Arc::clone(&state);
+        let mut context = create_test_context().await;
+        context.load_keyboard_layouts().await;
+        let original_keyboard_rect = context.kb_rect;
+        let (hub, _) = tokio::sync::mpsc::unbounded_channel();
+        let mut render_queue = RenderQueue::new();
+
+        let result = Terminal::new_with_dependencies(
+            Rectangle::new(Point::new(0, 0), Point::new(600, 800)),
+            12.0,
+            &mut render_queue,
+            &mut context,
+            &hub,
+            move |_| {
+                Ok(Box::new(FakePty {
+                    state: factory_state,
+                }))
+            },
+        );
+
+        assert!(result.is_err());
+        assert!(render_queue.is_empty());
+        assert_eq!(context.kb_rect, original_keyboard_rect);
+        let state = state.lock().expect("fake PTY state poisoned");
+        assert_eq!(state.reader_requests, 1);
+        assert_eq!(state.drops, 1);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn keyboard_events_are_written_to_the_pty_in_terminal_encoding() {
+        let (mut terminal, state, mut context, hub, _, mut render_queue) = fake_terminal().await;
+
+        for event in [
+            KeyboardEvent::Append('x'),
+            KeyboardEvent::Submit,
+            KeyboardEvent::Control('c'),
+            KeyboardEvent::Arrow(Dir::North),
+        ] {
+            assert!(
+                handle_terminal_event(
+                    &mut terminal,
+                    Event::Keyboard(event),
+                    &hub,
+                    &mut render_queue,
+                    &mut context,
+                )
+                .await
+            );
+        }
+        terminal
+            .emulator
+            .lock()
+            .expect("terminal emulator poisoned")
+            .feed(b"\x1b[?1h");
+        assert!(
+            handle_terminal_event(
+                &mut terminal,
+                Event::Keyboard(KeyboardEvent::Arrow(Dir::South)),
+                &hub,
+                &mut render_queue,
+                &mut context,
+            )
+            .await
+        );
+
+        assert_eq!(
+            state.lock().expect("fake PTY state poisoned").writes,
+            vec![
+                b"x".to_vec(),
+                b"\r".to_vec(),
+                vec![3],
+                b"\x1b[A".to_vec(),
+                b"\x1bOB".to_vec(),
+            ]
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn resize_keeps_pty_emulator_and_renderer_configuration_in_sync() {
+        let (mut terminal, state, mut context, hub, _, mut render_queue) = fake_terminal().await;
+        let landscape = Rectangle::new(Point::new(0, 0), Point::new(800, 600));
+
+        terminal.resize(landscape, &hub, &mut render_queue, &mut context);
+
+        let expected_size = TerminalSize {
+            rows: terminal.layout.renderer.rows,
+            cols: terminal.layout.renderer.cols,
+            pixel_width: terminal.layout.pixel_width,
+            pixel_height: terminal.layout.pixel_height,
+        };
+        assert_eq!(
+            state
+                .lock()
+                .expect("fake PTY state poisoned")
+                .resizes
+                .last(),
+            Some(&expected_size)
+        );
+        assert_eq!(
+            terminal
+                .emulator
+                .lock()
+                .expect("terminal emulator poisoned")
+                .screen()
+                .size(),
+            (expected_size.rows, expected_size.cols)
+        );
+        assert_eq!(
+            (terminal.pixmap.width, terminal.pixmap.height),
+            (landscape.width(), landscape.height())
+        );
+        assert_eq!(terminal.rect, landscape);
+        assert_eq!(terminal.terminal_rect, landscape);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn failed_pty_resize_preserves_the_active_terminal_layout() {
+        let (mut terminal, state, mut context, hub, _, mut render_queue) = fake_terminal().await;
+        let previous_layout = terminal.layout;
+        let previous_terminal_rect = terminal.terminal_rect;
+        let previous_pixmap = (
+            terminal.pixmap.width,
+            terminal.pixmap.height,
+            terminal.pixmap.data().to_vec(),
+        );
+        state.lock().expect("fake PTY state poisoned").fail_resize = true;
+
+        terminal.resize(
+            Rectangle::new(Point::new(0, 0), Point::new(800, 600)),
+            &hub,
+            &mut render_queue,
+            &mut context,
+        );
+
+        assert_eq!(terminal.layout, previous_layout);
+        assert_eq!(terminal.terminal_rect, previous_terminal_rect);
+        assert_eq!(
+            terminal
+                .emulator
+                .lock()
+                .expect("terminal emulator poisoned")
+                .screen()
+                .size(),
+            (previous_layout.renderer.rows, previous_layout.renderer.cols)
+        );
+        assert_eq!(
+            (terminal.pixmap.width, terminal.pixmap.height),
+            (previous_pixmap.0, previous_pixmap.1)
+        );
+        assert_eq!(terminal.pixmap.data(), previous_pixmap.2.as_slice());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn long_hold_requests_a_full_framebuffer_update() {
+        let (mut terminal, state, mut context, hub, mut receiver, mut render_queue) =
+            fake_terminal().await;
+
+        assert!(
+            handle_terminal_event(
+                &mut terminal,
+                Event::Gesture(GestureEvent::HoldFingerLong(Point::new(300, 400), 0)),
+                &hub,
+                &mut render_queue,
+                &mut context,
+            )
+            .await
+        );
+
+        assert_eq!(
+            render_queue
+                .get(&(UpdateMode::Full, false))
+                .expect("full framebuffer update was not scheduled")
+                .as_slice(),
+            &[(Some(terminal.id), terminal.terminal_rect)]
+        );
+        // The fake PTY never produced output, so nothing else wakes the loop.
+        assert!(receiver.try_recv().is_err());
+        let state = state.lock().expect("fake PTY state poisoned");
+        assert_eq!(state.shutdowns, 0);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn dropping_terminal_shuts_down_the_backend_once() {
+        let (terminal, state, _, _, _, _) = fake_terminal().await;
+
+        drop(terminal);
+
+        let state = state.lock().expect("fake PTY state poisoned");
+        assert_eq!(state.shutdowns, 1);
+        assert_eq!(state.drops, 1);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn reader_job_drains_final_output_before_eof_and_wakes_the_main_loop() {
+        let (reader, mut peer) = UnixStream::pair().expect("failed to create socket pair");
+        peer.write_all(b"done")
+            .expect("failed to write test output");
+        drop(peer);
+        let reader_fd = match unsafe { libc::dup(reader.as_raw_fd()) } {
+            fd if fd >= 0 => unsafe { OwnedFd::from_raw_fd(fd) },
+            _ => panic!("failed to duplicate reader fd"),
+        };
+        let emulator = Arc::new(StdMutex::new(Emulator::new(2, 10)));
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+
+        let job = spawn_reader_job(reader_fd, Arc::clone(&emulator), tx);
+
+        let message = tokio::time::timeout(Duration::from_secs(5), rx.recv())
+            .await
+            .expect("reader job did not wake the main loop")
+            .expect("hub channel closed");
+        assert!(matches!(message.event, Event::WakeUp));
+        let outcome = job.join(Duration::from_secs(1)).await;
+        assert!(matches!(outcome, crate::runtime::JobOutcome::Finished(())));
+        assert_eq!(
+            emulator
+                .lock()
+                .expect("terminal emulator poisoned")
+                .screen()
+                .contents(),
+            "done"
+        );
+    }
 
     #[test]
     fn terminal_bar_is_an_overlay_at_the_top_of_the_terminal() {
