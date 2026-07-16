@@ -23,6 +23,10 @@ impl Emulator {
         self.parser.screen().alternate_screen()
     }
 
+    pub(super) fn application_cursor(&self) -> bool {
+        self.parser.screen().application_cursor()
+    }
+
     pub(super) fn scrollback(&self) -> usize {
         self.parser.screen().scrollback()
     }
@@ -63,5 +67,16 @@ mod tests {
 
         emulator.feed(b"\x1b[?1049l");
         assert!(!emulator.alternate_screen());
+    }
+
+    #[test]
+    fn application_cursor_mode_is_reported() {
+        let mut emulator = Emulator::new(2, 10);
+
+        emulator.feed(b"\x1b[?1h");
+        assert!(emulator.application_cursor());
+
+        emulator.feed(b"\x1b[?1l");
+        assert!(!emulator.application_cursor());
     }
 }
