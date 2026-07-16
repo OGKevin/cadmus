@@ -441,7 +441,8 @@ impl Terminal {
         if let Ok(mut emulator) = self.emulator.lock() {
             emulator.resize(layout.renderer.rows, layout.renderer.cols);
         }
-        // Rebuild the renderer for the new grid so every cell is redrawn.
+        // Rebuild the renderer and pixmap for the new grid, then redraw the
+        // emulator screen from scratch so no stale pixels survive the resize.
         self.renderer = TerminalRenderer::new_with_font_size(
             &mut context.fonts,
             layout.renderer.rows,
@@ -454,6 +455,10 @@ impl Terminal {
             layout.renderer.pixmap_height,
             1,
         );
+        if let Ok(emu) = self.emulator.lock() {
+            self.renderer
+                .reconstruct_screen(emu.screen(), &mut self.pixmap, &mut context.fonts);
+        }
         self.font_size = font_size;
         self.layout = layout;
         self.terminal_rect = terminal_rect;
@@ -461,6 +466,18 @@ impl Terminal {
             context.settings.terminal.font_size = font_size;
         }
         true
+    }
+
+    fn request_render_reconstruction(&mut self, rq: &mut RenderQueue, context: &mut AppContext) {
+        if let Ok(emu) = self.emulator.lock() {
+            self.renderer
+                .reconstruct_screen(emu.screen(), &mut self.pixmap, &mut context.fonts);
+        }
+        rq.add(RenderData::no_wait(
+            self.id,
+            self.terminal_rect,
+            UpdateMode::Full,
+        ));
     }
 
     fn send_mouse_tap(&mut self, point: Point) -> bool {
@@ -855,7 +872,7 @@ impl View for Terminal {
                 true
             }
             Event::Gesture(gesture) if requests_terminal_hard_refresh(gesture, self.rect) => {
-                rq.add(RenderData::expose(self.rect, UpdateMode::Full));
+                self.request_render_reconstruction(rq, context);
                 true
             }
             Event::Gesture(GestureEvent::Swipe { dir, start, end })

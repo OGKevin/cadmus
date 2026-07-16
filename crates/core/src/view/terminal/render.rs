@@ -149,6 +149,19 @@ impl TerminalRenderer {
             visible: false,
         });
     }
+    pub(super) fn reconstruct_screen(
+        &mut self,
+        screen: &vt100::Screen,
+        pixmap: &mut Pixmap,
+        fonts: &mut Fonts,
+    ) {
+        pixmap.data.fill(WHITE.gray());
+        self.previous_screen
+            .iter_mut()
+            .for_each(|row| row.fill(CellState::default()));
+        self.previous_cursor = None;
+        self.render_screen(screen, pixmap, fonts);
+    }
 
     /// Render directly from a vt100 Screen to a Pixmap
     pub(super) fn render_screen(
@@ -300,7 +313,30 @@ impl TerminalRenderer {
 #[cfg(test)]
 mod tests {
     use super::{CellState, CursorState, cell_rectangle, cells_that_fit, cursor_cell_to_restore};
+    use crate::color::{BLACK, WHITE};
+    use crate::font::Fonts;
+    use crate::framebuffer::Pixmap;
     use crate::geom::{Point, Rectangle};
+    use std::env;
+    use std::path::PathBuf;
+
+    #[test]
+    fn reconstruction_clears_pixels_missing_from_the_terminal_screen() {
+        let mut fonts = Fonts::load_from(PathBuf::from(
+            env::var("TEST_ROOT_DIR").expect("TEST_ROOT_DIR must be set for this test"),
+        ))
+        .expect("failed to load fonts");
+        let mut renderer =
+            super::TerminalRenderer::new_with_font_size(&mut fonts, 2, 2, 12 * 64, 300);
+        let mut parser = vt100::Parser::new(2, 2, 0);
+        parser.process(b"\x1b[?25l");
+        let mut pixmap = Pixmap::new(100, 100, 1);
+        pixmap.data.fill(BLACK.gray());
+
+        renderer.reconstruct_screen(parser.screen(), &mut pixmap, &mut fonts);
+
+        assert!(pixmap.data.iter().all(|pixel| *pixel == WHITE.gray()));
+    }
 
     #[test]
     fn grid_dimensions_never_claim_cells_that_do_not_fit() {
