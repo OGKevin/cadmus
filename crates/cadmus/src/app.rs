@@ -996,13 +996,28 @@ pub async fn run() -> Result<(), Error> {
                         )
                         .await,
                     ),
-                    AppCmd::Terminal => Box::new(Terminal::new(
+                    AppCmd::Terminal => match Terminal::new(
                         context.device.framebuffer().rect(),
                         context.settings.terminal.font_size,
                         &mut rq,
                         &mut context,
                         &tx,
-                    )?),
+                    ) {
+                        Ok(terminal) => Box::new(terminal),
+                        Err(error) => {
+                            error!(error = %error, application = "terminal", "Failed to launch application");
+                            let notification = Notification::new(
+                                None,
+                                "Failed to open terminal".to_string(),
+                                false,
+                                &tx,
+                                &mut rq,
+                                &mut context,
+                            );
+                            view.children_mut().push(Box::new(notification));
+                            continue;
+                        }
+                    },
                 };
                 transfer_notifications(view.as_mut(), next_view.as_mut(), &mut rq, &mut context);
                 history.push(HistoryItem {

@@ -52,6 +52,21 @@ fn cell_rectangle(
     )
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct CursorState {
+    position: (u16, u16),
+    visible: bool,
+}
+
+fn cursor_cell_to_restore(
+    previous: Option<CursorState>,
+    current: CursorState,
+) -> Option<(u16, u16)> {
+    previous
+        .filter(|previous| previous.visible && *previous != current)
+        .map(|previous| previous.position)
+}
+
 pub(super) struct TerminalRenderer {
     char_width: i32,
     char_height: i32,
@@ -59,7 +74,7 @@ pub(super) struct TerminalRenderer {
     font_size: u32,
     dpi: u16,
     previous_screen: Vec<Vec<CellState>>,
-    previous_cursor: (u16, u16),
+    previous_cursor: Option<CursorState>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -119,7 +134,7 @@ impl TerminalRenderer {
             font_size,
             dpi,
             previous_screen,
-            previous_cursor: (0, 0),
+            previous_cursor: None,
         }
     }
 
@@ -129,7 +144,10 @@ impl TerminalRenderer {
         for row in &mut self.previous_screen {
             row.fill(CellState::default());
         }
-        self.previous_cursor = (u16::MAX, u16::MAX);
+        self.previous_cursor = Some(CursorState {
+            position: (u16::MAX, u16::MAX),
+            visible: false,
+        });
     }
 
     /// Render directly from a vt100 Screen to a Pixmap
@@ -143,7 +161,11 @@ impl TerminalRenderer {
         font.set_size(self.font_size, self.dpi);
 
         let (current_rows, current_cols) = screen.size();
-        let cursor_pos = screen.cursor_position();
+        let cursor = CursorState {
+            position: screen.cursor_position(),
+            visible: screen.scrollback() == 0 && !screen.hide_cursor(),
+        };
+        let cursor_changed = self.previous_cursor != Some(cursor);
         let mut dirty_rect: Option<Rectangle> = None;
 
         // Use the minimum of screen size and our buffer size
@@ -151,32 +173,31 @@ impl TerminalRenderer {
         let render_cols =
             (current_cols as usize).min(self.previous_screen.first().map(|r| r.len()).unwrap_or(0));
 
-        // Check for cursor movement
-        if cursor_pos != self.previous_cursor {
-            let (old_row, old_col) = self.previous_cursor;
-            if (old_row as usize) < render_rows && (old_col as usize) < render_cols {
-                let old_cell = screen.cell(old_row, old_col);
-                self.render_vt100_cell(old_row, old_col, old_cell, pixmap, font);
-                let cell_rect = cell_rectangle(
-                    old_row as usize,
-                    old_col as usize,
-                    CellState::from_cell(old_cell).columns(),
-                    render_cols,
-                    self.char_width,
-                    self.char_height,
-                );
-                dirty_rect = Some(cell_rect);
-            }
-            self.previous_cursor = cursor_pos;
+        if let Some((old_row, old_col)) = cursor_cell_to_restore(self.previous_cursor, cursor)
+            && (old_row as usize) < render_rows
+            && (old_col as usize) < render_cols
+        {
+            let old_cell = screen.cell(old_row, old_col);
+            self.render_vt100_cell(old_row, old_col, old_cell, pixmap, font);
+            let cell_rect = cell_rectangle(
+                old_row as usize,
+                old_col as usize,
+                CellState::from_cell(old_cell).columns(),
+                render_cols,
+                self.char_width,
+                self.char_height,
+            );
+            dirty_rect = Some(cell_rect);
         }
 
-        // Compare cells and render only changed ones
+        let mut cursor_cell_changed = false;
         for row in 0..render_rows {
             for col in 0..render_cols {
                 let cell = screen.cell(row as u16, col as u16);
                 let current_state = CellState::from_cell(cell);
 
                 if current_state != self.previous_screen[row][col] {
+                    cursor_cell_changed |= cursor.position == (row as u16, col as u16);
                     self.render_vt100_cell(row as u16, col as u16, cell, pixmap, font);
                     let changed_columns = current_state
                         .columns()
@@ -199,10 +220,9 @@ impl TerminalRenderer {
             }
         }
 
-        // Draw cursor on current position
-        let (cursor_row, cursor_col) = cursor_pos;
-        if screen.scrollback() == 0
-            && !screen.hide_cursor()
+        let (cursor_row, cursor_col) = cursor.position;
+        if cursor.visible
+            && (cursor_changed || cursor_cell_changed)
             && (cursor_row as usize) < render_rows
             && (cursor_col as usize) < render_cols
         {
@@ -219,6 +239,8 @@ impl TerminalRenderer {
                 dirty_rect = Some(cursor_rect);
             }
         }
+
+        self.previous_cursor = Some(cursor);
 
         dirty_rect
     }
@@ -277,7 +299,7 @@ impl TerminalRenderer {
 
 #[cfg(test)]
 mod tests {
-    use super::{CellState, cell_rectangle, cells_that_fit};
+    use super::{CellState, CursorState, cell_rectangle, cells_that_fit, cursor_cell_to_restore};
     use crate::geom::{Point, Rectangle};
 
     #[test]
@@ -313,5 +335,38 @@ mod tests {
             cell_rectangle(0, 9, 2, 10, 12, 20),
             Rectangle::new(Point::new(108, 0), Point::new(120, 20))
         );
+    }
+
+    #[test]
+    fn hiding_a_stationary_cursor_restores_its_cell() {
+        let position = (2, 3);
+        let previous = CursorState {
+            position,
+            visible: true,
+        };
+        let current = CursorState {
+            position,
+            visible: false,
+        };
+
+        assert_eq!(
+            cursor_cell_to_restore(Some(previous), current),
+            Some(position)
+        );
+    }
+
+    #[test]
+    fn showing_a_stationary_cursor_does_not_restore_its_cell() {
+        let position = (2, 3);
+        let previous = CursorState {
+            position,
+            visible: false,
+        };
+        let current = CursorState {
+            position,
+            visible: true,
+        };
+
+        assert_eq!(cursor_cell_to_restore(Some(previous), current), None);
     }
 }
