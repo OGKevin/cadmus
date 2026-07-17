@@ -47,10 +47,20 @@ impl Slider {
         }
     }
 
+    /// Increment (or decrement for negative amounts) the slider's value.
     pub fn increment(&mut self, amount: f32, rq: &mut RenderQueue) {
-        self.update(self.value + amount, rq)
+        self.update(self.value + amount, rq);
     }
 
+    /// Update the value of the slider, taking into account the bounds.
+    pub fn update(&mut self, value: f32, rq: &mut RenderQueue) {
+        if (self.value - value).abs() >= f32::EPSILON {
+            self.value = f32::max(f32::min(value, self.max_value), self.min_value);
+            rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+        }
+    }
+
+    /// Update the slider given an x co-ordinate.
     pub fn update_value(&mut self, x_hit: i32, dpi: u16) {
         let button_diameter = scale_by_dpi(BUTTON_DIAMETER, dpi) as i32;
         let (small_radius, big_radius) = halves(button_diameter);
@@ -63,12 +73,6 @@ impl Slider {
         self.value = self.min_value + progress * (self.max_value - self.min_value);
     }
 
-    pub fn update(&mut self, value: f32, rq: &mut RenderQueue) {
-        if (self.value - value).abs() >= f32::EPSILON {
-            self.value = f32::max(f32::min(value, self.max_value), self.min_value);
-            rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
-        }
-    }
 }
 
 impl View for Slider {
@@ -219,6 +223,7 @@ impl View for Slider {
     }
 }
 
+/// A slider view with increment and decrement buttons.
 pub struct SliderWithButtons {
     id: Id,
     rect: Rectangle,
