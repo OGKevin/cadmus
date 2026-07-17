@@ -258,8 +258,19 @@ impl SliderWithButtons {
         SliderWithButtons {
             rect: rect,
             id: ID_FEEDER.next(),
+            // WARNING: Keep in-sync with *_child accessors below.
             children: vec![Box::new(decrement), Box::new(slider), Box::new(increment)],
         }
+    }
+
+    pub fn decrement_child(&mut self) -> &mut Icon {
+        self.children_mut()[0].downcast_mut::<Icon>().unwrap()
+    }
+    pub fn slider_child(&mut self) -> &mut Slider {
+        self.children_mut()[1].downcast_mut::<Slider>().unwrap()
+    }
+    pub fn increment_child(&mut self) -> &mut Icon {
+        self.children_mut()[2].downcast_mut::<Icon>().unwrap()
     }
 }
 
@@ -278,7 +289,7 @@ impl View for SliderWithButtons {
             Event::SliderIncrement(amount) => {
                 let id = self.id;
                 let rect = self.rect;
-                let slider = self.children_mut()[1].downcast_mut::<Slider>().unwrap();
+                let slider = self.slider_child();
                 slider.increment(amount, rq);
                 rq.add(RenderData::new(id, rect, UpdateMode::Gui));
                 bus.push_back(Event::Slider(
@@ -346,14 +357,14 @@ mod tests {
         let mut rq = RenderQueue::new();
         let mut context = create_test_context();
 
-        let dec_bounds = slider.child(0).rect();
+        let dec_bounds = slider.decrement_child().rect();
         let point = Point::new(
             dec_bounds.min.x + dec_bounds.max.x / 2,
             dec_bounds.min.y + dec_bounds.max.y / 2,
         );
         let tap_event = Event::Gesture(GestureEvent::Tap(point));
         crate::view::handle_event(
-            slider.child_mut(0),
+            slider.decrement_child(),
             &tap_event,
             &hub,
             &mut bus,
