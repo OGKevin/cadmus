@@ -1236,6 +1236,8 @@ mod tests {
         for event in [
             KeyboardEvent::Append('x'),
             KeyboardEvent::Submit,
+            KeyboardEvent::Tab,
+            KeyboardEvent::Escape,
             KeyboardEvent::Control('c'),
             KeyboardEvent::Arrow(Dir::North),
         ] {
@@ -1271,6 +1273,8 @@ mod tests {
             vec![
                 b"x".to_vec(),
                 b"\r".to_vec(),
+                b"\t".to_vec(),
+                b"\x1b".to_vec(),
                 vec![3],
                 b"\x1b[A".to_vec(),
                 b"\x1bOB".to_vec(),
