@@ -448,7 +448,13 @@ pub enum Event {
     Define(String),
     Submit(ViewId, String),
     Slider(SliderId, f32, FingerStatus),
+
+    // WARNING! For use internal to SliderWithButtons only! It doesn't
+    // carry an identifier indicating which slider needs updating,
+    // so if used outside this relationship, it can lead to funny behaviour.
+    // e.g. updating all sliders in the view tree
     SliderIncrement(f32),
+
     ToggleNear(ViewId, Rectangle),
     ToggleInputHistoryMenu(ViewId, Rectangle),
     ToggleBookMenu(Rectangle, usize),

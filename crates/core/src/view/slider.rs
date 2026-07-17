@@ -72,7 +72,6 @@ impl Slider {
             .clamp(0.0, 1.0);
         self.value = self.min_value + progress * (self.max_value - self.min_value);
     }
-
 }
 
 impl View for Slider {
