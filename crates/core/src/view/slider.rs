@@ -61,7 +61,7 @@ impl Slider {
     }
 
     /// Update the slider given an x co-ordinate.
-    pub fn update_value(&mut self, x_hit: i32, dpi: u16) {
+    fn update_value(&mut self, x_hit: i32, dpi: u16) {
         let button_diameter = scale_by_dpi(BUTTON_DIAMETER, dpi) as i32;
         let (small_radius, big_radius) = halves(button_diameter);
         let x_offset = x_hit
