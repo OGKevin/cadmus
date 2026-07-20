@@ -25,6 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       cargo: ${{ steps.filter.outputs.cargo }}
+      docs-epub: ${{ steps.filter.outputs.docs-epub }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -49,6 +50,12 @@ jobs:
               - '.gitmodules'
               - 'mupdf_wrapper/**'
               - 'thirdparty/**'
+            docs-epub:
+              - 'docs/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - '.github/actions/build-docs-epub/**'
+              - '.github/actions/install-doc-tools/**'
 
   format:
     needs: changes
@@ -96,7 +103,7 @@ jobs:
 
   build-docs-epub:
     needs: changes
-    if: github.event_name != 'pull_request' || needs.changes.outputs.cargo == 'true'
+    if: github.event_name != 'pull_request' || needs.changes.outputs.cargo == 'true' || needs.changes.outputs.docs-epub == 'true'
     permissions:
       contents: read
     runs-on: ubuntu-latest
