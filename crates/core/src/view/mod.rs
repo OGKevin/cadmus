@@ -449,10 +449,12 @@ pub enum Event {
     Submit(ViewId, String),
     Slider(SliderId, f32, FingerStatus),
 
-    // WARNING! For use internal to SliderWithButtons only! It doesn't
-    // carry an identifier indicating which slider needs updating,
-    // so if used outside this relationship, it can lead to funny behaviour.
-    // e.g. updating all sliders in the view tree
+    /// WARNING! For use internal to SliderWithButtons only! It doesn't
+    /// carry an identifier indicating which slider needs updating,
+    /// so if used outside this relationship, it can lead to funny behaviour.
+    /// e.g. updating all sliders in the view tree.
+    ///
+    /// Used to indicate the increment or decrement button has been pressed.
     SliderIncrement(f32),
 
     ToggleNear(ViewId, Rectangle),
