@@ -240,7 +240,6 @@ impl SliderWithButtons {
         min_value: f32,
         max_value: f32,
     ) -> SliderWithButtons {
-
         let decrement = Icon::new(
             "minus",
             rect![rect.min.x, rect.min.y, rect.min.x + 40, rect.max.y],
@@ -278,7 +277,7 @@ impl SliderWithButtons {
             children: children,
             decrement_index,
             slider_index,
-            increment_index
+            increment_index,
         }
     }
 }
@@ -298,7 +297,10 @@ impl View for SliderWithButtons {
             Event::SliderIncrement(amount) => {
                 let id = self.id;
                 let rect = self.rect;
-                let slider = self.child_mut(self.slider_index).downcast_mut::<Slider>().unwrap();
+                let slider = self
+                    .child_mut(self.slider_index)
+                    .downcast_mut::<Slider>()
+                    .unwrap();
                 slider.increment(amount, rq);
                 rq.add(RenderData::new(id, rect, UpdateMode::Gui));
                 bus.push_back(Event::Slider(
