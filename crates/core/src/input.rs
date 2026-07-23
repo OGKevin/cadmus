@@ -60,6 +60,9 @@ pub const KEY_HOME: u16 = 102;
 pub const KEY_LIGHT: u16 = 90;
 pub const KEY_BACKWARD: u16 = 193;
 pub const KEY_FORWARD: u16 = 194;
+pub const KEY_SPACE: u16 = 57;
+pub const KEY_UP: u16 = 103;
+pub const KEY_DOWN: u16 = 108;
 pub const PEN_ERASE: u16 = 331;
 pub const PEN_HIGHLIGHT: u16 = 332;
 pub const SLEEP_COVER: [u16; 2] = [59, 35];
@@ -98,9 +101,17 @@ pub struct InputEvent {
 
 /// How a device's `EV_KEY` events map to semantic actions.
 ///
-/// Each opened evdev device carries a profile so the device-event pipeline
-/// routes its `EV_KEY` events through a uniform scancode table ([`key_map`]).
-/// Scancodes not in the table are forwarded as [`ButtonCode::Raw`].
+/// Each opened evdev device is classified into a profile by probing its kernel
+/// features (name, bustype, event-type bits) — see [`classify_device`]. The
+/// profile is a small scancode table ([`key_map`]); scancodes not in the table
+/// are forwarded as [`ButtonCode::Raw`].
+///
+/// This replaces the older `DeviceOrigin` enum: instead of hard-coding special
+/// functions to specific device names, each device's function map is data
+/// selected by detected features. The Kobo Remote's arrow-key page-turn is
+/// thus handled congruently with the built-in page-turn buttons — both are
+/// entries in their respective profile's `key_map`, dispatched through the
+/// same lookup in [`parse_device_events`].
 ///
 /// [`key_map`]: DeviceProfile::key_map
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -118,6 +129,21 @@ impl DeviceProfile {
         Self {
             key_map: BUILT_IN_KEY_MAP,
         }
+    }
+
+    /// Profile for the Kobo Remote Bluetooth keyboard: up/down arrows map to
+    /// page-turn buttons (bypassing the button-scheme, since the remote is
+    /// orientation-agnostic).
+    const fn remote() -> Self {
+        Self {
+            key_map: REMOTE_KEY_MAP,
+        }
+    }
+
+    /// Profile for a generic hotplugged keyboard: no special scancodes; all
+    /// keys are forwarded as [`ButtonCode::Raw`].
+    const fn keyboard() -> Self {
+        Self { key_map: &[] }
     }
 
     /// Returns the [`KeyAction`] mapped to `code`, if any.
@@ -138,6 +164,9 @@ pub(crate) enum KeyAction {
     /// Page-turn that respects the button-scheme (rotation-based inversion),
     /// used by built-in page-turn buttons.
     PageTurnScheme(LinearDir),
+    /// Page-turn that bypasses the button-scheme, used by orientation-agnostic
+    /// remotes.
+    PageTurnRaw(LinearDir),
     Erase,
     Highlight,
     /// Magnetic sleep-cover open/close signal.
@@ -152,12 +181,13 @@ impl KeyAction {
     /// Resolves a button-dispatch action to a [`ButtonCode`].
     ///
     /// [`PageTurnScheme`] respects the button-scheme (rotation-based
-    /// inversion). Control actions ([`SleepCover`], [`ButtonScheme`],
-    /// [`RotateDisplay`]) are handled by their own match arms in
-    /// [`parse_device_events`] before this is called, so reaching them here is
-    /// a logic error.
+    /// inversion); [`PageTurnRaw`] bypasses it. Control actions
+    /// ([`SleepCover`], [`ButtonScheme`], [`RotateDisplay`]) are handled by
+    /// their own match arms in [`parse_device_events`] before this is called,
+    /// so reaching them here is a logic error.
     ///
     /// [`PageTurnScheme`]: KeyAction::PageTurnScheme
+    /// [`PageTurnRaw`]: KeyAction::PageTurnRaw
     /// [`SleepCover`]: KeyAction::SleepCover
     /// [`ButtonScheme`]: KeyAction::ButtonScheme
     /// [`RotateDisplay`]: KeyAction::RotateDisplay
@@ -177,6 +207,8 @@ impl KeyAction {
             KeyAction::PageTurnScheme(direction) => {
                 resolve_button_direction(direction, rotation, button_scheme, startup_rotation, dir)
             }
+            KeyAction::PageTurnRaw(LinearDir::Forward) => ButtonCode::Forward,
+            KeyAction::PageTurnRaw(LinearDir::Backward) => ButtonCode::Backward,
             KeyAction::SleepCover | KeyAction::ButtonScheme | KeyAction::RotateDisplay => {
                 unreachable!("control actions are handled before to_button_code is called")
             }
@@ -199,9 +231,21 @@ const BUILT_IN_KEY_MAP: &[(u16, KeyAction)] = &[
     (KEY_BUTTON_SCHEME, KeyAction::ButtonScheme),
 ];
 
+/// Scancode table for [`DeviceProfile::remote`].
+const REMOTE_KEY_MAP: &[(u16, KeyAction)] = &[
+    (KEY_UP, KeyAction::PageTurnRaw(LinearDir::Backward)),
+    (KEY_DOWN, KeyAction::PageTurnRaw(LinearDir::Forward)),
+];
+
 /// An [`InputEvent`] tagged with the [`DeviceProfile`] of the device that
-/// produced it, so the device-event pipeline routes its `EV_KEY` events
-/// through the device's scancode table.
+/// produced it.
+///
+/// Persistent devices (touch digitizer, gpio-keys, power key) are discovered by
+/// a feature scan at startup and kept open for the process lifetime. Hotplugged
+/// devices (keyboards, remotes) are discovered by periodic rescans and may be
+/// removed when they disappear. Both classes are classified into a
+/// [`DeviceProfile`] by their kernel features so the device-event pipeline
+/// routes their `EV_KEY` events through a uniform scancode table.
 #[derive(Debug, Clone)]
 pub struct TaggedInputEvent {
     pub event: InputEvent,
@@ -387,6 +431,9 @@ pub fn raw_events(
 
 /// Forwards evdev events from one nonblocking device until it closes or `tx` drops.
 ///
+/// Each forwarded event is tagged with `profile`, the scancode classification of
+/// the device it was read from.
+///
 /// `AsyncFd` only says the fd is readable. A single `read` may still return
 /// fewer bytes than `size_of::<InputEvent>()`. Treating
 /// that short read as EOF would drop the device for the rest of the session.
@@ -394,6 +441,7 @@ pub fn raw_events(
 /// full record is available. A zero-length read is the only EOF.
 async fn read_input_events(
     fd: AsyncFd<File>,
+    profile: DeviceProfile,
     tx: &UnboundedSender<TaggedInputEvent>,
 ) -> Result<(), Error> {
     let mut pending = [0_u8; mem::size_of::<InputEvent>()];
@@ -404,13 +452,7 @@ async fn read_input_events(
             match guard.try_io(|inner| read_input_event(inner.get_ref(), &mut pending, &mut filled))
             {
                 Ok(Ok(event)) => {
-                    // Events from built-in device hardware use the built-in
-                    // scancode table; unknown scancodes become `ButtonCode::Raw`.
-                    let tagged = TaggedInputEvent {
-                        event,
-                        profile: DeviceProfile::built_in(),
-                    };
-                    if tx.send(tagged).is_err() {
+                    if tx.send(TaggedInputEvent { event, profile }).is_err() {
                         return Ok(());
                     }
                 }
@@ -1111,16 +1153,55 @@ struct InputId {
 
 ioctl_read_buf!(eviocgbit_ev, b'E', 0x20, u8);
 
-// `EVIOCGNAME` — returns the kernel device name string, included in the
-// deduplication identity so distinct devices that share an `EVIOCGID` tuple
-// (e.g. `gpio-keys` and `bd71828-pwrkey` on current Kobo hardware) are not
-// collapsed into one.
+// `EVIOCGNAME` — returns the kernel device name string, used to identify
+// specific hardware such as the Kobo Remote Bluetooth keyboard by name.
 ioctl_read_buf!(eviocgname, b'E', 0x06, u8);
 
+// Linux input bus types (`BUS_*` from `<linux/input.h>`), used by the
+// fallback heuristics in [`classify_device`]. Built-in hardware typically
+// reports `BUS_HOST` or `BUS_I2C`; the Kobo Remote is identified by name, not
+// bustype. USB and unidentified bustypes fall through to the generic
+// keyboard profile.
+const BUS_I2C: u16 = 0x18;
+const BUS_HOST: u16 = 0x19;
+
+/// The kernel name prefix reported by the Kobo Remote Bluetooth keyboard via
+/// `EVIOCGNAME`. The full name varies by host Bluetooth stack — `"Kobo Remote"`
+/// on Kobo devices, `"Kobo Remote Keyboard"` on BlueZ/uhid — so a prefix match
+/// is used. Arrow keys on this device map to page-turn buttons via the remote
+/// [`DeviceProfile`].
+const KOBO_REMOTE_NAME_PREFIX: &str = "Kobo Remote";
+
+/// Returns `true` if `name` identifies a Kobo Remote Bluetooth keyboard. The
+/// full name varies by host Bluetooth stack, so a prefix match is used.
+fn is_kobo_remote_name(name: &str) -> bool {
+    name.starts_with(KOBO_REMOTE_NAME_PREFIX)
+}
+
+/// Hard-coded kernel names (`EVIOCGNAME`) of built-in Kobo input devices.
+///
+/// Bus-type and `EVIOCGID` probing alone cannot distinguish some built-in
+/// devices: on current Kobo hardware, `gpio-keys` (the page-turn / home /
+/// light buttons) and `bd71828-pwrkey` (the PMIC power key) report the
+/// *same* `EVIOCGID` tuple (`bus 0x19, vendor 0x1, product 0x1, version
+/// 0x100`). The feature scan classifies each device by name so each one is
+/// unambiguously identified and the deduplicator does not collapse two
+/// distinct devices into one.
+///
+/// Unknown devices still fall through to the bus-type heuristics in
+/// [`classify_device`], so other Kobo models with different touch digitizer
+/// names (`ft5x06_ts`, `Wacom Digitizer`, …) continue to work.
+const BUILT_IN_DEVICE_NAMES: &[&str] = &["Elan Touchscreen", "bd71828-pwrkey", "gpio-keys"];
+
+/// Returns `true` if `name` is one of the hard-coded built-in device names.
+fn is_built_in_name(name: &str) -> bool {
+    BUILT_IN_DEVICE_NAMES.contains(&name)
+}
+
 /// Kernel-reported features of an evdev device, probed via `EVIOCGID`,
-/// `EVIOCGNAME`, and `EVIOCGEV`. Used to decide whether a device should be
-/// opened (it must emit `EV_KEY` or `EV_ABS`) and to deduplicate devices
-/// exposed under multiple event nodes.
+/// `EVIOCGNAME`, and `EVIOCGEV`. Used to classify each device into a
+/// [`DeviceProfile`] and to deduplicate devices exposed under multiple event
+/// nodes.
 struct DeviceFeatures {
     name: Option<String>,
     bustype: u16,
@@ -1198,14 +1279,49 @@ fn probe_device(path: &str) -> Option<DeviceFeatures> {
     })
 }
 
+/// Classifies a device into a [`DeviceProfile`] from its probed features.
+///
+/// Dispatch is by hard-coded device name first, with bus-type / event-bit
+/// heuristics as a fallback for built-in hardware not listed in
+/// [`BUILT_IN_DEVICE_NAMES`] (e.g. other Kobo touch digitizers). Rules, in
+/// priority order:
+///
+/// - Kobo Remote Bluetooth keyboard (name prefix `"Kobo Remote"`) → remote
+///   profile: up/down arrows map to raw page-turn.
+/// - Hard-coded built-in device name (see [`BUILT_IN_DEVICE_NAMES`]) →
+///   built-in profile: power, home, light, scheme-aware page-turn, sleep
+///   cover, and pen buttons.
+/// - Any device emitting `EV_ABS`, or reporting `BUS_HOST` / `BUS_I2C` →
+///   built-in profile. Catches touch digitizers and other built-in buttons
+///   on Kobo models whose names are not listed above.
+/// - Anything else → generic keyboard profile: forward as
+///   [`ButtonCode::Raw`].
+fn classify_device(features: &DeviceFeatures) -> DeviceProfile {
+    let name = features.name.as_deref().unwrap_or("");
+    if is_kobo_remote_name(name) {
+        return DeviceProfile::remote();
+    }
+    if is_built_in_name(name) {
+        return DeviceProfile::built_in();
+    }
+    if features.emits_abs || features.bustype == BUS_HOST || features.bustype == BUS_I2C {
+        return DeviceProfile::built_in();
+    }
+    DeviceProfile::keyboard()
+}
+
 /// Scans `/dev/input/event*` for input devices not already tracked.
 ///
 /// Returns each new device's path alongside its probed [`DeviceFeatures`] so the
-/// caller can decide whether to trace its geometry without re-probing. Excludes
-/// paths in `tracked_paths` (already opened persistent + removable devices) and
-/// `blacklisted_paths` (known duplicates). Deduplicates by device identity so a
-/// device exposed under multiple event nodes is only opened once; duplicates are
-/// added to `blacklisted_paths` to avoid re-querying them on every scan.
+/// caller can classify it without re-probing. Excludes paths in `tracked_paths`
+/// (already opened persistent + removable devices) and `blacklisted_paths`
+/// (known duplicates). Deduplicates by device identity so a device exposed
+/// under multiple event nodes is only opened once; duplicates are added to
+/// `blacklisted_paths` to avoid re-querying them on every scan.
+///
+/// Unlike the previous keyboard-only scan, this opens any device that emits
+/// `EV_KEY` or `EV_ABS`, so the touch digitizer and built-in buttons are
+/// discovered at startup alongside hotplugged keyboards.
 fn scan_input_devices(
     tracked_paths: &[String],
     known_identities: &mut FxHashSet<String>,
@@ -1261,13 +1377,13 @@ fn scan_input_devices(
 /// Reads raw evdev events from all input devices and forwards them as
 /// [`TaggedInputEvent`]s on `tx`.
 ///
-/// Every device under `/dev/input/event*` is probed at startup and opened as a
-/// **persistent** device. Built-in nodes (`/dev/input/eventN`) outlive driver
-/// hiccups, so a reader that exits from a driver error is re-opened on the next
-/// scan rather than dropped for the rest of the session. A periodic rescan
-/// discovers **removable** devices hotplugged after startup, and when a reader
-/// stops the device's identity is released so a replug is re-detected instead of
-/// being treated as a duplicate.
+/// Every device under `/dev/input/event*` is probed at startup, classified into
+/// a [`DeviceProfile`], and opened as a **persistent** device. Built-in nodes
+/// (`/dev/input/eventN`) outlive driver hiccups, so a reader that exits from a
+/// driver error is re-opened on the next scan rather than dropped for the rest
+/// of the session. A periodic rescan discovers **removable** devices hotplugged
+/// after startup, and when a reader stops the device's identity is released so
+/// a replug is re-detected instead of being treated as a duplicate.
 async fn parse_raw_events(
     cancel: &CancellationToken,
     display: Display,
@@ -1333,8 +1449,11 @@ impl OpenInputDevices<'_> {
 
     /// Scans for devices not already tracked and opens a reader for each.
     ///
-    /// `hotplugged` only distinguishes the log line between the startup set and
-    /// devices that appeared later.
+    /// Each device is classified into a [`DeviceProfile`] from its probed
+    /// features; that profile tags every event its reader forwards, so the
+    /// device-event pipeline can route the device's scancodes through the right
+    /// table. `hotplugged` only distinguishes the log line between the startup
+    /// set and devices that appeared later.
     fn open(&mut self, tracked: &[String], hotplugged: bool) {
         for (path, features) in scan_input_devices(
             tracked,
@@ -1370,8 +1489,10 @@ impl OpenInputDevices<'_> {
                     continue;
                 }
             };
+            let profile = classify_device(&features);
             tracing::info!(
                 device = %path,
+                profile = ?profile,
                 emits_key = features.emits_key,
                 emits_abs = features.emits_abs,
                 hotplugged,
@@ -1382,7 +1503,7 @@ impl OpenInputDevices<'_> {
             let path_for_reader = path.clone();
             let identity_for_reader = identity.clone();
             self.readers.spawn(async move {
-                let outcome = read_input_events(fd, &tx).await;
+                let outcome = read_input_events(fd, profile, &tx).await;
                 tracing::debug!(
                     device = %path_for_reader,
                     error = ?outcome.as_ref().err(),
@@ -1413,6 +1534,12 @@ mod tests {
     use std::ffi::CString;
     use std::io::Write;
     use std::time::Duration;
+
+    // Bus type for Bluetooth devices, used only in tests to verify that
+    // classification is by name (not bus type) for the Kobo Remote. The
+    // production code identifies the Kobo Remote by name prefix and does not
+    // consult the bustype, so this constant is test-only.
+    const BUS_BLUETOOTH: u16 = 0x05;
 
     #[test]
     fn feed_usb_status_chunk_reassembles_split_lines() {
@@ -1554,7 +1681,10 @@ mod tests {
             .open(&path_str)
             .expect("open fifo");
         let fd = AsyncFd::with_interest(file, Interest::READABLE).expect("watch fifo");
-        let reader = tokio::spawn(async move { read_input_events(fd, &tx).await });
+        let reader =
+            tokio::spawn(
+                async move { read_input_events(fd, DeviceProfile::built_in(), &tx).await },
+            );
 
         let writer_path = path.clone();
         let writer = tokio::task::spawn_blocking(move || {
@@ -1597,6 +1727,70 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
+    /// The device's classified profile must tag every forwarded event, not just
+    /// the built-in default: a remote's arrow keys reach the pipeline with the
+    /// remote profile so they map to raw page-turn.
+    #[tokio::test]
+    async fn raw_reader_tags_events_with_device_profile() {
+        let path = std::env::temp_dir().join(format!(
+            "cadmus-evdev-profile-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        let c_path = CString::new(path.to_str().expect("utf8 path")).expect("path");
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(unsafe { libc::mkfifo(c_path.as_ptr(), 0o600) }, 0);
+
+        let path_str = path.to_str().expect("utf8 path").to_string();
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NONBLOCK)
+            .open(&path_str)
+            .expect("open fifo");
+        let fd = AsyncFd::with_interest(file, Interest::READABLE).expect("watch fifo");
+        let reader =
+            tokio::spawn(async move { read_input_events(fd, DeviceProfile::remote(), &tx).await });
+
+        let writer_path = path.clone();
+        let mut writer = tokio::task::spawn_blocking(move || {
+            std::fs::OpenOptions::new().write(true).open(writer_path)
+        })
+        .await
+        .expect("writer task")
+        .expect("open fifo");
+
+        let event = InputEvent {
+            time: libc::timeval {
+                tv_sec: 7,
+                tv_usec: 2,
+            },
+            kind: EV_KEY,
+            code: KEY_UP,
+            value: VAL_PRESS,
+        };
+        let mut bytes = vec![0u8; mem::size_of::<InputEvent>()];
+        unsafe {
+            std::ptr::write_unaligned(bytes.as_mut_ptr().cast::<InputEvent>(), event);
+        }
+        writer.write_all(&bytes).expect("write event");
+        writer.flush().expect("flush event");
+
+        let got = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+            .await
+            .expect("timed out waiting for evdev event")
+            .expect("reader closed");
+        assert_eq!(got.profile, DeviceProfile::remote());
+        assert_eq!(got.event.code, KEY_UP);
+
+        drop(writer);
+        reader.abort();
+        let _ = std::fs::remove_file(&path);
+    }
+
     /// A record split across two reads must be held until complete, and must
     /// not be mistaken for EOF.
     #[tokio::test]
@@ -1621,7 +1815,10 @@ mod tests {
             .open(&path_str)
             .expect("open fifo");
         let fd = AsyncFd::with_interest(file, Interest::READABLE).expect("watch fifo");
-        let reader = tokio::spawn(async move { read_input_events(fd, &tx).await });
+        let reader =
+            tokio::spawn(
+                async move { read_input_events(fd, DeviceProfile::built_in(), &tx).await },
+            );
 
         let writer_path = path.clone();
         let mut writer = tokio::task::spawn_blocking(move || {
@@ -1689,6 +1886,23 @@ mod tests {
         assert_eq!(event.event.value, VAL_PRESS);
     }
 
+    fn features(
+        bustype: u16,
+        name: Option<&str>,
+        emits_key: bool,
+        emits_abs: bool,
+    ) -> DeviceFeatures {
+        DeviceFeatures {
+            name: name.map(String::from),
+            bustype,
+            vendor: 0,
+            product: 0,
+            version: 0,
+            emits_key,
+            emits_abs,
+        }
+    }
+
     #[test]
     fn built_in_profile_maps_known_scancodes() {
         let profile = DeviceProfile::built_in();
@@ -1723,6 +1937,28 @@ mod tests {
     }
 
     #[test]
+    fn remote_profile_maps_arrow_keys_to_raw_page_turn() {
+        let profile = DeviceProfile::remote();
+        assert_eq!(
+            profile.lookup(KEY_UP),
+            Some(KeyAction::PageTurnRaw(LinearDir::Backward))
+        );
+        assert_eq!(
+            profile.lookup(KEY_DOWN),
+            Some(KeyAction::PageTurnRaw(LinearDir::Forward))
+        );
+        // Other keys are not special; they fall through to Raw dispatch.
+        assert_eq!(profile.lookup(KEY_SPACE), None);
+    }
+
+    #[test]
+    fn keyboard_profile_has_no_special_scancodes() {
+        let profile = DeviceProfile::keyboard();
+        assert_eq!(profile.lookup(KEY_SPACE), None);
+        assert_eq!(profile.lookup(KEY_POWER), None);
+    }
+
+    #[test]
     fn key_action_to_button_code_maps_simple_actions() {
         // rotation=0, Natural scheme, startup_rotation=0, dir=1.
         assert_eq!(
@@ -1748,6 +1984,30 @@ mod tests {
     }
 
     #[test]
+    fn key_action_page_turn_raw_bypasses_button_scheme() {
+        // With the Inverted scheme, a scheme-aware forward would become
+        // Backward; a raw forward stays Forward regardless.
+        assert_eq!(
+            KeyAction::PageTurnRaw(LinearDir::Forward).to_button_code(
+                0,
+                ButtonScheme::Inverted,
+                0,
+                1
+            ),
+            ButtonCode::Forward
+        );
+        assert_eq!(
+            KeyAction::PageTurnRaw(LinearDir::Backward).to_button_code(
+                0,
+                ButtonScheme::Inverted,
+                0,
+                1
+            ),
+            ButtonCode::Backward
+        );
+    }
+
+    #[test]
     fn key_action_page_turn_scheme_respects_button_scheme() {
         // At rotation 0 with Natural, Forward stays Forward.
         assert_eq!(
@@ -1769,5 +2029,137 @@ mod tests {
             ),
             ButtonCode::Backward
         );
+    }
+
+    #[test]
+    fn classify_device_identifies_kobo_remote() {
+        let f = features(BUS_BLUETOOTH, Some("Kobo Remote"), true, false);
+        assert_eq!(classify_device(&f), DeviceProfile::remote());
+        // BlueZ/uhid variant name.
+        let f = features(BUS_BLUETOOTH, Some("Kobo Remote Keyboard"), true, false);
+        assert_eq!(classify_device(&f), DeviceProfile::remote());
+    }
+
+    #[test]
+    fn classify_device_identifies_built_in_hardware() {
+        // gpio-keys reports BUS_HOST.
+        let f = features(BUS_HOST, Some("gpio-keys"), true, false);
+        assert_eq!(classify_device(&f), DeviceProfile::built_in());
+        // Touch digitizer reports EV_ABS.
+        let f = features(BUS_I2C, Some("ft5x06_ts"), true, true);
+        assert_eq!(classify_device(&f), DeviceProfile::built_in());
+        // Power key on a PMIC; real device reports BUS_HOST (not BUS_I2C).
+        let f = features(BUS_HOST, Some("bd71828-pwrkey"), true, false);
+        assert_eq!(classify_device(&f), DeviceProfile::built_in());
+        // Elan Touchscreen (current Kobo touch digitizer).
+        let f = features(BUS_I2C, Some("Elan Touchscreen"), true, true);
+        assert_eq!(classify_device(&f), DeviceProfile::built_in());
+    }
+
+    #[test]
+    fn classify_device_identifies_kobo_remote_regardless_of_bustype() {
+        // The Kobo Remote is identified by name; bustype is not required.
+        // Real devices report BUS_BLUETOOTH, but the name match is the
+        // authoritative signal.
+        let f = features(0x03, Some("Kobo Remote"), true, false);
+        assert_eq!(classify_device(&f), DeviceProfile::remote());
+    }
+
+    #[test]
+    fn classify_device_defaults_generic_keyboards_to_keyboard_profile() {
+        // USB keyboard (bustype 0x03 = BUS_USB).
+        let f = features(0x03, Some("Generic Keyboard"), true, false);
+        assert_eq!(classify_device(&f), DeviceProfile::keyboard());
+        // Bluetooth keyboard that is not a Kobo Remote.
+        let f = features(BUS_BLUETOOTH, Some("Logitech K380"), true, false);
+        assert_eq!(classify_device(&f), DeviceProfile::keyboard());
+        // Device with no identity and no abs.
+        let f = features(0, None, true, false);
+        assert_eq!(classify_device(&f), DeviceProfile::keyboard());
+    }
+
+    #[test]
+    fn is_built_in_name_matches_known_devices() {
+        assert!(is_built_in_name("Elan Touchscreen"));
+        assert!(is_built_in_name("bd71828-pwrkey"));
+        assert!(is_built_in_name("gpio-keys"));
+    }
+
+    #[test]
+    fn is_built_in_name_rejects_unknown_devices() {
+        assert!(!is_built_in_name("ft5x06_ts"));
+        assert!(!is_built_in_name("Wacom Digitizer"));
+        assert!(!is_built_in_name("kx122-accel"));
+        assert!(!is_built_in_name(""));
+    }
+
+    /// Reproduces the bug where `bd71828-pwrkey` and `gpio-keys` share the
+    /// same `EVIOCGID` tuple on current Kobo hardware: the deduplicator
+    /// treated one as a duplicate of the other and dropped the power key.
+    /// With the name included in the identity, both devices are kept.
+    #[test]
+    fn identity_distinguishes_pwrkey_from_gpio_keys() {
+        let shared_id = (BUS_HOST, 0x1, 0x1, 0x100);
+        let pwrkey = DeviceFeatures {
+            name: Some("bd71828-pwrkey".to_string()),
+            bustype: shared_id.0,
+            vendor: shared_id.1,
+            product: shared_id.2,
+            version: shared_id.3,
+            emits_key: true,
+            emits_abs: false,
+        };
+        let gpio_keys = DeviceFeatures {
+            name: Some("gpio-keys".to_string()),
+            bustype: shared_id.0,
+            vendor: shared_id.1,
+            product: shared_id.2,
+            version: shared_id.3,
+            emits_key: true,
+            emits_abs: false,
+        };
+        assert_ne!(pwrkey.identity(), gpio_keys.identity());
+    }
+
+    #[test]
+    fn identity_returns_none_for_anonymous_zero_id() {
+        let f = DeviceFeatures {
+            name: None,
+            bustype: 0,
+            vendor: 0,
+            product: 0,
+            version: 0,
+            emits_key: true,
+            emits_abs: false,
+        };
+        assert_eq!(f.identity(), None);
+    }
+
+    #[test]
+    fn identity_includes_name_in_output() {
+        let f = DeviceFeatures {
+            name: Some("gpio-keys".to_string()),
+            bustype: BUS_HOST,
+            vendor: 0x1,
+            product: 0x1,
+            version: 0x100,
+            emits_key: true,
+            emits_abs: false,
+        };
+        let id = f.identity().expect("named device has an identity");
+        assert!(id.contains("gpio-keys"), "identity must include name: {id}");
+    }
+
+    #[test]
+    fn is_kobo_remote_name_matches_kobo_and_bluez_variants() {
+        assert!(is_kobo_remote_name("Kobo Remote"));
+        assert!(is_kobo_remote_name("Kobo Remote Keyboard"));
+    }
+
+    #[test]
+    fn is_kobo_remote_name_rejects_unrelated_devices() {
+        assert!(!is_kobo_remote_name("Azulle | Lynk Remote"));
+        assert!(!is_kobo_remote_name("Generic Keyboard"));
+        assert!(!is_kobo_remote_name(""));
     }
 }

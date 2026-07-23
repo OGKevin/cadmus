@@ -77,8 +77,10 @@ impl crate::device::InputSource for InputSource {
         self.pipeline_cancel = Some(pipeline_cancel.clone());
 
         // All evdev input devices (touch digitizer, gpio-keys, power key, and
-        // any hotplugged keyboards) are discovered by a feature scan inside
-        // `raw_events` — no hard-coded device paths.
+        // any hotplugged keyboards/remotes) are discovered by a feature scan
+        // inside `raw_events` — no hard-coded device paths. Each device is
+        // probed (name, bustype, event-type bits) and classified into a
+        // `DeviceProfile` that maps its scancodes to semantic functions.
         let (raw_sender, raw_receiver) =
             raw_events(screen, self.info.proto, pipeline_cancel.clone());
         self.raw_sender = Some(raw_sender.clone());
