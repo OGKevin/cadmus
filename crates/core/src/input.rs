@@ -88,12 +88,124 @@ pub const MULTI_TOUCH_CODES_B: TouchCodes = TouchCodes {
 };
 
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct InputEvent {
     pub time: libc::timeval,
     pub kind: u16, // type
     pub code: u16,
     pub value: i32,
+}
+
+/// How a device's `EV_KEY` events map to semantic actions.
+///
+/// Each opened evdev device carries a profile so the device-event pipeline
+/// routes its `EV_KEY` events through a uniform scancode table ([`key_map`]).
+/// Scancodes not in the table are forwarded as [`ButtonCode::Raw`].
+///
+/// [`key_map`]: DeviceProfile::key_map
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub(crate) struct DeviceProfile {
+    key_map: &'static [(u16, KeyAction)],
+}
+
+impl DeviceProfile {
+    /// Profile for built-in device hardware (touch digitizer, gpio-keys,
+    /// power key): maps the standard built-in scancodes to their functions,
+    /// including the synthetic control codes injected via
+    /// [`display_rotate_event`] / [`button_scheme_event`]. Unknown scancodes
+    /// become [`ButtonCode::Raw`].
+    const fn built_in() -> Self {
+        Self {
+            key_map: BUILT_IN_KEY_MAP,
+        }
+    }
+
+    /// Returns the [`KeyAction`] mapped to `code`, if any.
+    fn lookup(self, code: u16) -> Option<KeyAction> {
+        self.key_map
+            .iter()
+            .find_map(|(c, action)| (*c == code).then_some(*action))
+    }
+}
+
+/// A semantic action mapped to a specific evdev scancode within a
+/// [`DeviceProfile`].
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub(crate) enum KeyAction {
+    Power,
+    Home,
+    Light,
+    /// Page-turn that respects the button-scheme (rotation-based inversion),
+    /// used by built-in page-turn buttons.
+    PageTurnScheme(LinearDir),
+    Erase,
+    Highlight,
+    /// Magnetic sleep-cover open/close signal.
+    SleepCover,
+    /// Synthetic control: rotate the touch coordinate mapping.
+    RotateDisplay,
+    /// Synthetic control: toggle the button scheme.
+    ButtonScheme,
+}
+
+impl KeyAction {
+    /// Resolves a button-dispatch action to a [`ButtonCode`].
+    ///
+    /// [`PageTurnScheme`] respects the button-scheme (rotation-based
+    /// inversion). Control actions ([`SleepCover`], [`ButtonScheme`],
+    /// [`RotateDisplay`]) are handled by their own match arms in
+    /// [`parse_device_events`] before this is called, so reaching them here is
+    /// a logic error.
+    ///
+    /// [`PageTurnScheme`]: KeyAction::PageTurnScheme
+    /// [`SleepCover`]: KeyAction::SleepCover
+    /// [`ButtonScheme`]: KeyAction::ButtonScheme
+    /// [`RotateDisplay`]: KeyAction::RotateDisplay
+    fn to_button_code(
+        self,
+        rotation: i8,
+        button_scheme: ButtonScheme,
+        startup_rotation: i8,
+        dir: i8,
+    ) -> ButtonCode {
+        match self {
+            KeyAction::Power => ButtonCode::Power,
+            KeyAction::Home => ButtonCode::Home,
+            KeyAction::Light => ButtonCode::Light,
+            KeyAction::Erase => ButtonCode::Erase,
+            KeyAction::Highlight => ButtonCode::Highlight,
+            KeyAction::PageTurnScheme(direction) => {
+                resolve_button_direction(direction, rotation, button_scheme, startup_rotation, dir)
+            }
+            KeyAction::SleepCover | KeyAction::ButtonScheme | KeyAction::RotateDisplay => {
+                unreachable!("control actions are handled before to_button_code is called")
+            }
+        }
+    }
+}
+
+/// Scancode table for [`DeviceProfile::built_in`].
+const BUILT_IN_KEY_MAP: &[(u16, KeyAction)] = &[
+    (KEY_POWER, KeyAction::Power),
+    (KEY_HOME, KeyAction::Home),
+    (KEY_LIGHT, KeyAction::Light),
+    (KEY_BACKWARD, KeyAction::PageTurnScheme(LinearDir::Backward)),
+    (KEY_FORWARD, KeyAction::PageTurnScheme(LinearDir::Forward)),
+    (PEN_ERASE, KeyAction::Erase),
+    (PEN_HIGHLIGHT, KeyAction::Highlight),
+    (SLEEP_COVER[0], KeyAction::SleepCover),
+    (SLEEP_COVER[1], KeyAction::SleepCover),
+    (KEY_ROTATE_DISPLAY, KeyAction::RotateDisplay),
+    (KEY_BUTTON_SCHEME, KeyAction::ButtonScheme),
+];
+
+/// An [`InputEvent`] tagged with the [`DeviceProfile`] of the device that
+/// produced it, so the device-event pipeline routes its `EV_KEY` events
+/// through the device's scancode table.
+#[derive(Debug, Clone)]
+pub struct TaggedInputEvent {
+    pub event: InputEvent,
+    pub(crate) profile: DeviceProfile,
 }
 
 // Handle different touch protocols
@@ -149,39 +261,6 @@ pub enum ButtonCode {
     Raw(u16),
 }
 
-impl ButtonCode {
-    fn from_raw(
-        code: u16,
-        rotation: i8,
-        button_scheme: ButtonScheme,
-        startup_rotation: i8,
-        dir: i8,
-    ) -> ButtonCode {
-        match code {
-            KEY_POWER => ButtonCode::Power,
-            KEY_HOME => ButtonCode::Home,
-            KEY_LIGHT => ButtonCode::Light,
-            KEY_BACKWARD => resolve_button_direction(
-                LinearDir::Backward,
-                rotation,
-                button_scheme,
-                startup_rotation,
-                dir,
-            ),
-            KEY_FORWARD => resolve_button_direction(
-                LinearDir::Forward,
-                rotation,
-                button_scheme,
-                startup_rotation,
-                dir,
-            ),
-            PEN_ERASE => ButtonCode::Erase,
-            PEN_HIGHLIGHT => ButtonCode::Highlight,
-            _ => ButtonCode::Raw(code),
-        }
-    }
-}
-
 fn resolve_button_direction(
     mut direction: LinearDir,
     rotation: i8,
@@ -202,7 +281,7 @@ fn resolve_button_direction(
     ButtonCode::Backward
 }
 
-pub fn display_rotate_event(n: i8) -> InputEvent {
+pub fn display_rotate_event(n: i8) -> TaggedInputEvent {
     let mut tp = libc::timeval {
         tv_sec: 0,
         tv_usec: 0,
@@ -210,15 +289,18 @@ pub fn display_rotate_event(n: i8) -> InputEvent {
     unsafe {
         libc::gettimeofday(&mut tp, ptr::null_mut());
     }
-    InputEvent {
-        time: tp,
-        kind: EV_KEY,
-        code: KEY_ROTATE_DISPLAY,
-        value: n as i32,
+    TaggedInputEvent {
+        event: InputEvent {
+            time: tp,
+            kind: EV_KEY,
+            code: KEY_ROTATE_DISPLAY,
+            value: n as i32,
+        },
+        profile: DeviceProfile::built_in(),
     }
 }
 
-pub fn button_scheme_event(v: i32) -> InputEvent {
+pub fn button_scheme_event(v: i32) -> TaggedInputEvent {
     let mut tp = libc::timeval {
         tv_sec: 0,
         tv_usec: 0,
@@ -226,11 +308,14 @@ pub fn button_scheme_event(v: i32) -> InputEvent {
     unsafe {
         libc::gettimeofday(&mut tp, ptr::null_mut());
     }
-    InputEvent {
-        time: tp,
-        kind: EV_KEY,
-        code: KEY_BUTTON_SCHEME,
-        value: v,
+    TaggedInputEvent {
+        event: InputEvent {
+            time: tp,
+            kind: EV_KEY,
+            code: KEY_BUTTON_SCHEME,
+            value: v,
+        },
+        profile: DeviceProfile::built_in(),
     }
 }
 
@@ -288,7 +373,10 @@ pub fn raw_events(
     display: Display,
     proto: TouchProto,
     cancel: CancellationToken,
-) -> (UnboundedSender<InputEvent>, UnboundedReceiver<InputEvent>) {
+) -> (
+    UnboundedSender<TaggedInputEvent>,
+    UnboundedReceiver<TaggedInputEvent>,
+) {
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
     let tx_reader = tx.clone();
     crate::runtime::current_handle().spawn(async move {
@@ -306,7 +394,7 @@ pub fn raw_events(
 /// full record is available. A zero-length read is the only EOF.
 async fn read_input_events(
     fd: AsyncFd<File>,
-    tx: &UnboundedSender<InputEvent>,
+    tx: &UnboundedSender<TaggedInputEvent>,
 ) -> Result<(), Error> {
     let mut pending = [0_u8; mem::size_of::<InputEvent>()];
     let mut filled = 0usize;
@@ -316,7 +404,13 @@ async fn read_input_events(
             match guard.try_io(|inner| read_input_event(inner.get_ref(), &mut pending, &mut filled))
             {
                 Ok(Ok(event)) => {
-                    if tx.send(event).is_err() {
+                    // Events from built-in device hardware use the built-in
+                    // scancode table; unknown scancodes become `ButtonCode::Raw`.
+                    let tagged = TaggedInputEvent {
+                        event,
+                        profile: DeviceProfile::built_in(),
+                    };
+                    if tx.send(tagged).is_err() {
                         return Ok(());
                     }
                 }
@@ -548,7 +642,7 @@ impl Default for GyroRotationTransform {
 }
 
 pub fn device_events(
-    mut rx: UnboundedReceiver<InputEvent>,
+    mut rx: UnboundedReceiver<TaggedInputEvent>,
     display: Display,
     button_scheme: ButtonScheme,
     info: DeviceInputInfo,
@@ -671,7 +765,7 @@ impl Default for TouchState {
     )
 )]
 async fn parse_device_events(
-    rx: &mut UnboundedReceiver<InputEvent>,
+    rx: &mut UnboundedReceiver<TaggedInputEvent>,
     ty: &UnboundedSender<DeviceEvent>,
     screen: Display,
     button_scheme: ButtonScheme,
@@ -730,7 +824,8 @@ async fn parse_device_events(
 
     let mut button_scheme = button_scheme;
 
-    while let Some(evt) = rx.recv().await {
+    while let Some(tagged) = rx.recv().await {
+        let evt = tagged.event;
         let _span = tracing::trace_span!("processing input event", event = ?evt).entered();
 
         if evt.kind == EV_ABS {
@@ -874,85 +969,111 @@ async fn parse_device_events(
                 packets.clear();
             }
         } else if evt.kind == EV_KEY {
-            if SLEEP_COVER.contains(&evt.code) {
-                if evt.value == VAL_PRESS {
-                    ty.send(DeviceEvent::CoverOn).ok();
-                } else if evt.value == VAL_RELEASE {
-                    ty.send(DeviceEvent::CoverOff).ok();
-                } else if evt.value == VAL_REPEAT {
-                    ty.send(DeviceEvent::CoverOn).ok();
-                }
-            } else if evt.code == KEY_BUTTON_SCHEME {
-                if evt.value == VAL_PRESS {
-                    button_scheme = ButtonScheme::Inverted;
-                } else {
-                    button_scheme = ButtonScheme::Natural;
-                }
-            } else if evt.code == KEY_ROTATE_DISPLAY {
-                let next_rotation = evt.value as i8;
-                tracing::debug!(
-                    from_rotation = rotation,
-                    to_rotation = next_rotation,
-                    dims_before = ?dims,
-                    mirror_x_before = mirror_x,
-                    mirror_y_before = mirror_y,
-                    tc_x = tc.x,
-                    tc_y = tc.y,
-                    "KEY_ROTATE_DISPLAY received"
-                );
-                if next_rotation != rotation {
-                    let delta = (rotation - next_rotation).abs();
-                    let will_swap_axes = delta % 2 == 1;
-                    if will_swap_axes {
-                        mem::swap(&mut tc.x, &mut tc.y);
-                        mem::swap(&mut dims.0, &mut dims.1);
+            if evt.code == BTN_TOUCH {
+                // Touch-contact signal from a touch/pen device; not a button.
+            } else {
+                match tagged.profile.lookup(evt.code) {
+                    Some(KeyAction::SleepCover) => {
+                        if evt.value == VAL_PRESS || evt.value == VAL_REPEAT {
+                            ty.send(DeviceEvent::CoverOn).ok();
+                        } else if evt.value == VAL_RELEASE {
+                            ty.send(DeviceEvent::CoverOff).ok();
+                        }
                     }
-                    rotation = next_rotation;
-                    let should_mirror = compute_mirror_axes(rotation, mirroring_scheme);
-                    mirror_x = should_mirror.0;
-                    mirror_y = should_mirror.1;
-                    tracing::debug!(
-                        delta,
-                        will_swap_axes,
-                        rotation,
-                        mirror_x,
-                        mirror_y,
-                        dims_after = ?dims,
-                        tc_x = tc.x,
-                        tc_y = tc.y,
-                        axes_swapped = rotation % 2 == swapping_scheme,
-                        "rotation applied to input mapping"
-                    );
-                } else {
-                    tracing::debug!(
-                        rotation,
-                        "KEY_ROTATE_DISPLAY matches current input rotation; no remap"
-                    );
-                }
-            } else if evt.code != BTN_TOUCH {
-                if let Some(button_status) = ButtonStatus::try_from_raw(evt.value) {
-                    let time = seconds(evt.time);
-                    let code = ButtonCode::from_raw(
-                        evt.code,
-                        rotation,
-                        button_scheme,
-                        startup_rotation,
-                        dir,
-                    );
-                    tracing::debug!(
-                        code = ?code,
-                        status = ?button_status,
-                        time,
-                        raw_code = evt.code,
-                        raw_value = evt.value,
-                        "decoded button event"
-                    );
-                    ty.send(DeviceEvent::Button {
-                        time,
-                        code,
-                        status: button_status,
-                    })
-                    .unwrap();
+                    Some(KeyAction::ButtonScheme) => {
+                        button_scheme = if evt.value == VAL_PRESS {
+                            ButtonScheme::Inverted
+                        } else {
+                            ButtonScheme::Natural
+                        };
+                    }
+                    Some(KeyAction::RotateDisplay) => {
+                        let next_rotation = evt.value as i8;
+                        tracing::debug!(
+                            from_rotation = rotation,
+                            to_rotation = next_rotation,
+                            dims_before = ?dims,
+                            mirror_x_before = mirror_x,
+                            mirror_y_before = mirror_y,
+                            tc_x = tc.x,
+                            tc_y = tc.y,
+                            "KEY_ROTATE_DISPLAY received"
+                        );
+                        if next_rotation != rotation {
+                            let delta = (rotation - next_rotation).abs();
+                            let will_swap_axes = delta % 2 == 1;
+                            if will_swap_axes {
+                                mem::swap(&mut tc.x, &mut tc.y);
+                                mem::swap(&mut dims.0, &mut dims.1);
+                            }
+                            rotation = next_rotation;
+                            let should_mirror = compute_mirror_axes(rotation, mirroring_scheme);
+                            mirror_x = should_mirror.0;
+                            mirror_y = should_mirror.1;
+                            tracing::debug!(
+                                delta,
+                                will_swap_axes,
+                                rotation,
+                                mirror_x,
+                                mirror_y,
+                                dims_after = ?dims,
+                                tc_x = tc.x,
+                                tc_y = tc.y,
+                                axes_swapped = rotation % 2 == swapping_scheme,
+                                "rotation applied to input mapping"
+                            );
+                        } else {
+                            tracing::debug!(
+                                rotation,
+                                "KEY_ROTATE_DISPLAY matches current input rotation; no remap"
+                            );
+                        }
+                    }
+                    Some(action) => {
+                        if let Some(button_status) = ButtonStatus::try_from_raw(evt.value) {
+                            let time = seconds(evt.time);
+                            let code = action.to_button_code(
+                                rotation,
+                                button_scheme,
+                                startup_rotation,
+                                dir,
+                            );
+                            tracing::debug!(
+                                code = ?code,
+                                status = ?button_status,
+                                time,
+                                raw_code = evt.code,
+                                raw_value = evt.value,
+                                "decoded button event"
+                            );
+                            ty.send(DeviceEvent::Button {
+                                time,
+                                code,
+                                status: button_status,
+                            })
+                            .ok();
+                        }
+                    }
+                    None => {
+                        if let Some(button_status) = ButtonStatus::try_from_raw(evt.value) {
+                            let time = seconds(evt.time);
+                            let code = ButtonCode::Raw(evt.code);
+                            tracing::debug!(
+                                code = ?code,
+                                status = ?button_status,
+                                time,
+                                raw_code = evt.code,
+                                raw_value = evt.value,
+                                "decoded button event"
+                            );
+                            ty.send(DeviceEvent::Button {
+                                time,
+                                code,
+                                status: button_status,
+                            })
+                            .ok();
+                        }
+                    }
                 }
             }
         } else if evt.kind == EV_MSC && evt.code == MSC_RAW {
@@ -1137,7 +1258,8 @@ fn scan_input_devices(
     found
 }
 
-/// Reads raw evdev events from all input devices and forwards them on `tx`.
+/// Reads raw evdev events from all input devices and forwards them as
+/// [`TaggedInputEvent`]s on `tx`.
 ///
 /// Every device under `/dev/input/event*` is probed at startup and opened as a
 /// **persistent** device. Built-in nodes (`/dev/input/eventN`) outlive driver
@@ -1150,7 +1272,7 @@ async fn parse_raw_events(
     cancel: &CancellationToken,
     display: Display,
     proto: TouchProto,
-    tx: &UnboundedSender<InputEvent>,
+    tx: &UnboundedSender<TaggedInputEvent>,
 ) {
     /// How often `/dev/input/event*` is rescanned for hotplugged devices.
     const SCAN_INTERVAL: Duration = Duration::from_secs(5);
@@ -1200,7 +1322,7 @@ struct OpenInputDevices<'a> {
     blacklisted_paths: FxHashSet<String>,
     proto: TouchProto,
     display: Display,
-    tx: &'a UnboundedSender<InputEvent>,
+    tx: &'a UnboundedSender<TaggedInputEvent>,
 }
 
 impl OpenInputDevices<'_> {
@@ -1377,13 +1499,17 @@ mod tests {
             code,
             value,
         };
+        let tagged = |kind, code, value| TaggedInputEvent {
+            event: event(kind, code, value),
+            profile: DeviceProfile::built_in(),
+        };
         for evt in [
-            event(EV_KEY, KEY_ROTATE_DISPLAY, 2),
-            event(EV_ABS, ABS_MT_TRACKING_ID, 0),
-            event(EV_ABS, ABS_MT_POSITION_X, 59),
-            event(EV_ABS, ABS_MT_POSITION_Y, 1178),
-            event(EV_ABS, ABS_MT_PRESSURE, 200),
-            event(EV_SYN, SYN_REPORT, 0),
+            tagged(EV_KEY, KEY_ROTATE_DISPLAY, 2),
+            tagged(EV_ABS, ABS_MT_TRACKING_ID, 0),
+            tagged(EV_ABS, ABS_MT_POSITION_X, 59),
+            tagged(EV_ABS, ABS_MT_POSITION_Y, 1178),
+            tagged(EV_ABS, ABS_MT_PRESSURE, 200),
+            tagged(EV_SYN, SYN_REPORT, 0),
         ] {
             raw_tx.send(evt).expect("send raw event");
         }
@@ -1459,11 +1585,12 @@ mod tests {
             .await
             .expect("timed out waiting for evdev event")
             .expect("reader closed");
-        assert_eq!(got.kind, EV_KEY);
-        assert_eq!(got.code, KEY_HOME);
-        assert_eq!(got.value, VAL_PRESS);
-        assert_eq!(got.time.tv_sec, 4);
-        assert_eq!(got.time.tv_usec, 5);
+        assert_eq!(got.profile, DeviceProfile::built_in());
+        assert_eq!(got.event.kind, EV_KEY);
+        assert_eq!(got.event.code, KEY_HOME);
+        assert_eq!(got.event.value, VAL_PRESS);
+        assert_eq!(got.event.time.tv_sec, 4);
+        assert_eq!(got.event.time.tv_usec, 5);
 
         drop(writer);
         reader.abort();
@@ -1537,11 +1664,110 @@ mod tests {
             .await
             .expect("timed out waiting for the joined evdev event")
             .expect("reader closed");
-        assert_eq!(got.code, KEY_HOME);
-        assert_eq!(got.time.tv_sec, 9);
+        assert_eq!(got.event.code, KEY_HOME);
+        assert_eq!(got.event.time.tv_sec, 9);
 
         drop(writer);
         reader.abort();
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn display_rotate_event_uses_built_in_profile() {
+        let event = display_rotate_event(1);
+        assert_eq!(event.profile, DeviceProfile::built_in());
+        assert_eq!(event.event.kind, EV_KEY);
+        assert_eq!(event.event.code, KEY_ROTATE_DISPLAY);
+        assert_eq!(event.event.value, 1);
+    }
+
+    #[test]
+    fn button_scheme_event_uses_built_in_profile() {
+        let event = button_scheme_event(VAL_PRESS);
+        assert_eq!(event.profile, DeviceProfile::built_in());
+        assert_eq!(event.event.code, KEY_BUTTON_SCHEME);
+        assert_eq!(event.event.value, VAL_PRESS);
+    }
+
+    #[test]
+    fn built_in_profile_maps_known_scancodes() {
+        let profile = DeviceProfile::built_in();
+        assert_eq!(profile.lookup(KEY_POWER), Some(KeyAction::Power));
+        assert_eq!(profile.lookup(KEY_HOME), Some(KeyAction::Home));
+        assert_eq!(profile.lookup(KEY_LIGHT), Some(KeyAction::Light));
+        assert_eq!(
+            profile.lookup(KEY_BACKWARD),
+            Some(KeyAction::PageTurnScheme(LinearDir::Backward))
+        );
+        assert_eq!(
+            profile.lookup(KEY_FORWARD),
+            Some(KeyAction::PageTurnScheme(LinearDir::Forward))
+        );
+        assert_eq!(profile.lookup(PEN_ERASE), Some(KeyAction::Erase));
+        assert_eq!(profile.lookup(PEN_HIGHLIGHT), Some(KeyAction::Highlight));
+        assert_eq!(profile.lookup(SLEEP_COVER[0]), Some(KeyAction::SleepCover));
+        assert_eq!(profile.lookup(SLEEP_COVER[1]), Some(KeyAction::SleepCover));
+        assert_eq!(
+            profile.lookup(KEY_ROTATE_DISPLAY),
+            Some(KeyAction::RotateDisplay)
+        );
+        assert_eq!(
+            profile.lookup(KEY_BUTTON_SCHEME),
+            Some(KeyAction::ButtonScheme)
+        );
+    }
+
+    #[test]
+    fn built_in_profile_returns_none_for_unknown_scancodes() {
+        assert_eq!(DeviceProfile::built_in().lookup(999), None);
+    }
+
+    #[test]
+    fn key_action_to_button_code_maps_simple_actions() {
+        // rotation=0, Natural scheme, startup_rotation=0, dir=1.
+        assert_eq!(
+            KeyAction::Power.to_button_code(0, ButtonScheme::Natural, 0, 1),
+            ButtonCode::Power
+        );
+        assert_eq!(
+            KeyAction::Home.to_button_code(0, ButtonScheme::Natural, 0, 1),
+            ButtonCode::Home
+        );
+        assert_eq!(
+            KeyAction::Light.to_button_code(0, ButtonScheme::Natural, 0, 1),
+            ButtonCode::Light
+        );
+        assert_eq!(
+            KeyAction::Erase.to_button_code(0, ButtonScheme::Natural, 0, 1),
+            ButtonCode::Erase
+        );
+        assert_eq!(
+            KeyAction::Highlight.to_button_code(0, ButtonScheme::Natural, 0, 1),
+            ButtonCode::Highlight
+        );
+    }
+
+    #[test]
+    fn key_action_page_turn_scheme_respects_button_scheme() {
+        // At rotation 0 with Natural, Forward stays Forward.
+        assert_eq!(
+            KeyAction::PageTurnScheme(LinearDir::Forward).to_button_code(
+                0,
+                ButtonScheme::Natural,
+                0,
+                1
+            ),
+            ButtonCode::Forward
+        );
+        // With Inverted, Forward flips to Backward.
+        assert_eq!(
+            KeyAction::PageTurnScheme(LinearDir::Forward).to_button_code(
+                0,
+                ButtonScheme::Inverted,
+                0,
+                1
+            ),
+            ButtonCode::Backward
+        );
     }
 }

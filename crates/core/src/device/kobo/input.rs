@@ -1,6 +1,6 @@
 use crate::device::inhibitor::Inhibitor;
 use crate::framebuffer::Display;
-use crate::input::{InputEvent, device_events, raw_events, usb_events};
+use crate::input::{TaggedInputEvent, device_events, raw_events, usb_events};
 use crate::settings::ButtonScheme;
 use crate::view::Event;
 use std::sync::Arc;
@@ -18,7 +18,7 @@ pub(crate) const BATTERY_REFRESH_INTERVAL: Duration = Duration::from_secs(299);
 pub struct InputSource {
     pub(super) info: crate::input::DeviceInputInfo,
     pub(super) dpi: u16,
-    pub(super) raw_sender: Option<UnboundedSender<InputEvent>>,
+    pub(super) raw_sender: Option<UnboundedSender<TaggedInputEvent>>,
     pub(super) pipeline_cancel: Option<CancellationToken>,
     pub(super) gesture_job: Option<crate::runtime::Job<()>>,
 }
@@ -170,15 +170,17 @@ impl crate::device::InputSource for InputSource {
     #[cfg_attr(
         feature = "tracing",
         tracing::instrument(skip(self), level = tracing::Level::TRACE, fields(
-            kind = event.kind,
-            code = event.code,
-            value = event.value,
+            kind = event.event.kind,
+            code = event.event.code,
+            value = event.event.value,
         ))
     )]
-    fn send_raw(&self, event: InputEvent) {
-        if event.kind == crate::input::EV_KEY && event.code == crate::input::KEY_ROTATE_DISPLAY {
+    fn send_raw(&self, event: TaggedInputEvent) {
+        if event.event.kind == crate::input::EV_KEY
+            && event.event.code == crate::input::KEY_ROTATE_DISPLAY
+        {
             tracing::debug!(
-                rotation = event.value,
+                rotation = event.event.value,
                 channel_ready = self.raw_sender.is_some(),
                 "injecting display_rotate_event"
             );
