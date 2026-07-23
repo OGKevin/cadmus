@@ -107,7 +107,7 @@ pub use crate::context::ShutdownContext;
 
 use crate::device::metadata::DeviceMetadata;
 use crate::input::TouchProto;
-use crate::input::{DeviceEvent, InputEvent};
+use crate::input::{DeviceEvent, TaggedInputEvent};
 use crate::settings::ButtonScheme;
 use crate::settings::versioned::SettingsManager;
 use crate::task::TaskManager;
@@ -204,13 +204,13 @@ pub trait InputSource: Send {
         inhibitor: Arc<crate::device::inhibitor::Inhibitor>,
     ) -> (Hub, crate::view::HubReceiver);
 
-    /// Injects a raw [`InputEvent`] into the input pipeline.
+    /// Injects a raw [`TaggedInputEvent`] into the input pipeline.
     ///
     /// Callers use this after [`Self::start`] to push synthetic kernel-style
     /// events without going through hardware.
     ///
     /// Default: no-op.
-    fn send_raw(&self, _event: InputEvent) {}
+    fn send_raw(&self, _event: TaggedInputEvent) {}
 
     /// Injects a [`DeviceEvent`] into the device-event channel.
     ///
