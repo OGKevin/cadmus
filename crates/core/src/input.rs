@@ -2,9 +2,9 @@ use crate::framebuffer::Display;
 use crate::geom::{LinearDir, Point};
 use crate::settings::ButtonScheme;
 use anyhow::Error;
-use nix::ioctl_read;
-use nix::ioctl_read_buf;
+use nix::{ioctl_read, ioctl_read_buf};
 use rustc_hash::{FxHashMap, FxHashSet};
+use serde::Serialize;
 use std::fs::File;
 use std::mem::{self, MaybeUninit};
 use std::os::fd::{AsRawFd, OwnedFd, RawFd};
@@ -63,6 +63,17 @@ pub const KEY_FORWARD: u16 = 194;
 pub const KEY_SPACE: u16 = 57;
 pub const KEY_UP: u16 = 103;
 pub const KEY_DOWN: u16 = 108;
+pub const KEY_LEFTCTRL: u16 = 29;
+pub const KEY_RIGHTCTRL: u16 = 97;
+pub const KEY_LEFTSHIFT: u16 = 42;
+pub const KEY_RIGHTSHIFT: u16 = 54;
+pub const KEY_LEFTALT: u16 = 56;
+pub const KEY_RIGHTALT: u16 = 100;
+pub const KEY_LEFTMETA: u16 = 125;
+pub const KEY_RIGHTMETA: u16 = 126;
+pub const KEY_CAPSLOCK: u16 = 58;
+pub const KEY_NUMLOCK: u16 = 69;
+pub const KEY_SCROLLLOCK: u16 = 70;
 pub const PEN_ERASE: u16 = 331;
 pub const PEN_HIGHLIGHT: u16 = 332;
 pub const SLEEP_COVER: [u16; 2] = [59, 35];
@@ -104,7 +115,8 @@ pub struct InputEvent {
 /// Each opened evdev device is classified into a profile by probing its kernel
 /// features (name, bustype, event-type bits) — see [`classify_device`]. The
 /// profile is a small scancode table ([`key_map`]); scancodes not in the table
-/// are forwarded as [`ButtonCode::Raw`].
+/// are forwarded as [`ButtonCode::Keyboard`] when [`tracks_modifiers`] is
+/// `true` (keyboard-like devices) or [`ButtonCode::Raw`] otherwise.
 ///
 /// This replaces the older `DeviceOrigin` enum: instead of hard-coding special
 /// functions to specific device names, each device's function map is data
@@ -114,9 +126,11 @@ pub struct InputEvent {
 /// same lookup in [`parse_device_events`].
 ///
 /// [`key_map`]: DeviceProfile::key_map
+/// [`tracks_modifiers`]: DeviceProfile::tracks_modifiers
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub(crate) struct DeviceProfile {
     key_map: &'static [(u16, KeyAction)],
+    tracks_modifiers: bool,
 }
 
 impl DeviceProfile {
@@ -128,22 +142,28 @@ impl DeviceProfile {
     const fn built_in() -> Self {
         Self {
             key_map: BUILT_IN_KEY_MAP,
+            tracks_modifiers: false,
         }
     }
 
     /// Profile for the Kobo Remote Bluetooth keyboard: up/down arrows map to
     /// page-turn buttons (bypassing the button-scheme, since the remote is
-    /// orientation-agnostic).
+    /// orientation-agnostic); all other keys are forwarded as
+    /// [`ButtonCode::Keyboard`] with modifier tracking.
     const fn remote() -> Self {
         Self {
             key_map: REMOTE_KEY_MAP,
+            tracks_modifiers: true,
         }
     }
 
     /// Profile for a generic hotplugged keyboard: no special scancodes; all
-    /// keys are forwarded as [`ButtonCode::Raw`].
+    /// keys are forwarded as [`ButtonCode::Keyboard`] with modifier tracking.
     const fn keyboard() -> Self {
-        Self { key_map: &[] }
+        Self {
+            key_map: &[],
+            tracks_modifiers: true,
+        }
     }
 
     /// Returns the [`KeyAction`] mapped to `code`, if any.
@@ -293,7 +313,181 @@ impl ButtonStatus {
     }
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+/// XKB real modifier indices, matching the bit positions used in Wayland's
+/// `wl_keyboard.modifiers` event (`mods_depressed`, `mods_latched`,
+/// `mods_locked`).
+///
+/// The discriminants correspond to the canonical XKB modifier order defined in
+/// the XKB specification. Virtual modifiers (Alt, Super, NumLock, …) are
+/// mapped to their conventional real-modifier bit by `from_evdev_code`.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[repr(u32)]
+pub enum Modifier {
+    Shift = 0,
+    Caps = 1,
+    Ctrl = 2,
+    Alt = 3,
+    NumLock = 4,
+    Mod3 = 5,
+    Super = 6,
+    AltGr = 7,
+}
+
+impl Modifier {
+    /// Returns the bitmask for this modifier, suitable for the `mods_*`
+    /// fields of a Wayland `wl_keyboard.modifiers` event.
+    pub const fn bit(self) -> u32 {
+        1 << (self as u32)
+    }
+
+    /// Maps an evdev keycode to the modifier it controls, if any.
+    ///
+    /// `KEY_LEFTALT` / `KEY_RIGHTALT` map to [`Modifier::Alt`]; on layouts
+    /// where the right Alt acts as AltGr, a future keymap-aware path can
+    /// remap it to [`Modifier::AltGr`].
+    pub const fn from_evdev_code(code: u16) -> Option<Modifier> {
+        match code {
+            KEY_LEFTSHIFT | KEY_RIGHTSHIFT => Some(Modifier::Shift),
+            KEY_CAPSLOCK => Some(Modifier::Caps),
+            KEY_LEFTCTRL | KEY_RIGHTCTRL => Some(Modifier::Ctrl),
+            KEY_LEFTALT | KEY_RIGHTALT => Some(Modifier::Alt),
+            KEY_NUMLOCK => Some(Modifier::NumLock),
+            KEY_LEFTMETA | KEY_RIGHTMETA => Some(Modifier::Super),
+            _ => None,
+        }
+    }
+}
+
+/// Wayland-compatible modifier state.
+///
+/// Mirrors the four `u32` fields of the `wl_keyboard.modifiers` event so the
+/// same value can be forwarded directly to a future Wayland server:
+///
+/// - `mods_depressed` — physically held modifiers.
+/// - `mods_latched` — sticky modifiers released after the next non-modifier key.
+/// - `mods_locked` — toggled modifiers (Caps Lock, Num Lock).
+/// - `group` — active keyboard layout index.
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Hash, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Modifiers {
+    pub mods_depressed: u32,
+    pub mods_latched: u32,
+    pub mods_locked: u32,
+    pub group: u32,
+}
+
+impl Modifiers {
+    /// Effective modifier mask: `depressed | latched | locked`.
+    ///
+    /// Matches the `XKB_STATE_MODS_EFFECTIVE` semantics used by xkbcommon.
+    pub const fn effective(self) -> u32 {
+        self.mods_depressed | self.mods_latched | self.mods_locked
+    }
+
+    /// Returns `true` if `modifier` is active in the effective mask.
+    pub const fn has(self, modifier: Modifier) -> bool {
+        self.effective() & modifier.bit() != 0
+    }
+
+    /// Returns `true` if `modifier` is physically held (depressed).
+    pub const fn is_depressed(self, modifier: Modifier) -> bool {
+        self.mods_depressed & modifier.bit() != 0
+    }
+
+    /// Sets or clears the depressed state of `modifier`.
+    pub fn set_depressed(&mut self, modifier: Modifier, active: bool) {
+        if active {
+            self.mods_depressed |= modifier.bit();
+        } else {
+            self.mods_depressed &= !modifier.bit();
+        }
+    }
+
+    /// Returns `true` if Shift is active in the effective mask.
+    pub const fn shift(self) -> bool {
+        self.has(Modifier::Shift)
+    }
+
+    /// Returns `true` if Control is active in the effective mask.
+    pub const fn ctrl(self) -> bool {
+        self.has(Modifier::Ctrl)
+    }
+
+    /// Returns `true` if Alt is active in the effective mask.
+    pub const fn alt(self) -> bool {
+        self.has(Modifier::Alt)
+    }
+
+    /// Returns `true` if Super (Meta/Windows) is active in the effective mask.
+    pub const fn super_(self) -> bool {
+        self.has(Modifier::Super)
+    }
+
+    /// Returns `true` if Caps Lock is active in the effective mask.
+    pub const fn caps(self) -> bool {
+        self.has(Modifier::Caps)
+    }
+
+    /// Returns `true` if Num Lock is active in the effective mask.
+    pub const fn num_lock(self) -> bool {
+        self.has(Modifier::NumLock)
+    }
+
+    /// Returns `true` if AltGr (Level Three) is active in the effective mask.
+    pub const fn alt_gr(self) -> bool {
+        self.has(Modifier::AltGr)
+    }
+}
+
+/// Wayland-compatible key state, matching the `wl_keyboard.key` event's
+/// `state` argument.
+///
+/// Wayland protocol versions < 10 only define `released` and `pressed`;
+/// version 10 added `repeated` for compositor-driven key repeat.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum KeyState {
+    Released,
+    Pressed,
+    Repeated,
+}
+
+impl KeyState {
+    /// Maps an evdev `EV_KEY` value to a [`KeyState`].
+    pub fn from_evdev_value(value: i32) -> Option<Self> {
+        match value {
+            VAL_RELEASE => Some(KeyState::Released),
+            VAL_PRESS => Some(KeyState::Pressed),
+            VAL_REPEAT => Some(KeyState::Repeated),
+            _ => None,
+        }
+    }
+}
+
+/// Wayland-oriented key event payload.
+///
+/// Carries the evdev scancode and a snapshot of the modifier state at the
+/// moment the key was pressed or released. The scancode is the raw evdev
+/// keycode (as used by the Wayland protocol); XKB keycodes are `keycode + 8`.
+///
+/// The `ButtonStatus` carried alongside this in [`ButtonCode::Keyboard`]
+/// provides the press/release/repeat state, and the `time` field of
+/// [`DeviceEvent::Button`] provides the timestamp — matching the split
+/// between `wl_keyboard.key` (key + state + time) and
+/// `wl_keyboard.modifiers` (modifier mask) in the Wayland protocol.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KeyEvent {
+    /// Evdev scancode (e.g. `KEY_SPACE` = 57). Wayland uses evdev scancodes
+    /// directly; XKB keycodes are `keycode + 8`.
+    pub keycode: u32,
+    /// Modifier state snapshot at the time of the event.
+    pub modifiers: Modifiers,
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub enum ButtonCode {
     Power,
     Home,
@@ -303,6 +497,13 @@ pub enum ButtonCode {
     Erase,
     Highlight,
     Raw(u16),
+    /// Keyboard key event from a hotplugged or remote keyboard.
+    ///
+    /// Carries a Wayland-oriented [`KeyEvent`] so the same payload can be
+    /// forwarded to a future Wayland server's `wl_keyboard` interface. The
+    /// press/release/repeat state is carried by the enclosing
+    /// [`DeviceEvent::Button`] `status` field.
+    Keyboard(KeyEvent),
 }
 
 fn resolve_button_direction(
@@ -866,6 +1067,11 @@ async fn parse_device_events(
 
     let mut button_scheme = button_scheme;
 
+    // Modifier state for hotplugged keyboards, tracked as a Wayland-compatible
+    // `Modifiers` value so it can be forwarded directly to a `wl_keyboard`
+    // interface in a future Wayland server.
+    let mut modifiers = Modifiers::default();
+
     while let Some(tagged) = rx.recv().await {
         let evt = tagged.event;
         let _span = tracing::trace_span!("processing input event", event = ?evt).entered();
@@ -1097,7 +1303,30 @@ async fn parse_device_events(
                         }
                     }
                     None => {
-                        if let Some(button_status) = ButtonStatus::try_from_raw(evt.value) {
+                        if tagged.profile.tracks_modifiers {
+                            if let Some(modifier) = Modifier::from_evdev_code(evt.code) {
+                                modifiers.set_depressed(modifier, evt.value != 0);
+                                tracing::trace!(
+                                    modifier = ?modifier,
+                                    mods_depressed = modifiers.mods_depressed,
+                                    keycode = evt.code,
+                                    value = evt.value,
+                                    "keyboard modifier state change"
+                                );
+                            } else if let Some(button_status) =
+                                ButtonStatus::try_from_raw(evt.value)
+                            {
+                                ty.send(DeviceEvent::Button {
+                                    time: seconds(evt.time),
+                                    code: ButtonCode::Keyboard(KeyEvent {
+                                        keycode: evt.code as u32,
+                                        modifiers,
+                                    }),
+                                    status: button_status,
+                                })
+                                .ok();
+                            }
+                        } else if let Some(button_status) = ButtonStatus::try_from_raw(evt.value) {
                             let time = seconds(evt.time);
                             let code = ButtonCode::Raw(evt.code);
                             tracing::debug!(
@@ -1295,7 +1524,7 @@ fn probe_device(path: &str) -> Option<DeviceFeatures> {
 ///   built-in profile. Catches touch digitizers and other built-in buttons
 ///   on Kobo models whose names are not listed above.
 /// - Anything else → generic keyboard profile: forward as
-///   [`ButtonCode::Raw`].
+///   [`ButtonCode::Keyboard`].
 fn classify_device(features: &DeviceFeatures) -> DeviceProfile {
     let name = features.name.as_deref().unwrap_or("");
     if is_kobo_remote_name(name) {
@@ -1659,6 +1888,145 @@ mod tests {
         assert_eq!(finger, Point { x: 1620, y: 85 });
     }
 
+    #[test]
+    fn modifier_bit_positions_match_xkb_real_mod_order() {
+        assert_eq!(Modifier::Shift.bit(), 1 << 0);
+        assert_eq!(Modifier::Caps.bit(), 1 << 1);
+        assert_eq!(Modifier::Ctrl.bit(), 1 << 2);
+        assert_eq!(Modifier::Alt.bit(), 1 << 3);
+        assert_eq!(Modifier::NumLock.bit(), 1 << 4);
+        assert_eq!(Modifier::Mod3.bit(), 1 << 5);
+        assert_eq!(Modifier::Super.bit(), 1 << 6);
+        assert_eq!(Modifier::AltGr.bit(), 1 << 7);
+    }
+
+    #[test]
+    fn modifier_from_evdev_code_maps_known_keys() {
+        assert_eq!(
+            Modifier::from_evdev_code(KEY_LEFTSHIFT),
+            Some(Modifier::Shift)
+        );
+        assert_eq!(
+            Modifier::from_evdev_code(KEY_RIGHTSHIFT),
+            Some(Modifier::Shift)
+        );
+        assert_eq!(
+            Modifier::from_evdev_code(KEY_CAPSLOCK),
+            Some(Modifier::Caps)
+        );
+        assert_eq!(
+            Modifier::from_evdev_code(KEY_LEFTCTRL),
+            Some(Modifier::Ctrl)
+        );
+        assert_eq!(
+            Modifier::from_evdev_code(KEY_RIGHTCTRL),
+            Some(Modifier::Ctrl)
+        );
+        assert_eq!(Modifier::from_evdev_code(KEY_LEFTALT), Some(Modifier::Alt));
+        assert_eq!(Modifier::from_evdev_code(KEY_RIGHTALT), Some(Modifier::Alt));
+        assert_eq!(
+            Modifier::from_evdev_code(KEY_NUMLOCK),
+            Some(Modifier::NumLock)
+        );
+        assert_eq!(
+            Modifier::from_evdev_code(KEY_LEFTMETA),
+            Some(Modifier::Super)
+        );
+        assert_eq!(
+            Modifier::from_evdev_code(KEY_RIGHTMETA),
+            Some(Modifier::Super)
+        );
+    }
+
+    #[test]
+    fn modifier_from_evdev_code_returns_none_for_non_modifier() {
+        assert_eq!(Modifier::from_evdev_code(KEY_SPACE), None);
+        assert_eq!(Modifier::from_evdev_code(KEY_POWER), None);
+        assert_eq!(Modifier::from_evdev_code(KEY_HOME), None);
+    }
+
+    #[test]
+    fn modifiers_default_is_empty() {
+        let mods = Modifiers::default();
+        assert_eq!(mods.mods_depressed, 0);
+        assert_eq!(mods.mods_latched, 0);
+        assert_eq!(mods.mods_locked, 0);
+        assert_eq!(mods.group, 0);
+        assert_eq!(mods.effective(), 0);
+        assert!(!mods.shift());
+        assert!(!mods.ctrl());
+        assert!(!mods.alt());
+        assert!(!mods.super_());
+        assert!(!mods.caps());
+        assert!(!mods.num_lock());
+        assert!(!mods.alt_gr());
+    }
+
+    #[test]
+    fn modifiers_set_depressed_toggles_bit() {
+        let mut mods = Modifiers::default();
+        mods.set_depressed(Modifier::Ctrl, true);
+        assert!(mods.is_depressed(Modifier::Ctrl));
+        assert!(mods.ctrl());
+        assert_eq!(mods.mods_depressed, Modifier::Ctrl.bit());
+
+        mods.set_depressed(Modifier::Shift, true);
+        assert!(mods.shift());
+        assert_eq!(
+            mods.mods_depressed,
+            Modifier::Ctrl.bit() | Modifier::Shift.bit()
+        );
+
+        mods.set_depressed(Modifier::Ctrl, false);
+        assert!(!mods.is_depressed(Modifier::Ctrl));
+        assert!(mods.shift());
+        assert_eq!(mods.mods_depressed, Modifier::Shift.bit());
+    }
+
+    #[test]
+    fn modifiers_effective_combines_all_sources() {
+        let mut mods = Modifiers::default();
+        mods.set_depressed(Modifier::Shift, true);
+        mods.mods_latched = Modifier::Ctrl.bit();
+        mods.mods_locked = Modifier::Caps.bit();
+        assert_eq!(
+            mods.effective(),
+            Modifier::Shift.bit() | Modifier::Ctrl.bit() | Modifier::Caps.bit()
+        );
+        assert!(mods.shift());
+        assert!(mods.ctrl());
+        assert!(mods.caps());
+    }
+
+    #[test]
+    fn modifiers_has_checks_effective_mask() {
+        let mods = Modifiers {
+            mods_locked: Modifier::NumLock.bit(),
+            ..Default::default()
+        };
+        assert!(mods.has(Modifier::NumLock));
+        assert!(mods.num_lock());
+        assert!(!mods.is_depressed(Modifier::NumLock));
+    }
+
+    #[test]
+    fn key_state_from_evdev_value() {
+        assert_eq!(
+            KeyState::from_evdev_value(VAL_RELEASE),
+            Some(KeyState::Released)
+        );
+        assert_eq!(
+            KeyState::from_evdev_value(VAL_PRESS),
+            Some(KeyState::Pressed)
+        );
+        assert_eq!(
+            KeyState::from_evdev_value(VAL_REPEAT),
+            Some(KeyState::Repeated)
+        );
+        assert_eq!(KeyState::from_evdev_value(42), None);
+        assert_eq!(KeyState::from_evdev_value(-1), None);
+    }
+
     #[tokio::test]
     async fn raw_reader_forwards_one_evdev_event() {
         let path = std::env::temp_dir().join(format!(
@@ -1947,7 +2315,7 @@ mod tests {
             profile.lookup(KEY_DOWN),
             Some(KeyAction::PageTurnRaw(LinearDir::Forward))
         );
-        // Other keys are not special; they fall through to Raw dispatch.
+        // Other keys are not special; they fall through to Keyboard dispatch.
         assert_eq!(profile.lookup(KEY_SPACE), None);
     }
 
@@ -1956,6 +2324,7 @@ mod tests {
         let profile = DeviceProfile::keyboard();
         assert_eq!(profile.lookup(KEY_SPACE), None);
         assert_eq!(profile.lookup(KEY_POWER), None);
+        assert!(profile.tracks_modifiers);
     }
 
     #[test]
@@ -2161,5 +2530,34 @@ mod tests {
         assert!(!is_kobo_remote_name("Azulle | Lynk Remote"));
         assert!(!is_kobo_remote_name("Generic Keyboard"));
         assert!(!is_kobo_remote_name(""));
+    }
+
+    #[test]
+    fn key_event_serializes_with_camel_case() {
+        let mut modifiers = Modifiers::default();
+        modifiers.set_depressed(Modifier::Ctrl, true);
+        let key_event = KeyEvent {
+            keycode: KEY_SPACE as u32,
+            modifiers,
+        };
+        let json = serde_json::to_string(&key_event).unwrap();
+        assert!(json.contains("\"keycode\""));
+        assert!(json.contains("\"modifiers\""));
+        assert!(json.contains("\"modsDepressed\""));
+    }
+
+    #[test]
+    fn modifiers_serialize_with_camel_case() {
+        let mods = Modifiers {
+            mods_depressed: 1,
+            mods_latched: 2,
+            mods_locked: 4,
+            group: 1,
+        };
+        let json = serde_json::to_string(&mods).unwrap();
+        assert!(json.contains("\"modsDepressed\""));
+        assert!(json.contains("\"modsLatched\""));
+        assert!(json.contains("\"modsLocked\""));
+        assert!(json.contains("\"group\""));
     }
 }
