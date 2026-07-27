@@ -1,5 +1,5 @@
 //! `cargo xtask ci clippy-report` — deduplicate clippy JSON artifacts and
-//! report via reviewdog.
+//! emit short-format diagnostics for reviewdog.
 //!
 //! ## How it fits into CI
 //!
@@ -9,13 +9,14 @@
 //! downloads all artifacts into a single directory and calls:
 //!
 //! ```text
-//! cargo xtask ci clippy-report --artifacts-dir <dir>
+//! cargo xtask ci clippy-report --artifacts-dir <dir> --output <file>
 //! ```
 //!
 //! This command reads every `.json` file in the directory, deduplicates
-//! diagnostics across feature labels, and pipes the unique set through
-//! `reviewdog` once — so each warning appears as exactly one PR review
-//! comment regardless of how many feature combinations triggered it.
+//! diagnostics across feature labels, and writes short-format lines for
+//! reviewdog.  A separate privileged `workflow_run` workflow (`Clippy report`)
+//! downloads that artifact and posts PR review comments — so fork PRs still
+//! get inline comments despite a read-only `GITHUB_TOKEN` on `pull_request`.
 //!
 //! ## Deduplication key
 //!
@@ -27,9 +28,13 @@
 //!
 //! ## Reviewdog
 //!
-//! Uses the `github-pr-review` reporter.  Requires:
+//! When `--output` is omitted, pipes short-format lines to `reviewdog` with
+//! the `github-pr-review` reporter (local / same-repo use).  Requires:
 //! - `reviewdog` on `PATH`
 //! - `REVIEWDOG_GITHUB_API_TOKEN` set to a token with `pull-requests: write`
+//!
+//! When `--output` is set, writes short-format lines to that file and does not
+//! invoke reviewdog.
 
 use std::collections::HashSet;
 use std::fs;
@@ -48,16 +53,25 @@ pub struct ClippyReportArgs {
     /// `cargo xtask clippy --save-json`.
     #[arg(long)]
     pub artifacts_dir: PathBuf,
+
+    /// Write short-format diagnostics to this file instead of posting via
+    /// reviewdog.
+    ///
+    /// Parent directories are created as needed.  Used by the unprivileged
+    /// Cargo CI job so a privileged `workflow_run` workflow can post comments.
+    #[arg(long)]
+    pub output: Option<PathBuf>,
 }
 
 /// Reads all `.json` files in `artifacts_dir`, deduplicates diagnostics, and
-/// pipes the unique set through `reviewdog` using the `github-pr-review`
-/// reporter.
+/// either writes short-format lines to [`ClippyReportArgs::output`] or pipes
+/// them through `reviewdog` using the `github-pr-review` reporter.
 ///
 /// # Errors
 ///
-/// Returns an error if any artifact file cannot be read, if `reviewdog`
-/// cannot be spawned, or if `reviewdog` exits non-zero.
+/// Returns an error if any artifact file cannot be read, if the output file
+/// cannot be written, if `reviewdog` cannot be spawned, or if `reviewdog`
+/// exits non-zero.
 pub fn run(args: ClippyReportArgs) -> Result<()> {
     let lines = collect_unique_lines(&args.artifacts_dir)?;
 
@@ -66,7 +80,41 @@ pub fn run(args: ClippyReportArgs) -> Result<()> {
         lines.len()
     );
 
-    pipe_to_reviewdog(&lines)
+    if let Some(output) = args.output {
+        write_short_output(&lines, &output)
+    } else {
+        pipe_to_reviewdog(&lines)
+    }
+}
+
+/// Converts deduplicated clippy JSON lines to short format and writes them to
+/// `path`, creating parent directories as needed.
+///
+/// # Errors
+///
+/// Returns an error if directories cannot be created or the file cannot be written.
+fn write_short_output(lines: &[String], path: &Path) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create directory {}", parent.display()))?;
+    }
+
+    let mut file =
+        fs::File::create(path).with_context(|| format!("failed to create {}", path.display()))?;
+
+    for line in lines {
+        let short_line = json_to_short(line);
+        writeln!(file, "{short_line}")
+            .with_context(|| format!("failed to write to {}", path.display()))?;
+    }
+
+    println!(
+        "clippy-report: wrote {} lines to {}",
+        lines.len(),
+        path.display()
+    );
+
+    Ok(())
 }
 
 /// Collects all JSON lines from every `.json` file in `dir`, returning only
@@ -528,6 +576,44 @@ mod tests {
         assert_eq!(
             result,
             "src/main.rs:1:1: error: expected `,`, found `{` [E0789]"
+        );
+    }
+
+    #[test]
+    fn output_flag_writes_short_format_without_reviewdog() {
+        let dir = tempdir().unwrap();
+        let warning = serde_json::json!({
+            "reason": "compiler-message",
+            "message": {
+                "message": "unused variable: `x`",
+                "level": "warning",
+                "spans": [
+                    {
+                        "file_name": "src/lib.rs",
+                        "line_start": 10,
+                        "column_start": 5,
+                        "is_primary": true
+                    }
+                ],
+                "code": { "code": "unused_variables" }
+            }
+        })
+        .to_string();
+
+        write_artifact(dir.path(), "default.json", &[&warning]);
+        write_artifact(dir.path(), "test.json", &[&warning]);
+
+        let out = dir.path().join("out").join("diagnostics.txt");
+        run(ClippyReportArgs {
+            artifacts_dir: dir.path().to_path_buf(),
+            output: Some(out.clone()),
+        })
+        .unwrap();
+
+        let contents = fs::read_to_string(&out).unwrap();
+        assert_eq!(
+            contents,
+            "src/lib.rs:10:5: warning: unused variable: `x` [unused_variables]\n"
         );
     }
 }

@@ -56,6 +56,22 @@ Path-filter and validate jobs only need a read-only checkout. Prefer:
 Skip this on jobs that use reviewdog or other tools that rely on persisted
 credentials for PR comments.
 
+## Fork PR reviewdog
+
+Public fork pull requests receive a read-only `GITHUB_TOKEN` on `pull_request`,
+so reviewdog cannot post inline review comments from that event. Cadmus splits
+collection from posting:
+
+1. **Cargo** (`pull_request`) — unprivileged. Clippy matrix uploads JSON;
+   `clippy-report` coalesces diagnostics into the `clippy-reviewdog-input`
+   artifact. No PR write permission.
+2. **Clippy report** (`workflow_run` on Cargo) — privileged base-repo context.
+   Downloads the artifact by `run-id` and posts via reviewdog with
+   `pull-requests: write`.
+
+The privileged workflow must treat artifacts as untrusted data (pipe text into
+reviewdog only). Do not check out or execute the PR head or artifact payloads.
+
 ## Action pinning
 
 Pin every third-party action to a full commit SHA with a version comment:

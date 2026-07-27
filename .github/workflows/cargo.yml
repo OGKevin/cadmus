@@ -285,7 +285,6 @@ jobs:
 
     permissions:
       contents: read
-      pull-requests: write
 
     runs-on: ubuntu-latest
     name: clippy-report
@@ -310,13 +309,18 @@ jobs:
           path: clippy-json
           merge-multiple: true
 
-      - name: Install reviewdog
-        uses: reviewdog/action-setup@d8a7baabd7f3e8544ee4dbde3ee41d0011c3a93f # v1
+      - name: Coalesce clippy diagnostics for reviewdog
+        run: |
+          cargo xtask ci clippy-report \
+            --artifacts-dir clippy-json \
+            --output clippy-reviewdog-input/diagnostics.txt
 
-      - name: Run clippy-report
-        run: cargo xtask ci clippy-report --artifacts-dir clippy-json
-        env:
-          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload reviewdog input artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: clippy-reviewdog-input
+          path: clippy-reviewdog-input/
+          retention-days: 1
 
   test:
     needs: [changes, generate-matrix, build-docs-epub, cache-warmup]
