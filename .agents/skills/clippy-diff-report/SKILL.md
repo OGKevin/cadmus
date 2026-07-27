@@ -83,6 +83,21 @@ reviewdog \
 | See raw (unfiltered) clippy output for one feature set | `cargo xtask clippy --features emulator`                                                                     |
 | Run the full matrix (slow — CI only)                   | `cargo xtask clippy --github-report --diff-branch master` (omits `--features`)                               |
 
+## Fixing warnings
+
+When resolving Clippy warnings introduced by a change:
+
+- **Never add `#[allow(...)]`** — fix the root cause.
+- **Change only what Clippy flags** — do not refactor unrelated code.
+- **`field_reassign_with_default`**: when converting
+  `let mut s = S::default(); s.field = val;` to a struct literal, keep
+  `let mut` if the variable is mutated again later in the same scope, and
+  ensure all subsequent mutations are preserved — do not drop them.
+
+After fixes, re-run the filtered clippy command above, then complete the
+verification sequence in [AGENTS.md](../../../AGENTS.md) (fmt → clippy →
+tests with `--features emulator` → `build-kobo`).
+
 ## Troubleshooting
 
 ### "reviewdog not found"

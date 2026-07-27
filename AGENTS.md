@@ -252,6 +252,7 @@ For workflows, load the matching skill from [`.agents/skills/`](.agents/skills/)
 | `build-kobo`          | Cross-compile for Kobo (ARM); required after code changes |
 | `fmt`                 | Check or apply rustfmt                                    |
 | `clippy-diff-report`  | Lint only the current diff (matches CI reviewdog)         |
+| `dependency-updater`  | Fix failed Renovate/Dependabot dependency PRs             |
 | `sqlx`                | Regenerate `.sqlx/` after query macro changes             |
 | `docs`                | Build or preview the documentation site                   |
 | `translations-sync`   | Regenerate the translations POT after doc edits           |
