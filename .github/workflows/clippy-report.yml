@@ -22,7 +22,7 @@ jobs:
         env:
           BASE_REPO: ${{ github.repository }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          HEAD_REPO: ${{ github.event.workflow_run.head_repository.full_name }}
+          HEAD_REPO: ${{ github.event.workflow_run.head_repository.full_name || github.repository }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           PR_NUMBER=$(gh api "repos/$HEAD_REPO/commits/$HEAD_SHA/pulls" \
