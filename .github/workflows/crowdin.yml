@@ -16,6 +16,7 @@ concurrency:
 jobs:
   synchronize-with-crowdin:
     name: Sync translations
+    if: github.event.repository.fork == false
     runs-on: ubuntu-latest
     permissions:
       contents: write # push the l10n branch
