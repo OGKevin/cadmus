@@ -10,7 +10,7 @@
 //! |------------|-------------|
 //! | `install-doc-tools` | Install mdBook, mdbook-epub, mdbook-mermaid, and optionally Zola |
 //! | `matrix` | Emit a GitHub Actions dynamic feature matrix JSON |
-//! | `clippy-report` | Deduplicate clippy JSON artifacts and report via reviewdog |
+//! | `clippy-report` | Deduplicate clippy JSON artifacts for reviewdog posting |
 
 pub mod clippy_report;
 pub mod install_doc_tools;
