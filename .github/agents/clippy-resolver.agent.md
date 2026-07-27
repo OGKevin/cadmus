@@ -50,8 +50,12 @@ Also check inline PR review annotations posted by reviewdog.
 ## Verify
 
 ```bash
-cargo build --workspace --all-targets
-cargo xtask test --features default
-cargo clippy --workspace --all-targets -- -D warnings
+cargo build --workspace --all-targets --features emulator
+cargo xtask test --features emulator
+cargo clippy --workspace --all-targets --features emulator -- -D warnings
 cargo fmt --check
 ```
+
+A device feature (`emulator`, `kobo`, or `deviceless`) is **required** to
+compile `cadmus-core` — plain `cargo build` fails with `compile_error!("A
+device feature must be enabled")`.

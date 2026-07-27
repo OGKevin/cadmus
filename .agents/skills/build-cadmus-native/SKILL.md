@@ -47,36 +47,46 @@ automatically by `build.rs` when you run any Cargo command that compiles
 
 ## Daily workflow commands
 
-| Goal                           | Command                                                             |
-| ------------------------------ | ------------------------------------------------------------------- |
-| Check formatting               | `cargo xtask fmt`                                                   |
-| Run clippy                     | `cargo xtask clippy`                                                |
-| Run tests (default features)   | `cargo xtask test --features default`                               |
-| Run tests with coverage        | `cadmus-test-coverage --features default` (devenv)                  |
-| View coverage (project-wide)   | `cadmus-coverage-show` (after test-coverage)                        |
-| View coverage (patch diff)     | `cadmus-coverage-diff` (after test-coverage)                        |
-| Run tests with telemetry       | `cargo xtask test --features "profiling + test + tracing"`          |
-| Run the emulator               | `cargo xtask run-emulator` (builds the EPUB first if missing)       |
-| Install the importer CLI       | `cargo xtask install-importer`                                      |
-| Build docs portal (full)       | `cargo xtask docs`                                                  |
+| Goal                          | Command                                                               |
+| ----------------------------- | --------------------------------------------------------------------- |
+| Check formatting              | `cargo xtask fmt`                                                     |
+| Run clippy                    | `cargo xtask clippy`                                                  |
+| Run tests (emulator features) | `cargo xtask test --features emulator`                                |
+| Run tests with coverage       | `cadmus-test-coverage --features emulator` (devenv)                   |
+| View coverage (project-wide)  | `cadmus-coverage-show` (after test-coverage)                          |
+| View coverage (patch diff)    | `cadmus-coverage-diff` (after test-coverage)                          |
+| Run tests with telemetry      | `cargo xtask test --features "emulator + profiling + test + tracing"` |
+| Run the emulator              | `cargo xtask run-emulator` (builds the EPUB first if missing)         |
+| Install the importer CLI      | `cargo xtask install-importer`                                        |
+| Build docs portal (full)      | `cargo xtask docs`                                                    |
+
+### A device feature is required
+
+`cadmus-core` emits `compile_error!("A device feature must be enabled")`
+(`crates/core/src/lib.rs`) unless one of `emulator`, `kobo`, or `deviceless`
+is enabled. The merged `cadmus` crate has `default = []`, so plain `cargo
+build`, `--features default`, and `cargo xtask test --features default` all
+fail. For native host development use `emulator` (what `run-emulator` uses);
+use `kobo` only via the `build-kobo` skill (it cross-compiles for ARM).
 
 ### Testing locally
 
 The full feature matrix is large and slow. Run the complete matrix only in CI.
-Locally, test the feature combination you are actively working with:
+Locally, test the feature combination you are actively working with — every
+combination must include a device feature:
 
 ```bash
-# Default features — fastest, covers most code
-cargo xtask test --features default
+# Emulator device feature — fastest, covers most code
+cargo xtask test --features emulator
 
-# Specific feature you are adding or modifying
-cargo xtask test --features "profiling + test + tracing"
+# Add the feature you are modifying on top of a device feature
+cargo xtask test --features "emulator + profiling + test + tracing"
 ```
 
 > [!NOTE]
 > The `telemetry` feature is excluded from the xtask matrix because it aliases
 > `tracing + profiling` with no separate `cfg` branches. Use the expanded form
-> (`profiling + test + tracing`) instead.
+> (`emulator + profiling + test + tracing`) instead.
 
 Use `cargo xtask ci matrix` to see all available feature combinations if you
 need to verify a specific one.
@@ -94,7 +104,7 @@ cadmus-coverage-diff
 Without devenv:
 
 ```bash
-cargo xtask test --coverage --features default
+cargo xtask test --coverage --features emulator
 ```
 
 This writes `target/coverage/lcov.info`. Project HTML uses `cargo llvm-cov report --html`.
@@ -110,11 +120,12 @@ Patch HTML uses `diff-cover` (see `devenv.nix` scripts).
 
 ## Common mistakes
 
-| Mistake                                                       | Result                                                        | Fix                                                      |
-| ------------------------------------------------------------- | ------------------------------------------------------------- | -------------------------------------------------------- |
-| Running `cargo check` before `cargo xtask docs --mdbook-only` | `RustEmbed` folder-not-found error                            | Generate the EPUB first                                  |
-| Running bare `cargo clippy` / `cargo test` directly           | May miss feature-gated code or use wrong feature combinations | Prefer `cargo xtask clippy` and `cargo xtask test`       |
-| Running `cargo xtask test` without `--features`               | Runs the full (slow) CI matrix locally                        | Pass `--features default` or the specific combo you need |
+| Mistake                                                       | Result                                                                | Fix                                                                                  |
+| ------------------------------------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Running `cargo check` before `cargo xtask docs --mdbook-only` | `RustEmbed` folder-not-found error                                    | Generate the EPUB first                                                              |
+| Running bare `cargo clippy` / `cargo test` directly           | May miss feature-gated code or use wrong feature combinations         | Prefer `cargo xtask clippy` and `cargo xtask test`                                   |
+| Running `cargo xtask test` without `--features`               | Runs the full (slow) CI matrix locally                                | Pass `--features emulator` (or `kobo`/`deviceless`) plus any specific combo you need |
+| Running `cargo build` / `cargo test` without a device feature | `compile_error!("A device feature must be enabled")` in `cadmus-core` | Pass `--features emulator` (or `kobo`/`deviceless`)                                  |
 
 ## Platform notes
 

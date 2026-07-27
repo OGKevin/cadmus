@@ -263,7 +263,9 @@ After code changes, complete every step before considering work done:
 
 1. Formatting — `fmt` skill
 2. Lint — `clippy-diff-report` or `build-cadmus-native` skill
-3. Tests — `build-cadmus-native` skill (`--features default` locally)
+3. Tests — `build-cadmus-native` skill (`--features emulator` locally; a
+   device feature — `emulator`, `kobo`, or `deviceless` — is **required** to
+   compile `cadmus-core`)
 4. Kobo ARM build — `build-kobo` skill (**required**; host builds can pass while
    ARM fails)
 

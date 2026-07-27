@@ -23,35 +23,38 @@ You can run the same filter locally before pushing.
 ## Run clippy filtered to your diff
 
 ```bash
-cargo xtask clippy --features default --github-report --diff-branch master
+cargo xtask clippy --features emulator --github-report --diff-branch master
 ```
 
 This:
 
-1. Runs `cargo clippy --message-format=short` for the `default` feature set
+1. Runs `cargo clippy --message-format=short` for the `emulator` feature set
 2. Pipes output through `reviewdog` with `-filter-mode=added`
 3. Reviewdog diffs against `master` and prints only warnings on changed lines
 
-### Why `--features default`
+### Why `--features emulator`
 
-The full feature matrix is large and slow. Run the complete matrix only in CI.
-Locally, lint the feature combination you are actively working with. Use
-`cargo xtask ci matrix` to see all available labels if you need a specific one.
+`cadmus-core` requires a device feature (`emulator`, `kobo`, or `deviceless`)
+to compile — `default` is empty and `--features default` fails. For native
+host linting use `emulator` (it matches what `run-emulator` builds). The full
+feature matrix is large and slow; run it only in CI. Use `cargo xtask ci
+matrix` to see all available labels if you need a specific one.
 
 ### Check all feature combinations you touched
 
 If your changes span multiple feature sets (e.g. you added `#[cfg(feature =
-"tracing")]` code), run clippy for each relevant combination:
+"tracing")]` code), run clippy for each relevant combination — every
+combination must include a device feature:
 
 ```bash
-cargo xtask clippy --features default --github-report --diff-branch master
-cargo xtask clippy --features "profiling + test + tracing" --github-report --diff-branch master
+cargo xtask clippy --features emulator --github-report --diff-branch master
+cargo xtask clippy --features "emulator + profiling + test + tracing" --github-report --diff-branch master
 ```
 
 > [!NOTE]
 > The `telemetry` feature is excluded from the xtask matrix because it aliases
 > `tracing + profiling` with no separate `cfg` branches. Use the expanded form
-> (`profiling + test + tracing`) instead.
+> (`emulator + profiling + test + tracing`) instead.
 
 ## How it works
 
@@ -73,12 +76,12 @@ reviewdog \
 
 ## Common use cases
 
-| Goal                                                   | Command                                                                                           |
-| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
-| Check default-feature changes before pushing           | `cargo xtask clippy --features default --github-report --diff-branch master`                      |
-| Check telemetry-related changes                        | `cargo xtask clippy --features "profiling + test + tracing" --github-report --diff-branch master` |
-| See raw (unfiltered) clippy output for one feature set | `cargo xtask clippy --features default`                                                           |
-| Run the full matrix (slow — CI only)                   | `cargo xtask clippy --github-report --diff-branch master` (omits `--features`)                    |
+| Goal                                                   | Command                                                                                                      |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| Check emulator-feature changes before pushing          | `cargo xtask clippy --features emulator --github-report --diff-branch master`                                |
+| Check telemetry-related changes                        | `cargo xtask clippy --features "emulator + profiling + test + tracing" --github-report --diff-branch master` |
+| See raw (unfiltered) clippy output for one feature set | `cargo xtask clippy --features emulator`                                                                     |
+| Run the full matrix (slow — CI only)                   | `cargo xtask clippy --github-report --diff-branch master` (omits `--features`)                               |
 
 ## Troubleshooting
 

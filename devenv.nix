@@ -821,7 +821,7 @@ in
     cadmus-test-coverage.exec = ''
       cd "$DEVENV_ROOT"
       if [ $# -eq 0 ]; then
-        set -- --features default
+        set -- --features emulator
       fi
       cargo xtask test --coverage "$@"
     '';
@@ -995,8 +995,8 @@ in
     };
     cargo-test = {
       enable = true;
-      name = "cargo test (default features)";
-      entry = "cargo test --workspace --features default";
+      name = "cargo test (emulator features)";
+      entry = "cargo xtask test --features emulator";
       files = "\\.rs$";
       pass_filenames = false;
       language = "system";

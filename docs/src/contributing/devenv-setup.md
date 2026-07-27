@@ -158,8 +158,13 @@ cadmus-coverage-diff main         # or pass an explicit base branch
 Outside devenv, the equivalent xtask invocation is:
 
 ```bash
-cargo xtask test --coverage --features default
+cargo xtask test --coverage --features emulator
 ```
+
+A device feature (`emulator`, `kobo`, or `deviceless`) is **required** to
+compile `cadmus-core` — plain `cargo test` and `--features default` fail with
+`compile_error!("A device feature must be enabled")`. Use `emulator` on the
+host; use `kobo` only via the `build-kobo` skill (cross-compiles for ARM).
 
 CI uploads require a `CODECOV_TOKEN` repository secret (one-time setup on codecov.io).
 
