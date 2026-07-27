@@ -169,8 +169,7 @@
         "/^\\.github\\/workflows\\/cadmus-docs\\.yml$/",
         "/^\\.github\\/workflows\\/cargo\\.yml$/",
         "/^\\.github\\/workflows\\/release\\.yml$/",
-        "/^\\.github\\/workflows\\/build-release-candidate\\.yml$/",
-        "/^\\.github\\/workflows\\/copilot-setup-steps\\.yml$/"
+        "/^\\.github\\/workflows\\/build-release-candidate\\.yml$/"
       ],
       "matchStrings": ["NODE_VERSION:\\s+\\\"(?<currentValue>[^\\\"]+)\\\""],
       "datasourceTemplate": "node-version",
