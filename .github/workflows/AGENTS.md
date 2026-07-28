@@ -86,12 +86,14 @@ New reviewdog jobs must follow the same collect/report pair. Keep
 
 Report job order:
 
-1. Check out the **base** repository (trusted composites under path `ci`)
+1. Check out the **base** repository to a dedicated path (e.g. `path: ci`) for
+   trusted composites
 2. Identify the PR (`number`, `base_ref`)
-3. Check out the PR head (`checkout-workflow-run-pr-head` `path`, e.g. `pr`)
-   and fetch the base ref
-4. Download artifacts and pipe diagnostics into reviewdog (`reviewdog-post`
-   `workdir` must match that path)
+3. Check out the PR head to a **different** path (e.g. `path: pr`) via
+   `checkout-workflow-run-pr-head` — pass `repository`, `ref`, `base_ref`, and
+   `path` from the workflow
+4. Download artifacts and pipe diagnostics into reviewdog — pass `workdir`
+   matching the PR-head path, plus `commit`, `branch`, and `run_id`
 
 The PR-head checkout exists solely so reviewdog can resolve `.git` and compute
 the PR diff for `-filter-mode=added`. That is safe for this use case: the

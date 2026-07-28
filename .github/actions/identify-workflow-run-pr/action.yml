@@ -1,7 +1,17 @@
 name: Identify workflow_run pull request
 description: >
-  Resolve the open PR number and base ref for a workflow_run head SHA.
-  Used by privileged reviewdog report workflows.
+  Resolve the open PR number and base ref for a head SHA. Used by privileged
+  reviewdog report workflows.
+
+inputs:
+  head_repository:
+    description: >
+      Head repository (owner/name), usually
+      github.event.workflow_run.head_repository.full_name || github.repository.
+    required: true
+  head_sha:
+    description: Head commit SHA (usually github.event.workflow_run.head_sha).
+    required: true
 
 outputs:
   number:
@@ -20,8 +30,8 @@ runs:
       env:
         BASE_REPO: ${{ github.repository }}
         GH_TOKEN: ${{ github.token }}
-        HEAD_REPO: ${{ github.event.workflow_run.head_repository.full_name || github.repository }}
-        HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        HEAD_REPO: ${{ inputs.head_repository }}
+        HEAD_SHA: ${{ inputs.head_sha }}
       run: |
         set -euo pipefail
         PR_JSON=$(gh api "repos/$HEAD_REPO/commits/$HEAD_SHA/pulls" \

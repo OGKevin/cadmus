@@ -1,18 +1,26 @@
 name: Checkout workflow_run PR head for reviewdog diff
 description: >
-  Check out the workflow_run PR head and fetch the base ref so reviewdog can
-  compute a merge-base diff for -filter-mode=added. Does not execute fork code.
-  Caller must already have checked out the base repository elsewhere (e.g. path
-  `ci`) for trusted composite actions.
+  Check out a PR head and fetch the base ref so reviewdog can compute a
+  merge-base diff for -filter-mode=added. Does not execute fork code. Caller
+  must already have checked out the base repository elsewhere for trusted
+  composite actions.
 
 inputs:
+  repository:
+    description: >
+      PR head repository (owner/name), usually
+      github.event.workflow_run.head_repository.full_name || github.repository.
+    required: true
+  ref:
+    description: PR head SHA (usually github.event.workflow_run.head_sha).
+    required: true
   base_ref:
     description: PR base branch name (from identify-workflow-run-pr).
     required: true
   path:
     description: >
       Workspace-relative path for the PR-head checkout. Pass the same value as
-      reviewdog-post workdir.
+      reviewdog-post workdir. Must differ from the base-repo checkout path.
     required: true
 
 runs:
@@ -20,8 +28,8 @@ runs:
   steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
-        repository: ${{ github.event.workflow_run.head_repository.full_name || github.repository }}
-        ref: ${{ github.event.workflow_run.head_sha }}
+        repository: ${{ inputs.repository }}
+        ref: ${{ inputs.ref }}
         fetch-depth: 0
         path: ${{ inputs.path }}
 

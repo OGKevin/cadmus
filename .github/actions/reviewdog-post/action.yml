@@ -1,11 +1,20 @@
 name: Post reviewdog diagnostics from artifact
 description: >
-  Download a reviewdog-input artifact from the triggering workflow_run and post
+  Download a reviewdog-input artifact from a completed workflow run and post
   inline PR review comments. Treats the artifact as untrusted text only.
 
 inputs:
   pr_number:
     description: Pull request number to comment on.
+    required: true
+  commit:
+    description: Head SHA for CI_COMMIT (usually workflow_run.head_sha).
+    required: true
+  branch:
+    description: Head branch for CI_BRANCH (usually workflow_run.head_branch).
+    required: true
+  run_id:
+    description: Workflow run id that uploaded the artifact.
     required: true
   artifact_name:
     description: Name of the artifact uploaded by the collect workflow.
@@ -57,7 +66,7 @@ runs:
         name: ${{ inputs.artifact_name }}
         path: ${{ inputs.artifact_name }}
         github-token: ${{ inputs.github_token }}
-        run-id: ${{ github.event.workflow_run.id }}
+        run-id: ${{ inputs.run_id }}
 
     - name: Install reviewdog
       if: steps.download.outcome == 'success'
@@ -72,10 +81,10 @@ runs:
       working-directory: ${{ inputs.workdir }}
       env:
         CI_PULL_REQUEST: ${{ inputs.pr_number }}
-        CI_COMMIT: ${{ github.event.workflow_run.head_sha }}
+        CI_COMMIT: ${{ inputs.commit }}
         CI_REPO_OWNER: ${{ github.repository_owner }}
         CI_REPO_NAME: ${{ github.event.repository.name }}
-        CI_BRANCH: ${{ github.event.workflow_run.head_branch }}
+        CI_BRANCH: ${{ inputs.branch }}
         REVIEWDOG_GITHUB_API_TOKEN: ${{ inputs.github_token }}
         DIAGNOSTICS_PATH: ${{ github.workspace }}/${{ inputs.diagnostics_path }}
         RD_NAME: ${{ inputs.name }}

@@ -27,10 +27,15 @@ jobs:
 
       - uses: ./ci/.github/actions/identify-workflow-run-pr
         id: identify-pr
+        with:
+          head_repository: ${{ github.event.workflow_run.head_repository.full_name || github.repository }}
+          head_sha: ${{ github.event.workflow_run.head_sha }}
 
       - uses: ./ci/.github/actions/checkout-workflow-run-pr-head
         if: steps.identify-pr.outputs.number
         with:
+          repository: ${{ github.event.workflow_run.head_repository.full_name || github.repository }}
+          ref: ${{ github.event.workflow_run.head_sha }}
           base_ref: ${{ steps.identify-pr.outputs.base_ref }}
           path: pr
 
@@ -38,6 +43,9 @@ jobs:
         if: steps.identify-pr.outputs.number
         with:
           pr_number: ${{ steps.identify-pr.outputs.number }}
+          commit: ${{ github.event.workflow_run.head_sha }}
+          branch: ${{ github.event.workflow_run.head_branch }}
+          run_id: ${{ github.event.workflow_run.id }}
           artifact_name: rumdl-reviewdog-input
           diagnostics_path: rumdl-reviewdog-input/diagnostics.sarif
           name: rumdl
