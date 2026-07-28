@@ -88,8 +88,10 @@ Report job order:
 
 1. Check out the **base** repository (trusted composites under path `ci`)
 2. Identify the PR (`number`, `base_ref`)
-3. Check out the PR head into path `pr` and fetch the base ref
-4. Download artifacts and pipe diagnostics into reviewdog (cwd `pr`)
+3. Check out the PR head (`checkout-workflow-run-pr-head` `path`, e.g. `pr`)
+   and fetch the base ref
+4. Download artifacts and pipe diagnostics into reviewdog (`reviewdog-post`
+   `workdir` must match that path)
 
 The PR-head checkout exists solely so reviewdog can resolve `.git` and compute
 the PR diff for `-filter-mode=added`. That is safe for this use case: the

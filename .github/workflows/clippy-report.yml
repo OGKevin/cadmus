@@ -33,6 +33,7 @@ jobs:
         if: steps.identify-pr.outputs.number
         with:
           base_ref: ${{ steps.identify-pr.outputs.base_ref }}
+          path: pr
 
       - uses: ./ci/.github/actions/reviewdog-post
         if: steps.identify-pr.outputs.number
@@ -41,4 +42,5 @@ jobs:
           artifact_name: clippy-reviewdog-input
           diagnostics_path: clippy-reviewdog-input/diagnostics.txt
           name: clippy
+          workdir: pr
           format: clippy

@@ -32,6 +32,7 @@ jobs:
         if: steps.identify-pr.outputs.number
         with:
           base_ref: ${{ steps.identify-pr.outputs.base_ref }}
+          path: pr
 
       - uses: ./ci/.github/actions/reviewdog-post
         if: steps.identify-pr.outputs.number
@@ -40,6 +41,7 @@ jobs:
           artifact_name: shellcheck-reviewdog-input
           diagnostics_path: shellcheck-reviewdog-input/diagnostics.txt
           name: shellcheck
+          workdir: pr
           errorformat: "%f:%l:%c:%t%*[^:]:%m"
 
       - uses: ./ci/.github/actions/reviewdog-post
@@ -49,6 +51,7 @@ jobs:
           artifact_name: shellcheck-reviewdog-input
           diagnostics_path: shellcheck-reviewdog-input/suggestions.diff
           name: shellcheck (suggestion)
+          workdir: pr
           format: diff
           reviewdog_flags: -f.diff.strip=1
 
@@ -59,5 +62,6 @@ jobs:
           artifact_name: shfmt-reviewdog-input
           diagnostics_path: shfmt-reviewdog-input/diagnostics.diff
           name: shfmt
+          workdir: pr
           format: diff
           reviewdog_flags: -f.diff.strip=1

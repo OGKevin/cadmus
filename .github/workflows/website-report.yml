@@ -32,6 +32,7 @@ jobs:
         if: steps.identify-pr.outputs.number
         with:
           base_ref: ${{ steps.identify-pr.outputs.base_ref }}
+          path: pr
 
       - uses: ./ci/.github/actions/reviewdog-post
         if: steps.identify-pr.outputs.number
@@ -40,6 +41,7 @@ jobs:
           artifact_name: prettier-website-reviewdog-input
           diagnostics_path: prettier-website-reviewdog-input/diagnostics.diff
           name: prettier
+          workdir: pr
           format: diff
           reviewdog_flags: -f.diff.strip=1
 
@@ -50,6 +52,7 @@ jobs:
           artifact_name: eslint-reviewdog-input
           diagnostics_path: eslint-reviewdog-input/diagnostics.rdjson
           name: eslint
+          workdir: pr
           format: rdjson
 
       - uses: ./ci/.github/actions/reviewdog-post
@@ -59,4 +62,5 @@ jobs:
           artifact_name: stylelint-reviewdog-input
           diagnostics_path: stylelint-reviewdog-input/diagnostics.rdjson
           name: stylelint
+          workdir: pr
           format: rdjson

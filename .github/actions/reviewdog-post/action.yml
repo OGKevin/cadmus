@@ -1,8 +1,7 @@
 name: Post reviewdog diagnostics from artifact
 description: >
   Download a reviewdog-input artifact from the triggering workflow_run and post
-  inline PR review comments. Treats the artifact as untrusted text only. Runs
-  reviewdog from path `pr` (see checkout-workflow-run-pr-head).
+  inline PR review comments. Treats the artifact as untrusted text only.
 
 inputs:
   pr_number:
@@ -18,6 +17,11 @@ inputs:
     required: true
   name:
     description: Tool name passed to reviewdog -name.
+    required: true
+  workdir:
+    description: >
+      Directory containing the PR-head checkout (with .git) used for
+      -filter-mode=added. Must match checkout-workflow-run-pr-head path.
     required: true
   format:
     description: >
@@ -65,7 +69,7 @@ runs:
     - name: Post review comments
       if: steps.download.outcome == 'success'
       shell: bash
-      working-directory: pr
+      working-directory: ${{ inputs.workdir }}
       env:
         CI_PULL_REQUEST: ${{ inputs.pr_number }}
         CI_COMMIT: ${{ github.event.workflow_run.head_sha }}

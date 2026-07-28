@@ -63,25 +63,29 @@ runs:
       shell: bash
       run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
-    - name: rumdl
+    - name: Collect rumdl SARIF
+      if: inputs.output != ''
       shell: bash
       env:
-        REVIEWDOG_GITHUB_API_TOKEN: ${{ inputs.github_token }}
         OUTPUT_PATH: ${{ inputs.output }}
       run: |
         set -euo pipefail
-        if [ -n "${OUTPUT_PATH}" ]; then
-          mkdir -p "$(dirname "${OUTPUT_PATH}")"
-          set +e
-          rumdl check --output-format sarif ${{ inputs.rumdl_flags }} > "${OUTPUT_PATH}"
-          rumdl_exit=$?
-          set -e
-          if [[ "${rumdl_exit}" -ne 0 && "${{ inputs.fail_level }}" != "none" ]]; then
-            exit "${rumdl_exit}"
-          fi
-          exit 0
+        mkdir -p "$(dirname "${OUTPUT_PATH}")"
+        set +e
+        rumdl check --output-format sarif ${{ inputs.rumdl_flags }} > "${OUTPUT_PATH}"
+        rumdl_exit=$?
+        set -e
+        if [[ "${rumdl_exit}" -ne 0 && "${{ inputs.fail_level }}" != "none" ]]; then
+          exit "${rumdl_exit}"
         fi
 
+    - name: rumdl with reviewdog
+      if: inputs.output == ''
+      shell: bash
+      env:
+        REVIEWDOG_GITHUB_API_TOKEN: ${{ inputs.github_token }}
+      run: |
+        set -euo pipefail
         sarif="${RUNNER_TEMP}/rumdl.sarif"
         set +e
         rumdl check --output-format sarif ${{ inputs.rumdl_flags }} > "${sarif}"

@@ -32,6 +32,7 @@ jobs:
         if: steps.identify-pr.outputs.number
         with:
           base_ref: ${{ steps.identify-pr.outputs.base_ref }}
+          path: pr
 
       - uses: ./ci/.github/actions/reviewdog-post
         if: steps.identify-pr.outputs.number
@@ -40,6 +41,7 @@ jobs:
           artifact_name: actionlint-reviewdog-input
           diagnostics_path: actionlint-reviewdog-input/diagnostics.txt
           name: actionlint
+          workdir: pr
           errorformat: "%t:%f:%l:%c: %m"
 
       - uses: ./ci/.github/actions/reviewdog-post
@@ -49,5 +51,6 @@ jobs:
           artifact_name: prettier-actions-reviewdog-input
           diagnostics_path: prettier-actions-reviewdog-input/diagnostics.diff
           name: prettier
+          workdir: pr
           format: diff
           reviewdog_flags: -f.diff.strip=1
