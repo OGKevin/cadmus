@@ -29,11 +29,19 @@ inputs:
     description: Arguments passed to rumdl check (file list or paths).
     default: "."
     required: false
+  output:
+    description: |
+      When set, write SARIF diagnostics to this path and skip reviewdog.
+      Parent directories are created as needed. Used by unprivileged CI collect
+      jobs so a privileged workflow_run can post comments.
+    required: false
+    default: ""
 
 runs:
   using: composite
   steps:
     - uses: reviewdog/action-setup@d8a7baabd7f3e8544ee4dbde3ee41d0011c3a93f # v1.5.0
+      if: inputs.output == ''
 
     - name: Cache rumdl
       id: rumdl-cache
@@ -59,8 +67,21 @@ runs:
       shell: bash
       env:
         REVIEWDOG_GITHUB_API_TOKEN: ${{ inputs.github_token }}
+        OUTPUT_PATH: ${{ inputs.output }}
       run: |
         set -euo pipefail
+        if [ -n "${OUTPUT_PATH}" ]; then
+          mkdir -p "$(dirname "${OUTPUT_PATH}")"
+          set +e
+          rumdl check --output-format sarif ${{ inputs.rumdl_flags }} > "${OUTPUT_PATH}"
+          rumdl_exit=$?
+          set -e
+          if [[ "${rumdl_exit}" -ne 0 && "${{ inputs.fail_level }}" != "none" ]]; then
+            exit "${rumdl_exit}"
+          fi
+          exit 0
+        fi
+
         sarif="${RUNNER_TEMP}/rumdl.sarif"
         set +e
         rumdl check --output-format sarif ${{ inputs.rumdl_flags }} > "${sarif}"

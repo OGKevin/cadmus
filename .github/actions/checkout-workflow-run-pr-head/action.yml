@@ -1,0 +1,33 @@
+name: Checkout workflow_run PR head for reviewdog diff
+description: >
+  Check out the workflow_run PR head into path `pr` and fetch the base ref so
+  reviewdog can compute a merge-base diff for -filter-mode=added. Does not
+  execute fork code. Caller must already have checked out the base repository
+  elsewhere (e.g. path `ci`) for trusted composite actions.
+
+inputs:
+  base_ref:
+    description: PR base branch name (from identify-workflow-run-pr).
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        repository: ${{ github.event.workflow_run.head_repository.full_name || github.repository }}
+        ref: ${{ github.event.workflow_run.head_sha }}
+        fetch-depth: 0
+        path: pr
+
+    - name: Fetch PR base for merge-base
+      shell: bash
+      working-directory: pr
+      env:
+        BASE_REF: ${{ inputs.base_ref }}
+        BASE_REPO: ${{ github.repository }}
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        git remote add upstream "https://x-access-token:${GH_TOKEN}@github.com/${BASE_REPO}.git"
+        git fetch --no-tags upstream "$BASE_REF"

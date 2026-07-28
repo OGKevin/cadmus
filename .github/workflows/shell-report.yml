@@ -1,0 +1,63 @@
+name: Shell report
+
+on:
+  workflow_run:
+    workflows: ["Shell"]
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: write
+
+jobs:
+  post-review:
+    if: >
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion != 'cancelled'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ github.repository }}
+          sparse-checkout: |
+            .github/actions
+          path: ci
+          persist-credentials: false
+
+      - uses: ./ci/.github/actions/identify-workflow-run-pr
+        id: identify-pr
+
+      - uses: ./ci/.github/actions/checkout-workflow-run-pr-head
+        if: steps.identify-pr.outputs.number
+        with:
+          base_ref: ${{ steps.identify-pr.outputs.base_ref }}
+
+      - uses: ./ci/.github/actions/reviewdog-post
+        if: steps.identify-pr.outputs.number
+        with:
+          pr_number: ${{ steps.identify-pr.outputs.number }}
+          artifact_name: shellcheck-reviewdog-input
+          diagnostics_path: shellcheck-reviewdog-input/diagnostics.txt
+          name: shellcheck
+          errorformat: "%f:%l:%c:%t%*[^:]:%m"
+
+      - uses: ./ci/.github/actions/reviewdog-post
+        if: steps.identify-pr.outputs.number
+        with:
+          pr_number: ${{ steps.identify-pr.outputs.number }}
+          artifact_name: shellcheck-reviewdog-input
+          diagnostics_path: shellcheck-reviewdog-input/suggestions.diff
+          name: shellcheck (suggestion)
+          format: diff
+          reviewdog_flags: -f.diff.strip=1
+
+      - uses: ./ci/.github/actions/reviewdog-post
+        if: steps.identify-pr.outputs.number
+        with:
+          pr_number: ${{ steps.identify-pr.outputs.number }}
+          artifact_name: shfmt-reviewdog-input
+          diagnostics_path: shfmt-reviewdog-input/diagnostics.diff
+          name: shfmt
+          format: diff
+          reviewdog_flags: -f.diff.strip=1

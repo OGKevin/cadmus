@@ -20,14 +20,16 @@ read` if it still checks out code).
 Add only what a job requires:
 
 ```yaml
-  actionlint:
+  post-review:
     permissions:
       contents: read
+      actions: read
       pull-requests: write
 ```
 
-Common elevations: `pull-requests: write` (reviewdog), `pages: write` +
-`id-token: write` (Pages deploy), `contents: write` (push branches).
+Common elevations: `pull-requests: write` (reviewdog **report** workflows),
+`pages: write` + `id-token: write` (Pages deploy), `contents: write` (push
+branches).
 
 ### Rollup jobs
 
@@ -53,8 +55,8 @@ Path-filter and validate jobs only need a read-only checkout. Prefer:
           persist-credentials: false
 ```
 
-Skip this on jobs that use reviewdog or other tools that rely on persisted
-credentials for PR comments.
+Skip this on unprivileged collect jobs that do not need git credentials.
+Report workflows that fetch the PR base ref need a tokenized remote.
 
 ## Fork PR reviewdog
 
@@ -82,12 +84,19 @@ New reviewdog jobs must follow the same collect/report pair. Keep
 
 ### Privileged checkout and trust
 
-The report workflow may check out the PR head (and fetch the base ref) solely
-so reviewdog can resolve `.git` and compute the PR diff for
-`-filter-mode=added`. That is safe for this use case: the privileged job must
-not build, install, or otherwise execute code from the fork or from artifact
-payloads. Artifacts are untrusted text only — pipe diagnostics into reviewdog
-and nothing else.
+Report job order:
+
+1. Check out the **base** repository (trusted composites under path `ci`)
+2. Identify the PR (`number`, `base_ref`)
+3. Check out the PR head into path `pr` and fetch the base ref
+4. Download artifacts and pipe diagnostics into reviewdog (cwd `pr`)
+
+The PR-head checkout exists solely so reviewdog can resolve `.git` and compute
+the PR diff for `-filter-mode=added`. That is safe for this use case: the
+privileged job must not build, install, or otherwise execute code from the fork
+or from artifact payloads. Load composite actions from the base-repo `ci`
+checkout only — never from the PR head. Artifacts are untrusted text only —
+pipe diagnostics into reviewdog and nothing else.
 
 `actions/checkout` v7+ refuses fork PR heads on `workflow_run` unless
 `allow-unsafe-pr-checkout: true` is set. Opt in only when the checked-out

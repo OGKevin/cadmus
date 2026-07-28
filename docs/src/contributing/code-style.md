@@ -128,14 +128,18 @@ Public API items must have doc comments.
 
 The following CI workflows enforce style:
 
-| Workflow        | What it checks                                       |
-| --------------- | ---------------------------------------------------- |
-| `cargo.yml`     | `rustfmt`, `clippy` (full feature matrix), tests     |
-| `shell.yml`     | `shellcheck`, `shfmt` (changed lines only)           |
-| `docs-lint.yml` | `rumdl` via reviewdog (docs and markdown files)      |
+| Workflow          | What it checks                                    |
+| ----------------- | ------------------------------------------------- |
+| `cargo.yml`       | `rustfmt`, `clippy` (full feature matrix), tests  |
+| `actions-lint.yml`| `actionlint`, prettier for workflow YAML          |
+| `shell.yml`       | `shellcheck`, `shfmt`                             |
+| `website.yml`     | prettier, eslint, stylelint (plus typecheck/build)|
+| `docs-lint.yml`   | `rumdl` (docs and markdown files)                 |
 
-CI uses `filter_mode: added` for shell checks, meaning only lines changed in
-the PR are flagged. Docs lint validates whole files (`filter_mode: nofilter`).
-Running `treefmt` locally before pushing will catch everything.
+Inline review comments are posted by matching `*-report.yml` workflows on
+`workflow_run` (see `.github/workflows/AGENTS.md`). Collect jobs fail the PR
+check when findings remain; report jobs post with `-filter-mode=added` so only
+lines changed in the PR are flagged. Running `treefmt` locally before pushing
+will catch everything.
 
 <!-- i18n:skip-end -->

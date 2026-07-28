@@ -29,40 +29,103 @@ jobs:
     if: needs.changes.outputs.workflows == 'true'
     permissions:
       contents: read
-      pull-requests: write
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-
-      - name: Actionlint
-        uses: reviewdog/action-actionlint@6fb7acc99f4a1008869fa8a0f09cfca740837d9d # v1.72.0
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          reporter: github-pr-review
-          filter_mode: added
-
-  prettier:
-    needs: changes
-    if: needs.changes.outputs.workflows == 'true'
-    permissions:
-      contents: read
-      pull-requests: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - name: Prettier
-        uses: EPMatt/reviewdog-action-prettier@f691104cbeb4b0299df971275444c64be93c03ae # v1
+      - name: Install actionlint
+        env:
+          ACTIONLINT_VERSION: "1.7.7"
+        run: |
+          set -euo pipefail
+          bash <(curl -fsSL "https://raw.githubusercontent.com/rhysd/actionlint/v${ACTIONLINT_VERSION}/scripts/download-actionlint.bash") \
+            "${ACTIONLINT_VERSION}"
+          echo "$PWD" >> "$GITHUB_PATH"
+
+      - name: Collect actionlint diagnostics
+        run: |
+          set -euo pipefail
+          mkdir -p actionlint-reviewdog-input
+          set +e
+          # Match devenv.nix: suppress false positive from YAML anchors for rust-toolchain.
+          actionlint -oneline \
+            -ignore '"rust-toolchain" is not defined in object type' \
+            > actionlint-reviewdog-input/raw.txt
+          actionlint_exit=$?
+          set -e
+          : > actionlint-reviewdog-input/diagnostics.txt
+          while IFS= read -r line || [ -n "$line" ]; do
+            [ -z "$line" ] && continue
+            severity=e
+            shellcheck_output=" shellcheck reported issue in this script: "
+            if [[ "$line" == *"$shellcheck_output"* ]]; then
+              s="$(echo "$line" | sed -e "s/^.*${shellcheck_output}[^:]*:\([^:]\).*$/\1/g")"
+              if [[ "$s" == [ewin] ]]; then
+                severity="$s"
+              fi
+            fi
+            echo "${severity}:${line}" >> actionlint-reviewdog-input/diagnostics.txt
+          done < actionlint-reviewdog-input/raw.txt
+          if [ "$actionlint_exit" -ne 0 ]; then
+            exit "$actionlint_exit"
+          fi
+
+      - name: Upload reviewdog input artifact
+        if: failure() && hashFiles('actionlint-reviewdog-input/diagnostics.txt') != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          reporter: github-pr-review
-          fail_level: error
-          prettier_flags: ../.github/workflows/**/*.yml ../.github/actions/**/*.yml
-          workdir: .github/lint
+          name: actionlint-reviewdog-input
+          path: actionlint-reviewdog-input/
+          retention-days: 1
+
+  prettier:
+    needs: changes
+    if: needs.changes.outputs.workflows == 'true'
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: .github/lint/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: .github/lint
+
+      - name: Collect prettier diagnostics
+        run: |
+          set -euo pipefail
+          shopt -s globstar nullglob
+          mkdir -p prettier-actions-reviewdog-input
+          files=(.github/workflows/**/*.yml .github/actions/**/*.yml)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No YAML files to format"
+            exit 0
+          fi
+          npx --prefix .github/lint prettier --write "${files[@]}"
+          if ! git diff --quiet; then
+            git diff > prettier-actions-reviewdog-input/diagnostics.diff
+            echo "::error::Prettier found formatting issues"
+            exit 1
+          fi
+
+      - name: Upload reviewdog input artifact
+        if: failure() && hashFiles('prettier-actions-reviewdog-input/diagnostics.diff') != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: prettier-actions-reviewdog-input
+          path: prettier-actions-reviewdog-input/
+          retention-days: 1
 
   required-actions-lint:
     name: required-actions-lint

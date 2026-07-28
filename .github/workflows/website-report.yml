@@ -1,8 +1,8 @@
-name: Clippy report
+name: Website report
 
 on:
   workflow_run:
-    workflows: ["Cargo"]
+    workflows: ["Website"]
     types: [completed]
 
 permissions:
@@ -17,7 +17,6 @@ jobs:
       github.event.workflow_run.conclusion != 'cancelled'
     runs-on: ubuntu-latest
     steps:
-      # Trusted composites from the base repo — never load actions from the PR head.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ github.repository }}
@@ -38,7 +37,26 @@ jobs:
         if: steps.identify-pr.outputs.number
         with:
           pr_number: ${{ steps.identify-pr.outputs.number }}
-          artifact_name: clippy-reviewdog-input
-          diagnostics_path: clippy-reviewdog-input/diagnostics.txt
-          name: clippy
-          format: clippy
+          artifact_name: prettier-website-reviewdog-input
+          diagnostics_path: prettier-website-reviewdog-input/diagnostics.diff
+          name: prettier
+          format: diff
+          reviewdog_flags: -f.diff.strip=1
+
+      - uses: ./ci/.github/actions/reviewdog-post
+        if: steps.identify-pr.outputs.number
+        with:
+          pr_number: ${{ steps.identify-pr.outputs.number }}
+          artifact_name: eslint-reviewdog-input
+          diagnostics_path: eslint-reviewdog-input/diagnostics.rdjson
+          name: eslint
+          format: rdjson
+
+      - uses: ./ci/.github/actions/reviewdog-post
+        if: steps.identify-pr.outputs.number
+        with:
+          pr_number: ${{ steps.identify-pr.outputs.number }}
+          artifact_name: stylelint-reviewdog-input
+          diagnostics_path: stylelint-reviewdog-input/diagnostics.rdjson
+          name: stylelint
+          format: rdjson

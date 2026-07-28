@@ -11,7 +11,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -50,11 +49,17 @@ jobs:
         if: steps.filter.outputs.docs == 'true'
         uses: ./.github/actions/rumdl-lint
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          reporter: github-pr-review
           fail_level: error
-          filter_mode: added
           rumdl_flags: ${{ steps.files.outputs.list }}
+          output: rumdl-reviewdog-input/diagnostics.sarif
+
+      - name: Upload reviewdog input artifact
+        if: failure() && steps.filter.outputs.docs == 'true' && hashFiles('rumdl-reviewdog-input/diagnostics.sarif') != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: rumdl-reviewdog-input
+          path: rumdl-reviewdog-input/
+          retention-days: 1
 
       - name: No relevant changes
         if: steps.filter.outputs.docs != 'true'

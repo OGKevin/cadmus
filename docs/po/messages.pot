@@ -1,14 +1,18 @@
+
 msgid ""
 msgstr ""
 "Project-Id-Version: Cadmus Documentation\n"
-"POT-Creation-Date: 2026-07-14T20:06:37+02:00\n"
+"POT-Creation-Date: 2026-07-28T10:51:24Z\n"
+"PO-Revision-Date: \n"
+"Last-Translator: \n"
+"Language-Team: \n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Language: en\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
-#: src/SUMMARY.md:1
+#: src/SUMMARY.md:1 src/contributing/event-system.md:16
 msgid "Overview"
 msgstr ""
 
@@ -95,6 +99,7 @@ msgid "Database Backup"
 msgstr ""
 
 #: src/SUMMARY.md:25 src/installation/ota.md:86 src/troubleshooting/index.md:1
+#: src/contributing/devenv-setup.md:221
 msgid "Troubleshooting"
 msgstr ""
 
@@ -138,7 +143,7 @@ msgstr ""
 msgid "Profiling"
 msgstr ""
 
-#: src/SUMMARY.md:40
+#: src/SUMMARY.md:40 src/contributing/translations/index.md:22
 msgid "Website"
 msgstr ""
 
@@ -208,8 +213,84 @@ msgstr ""
 msgid "Supported devices"
 msgstr ""
 
-#: src/index.md:46
-msgid "Supported formats"
+#: src/index.md:23
+msgid "_Clara Colour_."
+msgstr ""
+
+#: src/index.md:24
+msgid "_Clara BW_."
+msgstr ""
+
+#: src/index.md:25
+msgid "_Elipsa 2E_."
+msgstr ""
+
+#: src/index.md:26
+msgid "_Clara 2E_."
+msgstr ""
+
+#: src/index.md:27
+msgid "_Libra 2_."
+msgstr ""
+
+#: src/index.md:28
+msgid "_Sage_."
+msgstr ""
+
+#: src/index.md:29
+msgid "_Elipsa_."
+msgstr ""
+
+#: src/index.md:30
+msgid "_Nia_."
+msgstr ""
+
+#: src/index.md:31
+msgid "_Libra H₂O_."
+msgstr ""
+
+#: src/index.md:32
+msgid "_Forma_."
+msgstr ""
+
+#: src/index.md:33
+msgid "_Clara HD_."
+msgstr ""
+
+#: src/index.md:34
+msgid "_Aura H₂O Edition 2_."
+msgstr ""
+
+#: src/index.md:35
+msgid "_Aura Edition 2_."
+msgstr ""
+
+#: src/index.md:36
+msgid "_Aura ONE_."
+msgstr ""
+
+#: src/index.md:37
+msgid "_Glo HD_."
+msgstr ""
+
+#: src/index.md:38
+msgid "_Aura H₂O_."
+msgstr ""
+
+#: src/index.md:39
+msgid "_Aura_."
+msgstr ""
+
+#: src/index.md:40
+msgid "_Glo_."
+msgstr ""
+
+#: src/index.md:41
+msgid "_Touch C_."
+msgstr ""
+
+#: src/index.md:42
+msgid "_Touch B_."
 msgstr ""
 
 #: src/index.md:48
@@ -226,7 +307,8 @@ msgstr ""
 msgid "DJVU via [DjVuLibre](http://djvu.sourceforge.net/index.html)."
 msgstr ""
 
-#: src/index.md:52
+#: src/index.md:52 src/CHANGELOG.md:13 src/CHANGELOG.md:51 src/CHANGELOG.md:96
+#: src/CHANGELOG.md:127 src/CHANGELOG.md:138
 msgid "Features"
 msgstr ""
 
@@ -262,10 +344,6 @@ msgstr ""
 msgid "Screenshots"
 msgstr ""
 
-#: src/index.md:73
-msgid "Acknowledgments"
-msgstr ""
-
 #: src/index.md:75
 msgid ""
 "Cadmus is a fork of [Plato](https://github.com/baskerville/plato), a "
@@ -280,8 +358,54 @@ msgstr ""
 msgid "Available packages"
 msgstr ""
 
-#: src/installation/index.md:18
-msgid "Which one should I pick?"
+#: src/installation/index.md:9
+msgid "What's included"
+msgstr ""
+
+#: src/installation/index.md:9
+msgid "Installs to"
+msgstr ""
+
+#: src/installation/index.md:11
+msgid "`KoboRoot.tgz`"
+msgstr ""
+
+#: src/installation/index.md:11
+msgid "Cadmus only"
+msgstr ""
+
+#: src/installation/index.md:11 src/installation/index.md:12
+#: src/installation/uninstall.md:12
+msgid "`/mnt/onboard/.adds/cadmus`"
+msgstr ""
+
+#: src/installation/index.md:12
+msgid "`KoboRoot-nm.tgz`"
+msgstr ""
+
+#: src/installation/index.md:12
+msgid "Cadmus + NickelMenu"
+msgstr ""
+
+#: src/installation/index.md:13
+msgid "`KoboRoot-test.tgz`"
+msgstr ""
+
+#: src/installation/index.md:13
+msgid "Test build only"
+msgstr ""
+
+#: src/installation/index.md:13 src/installation/index.md:14
+#: src/installation/uninstall.md:13
+msgid "`/mnt/onboard/.adds/cadmus-tst`"
+msgstr ""
+
+#: src/installation/index.md:14
+msgid "`KoboRoot-nm-test.tgz`"
+msgstr ""
+
+#: src/installation/index.md:14
+msgid "Test build + NickelMenu"
 msgstr ""
 
 #: src/installation/index.md:20
@@ -331,11 +455,11 @@ msgstr ""
 msgid "Eject the device and reboot."
 msgstr ""
 
-#: src/installation/index.md:35
+#: src/installation/index.md:34
 msgid ""
-"You must rename the file to `KoboRoot.tgz` before copying it to your Kobo. "
-"For example, `KoboRoot-nm.tgz` and `KoboRoot-test.tgz` will not install "
-"until you rename them."
+"\\[!NOTE\\] You must rename the file to `KoboRoot.tgz` before copying it to "
+"your Kobo. For example, `KoboRoot-nm.tgz` and `KoboRoot-test.tgz` will not "
+"install until you rename them."
 msgstr ""
 
 #: src/installation/index.md:39
@@ -385,10 +509,10 @@ msgstr ""
 msgid "Eject and disconnect the USB cable."
 msgstr ""
 
-#: src/installation/index.md:61
+#: src/installation/index.md:60
 msgid ""
-"Always name the file `KoboRoot.tgz` on the device, regardless of which "
-"package you downloaded (e.g. `KoboRoot-nm.tgz` must be renamed)."
+"\\[!NOTE\\] Always name the file `KoboRoot.tgz` on the device, regardless of "
+"which package you downloaded (e.g. `KoboRoot-nm.tgz` must be renamed)."
 msgstr ""
 
 #: src/installation/index.md:64
@@ -437,10 +561,11 @@ msgstr ""
 msgid "Copy that renamed file to: `/mnt/onboard/.kobo/KoboRoot.tgz`"
 msgstr ""
 
-#: src/installation/test-builds.md:16
+#: src/installation/test-builds.md:15
 msgid ""
-"Test packages such as `KoboRoot-test.tgz` and `KoboRoot-nm-test.tgz` must be "
-"renamed to `KoboRoot.tgz` before you copy them to your Kobo."
+"\\[!NOTE\\] Test packages such as `KoboRoot-test.tgz` and "
+"`KoboRoot-nm-test.tgz` must be renamed to `KoboRoot.tgz` before you copy "
+"them to your Kobo."
 msgstr ""
 
 #: src/installation/test-builds.md:19
@@ -524,7 +649,8 @@ msgstr ""
 msgid "Source"
 msgstr ""
 
-#: src/installation/ota.md:34
+#: src/installation/ota.md:34 src/contributing/devenv-setup.md:50
+#: src/contributing/devenv-setup.md:80
 msgid "Description"
 msgstr ""
 
@@ -552,8 +678,8 @@ msgstr ""
 msgid "Test a specific pull request"
 msgstr ""
 
-#: src/installation/ota.md:41
-msgid "The _Stable Release_ option is not shown in test builds."
+#: src/installation/ota.md:40
+msgid "\\[!NOTE\\] The _Stable Release_ option is not shown in test builds."
 msgstr ""
 
 #: src/installation/ota.md:43
@@ -597,9 +723,9 @@ msgid ""
 "[Authentication](#authentication) for details."
 msgstr ""
 
-#: src/installation/ota.md:66
+#: src/installation/ota.md:65
 msgid ""
-"Find the PR number in the GitHub URL. For example, in "
+"\\[!TIP\\] Find the PR number in the GitHub URL. For example, in "
 "`github.com/OGKevin/cadmus/pull/42` the PR number is **42**."
 msgstr ""
 
@@ -709,34 +835,49 @@ msgstr ""
 msgid "Copy your settings"
 msgstr ""
 
-#: src/installation/migration.md:17
-msgid ""
-"Copy the file as-is into the Cadmus folder so it is named `Settings.toml` "
-"(for example, `/mnt/onboard/.adds/cadmus/Settings.toml` or "
-"`/mnt/onboard/.adds/cadmus-tst/Settings.toml`). The `[[libraries]]` section "
-"is the most important part, it tells Cadmus where your books live and drives "
-"the reading-progress import on first launch. On first launch, Cadmus will "
-"move this file into its `Settings/` folder automatically."
+#: src/installation/migration.md:10
+msgid "Plato settings"
 msgstr ""
 
-#: src/installation/migration.md:22
-msgid ""
-"If your SD card is already inserted when you upgrade, Cadmus automatically "
-"moves your settings, logs, and dictionaries to `/mnt/sd/.cadmus/` (or "
-"`/mnt/sd/.cadmus-tst/` for test builds) on the next boot."
+#: src/installation/migration.md:10
+msgid "Cadmus settings"
 msgstr ""
 
-#: src/installation/migration.md:27
-msgid ""
-"If you insert an SD card **after** Cadmus has already run, the automatic "
-"migration will not run. You will need to copy your data manually — see "
-"[Moving data to an SD card](#moving-data-to-an-sd-card) below."
+#: src/installation/migration.md:12 src/installation/migration.md:83
+#: src/installation/uninstall.md:12 src/installation/uninstall.md:24
+msgid "Stable"
 msgstr ""
 
-#: src/installation/migration.md:43
+#: src/installation/migration.md:12 src/installation/migration.md:13
+msgid "`/mnt/onboard/.adds/plato/Settings.toml`"
+msgstr ""
+
+#: src/installation/migration.md:12 src/installation/migration.md:110
+msgid "`/mnt/onboard/.adds/cadmus/Settings.toml`"
+msgstr ""
+
+#: src/installation/migration.md:13 src/installation/migration.md:84
+#: src/installation/uninstall.md:13 src/installation/uninstall.md:25
+msgid "Test"
+msgstr ""
+
+#: src/installation/migration.md:13
+msgid "`/mnt/onboard/.adds/cadmus-tst/Settings.toml`"
+msgstr ""
+
+#: src/installation/migration.md:21
 msgid ""
-"Make sure each `[[libraries]]` entry has the correct `path` and `name`. If a "
-"path doesn't match what's on disk, Cadmus skips that library's import."
+"\\[!NOTE\\] If your SD card is already inserted when you upgrade, Cadmus "
+"automatically moves your settings, logs, and dictionaries to "
+"`/mnt/sd/.cadmus/` (or `/mnt/sd/.cadmus-tst/` for test builds) on the next "
+"boot."
+msgstr ""
+
+#: src/installation/migration.md:26
+msgid ""
+"\\[!NOTE\\] If you insert an SD card **after** Cadmus has already run, the "
+"automatic migration will not run. You will need to copy your data manually — "
+"see [Moving data to an SD card](#moving-data-to-an-sd-card) below."
 msgstr ""
 
 #: src/installation/migration.md:46
@@ -776,20 +917,20 @@ msgid ""
 "carry over regardless of which mode you used in Plato."
 msgstr ""
 
-#: src/installation/migration.md:61
+#: src/installation/migration.md:60
 msgid ""
-"The original `.metadata.json` and `.reading-states/` files are not modified "
-"or deleted during import. Once you have confirmed everything looks right in "
-"Cadmus, you can safely delete them. Keeping these files means your Plato "
-"progress remains intact. If you decide to go back to Plato, you can do so "
-"without losing your original Plato reading states. Though keep in mind that "
-"any progress you make in Cadmus will not sync back to Plato."
+"\\[!NOTE\\] The original `.metadata.json` and `.reading-states/` files are "
+"not modified or deleted during import. Once you have confirmed everything "
+"looks right in Cadmus, you can safely delete them. Keeping these files means "
+"your Plato progress remains intact. If you decide to go back to Plato, you "
+"can do so without losing your original Plato reading states. Though keep in "
+"mind that any progress you make in Cadmus will not sync back to Plato."
 msgstr ""
 
-#: src/installation/migration.md:69
+#: src/installation/migration.md:68
 msgid ""
-"Cadmus also removes the `.thumbnail-previews/` folder and regenerates "
-"thumbnails itself."
+"\\[!NOTE\\] Cadmus also removes the `.thumbnail-previews/` folder and "
+"regenerates thumbnails itself."
 msgstr ""
 
 #: src/installation/migration.md:72
@@ -806,8 +947,28 @@ msgstr ""
 msgid "Delete the Cadmus SQLite database:"
 msgstr ""
 
-#: src/installation/migration.md:88
-msgid "Restart Cadmus — the import will run again from scratch."
+#: src/installation/migration.md:81
+msgid "Database path (with SD card)"
+msgstr ""
+
+#: src/installation/migration.md:81
+msgid "Database path (without SD card)"
+msgstr ""
+
+#: src/installation/migration.md:83 src/installation/migration.md:113
+msgid "`/mnt/sd/.cadmus/cadmus.sqlite`"
+msgstr ""
+
+#: src/installation/migration.md:83 src/installation/migration.md:113
+msgid "`/mnt/onboard/.adds/cadmus/cadmus.sqlite`"
+msgstr ""
+
+#: src/installation/migration.md:84
+msgid "`/mnt/sd/.cadmus-tst/cadmus.sqlite`"
+msgstr ""
+
+#: src/installation/migration.md:84
+msgid "`/mnt/onboard/.adds/cadmus-tst/cadmus.sqlite`"
 msgstr ""
 
 #: src/installation/migration.md:90
@@ -827,8 +988,8 @@ msgid ""
 "card, but your existing files stay in internal storage until you move them."
 msgstr ""
 
-#: src/installation/migration.md:100
-msgid "Do these operations while Cadmus is not running!"
+#: src/installation/migration.md:99
+msgid "\\[!CAUTION\\] Do these operations while Cadmus is not running!"
 msgstr ""
 
 #: src/installation/migration.md:102
@@ -872,10 +1033,6 @@ msgid "Settings file"
 msgstr ""
 
 #: src/installation/migration.md:110
-msgid "`/mnt/onboard/.adds/cadmus/Settings.toml`"
-msgstr ""
-
-#: src/installation/migration.md:110
 msgid "`/mnt/sd/.cadmus/Settings.toml`"
 msgstr ""
 
@@ -903,17 +1060,10 @@ msgstr ""
 msgid "Database"
 msgstr ""
 
-#: src/installation/migration.md:113
-msgid "`/mnt/onboard/.adds/cadmus/cadmus.sqlite`"
-msgstr ""
-
-#: src/installation/migration.md:113
-msgid "`/mnt/sd/.cadmus/cadmus.sqlite`"
-msgstr ""
-
-#: src/installation/migration.md:116
+#: src/installation/migration.md:115
 msgid ""
-"Use the test paths (`cadmus-tst` / `.cadmus-tst`) if you are on a test build."
+"\\[!NOTE\\] Use the test paths (`cadmus-tst` / `.cadmus-tst`) if you are on "
+"a test build."
 msgstr ""
 
 #: src/installation/migration.md:118
@@ -959,30 +1109,14 @@ msgstr ""
 msgid "Place the Cadmus icon somewhere on your Kobo, for example:"
 msgstr ""
 
-#: src/installation/kfmon.md:30
-msgid ""
-"If you don't have an icon, create or copy a PNG image to use as the launcher "
-"icon."
-msgstr ""
-
 #: src/installation/kfmon.md:33
 msgid "Create a new file on your Kobo:"
 msgstr ""
 
-#: src/installation/kfmon.md:43
+#: src/installation/kfmon.md:71
 msgid ""
-"Paste this into the file, changing the `filename` value to match your icon "
-"path:"
-msgstr ""
-
-#: src/installation/kfmon.md:69
-msgid "Reboot your Kobo."
-msgstr ""
-
-#: src/installation/kfmon.md:72
-msgid ""
-"The `block_spawns = 1` line is the key setting. It stops KFMon from "
-"launching another reader while Cadmus is already open."
+"\\[!IMPORTANT\\] The `block_spawns = 1` line is the key setting. It stops "
+"KFMon from launching another reader while Cadmus is already open."
 msgstr ""
 
 #: src/installation/kfmon.md:75
@@ -1008,10 +1142,6 @@ msgid ""
 "example, while troubleshooting — you can create a blank `BLOCK` file:"
 msgstr ""
 
-#: src/installation/kfmon.md:96
-msgid "Remove the file when you want KFMon to work again:"
-msgstr ""
-
 #: src/installation/uninstall.md:3
 msgid "To remove Cadmus from your Kobo:"
 msgstr ""
@@ -1020,18 +1150,26 @@ msgstr ""
 msgid "Delete the Cadmus folder from `.adds`:"
 msgstr ""
 
-#: src/installation/uninstall.md:17
+#: src/installation/uninstall.md:10
+msgid "Folder to delete"
+msgstr ""
+
+#: src/installation/uninstall.md:22
+msgid "NickelMenu entry to delete"
+msgstr ""
+
+#: src/installation/uninstall.md:24
+msgid "`/mnt/onboard/.adds/nm/cadmus`"
+msgstr ""
+
+#: src/installation/uninstall.md:25
+msgid "`/mnt/onboard/.adds/nm/cadmus-tst`"
+msgstr ""
+
+#: src/installation/uninstall.md:31
 msgid ""
-"If you installed a package that included NickelMenu, delete the Cadmus menu "
-"entry too:"
-msgstr ""
-
-#: src/installation/uninstall.md:29
-msgid "Eject the device and disconnect the USB cable."
-msgstr ""
-
-#: src/installation/uninstall.md:32
-msgid "If you no longer need NickelMenu at all, you can remove it separately."
+"\\[!NOTE\\] If you no longer need NickelMenu at all, you can remove it "
+"separately."
 msgstr ""
 
 #: src/settings/index.md:3
@@ -1065,10 +1203,6 @@ msgstr ""
 msgid "Example Full Config"
 msgstr ""
 
-#: src/settings/index.md:295
-msgid "General Settings"
-msgstr ""
-
 #: src/settings/index.md:297
 msgid "`keyboard-layout`"
 msgstr ""
@@ -1098,16 +1232,8 @@ msgstr ""
 msgid "Possible values: `\"English\"`, `\"Russian\"`."
 msgstr ""
 
-#: src/settings/index.md:313
-msgid "`sleep-cover`"
-msgstr ""
-
 #: src/settings/index.md:317
 msgid "Handle the magnetic sleep cover event."
-msgstr ""
-
-#: src/settings/index.md:327
-msgid "`auto-share`"
 msgstr ""
 
 #: src/settings/index.md:331
@@ -1116,24 +1242,16 @@ msgid ""
 "\"Share storage via USB?\" prompt."
 msgstr ""
 
-#: src/settings/index.md:335
+#: src/settings/index.md:334
 msgid ""
-"Turn this on if you update Cadmus via USB often — you won't have to confirm "
-"the sharing dialog each time you plug in."
-msgstr ""
-
-#: src/settings/index.md:346
-msgid "`auto-time`"
+"\\[!TIP\\] Turn this on if you update Cadmus via USB often — you won't have "
+"to confirm the sharing dialog each time you plug in."
 msgstr ""
 
 #: src/settings/index.md:350
 msgid ""
 "Automatically synchronize the device time via NTP when WiFi connects. This "
 "will also set the correct timezone. Uses time.cloudflare.com and ipapi.co."
-msgstr ""
-
-#: src/settings/index.md:361
-msgid "`auto-frontlight`"
 msgstr ""
 
 #: src/settings/index.md:365
@@ -1163,10 +1281,6 @@ msgid ""
 "`auto-frontlight-manual-coordinates` to override the detected location."
 msgstr ""
 
-#: src/settings/index.md:383
-msgid "`auto-frontlight-night-brightness`"
-msgstr ""
-
 #: src/settings/index.md:387
 msgid ""
 "Frontlight brightness level (0.0–100.0) applied when the sun is below the "
@@ -1175,10 +1289,6 @@ msgstr ""
 
 #: src/settings/index.md:389
 msgid "This setting is optional. When not set, a default of `1.0` is used."
-msgstr ""
-
-#: src/settings/index.md:399
-msgid "`auto-frontlight-manual-coordinates`"
 msgstr ""
 
 #: src/settings/index.md:403
@@ -1192,10 +1302,6 @@ msgstr ""
 msgid "This setting is optional."
 msgstr ""
 
-#: src/settings/index.md:416
-msgid "`auto-frontlight-last-coordinates`"
-msgstr ""
-
 #: src/settings/index.md:418
 msgid ""
 "GPS coordinates `[latitude, longitude]` last detected during a time sync. "
@@ -1205,10 +1311,6 @@ msgstr ""
 
 #: src/settings/index.md:421
 msgid "This setting is optional and managed automatically."
-msgstr ""
-
-#: src/settings/index.md:431
-msgid "`auto-suspend`"
 msgstr ""
 
 #: src/settings/index.md:435
@@ -1221,16 +1323,8 @@ msgstr ""
 msgid "Zero means never."
 msgstr ""
 
-#: src/settings/index.md:447
-msgid "`auto-power-off`"
-msgstr ""
-
 #: src/settings/index.md:451
 msgid "Delay in days after which a suspended device will power off."
-msgstr ""
-
-#: src/settings/index.md:463
-msgid "`button-scheme`"
 msgstr ""
 
 #: src/settings/index.md:467
@@ -1243,10 +1337,6 @@ msgstr ""
 msgid "Possible values: `\"natural\"`, `\"inverted\"`."
 msgstr ""
 
-#: src/settings/index.md:479
-msgid "`locale`"
-msgstr ""
-
 #: src/settings/index.md:483
 msgid ""
 "The preferred language for the user interface, using BCP 47 format (e.g., "
@@ -1255,10 +1345,6 @@ msgstr ""
 
 #: src/settings/index.md:485
 msgid "This setting is optional. When not set, `en-GB` is used."
-msgstr ""
-
-#: src/settings/index.md:495
-msgid "`startup-mode`"
 msgstr ""
 
 #: src/settings/index.md:499
@@ -1273,10 +1359,6 @@ msgstr ""
 msgid ""
 "`\"last-file\"` — re-open the last book you were reading. If there is no "
 "unfinished book in the selected library, the home screen is shown instead."
-msgstr ""
-
-#: src/settings/index.md:513
-msgid "Reader"
 msgstr ""
 
 #: src/settings/index.md:515
@@ -1307,16 +1389,8 @@ msgstr ""
 msgid "`\"go-to-next\"` (open the next book in the library)."
 msgstr ""
 
-#: src/settings/index.md:538
-msgid "`reader.dithered-kinds`"
-msgstr ""
-
 #: src/settings/index.md:542
 msgid "File extensions rendered with dithering by default."
-msgstr ""
-
-#: src/settings/index.md:553
-msgid "`reader.font-path`"
 msgstr ""
 
 #: src/settings/index.md:555
@@ -1326,10 +1400,6 @@ msgid ""
 "[Fonts](../fonts.md) for details on installing custom fonts."
 msgstr ""
 
-#: src/settings/index.md:568
-msgid "`reader.font-family`"
-msgstr ""
-
 #: src/settings/index.md:570
 msgid ""
 "The default reading font family name. New installs default to `Libron`. "
@@ -1337,28 +1407,16 @@ msgid ""
 "Libertinus remains bundled."
 msgstr ""
 
-#: src/settings/index.md:583
-msgid "`reader.font-size`"
-msgstr ""
-
 #: src/settings/index.md:585
 msgid "The default font size in points."
 msgstr ""
 
-#: src/settings/index.md:598
-msgid "See [Fonts](../fonts.md) for more info."
-msgstr ""
-
-#: src/settings/index.md:600
+#: src/settings/index.md:600 src/contributing/library-database.md:28
 msgid "Libraries"
 msgstr ""
 
 #: src/settings/index.md:604
 msgid "Document library configuration. Each library has a name, path, and mode."
-msgstr ""
-
-#: src/settings/index.md:617
-msgid "`libraries.name`"
 msgstr ""
 
 #: src/settings/index.md:621
@@ -1411,16 +1469,8 @@ msgstr ""
 msgid "Leave unset to inherit the global `reader.finished` setting."
 msgstr ""
 
-#: src/settings/index.md:662
-msgid "Intermissions"
-msgstr ""
-
 #: src/settings/index.md:666
 msgid "Defines the images displayed when entering an intermission state."
-msgstr ""
-
-#: src/settings/index.md:679
-msgid "`intermissions.suspend`"
 msgstr ""
 
 #: src/settings/index.md:683
@@ -1494,24 +1544,12 @@ msgstr ""
 msgid "Re-extract metadata (title, author, etc.) whenever a document changes."
 msgstr ""
 
-#: src/settings/index.md:734
-msgid "`import.metadata-kinds`"
-msgstr ""
-
 #: src/settings/index.md:736
 msgid "File extensions of documents whose metadata is extracted during import."
 msgstr ""
 
-#: src/settings/index.md:747
-msgid "`import.allowed-kinds`"
-msgstr ""
-
 #: src/settings/index.md:751
 msgid "File extensions of documents considered during the import process."
-msgstr ""
-
-#: src/settings/index.md:762
-msgid "OTA"
 msgstr ""
 
 #: src/settings/index.md:764
@@ -1549,26 +1587,18 @@ msgstr ""
 msgid "These settings are available in the **Settings → Telemetry** menu."
 msgstr ""
 
-#: src/settings/index.md:786
+#: src/settings/index.md:785
 msgid ""
-"Changes to these settings only take effect after restarting Cadmus. The "
-"application initializes telemetry on startup."
+"\\[!IMPORTANT\\] Changes to these settings only take effect after restarting "
+"Cadmus. The application initializes telemetry on startup."
 msgstr ""
 
 #: src/settings/index.md:789
 msgid "`logging`"
 msgstr ""
 
-#: src/settings/index.md:804
-msgid "`logging.enabled`"
-msgstr ""
-
 #: src/settings/index.md:808
 msgid "Enable or disable structured JSON logging."
-msgstr ""
-
-#: src/settings/index.md:819
-msgid "`logging.level`"
 msgstr ""
 
 #: src/settings/index.md:823
@@ -1579,10 +1609,6 @@ msgstr ""
 msgid ""
 "Possible values: `\"trace\"`, `\"debug\"`, `\"info\"`, `\"warn\"`, "
 "`\"error\"`."
-msgstr ""
-
-#: src/settings/index.md:836
-msgid "`logging.max-files`"
 msgstr ""
 
 #: src/settings/index.md:838
@@ -1599,10 +1625,6 @@ msgstr ""
 msgid "Set to `0` to keep all log files."
 msgstr ""
 
-#: src/settings/index.md:853
-msgid "`logging.otlp-endpoint`"
-msgstr ""
-
 #: src/settings/index.md:855
 msgid "✏️ (only when the `tracing` feature is enabled)"
 msgstr ""
@@ -1611,16 +1633,12 @@ msgstr ""
 msgid "Optional OTLP endpoint for exporting logs to an OpenTelemetry collector."
 msgstr ""
 
-#: src/settings/index.md:868 src/settings/index.md:889
-msgid "Environment override:"
-msgstr ""
-
 #: src/settings/index.md:870
 msgid ""
 "`OTEL_EXPORTER_OTLP_ENDPOINT` takes precedence over `logging.otlp-endpoint`."
 msgstr ""
 
-#: src/settings/index.md:872
+#: src/settings/index.md:872 src/contributing/telemetry/profiling.md:34
 msgid "`logging.pyroscope-endpoint`"
 msgstr ""
 
@@ -1654,18 +1672,10 @@ msgid ""
 "logging with the target `cadmus_core::logging:kern`."
 msgstr ""
 
-#: src/settings/index.md:909
-msgid "`logging.enable-dbus-log`"
-msgstr ""
-
 #: src/settings/index.md:913
 msgid ""
 "Captures D-Bus signals via the built-in zbus-based DbusMonitorTask and "
 "forwards them to structured logging."
-msgstr ""
-
-#: src/settings/index.md:925
-msgid "Settings Retention"
 msgstr ""
 
 #: src/settings/index.md:927
@@ -1688,10 +1698,6 @@ msgstr ""
 
 #: src/settings/index.md:937
 msgid "Set to `0` to keep all version files"
-msgstr ""
-
-#: src/settings/index.md:947
-msgid "`db-backup-retention`"
 msgstr ""
 
 #: src/settings/index.md:949
@@ -1978,10 +1984,6 @@ msgid ""
 "directory (by default at the root of your Kobo device):"
 msgstr ""
 
-#: src/fonts.md:97
-msgid "Cadmus scans that directory recursively, so fonts can live in subfolders."
-msgstr ""
-
 #: src/fonts.md:99
 msgid ""
 "Point Cadmus at your custom directory with "
@@ -2175,8 +2177,1140 @@ msgid ""
 "corresponding character."
 msgstr ""
 
-#: src/ui/keyboard.md:77
-msgid "Custom Keyboard Layouts"
+#: src/ui/keyboard.md:36
+msgid "Result"
+msgstr ""
+
+#: src/ui/keyboard.md:36
+msgid "Keys"
+msgstr ""
+
+#: src/ui/keyboard.md:38
+msgid "`a '`"
+msgstr ""
+
+#: src/ui/keyboard.md:38
+msgid "á"
+msgstr ""
+
+#: src/ui/keyboard.md:38
+msgid "`A '`"
+msgstr ""
+
+#: src/ui/keyboard.md:38
+msgid "Á"
+msgstr ""
+
+#: src/ui/keyboard.md:38
+msgid "```a `` ```"
+msgstr ""
+
+#: src/ui/keyboard.md:38
+msgid "à"
+msgstr ""
+
+#: src/ui/keyboard.md:38
+msgid "```A `` ```"
+msgstr ""
+
+#: src/ui/keyboard.md:38
+msgid "À"
+msgstr ""
+
+#: src/ui/keyboard.md:39
+msgid "`e '`"
+msgstr ""
+
+#: src/ui/keyboard.md:39
+msgid "é"
+msgstr ""
+
+#: src/ui/keyboard.md:39
+msgid "`E '`"
+msgstr ""
+
+#: src/ui/keyboard.md:39
+msgid "É"
+msgstr ""
+
+#: src/ui/keyboard.md:39
+msgid "```e `` ```"
+msgstr ""
+
+#: src/ui/keyboard.md:39
+msgid "è"
+msgstr ""
+
+#: src/ui/keyboard.md:39
+msgid "```E `` ```"
+msgstr ""
+
+#: src/ui/keyboard.md:39
+msgid "È"
+msgstr ""
+
+#: src/ui/keyboard.md:40
+msgid "`i '`"
+msgstr ""
+
+#: src/ui/keyboard.md:40
+msgid "í"
+msgstr ""
+
+#: src/ui/keyboard.md:40
+msgid "`I '`"
+msgstr ""
+
+#: src/ui/keyboard.md:40
+msgid "Í"
+msgstr ""
+
+#: src/ui/keyboard.md:40
+msgid "```i `` ```"
+msgstr ""
+
+#: src/ui/keyboard.md:40
+msgid "ì"
+msgstr ""
+
+#: src/ui/keyboard.md:40
+msgid "```I `` ```"
+msgstr ""
+
+#: src/ui/keyboard.md:40
+msgid "Ì"
+msgstr ""
+
+#: src/ui/keyboard.md:41
+msgid "`o '`"
+msgstr ""
+
+#: src/ui/keyboard.md:41
+msgid "ó"
+msgstr ""
+
+#: src/ui/keyboard.md:41
+msgid "`O '`"
+msgstr ""
+
+#: src/ui/keyboard.md:41
+msgid "Ó"
+msgstr ""
+
+#: src/ui/keyboard.md:41
+msgid "```o `` ```"
+msgstr ""
+
+#: src/ui/keyboard.md:41
+msgid "ò"
+msgstr ""
+
+#: src/ui/keyboard.md:41
+msgid "```O `` ```"
+msgstr ""
+
+#: src/ui/keyboard.md:41
+msgid "Ò"
+msgstr ""
+
+#: src/ui/keyboard.md:42
+msgid "`u '`"
+msgstr ""
+
+#: src/ui/keyboard.md:42
+msgid "ú"
+msgstr ""
+
+#: src/ui/keyboard.md:42
+msgid "`U '`"
+msgstr ""
+
+#: src/ui/keyboard.md:42
+msgid "Ú"
+msgstr ""
+
+#: src/ui/keyboard.md:42
+msgid "```u `` ```"
+msgstr ""
+
+#: src/ui/keyboard.md:42
+msgid "ù"
+msgstr ""
+
+#: src/ui/keyboard.md:42
+msgid "```U `` ```"
+msgstr ""
+
+#: src/ui/keyboard.md:42
+msgid "Ù"
+msgstr ""
+
+#: src/ui/keyboard.md:43
+msgid "`y '`"
+msgstr ""
+
+#: src/ui/keyboard.md:43
+msgid "ý"
+msgstr ""
+
+#: src/ui/keyboard.md:43
+msgid "`Y '`"
+msgstr ""
+
+#: src/ui/keyboard.md:43
+msgid "Ý"
+msgstr ""
+
+#: src/ui/keyboard.md:43
+msgid "`u \"`"
+msgstr ""
+
+#: src/ui/keyboard.md:43
+msgid "ű"
+msgstr ""
+
+#: src/ui/keyboard.md:43
+msgid "`U \"`"
+msgstr ""
+
+#: src/ui/keyboard.md:43
+msgid "Ű"
+msgstr ""
+
+#: src/ui/keyboard.md:44
+msgid "`a ^`"
+msgstr ""
+
+#: src/ui/keyboard.md:44
+msgid "â"
+msgstr ""
+
+#: src/ui/keyboard.md:44
+msgid "`A ^`"
+msgstr ""
+
+#: src/ui/keyboard.md:44
+msgid "Â"
+msgstr ""
+
+#: src/ui/keyboard.md:44
+msgid "`o \"`"
+msgstr ""
+
+#: src/ui/keyboard.md:44
+msgid "ő"
+msgstr ""
+
+#: src/ui/keyboard.md:44
+msgid "`O \"`"
+msgstr ""
+
+#: src/ui/keyboard.md:44
+msgid "Ő"
+msgstr ""
+
+#: src/ui/keyboard.md:45
+msgid "`e ^`"
+msgstr ""
+
+#: src/ui/keyboard.md:45
+msgid "ê"
+msgstr ""
+
+#: src/ui/keyboard.md:45
+msgid "`E ^`"
+msgstr ""
+
+#: src/ui/keyboard.md:45
+msgid "Ê"
+msgstr ""
+
+#: src/ui/keyboard.md:45
+msgid "`a :`"
+msgstr ""
+
+#: src/ui/keyboard.md:45
+msgid "ä"
+msgstr ""
+
+#: src/ui/keyboard.md:45
+msgid "`A :`"
+msgstr ""
+
+#: src/ui/keyboard.md:45
+msgid "Ä"
+msgstr ""
+
+#: src/ui/keyboard.md:46
+msgid "`i ^`"
+msgstr ""
+
+#: src/ui/keyboard.md:46
+msgid "î"
+msgstr ""
+
+#: src/ui/keyboard.md:46
+msgid "`I ^`"
+msgstr ""
+
+#: src/ui/keyboard.md:46
+msgid "Î"
+msgstr ""
+
+#: src/ui/keyboard.md:46
+msgid "`e :`"
+msgstr ""
+
+#: src/ui/keyboard.md:46
+msgid "ë"
+msgstr ""
+
+#: src/ui/keyboard.md:46
+msgid "`E :`"
+msgstr ""
+
+#: src/ui/keyboard.md:46
+msgid "Ë"
+msgstr ""
+
+#: src/ui/keyboard.md:47
+msgid "`o ^`"
+msgstr ""
+
+#: src/ui/keyboard.md:47
+msgid "ô"
+msgstr ""
+
+#: src/ui/keyboard.md:47
+msgid "`O ^`"
+msgstr ""
+
+#: src/ui/keyboard.md:47
+msgid "Ô"
+msgstr ""
+
+#: src/ui/keyboard.md:47
+msgid "`i :`"
+msgstr ""
+
+#: src/ui/keyboard.md:47
+msgid "ï"
+msgstr ""
+
+#: src/ui/keyboard.md:47
+msgid "`I :`"
+msgstr ""
+
+#: src/ui/keyboard.md:47
+msgid "Ï"
+msgstr ""
+
+#: src/ui/keyboard.md:48
+msgid "`u ^`"
+msgstr ""
+
+#: src/ui/keyboard.md:48
+msgid "û"
+msgstr ""
+
+#: src/ui/keyboard.md:48
+msgid "`U ^`"
+msgstr ""
+
+#: src/ui/keyboard.md:48
+msgid "Û"
+msgstr ""
+
+#: src/ui/keyboard.md:48
+msgid "`o :`"
+msgstr ""
+
+#: src/ui/keyboard.md:48
+msgid "ö"
+msgstr ""
+
+#: src/ui/keyboard.md:48
+msgid "`O :`"
+msgstr ""
+
+#: src/ui/keyboard.md:48
+msgid "Ö"
+msgstr ""
+
+#: src/ui/keyboard.md:49
+msgid "`w ^`"
+msgstr ""
+
+#: src/ui/keyboard.md:49
+msgid "ŵ"
+msgstr ""
+
+#: src/ui/keyboard.md:49
+msgid "`W ^`"
+msgstr ""
+
+#: src/ui/keyboard.md:49
+msgid "Ŵ"
+msgstr ""
+
+#: src/ui/keyboard.md:49
+msgid "`u :`"
+msgstr ""
+
+#: src/ui/keyboard.md:49
+msgid "ü"
+msgstr ""
+
+#: src/ui/keyboard.md:49
+msgid "`U :`"
+msgstr ""
+
+#: src/ui/keyboard.md:49
+msgid "Ü"
+msgstr ""
+
+#: src/ui/keyboard.md:50
+msgid "`y ^`"
+msgstr ""
+
+#: src/ui/keyboard.md:50
+msgid "ŷ"
+msgstr ""
+
+#: src/ui/keyboard.md:50
+msgid "`Y ^`"
+msgstr ""
+
+#: src/ui/keyboard.md:50
+msgid "Ŷ"
+msgstr ""
+
+#: src/ui/keyboard.md:50
+msgid "`y :`"
+msgstr ""
+
+#: src/ui/keyboard.md:50
+msgid "ÿ"
+msgstr ""
+
+#: src/ui/keyboard.md:51
+msgid "`a ~`"
+msgstr ""
+
+#: src/ui/keyboard.md:51
+msgid "ã"
+msgstr ""
+
+#: src/ui/keyboard.md:51
+msgid "`A ~`"
+msgstr ""
+
+#: src/ui/keyboard.md:51
+msgid "Ã"
+msgstr ""
+
+#: src/ui/keyboard.md:51
+msgid "`c ,`"
+msgstr ""
+
+#: src/ui/keyboard.md:51
+msgid "ç"
+msgstr ""
+
+#: src/ui/keyboard.md:51
+msgid "`C ,`"
+msgstr ""
+
+#: src/ui/keyboard.md:51
+msgid "Ç"
+msgstr ""
+
+#: src/ui/keyboard.md:52
+msgid "`o ~`"
+msgstr ""
+
+#: src/ui/keyboard.md:52
+msgid "õ"
+msgstr ""
+
+#: src/ui/keyboard.md:52
+msgid "`O ~`"
+msgstr ""
+
+#: src/ui/keyboard.md:52
+msgid "Õ"
+msgstr ""
+
+#: src/ui/keyboard.md:52
+msgid "`c '`"
+msgstr ""
+
+#: src/ui/keyboard.md:52
+msgid "ć"
+msgstr ""
+
+#: src/ui/keyboard.md:52
+msgid "`C '`"
+msgstr ""
+
+#: src/ui/keyboard.md:52
+msgid "Ć"
+msgstr ""
+
+#: src/ui/keyboard.md:53
+msgid "`n ~`"
+msgstr ""
+
+#: src/ui/keyboard.md:53
+msgid "ñ"
+msgstr ""
+
+#: src/ui/keyboard.md:53
+msgid "`N ~`"
+msgstr ""
+
+#: src/ui/keyboard.md:53
+msgid "Ñ"
+msgstr ""
+
+#: src/ui/keyboard.md:53
+msgid "`z '`"
+msgstr ""
+
+#: src/ui/keyboard.md:53
+msgid "ź"
+msgstr ""
+
+#: src/ui/keyboard.md:53
+msgid "`Z '`"
+msgstr ""
+
+#: src/ui/keyboard.md:53
+msgid "Ź"
+msgstr ""
+
+#: src/ui/keyboard.md:54
+msgid "`a ;`"
+msgstr ""
+
+#: src/ui/keyboard.md:54
+msgid "ą"
+msgstr ""
+
+#: src/ui/keyboard.md:54
+msgid "`A ;`"
+msgstr ""
+
+#: src/ui/keyboard.md:54
+msgid "Ą"
+msgstr ""
+
+#: src/ui/keyboard.md:54
+msgid "`s '`"
+msgstr ""
+
+#: src/ui/keyboard.md:54
+msgid "ś"
+msgstr ""
+
+#: src/ui/keyboard.md:54
+msgid "`S '`"
+msgstr ""
+
+#: src/ui/keyboard.md:54
+msgid "Ś"
+msgstr ""
+
+#: src/ui/keyboard.md:55
+msgid "`e ;`"
+msgstr ""
+
+#: src/ui/keyboard.md:55
+msgid "ę"
+msgstr ""
+
+#: src/ui/keyboard.md:55
+msgid "`E ;`"
+msgstr ""
+
+#: src/ui/keyboard.md:55
+msgid "Ę"
+msgstr ""
+
+#: src/ui/keyboard.md:55
+msgid "`n '`"
+msgstr ""
+
+#: src/ui/keyboard.md:55
+msgid "ń"
+msgstr ""
+
+#: src/ui/keyboard.md:55
+msgid "`N '`"
+msgstr ""
+
+#: src/ui/keyboard.md:55
+msgid "Ń"
+msgstr ""
+
+#: src/ui/keyboard.md:56
+msgid "`z .`"
+msgstr ""
+
+#: src/ui/keyboard.md:56
+msgid "ż"
+msgstr ""
+
+#: src/ui/keyboard.md:56
+msgid "`Z .`"
+msgstr ""
+
+#: src/ui/keyboard.md:56
+msgid "Ż"
+msgstr ""
+
+#: src/ui/keyboard.md:56
+msgid "`t h`"
+msgstr ""
+
+#: src/ui/keyboard.md:56
+msgid "þ"
+msgstr ""
+
+#: src/ui/keyboard.md:56
+msgid "`T h`"
+msgstr ""
+
+#: src/ui/keyboard.md:56
+msgid "Þ"
+msgstr ""
+
+#: src/ui/keyboard.md:57
+msgid "`a o`"
+msgstr ""
+
+#: src/ui/keyboard.md:57
+msgid "å"
+msgstr ""
+
+#: src/ui/keyboard.md:57
+msgid "`A o`"
+msgstr ""
+
+#: src/ui/keyboard.md:57
+msgid "Å"
+msgstr ""
+
+#: src/ui/keyboard.md:57
+msgid "`l /`"
+msgstr ""
+
+#: src/ui/keyboard.md:57
+msgid "ł"
+msgstr ""
+
+#: src/ui/keyboard.md:57
+msgid "`L /`"
+msgstr ""
+
+#: src/ui/keyboard.md:57
+msgid "Ł"
+msgstr ""
+
+#: src/ui/keyboard.md:58
+msgid "`d /`"
+msgstr ""
+
+#: src/ui/keyboard.md:58
+msgid "đ"
+msgstr ""
+
+#: src/ui/keyboard.md:58
+msgid "`D /`"
+msgstr ""
+
+#: src/ui/keyboard.md:58
+msgid "Đ"
+msgstr ""
+
+#: src/ui/keyboard.md:58
+msgid "`o /`"
+msgstr ""
+
+#: src/ui/keyboard.md:58
+msgid "ø"
+msgstr ""
+
+#: src/ui/keyboard.md:58
+msgid "`O /`"
+msgstr ""
+
+#: src/ui/keyboard.md:58
+msgid "Ø"
+msgstr ""
+
+#: src/ui/keyboard.md:59
+msgid "`o e`"
+msgstr ""
+
+#: src/ui/keyboard.md:59
+msgid "œ"
+msgstr ""
+
+#: src/ui/keyboard.md:59
+msgid "`O e`"
+msgstr ""
+
+#: src/ui/keyboard.md:59
+msgid "Œ"
+msgstr ""
+
+#: src/ui/keyboard.md:59
+msgid "`a e`"
+msgstr ""
+
+#: src/ui/keyboard.md:59
+msgid "æ"
+msgstr ""
+
+#: src/ui/keyboard.md:59
+msgid "`A E`"
+msgstr ""
+
+#: src/ui/keyboard.md:59
+msgid "Æ"
+msgstr ""
+
+#: src/ui/keyboard.md:60
+msgid "`s s`"
+msgstr ""
+
+#: src/ui/keyboard.md:60
+msgid "ß"
+msgstr ""
+
+#: src/ui/keyboard.md:60
+msgid "`S s`"
+msgstr ""
+
+#: src/ui/keyboard.md:60
+msgid "ẞ"
+msgstr ""
+
+#: src/ui/keyboard.md:60
+msgid "`m u`"
+msgstr ""
+
+#: src/ui/keyboard.md:60
+msgid "µ"
+msgstr ""
+
+#: src/ui/keyboard.md:60
+msgid "`l -`"
+msgstr ""
+
+#: src/ui/keyboard.md:60
+msgid "£"
+msgstr ""
+
+#: src/ui/keyboard.md:61
+msgid "`p p`"
+msgstr ""
+
+#: src/ui/keyboard.md:61
+msgid "¶"
+msgstr ""
+
+#: src/ui/keyboard.md:61
+msgid "`s o`"
+msgstr ""
+
+#: src/ui/keyboard.md:61
+msgid "§"
+msgstr ""
+
+#: src/ui/keyboard.md:61
+msgid "`o _`"
+msgstr ""
+
+#: src/ui/keyboard.md:61
+msgid "º"
+msgstr ""
+
+#: src/ui/keyboard.md:61
+msgid "`a _`"
+msgstr ""
+
+#: src/ui/keyboard.md:61
+msgid "ª"
+msgstr ""
+
+#: src/ui/keyboard.md:62
+msgid "`o o`"
+msgstr ""
+
+#: src/ui/keyboard.md:62
+msgid "°"
+msgstr ""
+
+#: src/ui/keyboard.md:62
+msgid "`e =`"
+msgstr ""
+
+#: src/ui/keyboard.md:62
+msgid "€"
+msgstr ""
+
+#: src/ui/keyboard.md:62
+msgid "`o r`"
+msgstr ""
+
+#: src/ui/keyboard.md:62
+msgid "®"
+msgstr ""
+
+#: src/ui/keyboard.md:62
+msgid "`o c`"
+msgstr ""
+
+#: src/ui/keyboard.md:62
+msgid "©"
+msgstr ""
+
+#: src/ui/keyboard.md:63
+msgid "`o p`"
+msgstr ""
+
+#: src/ui/keyboard.md:63
+msgid "℗"
+msgstr ""
+
+#: src/ui/keyboard.md:63
+msgid "`t m`"
+msgstr ""
+
+#: src/ui/keyboard.md:63
+msgid "™"
+msgstr ""
+
+#: src/ui/keyboard.md:63
+msgid "`] ]`"
+msgstr ""
+
+#: src/ui/keyboard.md:63
+msgid "⟧"
+msgstr ""
+
+#: src/ui/keyboard.md:63
+msgid "`[ [`"
+msgstr ""
+
+#: src/ui/keyboard.md:63
+msgid "⟦"
+msgstr ""
+
+#: src/ui/keyboard.md:64
+msgid "`\\| -`"
+msgstr ""
+
+#: src/ui/keyboard.md:64
+msgid "†"
+msgstr ""
+
+#: src/ui/keyboard.md:64
+msgid "`\\| =`"
+msgstr ""
+
+#: src/ui/keyboard.md:64
+msgid "‡"
+msgstr ""
+
+#: src/ui/keyboard.md:64
+msgid "`- ,`"
+msgstr ""
+
+#: src/ui/keyboard.md:64
+msgid "¬"
+msgstr ""
+
+#: src/ui/keyboard.md:64
+msgid "`~ ~`"
+msgstr ""
+
+#: src/ui/keyboard.md:64
+msgid "≈"
+msgstr ""
+
+#: src/ui/keyboard.md:65
+msgid "`< <`"
+msgstr ""
+
+#: src/ui/keyboard.md:65
+msgid "«"
+msgstr ""
+
+#: src/ui/keyboard.md:65
+msgid "`> >`"
+msgstr ""
+
+#: src/ui/keyboard.md:65
+msgid "»"
+msgstr ""
+
+#: src/ui/keyboard.md:65
+msgid "`! !`"
+msgstr ""
+
+#: src/ui/keyboard.md:65
+msgid "¡"
+msgstr ""
+
+#: src/ui/keyboard.md:65
+msgid "`? ?`"
+msgstr ""
+
+#: src/ui/keyboard.md:65
+msgid "¿"
+msgstr ""
+
+#: src/ui/keyboard.md:66
+msgid "`. -`"
+msgstr ""
+
+#: src/ui/keyboard.md:66
+msgid "·"
+msgstr ""
+
+#: src/ui/keyboard.md:66
+msgid "`. =`"
+msgstr ""
+
+#: src/ui/keyboard.md:66
+msgid "•"
+msgstr ""
+
+#: src/ui/keyboard.md:66
+msgid "`. >`"
+msgstr ""
+
+#: src/ui/keyboard.md:66
+msgid "›"
+msgstr ""
+
+#: src/ui/keyboard.md:66
+msgid "`. <`"
+msgstr ""
+
+#: src/ui/keyboard.md:66
+msgid "‹"
+msgstr ""
+
+#: src/ui/keyboard.md:67
+msgid "`' 1`"
+msgstr ""
+
+#: src/ui/keyboard.md:67
+msgid "′"
+msgstr ""
+
+#: src/ui/keyboard.md:67
+msgid "`' 2`"
+msgstr ""
+
+#: src/ui/keyboard.md:67
+msgid "″"
+msgstr ""
+
+#: src/ui/keyboard.md:67
+msgid "`+ -`"
+msgstr ""
+
+#: src/ui/keyboard.md:67
+msgid "±"
+msgstr ""
+
+#: src/ui/keyboard.md:67
+msgid "`- :`"
+msgstr ""
+
+#: src/ui/keyboard.md:67
+msgid "÷"
+msgstr ""
+
+#: src/ui/keyboard.md:68
+msgid "`< =`"
+msgstr ""
+
+#: src/ui/keyboard.md:68
+msgid "≤"
+msgstr ""
+
+#: src/ui/keyboard.md:68
+msgid "`> =`"
+msgstr ""
+
+#: src/ui/keyboard.md:68
+msgid "≥"
+msgstr ""
+
+#: src/ui/keyboard.md:68
+msgid "`= /`"
+msgstr ""
+
+#: src/ui/keyboard.md:68
+msgid "≠"
+msgstr ""
+
+#: src/ui/keyboard.md:68
+msgid "`% o`"
+msgstr ""
+
+#: src/ui/keyboard.md:68
+msgid "‰"
+msgstr ""
+
+#: src/ui/keyboard.md:69
+msgid "`# f`"
+msgstr ""
+
+#: src/ui/keyboard.md:69
+msgid "♭"
+msgstr ""
+
+#: src/ui/keyboard.md:69
+msgid "`# n`"
+msgstr ""
+
+#: src/ui/keyboard.md:69
+msgid "♮"
+msgstr ""
+
+#: src/ui/keyboard.md:69
+msgid "`# s`"
+msgstr ""
+
+#: src/ui/keyboard.md:69
+msgid "♯"
+msgstr ""
+
+#: src/ui/keyboard.md:70
+msgid "`1 2`"
+msgstr ""
+
+#: src/ui/keyboard.md:70
+msgid "½"
+msgstr ""
+
+#: src/ui/keyboard.md:70
+msgid "`1 3`"
+msgstr ""
+
+#: src/ui/keyboard.md:70
+msgid "⅓"
+msgstr ""
+
+#: src/ui/keyboard.md:70
+msgid "`2 3`"
+msgstr ""
+
+#: src/ui/keyboard.md:70
+msgid "⅔"
+msgstr ""
+
+#: src/ui/keyboard.md:70
+msgid "`1 4`"
+msgstr ""
+
+#: src/ui/keyboard.md:70
+msgid "¼"
+msgstr ""
+
+#: src/ui/keyboard.md:71
+msgid "`3 4`"
+msgstr ""
+
+#: src/ui/keyboard.md:71
+msgid "¾"
+msgstr ""
+
+#: src/ui/keyboard.md:71
+msgid "`1 5`"
+msgstr ""
+
+#: src/ui/keyboard.md:71
+msgid "⅕"
+msgstr ""
+
+#: src/ui/keyboard.md:71
+msgid "`2 5`"
+msgstr ""
+
+#: src/ui/keyboard.md:71
+msgid "⅖"
+msgstr ""
+
+#: src/ui/keyboard.md:71
+msgid "`3 5`"
+msgstr ""
+
+#: src/ui/keyboard.md:71
+msgid "⅗"
+msgstr ""
+
+#: src/ui/keyboard.md:72
+msgid "`4 5`"
+msgstr ""
+
+#: src/ui/keyboard.md:72
+msgid "⅘"
+msgstr ""
+
+#: src/ui/keyboard.md:72
+msgid "`1 6`"
+msgstr ""
+
+#: src/ui/keyboard.md:72
+msgid "⅙"
+msgstr ""
+
+#: src/ui/keyboard.md:72
+msgid "`5 6`"
+msgstr ""
+
+#: src/ui/keyboard.md:72
+msgid "⅚"
+msgstr ""
+
+#: src/ui/keyboard.md:72
+msgid "`1 8`"
+msgstr ""
+
+#: src/ui/keyboard.md:72
+msgid "⅛"
+msgstr ""
+
+#: src/ui/keyboard.md:73
+msgid "`3 8`"
+msgstr ""
+
+#: src/ui/keyboard.md:73
+msgid "⅜"
+msgstr ""
+
+#: src/ui/keyboard.md:73
+msgid "`5 8`"
+msgstr ""
+
+#: src/ui/keyboard.md:73
+msgid "⅝"
+msgstr ""
+
+#: src/ui/keyboard.md:73
+msgid "`7 8`"
+msgstr ""
+
+#: src/ui/keyboard.md:73
+msgid "⅞"
 msgstr ""
 
 #: src/ui/keyboard.md:79
@@ -2211,10 +3345,10 @@ msgid ""
 "device and work without an internet connection once downloaded."
 msgstr ""
 
-#: src/ui/dictionary.md:7
+#: src/ui/dictionary.md:6
 msgid ""
-"Download a dictionary first — see [Dictionaries](settings/dictionaries.md) "
-"for how to install one."
+"\\[!IMPORTANT\\] Download a dictionary first — see "
+"[Dictionaries](settings/dictionaries.md) for how to install one."
 msgstr ""
 
 #: src/ui/dictionary.md:10
@@ -2486,9 +3620,10 @@ msgstr ""
 msgid "Downloading a Dictionary"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:35
+#: src/ui/settings/dictionaries.md:34
 msgid ""
-"Your device must be connected to Wi-Fi before you can download a dictionary."
+"\\[!IMPORTANT\\] Your device must be connected to Wi-Fi before you can "
+"download a dictionary."
 msgstr ""
 
 #: src/ui/settings/dictionaries.md:37
@@ -2576,11 +3711,11 @@ msgid ""
 "indexing is in progress."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:81
+#: src/ui/settings/dictionaries.md:80
 msgid ""
-"You can keep reading while indexing runs in the background. Words that have "
-"already been indexed are available for lookup right away, so you may get "
-"partial results until indexing finishes."
+"\\[!NOTE\\] You can keep reading while indexing runs in the background. "
+"Words that have already been indexed are available for lookup right away, so "
+"you may get partial results until indexing finishes."
 msgstr ""
 
 #: src/ui/settings/dictionaries.md:85
@@ -2630,18 +3765,33 @@ msgid ""
 "device has an SD card and whether you are using a test build:"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:118
-msgid ""
-"Each language gets its own subfolder containing a `.dict.dz` (or `.dict`) "
-"and a `.index` file."
+#: src/ui/settings/dictionaries.md:110
+msgid "Production: `/mnt/sd/.cadmus/dictionaries/reader-dict/<lang>/`"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:121
+#: src/ui/settings/dictionaries.md:111
+msgid "Test build: `/mnt/sd/.cadmus-tst/dictionaries/reader-dict/<lang>/`"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:112
+msgid "**On devices without an SD card**:"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:113
+msgid "Production: `/mnt/onboard/.adds/cadmus/dictionaries/reader-dict/<lang>/`"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:114
 msgid ""
-"If your SD card is already inserted when you upgrade Cadmus, your "
-"dictionaries are moved to the SD card automatically on the next boot. If you "
-"insert an SD card after Cadmus has already run, move the `dictionaries/` "
-"folder manually — see [Moving data to an SD "
+"Test build: `/mnt/onboard/.adds/cadmus-tst/dictionaries/reader-dict/<lang>/`"
+msgstr ""
+
+#: src/ui/settings/dictionaries.md:120
+msgid ""
+"\\[!NOTE\\] If your SD card is already inserted when you upgrade Cadmus, "
+"your dictionaries are moved to the SD card automatically on the next boot. "
+"If you insert an SD card after Cadmus has already run, move the "
+"`dictionaries/` folder manually — see [Moving data to an SD "
 "card](../../installation/migration.md#moving-data-to-an-sd-card)."
 msgstr ""
 
@@ -2766,10 +3916,6 @@ msgstr ""
 msgid "You can also enable it manually in your settings file:"
 msgstr ""
 
-#: src/time-sync.md:30
-msgid "Manual sync"
-msgstr ""
-
 #: src/time-sync.md:32
 msgid "You can trigger a one-time sync without enabling the automatic option:"
 msgstr ""
@@ -2792,11 +3938,12 @@ msgstr ""
 msgid "Privacy"
 msgstr ""
 
-#: src/time-sync.md:43
+#: src/time-sync.md:42
 msgid ""
-"Time syncing sends a request to `ipapi.co` to determine your timezone based "
-"on your IP address. No personal data is sent — only your device's public IP "
-"address is visible to that service as part of the network request."
+"\\[!NOTE\\] Time syncing sends a request to `ipapi.co` to determine your "
+"timezone based on your IP address. No personal data is sent — only your "
+"device's public IP address is visible to that service as part of the network "
+"request."
 msgstr ""
 
 #: src/time-sync.md:47
@@ -2850,12 +3997,6 @@ msgstr ""
 msgid "You can also enable it directly in your settings file:"
 msgstr ""
 
-#: src/auto-frontlight.md:35
-msgid ""
-"See [`auto-frontlight`](settings/index.md#auto-frontlight) and related "
-"entries in the Settings reference for all available options."
-msgstr ""
-
 #: src/auto-frontlight.md:38
 msgid "Manual adjustments pause automation"
 msgstr ""
@@ -2897,10 +4038,6 @@ msgid ""
 "is inaccurate, you can set your own coordinates:"
 msgstr ""
 
-#: src/auto-frontlight.md:67
-msgid "Manual coordinates take priority over auto-detected ones."
-msgstr ""
-
 #: src/auto-frontlight.md:69
 msgid ""
 "You can also edit this in **Main Menu → Settings → General** under **Auto "
@@ -2917,16 +4054,12 @@ msgid ""
 "this if you find the screen too dim for nighttime reading:"
 msgstr ""
 
-#: src/auto-frontlight.md:85
-msgid "The value is a percentage from `0.0` to `100.0`."
-msgstr ""
-
-#: src/auto-frontlight.md:90
+#: src/auto-frontlight.md:89
 msgid ""
-"When [automatic time syncing](time-sync.md) is enabled, a request is sent to "
-"`ipapi.co` to resolve your timezone. That same response includes an "
-"approximate latitude and longitude derived from your public IP address, "
-"which Cadmus stores as `auto-frontlight-last-coordinates`."
+"\\[!NOTE\\] When [automatic time syncing](time-sync.md) is enabled, a "
+"request is sent to `ipapi.co` to resolve your timezone. That same response "
+"includes an approximate latitude and longitude derived from your public IP "
+"address, which Cadmus stores as `auto-frontlight-last-coordinates`."
 msgstr ""
 
 #: src/database-backup.md:3
@@ -2977,12 +4110,6 @@ msgid ""
 "same folder tracks every backup."
 msgstr ""
 
-#: src/database-backup.md:39
-msgid ""
-"Each backup file is named after the Cadmus version that created it, for "
-"example `cadmus-v1.2.3.sqlite`."
-msgstr ""
-
 #: src/database-backup.md:42
 msgid "Downgrade protection"
 msgstr ""
@@ -3025,11 +4152,11 @@ msgid ""
 "Cadmus continues normally."
 msgstr ""
 
-#: src/database-backup.md:66
+#: src/database-backup.md:65
 msgid ""
-"If the database is corrupted _and_ no backup exists (for example on a fresh "
-"install), Cadmus cannot start. You would have to manually delete the "
-"database file to allow Cadmus to start."
+"\\[!WARNING\\] If the database is corrupted _and_ no backup exists (for "
+"example on a fresh install), Cadmus cannot start. You would have to manually "
+"delete the database file to allow Cadmus to start."
 msgstr ""
 
 #: src/database-backup.md:70
@@ -3060,20 +4187,28 @@ msgid ""
 "platform:"
 msgstr ""
 
-#: src/troubleshooting/index.md:21
-msgid ""
-"Each time you start Cadmus, it creates a new log file with a unique ID. By "
-"default, only the 3 most recent log files are kept — older ones are deleted "
-"automatically. You can change this with the "
-"[`logging.max-files`](../settings/index.md#loggingmax-files) setting."
+#: src/troubleshooting/index.md:15
+msgid "Stable build"
+msgstr ""
+
+#: src/troubleshooting/index.md:15
+msgid "Test build"
+msgstr ""
+
+#: src/troubleshooting/index.md:17 src/investigations/index.md:11
+msgid "Kobo"
+msgstr ""
+
+#: src/troubleshooting/index.md:17
+msgid "`/mnt/onboard/.adds/cadmus/logs`"
+msgstr ""
+
+#: src/troubleshooting/index.md:17
+msgid "`/mnt/onboard/.adds/cadmus-tst/logs`"
 msgstr ""
 
 #: src/troubleshooting/index.md:26
 msgid "The log files look like this:"
-msgstr ""
-
-#: src/troubleshooting/index.md:36
-msgid "Finding your run ID"
 msgstr ""
 
 #: src/troubleshooting/index.md:38
@@ -3091,12 +4226,6 @@ msgstr ""
 
 #: src/troubleshooting/index.md:45
 msgid "For example:"
-msgstr ""
-
-#: src/troubleshooting/index.md:55
-msgid ""
-"Copy only the UUID part — the string of letters and numbers between `ID:` "
-"and the `(version` text."
 msgstr ""
 
 #: src/troubleshooting/index.md:58
@@ -3142,9 +4271,10 @@ msgstr ""
 msgid "Kernel logs will then be saved in the same log file as your Cadmus logs."
 msgstr ""
 
-#: src/troubleshooting/index.md:77
+#: src/troubleshooting/index.md:76
 msgid ""
-"Kernel logs will use more disk space, so don't forget to turn it back off."
+"\\[!NOTE\\] Kernel logs will use more disk space, so don't forget to turn it "
+"back off."
 msgstr ""
 
 #: src/troubleshooting/index.md:79
@@ -3174,5 +4304,4672 @@ msgstr ""
 
 #: src/CHANGELOG.md:1
 msgid "Changelog"
+msgstr ""
+
+#: src/CHANGELOG.md:8 src/CHANGELOG.md:46 src/CHANGELOG.md:92
+msgid "⚠ BREAKING CHANGES"
+msgstr ""
+
+#: src/CHANGELOG.md:10
+msgid ""
+"**Import:** The database options from the library menu have been removed. "
+"There is no longer a need to manually flush data. To manually trigger a full "
+"import scan, there is a new button in the settings menu under the import "
+"category."
+msgstr ""
+
+#: src/CHANGELOG.md:11
+msgid ""
+"**Library:** Unsupported files are no longer fingerprinted and indexed into "
+"the sqlite DB. This is configured via the `allowed_kinds` setting."
+msgstr ""
+
+#: src/CHANGELOG.md:15
+msgid ""
+"**Core:** add automatic date and time sync via NTP "
+"([\\#576](https://github.com/OGKevin/cadmus/issues/576)) "
+"([a7fa6e8](https://github.com/OGKevin/cadmus/commit/a7fa6e89ea9c63578eebb676859d206035d57e12))"
+msgstr ""
+
+#: src/CHANGELOG.md:16
+msgid ""
+"**Core:** build SQLite from source with DELETE … LIMIT support "
+"([\\#584](https://github.com/OGKevin/cadmus/issues/584)) "
+"([ac5daf0](https://github.com/OGKevin/cadmus/commit/ac5daf0042e4af045a5f6ce7f531e35592ae3330))"
+msgstr ""
+
+#: src/CHANGELOG.md:17
+msgid ""
+"**Device:** route data files to SD card "
+"([\\#553](https://github.com/OGKevin/cadmus/issues/553)) "
+"([f19d901](https://github.com/OGKevin/cadmus/commit/f19d901640c6945272d43bfba30fd60021b4363d))"
+msgstr ""
+
+#: src/CHANGELOG.md:18
+msgid ""
+"**Frontlight:** auto brightness and warmth "
+"([\\#590](https://github.com/OGKevin/cadmus/issues/590)) "
+"([7e1414d](https://github.com/OGKevin/cadmus/commit/7e1414d5fe5ccb9494d593060d112a08aa6c1191))"
+msgstr ""
+
+#: src/CHANGELOG.md:19
+msgid ""
+"**Import:** add incremental library import "
+"([1ee4218](https://github.com/OGKevin/cadmus/commit/1ee421815a229679067ba7a0036e3ad02c01866d))"
+msgstr ""
+
+#: src/CHANGELOG.md:20
+msgid ""
+"**Kobo:** enable multi-core when possible "
+"([\\#542](https://github.com/OGKevin/cadmus/issues/542)) "
+"([8817d6e](https://github.com/OGKevin/cadmus/commit/8817d6e3cc3b8217f3d953d2653d93173bc245db))"
+msgstr ""
+
+#: src/CHANGELOG.md:21
+msgid ""
+"**Library:** async thumbnail extraction "
+"([\\#517](https://github.com/OGKevin/cadmus/issues/517)) "
+"([86a0a36](https://github.com/OGKevin/cadmus/commit/86a0a3687ffa90034ca5bd839a5961ca6dfbf3e7))"
+msgstr ""
+
+#: src/CHANGELOG.md:22
+msgid ""
+"**Reader:** support webp via MuPDF "
+"([\\#456](https://github.com/OGKevin/cadmus/issues/456)) "
+"([bf96995](https://github.com/OGKevin/cadmus/commit/bf9699588a2aaae707de72482b2d1eda65c05fba))"
+msgstr ""
+
+#: src/CHANGELOG.md:23
+msgid ""
+"**Settings Editor:** add allowed and dithered file kinds "
+"([\\#545](https://github.com/OGKevin/cadmus/issues/545)) "
+"([ab4e408](https://github.com/OGKevin/cadmus/commit/ab4e4086134c6240e787d026adeeaf00a353d1ce))"
+msgstr ""
+
+#: src/CHANGELOG.md:24
+msgid ""
+"**Settings Editor:** confirmation before dictionary downloads "
+"([\\#533](https://github.com/OGKevin/cadmus/issues/533)) "
+"([2ba249b](https://github.com/OGKevin/cadmus/commit/2ba249bf201a3c10c6eab30629f1e4f84058f697))"
+msgstr ""
+
+#: src/CHANGELOG.md:25
+msgid ""
+"show build provenance in About "
+"([\\#534](https://github.com/OGKevin/cadmus/issues/534)) "
+"([28642f6](https://github.com/OGKevin/cadmus/commit/28642f60efea27a22ffad42151530e3a961118ba))"
+msgstr ""
+
+#: src/CHANGELOG.md:26
+msgid ""
+"**SQLite:** auto database backup and restore "
+"([\\#605](https://github.com/OGKevin/cadmus/issues/605)) "
+"([ddd29c9](https://github.com/OGKevin/cadmus/commit/ddd29c9b35b2acd45264094cd7f38b33c59c00ce))"
+msgstr ""
+
+#: src/CHANGELOG.md:27
+msgid ""
+"**Startup:** open last read file on startup "
+"([\\#592](https://github.com/OGKevin/cadmus/issues/592)) "
+"([a2f89ef](https://github.com/OGKevin/cadmus/commit/a2f89ef0098e67cb6b080750dd8d967aa8a3678a))"
+msgstr ""
+
+#: src/CHANGELOG.md:28
+msgid ""
+"**Translation:** init for French "
+"([\\#509](https://github.com/OGKevin/cadmus/issues/509)) "
+"([786b651](https://github.com/OGKevin/cadmus/commit/786b651c545c4a5659d91e4571862b4780430e86))"
+msgstr ""
+
+#: src/CHANGELOG.md:30 src/CHANGELOG.md:70 src/CHANGELOG.md:112
+#: src/CHANGELOG.md:142
+msgid "Bug Fixes"
+msgstr ""
+
+#: src/CHANGELOG.md:32
+msgid ""
+"**Import:** stop renaming legacy library data files "
+"([\\#538](https://github.com/OGKevin/cadmus/issues/538)) "
+"([b4b106f](https://github.com/OGKevin/cadmus/commit/b4b106f148842575dd026511efb8b49b08ab474b))"
+msgstr ""
+
+#: src/CHANGELOG.md:33
+msgid ""
+"**Library:** only import allowed_kinds "
+"([45b03c6](https://github.com/OGKevin/cadmus/commit/45b03c68253f29b3529827acd35b3c63b0147704))"
+msgstr ""
+
+#: src/CHANGELOG.md:34
+msgid ""
+"**Notifications:** transfer on back navigation "
+"([\\#550](https://github.com/OGKevin/cadmus/issues/550)) "
+"([63349b1](https://github.com/OGKevin/cadmus/commit/63349b1b9ccb4a2c58f7c8ed3a326bdb564954f3))"
+msgstr ""
+
+#: src/CHANGELOG.md:35
+msgid ""
+"**OTA:** clean bundled assets before ota install "
+"([\\#511](https://github.com/OGKevin/cadmus/issues/511)) "
+"([cf89a70](https://github.com/OGKevin/cadmus/commit/cf89a70b15f08aff88c23cd776ffacb6bcf9312d))"
+msgstr ""
+
+#: src/CHANGELOG.md:36
+msgid ""
+"**ota:** increase artifacts per_page to 50 to avoid pagination truncation "
+"([\\#560](https://github.com/OGKevin/cadmus/issues/560)) "
+"([a5c78cf](https://github.com/OGKevin/cadmus/commit/a5c78cf951b762147d7768543c7001963832beb5))"
+msgstr ""
+
+#: src/CHANGELOG.md:37
+msgid ""
+"**Settings Editor:** Reset dictionary display on download failure "
+"([\\#532](https://github.com/OGKevin/cadmus/issues/532)) "
+"([9415fe5](https://github.com/OGKevin/cadmus/commit/9415fe5cb00602821ddf36a4492f058cd51b39f3))"
+msgstr ""
+
+#: src/CHANGELOG.md:39 src/CHANGELOG.md:82
+msgid "Performance Improvements"
+msgstr ""
+
+#: src/CHANGELOG.md:41
+msgid ""
+"**Library:** due to book cover extraction is part of the indexing process "
+"now, you should no longer see app stuttering when navigating the library "
+"view. "
+"([86a0a36](https://github.com/OGKevin/cadmus/commit/86a0a3687ffa90034ca5bd839a5961ca6dfbf3e7))"
+msgstr ""
+
+#: src/CHANGELOG.md:42
+msgid ""
+"**Library:** emit import progress in 5% steps "
+"([\\#561](https://github.com/OGKevin/cadmus/issues/561)) "
+"([3184937](https://github.com/OGKevin/cadmus/commit/31849371c05eb66965ffc0fa372b59df37e39168))"
+msgstr ""
+
+#: src/CHANGELOG.md:44
+msgid ""
+"[0.10.1](https://github.com/OGKevin/cadmus/compare/v0.10.0...v0.10.1) "
+"(2026-05-23)"
+msgstr ""
+
+#: src/CHANGELOG.md:48
+msgid ""
+"**dictionary:** Fuzzy dictionary search no longer corrects first-character "
+"typos Fuzzy word lookup now uses a 3-character prefix pre-filter for "
+"performance. Searches where the query and the target word differ in the "
+"first three characters will no longer return results. For example, searching "
+"`\"bas\"` will not suggest `\"bar\"`."
+msgstr ""
+
+#: src/CHANGELOG.md:49
+msgid ""
+"**library:** hashes are now calculated using BLAKE3 instead of the custom "
+"implementation using mtime which caused inconsistent hashing. BLAKE3 is more "
+"CPU and battery intensive, and slower."
+msgstr ""
+
+#: src/CHANGELOG.md:53
+msgid ""
+"add suspend and power off to exit menu "
+"([\\#330](https://github.com/OGKevin/cadmus/issues/330)) "
+"([6cb9052](https://github.com/OGKevin/cadmus/commit/6cb905244e8edebdd227c17d8743c5c6bc5b8cf0))"
+msgstr ""
+
+#: src/CHANGELOG.md:54
+msgid ""
+"add WiFi status monitor for Kobo devices "
+"([\\#324](https://github.com/OGKevin/cadmus/issues/324)) "
+"([d89ccaa](https://github.com/OGKevin/cadmus/commit/d89ccaaa5302b1c1f80454f00abccccdc3f82bca))"
+msgstr ""
+
+#: src/CHANGELOG.md:55
+msgid ""
+"**cadmus:** exit to nickel after 3 consecutive crashes "
+"([\\#295](https://github.com/OGKevin/cadmus/issues/295)) "
+"([253edbe](https://github.com/OGKevin/cadmus/commit/253edbe8958a44d108676d57b85942f21bb7c899)), "
+"closes [\\#272](https://github.com/OGKevin/cadmus/issues/272)"
+msgstr ""
+
+#: src/CHANGELOG.md:56
+msgid ""
+"**dictionaries:** Add download state tracking "
+"([\\#396](https://github.com/OGKevin/cadmus/issues/396)) "
+"([da509ae](https://github.com/OGKevin/cadmus/commit/da509aef81d0a0a55b39d336919a633dc4c5a419))"
+msgstr ""
+
+#: src/CHANGELOG.md:57
+msgid ""
+"**dictionaries:** add native monolingual dictionary support "
+"([\\#378](https://github.com/OGKevin/cadmus/issues/378)) "
+"([9a901a5](https://github.com/OGKevin/cadmus/commit/9a901a5e22dbc78ff4e88186cafa4a4957c8c5f5))"
+msgstr ""
+
+#: src/CHANGELOG.md:58
+msgid ""
+"**dictionary:** index files into SQLite "
+"([\\#447](https://github.com/OGKevin/cadmus/issues/447)) "
+"([ef75769](https://github.com/OGKevin/cadmus/commit/ef75769e8285f231c4af188cc6aa195b22c72c3a))"
+msgstr ""
+
+#: src/CHANGELOG.md:59
+msgid ""
+"**dictionary:** track installed version with cache invalidation "
+"([\\#395](https://github.com/OGKevin/cadmus/issues/395)) "
+"([8de943d](https://github.com/OGKevin/cadmus/commit/8de943d7bbff001445333bc624e086e7b5653235))"
+msgstr ""
+
+#: src/CHANGELOG.md:60
+msgid ""
+"**i18n:** add i18n support for UI strings "
+"([\\#289](https://github.com/OGKevin/cadmus/issues/289)) "
+"([235c494](https://github.com/OGKevin/cadmus/commit/235c4943e17398988b4652298f0b61771cad885e))"
+msgstr ""
+
+#: src/CHANGELOG.md:61
+msgid ""
+"**Intermission:** add blank screens "
+"([\\#483](https://github.com/OGKevin/cadmus/issues/483)) "
+"([75add0d](https://github.com/OGKevin/cadmus/commit/75add0d9822eef0510afdc0905a5b72f33c56fe9))"
+msgstr ""
+
+#: src/CHANGELOG.md:62
+msgid ""
+"**intermission:** add calendar intermission screen "
+"([\\#402](https://github.com/OGKevin/cadmus/issues/402)) "
+"([3f36f25](https://github.com/OGKevin/cadmus/commit/3f36f258673267305fc5326154f4140f4742a448))"
+msgstr ""
+
+#: src/CHANGELOG.md:63
+msgid ""
+"**library:** Library import is no async. "
+"([7fbf304](https://github.com/OGKevin/cadmus/commit/7fbf304fdfb84df1d4c6fcd661adc80ef12c66bc))"
+msgstr ""
+
+#: src/CHANGELOG.md:64
+msgid ""
+"**library:** switch fingerprints to BLAKE3 content hash "
+"([\\#385](https://github.com/OGKevin/cadmus/issues/385)) "
+"([7b03de3](https://github.com/OGKevin/cadmus/commit/7b03de3cac4f79451e7d56b8e0a63d325556454d)), "
+"closes [\\#184](https://github.com/OGKevin/cadmus/issues/184)"
+msgstr ""
+
+#: src/CHANGELOG.md:65
+msgid ""
+"**Settigns Editor:** add refresh rate settings "
+"([\\#478](https://github.com/OGKevin/cadmus/issues/478)) "
+"([58cb13e](https://github.com/OGKevin/cadmus/commit/58cb13e17cc50d866ad3fa276f6c549b92049dd9))"
+msgstr ""
+
+#: src/CHANGELOG.md:66
+msgid ""
+"**settings editor:** add pagination to CategoryEditor "
+"([\\#377](https://github.com/OGKevin/cadmus/issues/377)) "
+"([037c24c](https://github.com/OGKevin/cadmus/commit/037c24cef9a433b59d523665ced3384e7a564948))"
+msgstr ""
+
+#: src/CHANGELOG.md:67
+msgid ""
+"**Settings Editor:** all settings fields are now translatable "
+"([51fa0e9](https://github.com/OGKevin/cadmus/commit/51fa0e9f130ab03dccd61a9c57a3b3e5c2f0b437))"
+msgstr ""
+
+#: src/CHANGELOG.md:68
+msgid ""
+"**settings editor:** expose import settings "
+"([\\#341](https://github.com/OGKevin/cadmus/issues/341)) "
+"([5dc926e](https://github.com/OGKevin/cadmus/commit/5dc926e34c142a88feafd5b2cefb3a1bff58b581))"
+msgstr ""
+
+#: src/CHANGELOG.md:72
+msgid ""
+"**kobo:** wake the touch layer on resume "
+"([025a013](https://github.com/OGKevin/cadmus/commit/025a0137921fd935073b8d2f0c9b255078782aa9))"
+msgstr ""
+
+#: src/CHANGELOG.md:73
+msgid ""
+"**Library:** remove books with empty paths on import "
+"([\\#485](https://github.com/OGKevin/cadmus/issues/485)) "
+"([eb6f2a8](https://github.com/OGKevin/cadmus/commit/eb6f2a880206829888d73d0aadc536f8b8d20d67))"
+msgstr ""
+
+#: src/CHANGELOG.md:74
+msgid ""
+"**library:** use natural sort order "
+"([\\#370](https://github.com/OGKevin/cadmus/issues/370)) "
+"([f053a28](https://github.com/OGKevin/cadmus/commit/f053a287dbbd74c3195241401347d6d09401b319)), "
+"closes [\\#297](https://github.com/OGKevin/cadmus/issues/297)"
+msgstr ""
+
+#: src/CHANGELOG.md:75
+msgid ""
+"**OTA:** use Cadmus tmp dir for OTA downloads "
+"([\\#460](https://github.com/OGKevin/cadmus/issues/460)) "
+"([6fab681](https://github.com/OGKevin/cadmus/commit/6fab6819ceda574c4c95910fabf0887d5612254d))"
+msgstr ""
+
+#: src/CHANGELOG.md:76
+msgid ""
+"**settings editor:** add hold gesture for library delete "
+"([\\#365](https://github.com/OGKevin/cadmus/issues/365)) "
+"([dbd5f1b](https://github.com/OGKevin/cadmus/commit/dbd5f1beaa22c80648a8f6c2068727b2bf908091)), "
+"closes [\\#353](https://github.com/OGKevin/cadmus/issues/353)"
+msgstr ""
+
+#: src/CHANGELOG.md:77
+msgid ""
+"**settings editor:** wrap category nav bar buttons onto 2 rows "
+"([\\#379](https://github.com/OGKevin/cadmus/issues/379)) "
+"([0848a71](https://github.com/OGKevin/cadmus/commit/0848a719235140ced28d2d5f13c220cff470f9b2))"
+msgstr ""
+
+#: src/CHANGELOG.md:78
+msgid ""
+"**Top Menu:** make restart and reboot clearer "
+"([\\#293](https://github.com/OGKevin/cadmus/issues/293)) "
+"([402e42d](https://github.com/OGKevin/cadmus/commit/402e42d7b7f63e5403a3f197d8c334d5f92863a2)), "
+"closes [\\#292](https://github.com/OGKevin/cadmus/issues/292)"
+msgstr ""
+
+#: src/CHANGELOG.md:79
+msgid ""
+"**WiFi:** going from Nickel to Cadmus does not interrupt WiFi connection "
+"([6bfd7b4](https://github.com/OGKevin/cadmus/commit/6bfd7b4783fa69486b56d07d1568675fcb7a106e))"
+msgstr ""
+
+#: src/CHANGELOG.md:80
+msgid ""
+"**WiFi:** previous DHCP leases will now be re-used, resulting in stable IP "
+"addresses. "
+"([6bfd7b4](https://github.com/OGKevin/cadmus/commit/6bfd7b4783fa69486b56d07d1568675fcb7a106e))"
+msgstr ""
+
+#: src/CHANGELOG.md:84
+msgid ""
+"Library sorting is now precomputed instead of calculated on demand. Should "
+"benefit big libraries. "
+"([93cb8a1](https://github.com/OGKevin/cadmus/commit/93cb8a1c5fcdd38566649798e5dfc4a5d8a79d55))"
+msgstr ""
+
+#: src/CHANGELOG.md:85
+msgid ""
+"Memory usage should reduce a tiny bit, as the whole library is no longer "
+"loaded in memory. Memory pressure reduction depends on how big the library "
+"is to begin with. This will benefit folks with huge libraries. "
+"([93cb8a1](https://github.com/OGKevin/cadmus/commit/93cb8a1c5fcdd38566649798e5dfc4a5d8a79d55))"
+msgstr ""
+
+#: src/CHANGELOG.md:86
+msgid ""
+"optimize dictionary loading "
+"([\\#364](https://github.com/OGKevin/cadmus/issues/364)) "
+"([5b23c62](https://github.com/OGKevin/cadmus/commit/5b23c62629a96e7c250e476713f651a41567b06b))"
+msgstr ""
+
+#: src/CHANGELOG.md:87
+msgid ""
+"**startup:** Library import is now async, this means that it no longer "
+"blocks startup. "
+"([7fbf304](https://github.com/OGKevin/cadmus/commit/7fbf304fdfb84df1d4c6fcd661adc80ef12c66bc))"
+msgstr ""
+
+#: src/CHANGELOG.md:88
+msgid ""
+"**Startup:** Wifi management on startup is now async, instead of sync. This "
+"should improve startup speeds. "
+"([6bfd7b4](https://github.com/OGKevin/cadmus/commit/6bfd7b4783fa69486b56d07d1568675fcb7a106e))"
+msgstr ""
+
+#: src/CHANGELOG.md:90
+msgid ""
+"[0.10.0](https://github.com/OGKevin/cadmus/compare/v0.9.46...v0.10.0) "
+"(2026-03-21)"
+msgstr ""
+
+#: src/CHANGELOG.md:94
+msgid ""
+"**Library:** With the introduction of SQLite for managing library data, "
+"there is no longer a need to set library mode to filesystem or (fake) "
+"database. It is all now stored into SQLite. This means this field is "
+"obsolete and has been removed."
+msgstr ""
+
+#: src/CHANGELOG.md:98
+msgid ""
+"add global SQLite database "
+"([\\#189](https://github.com/OGKevin/cadmus/issues/189)) "
+"([6e98d66](https://github.com/OGKevin/cadmus/commit/6e98d66820f46ccaab3bbcc08dd995bdb5aa5649)), "
+"closes [\\#151](https://github.com/OGKevin/cadmus/issues/151)"
+msgstr ""
+
+#: src/CHANGELOG.md:99
+msgid ""
+"Embed documentation in binary "
+"([\\#150](https://github.com/OGKevin/cadmus/issues/150)) "
+"([d865103](https://github.com/OGKevin/cadmus/commit/d86510393c2ec73cdffa17f91c869db522f5546f)), "
+"closes [\\#112](https://github.com/OGKevin/cadmus/issues/112)"
+msgstr ""
+
+#: src/CHANGELOG.md:100
+msgid ""
+"**Kobo:** edit settings file during USB sharing "
+"([\\#227](https://github.com/OGKevin/cadmus/issues/227)) "
+"([c34a202](https://github.com/OGKevin/cadmus/commit/c34a202e0dc5ced467afa63dccb08d7b743c1a7d))"
+msgstr ""
+
+#: src/CHANGELOG.md:101
+msgid ""
+"**Library:** migrate library storage to SQLite "
+"([\\#189](https://github.com/OGKevin/cadmus/issues/189)) "
+"([6e98d66](https://github.com/OGKevin/cadmus/commit/6e98d66820f46ccaab3bbcc08dd995bdb5aa5649))"
+msgstr ""
+
+#: src/CHANGELOG.md:102
+msgid ""
+"**OTA:** adaptive chunk sizing based on observed throughput "
+"([\\#228](https://github.com/OGKevin/cadmus/issues/228)) "
+"([d0c9934](https://github.com/OGKevin/cadmus/commit/d0c9934ccc2d49eed12ddb374ce2cf58a5cf0c87))"
+msgstr ""
+
+#: src/CHANGELOG.md:103
+msgid ""
+"**OTA:** add default branch download support "
+"([\\#131](https://github.com/OGKevin/cadmus/issues/131)) "
+"([0c14f6c](https://github.com/OGKevin/cadmus/commit/0c14f6c953e2c14504d90f5632457d016fb0788b)), "
+"closes [\\#114](https://github.com/OGKevin/cadmus/issues/114)"
+msgstr ""
+
+#: src/CHANGELOG.md:104
+msgid ""
+"**OTA:** add GitHub device auth flow "
+"([\\#170](https://github.com/OGKevin/cadmus/issues/170)) "
+"([f934733](https://github.com/OGKevin/cadmus/commit/f934733ce4b727804b839281f66530d19dbdcb83)), "
+"closes [\\#169](https://github.com/OGKevin/cadmus/issues/169)"
+msgstr ""
+
+#: src/CHANGELOG.md:105
+msgid ""
+"**OTA:** support downloading stable releases "
+"([\\#135](https://github.com/OGKevin/cadmus/issues/135)) "
+"([377a087](https://github.com/OGKevin/cadmus/commit/377a087ac6453ecb4462e4cffd929721584a3283)), "
+"closes [\\#40](https://github.com/OGKevin/cadmus/issues/40)"
+msgstr ""
+
+#: src/CHANGELOG.md:106
+msgid ""
+"**OTA:** version check for stable releases "
+"\\[[\\#256](https://github.com/OGKevin/cadmus/issues/256)\\] "
+"([85a4ae4](https://github.com/OGKevin/cadmus/commit/85a4ae45943add14b09be7c14152f950fd0fb1bf)), "
+"closes [\\#234](https://github.com/OGKevin/cadmus/issues/234)"
+msgstr ""
+
+#: src/CHANGELOG.md:107
+msgid ""
+"**Reader:** add go-to-next variant to FinishedAction "
+"([\\#225](https://github.com/OGKevin/cadmus/issues/225)) "
+"([2594a31](https://github.com/OGKevin/cadmus/commit/2594a3133e202bdf6348ededb6c57c0a7cffe1f2)), "
+"closes [\\#152](https://github.com/OGKevin/cadmus/issues/152)"
+msgstr ""
+
+#: src/CHANGELOG.md:108
+msgid ""
+"**Settings Editor:** add Telemetry category "
+"([\\#251](https://github.com/OGKevin/cadmus/issues/251)) "
+"([b9fb10c](https://github.com/OGKevin/cadmus/commit/b9fb10ca2bf995f8b905663a8e6e8d614af99663))"
+msgstr ""
+
+#: src/CHANGELOG.md:109
+msgid ""
+"**settings:** add versioning system "
+"([\\#155](https://github.com/OGKevin/cadmus/issues/155)) "
+"([70d402b](https://github.com/OGKevin/cadmus/commit/70d402bdf6713fbe5240eec68c3ef156292a3877)), "
+"closes [\\#56](https://github.com/OGKevin/cadmus/issues/56)"
+msgstr ""
+
+#: src/CHANGELOG.md:110
+msgid ""
+"**Telemetry:** test builds can log kernel logs "
+"([\\#253](https://github.com/OGKevin/cadmus/issues/253)) "
+"([c2d51a1](https://github.com/OGKevin/cadmus/commit/c2d51a17480c2558886a75c55db2eecac839694e))"
+msgstr ""
+
+#: src/CHANGELOG.md:114
+msgid ""
+"**Kobo:** restart app on USB unplug after sharing "
+"([\\#227](https://github.com/OGKevin/cadmus/issues/227)) "
+"([c34a202](https://github.com/OGKevin/cadmus/commit/c34a202e0dc5ced467afa63dccb08d7b743c1a7d)), "
+"closes [\\#157](https://github.com/OGKevin/cadmus/issues/157)"
+msgstr ""
+
+#: src/CHANGELOG.md:115
+msgid ""
+"**Kobo:** set correct CWD in cadmus.sh restart loop "
+"([\\#227](https://github.com/OGKevin/cadmus/issues/227)) "
+"([c34a202](https://github.com/OGKevin/cadmus/commit/c34a202e0dc5ced467afa63dccb08d7b743c1a7d))"
+msgstr ""
+
+#: src/CHANGELOG.md:116
+msgid ""
+"**Library:** navigation bar when switching library "
+"([\\#223](https://github.com/OGKevin/cadmus/issues/223)) "
+"([b421f2b](https://github.com/OGKevin/cadmus/commit/b421f2b527d7e758b4fc0b7bd6e0df44a9181cce)), "
+"closes [\\#218](https://github.com/OGKevin/cadmus/issues/218)"
+msgstr ""
+
+#: src/CHANGELOG.md:117
+msgid ""
+"**OTA:** change UpdateMode from Gui to Full "
+"([\\#174](https://github.com/OGKevin/cadmus/issues/174)) "
+"([698c1ae](https://github.com/OGKevin/cadmus/commit/698c1ae9cfca51e10adf1a6442e7c0432fcb37c5))"
+msgstr ""
+
+#: src/CHANGELOG.md:118
+msgid ""
+"**OTA:** check if network is up before showing view "
+"([\\#232](https://github.com/OGKevin/cadmus/issues/232)) "
+"([1e6d7ef](https://github.com/OGKevin/cadmus/commit/1e6d7ef57a392b52d59cb0be0dde817eb2e00818)), "
+"closes [\\#68](https://github.com/OGKevin/cadmus/issues/68)"
+msgstr ""
+
+#: src/CHANGELOG.md:119
+msgid ""
+"**OTA:** close view when tapping outside of dialog "
+"([\\#147](https://github.com/OGKevin/cadmus/issues/147)) "
+"([ddfb738](https://github.com/OGKevin/cadmus/commit/ddfb7389d1447da1b658286d1d8729c5ec51747d))"
+msgstr ""
+
+#: src/CHANGELOG.md:120
+msgid ""
+"**OTA:** downloads on slow networks should be more reliable "
+"([\\#228](https://github.com/OGKevin/cadmus/issues/228)) "
+"([d0c9934](https://github.com/OGKevin/cadmus/commit/d0c9934ccc2d49eed12ddb374ce2cf58a5cf0c87))"
+msgstr ""
+
+#: src/CHANGELOG.md:121
+msgid ""
+"reported version in about dialog "
+"([\\#160](https://github.com/OGKevin/cadmus/issues/160)) "
+"([5973c84](https://github.com/OGKevin/cadmus/commit/5973c84833546e3879d9d8d3ea90d1baa4a11ed8))"
+msgstr ""
+
+#: src/CHANGELOG.md:122
+msgid ""
+"**settings editor:** library editor "
+"([\\#205](https://github.com/OGKevin/cadmus/issues/205)) "
+"([2739894](https://github.com/OGKevin/cadmus/commit/2739894c8651ca299291ae82a3a02c1141ea5d1a)), "
+"closes [\\#203](https://github.com/OGKevin/cadmus/issues/203)"
+msgstr ""
+
+#: src/CHANGELOG.md:123
+msgid ""
+"**USB:** redirect log writer to /tmp during USB share "
+"([\\#265](https://github.com/OGKevin/cadmus/issues/265)) "
+"([6ebf2f8](https://github.com/OGKevin/cadmus/commit/6ebf2f83ff786338f4515cbdce84449bdfb7c197)), "
+"closes [\\#246](https://github.com/OGKevin/cadmus/issues/246)"
+msgstr ""
+
+#: src/CHANGELOG.md:125
+msgid ""
+"[0.9.46](https://github.com/OGKevin/cadmus/compare/v0.9.45...v0.9.46) "
+"(2026-02-04)"
+msgstr ""
+
+#: src/CHANGELOG.md:129
+msgid ""
+"initial settings editor interface "
+"([\\#41](https://github.com/OGKevin/cadmus/issues/41)) "
+"([54267f0](https://github.com/OGKevin/cadmus/commit/54267f053253c0e8b708dcca3a22bc8ea55ecc06))"
+msgstr ""
+
+#: src/CHANGELOG.md:130
+msgid ""
+"PR test builds can be installed via OTA "
+"([\\#57](https://github.com/OGKevin/cadmus/issues/57)) "
+"([0dacb95](https://github.com/OGKevin/cadmus/commit/0dacb95512312277917c2f323760e79700b4c3a4))"
+msgstr ""
+
+#: src/CHANGELOG.md:132
+msgid "Cadmus Fork"
+msgstr ""
+
+#: src/CHANGELOG.md:134
+msgid ""
+"This project is now maintained as **Cadmus**, a fork of the "
+"[Plato](https://github.com/baskerville/plato) document reader."
+msgstr ""
+
+#: src/CHANGELOG.md:136
+msgid ""
+"[0.9.45](https://github.com/OGKevin/cadmus/compare/v0.9.44...v0.9.45) "
+"(2026-01-12)"
+msgstr ""
+
+#: src/CHANGELOG.md:140
+msgid ""
+"add restart application menu option "
+"([\\#8](https://github.com/OGKevin/cadmus/issues/8)) "
+"([4cf8af1](https://github.com/OGKevin/cadmus/commit/4cf8af12a03ecd7c74e86c575c7c84dfe51df358))"
+msgstr ""
+
+#: src/CHANGELOG.md:144
+msgid ""
+"**fetcher:** add https support "
+"([\\#39](https://github.com/OGKevin/cadmus/issues/39)) "
+"([58b64f9](https://github.com/OGKevin/cadmus/commit/58b64f9a666cf52300a70a4331960b6e4e94abcc))"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:5
+msgid ""
+"Cadmus uses [devenv](https://devenv.sh/) with Nix to provide a reproducible "
+"development environment. This guide covers setup on both Linux and macOS."
+msgstr ""
+
+#: src/contributing/devenv-setup.md:8
+msgid "Prerequisites"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:10
+msgid ""
+"Install Nix with flakes enabled. The easiest way is using the [Determinate "
+"Nix Installer](https://github.com/DeterminateSystems/nix-installer)."
+msgstr ""
+
+#: src/contributing/devenv-setup.md:11
+msgid "Install [devenv](https://devenv.sh/getting-started)."
+msgstr ""
+
+#: src/contributing/devenv-setup.md:13
+msgid "Quick Start"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:15
+msgid "Clone the repository and enter the devenv shell:"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:23
+msgid "Download the packaged runtime assets used by Kobo builds:"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:30
+msgid ""
+"\\[!NOTE\\] `cadmus-core` generates some compile-time metadata from the "
+"bundled asset directories. For Kobo builds, make sure `bin/`, `resources/`, "
+"`hyphenation-patterns/`, and `fonts/` are present before `cargo xtask "
+"build-kobo` so the generated asset list is complete."
+msgstr ""
+
+#: src/contributing/devenv-setup.md:36
+msgid ""
+"Thirdparty C/C++ dependencies (MuPDF, libwebp, zlib, etc.) are tracked as "
+"git submodules and built automatically by `build.rs` when you run `cargo "
+"build` or `cargo xtask run-emulator`. No separate setup step is required."
+msgstr ""
+
+#: src/contributing/devenv-setup.md:40
+msgid "Run the emulator:"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:46
+msgid "Available Commands"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:48
+msgid "Once inside the devenv shell, these commands are available:"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:50
+msgid "Command"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:52
+msgid "`cargo xtask download-assets`"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:52
+msgid "Download packaged Plato runtime assets"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:53
+msgid "`cargo xtask download-fonts`"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:53
+msgid "Download bundled font files into `fonts/`"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:54
+msgid "`cargo xtask test`"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:54
+msgid "Run the test suite across the feature matrix"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:55
+msgid "`cargo xtask run-emulator`"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:55
+msgid "Run the emulator"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:56
+msgid "`cargo xtask build-kobo`"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:56
+msgid "Cross-compile for Kobo device"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:57
+msgid "`cargo xtask dist`"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:57
+msgid "Assemble the Kobo distribution directory"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:58
+msgid "`cargo xtask bundle`"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:58
+msgid "Package KoboRoot.tgz for installation"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:59
+msgid "`cadmus-dev-otel`"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:59
+msgid "Run emulator with tracing and profiling enabled"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:60
+msgid "`devenv up`"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:60
+msgid "Start observability stack (Grafana, Tempo, Loki)"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:61
+msgid "`cargo xtask docs`"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:61
+msgid "Build docs site (mdBook, API docs, website)"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:62
+msgid "`cadmus-docs-serve`"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:62
+msgid "Serve website locally on port 3000"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:63
+msgid "`cadmus-translate`"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:63
+msgid "Generate the docs translation template (.pot)"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:64
+msgid "`cadmus-test-coverage`"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:64
+msgid "Run tests with coverage instrumentation"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:65
+msgid "`cadmus-coverage-show`"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:65
+msgid "Open project-wide HTML coverage report"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:66
+msgid "`cadmus-coverage-diff`"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:66
+msgid "Open patch coverage HTML vs `origin/$CADMUS_DEFAULT_BRANCH`"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:68
+msgid ""
+"Run `cargo xtask --help` to see all available subcommands, or `cargo xtask "
+"<cmd> --help` for options on a specific command."
+msgstr ""
+
+#: src/contributing/devenv-setup.md:71
+msgid ""
+"Or have a look at the rustdocs for `xtask` <a href=\"/api/xtask/\">here</a>."
+msgstr ""
+
+#: src/contributing/devenv-setup.md:73
+msgid "Tasks"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:75
+msgid ""
+"The devenv environment uses [tasks](https://devenv.sh/tasks/) to manage "
+"build dependencies. Tasks are defined in `devenv.nix` and can be run with "
+"`devenv tasks run <task>`."
+msgstr ""
+
+#: src/contributing/devenv-setup.md:78
+msgid "Available Tasks"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:80
+msgid "Task"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:80
+msgid "Dependencies"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:82 src/contributing/devenv-setup.md:83
+msgid "`docs:build`"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:82
+msgid "Build documentation EPUB (only rebuilds if files changed)"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:82
+msgid "None"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:83
+msgid "`build:kobo`"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:83
+msgid "Build for Kobo device"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:85
+msgid "All tasks delegate to `cargo xtask` under the hood."
+msgstr ""
+
+#: src/contributing/devenv-setup.md:87
+msgid "How Tasks Work"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:89
+msgid ""
+"Tasks with dependencies automatically run their dependencies first. For "
+"example:"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:92
+msgid "# This will first run docs:build (if needed), then build for Kobo\n"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:96
+msgid ""
+"The `docs:build` task uses `execIfModified` to only rebuild when "
+"documentation files have actually changed."
+msgstr ""
+
+#: src/contributing/devenv-setup.md:98
+msgid "Kobo Build Notes"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:100
+msgid ""
+"`cargo xtask download-assets` and `cargo xtask download-fonts` must run "
+"before `cargo xtask build-kobo`."
+msgstr ""
+
+#: src/contributing/devenv-setup.md:101
+msgid ""
+"OTA updates delete Cadmus-owned bundled files before reboot, then Kobo "
+"extracts the new `KoboRoot.tgz` over the install directory."
+msgstr ""
+
+#: src/contributing/devenv-setup.md:103
+msgid ""
+"User files outside the generated Cadmus-owned asset list must be preserved."
+msgstr ""
+
+#: src/contributing/devenv-setup.md:105
+msgid ""
+"See [Website](website/index.md) and [User guide](website/user-guide.md) for "
+"building, serving, editing, and deploying the documentation site."
+msgstr ""
+
+#: src/contributing/devenv-setup.md:108
+msgid "Running Tests"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:110
+msgid ""
+"Tests require the `TEST_ROOT_DIR` environment variable to be set. The "
+"easiest way to run the full test matrix is:"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:117
+msgid ""
+"This sets `TEST_ROOT_DIR` automatically and runs tests across all feature "
+"combinations. To run a single feature combination:"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:121
+msgid "\"emulator + test\""
+msgstr ""
+
+#: src/contributing/devenv-setup.md:124
+msgid "Or to run tests manually without xtask:"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:127 src/contributing/devenv-setup.md:233
+msgid "$(pwd)"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:130
+msgid ""
+"`TEST_ROOT_DIR` is automatically configured in CI but must be set manually "
+"when running `cargo test` directly."
+msgstr ""
+
+#: src/contributing/devenv-setup.md:133
+msgid "Test Coverage"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:135
+msgid ""
+"CI runs instrumented tests across the full feature matrix and uploads merged "
+"reports to [Codecov](https://app.codecov.io/github/ogkevin/cadmus). Patch "
+"coverage is enforced as a required status check — the `codecov/patch` check "
+"must pass (auto target with 10% threshold) for PRs to be merged. Project "
+"coverage remains informational with a 10% threshold."
+msgstr ""
+
+#: src/contributing/devenv-setup.md:140
+msgid ""
+"CI also uploads nextest JUnit XML to [Codecov Test "
+"Analytics](https://docs.codecov.com/docs/test-analytics) (one upload per "
+"feature-matrix shard, with Codecov flags). Doctests are not included in "
+"JUnit output. View results in the Codecov Tests tab."
+msgstr ""
+
+#: src/contributing/devenv-setup.md:144
+msgid "Locally, use the devenv coverage commands (requires `devenv shell`):"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:147
+msgid "# 1. Run instrumented tests (writes target/coverage/lcov.info)\n"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:149
+msgid "# 2. View results without re-running tests\n"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:151
+msgid "# project-wide HTML in the browser\n"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:152
+msgid "# patch HTML vs origin/$CADMUS_DEFAULT_BRANCH\n"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:153
+msgid "# or pass an explicit base branch\n"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:156
+msgid ""
+"`CADMUS_DEFAULT_BRANCH` defaults to `master`. Override it in "
+"`devenv.local.nix` if needed."
+msgstr ""
+
+#: src/contributing/devenv-setup.md:158
+msgid "Outside devenv, the equivalent xtask invocation is:"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:164
+msgid ""
+"A device feature (`emulator`, `kobo`, or `deviceless`) is **required** to "
+"compile `cadmus-core` — plain `cargo test` and `--features default` fail "
+"with `compile_error!(\"A device feature must be enabled\")`. Use `emulator` "
+"on the host; use `kobo` only via the `build-kobo` skill (cross-compiles for "
+"ARM)."
+msgstr ""
+
+#: src/contributing/devenv-setup.md:169
+msgid ""
+"CI uploads require a `CODECOV_TOKEN` repository secret (one-time setup on "
+"codecov.io)."
+msgstr ""
+
+#: src/contributing/devenv-setup.md:171
+msgid "Platform Support"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:173
+msgid "Linux (Full Support)"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:175
+msgid "Linux provides full development capabilities including:"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:177 src/contributing/devenv-setup.md:187
+msgid "Native development (emulator, tests)"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:178 src/contributing/devenv-setup.md:188
+msgid "Cross-compilation for Kobo devices using the Linaro ARM toolchain"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:179 src/contributing/devenv-setup.md:189
+msgid "Git hooks (actionlint, shellcheck, shfmt, rumdl, prettier)"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:181
+msgid ""
+"The Linaro toolchain is automatically added to `PATH` and provides "
+"`arm-linux-gnueabihf-*` commands."
+msgstr ""
+
+#: src/contributing/devenv-setup.md:183
+msgid "macOS (Full Support)"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:185
+msgid "macOS supports full development capabilities including:"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:191
+msgid "macOS-Specific Notes"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:193
+msgid ""
+"**MuPDF build**: On macOS, the native build script manually gathers "
+"pkg-config CFLAGS for system libraries because MuPDF's build system doesn't "
+"properly detect them on Darwin."
+msgstr ""
+
+#: src/contributing/devenv-setup.md:196
+msgid "Observability Stack"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:198
+msgid "The devenv includes a full observability stack for development:"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:201
+msgid "# Start all services\n"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:203
+msgid "# In another terminal, run the instrumented emulator\n"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:208
+msgid "Services available after `devenv up`:"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:210
+msgid "Service"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:210
+msgid "URL"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:210
+msgid "Purpose"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:212
+msgid "Grafana"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:212
+msgid "<http://localhost:3000>"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:212
+msgid "Dashboards and exploration"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:213
+msgid "Tempo"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:213
+msgid "<http://localhost:3200>"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:213
+msgid "Distributed tracing"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:214
+msgid "Loki"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:214
+msgid "<http://localhost:3100>"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:214
+msgid "Log aggregation"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:215
+msgid "Prometheus"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:215
+msgid "<http://localhost:9090>"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:215
+msgid "Metrics"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:216
+msgid "OTLP Collector"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:216
+msgid "<http://localhost:4318>"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:216
+msgid "Telemetry ingestion"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:217
+msgid "Pyroscope"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:217
+msgid "<http://localhost:4040>"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:217
+msgid "Continuous profiling"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:219
+msgid "For more details on telemetry, see [Telemetry](telemetry/index.md)."
+msgstr ""
+
+#: src/contributing/devenv-setup.md:223
+msgid "Shell takes a long time to start"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:225
+msgid ""
+"The first `devenv shell` invocation downloads and builds dependencies, which "
+"can take several minutes. Subsequent invocations are cached and should be "
+"fast."
+msgstr ""
+
+#: src/contributing/devenv-setup.md:228
+msgid "Tests fail with \"TEST_ROOT_DIR must be set\""
+msgstr ""
+
+#: src/contributing/devenv-setup.md:230
+msgid "Set the environment variable before running tests:"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:236
+msgid "Local Configuration"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:238
+msgid ""
+"Create `devenv.local.nix` to override settings without modifying the tracked "
+"configuration:"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:240
+msgid ""
+"```nix\n"
+"{ pkgs, ... }:\n"
+"\n"
+"{\n"
+"  env = {\n"
+"    # Example: Set TEST_ROOT_DIR automatically\n"
+"    TEST_ROOT_DIR = builtins.getEnv \"PWD\";\n"
+"  };\n"
+"}\n"
+"```"
+msgstr ""
+
+#: src/contributing/devenv-setup.md:251
+msgid "This file is gitignored and won't affect other contributors."
+msgstr ""
+
+#: src/contributing/ssh.md:5
+msgid ""
+"To enable SSH, mount your kobo normally, and follow the instructions in the "
+"file `.kobo/ssh-disabled`. The `.kobo` file is a hidden file, and if using a "
+"GUI may need to enable viewing of hidden files."
+msgstr ""
+
+#: src/contributing/ssh.md:14
+msgid ""
+"You may find the IP address under 'More > Settings > Device information' in "
+"Nickel, Kobo's factory UI."
+msgstr ""
+
+#: src/contributing/ssh.md:17
+msgid ""
+"To connect to your device must not be sleeping. If you fail to connect, make "
+"sure Nickel is running."
+msgstr ""
+
+#: src/contributing/ssh.md:20
+msgid ""
+"While Nickel runs as root, `adduser` is available and functional. You may "
+"use this to create a new user and as that user instead. `ssh-copy-id` allows "
+"copying your SSH public key to the Kobo, allowing convenient passwordless "
+"login using your key."
+msgstr ""
+
+#: src/contributing/ssh.md:25
+msgid ""
+"As of May 2026, the SSH implementation is OpenSSH (Currently OpenSSH_8.9p1, "
+"OpenSSL 3.0.8 7 Feb 2023)."
+msgstr ""
+
+#: src/contributing/code-style.md:5
+msgid ""
+"Cadmus enforces a consistent code style across all languages using "
+"[treefmt](https://treefmt.com/) for formatting and several linters for "
+"static analysis. The pre-commit hooks run all checks automatically, and CI "
+"enforces the same rules on every pull request."
+msgstr ""
+
+#: src/contributing/code-style.md:10
+msgid "Formatters and Linters"
+msgstr ""
+
+#: src/contributing/code-style.md:12
+msgid "Tool"
+msgstr ""
+
+#: src/contributing/code-style.md:12
+msgid "Languages / Files"
+msgstr ""
+
+#: src/contributing/code-style.md:12
+msgid "Key Configuration"
+msgstr ""
+
+#: src/contributing/code-style.md:14
+msgid "`rustfmt`"
+msgstr ""
+
+#: src/contributing/code-style.md:14
+msgid "Rust (`*.rs`)"
+msgstr ""
+
+#: src/contributing/code-style.md:14
+msgid "Workspace `rustfmt.toml`"
+msgstr ""
+
+#: src/contributing/code-style.md:15
+msgid "`prettier`"
+msgstr ""
+
+#: src/contributing/code-style.md:15
+msgid "JSON, YAML, CSS, JS (not docs `*.md`)"
+msgstr ""
+
+#: src/contributing/code-style.md:15
+msgid "`.prettierrc.json`, `.prettierignore`"
+msgstr ""
+
+#: src/contributing/code-style.md:16
+msgid "`shfmt`"
+msgstr ""
+
+#: src/contributing/code-style.md:16 src/contributing/code-style.md:17
+msgid "Shell (`*.sh`, `*.bash`)"
+msgstr ""
+
+#: src/contributing/code-style.md:16
+msgid "`-i 2 -ci` (2-space, case-indent)"
+msgstr ""
+
+#: src/contributing/code-style.md:17
+msgid "`shellcheck`"
+msgstr ""
+
+#: src/contributing/code-style.md:17
+msgid "`.editorconfig`"
+msgstr ""
+
+#: src/contributing/code-style.md:18
+msgid "`yamllint`"
+msgstr ""
+
+#: src/contributing/code-style.md:18
+msgid "YAML"
+msgstr ""
+
+#: src/contributing/code-style.md:18
+msgid "`extends: default`, several rules disabled"
+msgstr ""
+
+#: src/contributing/code-style.md:19
+msgid "`rumdl`"
+msgstr ""
+
+#: src/contributing/code-style.md:19
+msgid "Markdown (`*.md`)"
+msgstr ""
+
+#: src/contributing/code-style.md:19
+msgid "`.rumdl.toml` (lint + format via `--fix`)"
+msgstr ""
+
+#: src/contributing/code-style.md:20
+msgid "`actionlint`"
+msgstr ""
+
+#: src/contributing/code-style.md:20
+msgid "GitHub Actions workflows"
+msgstr ""
+
+#: src/contributing/code-style.md:20
+msgid "`-ignore \"rust-toolchain\"`"
+msgstr ""
+
+#: src/contributing/code-style.md:21
+msgid "`clippy`"
+msgstr ""
+
+#: src/contributing/code-style.md:21
+msgid "Rust"
+msgstr ""
+
+#: src/contributing/code-style.md:21
+msgid "`-D warnings`"
+msgstr ""
+
+#: src/contributing/code-style.md:23
+msgid "Running treefmt"
+msgstr ""
+
+#: src/contributing/code-style.md:25
+msgid "All formatters run through `treefmt`. Inside the devenv shell:"
+msgstr ""
+
+#: src/contributing/code-style.md:28
+msgid "# Format all files tracked by treefmt\n"
+msgstr ""
+
+#: src/contributing/code-style.md:30
+msgid "# Check without writing (dry run)\n"
+msgstr ""
+
+#: src/contributing/code-style.md:35
+msgid ""
+"The pre-commit hook (`git-hooks.hooks.treefmt`) runs `treefmt "
+"--fail-on-change` automatically on every commit, so format issues are caught "
+"before they reach CI."
+msgstr ""
+
+#: src/contributing/code-style.md:38
+msgid ""
+"Markdown is formatted by rumdl (`rumdl check --fix` via treefmt). Docs paths "
+"in `.prettierignore` are excluded from Prettier so i18n list nesting is "
+"preserved. CI runs `rumdl check` (lint only) via reviewdog in "
+"`docs-lint.yml`."
+msgstr ""
+
+#: src/contributing/code-style.md:42
+msgid "Rust Style"
+msgstr ""
+
+#: src/contributing/code-style.md:44
+msgid "Formatting"
+msgstr ""
+
+#: src/contributing/code-style.md:46
+msgid ""
+"`rustfmt` with the workspace configuration handles formatting automatically. "
+"Run it via treefmt or directly:"
+msgstr ""
+
+#: src/contributing/code-style.md:53
+msgid "Linting (Clippy)"
+msgstr ""
+
+#: src/contributing/code-style.md:55
+msgid "Clippy runs with `-D warnings` — all warnings are errors:"
+msgstr ""
+
+#: src/contributing/code-style.md:61
+msgid ""
+"Clippy runs across every feature flag combination in CI. When adding a new "
+"feature flag, update `.github/workflows/cargo.yml` to include the new matrix "
+"entries."
+msgstr ""
+
+#: src/contributing/code-style.md:65
+msgid "Key Conventions"
+msgstr ""
+
+#: src/contributing/code-style.md:67
+msgid "Prefer `?` over `unwrap()` / `expect()` in library and app code."
+msgstr ""
+
+#: src/contributing/code-style.md:68
+msgid "Use iterators over index-based loops."
+msgstr ""
+
+#: src/contributing/code-style.md:69
+msgid ""
+"Use `&str` over `String` in function parameters when ownership is not needed."
+msgstr ""
+
+#: src/contributing/code-style.md:70
+msgid "Prefer borrowing over cloning."
+msgstr ""
+
+#: src/contributing/code-style.md:71
+msgid "Avoid premature `collect()` — keep iterators lazy."
+msgstr ""
+
+#: src/contributing/code-style.md:72
+msgid "Use newtype wrappers over raw primitives for domain concepts."
+msgstr ""
+
+#: src/contributing/code-style.md:74
+msgid "Shell Style"
+msgstr ""
+
+#: src/contributing/code-style.md:76
+msgid ""
+"Shell scripts are formatted with `shfmt` (`-i 2 -ci`) and checked with "
+"`shellcheck`. The `-ci` flag indents `case` statement arms relative to the "
+"`case` keyword:"
+msgstr ""
+
+#: src/contributing/code-style.md:81
+msgid "# Correct — case arms indented with -ci\n"
+msgstr ""
+
+#: src/contributing/code-style.md:82
+msgid "\"${VAR}\""
+msgstr ""
+
+#: src/contributing/code-style.md:92
+msgid "Scripts must declare their shell variant. For bash scripts, use:"
+msgstr ""
+
+#: src/contributing/code-style.md:95
+msgid "#! /bin/bash\n"
+msgstr ""
+
+#: src/contributing/code-style.md:98
+msgid "Structured Logging"
+msgstr ""
+
+#: src/contributing/code-style.md:100
+msgid ""
+"Use the `tracing` crate with structured fields — never string formatting for "
+"log data:"
+msgstr ""
+
+#: src/contributing/code-style.md:104
+msgid "// Correct\n"
+msgstr ""
+
+#: src/contributing/code-style.md:105
+msgid "\"Found artifacts\""
+msgstr ""
+
+#: src/contributing/code-style.md:106
+msgid "// Wrong\n"
+msgstr ""
+
+#: src/contributing/code-style.md:108
+msgid "\"[OTA] Found {} artifacts for PR #{}\""
+msgstr ""
+
+#: src/contributing/code-style.md:111
+msgid "See [Logging](telemetry/logging.md) for log level guidance."
+msgstr ""
+
+#: src/contributing/code-style.md:113
+msgid "Comments"
+msgstr ""
+
+#: src/contributing/code-style.md:115
+msgid ""
+"Comment **why**, not **what**. Most code needs no comments — good naming is "
+"preferred. The rules:"
+msgstr ""
+
+#: src/contributing/code-style.md:118
+msgid ""
+"No inline comments — if one feels necessary, extract the code into a "
+"well-named function instead."
+msgstr ""
+
+#: src/contributing/code-style.md:120
+msgid "No commented-out code."
+msgstr ""
+
+#: src/contributing/code-style.md:121
+msgid "No changelog comments (`Modified by X on date`)."
+msgstr ""
+
+#: src/contributing/code-style.md:122
+msgid "No decorative dividers (`//=====`)."
+msgstr ""
+
+#: src/contributing/code-style.md:123
+msgid "`TODO`, `FIXME`, `HACK`, `NOTE` annotations are fine with context."
+msgstr ""
+
+#: src/contributing/code-style.md:125
+msgid "Public API items must have doc comments."
+msgstr ""
+
+#: src/contributing/code-style.md:127
+msgid "CI Checks"
+msgstr ""
+
+#: src/contributing/code-style.md:129
+msgid "The following CI workflows enforce style:"
+msgstr ""
+
+#: src/contributing/code-style.md:131
+msgid "Workflow"
+msgstr ""
+
+#: src/contributing/code-style.md:131
+msgid "What it checks"
+msgstr ""
+
+#: src/contributing/code-style.md:133
+msgid "`cargo.yml`"
+msgstr ""
+
+#: src/contributing/code-style.md:133
+msgid "`rustfmt`, `clippy` (full feature matrix), tests"
+msgstr ""
+
+#: src/contributing/code-style.md:134
+msgid "`actions-lint.yml`"
+msgstr ""
+
+#: src/contributing/code-style.md:134
+msgid "`actionlint`, prettier for workflow YAML"
+msgstr ""
+
+#: src/contributing/code-style.md:135
+msgid "`shell.yml`"
+msgstr ""
+
+#: src/contributing/code-style.md:135
+msgid "`shellcheck`, `shfmt`"
+msgstr ""
+
+#: src/contributing/code-style.md:136
+msgid "`website.yml`"
+msgstr ""
+
+#: src/contributing/code-style.md:136
+msgid "prettier, eslint, stylelint (plus typecheck/build)"
+msgstr ""
+
+#: src/contributing/code-style.md:137
+msgid "`docs-lint.yml`"
+msgstr ""
+
+#: src/contributing/code-style.md:137
+msgid "`rumdl` (docs and markdown files)"
+msgstr ""
+
+#: src/contributing/code-style.md:139
+msgid ""
+"Inline review comments are posted by matching `*-report.yml` workflows on "
+"`workflow_run` (see `.github/workflows/AGENTS.md`). Collect jobs fail the PR "
+"check when findings remain; report jobs post with `-filter-mode=added` so "
+"only lines changed in the PR are flagged. Running `treefmt` locally before "
+"pushing will catch everything."
+msgstr ""
+
+#: src/contributing/event-system.md:5
+msgid ""
+"Cadmus uses a tree-based event system where views are organized "
+"hierarchically and events flow through two distinct channels: the **Hub** "
+"and the **Bus**. Understanding the difference between these channels is "
+"essential for implementing correct event handling in views."
+msgstr ""
+
+#: src/contributing/event-system.md:9
+msgid ""
+"\\[!TIP\\] CSS is hard, this page might render better on 80% zoom on smaller "
+"screens. I tried to make the mermaid diagrams as big as possible to make "
+"them easier to read, which made them overflow a bit."
+msgstr ""
+
+#: src/contributing/event-system.md:14
+msgid "You might also want to hide the sidebar."
+msgstr ""
+
+#: src/contributing/event-system.md:18
+msgid ""
+"The UI is a tree of `View` objects. Each view can have children, forming a "
+"hierarchy like:"
+msgstr ""
+
+#: src/contributing/event-system.md:20
+msgid ""
+"```mermaid\n"
+"flowchart TD\n"
+"    Home[\"Home (root view)\"]\n"
+"    TopBar[\"TopBar\"]\n"
+"    Shelf[\"Shelf\"]\n"
+"    Book1[\"Book\"]\n"
+"    Book2[\"Book\"]\n"
+"    BottomBar[\"BottomBar\"]\n"
+"    Dialog[\"Dialog ← overlay child\"]\n"
+"    Label[\"Label\"]\n"
+"    Button[\"Button\"]\n"
+"\n"
+"    Home --> TopBar\n"
+"    Home --> Shelf\n"
+"    Home --> BottomBar\n"
+"    Home --> Dialog\n"
+"    Shelf --> Book1\n"
+"    Shelf --> Book2\n"
+"    Dialog --> Label\n"
+"    Dialog --> Button\n"
+"```"
+msgstr ""
+
+#: src/contributing/event-system.md:42
+msgid ""
+"Events enter the tree from the main loop and travel **top-down** (root to "
+"leaves), with the highest z-level children checked first. Views can "
+"communicate back **up** the tree via the bus, or **globally** via the hub."
+msgstr ""
+
+#: src/contributing/event-system.md:46
+msgid "Hub vs Bus"
+msgstr ""
+
+#: src/contributing/event-system.md:48
+msgid "The two channels serve fundamentally different purposes:"
+msgstr ""
+
+#: src/contributing/event-system.md:50
+msgid ""
+"```mermaid\n"
+"flowchart TB\n"
+"    subgraph MainLoop[\"Main Loop\"]\n"
+"        rx[\"rx.recv()\"]\n"
+"        match[\"match evt { ... }\"]\n"
+"        handle[\"handle_event(root, &evt, &tx, &bus, ...)\"]\n"
+"        Hub[\"Hub (tx)\"]\n"
+"        Bus[\"Bus (VecDeque)\"]\n"
+"\n"
+"        rx --> match\n"
+"        match -->|dispatches to view tree| handle\n"
+"        handle --> Hub\n"
+"        handle --> Bus\n"
+"        Bus -->|unhandled bus events forwarded to hub| Hub\n"
+"    end\n"
+"```"
+msgstr ""
+
+#: src/contributing/event-system.md:67
+msgid "Hub (`Sender<Event>`)"
+msgstr ""
+
+#: src/contributing/event-system.md:69
+msgid ""
+"The hub is an `mpsc::Sender<Event>` — a global channel that sends events to "
+"the **main loop**. Events sent to the hub are processed in the **next "
+"iteration** of the main loop, not immediately."
+msgstr ""
+
+#: src/contributing/event-system.md:72
+msgid "**Use the hub when:**"
+msgstr ""
+
+#: src/contributing/event-system.md:74
+msgid ""
+"The event needs to be handled by the main loop directly (e.g., "
+"`Event::Close`, `Event::Open`, `Event::Notification`)"
+msgstr ""
+
+#: src/contributing/event-system.md:76
+msgid ""
+"The event should reach all views in a future dispatch cycle (e.g., "
+"`Event::Focus`)"
+msgstr ""
+
+#: src/contributing/event-system.md:77
+msgid "You need to communicate across unrelated parts of the view tree"
+msgstr ""
+
+#: src/contributing/event-system.md:80
+msgid "// Close a view — handled by the main loop's match statement\n"
+msgstr ""
+
+#: src/contributing/event-system.md:82
+msgid "// Show a notification — main loop creates the Notification view\n"
+msgstr ""
+
+#: src/contributing/event-system.md:85
+msgid "// Set focus — dispatched to all views in the next loop iteration\n"
+msgstr ""
+
+#: src/contributing/event-system.md:90
+msgid "Bus (`VecDeque<Event>`)"
+msgstr ""
+
+#: src/contributing/event-system.md:92
+msgid ""
+"The bus is a local `VecDeque<Event>` that passes events **from a child to "
+"its parent**. Events placed on the bus are handled synchronously during the "
+"current dispatch cycle."
+msgstr ""
+
+#: src/contributing/event-system.md:95
+msgid "**Use the bus when:**"
+msgstr ""
+
+#: src/contributing/event-system.md:97
+msgid "A child needs to communicate with its direct parent"
+msgstr ""
+
+#: src/contributing/event-system.md:98
+msgid ""
+"The parent is expected to handle the event (e.g., a button telling its "
+"parent dialog it was pressed)"
+msgstr ""
+
+#: src/contributing/event-system.md:100
+msgid "The event should bubble up through the view hierarchy"
+msgstr ""
+
+#: src/contributing/event-system.md:103
+msgid "// Child tells parent about a submission\n"
+msgstr ""
+
+#: src/contributing/event-system.md:105
+msgid "// Child requests parent to close it\n"
+msgstr ""
+
+#: src/contributing/event-system.md:110
+msgid "Bus Bubbling"
+msgstr ""
+
+#: src/contributing/event-system.md:112
+msgid ""
+"When a bus event is not handled by any ancestor view, it reaches the root "
+"and gets **forwarded to the hub** for processing in the next main loop "
+"iteration:"
+msgstr ""
+
+#: src/contributing/event-system.md:116
+msgid "// End of main loop iteration — unhandled bus events become hub events\n"
+msgstr ""
+
+#: src/contributing/event-system.md:122
+msgid "Event Dispatch"
+msgstr ""
+
+#: src/contributing/event-system.md:124
+msgid ""
+"The core dispatch function in `view/mod.rs` controls how events flow through "
+"the tree:"
+msgstr ""
+
+#: src/contributing/event-system.md:126
+msgid ""
+"```mermaid\n"
+"flowchart TD\n"
+"    Start[\"handle_event(view, event)\"] --> CheckLeaf{\"Is view a "
+"leaf<br/>(no children)?\"}\n"
+"\n"
+"    CheckLeaf -->|YES| HandleDirect[\"call view.handle_event()<br/>return "
+"result\"]\n"
+"    CheckLeaf -->|NO| ReverseIter[\"Step 1 - Iterate children in REVERSE "
+"order<br/>(highest z-level first)\"]\n"
+"\n"
+"    ReverseIter --> CheckChildren[\"For each child:<br/>call "
+"handle_event(child, event)\"]\n"
+"    CheckChildren --> Captured{\"Child returns true?\"}\n"
+"    Captured -->|YES| SetCaptured[\"captured = true<br/>BREAK\"]\n"
+"    Captured -->|NO| NextChild[\"Next child\"]\n"
+"    NextChild --> CheckChildren\n"
+"\n"
+"    SetCaptured --> ProcessBus[\"Step 2 - Process child_bus events\"]\n"
+"    CheckChildren -->|No more children| ProcessBus\n"
+"\n"
+"    ProcessBus --> BusEvent{\"For each event<br/>on child_bus\"}\n"
+"    BusEvent --> HandleBus[\"call view.handle_event(child_evt)\"]\n"
+"    HandleBus --> ViewHandles{\"View handles it?\"}\n"
+"    ViewHandles -->|YES| RemoveBus[\"remove from bus\"]\n"
+"    ViewHandles -->|NO| KeepBus[\"keep on bus<br/>(bubbles up)\"]\n"
+"    RemoveBus --> BusEvent\n"
+"    KeepBus --> BusEvent\n"
+"\n"
+"    BusEvent -->|No more bus events| CheckCaptured{\"NOT captured<br/>by any "
+"child?\"}\n"
+"    CheckCaptured -->|YES| HandleParent[\"Step 3 - call "
+"view.handle_event(event)<br/>return captured || view's result\"]\n"
+"    CheckCaptured -->|NO| ReturnCaptured[\"return captured\"]\n"
+"```"
+msgstr ""
+
+#: src/contributing/event-system.md:155
+msgid "Key Rules"
+msgstr ""
+
+#: src/contributing/event-system.md:157
+msgid ""
+"**Reverse iteration**: Children are checked from last to first (highest "
+"z-level first). This ensures overlays like dialogs and menus receive events "
+"before the views beneath them."
+msgstr ""
+
+#: src/contributing/event-system.md:160
+msgid ""
+"**Short-circuit on capture**: Once a child returns `true`, no other children "
+"or the parent view receive the event. This is why the Dialog's outside-tap "
+"handler works — it returns `true` to prevent the event from reaching views "
+"behind it."
+msgstr ""
+
+#: src/contributing/event-system.md:164
+msgid ""
+"**Parent only runs if uncaptured**: The parent's `handle_event` is only "
+"called if no child captured the event (`captured || "
+"view.handle_event(...)`). If `captured` is `true`, the parent is "
+"short-circuited."
+msgstr ""
+
+#: src/contributing/event-system.md:168
+msgid "Main Loop Event Handling"
+msgstr ""
+
+#: src/contributing/event-system.md:170
+msgid ""
+"The main loop (`app.rs`) receives events from the hub and handles them in "
+"two stages. First, `TaskManager` gets a chance to observe every event — this "
+"is where `ImportLibrary`, `ImportFinished`, and `ReindexDictionaries` are "
+"intercepted to schedule or coalesce background tasks. Then the event enters "
+"the large `match` statement, where some events are dispatched into the view "
+"tree and others are handled directly:"
+msgstr ""
+
+#: src/contributing/event-system.md:177
+msgid ""
+"```mermaid\n"
+"flowchart TB\n"
+"    subgraph MainLoop[\"Main Loop\"]\n"
+"        direction TB\n"
+"\n"
+"        Recv[\"rx.recv() → evt\"]\n"
+"        TaskManager[\"TaskManager::handle_event()<br/>(ImportLibrary, "
+"ImportFinished, ReindexDictionaries)\"]\n"
+"\n"
+"        Gesture[\"Event::Gesture(Tap/Swipe/...)\"]\n"
+"        GestureAction[\"Dispatched into view tree via handle_event()\"]\n"
+"\n"
+"        Close[\"Event::Close(id)\"]\n"
+"        CloseAction[\"Handled directly:<br/>locate_by_id() + remove\"]\n"
+"\n"
+"        Notification[\"Event::Notification(...)\"]\n"
+"        NotificationAction[\"Handled directly:<br/>create/update "
+"Notification\"]\n"
+"\n"
+"        Open[\"Event::Open(info)\"]\n"
+"        OpenAction[\"Handled directly:<br/>push Reader onto history\"]\n"
+"\n"
+"        Focus[\"Event::Focus(...)\"]\n"
+"        FocusAction[\"Dispatched into view tree via handle_event()\"]\n"
+"\n"
+"        Select[\"Event::Select(...)\"]\n"
+"        SelectAction[\"Some handled directly,<br/>some dispatched\"]\n"
+"\n"
+"        ImportLibrary[\"Event::ImportLibrary / ImportFinished / "
+"ReindexDictionaries\"]\n"
+"        ImportAction[\"Handled by TaskManager<br/>(schedules/coalesces "
+"tasks)\"]\n"
+"\n"
+"        Recv --> TaskManager\n"
+"        TaskManager --> Gesture\n"
+"        TaskManager --> Close\n"
+"        TaskManager --> Notification\n"
+"        TaskManager --> Open\n"
+"        TaskManager --> Focus\n"
+"        TaskManager --> Select\n"
+"        TaskManager --> ImportLibrary\n"
+"\n"
+"        Gesture --> GestureAction\n"
+"        Close --> CloseAction\n"
+"        Notification --> NotificationAction\n"
+"        Open --> OpenAction\n"
+"        Focus --> FocusAction\n"
+"        Select --> SelectAction\n"
+"        ImportLibrary --> ImportAction\n"
+"    end\n"
+"```"
+msgstr ""
+
+#: src/contributing/event-system.md:225
+msgid "Event::Close"
+msgstr ""
+
+#: src/contributing/event-system.md:227
+msgid ""
+"`Event::Close(ViewId)` is handled **directly** by the main loop using "
+"`locate_by_id()`, which searches only the **top-level children** of the root "
+"view:"
+msgstr ""
+
+#: src/contributing/event-system.md:240
+msgid ""
+"**Key limitation**: The main loop can only remove **direct children of the "
+"root**. To close nested views, either:"
+msgstr ""
+
+#: src/contributing/event-system.md:243
+msgid ""
+"**Use the parent's ViewId** (via hub): Removes the entire parent container"
+msgstr ""
+
+#: src/contributing/event-system.md:244
+msgid ""
+"**Use the bus**: Parent handles the close and removes just the specific child"
+msgstr ""
+
+#: src/contributing/event-system.md:246
+msgid ""
+"See [Why ViewId Matters for Close](#why-viewid-matters-for-close) and "
+"[Closing Nested Views via the Bus](#closing-nested-views-via-the-bus) for "
+"details."
+msgstr ""
+
+#: src/contributing/event-system.md:249
+msgid "Practical Example: Dialog Outside-Tap"
+msgstr ""
+
+#: src/contributing/event-system.md:251
+msgid ""
+"When a `Dialog` is tapped outside its bounds, the following sequence occurs:"
+msgstr ""
+
+#: src/contributing/event-system.md:280
+msgid "Why ViewId Matters for Close"
+msgstr ""
+
+#: src/contributing/event-system.md:282
+msgid ""
+"When using the **hub** to close views, `locate_by_id()` only finds top-level "
+"children. If a dialog is nested inside a parent, you must use the "
+"**parent's** `ViewId` — this removes the entire parent:"
+msgstr ""
+
+#: src/contributing/event-system.md:286
+msgid ""
+"```mermaid\n"
+"flowchart TD\n"
+"    Root[\"Root View\"]\n"
+"    Home[\"Home\"]\n"
+"    OtaView[\"OtaView (top-level)\"]\n"
+"    Dialog[\"Dialog (nested)\"]\n"
+"\n"
+"    Root --> Home\n"
+"    Root --> OtaView\n"
+"    OtaView --> Dialog\n"
+"\n"
+"    Note[\"hub.send(Event::Close(ViewId::Ota(Main)))<br/>→ Removes OtaView + "
+"Dialog\"]\n"
+"```"
+msgstr ""
+
+#: src/contributing/event-system.md:300
+msgid ""
+"To close just the nested view without affecting siblings, use the **bus** "
+"instead (see below)."
+msgstr ""
+
+#: src/contributing/event-system.md:302
+msgid "Closing Nested Views via the Bus"
+msgstr ""
+
+#: src/contributing/event-system.md:304
+msgid ""
+"Send `Event::Close` via the **bus** to close nested views. Parents handle "
+"bus events synchronously and can remove any child directly:"
+msgstr ""
+
+#: src/contributing/event-system.md:308
+msgid "// Child sends close via bus\n"
+msgstr ""
+
+#: src/contributing/event-system.md:325
+msgid "**Comparison:**"
+msgstr ""
+
+#: src/contributing/event-system.md:327
+msgid "Method"
+msgstr ""
+
+#: src/contributing/event-system.md:327
+msgid "Code"
+msgstr ""
+
+#: src/contributing/event-system.md:327
+msgid "Handler"
+msgstr ""
+
+#: src/contributing/event-system.md:327 src/contributing/event-system.md:351
+msgid "Scope"
+msgstr ""
+
+#: src/contributing/event-system.md:329
+msgid "Hub close"
+msgstr ""
+
+#: src/contributing/event-system.md:329
+msgid "`hub.send(Event::Close(id))`"
+msgstr ""
+
+#: src/contributing/event-system.md:329
+msgid "Main loop"
+msgstr ""
+
+#: src/contributing/event-system.md:329
+msgid "Top-level children only"
+msgstr ""
+
+#: src/contributing/event-system.md:330
+msgid "Bus close"
+msgstr ""
+
+#: src/contributing/event-system.md:330
+msgid "`bus.push_back(Event::Close(id))`"
+msgstr ""
+
+#: src/contributing/event-system.md:330
+msgid "Parent view"
+msgstr ""
+
+#: src/contributing/event-system.md:330
+msgid "Any child"
+msgstr ""
+
+#: src/contributing/event-system.md:332
+msgid "**Example implementation:**"
+msgstr ""
+
+#: src/contributing/event-system.md:338
+msgid "// Return false to bubble up so grandparent removes us\n"
+msgstr ""
+
+#: src/contributing/event-system.md:346
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:12
+msgid "Summary"
+msgstr ""
+
+#: src/contributing/event-system.md:348
+msgid "Aspect"
+msgstr ""
+
+#: src/contributing/event-system.md:348
+msgid "Hub"
+msgstr ""
+
+#: src/contributing/event-system.md:348
+msgid "Bus"
+msgstr ""
+
+#: src/contributing/event-system.md:350
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:149
+msgid "Type"
+msgstr ""
+
+#: src/contributing/event-system.md:350
+msgid "`mpsc::Sender<Event>`"
+msgstr ""
+
+#: src/contributing/event-system.md:350
+msgid "`VecDeque<Event>`"
+msgstr ""
+
+#: src/contributing/event-system.md:351
+msgid "Global (main loop)"
+msgstr ""
+
+#: src/contributing/event-system.md:351
+msgid "Local (parent-child)"
+msgstr ""
+
+#: src/contributing/event-system.md:352
+msgid "Timing"
+msgstr ""
+
+#: src/contributing/event-system.md:352
+msgid "Next loop iteration"
+msgstr ""
+
+#: src/contributing/event-system.md:352
+msgid "Current dispatch cycle"
+msgstr ""
+
+#: src/contributing/event-system.md:353
+msgid "Direction"
+msgstr ""
+
+#: src/contributing/event-system.md:353
+msgid "View → Main loop"
+msgstr ""
+
+#: src/contributing/event-system.md:353
+msgid "Child → Parent"
+msgstr ""
+
+#: src/contributing/event-system.md:354
+msgid "Unhandled events"
+msgstr ""
+
+#: src/contributing/event-system.md:354
+msgid "Processed by main loop `match`"
+msgstr ""
+
+#: src/contributing/event-system.md:354
+msgid "Forwarded to hub"
+msgstr ""
+
+#: src/contributing/event-system.md:355
+msgid "Use for"
+msgstr ""
+
+#: src/contributing/event-system.md:355
+msgid "Close, Focus, Notifications"
+msgstr ""
+
+#: src/contributing/event-system.md:355
+msgid "Submit, child-to-parent signals"
+msgstr ""
+
+#: src/contributing/telemetry/index.md:5
+msgid "Cadmus has three related observability paths:"
+msgstr ""
+
+#: src/contributing/telemetry/index.md:7
+msgid "`logging` for structured log export and local log files"
+msgstr ""
+
+#: src/contributing/telemetry/index.md:8
+msgid "`tracing` for distributed tracing and OTLP export"
+msgstr ""
+
+#: src/contributing/telemetry/index.md:9
+msgid "`profiling` for continuous profiling with Pyroscope"
+msgstr ""
+
+#: src/contributing/telemetry/index.md:11
+msgid ""
+"Use this section when you need to understand how those features fit "
+"together, what each one depends on, and how to run them locally."
+msgstr ""
+
+#: src/contributing/telemetry/index.md:14
+msgid ""
+"Cadmus assigns each run a unique Run ID using UUID v7. That Run ID ties "
+"together local log files, OTLP exports, and profiling data for the same app "
+"session."
+msgstr ""
+
+#: src/contributing/telemetry/index.md:18
+msgid "Pages"
+msgstr ""
+
+#: src/contributing/telemetry/index.md:20
+#: src/contributing/telemetry/tracing.md:111
+msgid "[Logging](logging.md)"
+msgstr ""
+
+#: src/contributing/telemetry/index.md:21
+#: src/contributing/telemetry/logging.md:82
+msgid "[Tracing](tracing.md)"
+msgstr ""
+
+#: src/contributing/telemetry/index.md:22
+#: src/contributing/telemetry/logging.md:83
+#: src/contributing/telemetry/tracing.md:112
+msgid "[Profiling](profiling.md)"
+msgstr ""
+
+#: src/contributing/telemetry/index.md:24
+#: src/contributing/telemetry/profiling.md:14
+msgid "Feature flags"
+msgstr ""
+
+#: src/contributing/telemetry/index.md:26
+msgid "`tracing` enables structured logs, distributed traces, and OTLP export."
+msgstr ""
+
+#: src/contributing/telemetry/index.md:27
+msgid "`profiling` enables heap and CPU profiling with Pyroscope."
+msgstr ""
+
+#: src/contributing/telemetry/index.md:28
+msgid "`telemetry` enables both `tracing` and `profiling` together in the app."
+msgstr ""
+
+#: src/contributing/telemetry/index.md:30
+msgid "Architecture"
+msgstr ""
+
+#: src/contributing/telemetry/index.md:32
+msgid "The telemetry stack is split into three layers:"
+msgstr ""
+
+#: src/contributing/telemetry/index.md:34
+msgid ""
+"Logging writes newline-delimited JSON to disk and can export log records "
+"over OTLP."
+msgstr ""
+
+#: src/contributing/telemetry/index.md:36
+msgid ""
+"Tracing creates spans around instrumented operations and exports them over "
+"OTLP."
+msgstr ""
+
+#: src/contributing/telemetry/index.md:38
+msgid "Profiling samples CPU and heap activity and pushes profiles to Pyroscope."
+msgstr ""
+
+#: src/contributing/telemetry/index.md:40
+msgid ""
+"When `telemetry` is enabled, Cadmus runs all three paths together. In local "
+"development this matches the default observability stack exposed by `devenv "
+"up`."
+msgstr ""
+
+#: src/contributing/telemetry/index.md:44
+msgid "Local setup"
+msgstr ""
+
+#: src/contributing/telemetry/index.md:46
+msgid ""
+"The development environment includes a full observability stack. Use the "
+"`cadmus-dev-otel` command to run the emulator with telemetry enabled."
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:5
+msgid ""
+"Cadmus writes structured JSON logs to disk and can export logs to an OTLP "
+"backend when the `tracing` feature is enabled."
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:8
+#: src/contributing/telemetry/tracing.md:8
+#: src/contributing/telemetry/profiling.md:8
+msgid "What it does"
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:10
+msgid "Writes newline-delimited JSON log files to the configured log directory"
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:11
+msgid ""
+"Adds run metadata so a single app session can be traced through log output"
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:12
+msgid "Optionally exports logs to an OpenTelemetry collector"
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:14
+#: src/contributing/telemetry/tracing.md:14
+msgid "Feature flag"
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:16
+msgid "`tracing` enables OTLP log export and shared tracing/logging context"
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:18
+msgid "Log file format"
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:20
+msgid "Cadmus writes newline-delimited JSON files named like this:"
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:26
+msgid "Each record includes these fields:"
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:28
+msgid "`timestamp`"
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:29
+msgid "`level`"
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:30
+msgid "`target`"
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:31
+msgid "`fields`"
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:32
+msgid "`spans`"
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:34
+msgid ""
+"The `spans` array carries active tracing context so log records can be "
+"matched back to the traced operation that emitted them."
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:37
+#: src/contributing/telemetry/tracing.md:86
+msgid "Resource attributes"
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:39
+msgid ""
+"When OTLP export is enabled, log records include the same resource metadata "
+"as traces:"
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:42
+#: src/contributing/telemetry/tracing.md:90
+msgid "`service.name = cadmus`"
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:43
+#: src/contributing/telemetry/tracing.md:91
+msgid "`service.version = <git describe output>`"
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:44
+#: src/contributing/telemetry/tracing.md:92
+msgid "`cadmus.run_id = <uuid-v7>`"
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:45
+#: src/contributing/telemetry/tracing.md:93
+msgid "`hostname = <system hostname>`"
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:47
+#: src/contributing/telemetry/tracing.md:95
+#: src/contributing/telemetry/profiling.md:29
+msgid "Configuration"
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:49
+msgid ""
+"See the [settings reference](../../settings/index.md#logging) for the full "
+"logging configuration. The main options are:"
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:52
+msgid "`logging.enabled`"
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:53
+msgid "`logging.level`"
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:54
+msgid "`logging.max-files`"
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:55
+msgid "`logging.directory`"
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:56
+msgid "`logging.otlp-endpoint`"
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:58
+#: src/contributing/telemetry/tracing.md:100
+msgid ""
+"`OTEL_EXPORTER_OTLP_ENDPOINT` overrides `logging.otlp-endpoint` when both "
+"are set."
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:61
+msgid ""
+"`RUST_LOG` overrides the configured log level. This is useful when you need "
+"trace-level output for a single subsystem without editing `Settings.toml`."
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:65
+msgid "# Enable debug logs globally\n"
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:66
+msgid "debug"
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:67
+msgid "# Enable trace logs for a specific module\n"
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:72
+#: src/contributing/telemetry/profiling.md:19
+msgid "Runtime behavior"
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:74
+msgid ""
+"When `tracing` is enabled, log export is initialized during app startup and "
+"shut down during app exit."
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:77
+msgid ""
+"Cadmus always writes local JSON logs. OTLP export is an additional sink "
+"layered on top when an endpoint is configured."
+msgstr ""
+
+#: src/contributing/telemetry/logging.md:80
+#: src/contributing/telemetry/tracing.md:109
+msgid "Related docs"
+msgstr ""
+
+#: src/contributing/telemetry/tracing.md:5
+msgid ""
+"Cadmus uses `tracing` instrumentation to capture execution flow through the "
+"app and export spans to an OTLP backend."
+msgstr ""
+
+#: src/contributing/telemetry/tracing.md:10
+msgid "Adds spans around key operations in the app and core crates"
+msgstr ""
+
+#: src/contributing/telemetry/tracing.md:11
+msgid "Captures timing, fields, and parent-child relationships between spans"
+msgstr ""
+
+#: src/contributing/telemetry/tracing.md:12
+msgid "Exports traces to an OpenTelemetry collector when configured"
+msgstr ""
+
+#: src/contributing/telemetry/tracing.md:16
+msgid "`tracing` enables tracing support in the codebase"
+msgstr ""
+
+#: src/contributing/telemetry/tracing.md:18
+msgid "Instrumentation"
+msgstr ""
+
+#: src/contributing/telemetry/tracing.md:20
+msgid ""
+"Most view and runtime chokepoints are instrumented with conditional "
+"compilation so tracing can be compiled out when the feature is disabled."
+msgstr ""
+
+#: src/contributing/telemetry/tracing.md:23
+msgid "Each instrumented function can capture:"
+msgstr ""
+
+#: src/contributing/telemetry/tracing.md:25
+msgid "function and module name"
+msgstr ""
+
+#: src/contributing/telemetry/tracing.md:26
+msgid "selected input fields"
+msgstr ""
+
+#: src/contributing/telemetry/tracing.md:27
+msgid "execution duration"
+msgstr ""
+
+#: src/contributing/telemetry/tracing.md:28
+msgid "return values at `TRACE` level"
+msgstr ""
+
+#: src/contributing/telemetry/tracing.md:29
+msgid "parent-child span relationships"
+msgstr ""
+
+#: src/contributing/telemetry/tracing.md:31
+msgid "View code is instrumented around two high-value paths:"
+msgstr ""
+
+#: src/contributing/telemetry/tracing.md:33
+msgid "`handle_event` methods for event flow through the UI tree"
+msgstr ""
+
+#: src/contributing/telemetry/tracing.md:34
+msgid "`render` methods for rendering and layout timing"
+msgstr ""
+
+#: src/contributing/telemetry/tracing.md:36
+msgid ""
+"For detailed instrumentation conventions, see "
+"`.github/instructions/rust-instrumentation.instructions.md`."
+msgstr ""
+
+#: src/contributing/telemetry/tracing.md:39
+msgid "Example: instrument a function"
+msgstr ""
+
+#: src/contributing/telemetry/tracing.md:41
+msgid ""
+"Use `#[cfg_attr(feature = \"tracing\", tracing::instrument(...))]` on "
+"functions that should create a span for each call."
+msgstr ""
+
+#: src/contributing/telemetry/tracing.md:46
+msgid "\"tracing\""
+msgstr ""
+
+#: src/contributing/telemetry/tracing.md:50
+msgid "\"Saving cover image\""
+msgstr ""
+
+#: src/contributing/telemetry/tracing.md:58
+msgid ""
+"Use `skip(...)` for large values, borrowed buffers, or types with noisy "
+"`Debug` output. Add `fields(...)` for the identifiers you will actually "
+"query in Tempo or logs."
+msgstr ""
+
+#: src/contributing/telemetry/tracing.md:62
+msgid "Example: instrument a closure"
+msgstr ""
+
+#: src/contributing/telemetry/tracing.md:64
+msgid ""
+"For a short synchronous closure, create a span and run the closure inside it "
+"with `in_scope()`."
+msgstr ""
+
+#: src/contributing/telemetry/tracing.md:68
+msgid "\"sorting\""
+msgstr ""
+
+#: src/contributing/telemetry/tracing.md:75
+msgid ""
+"This is the usual pattern when you want to time a single closure body "
+"without extracting it into a separate function."
+msgstr ""
+
+#: src/contributing/telemetry/tracing.md:78
+msgid "OTLP export"
+msgstr ""
+
+#: src/contributing/telemetry/tracing.md:80
+msgid ""
+"When `tracing` is enabled, Cadmus initializes a tracer provider that exports "
+"to `<endpoint>/v1/traces` using batch span processors."
+msgstr ""
+
+#: src/contributing/telemetry/tracing.md:83
+msgid ""
+"This gives you distributed traces in backends like Tempo, Jaeger, or any "
+"other OTLP-compatible collector."
+msgstr ""
+
+#: src/contributing/telemetry/tracing.md:88
+msgid "Each exported span includes shared process metadata:"
+msgstr ""
+
+#: src/contributing/telemetry/tracing.md:97
+msgid ""
+"See the [settings reference](../../settings/index.md#logging) for the full "
+"logging and OTLP configuration. The main option is `logging.otlp-endpoint`."
+msgstr ""
+
+#: src/contributing/telemetry/tracing.md:103
+msgid "To build Cadmus with tracing support:"
+msgstr ""
+
+#: src/contributing/telemetry/profiling.md:5
+msgid ""
+"Cadmus supports continuous profiling with Pyroscope when the `profiling` "
+"feature is enabled."
+msgstr ""
+
+#: src/contributing/telemetry/profiling.md:10
+msgid "Uses jemalloc heap profiling for allocation data"
+msgstr ""
+
+#: src/contributing/telemetry/profiling.md:11
+msgid "Uses pprof for CPU profiling data"
+msgstr ""
+
+#: src/contributing/telemetry/profiling.md:12
+msgid "Pushes both profile types to Pyroscope"
+msgstr ""
+
+#: src/contributing/telemetry/profiling.md:16
+msgid "`profiling` enables profiling support in the codebase"
+msgstr ""
+
+#: src/contributing/telemetry/profiling.md:17
+msgid "`telemetry` enables profiling together with tracing"
+msgstr ""
+
+#: src/contributing/telemetry/profiling.md:21
+msgid ""
+"Profiling is initialized during app startup and shut down during app exit. "
+"If a Pyroscope endpoint is configured, Cadmus starts collecting profiles "
+"right away so early startup work is included."
+msgstr ""
+
+#: src/contributing/telemetry/profiling.md:25
+msgid ""
+"The app configures jemalloc as the global allocator when `profiling` is "
+"enabled and enables heap profiling at process startup. CPU profiling runs "
+"alongside it through the Pyroscope agent."
+msgstr ""
+
+#: src/contributing/telemetry/profiling.md:31
+msgid ""
+"See the [settings reference](../../settings/index.md#logging) for the full "
+"logging and profiling configuration."
+msgstr ""
+
+#: src/contributing/telemetry/profiling.md:35
+msgid "`PYROSCOPE_SERVER_URL`"
+msgstr ""
+
+#: src/contributing/telemetry/profiling.md:37
+msgid ""
+"`PYROSCOPE_SERVER_URL` overrides `logging.pyroscope-endpoint` when both are "
+"set."
+msgstr ""
+
+#: src/contributing/telemetry/profiling.md:40
+msgid "To build Cadmus with profiling support:"
+msgstr ""
+
+#: src/contributing/telemetry/profiling.md:46
+msgid "To build Cadmus with tracing and profiling together:"
+msgstr ""
+
+#: src/contributing/telemetry/profiling.md:52
+msgid "Profile types"
+msgstr ""
+
+#: src/contributing/telemetry/profiling.md:54
+msgid "Cadmus currently exports:"
+msgstr ""
+
+#: src/contributing/telemetry/profiling.md:56
+msgid "heap allocation profiles via jemalloc"
+msgstr ""
+
+#: src/contributing/telemetry/profiling.md:57
+msgid "CPU profiles via pprof-rs"
+msgstr ""
+
+#: src/contributing/telemetry/profiling.md:59
+msgid "Both profile streams are pushed to the configured Pyroscope server."
+msgstr ""
+
+#: src/contributing/telemetry/profiling.md:61
+#: src/contributing/website/index.md:37
+msgid "Local development"
+msgstr ""
+
+#: src/contributing/telemetry/profiling.md:63
+msgid ""
+"The `cadmus-dev-otel` command starts the emulator with profiling enabled and "
+"the local Pyroscope service available at <http://localhost:4040>."
+msgstr ""
+
+#: src/contributing/telemetry/profiling.md:66
+msgid ""
+"With the full devenv stack running, traces go to Tempo, logs go to Loki, and "
+"profiles go to Pyroscope. That makes it possible to correlate a single run "
+"across all three observability backends."
+msgstr ""
+
+#: src/contributing/website/index.md:5
+msgid ""
+"Cadmus ships a unified static site that combines the Next.js landing page, "
+"translated mdBook user guide, Rust API docs, and Storybook component "
+"gallery. The site is built by `cargo xtask docs` and written to "
+"`website/out/`."
+msgstr ""
+
+#: src/contributing/website/index.md:9
+msgid ""
+"For editing the mdBook user guide itself, see [User guide](user-guide.md)."
+msgstr ""
+
+#: src/contributing/website/index.md:11
+msgid "Site structure"
+msgstr ""
+
+#: src/contributing/website/index.md:13
+msgid ""
+"All paths are locale-first (see "
+"[`website/i18n/routing.ts`](https://github.com/ogkevin/cadmus/blob/master/website/i18n/routing.ts) "
+"and "
+"[`website/lib/doc-hrefs.ts`](https://github.com/ogkevin/cadmus/blob/master/website/lib/doc-hrefs.ts)):"
+msgstr ""
+
+#: src/contributing/website/index.md:16
+msgid "**Landing**: `/{locale}/` (e.g. `/en/`, `/fr/`)"
+msgstr ""
+
+#: src/contributing/website/index.md:17
+msgid ""
+"**User guide**: `/{locale}/guide/` (mdBook HTML symlinked into "
+"`website/public/`)"
+msgstr ""
+
+#: src/contributing/website/index.md:18
+msgid "**API reference**: `/{locale}/api/cadmus_core/` (cargo doc)"
+msgstr ""
+
+#: src/contributing/website/index.md:19
+msgid "**Storybook**: `/{locale}/storybook/`"
+msgstr ""
+
+#: src/contributing/website/index.md:21
+msgid "Deployed URLs"
+msgstr ""
+
+#: src/contributing/website/index.md:23
+msgid "**Cloudflare Pages**: <https://cadmus-dt6.pages.dev/>"
+msgstr ""
+
+#: src/contributing/website/index.md:24
+msgid ""
+"**PR previews**: `https://pr-{NUMBER}.cadmus-dt6.pages.dev/` (branch "
+"`pr-{NUMBER}` in CI)"
+msgstr ""
+
+#: src/contributing/website/index.md:25
+msgid ""
+"**GitHub Pages (mirror)**: <https://ogkevin.github.io/cadmus/> (built with "
+"`NEXT_PUBLIC_BASE_PATH=/cadmus`)"
+msgstr ""
+
+#: src/contributing/website/index.md:28
+msgid ""
+"Legacy paths `/guide/`, `/api/`, and `/storybook/` redirect to `/en/...` via "
+"[`website/public/_redirects`](https://github.com/ogkevin/cadmus/blob/master/website/public/_redirects) "
+"on Cloudflare Pages (including splat rules for deep `/api/*` and "
+"`/storybook/*` paths) and generated HTML redirects on GitHub Pages. The docs "
+"build also symlinks cargo-doc to `website/public/api/` so GitHub Pages can "
+"serve deep API paths as static files. In-guide API links are rewritten "
+"client-side by "
+"[`docs/lang-picker.js`](https://github.com/ogkevin/cadmus/blob/master/docs/lang-picker.js) "
+"to preserve the reader's locale."
+msgstr ""
+
+#: src/contributing/website/index.md:41
+msgid "# full static site → website/out/\n"
+msgstr ""
+
+#: src/contributing/website/index.md:42
+msgid "# Next.js dev server → http://localhost:3000\n"
+msgstr ""
+
+#: src/contributing/website/index.md:45
+msgid "**Full-site preview** (matches CI):"
+msgstr ""
+
+#: src/contributing/website/index.md:52
+msgid "**Fast iteration**:"
+msgstr ""
+
+#: src/contributing/website/index.md:54
+msgid "Website UI: `cd website && npm run dev`"
+msgstr ""
+
+#: src/contributing/website/index.md:55
+msgid "Storybook: `cd website && npm run storybook` (port 6006)"
+msgstr ""
+
+#: src/contributing/website/index.md:56
+msgid ""
+"`cadmus-docs-serve` reminds you to run `cargo xtask docs --mdbook-only` "
+"first if guide content is missing"
+msgstr ""
+
+#: src/contributing/website/index.md:59
+msgid ""
+"Prerequisites: devenv provides `mdbook`, `mdbook-mermaid`, and `npm`; the "
+"`website:install` devenv task handles `npm install`."
+msgstr ""
+
+#: src/contributing/website/index.md:62
+msgid "Editing website content"
+msgstr ""
+
+#: src/contributing/website/index.md:64
+msgid "Components and Storybook"
+msgstr ""
+
+#: src/contributing/website/index.md:66
+msgid ""
+"Build the website from **small, reusable components** — one concern per "
+"component under `website/components/`. Each component should have a matching "
+"Storybook story (`index.stories.tsx` next to `index.tsx`) so it can be "
+"developed and reviewed in isolation."
+msgstr ""
+
+#: src/contributing/website/index.md:70
+msgid ""
+"Pages (`website/components/pages/`) and larger components compose these "
+"building blocks. For example, the landing page assembles `Cadmus`, action "
+"buttons, `DocGrid`, and `SiteFooter` from their own components rather than "
+"inlining markup."
+msgstr ""
+
+#: src/contributing/website/index.md:74
+msgid "Preview components locally:"
+msgstr ""
+
+#: src/contributing/website/index.md:77
+msgid "# http://localhost:6006\n"
+msgstr ""
+
+#: src/contributing/website/index.md:80
+msgid "Run `cd website && npm run lint` before opening a PR."
+msgstr ""
+
+#: src/contributing/website/index.md:82
+msgid "Translatable UI text"
+msgstr ""
+
+#: src/contributing/website/index.md:84
+msgid ""
+"**Every user-visible string** in a website component must be translatable. "
+"Do not hard-code copy in JSX."
+msgstr ""
+
+#: src/contributing/website/index.md:87
+msgid ""
+"Add the English string to "
+"[`website/messages/en.json`](https://github.com/ogkevin/cadmus/blob/master/website/messages/en.json) "
+"(group keys by component or section)."
+msgstr ""
+
+#: src/contributing/website/index.md:90
+msgid ""
+"Read it in the component with [next-intl](https://next-intl.dev): "
+"`useTranslations(\"section\")` and `t(\"key\")`."
+msgstr ""
+
+#: src/contributing/website/index.md:92
+msgid ""
+"Other locales are filled in on Crowdin — do not hand-edit "
+"`website/messages/<lang>.json`."
+msgstr ""
+
+#: src/contributing/website/index.md:94
+msgid ""
+"See [Translations](../translations/index.md) for the Crowdin workflow and "
+"[Translations — for developers](../translations/developers.md) for adding "
+"website strings."
+msgstr ""
+
+#: src/contributing/website/index.md:97
+msgid "What you change"
+msgstr ""
+
+#: src/contributing/website/index.md:97
+msgid "Where"
+msgstr ""
+
+#: src/contributing/website/index.md:97
+msgid "Follow-up"
+msgstr ""
+
+#: src/contributing/website/index.md:99
+msgid "UI copy"
+msgstr ""
+
+#: src/contributing/website/index.md:99
+#: src/contributing/translations/index.md:22
+msgid "`website/messages/en.json`"
+msgstr ""
+
+#: src/contributing/website/index.md:99
+msgid "[Translations](../translations/index.md)"
+msgstr ""
+
+#: src/contributing/website/index.md:100
+msgid "Component markup"
+msgstr ""
+
+#: src/contributing/website/index.md:100
+msgid "`website/components/**`"
+msgstr ""
+
+#: src/contributing/website/index.md:100
+msgid "`index.stories.tsx`, `npm run lint`"
+msgstr ""
+
+#: src/contributing/website/index.md:101
+msgid "Page layout"
+msgstr ""
+
+#: src/contributing/website/index.md:101
+msgid "`website/components/pages/**`"
+msgstr ""
+
+#: src/contributing/website/index.md:101
+msgid "Compose existing components"
+msgstr ""
+
+#: src/contributing/website/index.md:103
+msgid "Build pipeline"
+msgstr ""
+
+#: src/contributing/website/index.md:105
+msgid ""
+"`cargo xtask docs` (see "
+"[`xtask/src/tasks/docs.rs`](https://github.com/ogkevin/cadmus/blob/master/xtask/src/tasks/docs.rs)) "
+"runs:"
+msgstr ""
+
+#: src/contributing/website/index.md:108
+msgid "Install mdbook-mermaid assets"
+msgstr ""
+
+#: src/contributing/website/index.md:109
+msgid "Build English mdBook (`docs/book/html/`)"
+msgstr ""
+
+#: src/contributing/website/index.md:110
+msgid "Build translated mdBooks per `docs/po/*.po`"
+msgstr ""
+
+#: src/contributing/website/index.md:111
+msgid "`cargo doc` → `target/doc/`"
+msgstr ""
+
+#: src/contributing/website/index.md:112
+msgid "Inject git version into API HTML"
+msgstr ""
+
+#: src/contributing/website/index.md:113
+msgid "Write `website/public/_shared/locales.json`"
+msgstr ""
+
+#: src/contributing/website/index.md:114
+msgid "Run `generate-version.mjs` + `generate-locales.mjs`"
+msgstr ""
+
+#: src/contributing/website/index.md:115
+msgid "Build Storybook → `website/storybook-static/`"
+msgstr ""
+
+#: src/contributing/website/index.md:116
+msgid "Symlink guide/api/storybook into `website/public/{locale}/`"
+msgstr ""
+
+#: src/contributing/website/index.md:117
+msgid "`next build` (static export) → `website/out/`"
+msgstr ""
+
+#: src/contributing/website/index.md:118
+msgid ""
+"Deduplicate shared api/storybook trees via symlinks in `website/out/_shared/`"
+msgstr ""
+
+#: src/contributing/website/index.md:120
+msgid "`--mdbook-only` stops after step 3 (see [User guide](user-guide.md))."
+msgstr ""
+
+#: src/contributing/website/index.md:122
+msgid "CI and deployment"
+msgstr ""
+
+#: src/contributing/website/index.md:124
+msgid ""
+"[`.github/workflows/cadmus-docs.yml`](https://github.com/ogkevin/cadmus/blob/master/.github/workflows/cadmus-docs.yml) "
+"builds and deploys the site:"
+msgstr ""
+
+#: src/contributing/website/index.md:127
+msgid ""
+"Triggers on changes to `docs/**`, `website/**`, `crates/**/*.rs`, the "
+"doc-tools action, and the workflow file"
+msgstr ""
+
+#: src/contributing/website/index.md:129
+msgid "`cargo xtask docs` → artifact `website/out`"
+msgstr ""
+
+#: src/contributing/website/index.md:130
+msgid "Separate GitHub Pages rebuild with `NEXT_PUBLIC_BASE_PATH=/cadmus`"
+msgstr ""
+
+#: src/contributing/website/index.md:131
+msgid ""
+"PR previews on Cloudflare Pages for non-fork PRs (fork PRs still build; no "
+"preview deploy)"
+msgstr ""
+
+#: src/contributing/website/index.md:133
+msgid "Reviewing changes"
+msgstr ""
+
+#: src/contributing/website/index.md:135
+msgid ""
+"When you open a pull request that modifies website or documentation files, a "
+"preview deployment is created automatically for non-fork PRs. The PR checks "
+"panel shows a link to the preview URL "
+"(`https://pr-{NUMBER}.cadmus-dt6.pages.dev/`)."
+msgstr ""
+
+#: src/contributing/website/user-guide.md:5
+msgid ""
+"The Cadmus user guide is an [mdBook](https://rust-lang.github.io/mdBook/) "
+"project under [`docs/`](https://github.com/ogkevin/cadmus/tree/master/docs). "
+"English sources live in `docs/src/`; translated builds are produced from "
+"`docs/po/*.po` and embedded into the website at `/{locale}/guide/` (see "
+"[Website](index.md))."
+msgstr ""
+
+#: src/contributing/website/user-guide.md:10
+msgid "Source layout"
+msgstr ""
+
+#: src/contributing/website/user-guide.md:12
+msgid ""
+"**User-facing pages** — `docs/src/**/*.md` outside `contributing/` "
+"(installation, settings, UI, library, troubleshooting, …). Listed in "
+"[`docs/src/SUMMARY.md`](https://github.com/ogkevin/cadmus/blob/master/docs/src/SUMMARY.md)."
+msgstr ""
+
+#: src/contributing/website/user-guide.md:14
+msgid ""
+"**Contributor pages** — `docs/src/contributing/**`. Wrapped in `<!-- "
+"i18n:skip-start/end -->` so they are not extracted for translation."
+msgstr ""
+
+#: src/contributing/website/user-guide.md:17
+msgid "Building locally"
+msgstr ""
+
+#: src/contributing/website/user-guide.md:20
+msgid "# English + translated books → docs/book/\n"
+msgstr ""
+
+#: src/contributing/website/user-guide.md:23
+msgid ""
+"English HTML output: `docs/book/html/`. Translated locales: "
+"`docs/book/{locale}/html/`."
+msgstr ""
+
+#: src/contributing/website/user-guide.md:25
+msgid ""
+"`--mdbook-only` skips the website build. It is also used by the `docs:build` "
+"devenv task to produce the EPUB embedded in `cadmus-core`."
+msgstr ""
+
+#: src/contributing/website/user-guide.md:28
+msgid ""
+"To preview the guide inside the full site, run `cargo xtask docs` and see "
+"[Website](index.md)."
+msgstr ""
+
+#: src/contributing/website/user-guide.md:30
+msgid "Editing user-facing pages"
+msgstr ""
+
+#: src/contributing/website/user-guide.md:32
+msgid "After changing English user-guide Markdown:"
+msgstr ""
+
+#: src/contributing/website/user-guide.md:35
+msgid "# regenerates docs/po/messages.pot\n"
+msgstr ""
+
+#: src/contributing/website/user-guide.md:38
+msgid ""
+"Commit the updated `docs/po/messages.pot` alongside your edits. Other "
+"locales are filled in on [Crowdin](https://crowdin.com/project/cadmus) — do "
+"not hand-edit `docs/po/*.po`."
+msgstr ""
+
+#: src/contributing/website/user-guide.md:41
+msgid ""
+"See [Translations — for developers](../translations/developers.md) for "
+"`i18n:skip` directives and the full translation workflow."
+msgstr ""
+
+#: src/contributing/website/user-guide.md:44
+msgid "mdBook configuration"
+msgstr ""
+
+#: src/contributing/website/user-guide.md:46
+msgid ""
+"[`docs/book.toml`](https://github.com/ogkevin/cadmus/blob/master/docs/book.toml) "
+"— book metadata, gettext preprocessor, Mermaid, EPUB output"
+msgstr ""
+
+#: src/contributing/website/user-guide.md:48
+msgid ""
+"[`docs/lang-picker.js`](https://github.com/ogkevin/cadmus/blob/master/docs/lang-picker.js) "
+"— sidebar language dropdown (reads `website/public/_shared/locales.json` at "
+"build time)"
+msgstr ""
+
+#: src/contributing/translations/index.md:5
+msgid "Help translate on Crowdin"
+msgstr ""
+
+#: src/contributing/translations/index.md:7
+msgid ""
+"The easiest way to contribute translations is on "
+"[Crowdin](https://crowdin.com/project/cadmus). UI strings, the user guide, "
+"and the website are all translated there."
+msgstr ""
+
+#: src/contributing/translations/index.md:11
+msgid ""
+"\\[!NOTE\\] Direct pull requests to `docs/po/*.po`, "
+"`crates/core/i18n/*/*.ftl`, or `website/messages/*.json` are discouraged. "
+"Crowdin keeps translators coordinated and avoids merge conflicts."
+msgstr ""
+
+#: src/contributing/translations/index.md:16
+msgid "Three translation surfaces"
+msgstr ""
+
+#: src/contributing/translations/index.md:18
+msgid "What"
+msgstr ""
+
+#: src/contributing/translations/index.md:18
+msgid "System"
+msgstr ""
+
+#: src/contributing/translations/index.md:18
+msgid "Source files"
+msgstr ""
+
+#: src/contributing/translations/index.md:18
+msgid "Crowdin source"
+msgstr ""
+
+#: src/contributing/translations/index.md:20
+msgid "Cadmus UI"
+msgstr ""
+
+#: src/contributing/translations/index.md:20
+msgid "[Fluent](https://projectfluent.org) FTL"
+msgstr ""
+
+#: src/contributing/translations/index.md:20
+msgid "`crates/core/i18n/<lang>/cadmus_core.ftl`"
+msgstr ""
+
+#: src/contributing/translations/index.md:20
+msgid "`crates/core/i18n/en-GB/*.ftl`"
+msgstr ""
+
+#: src/contributing/translations/index.md:21
+msgid "User guide (mdBook)"
+msgstr ""
+
+#: src/contributing/translations/index.md:21
+msgid "GNU gettext PO"
+msgstr ""
+
+#: src/contributing/translations/index.md:21
+msgid "`docs/po/<lang>.po`"
+msgstr ""
+
+#: src/contributing/translations/index.md:21
+msgid "`docs/po/messages.pot`"
+msgstr ""
+
+#: src/contributing/translations/index.md:22
+msgid "[next-intl](https://next-intl.dev) JSON"
+msgstr ""
+
+#: src/contributing/translations/index.md:22
+msgid "`website/messages/<lang>.json`"
+msgstr ""
+
+#: src/contributing/translations/index.md:24
+msgid ""
+"The website strings cover the landing page, nav, doc-grid cards, and footer. "
+"The mdBook user guide is a separate, larger translation surface embedded "
+"into the site."
+msgstr ""
+
+#: src/contributing/translations/index.md:28
+msgid "How Crowdin sync works"
+msgstr ""
+
+#: src/contributing/translations/index.md:30
+msgid ""
+"```mermaid\n"
+"flowchart LR\n"
+"  contributor[Contributor merges English changes]\n"
+"  crowdin[Crowdin project]\n"
+"  ci[Crowdin GitHub Action]\n"
+"  l10nPR[\"l10n PR (l10n/main)\"]\n"
+"  main[main branch]\n"
+"\n"
+"  contributor --> crowdin\n"
+"  crowdin --> ci\n"
+"  ci --> l10nPR\n"
+"  l10nPR --> main\n"
+"```"
+msgstr ""
+
+#: src/contributing/translations/index.md:44
+msgid ""
+"[`crowdin.yml`](https://github.com/ogkevin/cadmus/blob/master/crowdin.yml) "
+"maps all three English sources to per-locale paths (`%two_letters_code%`)."
+msgstr ""
+
+#: src/contributing/translations/index.md:46
+msgid ""
+"[`.github/workflows/crowdin.yml`](https://github.com/ogkevin/cadmus/blob/master/.github/workflows/crowdin.yml) "
+"runs on pushes to `main` and on pull requests that touch "
+"`crates/core/i18n/**`, `docs/po/**`, or `website/messages/**`."
+msgstr ""
+
+#: src/contributing/translations/index.md:49
+msgid ""
+"The action uploads sources and existing translations, downloads updates, and "
+"opens or updates an `l10n/<branch>` pull request labelled `automated`, "
+"`l10n`, and `crowdin`."
+msgstr ""
+
+#: src/contributing/translations/index.md:52
+msgid ""
+"**Open Crowdin sync PRs:** "
+"[github.com/ogkevin/cadmus/pulls?q=is%3Aopen+label%3Acrowdin](https://github.com/ogkevin/cadmus/pulls?q=is%3Aopen+label%3Acrowdin)"
+msgstr ""
+
+#: src/contributing/translations/index.md:55
+msgid "How translations are wired at build time"
+msgstr ""
+
+#: src/contributing/translations/index.md:57
+msgid "UI (Fluent)"
+msgstr ""
+
+#: src/contributing/translations/index.md:59
+msgid ""
+"English fallback: `en-GB` "
+"([`crates/core/i18n/en-GB/cadmus_core.ftl`](https://github.com/ogkevin/cadmus/blob/master/crates/core/i18n/en-GB/cadmus_core.ftl))."
+msgstr ""
+
+#: src/contributing/translations/index.md:61
+msgid ""
+"[`crates/core/src/i18n.rs`](https://github.com/ogkevin/cadmus/blob/master/crates/core/src/i18n.rs) "
+"embeds FTL files at compile time via `rust-embed` / `i18n_embed`; `fl!()` "
+"resolves message IDs at compile time."
+msgstr ""
+
+#: src/contributing/translations/index.md:64
+msgid ""
+"[`crates/core/build.rs`](https://github.com/ogkevin/cadmus/blob/master/crates/core/build.rs) "
+"scans `i18n/` subdirectories and emits `AVAILABLE_LOCALES` for the Settings "
+"language picker."
+msgstr ""
+
+#: src/contributing/translations/index.md:67
+msgid "Active language comes from `settings.locale` at startup."
+msgstr ""
+
+#: src/contributing/translations/index.md:69
+msgid "User guide (gettext / mdBook)"
+msgstr ""
+
+#: src/contributing/translations/index.md:71
+msgid ""
+"[`docs/book.toml`](https://github.com/ogkevin/cadmus/blob/master/docs/book.toml) "
+"`[preprocessor.gettext]` substitutes translated strings during mdBook build."
+msgstr ""
+
+#: src/contributing/translations/index.md:73
+msgid "`cargo xtask docs` builds one mdBook output per `docs/po/*.po` locale."
+msgstr ""
+
+#: src/contributing/translations/index.md:74
+msgid ""
+"[`docs/lang-picker.js`](https://github.com/ogkevin/cadmus/blob/master/docs/lang-picker.js) "
+"reads `website/public/_shared/locales.json` for the mdBook sidebar language "
+"dropdown."
+msgstr ""
+
+#: src/contributing/translations/index.md:78
+msgid "Website (Next.js / next-intl)"
+msgstr ""
+
+#: src/contributing/translations/index.md:80
+msgid ""
+"English source: "
+"[`website/messages/en.json`](https://github.com/ogkevin/cadmus/blob/master/website/messages/en.json); "
+"locale files loaded by "
+"[`website/i18n/request.ts`](https://github.com/ogkevin/cadmus/blob/master/website/i18n/request.ts)."
+msgstr ""
+
+#: src/contributing/translations/index.md:84
+msgid ""
+"[`website/scripts/generate-locales.mjs`](https://github.com/ogkevin/cadmus/blob/master/website/scripts/generate-locales.mjs) "
+"scans `docs/po/*.po` (plus `en`) and writes "
+"[`website/i18n/locales.generated.ts`](https://github.com/ogkevin/cadmus/blob/master/website/i18n/locales.generated.ts) "
+"— the website locale list follows the mdBook translation set."
+msgstr ""
+
+#: src/contributing/translations/index.md:88
+msgid ""
+"`cargo xtask docs` orchestrates the full website build: mdBook per locale → "
+"`generate-locales.mjs` / `generate-version.mjs` → symlinks under "
+"`website/public/<locale>/guide/` → `next build` → static export at "
+"`website/out/<locale>/`."
+msgstr ""
+
+#: src/contributing/translations/index.md:92
+msgid ""
+"The language switcher on the landing page "
+"([`website/components/language-switcher/`](https://github.com/ogkevin/cadmus/tree/master/website/components/language-switcher)) "
+"routes between locale-prefixed site paths; each locale's `/guide/` subtree "
+"is the translated mdBook output."
+msgstr ""
+
+#: src/contributing/translations/index.md:97
+msgid ""
+"For adding new English source strings or updating the POT template, see [For "
+"developers](developers.md)."
+msgstr ""
+
+#: src/contributing/translations/developers.md:5
+msgid ""
+"This page is for contributors who change English source strings or "
+"documentation. Translators should use "
+"[Crowdin](https://crowdin.com/project/cadmus) or see the main "
+"[Translations](index.md) page."
+msgstr ""
+
+#: src/contributing/translations/developers.md:9
+msgid "Adding UI strings"
+msgstr ""
+
+#: src/contributing/translations/developers.md:11
+msgid ""
+"Add the message to "
+"[`crates/core/i18n/en-GB/cadmus_core.ftl`](https://github.com/ogkevin/cadmus/blob/master/crates/core/i18n/en-GB/cadmus_core.ftl) "
+"(kebab-case IDs, sorted within sections — see "
+"[`crates/core/AGENTS.md`](https://github.com/ogkevin/cadmus/blob/master/crates/core/AGENTS.md))."
+msgstr ""
+
+#: src/contributing/translations/developers.md:15
+msgid "Use `fl!(\"message-id\")` or `fl!(\"id\", var = value)` in Rust."
+msgstr ""
+
+#: src/contributing/translations/developers.md:16
+msgid ""
+"Other languages are filled in on Crowdin — do not hand-edit locale FTL files "
+"unless you have a specific reason."
+msgstr ""
+
+#: src/contributing/translations/developers.md:18
+msgid "Run `cargo check -p cadmus-core` to validate message IDs at compile time."
+msgstr ""
+
+#: src/contributing/translations/developers.md:21
+msgid "\"my-new-message\""
+msgstr ""
+
+#: src/contributing/translations/developers.md:22
+msgid "\"books-loaded\""
+msgstr ""
+
+#: src/contributing/translations/developers.md:25
+msgid "Updating documentation translation sources"
+msgstr ""
+
+#: src/contributing/translations/developers.md:27
+msgid ""
+"After changing **user-facing** English docs (`docs/src/**/*.md` outside "
+"`contributing/`):"
+msgstr ""
+
+#: src/contributing/translations/developers.md:31
+msgid "# devenv\n"
+msgstr ""
+
+#: src/contributing/translations/developers.md:32
+msgid "'{\"xgettext\": {}}'"
+msgstr ""
+
+#: src/contributing/translations/developers.md:35
+msgid ""
+"Commit the updated `docs/po/messages.pot` alongside your doc edits. Crowdin "
+"picks up the new template; translators update locale `.po` files there."
+msgstr ""
+
+#: src/contributing/translations/developers.md:38
+msgid ""
+"When changing website strings, update "
+"[`website/messages/en.json`](https://github.com/ogkevin/cadmus/blob/master/website/messages/en.json) "
+"only — Crowdin handles `website/messages/<lang>.json`."
+msgstr ""
+
+#: src/contributing/translations/developers.md:42
+msgid "You do not need to maintain translated files"
+msgstr ""
+
+#: src/contributing/translations/developers.md:44
+msgid ""
+"After changing English source strings, do **not** hand-edit `docs/po/*.po`, "
+"`crates/core/i18n/*/*.ftl`, or `website/messages/*.json` for other locales."
+msgstr ""
+
+#: src/contributing/translations/developers.md:47
+msgid ""
+"Outdated or fuzzy entries in those files are reconciled on Crowdin and "
+"synced back via the `crowdin` CI workflow (`skip_untranslated_strings: true` "
+"on export). Missing translations fall back to English at runtime or build "
+"time until translators catch up."
+msgstr ""
+
+#: src/contributing/translations/developers.md:52
+msgid "Excluding documentation from extraction"
+msgstr ""
+
+#: src/contributing/translations/developers.md:54
+msgid ""
+"These directives apply to the mdBook user guide only. They tell "
+"`cadmus-translate` which Markdown blocks to omit from `docs/po/messages.pot`."
+msgstr ""
+
+#: src/contributing/translations/developers.md:57
+msgid ""
+"Use `<!-- i18n:skip -->` before a single block (paragraph, code block, "
+"table):"
+msgstr ""
+
+#: src/contributing/translations/developers.md:67
+msgid ""
+"Use `<!-- i18n:skip-start -->` / `<!-- i18n:skip-end -->` to exclude "
+"multiple consecutive blocks:"
+msgstr ""
+
+#: src/contributing/translations/developers.md:82
+msgid ""
+"When skip directives appear inside a list, indent them to match the list "
+"continuation level:"
+msgstr ""
+
+#: src/contributing/translations/developers.md:101
+msgid "Previewing translated docs locally"
+msgstr ""
+
+#: src/contributing/translations/developers.md:108
+msgid "Use this only to verify builds — translation work happens on Crowdin."
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:5
+msgid ""
+"Cadmus uses [SQLite](https://sqlite.org) as its embedded database and "
+"[SQLx](https://github.com/launchbadge/sqlx) as the Rust database library. "
+"SQLx provides **compile-time SQL verification** — every query is checked "
+"against the real schema before the code ships."
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:10
+msgid "The `.sqlx` directory"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:12
+msgid ""
+"The `.sqlx/` directory at the repository root contains one JSON metadata "
+"file per SQL query. Each file stores the resolved column names, types, and "
+"parameter types that SQLx inferred from the live database schema at the time "
+"`cargo sqlx prepare` was last run."
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:24
+msgid "Regenerating query metadata"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:26
+msgid "After adding or changing any SQL query, regenerate the metadata:"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:32
+msgid ""
+"This connects to the database, re-introspects every query macro in the "
+"workspace, and rewrites the `.sqlx/` JSON files. Commit the updated files "
+"alongside your code change."
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:36
+msgid ""
+"\\[!IMPORTANT\\] If you forget to run `cargo sqlx prepare`, the CI `check` "
+"job will fail because the cached metadata will be out of date with your "
+"query changes."
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:40
+msgid "Compile-time SQL checking"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:42
+msgid ""
+"SQLx's typed query macros (`query!`, `query_as!`, `query_scalar!`) verify "
+"SQL at compile time using the metadata in `.sqlx/`. This means:"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:45
+msgid "Typos in column names are **compiler errors**, not runtime panics."
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:46
+msgid "Binding the wrong type to a `?` placeholder is a **type error**."
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:47
+msgid ""
+"Adding or removing a column in a migration without updating queries is "
+"caught **before deployment**."
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:50
+msgid ""
+"The macros require the `DATABASE_URL` environment variable to point at a "
+"live database when running `cargo sqlx prepare`, but **not** during regular "
+"`cargo build` or `cargo check` — those use the pre-generated `.sqlx/` files."
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:54
+msgid ""
+"\\[!IMPORTANT\\] `.sqlx/` is only used when the `SQLX_OFFLINE=true` field is "
+"set which is the default if you're using devenv.nix."
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:58
+msgid "Review rules"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:60
+msgid "The following rules are enforced during code review for all SQLx queries."
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:62
+msgid "Use typed macros only"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:64
+msgid ""
+"Always use the typed macros. Never call the untyped `query()`, `query_as()`, "
+"or `query_scalar()` functions:"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:67
+msgid "Goal"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:67
+msgid "Use"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:69
+msgid "`INSERT`, `UPDATE`, `DELETE`, raw `SELECT`"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:69
+msgid "`sqlx::query!`"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:70
+msgid "`SELECT` mapped into a named struct"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:70
+msgid "`sqlx::query_as!`"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:71
+msgid "Single-column `SELECT`"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:71
+msgid "`sqlx::query_scalar!`"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:73
+msgid ""
+"When the column is nullable, call `.flatten()` on the result to collapse "
+"`Option<Option<T>>` into `Option<T>`:"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:78
+msgid "\"SELECT id FROM libraries WHERE path = ?\""
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:84
+msgid "List explicit column names"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:86
+msgid "Never use `SELECT *`. Always name every column you need:"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:89 src/contributing/sqlite-sqlx.md:102
+msgid "-- ✅ Good\n"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:91 src/contributing/sqlite-sqlx.md:104
+msgid "-- ❌ Bad\n"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:96
+msgid "Store timestamps as Unix epoch integers"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:98
+msgid ""
+"All date/time values must be stored as `INTEGER NOT NULL` (Unix epoch "
+"seconds). Do not use `TEXT` columns for timestamps:"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:106
+msgid "'now'"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:109
+msgid "Add only indexes that are actively used"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:111
+msgid ""
+"Every index must be used by at least one query in the codebase. Unused "
+"indexes waste write performance and storage without any read benefit. Before "
+"adding an index, verify a query filters, sorts, or joins on the indexed "
+"column(s)."
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:115
+msgid "Keep schema migration files stable"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:117
+msgid ""
+"`cadmus-core` hashes every file under `crates/core/migrations/` at build "
+"time and stores that hash in the database version stamp. Downgrade "
+"protection uses the hash to allow newer-to-older app version moves only when "
+"both builds have the same schema migration set."
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:122
+msgid ""
+"Do not edit a schema migration after it has shipped. Add a new numbered "
+"migration instead so existing databases keep passing SQLx migration checksum "
+"validation."
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:126
+#: src/contributing/runtime-migrations.md:172
+msgid "API reference"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:128
+msgid "The primary database types live in the `cadmus_core::db` module:"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:130
+msgid ""
+"<a "
+"href=\"/api/cadmus_core/db/struct.Database\">`cadmus_core::db::Database`</a> "
+"— the top-level sync/async bridge that owns the connection pool"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:132
+msgid ""
+"<a "
+"href=\"/api/cadmus_core/db/migrations/struct.MigrationRunner\">`cadmus_core::db::migrations::MigrationRunner`</a> "
+"— executes all pending runtime migrations"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:134
+msgid ""
+"<a href=\"/api/cadmus_core/macro.migration\">`cadmus_core::migration!`</a> — "
+"macro for declaring one-time runtime migrations"
+msgstr ""
+
+#: src/contributing/sqlite-sqlx.md:137
+msgid ""
+"See [Library Database](library-database.md) for how the library subsystem "
+"uses the database, and [Runtime Migrations](runtime-migrations.md) for how "
+"to write one-time data migrations."
+msgstr ""
+
+#: src/contributing/library-database.md:5
+msgid ""
+"Cadmus stores library roots, scanned files, book metadata, reading progress, "
+"thumbnails, and table-of-contents data in SQLite. This page explains where "
+"each category of library data belongs and how scans move data from disk into "
+"the database."
+msgstr ""
+
+#: src/contributing/library-database.md:10
+msgid "Core Shape"
+msgstr ""
+
+#: src/contributing/library-database.md:12
+msgid "The library database separates four concerns:"
+msgstr ""
+
+#: src/contributing/library-database.md:30
+msgid ""
+"`libraries` represents scan roots. A row answers: \"which directory did "
+"Cadmus index as a library?\""
+msgstr ""
+
+#: src/contributing/library-database.md:33
+msgid ""
+"Keep library-level data here only when it describes the library itself, such "
+"as its path, display name, or creation metadata."
+msgstr ""
+
+#: src/contributing/library-database.md:36
+msgid "Library Membership"
+msgstr ""
+
+#: src/contributing/library-database.md:38
+msgid ""
+"`library_books` connects a library to the book files found under it. It is "
+"the place for data that depends on a specific file within a specific library "
+"scan, including relative paths, absolute paths, timestamps, sizes, and other "
+"scan-cache metadata."
+msgstr ""
+
+#: src/contributing/library-database.md:43
+msgid ""
+"This table is deliberately separate from `books` because one canonical book "
+"can appear in more than one library or at more than one path over time. "
+"File-system state belongs to the membership row, not to the canonical book "
+"row."
+msgstr ""
+
+#: src/contributing/library-database.md:47
+msgid "Canonical Books"
+msgstr ""
+
+#: src/contributing/library-database.md:49
+msgid ""
+"`books` is the canonical per-book record, keyed by fingerprint. It holds "
+"data that should be the same regardless of which library found the file, "
+"such as title and file kind."
+msgstr ""
+
+#: src/contributing/library-database.md:53
+msgid ""
+"Per-book tables reference `books` and are removed with the book when "
+"cascading deletes apply. New per-book data should usually live in a "
+"dedicated table rather than being mixed into library membership."
+msgstr ""
+
+#: src/contributing/library-database.md:57
+msgid "Derived Per-Book Data"
+msgstr ""
+
+#: src/contributing/library-database.md:59
+msgid ""
+"Authors, categories, reading state, thumbnails, and table-of-contents "
+"entries are derived from either metadata extraction, reader state, or "
+"generated assets. They are tied to the canonical book fingerprint, not to a "
+"specific library path."
+msgstr ""
+
+#: src/contributing/library-database.md:63
+msgid ""
+"Use join tables for many-to-many relationships such as authors and "
+"categories. Use child tables for optional or repeatable data such as reading "
+"state, thumbnails, and TOC entries."
+msgstr ""
+
+#: src/contributing/library-database.md:67
+msgid "Scan Flow"
+msgstr ""
+
+#: src/contributing/library-database.md:69
+msgid "Library scans move from the filesystem toward canonical book data:"
+msgstr ""
+
+#: src/contributing/library-database.md:80
+msgid ""
+"The membership row is checked before expensive work. If the scan-cache data "
+"says the file has not changed, Cadmus can skip re-fingerprinting and "
+"metadata extraction. If the file is new or changed, Cadmus updates the "
+"canonical book row and any derived data collected during import."
+msgstr ""
+
+#: src/contributing/library-database.md:85
+msgid "What Goes Where"
+msgstr ""
+
+#: src/contributing/library-database.md:87
+msgid "Use these rules when adding or reviewing library database changes:"
+msgstr ""
+
+#: src/contributing/library-database.md:89
+msgid "Data kind"
+msgstr ""
+
+#: src/contributing/library-database.md:89
+msgid "Belongs in"
+msgstr ""
+
+#: src/contributing/library-database.md:91
+msgid "Library root path or display name"
+msgstr ""
+
+#: src/contributing/library-database.md:91
+msgid "`libraries`"
+msgstr ""
+
+#: src/contributing/library-database.md:92
+msgid "File path inside one scanned library"
+msgstr ""
+
+#: src/contributing/library-database.md:92
+#: src/contributing/library-database.md:93
+msgid "`library_books`"
+msgstr ""
+
+#: src/contributing/library-database.md:93
+msgid "File modification or size cache"
+msgstr ""
+
+#: src/contributing/library-database.md:94
+msgid "Stable book identity or extracted title"
+msgstr ""
+
+#: src/contributing/library-database.md:94
+msgid "`books`"
+msgstr ""
+
+#: src/contributing/library-database.md:95
+msgid "Data shared by all copies of a book"
+msgstr ""
+
+#: src/contributing/library-database.md:95
+msgid "`books` or a per-book child table"
+msgstr ""
+
+#: src/contributing/library-database.md:96
+msgid "Many-to-many metadata"
+msgstr ""
+
+#: src/contributing/library-database.md:96
+msgid "Named entity table plus join table"
+msgstr ""
+
+#: src/contributing/library-database.md:97
+msgid "Reading progress"
+msgstr ""
+
+#: src/contributing/library-database.md:97
+msgid "`reading_states`"
+msgstr ""
+
+#: src/contributing/library-database.md:98
+msgid "Generated cover image"
+msgstr ""
+
+#: src/contributing/library-database.md:98
+msgid "`thumbnails`"
+msgstr ""
+
+#: src/contributing/library-database.md:99
+msgid "Nested table of contents"
+msgstr ""
+
+#: src/contributing/library-database.md:99
+msgid "`toc_entries`, using parent references and positions"
+msgstr ""
+
+#: src/contributing/library-database.md:100
+msgid "Migration bookkeeping"
+msgstr ""
+
+#: src/contributing/library-database.md:100
+msgid "Migration tables managed by the migration runner"
+msgstr ""
+
+#: src/contributing/library-database.md:102
+msgid ""
+"If data describes a file's current location, put it in library membership. "
+"If it describes the book identified by its fingerprint, put it in canonical "
+"book data or a per-book child table."
+msgstr ""
+
+#: src/contributing/library-database.md:106
+msgid "Schema Details"
+msgstr ""
+
+#: src/contributing/library-database.md:108
+msgid ""
+"For exact schema details, read the migrations in `crates/core/migrations/` "
+"in order. They define the tables, views, indexes, constraints, and data "
+"migrations that exist at each database version."
+msgstr ""
+
+#: src/contributing/library-database.md:112
+msgid "Data Access"
+msgstr ""
+
+#: src/contributing/library-database.md:114
+msgid ""
+"The <a "
+"href=\"/api/cadmus_core/library/db/struct.Db\">`cadmus_core::library::db::Db`</a> "
+"type is the entry point for library database operations. It wraps the shared "
+"SQLite pool and presents a synchronous API to the rest of the app."
+msgstr ""
+
+#: src/contributing/library-database.md:119
+msgid ""
+"Keep database access behind this layer so callers work with domain types "
+"instead of raw SQL rows. For SQLx conventions, type overrides, and migration "
+"review rules, see the related pages below."
+msgstr ""
+
+#: src/contributing/library-database.md:123
+msgid "Related Pages"
+msgstr ""
+
+#: src/contributing/library-database.md:125
+msgid ""
+"[SQLite & SQLx](sqlite-sqlx.md) — compile-time query verification and review "
+"rules"
+msgstr ""
+
+#: src/contributing/library-database.md:127
+msgid ""
+"[Runtime Migrations](runtime-migrations.md) — one-time data migrations using "
+"the `migration!` macro"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:5
+msgid "Cadmus has two distinct migration pipelines:"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:7
+msgid ""
+"**Schema migrations** — plain `.sql` files in `crates/core/migrations/`, "
+"applied by SQLx's `migrate!` macro at startup. Use these for `CREATE TABLE`, "
+"`ALTER TABLE`, and similar DDL changes. The core build script hashes these "
+"files and embeds the hash in the database version stamp."
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:11
+msgid ""
+"**Runtime migrations** — Rust `async fn` blocks declared with the "
+"`migration!` macro. Use these for one-time **data** operations: backfilling "
+"columns, importing legacy files, cleaning up obsolete rows, or any "
+"procedural work that goes beyond SQL DDL."
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:16
+msgid "How runtime migrations work"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:18
+msgid ""
+"```mermaid\n"
+"flowchart TD\n"
+"    ctor[\"#[ctor] runs at process start\"]\n"
+"    registry[\"Global REGISTRY HashMap<br>(migration id → async fn)\"]\n"
+"    startup[\"Database::migrate() called on startup\"]\n"
+"    schema[\"sqlx::migrate!() — applies .sql files\"]\n"
+"    runner[\"MigrationRunner::run_all()\"]\n"
+"    table[\"_cadmus_migrations table<br>(id, executed_at, status)\"]\n"
+"    pending[\"Filter: id NOT IN already-succeeded rows\"]\n"
+"    exec[\"Execute each pending migration in id order\"]\n"
+"    record[\"Record success or failure in _cadmus_migrations\"]\n"
+"\n"
+"    ctor --> registry\n"
+"    startup --> schema\n"
+"    schema --> runner\n"
+"    runner --> table\n"
+"    table --> pending\n"
+"    pending --> exec\n"
+"    exec --> record\n"
+"```"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:39
+msgid ""
+"At process start the `#[ctor]` attribute runs for every `migration!` call "
+"and inserts the migration function into a global `HashMap`. When "
+"`Database::migrate` is called during application startup, it first applies "
+"all pending SQL schema migrations, then calls `MigrationRunner::run_all()`, "
+"which:"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:44
+msgid "Reads `_cadmus_migrations` and collects IDs that already succeeded."
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:45
+msgid "Skips those; runs the remaining ones sorted by ID."
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:46
+msgid "Records each result (`success` or `failed`) before moving on."
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:47
+msgid "Continues past failures so one broken migration does not block others."
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:49
+msgid ""
+"A failed migration can be retried by deleting its tracking row (see "
+"[Re-running a migration](#re-running-a-migration))."
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:52
+msgid "The `migration!` macro"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:54
+msgid ""
+"<a href=\"/api/cadmus_core/macro.migration\">`cadmus_core::migration!`</a> "
+"takes a stable string ID and an `async fn` definition:"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:59
+msgid "/// One-line doc comment forwarded to rustdoc.\n    \"v1_my_migration\""
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:62
+msgid "\"UPDATE books SET title = TRIM(title)\""
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:70
+msgid "The macro:"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:72
+msgid "Generates the `async fn` with the provided body."
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:73
+msgid ""
+"Creates a public submodule named after the function that exposes a "
+"`MIGRATION_ID` constant — useful for tests and cross-references."
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:75
+msgid ""
+"Registers the function in the global `REGISTRY` via `#[ctor]` so it runs "
+"automatically without any manual wiring."
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:77
+msgid "Forwards doc comments onto the generated items so rustdoc picks them up."
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:78
+msgid "Appends the migration ID and a re-run SQL snippet to the generated docs."
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:80
+msgid "Where to put migration code"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:82
+msgid ""
+"Co-locate migrations with the feature they belong to. The library "
+"subsystem's migrations live in `crates/core/src/library/migrations.rs`; a "
+"hypothetical reader subsystem would put its migrations in "
+"`crates/core/src/reader/migrations.rs`."
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:87
+msgid ""
+"The module only needs to be declared once so the `#[ctor]` registration "
+"runs. There is no central registry file to update."
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:90
+msgid "Writing a migration step by step"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:92
+msgid "1. Choose a stable ID"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:94
+msgid ""
+"The ID is the primary key in `_cadmus_migrations`. Once a migration has been "
+"deployed it must never be renamed, because existing installations track it "
+"by this string."
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:98
+msgid ""
+"Convention: `v<N>_<short_description>`, for example "
+"`v1_backfill_book_language`."
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:100
+msgid "2. Create the migration file (or add to an existing one)"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:103
+msgid "// crates/core/src/my_feature/migrations.rs\n"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:108
+msgid ""
+"/// Backfills the `language` column for books that were imported before\n"
+"    /// language detection was added.\n"
+"    \"v1_backfill_book_language\""
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:113
+msgid ""
+"\"UPDATE books SET language = 'en' WHERE language = '' OR language IS NULL\""
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:123
+msgid "3. Use SQLx typed macros"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:125
+msgid ""
+"All SQL inside a migration must use the typed macros for compile-time "
+"verification (see [SQLite & SQLx](sqlite-sqlx.md)):"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:129
+msgid "// ✅ Good — compile-time checked\n"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:130
+#: src/contributing/runtime-migrations.md:135
+msgid "\"DELETE FROM books WHERE file_path = ?\""
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:133
+msgid "// ❌ Bad — untyped, bypasses verification\n"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:141
+msgid "4. Make it idempotent"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:143
+msgid ""
+"Use `INSERT OR IGNORE`, `ON CONFLICT DO NOTHING`, or guard with a `WHERE` "
+"clause so the migration is safe to re-run without corrupting data."
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:146
+msgid "5. Regenerate `.sqlx` metadata"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:148
+msgid ""
+"After adding or changing any query in the migration, regenerate the "
+"compile-time metadata:"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:155
+msgid "Commit the updated `.sqlx/` files alongside your migration code."
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:157
+msgid "Re-running a migration"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:159
+msgid "Delete the tracking row, then restart the application:"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:162
+msgid "'v1_my_migration'"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:165
+msgid "The next startup will treat the migration as pending and run it again."
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:167
+msgid "Settings access"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:169
+msgid ""
+"`MigrationContext` includes the in-memory <a "
+"href=\"/api/cadmus_core/settings/struct.Settings.html\">`Settings`</a> "
+"loaded at startup. Migrations that change settings should mutate "
+"`ctx.settings`."
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:174
+msgid ""
+"<a href=\"/api/cadmus_core/macro.migration\">`cadmus_core::migration!`</a> — "
+"macro for declaring runtime migrations"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:176
+msgid ""
+"<a "
+"href=\"/api/cadmus_core/db/migrations/struct.MigrationRunner\">`cadmus_core::db::migrations::MigrationRunner`</a> "
+"— executes all pending registered migrations"
+msgstr ""
+
+#: src/contributing/runtime-migrations.md:178
+msgid ""
+"<a "
+"href=\"/api/cadmus_core/db/struct.Database\">`cadmus_core::db::Database`</a> "
+"— owns the connection pool and orchestrates both migration stages"
+msgstr ""
+
+#: src/investigations/index.md:5
+msgid ""
+"When something needs investigating, the investigation and its results are "
+"documented here. This is to ensure that the investigation is not lost and "
+"can be referred to in the future if needed."
+msgstr ""
+
+#: src/investigations/index.md:9
+msgid "Date"
+msgstr ""
+
+#: src/investigations/index.md:9
+msgid "Platform"
+msgstr ""
+
+#: src/investigations/index.md:9
+msgid "Title"
+msgstr ""
+
+#: src/investigations/index.md:11
+msgid "2026-03-24"
+msgstr ""
+
+#: src/investigations/index.md:11
+msgid ""
+"[DHCP IP Address Changes on WiFi "
+"Toggle](./kobo/issue-51-dhcp-investigation.md)"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:5
+msgid ""
+"After identifying that killing the original `dhcpcd` and replacing it with "
+"`udhcpc` caused the issue reported in "
+"[\\#51](https://github.com/OGKevin/cadmus/issues/51), I confirmed the fix "
+"works in testing but wanted to understand the root cause before finalising "
+"PR [\\#299](https://github.com/OGKevin/cadmus/pull/299)."
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:14
+msgid ""
+"Investigated the DHCP behaviour by inspecting the running device alongside "
+"the KOReader source tree and the original Plato shell scripts."
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:17
+msgid "What is actually running on the device"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:25
+msgid ""
+"Nickel uses **`dhcpcd`**, not `udhcpc`. There is no `udhcpc` running under "
+"normal operation."
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:27
+msgid "Why the old script caused a new IP every toggle"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:29
+msgid ""
+"The original "
+"[`scripts/wifi-enable.sh`](https://github.com/OGKevin/cadmus/blob/253edbe8958a44d108676d57b85942f21bb7c899/scripts/wifi-enable.sh#L92-L93) "
+"(inherited from Plato) always spawned a fresh `udhcpc`:"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:55
+msgid ""
+"'t request any options (unless -O is given)\n"
+" -O OPT  Request option OPT from server (cumulative)\n"
+" -x OPT:VAL Include option OPT in sent packets (cumulative)\n"
+"   Examples of string, numeric, and hex byte opts:\n"
+"   -x hostname:bbox - option 12\n"
+"   -x lease:3600 - option 51 (lease time)\n"
+"   -x 0x3d:0100BEEFC0FFEE - option 61 (client id)\n"
+"   -x 14:'\"dumpfile\"' - option 14 (shell-quoted)\n"
+" -F NAME  Ask server to update DNS mapping for NAME\n"
+" -V VENDOR Vendor identifier (default '"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:64
+msgid "')\n -C  Don'"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:73
+msgid "\"$INTERFACE\""
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:76
+msgid ""
+"The `-q` flag is the core issue. It tells `udhcpc` to **quit immediately "
+"after obtaining a lease**. The full lifecycle on every WiFi toggle was:"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:79
+msgid ""
+"`udhcpc` spawned → sends `DISCOVER` → gets `OFFER` → sends `REQUEST` → gets "
+"`ACK` → runs `default.script bound` (sets IP, rewrites `resolv.conf`) → "
+"**process exits**"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:81
+msgid ""
+"WiFi disabled → `killall udhcpc default.script` → nothing to kill anyway, "
+"already exited"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:82
+msgid ""
+"WiFi enabled again → repeat from step 1 with **zero memory of the previous "
+"lease**"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:84
+msgid ""
+"Because the process exits after getting the lease, there is no daemon to "
+"renew it and no lease file written anywhere. Busybox's `udhcpc` has no lease "
+"persistence mechanism. On the next cycle it sends a bare `DISCOVER` with no "
+"preferred-IP hint (no DHCP Option 50), so the DHCP server is free to hand "
+"out any address from its pool."
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:89
+msgid ""
+"Additionally, "
+"[`cadmus.sh`](https://github.com/OGKevin/cadmus/blob/253edbe8958a44d108676d57b85942f21bb7c899/contrib/cadmus.sh#L18-L20) "
+"(previously `plato.sh`) was killing Nickel's already-running `dhcpcd` at "
+"startup:"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:95
+msgid ""
+"So even the stateful daemon that Nickel had set up (which _would_ have "
+"requested the same IP again) was torn down before Cadmus replaced it with a "
+"stateless `udhcpc -q`."
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:98
+msgid "What `default.script` does"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:100
+msgid ""
+"`/etc/udhcpc.d/default.script` is a minimal Busybox hook called by `udhcpc` "
+"on lease events. The relevant part:"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:104
+msgid "\"$1\""
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:107
+msgid "# ... deletes all default routes, adds new ones from $router ...\n"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:108
+msgid "# ← truncates resolv.conf to zero\n"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:114
+msgid "\"$ip\""
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:117
+msgid "Notable behaviours:"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:119
+msgid ""
+"**Wipes `resolv.conf` on every `bound` event.** This is why KOReader's "
+"[`disable-wifi.sh`](https://github.com/koreader/koreader/blob/d98dd9f244c5697c08a3bb9ac068f381d70b42c4/platform/kobo/disable-wifi.sh#L3-L6) "
+"saves and restores `resolv.conf` with an md5 check. This is a safety net "
+"against `udhcpc`'s script wiping DNS on lease release."
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:122
+msgid ""
+"**Writes to `/tmp/nickel-hardware-status`**, which is a FIFO Nickel listens "
+"on for network events. [KOReader explicitly removes this "
+"FIFO](https://github.com/koreader/koreader/blob/d98dd9f244c5697c08a3bb9ac068f381d70b42c4/platform/kobo/koreader.sh#L232-L233) "
+"(`rm -f /tmp/nickel-hardware-status`) to prevent scripts hanging when Nickel "
+"is not running."
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:126
+msgid "Why `dhcpcd` produces stable IPs"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:128
+msgid "`dhcpcd` writes a per-SSID lease file to **`/var/db/`**:"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:137
+msgid ""
+"`/var/db` lives on the root eMMC partition (`/dev/mmcblk0p10`), not a tmpfs. "
+"It survives reboots."
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:139
+msgid ""
+"When reconnecting to a known SSID, `dhcpcd` reads the matching `.lease` "
+"file, parses the previously-held IP, and sends a DHCP `REQUEST` directly for "
+"that IP (DHCP Option 50: Requested IP Address), skipping `DISCOVER` entirely "
+"if the lease has not expired. The DHCP server sees a familiar MAC + familiar "
+"IP request and simply ACKs it."
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:144
+msgid ""
+"The lease file for the current network encodes `192.x.x.x` in the `yiaddr` "
+"field of the saved BOOTREPLY, which is exactly the IP the device is using "
+"right now."
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:147
+msgid "Filesystem layout: what is ephemeral vs persistent"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:149
+msgid "Path"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:149
+msgid "Persistent?"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:151
+msgid "`/tmp`"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:151
+msgid "`tmpfs`"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:151
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:152
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:153
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:154
+msgid "No"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:152
+msgid "`/var/lib`"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:152
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:154
+msgid "`tmpfs` (16 KiB)"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:153
+msgid "`/var/run`"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:153
+msgid "`tmpfs` (128 KiB)"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:154
+msgid "`/var/log`"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:155
+msgid "`/var/db`"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:155
+msgid "eMMC (`mmcblk0p10`)"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:155
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:156
+msgid "**Yes**"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:156
+msgid "`/etc`"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:156
+msgid "eMMC"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:158
+msgid ""
+"`dhcpcd`'s runtime state (`/var/run/dhcpcd.pid`, `/var/run/dhcpcd.sock`) is "
+"ephemeral as expected, but the lease database in `/var/db/` persists. That "
+"is the architectural key."
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:161
+msgid ""
+"Why KOReader kills `dhcpcd` in its startup script but still gets stable IPs"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:163
+msgid ""
+"From "
+"[`koreader.sh`](https://github.com/koreader/koreader/blob/d98dd9f244c5697c08a3bb9ac068f381d70b42c4/platform/kobo/koreader.sh#L216-L220):"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:166
+msgid "# NOTE: We kill Nickel's master dhcpcd daemon on purpose,\n"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:167
+msgid ""
+"#       A SIGTERM does not break anything, it'll just prevent automatic "
+"lease renewal\n"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:169
+msgid ""
+"'ll do)...\n"
+"killall -q -TERM nickel ... dhcpcd-dbus dhcpcd ...\n"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:173
+msgid ""
+"KOReader kills Nickel's `dhcpcd` because it wants to start its own instance "
+"with custom arguments later via "
+"[`obtain-ip.sh`](https://github.com/koreader/koreader/blob/d98dd9f244c5697c08a3bb9ac068f381d70b42c4/platform/kobo/obtain-ip.sh#L54-L60). "
+"Crucially, `obtain-ip.sh` prefers `dhcpcd` over `udhcpc`:"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:177
+msgid ""
+"# NOTE: Prefer dhcpcd over udhcpc if available. That's what Nickel uses,\n"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:179
+msgid "\"/sbin/dhcpcd\""
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:180
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:182
+msgid "\"${INTERFACE}\""
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:186
+msgid ""
+"The new `dhcpcd` instance KOReader starts reads the same `/var/db/*.lease` "
+"files and requests the same IP. Stable address despite the kill/restart "
+"cycle."
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:189
+msgid ""
+"Why the fix in PR [\\#299](https://github.com/OGKevin/cadmus/pull/299) works"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:191
+msgid "The fix is twofold:"
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:193
+msgid ""
+"**Remove `dhcpcd` from the kill list in "
+"[`cadmus.sh`](https://github.com/OGKevin/cadmus/blob/253edbe8958a44d108676d57b85942f21bb7c899/contrib/cadmus.sh#L18-L20)**. "
+"Nickel's running `dhcpcd -d -z wlan0` instance survives into the Cadmus "
+"session, continuously managing the lease."
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:196
+msgid ""
+"**Do not start `udhcpc` at all in the native Rust WiFi implementation**. No "
+"new DHCP client is spawned on toggle, so the already-running `dhcpcd` is "
+"never displaced."
+msgstr ""
+
+#: src/investigations/kobo/issue-51-dhcp-investigation.md:199
+msgid ""
+"The result: one long-lived `dhcpcd` daemon manages the lease for the entire "
+"session, renews it in the background, and requests the same IP on every "
+"reconnect using the persisted `/var/db/*.lease` file."
 msgstr ""
 

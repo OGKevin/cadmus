@@ -22,43 +22,103 @@ jobs:
             shell:
               - '**/*.sh'
               - '.github/workflows/shell.yml'
+              - '.github/workflows/shell-report.yml'
 
   shellcheck:
     needs: changes
     if: needs.changes.outputs.shell == 'true'
     permissions:
       contents: read
-      pull-requests: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
+          persist-credentials: false
 
-      - name: ShellCheck
-        uses: reviewdog/action-shellcheck@4c07458293ac342d477251099501a718ae5ef86e # v1.32.0
+      - name: Install shellcheck
+        env:
+          SHELLCHECK_VERSION: "0.11.0"
+        run: |
+          set -euo pipefail
+          curl -sL \
+            "https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.xz" \
+            | tar -xJf -
+          sudo mv "shellcheck-v${SHELLCHECK_VERSION}/shellcheck" /usr/local/bin/shellcheck
+          shellcheck --version
+
+      - name: Collect shellcheck diagnostics
+        run: |
+          set -euo pipefail
+          mkdir -p shellcheck-reviewdog-input
+          mapfile -t files < <(find . -type f -name '*.sh' -not -path './.git/*')
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No shell scripts found"
+            exit 0
+          fi
+
+          set +e
+          shellcheck -f json --external-sources "${files[@]}" \
+            | jq -r '.[] | "\(.file):\(.line):\(.column):\(.level):\(.message) [SC\(.code)](https://github.com/koalaman/shellcheck/wiki/SC\(.code))"' \
+            > shellcheck-reviewdog-input/diagnostics.txt
+          json_exit=${PIPESTATUS[0]}
+          shellcheck -f diff --external-sources "${files[@]}" \
+            > shellcheck-reviewdog-input/suggestions.diff
+          diff_exit=$?
+          set -e
+
+          if [ "$json_exit" -ne 0 ] || [ "$diff_exit" -ne 0 ]; then
+            exit 1
+          fi
+
+      - name: Upload reviewdog input artifact
+        if: failure() && hashFiles('shellcheck-reviewdog-input/**') != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          reporter: github-pr-review
-          filter_mode: added
+          name: shellcheck-reviewdog-input
+          path: shellcheck-reviewdog-input/
+          retention-days: 1
 
   shfmt:
     needs: changes
     if: needs.changes.outputs.shell == 'true'
     permissions:
       contents: read
-      pull-requests: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
+          persist-credentials: false
 
-      - name: Shfmt
-        uses: reviewdog/action-shfmt@c5e3ba7497c338866921924691aef4fa18bc1fe0 # v1.1.0
+      - name: Install shfmt
+        env:
+          SHFMT_VERSION: "3.11.0"
+        run: |
+          set -euo pipefail
+          curl -sL \
+            "https://github.com/mvdan/sh/releases/download/v${SHFMT_VERSION}/shfmt_v${SHFMT_VERSION}_linux_amd64" \
+            -o /tmp/shfmt
+          sudo install -m 755 /tmp/shfmt /usr/local/bin/shfmt
+          shfmt -version
+
+      - name: Collect shfmt diagnostics
+        run: |
+          set -euo pipefail
+          mkdir -p shfmt-reviewdog-input
+          # Match devenv.nix / code-style: 2-space indent with case-indent.
+          shfmt -i 2 -ci -w .
+          if ! git diff --quiet; then
+            git diff > shfmt-reviewdog-input/diagnostics.diff
+            echo "::error::shfmt found formatting issues"
+            exit 1
+          fi
+
+      - name: Upload reviewdog input artifact
+        if: failure() && hashFiles('shfmt-reviewdog-input/diagnostics.diff') != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          filter_mode: added
+          name: shfmt-reviewdog-input
+          path: shfmt-reviewdog-input/
+          retention-days: 1
 
   required-shell:
     name: required-shell
