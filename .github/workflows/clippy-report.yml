@@ -25,15 +25,34 @@ jobs:
           HEAD_REPO: ${{ github.event.workflow_run.head_repository.full_name || github.repository }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
-          PR_NUMBER=$(gh api "repos/$HEAD_REPO/commits/$HEAD_SHA/pulls" \
-            --jq ".[] | select(.base.repo.full_name == \"$BASE_REPO\") | .number" \
+          PR_JSON=$(gh api "repos/$HEAD_REPO/commits/$HEAD_SHA/pulls" \
+            --jq ".[] | select(.base.repo.full_name == \"$BASE_REPO\") | {number, base_ref: .base.ref}" \
             | head -n1)
-          if [ -z "$PR_NUMBER" ]; then
+          if [ -z "$PR_JSON" ]; then
             echo "No open pull request found for $HEAD_REPO@$HEAD_SHA"
             echo "number=" >> "$GITHUB_OUTPUT"
+            echo "base_ref=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "number=$(echo "$PR_JSON" | jq -r .number)" >> "$GITHUB_OUTPUT"
+          echo "base_ref=$(echo "$PR_JSON" | jq -r .base_ref)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        if: steps.identify-pr.outputs.number
+        with:
+          repository: ${{ github.event.workflow_run.head_repository.full_name }}
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - name: Fetch PR base for merge-base
+        if: steps.identify-pr.outputs.number
+        env:
+          BASE_REF: ${{ steps.identify-pr.outputs.base_ref }}
+          BASE_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git remote add upstream "https://x-access-token:${GH_TOKEN}@github.com/${BASE_REPO}.git"
+          git fetch --no-tags upstream "$BASE_REF"
 
       - name: Download reviewdog input artifact
         if: steps.identify-pr.outputs.number

@@ -69,8 +69,10 @@ collection from posting:
    Downloads the artifact by `run-id` and posts via reviewdog with
    `pull-requests: write`.
 
-The privileged workflow must treat artifacts as untrusted data (pipe text into
-reviewdog only). Do not check out or execute the PR head or artifact payloads.
+The privileged workflow may check out the PR head solely so reviewdog can
+resolve `.git` and compute the PR diff for `-filter-mode=added`. Treat
+artifacts as untrusted data (pipe text into reviewdog only). Do not execute
+the PR head or artifact payloads.
 
 ## Action pinning
 
