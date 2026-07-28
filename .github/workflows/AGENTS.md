@@ -60,19 +60,34 @@ credentials for PR comments.
 
 Public fork pull requests receive a read-only `GITHUB_TOKEN` on `pull_request`,
 so reviewdog cannot post inline review comments from that event. Cadmus splits
-collection from posting:
+collection from posting for every reviewdog consumer:
 
-1. **Cargo** (`pull_request`) — unprivileged. Clippy matrix uploads JSON;
-   `clippy-report` coalesces diagnostics into the `clippy-reviewdog-input`
-   artifact. No PR write permission.
-2. **Clippy report** (`workflow_run` on Cargo) — privileged base-repo context.
-   Downloads the artifact by `run-id` and posts via reviewdog with
+1. **Collect** (`pull_request`) — unprivileged. Run the linter, write
+   diagnostics to a `*-reviewdog-input` artifact. No `pull-requests: write`.
+2. **Report** (`workflow_run` on the collect workflow) — privileged base-repo
+   context. Identify the PR, check out the PR head for the diff (see below),
+   download the artifact by `run-id`, and post via reviewdog with
    `pull-requests: write`.
 
-The privileged workflow may check out the PR head solely so reviewdog can
-resolve `.git` and compute the PR diff for `-filter-mode=added`. Treat
-artifacts as untrusted data (pipe text into reviewdog only). Do not execute
-the PR head or artifact payloads.
+| Collect (`pull_request`) | Report (`workflow_run`) | Tools |
+| ------------------------ | ----------------------- | ----- |
+| Cargo | Clippy report | clippy |
+| Actions lint | Actions lint report | actionlint, prettier |
+| Shell | Shell report | shellcheck, shfmt |
+| Website | Website report | prettier, eslint, stylelint |
+| Docs lint | Docs lint report | rumdl |
+
+New reviewdog jobs must follow the same collect/report pair. Keep
+`pull-requests: write` on the report workflow only.
+
+### Privileged checkout and trust
+
+The report workflow may check out the PR head (and fetch the base ref) solely
+so reviewdog can resolve `.git` and compute the PR diff for
+`-filter-mode=added`. That is safe for this use case: the privileged job must
+not build, install, or otherwise execute code from the fork or from artifact
+payloads. Artifacts are untrusted text only — pipe diagnostics into reviewdog
+and nothing else.
 
 ## Action pinning
 
