@@ -103,6 +103,32 @@
     {
       "customType": "regex",
       "managerFilePatterns": [
+        "/^\\.github\\/actions\\/install-actionlint\\/action\\.yml$/"
+      ],
+      "matchStrings": [
+        "version:[\\s\\S]*?default: \"(?<currentValue>[^\"]+)\""
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "rhysd/actionlint",
+      "extractVersionTemplate": "^v(?<version>.+)$",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^\\.github\\/actions\\/install-shfmt\\/action\\.yml$/"
+      ],
+      "matchStrings": [
+        "version:[\\s\\S]*?default: \"(?<currentValue>[^\"]+)\""
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "mvdan/sh",
+      "extractVersionTemplate": "^v(?<version>.+)$",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
         "/^\\.github\\/actions\\/install-doc-tools\\/action\\.yml$/"
       ],
       "matchStrings": ["MDBOOK_VERSION=(?<currentValue>[^\"]+)"],

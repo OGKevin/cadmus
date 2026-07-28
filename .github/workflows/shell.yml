@@ -35,16 +35,9 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install shellcheck
-        env:
-          SHELLCHECK_VERSION: "0.11.0"
-        run: |
-          set -euo pipefail
-          curl -sL \
-            "https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.xz" \
-            | tar -xJf -
-          sudo mv "shellcheck-v${SHELLCHECK_VERSION}/shellcheck" /usr/local/bin/shellcheck
-          shellcheck --version
+      # ubuntu-latest images ship shellcheck; pin via install only if that changes.
+      - name: Show shellcheck version
+        run: shellcheck --version
 
       - name: Collect shellcheck diagnostics
         run: |
@@ -89,16 +82,9 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install shfmt
-        env:
-          SHFMT_VERSION: "3.11.0"
-        run: |
-          set -euo pipefail
-          curl -sL \
-            "https://github.com/mvdan/sh/releases/download/v${SHFMT_VERSION}/shfmt_v${SHFMT_VERSION}_linux_amd64" \
-            -o /tmp/shfmt
-          sudo install -m 755 /tmp/shfmt /usr/local/bin/shfmt
-          shfmt -version
+      # Install-only: reviewdog/action-shfmt always posts via suggester. Version
+      # default is Renovate-managed (see renovate.json customManagers).
+      - uses: ./.github/actions/install-shfmt
 
       - name: Collect shfmt diagnostics
         run: |

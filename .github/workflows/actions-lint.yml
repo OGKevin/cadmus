@@ -35,14 +35,10 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install actionlint
-        env:
-          ACTIONLINT_VERSION: "1.7.7"
-        run: |
-          set -euo pipefail
-          bash <(curl -fsSL "https://raw.githubusercontent.com/rhysd/actionlint/v${ACTIONLINT_VERSION}/scripts/download-actionlint.bash") \
-            "${ACTIONLINT_VERSION}"
-          echo "$PWD" >> "$GITHUB_PATH"
+      # Install-only: reviewdog/action-actionlint always posts via reviewdog, so it
+      # cannot feed the fork-safe collect/report split. Version default is Renovate-
+      # managed (see renovate.json customManagers).
+      - uses: ./.github/actions/install-actionlint
 
       - name: Collect actionlint diagnostics
         run: |
