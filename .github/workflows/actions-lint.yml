@@ -22,7 +22,7 @@ jobs:
             workflows:
               - '.github/workflows/**'
               - '.github/actions/**'
-              - '.github/lint/package.json'
+              - '.github/lint/**'
 
   actionlint:
     needs: changes
