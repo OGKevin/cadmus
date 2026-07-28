@@ -61,10 +61,10 @@ jobs:
           branch: ${{ github.event.workflow_run.head_branch }}
           run_id: ${{ github.event.workflow_run.id }}
           artifact_name: eslint-reviewdog-input
-          diagnostics_path: eslint-reviewdog-input/diagnostics.rdjson
+          diagnostics_path: eslint-reviewdog-input/diagnostics.txt
           name: eslint
           workdir: pr
-          format: rdjson
+          format: eslint
 
       - uses: ./ci/.github/actions/reviewdog-post
         if: steps.identify-pr.outputs.number
@@ -74,7 +74,7 @@ jobs:
           branch: ${{ github.event.workflow_run.head_branch }}
           run_id: ${{ github.event.workflow_run.id }}
           artifact_name: stylelint-reviewdog-input
-          diagnostics_path: stylelint-reviewdog-input/diagnostics.rdjson
+          diagnostics_path: stylelint-reviewdog-input/diagnostics.txt
           name: stylelint
           workdir: pr
-          format: rdjson
+          format: stylelint

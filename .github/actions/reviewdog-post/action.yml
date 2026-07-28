@@ -34,8 +34,8 @@ inputs:
     required: true
   format:
     description: >
-      reviewdog -f value (e.g. clippy, sarif, diff, rdjson). Leave empty when
-      using errorformat instead.
+      reviewdog -f value (e.g. clippy, eslint, stylelint, sarif, diff). Leave
+      empty when using errorformat instead.
     required: false
     default: ""
   errorformat:

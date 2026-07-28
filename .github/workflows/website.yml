@@ -5,7 +5,6 @@ on:
     paths:
       - "website/**"
       - ".github/workflows/website.yml"
-      - ".github/lint/formatters/**"
 
 permissions:
   contents: read
@@ -106,10 +105,10 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$GITHUB_WORKSPACE/eslint-reviewdog-input"
-          formatter="$GITHUB_WORKSPACE/.github/lint/formatters/eslint-formatter-rdjson/index.js"
           set +e
-          npx eslint -f "$formatter" . \
-            > "$GITHUB_WORKSPACE/eslint-reviewdog-input/diagnostics.rdjson"
+          # Stylish output for reviewdog -f=eslint (same idea as clippy short format).
+          npx eslint -f stylish . \
+            > "$GITHUB_WORKSPACE/eslint-reviewdog-input/diagnostics.txt"
           eslint_exit=$?
           set -e
           if [ "$eslint_exit" -ne 0 ]; then
@@ -117,7 +116,7 @@ jobs:
           fi
 
       - name: Upload reviewdog input artifact
-        if: failure() && hashFiles('eslint-reviewdog-input/diagnostics.rdjson') != ''
+        if: failure() && hashFiles('eslint-reviewdog-input/diagnostics.txt') != ''
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: eslint-reviewdog-input
@@ -149,10 +148,10 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$GITHUB_WORKSPACE/stylelint-reviewdog-input"
-          formatter="$GITHUB_WORKSPACE/.github/lint/formatters/stylelint-formatter-rdjson/index.js"
           set +e
-          npx stylelint "**/*.css" --custom-formatter "$formatter" \
-            > "$GITHUB_WORKSPACE/stylelint-reviewdog-input/diagnostics.rdjson"
+          # Default string formatter for reviewdog -f=stylelint.
+          npx stylelint "**/*.css" \
+            > "$GITHUB_WORKSPACE/stylelint-reviewdog-input/diagnostics.txt"
           stylelint_exit=$?
           set -e
           # stylelint: 0 = OK, 2 = lint issues; other codes are hard failures.
@@ -164,7 +163,7 @@ jobs:
           fi
 
       - name: Upload reviewdog input artifact
-        if: failure() && hashFiles('stylelint-reviewdog-input/diagnostics.rdjson') != ''
+        if: failure() && hashFiles('stylelint-reviewdog-input/diagnostics.txt') != ''
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: stylelint-reviewdog-input
