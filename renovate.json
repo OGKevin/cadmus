@@ -103,10 +103,10 @@
     {
       "customType": "regex",
       "managerFilePatterns": [
-        "/^\\.github\\/actions\\/install-actionlint\\/action\\.yml$/"
+        "/^\\.github\\/workflows\\/actions-lint\\.yml$/"
       ],
       "matchStrings": [
-        "version:[\\s\\S]*?default: \"(?<currentValue>[^\"]+)\""
+        "ACTIONLINT_VERSION:\\s+\\\"(?<currentValue>[^\\\"]+)\\\""
       ],
       "datasourceTemplate": "github-releases",
       "depNameTemplate": "rhysd/actionlint",
@@ -115,11 +115,9 @@
     },
     {
       "customType": "regex",
-      "managerFilePatterns": [
-        "/^\\.github\\/actions\\/install-shfmt\\/action\\.yml$/"
-      ],
+      "managerFilePatterns": ["/^\\.github\\/workflows\\/shell\\.yml$/"],
       "matchStrings": [
-        "version:[\\s\\S]*?default: \"(?<currentValue>[^\"]+)\""
+        "SHFMT_VERSION:\\s+\\\"(?<currentValue>[^\\\"]+)\\\""
       ],
       "datasourceTemplate": "github-releases",
       "depNameTemplate": "mvdan/sh",

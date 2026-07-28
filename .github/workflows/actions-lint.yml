@@ -1,6 +1,7 @@
 name: Actions lint
 
 env:
+  ACTIONLINT_VERSION: "1.7.7"
   NODE_VERSION: "24"
 
 on:
@@ -39,9 +40,12 @@ jobs:
           persist-credentials: false
 
       # Install-only: reviewdog/action-actionlint always posts via reviewdog, so it
-      # cannot feed the fork-safe collect/report split. Version default is Renovate-
-      # managed (see renovate.json customManagers).
-      - uses: ./.github/actions/install-actionlint
+      # cannot feed the fork-safe collect/report split. ACTIONLINT_VERSION is
+      # Renovate-managed (see renovate.json customManagers).
+      - uses: jaxxstorm/action-install-gh-release@25e24d2d23ae098373794ef1d6faecb48ee52da8 # v3.0.0
+        with:
+          repo: rhysd/actionlint
+          tag: v${{ env.ACTIONLINT_VERSION }}
 
       - name: Collect actionlint diagnostics
         run: |

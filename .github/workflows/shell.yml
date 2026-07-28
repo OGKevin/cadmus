@@ -1,5 +1,8 @@
 name: Shell
 
+env:
+  SHFMT_VERSION: "3.11.0"
+
 on:
   pull_request:
 
@@ -82,9 +85,15 @@ jobs:
         with:
           persist-credentials: false
 
-      # Install-only: reviewdog/action-shfmt always posts via suggester. Version
-      # default is Renovate-managed (see renovate.json customManagers).
-      - uses: ./.github/actions/install-shfmt
+      # Install-only: reviewdog/action-shfmt always posts via suggester.
+      # SHFMT_VERSION is Renovate-managed (see renovate.json customManagers).
+      - uses: jaxxstorm/action-install-gh-release@25e24d2d23ae098373794ef1d6faecb48ee52da8 # v3.0.0
+        with:
+          repo: mvdan/sh
+          tag: v${{ env.SHFMT_VERSION }}
+          extension-matching: disable
+          rename-to: shfmt
+          chmod: "0755"
 
       - name: Collect shfmt diagnostics
         run: |

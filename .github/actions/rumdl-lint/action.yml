@@ -43,25 +43,10 @@ runs:
     - uses: reviewdog/action-setup@d8a7baabd7f3e8544ee4dbde3ee41d0011c3a93f # v1.5.0
       if: inputs.output == ''
 
-    - name: Cache rumdl
-      id: rumdl-cache
-      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      with:
-        path: ~/.cargo/bin/rumdl
-        key: ${{ runner.os }}-rumdl-${{ inputs.rumdl_version }}
-
-    - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
-      if: steps.rumdl-cache.outputs.cache-hit != 'true'
-
     - name: Install rumdl
-      if: steps.rumdl-cache.outputs.cache-hit != 'true'
-      shell: bash
-      run: cargo install rumdl --locked --version "${{ inputs.rumdl_version }}"
-
-    - name: Add rumdl to PATH
-      if: steps.rumdl-cache.outputs.cache-hit == 'true'
-      shell: bash
-      run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      uses: taiki-e/install-action@18b1216eba7f8039b0f8d131d5473787f0edce68 # v2.85.3
+      with:
+        tool: rumdl@${{ inputs.rumdl_version }}
 
     - name: Collect rumdl SARIF
       if: inputs.output != ''
