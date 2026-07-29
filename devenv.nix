@@ -964,15 +964,21 @@ in
 
           # actionlint does not support ignore patterns in its config file;
           # the -ignore flag must be passed on the command line. We define the
-          # formatter manually so we can suppress the false positive that arises
-          # from YAML anchors: the step ID 'rust-toolchain' is defined in every
-          # job that expands the anchor but actionlint cannot resolve it
-          # statically from the anchor body alone.
+          # formatter manually so we can suppress false positives from YAML
+          # anchors in cargo.yml: actionlint cannot expand anchors, so it
+          # treats `*checkout` / `*permissions` as alias nodes and does not see
+          # the `rust-toolchain` step id used by later expressions.
           actionlint = {
             command = "${pkgs.actionlint}/bin/actionlint";
             options = [
               "-ignore"
               ''"rust-toolchain" is not defined in object type''
+              "-ignore"
+              "alias node but mapping node is expected"
+              "-ignore"
+              ''step must run script with "run" section or run action with "uses" section''
+              "-ignore"
+              ''property "artifact" is not defined in object type''
             ];
             includes = [
               ".github/workflows/*.yml"
