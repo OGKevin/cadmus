@@ -51,14 +51,20 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p actionlint-reviewdog-input
+
+          # Ignore patterns are shared with devenv.nix via
+          # .github/lint/actionlint-ignore.txt so they only need updating once.
+          ignore_args=()
+          while IFS= read -r pattern || [ -n "$pattern" ]; do
+            [ -z "$pattern" ] && continue
+            case "$pattern" in
+            \#*) continue ;;
+            esac
+            ignore_args+=(-ignore "$pattern")
+          done < .github/lint/actionlint-ignore.txt
+
           set +e
-          # Match devenv.nix: suppress false positives from YAML anchors in cargo.yml.
-          actionlint -oneline \
-            -ignore '"rust-toolchain" is not defined in object type' \
-            -ignore 'alias node but mapping node is expected' \
-            -ignore 'step must run script with "run" section or run action with "uses" section' \
-            -ignore 'property "artifact" is not defined in object type' \
-            > actionlint-reviewdog-input/raw.txt
+          actionlint -oneline "${ignore_args[@]}" > actionlint-reviewdog-input/raw.txt
           actionlint_exit=$?
           set -e
           : > actionlint-reviewdog-input/diagnostics.txt

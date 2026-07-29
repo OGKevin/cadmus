@@ -1,0 +1,11 @@
+# actionlint -ignore patterns, shared by devenv.nix (treefmt) and
+# .github/workflows/actions-lint.yml (CI). One regex pattern per line.
+# Blank lines and lines starting with "#" are ignored.
+#
+# actionlint cannot expand YAML anchors, so it treats `*checkout` /
+# `*permissions` aliases in cargo.yml as opaque alias nodes and does not see
+# the `rust-toolchain` step id used by later expressions.
+"rust-toolchain" is not defined in object type
+alias node but mapping node is expected
+step must run script with "run" section or run action with "uses" section
+property "artifact" is not defined in object type
