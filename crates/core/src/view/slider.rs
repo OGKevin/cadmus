@@ -92,7 +92,7 @@ impl View for Slider {
                 FingerStatus::Down if self.rect.includes(position) => {
                     self.active = true;
                     self.update_value(position.x, _context.device.dpi());
-                    rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+                    rq.add(RenderData::new(self.id, self.rect, UpdateMode::FastMono));
                     bus.push_back(Event::Slider(self.slider_id, self.value, status));
                     self.last_x = position.x;
                     true
