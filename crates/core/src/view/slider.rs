@@ -8,6 +8,7 @@ use crate::framebuffer::UpdateMode;
 use crate::geom::{BorderSpec, CornerSpec, Rectangle, halves};
 use crate::input::{DeviceEvent, FingerStatus};
 use crate::unit::scale_by_dpi;
+use crate::view::icon::Icon;
 
 const PROGRESS_HEIGHT: f32 = 7.0;
 const BUTTON_DIAMETER: f32 = 46.0;
@@ -43,6 +44,10 @@ impl Slider {
             active: false,
             last_x: -1,
         }
+    }
+
+    pub fn increment(&mut self, amount: f32, rq: &mut RenderQueue) {
+        self.update(self.value + amount, rq)
     }
 
     pub fn update_value(&mut self, x_hit: i32, dpi: u16) {
@@ -208,6 +213,100 @@ impl View for Slider {
         &mut self.children
     }
 
+    fn id(&self) -> Id {
+        self.id
+    }
+}
+
+pub struct SliderWithButtons {
+    id: Id,
+    rect: Rectangle,
+    children: Vec<Box<dyn View>>,
+}
+
+impl SliderWithButtons {
+    pub fn new(
+        rect: Rectangle,
+        slider_id: SliderId,
+        value: f32,
+        min_value: f32,
+        max_value: f32,
+    ) -> SliderWithButtons {
+        let decrement = Icon::new(
+            "minus",
+            rect![rect.min.x, rect.min.y, rect.min.x + 40, rect.max.y],
+            Event::SliderIncrement(-1 as f32),
+        );
+        let slider = Slider::new(
+            rect![
+                decrement.rect.max.x,
+                rect.min.y,
+                rect.max.x - 40,
+                rect.max.y
+            ],
+            slider_id,
+            value,
+            min_value,
+            max_value,
+        );
+        let increment = Icon::new(
+            "plus",
+            rect![slider.rect.max.x, rect.min.y, rect.max.x, rect.max.y],
+            Event::SliderIncrement(1 as f32),
+        );
+        SliderWithButtons {
+            rect: rect,
+            id: ID_FEEDER.next(),
+            children: vec![Box::new(decrement), Box::new(slider), Box::new(increment)],
+        }
+    }
+}
+
+impl View for SliderWithButtons {
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, bus, rq, _context), fields(event = ?evt
+    ), ret(level=tracing::Level::TRACE)))]
+    fn handle_event(
+        &mut self,
+        evt: &Event,
+        _hub: &Hub,
+        bus: &mut Bus,
+        rq: &mut RenderQueue,
+        _context: &mut AppContext,
+    ) -> bool {
+        match *evt {
+            Event::SliderIncrement(amount) => {
+                let id = self.id;
+                let rect = self.rect;
+                let slider = self.children_mut()[1].downcast_mut::<Slider>().unwrap();
+                slider.increment(amount, rq);
+                rq.add(RenderData::new(id, rect, UpdateMode::Gui));
+                bus.push_back(Event::Slider(
+                    slider.slider_id,
+                    slider.value,
+                    FingerStatus::Up,
+                ));
+                true
+            }
+            _ => false,
+        }
+    }
+
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _rect, _context), fields(rect = ?_rect)))]
+    fn render(&self, _context: &mut AppContext, _rect: Rectangle) {}
+
+    fn rect(&self) -> &Rectangle {
+        &self.rect
+    }
+
+    fn rect_mut(&mut self) -> &mut Rectangle {
+        &mut self.rect
+    }
+    fn children(&self) -> &Vec<Box<dyn View>> {
+        &self.children
+    }
+    fn children_mut(&mut self) -> &mut Vec<Box<dyn View>> {
+        &mut self.children
+    }
     fn id(&self) -> Id {
         self.id
     }

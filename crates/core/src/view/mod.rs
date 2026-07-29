@@ -448,6 +448,7 @@ pub enum Event {
     Define(String),
     Submit(ViewId, String),
     Slider(SliderId, f32, FingerStatus),
+    SliderIncrement(f32),
     ToggleNear(ViewId, Rectangle),
     ToggleInputHistoryMenu(ViewId, Rectangle),
     ToggleBookMenu(Rectangle, usize),
