@@ -3,7 +3,7 @@ use super::common::shift;
 use super::icon::Icon;
 use super::label::Label;
 use super::presets_list::PresetsList;
-use super::slider::Slider;
+use super::slider::{Slider, SliderWithButtons};
 use super::{
     Align, Bus, EntryId, Event, Hub, ID_FEEDER, Id, RenderData, RenderQueue, SliderId, View, ViewId,
 };
@@ -137,7 +137,7 @@ impl FrontlightWindow {
                     levels.warmth
                 };
 
-                let slider = Slider::new(
+                let slider = SliderWithButtons::new(
                     rect![
                         rect.min.x + max_label_width + 3 * padding,
                         min_y,
@@ -155,7 +155,7 @@ impl FrontlightWindow {
             button_y += small_height;
         } else {
             let min_y = rect.min.y + small_height;
-            let slider = Slider::new(
+            let slider = SliderWithButtons::new(
                 rect![
                     rect.min.x + padding,
                     min_y,
