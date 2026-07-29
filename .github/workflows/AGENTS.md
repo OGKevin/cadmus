@@ -74,6 +74,12 @@ resolve `.git` and compute the PR diff for `-filter-mode=added`. Treat
 artifacts as untrusted data (pipe text into reviewdog only). Do not execute
 the PR head or artifact payloads.
 
+`actions/checkout` v7+ refuses fork PR heads on `workflow_run` unless
+`allow-unsafe-pr-checkout: true` is set. Opt in only when the checked-out
+tree is never executed (data for reviewdog / `git` diff only), and keep
+`persist-credentials: false`. See
+https://gh.io/securely-using-pull_request_target.
+
 ## Action pinning
 
 Pin every third-party action to a full commit SHA with a version comment:
