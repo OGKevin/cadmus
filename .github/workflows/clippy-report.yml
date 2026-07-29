@@ -37,12 +37,17 @@ jobs:
           echo "number=$(echo "$PR_JSON" | jq -r .number)" >> "$GITHUB_OUTPUT"
           echo "base_ref=$(echo "$PR_JSON" | jq -r .base_ref)" >> "$GITHUB_OUTPUT"
 
+      # Opt in: checkout v7 blocks fork PR heads on workflow_run by default.
+      # Safe here — we never execute the tree; reviewdog only needs .git/diff.
+      # https://gh.io/securely-using-pull_request_target
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: steps.identify-pr.outputs.number
         with:
           repository: ${{ github.event.workflow_run.head_repository.full_name }}
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
+          persist-credentials: false
+          allow-unsafe-pr-checkout: true
 
       - name: Fetch PR base for merge-base
         if: steps.identify-pr.outputs.number
