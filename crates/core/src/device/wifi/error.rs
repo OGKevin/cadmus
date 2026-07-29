@@ -32,4 +32,16 @@ pub enum WifiError {
     /// Failed to acquire lock for WiFi operation.
     #[error("Failed to acquire WiFi lock: {0}")]
     Lock(String),
+
+    /// Wi-Fi is powered down / disabled.
+    #[error("Wi-Fi is disabled")]
+    Disabled,
+
+    /// D-Bus transport or deserialize failure.
+    #[error("D-Bus error: {0}")]
+    Dbus(String),
+
+    /// Associated network is missing IP or ESSID.
+    #[error("Incomplete network state: {0}")]
+    Incomplete(String),
 }

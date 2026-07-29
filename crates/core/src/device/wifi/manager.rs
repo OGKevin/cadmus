@@ -1,6 +1,7 @@
 //! WiFi Manager trait definition.
 
 use crate::device::wifi::error::WifiError;
+use crate::device::wifi::network_info::NetworkInfo;
 
 /// Trait for WiFi management.
 ///
@@ -65,6 +66,23 @@ pub trait WifiManager: Send + Sync {
     /// # }
     /// ```
     fn disable(&self) -> Result<(), WifiError>;
+
+    /// Returns whether Wi-Fi is currently powered/enabled.
+    ///
+    /// Platform-specific: on Kobo this means the kernel module is loaded and
+    /// the network interface is up.
+    fn is_enabled(&self) -> bool;
+
+    /// Returns the active connection snapshot, if associated.
+    ///
+    /// - [`Ok`]`(None)` — Wi-Fi powered/enabled but not associated / no lease yet.
+    /// - [`Ok`]`(Some(_))` — connected; `ip` and `essid` are always present.
+    /// - [`Err`] — Wi-Fi is disabled, D-Bus/query failure, or connected but IP
+    ///   or ESSID missing (inconsistent state).
+    ///
+    /// Callers must not invoke this when [`is_enabled`](Self::is_enabled) is
+    /// false; implementations return [`WifiError::Disabled`] in that case.
+    fn network_info(&self) -> Result<Option<NetworkInfo>, WifiError>;
 }
 
 impl<T: WifiManager + ?Sized> WifiManager for Box<T> {
@@ -73,5 +91,11 @@ impl<T: WifiManager + ?Sized> WifiManager for Box<T> {
     }
     fn disable(&self) -> Result<(), WifiError> {
         (**self).disable()
+    }
+    fn is_enabled(&self) -> bool {
+        (**self).is_enabled()
+    }
+    fn network_info(&self) -> Result<Option<NetworkInfo>, WifiError> {
+        (**self).network_info()
     }
 }

@@ -601,7 +601,11 @@ const HWINFO_KEYS: [&str; 19] = [
     "Wifi",
 ];
 
-pub fn sys_info_as_html(model: crate::device::Model, mark: u8) -> String {
+pub fn sys_info_as_html(
+    model: crate::device::Model,
+    mark: u8,
+    network: Option<&crate::device::wifi::NetworkInfo>,
+) -> String {
     let mut buf = "<html>\n\t<head>\n\t\t<title>System Info</title>\n\t\t\
                    <link rel=\"stylesheet\" type=\"text/css\" \
                    href=\"css/sysinfo.css\"/>\n\t</head>\n\t<body>\n"
@@ -639,19 +643,14 @@ pub fn sys_info_as_html(model: crate::device::Model, mark: u8) -> String {
 
     buf.push_str("\t\t\t<tr class=\"sep\"></tr>\n");
 
-    let output = Command::new("scripts/ip.sh")
-        .output()
-        .map_err(|e| error!("Can't execute command: {:#}.", e))
-        .ok();
-
-    if let Some(stdout) = output
-        .filter(|output| output.status.success())
-        .and_then(|output| String::from_utf8(output.stdout).ok())
-        .filter(|stdout| !stdout.is_empty())
-    {
+    if let Some(network) = network {
         buf.push_str("\t\t\t<tr>\n");
         buf.push_str("\t\t\t\t<td>IP Address</td>\n");
-        buf.push_str(&format!("\t\t\t\t<td>{}</td>\n", stdout));
+        buf.push_str(&format!("\t\t\t\t<td>{}</td>\n", network.ip));
+        buf.push_str("\t\t\t</tr>\n");
+        buf.push_str("\t\t\t<tr>\n");
+        buf.push_str("\t\t\t\t<td>Wi-Fi Network</td>\n");
+        buf.push_str(&format!("\t\t\t\t<td>{}</td>\n", network.essid));
         buf.push_str("\t\t\t</tr>\n");
     }
 
@@ -743,6 +742,7 @@ pub fn sys_info_as_html(model: crate::device::Model, mark: u8) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::net::{IpAddr, Ipv4Addr};
     use std::path::PathBuf;
 
     #[test]
@@ -765,5 +765,25 @@ mod tests {
         let path_mixed = PathBuf::from("test_file.HtM");
         assert_eq!(file_kind(&path_upper), Some(FileExtension::Html));
         assert_eq!(file_kind(&path_mixed), Some(FileExtension::Html));
+    }
+
+    #[test]
+    fn sys_info_as_html_includes_network_when_provided() {
+        let network = crate::device::wifi::NetworkInfo {
+            ip: IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2)),
+            essid: crate::device::wifi::Essid::new("Home"),
+        };
+        let html = sys_info_as_html(crate::device::Model::TestDevice, 7, Some(&network));
+        assert!(html.contains("IP Address"));
+        assert!(html.contains("10.0.0.2"));
+        assert!(html.contains("Wi-Fi Network"));
+        assert!(html.contains("Home"));
+    }
+
+    #[test]
+    fn sys_info_as_html_omits_network_rows_when_none() {
+        let html = sys_info_as_html(crate::device::Model::TestDevice, 7, None);
+        assert!(!html.contains("IP Address"));
+        assert!(!html.contains("Wi-Fi Network"));
     }
 }

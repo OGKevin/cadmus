@@ -19,17 +19,31 @@ use std::path::PathBuf;
 use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct TestWifiState {
     enabled: Option<bool>,
     enable_calls: u32,
     disable_calls: u32,
+    network_info: Result<Option<crate::device::wifi::NetworkInfo>, crate::device::wifi::WifiError>,
+}
+
+impl Default for TestWifiState {
+    fn default() -> Self {
+        Self {
+            enabled: None,
+            enable_calls: 0,
+            disable_calls: 0,
+            network_info: Err(crate::device::wifi::WifiError::Disabled),
+        }
+    }
 }
 
 /// Assertable WiFi manager test double.
 ///
 /// Records enable/disable calls for lifecycle and settings tests. Default
 /// behavior is a cooperative no-op that returns `Ok(())`.
+/// [`network_info`](crate::device::wifi::WifiManager::network_info) defaults to
+/// [`WifiError::Disabled`](crate::device::wifi::WifiError::Disabled).
 #[derive(Clone)]
 pub struct TestWifiManager {
     state: Arc<Mutex<TestWifiState>>,
@@ -58,6 +72,25 @@ impl TestWifiManager {
     pub fn was_disable_called(&self) -> bool {
         self.disable_call_count() > 0
     }
+
+    /// Sets the value returned by subsequent [`network_info`](crate::device::wifi::WifiManager::network_info) calls.
+    ///
+    /// [`Ok`] results also mark the manager as enabled so [`is_enabled`](crate::device::wifi::WifiManager::is_enabled)
+    /// matches the stubbed connection state. [`WifiError::Disabled`](crate::device::wifi::WifiError::Disabled)
+    /// marks it disabled.
+    pub fn set_network_info(
+        &self,
+        info: Result<Option<crate::device::wifi::NetworkInfo>, crate::device::wifi::WifiError>,
+    ) {
+        if let Ok(mut state) = self.state.lock() {
+            match &info {
+                Ok(_) => state.enabled = Some(true),
+                Err(crate::device::wifi::WifiError::Disabled) => state.enabled = Some(false),
+                Err(_) => {}
+            }
+            state.network_info = info;
+        }
+    }
 }
 
 impl Default for TestWifiManager {
@@ -81,6 +114,38 @@ impl crate::device::wifi::WifiManager for TestWifiManager {
             state.disable_calls += 1;
         }
         Ok(())
+    }
+
+    fn is_enabled(&self) -> bool {
+        self.state
+            .lock()
+            .ok()
+            .and_then(|s| s.enabled)
+            .unwrap_or(false)
+    }
+
+    fn network_info(
+        &self,
+    ) -> Result<Option<crate::device::wifi::NetworkInfo>, crate::device::wifi::WifiError> {
+        if !self.is_enabled() {
+            return Err(crate::device::wifi::WifiError::Disabled);
+        }
+        let state = self.state.lock().map_err(|e| {
+            crate::device::wifi::WifiError::Lock(format!("Failed to acquire lock: {e}"))
+        })?;
+        match &state.network_info {
+            Ok(info) => Ok(info.clone()),
+            Err(crate::device::wifi::WifiError::Disabled) => {
+                Err(crate::device::wifi::WifiError::Disabled)
+            }
+            Err(crate::device::wifi::WifiError::Dbus(s)) => {
+                Err(crate::device::wifi::WifiError::Dbus(s.clone()))
+            }
+            Err(crate::device::wifi::WifiError::Incomplete(s)) => {
+                Err(crate::device::wifi::WifiError::Incomplete(s.clone()))
+            }
+            Err(other) => Err(crate::device::wifi::WifiError::Dbus(other.to_string())),
+        }
     }
 }
 

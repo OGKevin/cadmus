@@ -6,6 +6,7 @@ use cadmus_core::device::AppContext;
 use cadmus_core::device::AppDevice;
 use cadmus_core::device::DeviceHardware as _;
 use cadmus_core::device::DeviceRotation as _;
+use cadmus_core::device::wifi::WifiManager;
 use cadmus_core::device::{
     DeviceIdentity, DeviceInput, DeviceLifecycle, DevicePaths, DeviceRuntime, DeviceTask,
     ExitStatus, HistoryItem, InputSource,
@@ -487,7 +488,17 @@ pub fn run() -> Result<(), Error> {
             }
             Event::Select(EntryId::SystemInfo) => {
                 view.children_mut().retain(|child| !child.is::<Menu>());
-                let html = sys_info_as_html(context.device.model(), context.device.mark());
+                let network = context
+                    .device
+                    .wifi_manager()
+                    .and_then(|wifi| wifi.network_info())
+                    .ok()
+                    .flatten();
+                let html = sys_info_as_html(
+                    context.device.model(),
+                    context.device.mark(),
+                    network.as_ref(),
+                );
                 let r = Reader::from_html(
                     context.device.framebuffer().rect(),
                     &html,

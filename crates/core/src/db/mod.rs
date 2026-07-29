@@ -1,12 +1,11 @@
 pub mod backup;
 pub mod migrations;
-pub mod runtime;
 pub mod types;
 pub mod version;
 
+use crate::runtime::RUNTIME;
 use anyhow::{Context, Error};
 use log::LevelFilter;
-use runtime::RUNTIME;
 use sqlx::ConnectOptions;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
 use std::path::{Path, PathBuf};

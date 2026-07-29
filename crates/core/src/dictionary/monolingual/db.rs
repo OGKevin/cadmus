@@ -9,8 +9,8 @@
 
 use super::metadata::DictionaryEntry;
 use crate::db::Database;
-use crate::db::runtime::RUNTIME;
 use crate::db::types::UnixTimestamp;
+use crate::runtime::RUNTIME;
 use anyhow::Error;
 use sqlx::SqlitePool;
 
