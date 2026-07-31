@@ -243,7 +243,7 @@ impl SliderWithButtons {
         let decrement = Icon::new(
             "minus",
             rect![rect.min.x, rect.min.y, rect.min.x + 40, rect.max.y],
-            Event::SliderIncrement(-1 as f32),
+            Event::SliderIncrement(-1.0),
         );
         let slider = Slider::new(
             rect![
@@ -261,7 +261,7 @@ impl SliderWithButtons {
         let increment = Icon::new(
             "plus",
             rect![slider.rect.max.x, rect.min.y, rect.max.x, rect.max.y],
-            Event::SliderIncrement(1 as f32),
+            Event::SliderIncrement(1.0),
         );
 
         let mut children: Vec<Box<dyn View>> = vec![];
