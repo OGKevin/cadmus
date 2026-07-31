@@ -271,9 +271,9 @@ impl SliderWithButtons {
         let increment_index = children.len();
         children.push(Box::new(increment));
         SliderWithButtons {
-            rect: rect,
+            rect,
             id: ID_FEEDER.next(),
-            children: children,
+            children,
             decrement_index,
             slider_index,
             increment_index,
