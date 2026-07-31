@@ -8,7 +8,6 @@ use crate::framebuffer::UpdateMode;
 use crate::geom::{BorderSpec, CornerSpec, Rectangle, halves};
 use crate::input::{DeviceEvent, FingerStatus};
 use crate::unit::scale_by_dpi;
-use crate::view::handle_event;
 use crate::view::icon::Icon;
 
 const PROGRESS_HEIGHT: f32 = 7.0;
