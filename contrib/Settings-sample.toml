@@ -11,8 +11,10 @@ sleep-cover = true
 auto-share = false
 # Automatically synchronize the device time via NTP when WiFi connects.
 # This will also set the correct timezone, it uses
-# time.cloudflare.com and ipapi.co
+# the configured ntp-server and ipapi.co
 auto-time = false
+# NTP server hostname or IP (port 123 is fixed).
+ntp-server = "time.cloudflare.com"
 # Automatically adjust frontlight warmth based on sun position.
 # Coordinates are auto-detected during time sync (via ipapi.co)
 # unless manually specified below.

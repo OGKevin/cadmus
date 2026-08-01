@@ -3,21 +3,22 @@ use std::sync::mpsc::Sender;
 use crate::device::rtc::Rtc;
 use crate::geolocation::fetch_geolocation;
 use crate::http::Client;
+use crate::network_address::NetworkAddress;
 use crate::task::{BackgroundTask, ShutdownSignal, TaskId};
 use crate::time_manager::TimeManager;
 use crate::view::Event;
 
-const NTP_HOST: &str = "time.cloudflare.com:123";
-
 pub struct TimeSyncTask<R: Rtc> {
     time_manager: TimeManager<R>,
+    ntp_server: NetworkAddress,
     manual: bool,
 }
 
 impl<R: Rtc> TimeSyncTask<R> {
-    pub fn new(time_manager: TimeManager<R>, manual: bool) -> Self {
+    pub fn new(time_manager: TimeManager<R>, ntp_server: NetworkAddress, manual: bool) -> Self {
         TimeSyncTask {
             time_manager,
+            ntp_server,
             manual,
         }
     }
@@ -45,7 +46,10 @@ impl<R: Rtc + Send + 'static> BackgroundTask for TimeSyncTask<R> {
 
         let coordinates = geo.as_ref().map(|geo| geo.coordinates);
 
-        if let Err(e) = self.time_manager.sync(NTP_HOST, self.manual, geo, hub) {
+        if let Err(e) = self
+            .time_manager
+            .sync(&self.ntp_server, self.manual, geo, hub)
+        {
             tracing::error!(error = %e, "time sync failed");
         }
 

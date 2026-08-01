@@ -602,7 +602,11 @@ impl TaskManager {
 
         match context.device.time_manager() {
             Ok(time_manager) => {
-                let task = Box::new(time_sync::TimeSyncTask::new(time_manager.clone(), manual));
+                let task = Box::new(time_sync::TimeSyncTask::new(
+                    time_manager.clone(),
+                    context.settings.ntp_server.clone(),
+                    manual,
+                ));
                 if let Err(e) = self.start(task, hub.clone()) {
                     tracing::warn!(error = %e, "failed to start time sync task");
                 }

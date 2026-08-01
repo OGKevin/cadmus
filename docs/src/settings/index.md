@@ -81,12 +81,26 @@ auto-share = false
 ✏️
 
 Automatically synchronize the device time via NTP when WiFi connects. This will also set the correct timezone. Uses
-time.cloudflare.com and ipapi.co.
+the configured `ntp-server` and ipapi.co.
 
 <!-- i18n:skip-start -->
 
 ```toml
 auto-time = false
+```
+
+<!-- i18n:skip-end -->
+
+### `ntp-server`
+
+✏️
+
+Hostname or IP of the NTP server used for automatic and manual time sync. Port 123 is fixed.
+
+<!-- i18n:skip-start -->
+
+```toml
+ntp-server = "time.cloudflare.com"
 ```
 
 <!-- i18n:skip-end -->

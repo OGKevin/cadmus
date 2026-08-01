@@ -27,6 +27,21 @@ auto-time = true
 
 <!-- i18n:skip-end -->
 
+## Choosing an NTP server
+
+By default Cadmus uses `time.cloudflare.com`. You can change this under
+**Settings → General → NTP Server**, or in your settings file:
+
+<!-- i18n:skip-start -->
+
+```toml
+ntp-server = "pool.ntp.org"
+```
+
+<!-- i18n:skip-end -->
+
+The value is a hostname or IP address. NTP always uses port 123.
+
 ## Manual sync
 
 You can trigger a one-time sync without enabling the automatic option:
@@ -44,5 +59,5 @@ you know.
 > on your IP address. No personal data is sent — only your device's public IP
 > address is visible to that service as part of the network request.
 
-The actual time is fetched from `time.cloudflare.com` using the standard NTP
+The actual time is fetched from the configured NTP server using the standard NTP
 protocol.

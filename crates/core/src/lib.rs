@@ -38,6 +38,7 @@ pub mod library;
 pub mod lightsensor;
 pub mod logging;
 pub mod metadata;
+pub mod network_address;
 pub mod ota;
 pub use device::rtc::{AlarmManager, AlarmType};
 pub mod runtime;
