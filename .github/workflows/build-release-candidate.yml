@@ -68,7 +68,6 @@ jobs:
           subject-path: |
             dist/cadmus
             dist/*.sh
-            dist/scripts/*
             dist/libs/*.so*
             dist/bin/*
             release-artifacts/*.tgz

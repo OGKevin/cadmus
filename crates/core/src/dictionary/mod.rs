@@ -126,7 +126,7 @@ pub fn resolve_dict_id(database: &Database, fingerprint: &Fp) -> Option<i64> {
     let fp_str = fingerprint.to_string();
     let pool = database.pool().clone();
 
-    crate::db::runtime::RUNTIME
+    crate::runtime::RUNTIME
         .block_on(async {
             sqlx::query_scalar!(
                 "SELECT dict_id FROM dictionary_index_meta WHERE fingerprint = ?",
@@ -195,7 +195,7 @@ pub fn load_dictionary(content: Box<dyn DictReader>, index: Box<dyn IndexReader>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::runtime::RUNTIME;
+    use crate::runtime::RUNTIME;
 
     const PATH_CASE_SENSITIVE_DICT: &str = "src/dictionary/testdata/case_sensitive_dict.dict";
     const PATH_CASE_INSENSITIVE_DICT: &str = "src/dictionary/testdata/case_insensitive_dict.dict";

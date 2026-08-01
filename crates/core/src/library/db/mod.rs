@@ -2,7 +2,6 @@ pub mod conversion;
 pub mod models;
 
 use crate::db::Database;
-use crate::db::runtime::RUNTIME;
 use crate::db::types::{FileSize, OptionalUuid7, UnixTimestamp, Uuid7};
 use crate::document::SimpleTocEntry;
 use crate::geom::Point;
@@ -11,6 +10,7 @@ use crate::metadata::{
     CroppingMargins, FileInfo, Info, ReaderInfo, ScrollMode, SortMethod, TextAlign, ZoomMode,
     alphabetic_author, alphabetic_title, natural_cmp, sorter,
 };
+use crate::runtime::RUNTIME;
 use crate::settings::FileExtension;
 use anyhow::Error;
 use conversion::{

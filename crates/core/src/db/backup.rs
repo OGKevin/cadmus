@@ -606,7 +606,7 @@ unsafe fn sqlite_error_message(db: *mut libsqlite3_sys::sqlite3) -> String {
 mod tests {
     use super::*;
     use crate::db::Database;
-    use crate::db::runtime::RUNTIME;
+    use crate::runtime::RUNTIME;
     use std::str::FromStr;
 
     #[test]

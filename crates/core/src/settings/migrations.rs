@@ -193,7 +193,7 @@ mod tests {
             settings: &mut settings,
         };
 
-        crate::db::runtime::RUNTIME.block_on(async {
+        crate::runtime::RUNTIME.block_on(async {
             migrate_sketch_pen_speed_mm(&mut ctx)
                 .await
                 .expect("pen speed migration should succeed");

@@ -195,7 +195,7 @@ pub async fn check_version_gate(
 mod tests {
     use super::*;
     use crate::db::Database;
-    use crate::db::runtime::RUNTIME;
+    use crate::runtime::RUNTIME;
     use crate::version::get_current_version;
 
     fn different_migration_hash() -> MigrationHash {

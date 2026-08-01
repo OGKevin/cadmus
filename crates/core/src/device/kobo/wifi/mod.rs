@@ -66,13 +66,15 @@
 //! - `mod_para=nxp/wifi_mod_para_sd8987.conf`
 //! - Loading `mlan.ko` dependency before the main module
 
+mod dhcpcd;
 mod types;
 
 #[cfg(target_os = "linux")]
 use procfs;
 
+use crate::device::kobo::wifi::dhcpcd::network_info_from_zbus;
 use crate::device::kobo::wifi::types::{PowerToggle, WifiModule, WifiModuleConfig};
-use crate::device::wifi::{WifiError, WifiManager};
+use crate::device::wifi::{NetworkInfo, WifiError, WifiManager};
 use nix::ioctl_write_int_bad;
 use std::fs;
 use std::os::fd::AsRawFd;
@@ -685,8 +687,7 @@ impl WifiManager for KoboWifiManager {
             .lock()
             .map_err(|e| WifiError::Lock(format!("Failed to acquire lock: {}", e)))?;
 
-        if is_module_loaded(self.config.module.as_ref()) && is_interface_up(&self.config.interface)
-        {
+        if self.is_enabled() {
             info!("WiFi already enabled, skipping");
             return Ok(());
         }
@@ -750,6 +751,23 @@ impl WifiManager for KoboWifiManager {
 
         info!("WiFi disabled successfully");
         Ok(())
+    }
+
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(interface = %self.config.interface), ret))]
+    fn is_enabled(&self) -> bool {
+        is_module_loaded(self.config.module.as_ref()) && is_interface_up(&self.config.interface)
+    }
+
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(interface = %self.config.interface), ret))]
+    fn network_info(&self) -> Result<Option<NetworkInfo>, WifiError> {
+        if !self.is_enabled() {
+            tracing::debug!(
+                interface = %self.config.interface,
+                "Wi-Fi disabled, refusing network_info"
+            );
+            return Err(WifiError::Disabled);
+        }
+        network_info_from_zbus(&self.config.interface)
     }
 }
 
