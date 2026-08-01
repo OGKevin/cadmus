@@ -110,7 +110,7 @@
       ],
       "datasourceTemplate": "github-releases",
       "depNameTemplate": "rhysd/actionlint",
-      "extractVersionTemplate": "^v(?<version>.+)$",
+      "extractVersionTemplate": "^v?(?<version>.+)$",
       "versioningTemplate": "semver"
     },
     {
@@ -121,7 +121,7 @@
       ],
       "datasourceTemplate": "github-releases",
       "depNameTemplate": "mvdan/sh",
-      "extractVersionTemplate": "^v(?<version>.+)$",
+      "extractVersionTemplate": "^v?(?<version>.+)$",
       "versioningTemplate": "semver"
     },
     {

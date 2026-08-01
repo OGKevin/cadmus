@@ -48,5 +48,4 @@ runs:
         GH_TOKEN: ${{ github.token }}
       run: |
         set -euo pipefail
-        git remote add upstream "https://x-access-token:${GH_TOKEN}@github.com/${BASE_REPO}.git"
-        git fetch --no-tags upstream "$BASE_REF"
+        git fetch --no-tags "https://x-access-token:${GH_TOKEN}@github.com/${BASE_REPO}.git" "$BASE_REF"

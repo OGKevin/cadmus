@@ -75,10 +75,12 @@ jobs:
             if [[ "$line" == *"$shellcheck_output"* ]]; then
               rest="${line#*"${shellcheck_output}"}"
               rest="${rest#*:}"
-              s="${rest:0:1}"
-              if [[ "$s" == [ewin] ]]; then
-                severity="$s"
-              fi
+              level="${rest%%:*}"
+              case "$level" in
+              error) severity=e ;;
+              warning) severity=w ;;
+              info | style) severity=i ;;
+              esac
             fi
             echo "${severity}:${line}" >> actionlint-reviewdog-input/diagnostics.txt
           done < actionlint-reviewdog-input/raw.txt
