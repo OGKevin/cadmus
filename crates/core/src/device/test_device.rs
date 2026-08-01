@@ -135,16 +135,7 @@ impl crate::device::wifi::WifiManager for TestWifiManager {
         })?;
         match &state.network_info {
             Ok(info) => Ok(info.clone()),
-            Err(crate::device::wifi::WifiError::Disabled) => {
-                Err(crate::device::wifi::WifiError::Disabled)
-            }
-            Err(crate::device::wifi::WifiError::Dbus(s)) => {
-                Err(crate::device::wifi::WifiError::Dbus(s.clone()))
-            }
-            Err(crate::device::wifi::WifiError::Incomplete(s)) => {
-                Err(crate::device::wifi::WifiError::Incomplete(s.clone()))
-            }
-            Err(other) => Err(crate::device::wifi::WifiError::Dbus(other.to_string())),
+            Err(e) => Err(crate::device::wifi::clone_wifi_error(e)),
         }
     }
 }

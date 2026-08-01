@@ -2,12 +2,16 @@
 
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr};
+use std::time::Duration;
 
 use crate::device::wifi::{Essid, NetworkInfo, WifiError};
 
-const DHCPCCD_SERVICE: &str = "name.marples.roy.dhcpcd";
-const DHCPCCD_PATH: &str = "/name/marples/roy/dhcpcd";
-const DHCPCCD_INTERFACE: &str = "name.marples.roy.dhcpcd";
+const DHCPCD_SERVICE: &str = "name.marples.roy.dhcpcd";
+const DHCPCD_PATH: &str = "/name/marples/roy/dhcpcd";
+const DHCPCD_INTERFACE: &str = "name.marples.roy.dhcpcd";
+
+/// Reply / overall deadline for dhcpcd-dbus method calls.
+const DHCPCD_METHOD_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// dhcpcd-dbus method: returns interface status maps including `IPAddress`.
 const METHOD_GET_INTERFACES: &str = "GetInterfaces";
@@ -37,12 +41,11 @@ pub(crate) struct ListedNetwork {
     pub flags: String,
 }
 
-pub(crate) trait DhcpcdClient {
-    fn get_interfaces(&self) -> Result<InterfaceIpMap, WifiError>;
-    fn list_networks(&self, interface: &str) -> Result<Vec<ListedNetwork>, WifiError>;
-}
-
-/// Converts a host-endian dhcpcd `IPAddress` u32 to [`Ipv4Addr`].
+/// Converts a dhcpcd `IPAddress` `u32` (native/host byte order) to [`Ipv4Addr`].
+///
+/// dhcpcd encodes the address from an `in_addr` on the device, so decode with
+/// [`u32::to_ne_bytes`]. Kobo targets are little-endian; the sample below holds
+/// on LE hosts only.
 ///
 /// Device example: `2147592384` → `192.168.1.128`.
 #[cfg_attr(feature = "tracing", tracing::instrument(ret(level = tracing::Level::TRACE)))]
@@ -59,28 +62,17 @@ pub(crate) fn current_essid(networks: &[ListedNetwork]) -> Option<Essid> {
         .map(|n| Essid::new(n.ssid.clone()))
 }
 
-/// Assembles [`NetworkInfo`] from a mockable dhcpcd client.
-///
-/// The caller must ensure Wi-Fi is enabled before invoking this; disabled
-/// radio is [`WifiError::Disabled`] at the [`WifiManager`](crate::device::wifi::WifiManager)
-/// boundary, not here.
-#[cfg_attr(
-    feature = "tracing",
-    tracing::instrument(skip(client), fields(interface), ret)
-)]
-pub(crate) fn network_info_with_client(
-    interface: &str,
-    client: &dyn DhcpcdClient,
-) -> Result<Option<NetworkInfo>, WifiError> {
-    tracing::debug!(interface, "listing networks via dhcpcd-dbus");
-    let networks = client.list_networks(interface)?;
-    let Some(essid) = current_essid(&networks) else {
-        tracing::debug!(interface, "no current network");
-        return Ok(None);
-    };
+/// Queries dhcpcd-dbus on one system-bus connection (list + get interfaces).
+#[cfg_attr(feature = "tracing", tracing::instrument(fields(interface), ret))]
+pub(crate) fn network_info_from_zbus(interface: &str) -> Result<Option<NetworkInfo>, WifiError> {
+    block_on_with_timeout(network_info_zbus_async(interface))
+}
 
-    tracing::debug!(interface, essid = %essid, "fetching interfaces via dhcpcd-dbus");
-    let ifaces = client.get_interfaces()?;
+fn assemble_network_info(
+    interface: &str,
+    essid: &Essid,
+    ifaces: &InterfaceIpMap,
+) -> Result<NetworkInfo, WifiError> {
     let Some(&host_ip) = ifaces.get(interface) else {
         tracing::warn!(
             interface,
@@ -94,39 +86,45 @@ pub(crate) fn network_info_with_client(
 
     let ip = IpAddr::V4(ipv4_from_host_u32(host_ip));
     tracing::debug!(interface, ip = %ip, essid = %essid, "assembled network info");
-    Ok(Some(NetworkInfo { ip, essid }))
+    Ok(NetworkInfo {
+        ip,
+        essid: essid.clone(),
+    })
 }
 
-#[derive(Debug)]
-pub(crate) struct ZbusDhcpcdClient;
-
-impl DhcpcdClient for ZbusDhcpcdClient {
-    #[cfg_attr(feature = "tracing", tracing::instrument(ret))]
-    fn get_interfaces(&self) -> Result<InterfaceIpMap, WifiError> {
-        crate::runtime::RUNTIME.block_on(get_interfaces_async())
-    }
-
-    #[cfg_attr(feature = "tracing", tracing::instrument(ret))]
-    fn list_networks(&self, interface: &str) -> Result<Vec<ListedNetwork>, WifiError> {
-        crate::runtime::RUNTIME.block_on(list_networks_async(interface))
-    }
+fn block_on_with_timeout<F, T>(fut: F) -> Result<T, WifiError>
+where
+    F: std::future::Future<Output = Result<T, WifiError>>,
+{
+    crate::runtime::RUNTIME.block_on(async {
+        tokio::time::timeout(DHCPCD_METHOD_TIMEOUT, fut)
+            .await
+            .map_err(|_| {
+                WifiError::Dbus(format!(
+                    "dhcpcd-dbus timed out after {}s",
+                    DHCPCD_METHOD_TIMEOUT.as_secs()
+                ))
+            })?
+    })
 }
 
-#[cfg_attr(feature = "tracing", tracing::instrument(ret))]
-async fn get_interfaces_async() -> Result<InterfaceIpMap, WifiError> {
-    tracing::debug!(method = METHOD_GET_INTERFACES, "connecting to system bus");
-    let connection = zbus::Connection::system()
+async fn dhcpcd_connection() -> Result<zbus::Connection, WifiError> {
+    tracing::debug!("connecting to system bus for dhcpcd-dbus");
+    zbus::connection::Builder::system()
+        .map_err(|e| WifiError::Dbus(format!("system bus builder: {e}")))?
+        .method_timeout(DHCPCD_METHOD_TIMEOUT)
+        .build()
         .await
-        .map_err(|e| WifiError::Dbus(format!("system bus connect: {e}")))?;
-    let proxy = zbus::Proxy::new(
-        &connection,
-        DHCPCCD_SERVICE,
-        DHCPCCD_PATH,
-        DHCPCCD_INTERFACE,
-    )
-    .await
-    .map_err(|e| WifiError::Dbus(format!("dhcpcd proxy: {e}")))?;
+        .map_err(|e| WifiError::Dbus(format!("system bus connect: {e}")))
+}
 
+async fn dhcpcd_proxy<'a>(connection: &'a zbus::Connection) -> Result<zbus::Proxy<'a>, WifiError> {
+    zbus::Proxy::new(connection, DHCPCD_SERVICE, DHCPCD_PATH, DHCPCD_INTERFACE)
+        .await
+        .map_err(|e| WifiError::Dbus(format!("dhcpcd proxy: {e}")))
+}
+
+async fn get_interfaces_with_proxy(proxy: &zbus::Proxy<'_>) -> Result<InterfaceIpMap, WifiError> {
     let raw: HashMap<String, HashMap<String, zbus::zvariant::OwnedValue>> = proxy
         .call(METHOD_GET_INTERFACES, &())
         .await
@@ -148,25 +146,10 @@ async fn get_interfaces_async() -> Result<InterfaceIpMap, WifiError> {
     Ok(map)
 }
 
-#[cfg_attr(feature = "tracing", tracing::instrument(ret))]
-async fn list_networks_async(interface: &str) -> Result<Vec<ListedNetwork>, WifiError> {
-    tracing::debug!(
-        method = METHOD_LIST_NETWORKS,
-        interface,
-        "connecting to system bus"
-    );
-    let connection = zbus::Connection::system()
-        .await
-        .map_err(|e| WifiError::Dbus(format!("system bus connect: {e}")))?;
-    let proxy = zbus::Proxy::new(
-        &connection,
-        DHCPCCD_SERVICE,
-        DHCPCCD_PATH,
-        DHCPCCD_INTERFACE,
-    )
-    .await
-    .map_err(|e| WifiError::Dbus(format!("dhcpcd proxy: {e}")))?;
-
+async fn list_networks_with_proxy(
+    proxy: &zbus::Proxy<'_>,
+    interface: &str,
+) -> Result<Vec<ListedNetwork>, WifiError> {
     let rows: Vec<(i32, String, String, String)> = proxy
         .call(METHOD_LIST_NETWORKS, &(interface,))
         .await
@@ -185,45 +168,29 @@ async fn list_networks_async(interface: &str) -> Result<Vec<ListedNetwork>, Wifi
     Ok(networks)
 }
 
+#[cfg_attr(feature = "tracing", tracing::instrument(fields(interface), ret))]
+async fn network_info_zbus_async(interface: &str) -> Result<Option<NetworkInfo>, WifiError> {
+    tracing::debug!(
+        interface,
+        "querying network info on one dhcpcd-dbus connection"
+    );
+    let connection = dhcpcd_connection().await?;
+    let proxy = dhcpcd_proxy(&connection).await?;
+
+    let networks = list_networks_with_proxy(&proxy, interface).await?;
+    let Some(essid) = current_essid(&networks) else {
+        tracing::debug!(interface, "no current network");
+        return Ok(None);
+    };
+
+    let ifaces = get_interfaces_with_proxy(&proxy).await?;
+    Ok(Some(assemble_network_info(interface, &essid, &ifaces)?))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::cell::RefCell;
     use std::net::Ipv4Addr;
-
-    struct MockDhcpcd {
-        interfaces: Result<InterfaceIpMap, WifiError>,
-        networks: Result<Vec<ListedNetwork>, WifiError>,
-        list_calls: RefCell<u32>,
-        get_calls: RefCell<u32>,
-    }
-
-    impl DhcpcdClient for MockDhcpcd {
-        fn get_interfaces(&self) -> Result<InterfaceIpMap, WifiError> {
-            *self.get_calls.borrow_mut() += 1;
-            match &self.interfaces {
-                Ok(m) => Ok(m.clone()),
-                Err(e) => Err(clone_err(e)),
-            }
-        }
-
-        fn list_networks(&self, _interface: &str) -> Result<Vec<ListedNetwork>, WifiError> {
-            *self.list_calls.borrow_mut() += 1;
-            match &self.networks {
-                Ok(n) => Ok(n.clone()),
-                Err(e) => Err(clone_err(e)),
-            }
-        }
-    }
-
-    fn clone_err(e: &WifiError) -> WifiError {
-        match e {
-            WifiError::Disabled => WifiError::Disabled,
-            WifiError::Dbus(s) => WifiError::Dbus(s.clone()),
-            WifiError::Incomplete(s) => WifiError::Incomplete(s.clone()),
-            other => WifiError::Dbus(other.to_string()),
-        }
-    }
 
     fn network(id: i32, ssid: &str, flags: &str) -> ListedNetwork {
         ListedNetwork {
@@ -272,65 +239,21 @@ mod tests {
     }
 
     #[test]
-    fn assembly_ok_some_when_both_present() {
+    fn assemble_ok_when_ip_present() {
         let mut ifaces = InterfaceIpMap::new();
         ifaces.insert("wlan0".to_string(), 2147592384);
-        let client = MockDhcpcd {
-            interfaces: Ok(ifaces),
-            networks: Ok(vec![network(0, "Home", NETWORK_FLAG_CURRENT)]),
-            list_calls: RefCell::new(0),
-            get_calls: RefCell::new(0),
-        };
-        let info = network_info_with_client("wlan0", &client)
-            .unwrap()
-            .expect("Some");
+        let essid = Essid::new("Home");
+        let info = assemble_network_info("wlan0", &essid, &ifaces).unwrap();
         assert_eq!(info.ip, IpAddr::V4(Ipv4Addr::new(192, 168, 1, 128)));
         assert_eq!(info.essid.as_str(), "Home");
-        assert_eq!(*client.list_calls.borrow(), 1);
-        assert_eq!(*client.get_calls.borrow(), 1);
     }
 
     #[test]
-    fn assembly_ok_none_when_no_current() {
-        let client = MockDhcpcd {
-            interfaces: Ok(InterfaceIpMap::new()),
-            networks: Ok(vec![network(0, "Guest", "[DISABLED]")]),
-            list_calls: RefCell::new(0),
-            get_calls: RefCell::new(0),
-        };
-        assert!(
-            network_info_with_client("wlan0", &client)
-                .unwrap()
-                .is_none()
-        );
-        assert_eq!(*client.get_calls.borrow(), 0);
-    }
-
-    #[test]
-    fn assembly_err_when_current_without_ip() {
-        let client = MockDhcpcd {
-            interfaces: Ok(InterfaceIpMap::new()),
-            networks: Ok(vec![network(0, "Home", NETWORK_FLAG_CURRENT)]),
-            list_calls: RefCell::new(0),
-            get_calls: RefCell::new(0),
-        };
+    fn assemble_err_when_ip_missing() {
+        let essid = Essid::new("Home");
         assert!(matches!(
-            network_info_with_client("wlan0", &client),
+            assemble_network_info("wlan0", &essid, &InterfaceIpMap::new()),
             Err(WifiError::Incomplete(_))
-        ));
-    }
-
-    #[test]
-    fn assembly_err_on_dbus_failure() {
-        let client = MockDhcpcd {
-            interfaces: Ok(InterfaceIpMap::new()),
-            networks: Err(WifiError::Dbus("boom".into())),
-            list_calls: RefCell::new(0),
-            get_calls: RefCell::new(0),
-        };
-        assert!(matches!(
-            network_info_with_client("wlan0", &client),
-            Err(WifiError::Dbus(_))
         ));
     }
 }

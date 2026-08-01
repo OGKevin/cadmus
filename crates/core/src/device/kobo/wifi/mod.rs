@@ -72,7 +72,7 @@ mod types;
 #[cfg(target_os = "linux")]
 use procfs;
 
-use crate::device::kobo::wifi::dhcpcd::{ZbusDhcpcdClient, network_info_with_client};
+use crate::device::kobo::wifi::dhcpcd::network_info_from_zbus;
 use crate::device::kobo::wifi::types::{PowerToggle, WifiModule, WifiModuleConfig};
 use crate::device::wifi::{NetworkInfo, WifiError, WifiManager};
 use nix::ioctl_write_int_bad;
@@ -767,7 +767,7 @@ impl WifiManager for KoboWifiManager {
             );
             return Err(WifiError::Disabled);
         }
-        network_info_with_client(&self.config.interface, &ZbusDhcpcdClient)
+        network_info_from_zbus(&self.config.interface)
     }
 }
 

@@ -492,6 +492,9 @@ pub fn run() -> Result<(), Error> {
                     .device
                     .wifi_manager()
                     .and_then(|wifi| wifi.network_info())
+                    .inspect_err(|e| {
+                        tracing::warn!(error = %e, "no network info for system info");
+                    })
                     .ok()
                     .flatten();
                 let html = sys_info_as_html(

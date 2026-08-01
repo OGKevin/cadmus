@@ -142,7 +142,7 @@ fn handle_net_up(
                 .ok();
         }
         Ok(None) => {
-            tracing::warn!("network up but Wi-Fi has no current association");
+            tracing::debug!("network up but Wi-Fi has no current association");
         }
         Err(e) => {
             tracing::warn!(error = %e, "failed to query network info on NetUp");

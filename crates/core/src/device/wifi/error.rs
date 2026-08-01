@@ -45,3 +45,30 @@ pub enum WifiError {
     #[error("Incomplete network state: {0}")]
     Incomplete(String),
 }
+
+/// Clones a [`WifiError`] for test doubles that store `Result`s by value.
+///
+/// `Io` is recreated from the display string because [`std::io::Error`] is not
+/// `Clone`.
+#[cfg(any(
+    test,
+    docsrs,
+    all(
+        feature = "deviceless",
+        not(any(feature = "kobo", feature = "emulator"))
+    )
+))]
+pub(crate) fn clone_wifi_error(error: &WifiError) -> WifiError {
+    match error {
+        WifiError::DeviceInfo(s) => WifiError::DeviceInfo(s.clone()),
+        WifiError::KernelModule(s) => WifiError::KernelModule(s.clone()),
+        WifiError::Interface(s) => WifiError::Interface(s.clone()),
+        WifiError::Ioctl(s) => WifiError::Ioctl(s.clone()),
+        WifiError::Config(s) => WifiError::Config(s.clone()),
+        WifiError::Io(e) => WifiError::Io(std::io::Error::other(e.to_string())),
+        WifiError::Lock(s) => WifiError::Lock(s.clone()),
+        WifiError::Disabled => WifiError::Disabled,
+        WifiError::Dbus(s) => WifiError::Dbus(s.clone()),
+        WifiError::Incomplete(s) => WifiError::Incomplete(s.clone()),
+    }
+}
