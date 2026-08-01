@@ -1,7 +1,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Cadmus Documentation\n"
-"POT-Creation-Date: 2026-07-14T20:06:37+02:00\n"
+"POT-Creation-Date: 2026-08-01T16:14:55+02:00\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
@@ -176,6 +176,10 @@ msgstr ""
 
 #: src/SUMMARY.md:53
 msgid "DHCP IP Address Changes on WiFi Toggle"
+msgstr ""
+
+#: src/SUMMARY.md:54
+msgid "Reading IP and ESSID via dhcpcd-dbus"
 msgstr ""
 
 #: src/index.md:3
