@@ -288,6 +288,7 @@ pub struct Settings {
     /// NTP server used for automatic and manual time sync.
     ///
     /// Port 123 is fixed; only the hostname or IP is stored.
+    #[serde(default = "NetworkAddress::ntp_cloudflare")]
     pub ntp_server: NetworkAddress,
     /// Whether frontlight levels should be managed automatically.
     ///

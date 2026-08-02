@@ -17,12 +17,6 @@ const NTP_CLOUDFLARE: &str = "time.cloudflare.com";
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct NetworkAddress(String);
 
-impl Default for NetworkAddress {
-    fn default() -> Self {
-        Self::ntp_cloudflare()
-    }
-}
-
 impl NetworkAddress {
     /// Cloudflare NTP hostname used as Cadmus's built-in time-sync server.
     pub fn ntp_cloudflare() -> Self {
@@ -156,5 +150,43 @@ mod tests {
     #[test]
     fn serde_rejects_empty() {
         assert!(serde_json::from_str::<NetworkAddress>("\"\"").is_err());
+    }
+
+    #[test]
+    fn strips_trailing_ntp_port_from_ipv4() {
+        let addr: NetworkAddress = "192.168.0.1:123".parse().unwrap();
+        assert_eq!(addr.as_str(), "192.168.0.1");
+    }
+
+    #[test]
+    fn strips_trailing_ntp_port_from_hostname() {
+        let addr: NetworkAddress = "pool.ntp.org:123".parse().unwrap();
+        assert_eq!(addr.as_str(), "pool.ntp.org");
+    }
+
+    #[test]
+    fn strips_trailing_ntp_port_from_unbracketed_ipv6() {
+        let addr: NetworkAddress = "2001:db8::1:123".parse().unwrap();
+        assert_eq!(addr.as_str(), "2001:db8::1");
+    }
+
+    #[test]
+    fn strips_trailing_ntp_port_from_bracketed_ipv6() {
+        let addr: NetworkAddress = "[2001:db8::1]:123".parse().unwrap();
+        assert_eq!(addr.as_str(), "2001:db8::1");
+    }
+
+    #[test]
+    fn leaves_address_without_ntp_port_unchanged() {
+        let cases = [
+            "time.cloudflare.com",
+            "192.168.0.1",
+            "2001:db8::1",
+            "pool.ntp.org:456",
+        ];
+        for input in cases {
+            let addr: NetworkAddress = input.parse().unwrap();
+            assert_eq!(addr.as_str(), input, "input: {input}");
+        }
     }
 }
