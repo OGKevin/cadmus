@@ -165,16 +165,10 @@ jobs:
           cachekey: ${{ steps.rust-toolchain.outputs.cachekey }}
           mode: save
 
-      - name: Cache cargo-nextest
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        id: cargo-nextest-cache
-        with:
-          path: ~/.cargo/bin/cargo-nextest
-          key: ${{ runner.os }}-nextest-${{ env.NEXTEST_VERSION }}
-
       - name: Install cargo-nextest
-        if: steps.cargo-nextest-cache.outputs.cache-hit != 'true'
-        run: cargo install cargo-nextest --version "$NEXTEST_VERSION" --locked --force
+        uses: taiki-e/install-action@18b1216eba7f8039b0f8d131d5473787f0edce68 # v2.85.3
+        with:
+          tool: nextest@${{ env.NEXTEST_VERSION }}
 
       - name: Cache cargo-llvm-cov
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -381,16 +375,10 @@ jobs:
         with:
           cachekey: ${{ steps.rust-toolchain.outputs.cachekey }}
 
-      - name: Cache cargo-nextest
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        id: cargo-nextest-cache
-        with:
-          path: ~/.cargo/bin/cargo-nextest
-          key: ${{ runner.os }}-nextest-${{ env.NEXTEST_VERSION }}
-
       - name: Install cargo-nextest
-        if: steps.cargo-nextest-cache.outputs.cache-hit != 'true'
-        run: cargo install cargo-nextest --version "$NEXTEST_VERSION" --locked --force
+        uses: taiki-e/install-action@18b1216eba7f8039b0f8d131d5473787f0edce68 # v2.85.3
+        with:
+          tool: nextest@${{ env.NEXTEST_VERSION }}
 
       - name: Restore cargo-llvm-cov
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

@@ -20,14 +20,16 @@ read` if it still checks out code).
 Add only what a job requires:
 
 ```yaml
-  actionlint:
+  post-review:
     permissions:
       contents: read
+      actions: read
       pull-requests: write
 ```
 
-Common elevations: `pull-requests: write` (reviewdog), `pages: write` +
-`id-token: write` (Pages deploy), `contents: write` (push branches).
+Common elevations: `pull-requests: write` (reviewdog **report** workflows),
+`pages: write` + `id-token: write` (Pages deploy), `contents: write` (push
+branches).
 
 ### Rollup jobs
 
@@ -53,32 +55,58 @@ Path-filter and validate jobs only need a read-only checkout. Prefer:
           persist-credentials: false
 ```
 
-Skip this on jobs that use reviewdog or other tools that rely on persisted
-credentials for PR comments.
+Skip this on unprivileged collect jobs that do not need git credentials.
+Report workflows that fetch the PR base ref need a tokenized remote.
 
 ## Fork PR reviewdog
 
 Public fork pull requests receive a read-only `GITHUB_TOKEN` on `pull_request`,
 so reviewdog cannot post inline review comments from that event. Cadmus splits
-collection from posting:
+collection from posting for every reviewdog consumer:
 
-1. **Cargo** (`pull_request`) — unprivileged. Clippy matrix uploads JSON;
-   `clippy-report` coalesces diagnostics into the `clippy-reviewdog-input`
-   artifact. No PR write permission.
-2. **Clippy report** (`workflow_run` on Cargo) — privileged base-repo context.
-   Downloads the artifact by `run-id` and posts via reviewdog with
+1. **Collect** (`pull_request`) — unprivileged. Run the linter, write
+   diagnostics to a `*-reviewdog-input` artifact. No `pull-requests: write`.
+2. **Report** (`workflow_run` on the collect workflow) — privileged base-repo
+   context. Identify the PR, check out the PR head for the diff (see below),
+   download the artifact by `run-id`, and post via reviewdog with
    `pull-requests: write`.
 
-The privileged workflow may check out the PR head solely so reviewdog can
-resolve `.git` and compute the PR diff for `-filter-mode=added`. Treat
-artifacts as untrusted data (pipe text into reviewdog only). Do not execute
-the PR head or artifact payloads.
+| Collect (`pull_request`) | Report (`workflow_run`) | Tools                       |
+| ------------------------ | ----------------------- | --------------------------- |
+| Cargo                    | Clippy report           | clippy                      |
+| Actions lint             | Actions lint report     | actionlint, prettier        |
+| Shell                    | Shell report            | shellcheck, shfmt           |
+| Website                  | Website report          | prettier, eslint, stylelint |
+| Docs lint                | Docs lint report        | rumdl                       |
+
+New reviewdog jobs must follow the same collect/report pair. Keep
+`pull-requests: write` on the report workflow only.
+
+### Privileged checkout and trust
+
+Report job order:
+
+1. Check out the **base** repository to a dedicated path (e.g. `path: ci`) for
+   trusted composites
+2. Identify the PR (`number`, `base_ref`)
+3. Check out the PR head to a **different** path (e.g. `path: pr`) via
+   `checkout-workflow-run-pr-head` — pass `repository`, `ref`, `base_ref`, and
+   `path` from the workflow
+4. Download artifacts and pipe diagnostics into reviewdog — pass `workdir`
+   matching the PR-head path, plus `commit`, `branch`, and `run_id`
+
+The PR-head checkout exists solely so reviewdog can resolve `.git` and compute
+the PR diff for `-filter-mode=added`. That is safe for this use case: the
+privileged job must not build, install, or otherwise execute code from the fork
+or from artifact payloads. Load composite actions from the base-repo `ci`
+checkout only — never from the PR head. Artifacts are untrusted text only —
+pipe diagnostics into reviewdog and nothing else.
 
 `actions/checkout` v7+ refuses fork PR heads on `workflow_run` unless
 `allow-unsafe-pr-checkout: true` is set. Opt in only when the checked-out
 tree is never executed (data for reviewdog / `git` diff only), and keep
 `persist-credentials: false`. See
-https://gh.io/securely-using-pull_request_target.
+<https://gh.io/securely-using-pull_request_target>.
 
 ## Action pinning
 

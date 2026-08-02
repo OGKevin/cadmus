@@ -18,6 +18,12 @@ let
     else
       "echo \"Open ${path} in a browser\"";
 
+  # Shared with CI (.github/workflows/actions-lint.yml) so the ignore list
+  # only needs to be updated in one place.
+  actionlintIgnorePatterns = builtins.filter (line: line != "" && !pkgs.lib.hasPrefix "#" line) (
+    pkgs.lib.splitString "\n" (builtins.readFile ./.github/lint/actionlint-ignore.txt)
+  );
+
   # Rust 1.94+ changed lib/ in tarballs from a directory to a symlink.
   # devenv's rust module calls mk-aggregated.nix directly from the rust-overlay
   # source, bypassing pkgs overlays. lndir can't merge components when $out/lib
@@ -963,17 +969,16 @@ in
           };
 
           # actionlint does not support ignore patterns in its config file;
-          # the -ignore flag must be passed on the command line. We define the
-          # formatter manually so we can suppress the false positive that arises
-          # from YAML anchors: the step ID 'rust-toolchain' is defined in every
-          # job that expands the anchor but actionlint cannot resolve it
-          # statically from the anchor body alone.
+          # the -ignore flag must be passed on the command line, so we define
+          # the formatter manually. Patterns live in
+          # .github/lint/actionlint-ignore.txt, shared with CI (see
+          # actions-lint.yml), rather than being duplicated here.
           actionlint = {
             command = "${pkgs.actionlint}/bin/actionlint";
-            options = [
+            options = pkgs.lib.concatMap (pattern: [
               "-ignore"
-              ''"rust-toolchain" is not defined in object type''
-            ];
+              pattern
+            ]) actionlintIgnorePatterns;
             includes = [
               ".github/workflows/*.yml"
               ".github/workflows/*.yaml"

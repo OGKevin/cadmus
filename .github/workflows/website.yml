@@ -1,5 +1,8 @@
 name: Website
 
+env:
+  NODE_VERSION: "24"
+
 on:
   pull_request:
     paths:
@@ -18,7 +21,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -27,7 +29,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "24"
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: website/package-lock.json
 
@@ -35,14 +37,25 @@ jobs:
         run: npm ci
         working-directory: website
 
-      - name: Prettier
-        uses: EPMatt/reviewdog-action-prettier@f691104cbeb4b0299df971275444c64be93c03ae # v1.3.0
+      - name: Collect prettier diagnostics
+        working-directory: website
+        run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/prettier-website-reviewdog-input"
+          npx prettier --write .
+          if ! git -C "$GITHUB_WORKSPACE" diff --quiet; then
+            git -C "$GITHUB_WORKSPACE" diff > "$GITHUB_WORKSPACE/prettier-website-reviewdog-input/diagnostics.diff"
+            echo "::error::Prettier found formatting issues"
+            exit 1
+          fi
+
+      - name: Upload reviewdog input artifact
+        if: failure() && hashFiles('prettier-website-reviewdog-input/diagnostics.diff') != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          reporter: github-pr-review
-          fail_level: error
-          prettier_flags: "."
-          workdir: website
+          name: prettier-website-reviewdog-input
+          path: prettier-website-reviewdog-input/
+          retention-days: 1
 
   typecheck:
     runs-on: ubuntu-latest
@@ -54,7 +67,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "24"
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: website/package-lock.json
 
@@ -74,7 +87,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -83,7 +95,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "24"
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: website/package-lock.json
 
@@ -91,20 +103,33 @@ jobs:
         run: npm ci
         working-directory: website
 
-      - name: ESLint
-        uses: reviewdog/action-eslint@556a3fdaf8b4201d4d74d406013386aa4f7dab96 # v1.34.0
+      - name: Collect eslint diagnostics
+        working-directory: website
+        run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/eslint-reviewdog-input"
+          set +e
+          # Stylish output for reviewdog -f=eslint (same idea as clippy short format).
+          npx eslint -f stylish . \
+            > "$GITHUB_WORKSPACE/eslint-reviewdog-input/diagnostics.txt"
+          eslint_exit=$?
+          set -e
+          if [ "$eslint_exit" -ne 0 ]; then
+            exit "$eslint_exit"
+          fi
+
+      - name: Upload reviewdog input artifact
+        if: failure() && hashFiles('eslint-reviewdog-input/diagnostics.txt') != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          reporter: github-pr-review
-          fail_level: error
-          eslint_flags: "."
-          workdir: website
+          name: eslint-reviewdog-input
+          path: eslint-reviewdog-input/
+          retention-days: 1
 
   stylelint:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -113,7 +138,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "24"
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: website/package-lock.json
 
@@ -121,14 +146,32 @@ jobs:
         run: npm ci
         working-directory: website
 
-      - name: Stylelint
-        uses: reviewdog/action-stylelint@086959bc5cd70db1b4954f45d8d396d9e3786bbb # v1.31.0
+      - name: Collect stylelint diagnostics
+        working-directory: website
+        run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/stylelint-reviewdog-input"
+          set +e
+          # Default string formatter for reviewdog -f=stylelint.
+          npx stylelint "**/*.css" \
+            > "$GITHUB_WORKSPACE/stylelint-reviewdog-input/diagnostics.txt"
+          stylelint_exit=$?
+          set -e
+          # stylelint: 0 = OK, 2 = lint issues; other codes are hard failures.
+          if [ "$stylelint_exit" -ne 0 ] && [ "$stylelint_exit" -ne 2 ]; then
+            exit "$stylelint_exit"
+          fi
+          if [ "$stylelint_exit" -eq 2 ]; then
+            exit 1
+          fi
+
+      - name: Upload reviewdog input artifact
+        if: failure() && hashFiles('stylelint-reviewdog-input/diagnostics.txt') != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          reporter: github-pr-review
-          fail_level: error
-          stylelint_input: "**/*.css"
-          workdir: website
+          name: stylelint-reviewdog-input
+          path: stylelint-reviewdog-input/
+          retention-days: 1
 
   build:
     runs-on: ubuntu-latest
@@ -142,7 +185,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "24"
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: website/package-lock.json
 

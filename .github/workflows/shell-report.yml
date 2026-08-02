@@ -1,8 +1,8 @@
-name: Clippy report
+name: Shell report
 
 on:
   workflow_run:
-    workflows: ["Cargo"]
+    workflows: ["Shell"]
     types: [completed]
 
 permissions:
@@ -17,7 +17,6 @@ jobs:
       github.event.workflow_run.conclusion != 'cancelled'
     runs-on: ubuntu-latest
     steps:
-      # Trusted composites from the base repo — never load actions from the PR head.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ github.repository }}
@@ -47,8 +46,36 @@ jobs:
           commit: ${{ github.event.workflow_run.head_sha }}
           branch: ${{ github.event.workflow_run.head_branch }}
           run_id: ${{ github.event.workflow_run.id }}
-          artifact_name: clippy-reviewdog-input
-          diagnostics_path: clippy-reviewdog-input/diagnostics.txt
-          name: clippy
+          artifact_name: shellcheck-reviewdog-input
+          diagnostics_path: shellcheck-reviewdog-input/diagnostics.txt
+          name: shellcheck
           workdir: pr
-          format: clippy
+          errorformat: "%f:%l:%c:%t%*[^:]:%m"
+
+      - uses: ./ci/.github/actions/reviewdog-post
+        if: steps.identify-pr.outputs.number
+        with:
+          pr_number: ${{ steps.identify-pr.outputs.number }}
+          commit: ${{ github.event.workflow_run.head_sha }}
+          branch: ${{ github.event.workflow_run.head_branch }}
+          run_id: ${{ github.event.workflow_run.id }}
+          artifact_name: shellcheck-reviewdog-input
+          diagnostics_path: shellcheck-reviewdog-input/suggestions.diff
+          name: shellcheck (suggestion)
+          workdir: pr
+          format: diff
+          reviewdog_flags: -f.diff.strip=1
+
+      - uses: ./ci/.github/actions/reviewdog-post
+        if: steps.identify-pr.outputs.number
+        with:
+          pr_number: ${{ steps.identify-pr.outputs.number }}
+          commit: ${{ github.event.workflow_run.head_sha }}
+          branch: ${{ github.event.workflow_run.head_branch }}
+          run_id: ${{ github.event.workflow_run.id }}
+          artifact_name: shfmt-reviewdog-input
+          diagnostics_path: shfmt-reviewdog-input/diagnostics.diff
+          name: shfmt
+          workdir: pr
+          format: diff
+          reviewdog_flags: -f.diff.strip=1

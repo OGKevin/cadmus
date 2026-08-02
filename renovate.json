@@ -103,6 +103,30 @@
     {
       "customType": "regex",
       "managerFilePatterns": [
+        "/^\\.github\\/workflows\\/actions-lint\\.yml$/"
+      ],
+      "matchStrings": [
+        "ACTIONLINT_VERSION:\\s+\\\"(?<currentValue>[^\\\"]+)\\\""
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "rhysd/actionlint",
+      "extractVersionTemplate": "^v?(?<version>.+)$",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/^\\.github\\/workflows\\/shell\\.yml$/"],
+      "matchStrings": [
+        "SHFMT_VERSION:\\s+\\\"(?<currentValue>[^\\\"]+)\\\""
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "mvdan/sh",
+      "extractVersionTemplate": "^v?(?<version>.+)$",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
         "/^\\.github\\/actions\\/install-doc-tools\\/action\\.yml$/"
       ],
       "matchStrings": ["MDBOOK_VERSION=(?<currentValue>[^\"]+)"],
@@ -169,7 +193,9 @@
         "/^\\.github\\/workflows\\/cadmus-docs\\.yml$/",
         "/^\\.github\\/workflows\\/cargo\\.yml$/",
         "/^\\.github\\/workflows\\/release\\.yml$/",
-        "/^\\.github\\/workflows\\/build-release-candidate\\.yml$/"
+        "/^\\.github\\/workflows\\/build-release-candidate\\.yml$/",
+        "/^\\.github\\/workflows\\/actions-lint\\.yml$/",
+        "/^\\.github\\/workflows\\/website\\.yml$/"
       ],
       "matchStrings": ["NODE_VERSION:\\s+\\\"(?<currentValue>[^\\\"]+)\\\""],
       "datasourceTemplate": "node-version",
