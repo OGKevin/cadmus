@@ -71,13 +71,13 @@ collection from posting for every reviewdog consumer:
    download the artifact by `run-id`, and post via reviewdog with
    `pull-requests: write`.
 
-| Collect (`pull_request`) | Report (`workflow_run`) | Tools |
-| ------------------------ | ----------------------- | ----- |
-| Cargo | Clippy report | clippy |
-| Actions lint | Actions lint report | actionlint, prettier |
-| Shell | Shell report | shellcheck, shfmt |
-| Website | Website report | prettier, eslint, stylelint |
-| Docs lint | Docs lint report | rumdl |
+| Collect (`pull_request`) | Report (`workflow_run`) | Tools                       |
+| ------------------------ | ----------------------- | --------------------------- |
+| Cargo                    | Clippy report           | clippy                      |
+| Actions lint             | Actions lint report     | actionlint, prettier        |
+| Shell                    | Shell report            | shellcheck, shfmt           |
+| Website                  | Website report          | prettier, eslint, stylelint |
+| Docs lint                | Docs lint report        | rumdl                       |
 
 New reviewdog jobs must follow the same collect/report pair. Keep
 `pull-requests: write` on the report workflow only.
@@ -106,7 +106,7 @@ pipe diagnostics into reviewdog and nothing else.
 `allow-unsafe-pr-checkout: true` is set. Opt in only when the checked-out
 tree is never executed (data for reviewdog / `git` diff only), and keep
 `persist-credentials: false`. See
-https://gh.io/securely-using-pull_request_target.
+<https://gh.io/securely-using-pull_request_target>.
 
 ## Action pinning
 
