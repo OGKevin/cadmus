@@ -123,7 +123,7 @@ pub struct DeviceRuntime<'a> {
 }
 
 /// Outcome of [`DeviceLifecycle::handle_event`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EventOutcome {
     /// The lifecycle consumed the event; the main loop should skip view dispatch.
     Handled,
@@ -139,12 +139,23 @@ pub enum EventOutcome {
 }
 
 /// How the application should terminate.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExitStatus {
     Quit,
     Restart,
     Reboot,
     PowerOff,
+    /// Run `command` on exit instead of returning to Nickel (Kobo: `/tmp/run_command`).
+    RunCommand(PathBuf),
+}
+
+/// A peer Cadmus install that can be launched from the current one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PeerInstall {
+    /// Build flavor of the peer install.
+    pub kind: crate::version::BuildKind,
+    /// Absolute path to the peer's `cadmus.sh` launcher.
+    pub launcher: PathBuf,
 }
 
 /// Trait for device input sources.
@@ -505,6 +516,13 @@ pub trait DevicePaths: Send {
             tracing::warn!(path = ?dir, error = %e, "Failed to create tmp dir");
         }
     }
+
+    /// Other Cadmus installs on this device that can be switched to.
+    ///
+    /// Default: none (emulator and platforms without side-by-side installs).
+    fn peer_installs(&self) -> Vec<PeerInstall> {
+        Vec::new()
+    }
 }
 
 /// Hardware subsystem accessors with associated types.
@@ -663,8 +681,8 @@ pub trait DeviceLifecycle:
     /// Runs once when the main event loop exits, before settings are persisted.
     ///
     /// `status` reflects how the application is terminating (quit, restart,
-    /// reboot, or power off). Platform implementations tear down hardware and
-    /// may write marker files consumed by the device init system.
+    /// reboot, power off, or run a command). Platform implementations tear down
+    /// hardware and may write marker files consumed by the device init system.
     ///
     /// Default: no-op success.
     fn on_shutdown(

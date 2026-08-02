@@ -384,6 +384,27 @@ impl DevicePaths for TestDevice {
     fn data_dir(&self) -> PathBuf {
         self.install_dir()
     }
+
+    fn peer_installs(&self) -> Vec<crate::device::PeerInstall> {
+        let root = std::env::temp_dir().join("test-kobo-installation");
+        let current = self.install_dir();
+        [
+            (".adds/cadmus", crate::version::BuildKind::Standard),
+            (".adds/cadmus-tst", crate::version::BuildKind::Test),
+        ]
+        .into_iter()
+        .filter_map(|(subdir, kind)| {
+            let dir = root.join(subdir);
+            if dir == current {
+                return None;
+            }
+            let launcher = dir.join("cadmus.sh");
+            launcher
+                .is_file()
+                .then_some(crate::device::PeerInstall { kind, launcher })
+        })
+        .collect()
+    }
 }
 
 crate::impl_device_hardware!(

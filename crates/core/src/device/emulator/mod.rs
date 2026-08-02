@@ -628,6 +628,9 @@ impl DeviceLifecycle for EmulatorDevice {
                 EventOutcome::Handled
             }
             Event::Select(EntryId::Quit) => EventOutcome::Exit(crate::device::ExitStatus::Quit),
+            Event::Select(EntryId::SwitchInstall) => {
+                EventOutcome::Exit(crate::device::ExitStatus::Quit)
+            }
             _ => EventOutcome::Unhandled,
         }
     }

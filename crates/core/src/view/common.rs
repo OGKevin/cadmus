@@ -4,7 +4,7 @@ use super::{AppCmd, EntryId, EntryKind, RenderData, RenderQueue, View, ViewId};
 use crate::battery::Battery as _;
 use crate::device::AppContext;
 use crate::device::DeviceHardware as _;
-use crate::device::{DeviceCapabilities as _, DeviceRotation as _};
+use crate::device::{DeviceCapabilities as _, DevicePaths as _, DeviceRotation as _};
 use crate::fl;
 use crate::framebuffer::Framebuffer as _;
 use crate::framebuffer::UpdateMode;
@@ -231,16 +231,28 @@ pub fn toggle_main_menu(
             EntryKind::Separator,
             EntryKind::SubMenu("Applications".to_string(), apps),
             EntryKind::Separator,
-            EntryKind::SubMenu(
-                fl!("top-menu-exit").to_string(),
-                vec![
+            EntryKind::SubMenu(fl!("top-menu-exit").to_string(), {
+                let mut exit_entries = Vec::new();
+                if let Some(peer) = context.device.peer_installs().first() {
+                    let build = match peer.kind {
+                        crate::version::BuildKind::Standard => fl!("build-kind-main"),
+                        crate::version::BuildKind::Test => fl!("build-kind-test"),
+                    };
+                    exit_entries.push(EntryKind::Command(
+                        fl!("top-menu-switch-to", build = build.as_str()).to_string(),
+                        EntryId::SwitchInstall,
+                    ));
+                    exit_entries.push(EntryKind::Separator);
+                }
+                exit_entries.extend([
                     EntryKind::Command(fl!("top-menu-suspend").to_string(), EntryId::Suspend),
                     EntryKind::Command(fl!("top-menu-restart-app").to_string(), EntryId::Restart),
                     EntryKind::Command(fl!("top-menu-reboot-device").to_string(), EntryId::Reboot),
                     EntryKind::Command(fl!("top-menu-power-off").to_string(), EntryId::PowerOff),
                     EntryKind::Command(fl!("top-menu-quit").to_string(), EntryId::Quit),
-                ],
-            ),
+                ]);
+                exit_entries
+            }),
         ]);
 
         let main_menu = Menu::new(rect, ViewId::MainMenu, MenuKind::DropDown, entries, context);

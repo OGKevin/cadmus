@@ -844,6 +844,11 @@ pub fn run() -> Result<(), Error> {
 
     background_tasks.stop_all();
 
+    let save_settings = match &exit_status {
+        ExitStatus::Restart | ExitStatus::Reboot => !context.shared,
+        _ => true,
+    };
+
     if let Err(e) = AppDevice::on_shutdown(
         &mut context,
         exit_status,
@@ -860,11 +865,6 @@ pub fn run() -> Result<(), Error> {
     ) {
         tracing::error!(error = %e, "Failed to run on_shutdown");
     }
-
-    let save_settings = match exit_status {
-        ExitStatus::Restart | ExitStatus::Reboot => !context.shared,
-        _ => true,
-    };
 
     if save_settings {
         if let Err(e) = manager.save(&context.settings) {

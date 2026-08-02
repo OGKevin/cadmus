@@ -20,3 +20,9 @@
 
 Use the OTA feature to download updates from a PR number directly on your
 device. This lets you test changes without connecting to a computer.
+
+## Switching builds
+
+When both the main and test builds are installed, open the Exit menu and choose
+**Switch to Test** or **Switch to Main**. Cadmus hands off to the other install
+without going through Nickel. Quit still returns you to Nickel as usual.
