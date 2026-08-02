@@ -475,7 +475,7 @@ impl TaskManager {
             Event::Select(EntryId::SyncTime) => {
                 #[cfg(feature = "kobo")]
                 {
-                    if !context.online {
+                    if !context.online && !context.settings.wifi.allows_on_demand() {
                         hub.send(Event::Notification(NotificationEvent::Show(fl!(
                             "notification-not-online"
                         ))))
@@ -606,6 +606,7 @@ impl TaskManager {
                     time_manager.clone(),
                     context.settings.ntp_server.clone(),
                     manual,
+                    context.wifi_session.clone(),
                 ));
                 if let Err(e) = self.start(task, hub.clone()) {
                     tracing::warn!(error = %e, "failed to start time sync task");

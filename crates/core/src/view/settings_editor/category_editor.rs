@@ -579,6 +579,7 @@ impl CategoryEditor {
         let lang_owned = lang.to_string();
         let hub2 = hub.clone();
         let parent_span = tracing::Span::current();
+        let wifi_session = context.wifi_session.clone();
 
         let download_id = ViewId::MessageNotif(ID_FEEDER.next());
         hub.send(Event::Notification(NotificationEvent::ShowPinned(
@@ -590,6 +591,21 @@ impl CategoryEditor {
         thread::spawn(move || {
             let _span =
                 tracing::info_span!(parent: &parent_span, "dictionary_install_async").entered();
+
+            let _wifi = match wifi_session.acquire("dictionary-download") {
+                Ok(lease) => lease,
+                Err(e) => {
+                    tracing::error!(error = %e, "Failed to acquire WiFi lease for dictionary download");
+                    service.finish_install(&lang_owned);
+                    hub2.send(Event::Close(download_id)).ok();
+                    hub2.send(crate::view::Event::DictionaryInstallComplete {
+                        lang: lang_owned,
+                        result: Err(e.to_string()),
+                    })
+                    .ok();
+                    return;
+                }
+            };
 
             let result = service
                 .install_reserved_dictionary(
@@ -641,7 +657,7 @@ impl CategoryEditor {
         rq: &mut RenderQueue,
         context: &mut AppContext,
     ) -> bool {
-        if !context.online {
+        if !context.online && !context.settings.wifi.allows_on_demand() {
             hub.send(Event::Notification(NotificationEvent::Show(fl!(
                 "notification-not-online"
             ))))
@@ -742,7 +758,7 @@ impl CategoryEditor {
     ) -> bool {
         self.remove_dictionary_download_confirm(rq);
 
-        if !context.online {
+        if !context.online && !context.settings.wifi.allows_on_demand() {
             hub.send(Event::Notification(NotificationEvent::Show(fl!(
                 "notification-not-online"
             ))))
