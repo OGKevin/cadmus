@@ -90,7 +90,7 @@ exit_cadmus() {
   elif [ -e /tmp/run_command ]; then
     CMD=$(cat /tmp/run_command)
     rm -f /tmp/run_command
-    exec "$CMD"
+    exec "$CMD" || ./nickel.sh &
   else
     ./nickel.sh &
   fi
