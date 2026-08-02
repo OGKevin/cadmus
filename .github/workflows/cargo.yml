@@ -166,7 +166,7 @@ jobs:
           mode: save
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@18b1216eba7f8039b0f8d131d5473787f0edce68 # v2.85.3
+        uses: taiki-e/install-action@67729d5c413db75907f0ad1e39bb04b9c868ff60 # v2.85.7
         with:
           tool: nextest@${{ env.NEXTEST_VERSION }}
 
@@ -179,7 +179,7 @@ jobs:
 
       - name: Install cargo-llvm-cov
         if: steps.cargo-llvm-cov-cache.outputs.cache-hit != 'true'
-        uses: taiki-e/install-action@8dc1a448f03edf5b0d5a9bb37d054545b2fe246e # cargo-llvm-cov
+        uses: taiki-e/install-action@eba66cc6f87204a1e73f96e528e759b6c1fcf573 # cargo-llvm-cov
 
       - name: Cache bundled fonts
         uses: ./.github/actions/cache-fonts
@@ -376,7 +376,7 @@ jobs:
           cachekey: ${{ steps.rust-toolchain.outputs.cachekey }}
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@18b1216eba7f8039b0f8d131d5473787f0edce68 # v2.85.3
+        uses: taiki-e/install-action@67729d5c413db75907f0ad1e39bb04b9c868ff60 # v2.85.7
         with:
           tool: nextest@${{ env.NEXTEST_VERSION }}
 
@@ -389,7 +389,7 @@ jobs:
 
       - name: Install cargo-llvm-cov
         if: steps.cargo-llvm-cov-cache.outputs.cache-hit != 'true'
-        uses: taiki-e/install-action@8dc1a448f03edf5b0d5a9bb37d054545b2fe246e # cargo-llvm-cov
+        uses: taiki-e/install-action@eba66cc6f87204a1e73f96e528e759b6c1fcf573 # cargo-llvm-cov
 
       - name: Run cargo test with coverage (${{ matrix.label }})
         id: test
