@@ -12,10 +12,10 @@ use walkdir::WalkDir;
 
 use crate::context::DICTIONARIES_DIRNAME;
 use crate::db::Database;
-use crate::db::runtime::RUNTIME;
 use crate::dictionary::{Entry, Metadata, normalize};
 use crate::fl;
 use crate::helpers::{Fingerprint, IsHidden};
+use crate::runtime::RUNTIME;
 use crate::task::{BackgroundTask, ShutdownSignal, TaskId};
 use crate::view::notification::NotificationEvent;
 use crate::view::{Event, ID_FEEDER, ViewId};
@@ -713,7 +713,7 @@ impl BackgroundTask for DictionaryIndexTask {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::{Database, runtime::RUNTIME};
+    use crate::db::Database;
 
     fn setup_db() -> Database {
         let mut db = Database::new(":memory:").expect("failed to create in-memory database");

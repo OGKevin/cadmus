@@ -7,7 +7,7 @@ use levenshtein::levenshtein;
 use sqlx::SqlitePool;
 
 use crate::db::Database;
-use crate::db::runtime::RUNTIME;
+use crate::runtime::RUNTIME;
 
 use super::Metadata;
 use super::indexing::{Entry, IndexReader};
@@ -203,7 +203,7 @@ impl IndexReader for DbIndexReader {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::runtime::RUNTIME;
+    use crate::runtime::RUNTIME;
 
     fn setup_db() -> Database {
         let mut db = Database::new(":memory:").expect("in-memory db");

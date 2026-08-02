@@ -1013,10 +1013,10 @@ mod tests {
     use super::*;
     use crate::db::Database;
     use crate::db::migrations::{MigrationContext, MigrationDevice};
-    use crate::db::runtime::RUNTIME;
     use crate::document::{SimpleTocEntry, TocLocation};
     use crate::library::db::Db;
     use crate::metadata::{FileInfo, ReaderInfo};
+    use crate::runtime::RUNTIME;
     use chrono::Local;
     use std::collections::BTreeSet;
     use std::path::PathBuf;

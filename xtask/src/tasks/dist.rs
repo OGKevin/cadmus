@@ -1,8 +1,8 @@
 //! `cargo xtask dist` — assemble the Kobo distribution directory.
 //!
-//! Copies the compiled Cadmus binary, shared libraries, scripts, fonts,
-//! icons, and other assets into a `dist/` directory that mirrors the layout
-//! expected on the Kobo device.
+//! Copies the compiled Cadmus binary, shared libraries, fonts, icons, and
+//! other assets into a `dist/` directory that mirrors the layout expected on
+//! the Kobo device.
 //!
 //! ## Prerequisites
 //!
@@ -19,7 +19,6 @@
 //! ├── fonts/
 //! ├── icons/
 //! ├── css/
-//! ├── scripts/
 //! ├── keyboard-layouts/
 //! ├── hyphenation-patterns/
 //! ├── bin/
@@ -110,13 +109,12 @@ fn copy_libraries(root: &Path, dist_dir: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Copies static assets (fonts, icons, scripts, etc.) into `dist/`.
+/// Copies static assets (fonts, icons, etc.) into `dist/`.
 fn copy_assets(root: &Path, dist_dir: &Path) -> Result<()> {
     let dirs = [
         "hyphenation-patterns",
         "keyboard-layouts",
         "bin",
-        "scripts",
         "icons",
         "resources",
         "fonts",
@@ -202,7 +200,6 @@ fn clean_user_files(dist_dir: &Path) -> Result<()> {
         ("css", "*-user.css"),
         ("keyboard-layouts", "*-user.json"),
         ("hyphenation-patterns", "*.bounds"),
-        ("scripts", "wifi-*-*.sh"),
     ];
 
     for (subdir, pattern) in patterns {

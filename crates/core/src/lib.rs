@@ -40,6 +40,7 @@ pub mod logging;
 pub mod metadata;
 pub mod ota;
 pub use device::rtc::{AlarmManager, AlarmType};
+pub mod runtime;
 pub mod settings;
 pub mod task;
 #[cfg(any(feature = "profiling", feature = "tracing"))]

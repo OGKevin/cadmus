@@ -35,7 +35,6 @@ const BUNDLED_ASSET_DIRS: &[&str] = &[
     "icons",
     "keyboard-layouts",
     "resources",
-    "scripts",
 ];
 
 /// Set this to any changing value to force build metadata to refresh.

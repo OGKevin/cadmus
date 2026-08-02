@@ -4,14 +4,15 @@ use super::super::input::BATTERY_REFRESH_INTERVAL;
 use super::helpers::{cancel_suspend_if_pending, has_task, is_suspend_active};
 use super::usb_share::disable_usb_share;
 use super::{begin_suspend, schedule_device_task};
+use crate::device::DeviceHardware as _;
 use crate::device::DeviceRotation as _;
+use crate::device::wifi::WifiManager;
 use crate::device::{AppContext, DeviceRuntime, DeviceTaskId, EventOutcome, Orientation};
 use crate::fl;
 use crate::framebuffer::UpdateMode;
 use crate::input::{ButtonCode, ButtonStatus, DeviceEvent, PowerSource};
 use crate::view::dialog::Dialog;
 use crate::view::{EntryId, Event, Hub, NotificationEvent, RenderData, RenderQueue, View, ViewId};
-use std::process::Command;
 use std::time::Instant;
 
 /// Dispatches a lifecycle [`Event`] to the appropriate device-input handler.
@@ -126,25 +127,27 @@ fn handle_net_up(
         return EventOutcome::Handled;
     }
 
-    let ip = Command::new("scripts/ip.sh")
-        .output()
-        .map(|output| {
-            String::from_utf8_lossy(&output.stdout)
-                .trim_end()
-                .to_string()
-        })
-        .unwrap_or_default();
-    let essid = Command::new("scripts/essid.sh")
-        .output()
-        .map(|output| {
-            String::from_utf8_lossy(&output.stdout)
-                .trim_end()
-                .to_string()
-        })
-        .unwrap_or_default();
-    let msg = fl!("notification-network-up", ip = ip, essid = essid);
-    hub.send(Event::Notification(NotificationEvent::Show(msg)))
-        .ok();
+    match context
+        .device
+        .wifi_manager()
+        .and_then(|wifi| wifi.network_info())
+    {
+        Ok(Some(info)) => {
+            let msg = fl!(
+                "notification-network-up",
+                ip = info.ip.to_string(),
+                essid = info.essid.to_string()
+            );
+            hub.send(Event::Notification(NotificationEvent::Show(msg)))
+                .ok();
+        }
+        Ok(None) => {
+            tracing::debug!("network up but Wi-Fi has no current association");
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to query network info on NetUp");
+        }
+    }
 
     context.online = true;
     EventOutcome::Continue
@@ -397,16 +400,80 @@ mod tests {
 
     #[test]
     fn handle_net_up_sets_online_and_shows_notification() {
+        use crate::device::wifi::{Essid, NetworkInfo};
+        use crate::fl;
+        use std::net::{IpAddr, Ipv4Addr};
+
         let mut harness = LifecycleHarness::new();
+        let ip = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 128));
+        let essid = Essid::new("TestNet");
+        harness
+            .context
+            .device
+            .wifi_manager_for_test()
+            .set_network_info(Ok(Some(NetworkInfo {
+                ip,
+                essid: essid.clone(),
+            })));
+
+        let outcome = harness
+            .with_parts(|hub, _bus, _rq, context, runtime| handle_net_up(hub, context, runtime));
+        assert_eq!(outcome, EventOutcome::Continue);
+        assert!(harness.context.online);
+
+        let expected = fl!(
+            "notification-network-up",
+            ip = ip.to_string(),
+            essid = essid.to_string()
+        );
+        let events = harness.drain_hub();
+        assert!(events.iter().any(|event| {
+            matches!(
+                event,
+                Event::Notification(NotificationEvent::Show(msg)) if msg == &expected
+            )
+        }));
+    }
+
+    #[test]
+    fn handle_net_up_online_without_notification_when_no_association() {
+        let mut harness = LifecycleHarness::new();
+        harness
+            .context
+            .device
+            .wifi_manager_for_test()
+            .set_network_info(Ok(None));
+
         let outcome = harness
             .with_parts(|hub, _bus, _rq, context, runtime| handle_net_up(hub, context, runtime));
         assert_eq!(outcome, EventOutcome::Continue);
         assert!(harness.context.online);
         assert!(
-            harness
+            !harness
                 .drain_hub()
                 .iter()
-                .any(|event| matches!(event, Event::Notification(NotificationEvent::Show(_))))
+                .any(|event| matches!(event, Event::Notification(_)))
+        );
+    }
+
+    #[test]
+    fn handle_net_up_online_without_notification_when_disabled() {
+        let mut harness = LifecycleHarness::new();
+        harness
+            .context
+            .device
+            .wifi_manager_for_test()
+            .set_network_info(Err(crate::device::wifi::WifiError::Disabled));
+
+        let outcome = harness
+            .with_parts(|hub, _bus, _rq, context, runtime| handle_net_up(hub, context, runtime));
+        assert_eq!(outcome, EventOutcome::Continue);
+        assert!(harness.context.online);
+        assert!(
+            !harness
+                .drain_hub()
+                .iter()
+                .any(|event| matches!(event, Event::Notification(_)))
         );
     }
 
