@@ -369,6 +369,62 @@ impl SettingKind for AutoTime {
     }
 }
 
+/// NTP server hostname or IP setting.
+pub struct NtpServer;
+
+impl SettingKind for NtpServer {
+    fn identity(&self) -> SettingIdentity {
+        SettingIdentity::NtpServer
+    }
+
+    fn label(&self, _settings: &Settings) -> String {
+        fl!("settings-general-ntp-server")
+    }
+
+    fn fetch(&self, data: SettingsFetchData) -> SettingData {
+        SettingData {
+            value: data.settings.ntp_server.to_string(),
+            widget: WidgetKind::ActionLabel(Event::Select(EntryId::EditNtpServer)),
+        }
+    }
+
+    fn as_input_kind(&self) -> Option<&dyn InputSettingKind> {
+        Some(self)
+    }
+}
+
+impl InputSettingKind for NtpServer {
+    fn submit_view_id(&self) -> ViewId {
+        ViewId::NtpServerInput
+    }
+
+    fn open_entry_id(&self) -> EntryId {
+        EntryId::EditNtpServer
+    }
+
+    fn input_label(&self) -> String {
+        fl!("settings-general-ntp-server-input")
+    }
+
+    fn input_max_chars(&self) -> usize {
+        80
+    }
+
+    fn current_text(&self, settings: &Settings) -> String {
+        settings.ntp_server.to_string()
+    }
+
+    fn apply_text(&self, text: &str, settings: &mut Settings) -> String {
+        let trimmed = text.trim();
+        if trimmed.is_empty() {
+            settings.ntp_server = crate::network_address::NetworkAddress::ntp_cloudflare();
+        } else if let Ok(addr) = trimmed.parse() {
+            settings.ntp_server = addr;
+        }
+        settings.ntp_server.to_string()
+    }
+}
+
 /// Button scheme (natural/inverted) toggle setting
 pub struct ButtonScheme;
 
@@ -1190,6 +1246,62 @@ mod tests {
                 bus.pop_front(),
                 Some(Event::AutoFrontlightConfigChanged)
             ));
+        }
+    }
+
+    mod ntp_server {
+        use super::*;
+        use crate::network_address::NetworkAddress;
+        use crate::view::settings_editor::kinds::InputSettingKind;
+
+        #[test]
+        fn apply_text_updates_server() {
+            let setting = NtpServer;
+            let mut settings = Settings::default();
+
+            let display = setting.apply_text("pool.ntp.org", &mut settings);
+
+            assert_eq!(display, "pool.ntp.org");
+            assert_eq!(settings.ntp_server.as_str(), "pool.ntp.org");
+        }
+
+        #[test]
+        fn apply_text_empty_restores_default() {
+            let setting = NtpServer;
+            let mut settings = Settings {
+                ntp_server: "pool.ntp.org".parse().unwrap(),
+                ..Default::default()
+            };
+
+            let display = setting.apply_text("", &mut settings);
+
+            assert_eq!(display, NetworkAddress::ntp_cloudflare().to_string());
+            assert_eq!(settings.ntp_server, NetworkAddress::ntp_cloudflare());
+        }
+
+        #[test]
+        fn apply_text_ignores_whitespace_only_by_restoring_default() {
+            let setting = NtpServer;
+            let mut settings = Settings {
+                ntp_server: "pool.ntp.org".parse().unwrap(),
+                ..Default::default()
+            };
+
+            let display = setting.apply_text("   ", &mut settings);
+
+            assert_eq!(display, NetworkAddress::ntp_cloudflare().to_string());
+            assert_eq!(settings.ntp_server, NetworkAddress::ntp_cloudflare());
+        }
+
+        #[test]
+        fn current_text_returns_configured_server() {
+            let setting = NtpServer;
+            let settings = Settings {
+                ntp_server: "pool.ntp.org".parse().unwrap(),
+                ..Default::default()
+            };
+
+            assert_eq!(setting.current_text(&settings), "pool.ntp.org");
         }
     }
 

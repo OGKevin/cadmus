@@ -21,6 +21,7 @@ pub enum SettingIdentity {
     SleepCover,
     AutoShare,
     AutoTime,
+    NtpServer,
     AutoFrontlight,
     AutoFrontlightBrightness,
     AutoFrontlightManualCoordinates,

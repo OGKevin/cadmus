@@ -811,7 +811,8 @@ impl CategoryEditor {
             | ViewId::ForceImportConfirm
             | ViewId::AutoFrontlightBrightnessInput
             | ViewId::AutoFrontlightManualCoordinatesInput
-            | ViewId::RefreshRateByKindEditor => {
+            | ViewId::RefreshRateByKindEditor
+            | ViewId::NtpServerInput => {
                 if let Some(index) = locate_by_id(self, *view_id) {
                     let input_rect = *self.children[index].rect();
                     self.children.remove(index);

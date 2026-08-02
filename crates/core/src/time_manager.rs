@@ -10,10 +10,12 @@ use crate::device::rtc::Rtc;
 use crate::geolocation;
 use crate::geolocation::GeoLocation;
 use crate::http::Client as HttpClient;
+use crate::network_address::NetworkAddress;
 use crate::view::{Event, NotificationEvent};
 
 use std::sync::Arc;
 
+const NTP_PORT: u16 = 123;
 const NTP_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Clone)]
@@ -32,7 +34,7 @@ impl<R: Rtc> TimeManager<R> {
 
     pub fn sync(
         &self,
-        ntp_host: &str,
+        ntp_server: &NetworkAddress,
         manual: bool,
         geolocation: Option<GeoLocation>,
         hub: &Sender<Event>,
@@ -47,7 +49,7 @@ impl<R: Rtc> TimeManager<R> {
             tracing::warn!(error = %e, "timezone detection failed");
         }
 
-        let ntp_time = match self.query_ntp(ntp_host) {
+        let ntp_time = match self.query_ntp(ntp_server) {
             Ok(t) => t,
             Err(e) => {
                 if manual {
@@ -56,7 +58,7 @@ impl<R: Rtc> TimeManager<R> {
                     ))))
                     .ok();
                 } else {
-                    tracing::warn!(error = %e, "ntp query failed");
+                    tracing::warn!(error = %e, address = %ntp_server, "ntp query failed");
                 }
                 return Err(e);
             }
@@ -68,7 +70,7 @@ impl<R: Rtc> TimeManager<R> {
 
         match result {
             Ok(()) => {
-                tracing::info!(time = %ntp_time, "time synced");
+                tracing::info!(time = %ntp_time, address = %ntp_server, "time synced");
                 hub.send(Event::ClockTick).ok();
                 Ok(())
             }
@@ -100,8 +102,8 @@ impl<R: Rtc> TimeManager<R> {
         Ok(())
     }
 
-    fn query_ntp(&self, host: &str) -> Result<DateTime<Utc>, Error> {
-        query_ntp(host)
+    fn query_ntp(&self, server: &NetworkAddress) -> Result<DateTime<Utc>, Error> {
+        query_ntp(server)
     }
 
     fn set_system_clock(&self, time: DateTime<Utc>) -> Result<(), Error> {
@@ -120,7 +122,8 @@ impl<R: Rtc> TimeManager<R> {
     }
 }
 
-fn query_ntp(host: &str) -> Result<DateTime<Utc>, Error> {
+fn query_ntp(server: &NetworkAddress) -> Result<DateTime<Utc>, Error> {
+    let host = format!("{server}:{NTP_PORT}");
     let addrs: Vec<_> = host.to_socket_addrs()?.collect();
 
     let mut last_err = None;
@@ -157,7 +160,7 @@ fn query_ntp(host: &str) -> Result<DateTime<Utc>, Error> {
         }
     }
 
-    Err(last_err.unwrap_or_else(|| anyhow::anyhow!("DNS resolution failed for NTP host: {host}")))
+    Err(last_err.unwrap_or_else(|| anyhow::anyhow!("DNS resolution failed for NTP host: {server}")))
 }
 
 #[cfg(test)]
@@ -167,7 +170,8 @@ mod tests {
     #[ignore]
     #[test]
     fn ntp_query_with_hostname() {
-        let result = query_ntp("time.cloudflare.com:123");
+        let server = NetworkAddress::ntp_cloudflare();
+        let result = query_ntp(&server);
         assert!(result.is_ok(), "NTP query failed: {:?}", result.err());
 
         let ntp_time = result.unwrap();

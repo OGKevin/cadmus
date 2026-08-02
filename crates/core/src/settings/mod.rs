@@ -8,6 +8,7 @@ use crate::frontlight::{LightLevel, LightLevels};
 use crate::geolocation::Coordinates;
 use crate::i18n::I18nDisplay;
 use crate::metadata::{SortMethod, TextAlign};
+use crate::network_address::NetworkAddress;
 use fxhash::FxHashSet;
 use sqlx::encode::IsNull;
 use sqlx::error::BoxDynError;
@@ -284,6 +285,10 @@ pub struct Settings {
     pub sleep_cover: bool,
     pub auto_share: bool,
     pub auto_time: bool,
+    /// NTP server used for automatic and manual time sync.
+    ///
+    /// Port 123 is fixed; only the hostname or IP is stored.
+    pub ntp_server: NetworkAddress,
     /// Whether frontlight levels should be managed automatically.
     ///
     /// When enabled, Cadmus derives brightness and warmth from the current
@@ -1048,6 +1053,7 @@ impl Default for Settings {
             sleep_cover: true,
             auto_share: false,
             auto_time: false,
+            ntp_server: NetworkAddress::ntp_cloudflare(),
             auto_frontlight: false,
             auto_frontlight_night_brightness: Some(LightLevel::default()),
             auto_frontlight_manual_coordinates: None,
