@@ -34,6 +34,7 @@ pub mod helpers;
 pub mod http;
 pub mod i18n;
 pub mod input;
+pub mod lease;
 pub mod library;
 pub mod lightsensor;
 pub mod logging;
