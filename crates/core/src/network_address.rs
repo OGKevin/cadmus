@@ -38,10 +38,11 @@ fn strip_trailing_ntp_port(s: &str) -> &str {
         return stripped;
     }
 
-    if let Some((host, port)) = s.rsplit_once(':') {
-        if port == "123" && (!host.contains(':') || host.parse::<IpAddr>().is_ok()) {
-            return host;
-        }
+    if let Some((host, port)) = s.rsplit_once(':')
+        && port == "123"
+        && (!host.contains(':') || host.parse::<IpAddr>().is_ok())
+    {
+        return host;
     }
 
     s
