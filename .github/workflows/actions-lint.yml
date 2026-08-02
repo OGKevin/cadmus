@@ -1,7 +1,7 @@
 name: Actions lint
 
 env:
-  ACTIONLINT_VERSION: "1.7.7"
+  ACTIONLINT_VERSION: "1.7.12"
   NODE_VERSION: "24"
 
 on:
