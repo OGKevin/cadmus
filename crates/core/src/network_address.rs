@@ -5,6 +5,7 @@
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
+use std::net::IpAddr;
 use std::str::FromStr;
 
 const NTP_CLOUDFLARE: &str = "time.cloudflare.com";
@@ -16,6 +17,12 @@ const NTP_CLOUDFLARE: &str = "time.cloudflare.com";
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct NetworkAddress(String);
 
+impl Default for NetworkAddress {
+    fn default() -> Self {
+        Self::ntp_cloudflare()
+    }
+}
+
 impl NetworkAddress {
     /// Cloudflare NTP hostname used as Cadmus's built-in time-sync server.
     pub fn ntp_cloudflare() -> Self {
@@ -26,6 +33,24 @@ impl NetworkAddress {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+}
+
+fn strip_trailing_ntp_port(s: &str) -> &str {
+    if let Some(stripped) = s.strip_prefix('[').and_then(|rest| {
+        rest.rsplit_once("]:")
+            .filter(|(_, port)| *port == "123")
+            .map(|(addr, _)| addr)
+    }) {
+        return stripped;
+    }
+
+    if let Some((host, port)) = s.rsplit_once(':') {
+        if port == "123" && (!host.contains(':') || host.parse::<IpAddr>().is_ok()) {
+            return host;
+        }
+    }
+
+    s
 }
 
 impl AsRef<str> for NetworkAddress {
@@ -60,7 +85,7 @@ impl FromStr for NetworkAddress {
         if trimmed.is_empty() {
             return Err(NetworkAddressParseError);
         }
-        Ok(Self(trimmed.to_string()))
+        Ok(Self(strip_trailing_ntp_port(trimmed).to_string()))
     }
 }
 

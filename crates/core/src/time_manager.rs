@@ -2,7 +2,7 @@ use anyhow::Error;
 use chrono::{DateTime, Utc};
 use sntpc::{NtpContext, StdTimestampGen};
 use sntpc_net_std::UdpSocketWrapper;
-use std::net::{ToSocketAddrs, UdpSocket};
+use std::net::{IpAddr, SocketAddr, ToSocketAddrs, UdpSocket};
 use std::sync::mpsc::Sender;
 use std::time::Duration;
 
@@ -123,8 +123,12 @@ impl<R: Rtc> TimeManager<R> {
 }
 
 fn query_ntp(server: &NetworkAddress) -> Result<DateTime<Utc>, Error> {
-    let host = format!("{server}:{NTP_PORT}");
-    let addrs: Vec<_> = host.to_socket_addrs()?.collect();
+    let addrs: Vec<SocketAddr> = match server.as_str().parse::<IpAddr>() {
+        Ok(ip) => vec![SocketAddr::new(ip, NTP_PORT)],
+        Err(_) => format!("{}:{NTP_PORT}", server.as_str())
+            .to_socket_addrs()?
+            .collect(),
+    };
 
     let mut last_err = None;
     for addr in &addrs {
