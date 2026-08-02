@@ -5,6 +5,7 @@
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
+use std::net::IpAddr;
 use std::str::FromStr;
 
 const NTP_CLOUDFLARE: &str = "time.cloudflare.com";
@@ -26,6 +27,25 @@ impl NetworkAddress {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+}
+
+fn strip_trailing_ntp_port(s: &str) -> &str {
+    if let Some(stripped) = s.strip_prefix('[').and_then(|rest| {
+        rest.rsplit_once("]:")
+            .filter(|(_, port)| *port == "123")
+            .map(|(addr, _)| addr)
+    }) {
+        return stripped;
+    }
+
+    if let Some((host, port)) = s.rsplit_once(':')
+        && port == "123"
+        && (!host.contains(':') || host.parse::<IpAddr>().is_ok())
+    {
+        return host;
+    }
+
+    s
 }
 
 impl AsRef<str> for NetworkAddress {
@@ -60,7 +80,7 @@ impl FromStr for NetworkAddress {
         if trimmed.is_empty() {
             return Err(NetworkAddressParseError);
         }
-        Ok(Self(trimmed.to_string()))
+        Ok(Self(strip_trailing_ntp_port(trimmed).to_string()))
     }
 }
 
@@ -131,5 +151,43 @@ mod tests {
     #[test]
     fn serde_rejects_empty() {
         assert!(serde_json::from_str::<NetworkAddress>("\"\"").is_err());
+    }
+
+    #[test]
+    fn strips_trailing_ntp_port_from_ipv4() {
+        let addr: NetworkAddress = "192.168.0.1:123".parse().unwrap();
+        assert_eq!(addr.as_str(), "192.168.0.1");
+    }
+
+    #[test]
+    fn strips_trailing_ntp_port_from_hostname() {
+        let addr: NetworkAddress = "pool.ntp.org:123".parse().unwrap();
+        assert_eq!(addr.as_str(), "pool.ntp.org");
+    }
+
+    #[test]
+    fn strips_trailing_ntp_port_from_unbracketed_ipv6() {
+        let addr: NetworkAddress = "2001:db8::1:123".parse().unwrap();
+        assert_eq!(addr.as_str(), "2001:db8::1");
+    }
+
+    #[test]
+    fn strips_trailing_ntp_port_from_bracketed_ipv6() {
+        let addr: NetworkAddress = "[2001:db8::1]:123".parse().unwrap();
+        assert_eq!(addr.as_str(), "2001:db8::1");
+    }
+
+    #[test]
+    fn leaves_address_without_ntp_port_unchanged() {
+        let cases = [
+            "time.cloudflare.com",
+            "192.168.0.1",
+            "2001:db8::1",
+            "pool.ntp.org:456",
+        ];
+        for input in cases {
+            let addr: NetworkAddress = input.parse().unwrap();
+            assert_eq!(addr.as_str(), input, "input: {input}");
+        }
     }
 }
