@@ -522,20 +522,32 @@ impl DeviceInput for EmulatorDevice {
     }
 }
 
-fn handle_set_wifi(enable: bool, context: &mut AppContext, hub: &Hub) -> EventOutcome {
-    if context.settings.wifi == enable {
+fn handle_set_wifi_mode(
+    mode: crate::settings::WifiMode,
+    context: &mut AppContext,
+    hub: &Hub,
+) -> EventOutcome {
+    if context.settings.wifi == mode {
         return EventOutcome::Handled;
     }
 
-    context.settings.wifi = enable;
-    if enable {
-        let hub = hub.clone();
-        std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_secs(2));
-            hub.send(Event::Device(DeviceEvent::NetUp)).ok();
-        });
-    } else {
-        context.online = false;
+    context.settings.wifi = mode;
+    context.wifi_session.set_mode(mode);
+
+    match mode {
+        crate::settings::WifiMode::AlwaysOn => {
+            let hub = hub.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_secs(2));
+                hub.send(Event::Device(DeviceEvent::NetUp)).ok();
+            });
+        }
+        crate::settings::WifiMode::Off | crate::settings::WifiMode::Auto => {
+            if mode == crate::settings::WifiMode::Off || !context.wifi_session.has_holders() {
+                context.online = false;
+                context.wifi_session.notify_offline();
+            }
+        }
     }
 
     EventOutcome::Handled
@@ -543,6 +555,7 @@ fn handle_set_wifi(enable: bool, context: &mut AppContext, hub: &Hub) -> EventOu
 
 fn handle_net_up(context: &mut AppContext) -> EventOutcome {
     context.online = true;
+    context.wifi_session.notify_online();
     EventOutcome::Continue
 }
 
@@ -583,10 +596,9 @@ impl DeviceLifecycle for EmulatorDevice {
         runtime: &mut DeviceRuntime<'_>,
     ) -> EventOutcome {
         match event {
-            Event::SetWifi(enable) => handle_set_wifi(*enable, context, hub),
-            Event::Select(EntryId::ToggleWifi) => {
-                handle_set_wifi(!context.settings.wifi, context, hub)
-            }
+            Event::SetWifiMode(mode) => handle_set_wifi_mode(*mode, context, hub),
+            Event::Select(EntryId::SetWifiMode(mode)) => handle_set_wifi_mode(*mode, context, hub),
+            Event::MightDisableWifi => EventOutcome::Handled,
             Event::Device(DeviceEvent::NetUp) => handle_net_up(context),
             Event::Device(DeviceEvent::RotateScreen(_)) => EventOutcome::Handled,
             Event::Select(EntryId::ShowIntermission(kind)) => {
@@ -686,21 +698,22 @@ pub fn code_from_key(key: Scancode) -> Option<ButtonCode> {
 
 #[cfg(all(test, feature = "emulator"))]
 mod wifi_tests {
-    use super::{handle_net_up, handle_set_wifi};
+    use super::{handle_net_up, handle_set_wifi_mode};
     use crate::context::test_helpers::create_test_context;
     use crate::device::EventOutcome;
+    use crate::settings::WifiMode;
     use std::sync::mpsc;
 
     #[test]
     fn handle_set_wifi_enable_does_not_set_online_immediately() {
         let mut context = create_test_context();
         let (hub, _rx) = mpsc::channel();
-        assert!(!context.settings.wifi);
+        assert_eq!(context.settings.wifi, WifiMode::Off);
         assert!(!context.online);
 
-        let outcome = handle_set_wifi(true, &mut context, &hub);
+        let outcome = handle_set_wifi_mode(WifiMode::AlwaysOn, &mut context, &hub);
         assert_eq!(outcome, EventOutcome::Handled);
-        assert!(context.settings.wifi);
+        assert_eq!(context.settings.wifi, WifiMode::AlwaysOn);
         assert!(!context.online);
     }
 
@@ -708,12 +721,12 @@ mod wifi_tests {
     fn handle_set_wifi_disable_clears_online() {
         let mut context = create_test_context();
         let (hub, _rx) = mpsc::channel();
-        context.settings.wifi = true;
+        context.settings.wifi = WifiMode::AlwaysOn;
         context.online = true;
 
-        let outcome = handle_set_wifi(false, &mut context, &hub);
+        let outcome = handle_set_wifi_mode(WifiMode::Off, &mut context, &hub);
         assert_eq!(outcome, EventOutcome::Handled);
-        assert!(!context.settings.wifi);
+        assert_eq!(context.settings.wifi, WifiMode::Off);
         assert!(!context.online);
     }
 
@@ -725,17 +738,18 @@ mod wifi_tests {
         let outcome = handle_net_up(&mut context);
         assert_eq!(outcome, EventOutcome::Continue);
         assert!(context.online);
+        assert!(context.wifi_session.is_online());
     }
 
     #[test]
     fn toggle_wifi_enables_wifi_without_setting_online() {
         let mut context = create_test_context();
         let (hub, _rx) = mpsc::channel();
-        assert!(!context.settings.wifi);
+        assert_eq!(context.settings.wifi, WifiMode::Off);
 
-        let outcome = handle_set_wifi(!context.settings.wifi, &mut context, &hub);
+        let outcome = handle_set_wifi_mode(WifiMode::AlwaysOn, &mut context, &hub);
         assert_eq!(outcome, EventOutcome::Handled);
-        assert!(context.settings.wifi);
+        assert_eq!(context.settings.wifi, WifiMode::AlwaysOn);
         assert!(!context.online);
     }
 }

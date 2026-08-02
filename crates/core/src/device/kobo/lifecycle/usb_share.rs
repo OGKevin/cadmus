@@ -65,10 +65,8 @@ fn prepare_usb_share(
         context.set_frontlight(false);
     }
     #[cfg(not(feature = "test"))]
-    if context.settings.wifi {
-        if let Ok(wifi) = context.device.wifi_manager()
-            && let Err(error) = wifi.disable()
-        {
+    if context.settings.wifi != crate::settings::WifiMode::Off {
+        if let Err(error) = context.wifi_session.disable_radio() {
             tracing::error!(error = %error, "Failed to disable WiFi for USB share");
         }
         context.online = false;

@@ -3,6 +3,7 @@
 mod error;
 mod manager;
 mod network_info;
+mod session;
 
 pub use error::WifiError;
 #[cfg(any(
@@ -16,3 +17,4 @@ pub use error::WifiError;
 pub(crate) use error::clone_wifi_error;
 pub use manager::WifiManager;
 pub use network_info::{Essid, NetworkInfo};
+pub use session::{DEFAULT_ACQUIRE_TIMEOUT, WifiLease, WifiSession, WifiSessionError};

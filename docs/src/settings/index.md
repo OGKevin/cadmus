@@ -175,6 +175,46 @@ This setting is optional and managed automatically.
 
 <!-- i18n:skip-end -->
 
+### `wifi`
+
+Radio button in the top menu.
+
+WiFi operating mode:
+
+- `off` — radio stays powered down; on-demand features cannot enable it
+- `always-on` — radio stays enabled (legacy `wifi = true`)
+- `auto` — enable when a feature needs the network, then power down after idle
+
+Legacy boolean values still load: `true` becomes `always-on`, `false` becomes `off`.
+
+<!-- i18n:skip-start -->
+
+```toml
+wifi = "off"
+```
+
+<!-- i18n:skip-end -->
+
+### `wifi-idle-timeout`
+
+✏️
+
+Number of minutes after the last Auto-mode WiFi use before the radio is powered down.
+
+- Zero means disable as soon as the last WiFi lease is released.
+- Only applies when `wifi = "auto"`.
+- Minimum non-zero value is `0.5` (30 seconds). The idle poller checks every
+  30 seconds, so shorter positive timeouts are raised to `0.5` when settings
+  are loaded or edited.
+
+<!-- i18n:skip-start -->
+
+```toml
+wifi-idle-timeout = 5.0
+```
+
+<!-- i18n:skip-end -->
+
 ### `auto-suspend`
 
 ✏️

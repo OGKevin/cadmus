@@ -127,12 +127,103 @@ pub const DEFAULT_TEXT_ALIGN: TextAlign = TextAlign::Left;
 pub const HYPHEN_PENALTY: i32 = 50;
 pub const STRETCH_TOLERANCE: f32 = 1.26;
 
+/// Minimum positive [`Settings::wifi_idle_timeout`] in minutes (30 seconds).
+///
+/// Also used as the Auto-mode idle poll interval. Shorter positive timeouts
+/// cannot be honored and are clamped to this value. Zero remains allowed for
+/// “immediate” disable.
+pub const WIFI_IDLE_TIMEOUT_MIN_MINUTES: f32 = 0.5;
+
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum RotationLock {
     Landscape,
     Portrait,
     Current,
+}
+
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum WifiMode {
+    #[default]
+    Off,
+    AlwaysOn,
+    Auto,
+}
+
+impl WifiMode {
+    /// Returns whether the radio should be powered for this mode at rest
+    /// (no active leases).
+    pub fn wants_radio_at_rest(self) -> bool {
+        matches!(self, WifiMode::AlwaysOn)
+    }
+
+    /// Returns whether leases may enable the radio on demand.
+    pub fn allows_on_demand(self) -> bool {
+        matches!(self, WifiMode::AlwaysOn | WifiMode::Auto)
+    }
+}
+
+impl fmt::Display for WifiMode {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            WifiMode::Off => write!(f, "Off"),
+            WifiMode::AlwaysOn => write!(f, "Always On"),
+            WifiMode::Auto => write!(f, "Auto"),
+        }
+    }
+}
+
+impl I18nDisplay for WifiMode {
+    fn to_i18n_string(&self) -> String {
+        match self {
+            WifiMode::Off => fl!("settings-wifi-mode-off"),
+            WifiMode::AlwaysOn => fl!("settings-wifi-mode-always-on"),
+            WifiMode::Auto => fl!("settings-wifi-mode-auto"),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for WifiMode {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct WifiModeVisitor;
+
+        impl<'de> serde::de::Visitor<'de> for WifiModeVisitor {
+            type Value = WifiMode;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a wifi mode string or boolean")
+            }
+
+            fn visit_bool<E>(self, value: bool) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(if value {
+                    WifiMode::AlwaysOn
+                } else {
+                    WifiMode::Off
+                })
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                match value {
+                    "off" => Ok(WifiMode::Off),
+                    "always-on" => Ok(WifiMode::AlwaysOn),
+                    "auto" => Ok(WifiMode::Auto),
+                    _ => Err(E::unknown_variant(value, &["off", "always-on", "auto"])),
+                }
+            }
+        }
+
+        deserializer.deserialize_any(WifiModeVisitor)
+    }
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -280,7 +371,14 @@ pub struct Settings {
     pub selected_library: usize,
     pub keyboard_layout: String,
     pub frontlight: bool,
-    pub wifi: bool,
+    pub wifi: WifiMode,
+    /// Minutes after the last Auto-mode WiFi lease drops before the radio is
+    /// powered down. Zero means disable as soon as the last lease is released.
+    ///
+    /// Positive values below [`WIFI_IDLE_TIMEOUT_MIN_MINUTES`] (30 seconds) are
+    /// raised to that minimum on load and when edited, because the idle poller
+    /// only checks every 30 seconds.
+    pub wifi_idle_timeout: f32,
     pub inverted: bool,
     pub sleep_cover: bool,
     pub auto_share: bool,
@@ -346,7 +444,21 @@ pub struct Settings {
 impl Settings {
     /// Normalizes unsupported settings values loaded from disk.
     pub fn sanitize(&mut self) -> bool {
-        self.intermissions.sanitize()
+        let mut changed = self.intermissions.sanitize();
+        changed |= self.sanitize_wifi_idle_timeout();
+        changed
+    }
+
+    pub(crate) fn sanitize_wifi_idle_timeout(&mut self) -> bool {
+        if self.wifi_idle_timeout < 0.0 {
+            self.wifi_idle_timeout = 0.0;
+            return true;
+        }
+        if self.wifi_idle_timeout > 0.0 && self.wifi_idle_timeout < WIFI_IDLE_TIMEOUT_MIN_MINUTES {
+            self.wifi_idle_timeout = WIFI_IDLE_TIMEOUT_MIN_MINUTES;
+            return true;
+        }
+        false
     }
 }
 
@@ -1049,7 +1161,8 @@ impl Default for Settings {
             external_urls_queue: Some(PathBuf::from("bin/article_fetcher/urls.txt")),
             keyboard_layout: "English".to_string(),
             frontlight: true,
-            wifi: false,
+            wifi: WifiMode::Off,
+            wifi_idle_timeout: 5.0,
             inverted: false,
             sleep_cover: true,
             auto_share: false,
@@ -1331,5 +1444,80 @@ dithered-kinds = ["cbz", "unknown-format"]
     fn test_html_extension_still_parses() {
         let parsed = "html".parse::<FileExtension>();
         assert_eq!(parsed, Ok(FileExtension::Html));
+    }
+
+    #[test]
+    fn wifi_mode_deserializes_legacy_bool() {
+        #[derive(Deserialize)]
+        struct Wrap {
+            wifi: WifiMode,
+        }
+        let off: Wrap = toml::from_str("wifi = false\n").expect("bool false");
+        assert_eq!(off.wifi, WifiMode::Off);
+        let on: Wrap = toml::from_str("wifi = true\n").expect("bool true");
+        assert_eq!(on.wifi, WifiMode::AlwaysOn);
+    }
+
+    #[test]
+    fn wifi_mode_deserializes_kebab_strings() {
+        #[derive(Deserialize)]
+        struct Wrap {
+            wifi: WifiMode,
+        }
+        assert_eq!(
+            toml::from_str::<Wrap>(r#"wifi = "off""#).unwrap().wifi,
+            WifiMode::Off
+        );
+        assert_eq!(
+            toml::from_str::<Wrap>(r#"wifi = "always-on""#)
+                .unwrap()
+                .wifi,
+            WifiMode::AlwaysOn
+        );
+        assert_eq!(
+            toml::from_str::<Wrap>(r#"wifi = "auto""#).unwrap().wifi,
+            WifiMode::Auto
+        );
+    }
+
+    #[test]
+    fn settings_wifi_bool_field_migrates() {
+        let settings: Settings = toml::from_str("wifi = true\n").expect("settings");
+        assert_eq!(settings.wifi, WifiMode::AlwaysOn);
+        assert_eq!(settings.wifi_idle_timeout, 5.0);
+    }
+
+    #[test]
+    fn sanitize_wifi_idle_timeout_clamps_below_minimum() {
+        let mut settings = Settings {
+            wifi_idle_timeout: 0.1,
+            ..Default::default()
+        };
+        assert!(settings.sanitize());
+        assert_eq!(settings.wifi_idle_timeout, WIFI_IDLE_TIMEOUT_MIN_MINUTES);
+    }
+
+    #[test]
+    fn sanitize_wifi_idle_timeout_keeps_zero_and_valid() {
+        let mut settings = Settings {
+            wifi_idle_timeout: 0.0,
+            ..Default::default()
+        };
+        assert!(!settings.sanitize_wifi_idle_timeout());
+        assert_eq!(settings.wifi_idle_timeout, 0.0);
+
+        settings.wifi_idle_timeout = 5.0;
+        assert!(!settings.sanitize_wifi_idle_timeout());
+        assert_eq!(settings.wifi_idle_timeout, 5.0);
+    }
+
+    #[test]
+    fn sanitize_wifi_idle_timeout_clamps_negative_to_zero() {
+        let mut settings = Settings {
+            wifi_idle_timeout: -1.0,
+            ..Default::default()
+        };
+        assert!(settings.sanitize_wifi_idle_timeout());
+        assert_eq!(settings.wifi_idle_timeout, 0.0);
     }
 }

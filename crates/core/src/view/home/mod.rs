@@ -1815,7 +1815,7 @@ impl Home {
             library_path,
             &save_path,
             &program,
-            context.settings.wifi,
+            context.settings.wifi.wants_radio_at_rest(),
             context.online,
             hub,
         ) {
@@ -1894,13 +1894,6 @@ impl Home {
                                         msg.to_string(),
                                     )))
                                     .ok();
-                                }
-                            }
-                            Some("setWifi") => {
-                                if let Some(enable) =
-                                    event.get("enable").and_then(JsonValue::as_bool)
-                                {
-                                    hub2.send(Event::SetWifi(enable)).ok();
                                 }
                             }
                             Some("addDocument") => {

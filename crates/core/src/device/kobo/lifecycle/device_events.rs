@@ -150,6 +150,7 @@ fn handle_net_up(
     }
 
     context.online = true;
+    context.wifi_session.notify_online();
     EventOutcome::Continue
 }
 

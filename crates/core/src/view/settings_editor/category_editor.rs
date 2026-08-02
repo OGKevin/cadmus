@@ -803,6 +803,7 @@ impl CategoryEditor {
         match view_id {
             ViewId::AutoSuspendInput
             | ViewId::AutoPowerOffInput
+            | ViewId::WifiIdleTimeoutInput
             | ViewId::SettingsRetentionInput
             | ViewId::DbBackupRetentionInput
             | ViewId::SettingsValueMenu
@@ -1576,13 +1577,14 @@ mod tests {
     }
 
     #[test]
-    fn test_close_auto_frontlight_named_inputs_removes_overlay_and_clears_focus() {
+    fn test_close_general_named_inputs_removes_overlay_and_clears_focus() {
         let mut context = create_test_context();
         let mut editor = create_test_general_category_editor(&mut context);
 
         for view_id in [
             ViewId::AutoFrontlightBrightnessInput,
             ViewId::AutoFrontlightManualCoordinatesInput,
+            ViewId::WifiIdleTimeoutInput,
         ] {
             let (hub, receiver) = channel();
             let mut bus = VecDeque::new();

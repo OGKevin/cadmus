@@ -188,6 +188,74 @@ impl InputSettingKind for AutoSuspend {
     }
 }
 
+/// WiFi idle timeout after the last Auto-mode lease is released.
+pub struct WifiIdleTimeout;
+
+impl SettingKind for WifiIdleTimeout {
+    fn identity(&self) -> SettingIdentity {
+        SettingIdentity::WifiIdleTimeout
+    }
+
+    fn label(&self, _settings: &Settings) -> String {
+        fl!("settings-general-wifi-idle-timeout")
+    }
+
+    fn fetch(&self, data: SettingsFetchData) -> SettingData {
+        let value = if data.settings.wifi_idle_timeout == 0.0 {
+            fl!("settings-general-wifi-idle-immediate")
+        } else {
+            format!("{:.1}", data.settings.wifi_idle_timeout)
+        };
+
+        SettingData {
+            value,
+            widget: WidgetKind::ActionLabel(Event::Select(EntryId::EditWifiIdleTimeout)),
+        }
+    }
+
+    fn as_input_kind(&self) -> Option<&dyn InputSettingKind> {
+        Some(self)
+    }
+}
+
+impl InputSettingKind for WifiIdleTimeout {
+    fn submit_view_id(&self) -> ViewId {
+        ViewId::WifiIdleTimeoutInput
+    }
+
+    fn open_entry_id(&self) -> EntryId {
+        EntryId::EditWifiIdleTimeout
+    }
+
+    fn input_label(&self) -> String {
+        fl!("settings-general-wifi-idle-timeout-input")
+    }
+
+    fn input_max_chars(&self) -> usize {
+        10
+    }
+
+    fn current_text(&self, settings: &Settings) -> String {
+        if settings.wifi_idle_timeout == 0.0 {
+            "0".to_string()
+        } else {
+            format!("{:.1}", settings.wifi_idle_timeout)
+        }
+    }
+
+    fn apply_text(&self, text: &str, settings: &mut Settings) -> String {
+        if let Ok(value) = text.parse::<f32>() {
+            settings.wifi_idle_timeout = value;
+            settings.sanitize_wifi_idle_timeout();
+        }
+        if settings.wifi_idle_timeout == 0.0 {
+            fl!("settings-general-wifi-idle-immediate")
+        } else {
+            format!("{:.1}", settings.wifi_idle_timeout)
+        }
+    }
+}
+
 /// Auto power off timeout setting
 pub struct AutoPowerOff;
 
@@ -1003,6 +1071,33 @@ mod tests {
 
             assert_eq!(settings.auto_suspend, 30.0);
             assert_eq!(display, "30.0");
+        }
+    }
+
+    mod wifi_idle_timeout {
+        use super::*;
+        use crate::settings::WIFI_IDLE_TIMEOUT_MIN_MINUTES;
+
+        #[test]
+        fn apply_text_clamps_below_minimum() {
+            let setting = WifiIdleTimeout;
+            let mut settings = Settings::default();
+
+            let display = setting.apply_text("0.1", &mut settings);
+
+            assert_eq!(settings.wifi_idle_timeout, WIFI_IDLE_TIMEOUT_MIN_MINUTES);
+            assert_eq!(display, format!("{:.1}", WIFI_IDLE_TIMEOUT_MIN_MINUTES));
+        }
+
+        #[test]
+        fn apply_text_keeps_zero_immediate() {
+            let setting = WifiIdleTimeout;
+            let mut settings = Settings::default();
+
+            let display = setting.apply_text("0", &mut settings);
+
+            assert_eq!(settings.wifi_idle_timeout, 0.0);
+            assert_eq!(display, fl!("settings-general-wifi-idle-immediate"));
         }
     }
 

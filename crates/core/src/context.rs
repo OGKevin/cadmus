@@ -1,6 +1,9 @@
 use crate::db::Database;
 use crate::device::Device;
+#[cfg(test)]
+use crate::device::DeviceHardware as _;
 use crate::device::rtc::AlarmManager;
+use crate::device::wifi::WifiSession;
 use crate::dictionary::{Dictionary, load_dictionary_from_db};
 use crate::font::Fonts;
 use crate::framebuffer::{Display, Framebuffer};
@@ -47,6 +50,7 @@ pub struct Context<D: Device> {
     pub covered: bool,
     pub shared: bool,
     pub online: bool,
+    pub wifi_session: std::sync::Arc<crate::device::wifi::WifiSession>,
 }
 
 impl<D: Device> Context<D> {
@@ -77,6 +81,14 @@ impl<D: Device> Context<D> {
                 None
             }
         };
+        let wifi_mode = settings.wifi;
+        let wifi_session = match device.wifi_manager() {
+            Ok(wifi) => WifiSession::new(wifi, wifi_mode),
+            Err(e) => {
+                tracing::warn!(error = %e, "WiFi manager unavailable");
+                WifiSession::unavailable(wifi_mode)
+            }
+        };
         Context {
             device,
             alarm_manager,
@@ -95,6 +107,7 @@ impl<D: Device> Context<D> {
             covered: false,
             shared: false,
             online: false,
+            wifi_session,
         }
     }
 
@@ -310,8 +323,8 @@ pub mod test_helpers {
     use super::*;
     use crate::battery::Battery as _;
     use crate::db::Database;
+    use crate::device::AppContext;
     use crate::device::test_device::TestDevice;
-    use crate::device::{AppContext, DeviceHardware as _};
     use crate::frontlight::LightLevels;
 
     pub fn create_test_context() -> AppContext {
