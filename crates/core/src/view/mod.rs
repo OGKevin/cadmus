@@ -863,6 +863,8 @@ pub enum EntryId {
     Quit,
     Suspend,
     PowerOff,
+    /// Switch to the peer Cadmus install (main ↔ test).
+    SwitchInstall,
     CheckForUpdates,
     FileEntry(PathBuf),
     Ota(OtaEntryId),

@@ -6,6 +6,8 @@ build-attributes =
     Built { $timestamp }
     By { $user }@{ $host }
 build-features = Features: { $features }
+build-kind-main = Main
+build-kind-test = Test
 
 english = English
 
@@ -36,6 +38,7 @@ top-menu-restart-app = Restart {-app-name}
 top-menu-suspend = Suspend
 top-menu-quit = Quit
 top-menu-power-off = Power Off
+top-menu-switch-to = Switch to { $build }
 top-menu-sync-time = Sync Time
 
 # Settings - Button Scheme

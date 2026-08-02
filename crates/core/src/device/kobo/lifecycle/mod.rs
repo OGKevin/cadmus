@@ -286,6 +286,17 @@ impl DeviceLifecycle for Device {
             ExitStatus::PowerOff => {
                 File::create("/tmp/power_off").ok();
             }
+            ExitStatus::RunCommand(command) => {
+                if let Err(error) =
+                    std::fs::write("/tmp/run_command", command.to_string_lossy().as_bytes())
+                {
+                    tracing::error!(
+                        error = %error,
+                        command = %command.display(),
+                        "Failed to write run_command marker"
+                    );
+                }
+            }
             ExitStatus::Quit => {
                 if let Ok(wifi) = context.device.wifi_manager()
                     && let Err(error) = wifi.disable()
@@ -329,7 +340,8 @@ impl DeviceLifecycle for Device {
             | Event::Select(EntryId::Restart)
             | Event::Select(EntryId::Reboot)
             | Event::Select(EntryId::Quit)
-            | Event::Select(EntryId::Suspend) => {
+            | Event::Select(EntryId::Suspend)
+            | Event::Select(EntryId::SwitchInstall) => {
                 power::handle_event(event, hub, bus, rq, context, runtime)
             }
             _ => EventOutcome::Unhandled,

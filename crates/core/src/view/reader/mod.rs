@@ -5305,6 +5305,7 @@ impl View for Reader {
             Event::Select(EntryId::Quit)
             | Event::Select(EntryId::Reboot)
             | Event::Select(EntryId::Restart)
+            | Event::Select(EntryId::SwitchInstall)
             | Event::Back
             | Event::Suspend => {
                 self.quit(context);

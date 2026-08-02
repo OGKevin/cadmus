@@ -1,6 +1,7 @@
 //! Power-off and application exit event handling.
 
 use super::{begin_suspend, show_power_off_intermission};
+use crate::device::DevicePaths as _;
 use crate::device::{AppContext, DeviceRuntime, EventOutcome, ExitStatus};
 use crate::gesture::GestureEvent;
 use crate::input::ButtonCode;
@@ -37,6 +38,15 @@ pub(super) fn handle_event(
         Event::Select(EntryId::Restart) => EventOutcome::Exit(ExitStatus::Restart),
         Event::Select(EntryId::Reboot) => EventOutcome::Exit(ExitStatus::Reboot),
         Event::Select(EntryId::Quit) => EventOutcome::Exit(ExitStatus::Quit),
+        Event::Select(EntryId::SwitchInstall) => {
+            match context.device.peer_installs().into_iter().next() {
+                Some(peer) => EventOutcome::Exit(ExitStatus::RunCommand(peer.launcher)),
+                None => {
+                    tracing::error!("SwitchInstall selected but no peer install found");
+                    EventOutcome::Handled
+                }
+            }
+        }
         Event::Select(EntryId::Suspend) => {
             begin_suspend(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks);
             EventOutcome::Handled
@@ -66,6 +76,35 @@ mod tests {
             )
         });
         assert_eq!(outcome, EventOutcome::Exit(ExitStatus::PowerOff));
+    }
+
+    #[test]
+    fn handle_event_switch_install_exits_run_command() {
+        let mut harness = LifecycleHarness::new();
+        let peer_dir = std::env::temp_dir()
+            .join("test-kobo-installation")
+            .join(".adds/cadmus");
+        let launcher = peer_dir.join("cadmus.sh");
+        std::fs::create_dir_all(&peer_dir).unwrap();
+        std::fs::write(&launcher, "#!/bin/sh\n").unwrap();
+
+        let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
+            handle_event(
+                &Event::Select(EntryId::SwitchInstall),
+                hub,
+                bus,
+                rq,
+                context,
+                runtime,
+            )
+        });
+        assert_eq!(
+            outcome,
+            EventOutcome::Exit(ExitStatus::RunCommand(launcher.clone()))
+        );
+
+        std::fs::remove_file(&launcher).ok();
+        std::fs::remove_dir_all(&peer_dir).ok();
     }
 
     #[test]

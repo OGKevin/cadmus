@@ -87,6 +87,10 @@ exit_cadmus() {
     reboot
   elif [ -e /tmp/power_off ]; then
     poweroff -f
+  elif [ -e /tmp/run_command ]; then
+    CMD=$(cat /tmp/run_command)
+    rm -f /tmp/run_command
+    exec "$CMD"
   else
     ./nickel.sh &
   fi
