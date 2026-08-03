@@ -67,11 +67,11 @@
     {
       "description": "Keep mupdf submodule and version pins in sync",
       "matchManagers": ["git-submodules", "custom.regex"],
-      "matchSourceUrls": ["https://github.com/ArtifexSoftware/mupdf"],
-      "matchDepNames": ["thirdparty/mupdf"],
+      "matchPackageNames": ["thirdparty/mupdf", "ArtifexSoftware/mupdf"],
       "groupName": "mupdf",
       "groupSlug": "mupdf",
-      "addLabels": ["thirdparty"]
+      "addLabels": ["thirdparty"],
+      "minimumReleaseAge": null
     },
     {
       "description": "Group bundled font release pins and font git submodules",
