@@ -14,6 +14,10 @@ const MANIFEST_FILE: &str = ".cadmus-db-index.toml";
 
 /// File suffixes for SQLite companion files (WAL and shared-memory).
 const SQLITE_COMPANION_SUFFIXES: [&str; 2] = ["-wal", "-shm"];
+/// Milliseconds to sleep when `PRAGMA wal_checkpoint` reports the database is busy.
+const CHECKPOINT_BUSY_SLEEP_MS: u64 = 25;
+/// Maximum retries when checkpoint is blocked by concurrent readers (~30 s total).
+const CHECKPOINT_MAX_RETRIES: u32 = (30_000 / CHECKPOINT_BUSY_SLEEP_MS) as u32;
 
 /// Manifest that tracks all database backups.
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -117,10 +121,7 @@ impl DbBackupManager {
             .await
             .context("failed to clean up temporary backup files")?;
 
-        sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
-            .execute(pool)
-            .await
-            .context("failed to run PRAGMA wal_checkpoint before backup")?;
+        wal_checkpoint_truncate(pool).await?;
 
         copy_sqlite_files(source_path, &tmp_path)
             .await
@@ -378,6 +379,55 @@ impl DbBackupManager {
 
         self.write_manifest(&manifest)
     }
+}
+
+/// Checkpoints and truncates the WAL, retrying when SQLite reports the database is busy.
+///
+/// `PRAGMA wal_checkpoint` returns `busy`, `log`, and `checkpointed` columns.
+/// `.execute()` alone does not expose whether truncation actually finished.
+///
+/// Success when `busy = 0` and any of:
+/// - `log = -1` — the database is not in WAL mode and the main file is self-contained
+/// - `log = 0` — the WAL was truncated or is empty
+/// - `log = checkpointed` — every WAL frame was flushed into the main file
+///
+/// Retries while `busy != 0` (lock contention) and errors on partial checkpoints
+/// (`log > checkpointed`).
+async fn wal_checkpoint_truncate(pool: &SqlitePool) -> Result<(), Error> {
+    use sqlx::Row;
+
+    for attempt in 0..=CHECKPOINT_MAX_RETRIES {
+        let row = sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
+            .fetch_one(pool)
+            .await
+            .context("failed to run PRAGMA wal_checkpoint before backup")?;
+
+        let busy = row.try_get::<Option<i64>, _>(0)?.unwrap_or(1);
+        let log = row.try_get::<Option<i64>, _>(1)?.unwrap_or(0);
+        let checkpointed = row.try_get::<Option<i64>, _>(2)?.unwrap_or(0);
+
+        if busy == 0 {
+            if log == -1 {
+                return Ok(());
+            }
+            if log == 0 || log == checkpointed {
+                return Ok(());
+            }
+            return Err(anyhow::anyhow!(
+                "incomplete WAL checkpoint: {checkpointed} of {log} frames checkpointed"
+            ));
+        }
+
+        if attempt == CHECKPOINT_MAX_RETRIES {
+            return Err(anyhow::anyhow!(
+                "WAL checkpoint timed out waiting for SQLite lock"
+            ));
+        }
+
+        tokio::time::sleep(std::time::Duration::from_millis(CHECKPOINT_BUSY_SLEEP_MS)).await;
+    }
+
+    unreachable!()
 }
 
 /// Renames an SQLite database file and its WAL/SHM companions.
