@@ -67,11 +67,11 @@
     {
       "description": "Keep mupdf submodule and version pins in sync",
       "matchManagers": ["git-submodules", "custom.regex"],
-      "matchSourceUrls": ["https://github.com/ArtifexSoftware/mupdf"],
-      "matchDepNames": ["thirdparty/mupdf"],
+      "matchPackageNames": ["thirdparty/mupdf", "ArtifexSoftware/mupdf"],
       "groupName": "mupdf",
       "groupSlug": "mupdf",
-      "addLabels": ["thirdparty"]
+      "addLabels": ["thirdparty"],
+      "minimumReleaseAge": null
     },
     {
       "description": "Group bundled font release pins and font git submodules",
@@ -102,9 +102,7 @@
     },
     {
       "customType": "regex",
-      "managerFilePatterns": [
-        "/^\\.github\\/workflows\\/actions-lint\\.yml$/"
-      ],
+      "managerFilePatterns": ["/^\\.github\\/workflows\\/actions-lint\\.yml$/"],
       "matchStrings": [
         "ACTIONLINT_VERSION:\\s+\\\"(?<currentValue>[^\\\"]+)\\\""
       ],
@@ -116,9 +114,7 @@
     {
       "customType": "regex",
       "managerFilePatterns": ["/^\\.github\\/workflows\\/shell\\.yml$/"],
-      "matchStrings": [
-        "SHFMT_VERSION:\\s+\\\"(?<currentValue>[^\\\"]+)\\\""
-      ],
+      "matchStrings": ["SHFMT_VERSION:\\s+\\\"(?<currentValue>[^\\\"]+)\\\""],
       "datasourceTemplate": "github-releases",
       "depNameTemplate": "mvdan/sh",
       "extractVersionTemplate": "^v?(?<version>.+)$",
