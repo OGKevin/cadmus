@@ -3,32 +3,14 @@ use crate::version::GitVersion;
 use anyhow::{Context, Error};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sqlx::Connection;
-use sqlx::sqlite::{SqliteConnectOptions, SqliteConnection, SqlitePool};
-use std::ffi::{CStr, CString, c_int};
+use sqlx::sqlite::SqlitePool;
 use std::path::{Path, PathBuf};
-use std::str::FromStr;
 use tokio::fs;
 
 /// Subdirectory under the database directory where backups are stored.
 const BACKUP_DIR: &str = "backups";
 /// Filename of the TOML manifest that tracks all known backups.
 const MANIFEST_FILE: &str = ".cadmus-db-index.toml";
-/// SQLite database name passed to the online backup API (`"main"`).
-const MAIN_DB_NAME: &str = "main";
-/// Number of pages copied per `sqlite3_backup_step` iteration.
-const BACKUP_PAGE_COUNT: c_int = 100;
-/// Milliseconds to sleep when the backup step returns `SQLITE_BUSY` or `SQLITE_LOCKED`.
-const BACKUP_BUSY_SLEEP_MS: u64 = 25;
-
-/// SQLite result code indicating success.
-const SQLITE_OK: c_int = 0;
-/// SQLite result code indicating the backup has finished.
-const SQLITE_DONE: c_int = 101;
-/// SQLite result code indicating the database is busy.
-const SQLITE_BUSY: c_int = 5;
-/// SQLite result code indicating a table-level lock conflict.
-const SQLITE_LOCKED: c_int = 6;
 
 /// File suffixes for SQLite companion files (WAL and shared-memory).
 const SQLITE_COMPANION_SUFFIXES: [&str; 2] = ["-wal", "-shm"];
@@ -102,14 +84,19 @@ impl DbBackupManager {
         self.backup_dir().join(MANIFEST_FILE)
     }
 
-    /// Creates a backup of the current database using the SQLite online backup API.
+    /// Creates a backup of the current database via WAL checkpoint and filesystem copy.
     ///
-    /// The backup is stored as `backups/cadmus-v<version>.sqlite`. The manifest is
-    /// updated and old backups exceeding the retention limit are removed.
+    /// Checkpoints the WAL into the main file first so the copy is a consistent
+    /// snapshot, then copies `source_path` (and any remaining companion files)
+    /// to `backups/cadmus-v<version>.sqlite`. The manifest is updated and old
+    /// backups exceeding the retention limit are removed.
+    ///
+    /// `source_path` must be the active database file opened by `pool`.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     pub async fn create_backup(
         &self,
         pool: &SqlitePool,
+        source_path: &Path,
         retention: usize,
     ) -> Result<PathBuf, Error> {
         if retention == 0 {
@@ -130,7 +117,14 @@ impl DbBackupManager {
             .await
             .context("failed to clean up temporary backup files")?;
 
-        online_backup(pool, &tmp_path).await?;
+        sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
+            .execute(pool)
+            .await
+            .context("failed to run PRAGMA wal_checkpoint before backup")?;
+
+        copy_sqlite_files(source_path, &tmp_path)
+            .await
+            .context("failed to copy database files for backup")?;
 
         rename_sqlite_files(&tmp_path, &backup_path)
             .await
@@ -462,151 +456,12 @@ fn add_suffix(path: &Path, suffix: &str) -> PathBuf {
     PathBuf::from(s)
 }
 
-/// Creates an online backup of `src_pool` at `dest_path`.
-///
-/// Uses the SQLite online backup API so the source database remains open and
-/// WAL state is handled automatically.
-///
-/// The backup step loop is synchronous but runs directly in the async task
-/// rather than inside `spawn_blocking`. The locked handles guarantee that
-/// SQLx's background worker is not using these connections during the backup,
-/// and the borrow checker cannot move both a connection and its borrowed handle
-/// into a `spawn_blocking` closure.
-#[cfg_attr(feature = "tracing", tracing::instrument(skip(src_pool, dest_path)))]
-async fn online_backup(src_pool: &SqlitePool, dest_path: &Path) -> Result<(), Error> {
-    let dest_url = format!("sqlite://{}", dest_path.display());
-    let dest_options = SqliteConnectOptions::from_str(&dest_url)
-        .context("failed to parse destination database URL")?
-        .create_if_missing(true);
-    let mut dest_conn = SqliteConnection::connect_with(&dest_options)
-        .await
-        .context("failed to open destination database connection")?;
-    let mut src_conn = src_pool
-        .acquire()
-        .await
-        .context("failed to acquire source database connection")?;
-
-    let mut src_handle = src_conn
-        .lock_handle()
-        .await
-        .context("failed to lock source database handle")?;
-    let mut dest_handle = dest_conn
-        .lock_handle()
-        .await
-        .context("failed to lock destination database handle")?;
-
-    let src_ptr = src_handle.as_raw_handle().as_ptr();
-    let dest_ptr = dest_handle.as_raw_handle().as_ptr();
-
-    run_backup_steps(src_ptr, dest_ptr, dest_path)?;
-
-    Ok(())
-}
-
-/// Synchronous backup step loop using the SQLite C API.
-///
-/// # Safety
-///
-/// The caller must ensure `src` and `dest` are valid `sqlite3*` pointers and
-/// that the SQLite handles they belong to remain locked for the duration of
-/// this call.
-#[cfg_attr(feature = "tracing", tracing::instrument(skip(src, dest)))]
-fn run_backup_steps(
-    src: *mut libsqlite3_sys::sqlite3,
-    dest: *mut libsqlite3_sys::sqlite3,
-    dest_path: &Path,
-) -> Result<(), Error> {
-    let main_name = CString::new(MAIN_DB_NAME).expect("MAIN_DB_NAME is a valid C string");
-
-    let backup = unsafe {
-        libsqlite3_sys::sqlite3_backup_init(dest, main_name.as_ptr(), src, main_name.as_ptr())
-    };
-
-    if backup.is_null() {
-        let msg = unsafe { sqlite_error_message(dest) };
-        return Err(Error::msg(format!(
-            "failed to initialize backup to {}: {}",
-            dest_path.display(),
-            msg
-        )));
-    }
-
-    let max_retries: u32 = (30_000 / BACKUP_BUSY_SLEEP_MS) as u32;
-    let mut busy_retries: u32 = 0;
-    let mut rc: c_int;
-    let mut done = false;
-
-    while !done {
-        rc = unsafe { libsqlite3_sys::sqlite3_backup_step(backup, BACKUP_PAGE_COUNT) };
-
-        match rc {
-            SQLITE_OK => {}
-            SQLITE_DONE => {
-                done = true;
-            }
-            SQLITE_BUSY | SQLITE_LOCKED => {
-                busy_retries += 1;
-                if busy_retries > max_retries {
-                    unsafe {
-                        libsqlite3_sys::sqlite3_backup_finish(backup);
-                    }
-                    return Err(Error::msg(format!(
-                        "online backup timed out waiting for SQLite lock for {}",
-                        dest_path.display()
-                    )));
-                }
-                unsafe { libsqlite3_sys::sqlite3_sleep(BACKUP_BUSY_SLEEP_MS as c_int) };
-            }
-            _ => {
-                let msg = unsafe { sqlite_error_message(dest) };
-                unsafe {
-                    libsqlite3_sys::sqlite3_backup_finish(backup);
-                }
-                return Err(Error::msg(format!(
-                    "online backup failed for {}: {} (code {})",
-                    dest_path.display(),
-                    msg,
-                    rc
-                )));
-            }
-        }
-    }
-
-    let finish_rc = unsafe { libsqlite3_sys::sqlite3_backup_finish(backup) };
-    if finish_rc != SQLITE_OK {
-        let msg = unsafe { sqlite_error_message(dest) };
-        return Err(Error::msg(format!(
-            "online backup finish failed for {}: {} (code {})",
-            dest_path.display(),
-            msg,
-            finish_rc
-        )));
-    }
-
-    Ok(())
-}
-
-/// Returns the SQLite error message for a database handle.
-///
-/// # Safety
-///
-/// `db` must be a valid `sqlite3*` pointer.
-unsafe fn sqlite_error_message(db: *mut libsqlite3_sys::sqlite3) -> String {
-    let msg = unsafe { libsqlite3_sys::sqlite3_errmsg(db) };
-    if msg.is_null() {
-        return "unknown SQLite error".to_string();
-    }
-
-    unsafe { CStr::from_ptr(msg) }
-        .to_string_lossy()
-        .into_owned()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::db::Database;
     use crate::runtime::RUNTIME;
+    use sqlx::sqlite::SqlitePool;
     use std::str::FromStr;
 
     #[test]
@@ -628,8 +483,8 @@ mod tests {
         let version = GitVersion::from_str("v0.10.0").unwrap();
         let manager = DbBackupManager::new(dir.path().to_path_buf(), version.clone());
 
-        let backup_path =
-            RUNTIME.block_on(async { manager.create_backup(db.pool(), 2).await.unwrap() });
+        let backup_path = RUNTIME
+            .block_on(async { manager.create_backup(db.pool(), &db_path, 2).await.unwrap() });
 
         assert!(backup_path.exists(), "backup file should exist");
 
@@ -653,13 +508,13 @@ mod tests {
 
         RUNTIME.block_on(async {
             let manager = DbBackupManager::new(dir.path().to_path_buf(), v1.clone());
-            manager.create_backup(db.pool(), 2).await.unwrap();
+            manager.create_backup(db.pool(), &db_path, 2).await.unwrap();
 
             let manager = DbBackupManager::new(dir.path().to_path_buf(), v2.clone());
-            manager.create_backup(db.pool(), 2).await.unwrap();
+            manager.create_backup(db.pool(), &db_path, 2).await.unwrap();
 
             let manager = DbBackupManager::new(dir.path().to_path_buf(), v3.clone());
-            manager.create_backup(db.pool(), 2).await.unwrap();
+            manager.create_backup(db.pool(), &db_path, 2).await.unwrap();
         });
 
         let manager = DbBackupManager::new(dir.path().to_path_buf(), v3.clone());
@@ -687,7 +542,7 @@ mod tests {
 
         let backup_path = RUNTIME.block_on(async {
             let manager = DbBackupManager::new(dir.path().to_path_buf(), older_version.clone());
-            manager.create_backup(db.pool(), 2).await.unwrap()
+            manager.create_backup(db.pool(), &db_path, 2).await.unwrap()
         });
 
         // Simulate a newer database by stamping it and closing it.
@@ -723,33 +578,32 @@ mod tests {
     }
 
     #[test]
-    fn test_online_backup_preserves_data() {
-        let src_dir = tempfile::Builder::new()
-            .prefix("cadmus-backup-src-")
+    fn test_fs_copy_backup_preserves_data() {
+        let dir = tempfile::Builder::new()
+            .prefix("cadmus-backup-fs-")
             .tempdir()
-            .expect("failed to create source temp dir");
-        let dest_dir = tempfile::Builder::new()
-            .prefix("cadmus-backup-dest-")
-            .tempdir()
-            .expect("failed to create dest temp dir");
+            .expect("failed to create temp dir");
 
-        let db_path = src_dir.path().join("cadmus.sqlite");
+        let db_path = dir.path().join("cadmus.sqlite");
         let mut db = Database::new(&db_path).expect("failed to create database");
         db.init_for_test(0).expect("failed to run migrations");
 
         let test_version = GitVersion::from_str("v1.2.3").unwrap();
         let migration_hash = crate::db::version::current_migration_hash();
 
-        RUNTIME.block_on(async {
+        let backup_path = RUNTIME.block_on(async {
             crate::db::version::stamp_db_version(db.pool(), &test_version, &migration_hash)
                 .await
                 .expect("failed to stamp test version");
 
-            let backup_path = dest_dir.path().join("backup.sqlite");
-            online_backup(db.pool(), &backup_path)
+            let manager = DbBackupManager::new(dir.path().to_path_buf(), test_version.clone());
+            manager
+                .create_backup(db.pool(), &db_path, 2)
                 .await
-                .expect("online backup failed");
+                .expect("fs copy backup failed")
+        });
 
+        RUNTIME.block_on(async {
             let backup_url = format!("sqlite://{}", backup_path.display());
             let backup_pool = SqlitePool::connect(&backup_url)
                 .await
@@ -782,10 +636,16 @@ mod tests {
 
         RUNTIME.block_on(async {
             let manager = DbBackupManager::new(dir.path().to_path_buf(), v090.clone());
-            manager.create_backup(db.pool(), 10).await.unwrap();
+            manager
+                .create_backup(db.pool(), &db_path, 10)
+                .await
+                .unwrap();
 
             let manager = DbBackupManager::new(dir.path().to_path_buf(), v095.clone());
-            manager.create_backup(db.pool(), 10).await.unwrap();
+            manager
+                .create_backup(db.pool(), &db_path, 10)
+                .await
+                .unwrap();
         });
 
         // Manually delete the v0.9.5 backup file, leaving its manifest entry
@@ -822,10 +682,10 @@ mod tests {
 
         RUNTIME.block_on(async {
             let manager = DbBackupManager::new(dir.path().to_path_buf(), v090.clone());
-            manager.create_backup(db.pool(), 2).await.unwrap();
+            manager.create_backup(db.pool(), &db_path, 2).await.unwrap();
 
             let manager = DbBackupManager::new(dir.path().to_path_buf(), v100.clone());
-            manager.create_backup(db.pool(), 2).await.unwrap();
+            manager.create_backup(db.pool(), &db_path, 2).await.unwrap();
         });
 
         let manager = DbBackupManager::new(dir.path().to_path_buf(), v095.clone());

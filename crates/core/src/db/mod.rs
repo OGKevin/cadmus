@@ -111,7 +111,7 @@ impl Database {
     /// 3. Restore from backup if corruption or downgrade is detected.
     /// 4. Schema and runtime migrations.
     /// 5. Version stamp update.
-    /// 6. Post-migration backup (when the version changes).
+    /// 6. Post-migration backup (every startup when retention is greater than zero).
     ///
     /// Must be called once after [`Database::new`] before the database is used.
     /// Intended for use in the synchronous startup path.
@@ -265,7 +265,9 @@ impl Database {
         }
 
         let backup_manager = backup::DbBackupManager::new(db_dir.clone(), app_version.clone());
-        backup_manager.create_backup(&self.pool, retention).await?;
+        backup_manager
+            .create_backup(&self.pool, &self.db_path, retention)
+            .await?;
 
         Ok(())
     }
@@ -499,7 +501,10 @@ mod tests {
         RUNTIME.block_on(async {
             let backup_manager =
                 backup::DbBackupManager::new(dir.path().to_path_buf(), app_version.clone());
-            backup_manager.create_backup(&db.pool, 2).await.unwrap();
+            backup_manager
+                .create_backup(&db.pool, &db_path, 2)
+                .await
+                .unwrap();
         });
 
         let newer = crate::version::GitVersion::parse("v99.99.99").unwrap();
@@ -557,7 +562,10 @@ mod tests {
         RUNTIME.block_on(async {
             let backup_manager =
                 backup::DbBackupManager::new(dir.path().to_path_buf(), app_version.clone());
-            backup_manager.create_backup(&db.pool, 2).await.unwrap();
+            backup_manager
+                .create_backup(&db.pool, &db_path, 2)
+                .await
+                .unwrap();
         });
 
         RUNTIME.block_on(async { db.pool.close().await });
