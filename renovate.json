@@ -270,7 +270,7 @@
         "MUPDF_VERSION: &str = \\\"(?<currentValue>[^\\\"]+)\\\""
       ],
       "datasourceTemplate": "github-tags",
-      "depNameTemplate": "thirdparty/mupdf",
+      "depNameTemplate": "ArtifexSoftware/mupdf",
       "packageNameTemplate": "ArtifexSoftware/mupdf",
       "versioningTemplate": "semver"
     },
@@ -283,7 +283,7 @@
         "pub const FZ_VERSION: &str = \\\"(?<currentValue>[^\\\"]+)\\\""
       ],
       "datasourceTemplate": "github-tags",
-      "depNameTemplate": "thirdparty/mupdf",
+      "depNameTemplate": "ArtifexSoftware/mupdf",
       "packageNameTemplate": "ArtifexSoftware/mupdf",
       "versioningTemplate": "semver"
     }
