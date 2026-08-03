@@ -45,7 +45,7 @@
 [submodule "thirdparty/mupdf"]
 	path = thirdparty/mupdf
 	url = https://github.com/ArtifexSoftware/mupdf
-	branch = 1.28.0
+	branch = 1.28.1
 [submodule "thirdparty/sqlite"]
 	path = thirdparty/sqlite
 	url = https://github.com/sqlite/sqlite
