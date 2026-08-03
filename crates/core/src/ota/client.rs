@@ -1,5 +1,6 @@
 use crate::github::types::{
-    Artifact, ArtifactsResponse, Release, ReleaseAsset, Repository, WorkflowRunsResponse,
+    Artifact, ArtifactsResponse, Release, ReleaseAsset, Repository, WorkflowRun,
+    WorkflowRunsResponse,
 };
 use crate::github::{GithubClient, OtaProgress};
 use crate::http::ChunkedDownloadError;
@@ -236,35 +237,54 @@ impl OtaClient {
                     index = idx,
                     name = %run.name,
                     id = run.id,
+                    status = %run.status,
+                    conclusion = ?run.conclusion,
                     "Workflow run"
                 );
             }
         }
-
-        let run = runs
-            .workflow_runs
-            .iter()
-            .find(|r| r.name == "Cargo")
-            .ok_or_else(|| {
-                tracing::error!(pr_number, "No Cargo workflow run found");
-                OtaError::ArtifactsNotFound(ArtifactSource::PullRequest(pr_number))
-            })?;
-
-        tracing::debug!(run_id = run.id, "Found Cargo workflow run");
 
         let artifact_name_pattern = cfg_select! {
             feature = "test" => { format!("cadmus-kobo-test-pr{}", pr_number) }
             _ => { format!("cadmus-kobo-pr{}", pr_number) }
         };
 
-        let artifact = self
-            .find_artifact_in_run(run.id, &artifact_name_pattern)
-            .map_err(|e| match e {
-                OtaError::ArtifactsNotFound(ArtifactSource::WorkflowRun(_)) => {
-                    OtaError::ArtifactsNotFound(ArtifactSource::PullRequest(pr_number))
+        let mut artifact = None;
+        for run in runs
+            .workflow_runs
+            .iter()
+            .filter(|r| is_ota_candidate_run(r))
+        {
+            tracing::debug!(
+                run_id = run.id,
+                status = %run.status,
+                conclusion = ?run.conclusion,
+                "Checking Cargo workflow run for artifacts"
+            );
+            match self.find_artifact_in_run(run.id, &artifact_name_pattern) {
+                Ok(found) => {
+                    tracing::debug!(run_id = run.id, "Selected Cargo workflow run");
+                    artifact = Some(found);
+                    break;
                 }
-                other => other,
-            })?;
+                Err(OtaError::ArtifactsNotFound(_)) => {
+                    tracing::debug!(
+                        run_id = run.id,
+                        conclusion = ?run.conclusion,
+                        "No matching artifact in run; trying next"
+                    );
+                }
+                Err(e) => return Err(e),
+            }
+        }
+
+        let artifact = artifact.ok_or_else(|| {
+            tracing::error!(
+                pr_number,
+                "No Cargo workflow run with matching artifacts found"
+            );
+            OtaError::ArtifactsNotFound(ArtifactSource::PullRequest(pr_number))
+        })?;
 
         tracing::debug!(
             name = %artifact.name,
@@ -785,7 +805,7 @@ impl OtaClient {
         artifacts
             .artifacts
             .into_iter()
-            .find(|a| a.name.starts_with(name_prefix))
+            .find(|a| !a.expired && a.name.starts_with(name_prefix))
             .ok_or_else(|| {
                 tracing::error!(run_id, pattern = %name_prefix, "No matching artifact found");
                 OtaError::ArtifactsNotFound(ArtifactSource::WorkflowRun(name_prefix.to_owned()))
@@ -850,6 +870,15 @@ impl OtaClient {
         )?;
         Ok(())
     }
+}
+
+fn is_ota_candidate_run(run: &WorkflowRun) -> bool {
+    run.name == "Cargo"
+        && matches!(run.status.as_str(), "completed" | "in_progress")
+        && !matches!(
+            run.conclusion.as_deref(),
+            Some("cancelled") | Some("skipped")
+        )
 }
 
 /// Verifies that the GitHub token has all scopes required for OTA operations.
@@ -987,6 +1016,62 @@ mod tests {
             result.is_ok(),
             "Should have sufficient disk space in temp directory"
         );
+    }
+
+    fn cargo_run(id: u64, status: &str, conclusion: Option<&str>) -> WorkflowRun {
+        WorkflowRun {
+            name: "Cargo".to_owned(),
+            id,
+            status: status.to_owned(),
+            conclusion: conclusion.map(str::to_owned),
+            head_sha: None,
+        }
+    }
+
+    #[test]
+    fn test_ota_candidate_run_keeps_completed_success_and_failure() {
+        assert!(is_ota_candidate_run(&cargo_run(
+            1,
+            "completed",
+            Some("success")
+        )));
+        assert!(is_ota_candidate_run(&cargo_run(
+            2,
+            "completed",
+            Some("failure")
+        )));
+    }
+
+    #[test]
+    fn test_ota_candidate_run_keeps_in_progress() {
+        assert!(is_ota_candidate_run(&cargo_run(3, "in_progress", None)));
+    }
+
+    #[test]
+    fn test_ota_candidate_run_drops_cancelled_skipped_and_queued() {
+        assert!(!is_ota_candidate_run(&cargo_run(
+            4,
+            "completed",
+            Some("cancelled")
+        )));
+        assert!(!is_ota_candidate_run(&cargo_run(
+            5,
+            "completed",
+            Some("skipped")
+        )));
+        assert!(!is_ota_candidate_run(&cargo_run(6, "queued", None)));
+    }
+
+    #[test]
+    fn test_ota_candidate_run_requires_cargo_name() {
+        let run = WorkflowRun {
+            name: "Docs".to_owned(),
+            id: 7,
+            status: "completed".to_owned(),
+            conclusion: Some("success".to_owned()),
+            head_sha: None,
+        };
+        assert!(!is_ota_candidate_run(&run));
     }
 
     fn create_external_client(tmp_dir: PathBuf) -> OtaClient {

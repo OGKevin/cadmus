@@ -89,6 +89,9 @@ pub(crate) struct WorkflowRunsResponse {
 pub(crate) struct WorkflowRun {
     pub name: String,
     pub id: u64,
+    pub status: String,
+    #[serde(default)]
+    pub conclusion: Option<String>,
     #[serde(default)]
     pub head_sha: Option<String>,
 }
@@ -108,6 +111,8 @@ pub(crate) struct Artifact {
     pub name: String,
     pub id: u64,
     pub size_in_bytes: u64,
+    #[serde(default)]
+    pub expired: bool,
 }
 
 #[derive(Debug, Deserialize)]
