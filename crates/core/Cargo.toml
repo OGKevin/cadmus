@@ -77,7 +77,6 @@ sqlx = { version = "0.9", features = [
     "chrono",
     "macros",
 ], default-features = false }
-libsqlite3-sys = { version = "0.30", default-features = false }
 tokio = { version = "1.40", features = ["fs", "macros", "rt", "rt-multi-thread", "sync"] }
 sdl2 = { workspace = true, optional = true }
 

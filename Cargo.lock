@@ -444,7 +444,6 @@ dependencies = [
  "lazy_static",
  "levenshtein",
  "libc",
- "libsqlite3-sys",
  "log",
  "nix",
  "once_cell",
