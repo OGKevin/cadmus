@@ -5,7 +5,26 @@ use crate::device::linux::LinuxRtc;
 use crate::device::metadata::DeviceMetadata;
 use std::env;
 use std::fmt::Debug;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+fn discover_peer_installs(root: &Path, current: &Path) -> Vec<crate::device::PeerInstall> {
+    [
+        (".adds/cadmus", crate::version::BuildKind::Standard),
+        (".adds/cadmus-tst", crate::version::BuildKind::Test),
+    ]
+    .into_iter()
+    .filter_map(|(subdir, kind)| {
+        let dir = root.join(subdir);
+        if dir == current {
+            return None;
+        }
+        let launcher = dir.join("cadmus.sh");
+        launcher
+            .is_file()
+            .then_some(crate::device::PeerInstall { kind, launcher })
+    })
+    .collect()
+}
 
 pub struct Device {
     model: Model,
@@ -130,23 +149,7 @@ impl crate::device::DevicePaths for Device {
             test => { std::env::temp_dir().join("test-kobo-installation") }
             _ => { PathBuf::from(crate::settings::INTERNAL_CARD_ROOT) }
         };
-        let current = self.install_dir();
-        [
-            (".adds/cadmus", crate::version::BuildKind::Standard),
-            (".adds/cadmus-tst", crate::version::BuildKind::Test),
-        ]
-        .into_iter()
-        .filter_map(|(subdir, kind)| {
-            let dir = root.join(subdir);
-            if dir == current {
-                return None;
-            }
-            let launcher = dir.join("cadmus.sh");
-            launcher
-                .is_file()
-                .then_some(crate::device::PeerInstall { kind, launcher })
-        })
-        .collect()
+        discover_peer_installs(&root, &self.install_dir())
     }
 }
 
@@ -264,36 +267,24 @@ mod tests {
 
         #[test]
         fn peer_installs_empty_without_peer_launcher() {
-            let d = Model::Sage.device().unwrap();
-            assert!(d.peer_installs().is_empty());
+            let root = tempfile::tempdir().unwrap();
+            let current = root.path().join(".adds/cadmus");
+            assert!(discover_peer_installs(root.path(), &current).is_empty());
         }
 
         #[test]
         fn peer_installs_finds_peer_cadmus_sh() {
-            let d = Model::Sage.device().unwrap();
-            let root = std::env::temp_dir().join("test-kobo-installation");
-            let peer_subdir = if d.install_subdir() == ".adds/cadmus" {
-                ".adds/cadmus-tst"
-            } else {
-                ".adds/cadmus"
-            };
-            let peer_dir = root.join(peer_subdir);
+            let root = tempfile::tempdir().unwrap();
+            let current = root.path().join(".adds/cadmus");
+            let peer_dir = root.path().join(".adds/cadmus-tst");
             let launcher = peer_dir.join("cadmus.sh");
             std::fs::create_dir_all(&peer_dir).unwrap();
             std::fs::write(&launcher, "#!/bin/sh\n").unwrap();
 
-            let peers = d.peer_installs();
+            let peers = discover_peer_installs(root.path(), &current);
             assert_eq!(peers.len(), 1);
             assert_eq!(peers[0].launcher, launcher);
-            let expected_kind = if peer_subdir == ".adds/cadmus-tst" {
-                crate::version::BuildKind::Test
-            } else {
-                crate::version::BuildKind::Standard
-            };
-            assert_eq!(peers[0].kind, expected_kind);
-
-            std::fs::remove_file(&launcher).ok();
-            std::fs::remove_dir_all(&peer_dir).ok();
+            assert_eq!(peers[0].kind, crate::version::BuildKind::Test);
         }
     }
 

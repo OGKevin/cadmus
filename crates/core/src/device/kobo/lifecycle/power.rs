@@ -78,6 +78,14 @@ mod tests {
         assert_eq!(outcome, EventOutcome::Exit(ExitStatus::PowerOff));
     }
 
+    struct RemovePeerLauncherOnDrop(std::path::PathBuf);
+
+    impl Drop for RemovePeerLauncherOnDrop {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.0);
+        }
+    }
+
     #[test]
     fn handle_event_switch_install_exits_run_command() {
         let mut harness = LifecycleHarness::new();
@@ -87,6 +95,7 @@ mod tests {
         let launcher = peer_dir.join("cadmus.sh");
         std::fs::create_dir_all(&peer_dir).unwrap();
         std::fs::write(&launcher, "#!/bin/sh\n").unwrap();
+        let _cleanup = RemovePeerLauncherOnDrop(launcher.clone());
 
         let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
             handle_event(
@@ -102,9 +111,6 @@ mod tests {
             outcome,
             EventOutcome::Exit(ExitStatus::RunCommand(launcher.clone()))
         );
-
-        std::fs::remove_file(&launcher).ok();
-        std::fs::remove_dir_all(&peer_dir).ok();
     }
 
     #[test]
