@@ -4,14 +4,15 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-export PATH="$HOME/.local/bin:$HOME/linaro-toolchain/bin:/usr/local/cargo/bin:$PATH"
+CADMUS_HOME="${CADMUS_HOME:-/home/ubuntu}"
+export PATH="${CADMUS_HOME}/.local/bin:${CADMUS_HOME}/linaro-toolchain/bin:/usr/local/cargo/bin:${HOME}/.local/bin:$PATH"
 export SQLX_OFFLINE=true
 export PKG_CONFIG_ALLOW_CROSS=1
 
 git submodule update --init --recursive
 
 MDBOOK_I18N_HELPERS_REV="$(git rev-parse HEAD:thirdparty/mdbook-i18n-helpers)"
-cargo xtask ci install-doc-tools \
+HOME="${CADMUS_HOME}" cargo xtask ci install-doc-tools \
     --mdbook-version "${MDBOOK_VERSION:-0.5.4}" \
     --mdbook-epub-rev "${MDBOOK_EPUB_REV:-21a1c8134134201a2d555313447c96e56e2a8996}" \
     --mdbook-mermaid-version "${MDBOOK_MERMAID_VERSION:-0.17.0}" \
@@ -56,8 +57,9 @@ export SQLX_OFFLINE=true
 export PKG_CONFIG_ALLOW_CROSS=1
 export LIBCLANG_PATH=/usr/lib/llvm-18/lib
 export DISPLAY=:1
-export PATH="$HOME/linaro-toolchain/bin:$HOME/.local/bin:/usr/local/cargo/bin:$PATH"
-export NVM_DIR="$HOME/.nvm"
+export CADMUS_HOME="/home/ubuntu"
+export PATH="$CADMUS_HOME/.local/bin:$CADMUS_HOME/linaro-toolchain/bin:/usr/local/cargo/bin:$HOME/.local/bin:$PATH"
+export NVM_DIR="$CADMUS_HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
 {end}
 """
