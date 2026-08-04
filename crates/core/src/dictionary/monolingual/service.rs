@@ -174,7 +174,7 @@ impl MonolingualDictionaryService {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
-    fn finish_install(&self, lang: &str) {
+    pub(crate) fn finish_install(&self, lang: &str) {
         #[cfg(feature = "tracing")]
         let _span = tracing::info_span!("lock").entered();
         self.pending_installs().remove(lang);

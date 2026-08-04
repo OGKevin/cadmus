@@ -3,8 +3,6 @@
 use super::{KOBO_UPDATE_BUNDLE, schedule_device_task};
 use crate::device::DeviceHardware as _;
 use crate::device::usb::UsbManager;
-#[cfg(not(feature = "test"))]
-use crate::device::wifi::WifiManager;
 use crate::device::{
     AppContext, DeviceRuntime, DeviceTask, DeviceTaskId, EventOutcome, HistoryItem,
 };

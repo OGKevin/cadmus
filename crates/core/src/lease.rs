@@ -576,6 +576,74 @@ mod tests {
         assert!(host.tracker.is_empty());
     }
 
+    struct FallibleTracker {
+        inner: LeaseTracker,
+        fail: bool,
+    }
+
+    impl FallibleTracker {
+        fn acquire(&self, name: impl Into<LeaseName>) -> Result<Lease, &'static str> {
+            if self.fail {
+                Err("denied")
+            } else {
+                Ok(self.inner.acquire(name))
+            }
+        }
+    }
+
+    #[test]
+    fn lease_attribute_or_return_holds_on_ok() {
+        struct Host {
+            tracker: FallibleTracker,
+        }
+
+        impl Host {
+            #[lease(self.tracker, "or-return", or_return)]
+            fn work(&self) {
+                assert_eq!(self.tracker.inner.len(), 1);
+            }
+        }
+
+        let host = Host {
+            tracker: FallibleTracker {
+                inner: LeaseTracker::new(),
+                fail: false,
+            },
+        };
+        host.work();
+        assert!(host.tracker.inner.is_empty());
+    }
+
+    #[test]
+    fn lease_attribute_or_return_exits_on_err() {
+        struct Host {
+            tracker: FallibleTracker,
+            ran: std::cell::Cell<bool>,
+        }
+
+        impl Host {
+            #[lease(
+                self.tracker,
+                "or-return",
+                or_return("failed to acquire WiFi lease for time sync")
+            )]
+            fn work(&self) {
+                self.ran.set(true);
+            }
+        }
+
+        let host = Host {
+            tracker: FallibleTracker {
+                inner: LeaseTracker::new(),
+                fail: true,
+            },
+            ran: std::cell::Cell::new(false),
+        };
+        host.work();
+        assert!(!host.ran.get());
+        assert!(host.tracker.inner.is_empty());
+    }
+
     #[test]
     fn concurrent_acquire_release() {
         let tracker = LeaseTracker::new();

@@ -76,7 +76,7 @@ pub fn show_ota_view(
     #[cfg(feature = "tracing")]
     tracing::trace!("showing ota view");
 
-    if !context.online {
+    if !context.online && !context.settings.wifi.allows_on_demand() {
         let notif = Notification::new(
             None,
             fl!("notification-not-online"),
@@ -436,10 +436,23 @@ impl OtaView {
         let ota_view_id = self.view_id;
         let tmp_dir = context.device.tmp_dir();
         let install_dir = context.device.install_dir();
+        let wifi_session = context.wifi_session.clone();
 
         thread::spawn(move || {
             let _span =
                 tracing::info_span!(parent: &parent_span, "pr_download_async", pr_number).entered();
+            let _wifi = match wifi_session.acquire("ota-download") {
+                Ok(lease) => lease,
+                Err(e) => {
+                    error!(error = %e, "Failed to acquire WiFi lease for OTA download");
+                    hub2.send(Event::Close(ota_view_id)).ok();
+                    hub2.send(Event::Notification(NotificationEvent::Show(fl!(
+                        "notification-not-online"
+                    ))))
+                    .ok();
+                    return;
+                }
+            };
             let github = match GithubClient::new(Some(github_token)) {
                 Ok(c) => c,
                 Err(e) => {
@@ -536,10 +549,23 @@ impl OtaView {
         let ota_view_id = self.view_id;
         let tmp_dir = context.device.tmp_dir();
         let install_dir = context.device.install_dir();
+        let wifi_session = context.wifi_session.clone();
 
         thread::spawn(move || {
             let _span = tracing::info_span!(parent: &parent_span, "default_branch_download_async")
                 .entered();
+            let _wifi = match wifi_session.acquire("ota-download") {
+                Ok(lease) => lease,
+                Err(e) => {
+                    error!(error = %e, "Failed to acquire WiFi lease for OTA download");
+                    hub2.send(Event::Close(ota_view_id)).ok();
+                    hub2.send(Event::Notification(NotificationEvent::Show(fl!(
+                        "notification-not-online"
+                    ))))
+                    .ok();
+                    return;
+                }
+            };
             let github = match GithubClient::new(Some(github_token)) {
                 Ok(c) => c,
                 Err(e) => {
@@ -636,10 +662,23 @@ impl OtaView {
         let ota_view_id = self.view_id;
         let tmp_dir = context.device.tmp_dir();
         let install_dir = context.device.install_dir();
+        let wifi_session = context.wifi_session.clone();
 
         thread::spawn(move || {
             let _span = tracing::info_span!(parent: &parent_span, "stable_release_download_async")
                 .entered();
+            let _wifi = match wifi_session.acquire("ota-download") {
+                Ok(lease) => lease,
+                Err(e) => {
+                    error!(error = %e, "Failed to acquire WiFi lease for OTA download");
+                    hub2.send(Event::Close(ota_view_id)).ok();
+                    hub2.send(Event::Notification(NotificationEvent::Show(fl!(
+                        "notification-not-online"
+                    ))))
+                    .ok();
+                    return;
+                }
+            };
             let github = match GithubClient::new(github_token) {
                 Ok(c) => c,
                 Err(e) => {
