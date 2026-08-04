@@ -714,15 +714,18 @@ pub trait DeviceLifecycle:
         let _ = (context, status, runtime);
         Ok(())
     }
-
-    /// Whether the main event loop should skip acquiring a soft-suspend lease
-    /// while handling `event`.
+    /// Whether the main loop should skip acquiring a soft-suspend lease for `event`.
     ///
-    /// Deep-idle cycles intentionally drop the cycle lease during
-    /// [`crate::device::suspend::SuspendPhase::InSleep`] so autosleep can enter
-    /// `mem`. Nested main-loop leases would pin `wake_lock` and block sleep.
+    /// During DeepIdle wait, and for prepare / suspend / poll events while the
+    /// cycle lease is held, the cycle already owns the wake lock — a nested
+    /// main-loop lease would block sleep.
     ///
-    /// Default: never skip.
+    /// Default: never skip (emulator and platforms without the shared suspend
+    /// orchestrator).
+    ///
+    /// TODO: Once the emulator drives [`crate::device::suspend`], move any
+    /// remaining main-loop soft-suspend policy fully behind that flow and drop
+    /// platform-specific special cases here.
     fn should_skip_main_loop_soft_suspend_lease(context: &AppContext, event: &Event) -> bool {
         let _ = (context, event);
         false

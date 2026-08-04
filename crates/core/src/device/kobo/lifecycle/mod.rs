@@ -152,6 +152,10 @@ impl DeviceLifecycle for Device {
         status: ExitStatus,
         runtime: &mut DeviceRuntime<'_>,
     ) -> Result<(), anyhow::Error> {
+        context
+            .soft_suspend_session
+            .set_mode(crate::device::soft_suspend::AutosleepMode::Off);
+
         if status == ExitStatus::Quit {
             restore_boot_rotation_if_needed(context);
         }
@@ -374,5 +378,27 @@ mod tests {
         restore_boot_rotation_if_needed(&mut harness.context);
 
         assert_eq!(harness.context.display.rotation, boot_rotation);
+    }
+
+    #[test]
+    fn on_shutdown_disarms_soft_suspend_without_changing_settings() {
+        use crate::device::soft_suspend::AutosleepMode;
+
+        let mut harness = DeviceRuntimeHarness::new();
+        harness.context.settings.autosleep_mode = AutosleepMode::Mem;
+        harness
+            .context
+            .soft_suspend_session
+            .set_mode(AutosleepMode::Mem);
+
+        harness.with_runtime_only(|context, runtime| {
+            Device::on_shutdown(context, ExitStatus::Quit, runtime).unwrap();
+        });
+
+        assert_eq!(harness.context.settings.autosleep_mode, AutosleepMode::Mem);
+        assert_eq!(
+            harness.context.soft_suspend_session.mode(),
+            AutosleepMode::Off
+        );
     }
 }
