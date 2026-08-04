@@ -36,6 +36,7 @@ pub struct Device {
     wifi_manager: std::sync::Arc<crate::device::kobo::wifi::KoboWifiManager>,
     usb_manager: std::sync::Arc<crate::device::kobo::usb::KoboUsbManager>,
     power_manager: std::sync::Arc<crate::device::kobo::power::KoboPowerManager>,
+    leds: std::sync::Arc<crate::device::kobo::leds::KoboLeds>,
     rtc: std::sync::Arc<LinuxRtc>,
     time_manager: crate::time_manager::TimeManager<LinuxRtc>,
     input: InputSource,
@@ -68,6 +69,7 @@ impl Device {
         wifi_manager: std::sync::Arc<crate::device::kobo::wifi::KoboWifiManager>,
         usb_manager: std::sync::Arc<crate::device::kobo::usb::KoboUsbManager>,
         power_manager: std::sync::Arc<crate::device::kobo::power::KoboPowerManager>,
+        leds: std::sync::Arc<crate::device::kobo::leds::KoboLeds>,
         rtc: std::sync::Arc<LinuxRtc>,
         time_manager: crate::time_manager::TimeManager<LinuxRtc>,
         boot_transformed_rotation: i8,
@@ -83,6 +85,7 @@ impl Device {
             wifi_manager,
             usb_manager,
             power_manager,
+            leds,
             rtc,
             time_manager,
             input,
@@ -162,6 +165,7 @@ crate::impl_device_hardware!(
     WifiManager = crate::device::kobo::wifi::KoboWifiManager,
     UsbManager = crate::device::kobo::usb::KoboUsbManager,
     PowerManager = crate::device::kobo::power::KoboPowerManager,
+    Leds = crate::device::kobo::leds::KoboLeds,
     Rtc = LinuxRtc;
     override
         metadata_from metadata,

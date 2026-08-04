@@ -8,6 +8,7 @@
 
 mod error;
 mod forward;
+pub mod leds;
 mod metadata;
 pub mod migration;
 mod model;
@@ -535,6 +536,7 @@ pub trait DeviceHardware: Send {
     type WifiManager: crate::device::wifi::WifiManager + Send + Sync + 'static;
     type UsbManager: crate::device::usb::UsbManager + Send + Sync;
     type PowerManager: crate::device::power::PowerManager + Send + Sync;
+    type Leds: crate::device::leds::DeviceLeds + Send + Sync;
     type Rtc: crate::device::rtc::Rtc + Send + Sync + 'static;
 
     /// Returns a shared reference to the display framebuffer.
@@ -579,6 +581,13 @@ pub trait DeviceHardware: Send {
     fn power_manager(
         &self,
     ) -> Result<std::sync::Arc<Self::PowerManager>, crate::device::power::PowerError>;
+
+    /// Returns a shared LED controller handle.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::device::leds::LedsError`] when LEDs are unavailable.
+    fn leds(&self) -> Result<std::sync::Arc<Self::Leds>, crate::device::leds::LedsError>;
 
     /// Returns a shared RTC handle.
     ///

@@ -1,6 +1,8 @@
+use crate::device::kobo::leds::{LED_BRIGHTNESS_CANDIDATES, discover_led_brightness_path};
 use crate::device::{DeviceCapabilities, DeviceIdentity, DeviceRotation, FrontlightKind};
 use crate::input::TouchProto;
 use std::fmt;
+use std::path::PathBuf;
 
 /// Kobo device model identifiers.
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -136,6 +138,34 @@ impl Model {
             Model::Libra2 | Model::Sage | Model::Elipsa2E | Model::LibraColour => |n| (6 - n) % 4,
             Model::Elipsa => |n| (4 - n) % 4,
             _ => |n| n,
+        }
+    }
+
+    /// Returns the status LED brightness sysfs path for this model.
+    ///
+    /// Known models return a hardcoded path. Otherwise the known candidate
+    /// nodes are probed and the first existing path is returned (and logged)
+    /// so new hardcodes can be crowd-sourced from device logs.
+    pub fn led_brightness_path(self) -> Option<PathBuf> {
+        if let Some(path) = self.known_led_brightness_path() {
+            return Some(PathBuf::from(path));
+        }
+        let Some(path) = discover_led_brightness_path(LED_BRIGHTNESS_CANDIDATES) else {
+            tracing::warn!(model = %self, "no status LED brightness path found");
+            return None;
+        };
+        tracing::info!(
+            model = %self,
+            path = %path.display(),
+            "discovered status LED brightness path"
+        );
+        Some(path)
+    }
+
+    fn known_led_brightness_path(self) -> Option<&'static str> {
+        match self {
+            Model::LibraColour => Some("/sys/class/leds/LED/brightness"),
+            _ => None,
         }
     }
 }
@@ -424,6 +454,14 @@ mod tests {
             assert_eq!(
                 DeviceIdentity::proto(&Model::LibraColour),
                 TouchProto::MultiB
+            );
+        }
+
+        #[test]
+        fn libra_colour_led_brightness_path_is_hardcoded() {
+            assert_eq!(
+                Model::LibraColour.led_brightness_path().as_deref(),
+                Some(std::path::Path::new("/sys/class/leds/LED/brightness"))
             );
         }
 
