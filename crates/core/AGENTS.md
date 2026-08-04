@@ -1,5 +1,20 @@
 # Core Crate — Agent Coding Conventions
 
+## Return Types
+
+Prefer meaningful enums or `Result<T, E>` over `bool` when a function can
+succeed in more than one way or fail for distinct reasons (for example a sysfs
+write that was applied, skipped because the path is missing, or failed with
+I/O). Leave logging and recovery policy to the caller.
+
+```rust
+// ✅ Good — caller decides how to treat Missing vs Io
+fn write_sysfs(path: &Path, value: &str) -> Result<SysfsWrite, SysfsWriteError>;
+
+// ❌ Bad — bool collapses distinct outcomes; logging is buried in the helper
+fn write_sysfs(path: &Path, value: &str) -> bool;
+```
+
 ## View Instrumentation
 
 All `handle_event` and `render` methods in view components must have

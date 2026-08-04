@@ -100,7 +100,12 @@ settings-power-auto-power-off = Auto Power Off (days)
 settings-power-auto-power-off-input = Auto Power Off (days, 0 = never)
 settings-power-auto-suspend = Auto Suspend (minutes)
 settings-power-auto-suspend-input = Auto Suspend (minutes, 0 = never)
+settings-power-autosleep-mode = Soft Suspend
+settings-power-autosleep-mode-freeze = Freeze
+settings-power-autosleep-mode-mem = Memory
+settings-power-autosleep-mode-off = Off
 settings-power-enable-sleep-cover = Enable Sleep Cover
+settings-power-indicate-autosleep-led = Use LED to Indicate Soft Suspend
 
 # Settings - Startup Mode
 settings-startup-mode-home = Home
