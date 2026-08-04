@@ -13,7 +13,7 @@ fileExistenceTests:
   - name: linaro-arm-gcc
     path: /home/ubuntu/linaro-toolchain/bin/arm-linux-gnueabihf-gcc
     shouldExist: true
-    permissions: "-rwx"
+    permissions: "-rwxr-xr-x"
 
 commandTests:
   - name: rustc
