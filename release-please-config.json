@@ -38,6 +38,12 @@
       "skip-github-release": true,
       "skip-changelog": true
     },
+    "crates/macros": {
+      "release-type": "rust",
+      "component": "cadmus-macros",
+      "skip-github-release": true,
+      "skip-changelog": true
+    },
     "xtask": {
       "release-type": "rust",
       "component": "xtask",
@@ -54,6 +60,7 @@
         "cadmus",
         "cadmus-core",
         "cadmus-bin",
+        "cadmus-macros",
         "importer",
         "fetcher",
         "xtask"

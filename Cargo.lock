@@ -422,6 +422,7 @@ dependencies = [
  "blake3",
  "build-deps",
  "byteorder",
+ "cadmus-macros",
  "cc",
  "chrono",
  "chrono-tz",
@@ -491,6 +492,15 @@ dependencies = [
  "xi-unicode",
  "zbus",
  "zip",
+]
+
+[[package]]
+name = "cadmus-macros"
+version = "0.11.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]

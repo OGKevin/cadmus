@@ -6,6 +6,7 @@ members = [
   "crates/cadmus",
   "crates/fetcher",
   "crates/importer",
+  "crates/macros",
   "xtask",
 ]
 
