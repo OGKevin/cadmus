@@ -66,6 +66,7 @@ pub struct Context<D: Device> {
     pub online: bool,
     pub suspend_cycle_active: bool,
     pub wifi_session: std::sync::Arc<crate::device::wifi::WifiSession>,
+    pub soft_suspend_session: std::sync::Arc<crate::device::soft_suspend::SoftSuspendSession>,
 }
 
 impl<D: Device> Context<D> {
@@ -106,6 +107,14 @@ impl<D: Device> Context<D> {
                 WifiSession::unavailable(wifi_mode)
             }
         };
+        let leds = match device.leds() {
+            Ok(leds) => Some(leds as std::sync::Arc<dyn crate::device::leds::DeviceLeds>),
+            Err(e) => {
+                tracing::warn!(error = %e, "LED controller unavailable");
+                None
+            }
+        };
+        let soft_suspend_session = crate::device::soft_suspend::SoftSuspendSession::new(leds);
         Context {
             device,
             alarm_manager,
@@ -126,6 +135,7 @@ impl<D: Device> Context<D> {
             online: false,
             suspend_cycle_active: false,
             wifi_session,
+            soft_suspend_session,
         }
     }
 

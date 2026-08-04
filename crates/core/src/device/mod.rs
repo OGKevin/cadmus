@@ -20,6 +20,8 @@ mod types;
 mod linux;
 #[cfg(unix)]
 pub use linux::LinuxRtc;
+#[cfg(unix)]
+pub use linux::soft_suspend;
 pub mod usb;
 pub mod wifi;
 
@@ -536,7 +538,7 @@ pub trait DeviceHardware: Send {
     type WifiManager: crate::device::wifi::WifiManager + Send + Sync + 'static;
     type UsbManager: crate::device::usb::UsbManager + Send + Sync;
     type PowerManager: crate::device::power::PowerManager + Send + Sync;
-    type Leds: crate::device::leds::DeviceLeds + Send + Sync;
+    type Leds: crate::device::leds::DeviceLeds + Send + Sync + 'static;
     type Rtc: crate::device::rtc::Rtc + Send + Sync + 'static;
 
     /// Returns a shared reference to the display framebuffer.

@@ -1,6 +1,7 @@
 //! Linux-specific device implementations.
 
 mod rtc;
+pub mod soft_suspend;
 mod time;
 
 pub use rtc::LinuxRtc;
