@@ -10,7 +10,7 @@ Settings are organised into tabs — tap a category to open it.
 ## Categories
 
 - **General** — language, button layout, Wi‑Fi idle timeout, startup mode
-- **Power** — auto-suspend, auto power off, sleep cover
+- **Power** — soft suspend, auto-suspend, auto power off, sleep cover
 - **Reader** — finished-book action, default dithering by file type, and
   screen refresh rates
 - **Libraries** — add, edit, or remove your book libraries
@@ -18,3 +18,17 @@ Settings are organised into tabs — tap a category to open it.
 - **Import** — control how new books are picked up automatically
 - **OTA** — download Cadmus updates directly to your Kobo
 - **Telemetry** — logging options
+
+### Power
+
+Use the **Power** tab for sleep-related options:
+
+- **Soft Suspend** — optional opportunistic sleep (`Off`, `Freeze`, or
+  `Memory`). See [Soft Suspend](../../soft-suspend.md).
+- **Use LED to Indicate Soft Suspend** — keep the status LED on while soft
+  suspend is armed and the device is awake.
+- **Soft Suspend Release Grace** — seconds to stay awake after the last busy
+  activity (`0` = unlock immediately).
+- **Auto Suspend** — minutes of inactivity before a full suspend.
+- **Auto Power Off** — days of inactivity before power off.
+- **Enable Sleep Cover** — suspend when the cover closes.
