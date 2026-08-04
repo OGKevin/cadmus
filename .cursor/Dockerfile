@@ -33,17 +33,28 @@ RUN apt-get update \
         git \
         gperf \
         jq \
+        libasound2 \
+        libatk-bridge2.0-0 \
+        libatk1.0-0 \
         libbz2-dev \
         libclang-dev \
         libdjvulibre-dev \
         libfreetype6-dev \
+        libgbm1 \
         libgumbo-dev \
         libharfbuzz-dev \
         libjbig2dec0-dev \
         libjpeg-dev \
+        libnspr4 \
+        libnss3 \
         libopenjp2-7-dev \
         libpng-dev \
         libtool \
+        libxcomposite1 \
+        libxdamage1 \
+        libxfixes3 \
+        libxkbcommon0 \
+        libxrandr2 \
         libsdl2-dev \
         llvm-dev \
         meson \

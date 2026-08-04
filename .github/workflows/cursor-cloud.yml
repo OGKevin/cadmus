@@ -77,7 +77,9 @@ jobs:
           docker run --rm \
             -v "${GITHUB_WORKSPACE}:/workspace" \
             -w /workspace \
+            -e HOME=/home/ubuntu \
             -e CADMUS_HOME=/home/ubuntu \
+            -e PUPPETEER_ARGS='--no-sandbox --disable-setuid-sandbox' \
             "$CURSOR_CLOUD_IMAGE" \
             bash -c '
               set -euo pipefail

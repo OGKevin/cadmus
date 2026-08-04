@@ -5,14 +5,16 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 CADMUS_HOME="${CADMUS_HOME:-/home/ubuntu}"
-export PATH="${CADMUS_HOME}/.local/bin:${CADMUS_HOME}/linaro-toolchain/bin:/usr/local/cargo/bin:${HOME}/.local/bin:$PATH"
+export HOME="${CADMUS_HOME}"
+export PATH="${CADMUS_HOME}/.local/bin:${CADMUS_HOME}/linaro-toolchain/bin:/usr/local/cargo/bin:${PATH}"
 export SQLX_OFFLINE=true
 export PKG_CONFIG_ALLOW_CROSS=1
+export PUPPETEER_ARGS="${PUPPETEER_ARGS:---no-sandbox --disable-setuid-sandbox}"
 
 git submodule update --init --recursive
 
 MDBOOK_I18N_HELPERS_REV="$(git rev-parse HEAD:thirdparty/mdbook-i18n-helpers)"
-HOME="${CADMUS_HOME}" cargo xtask ci install-doc-tools \
+cargo xtask ci install-doc-tools \
   --mdbook-version "${MDBOOK_VERSION:-0.5.4}" \
   --mdbook-epub-rev "${MDBOOK_EPUB_REV:-21a1c8134134201a2d555313447c96e56e2a8996}" \
   --mdbook-mermaid-version "${MDBOOK_MERMAID_VERSION:-0.17.0}" \
@@ -28,7 +30,6 @@ fi
 
 EPUB_PATH="${ROOT}/docs/book/epub/Cadmus Documentation.epub"
 if [[ ! -f "$EPUB_PATH" ]]; then
-  export PUPPETEER_ARGS='--no-sandbox --disable-setuid-sandbox'
   cargo xtask docs --mdbook-only
 fi
 

@@ -33,4 +33,15 @@ if [[ ! -x "${CADMUS_HOME}/linaro-toolchain/bin/arm-linux-gnueabihf-gcc" ]]; the
   exit 1
 fi
 
+MERMAID_DIR="${ROOT}/docs/src/mermaid-images"
+expected_mermaid="$(grep -r '```mermaid' "${ROOT}/docs/src" --include='*.md' 2>/dev/null | wc -l)"
+actual_mermaid="$(find "$MERMAID_DIR" -name '*.png' 2>/dev/null | wc -l)"
+if [[ "$expected_mermaid" -gt 0 ]]; then
+  if [[ "$actual_mermaid" -lt "$expected_mermaid" ]]; then
+    echo "missing mermaid PNG renders for EPUB: expected ${expected_mermaid}, got ${actual_mermaid}" >&2
+    echo "ensure Chrome headless deps are installed and PUPPETEER_ARGS is set for containers" >&2
+    exit 1
+  fi
+fi
+
 echo "Cursor Cloud install verification passed."
