@@ -13,24 +13,23 @@ git submodule update --init --recursive
 
 MDBOOK_I18N_HELPERS_REV="$(git rev-parse HEAD:thirdparty/mdbook-i18n-helpers)"
 HOME="${CADMUS_HOME}" cargo xtask ci install-doc-tools \
-    --mdbook-version "${MDBOOK_VERSION:-0.5.4}" \
-    --mdbook-epub-rev "${MDBOOK_EPUB_REV:-21a1c8134134201a2d555313447c96e56e2a8996}" \
-    --mdbook-mermaid-version "${MDBOOK_MERMAID_VERSION:-0.17.0}" \
-    --mdbook-i18n-helpers-rev "${MDBOOK_I18N_HELPERS_REV}"
+  --mdbook-version "${MDBOOK_VERSION:-0.5.4}" \
+  --mdbook-epub-rev "${MDBOOK_EPUB_REV:-21a1c8134134201a2d555313447c96e56e2a8996}" \
+  --mdbook-mermaid-version "${MDBOOK_MERMAID_VERSION:-0.17.0}" \
+  --mdbook-i18n-helpers-rev "${MDBOOK_I18N_HELPERS_REV}"
 
 cargo xtask setup --host
 
 HOST_TRIPLE="$(rustc -vV | sed -n 's/^host: //p')"
-SQLITE_BASE="${ROOT}/target/cadmus-build-deps/${HOST_TRIPLE}/sqlite"
 
 if [[ -f package-lock.json ]]; then
-    npm ci
+  npm ci
 fi
 
 EPUB_PATH="${ROOT}/docs/book/epub/Cadmus Documentation.epub"
 if [[ ! -f "$EPUB_PATH" ]]; then
-    export PUPPETEER_ARGS='--no-sandbox --disable-setuid-sandbox'
-    cargo xtask docs --mdbook-only
+  export PUPPETEER_ARGS='--no-sandbox --disable-setuid-sandbox'
+  cargo xtask docs --mdbook-only
 fi
 
 cargo fetch
