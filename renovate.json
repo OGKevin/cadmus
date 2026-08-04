@@ -55,7 +55,7 @@
       "addLabels": ["thirdparty"]
     },
     {
-      "description": "Keep mdbook-i18n-helpers submodule and devenv.nix fetchFromGitHub pin in sync",
+      "description": "Keep mdbook-i18n-helpers submodule, devenv.nix pin, and install-doc-tools/cloud-install gitlink in sync",
       "matchManagers": ["git-submodules", "custom.regex"],
       "matchPackageNames": [
         "thirdparty/mdbook-i18n-helpers",
@@ -160,9 +160,13 @@
       "customType": "regex",
       "managerFilePatterns": [
         "/^\\.github\\/actions\\/install-doc-tools\\/action\\.yml$/",
-        "/^\\.cursor\\/Dockerfile$/"
+        "/^\\.cursor\\/Dockerfile$/",
+        "/^\\.cursor\\/cloud-install\\.sh$/"
       ],
-      "matchStrings": ["MDBOOK_VERSION=(?<currentValue>[^\"]+)"],
+      "matchStrings": [
+        "MDBOOK_VERSION=(?<currentValue>[^\"]+)",
+        "MDBOOK_VERSION:-(?<currentValue>[0-9.]+)"
+      ],
       "datasourceTemplate": "github-releases",
       "depNameTemplate": "rust-lang/mdBook",
       "versioningTemplate": "semver"
@@ -171,9 +175,13 @@
       "customType": "regex",
       "managerFilePatterns": [
         "/^\\.github\\/actions\\/install-doc-tools\\/action\\.yml$/",
-        "/^\\.cursor\\/Dockerfile$/"
+        "/^\\.cursor\\/Dockerfile$/",
+        "/^\\.cursor\\/cloud-install\\.sh$/"
       ],
-      "matchStrings": ["MDBOOK_EPUB_REV=(?<currentValue>[a-f0-9]{40})"],
+      "matchStrings": [
+        "MDBOOK_EPUB_REV=(?<currentValue>[a-f0-9]{40})",
+        "MDBOOK_EPUB_REV:-(?<currentValue>[a-f0-9]{40})"
+      ],
       "datasourceTemplate": "git-refs",
       "depNameTemplate": "Michael-F-Bryan/mdbook-epub",
       "packageNameTemplate": "https://github.com/Michael-F-Bryan/mdbook-epub",
@@ -183,9 +191,13 @@
       "customType": "regex",
       "managerFilePatterns": [
         "/^\\.github\\/actions\\/install-doc-tools\\/action\\.yml$/",
-        "/^\\.cursor\\/Dockerfile$/"
+        "/^\\.cursor\\/Dockerfile$/",
+        "/^\\.cursor\\/cloud-install\\.sh$/"
       ],
-      "matchStrings": ["MDBOOK_MERMAID_VERSION=(?<currentValue>[^\"]+)"],
+      "matchStrings": [
+        "MDBOOK_MERMAID_VERSION=(?<currentValue>[^\"]+)",
+        "MDBOOK_MERMAID_VERSION:-(?<currentValue>[0-9.]+)"
+      ],
       "datasourceTemplate": "github-releases",
       "depNameTemplate": "badboy/mdbook-mermaid",
       "versioningTemplate": "semver"
