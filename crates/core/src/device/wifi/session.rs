@@ -192,6 +192,24 @@ impl WifiSession {
         self.online_cv.notify_all();
     }
 
+    /// Marks the session offline without clearing the idle timer (pending disable).
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(skip(self), level = tracing::Level::TRACE)
+    )]
+    pub fn mark_offline_pending(&self) {
+        {
+            let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            state.online = false;
+            tracing::info!(
+                mode = %state.mode,
+                holders = self.tracker.len(),
+                "wifi session marked offline pending disable"
+            );
+        }
+        self.online_cv.notify_all();
+    }
+
     /// Marks the session offline (after disable / suspend).
     #[cfg_attr(
         feature = "tracing",
@@ -404,9 +422,9 @@ impl WifiSession {
             tracing::error!(error = %error, "failed to disable wifi radio");
         } else {
             tracing::debug!("wifi radio disabled");
+            self.notify_offline();
+            self.clear_idle();
         }
-        self.notify_offline();
-        self.clear_idle();
         result
     }
 
