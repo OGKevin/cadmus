@@ -15,6 +15,7 @@ pub mod identity;
 pub mod import;
 pub mod intermission;
 pub mod library;
+pub mod power;
 pub mod reader;
 pub mod telemetry;
 

@@ -361,14 +361,13 @@ mod tests {
     use crate::device::{DeviceIdentity as _, DevicePaths as _};
     use crate::gesture::GestureEvent;
     use crate::settings::Settings;
-    use crate::view::settings_editor::kinds::general::{
-        AutoPowerOff, AutoSuspend, KeyboardLayout, SettingsRetention,
-    };
+    use crate::view::settings_editor::kinds::general::{KeyboardLayout, SettingsRetention};
     use crate::view::settings_editor::kinds::import::AllowedKindsSetting;
     use crate::view::settings_editor::kinds::intermission::{
         IntermissionPowerOff, IntermissionShare, IntermissionSuspend,
     };
     use crate::view::settings_editor::kinds::library::{LibraryInfo, LibraryName, LibraryPath};
+    use crate::view::settings_editor::kinds::power::{AutoPowerOff, AutoSuspend};
     use crate::view::settings_editor::kinds::telemetry::LogLevel;
     use crate::view::{EntryId, RenderQueue};
     use std::collections::VecDeque;
