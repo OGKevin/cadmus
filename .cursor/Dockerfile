@@ -33,9 +33,9 @@ RUN apt-get update \
         git \
         gperf \
         jq \
-        libasound2 \
-        libatk-bridge2.0-0 \
-        libatk1.0-0 \
+        libasound2t64 \
+        libatk-bridge2.0-0t64 \
+        libatk1.0-0t64 \
         libbz2-dev \
         libclang-dev \
         libdjvulibre-dev \
