@@ -1,6 +1,7 @@
 mod device;
 mod factory;
 mod input;
+mod leds;
 mod lifecycle;
 mod model;
 mod power;

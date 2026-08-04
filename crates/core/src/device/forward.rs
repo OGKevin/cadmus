@@ -120,6 +120,7 @@ macro_rules! forward_device_rotation {
 ///     WifiManager = TestWifiManager,
 ///     UsbManager = TestUsbManager,
 ///     PowerManager = TestPowerManager,
+///     Leds = TestLeds,
 ///     Rtc = TestRtc,
 ///     override metadata_from metadata,
 /// );
@@ -197,6 +198,12 @@ macro_rules! impl_device_hardware {
                 &self,
             ) -> Result<std::sync::Arc<Self::PowerManager>, $crate::device::power::PowerError> {
                 Ok(self.power_manager.clone())
+            }
+
+            fn leds(
+                &self,
+            ) -> Result<std::sync::Arc<Self::Leds>, $crate::device::leds::LedsError> {
+                Ok(self.leds.clone())
             }
 
             fn rtc(&self) -> Result<std::sync::Arc<Self::Rtc>, anyhow::Error> {

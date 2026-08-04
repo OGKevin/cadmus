@@ -255,6 +255,63 @@ impl crate::device::power::PowerManager for TestPowerManager {
     }
 }
 
+#[derive(Debug, Default)]
+struct TestLedsState {
+    on_calls: u32,
+    off_calls: u32,
+    is_on: bool,
+}
+
+/// Assertable LED controller test double.
+#[derive(Clone)]
+pub struct TestLeds {
+    state: Arc<Mutex<TestLedsState>>,
+}
+
+impl TestLeds {
+    pub fn new() -> Self {
+        Self {
+            state: Arc::new(Mutex::new(TestLedsState::default())),
+        }
+    }
+
+    pub fn on_call_count(&self) -> u32 {
+        self.state.lock().map(|s| s.on_calls).unwrap_or(0)
+    }
+
+    pub fn off_call_count(&self) -> u32 {
+        self.state.lock().map(|s| s.off_calls).unwrap_or(0)
+    }
+
+    pub fn is_on(&self) -> bool {
+        self.state.lock().map(|s| s.is_on).unwrap_or(false)
+    }
+}
+
+impl Default for TestLeds {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl crate::device::leds::DeviceLeds for TestLeds {
+    fn on(&self) -> Result<(), crate::device::leds::LedsError> {
+        if let Ok(mut state) = self.state.lock() {
+            state.on_calls += 1;
+            state.is_on = true;
+        }
+        Ok(())
+    }
+
+    fn off(&self) -> Result<(), crate::device::leds::LedsError> {
+        if let Ok(mut state) = self.state.lock() {
+            state.off_calls += 1;
+            state.is_on = false;
+        }
+        Ok(())
+    }
+}
+
 /// Stub input source for tests.
 pub struct TestInputSource;
 
@@ -281,6 +338,7 @@ pub struct TestDevice {
     wifi_manager: Arc<TestWifiManager>,
     usb_manager: Arc<TestUsbManager>,
     power_manager: Arc<TestPowerManager>,
+    leds: Arc<TestLeds>,
     rtc: Arc<TestRtc>,
     time_manager: crate::time_manager::TimeManager<TestRtc>,
     input: TestInputSource,
@@ -300,6 +358,7 @@ impl TestDevice {
             wifi_manager: Arc::new(TestWifiManager::new()),
             usb_manager: Arc::new(TestUsbManager::new()),
             power_manager: Arc::new(TestPowerManager::new()),
+            leds: Arc::new(TestLeds::new()),
             rtc,
             time_manager,
             input: TestInputSource,
@@ -319,6 +378,11 @@ impl TestDevice {
     /// Returns the power test double for lifecycle assertion helpers.
     pub fn power_manager_for_test(&self) -> &TestPowerManager {
         self.power_manager.as_ref()
+    }
+
+    /// Returns the LED test double for assertion helpers.
+    pub fn leds_for_test(&self) -> &TestLeds {
+        self.leds.as_ref()
     }
 }
 
@@ -416,6 +480,7 @@ crate::impl_device_hardware!(
     WifiManager = TestWifiManager,
     UsbManager = TestUsbManager,
     PowerManager = TestPowerManager,
+    Leds = TestLeds,
     Rtc = TestRtc,
 );
 

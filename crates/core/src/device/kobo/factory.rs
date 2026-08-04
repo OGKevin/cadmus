@@ -91,6 +91,7 @@ impl Model {
         );
         let power_manager =
             std::sync::Arc::new(crate::device::kobo::power::KoboPowerManager::new(self));
+        let leds = std::sync::Arc::new(crate::device::kobo::leds::KoboLeds::for_model(self));
         let rtc =
             std::sync::Arc::new(LinuxRtc::new(RTC_DEVICE).context("failed to initialize RTC")?);
         let time_manager = crate::time_manager::TimeManager::new(rtc.clone(), |tz| {
@@ -107,6 +108,7 @@ impl Model {
             wifi_manager,
             usb_manager,
             power_manager,
+            leds,
             rtc,
             time_manager,
             initial_rotation,
