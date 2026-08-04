@@ -147,6 +147,17 @@
     },
     {
       "customType": "regex",
+      "managerFilePatterns": ["/^\\.github\\/workflows\\/cursor-cloud\\.yml$/"],
+      "matchStrings": [
+        "CONTAINER_STRUCTURE_TEST_VERSION:\\s+(?<currentValue>v[^\\s]+)"
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "GoogleContainerTools/container-structure-test",
+      "extractVersionTemplate": "^v?(?<version>.+)$",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
       "managerFilePatterns": [
         "/^\\.github\\/actions\\/install-doc-tools\\/action\\.yml$/",
         "/^\\.cursor\\/Dockerfile$/"
