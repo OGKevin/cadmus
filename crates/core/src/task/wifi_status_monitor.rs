@@ -1,8 +1,9 @@
 //! WiFi status monitor using dhcpcd-dbus.
 //!
 //! Subscribes to the `WpaStatus` signal from `name.marples.roy.dhcpcd` on the
-//! system bus. When the status changes to `COMPLETED`, sends a `NetUp` event
-//! to indicate the network is available.
+//! system bus. When the status changes to `COMPLETED` with an IP, sends a
+//! `NetUp` event. Startup connectivity is reconciled by the device lifecycle
+//! (enable/disable + `network_info`), not by probing dhcpcd here.
 
 use std::collections::HashMap;
 use std::sync::mpsc::Sender;
@@ -19,9 +20,7 @@ use crate::input::DeviceEvent;
 use crate::task::{BackgroundTask, ShutdownSignal, TaskId};
 use crate::view::Event;
 
-const DHCPCCD_SERVICE: &str = "name.marples.roy.dhcpcd";
 const DHCPCCD_PATH: &str = "/name/marples/roy/dhcpcd";
-const DHCPCCD_INTERFACE: &str = "name.marples.roy.dhcpcd";
 const SHUTDOWN_POLL_INTERVAL: Duration = Duration::from_millis(200);
 
 /// WiFi status monitor that listens for dhcpcd-dbus WpaStatus signals.
@@ -49,36 +48,12 @@ impl BackgroundTask for WifiStatusMonitorTask {
     }
 }
 
-#[cfg_attr(feature = "tracing", tracing::instrument(skip(connection, hub), ret(level=tracing::Level::TRACE)))]
-async fn check_initial_status(
-    connection: &zbus::Connection,
-    hub: &Sender<Event>,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let proxy =
-        zbus::Proxy::new(connection, DHCPCCD_SERVICE, DHCPCCD_PATH, DHCPCCD_INTERFACE).await?;
-
-    let status: String = proxy.call("GetStatus", &()).await?;
-
-    tracing::debug!(status = %status, "initial dhcpcd status");
-
-    if status == "connected" {
-        tracing::info!("network already up at startup, sending NetUp event");
-        hub.send(Event::Device(DeviceEvent::NetUp)).ok();
-    }
-
-    Ok(())
-}
-
 async fn monitor(
     hub: &Sender<Event>,
     shutdown: &ShutdownSignal,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let connection = zbus::Connection::system().await?;
     tracing::info!("connected to system bus");
-
-    if let Err(e) = check_initial_status(&connection, hub).await {
-        tracing::warn!(error = %e, "failed to check initial dhcpcd status, will rely on signals");
-    }
 
     let rule = zbus::MatchRule::builder()
         .msg_type(zbus::message::Type::Signal)

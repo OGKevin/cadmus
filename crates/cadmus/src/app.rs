@@ -357,6 +357,8 @@ pub fn run() -> Result<(), Error> {
         );
     }
 
+    context.wifi_session.set_hub(tx.clone());
+
     AppDevice::on_startup(
         &mut context,
         &tx,

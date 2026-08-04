@@ -1,8 +1,10 @@
 //! WiFi session: named leases over [`LeaseTracker`] plus radio bring-up.
 
 use crate::device::wifi::{WifiError, WifiManager};
+use crate::input::DeviceEvent;
 use crate::lease::{Lease, LeaseName, LeaseObserver, LeaseTracker};
 use crate::settings::WifiMode;
+use crate::view::{Event, Hub};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
@@ -36,6 +38,7 @@ struct SessionState {
     online: bool,
     idle_since: Option<Instant>,
     idle_wake: Option<Sender<()>>,
+    hub: Option<Hub>,
 }
 
 struct IdleArmer {
@@ -115,6 +118,7 @@ impl WifiSession {
             online: false,
             idle_since: None,
             idle_wake: None,
+            hub: None,
         }));
         let observer = Arc::new(IdleArmer {
             state: Arc::clone(&state),
@@ -133,6 +137,11 @@ impl WifiSession {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .idle_wake = Some(sender);
+    }
+
+    /// Stores the app event hub for emitting device events from lease paths.
+    pub fn set_hub(&self, hub: Hub) {
+        self.state.lock().unwrap_or_else(|e| e.into_inner()).hub = Some(hub);
     }
 
     /// Updates the configured WiFi mode (from settings).
@@ -315,6 +324,21 @@ impl WifiSession {
             }
         }
 
+        if matches!(self.wifi.network_info(), Ok(Some(_))) {
+            tracing::debug!(name = %name, "wifi lease acquired; already associated");
+            self.notify_online();
+            if let Some(hub) = self
+                .state
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .hub
+                .as_ref()
+            {
+                hub.send(Event::Device(DeviceEvent::NetUp)).ok();
+            }
+            return Ok(WifiLease { inner: Some(inner) });
+        }
+
         let deadline = Instant::now() + timeout;
         let mut state = self.state.lock().map_err(|_| WifiSessionError::Lock)?;
         while !state.online {
@@ -374,16 +398,26 @@ impl WifiSession {
     }
 
     /// Enables the radio without taking a lease (AlwaysOn / resume).
+    ///
+    /// Returns `Ok(true)` when the radio is enabled and
+    /// [`WifiManager::network_info`] already reports an association (so the
+    /// caller can emit [`crate::input::DeviceEvent::NetUp`] without waiting for
+    /// a dhcpcd signal).
     #[cfg_attr(
         feature = "tracing",
         tracing::instrument(skip(self), err, level = tracing::Level::TRACE)
     )]
-    pub fn enable_radio(&self) -> Result<(), WifiError> {
+    pub fn enable_radio(&self) -> Result<bool, WifiError> {
         tracing::info!("enabling wifi radio");
         match self.wifi.enable() {
             Ok(()) => {
-                tracing::debug!("wifi radio enabled");
-                Ok(())
+                let connected =
+                    self.wifi.is_enabled() && matches!(self.wifi.network_info(), Ok(Some(_)));
+                tracing::debug!(connected, "wifi radio enabled");
+                if connected {
+                    self.notify_online();
+                }
+                Ok(connected)
             }
             Err(error) => {
                 tracing::error!(error = %error, "failed to enable wifi radio");
@@ -516,5 +550,30 @@ mod tests {
         assert!(matches!(err, WifiSessionError::Timeout));
         assert!(!session.has_holders());
         assert!(session.idle_since().is_some());
+    }
+
+    #[test]
+    fn enable_radio_reports_connected_when_associated() {
+        let (session, wifi) = session(WifiMode::AlwaysOn);
+        wifi.set_network_info(Ok(Some(crate::device::wifi::NetworkInfo {
+            ip: "192.168.1.1".parse().unwrap(),
+            essid: crate::device::wifi::Essid::new("test"),
+        })));
+        assert!(session.enable_radio().unwrap());
+        assert!(session.is_online());
+    }
+
+    #[test]
+    fn acquire_skips_wait_when_already_associated() {
+        let (session, wifi) = session(WifiMode::Auto);
+        wifi.set_network_info(Ok(Some(crate::device::wifi::NetworkInfo {
+            ip: "192.168.1.1".parse().unwrap(),
+            essid: crate::device::wifi::Essid::new("test"),
+        })));
+        let lease = session
+            .acquire_with_timeout("fast", Duration::from_millis(50))
+            .unwrap();
+        assert!(session.is_online());
+        drop(lease);
     }
 }
