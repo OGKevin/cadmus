@@ -11,6 +11,7 @@ use walkdir::WalkDir;
 
 use crate::context::DICTIONARIES_DIRNAME;
 use crate::db::Database;
+use crate::device::soft_suspend::SoftSuspendSession;
 use crate::dictionary::{Entry, Metadata, normalize};
 use crate::fl;
 use crate::helpers::{Fingerprint, IsHidden};
@@ -18,6 +19,7 @@ use crate::runtime::RUNTIME;
 use crate::task::{BackgroundTask, ShutdownSignal, TaskId};
 use crate::view::notification::NotificationEvent;
 use crate::view::{Event, ID_FEEDER, ViewId};
+use std::sync::Arc;
 
 const BATCH_SIZE: usize = 5000;
 
@@ -72,14 +74,20 @@ fn decode_number(word: &str) -> Option<u64> {
 pub struct DictionaryIndexTask {
     database: Database,
     data_path: std::path::PathBuf,
+    soft_suspend_session: Arc<SoftSuspendSession>,
 }
 
 impl DictionaryIndexTask {
     /// Creates a new [`DictionaryIndexTask`].
-    pub fn new(database: Database, data_path: std::path::PathBuf) -> Self {
+    pub fn new(
+        database: Database,
+        data_path: std::path::PathBuf,
+        soft_suspend_session: Arc<SoftSuspendSession>,
+    ) -> Self {
         Self {
             database,
             data_path,
+            soft_suspend_session,
         }
     }
 
@@ -647,6 +655,7 @@ impl BackgroundTask for DictionaryIndexTask {
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
     fn run(&mut self, hub: &crate::view::Hub, shutdown: &ShutdownSignal) {
+        let _soft_suspend = self.soft_suspend_session.acquire("dictionary-index");
         let glob = match Glob::new("**/*.index") {
             Ok(g) => g.compile_matcher(),
             Err(e) => {

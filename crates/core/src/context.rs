@@ -112,6 +112,7 @@ impl<D: Device> Context<D> {
             settings.indicate_autosleep_led,
             std::time::Duration::from_secs_f32(settings.autosleep_grace.max(0.0)),
         );
+        wifi_session.set_soft_suspend_session(std::sync::Arc::clone(&soft_suspend_session));
         Context {
             device,
             alarm_manager,

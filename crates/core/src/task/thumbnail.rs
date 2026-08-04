@@ -1,8 +1,10 @@
 //! Background task that extracts book cover thumbnails.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use crate::db::Database;
+use crate::device::soft_suspend::SoftSuspendSession;
 use crate::document::open;
 use crate::library::Library;
 use crate::settings::Settings;
@@ -20,6 +22,7 @@ pub struct ThumbnailExtractionTask {
     dpi: u16,
     color_samples: usize,
     install_dir: PathBuf,
+    soft_suspend_session: Arc<SoftSuspendSession>,
 }
 
 impl ThumbnailExtractionTask {
@@ -30,6 +33,7 @@ impl ThumbnailExtractionTask {
         dpi: u16,
         color_samples: usize,
         install_dir: impl Into<PathBuf>,
+        soft_suspend_session: Arc<SoftSuspendSession>,
     ) -> Self {
         Self {
             database,
@@ -38,6 +42,7 @@ impl ThumbnailExtractionTask {
             dpi,
             color_samples,
             install_dir: install_dir.into(),
+            soft_suspend_session,
         }
     }
 
@@ -124,6 +129,7 @@ impl BackgroundTask for ThumbnailExtractionTask {
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
     fn run(&mut self, hub: &crate::view::Hub, shutdown: &ShutdownSignal) {
+        let _soft_suspend = self.soft_suspend_session.acquire("thumbnail");
         match self.library_index {
             Some(index) => {
                 self.run_for_index(index, hub, shutdown);

@@ -324,6 +324,7 @@ pub fn run() -> Result<(), Error> {
         &context.database,
         context.device.data_dir(),
         &context.device.install_dir(),
+        &context.soft_suspend_session,
     );
 
     let mut history: Vec<HistoryItem> = Vec::new();
