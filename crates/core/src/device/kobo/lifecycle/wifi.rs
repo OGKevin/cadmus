@@ -1,6 +1,7 @@
 //! WiFi mode and idle-disable event handling.
 
 use crate::device::{AppContext, EventOutcome};
+use crate::input::DeviceEvent;
 use crate::settings::{WIFI_IDLE_TIMEOUT_MIN_MINUTES, WifiMode};
 use crate::view::{EntryId, Event, Hub};
 use std::sync::mpsc;
@@ -71,16 +72,16 @@ pub(super) fn spawn_wifi_idle_poller(
 #[cfg_attr(
     feature = "tracing",
     tracing::instrument(
-        skip(event, context),
+        skip(event, hub, context),
         fields(event = ?event),
         ret(level = tracing::Level::TRACE),
         level = tracing::Level::TRACE,
     )
 )]
-pub(super) fn handle_event(event: &Event, context: &mut AppContext) -> EventOutcome {
+pub(super) fn handle_event(event: &Event, hub: &Hub, context: &mut AppContext) -> EventOutcome {
     match event {
-        Event::SetWifiMode(mode) => handle_set_wifi_mode(*mode, context),
-        Event::Select(EntryId::SetWifiMode(mode)) => handle_set_wifi_mode(*mode, context),
+        Event::SetWifiMode(mode) => handle_set_wifi_mode(*mode, hub, context),
+        Event::Select(EntryId::SetWifiMode(mode)) => handle_set_wifi_mode(*mode, hub, context),
         Event::MightDisableWifi => handle_might_disable_wifi(context),
         _ => EventOutcome::Unhandled,
     }
@@ -89,13 +90,13 @@ pub(super) fn handle_event(event: &Event, context: &mut AppContext) -> EventOutc
 #[cfg_attr(
     feature = "tracing",
     tracing::instrument(
-        skip(context),
+        skip(hub, context),
         fields(mode = %mode, previous = tracing::field::Empty),
         ret(level = tracing::Level::TRACE),
         level = tracing::Level::TRACE,
     )
 )]
-fn handle_set_wifi_mode(mode: WifiMode, context: &mut AppContext) -> EventOutcome {
+fn handle_set_wifi_mode(mode: WifiMode, hub: &Hub, context: &mut AppContext) -> EventOutcome {
     if context.settings.wifi == mode {
         tracing::trace!(mode = %mode, "wifi mode unchanged");
         return EventOutcome::Handled;
@@ -112,8 +113,13 @@ fn handle_set_wifi_mode(mode: WifiMode, context: &mut AppContext) -> EventOutcom
     match mode {
         WifiMode::AlwaysOn => {
             let session = context.wifi_session.clone();
-            thread::spawn(move || {
-                if let Err(error) = session.enable_radio() {
+            let hub = hub.clone();
+            thread::spawn(move || match session.enable_radio() {
+                Ok(true) => {
+                    hub.send(Event::Device(DeviceEvent::NetUp)).ok();
+                }
+                Ok(false) => {}
+                Err(error) => {
                     tracing::error!(error = %error, "Failed to enable WiFi");
                 }
             });
@@ -244,6 +250,7 @@ mod tests {
         harness.context.wifi_session.set_mode(WifiMode::AlwaysOn);
         let outcome = handle_event(
             &Event::SetWifiMode(WifiMode::AlwaysOn),
+            &harness.hub_tx,
             &mut harness.context,
         );
         assert_eq!(outcome, EventOutcome::Handled);
@@ -264,6 +271,7 @@ mod tests {
         harness.context.settings.wifi = WifiMode::Off;
         let outcome = handle_event(
             &Event::SetWifiMode(WifiMode::AlwaysOn),
+            &harness.hub_tx,
             &mut harness.context,
         );
         assert_eq!(outcome, EventOutcome::Handled);
@@ -279,13 +287,48 @@ mod tests {
         let mut harness = LifecycleHarness::new();
         harness.context.settings.wifi = WifiMode::AlwaysOn;
         harness.context.online = true;
-        let outcome = handle_event(&Event::SetWifiMode(WifiMode::Off), &mut harness.context);
+        let outcome = handle_event(
+            &Event::SetWifiMode(WifiMode::Off),
+            &harness.hub_tx,
+            &mut harness.context,
+        );
         assert_eq!(outcome, EventOutcome::Handled);
         assert_eq!(harness.context.settings.wifi, WifiMode::Off);
         assert!(!harness.context.online);
         wait_for_wifi_thread();
         let wifi = harness.context.device.wifi_manager_for_test();
         assert_eq!(wifi.disable_call_count(), 1);
+    }
+
+    #[test]
+    fn handle_set_wifi_mode_always_on_sends_netup_when_connected() {
+        use crate::device::wifi::{Essid, NetworkInfo};
+        use crate::input::DeviceEvent;
+
+        let mut harness = LifecycleHarness::new();
+        harness.context.settings.wifi = WifiMode::Off;
+        harness
+            .context
+            .device
+            .wifi_manager_for_test()
+            .set_network_info(Ok(Some(NetworkInfo {
+                ip: "192.168.1.1".parse().unwrap(),
+                essid: Essid::new("test"),
+            })));
+        let outcome = handle_event(
+            &Event::SetWifiMode(WifiMode::AlwaysOn),
+            &harness.hub_tx,
+            &mut harness.context,
+        );
+        assert_eq!(outcome, EventOutcome::Handled);
+        wait_for_wifi_thread();
+        let events = harness.drain_hub();
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, Event::Device(DeviceEvent::NetUp))),
+            "expected NetUp when already associated, got {events:?}"
+        );
     }
 
     #[test]
@@ -300,7 +343,11 @@ mod tests {
         drop(lease);
         assert!(harness.context.wifi_session.idle_since().is_some());
 
-        let outcome = handle_event(&Event::MightDisableWifi, &mut harness.context);
+        let outcome = handle_event(
+            &Event::MightDisableWifi,
+            &harness.hub_tx,
+            &mut harness.context,
+        );
         assert_eq!(outcome, EventOutcome::Handled);
         wait_for_wifi_thread();
         assert!(!harness.context.online);

@@ -27,7 +27,7 @@ use crate::framebuffer::Framebuffer as _;
 use crate::framebuffer::UpdateMode;
 use crate::frontlight::Frontlight as _;
 use crate::gesture::GestureEvent;
-use crate::input::ButtonCode;
+use crate::input::{ButtonCode, DeviceEvent};
 use crate::view::common::locate;
 use crate::view::intermission::Intermission;
 use crate::view::{EntryId, Event, RenderData, View, wait_for_all};
@@ -83,8 +83,13 @@ fn cancel_suspend(
         context.set_frontlight(context.settings.frontlight);
         if context.settings.wifi.wants_radio_at_rest() {
             let session = context.wifi_session.clone();
-            thread::spawn(move || {
-                if let Err(error) = session.enable_radio() {
+            let hub = hub.clone();
+            thread::spawn(move || match session.enable_radio() {
+                Ok(true) => {
+                    hub.send(Event::Device(DeviceEvent::NetUp)).ok();
+                }
+                Ok(false) => {}
+                Err(error) => {
                     tracing::error!(error = %error, "Failed to enable WiFi on resume");
                 }
             });
@@ -219,14 +224,36 @@ impl DeviceLifecycle for Device {
             context.online = false;
         }
         let wifi_session = context.wifi_session.clone();
+        let hub_wifi = hub.clone();
         thread::spawn(move || {
-            let result = if wants_on {
-                wifi_session.enable_radio()
+            if wants_on {
+                match wifi_session.enable_radio() {
+                    Ok(connected) => {
+                        let enabled = wifi_session.wifi_manager().is_enabled();
+                        tracing::info!(wants_on, enabled, connected, "wifi startup reconcile");
+                        if connected {
+                            hub_wifi.send(Event::Device(DeviceEvent::NetUp)).ok();
+                        }
+                    }
+                    Err(error) => {
+                        tracing::error!(
+                            error = %error,
+                            wants_on,
+                            "Failed to configure WiFi on startup"
+                        );
+                    }
+                }
             } else {
-                wifi_session.disable_radio()
-            };
-            if let Err(error) = result {
-                tracing::error!(error = %error, wants_on, "Failed to configure WiFi on startup");
+                let result = wifi_session.disable_radio();
+                let enabled = wifi_session.wifi_manager().is_enabled();
+                tracing::info!(wants_on, enabled, "wifi startup reconcile");
+                if let Err(error) = result {
+                    tracing::error!(
+                        error = %error,
+                        wants_on,
+                        "Failed to configure WiFi on startup"
+                    );
+                }
             }
         });
 
@@ -324,7 +351,7 @@ impl DeviceLifecycle for Device {
             Event::Device(_) => device_events::handle_event(event, hub, bus, rq, context, runtime),
             Event::SetWifiMode(_)
             | Event::Select(EntryId::SetWifiMode(_))
-            | Event::MightDisableWifi => wifi::handle_event(event, context),
+            | Event::MightDisableWifi => wifi::handle_event(event, hub, context),
             Event::PrepareSuspend | Event::Suspend | Event::MightSuspend => {
                 suspend::handle_event(event, hub, bus, rq, context, runtime)
             }
@@ -355,7 +382,82 @@ impl DeviceLifecycle for Device {
 mod tests {
     use super::*;
     use crate::device::kobo::lifecycle::test_helpers::LifecycleHarness;
+    use crate::device::wifi::{Essid, NetworkInfo};
     use crate::input::{ButtonCode, ButtonStatus, DeviceEvent};
+    use crate::settings::WifiMode;
+    use std::time::Duration;
+
+    fn wait_for_wifi_thread() {
+        std::thread::sleep(Duration::from_millis(50));
+    }
+
+    #[test]
+    fn on_startup_auto_disables_without_netup() {
+        let mut harness = LifecycleHarness::new();
+        harness.context.settings.wifi = WifiMode::Auto;
+        harness.context.online = true;
+        harness
+            .context
+            .device
+            .wifi_manager_for_test()
+            .set_network_info(Ok(Some(NetworkInfo {
+                ip: "192.168.1.1".parse().unwrap(),
+                essid: Essid::new("test"),
+            })));
+        harness.with_parts(|hub, _bus, _rq, context, runtime| {
+            Device::on_startup(context, hub, runtime).unwrap();
+        });
+        wait_for_wifi_thread();
+        assert!(!harness.context.online);
+        assert_eq!(
+            harness
+                .context
+                .device
+                .wifi_manager_for_test()
+                .disable_call_count(),
+            1
+        );
+        let events = harness.drain_hub();
+        assert!(
+            !events
+                .iter()
+                .any(|e| matches!(e, Event::Device(DeviceEvent::NetUp))),
+            "Auto startup must not emit NetUp, got {events:?}"
+        );
+    }
+
+    #[test]
+    fn on_startup_always_on_sends_netup_when_connected() {
+        let mut harness = LifecycleHarness::new();
+        harness.context.settings.wifi = WifiMode::AlwaysOn;
+        harness
+            .context
+            .device
+            .wifi_manager_for_test()
+            .set_network_info(Ok(Some(NetworkInfo {
+                ip: "192.168.1.1".parse().unwrap(),
+                essid: Essid::new("test"),
+            })));
+        harness.with_parts(|hub, _bus, _rq, context, runtime| {
+            Device::on_startup(context, hub, runtime).unwrap();
+        });
+        wait_for_wifi_thread();
+        assert_eq!(
+            harness
+                .context
+                .device
+                .wifi_manager_for_test()
+                .enable_call_count(),
+            1
+        );
+        let events = harness.drain_hub();
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, Event::Device(DeviceEvent::NetUp))),
+            "expected NetUp when AlwaysOn and associated, got {events:?}"
+        );
+    }
 
     #[test]
     fn handle_event_device_delegates() {
