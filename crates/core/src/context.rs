@@ -107,6 +107,11 @@ impl<D: Device> Context<D> {
             }
         };
         let soft_suspend_session = crate::device::soft_suspend::SoftSuspendSession::new(leds);
+        soft_suspend_session.apply_settings(
+            settings.autosleep_mode,
+            settings.indicate_autosleep_led,
+            std::time::Duration::from_secs_f32(settings.autosleep_grace.max(0.0)),
+        );
         Context {
             device,
             alarm_manager,

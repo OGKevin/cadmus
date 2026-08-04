@@ -36,6 +36,8 @@ use std::path::Path;
 pub enum ToggleSettings {
     /// Sleep cover enable/disable setting
     SleepCover,
+    /// Use status LED to indicate armed soft suspend while awake
+    IndicateAutosleepLed,
     /// Auto-share enable/disable setting
     AutoShare,
     /// Auto time sync enable/disable setting

@@ -66,4 +66,7 @@ pub enum SettingIdentity {
     RefreshRateByKindInverted(String),
     DitheredKinds,
     StartupMode,
+    AutosleepMode,
+    IndicateAutosleepLed,
+    AutosleepGrace,
 }

@@ -40,6 +40,14 @@ auto-suspend = 30.0
 # The delay, in days, after which a suspended device
 # will power off. *Zero* means *never*.
 auto-power-off = 3.0
+# Soft-suspend autosleep target. Possible values: "off", "freeze", "mem".
+# Unsupported values on the current device fall back to "off".
+autosleep-mode = "off"
+# When soft suspend is armed, keep the status LED on while awake.
+indicate-autosleep-led = false
+# Seconds to keep the wake lock after the last soft-suspend lease drops.
+# *Zero* unlocks immediately.
+autosleep-grace = 5.0
 # Formats used for the clock and the clock's pop-up menu.
 # The available specifiers are described at:
 # https://docs.rs/chrono/latest/chrono/format/strftime/index.html
