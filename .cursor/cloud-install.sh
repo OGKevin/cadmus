@@ -4,6 +4,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+export PATH="$HOME/.local/bin:$HOME/linaro-toolchain/bin:/usr/local/cargo/bin:$PATH"
+export SQLX_OFFLINE=true
+export PKG_CONFIG_ALLOW_CROSS=1
+
 git submodule update --init --recursive
 
 cargo xtask setup --host
