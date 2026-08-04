@@ -1,0 +1,103 @@
+name: Cursor Cloud environment
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+    paths:
+      - ".cursor/**"
+      - ".github/workflows/cursor-cloud.yml"
+
+permissions:
+  contents: read
+
+env:
+  CURSOR_CLOUD_IMAGE: cadmus-cursor-cloud:ci
+  CONTAINER_STRUCTURE_TEST_VERSION: v1.19.3
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      cursor: ${{ steps.filter.outputs.cursor }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
+        id: filter
+        with:
+          filters: |
+            cursor:
+              - '.cursor/**'
+              - '.github/workflows/cursor-cloud.yml'
+
+  validate:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.cursor == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.x"
+
+      - name: Install JSON schema validator
+        run: pip install check-jsonschema
+
+      - name: Validate environment.json
+        run: >-
+          check-jsonschema
+          --schemafile https://www.cursor.com/schemas/environment.schema.json
+          .cursor/environment.json
+
+      - name: Build Cursor Cloud image
+        run: docker build -f .cursor/Dockerfile -t "$CURSOR_CLOUD_IMAGE" .
+
+      - name: Install container-structure-test
+        run: |
+          curl -fsSL \
+            "https://github.com/GoogleContainerTools/container-structure-test/releases/download/${CONTAINER_STRUCTURE_TEST_VERSION}/container-structure-test-linux-amd64" \
+            -o /usr/local/bin/container-structure-test
+          chmod +x /usr/local/bin/container-structure-test
+
+      - name: Assert baked toolchain in image
+        run: >-
+          container-structure-test test
+          --image "$CURSOR_CLOUD_IMAGE"
+          --config .cursor/container-structure-test.yaml
+
+      - name: Run cloud-install in image
+        run: |
+          docker run --rm \
+            -v "${GITHUB_WORKSPACE}:/workspace" \
+            -w /workspace \
+            -e HOME=/home/ubuntu \
+            -e CADMUS_HOME=/home/ubuntu \
+            -e PUPPETEER_ARGS='--no-sandbox --disable-setuid-sandbox' \
+            "$CURSOR_CLOUD_IMAGE" \
+            bash -c '
+              set -euo pipefail
+              git config --global --add safe.directory /workspace
+              bash .cursor/cloud-install.sh
+              bash .cursor/verify-cloud-install.sh
+            '
+
+  required-cursor-cloud:
+    name: required-cursor-cloud
+    permissions: {}
+    needs: [changes, validate]
+    if: >-
+      always() &&
+      github.event_name == 'pull_request' &&
+      (cancelled() || contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled'))
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "::error::One or more required jobs failed or were cancelled"
+          exit 1

@@ -1,0 +1,42 @@
+schemaVersion: "2.0.0"
+
+metadataTest:
+  envVars:
+    - key: SQLX_OFFLINE
+      value: "true"
+    - key: PKG_CONFIG_ALLOW_CROSS
+      value: "1"
+    - key: LIBCLANG_PATH
+      value: "/usr/lib/llvm-18/lib"
+
+fileExistenceTests:
+  - name: linaro-arm-gcc
+    path: /home/ubuntu/linaro-toolchain/bin/arm-linux-gnueabihf-gcc
+    shouldExist: true
+    permissions: "-rwxr-xr-x"
+
+commandTests:
+  - name: rustc
+    command: rustc
+    args: ["--version"]
+    expectedOutput: ["rustc"]
+  - name: mdbook
+    command: mdbook
+    args: ["--version"]
+    expectedOutput: ["mdbook"]
+  - name: mdbook-epub
+    command: mdbook-epub
+    args: ["--version"]
+    expectedOutput: ["MDBook epub"]
+  - name: mdbook-mermaid
+    command: mdbook-mermaid
+    args: ["--version"]
+    expectedOutput: ["mdbook-mermaid"]
+  - name: cargo-nextest
+    command: cargo-nextest
+    args: ["--version"]
+    expectedOutput: ["cargo-nextest"]
+  - name: node
+    command: node
+    args: ["--version"]
+    expectedOutput: ["v24"]

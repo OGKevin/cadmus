@@ -17,10 +17,50 @@ Source files remain untouched - all processing happens in memory.
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
+
+
+def puppeteer_launch_args() -> list[str]:
+    """Chrome flags for mmdc/Puppeteer (e.g. --no-sandbox in containers)."""
+    raw = os.environ.get("PUPPETEER_ARGS", "").strip()
+    if raw:
+        return shlex.split(raw)
+    if os.environ.get("CI") or os.environ.get("GITHUB_ACTIONS"):
+        return ["--no-sandbox"]
+    return []
+
+
+def find_chrome_headless_executable() -> str | None:
+    """Locate puppeteer's chrome-headless-shell binary under the browser cache."""
+    cache_dirs: list[Path] = []
+    if os.environ.get("PUPPETEER_CACHE_DIR"):
+        cache_dirs.append(Path(os.environ["PUPPETEER_CACHE_DIR"]))
+    home = Path(os.environ.get("CADMUS_HOME", Path.home()))
+    cache_dirs.append(home / ".cache" / "puppeteer")
+
+    platform_dir_names = [
+        "chrome-headless-shell-linux64",
+        "chrome-headless-shell-linux-x64",
+        "chrome-headless-shell-mac-arm64",
+        "chrome-headless-shell",
+    ]
+
+    for cache_dir in cache_dirs:
+        shell_root = cache_dir / "chrome-headless-shell"
+        if not shell_root.is_dir():
+            continue
+        for version_dir in sorted(shell_root.iterdir(), reverse=True):
+            if not version_dir.is_dir():
+                continue
+            for platform_name in platform_dir_names:
+                chrome_exe = version_dir / platform_name / "chrome-headless-shell"
+                if chrome_exe.is_file():
+                    return str(chrome_exe)
+    return None
 
 
 def render_mermaid_to_png(mermaid_code: str, output_path: Path) -> bool:
@@ -42,24 +82,7 @@ def render_mermaid_to_png(mermaid_code: str, output_path: Path) -> bool:
             temp_mmd_path = temp_mmd.name
 
         mmdc_cmd = "../node_modules/.bin/mmdc"
-        home = Path.home()
-        puppeteer_cache = home / ".cache" / "puppeteer" / "chrome-headless-shell"
-
-        chrome_path = None
-        if puppeteer_cache.exists():
-            for version_dir in puppeteer_cache.iterdir():
-                if version_dir.is_dir():
-                    for platform in [
-                        "chrome-headless-shell-mac-arm64",
-                        "chrome-headless-shell-linux-x64",
-                        "chrome-headless-shell",
-                    ]:
-                        chrome_exe = version_dir / platform / "chrome-headless-shell"
-                        if chrome_exe.exists():
-                            chrome_path = str(chrome_exe)
-                            break
-                    if chrome_path:
-                        break
+        chrome_path = find_chrome_headless_executable()
 
         env = os.environ.copy()
         if chrome_path:
@@ -74,18 +97,17 @@ def render_mermaid_to_png(mermaid_code: str, output_path: Path) -> bool:
             "transparent",
         ]
 
-        is_ci = os.environ.get("CI") or os.environ.get("GITHUB_ACTIONS")
+        launch_args = puppeteer_launch_args()
         temp_puppeteer_config = None
-        if is_ci:
+        if launch_args:
             with tempfile.NamedTemporaryFile(
                 mode="w", suffix=".json", delete=False
             ) as config_file:
-                json.dump({"args": ["--no-sandbox"]}, config_file)
+                json.dump({"args": launch_args}, config_file)
                 temp_puppeteer_config = config_file.name
             cmd.extend(["--puppeteerConfigFile", temp_puppeteer_config])
 
         subprocess.run(cmd, capture_output=True, text=True, check=True, env=env)
-        
         if temp_puppeteer_config:
             Path(temp_puppeteer_config).unlink()
 

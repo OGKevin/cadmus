@@ -55,7 +55,7 @@
       "addLabels": ["thirdparty"]
     },
     {
-      "description": "Keep mdbook-i18n-helpers submodule and devenv.nix fetchFromGitHub pin in sync",
+      "description": "Keep mdbook-i18n-helpers submodule, devenv.nix pin, and install-doc-tools/cloud-install gitlink in sync",
       "matchManagers": ["git-submodules", "custom.regex"],
       "matchPackageNames": [
         "thirdparty/mdbook-i18n-helpers",
@@ -63,6 +63,31 @@
       ],
       "groupName": "mdbook-i18n-helpers",
       "groupSlug": "mdbook-i18n-helpers"
+    },
+    {
+      "description": "Keep mdbook tool pins in sync across CI action and Dockerfile",
+      "matchManagers": ["custom.regex"],
+      "matchDepNames": [
+        "rust-lang/mdBook",
+        "Michael-F-Bryan/mdbook-epub",
+        "badboy/mdbook-mermaid"
+      ],
+      "groupName": "mdbook",
+      "groupSlug": "mdbook"
+    },
+    {
+      "description": "Keep cargo-nextest pins in sync across CI workflow and Dockerfile",
+      "matchManagers": ["custom.regex"],
+      "matchDepNames": ["nextest-rs/nextest"],
+      "groupName": "cargo-nextest",
+      "groupSlug": "cargo-nextest"
+    },
+    {
+      "description": "Keep Node.js version pins in sync across workflows and Dockerfile",
+      "matchManagers": ["custom.regex"],
+      "matchDepNames": ["node"],
+      "groupName": "node",
+      "groupSlug": "node"
     },
     {
       "description": "Keep mupdf submodule and version pins in sync",
@@ -122,10 +147,26 @@
     },
     {
       "customType": "regex",
-      "managerFilePatterns": [
-        "/^\\.github\\/actions\\/install-doc-tools\\/action\\.yml$/"
+      "managerFilePatterns": ["/^\\.github\\/workflows\\/cursor-cloud\\.yml$/"],
+      "matchStrings": [
+        "CONTAINER_STRUCTURE_TEST_VERSION:\\s+(?<currentValue>v[^\\s]+)"
       ],
-      "matchStrings": ["MDBOOK_VERSION=(?<currentValue>[^\"]+)"],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "GoogleContainerTools/container-structure-test",
+      "extractVersionTemplate": "^v?(?<version>.+)$",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^\\.github\\/actions\\/install-doc-tools\\/action\\.yml$/",
+        "/^\\.cursor\\/Dockerfile$/",
+        "/^\\.cursor\\/cloud-install\\.sh$/"
+      ],
+      "matchStrings": [
+        "MDBOOK_VERSION=(?<currentValue>[^\"]+)",
+        "MDBOOK_VERSION:-(?<currentValue>[0-9.]+)"
+      ],
       "datasourceTemplate": "github-releases",
       "depNameTemplate": "rust-lang/mdBook",
       "versioningTemplate": "semver"
@@ -133,9 +174,14 @@
     {
       "customType": "regex",
       "managerFilePatterns": [
-        "/^\\.github\\/actions\\/install-doc-tools\\/action\\.yml$/"
+        "/^\\.github\\/actions\\/install-doc-tools\\/action\\.yml$/",
+        "/^\\.cursor\\/Dockerfile$/",
+        "/^\\.cursor\\/cloud-install\\.sh$/"
       ],
-      "matchStrings": ["MDBOOK_EPUB_REV=(?<currentValue>[a-f0-9]{40})"],
+      "matchStrings": [
+        "MDBOOK_EPUB_REV=(?<currentValue>[a-f0-9]{40})",
+        "MDBOOK_EPUB_REV:-(?<currentValue>[a-f0-9]{40})"
+      ],
       "datasourceTemplate": "git-refs",
       "depNameTemplate": "Michael-F-Bryan/mdbook-epub",
       "packageNameTemplate": "https://github.com/Michael-F-Bryan/mdbook-epub",
@@ -144,9 +190,14 @@
     {
       "customType": "regex",
       "managerFilePatterns": [
-        "/^\\.github\\/actions\\/install-doc-tools\\/action\\.yml$/"
+        "/^\\.github\\/actions\\/install-doc-tools\\/action\\.yml$/",
+        "/^\\.cursor\\/Dockerfile$/",
+        "/^\\.cursor\\/cloud-install\\.sh$/"
       ],
-      "matchStrings": ["MDBOOK_MERMAID_VERSION=(?<currentValue>[^\"]+)"],
+      "matchStrings": [
+        "MDBOOK_MERMAID_VERSION=(?<currentValue>[^\"]+)",
+        "MDBOOK_MERMAID_VERSION:-(?<currentValue>[0-9.]+)"
+      ],
       "datasourceTemplate": "github-releases",
       "depNameTemplate": "badboy/mdbook-mermaid",
       "versioningTemplate": "semver"
@@ -191,17 +242,27 @@
         "/^\\.github\\/workflows\\/release\\.yml$/",
         "/^\\.github\\/workflows\\/build-release-candidate\\.yml$/",
         "/^\\.github\\/workflows\\/actions-lint\\.yml$/",
-        "/^\\.github\\/workflows\\/website\\.yml$/"
+        "/^\\.github\\/workflows\\/website\\.yml$/",
+        "/^\\.cursor\\/Dockerfile$/"
       ],
-      "matchStrings": ["NODE_VERSION:\\s+\\\"(?<currentValue>[^\\\"]+)\\\""],
+      "matchStrings": [
+        "NODE_VERSION:\\s+\\\"(?<currentValue>[^\\\"]+)\\\"",
+        "ENV NODE_VERSION=(?<currentValue>[^\"\\s]+)"
+      ],
       "datasourceTemplate": "node-version",
       "depNameTemplate": "node",
       "versioningTemplate": "node"
     },
     {
       "customType": "regex",
-      "managerFilePatterns": ["/^\\.github\\/workflows\\/cargo\\.yml$/"],
-      "matchStrings": ["NEXTEST_VERSION:\\s+\\\"(?<currentValue>[^\\\"]+)\\\""],
+      "managerFilePatterns": [
+        "/^\\.github\\/workflows\\/cargo\\.yml$/",
+        "/^\\.cursor\\/Dockerfile$/"
+      ],
+      "matchStrings": [
+        "NEXTEST_VERSION:\\s+\\\"(?<currentValue>[^\\\"]+)\\\"",
+        "ENV NEXTEST_VERSION=(?<currentValue>[^\"\\s]+)"
+      ],
       "datasourceTemplate": "github-releases",
       "depNameTemplate": "nextest-rs/nextest",
       "extractVersionTemplate": "^cargo-nextest-(?<version>.+)$",
