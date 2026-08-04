@@ -3,7 +3,7 @@ use super::kinds::dictionary::DictionaryInfo;
 use super::kinds::general::{
     AutoFrontlight, AutoFrontlightBrightness, AutoFrontlightManualCoordinates, AutoPowerOff,
     AutoShare, AutoSuspend, AutoTime, ButtonScheme, DbBackupRetentionSetting, KeyboardLayout,
-    Locale, NtpServer, SettingsRetention, SleepCover, StartupModeSetting,
+    Locale, NtpServer, SettingsRetention, SleepCover, StartupModeSetting, WifiIdleTimeout,
 };
 use super::kinds::import::{AllowedKindsSetting, ForceFullImport, ImportSyncMetadata};
 use super::kinds::intermission::{IntermissionPowerOff, IntermissionShare, IntermissionSuspend};
@@ -71,6 +71,7 @@ impl Category {
                 Box::new(AutoFrontlightBrightness),
                 Box::new(AutoFrontlightManualCoordinates),
                 Box::new(AutoSuspend),
+                Box::new(WifiIdleTimeout),
                 Box::new(AutoPowerOff),
                 Box::new(ButtonScheme),
                 Box::new(KeyboardLayout),

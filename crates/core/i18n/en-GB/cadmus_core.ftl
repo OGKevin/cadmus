@@ -1,6 +1,8 @@
 # Keep the message ID's sorted please.
 
 -app-name = Cadmus
+-minutes = minutes
+-wifi-idle-timeout = WiFi Idle Timeout
 
 build-attributes =
     Built { $timestamp }
@@ -40,10 +42,16 @@ top-menu-quit = Quit
 top-menu-power-off = Power Off
 top-menu-switch-to = Switch to { $build }
 top-menu-sync-time = Sync Time
+top-menu-wifi = WiFi
 
 # Settings - Button Scheme
 settings-button-scheme-natural = Natural
 settings-button-scheme-inverted = Inverted
+
+# Settings - WiFi Mode
+settings-wifi-mode-off = Off
+settings-wifi-mode-always-on = Always On
+settings-wifi-mode-auto = Auto
 
 # Settings - Finished Actions
 settings-finished-action-notify = Notify
@@ -78,6 +86,9 @@ settings-general-toggle-off = off
 settings-general-toggle-on = on
 settings-general-trigger = Trigger
 settings-general-unknown = Unknown
+settings-general-wifi-idle-immediate = Immediate
+settings-general-wifi-idle-timeout = { -wifi-idle-timeout } ({ -minutes })
+settings-general-wifi-idle-timeout-input = { -wifi-idle-timeout } ({ -minutes }, 0 = { settings-general-wifi-idle-immediate })
 
 # Settings - Startup Mode
 settings-startup-mode-home = Home

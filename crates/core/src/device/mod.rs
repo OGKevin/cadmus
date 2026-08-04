@@ -535,7 +535,7 @@ pub trait DeviceHardware: Send {
     type Battery: crate::battery::Battery + Send;
     type Frontlight: crate::frontlight::Frontlight + Send;
     type LightSensor: crate::lightsensor::LightSensor + Send;
-    type WifiManager: crate::device::wifi::WifiManager + Send + Sync;
+    type WifiManager: crate::device::wifi::WifiManager + Send + Sync + 'static;
     type UsbManager: crate::device::usb::UsbManager + Send + Sync;
     type PowerManager: crate::device::power::PowerManager + Send + Sync;
     type Rtc: crate::device::rtc::Rtc + Send + Sync + 'static;

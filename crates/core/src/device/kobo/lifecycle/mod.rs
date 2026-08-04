@@ -20,7 +20,6 @@ use crate::device::DeviceLifecycle;
 use crate::device::DeviceRotation as _;
 use crate::device::power::PowerManager;
 use crate::device::rtc::AlarmType;
-use crate::device::wifi::WifiManager;
 use crate::device::{
     AppContext, DeviceRuntime, DeviceTask, DeviceTaskId, EventOutcome, ExitStatus, HistoryItem,
 };
@@ -82,11 +81,10 @@ fn cancel_suspend(
     if id == DeviceTaskId::Suspend {
         tasks.retain(|task| task.id != DeviceTaskId::Suspend);
         context.set_frontlight(context.settings.frontlight);
-        if context.settings.wifi
-            && let Ok(wifi) = context.device.wifi_manager()
-        {
+        if context.settings.wifi.wants_radio_at_rest() {
+            let session = context.wifi_session.clone();
             thread::spawn(move || {
-                if let Err(error) = wifi.enable() {
+                if let Err(error) = session.enable_radio() {
                     tracing::error!(error = %error, "Failed to enable WiFi on resume");
                 }
             });
@@ -215,19 +213,22 @@ impl DeviceLifecycle for Device {
             tracing::error!(error = %error, "Failed to initialize CPU cores");
         }
 
-        if let Ok(wifi) = context.device.wifi_manager() {
-            let wifi_enabled = context.settings.wifi;
-            thread::spawn(move || {
-                let result = if wifi_enabled {
-                    wifi.enable()
-                } else {
-                    wifi.disable()
-                };
-                if let Err(error) = result {
-                    tracing::error!(error = %error, wifi_enabled, "Failed to configure WiFi on startup");
-                }
-            });
+        let wants_on = context.settings.wifi.wants_radio_at_rest();
+        context.wifi_session.set_mode(context.settings.wifi);
+        if !wants_on {
+            context.online = false;
         }
+        let wifi_session = context.wifi_session.clone();
+        thread::spawn(move || {
+            let result = if wants_on {
+                wifi_session.enable_radio()
+            } else {
+                wifi_session.disable_radio()
+            };
+            if let Err(error) = result {
+                tracing::error!(error = %error, wants_on, "Failed to configure WiFi on startup");
+            }
+        });
 
         context.plugged = context
             .device
@@ -248,6 +249,9 @@ impl DeviceLifecycle for Device {
         );
         hub.send(Event::WakeUp).ok();
         suspend::spawn_auto_suspend_poller(hub, context.settings.auto_suspend);
+        let (idle_wake_tx, idle_wake_rx) = mpsc::channel();
+        context.wifi_session.set_idle_wake_sender(idle_wake_tx);
+        wifi::spawn_wifi_idle_poller(hub, context.settings.wifi_idle_timeout, idle_wake_rx);
         Ok(())
     }
 
@@ -298,9 +302,7 @@ impl DeviceLifecycle for Device {
                 }
             }
             ExitStatus::Quit => {
-                if let Ok(wifi) = context.device.wifi_manager()
-                    && let Err(error) = wifi.disable()
-                {
+                if let Err(error) = context.wifi_session.disable_radio() {
                     tracing::error!(error = %error, "Failed to disable WiFi on exit");
                 }
             }
@@ -320,9 +322,9 @@ impl DeviceLifecycle for Device {
     ) -> EventOutcome {
         match event {
             Event::Device(_) => device_events::handle_event(event, hub, bus, rq, context, runtime),
-            Event::SetWifi(_) | Event::Select(EntryId::ToggleWifi) => {
-                wifi::handle_event(event, context)
-            }
+            Event::SetWifiMode(_)
+            | Event::Select(EntryId::SetWifiMode(_))
+            | Event::MightDisableWifi => wifi::handle_event(event, context),
             Event::PrepareSuspend | Event::Suspend | Event::MightSuspend => {
                 suspend::handle_event(event, hub, bus, rq, context, runtime)
             }
@@ -382,7 +384,14 @@ mod tests {
     fn handle_event_set_wifi_delegates() {
         let mut harness = LifecycleHarness::new();
         let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
-            Device::handle_event(&Event::SetWifi(true), hub, bus, rq, context, runtime)
+            Device::handle_event(
+                &Event::SetWifiMode(crate::settings::WifiMode::AlwaysOn),
+                hub,
+                bus,
+                rq,
+                context,
+                runtime,
+            )
         });
         assert_eq!(outcome, EventOutcome::Handled);
     }

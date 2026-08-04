@@ -2,7 +2,12 @@
 # Possible values: "English", "Russian".
 keyboard-layout = "English"
 frontlight = true
-wifi = false
+# Possible values: "off", "always-on", "auto" (legacy booleans still load).
+wifi = "off"
+# Minutes after the last Auto-mode WiFi use before the radio powers down.
+# Zero means disable as soon as the last lease is released.
+# Minimum non-zero value is 0.5 (30 seconds); shorter positive values are raised to 0.5.
+wifi-idle-timeout = 5.0
 # Invert the display's colors.
 inverted = false
 # Handle the Sleep Cover event.

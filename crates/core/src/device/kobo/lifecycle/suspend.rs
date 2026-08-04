@@ -7,7 +7,6 @@ use crate::chrono::{Duration as ChronoDuration, Local, Timelike};
 use crate::device::DeviceHardware as _;
 use crate::device::power::PowerManager;
 use crate::device::rtc::{EnsureAlarmOutcome, PastDueAction};
-use crate::device::wifi::WifiManager;
 use crate::device::{AppContext, DeviceRuntime, DeviceTaskId, EventOutcome, ExitStatus};
 use crate::framebuffer::Framebuffer as _;
 use crate::frontlight::Frontlight as _;
@@ -103,10 +102,8 @@ fn handle_prepare_suspend(
             tracing::error!(error = %error, "failed to turn off frontlight for suspend");
         }
     }
-    if context.settings.wifi {
-        if let Ok(wifi) = context.device.wifi_manager()
-            && let Err(error) = wifi.disable()
-        {
+    if context.settings.wifi != crate::settings::WifiMode::Off {
+        if let Err(error) = context.wifi_session.disable_radio() {
             tracing::error!(error = %error, "Failed to disable WiFi on suspend");
         }
         context.online = false;
@@ -304,7 +301,7 @@ mod tests {
     fn handle_prepare_suspend_schedules_suspend_task() {
         let mut harness = LifecycleHarness::new();
         harness.push_task(DeviceTaskId::PrepareSuspend);
-        harness.context.settings.wifi = true;
+        harness.context.settings.wifi = crate::settings::WifiMode::AlwaysOn;
         harness.context.online = true;
         let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
             handle_event(&Event::PrepareSuspend, hub, bus, rq, context, runtime)

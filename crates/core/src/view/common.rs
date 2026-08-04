@@ -220,10 +220,25 @@ pub fn toggle_main_menu(
                 EntryId::ToggleInverted,
                 context.device.framebuffer().inverted(),
             ),
-            EntryKind::CheckBox(
-                "Enable WiFi".to_string(),
-                EntryId::ToggleWifi,
-                context.settings.wifi,
+            EntryKind::SubMenu(
+                fl!("top-menu-wifi").to_string(),
+                vec![
+                    EntryKind::RadioButton(
+                        fl!("settings-wifi-mode-off").to_string(),
+                        EntryId::SetWifiMode(crate::settings::WifiMode::Off),
+                        context.settings.wifi == crate::settings::WifiMode::Off,
+                    ),
+                    EntryKind::RadioButton(
+                        fl!("settings-wifi-mode-always-on").to_string(),
+                        EntryId::SetWifiMode(crate::settings::WifiMode::AlwaysOn),
+                        context.settings.wifi == crate::settings::WifiMode::AlwaysOn,
+                    ),
+                    EntryKind::RadioButton(
+                        fl!("settings-wifi-mode-auto").to_string(),
+                        EntryId::SetWifiMode(crate::settings::WifiMode::Auto),
+                        context.settings.wifi == crate::settings::WifiMode::Auto,
+                    ),
+                ],
             ),
             EntryKind::Separator,
             EntryKind::SubMenu("Rotate".to_string(), rotate),

@@ -10,7 +10,7 @@
 //!
 //! ```ignore
 //! let mut harness = LifecycleHarness::new();
-//! harness.context.settings.wifi = true;
+//! harness.context.settings.wifi = WifiMode::AlwaysOn;
 //! let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
 //!     suspend::handle_event(&Event::PrepareSuspend, hub, rq, context, runtime)
 //! });

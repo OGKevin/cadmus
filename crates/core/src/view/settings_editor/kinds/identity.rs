@@ -17,6 +17,7 @@ pub enum SettingIdentity {
     KeyboardLayout,
     Locale,
     AutoSuspend,
+    WifiIdleTimeout,
     AutoPowerOff,
     SleepCover,
     AutoShare,

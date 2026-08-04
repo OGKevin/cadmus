@@ -69,6 +69,12 @@ carry over regardless of which mode you used in Plato.
 > Cadmus also removes the `.thumbnail-previews/` folder and regenerates
 > thumbnails itself.
 
+## Library hooks
+
+Plato library hooks that emit `{"type": "setWifi", "enable": …}` are not
+supported in Cadmus. WiFi control for plugins will return with the plugin
+system ([#423](https://github.com/OGKevin/cadmus/issues/423)).
+
 ## Re-running the import
 
 If the import went wrong (for example, the library path was incorrect in
