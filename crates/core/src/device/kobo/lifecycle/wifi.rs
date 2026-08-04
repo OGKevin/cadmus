@@ -220,7 +220,7 @@ fn handle_might_disable_wifi(context: &mut AppContext) -> EventOutcome {
         "Disabling WiFi after idle timeout"
     );
 
-    context.wifi_session.notify_offline();
+    context.wifi_session.mark_offline_pending();
     context.online = false;
 
     let session = context.wifi_session.clone();
