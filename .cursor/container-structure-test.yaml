@@ -27,7 +27,7 @@ commandTests:
   - name: mdbook-epub
     command: mdbook-epub
     args: ["--version"]
-    expectedOutput: ["mdbook-epub"]
+    expectedOutput: ["MDBook epub"]
   - name: mdbook-mermaid
     command: mdbook-mermaid
     args: ["--version"]
