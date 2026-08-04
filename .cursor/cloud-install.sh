@@ -21,6 +21,7 @@ fi
 
 EPUB_PATH="${ROOT}/docs/book/epub/Cadmus Documentation.epub"
 if [[ ! -f "$EPUB_PATH" ]]; then
+    export PUPPETEER_ARGS='--no-sandbox --disable-setuid-sandbox'
     cargo xtask docs --mdbook-only
 fi
 
