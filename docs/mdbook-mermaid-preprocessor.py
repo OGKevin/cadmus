@@ -17,10 +17,21 @@ Source files remain untouched - all processing happens in memory.
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
+
+
+def puppeteer_launch_args() -> list[str]:
+    """Chrome flags for mmdc/Puppeteer (e.g. --no-sandbox in containers)."""
+    raw = os.environ.get("PUPPETEER_ARGS", "").strip()
+    if raw:
+        return shlex.split(raw)
+    if os.environ.get("CI") or os.environ.get("GITHUB_ACTIONS"):
+        return ["--no-sandbox"]
+    return []
 
 
 def render_mermaid_to_png(mermaid_code: str, output_path: Path) -> bool:
@@ -74,18 +85,17 @@ def render_mermaid_to_png(mermaid_code: str, output_path: Path) -> bool:
             "transparent",
         ]
 
-        is_ci = os.environ.get("CI") or os.environ.get("GITHUB_ACTIONS")
+        launch_args = puppeteer_launch_args()
         temp_puppeteer_config = None
-        if is_ci:
+        if launch_args:
             with tempfile.NamedTemporaryFile(
                 mode="w", suffix=".json", delete=False
             ) as config_file:
-                json.dump({"args": ["--no-sandbox"]}, config_file)
+                json.dump({"args": launch_args}, config_file)
                 temp_puppeteer_config = config_file.name
             cmd.extend(["--puppeteerConfigFile", temp_puppeteer_config])
 
         subprocess.run(cmd, capture_output=True, text=True, check=True, env=env)
-        
         if temp_puppeteer_config:
             Path(temp_puppeteer_config).unlink()
 

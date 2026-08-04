@@ -56,6 +56,7 @@ export SQLX_OFFLINE=true
 export PKG_CONFIG_ALLOW_CROSS=1
 export LIBCLANG_PATH=/usr/lib/llvm-18/lib
 export DISPLAY=:1
+export PUPPETEER_ARGS="--no-sandbox --disable-setuid-sandbox"
 export CADMUS_HOME="/home/ubuntu"
 export PATH="$CADMUS_HOME/.local/bin:$CADMUS_HOME/linaro-toolchain/bin:/usr/local/cargo/bin:$HOME/.local/bin:$PATH"
 export NVM_DIR="$CADMUS_HOME/.nvm"
