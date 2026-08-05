@@ -248,21 +248,27 @@ impl View for Key {
             {
                 match self.kind {
                     KeyKind::Delete(dir) => {
-                        hub.send(Event::Keyboard(KeyboardEvent::Delete {
-                            target: TextKind::Word,
-                            dir,
-                        }))
+                        hub.send(
+                            (Event::Keyboard(KeyboardEvent::Delete {
+                                target: TextKind::Word,
+                                dir,
+                            }))
+                            .into(),
+                        )
                         .ok();
                     }
                     KeyKind::Move(dir) => {
-                        hub.send(Event::Keyboard(KeyboardEvent::Move {
-                            target: TextKind::Word,
-                            dir,
-                        }))
+                        hub.send(
+                            (Event::Keyboard(KeyboardEvent::Move {
+                                target: TextKind::Word,
+                                dir,
+                            }))
+                            .into(),
+                        )
                         .ok();
                     }
                     KeyKind::Output(' ') => {
-                        hub.send(Event::ToggleNear(ViewId::KeyboardLayoutMenu, self.rect))
+                        hub.send((Event::ToggleNear(ViewId::KeyboardLayoutMenu, self.rect)).into())
                             .ok();
                     }
                     _ => (),

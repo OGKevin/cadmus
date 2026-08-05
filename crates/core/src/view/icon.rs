@@ -135,7 +135,7 @@ impl View for Icon {
                 match self.event {
                     Event::Page(dir) => bus.push_back(Event::Chapter(dir)),
                     Event::Show(ViewId::Frontlight) => {
-                        hub.send(Event::ToggleFrontlight).ok();
+                        hub.send((Event::ToggleFrontlight).into()).ok();
                     }
                     Event::Show(ViewId::MarginCropper) => {
                         bus.push_back(Event::ToggleNear(ViewId::MarginCropperMenu, self.rect));

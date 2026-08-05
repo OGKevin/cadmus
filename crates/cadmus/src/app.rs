@@ -60,7 +60,7 @@ pub const APP_NAME: &str = "Cadmus";
 
 fn drain_bus(bus: &mut Bus, tx: &Hub) {
     while let Some(ce) = bus.pop_front() {
-        tx.send(ce).ok();
+        tx.send(ce.into()).ok();
     }
 }
 
@@ -308,10 +308,11 @@ pub fn run() -> Result<(), Error> {
     context.load_dictionaries();
     context.load_keyboard_layouts();
 
-    let (tx, rx) = context
-        .device
-        .input_mut()
-        .start(context.display, context.settings.button_scheme);
+    let (tx, rx) = context.device.input_mut().start(
+        context.display,
+        context.settings.button_scheme,
+        std::sync::Arc::clone(&context.soft_suspend_session),
+    );
 
     let mut tasks: Vec<DeviceTask> = Vec::new();
     let mut background_tasks = TaskManager::new();
@@ -390,7 +391,8 @@ pub fn run() -> Result<(), Error> {
 
     tracing::info!(duration = ?start_time.elapsed(), "App started");
 
-    while let Ok(evt) = rx.recv() {
+    while let Ok(message) = rx.recv() {
+        let (evt, _input_wake) = message.into_parts();
         let skip_main_loop_lease =
             AppDevice::should_skip_main_loop_soft_suspend_lease(&context, &evt);
         let _soft_suspend = if skip_main_loop_lease {
@@ -486,7 +488,7 @@ pub fn run() -> Result<(), Error> {
                             Region::Corner(DiagDir::NorthWest),
                             Region::Corner(DiagDir::SouthEast),
                         ) => {
-                            tx.send(Event::Select(EntryId::TakeScreenshot)).ok();
+                            tx.send(Event::Select(EntryId::TakeScreenshot).into()).ok();
                         }
                         _ => (),
                     }

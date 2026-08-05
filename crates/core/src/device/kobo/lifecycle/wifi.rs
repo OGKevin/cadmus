@@ -57,7 +57,7 @@ pub(super) fn spawn_wifi_idle_poller(
                         break;
                     }
                 }
-                if hub.send(Event::MightDisableWifi).is_err() {
+                if hub.send((Event::MightDisableWifi).into()).is_err() {
                     tracing::debug!("wifi idle poller stopping: hub closed");
                     break;
                 }
@@ -116,7 +116,7 @@ fn handle_set_wifi_mode(mode: WifiMode, hub: &Hub, context: &mut AppContext) -> 
             let hub = hub.clone();
             thread::spawn(move || match session.enable_radio() {
                 Ok(true) => {
-                    hub.send(Event::Device(DeviceEvent::NetUp)).ok();
+                    hub.send((Event::Device(DeviceEvent::NetUp)).into()).ok();
                 }
                 Ok(false) => {}
                 Err(error) => {

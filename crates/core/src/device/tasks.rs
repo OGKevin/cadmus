@@ -1,8 +1,8 @@
 //! Delayed device tasks posted back to the main-loop hub.
 
 use crate::device::{DeviceTask, DeviceTaskId};
-use crate::view::Event;
-use std::sync::mpsc::{self, Sender};
+use crate::view::{Event, Hub};
+use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
@@ -15,7 +15,7 @@ pub(crate) fn schedule_device_task(
     id: DeviceTaskId,
     event: Event,
     delay: Duration,
-    hub: &Sender<Event>,
+    hub: &Hub,
     tasks: &mut Vec<DeviceTask>,
 ) {
     let (ty, ry) = mpsc::channel();
@@ -25,7 +25,7 @@ pub(crate) fn schedule_device_task(
     thread::spawn(move || {
         thread::sleep(delay);
         if ty.send(()).is_ok() {
-            hub2.send(event).ok();
+            hub2.send(event.into()).ok();
         }
     });
 }

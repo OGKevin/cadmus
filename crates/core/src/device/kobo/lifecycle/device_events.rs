@@ -77,7 +77,7 @@ fn handle_power_button_released(
 
 /// Forwards a light-button press as [`Event::ToggleFrontlight`].
 fn handle_light_button_pressed(hub: &Hub) -> EventOutcome {
-    hub.send(Event::ToggleFrontlight).ok();
+    hub.send((Event::ToggleFrontlight).into()).ok();
     EventOutcome::Handled
 }
 
@@ -109,7 +109,7 @@ fn handle_rotate_screen(
         }
     }
 
-    hub.send(Event::Select(EntryId::Rotate(n))).ok();
+    hub.send((Event::Select(EntryId::Rotate(n))).into()).ok();
     EventOutcome::Handled
 }
 
@@ -138,7 +138,7 @@ fn handle_net_up(
                 ip = info.ip.to_string(),
                 essid = info.essid.to_string()
             );
-            hub.send(Event::Notification(NotificationEvent::Show(msg)))
+            hub.send((Event::Notification(NotificationEvent::Show(msg))).into())
                 .ok();
         }
         Ok(None) => {
@@ -243,7 +243,7 @@ fn handle_plug(
         PowerSource::Host => handle_plug_host(hub, rq, context, runtime),
     }
 
-    hub.send(Event::BatteryTick).ok();
+    hub.send((Event::BatteryTick).into()).ok();
 
     EventOutcome::Handled
 }
@@ -258,7 +258,7 @@ fn handle_plug_host(
     cancel_suspend_if_pending(context, runtime.tasks, runtime.view.as_mut(), hub, rq);
 
     if context.settings.auto_share {
-        hub.send(Event::PrepareShare).ok();
+        hub.send((Event::PrepareShare).into()).ok();
     } else {
         let dialog = Dialog::builder(ViewId::ShareDialog, "Share storage via USB?".to_string())
             .add_button("Cancel", Event::Close(ViewId::ShareDialog))
@@ -318,7 +318,7 @@ fn handle_unplug(
                 );
             }
         } else {
-            hub.send(Event::BatteryTick).ok();
+            hub.send((Event::BatteryTick).into()).ok();
         }
     }
 

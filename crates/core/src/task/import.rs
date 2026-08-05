@@ -1,7 +1,6 @@
 //! Background task that imports library contents from disk.
 
 use std::path::PathBuf;
-use std::sync::mpsc::Sender;
 
 use crate::db::Database;
 use crate::library::Library;
@@ -43,7 +42,7 @@ impl ImportTask {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(hub, shutdown, self)))]
-    fn run_for_index(&self, index: usize, hub: &Sender<Event>, shutdown: &ShutdownSignal) {
+    fn run_for_index(&self, index: usize, hub: &crate::view::Hub, shutdown: &ShutdownSignal) {
         let lib_settings = match self.settings.libraries.get(index) {
             Some(s) => s,
             None => {
@@ -84,7 +83,7 @@ impl BackgroundTask for ImportTask {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-    fn run(&mut self, hub: &Sender<Event>, shutdown: &ShutdownSignal) {
+    fn run(&mut self, hub: &crate::view::Hub, shutdown: &ShutdownSignal) {
         match self.library_index {
             Some(index) => {
                 self.run_for_index(index, hub, shutdown);

@@ -291,17 +291,21 @@ impl LibraryEditor {
     #[inline]
     fn handle_validate_event(&self, hub: &Hub, bus: &mut Bus) -> bool {
         if self.library.name.trim().is_empty() {
-            hub.send(Event::Notification(NotificationEvent::Show(
-                "Library name cannot be empty".to_string(),
-            )))
+            hub.send(
+                (Event::Notification(NotificationEvent::Show(
+                    "Library name cannot be empty".to_string(),
+                )))
+                .into(),
+            )
             .ok();
             return true;
         }
 
         if !self.library.path.exists() {
-            hub.send(Event::Notification(NotificationEvent::Show(
-                "Path does not exist".to_string(),
-            )))
+            hub.send(
+                (Event::Notification(NotificationEvent::Show("Path does not exist".to_string())))
+                    .into(),
+            )
             .ok();
             return true;
         }
@@ -334,7 +338,7 @@ impl LibraryEditor {
         self.children.push(Box::new(name_input));
         rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
 
-        hub.send(Event::Focus(Some(ViewId::LibraryRenameInput)))
+        hub.send((Event::Focus(Some(ViewId::LibraryRenameInput))).into())
             .ok();
         true
     }
@@ -476,7 +480,7 @@ impl LibraryEditor {
                     self.children.remove(index);
                     rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
                 }
-                hub.send(Event::Focus(None)).ok();
+                hub.send((Event::Focus(None)).into()).ok();
                 true
             }
             ViewId::FileChooser => {
@@ -590,7 +594,11 @@ mod tests {
         assert!(handled);
         assert_eq!(bus.len(), 0);
 
-        if let Ok(Event::Notification(NotificationEvent::Show(msg))) = receiver.try_recv() {
+        if let Ok(crate::view::HubMessage {
+            event: Event::Notification(NotificationEvent::Show(msg)),
+            ..
+        }) = receiver.try_recv()
+        {
             assert_eq!(msg, "Library name cannot be empty");
         } else {
             panic!("Expected notification event about empty name");
@@ -616,7 +624,11 @@ mod tests {
         assert!(handled);
         assert_eq!(bus.len(), 0);
 
-        if let Ok(Event::Notification(NotificationEvent::Show(msg))) = receiver.try_recv() {
+        if let Ok(crate::view::HubMessage {
+            event: Event::Notification(NotificationEvent::Show(msg)),
+            ..
+        }) = receiver.try_recv()
+        {
             assert_eq!(msg, "Path does not exist");
         } else {
             panic!("Expected notification event about nonexistent path");
@@ -690,7 +702,11 @@ mod tests {
         assert_eq!(editor.children.len(), initial_children_count + 1);
         assert!(!rq.is_empty());
 
-        if let Ok(Event::Focus(Some(ViewId::LibraryRenameInput))) = receiver.try_recv() {
+        if let Ok(crate::view::HubMessage {
+            event: Event::Focus(Some(ViewId::LibraryRenameInput)),
+            ..
+        }) = receiver.try_recv()
+        {
         } else {
             panic!("Expected Focus event for LibraryRenameInput");
         }

@@ -3,6 +3,7 @@ use crate::input::{InputEvent, device_events, raw_events, usb_events};
 use crate::settings::ButtonScheme;
 use crate::view::Event;
 use std::path::Path;
+use std::sync::Arc;
 use std::sync::mpsc::{self, Sender};
 use std::thread;
 use std::time::Duration;
@@ -57,7 +58,7 @@ impl crate::device::InputSource for InputSource {
     #[cfg_attr(
         feature = "tracing",
         tracing::instrument(
-            skip(self, display, button_scheme),
+            skip(self, display, button_scheme, soft_suspend),
             level = tracing::Level::TRACE,
             fields(proto = ?self.info.proto),
         )
@@ -66,9 +67,10 @@ impl crate::device::InputSource for InputSource {
         &mut self,
         display: Display,
         button_scheme: ButtonScheme,
+        soft_suspend: Arc<crate::device::soft_suspend::SoftSuspendSession>,
     ) -> (
         crate::view::Hub,
-        std::sync::mpsc::Receiver<crate::view::Event>,
+        std::sync::mpsc::Receiver<crate::view::HubMessage>,
     ) {
         let mut paths = Vec::new();
         let touch_path = touch_input_path();
@@ -121,16 +123,28 @@ impl crate::device::InputSource for InputSource {
         let (tx, rx) = mpsc::channel();
 
         let tx2 = tx.clone();
+        let soft_suspend2 = Arc::clone(&soft_suspend);
         thread::spawn(move || {
             while let Ok(evt) = touch_screen.recv() {
-                tx2.send(evt).ok();
+                let _short = soft_suspend2.acquire("input");
+                tx2.send(crate::view::HubMessage::with_soft_suspend(
+                    evt,
+                    soft_suspend2.acquire("input"),
+                ))
+                .ok();
             }
         });
 
         let tx3 = tx.clone();
+        let soft_suspend3 = Arc::clone(&soft_suspend);
         thread::spawn(move || {
             while let Ok(evt) = usb_port.recv() {
-                tx3.send(Event::Device(evt)).ok();
+                let _short = soft_suspend3.acquire("input");
+                tx3.send(crate::view::HubMessage::with_soft_suspend(
+                    Event::Device(evt),
+                    soft_suspend3.acquire("input"),
+                ))
+                .ok();
             }
         });
 
@@ -138,7 +152,7 @@ impl crate::device::InputSource for InputSource {
         thread::spawn(move || {
             loop {
                 thread::sleep(CLOCK_REFRESH_INTERVAL);
-                tx4.send(Event::ClockTick).ok();
+                tx4.send(Event::ClockTick.into()).ok();
             }
         });
 
@@ -146,7 +160,7 @@ impl crate::device::InputSource for InputSource {
         thread::spawn(move || {
             loop {
                 thread::sleep(BATTERY_REFRESH_INTERVAL);
-                tx5.send(Event::BatteryTick).ok();
+                tx5.send(Event::BatteryTick.into()).ok();
             }
         });
 

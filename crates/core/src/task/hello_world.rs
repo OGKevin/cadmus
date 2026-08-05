@@ -22,7 +22,7 @@ impl BackgroundTask for HelloWorldTask {
         TaskId::HelloWorld
     }
 
-    fn run(&mut self, _hub: &Sender<Event>, shutdown: &ShutdownSignal) {
+    fn run(&mut self, _hub: &crate::view::Hub, shutdown: &ShutdownSignal) {
         tracing::info!("hello_world task started");
 
         loop {

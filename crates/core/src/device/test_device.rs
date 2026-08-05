@@ -350,7 +350,8 @@ impl InputSource for TestInputSource {
         &mut self,
         _display: crate::framebuffer::Display,
         _button_scheme: crate::settings::ButtonScheme,
-    ) -> (Hub, Receiver<Event>) {
+        _soft_suspend: Arc<crate::device::soft_suspend::SoftSuspendSession>,
+    ) -> (Hub, Receiver<crate::view::HubMessage>) {
         std::sync::mpsc::channel()
     }
 }

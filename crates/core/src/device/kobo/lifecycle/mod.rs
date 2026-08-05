@@ -23,7 +23,7 @@ use crate::framebuffer::Framebuffer as _;
 use crate::frontlight::Frontlight as _;
 use crate::gesture::GestureEvent;
 use crate::input::{ButtonCode, DeviceEvent};
-use crate::view::{EntryId, Event};
+use crate::view::{EntryId, Event, HubMessage};
 use std::fs::File;
 use std::sync::mpsc;
 use std::thread;
@@ -86,7 +86,9 @@ impl DeviceLifecycle for Device {
                         let enabled = wifi_session.wifi_manager().is_enabled();
                         tracing::info!(wants_on, enabled, connected, "wifi startup reconcile");
                         if connected {
-                            hub_wifi.send(Event::Device(DeviceEvent::NetUp)).ok();
+                            hub_wifi
+                                .send((Event::Device(DeviceEvent::NetUp)).into())
+                                .ok();
                         }
                     }
                     Err(error) => {
@@ -128,14 +130,19 @@ impl DeviceLifecycle for Device {
             hub,
             runtime.tasks,
         );
-        hub.send(Event::WakeUp).ok();
+        hub.send((Event::WakeUp).into()).ok();
         reschedule_auto_suspend_alarm(context);
         if let Some(alarm_manager) = context.alarm_manager.clone() {
             let hub = hub.clone();
+            let soft_suspend = context.soft_suspend_session.clone();
             crate::device::rtc::AlarmManager::start_irq_listener(
                 &alarm_manager,
                 move |alarm_type| {
-                    hub.send(Event::RtcAlarmFired(alarm_type)).ok();
+                    hub.send(HubMessage::with_soft_suspend(
+                        Event::RtcAlarmFired(alarm_type),
+                        soft_suspend.acquire("rtc"),
+                    ))
+                    .ok();
                 },
             );
         }

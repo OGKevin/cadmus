@@ -3,7 +3,6 @@ use chrono::{DateTime, Utc};
 use sntpc::{NtpContext, StdTimestampGen};
 use sntpc_net_std::UdpSocketWrapper;
 use std::net::{IpAddr, SocketAddr, ToSocketAddrs, UdpSocket};
-use std::sync::mpsc::Sender;
 use std::time::Duration;
 
 use crate::device::rtc::{AlarmManager, Rtc};
@@ -37,14 +36,17 @@ impl<R: Rtc> TimeManager<R> {
         ntp_server: &NetworkAddress,
         manual: bool,
         geolocation: Option<GeoLocation>,
-        hub: &Sender<Event>,
+        hub: &crate::view::Hub,
         alarm_manager: &Arc<Mutex<AlarmManager<R>>>,
     ) -> Result<(), Error> {
         if let Err(e) = self.detect_and_set_timezone(geolocation) {
             if manual {
-                hub.send(Event::Notification(NotificationEvent::Show(crate::fl!(
-                    "notification-timezone-detection-failed"
-                ))))
+                hub.send(
+                    (Event::Notification(NotificationEvent::Show(crate::fl!(
+                        "notification-timezone-detection-failed"
+                    ))))
+                    .into(),
+                )
                 .ok();
             }
             tracing::warn!(error = %e, "timezone detection failed");
@@ -54,9 +56,12 @@ impl<R: Rtc> TimeManager<R> {
             Ok(t) => t,
             Err(e) => {
                 if manual {
-                    hub.send(Event::Notification(NotificationEvent::Show(crate::fl!(
-                        "notification-time-sync-failed"
-                    ))))
+                    hub.send(
+                        (Event::Notification(NotificationEvent::Show(crate::fl!(
+                            "notification-time-sync-failed"
+                        ))))
+                        .into(),
+                    )
                     .ok();
                 } else {
                     tracing::warn!(error = %e, address = %ntp_server, "ntp query failed");
@@ -73,14 +78,17 @@ impl<R: Rtc> TimeManager<R> {
         match result {
             Ok(()) => {
                 tracing::info!(time = %ntp_time, address = %ntp_server, "time synced");
-                hub.send(Event::ClockTick).ok();
+                hub.send((Event::ClockTick).into()).ok();
                 Ok(())
             }
             Err(e) => {
                 if manual {
-                    hub.send(Event::Notification(NotificationEvent::Show(crate::fl!(
-                        "notification-time-sync-failed"
-                    ))))
+                    hub.send(
+                        (Event::Notification(NotificationEvent::Show(crate::fl!(
+                            "notification-time-sync-failed"
+                        ))))
+                        .into(),
+                    )
                     .ok();
                 }
                 tracing::warn!(error = %e, "set_system_clock or rtc.set_time failed");

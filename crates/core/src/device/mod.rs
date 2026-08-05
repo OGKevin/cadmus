@@ -102,6 +102,7 @@ use crate::time_manager::TimeManager;
 use crate::view::{Bus, Event, Hub, RenderQueue, UpdateData, View};
 use std::fmt::Debug;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::sync::mpsc::Receiver;
 
 pub struct HistoryItem {
@@ -183,7 +184,8 @@ pub trait InputSource: Send {
         &mut self,
         display: crate::framebuffer::Display,
         button_scheme: ButtonScheme,
-    ) -> (Hub, Receiver<Event>);
+        soft_suspend: Arc<crate::device::soft_suspend::SoftSuspendSession>,
+    ) -> (Hub, Receiver<crate::view::HubMessage>);
 
     /// Injects a raw [`InputEvent`] into the input pipeline.
     ///

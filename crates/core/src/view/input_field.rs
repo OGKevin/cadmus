@@ -225,7 +225,7 @@ impl View for InputField {
         match *evt {
             Event::Gesture(GestureEvent::Tap(center)) if self.rect.includes(center) => {
                 if !self.focused {
-                    hub.send(Event::Focus(Some(self.view_id))).ok();
+                    hub.send((Event::Focus(Some(self.view_id))).into()).ok();
                 } else {
                     let index =
                         self.index_from_position(center, &mut context.fonts, context.device.dpi());
@@ -242,7 +242,7 @@ impl View for InputField {
             Event::Gesture(GestureEvent::HoldFingerShort(center, _))
                 if self.rect.includes(center) =>
             {
-                hub.send(Event::ToggleInputHistoryMenu(self.view_id, self.rect))
+                hub.send((Event::ToggleInputHistoryMenu(self.view_id, self.rect)).into())
                     .ok();
                 true
             }

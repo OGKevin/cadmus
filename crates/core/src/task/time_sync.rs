@@ -1,4 +1,3 @@
-use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 
 use crate::device::rtc::{AlarmManager, Rtc};
@@ -41,15 +40,18 @@ impl<R: Rtc + Send + 'static> BackgroundTask for TimeSyncTask<R> {
         TaskId::TimeSync
     }
 
-    fn run(&mut self, hub: &Sender<Event>, _shutdown: &ShutdownSignal) {
+    fn run(&mut self, hub: &crate::view::Hub, _shutdown: &ShutdownSignal) {
         let _wifi = match self.wifi_session.acquire("time-sync") {
             Ok(lease) => lease,
             Err(e) => {
                 tracing::error!(error = %e, "failed to acquire WiFi lease for time sync");
                 if self.manual {
-                    hub.send(Event::Notification(crate::view::NotificationEvent::Show(
-                        crate::fl!("notification-time-sync-failed"),
-                    )))
+                    hub.send(
+                        (Event::Notification(crate::view::NotificationEvent::Show(crate::fl!(
+                            "notification-time-sync-failed"
+                        ))))
+                        .into(),
+                    )
                     .ok();
                 }
                 return;
@@ -80,7 +82,8 @@ impl<R: Rtc + Send + 'static> BackgroundTask for TimeSyncTask<R> {
         }
 
         if let Some(coordinates) = coordinates {
-            hub.send(Event::AutoFrontlightCoordinates(coordinates)).ok();
+            hub.send((Event::AutoFrontlightCoordinates(coordinates)).into())
+                .ok();
         }
     }
 }

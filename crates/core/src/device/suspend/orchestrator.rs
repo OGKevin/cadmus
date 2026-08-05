@@ -35,7 +35,6 @@ use crate::view::common::locate;
 use crate::view::intermission::Intermission;
 use crate::view::{Event, Hub, RenderData, RenderQueue, View, wait_for_all};
 use std::sync::mpsc;
-use std::sync::mpsc::Sender;
 use std::time::Duration;
 
 const DEEP_IDLE_CYCLE_LEASE: &str = "deep-idle";
@@ -792,7 +791,7 @@ fn handle_post_wake(
 pub(crate) fn start_cycle(
     context: &mut AppContext,
     view: &mut dyn View,
-    hub: &Sender<Event>,
+    hub: &Hub,
     bus: &mut crate::view::Bus,
     rq: &mut crate::view::RenderQueue,
     tasks: &mut Vec<DeviceTask>,
@@ -853,7 +852,7 @@ pub(in crate::device::suspend) fn finish_cycle(
     context: &mut AppContext,
     tasks: &mut Vec<DeviceTask>,
     view: &mut dyn View,
-    hub: &Sender<Event>,
+    hub: &Hub,
     rq: &mut crate::view::RenderQueue,
 ) {
     tasks.retain(|task| {
@@ -867,7 +866,7 @@ pub(in crate::device::suspend) fn finish_cycle(
         let hub = hub.clone();
         std::thread::spawn(move || match session.enable_radio() {
             Ok(true) => {
-                hub.send(Event::Device(crate::input::DeviceEvent::NetUp))
+                hub.send((Event::Device(crate::input::DeviceEvent::NetUp)).into())
                     .ok();
             }
             Ok(false) => {}
@@ -892,8 +891,8 @@ pub(in crate::device::suspend) fn finish_cycle(
     } else {
         tracing::warn!("resume called but no intermission view found to remove");
     }
-    hub.send(Event::ClockTick).ok();
-    hub.send(Event::BatteryTick).ok();
+    hub.send((Event::ClockTick).into()).ok();
+    hub.send((Event::BatteryTick).into()).ok();
 }
 
 /// Abort during [`SuspendPhase::Preparing`] only (drop PrepareSuspend task + intermission).
@@ -905,7 +904,7 @@ pub(in crate::device::suspend) fn cancel_prepare(
     id: DeviceTaskId,
     tasks: &mut Vec<DeviceTask>,
     view: &mut dyn View,
-    hub: &Sender<Event>,
+    hub: &Hub,
     rq: &mut crate::view::RenderQueue,
 ) {
     if id != DeviceTaskId::PrepareSuspend {
@@ -924,8 +923,8 @@ pub(in crate::device::suspend) fn cancel_prepare(
     } else {
         tracing::warn!("resume called but no intermission view found to remove");
     }
-    hub.send(Event::ClockTick).ok();
-    hub.send(Event::BatteryTick).ok();
+    hub.send((Event::ClockTick).into()).ok();
+    hub.send((Event::BatteryTick).into()).ok();
     reschedule_auto_suspend_alarm(context);
 }
 

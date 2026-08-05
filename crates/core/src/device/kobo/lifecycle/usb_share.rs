@@ -18,7 +18,6 @@ use crate::view::{
 };
 use std::env;
 use std::path::Path;
-use std::sync::mpsc::Sender;
 use std::time::Duration;
 
 /// Prepares the app for USB mass-storage sharing.
@@ -36,7 +35,7 @@ fn prepare_usb_share(
     settings_manager: &crate::settings::versioned::SettingsManager,
     updating: &mut Vec<UpdateData>,
     bus: &mut Bus,
-    hub: &Sender<Event>,
+    hub: &crate::view::Hub,
     rq: &mut RenderQueue,
 ) {
     tasks.clear();
@@ -82,7 +81,7 @@ fn prepare_usb_share(
         UpdateMode::Full,
     ));
     view.children_mut().push(Box::new(interm));
-    hub.send(Event::Share).ok();
+    hub.send((Event::Share).into()).ok();
 }
 
 /// Enables USB mass-storage mode.
@@ -92,16 +91,19 @@ fn prepare_usb_share(
 ///
 /// On failure, shows a notification and schedules a restart or reboot.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(hub, tasks, context)))]
-fn enable_usb_share(context: &mut AppContext, hub: &Sender<Event>, tasks: &mut Vec<DeviceTask>) {
+fn enable_usb_share(context: &mut AppContext, hub: &crate::view::Hub, tasks: &mut Vec<DeviceTask>) {
     if let Err(error) = crate::logging::redirect_log_to_dir(
         Path::new("/tmp/cadmus-logs"),
         &context.settings.logging,
     ) {
         eprintln!("Failed to redirect logging to /tmp: {error}");
 
-        hub.send(Event::Notification(NotificationEvent::Show(
-            "Failed to start USB session".to_string(),
-        )))
+        hub.send(
+            (Event::Notification(NotificationEvent::Show(
+                "Failed to start USB session".to_string(),
+            )))
+            .into(),
+        )
         .ok();
         schedule_device_task(
             DeviceTaskId::Exit,
@@ -124,9 +126,12 @@ fn enable_usb_share(context: &mut AppContext, hub: &Sender<Event>, tasks: &mut V
             }
             Err(error) => {
                 tracing::error!(error = %error, "Failed to enable USB sharing");
-                hub.send(Event::Notification(NotificationEvent::Show(
-                    "Failed to start USB session".to_string(),
-                )))
+                hub.send(
+                    (Event::Notification(NotificationEvent::Show(
+                        "Failed to start USB session".to_string(),
+                    )))
+                    .into(),
+                )
                 .ok();
                 schedule_device_task(
                     DeviceTaskId::Exit,
@@ -139,9 +144,12 @@ fn enable_usb_share(context: &mut AppContext, hub: &Sender<Event>, tasks: &mut V
         },
         Err(error) => {
             tracing::error!(error = %error, "Failed to create USB manager");
-            hub.send(Event::Notification(NotificationEvent::Show(
-                "Failed to start USB session".to_string(),
-            )))
+            hub.send(
+                (Event::Notification(NotificationEvent::Show(
+                    "Failed to start USB session".to_string(),
+                )))
+                .into(),
+            )
             .ok();
             schedule_device_task(
                 DeviceTaskId::Exit,
@@ -163,7 +171,7 @@ pub(super) fn disable_usb_share(
     context: &AppContext,
     startup_cwd: Option<&Path>,
     logging_settings: &crate::settings::LoggingSettings,
-    hub: &Sender<Event>,
+    hub: &crate::view::Hub,
 ) {
     tracing::info!("USB unplugged after sharing; disabling USB mass storage");
 
@@ -182,13 +190,13 @@ pub(super) fn disable_usb_share(
             }
             Err(error) => {
                 tracing::error!(error = %error, "Failed to disable USB sharing, triggering reboot");
-                hub.send(Event::Select(EntryId::Reboot)).ok();
+                hub.send((Event::Select(EntryId::Reboot)).into()).ok();
                 return;
             }
         },
         Err(error) => {
             tracing::error!(error = %error, "Failed to create USB manager, triggering reboot");
-            hub.send(Event::Select(EntryId::Reboot)).ok();
+            hub.send((Event::Select(EntryId::Reboot)).into()).ok();
             return;
         }
     }
@@ -204,10 +212,10 @@ pub(super) fn disable_usb_share(
 
     if update_bundle_exists {
         tracing::info!("KoboRoot.tgz detected; triggering reboot");
-        hub.send(Event::Select(EntryId::Reboot)).ok();
+        hub.send((Event::Select(EntryId::Reboot)).into()).ok();
     } else {
         tracing::info!("triggering app restart");
-        hub.send(Event::Select(EntryId::Restart)).ok();
+        hub.send((Event::Select(EntryId::Restart)).into()).ok();
     }
 }
 

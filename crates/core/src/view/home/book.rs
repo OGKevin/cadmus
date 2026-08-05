@@ -65,7 +65,8 @@ impl View for Book {
                 self.active = true;
                 rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
 
-                hub.send(Event::Open(Box::new(self.info.clone()))).ok();
+                hub.send((Event::Open(Box::new(self.info.clone()))).into())
+                    .ok();
                 true
             }
             Event::Gesture(GestureEvent::HoldFingerShort(center, ..))

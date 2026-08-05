@@ -104,22 +104,31 @@ impl InputSource for EmulatorInputSource {
         &mut self,
         _display: crate::framebuffer::Display,
         _button_scheme: crate::settings::ButtonScheme,
-    ) -> (Hub, Receiver<Event>) {
+        soft_suspend: Arc<crate::device::soft_suspend::SoftSuspendSession>,
+    ) -> (Hub, Receiver<crate::view::HubMessage>) {
         let (hub, rx) = mpsc::channel();
         let (device_tx, device_rx) = mpsc::channel();
         self.sender = Some(device_tx.clone());
 
         let gesture_rx = crate::gesture::gesture_events(device_rx, self.dpi);
         let hub_clone = hub.clone();
+        let gesture_soft_suspend = Arc::clone(&soft_suspend);
 
         std::thread::spawn(move || {
             while let Ok(event) = gesture_rx.recv() {
-                hub_clone.send(event).ok();
+                let _short = gesture_soft_suspend.acquire("input");
+                hub_clone
+                    .send(crate::view::HubMessage::with_soft_suspend(
+                        event,
+                        gesture_soft_suspend.acquire("input"),
+                    ))
+                    .ok();
             }
         });
 
         if let Some(sendable_sdl) = self.sdl_context.take() {
             let hub = hub.clone();
+            let sdl_soft_suspend = Arc::clone(&soft_suspend);
             let sender = device_tx;
             let mut event_pump = SendableEventPump(sendable_sdl.0.event_pump().unwrap());
             std::thread::spawn(move || {
@@ -139,7 +148,7 @@ impl InputSource for EmulatorInputSource {
                                 keymod: Mod::NOMOD,
                                 ..
                             } => {
-                                hub.send(Event::Select(EntryId::Quit)).ok();
+                                hub.send(Event::Select(EntryId::Quit).into()).ok();
                                 break 'outer;
                             }
                             SdlEvent::KeyUp {
@@ -167,7 +176,8 @@ impl InputSource for EmulatorInputSource {
                             } => match keymod {
                                 Mod::NOMOD => match scancode {
                                     Scancode::S => {
-                                        hub.send(Event::Select(EntryId::TakeScreenshot)).ok();
+                                        hub.send(Event::Select(EntryId::TakeScreenshot).into())
+                                            .ok();
                                     }
                                     Scancode::B
                                     | Scancode::F
@@ -197,18 +207,26 @@ impl InputSource for EmulatorInputSource {
                                         let y = mouse_state.y();
                                         let center = pt!(x, y);
                                         if scancode == Scancode::I {
-                                            hub.send(Event::Gesture(GestureEvent::Spread {
-                                                center,
-                                                factor: 2.0,
-                                                axis: Axis::Diagonal,
-                                            }))
+                                            let _short = sdl_soft_suspend.acquire("input");
+                                            hub.send(crate::view::HubMessage::with_soft_suspend(
+                                                Event::Gesture(GestureEvent::Spread {
+                                                    center,
+                                                    factor: 2.0,
+                                                    axis: Axis::Diagonal,
+                                                }),
+                                                sdl_soft_suspend.acquire("input"),
+                                            ))
                                             .ok();
                                         } else {
-                                            hub.send(Event::Gesture(GestureEvent::Pinch {
-                                                center,
-                                                factor: 0.5,
-                                                axis: Axis::Diagonal,
-                                            }))
+                                            let _short = sdl_soft_suspend.acquire("input");
+                                            hub.send(crate::view::HubMessage::with_soft_suspend(
+                                                Event::Gesture(GestureEvent::Pinch {
+                                                    center,
+                                                    factor: 0.5,
+                                                    axis: Axis::Diagonal,
+                                                }),
+                                                sdl_soft_suspend.acquire("input"),
+                                            ))
                                             .ok();
                                         }
                                     }
@@ -216,21 +234,30 @@ impl InputSource for EmulatorInputSource {
                                 },
                                 Mod::LSHIFTMOD | Mod::RSHIFTMOD => match scancode {
                                     Scancode::S => {
-                                        hub.send(Event::Select(EntryId::ShowIntermission(
-                                            IntermKind::Suspend,
-                                        )))
+                                        hub.send(
+                                            Event::Select(EntryId::ShowIntermission(
+                                                IntermKind::Suspend,
+                                            ))
+                                            .into(),
+                                        )
                                         .ok();
                                     }
                                     Scancode::P => {
-                                        hub.send(Event::Select(EntryId::ShowIntermission(
-                                            IntermKind::PowerOff,
-                                        )))
+                                        hub.send(
+                                            Event::Select(EntryId::ShowIntermission(
+                                                IntermKind::PowerOff,
+                                            ))
+                                            .into(),
+                                        )
                                         .ok();
                                     }
                                     Scancode::C => {
-                                        hub.send(Event::Select(EntryId::ShowIntermission(
-                                            IntermKind::Share,
-                                        )))
+                                        hub.send(
+                                            Event::Select(EntryId::ShowIntermission(
+                                                IntermKind::Share,
+                                            ))
+                                            .into(),
+                                        )
                                         .ok();
                                     }
                                     _ => (),
@@ -253,7 +280,7 @@ impl InputSource for EmulatorInputSource {
         std::thread::spawn(move || {
             loop {
                 std::thread::sleep(CLOCK_REFRESH_INTERVAL);
-                hub_clone.send(Event::ClockTick).ok();
+                hub_clone.send(Event::ClockTick.into()).ok();
             }
         });
 
@@ -544,7 +571,7 @@ fn handle_set_wifi_mode(
             let hub = hub.clone();
             std::thread::spawn(move || {
                 std::thread::sleep(std::time::Duration::from_secs(2));
-                hub.send(Event::Device(DeviceEvent::NetUp)).ok();
+                hub.send((Event::Device(DeviceEvent::NetUp)).into()).ok();
             });
         }
         crate::settings::WifiMode::Off | crate::settings::WifiMode::Auto => {
@@ -600,10 +627,15 @@ impl DeviceLifecycle for EmulatorDevice {
         if let Some(alarm_manager) = context.alarm_manager.clone() {
             reschedule_auto_suspend_alarm(context);
             let hub = hub.clone();
+            let soft_suspend = context.soft_suspend_session.clone();
             crate::device::rtc::AlarmManager::start_irq_listener(
                 &alarm_manager,
                 move |alarm_type| {
-                    hub.send(Event::RtcAlarmFired(alarm_type)).ok();
+                    hub.send(crate::view::HubMessage::with_soft_suspend(
+                        Event::RtcAlarmFired(alarm_type),
+                        soft_suspend.acquire("rtc"),
+                    ))
+                    .ok();
                 },
             );
         }
@@ -799,7 +831,7 @@ mod lifecycle {
 
     fn with_runtime<R>(
         f: impl FnOnce(
-            &mpsc::Sender<Event>,
+            &crate::view::Hub,
             &mut Bus,
             &mut RenderQueue,
             &mut crate::device::AppContext,

@@ -352,7 +352,7 @@ impl WifiSession {
                 .hub
                 .as_ref()
             {
-                hub.send(Event::Device(DeviceEvent::NetUp)).ok();
+                hub.send((Event::Device(DeviceEvent::NetUp)).into()).ok();
             }
             return Ok(WifiLease { inner: Some(inner) });
         }

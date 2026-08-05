@@ -1,4 +1,3 @@
-use std::sync::mpsc::Sender;
 use std::time::Duration;
 
 use crate::task::{BackgroundTask, ShutdownSignal, TaskId};
@@ -16,9 +15,9 @@ impl BackgroundTask for AutoFrontlightTask {
         TaskId::AutoFrontlight
     }
 
-    fn run(&mut self, hub: &Sender<Event>, shutdown: &ShutdownSignal) {
+    fn run(&mut self, hub: &crate::view::Hub, shutdown: &ShutdownSignal) {
         while !shutdown.should_stop() {
-            if let Err(e) = hub.send(Event::UpdateAutoFrontlight) {
+            if let Err(e) = hub.send((Event::UpdateAutoFrontlight).into()) {
                 tracing::error!(error = %e, "failed to send auto-frontlight update event");
                 break;
             }
