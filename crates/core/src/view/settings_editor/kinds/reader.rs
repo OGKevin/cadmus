@@ -1,6 +1,7 @@
 //! Setting kinds for the Reader category.
 
 use super::{SettingData, SettingIdentity, SettingKind, SettingsFetchData, WidgetKind};
+use crate::device::AppContext;
 use crate::fl;
 use crate::geom::Rectangle;
 use crate::i18n::I18nDisplay;
@@ -44,16 +45,16 @@ impl SettingKind for DitheredKindsSetting {
     fn handle(
         &self,
         evt: &Event,
-        settings: &mut Settings,
+        context: &mut AppContext,
         _bus: &mut Bus,
     ) -> (Option<String>, bool) {
         if let Event::Select(EntryId::ToggleDitheredKind(kind)) = evt {
-            if !settings.reader.dithered_kinds.remove(kind) {
-                settings.reader.dithered_kinds.insert(*kind);
+            if !context.settings.reader.dithered_kinds.remove(kind) {
+                context.settings.reader.dithered_kinds.insert(*kind);
             }
 
             return (
-                Some(kinds_summary(settings.reader.dithered_kinds.len())),
+                Some(kinds_summary(context.settings.reader.dithered_kinds.len())),
                 true,
             );
         }
@@ -109,11 +110,11 @@ impl SettingKind for FinishedActionSetting {
     fn handle(
         &self,
         evt: &Event,
-        settings: &mut Settings,
+        context: &mut AppContext,
         _bus: &mut Bus,
     ) -> (Option<String>, bool) {
         if let Event::Select(EntryId::SetFinishedAction(action)) = evt {
-            settings.reader.finished = *action;
+            context.settings.reader.finished = *action;
             return (Some(action.to_i18n_string()), true);
         }
         (None, false)
@@ -150,10 +151,10 @@ impl SettingKind for RefreshRateInfo {
     fn handle(
         &self,
         evt: &Event,
-        settings: &mut Settings,
+        context: &mut AppContext,
         _bus: &mut Bus,
     ) -> (Option<String>, bool) {
-        let global = &settings.reader.refresh_rate.global;
+        let global = &context.settings.reader.refresh_rate.global;
         match evt {
             Event::Submit(ViewId::RefreshRateRegularInput, text) => {
                 let regular = text.parse::<u8>().unwrap_or(global.regular);
@@ -254,13 +255,13 @@ impl SettingKind for RefreshRateRegularSetting {
     fn handle(
         &self,
         evt: &Event,
-        settings: &mut Settings,
+        context: &mut AppContext,
         _bus: &mut Bus,
     ) -> (Option<String>, bool) {
         if let Event::Submit(crate::view::ViewId::RefreshRateRegularInput, text) = evt
             && let Ok(v) = text.parse::<u8>()
         {
-            settings.reader.refresh_rate.global.regular = v;
+            context.settings.reader.refresh_rate.global.regular = v;
             return (Some(v.to_string()), true);
         }
 
@@ -309,13 +310,13 @@ impl SettingKind for RefreshRateInvertedSetting {
     fn handle(
         &self,
         evt: &Event,
-        settings: &mut Settings,
+        context: &mut AppContext,
         _bus: &mut Bus,
     ) -> (Option<String>, bool) {
         if let Event::Submit(crate::view::ViewId::RefreshRateInvertedInput, text) = evt
             && let Ok(v) = text.parse::<u8>()
         {
-            settings.reader.refresh_rate.global.inverted = v;
+            context.settings.reader.refresh_rate.global.inverted = v;
             return (Some(v.to_string()), true);
         }
 
@@ -362,13 +363,14 @@ impl SettingKind for RefreshRateByKindRegular {
     fn handle(
         &self,
         evt: &Event,
-        settings: &mut Settings,
+        context: &mut AppContext,
         _bus: &mut Bus,
     ) -> (Option<String>, bool) {
         if let Event::Submit(crate::view::ViewId::RefreshRateByKindRegularInput, text) = evt
             && let Ok(v) = text.parse::<u8>()
         {
-            let pair = settings
+            let pair = context
+                .settings
                 .reader
                 .refresh_rate
                 .by_kind
@@ -424,13 +426,14 @@ impl SettingKind for RefreshRateByKindInverted {
     fn handle(
         &self,
         evt: &Event,
-        settings: &mut Settings,
+        context: &mut AppContext,
         _bus: &mut Bus,
     ) -> (Option<String>, bool) {
         if let Event::Submit(crate::view::ViewId::RefreshRateByKindInvertedInput, text) = evt
             && let Ok(v) = text.parse::<u8>()
         {
-            let pair = settings
+            let pair = context
+                .settings
                 .reader
                 .refresh_rate
                 .by_kind
@@ -450,6 +453,7 @@ impl SettingKind for RefreshRateByKindInverted {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::context::test_helpers::create_test_context;
     use crate::settings::{FileExtension, FinishedAction, Settings};
     use crate::view::{Bus, EntryId, Event};
     use std::collections::VecDeque;
@@ -460,21 +464,23 @@ mod tests {
         #[test]
         fn handle_set_action_updates_settings() {
             let setting = FinishedActionSetting;
-            let mut settings = Settings::default();
-            settings.reader.finished = FinishedAction::Close;
+            let mut context = create_test_context();
+            context.settings = Settings::default();
+            context.settings.reader.finished = FinishedAction::Close;
             let mut bus: Bus = VecDeque::new();
             let event = Event::Select(EntryId::SetFinishedAction(FinishedAction::GoToNext));
 
-            let result = setting.handle(&event, &mut settings, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus);
 
             assert!(result.0.is_some());
-            assert_eq!(settings.reader.finished, FinishedAction::GoToNext);
+            assert_eq!(context.settings.reader.finished, FinishedAction::GoToNext);
         }
 
         #[test]
         fn handle_can_set_all_actions() {
             let setting = FinishedActionSetting;
-            let mut settings = Settings::default();
+            let mut context = create_test_context();
+            context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
 
             for action in [
@@ -483,8 +489,8 @@ mod tests {
                 FinishedAction::GoToNext,
             ] {
                 let event = Event::Select(EntryId::SetFinishedAction(action));
-                setting.handle(&event, &mut settings, &mut bus);
-                assert_eq!(settings.reader.finished, action);
+                setting.handle(&event, &mut context, &mut bus);
+                assert_eq!(context.settings.reader.finished, action);
             }
         }
 
@@ -521,41 +527,59 @@ mod tests {
             #[test]
             fn handle_toggle_adds_and_removes_extensions() {
                 let setting = DitheredKindsSetting;
-                let mut settings = Settings::default();
-                settings.reader.dithered_kinds.remove(&FileExtension::Pdf);
+                let mut context = create_test_context();
+                context.settings = Settings::default();
+                context
+                    .settings
+                    .reader
+                    .dithered_kinds
+                    .remove(&FileExtension::Pdf);
                 let mut bus: Bus = VecDeque::new();
 
                 let add = setting.handle(
                     &Event::Select(EntryId::ToggleDitheredKind(FileExtension::Pdf)),
-                    &mut settings,
+                    &mut context,
                     &mut bus,
                 );
                 assert_eq!(
                     add.0,
-                    Some(kinds_summary(settings.reader.dithered_kinds.len()))
+                    Some(kinds_summary(context.settings.reader.dithered_kinds.len()))
                 );
-                assert!(settings.reader.dithered_kinds.contains(&FileExtension::Pdf));
+                assert!(
+                    context
+                        .settings
+                        .reader
+                        .dithered_kinds
+                        .contains(&FileExtension::Pdf)
+                );
 
                 let remove = setting.handle(
                     &Event::Select(EntryId::ToggleDitheredKind(FileExtension::Pdf)),
-                    &mut settings,
+                    &mut context,
                     &mut bus,
                 );
                 assert_eq!(
                     remove.0,
-                    Some(kinds_summary(settings.reader.dithered_kinds.len()))
+                    Some(kinds_summary(context.settings.reader.dithered_kinds.len()))
                 );
-                assert!(!settings.reader.dithered_kinds.contains(&FileExtension::Pdf));
+                assert!(
+                    !context
+                        .settings
+                        .reader
+                        .dithered_kinds
+                        .contains(&FileExtension::Pdf)
+                );
             }
         }
 
         #[test]
         fn handle_returns_none_for_wrong_event() {
             let setting = FinishedActionSetting;
-            let mut settings = Settings::default();
+            let mut context = create_test_context();
+            context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
 
-            let result = setting.handle(&Event::Select(EntryId::About), &mut settings, &mut bus);
+            let result = setting.handle(&Event::Select(EntryId::About), &mut context, &mut bus);
 
             assert!(result.0.is_none());
         }
@@ -563,11 +587,12 @@ mod tests {
         #[test]
         fn handle_returns_none_for_per_library_entry_id() {
             let setting = FinishedActionSetting;
-            let mut settings = Settings::default();
+            let mut context = create_test_context();
+            context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
             let event = Event::Select(EntryId::SetLibraryFinishedAction(0, FinishedAction::Notify));
 
-            let result = setting.handle(&event, &mut settings, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus);
 
             assert!(result.0.is_none());
         }
@@ -579,13 +604,14 @@ mod tests {
         #[test]
         fn handle_regular_submit_updates_display_without_writing_settings() {
             let setting = RefreshRateInfo;
-            let mut settings = Settings::default();
-            settings.reader.refresh_rate.global.regular = 5;
-            settings.reader.refresh_rate.global.inverted = 10;
+            let mut context = create_test_context();
+            context.settings = Settings::default();
+            context.settings.reader.refresh_rate.global.regular = 5;
+            context.settings.reader.refresh_rate.global.inverted = 10;
             let mut bus: Bus = VecDeque::new();
 
             let event = Event::Submit(ViewId::RefreshRateRegularInput, "3".to_string());
-            let (display, handled) = setting.handle(&event, &mut settings, &mut bus);
+            let (display, handled) = setting.handle(&event, &mut context, &mut bus);
 
             assert_eq!(
                 display.as_deref(),
@@ -599,19 +625,20 @@ mod tests {
                 )
             );
             assert!(!handled);
-            assert_eq!(settings.reader.refresh_rate.global.regular, 5);
+            assert_eq!(context.settings.reader.refresh_rate.global.regular, 5);
         }
 
         #[test]
         fn handle_inverted_submit_updates_display_without_writing_settings() {
             let setting = RefreshRateInfo;
-            let mut settings = Settings::default();
-            settings.reader.refresh_rate.global.regular = 5;
-            settings.reader.refresh_rate.global.inverted = 10;
+            let mut context = create_test_context();
+            context.settings = Settings::default();
+            context.settings.reader.refresh_rate.global.regular = 5;
+            context.settings.reader.refresh_rate.global.inverted = 10;
             let mut bus: Bus = VecDeque::new();
 
             let event = Event::Submit(ViewId::RefreshRateInvertedInput, "7".to_string());
-            let (display, handled) = setting.handle(&event, &mut settings, &mut bus);
+            let (display, handled) = setting.handle(&event, &mut context, &mut bus);
 
             assert_eq!(
                 display.as_deref(),
@@ -625,19 +652,20 @@ mod tests {
                 )
             );
             assert!(!handled);
-            assert_eq!(settings.reader.refresh_rate.global.inverted, 10);
+            assert_eq!(context.settings.reader.refresh_rate.global.inverted, 10);
         }
 
         #[test]
         fn handle_invalid_text_falls_back_to_current_value() {
             let setting = RefreshRateInfo;
-            let mut settings = Settings::default();
-            settings.reader.refresh_rate.global.regular = 5;
-            settings.reader.refresh_rate.global.inverted = 10;
+            let mut context = create_test_context();
+            context.settings = Settings::default();
+            context.settings.reader.refresh_rate.global.regular = 5;
+            context.settings.reader.refresh_rate.global.inverted = 10;
             let mut bus: Bus = VecDeque::new();
 
             let event = Event::Submit(ViewId::RefreshRateRegularInput, "bad".to_string());
-            let (display, _) = setting.handle(&event, &mut settings, &mut bus);
+            let (display, _) = setting.handle(&event, &mut context, &mut bus);
 
             assert_eq!(
                 display.as_deref(),
@@ -655,11 +683,12 @@ mod tests {
         #[test]
         fn handle_unrelated_event_returns_none() {
             let setting = RefreshRateInfo;
-            let mut settings = Settings::default();
+            let mut context = create_test_context();
+            context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
 
             let (display, handled) =
-                setting.handle(&Event::Select(EntryId::About), &mut settings, &mut bus);
+                setting.handle(&Event::Select(EntryId::About), &mut context, &mut bus);
 
             assert!(display.is_none());
             assert!(!handled);

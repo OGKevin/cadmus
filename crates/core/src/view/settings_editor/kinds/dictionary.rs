@@ -1,6 +1,7 @@
 //! Setting kinds for the Dictionaries category.
 
 use super::{SettingData, SettingIdentity, SettingKind, SettingsFetchData, WidgetKind};
+use crate::device::AppContext;
 use crate::fl;
 use crate::settings::Settings;
 use crate::view::{EntryId, EntryKind, Event};
@@ -36,7 +37,7 @@ impl SettingKind for DictionaryInfo {
     fn handle(
         &self,
         evt: &Event,
-        _settings: &mut Settings,
+        _context: &mut AppContext,
         _bus: &mut crate::view::Bus,
     ) -> (Option<String>, bool) {
         match evt {
@@ -102,6 +103,7 @@ impl SettingKind for DictionaryInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::context::test_helpers::create_test_context;
     use crate::settings::Settings;
     use crate::view::Bus;
     use std::collections::VecDeque;
@@ -233,11 +235,12 @@ mod tests {
                 update_available: false,
                 is_installing: false,
             };
-            let mut settings = make_settings();
+            let mut context = create_test_context();
+            context.settings = make_settings();
             let mut bus: Bus = VecDeque::new();
             let event = Event::Select(EntryId::DownloadDictionary("en".to_string()));
 
-            let (display, consumed) = info.handle(&event, &mut settings, &mut bus);
+            let (display, consumed) = info.handle(&event, &mut context, &mut bus);
 
             assert!(display.is_some());
             assert!(!consumed);
@@ -251,11 +254,12 @@ mod tests {
                 update_available: false,
                 is_installing: false,
             };
-            let mut settings = make_settings();
+            let mut context = create_test_context();
+            context.settings = make_settings();
             let mut bus: Bus = VecDeque::new();
             let event = Event::Select(EntryId::RequestDictionaryDownload("en".to_string()));
 
-            let (display, consumed) = info.handle(&event, &mut settings, &mut bus);
+            let (display, consumed) = info.handle(&event, &mut context, &mut bus);
 
             assert!(display.is_none());
             assert!(!consumed);
@@ -269,11 +273,12 @@ mod tests {
                 update_available: false,
                 is_installing: false,
             };
-            let mut settings = make_settings();
+            let mut context = create_test_context();
+            context.settings = make_settings();
             let mut bus: Bus = VecDeque::new();
             let event = Event::Select(EntryId::DownloadDictionary("fr".to_string()));
 
-            let (display, _) = info.handle(&event, &mut settings, &mut bus);
+            let (display, _) = info.handle(&event, &mut context, &mut bus);
 
             assert!(display.is_none());
         }
@@ -286,10 +291,11 @@ mod tests {
                 update_available: false,
                 is_installing: false,
             };
-            let mut settings = make_settings();
+            let mut context = create_test_context();
+            context.settings = make_settings();
             let mut bus: Bus = VecDeque::new();
 
-            let (display, _) = info.handle(&Event::Select(EntryId::About), &mut settings, &mut bus);
+            let (display, _) = info.handle(&Event::Select(EntryId::About), &mut context, &mut bus);
 
             assert!(display.is_none());
         }

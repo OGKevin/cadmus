@@ -1,6 +1,7 @@
 //! Setting kinds for the Intermissions category.
 
 use super::{SettingData, SettingIdentity, SettingKind, SettingsFetchData, WidgetKind};
+use crate::device::AppContext;
 use crate::fl;
 use crate::i18n::I18nDisplay;
 use crate::settings::{IntermKind, IntermissionDisplay, Settings};
@@ -104,11 +105,12 @@ impl SettingKind for IntermissionSuspend {
     fn handle(
         &self,
         evt: &Event,
-        settings: &mut Settings,
+        context: &mut AppContext,
         _bus: &mut Bus,
     ) -> (Option<String>, bool) {
         if let Event::Select(EntryId::SetIntermission(IntermKind::Suspend, display)) = evt {
-            if !settings
+            if !context
+                .settings
                 .intermissions
                 .set_display(IntermKind::Suspend, display.clone())
             {
@@ -120,7 +122,7 @@ impl SettingKind for IntermissionSuspend {
 
         if let Event::FileChooserClosed(Some(path)) = evt {
             let display = IntermissionDisplay::Image(path.clone());
-            settings.intermissions[IntermKind::Suspend] = display.clone();
+            context.settings.intermissions[IntermKind::Suspend] = display.clone();
             return (Some(intermission_display_name(&display)), true);
         }
 
@@ -151,11 +153,12 @@ impl SettingKind for IntermissionPowerOff {
     fn handle(
         &self,
         evt: &Event,
-        settings: &mut Settings,
+        context: &mut AppContext,
         _bus: &mut Bus,
     ) -> (Option<String>, bool) {
         if let Event::Select(EntryId::SetIntermission(IntermKind::PowerOff, display)) = evt {
-            if !settings
+            if !context
+                .settings
                 .intermissions
                 .set_display(IntermKind::PowerOff, display.clone())
             {
@@ -167,7 +170,7 @@ impl SettingKind for IntermissionPowerOff {
 
         if let Event::FileChooserClosed(Some(path)) = evt {
             let display = IntermissionDisplay::Image(path.clone());
-            settings.intermissions[IntermKind::PowerOff] = display.clone();
+            context.settings.intermissions[IntermKind::PowerOff] = display.clone();
             return (Some(intermission_display_name(&display)), true);
         }
 
@@ -198,11 +201,12 @@ impl SettingKind for IntermissionShare {
     fn handle(
         &self,
         evt: &Event,
-        settings: &mut Settings,
+        context: &mut AppContext,
         _bus: &mut Bus,
     ) -> (Option<String>, bool) {
         if let Event::Select(EntryId::SetIntermission(IntermKind::Share, display)) = evt {
-            if !settings
+            if !context
+                .settings
                 .intermissions
                 .set_display(IntermKind::Share, display.clone())
             {
@@ -214,7 +218,7 @@ impl SettingKind for IntermissionShare {
 
         if let Event::FileChooserClosed(Some(path)) = evt {
             let display = IntermissionDisplay::Image(path.clone());
-            settings.intermissions[IntermKind::Share] = display.clone();
+            context.settings.intermissions[IntermKind::Share] = display.clone();
             return (Some(intermission_display_name(&display)), true);
         }
 
@@ -229,6 +233,7 @@ impl SettingKind for IntermissionShare {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::context::test_helpers::create_test_context;
     use crate::settings::{IntermissionDisplay, Settings};
     use crate::view::{Bus, EntryId, Event};
     use std::collections::VecDeque;
@@ -241,18 +246,19 @@ mod tests {
         #[test]
         fn handle_set_intermission_updates_settings() {
             let setting = IntermissionSuspend;
-            let mut settings = Settings::default();
+            let mut context = create_test_context();
+            context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
             let event = Event::Select(EntryId::SetIntermission(
                 IntermKind::Suspend,
                 IntermissionDisplay::Cover,
             ));
 
-            let result = setting.handle(&event, &mut settings, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus);
 
             assert!(result.0.is_some());
             assert_eq!(
-                settings.intermissions[IntermKind::Suspend],
+                context.settings.intermissions[IntermKind::Suspend],
                 IntermissionDisplay::Cover
             );
         }
@@ -260,16 +266,17 @@ mod tests {
         #[test]
         fn handle_file_chooser_closed_updates_settings() {
             let setting = IntermissionSuspend;
-            let mut settings = Settings::default();
+            let mut context = create_test_context();
+            context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
             let path = PathBuf::from("/selected/image.jpg");
             let event = Event::FileChooserClosed(Some(path));
 
-            let result = setting.handle(&event, &mut settings, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus);
 
             assert!(result.0.is_some());
             assert_eq!(
-                settings.intermissions[IntermKind::Suspend],
+                context.settings.intermissions[IntermKind::Suspend],
                 IntermissionDisplay::Image(PathBuf::from("/selected/image.jpg"))
             );
         }
@@ -277,14 +284,15 @@ mod tests {
         #[test]
         fn handle_returns_none_for_wrong_kind() {
             let setting = IntermissionSuspend;
-            let mut settings = Settings::default();
+            let mut context = create_test_context();
+            context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
             let event = Event::Select(EntryId::SetIntermission(
                 IntermKind::PowerOff,
                 IntermissionDisplay::Cover,
             ));
 
-            let result = setting.handle(&event, &mut settings, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus);
 
             assert!(result.0.is_none());
         }
@@ -292,10 +300,11 @@ mod tests {
         #[test]
         fn handle_returns_none_for_cancelled_file_chooser() {
             let setting = IntermissionSuspend;
-            let mut settings = Settings::default();
+            let mut context = create_test_context();
+            context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
 
-            let result = setting.handle(&Event::FileChooserClosed(None), &mut settings, &mut bus);
+            let result = setting.handle(&Event::FileChooserClosed(None), &mut context, &mut bus);
 
             assert!(result.0.is_none());
         }
@@ -375,18 +384,19 @@ mod tests {
         #[test]
         fn handle_set_intermission_updates_settings() {
             let setting = IntermissionPowerOff;
-            let mut settings = Settings::default();
+            let mut context = create_test_context();
+            context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
             let event = Event::Select(EntryId::SetIntermission(
                 IntermKind::PowerOff,
                 IntermissionDisplay::Cover,
             ));
 
-            let result = setting.handle(&event, &mut settings, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus);
 
             assert!(result.0.is_some());
             assert_eq!(
-                settings.intermissions[IntermKind::PowerOff],
+                context.settings.intermissions[IntermKind::PowerOff],
                 IntermissionDisplay::Cover
             );
         }
@@ -394,16 +404,17 @@ mod tests {
         #[test]
         fn handle_file_chooser_closed_updates_settings() {
             let setting = IntermissionPowerOff;
-            let mut settings = Settings::default();
+            let mut context = create_test_context();
+            context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
             let path = PathBuf::from("/selected/poweroff.png");
             let event = Event::FileChooserClosed(Some(path));
 
-            let result = setting.handle(&event, &mut settings, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus);
 
             assert!(result.0.is_some());
             assert_eq!(
-                settings.intermissions[IntermKind::PowerOff],
+                context.settings.intermissions[IntermKind::PowerOff],
                 IntermissionDisplay::Image(PathBuf::from("/selected/poweroff.png"))
             );
         }
@@ -411,14 +422,15 @@ mod tests {
         #[test]
         fn handle_returns_none_for_wrong_kind() {
             let setting = IntermissionPowerOff;
-            let mut settings = Settings::default();
+            let mut context = create_test_context();
+            context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
             let event = Event::Select(EntryId::SetIntermission(
                 IntermKind::Suspend,
                 IntermissionDisplay::Logo,
             ));
 
-            let result = setting.handle(&event, &mut settings, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus);
 
             assert!(result.0.is_none());
         }
@@ -426,10 +438,11 @@ mod tests {
         #[test]
         fn handle_returns_none_for_cancelled_file_chooser() {
             let setting = IntermissionPowerOff;
-            let mut settings = Settings::default();
+            let mut context = create_test_context();
+            context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
 
-            let result = setting.handle(&Event::FileChooserClosed(None), &mut settings, &mut bus);
+            let result = setting.handle(&Event::FileChooserClosed(None), &mut context, &mut bus);
 
             assert!(result.0.is_none());
         }
@@ -437,18 +450,19 @@ mod tests {
         #[test]
         fn handle_rejects_calendar_selection() {
             let setting = IntermissionPowerOff;
-            let mut settings = Settings::default();
+            let mut context = create_test_context();
+            context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
             let event = Event::Select(EntryId::SetIntermission(
                 IntermKind::PowerOff,
                 IntermissionDisplay::Calendar,
             ));
 
-            let result = setting.handle(&event, &mut settings, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus);
 
             assert_eq!(result, (None, true));
             assert_eq!(
-                settings.intermissions[IntermKind::PowerOff],
+                context.settings.intermissions[IntermKind::PowerOff],
                 IntermissionDisplay::Logo
             );
         }
@@ -456,18 +470,19 @@ mod tests {
         #[test]
         fn handle_accepts_blank_selection() {
             let setting = IntermissionPowerOff;
-            let mut settings = Settings::default();
+            let mut context = create_test_context();
+            context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
             let event = Event::Select(EntryId::SetIntermission(
                 IntermKind::PowerOff,
                 IntermissionDisplay::Blank,
             ));
 
-            let result = setting.handle(&event, &mut settings, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus);
 
             assert_eq!(result, (Some(fl!("settings-intermission-blank")), true));
             assert_eq!(
-                settings.intermissions[IntermKind::PowerOff],
+                context.settings.intermissions[IntermKind::PowerOff],
                 IntermissionDisplay::Blank
             );
         }
@@ -508,18 +523,19 @@ mod tests {
         #[test]
         fn handle_set_intermission_updates_settings() {
             let setting = IntermissionShare;
-            let mut settings = Settings::default();
+            let mut context = create_test_context();
+            context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
             let event = Event::Select(EntryId::SetIntermission(
                 IntermKind::Share,
                 IntermissionDisplay::Cover,
             ));
 
-            let result = setting.handle(&event, &mut settings, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus);
 
             assert!(result.0.is_some());
             assert_eq!(
-                settings.intermissions[IntermKind::Share],
+                context.settings.intermissions[IntermKind::Share],
                 IntermissionDisplay::Cover
             );
         }
@@ -527,16 +543,17 @@ mod tests {
         #[test]
         fn handle_file_chooser_closed_updates_settings() {
             let setting = IntermissionShare;
-            let mut settings = Settings::default();
+            let mut context = create_test_context();
+            context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
             let path = PathBuf::from("/selected/share.jpg");
             let event = Event::FileChooserClosed(Some(path));
 
-            let result = setting.handle(&event, &mut settings, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus);
 
             assert!(result.0.is_some());
             assert_eq!(
-                settings.intermissions[IntermKind::Share],
+                context.settings.intermissions[IntermKind::Share],
                 IntermissionDisplay::Image(PathBuf::from("/selected/share.jpg"))
             );
         }
@@ -544,14 +561,15 @@ mod tests {
         #[test]
         fn handle_returns_none_for_wrong_kind() {
             let setting = IntermissionShare;
-            let mut settings = Settings::default();
+            let mut context = create_test_context();
+            context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
             let event = Event::Select(EntryId::SetIntermission(
                 IntermKind::PowerOff,
                 IntermissionDisplay::Cover,
             ));
 
-            let result = setting.handle(&event, &mut settings, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus);
 
             assert!(result.0.is_none());
         }
@@ -559,10 +577,11 @@ mod tests {
         #[test]
         fn handle_returns_none_for_cancelled_file_chooser() {
             let setting = IntermissionShare;
-            let mut settings = Settings::default();
+            let mut context = create_test_context();
+            context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
 
-            let result = setting.handle(&Event::FileChooserClosed(None), &mut settings, &mut bus);
+            let result = setting.handle(&Event::FileChooserClosed(None), &mut context, &mut bus);
 
             assert!(result.0.is_none());
         }
@@ -570,18 +589,19 @@ mod tests {
         #[test]
         fn handle_rejects_calendar_selection() {
             let setting = IntermissionShare;
-            let mut settings = Settings::default();
+            let mut context = create_test_context();
+            context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
             let event = Event::Select(EntryId::SetIntermission(
                 IntermKind::Share,
                 IntermissionDisplay::Calendar,
             ));
 
-            let result = setting.handle(&event, &mut settings, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus);
 
             assert_eq!(result, (None, true));
             assert_eq!(
-                settings.intermissions[IntermKind::Share],
+                context.settings.intermissions[IntermKind::Share],
                 IntermissionDisplay::Logo
             );
         }
@@ -589,21 +609,22 @@ mod tests {
         #[test]
         fn handle_accepts_blank_inverted_selection() {
             let setting = IntermissionShare;
-            let mut settings = Settings::default();
+            let mut context = create_test_context();
+            context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
             let event = Event::Select(EntryId::SetIntermission(
                 IntermKind::Share,
                 IntermissionDisplay::BlankInverted,
             ));
 
-            let result = setting.handle(&event, &mut settings, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus);
 
             assert_eq!(
                 result,
                 (Some(fl!("settings-intermission-blank-inverted")), true)
             );
             assert_eq!(
-                settings.intermissions[IntermKind::Share],
+                context.settings.intermissions[IntermKind::Share],
                 IntermissionDisplay::BlankInverted
             );
         }
