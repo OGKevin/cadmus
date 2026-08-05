@@ -5,13 +5,13 @@ Applies only to Cursor Cloud agents. Coding conventions and testing policy:
 
 ## Layout
 
-| File | Role |
-| ---- | ---- |
-| [.cursor/Dockerfile](Dockerfile) | Baked Ubuntu image: apt (incl. clang/gettext), rustup, Linaro, mdbook/mdbook-epub/mdbook-mermaid, cargo-nextest, Node. `ENV` pins match CI (`MDBOOK_*`, `NEXTEST_VERSION`, `NODE_VERSION`). No project `COPY`. |
-| [.cursor/cloud-install.sh](cloud-install.sh) | Idempotent install on each agent boot: submodules, `cargo xtask ci install-doc-tools`, `cargo xtask setup --host`, `npm ci`, EPUB if missing, `cargo fetch`, `~/.bashrc` exports. |
-| [.cursor/environment.json](environment.json) | Wires Dockerfile build (`context: ..`) and `install`; `agentCanUpdateSnapshot` lets setup agents promote snapshots. |
-| [.cursor/verify-cloud-install.sh](verify-cloud-install.sh) | Post-install assertions (used by CI). |
-| [.github/workflows/cursor-cloud.yml](../.github/workflows/cursor-cloud.yml) | Path-filtered CI: `check-jsonschema`, `docker build`, `container-structure-test`, `cloud-install` + verify. |
+| File                                                                        | Role                                                                                                                                                                                                           |
+| --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [.cursor/Dockerfile](Dockerfile)                                            | Baked Ubuntu image: apt (incl. clang/gettext), rustup, Linaro, mdbook/mdbook-epub/mdbook-mermaid, cargo-nextest, Node. `ENV` pins match CI (`MDBOOK_*`, `NEXTEST_VERSION`, `NODE_VERSION`). No project `COPY`. |
+| [.cursor/cloud-install.sh](cloud-install.sh)                                | Idempotent install on each agent boot: submodules, `cargo xtask ci install-doc-tools`, `cargo xtask setup --host`, `npm ci`, EPUB if missing, `cargo fetch`, `~/.bashrc` exports.                              |
+| [.cursor/environment.json](environment.json)                                | Wires Dockerfile build (`context: ..`) and `install`; `agentCanUpdateSnapshot` lets setup agents promote snapshots.                                                                                            |
+| [.cursor/verify-cloud-install.sh](verify-cloud-install.sh)                  | Post-install assertions (used by CI).                                                                                                                                                                          |
+| [.github/workflows/cursor-cloud.yml](../.github/workflows/cursor-cloud.yml) | Path-filtered CI: `check-jsonschema`, `docker build`, `container-structure-test`, `cloud-install` + verify.                                                                                                    |
 
 ## Boot sequence
 
@@ -34,12 +34,12 @@ Exported in `~/.bashrc` (managed by cloud-install) — re-source in non-login sh
 
 ## Renovate pins
 
-| Tool | Where pinned | Renovate |
-| ---- | ------------ | -------- |
-| mdbook / mdbook-epub / mdbook-mermaid | `.cursor/Dockerfile`, CI action, `cloud-install.sh` fallbacks | `custom.regex` + `mdbook` group |
-| mdbook-i18n-helpers | `thirdparty/mdbook-i18n-helpers` git submodule (+ `devenv.nix` rev) | `git-submodules` + `mdbook-i18n-helpers` group; [cloud-install.sh](cloud-install.sh) and CI read `git rev-parse HEAD:thirdparty/mdbook-i18n-helpers` after submodules init |
-| nextest / Node | Dockerfile + `cargo.yml` | `custom.regex` groups |
-| container-structure-test | `cursor-cloud.yml` | `custom.regex` |
+| Tool                                  | Where pinned                                                        | Renovate                                                                                                                                                                   |
+| ------------------------------------- | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| mdbook / mdbook-epub / mdbook-mermaid | `.cursor/Dockerfile`, CI action, `cloud-install.sh` fallbacks       | `custom.regex` + `mdbook` group                                                                                                                                            |
+| mdbook-i18n-helpers                   | `thirdparty/mdbook-i18n-helpers` git submodule (+ `devenv.nix` rev) | `git-submodules` + `mdbook-i18n-helpers` group; [cloud-install.sh](cloud-install.sh) and CI read `git rev-parse HEAD:thirdparty/mdbook-i18n-helpers` after submodules init |
+| nextest / Node                        | Dockerfile + `cargo.yml`                                            | `custom.regex` groups                                                                                                                                                      |
+| container-structure-test              | `cursor-cloud.yml`                                                  | `custom.regex`                                                                                                                                                             |
 
 Do not Renovate-track: apt lists, floating rustup stable, Linaro 4.9.4 tarball URL.
 

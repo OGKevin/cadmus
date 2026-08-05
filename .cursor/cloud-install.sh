@@ -29,7 +29,7 @@ if [[ -f package-lock.json ]]; then
 fi
 
 EPUB_PATH="${ROOT}/docs/book/epub/Cadmus Documentation.epub"
-if [[ ! -f "$EPUB_PATH" ]]; then
+if [[ ! -f $EPUB_PATH ]]; then
   cargo xtask docs --mdbook-only
 fi
 
