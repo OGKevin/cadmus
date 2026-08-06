@@ -43,12 +43,16 @@ jobs:
         run: shellcheck --version
 
       - name: Collect shellcheck diagnostics
+        id: collect
         run: |
           set -euo pipefail
           mkdir -p shellcheck-reviewdog-input
           mapfile -t files < <(find . -type f -name '*.sh' -not -path './.git/*')
           if [ "${#files[@]}" -eq 0 ]; then
             echo "No shell scripts found"
+            : > shellcheck-reviewdog-input/diagnostics.txt
+            : > shellcheck-reviewdog-input/suggestions.diff
+            echo "upload=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -63,15 +67,21 @@ jobs:
           set -e
 
           if [ "$json_exit" -ne 0 ] || [ "$diff_exit" -ne 0 ]; then
+            if [ -s shellcheck-reviewdog-input/diagnostics.txt ] || \
+              [ -s shellcheck-reviewdog-input/suggestions.diff ]; then
+              echo "upload=true" >> "$GITHUB_OUTPUT"
+            fi
             exit 1
           fi
+          echo "upload=true" >> "$GITHUB_OUTPUT"
 
       - name: Upload reviewdog input artifact
-        if: failure() && hashFiles('shellcheck-reviewdog-input/**') != ''
+        if: ${{ !cancelled() && steps.collect.outputs.upload == 'true' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: shellcheck-reviewdog-input
           path: shellcheck-reviewdog-input/
+          if-no-files-found: error
           retention-days: 1
 
   shfmt:
@@ -96,6 +106,7 @@ jobs:
           chmod: "0755"
 
       - name: Collect shfmt diagnostics
+        id: collect
         run: |
           set -euo pipefail
           mkdir -p shfmt-reviewdog-input
@@ -103,16 +114,20 @@ jobs:
           shfmt -i 2 -ci -w .
           if ! git diff --quiet; then
             git diff > shfmt-reviewdog-input/diagnostics.diff
+            echo "upload=true" >> "$GITHUB_OUTPUT"
             echo "::error::shfmt found formatting issues"
             exit 1
           fi
+          : > shfmt-reviewdog-input/diagnostics.diff
+          echo "upload=true" >> "$GITHUB_OUTPUT"
 
       - name: Upload reviewdog input artifact
-        if: failure() && hashFiles('shfmt-reviewdog-input/diagnostics.diff') != ''
+        if: ${{ !cancelled() && steps.collect.outputs.upload == 'true' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: shfmt-reviewdog-input
           path: shfmt-reviewdog-input/
+          if-no-files-found: error
           retention-days: 1
 
   required-shell:
