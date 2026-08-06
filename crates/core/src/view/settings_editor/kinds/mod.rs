@@ -20,6 +20,7 @@ pub mod telemetry;
 
 pub use identity::SettingIdentity;
 
+use crate::device::AppContext;
 use crate::geom::Rectangle;
 use crate::settings::Settings;
 use crate::view::{Bus, EntryId, EntryKind, Event, ViewId};
@@ -115,7 +116,7 @@ pub trait SettingKind {
 
     /// Handle an incoming event that may apply a change to this setting.
     ///
-    /// Mutates `settings` if the event is relevant and returns:
+    /// Mutates `context.settings` (and may use other context state) if the event is relevant and returns:
     /// - `Some(display_string)` as the first element when the event changes this
     ///   setting's display value, or `None` if the event does not apply.
     /// - `true` as the second element when the event has been fully consumed and
@@ -125,7 +126,7 @@ pub trait SettingKind {
     fn handle(
         &self,
         _evt: &Event,
-        _settings: &mut Settings,
+        _context: &mut AppContext,
         _bus: &mut Bus,
     ) -> (Option<String>, bool) {
         (None, false)
@@ -174,10 +175,10 @@ impl<T: SettingKind + ?Sized> SettingKind for &T {
     fn handle(
         &self,
         evt: &Event,
-        settings: &mut Settings,
+        context: &mut AppContext,
         bus: &mut Bus,
     ) -> (Option<String>, bool) {
-        (**self).handle(evt, settings, bus)
+        (**self).handle(evt, context, bus)
     }
 
     fn as_input_kind(&self) -> Option<&dyn InputSettingKind> {
@@ -213,10 +214,10 @@ impl<T: SettingKind + ?Sized> SettingKind for Box<T> {
     fn handle(
         &self,
         evt: &Event,
-        settings: &mut Settings,
+        context: &mut AppContext,
         bus: &mut Bus,
     ) -> (Option<String>, bool) {
-        (**self).handle(evt, settings, bus)
+        (**self).handle(evt, context, bus)
     }
 
     fn as_input_kind(&self) -> Option<&dyn InputSettingKind> {

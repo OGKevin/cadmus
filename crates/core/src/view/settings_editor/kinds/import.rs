@@ -3,6 +3,7 @@
 use super::{
     SettingData, SettingIdentity, SettingKind, SettingsFetchData, ToggleSettings, WidgetKind,
 };
+use crate::device::AppContext;
 use crate::fl;
 use crate::settings::{FileExtension, Settings};
 use crate::view::{Bus, EntryId, EntryKind, Event, ToggleEvent};
@@ -29,7 +30,7 @@ impl SettingKind for ForceFullImport {
     fn handle(
         &self,
         _evt: &Event,
-        _settings: &mut Settings,
+        _context: &mut AppContext,
         _bus: &mut Bus,
     ) -> (Option<String>, bool) {
         (None, false)
@@ -63,12 +64,15 @@ impl SettingKind for ImportSyncMetadata {
     fn handle(
         &self,
         evt: &Event,
-        settings: &mut Settings,
+        context: &mut AppContext,
         _bus: &mut Bus,
     ) -> (Option<String>, bool) {
         if let Event::Toggle(ToggleEvent::Setting(ToggleSettings::ImportSyncMetadata)) = evt {
-            settings.import.sync_metadata = !settings.import.sync_metadata;
-            return (Some(settings.import.sync_metadata.to_string()), true);
+            context.settings.import.sync_metadata = !context.settings.import.sync_metadata;
+            return (
+                Some(context.settings.import.sync_metadata.to_string()),
+                true,
+            );
         }
         (None, false)
     }
@@ -108,16 +112,16 @@ impl SettingKind for AllowedKindsSetting {
     fn handle(
         &self,
         evt: &Event,
-        settings: &mut Settings,
+        context: &mut AppContext,
         _bus: &mut Bus,
     ) -> (Option<String>, bool) {
         if let Event::Select(EntryId::ToggleAllowedKind(kind)) = evt {
-            if !settings.import.allowed_kinds.remove(kind) {
-                settings.import.allowed_kinds.insert(*kind);
+            if !context.settings.import.allowed_kinds.remove(kind) {
+                context.settings.import.allowed_kinds.insert(*kind);
             }
 
             return (
-                Some(kinds_summary(settings.import.allowed_kinds.len())),
+                Some(kinds_summary(context.settings.import.allowed_kinds.len())),
                 true,
             );
         }
@@ -137,6 +141,7 @@ fn kinds_summary(selected: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::context::test_helpers::create_test_context;
     use crate::settings::{FileExtension, Settings};
     use crate::view::{Bus, EntryKind, Event};
     use std::collections::VecDeque;
@@ -168,10 +173,11 @@ mod tests {
         #[test]
         fn handle_ignores_events() {
             let setting = ForceFullImport;
-            let mut settings = Settings::default();
+            let mut context = create_test_context();
+            context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
 
-            let result = setting.handle(&Event::Select(EntryId::About), &mut settings, &mut bus);
+            let result = setting.handle(&Event::Select(EntryId::About), &mut context, &mut bus);
 
             assert!(result.0.is_none());
             assert!(!result.1);
@@ -184,39 +190,42 @@ mod tests {
         #[test]
         fn handle_toggle_disables_when_enabled() {
             let setting = ImportSyncMetadata;
-            let mut settings = Settings::default();
-            settings.import.sync_metadata = true;
+            let mut context = create_test_context();
+            context.settings = Settings::default();
+            context.settings.import.sync_metadata = true;
             let mut bus: Bus = VecDeque::new();
             let event = Event::Toggle(ToggleEvent::Setting(ToggleSettings::ImportSyncMetadata));
 
-            let result = setting.handle(&event, &mut settings, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus);
 
             assert!(result.0.is_some());
-            assert!(!settings.import.sync_metadata);
+            assert!(!context.settings.import.sync_metadata);
         }
 
         #[test]
         fn handle_toggle_enables_when_disabled() {
             let setting = ImportSyncMetadata;
-            let mut settings = Settings::default();
-            settings.import.sync_metadata = false;
+            let mut context = create_test_context();
+            context.settings = Settings::default();
+            context.settings.import.sync_metadata = false;
             let mut bus: Bus = VecDeque::new();
             let event = Event::Toggle(ToggleEvent::Setting(ToggleSettings::ImportSyncMetadata));
 
-            let result = setting.handle(&event, &mut settings, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus);
 
             assert!(result.0.is_some());
-            assert!(settings.import.sync_metadata);
+            assert!(context.settings.import.sync_metadata);
         }
 
         #[test]
         fn handle_returns_none_for_wrong_event() {
             let setting = ImportSyncMetadata;
-            let mut settings = Settings::default();
+            let mut context = create_test_context();
+            context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
             use crate::view::EntryId;
 
-            let result = setting.handle(&Event::Select(EntryId::About), &mut settings, &mut bus);
+            let result = setting.handle(&Event::Select(EntryId::About), &mut context, &mut bus);
 
             assert!(result.0.is_none());
         }
@@ -224,12 +233,13 @@ mod tests {
         #[test]
         fn handle_returns_none_for_wrong_toggle() {
             let setting = ImportSyncMetadata;
-            let mut settings = Settings::default();
+            let mut context = create_test_context();
+            context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
 
             let result = setting.handle(
                 &Event::Toggle(ToggleEvent::Setting(ToggleSettings::SleepCover)),
-                &mut settings,
+                &mut context,
                 &mut bus,
             );
 
@@ -267,31 +277,48 @@ mod tests {
         #[test]
         fn handle_toggle_adds_and_removes_extensions() {
             let setting = AllowedKindsSetting;
-            let mut settings = Settings::default();
-            settings.import.allowed_kinds.remove(&FileExtension::Cbr);
+            let mut context = create_test_context();
+            context.settings = Settings::default();
+            context
+                .settings
+                .import
+                .allowed_kinds
+                .remove(&FileExtension::Cbr);
             let mut bus: Bus = VecDeque::new();
 
             let add = setting.handle(
                 &Event::Select(EntryId::ToggleAllowedKind(FileExtension::Cbr)),
-                &mut settings,
+                &mut context,
                 &mut bus,
             );
             assert_eq!(
                 add.0,
-                Some(kinds_summary(settings.import.allowed_kinds.len()))
+                Some(kinds_summary(context.settings.import.allowed_kinds.len()))
             );
-            assert!(settings.import.allowed_kinds.contains(&FileExtension::Cbr));
+            assert!(
+                context
+                    .settings
+                    .import
+                    .allowed_kinds
+                    .contains(&FileExtension::Cbr)
+            );
 
             let remove = setting.handle(
                 &Event::Select(EntryId::ToggleAllowedKind(FileExtension::Cbr)),
-                &mut settings,
+                &mut context,
                 &mut bus,
             );
             assert_eq!(
                 remove.0,
-                Some(kinds_summary(settings.import.allowed_kinds.len()))
+                Some(kinds_summary(context.settings.import.allowed_kinds.len()))
             );
-            assert!(!settings.import.allowed_kinds.contains(&FileExtension::Cbr));
+            assert!(
+                !context
+                    .settings
+                    .import
+                    .allowed_kinds
+                    .contains(&FileExtension::Cbr)
+            );
         }
     }
 }

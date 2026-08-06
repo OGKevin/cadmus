@@ -3,6 +3,7 @@
 use super::{
     SettingData, SettingIdentity, SettingKind, SettingsFetchData, ToggleSettings, WidgetKind,
 };
+use crate::device::AppContext;
 use crate::fl;
 use crate::settings::Settings;
 use crate::view::{Bus, EntryId, EntryKind, Event, ToggleEvent};
@@ -40,12 +41,12 @@ impl SettingKind for LoggingEnabled {
     fn handle(
         &self,
         evt: &Event,
-        settings: &mut Settings,
+        context: &mut AppContext,
         _bus: &mut Bus,
     ) -> (Option<String>, bool) {
         if let Event::Toggle(ToggleEvent::Setting(ToggleSettings::LoggingEnabled)) = evt {
-            settings.logging.enabled = !settings.logging.enabled;
-            return (Some(settings.logging.enabled.to_string()), true);
+            context.settings.logging.enabled = !context.settings.logging.enabled;
+            return (Some(context.settings.logging.enabled.to_string()), true);
         }
         (None, false)
     }
@@ -116,11 +117,11 @@ impl SettingKind for LogLevel {
     fn handle(
         &self,
         evt: &Event,
-        settings: &mut Settings,
+        context: &mut AppContext,
         _bus: &mut Bus,
     ) -> (Option<String>, bool) {
         if let Event::Select(EntryId::SetLogLevel(level)) = evt {
-            settings.logging.level = level.to_string();
+            context.settings.logging.level = level.to_string();
             return (Some(Self::level_to_i18n(level)), true);
         }
         (None, false)
@@ -300,12 +301,15 @@ impl SettingKind for EnableKernLog {
     fn handle(
         &self,
         evt: &Event,
-        settings: &mut Settings,
+        context: &mut AppContext,
         _bus: &mut Bus,
     ) -> (Option<String>, bool) {
         if let Event::Toggle(ToggleEvent::Setting(ToggleSettings::EnableKernLog)) = evt {
-            settings.logging.enable_kern_log = !settings.logging.enable_kern_log;
-            return (Some(settings.logging.enable_kern_log.to_string()), true);
+            context.settings.logging.enable_kern_log = !context.settings.logging.enable_kern_log;
+            return (
+                Some(context.settings.logging.enable_kern_log.to_string()),
+                true,
+            );
         }
         (None, false)
     }
@@ -340,12 +344,15 @@ impl SettingKind for EnableDbusLog {
     fn handle(
         &self,
         evt: &Event,
-        settings: &mut Settings,
+        context: &mut AppContext,
         _bus: &mut Bus,
     ) -> (Option<String>, bool) {
         if let Event::Toggle(ToggleEvent::Setting(ToggleSettings::EnableDbusLog)) = evt {
-            settings.logging.enable_dbus_log = !settings.logging.enable_dbus_log;
-            return (Some(settings.logging.enable_dbus_log.to_string()), true);
+            context.settings.logging.enable_dbus_log = !context.settings.logging.enable_dbus_log;
+            return (
+                Some(context.settings.logging.enable_dbus_log.to_string()),
+                true,
+            );
         }
         (None, false)
     }
@@ -354,6 +361,7 @@ impl SettingKind for EnableDbusLog {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::context::test_helpers::create_test_context;
     use crate::settings::Settings;
     use crate::view::settings_editor::kinds::ToggleSettings;
     use crate::view::{Bus, EntryId, Event, ToggleEvent};
@@ -365,38 +373,41 @@ mod tests {
         #[test]
         fn handle_toggle_disables_when_enabled() {
             let setting = LoggingEnabled;
-            let mut settings = Settings::default();
-            settings.logging.enabled = true;
+            let mut context = create_test_context();
+            context.settings = Settings::default();
+            context.settings.logging.enabled = true;
             let mut bus: Bus = VecDeque::new();
             let event = Event::Toggle(ToggleEvent::Setting(ToggleSettings::LoggingEnabled));
 
-            let result = setting.handle(&event, &mut settings, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus);
 
             assert!(result.0.is_some());
-            assert!(!settings.logging.enabled);
+            assert!(!context.settings.logging.enabled);
         }
 
         #[test]
         fn handle_toggle_enables_when_disabled() {
             let setting = LoggingEnabled;
-            let mut settings = Settings::default();
-            settings.logging.enabled = false;
+            let mut context = create_test_context();
+            context.settings = Settings::default();
+            context.settings.logging.enabled = false;
             let mut bus: Bus = VecDeque::new();
             let event = Event::Toggle(ToggleEvent::Setting(ToggleSettings::LoggingEnabled));
 
-            let result = setting.handle(&event, &mut settings, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus);
 
             assert!(result.0.is_some());
-            assert!(settings.logging.enabled);
+            assert!(context.settings.logging.enabled);
         }
 
         #[test]
         fn handle_returns_none_for_wrong_event() {
             let setting = LoggingEnabled;
-            let mut settings = Settings::default();
+            let mut context = create_test_context();
+            context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
 
-            let result = setting.handle(&Event::Select(EntryId::About), &mut settings, &mut bus);
+            let result = setting.handle(&Event::Select(EntryId::About), &mut context, &mut bus);
 
             assert!(result.0.is_none());
         }
@@ -404,12 +415,13 @@ mod tests {
         #[test]
         fn handle_returns_none_for_wrong_toggle() {
             let setting = LoggingEnabled;
-            let mut settings = Settings::default();
+            let mut context = create_test_context();
+            context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
 
             let result = setting.handle(
                 &Event::Toggle(ToggleEvent::Setting(ToggleSettings::SleepCover)),
-                &mut settings,
+                &mut context,
                 &mut bus,
             );
 
@@ -423,21 +435,23 @@ mod tests {
         #[test]
         fn handle_set_level_updates_settings() {
             let setting = LogLevel;
-            let mut settings = Settings::default();
-            settings.logging.level = "INFO".to_string();
+            let mut context = create_test_context();
+            context.settings = Settings::default();
+            context.settings.logging.level = "INFO".to_string();
             let mut bus: Bus = VecDeque::new();
             let event = Event::Select(EntryId::SetLogLevel(tracing::Level::WARN));
 
-            let result = setting.handle(&event, &mut settings, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus);
 
             assert!(result.0.is_some());
-            assert_eq!(settings.logging.level, "WARN");
+            assert_eq!(context.settings.logging.level, "WARN");
         }
 
         #[test]
         fn handle_can_set_all_levels() {
             let setting = LogLevel;
-            let mut settings = Settings::default();
+            let mut context = create_test_context();
+            context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
 
             for level in [
@@ -448,18 +462,19 @@ mod tests {
                 tracing::Level::ERROR,
             ] {
                 let event = Event::Select(EntryId::SetLogLevel(level));
-                setting.handle(&event, &mut settings, &mut bus);
-                assert_eq!(settings.logging.level, level.to_string());
+                setting.handle(&event, &mut context, &mut bus);
+                assert_eq!(context.settings.logging.level, level.to_string());
             }
         }
 
         #[test]
         fn handle_returns_none_for_wrong_event() {
             let setting = LogLevel;
-            let mut settings = Settings::default();
+            let mut context = create_test_context();
+            context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
 
-            let result = setting.handle(&Event::Select(EntryId::About), &mut settings, &mut bus);
+            let result = setting.handle(&Event::Select(EntryId::About), &mut context, &mut bus);
 
             assert!(result.0.is_none());
         }
@@ -530,38 +545,41 @@ mod tests {
         #[test]
         fn handle_toggle_enables_when_disabled() {
             let setting = EnableKernLog;
-            let mut settings = Settings::default();
-            settings.logging.enable_kern_log = false;
+            let mut context = create_test_context();
+            context.settings = Settings::default();
+            context.settings.logging.enable_kern_log = false;
             let mut bus: Bus = VecDeque::new();
             let event = Event::Toggle(ToggleEvent::Setting(ToggleSettings::EnableKernLog));
 
-            let result = setting.handle(&event, &mut settings, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus);
 
             assert!(result.0.is_some());
-            assert!(settings.logging.enable_kern_log);
+            assert!(context.settings.logging.enable_kern_log);
         }
 
         #[test]
         fn handle_toggle_disables_when_enabled() {
             let setting = EnableKernLog;
-            let mut settings = Settings::default();
-            settings.logging.enable_kern_log = true;
+            let mut context = create_test_context();
+            context.settings = Settings::default();
+            context.settings.logging.enable_kern_log = true;
             let mut bus: Bus = VecDeque::new();
             let event = Event::Toggle(ToggleEvent::Setting(ToggleSettings::EnableKernLog));
 
-            let result = setting.handle(&event, &mut settings, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus);
 
             assert!(result.0.is_some());
-            assert!(!settings.logging.enable_kern_log);
+            assert!(!context.settings.logging.enable_kern_log);
         }
 
         #[test]
         fn handle_returns_none_for_wrong_event() {
             let setting = EnableKernLog;
-            let mut settings = Settings::default();
+            let mut context = create_test_context();
+            context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
 
-            let result = setting.handle(&Event::Select(EntryId::About), &mut settings, &mut bus);
+            let result = setting.handle(&Event::Select(EntryId::About), &mut context, &mut bus);
 
             assert!(result.0.is_none());
         }
@@ -569,12 +587,13 @@ mod tests {
         #[test]
         fn handle_returns_none_for_wrong_toggle() {
             let setting = EnableKernLog;
-            let mut settings = Settings::default();
+            let mut context = create_test_context();
+            context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
 
             let result = setting.handle(
                 &Event::Toggle(ToggleEvent::Setting(ToggleSettings::LoggingEnabled)),
-                &mut settings,
+                &mut context,
                 &mut bus,
             );
 
@@ -589,38 +608,41 @@ mod tests {
         #[test]
         fn handle_toggle_enables_when_disabled() {
             let setting = EnableDbusLog;
-            let mut settings = Settings::default();
-            settings.logging.enable_dbus_log = false;
+            let mut context = create_test_context();
+            context.settings = Settings::default();
+            context.settings.logging.enable_dbus_log = false;
             let mut bus: Bus = VecDeque::new();
             let event = Event::Toggle(ToggleEvent::Setting(ToggleSettings::EnableDbusLog));
 
-            let result = setting.handle(&event, &mut settings, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus);
 
             assert!(result.0.is_some());
-            assert!(settings.logging.enable_dbus_log);
+            assert!(context.settings.logging.enable_dbus_log);
         }
 
         #[test]
         fn handle_toggle_disables_when_enabled() {
             let setting = EnableDbusLog;
-            let mut settings = Settings::default();
-            settings.logging.enable_dbus_log = true;
+            let mut context = create_test_context();
+            context.settings = Settings::default();
+            context.settings.logging.enable_dbus_log = true;
             let mut bus: Bus = VecDeque::new();
             let event = Event::Toggle(ToggleEvent::Setting(ToggleSettings::EnableDbusLog));
 
-            let result = setting.handle(&event, &mut settings, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus);
 
             assert!(result.0.is_some());
-            assert!(!settings.logging.enable_dbus_log);
+            assert!(!context.settings.logging.enable_dbus_log);
         }
 
         #[test]
         fn handle_returns_none_for_wrong_event() {
             let setting = EnableDbusLog;
-            let mut settings = Settings::default();
+            let mut context = create_test_context();
+            context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
 
-            let result = setting.handle(&Event::Select(EntryId::About), &mut settings, &mut bus);
+            let result = setting.handle(&Event::Select(EntryId::About), &mut context, &mut bus);
 
             assert!(result.0.is_none());
         }
@@ -628,12 +650,13 @@ mod tests {
         #[test]
         fn handle_returns_none_for_wrong_toggle() {
             let setting = EnableDbusLog;
-            let mut settings = Settings::default();
+            let mut context = create_test_context();
+            context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
 
             let result = setting.handle(
                 &Event::Toggle(ToggleEvent::Setting(ToggleSettings::LoggingEnabled)),
-                &mut settings,
+                &mut context,
                 &mut bus,
             );
 

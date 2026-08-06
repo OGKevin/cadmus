@@ -4,6 +4,7 @@ use super::{
     InputSettingKind, SettingData, SettingIdentity, SettingKind, SettingsFetchData, ToggleSettings,
     WidgetKind,
 };
+use crate::device::AppContext;
 use crate::fl;
 use crate::frontlight::LightLevel;
 use crate::geolocation::Coordinates;
@@ -54,11 +55,11 @@ impl SettingKind for Locale {
     fn handle(
         &self,
         evt: &Event,
-        settings: &mut Settings,
+        context: &mut AppContext,
         _bus: &mut Bus,
     ) -> (Option<String>, bool) {
         if let Event::Select(EntryId::SetLocale(locale)) = evt {
-            settings.locale = locale.clone();
+            context.settings.locale = locale.clone();
             crate::i18n::init(locale.as_ref());
             let display = locale
                 .as_ref()
@@ -110,11 +111,11 @@ impl SettingKind for KeyboardLayout {
     fn handle(
         &self,
         evt: &Event,
-        settings: &mut Settings,
+        context: &mut AppContext,
         _bus: &mut Bus,
     ) -> (Option<String>, bool) {
         if let Event::Select(EntryId::SetKeyboardLayout(layout)) = evt {
-            settings.keyboard_layout = layout.clone();
+            context.settings.keyboard_layout = layout.clone();
             return (Some(layout.clone()), true);
         }
         (None, false)
@@ -350,12 +351,12 @@ impl SettingKind for SleepCover {
     fn handle(
         &self,
         evt: &Event,
-        settings: &mut Settings,
+        context: &mut AppContext,
         _bus: &mut Bus,
     ) -> (Option<String>, bool) {
         if let Event::Toggle(ToggleEvent::Setting(ToggleSettings::SleepCover)) = evt {
-            settings.sleep_cover = !settings.sleep_cover;
-            return (Some(settings.sleep_cover.to_string()), true);
+            context.settings.sleep_cover = !context.settings.sleep_cover;
+            return (Some(context.settings.sleep_cover.to_string()), true);
         }
         (None, false)
     }
@@ -388,12 +389,12 @@ impl SettingKind for AutoShare {
     fn handle(
         &self,
         evt: &Event,
-        settings: &mut Settings,
+        context: &mut AppContext,
         _bus: &mut Bus,
     ) -> (Option<String>, bool) {
         if let Event::Toggle(ToggleEvent::Setting(ToggleSettings::AutoShare)) = evt {
-            settings.auto_share = !settings.auto_share;
-            return (Some(settings.auto_share.to_string()), true);
+            context.settings.auto_share = !context.settings.auto_share;
+            return (Some(context.settings.auto_share.to_string()), true);
         }
         (None, false)
     }
@@ -426,12 +427,12 @@ impl SettingKind for AutoTime {
     fn handle(
         &self,
         evt: &Event,
-        settings: &mut Settings,
+        context: &mut AppContext,
         _bus: &mut Bus,
     ) -> (Option<String>, bool) {
         if let Event::Toggle(ToggleEvent::Setting(ToggleSettings::AutoTime)) = evt {
-            settings.auto_time = !settings.auto_time;
-            return (Some(settings.auto_time.to_string()), true);
+            context.settings.auto_time = !context.settings.auto_time;
+            return (Some(context.settings.auto_time.to_string()), true);
         }
         (None, false)
     }
@@ -521,12 +522,12 @@ impl SettingKind for ButtonScheme {
     fn handle(
         &self,
         evt: &Event,
-        settings: &mut Settings,
+        context: &mut AppContext,
         bus: &mut Bus,
     ) -> (Option<String>, bool) {
         let new_scheme = match evt {
             Event::Toggle(ToggleEvent::Setting(ToggleSettings::ButtonScheme)) => {
-                match settings.button_scheme {
+                match context.settings.button_scheme {
                     crate::settings::ButtonScheme::Natural => {
                         Some(crate::settings::ButtonScheme::Inverted)
                     }
@@ -540,9 +541,9 @@ impl SettingKind for ButtonScheme {
         };
 
         if let Some(scheme) = new_scheme {
-            settings.button_scheme = scheme;
+            context.settings.button_scheme = scheme;
             bus.push_back(Event::Select(EntryId::SetButtonScheme(scheme)));
-            return (Some(settings.button_scheme.to_i18n_string()), true);
+            return (Some(context.settings.button_scheme.to_i18n_string()), true);
         }
         (None, false)
     }
@@ -578,13 +579,13 @@ impl SettingKind for AutoFrontlight {
     fn handle(
         &self,
         evt: &Event,
-        settings: &mut Settings,
+        context: &mut AppContext,
         bus: &mut Bus,
     ) -> (Option<String>, bool) {
         if let Event::Toggle(ToggleEvent::Setting(ToggleSettings::AutoFrontlight)) = evt {
-            settings.auto_frontlight = !settings.auto_frontlight;
+            context.settings.auto_frontlight = !context.settings.auto_frontlight;
             bus.push_back(Event::AutoFrontlightConfigChanged);
-            return (Some(settings.auto_frontlight.to_string()), true);
+            return (Some(context.settings.auto_frontlight.to_string()), true);
         }
         (None, false)
     }
@@ -615,11 +616,11 @@ impl SettingKind for AutoFrontlightBrightness {
     fn handle(
         &self,
         evt: &Event,
-        settings: &mut Settings,
+        context: &mut AppContext,
         bus: &mut Bus,
     ) -> (Option<String>, bool) {
         if let Event::Submit(ViewId::AutoFrontlightBrightnessInput, text) = evt {
-            let display = self.apply_text(text, settings);
+            let display = self.apply_text(text, &mut context.settings);
             bus.push_back(Event::AutoFrontlightConfigChanged);
             return (Some(display), true);
         }
@@ -700,11 +701,11 @@ impl SettingKind for AutoFrontlightManualCoordinates {
     fn handle(
         &self,
         evt: &Event,
-        settings: &mut Settings,
+        context: &mut AppContext,
         bus: &mut Bus,
     ) -> (Option<String>, bool) {
         if let Event::Submit(ViewId::AutoFrontlightManualCoordinatesInput, text) = evt {
-            let display = self.apply_text(text, settings);
+            let display = self.apply_text(text, &mut context.settings);
             bus.push_back(Event::AutoFrontlightConfigChanged);
             return (Some(display), true);
         }
@@ -924,11 +925,11 @@ impl SettingKind for StartupModeSetting {
     fn handle(
         &self,
         evt: &Event,
-        settings: &mut Settings,
+        context: &mut AppContext,
         _bus: &mut Bus,
     ) -> (Option<String>, bool) {
         if let Event::Select(EntryId::SetStartupMode(mode)) = evt {
-            settings.startup_mode = *mode;
+            context.settings.startup_mode = *mode;
             return (Some(mode.to_i18n_string()), true);
         }
         (None, false)
@@ -970,6 +971,7 @@ fn get_available_layouts(layouts_dir: &Path) -> Result<Vec<String>, Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::context::test_helpers::create_test_context;
     use crate::settings::Settings;
     use crate::view::settings_editor::kinds::{InputSettingKind, ToggleSettings};
     use crate::view::{Bus, EntryId, Event, ToggleEvent};
@@ -981,25 +983,27 @@ mod tests {
         #[test]
         fn handle_set_locale_updates_settings() {
             let setting = Locale;
-            let mut settings = Settings::default();
+            let mut context = create_test_context();
+            context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
             let locale: Option<unic_langid::LanguageIdentifier> = Some("de-DE".parse().unwrap());
             let event = Event::Select(EntryId::SetLocale(locale.clone()));
 
-            let result = setting.handle(&event, &mut settings, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus);
 
             assert!(result.0.is_some());
             assert_eq!(result.0.unwrap(), "de-DE");
-            assert_eq!(settings.locale, locale);
+            assert_eq!(context.settings.locale, locale);
         }
 
         #[test]
         fn handle_returns_none_for_wrong_event() {
             let setting = Locale;
-            let mut settings = Settings::default();
+            let mut context = create_test_context();
+            context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
 
-            let result = setting.handle(&Event::Select(EntryId::About), &mut settings, &mut bus);
+            let result = setting.handle(&Event::Select(EntryId::About), &mut context, &mut bus);
 
             assert!(result.0.is_none());
         }
@@ -1011,24 +1015,26 @@ mod tests {
         #[test]
         fn handle_set_layout_updates_settings() {
             let setting = KeyboardLayout;
-            let mut settings = Settings::default();
+            let mut context = create_test_context();
+            context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
             let event = Event::Select(EntryId::SetKeyboardLayout("German".to_string()));
 
-            let result = setting.handle(&event, &mut settings, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus);
 
             assert!(result.0.is_some());
             assert_eq!(result.0.unwrap(), "German");
-            assert_eq!(settings.keyboard_layout, "German");
+            assert_eq!(context.settings.keyboard_layout, "German");
         }
 
         #[test]
         fn handle_returns_none_for_wrong_event() {
             let setting = KeyboardLayout;
-            let mut settings = Settings::default();
+            let mut context = create_test_context();
+            context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
 
-            let result = setting.handle(&Event::Select(EntryId::About), &mut settings, &mut bus);
+            let result = setting.handle(&Event::Select(EntryId::About), &mut context, &mut bus);
 
             assert!(result.0.is_none());
         }
@@ -1147,27 +1153,29 @@ mod tests {
         #[test]
         fn handle_toggle_event_toggles_value() {
             let setting = SleepCover;
-            let mut settings = Settings {
+            let mut context = create_test_context();
+            context.settings = Settings {
                 sleep_cover: true,
                 ..Default::default()
             };
             let mut bus: Bus = VecDeque::new();
             let event = Event::Toggle(ToggleEvent::Setting(ToggleSettings::SleepCover));
 
-            let result = setting.handle(&event, &mut settings, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus);
 
             assert!(result.0.is_some());
             assert_eq!(result.0.unwrap(), "false");
-            assert!(!settings.sleep_cover);
+            assert!(!context.settings.sleep_cover);
         }
 
         #[test]
         fn handle_returns_none_for_wrong_event() {
             let setting = SleepCover;
-            let mut settings = Settings::default();
+            let mut context = create_test_context();
+            context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
 
-            let result = setting.handle(&Event::Select(EntryId::About), &mut settings, &mut bus);
+            let result = setting.handle(&Event::Select(EntryId::About), &mut context, &mut bus);
 
             assert!(result.0.is_none());
         }
@@ -1179,27 +1187,29 @@ mod tests {
         #[test]
         fn handle_toggle_event_toggles_value() {
             let setting = AutoShare;
-            let mut settings = Settings {
+            let mut context = create_test_context();
+            context.settings = Settings {
                 auto_share: false,
                 ..Default::default()
             };
             let mut bus: Bus = VecDeque::new();
             let event = Event::Toggle(ToggleEvent::Setting(ToggleSettings::AutoShare));
 
-            let result = setting.handle(&event, &mut settings, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus);
 
             assert!(result.0.is_some());
             assert_eq!(result.0.unwrap(), "true");
-            assert!(settings.auto_share);
+            assert!(context.settings.auto_share);
         }
 
         #[test]
         fn handle_returns_none_for_wrong_event() {
             let setting = AutoShare;
-            let mut settings = Settings::default();
+            let mut context = create_test_context();
+            context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
 
-            let result = setting.handle(&Event::Select(EntryId::About), &mut settings, &mut bus);
+            let result = setting.handle(&Event::Select(EntryId::About), &mut context, &mut bus);
 
             assert!(result.0.is_none());
         }
@@ -1211,18 +1221,22 @@ mod tests {
         #[test]
         fn brightness_apply_text_parses_and_updates() {
             let setting = AutoFrontlightBrightness;
-            let mut settings = Settings::default();
+            let mut context = create_test_context();
+            context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
 
-            let display = setting.apply_text("25", &mut settings);
+            let display = setting.apply_text("25", &mut context.settings);
             let result = setting.handle(
                 &Event::Submit(ViewId::AutoFrontlightBrightnessInput, "25".to_string()),
-                &mut settings,
+                &mut context,
                 &mut bus,
             );
 
             assert_eq!(display, "25%");
-            assert_eq!(settings.auto_frontlight_night_brightness, Some(25.0.into()));
+            assert_eq!(
+                context.settings.auto_frontlight_night_brightness,
+                Some(25.0.into())
+            );
             assert_eq!(result, (Some("25%".to_string()), true));
             assert!(matches!(
                 bus.pop_front(),
@@ -1233,21 +1247,25 @@ mod tests {
         #[test]
         fn brightness_apply_text_ignores_invalid_input() {
             let setting = AutoFrontlightBrightness;
-            let mut settings = Settings {
+            let mut context = create_test_context();
+            context.settings = Settings {
                 auto_frontlight_night_brightness: Some(10.0.into()),
                 ..Default::default()
             };
             let mut bus: Bus = VecDeque::new();
 
-            let display = setting.apply_text("invalid", &mut settings);
+            let display = setting.apply_text("invalid", &mut context.settings);
             let result = setting.handle(
                 &Event::Submit(ViewId::AutoFrontlightBrightnessInput, "invalid".to_string()),
-                &mut settings,
+                &mut context,
                 &mut bus,
             );
 
             assert_eq!(display, "10%");
-            assert_eq!(settings.auto_frontlight_night_brightness, Some(10.0.into()));
+            assert_eq!(
+                context.settings.auto_frontlight_night_brightness,
+                Some(10.0.into())
+            );
             assert_eq!(result, (Some("10%".to_string()), true));
             assert!(matches!(
                 bus.pop_front(),
@@ -1258,22 +1276,23 @@ mod tests {
         #[test]
         fn manual_coordinates_apply_text_parses_and_updates() {
             let setting = AutoFrontlightManualCoordinates;
-            let mut settings = Settings::default();
+            let mut context = create_test_context();
+            context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
 
-            let display = setting.apply_text("51.5074, -0.1278", &mut settings);
+            let display = setting.apply_text("51.5074, -0.1278", &mut context.settings);
             let result = setting.handle(
                 &Event::Submit(
                     ViewId::AutoFrontlightManualCoordinatesInput,
                     "51.5074, -0.1278".to_string(),
                 ),
-                &mut settings,
+                &mut context,
                 &mut bus,
             );
 
             assert_eq!(display, "51.5074, -0.1278");
             assert_eq!(
-                settings.auto_frontlight_manual_coordinates,
+                context.settings.auto_frontlight_manual_coordinates,
                 Some(Coordinates::new(51.5074, -0.1278).unwrap())
             );
             assert_eq!(result, (Some("51.5074, -0.1278".to_string()), true));
@@ -1286,7 +1305,8 @@ mod tests {
         #[test]
         fn manual_coordinates_apply_text_clears_on_empty_input() {
             let setting = AutoFrontlightManualCoordinates;
-            let mut settings = Settings {
+            let mut context = create_test_context();
+            context.settings = Settings {
                 auto_frontlight_manual_coordinates: Some(
                     Coordinates::new(51.5074, -0.1278).unwrap(),
                 ),
@@ -1294,15 +1314,15 @@ mod tests {
             };
             let mut bus: Bus = VecDeque::new();
 
-            let display = setting.apply_text("", &mut settings);
+            let display = setting.apply_text("", &mut context.settings);
             let result = setting.handle(
                 &Event::Submit(ViewId::AutoFrontlightManualCoordinatesInput, "".to_string()),
-                &mut settings,
+                &mut context,
                 &mut bus,
             );
 
             assert_eq!(display, "Not set");
-            assert_eq!(settings.auto_frontlight_manual_coordinates, None);
+            assert_eq!(context.settings.auto_frontlight_manual_coordinates, None);
             assert_eq!(result, (Some("Not set".to_string()), true));
             assert!(matches!(
                 bus.pop_front(),
@@ -1313,7 +1333,8 @@ mod tests {
         #[test]
         fn manual_coordinates_apply_text_ignores_invalid_input() {
             let setting = AutoFrontlightManualCoordinates;
-            let mut settings = Settings {
+            let mut context = create_test_context();
+            context.settings = Settings {
                 auto_frontlight_manual_coordinates: Some(
                     Coordinates::new(51.5074, -0.1278).unwrap(),
                 ),
@@ -1321,19 +1342,19 @@ mod tests {
             };
             let mut bus: Bus = VecDeque::new();
 
-            let display = setting.apply_text("invalid", &mut settings);
+            let display = setting.apply_text("invalid", &mut context.settings);
             let result = setting.handle(
                 &Event::Submit(
                     ViewId::AutoFrontlightManualCoordinatesInput,
                     "invalid".to_string(),
                 ),
-                &mut settings,
+                &mut context,
                 &mut bus,
             );
 
             assert_eq!(display, "51.5074, -0.1278");
             assert_eq!(
-                settings.auto_frontlight_manual_coordinates,
+                context.settings.auto_frontlight_manual_coordinates,
                 Some(Coordinates::new(51.5074, -0.1278).unwrap())
             );
             assert_eq!(result, (Some("51.5074, -0.1278".to_string()), true));
@@ -1407,16 +1428,17 @@ mod tests {
         #[test]
         fn handle_toggle_event_switches_natural_to_inverted() {
             let setting = ButtonScheme;
-            let mut settings = Settings {
+            let mut context = create_test_context();
+            context.settings = Settings {
                 button_scheme: ButtonScheme::Natural,
                 ..Default::default()
             };
             let mut bus: Bus = VecDeque::new();
             let event = Event::Toggle(ToggleEvent::Setting(ToggleSettings::ButtonScheme));
 
-            let result = setting.handle(&event, &mut settings, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus);
 
-            assert_eq!(settings.button_scheme, ButtonScheme::Inverted);
+            assert_eq!(context.settings.button_scheme, ButtonScheme::Inverted);
             assert_eq!(bus.len(), 1);
             assert!(result.0.is_some());
         }
@@ -1424,16 +1446,17 @@ mod tests {
         #[test]
         fn handle_toggle_event_switches_inverted_to_natural() {
             let setting = ButtonScheme;
-            let mut settings = Settings {
+            let mut context = create_test_context();
+            context.settings = Settings {
                 button_scheme: ButtonScheme::Inverted,
                 ..Default::default()
             };
             let mut bus: Bus = VecDeque::new();
             let event = Event::Toggle(ToggleEvent::Setting(ToggleSettings::ButtonScheme));
 
-            let result = setting.handle(&event, &mut settings, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus);
 
-            assert_eq!(settings.button_scheme, ButtonScheme::Natural);
+            assert_eq!(context.settings.button_scheme, ButtonScheme::Natural);
             assert_eq!(bus.len(), 1);
             assert!(result.0.is_some());
         }
@@ -1441,26 +1464,28 @@ mod tests {
         #[test]
         fn handle_set_scheme_event_applies_directly() {
             let setting = ButtonScheme;
-            let mut settings = Settings {
+            let mut context = create_test_context();
+            context.settings = Settings {
                 button_scheme: ButtonScheme::Natural,
                 ..Default::default()
             };
             let mut bus: Bus = VecDeque::new();
             let event = Event::Select(EntryId::SetButtonScheme(ButtonScheme::Inverted));
 
-            let result = setting.handle(&event, &mut settings, &mut bus);
+            let result = setting.handle(&event, &mut context, &mut bus);
 
-            assert_eq!(settings.button_scheme, ButtonScheme::Inverted);
+            assert_eq!(context.settings.button_scheme, ButtonScheme::Inverted);
             assert!(result.0.is_some());
         }
 
         #[test]
         fn handle_returns_none_for_wrong_event() {
             let setting = ButtonScheme;
-            let mut settings = Settings::default();
+            let mut context = create_test_context();
+            context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
 
-            let result = setting.handle(&Event::Select(EntryId::About), &mut settings, &mut bus);
+            let result = setting.handle(&Event::Select(EntryId::About), &mut context, &mut bus);
 
             assert!(result.0.is_none());
         }
