@@ -46,6 +46,7 @@ jobs:
           echo "list=${files[*]}" >> "$GITHUB_OUTPUT"
 
       - name: rumdl
+        id: rumdl
         if: steps.filter.outputs.docs == 'true'
         uses: ./.github/actions/rumdl-lint
         with:
@@ -53,12 +54,29 @@ jobs:
           rumdl_flags: ${{ steps.files.outputs.list }}
           output: rumdl-reviewdog-input/diagnostics.sarif
 
+      - name: Decide rumdl artifact upload
+        id: collect
+        if: ${{ !cancelled() && (steps.rumdl.outcome == 'success' || steps.rumdl.outcome == 'failure') }}
+        run: |
+          set -euo pipefail
+          sarif=rumdl-reviewdog-input/diagnostics.sarif
+          if [ "${{ steps.rumdl.outcome }}" = "success" ]; then
+            if [ ! -f "$sarif" ]; then
+              mkdir -p rumdl-reviewdog-input
+              printf '%s\n' '{"version":"2.1.0","runs":[]}' > "$sarif"
+            fi
+            echo "upload=true" >> "$GITHUB_OUTPUT"
+          elif [ -s "$sarif" ]; then
+            echo "upload=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Upload reviewdog input artifact
-        if: failure() && steps.filter.outputs.docs == 'true' && hashFiles('rumdl-reviewdog-input/diagnostics.sarif') != ''
+        if: ${{ !cancelled() && steps.collect.outputs.upload == 'true' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: rumdl-reviewdog-input
           path: rumdl-reviewdog-input/
+          if-no-files-found: error
           retention-days: 1
 
       - name: No relevant changes

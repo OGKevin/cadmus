@@ -48,6 +48,7 @@ jobs:
           tag: v${{ env.ACTIONLINT_VERSION }}
 
       - name: Collect actionlint diagnostics
+        id: collect
         run: |
           set -euo pipefail
           mkdir -p actionlint-reviewdog-input
@@ -85,15 +86,20 @@ jobs:
             echo "${severity}:${line}" >> actionlint-reviewdog-input/diagnostics.txt
           done < actionlint-reviewdog-input/raw.txt
           if [ "$actionlint_exit" -ne 0 ]; then
+            if [ -s actionlint-reviewdog-input/diagnostics.txt ]; then
+              echo "upload=true" >> "$GITHUB_OUTPUT"
+            fi
             exit "$actionlint_exit"
           fi
+          echo "upload=true" >> "$GITHUB_OUTPUT"
 
       - name: Upload reviewdog input artifact
-        if: failure() && hashFiles('actionlint-reviewdog-input/diagnostics.txt') != ''
+        if: ${{ !cancelled() && steps.collect.outputs.upload == 'true' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: actionlint-reviewdog-input
           path: actionlint-reviewdog-input/
+          if-no-files-found: error
           retention-days: 1
 
   prettier:
@@ -119,6 +125,7 @@ jobs:
         working-directory: .github/lint
 
       - name: Collect prettier diagnostics
+        id: collect
         run: |
           set -euo pipefail
           shopt -s globstar nullglob
@@ -126,21 +133,27 @@ jobs:
           files=(.github/workflows/**/*.yml .github/actions/**/*.yml)
           if [ "${#files[@]}" -eq 0 ]; then
             echo "No YAML files to format"
+            : > prettier-actions-reviewdog-input/diagnostics.diff
+            echo "upload=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           npx --prefix .github/lint prettier --write "${files[@]}"
           if ! git diff --quiet; then
             git diff > prettier-actions-reviewdog-input/diagnostics.diff
+            echo "upload=true" >> "$GITHUB_OUTPUT"
             echo "::error::Prettier found formatting issues"
             exit 1
           fi
+          : > prettier-actions-reviewdog-input/diagnostics.diff
+          echo "upload=true" >> "$GITHUB_OUTPUT"
 
       - name: Upload reviewdog input artifact
-        if: failure() && hashFiles('prettier-actions-reviewdog-input/diagnostics.diff') != ''
+        if: ${{ !cancelled() && steps.collect.outputs.upload == 'true' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: prettier-actions-reviewdog-input
           path: prettier-actions-reviewdog-input/
+          if-no-files-found: error
           retention-days: 1
 
   required-actions-lint:

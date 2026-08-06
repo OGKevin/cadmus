@@ -1,7 +1,9 @@
 name: Post reviewdog diagnostics from artifact
 description: >
   Download a reviewdog-input artifact from a completed workflow run and post
-  inline PR review comments. Treats the artifact as untrusted text only.
+  inline PR review comments (including an empty file to clear stale comments).
+  Treats the artifact as untrusted text only. Skips when the artifact is missing
+  so path-filtered collect jobs do not wipe unrelated comments.
 
 inputs:
   pr_number:
@@ -94,9 +96,12 @@ runs:
         RD_FLAGS: ${{ inputs.reviewdog_flags }}
       run: |
         set -euo pipefail
-        if [ ! -s "$DIAGNOSTICS_PATH" ]; then
-          echo "No diagnostics at $DIAGNOSTICS_PATH — skipping"
-          exit 0
+        if [ ! -f "$DIAGNOSTICS_PATH" ]; then
+          mkdir -p "$(dirname "$DIAGNOSTICS_PATH")"
+          : > "$DIAGNOSTICS_PATH"
+        fi
+        if [ ! -s "$DIAGNOSTICS_PATH" ] && [ "$RD_FORMAT" = "sarif" ]; then
+          printf '%s\n' '{"version":"2.1.0","runs":[]}' > "$DIAGNOSTICS_PATH"
         fi
 
         args=(-name="$RD_NAME" -filter-mode="$RD_FILTER_MODE" -fail-on-error=false -reporter=github-pr-review)

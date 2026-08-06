@@ -38,6 +38,7 @@ jobs:
         working-directory: website
 
       - name: Collect prettier diagnostics
+        id: collect
         working-directory: website
         run: |
           set -euo pipefail
@@ -45,16 +46,20 @@ jobs:
           npx prettier --write .
           if ! git -C "$GITHUB_WORKSPACE" diff --quiet; then
             git -C "$GITHUB_WORKSPACE" diff > "$GITHUB_WORKSPACE/prettier-website-reviewdog-input/diagnostics.diff"
+            echo "upload=true" >> "$GITHUB_OUTPUT"
             echo "::error::Prettier found formatting issues"
             exit 1
           fi
+          : > "$GITHUB_WORKSPACE/prettier-website-reviewdog-input/diagnostics.diff"
+          echo "upload=true" >> "$GITHUB_OUTPUT"
 
       - name: Upload reviewdog input artifact
-        if: failure() && hashFiles('prettier-website-reviewdog-input/diagnostics.diff') != ''
+        if: ${{ !cancelled() && steps.collect.outputs.upload == 'true' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: prettier-website-reviewdog-input
           path: prettier-website-reviewdog-input/
+          if-no-files-found: error
           retention-days: 1
 
   typecheck:
@@ -104,6 +109,7 @@ jobs:
         working-directory: website
 
       - name: Collect eslint diagnostics
+        id: collect
         working-directory: website
         run: |
           set -euo pipefail
@@ -115,15 +121,20 @@ jobs:
           eslint_exit=$?
           set -e
           if [ "$eslint_exit" -ne 0 ]; then
+            if [ -s "$GITHUB_WORKSPACE/eslint-reviewdog-input/diagnostics.txt" ]; then
+              echo "upload=true" >> "$GITHUB_OUTPUT"
+            fi
             exit "$eslint_exit"
           fi
+          echo "upload=true" >> "$GITHUB_OUTPUT"
 
       - name: Upload reviewdog input artifact
-        if: failure() && hashFiles('eslint-reviewdog-input/diagnostics.txt') != ''
+        if: ${{ !cancelled() && steps.collect.outputs.upload == 'true' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: eslint-reviewdog-input
           path: eslint-reviewdog-input/
+          if-no-files-found: error
           retention-days: 1
 
   stylelint:
@@ -147,6 +158,7 @@ jobs:
         working-directory: website
 
       - name: Collect stylelint diagnostics
+        id: collect
         working-directory: website
         run: |
           set -euo pipefail
@@ -159,18 +171,26 @@ jobs:
           set -e
           # stylelint: 0 = OK, 2 = lint issues; other codes are hard failures.
           if [ "$stylelint_exit" -ne 0 ] && [ "$stylelint_exit" -ne 2 ]; then
+            if [ -s "$GITHUB_WORKSPACE/stylelint-reviewdog-input/diagnostics.txt" ]; then
+              echo "upload=true" >> "$GITHUB_OUTPUT"
+            fi
             exit "$stylelint_exit"
           fi
           if [ "$stylelint_exit" -eq 2 ]; then
+            if [ -s "$GITHUB_WORKSPACE/stylelint-reviewdog-input/diagnostics.txt" ]; then
+              echo "upload=true" >> "$GITHUB_OUTPUT"
+            fi
             exit 1
           fi
+          echo "upload=true" >> "$GITHUB_OUTPUT"
 
       - name: Upload reviewdog input artifact
-        if: failure() && hashFiles('stylelint-reviewdog-input/diagnostics.txt') != ''
+        if: ${{ !cancelled() && steps.collect.outputs.upload == 'true' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: stylelint-reviewdog-input
           path: stylelint-reviewdog-input/
+          if-no-files-found: error
           retention-days: 1
 
   build:
