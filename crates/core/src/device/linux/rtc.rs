@@ -2,12 +2,16 @@
 
 use anyhow::Error;
 use chrono::{DateTime, Utc};
+use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
 use nix::{ioctl_none, ioctl_read, ioctl_write_ptr};
 use std::fs::{File, OpenOptions};
+use std::io::Read;
 use std::mem;
+use std::os::fd::AsFd;
 use std::os::unix::io::AsRawFd;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use crate::device::rtc::{Rtc, RtcTime, RtcWkalrm};
 
@@ -23,7 +27,8 @@ ioctl_write_ptr!(rtc_set_time, b'p', 0x0a, RtcTime);
 /// `RTC_RD_TIME`, `RTC_SET_TIME`, `RTC_ALM_READ`, `RTC_ALM_SET`, and
 /// `RTC_AIE_OFF` ioctls (wrapped by the `rtc_*` helpers above). Concurrent
 /// callers are serialized through an internal mutex guarding the open file
-/// descriptor.
+/// descriptor. Alarm IRQ waits use a separate `dup` of that fd so a blocking
+/// `poll` does not hold the ioctl mutex.
 ///
 /// # Examples
 ///
@@ -35,7 +40,10 @@ ioctl_write_ptr!(rtc_set_time, b'p', 0x0a, RtcTime);
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 #[derive(Clone)]
-pub struct LinuxRtc(Arc<Mutex<File>>);
+pub struct LinuxRtc {
+    file: Arc<Mutex<File>>,
+    wait_file: Arc<Mutex<File>>,
+}
 
 impl LinuxRtc {
     /// Opens the RTC device and creates a new interface handle.
@@ -57,7 +65,12 @@ impl LinuxRtc {
     /// ```
     pub fn new<P: AsRef<Path>>(path: P) -> Result<LinuxRtc, Error> {
         let file = OpenOptions::new().read(true).write(true).open(path)?;
-        Ok(LinuxRtc(Arc::new(Mutex::new(file))))
+        let wait_fd = nix::unistd::dup(file.as_fd())?;
+        let wait_file = File::from(wait_fd);
+        Ok(LinuxRtc {
+            file: Arc::new(Mutex::new(file)),
+            wait_file: Arc::new(Mutex::new(wait_file)),
+        })
     }
 }
 
@@ -66,7 +79,7 @@ impl Rtc for LinuxRtc {
     fn alarm(&self) -> Result<RtcWkalrm, Error> {
         let mut rwa = RtcWkalrm::default();
         let file = self
-            .0
+            .file
             .lock()
             .map_err(|e| anyhow::anyhow!("lock poisoned: {}", e))?;
         unsafe {
@@ -80,7 +93,7 @@ impl Rtc for LinuxRtc {
     fn set_alarm(&self, wake_time: DateTime<Utc>) -> Result<i32, Error> {
         let rwa = RtcWkalrm::for_wake_time(wake_time);
         let file = self
-            .0
+            .file
             .lock()
             .map_err(|e| anyhow::anyhow!("lock poisoned: {}", e))?;
         unsafe { rtc_write_alarm(file.as_raw_fd(), &rwa).map_err(|e| e.into()) }
@@ -89,7 +102,7 @@ impl Rtc for LinuxRtc {
     /// Issues `RTC_AIE_OFF` to disable alarm interrupts.
     fn disable_alarm(&self) -> Result<i32, Error> {
         let file = self
-            .0
+            .file
             .lock()
             .map_err(|e| anyhow::anyhow!("lock poisoned: {}", e))?;
         unsafe { rtc_disable_alarm(file.as_raw_fd()).map_err(|e| e.into()) }
@@ -99,7 +112,7 @@ impl Rtc for LinuxRtc {
     fn read_time(&self) -> Result<DateTime<Utc>, Error> {
         let mut rt = unsafe { mem::zeroed::<RtcTime>() };
         let file = self
-            .0
+            .file
             .lock()
             .map_err(|e| anyhow::anyhow!("lock poisoned: {}", e))?;
         unsafe {
@@ -112,12 +125,37 @@ impl Rtc for LinuxRtc {
     fn set_time(&self, time: DateTime<Utc>) -> Result<(), Error> {
         let rt: RtcTime = time.into();
         let file = self
-            .0
+            .file
             .lock()
             .map_err(|e| anyhow::anyhow!("lock poisoned: {}", e))?;
         unsafe {
             rtc_set_time(file.as_raw_fd(), &rt)?;
         }
         Ok(())
+    }
+
+    fn wait_for_alarm_irq(&self, timeout: Option<Duration>) -> Result<Option<u32>, Error> {
+        let mut wait_file = self
+            .wait_file
+            .lock()
+            .map_err(|e| anyhow::anyhow!("lock poisoned: {}", e))?;
+        let mut poll_fds = [PollFd::new(wait_file.as_fd(), PollFlags::POLLIN)];
+        let poll_timeout = match timeout {
+            Some(duration) => PollTimeout::try_from(duration).unwrap_or(PollTimeout::MAX),
+            None => PollTimeout::NONE,
+        };
+        let ready = poll(&mut poll_fds, poll_timeout)?;
+        if ready == 0 {
+            return Ok(None);
+        }
+        let revents = poll_fds[0].revents().unwrap_or_else(PollFlags::empty);
+        if !revents.contains(PollFlags::POLLIN) {
+            return Err(anyhow::anyhow!(
+                "RTC wait fd woke without POLLIN (revents={revents:?})"
+            ));
+        }
+        let mut buf = [0u8; 4];
+        wait_file.read_exact(&mut buf)?;
+        Ok(Some(u32::from_ne_bytes(buf)))
     }
 }

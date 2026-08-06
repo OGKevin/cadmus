@@ -64,12 +64,59 @@ fn schedule_device_task(
     });
 }
 
-/// Aborts an in-progress suspend and restores UI and hardware state.
+/// Ends an in-progress suspend cycle and returns to interactive use.
 ///
-/// When cancelling [`DeviceTaskId::Suspend`], re-enables frontlight and
-/// WiFi and clears alarms that should not fire after a manual wake. For
-/// either suspend task, removes the intermission overlay and refreshes clock
-/// and battery widgets.
+/// Drops PrepareSuspend task channels, restores frontlight and wifi-at-rest,
+/// cancels post-resume alarms, re-arms AutoSuspend, and removes the suspend
+/// intermission.
+pub(super) fn finish_suspend_cycle(
+    context: &mut AppContext,
+    tasks: &mut Vec<DeviceTask>,
+    view: &mut dyn View,
+    hub: &Sender<Event>,
+    rq: &mut crate::view::RenderQueue,
+) {
+    tasks.retain(|task| task.id != DeviceTaskId::PrepareSuspend);
+    context.set_frontlight(context.settings.frontlight);
+    if context.settings.wifi.wants_radio_at_rest() {
+        let session = context.wifi_session.clone();
+        let hub = hub.clone();
+        thread::spawn(move || match session.enable_radio() {
+            Ok(true) => {
+                hub.send(Event::Device(DeviceEvent::NetUp)).ok();
+            }
+            Ok(false) => {}
+            Err(error) => {
+                tracing::error!(error = %error, "Failed to enable WiFi on resume");
+            }
+        });
+    }
+    if let Some(alarm_manager) = context.alarm_manager.as_ref() {
+        let mut alarm_manager = alarm_manager.lock().unwrap_or_else(|e| e.into_inner());
+        for alarm in AlarmType::alarms_to_cancel_after_resume() {
+            if let Err(error) = alarm_manager.cancel_alarm(alarm) {
+                tracing::error!(error = ?error, alarm = ?alarm, "failed to cancel alarm after resume");
+            }
+        }
+    }
+    suspend::reschedule_auto_suspend_alarm(context);
+    if let Some(index) = locate::<Intermission>(view) {
+        let rect = *view.child(index).rect();
+        view.children_mut().remove(index);
+        rq.add(RenderData::expose(rect, UpdateMode::Full));
+    } else {
+        tracing::warn!("resume called but no intermission view found to remove");
+    }
+    hub.send(Event::ClockTick).ok();
+    hub.send(Event::BatteryTick).ok();
+    context.suspend_cycle_active = false;
+}
+
+/// Aborts an in-progress PrepareSuspend and restores UI without full resume.
+///
+/// Drops the prepare task and clears the intermission, then re-arms AutoSuspend
+/// so aborting during prepare does not leave idle tracking disabled. Full cycle
+/// cancels after Suspend RTC arming use [`finish_suspend_cycle`].
 fn cancel_suspend(
     context: &mut AppContext,
     id: DeviceTaskId,
@@ -78,43 +125,22 @@ fn cancel_suspend(
     hub: &Sender<Event>,
     rq: &mut crate::view::RenderQueue,
 ) {
-    if id == DeviceTaskId::Suspend {
-        tasks.retain(|task| task.id != DeviceTaskId::Suspend);
-        context.set_frontlight(context.settings.frontlight);
-        if context.settings.wifi.wants_radio_at_rest() {
-            let session = context.wifi_session.clone();
-            let hub = hub.clone();
-            thread::spawn(move || match session.enable_radio() {
-                Ok(true) => {
-                    hub.send(Event::Device(DeviceEvent::NetUp)).ok();
-                }
-                Ok(false) => {}
-                Err(error) => {
-                    tracing::error!(error = %error, "Failed to enable WiFi on resume");
-                }
-            });
-        }
-        if let Some(alarm_manager) = context.alarm_manager.as_mut() {
-            for alarm in AlarmType::alarms_to_cancel_after_resume() {
-                if let Err(error) = alarm_manager.cancel_alarm(alarm) {
-                    tracing::error!(error = ?error, alarm = ?alarm, "failed to cancel alarm after resume");
-                }
-            }
-        }
+    if id != DeviceTaskId::PrepareSuspend {
+        return;
     }
 
-    if id == DeviceTaskId::Suspend || id == DeviceTaskId::PrepareSuspend {
-        tasks.retain(|task| task.id != DeviceTaskId::PrepareSuspend);
-        if let Some(index) = locate::<Intermission>(view) {
-            let rect = *view.child(index).rect();
-            view.children_mut().remove(index);
-            rq.add(RenderData::expose(rect, UpdateMode::Full));
-        } else {
-            tracing::warn!("resume called but no intermission view found to remove");
-        }
-        hub.send(Event::ClockTick).ok();
-        hub.send(Event::BatteryTick).ok();
+    tasks.retain(|task| task.id != DeviceTaskId::PrepareSuspend);
+    if let Some(index) = locate::<Intermission>(view) {
+        let rect = *view.child(index).rect();
+        view.children_mut().remove(index);
+        rq.add(RenderData::expose(rect, UpdateMode::Full));
+    } else {
+        tracing::warn!("resume called but no intermission view found to remove");
     }
+    hub.send(Event::ClockTick).ok();
+    hub.send(Event::BatteryTick).ok();
+    suspend::reschedule_auto_suspend_alarm(context);
+    context.suspend_cycle_active = false;
 }
 
 /// Restores the display rotation observed at device init for non-gyro devices.
@@ -131,10 +157,13 @@ pub(super) fn restore_boot_rotation_if_needed(context: &mut AppContext) {
 
 /// Begins the suspend flow.
 ///
-/// Suspends the current view and shows the suspend intermission immediately,
-/// so the device already appears asleep to the user. A
-/// [`DeviceTaskId::PrepareSuspend`] task is scheduled to send
-/// [`Event::PrepareSuspend`] after [`PREPARE_SUSPEND_WAIT_DELAY`].
+/// Cancels [`crate::AlarmType::AutoSuspend`], [`crate::AlarmType::Suspend`], and
+/// [`crate::AlarmType::WakeDebounce`] so idle / arming / wake-debounce RTCs do
+/// not compete with AutoPowerOff / Calendar during the suspend cycle. Suspends
+/// the current view and shows the suspend intermission immediately, so the
+/// device already appears asleep to the user. A [`DeviceTaskId::PrepareSuspend`]
+/// task is scheduled to send [`Event::PrepareSuspend`] after
+/// [`PREPARE_SUSPEND_WAIT_DELAY`].
 fn begin_suspend(
     context: &mut AppContext,
     view: &mut dyn View,
@@ -143,6 +172,9 @@ fn begin_suspend(
     rq: &mut crate::view::RenderQueue,
     tasks: &mut Vec<DeviceTask>,
 ) {
+    suspend::cancel_auto_suspend_alarm(context);
+    suspend::cancel_suspend_rtcs(context);
+    context.suspend_cycle_active = true;
     view.handle_event(&Event::Suspend, hub, bus, rq, context);
     let interm = Intermission::new(
         context.device.framebuffer().rect(),
@@ -275,7 +307,16 @@ impl DeviceLifecycle for Device {
             runtime.tasks,
         );
         hub.send(Event::WakeUp).ok();
-        suspend::spawn_auto_suspend_poller(hub, context.settings.auto_suspend);
+        suspend::reschedule_auto_suspend_alarm(context);
+        if let Some(alarm_manager) = context.alarm_manager.clone() {
+            let hub = hub.clone();
+            crate::device::rtc::AlarmManager::start_irq_listener(
+                &alarm_manager,
+                move |alarm_type| {
+                    hub.send(Event::RtcAlarmFired(alarm_type)).ok();
+                },
+            );
+        }
         let (idle_wake_tx, idle_wake_rx) = mpsc::channel();
         context.wifi_session.set_idle_wake_sender(idle_wake_tx);
         wifi::spawn_wifi_idle_poller(hub, context.settings.wifi_idle_timeout, idle_wake_rx);
@@ -292,10 +333,11 @@ impl DeviceLifecycle for Device {
             restore_boot_rotation_if_needed(context);
         }
 
-        if runtime
-            .tasks
-            .iter()
-            .all(|task| task.id != DeviceTaskId::Suspend)
+        if !suspend::is_suspend_rtc_pending(context)
+            && runtime
+                .tasks
+                .iter()
+                .all(|task| task.id != DeviceTaskId::PrepareSuspend)
             && context.settings.frontlight
         {
             context.settings.frontlight_levels = context.device.frontlight().levels();
@@ -352,7 +394,7 @@ impl DeviceLifecycle for Device {
             Event::SetWifiMode(_)
             | Event::Select(EntryId::SetWifiMode(_))
             | Event::MightDisableWifi => wifi::handle_event(event, hub, context),
-            Event::PrepareSuspend | Event::Suspend | Event::MightSuspend => {
+            Event::PrepareSuspend | Event::Suspend | Event::RtcAlarmFired(_) => {
                 suspend::handle_event(event, hub, bus, rq, context, runtime)
             }
             Event::PrepareShare | Event::Share => {

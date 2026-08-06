@@ -147,6 +147,21 @@ impl SettingKind for AutoSuspend {
         }
     }
 
+    fn handle(
+        &self,
+        evt: &Event,
+        context: &mut AppContext,
+        _bus: &mut Bus,
+    ) -> (Option<String>, bool) {
+        if let Event::Submit(ViewId::AutoSuspendInput, text) = evt {
+            let display = self.apply_text(text, &mut context.settings);
+            context.reschedule_auto_suspend_alarm();
+            return (Some(display), true);
+        }
+
+        (None, false)
+    }
+
     fn as_input_kind(&self) -> Option<&dyn InputSettingKind> {
         Some(self)
     }
@@ -1077,6 +1092,76 @@ mod tests {
 
             assert_eq!(settings.auto_suspend, 30.0);
             assert_eq!(display, "30.0");
+        }
+
+        #[test]
+        fn handle_submit_reschedules_auto_suspend_alarm() {
+            use crate::AlarmType;
+
+            let setting = AutoSuspend;
+            let mut context = create_test_context();
+            context.settings.auto_suspend = 30.0;
+            context.reschedule_auto_suspend_alarm();
+            let first = context
+                .alarm_manager
+                .as_ref()
+                .unwrap()
+                .lock()
+                .unwrap()
+                .time_until_alarm(AlarmType::AutoSuspend)
+                .unwrap();
+            let mut bus: Bus = VecDeque::new();
+
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            let (display, handled) = setting.handle(
+                &Event::Submit(ViewId::AutoSuspendInput, "15.0".to_string()),
+                &mut context,
+                &mut bus,
+            );
+
+            assert!(handled);
+            assert_eq!(display.as_deref(), Some("15.0"));
+            assert_eq!(context.settings.auto_suspend, 15.0);
+            let second = context
+                .alarm_manager
+                .as_ref()
+                .unwrap()
+                .lock()
+                .unwrap()
+                .time_until_alarm(AlarmType::AutoSuspend)
+                .unwrap();
+            assert!((second - 15 * 60).abs() < 2);
+            assert!(second < first);
+        }
+
+        #[test]
+        fn handle_submit_zero_cancels_auto_suspend_alarm() {
+            use crate::AlarmType;
+
+            let setting = AutoSuspend;
+            let mut context = create_test_context();
+            context.settings.auto_suspend = 30.0;
+            context.reschedule_auto_suspend_alarm();
+            let mut bus: Bus = VecDeque::new();
+
+            let (display, handled) = setting.handle(
+                &Event::Submit(ViewId::AutoSuspendInput, "0".to_string()),
+                &mut context,
+                &mut bus,
+            );
+
+            assert!(handled);
+            assert_eq!(display.as_deref(), Some("Never"));
+            assert_eq!(context.settings.auto_suspend, 0.0);
+            assert!(
+                !context
+                    .alarm_manager
+                    .as_ref()
+                    .unwrap()
+                    .lock()
+                    .unwrap()
+                    .has_alarm(AlarmType::AutoSuspend)
+            );
         }
     }
 

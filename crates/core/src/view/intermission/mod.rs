@@ -57,7 +57,11 @@ impl Intermission {
                     let minutes_until_poweroff = context
                         .alarm_manager
                         .as_ref()
-                        .and_then(|am| am.time_until_alarm(AlarmType::AutoPowerOff))
+                        .and_then(|am| {
+                            am.lock()
+                                .ok()
+                                .and_then(|guard| guard.time_until_alarm(AlarmType::AutoPowerOff))
+                        })
                         .map(|secs| secs / 60);
                     let child = CalendarView::new(rect, minutes_until_poweroff, halt);
                     (Message::Calendar, vec![Box::new(child) as Box<dyn View>])

@@ -149,7 +149,6 @@ mod tests {
                 history: &mut harness.history,
                 tasks: &mut harness.tasks,
                 updating: &mut harness.updating,
-                inactive_since: &mut harness.inactive_since,
                 settings_manager: None,
                 startup_cwd: None,
                 background_tasks: Some(&mut background_tasks),

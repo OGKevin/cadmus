@@ -224,7 +224,6 @@ fn build_context(
 pub fn run() -> Result<(), Error> {
     let start_time = Instant::now();
 
-    let mut inactive_since = Instant::now();
     let mut exit_status = ExitStatus::Quit;
 
     let mut device = AppDevice::default();
@@ -367,7 +366,6 @@ pub fn run() -> Result<(), Error> {
             history: &mut history,
             tasks: &mut tasks,
             updating: &mut updating,
-            inactive_since: &mut inactive_since,
             settings_manager: Some(&manager),
             startup_cwd: Some(&startup_cwd),
             background_tasks: Some(&mut background_tasks),
@@ -394,7 +392,6 @@ pub fn run() -> Result<(), Error> {
             history: &mut history,
             tasks: &mut tasks,
             updating: &mut updating,
-            inactive_since: &mut inactive_since,
             settings_manager: Some(&manager),
             startup_cwd: Some(&startup_cwd),
             background_tasks: Some(&mut background_tasks),
@@ -859,7 +856,6 @@ pub fn run() -> Result<(), Error> {
             history: &mut history,
             tasks: &mut tasks,
             updating: &mut updating,
-            inactive_since: &mut inactive_since,
             settings_manager: Some(&manager),
             startup_cwd: Some(&startup_cwd),
             background_tasks: Some(&mut background_tasks),

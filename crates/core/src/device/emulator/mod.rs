@@ -12,7 +12,7 @@ mod wifi;
 use crate::battery::FakeBattery;
 use crate::color::Color;
 use crate::device::DeviceHardware as _;
-use crate::device::emulator::rtc::NoopRtc;
+use crate::device::emulator::rtc::EmulatorRtc;
 use crate::device::types::FrontlightKind;
 use crate::device::{AppContext, Model};
 use crate::device::{
@@ -399,8 +399,8 @@ pub struct EmulatorDevice {
     wifi_manager: Arc<crate::device::emulator::wifi::EmulatorWifiManager>,
     usb_manager: Arc<crate::device::emulator::usb::EmulatorUsbManager>,
     power_manager: Arc<crate::device::emulator::power::EmulatorPowerManager>,
-    rtc: Arc<NoopRtc>,
-    time_manager: crate::time_manager::TimeManager<NoopRtc>,
+    rtc: Arc<EmulatorRtc>,
+    time_manager: crate::time_manager::TimeManager<EmulatorRtc>,
     input: EmulatorInputSource,
 }
 
@@ -424,7 +424,7 @@ impl EmulatorDevice {
     pub fn new(framebuffer: Box<dyn Framebuffer + Send>) -> Self {
         let dims = framebuffer.dims();
         let dpi = 167;
-        let rtc = Arc::new(NoopRtc);
+        let rtc = Arc::new(EmulatorRtc::new());
         let time_manager = crate::time_manager::TimeManager::new(rtc.clone(), |_| Ok(()));
         Self {
             dims,
@@ -508,7 +508,7 @@ crate::impl_device_hardware!(
     WifiManager = crate::device::emulator::wifi::EmulatorWifiManager,
     UsbManager = crate::device::emulator::usb::EmulatorUsbManager,
     PowerManager = crate::device::emulator::power::EmulatorPowerManager,
-    Rtc = crate::device::emulator::rtc::NoopRtc,
+    Rtc = crate::device::emulator::rtc::EmulatorRtc,
 );
 
 impl DeviceInput for EmulatorDevice {
@@ -587,6 +587,24 @@ fn show_suspend_intermission(
 }
 
 impl DeviceLifecycle for EmulatorDevice {
+    fn on_startup(
+        context: &mut AppContext,
+        hub: &Hub,
+        _runtime: &mut DeviceRuntime<'_>,
+    ) -> Result<(), anyhow::Error> {
+        if let Some(alarm_manager) = context.alarm_manager.clone() {
+            context.reschedule_auto_suspend_alarm();
+            let hub = hub.clone();
+            crate::device::rtc::AlarmManager::start_irq_listener(
+                &alarm_manager,
+                move |alarm_type| {
+                    hub.send(Event::RtcAlarmFired(alarm_type)).ok();
+                },
+            );
+        }
+        Ok(())
+    }
+
     fn handle_event(
         event: &Event,
         hub: &Hub,
@@ -629,6 +647,13 @@ impl DeviceLifecycle for EmulatorDevice {
             Event::Select(EntryId::PowerOff) => EventOutcome::Exit(ExitStatus::PowerOff),
             Event::Select(EntryId::Suspend) => {
                 show_suspend_intermission(hub, bus, rq, context, runtime);
+                EventOutcome::Handled
+            }
+            Event::RtcAlarmFired(crate::AlarmType::AutoSuspend) => {
+                show_suspend_intermission(hub, bus, rq, context, runtime);
+                EventOutcome::Handled
+            }
+            Event::RtcAlarmFired(crate::AlarmType::Suspend | crate::AlarmType::WakeDebounce) => {
                 EventOutcome::Handled
             }
             Event::Select(EntryId::Reboot) => {
@@ -766,7 +791,6 @@ mod lifecycle {
     use crate::view::filler::Filler;
     use crate::view::{Bus, EntryId, Event, RenderQueue, View};
     use std::sync::mpsc;
-    use std::time::Instant;
 
     fn with_runtime<R>(
         f: impl FnOnce(
@@ -786,13 +810,11 @@ mod lifecycle {
         let mut tasks = Vec::new();
         let mut history = Vec::<HistoryItem>::new();
         let mut updating = Vec::new();
-        let mut inactive_since = Instant::now();
         let mut runtime = DeviceRuntime {
             view: &mut view,
             history: &mut history,
             tasks: &mut tasks,
             updating: &mut updating,
-            inactive_since: &mut inactive_since,
             settings_manager: None,
             startup_cwd: None,
             background_tasks: None,

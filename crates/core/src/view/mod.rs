@@ -497,9 +497,10 @@ pub enum Event {
     CheckBattery,
     /// Sets the WiFi operating mode (Off / AlwaysOn / Auto).
     SetWifiMode(crate::settings::WifiMode),
-    MightSuspend,
     /// Periodic check whether Auto-mode WiFi should power down after idle.
     MightDisableWifi,
+    /// An RTC logical alarm claimed by [`crate::device::rtc::AlarmManager`]'s IRQ listener.
+    RtcAlarmFired(crate::AlarmType),
     PrepareSuspend,
     Suspend,
     Share,

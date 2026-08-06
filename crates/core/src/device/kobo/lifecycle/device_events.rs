@@ -1,7 +1,8 @@
 //! Device input event handling for suspend, power, cover, and USB plug events.
 
 use super::super::input::BATTERY_REFRESH_INTERVAL;
-use super::helpers::{cancel_suspend_if_pending, has_task, is_suspend_active};
+use super::helpers::{cancel_suspend_if_pending, is_suspend_active};
+use super::suspend::is_suspend_rtc_pending;
 use super::usb_share::disable_usb_share;
 use super::{begin_suspend, schedule_device_task};
 use crate::device::DeviceHardware as _;
@@ -13,7 +14,6 @@ use crate::framebuffer::UpdateMode;
 use crate::input::{ButtonCode, ButtonStatus, DeviceEvent, PowerSource};
 use crate::view::dialog::Dialog;
 use crate::view::{EntryId, Event, Hub, NotificationEvent, RenderData, RenderQueue, View, ViewId};
-use std::time::Instant;
 
 /// Dispatches a lifecycle [`Event`] to the appropriate device-input handler.
 pub(super) fn handle_event(
@@ -64,9 +64,7 @@ fn handle_power_button_released(
         return EventOutcome::Handled;
     }
 
-    if has_task(runtime.tasks, DeviceTaskId::PrepareSuspend)
-        || has_task(runtime.tasks, DeviceTaskId::Suspend)
-    {
+    if is_suspend_active(context, runtime.tasks) {
         cancel_suspend_if_pending(context, runtime.tasks, runtime.view.as_mut(), hub, rq);
     } else {
         begin_suspend(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks);
@@ -93,7 +91,7 @@ fn handle_rotate_screen(
 ) -> EventOutcome {
     tracing::debug!(rotation = n, "Gyro rotation");
 
-    if context.shared || is_suspend_active(runtime.tasks) {
+    if context.shared || is_suspend_active(context, runtime.tasks) {
         return EventOutcome::Handled;
     }
 
@@ -123,7 +121,7 @@ fn handle_net_up(
     context: &mut AppContext,
     runtime: &mut DeviceRuntime<'_>,
 ) -> EventOutcome {
-    if is_suspend_active(runtime.tasks) || context.online {
+    if is_suspend_active(context, runtime.tasks) || context.online {
         return EventOutcome::Handled;
     }
 
@@ -170,7 +168,8 @@ fn handle_cover_on(
     }
 
     context.covered = true;
-    if !context.settings.sleep_cover || context.shared || is_suspend_active(runtime.tasks) {
+    if !context.settings.sleep_cover || context.shared || is_suspend_active(context, runtime.tasks)
+    {
         return EventOutcome::Handled;
     }
 
@@ -203,10 +202,11 @@ fn handle_cover_off(
     EventOutcome::Handled
 }
 
-/// Resets inactivity tracking when auto-suspend is enabled.
-fn handle_user_activity(context: &AppContext, runtime: &mut DeviceRuntime<'_>) -> EventOutcome {
+/// Reschedules the Auto Suspend RTC deadline when auto-suspend is enabled.
+fn handle_user_activity(context: &mut AppContext, runtime: &mut DeviceRuntime<'_>) -> EventOutcome {
+    let _ = runtime;
     if context.settings.auto_suspend > 0.0 {
-        *runtime.inactive_since = Instant::now();
+        super::suspend::reschedule_auto_suspend_alarm(context);
     }
     EventOutcome::Handled
 }
@@ -234,7 +234,7 @@ fn handle_plug(
 
     match power_source {
         PowerSource::Wall => {
-            if has_task(runtime.tasks, DeviceTaskId::Suspend) {
+            if is_suspend_rtc_pending(context) {
                 return EventOutcome::Handled;
             }
         }
@@ -270,7 +270,9 @@ fn handle_plug_host(
         runtime.view.children_mut().push(Box::new(dialog));
     }
 
-    *runtime.inactive_since = Instant::now();
+    if context.settings.auto_suspend > 0.0 {
+        super::suspend::reschedule_auto_suspend_alarm(context);
+    }
 }
 
 /// Handles charger or USB-host unplug.
@@ -303,7 +305,7 @@ fn handle_unplug(
             hub,
             runtime.tasks,
         );
-        if has_task(runtime.tasks, DeviceTaskId::Suspend) {
+        if is_suspend_rtc_pending(context) {
             if !context.covered {
                 super::helpers::cancel_suspend_if_pending(
                     context,
@@ -324,6 +326,7 @@ fn handle_unplug(
 #[cfg(all(test, feature = "kobo"))]
 mod tests {
     use super::*;
+    use crate::device::kobo::lifecycle::helpers::has_task;
     use crate::device::kobo::lifecycle::test_helpers::LifecycleHarness;
     use crate::input::PowerSource;
     use crate::view::EntryId;
@@ -376,7 +379,21 @@ mod tests {
     #[test]
     fn handle_rotate_screen_blocked_during_suspend() {
         let mut harness = LifecycleHarness::new();
-        harness.push_task(DeviceTaskId::Suspend);
+        {
+            let mut alarms = harness
+                .context
+                .alarm_manager
+                .as_ref()
+                .unwrap()
+                .lock()
+                .unwrap();
+            alarms
+                .schedule_alarm(
+                    crate::AlarmType::Suspend,
+                    crate::chrono::Duration::seconds(15),
+                )
+                .unwrap();
+        }
         let hub = harness.hub_tx.clone();
         let outcome = harness
             .with_runtime_only(|context, runtime| handle_rotate_screen(1, &hub, context, runtime));
@@ -515,15 +532,32 @@ mod tests {
     }
 
     #[test]
-    fn handle_user_activity_resets_inactive_since() {
+    fn handle_user_activity_reschedules_auto_suspend() {
         let mut harness = LifecycleHarness::new();
-        harness.context.settings.auto_suspend = 300.0;
-        let before = harness.inactive_since;
-        std::thread::sleep(std::time::Duration::from_millis(5));
-        let outcome =
-            harness.with_runtime_only(|context, runtime| handle_user_activity(context, runtime));
+        harness.context.settings.auto_suspend = 30.0;
+        harness.with_runtime_only(handle_user_activity);
+        let first = harness
+            .context
+            .alarm_manager
+            .as_ref()
+            .unwrap()
+            .lock()
+            .unwrap()
+            .time_until_alarm(crate::AlarmType::AutoSuspend)
+            .unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        let outcome = harness.with_runtime_only(handle_user_activity);
         assert_eq!(outcome, EventOutcome::Handled);
-        assert!(harness.inactive_since > before);
+        let second = harness
+            .context
+            .alarm_manager
+            .as_ref()
+            .unwrap()
+            .lock()
+            .unwrap()
+            .time_until_alarm(crate::AlarmType::AutoSuspend)
+            .unwrap();
+        assert!(second >= first);
     }
 
     #[test]
