@@ -205,7 +205,7 @@ pub(super) fn handle_event(
     runtime: &mut DeviceRuntime<'_>,
 ) -> EventOutcome {
     match event {
-        Event::PrepareSuspend => handle_prepare_suspend(hub, rq, context, runtime),
+        Event::PrepareSuspend => handle_prepare_suspend(hub, bus, rq, context, runtime),
         Event::Suspend => handle_suspend(hub, bus, rq, context, runtime),
         Event::RtcAlarmFired(alarm_type) => {
             handle_rtc_alarm_fired(*alarm_type, hub, bus, rq, context, runtime)
@@ -324,11 +324,13 @@ fn refresh_calendar_intermission(
 /// Handles [`Event::PrepareSuspend`]: persists state and schedules full suspend.
 ///
 /// Clears the prepare task, saves settings, turns off frontlight and WiFi,
-/// then schedules Suspend RTC. Soft deep-idle uses no
-/// [`super::SUSPEND_WAIT_DELAY`]; classic hard suspend keeps the delay.
+/// then enters sleep: soft deep idle calls [`handle_suspend`] immediately;
+/// classic hard suspend schedules [`AlarmType::Suspend`] for
+/// [`super::SUSPEND_WAIT_DELAY`].
 fn handle_prepare_suspend(
-    _hub: &Hub,
-    _rq: &mut RenderQueue,
+    hub: &Hub,
+    bus: &mut crate::view::Bus,
+    rq: &mut RenderQueue,
     context: &mut AppContext,
     runtime: &mut DeviceRuntime<'_>,
 ) -> EventOutcome {
@@ -355,13 +357,10 @@ fn handle_prepare_suspend(
         }
         context.online = false;
     }
-    let suspend_delay = if deep_idle_cycle_active(context) {
-        Duration::ZERO
-    } else {
-        SUSPEND_WAIT_DELAY
-    };
-    schedule_suspend_alarm(context, suspend_delay);
-
+    if deep_idle_cycle_active(context) {
+        return handle_suspend(hub, bus, rq, context, runtime);
+    }
+    schedule_suspend_alarm(context, SUSPEND_WAIT_DELAY);
     EventOutcome::Handled
 }
 
@@ -385,22 +384,24 @@ fn handle_suspend(
         let (before, after, wait_outcome) = perform_deep_idle_suspend_resume(context);
         if matches!(wait_outcome, DeepIdleWaitOutcome::TimedOut) {
             tracing::warn!("deep idle ended by timeout; returning to interactive");
-        }
-        let outcome = handle_post_wake(before, after, hub, bus, rq, context, runtime);
-        if matches!(outcome, EventOutcome::Exit(_)) {
+            let outcome = handle_post_wake(before, after, hub, bus, rq, context, runtime);
+            if matches!(outcome, EventOutcome::Exit(_)) {
+                return outcome;
+            }
+            super::finish_suspend_cycle(context, runtime.tasks, runtime.view.as_mut(), hub, rq);
             return outcome;
         }
-        if deep_idle_cycle_active(context) {
-            return outcome;
-        }
-        super::finish_suspend_cycle(context, runtime.tasks, runtime.view.as_mut(), hub, rq);
-        return outcome;
+        runtime
+            .tasks
+            .retain(|task| task.id != DeviceTaskId::PrepareSuspend);
+        schedule_wake_debounce_alarm(context);
+        return handle_post_wake(before, after, hub, bus, rq, context, runtime);
     }
 
     if context.soft_suspend_session.mode().is_armed() {
         let before = Local::now();
-        tracing::error!(
-            "refusing classic suspend while soft-suspend is armed without a deep-idle cycle lease"
+        tracing::debug!(
+            "soft-suspend armed without cycle lease; staying interactive (wake debounce or refused classic suspend)"
         );
         log_soft_suspend_holders(context, "classic suspend refused while soft-suspend armed");
         let after = Local::now();
@@ -487,8 +488,9 @@ fn schedule_alarms_before_sleep(
 /// arms vendor deep-idle prep, drops the lease so autosleep can sleep, and waits
 /// for wake. On wake, restores autosleep mode and disarms `state-extended` (same
 /// role as classic [`PowerManager::resume`]) before the caller runs post-wake
-/// work. Does not re-queue Suspend; the caller finishes the suspend cycle and
-/// returns to interactive use.
+/// work. The caller schedules [`AlarmType::WakeDebounce`] while keeping the
+/// suspend intermission; a wake Power Released finishes the cycle, or the RTC
+/// fires and lifecycle calls [`begin_suspend`] to re-enter.
 fn perform_deep_idle_suspend_resume(
     context: &mut AppContext,
 ) -> (
@@ -679,6 +681,7 @@ mod tests {
     use crate::device::rtc::AlarmManager;
     use crate::frontlight::{Frontlight, LightLevel};
     use crate::settings::IntermissionDisplay;
+    use crate::view::common::locate;
     use std::time::Duration;
 
     fn lock_alarms(
@@ -691,6 +694,13 @@ mod tests {
             .unwrap()
             .lock()
             .unwrap()
+    }
+
+    fn intermission_count(view: &dyn crate::view::View) -> usize {
+        view.children()
+            .iter()
+            .filter(|child| child.as_ref().is::<Intermission>())
+            .count()
     }
 
     #[test]
@@ -782,15 +792,34 @@ mod tests {
     #[test]
     fn perform_suspend_resume_schedules_wake_debounce() {
         let mut harness = LifecycleHarness::new();
+        harness.with_parts(|hub, bus, rq, context, runtime| {
+            begin_suspend(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks);
+        });
+        harness
+            .tasks
+            .retain(|task| task.id != DeviceTaskId::PrepareSuspend);
+        assert_eq!(intermission_count(harness.view.as_ref()), 1);
         let (_before, _after) = harness.with_parts(|hub, _bus, _rq, context, runtime| {
             perform_suspend_resume(hub, context, runtime)
         });
         assert!(lock_alarms(&mut harness).is_alarm_scheduled(AlarmType::WakeDebounce));
+        assert_eq!(intermission_count(harness.view.as_ref()), 1);
         let power = harness.context.device.power_manager_for_test();
         assert!(power.was_suspend_called());
         assert!(power.was_resume_called());
         assert_eq!(power.suspend_call_count(), 1);
         assert_eq!(power.resume_call_count(), 1);
+
+        harness.context.settings.auto_suspend = 30.0;
+        cancel_suspend_if_pending(
+            &mut harness.context,
+            &mut harness.tasks,
+            harness.view.as_mut(),
+            &harness.hub_tx,
+            &mut harness.rq,
+        );
+        assert!(locate::<Intermission>(harness.view.as_ref()).is_none());
+        assert!(lock_alarms(&mut harness).is_alarm_scheduled(AlarmType::AutoSuspend));
     }
 
     #[test]
@@ -1155,7 +1184,7 @@ mod tests {
     }
 
     #[test]
-    fn soft_prepare_suspend_keeps_holders_and_schedules_suspend() {
+    fn soft_prepare_suspend_enters_deep_idle() {
         let mut harness = LifecycleHarness::new();
         let (_dir, _paths) = install_armed_soft_suspend(&mut harness);
         harness.with_parts(|hub, bus, rq, context, runtime| {
@@ -1165,9 +1194,10 @@ mod tests {
             handle_event(&Event::PrepareSuspend, hub, bus, rq, context, runtime)
         });
         assert_eq!(outcome, EventOutcome::Handled);
-        assert!(harness.context.soft_suspend_cycle_lease.is_some());
-        assert!(harness.context.soft_suspend_session.has_holders());
-        assert!(lock_alarms(&mut harness).has_alarm(AlarmType::Suspend));
+        assert!(harness.context.soft_suspend_cycle_lease.is_none());
+        assert!(!harness.context.soft_suspend_session.has_holders());
+        assert!(lock_alarms(&mut harness).is_alarm_scheduled(AlarmType::WakeDebounce));
+        assert!(!lock_alarms(&mut harness).has_alarm(AlarmType::Suspend));
     }
 
     #[test]
@@ -1210,12 +1240,14 @@ mod tests {
         assert!(harness.context.soft_suspend_cycle_lease.is_none());
         assert!(!lock_alarms(&mut harness).has_alarm(AlarmType::Suspend));
         assert!(!has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
+        assert!(lock_alarms(&mut harness).is_alarm_scheduled(AlarmType::WakeDebounce));
         let autosleep = fs::read_to_string(&paths.autosleep).expect("autosleep");
         assert!(autosleep.trim() == "freeze" || autosleep.trim() == "Freeze");
+        assert_eq!(intermission_count(harness.view.as_ref()), 1);
     }
 
     #[test]
-    fn soft_deep_idle_exits_cycle_without_requeue() {
+    fn soft_deep_idle_schedules_wake_debounce_alarm() {
         use crate::device::soft_suspend::AutosleepMode;
 
         let mut harness = LifecycleHarness::new();
@@ -1228,19 +1260,20 @@ mod tests {
             handle_event(&Event::PrepareSuspend, hub, bus, rq, context, runtime)
         });
         assert_eq!(outcome, EventOutcome::Handled);
-        assert!(lock_alarms(&mut harness).has_alarm(AlarmType::Suspend));
-
-        let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
-            handle_event(&Event::Suspend, hub, bus, rq, context, runtime)
-        });
-        assert_eq!(outcome, EventOutcome::Handled);
         assert!(harness.context.soft_suspend_cycle_lease.is_none());
-        assert!(!lock_alarms(&mut harness).has_alarm(AlarmType::Suspend));
+        assert!(
+            !lock_alarms(&mut harness).has_alarm(AlarmType::Suspend),
+            "deep-idle prepare enters sleep immediately; no Suspend RTC"
+        );
+        assert!(lock_alarms(&mut harness).is_alarm_scheduled(AlarmType::WakeDebounce));
         assert_eq!(
             harness.context.soft_suspend_session.mode(),
             AutosleepMode::Freeze
         );
-        assert!(lock_alarms(&mut harness).is_alarm_scheduled(AlarmType::AutoSuspend));
+        assert!(
+            !lock_alarms(&mut harness).is_alarm_scheduled(AlarmType::AutoSuspend),
+            "AutoSuspend stays cancelled until valid-wake finish_suspend_cycle"
+        );
         assert!(
             !harness
                 .context
@@ -1248,6 +1281,86 @@ mod tests {
                 .power_manager_for_test()
                 .was_suspend_called()
         );
+        assert_eq!(intermission_count(harness.view.as_ref()), 1);
+        assert!(locate::<Intermission>(harness.view.as_ref()).is_some());
+    }
+
+    #[test]
+    fn soft_deep_idle_power_release_cancels_wake_debounce() {
+        use crate::device::DeviceLifecycle as _;
+        use crate::device::kobo::Device;
+        use crate::input::{ButtonCode, ButtonStatus, DeviceEvent};
+
+        let mut harness = LifecycleHarness::new();
+        let (_dir, _paths) = install_armed_soft_suspend(&mut harness);
+        harness.context.settings.auto_suspend = 30.0;
+        harness.with_parts(|hub, bus, rq, context, runtime| {
+            begin_suspend(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks);
+        });
+        harness.with_parts(|hub, bus, rq, context, runtime| {
+            handle_event(&Event::PrepareSuspend, hub, bus, rq, context, runtime)
+        });
+        assert!(lock_alarms(&mut harness).is_alarm_scheduled(AlarmType::WakeDebounce));
+        assert!(harness.context.soft_suspend_cycle_lease.is_none());
+        assert_eq!(intermission_count(harness.view.as_ref()), 1);
+
+        let wake_release = Event::Device(DeviceEvent::Button {
+            code: ButtonCode::Power,
+            status: ButtonStatus::Released,
+            time: 0.0,
+        });
+        let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
+            Device::handle_event(&wake_release, hub, bus, rq, context, runtime)
+        });
+        assert_eq!(outcome, EventOutcome::Handled);
+        assert!(!lock_alarms(&mut harness).has_alarm(AlarmType::WakeDebounce));
+        assert!(!has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
+        assert!(harness.context.soft_suspend_cycle_lease.is_none());
+        assert!(locate::<Intermission>(harness.view.as_ref()).is_none());
+        assert!(lock_alarms(&mut harness).is_alarm_scheduled(AlarmType::AutoSuspend));
+
+        let intentional = Event::Device(DeviceEvent::Button {
+            code: ButtonCode::Power,
+            status: ButtonStatus::Released,
+            time: 1.0,
+        });
+        let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
+            Device::handle_event(&intentional, hub, bus, rq, context, runtime)
+        });
+        assert_eq!(outcome, EventOutcome::Handled);
+        assert!(has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
+        assert!(harness.context.soft_suspend_cycle_lease.is_some());
+    }
+
+    #[test]
+    fn soft_deep_idle_wake_debounce_fired_begins_suspend() {
+        let mut harness = LifecycleHarness::new();
+        let (_dir, _paths) = install_armed_soft_suspend(&mut harness);
+        harness.context.settings.auto_suspend = 30.0;
+        harness.with_parts(|hub, bus, rq, context, runtime| {
+            begin_suspend(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks);
+        });
+        harness.with_parts(|hub, bus, rq, context, runtime| {
+            handle_event(&Event::PrepareSuspend, hub, bus, rq, context, runtime)
+        });
+        assert!(lock_alarms(&mut harness).is_alarm_scheduled(AlarmType::WakeDebounce));
+        assert_eq!(intermission_count(harness.view.as_ref()), 1);
+
+        let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
+            handle_event(
+                &Event::RtcAlarmFired(AlarmType::WakeDebounce),
+                hub,
+                bus,
+                rq,
+                context,
+                runtime,
+            )
+        });
+        assert_eq!(outcome, EventOutcome::Handled);
+        assert!(has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
+        assert!(harness.context.soft_suspend_cycle_lease.is_some());
+        assert!(!lock_alarms(&mut harness).has_alarm(AlarmType::WakeDebounce));
+        assert_eq!(intermission_count(harness.view.as_ref()), 1);
     }
 
     #[test]

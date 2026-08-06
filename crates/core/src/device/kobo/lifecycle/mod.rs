@@ -36,8 +36,23 @@ use std::sync::mpsc::{self, Sender};
 use std::thread;
 use std::time::Duration;
 
+/// Delay before [`Event::PrepareSuspend`] on the classic hard-suspend path.
+///
+/// Gives the suspend intermission time to paint and a short window to cancel
+/// before teardown. Soft deep idle skips this and schedules prepare immediately.
 pub(super) const PREPARE_SUSPEND_WAIT_DELAY: Duration = Duration::from_secs(3);
+
+/// Delay for [`crate::AlarmType::Suspend`] after prepare and for
+/// [`crate::AlarmType::WakeDebounce`] after leave-sleep.
+///
+/// Window where Power Released / long-hold can abort before enter-sleep or
+/// before re-entering suspend after a wake.
 pub(super) const SUSPEND_WAIT_DELAY: Duration = Duration::from_secs(15);
+
+/// Onboard path where a Nickel/OTA `KoboRoot.tgz` appears after USB mass storage.
+///
+/// After USB share ends, presence of this file triggers reboot instead of a
+/// plain app restart so the firmware update can apply.
 pub(super) const KOBO_UPDATE_BUNDLE: &str = "/mnt/onboard/.kobo/KoboRoot.tgz";
 
 /// Schedules a delayed [`Event`] and tracks it in `tasks`.
@@ -169,6 +184,9 @@ pub(super) fn restore_boot_rotation_if_needed(context: &mut AppContext) {
 /// [`Event::PrepareSuspend`] immediately (no [`PREPARE_SUSPEND_WAIT_DELAY`]).
 /// When soft suspend is off, schedules PrepareSuspend after
 /// [`PREPARE_SUSPEND_WAIT_DELAY`] for the classic path.
+///
+/// Reuses an existing suspend [`Intermission`] when re-entering from wake
+/// debounce so the sleep screen is not stacked.
 fn begin_suspend(
     context: &mut AppContext,
     view: &mut dyn View,
@@ -181,16 +199,22 @@ fn begin_suspend(
     suspend::cancel_suspend_rtcs(context);
     context.suspend_cycle_active = true;
     view.handle_event(&Event::Suspend, hub, bus, rq, context);
-    let interm = Intermission::new(
-        context.device.framebuffer().rect(),
-        crate::settings::IntermKind::Suspend,
-        context,
-    );
-    rq.add(RenderData::new(
-        interm.id(),
-        *interm.rect(),
-        UpdateMode::Full,
-    ));
+    if let Some(index) = locate::<Intermission>(view) {
+        let child = view.child(index);
+        rq.add(RenderData::new(child.id(), *child.rect(), UpdateMode::Full));
+    } else {
+        let interm = Intermission::new(
+            context.device.framebuffer().rect(),
+            crate::settings::IntermKind::Suspend,
+            context,
+        );
+        rq.add(RenderData::new(
+            interm.id(),
+            *interm.rect(),
+            UpdateMode::Full,
+        ));
+        view.children_mut().push(Box::new(interm));
+    }
     let prepare_delay = if suspend::arm_deep_idle_cycle(context) {
         Duration::ZERO
     } else {
@@ -203,7 +227,6 @@ fn begin_suspend(
         hub,
         tasks,
     );
-    view.children_mut().push(Box::new(interm));
 }
 
 /// Tears down the view stack and renders the power-off intermission.

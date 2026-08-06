@@ -149,15 +149,19 @@ impl RtcWkalrm {
 /// # Suspend
 ///
 /// [`AlarmType::Suspend`] is the wall-clock delay after PrepareSuspend before
-/// entering sleep (`handle_suspend`). Power Released / long-hold cancel it to
-/// abort the cycle. Not listed in [`AlarmType::alarms_to_cancel_after_resume`].
+/// entering sleep (`handle_suspend`). Classic hard suspend uses a short delay;
+/// soft deep idle calls `handle_suspend` immediately and does not schedule this
+/// alarm. Power Released / long-hold cancel it to abort the cycle. Not listed
+/// in [`AlarmType::alarms_to_cancel_after_resume`].
 ///
 /// # Wake Debounce
 ///
 /// [`AlarmType::WakeDebounce`] is the wall-clock re-sleep deadline after leaving
-/// classic `state=mem`. Userspace `thread::sleep` cannot drive re-sleep under
-/// autosleep. When it fires, lifecycle calls `begin_suspend`. Power Released /
-/// long-hold cancel it. Not in [`AlarmType::alarms_to_cancel_after_resume`].
+/// sleep (soft deep idle or classic `state=mem`). Userspace `thread::sleep`
+/// cannot drive re-sleep under autosleep (Cadmus may be frozen). The RTC
+/// survives opportunistic sleep; when it fires, lifecycle calls `begin_suspend`.
+/// Power Released / long-hold cancel this alarm to stay interactive. Like Auto
+/// Suspend, it is not in [`AlarmType::alarms_to_cancel_after_resume`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum AlarmType {
     AutoPowerOff,

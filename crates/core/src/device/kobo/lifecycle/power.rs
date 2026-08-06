@@ -134,4 +134,116 @@ mod tests {
         assert_eq!(outcome, EventOutcome::Handled);
         assert!(has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
     }
+
+    #[test]
+    fn hold_button_long_power_cancels_pending_suspend_rtc() {
+        use crate::AlarmType;
+        use crate::chrono::Duration as ChronoDuration;
+
+        let mut harness = LifecycleHarness::new();
+        {
+            let mut alarms = harness
+                .context
+                .alarm_manager
+                .as_ref()
+                .unwrap()
+                .lock()
+                .unwrap();
+            alarms
+                .schedule_alarm(AlarmType::Suspend, ChronoDuration::seconds(15))
+                .unwrap();
+        }
+        let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
+            handle_event(
+                &Event::Gesture(GestureEvent::HoldButtonLong(ButtonCode::Power)),
+                hub,
+                bus,
+                rq,
+                context,
+                runtime,
+            )
+        });
+        assert_eq!(outcome, EventOutcome::Handled);
+        let alarms = harness
+            .context
+            .alarm_manager
+            .as_ref()
+            .unwrap()
+            .lock()
+            .unwrap();
+        assert!(!alarms.has_alarm(AlarmType::Suspend));
+    }
+
+    #[test]
+    fn hold_button_long_power_cancels_wake_debounce() {
+        use crate::AlarmType;
+        use crate::chrono::Duration as ChronoDuration;
+
+        let mut harness = LifecycleHarness::new();
+        {
+            let mut alarms = harness
+                .context
+                .alarm_manager
+                .as_ref()
+                .unwrap()
+                .lock()
+                .unwrap();
+            alarms
+                .schedule_alarm(AlarmType::WakeDebounce, ChronoDuration::seconds(15))
+                .unwrap();
+        }
+        let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
+            handle_event(
+                &Event::Gesture(GestureEvent::HoldButtonLong(ButtonCode::Power)),
+                hub,
+                bus,
+                rq,
+                context,
+                runtime,
+            )
+        });
+        assert_eq!(outcome, EventOutcome::Handled);
+        let alarms = harness
+            .context
+            .alarm_manager
+            .as_ref()
+            .unwrap()
+            .lock()
+            .unwrap();
+        assert!(!alarms.has_alarm(AlarmType::WakeDebounce));
+    }
+
+    #[test]
+    fn hold_button_long_power_cancels_pending_prepare_suspend() {
+        let mut harness = LifecycleHarness::new();
+        harness.push_task(DeviceTaskId::PrepareSuspend);
+        let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
+            handle_event(
+                &Event::Gesture(GestureEvent::HoldButtonLong(ButtonCode::Power)),
+                hub,
+                bus,
+                rq,
+                context,
+                runtime,
+            )
+        });
+        assert_eq!(outcome, EventOutcome::Handled);
+        assert!(!has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
+    }
+
+    #[test]
+    fn hold_button_long_power_exits_when_no_suspend_pending() {
+        let mut harness = LifecycleHarness::new();
+        let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
+            handle_event(
+                &Event::Gesture(GestureEvent::HoldButtonLong(ButtonCode::Power)),
+                hub,
+                bus,
+                rq,
+                context,
+                runtime,
+            )
+        });
+        assert_eq!(outcome, EventOutcome::Exit(ExitStatus::PowerOff));
+    }
 }

@@ -378,6 +378,9 @@ mod tests {
 
     #[test]
     fn handle_rotate_screen_blocked_during_suspend() {
+        use crate::AlarmType;
+        use crate::chrono::Duration as ChronoDuration;
+
         let mut harness = LifecycleHarness::new();
         {
             let mut alarms = harness
@@ -388,10 +391,7 @@ mod tests {
                 .lock()
                 .unwrap();
             alarms
-                .schedule_alarm(
-                    crate::AlarmType::Suspend,
-                    crate::chrono::Duration::seconds(15),
-                )
+                .schedule_alarm(AlarmType::Suspend, ChronoDuration::seconds(15))
                 .unwrap();
         }
         let hub = harness.hub_tx.clone();
