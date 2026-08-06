@@ -1,8 +1,9 @@
 //! Power-off and application exit event handling.
 
-use super::helpers::{cancel_suspend_if_pending, is_suspend_active};
-use super::{begin_suspend, show_power_off_intermission};
 use crate::device::DevicePaths as _;
+use crate::device::suspend::{
+    cancel_suspend_if_pending, is_suspend_active, show_power_off_intermission, start_cycle,
+};
 use crate::device::{AppContext, DeviceRuntime, EventOutcome, ExitStatus};
 use crate::gesture::GestureEvent;
 use crate::input::ButtonCode;
@@ -53,7 +54,7 @@ pub(super) fn handle_event(
             }
         }
         Event::Select(EntryId::Suspend) => {
-            begin_suspend(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks);
+            start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks);
             EventOutcome::Handled
         }
         _ => EventOutcome::Unhandled,
@@ -64,12 +65,12 @@ pub(super) fn handle_event(
 mod tests {
     use super::*;
     use crate::device::DeviceTaskId;
-    use crate::device::kobo::lifecycle::helpers::has_task;
-    use crate::device::kobo::lifecycle::test_helpers::LifecycleHarness;
+    use crate::device::suspend::has_task;
+    use crate::device::test_harness::DeviceRuntimeHarness;
 
     #[test]
     fn handle_event_power_off_exits() {
-        let mut harness = LifecycleHarness::new();
+        let mut harness = DeviceRuntimeHarness::new();
         let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
             handle_event(
                 &Event::Select(EntryId::PowerOff),
@@ -93,7 +94,7 @@ mod tests {
 
     #[test]
     fn handle_event_switch_install_exits_run_command() {
-        let mut harness = LifecycleHarness::new();
+        let mut harness = DeviceRuntimeHarness::new();
         let peer_dir = std::env::temp_dir()
             .join("test-kobo-installation")
             .join(".adds/cadmus");
@@ -120,7 +121,7 @@ mod tests {
 
     #[test]
     fn handle_event_suspend_begins_suspend() {
-        let mut harness = LifecycleHarness::new();
+        let mut harness = DeviceRuntimeHarness::new();
         let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
             handle_event(
                 &Event::Select(EntryId::Suspend),
@@ -133,5 +134,117 @@ mod tests {
         });
         assert_eq!(outcome, EventOutcome::Handled);
         assert!(has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
+    }
+
+    #[test]
+    fn hold_button_long_power_cancels_pending_suspend_rtc() {
+        use crate::AlarmType;
+        use crate::chrono::Duration as ChronoDuration;
+
+        let mut harness = DeviceRuntimeHarness::new();
+        {
+            let mut alarms = harness
+                .context
+                .alarm_manager
+                .as_ref()
+                .unwrap()
+                .lock()
+                .unwrap();
+            alarms
+                .schedule_in(AlarmType::Suspend, ChronoDuration::seconds(15))
+                .unwrap();
+        }
+        let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
+            handle_event(
+                &Event::Gesture(GestureEvent::HoldButtonLong(ButtonCode::Power)),
+                hub,
+                bus,
+                rq,
+                context,
+                runtime,
+            )
+        });
+        assert_eq!(outcome, EventOutcome::Handled);
+        let alarms = harness
+            .context
+            .alarm_manager
+            .as_ref()
+            .unwrap()
+            .lock()
+            .unwrap();
+        assert!(!alarms.has_alarm(AlarmType::Suspend));
+    }
+
+    #[test]
+    fn hold_button_long_power_cancels_wake_debounce() {
+        use crate::AlarmType;
+        use crate::chrono::Duration as ChronoDuration;
+
+        let mut harness = DeviceRuntimeHarness::new();
+        {
+            let mut alarms = harness
+                .context
+                .alarm_manager
+                .as_ref()
+                .unwrap()
+                .lock()
+                .unwrap();
+            alarms
+                .schedule_in(AlarmType::WakeDebounce, ChronoDuration::seconds(15))
+                .unwrap();
+        }
+        let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
+            handle_event(
+                &Event::Gesture(GestureEvent::HoldButtonLong(ButtonCode::Power)),
+                hub,
+                bus,
+                rq,
+                context,
+                runtime,
+            )
+        });
+        assert_eq!(outcome, EventOutcome::Handled);
+        let alarms = harness
+            .context
+            .alarm_manager
+            .as_ref()
+            .unwrap()
+            .lock()
+            .unwrap();
+        assert!(!alarms.has_alarm(AlarmType::WakeDebounce));
+    }
+
+    #[test]
+    fn hold_button_long_power_cancels_pending_prepare_suspend() {
+        let mut harness = DeviceRuntimeHarness::new();
+        harness.push_task(DeviceTaskId::PrepareSuspend);
+        let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
+            handle_event(
+                &Event::Gesture(GestureEvent::HoldButtonLong(ButtonCode::Power)),
+                hub,
+                bus,
+                rq,
+                context,
+                runtime,
+            )
+        });
+        assert_eq!(outcome, EventOutcome::Handled);
+        assert!(!has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
+    }
+
+    #[test]
+    fn hold_button_long_power_exits_when_no_suspend_pending() {
+        let mut harness = DeviceRuntimeHarness::new();
+        let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
+            handle_event(
+                &Event::Gesture(GestureEvent::HoldButtonLong(ButtonCode::Power)),
+                hub,
+                bus,
+                rq,
+                context,
+                runtime,
+            )
+        });
+        assert_eq!(outcome, EventOutcome::Exit(ExitStatus::PowerOff));
     }
 }

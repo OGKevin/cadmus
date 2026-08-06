@@ -236,7 +236,7 @@ fn handle_might_disable_wifi(context: &mut AppContext) -> EventOutcome {
 #[cfg(all(test, feature = "kobo"))]
 mod tests {
     use super::*;
-    use crate::device::kobo::lifecycle::test_helpers::LifecycleHarness;
+    use crate::device::test_harness::DeviceRuntimeHarness;
     use std::time::Duration;
 
     fn wait_for_wifi_thread() {
@@ -245,7 +245,7 @@ mod tests {
 
     #[test]
     fn handle_set_wifi_mode_noop_on_duplicate() {
-        let mut harness = LifecycleHarness::new();
+        let mut harness = DeviceRuntimeHarness::new();
         harness.context.settings.wifi = WifiMode::AlwaysOn;
         harness.context.wifi_session.set_mode(WifiMode::AlwaysOn);
         let outcome = handle_event(
@@ -267,7 +267,7 @@ mod tests {
 
     #[test]
     fn handle_set_wifi_mode_enable_always_on() {
-        let mut harness = LifecycleHarness::new();
+        let mut harness = DeviceRuntimeHarness::new();
         harness.context.settings.wifi = WifiMode::Off;
         let outcome = handle_event(
             &Event::SetWifiMode(WifiMode::AlwaysOn),
@@ -284,7 +284,7 @@ mod tests {
 
     #[test]
     fn handle_set_wifi_mode_disable_clears_online() {
-        let mut harness = LifecycleHarness::new();
+        let mut harness = DeviceRuntimeHarness::new();
         harness.context.settings.wifi = WifiMode::AlwaysOn;
         harness.context.online = true;
         let outcome = handle_event(
@@ -305,7 +305,7 @@ mod tests {
         use crate::device::wifi::{Essid, NetworkInfo};
         use crate::input::DeviceEvent;
 
-        let mut harness = LifecycleHarness::new();
+        let mut harness = DeviceRuntimeHarness::new();
         harness.context.settings.wifi = WifiMode::Off;
         harness
             .context
@@ -333,7 +333,7 @@ mod tests {
 
     #[test]
     fn might_disable_wifi_after_idle() {
-        let mut harness = LifecycleHarness::new();
+        let mut harness = DeviceRuntimeHarness::new();
         harness.context.settings.wifi = WifiMode::Auto;
         harness.context.settings.wifi_idle_timeout = 0.0;
         harness.context.wifi_session.set_mode(WifiMode::Auto);

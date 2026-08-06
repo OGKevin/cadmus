@@ -2,7 +2,7 @@ use crate::db::Database;
 use crate::device::Device;
 #[cfg(test)]
 use crate::device::DeviceHardware as _;
-use crate::device::rtc::{AlarmManager, AlarmType};
+use crate::device::rtc::AlarmManager;
 use crate::device::wifi::WifiSession;
 use crate::dictionary::{Dictionary, load_dictionary_from_db};
 use crate::font::Fonts;
@@ -28,20 +28,6 @@ use tracing::error;
 
 use walkdir::WalkDir;
 
-/// Converts Auto Suspend minutes to a chrono duration of at least one second.
-///
-/// Sub-minute settings must not truncate to zero via `as i64` on whole seconds.
-fn auto_suspend_chrono_duration(minutes: f32) -> chrono::Duration {
-    let secs = (minutes * 60.0).max(0.0);
-    let duration = chrono::Duration::from_std(std::time::Duration::from_secs_f32(secs))
-        .unwrap_or_else(|_| chrono::Duration::milliseconds(((secs * 1000.0) as i64).max(1)));
-    if duration.num_seconds() < 1 {
-        chrono::Duration::seconds(1)
-    } else {
-        duration
-    }
-}
-
 const KEYBOARD_LAYOUTS_DIRNAME: &str = "keyboard-layouts";
 pub(crate) const DICTIONARIES_DIRNAME: &str = "dictionaries";
 const INPUT_HISTORY_SIZE: usize = 32;
@@ -64,9 +50,15 @@ pub struct Context<D: Device> {
     pub covered: bool,
     pub shared: bool,
     pub online: bool,
-    pub suspend_cycle_active: bool,
+    /// Active explicit suspend cycle; `None` means interactive.
+    #[cfg(any(feature = "kobo", docsrs))]
+    pub(crate) suspend: Option<crate::device::suspend::SuspendCycle>,
     pub wifi_session: std::sync::Arc<crate::device::wifi::WifiSession>,
     pub soft_suspend_session: std::sync::Arc<crate::device::soft_suspend::SoftSuspendSession>,
+    /// Test-only inject queue for deep-idle wait outcomes.
+    #[cfg(all(test, feature = "kobo"))]
+    pub(crate) deep_idle_poll_inject:
+        std::collections::VecDeque<crate::device::suspend::PollResult>,
 }
 
 impl<D: Device> Context<D> {
@@ -133,9 +125,12 @@ impl<D: Device> Context<D> {
             covered: false,
             shared: false,
             online: false,
-            suspend_cycle_active: false,
+            #[cfg(any(feature = "kobo", docsrs))]
+            suspend: None,
             wifi_session,
             soft_suspend_session,
+            #[cfg(all(test, feature = "kobo"))]
+            deep_idle_poll_inject: std::collections::VecDeque::new(),
         }
     }
 
@@ -247,30 +242,6 @@ impl<D: Device> Context<D> {
 
         if history.len() > INPUT_HISTORY_SIZE {
             history.pop_back();
-        }
-    }
-
-    /// Schedules or cancels [`AlarmType::AutoSuspend`] from the Auto Suspend setting.
-    ///
-    /// When `auto_suspend` is `0`, cancels any pending alarm. Otherwise replaces the
-    /// alarm with a wake time of *now + timeout* (setting is minutes).
-    pub(crate) fn reschedule_auto_suspend_alarm(&mut self) {
-        let Some(alarm_manager) = self.alarm_manager.as_ref() else {
-            return;
-        };
-        let mut alarm_manager = alarm_manager.lock().unwrap_or_else(|e| e.into_inner());
-
-        let minutes = self.settings.auto_suspend;
-        if minutes <= 0.0 {
-            if let Err(error) = alarm_manager.cancel_alarm(AlarmType::AutoSuspend) {
-                tracing::error!(error = %error, "failed to cancel AutoSuspend alarm");
-            }
-            return;
-        }
-
-        let duration = auto_suspend_chrono_duration(minutes);
-        if let Err(error) = alarm_manager.schedule_in(AlarmType::AutoSuspend, duration) {
-            tracing::error!(error = %error, "failed to schedule AutoSuspend alarm");
         }
     }
 
@@ -412,7 +383,8 @@ pub mod test_helpers {
         assert!(!context.covered);
         assert!(!context.shared);
         assert!(!context.online);
-        assert!(!context.suspend_cycle_active);
+        #[cfg(feature = "kobo")]
+        assert!(context.suspend.is_none());
         assert_eq!(context.notification_index, 0);
         assert!(context.dictionaries.is_empty());
         assert!(context.keyboard_layouts.is_empty());

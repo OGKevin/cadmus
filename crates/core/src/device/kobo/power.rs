@@ -46,6 +46,27 @@ impl KoboPowerManager {
             initial_cpu_states: Mutex::new(Vec::new()),
         }
     }
+
+    fn write_state_extended(&self, value: &str) -> Result<(), PowerError> {
+        tracing::debug!(path = %STATE_EXTENDED_PATH, value, "Writing state-extended");
+        fs::write(STATE_EXTENDED_PATH, value).map_err(|e| {
+            tracing::error!(error = %e, path = %STATE_EXTENDED_PATH, value, "Failed to write state-extended");
+            PowerError::Io(e)
+        })
+    }
+
+    fn restore_touch_controller(&self) -> Result<(), PowerError> {
+        match self.model {
+            Model::GloHD | Model::AuraH2O => {
+                tracing::debug!(path = %NEOCMD_PATH, value = "a", "Reinitializing touch controller");
+                fs::write(NEOCMD_PATH, "a").map_err(|e| {
+                    tracing::warn!(error = %e, path = %NEOCMD_PATH, "Failed to write neocmd");
+                    PowerError::Io(e)
+                })
+            }
+            _ => Ok(()),
+        }
+    }
 }
 
 impl PowerManager for KoboPowerManager {
@@ -62,13 +83,7 @@ impl PowerManager for KoboPowerManager {
     /// Returns [`PowerError::Io`] if writing to any of the sysfs control nodes fails.
     fn suspend(&self) -> Result<(), PowerError> {
         tracing::info!("Suspending device to RAM");
-        tracing::debug!(path = %STATE_EXTENDED_PATH, value = "1", "Deactivating touch screen");
-
-        fs::write(STATE_EXTENDED_PATH, "1").map_err(|e| {
-            tracing::error!(error = %e, path = %STATE_EXTENDED_PATH, "Failed to deactivate touch screen");
-
-            PowerError::Io(e)
-        })?;
+        self.arm_deep_idle()?;
 
         tracing::debug!("Sleeping to prevent write errors");
         thread::sleep(Duration::from_secs(2));
@@ -99,26 +114,18 @@ impl PowerManager for KoboPowerManager {
     /// Returns [`PowerError::Io`] if writing to any of the sysfs wake up nodes fails.
     fn resume(&self) -> Result<(), PowerError> {
         tracing::info!("Resuming device");
-        tracing::debug!(path = %STATE_EXTENDED_PATH, value = "0", "Reactivating touch screen");
+        self.disarm_deep_idle()
+    }
 
-        fs::write(STATE_EXTENDED_PATH, "0").map_err(|e| {
-            tracing::error!(error = %e, path = %STATE_EXTENDED_PATH, "Failed to reactivate touch screen");
+    fn arm_deep_idle(&self) -> Result<(), PowerError> {
+        tracing::debug!("Arming Kobo deep-idle peripheral state");
+        self.write_state_extended("1")
+    }
 
-            PowerError::Io(e)
-        })?;
-
-        match self.model {
-            Model::GloHD | Model::AuraH2O => {
-                tracing::debug!(path = %NEOCMD_PATH, value = "a", "Reinitializing touch controller");
-
-                fs::write(NEOCMD_PATH, "a").map_err(|e| {
-                    tracing::warn!(error = %e, path = %NEOCMD_PATH, "Failed to write neocmd");
-
-                    PowerError::Io(e)
-                })?;
-            }
-            _ => {}
-        }
+    fn disarm_deep_idle(&self) -> Result<(), PowerError> {
+        tracing::debug!("Clearing Kobo deep-idle peripheral state");
+        self.write_state_extended("0")?;
+        self.restore_touch_controller()?;
 
         Ok(())
     }

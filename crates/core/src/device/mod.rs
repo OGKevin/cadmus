@@ -6,6 +6,7 @@
 //! Feature flags ensure exactly one implementation is compiled per binary,
 //! selected by `kobo` or `emulator`.
 
+mod auto_suspend;
 mod error;
 mod forward;
 pub mod leds;
@@ -14,6 +15,8 @@ pub mod migration;
 mod model;
 pub mod power;
 pub mod rtc;
+#[cfg(any(feature = "kobo", docsrs))]
+mod tasks;
 mod types;
 
 #[cfg(unix)]
@@ -22,6 +25,8 @@ mod linux;
 pub use linux::LinuxRtc;
 #[cfg(unix)]
 pub use linux::soft_suspend;
+#[cfg(any(feature = "kobo", docsrs))]
+pub(crate) mod suspend;
 pub mod usb;
 pub mod wifi;
 
@@ -38,10 +43,16 @@ mod emulator;
 ))]
 pub(crate) mod test_device;
 
+#[cfg(all(test, feature = "kobo"))]
+pub(crate) mod test_harness;
+
 #[cfg(any(all(feature = "kobo", not(feature = "emulator")), docsrs,))]
 pub(crate) mod kobo;
 
+pub(crate) use auto_suspend::reschedule_auto_suspend_alarm;
 pub use model::Model;
+#[cfg(any(feature = "kobo", docsrs))]
+pub(crate) use tasks::schedule_device_task;
 pub use types::{FrontlightKind, Orientation};
 
 #[cfg(any(feature = "emulator", docsrs))]
@@ -109,6 +120,8 @@ pub struct DeviceTask {
 pub enum DeviceTaskId {
     CheckBattery,
     PrepareSuspend,
+    /// Periodic tick while waiting for soft-suspend deep idle to sleep/wake.
+    PollDeepIdleWait,
     Exit,
 }
 
@@ -700,6 +713,19 @@ pub trait DeviceLifecycle:
     ) -> Result<(), anyhow::Error> {
         let _ = (context, status, runtime);
         Ok(())
+    }
+
+    /// Whether the main event loop should skip acquiring a soft-suspend lease
+    /// while handling `event`.
+    ///
+    /// Deep-idle cycles intentionally drop the cycle lease during
+    /// [`crate::device::suspend::SuspendPhase::InSleep`] so autosleep can enter
+    /// `mem`. Nested main-loop leases would pin `wake_lock` and block sleep.
+    ///
+    /// Default: never skip.
+    fn should_skip_main_loop_soft_suspend_lease(context: &AppContext, event: &Event) -> bool {
+        let _ = (context, event);
+        false
     }
 }
 

@@ -101,7 +101,7 @@ fn handle_update_auto_frontlight(context: &mut AppContext) {
 mod tests {
     use super::*;
     use crate::device::DeviceRuntime;
-    use crate::device::kobo::lifecycle::test_helpers::LifecycleHarness;
+    use crate::device::test_harness::DeviceRuntimeHarness;
     use crate::frontlight::LightLevels;
     use crate::task::{BackgroundTask, ShutdownSignal, TaskId, TaskManager};
     use crate::view::Event;
@@ -122,7 +122,7 @@ mod tests {
 
     #[test]
     fn handle_event_toggle_frontlight_updates_settings() {
-        let mut harness = LifecycleHarness::new();
+        let mut harness = DeviceRuntimeHarness::new();
         harness.context.settings.frontlight = false;
         let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
             handle_event(&Event::ToggleFrontlight, hub, bus, rq, context, runtime)
@@ -133,7 +133,7 @@ mod tests {
 
     #[test]
     fn handle_event_set_frontlight_levels_stops_auto_task() {
-        let mut harness = LifecycleHarness::new();
+        let mut harness = DeviceRuntimeHarness::new();
         let mut background_tasks = TaskManager::new();
         background_tasks
             .start(Box::new(WaitingTask), harness.hub_tx.clone())
