@@ -35,6 +35,8 @@
 - [Code Style and Linting](contributing/code-style.md)
 - [Event System](contributing/event-system.md)
 - [WiFi Leases](contributing/wifi.md)
+- [Soft Suspend](contributing/soft-suspend.md)
+- [Kobo suspend](contributing/kobo/suspend.md)
 - [Telemetry](contributing/telemetry/index.md)
   - [Logging](contributing/telemetry/logging.md)
   - [Tracing](contributing/telemetry/tracing.md)

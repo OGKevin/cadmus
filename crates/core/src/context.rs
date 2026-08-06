@@ -67,6 +67,10 @@ pub struct Context<D: Device> {
     pub suspend_cycle_active: bool,
     pub wifi_session: std::sync::Arc<crate::device::wifi::WifiSession>,
     pub soft_suspend_session: std::sync::Arc<crate::device::soft_suspend::SoftSuspendSession>,
+    /// Named lease held for the whole deep-idle PrepareSuspend → Suspend cycle.
+    pub soft_suspend_cycle_lease: Option<crate::device::soft_suspend::SoftSuspendLease>,
+    /// Autosleep mode to restore after a deep-idle Mem force.
+    pub soft_suspend_deep_idle_restore: Option<crate::device::soft_suspend::AutosleepMode>,
 }
 
 impl<D: Device> Context<D> {
@@ -136,6 +140,8 @@ impl<D: Device> Context<D> {
             suspend_cycle_active: false,
             wifi_session,
             soft_suspend_session,
+            soft_suspend_cycle_lease: None,
+            soft_suspend_deep_idle_restore: None,
         }
     }
 

@@ -66,9 +66,9 @@ fn schedule_device_task(
 
 /// Ends an in-progress suspend cycle and returns to interactive use.
 ///
-/// Drops PrepareSuspend task channels, restores frontlight and wifi-at-rest,
-/// cancels post-resume alarms, re-arms AutoSuspend, and removes the suspend
-/// intermission.
+/// Drops PrepareSuspend task channels, leaves deep idle, restores frontlight and
+/// wifi-at-rest, cancels post-resume alarms, re-arms AutoSuspend, and removes the
+/// suspend intermission.
 pub(super) fn finish_suspend_cycle(
     context: &mut AppContext,
     tasks: &mut Vec<DeviceTask>,
@@ -77,6 +77,7 @@ pub(super) fn finish_suspend_cycle(
     rq: &mut crate::view::RenderQueue,
 ) {
     tasks.retain(|task| task.id != DeviceTaskId::PrepareSuspend);
+    suspend::leave_deep_idle_if_needed(context);
     context.set_frontlight(context.settings.frontlight);
     if context.settings.wifi.wants_radio_at_rest() {
         let session = context.wifi_session.clone();
@@ -114,9 +115,9 @@ pub(super) fn finish_suspend_cycle(
 
 /// Aborts an in-progress PrepareSuspend and restores UI without full resume.
 ///
-/// Drops the prepare task and clears the intermission, then re-arms AutoSuspend
-/// so aborting during prepare does not leave idle tracking disabled. Full cycle
-/// cancels after Suspend RTC arming use [`finish_suspend_cycle`].
+/// Drops the prepare task and deep-idle lease, clears the intermission, then
+/// re-arms AutoSuspend so aborting during prepare does not leave idle tracking
+/// disabled. Full cycle cancels after Suspend RTC arming use [`finish_suspend_cycle`].
 fn cancel_suspend(
     context: &mut AppContext,
     id: DeviceTaskId,
@@ -130,6 +131,7 @@ fn cancel_suspend(
     }
 
     tasks.retain(|task| task.id != DeviceTaskId::PrepareSuspend);
+    suspend::leave_deep_idle_if_needed(context);
     if let Some(index) = locate::<Intermission>(view) {
         let rect = *view.child(index).rect();
         view.children_mut().remove(index);
@@ -161,9 +163,12 @@ pub(super) fn restore_boot_rotation_if_needed(context: &mut AppContext) {
 /// [`crate::AlarmType::WakeDebounce`] so idle / arming / wake-debounce RTCs do
 /// not compete with AutoPowerOff / Calendar during the suspend cycle. Suspends
 /// the current view and shows the suspend intermission immediately, so the
-/// device already appears asleep to the user. A [`DeviceTaskId::PrepareSuspend`]
-/// task is scheduled to send [`Event::PrepareSuspend`] after
-/// [`PREPARE_SUSPEND_WAIT_DELAY`].
+/// device already appears asleep to the user.
+///
+/// When soft suspend is armed, acquires a `deep-idle` cycle lease and schedules
+/// [`Event::PrepareSuspend`] immediately (no [`PREPARE_SUSPEND_WAIT_DELAY`]).
+/// When soft suspend is off, schedules PrepareSuspend after
+/// [`PREPARE_SUSPEND_WAIT_DELAY`] for the classic path.
 fn begin_suspend(
     context: &mut AppContext,
     view: &mut dyn View,
@@ -186,10 +191,15 @@ fn begin_suspend(
         *interm.rect(),
         UpdateMode::Full,
     ));
+    let prepare_delay = if suspend::arm_deep_idle_cycle(context) {
+        Duration::ZERO
+    } else {
+        PREPARE_SUSPEND_WAIT_DELAY
+    };
     schedule_device_task(
         DeviceTaskId::PrepareSuspend,
         Event::PrepareSuspend,
-        PREPARE_SUSPEND_WAIT_DELAY,
+        prepare_delay,
         hub,
         tasks,
     );

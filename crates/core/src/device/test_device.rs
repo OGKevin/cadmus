@@ -201,6 +201,8 @@ impl crate::device::usb::UsbManager for TestUsbManager {
 struct TestPowerState {
     suspend_calls: u32,
     resume_calls: u32,
+    arm_deep_idle_calls: u32,
+    disarm_deep_idle_calls: u32,
 }
 
 /// Assertable power manager test double.
@@ -222,6 +224,20 @@ impl TestPowerManager {
 
     pub fn resume_call_count(&self) -> u32 {
         self.state.lock().map(|s| s.resume_calls).unwrap_or(0)
+    }
+
+    pub fn arm_deep_idle_call_count(&self) -> u32 {
+        self.state
+            .lock()
+            .map(|s| s.arm_deep_idle_calls)
+            .unwrap_or(0)
+    }
+
+    pub fn disarm_deep_idle_call_count(&self) -> u32 {
+        self.state
+            .lock()
+            .map(|s| s.disarm_deep_idle_calls)
+            .unwrap_or(0)
     }
 
     pub fn was_suspend_called(&self) -> bool {
@@ -250,6 +266,20 @@ impl crate::device::power::PowerManager for TestPowerManager {
     fn resume(&self) -> Result<(), crate::device::power::PowerError> {
         if let Ok(mut state) = self.state.lock() {
             state.resume_calls += 1;
+        }
+        Ok(())
+    }
+
+    fn arm_deep_idle(&self) -> Result<(), crate::device::power::PowerError> {
+        if let Ok(mut state) = self.state.lock() {
+            state.arm_deep_idle_calls += 1;
+        }
+        Ok(())
+    }
+
+    fn disarm_deep_idle(&self) -> Result<(), crate::device::power::PowerError> {
+        if let Ok(mut state) = self.state.lock() {
+            state.disarm_deep_idle_calls += 1;
         }
         Ok(())
     }
