@@ -794,15 +794,25 @@ pub fn parse_device_events(
                 }
             } else if evt.code != BTN_TOUCH {
                 if let Some(button_status) = ButtonStatus::try_from_raw(evt.value) {
+                    let time = seconds(evt.time);
+                    let code = ButtonCode::from_raw(
+                        evt.code,
+                        rotation,
+                        button_scheme,
+                        startup_rotation,
+                        dir,
+                    );
+                    tracing::debug!(
+                        code = ?code,
+                        status = ?button_status,
+                        time,
+                        raw_code = evt.code,
+                        raw_value = evt.value,
+                        "decoded button event"
+                    );
                     ty.send(DeviceEvent::Button {
-                        time: seconds(evt.time),
-                        code: ButtonCode::from_raw(
-                            evt.code,
-                            rotation,
-                            button_scheme,
-                            startup_rotation,
-                            dir,
-                        ),
+                        time,
+                        code,
                         status: button_status,
                     })
                     .unwrap();

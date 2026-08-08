@@ -156,6 +156,14 @@ pub fn parse_gesture_events(rx: &Receiver<DeviceEvent>, ty: &Sender<Event>, dpi:
                         positions: vec![position],
                     },
                 );
+                tracing::debug!(
+                    id,
+                    position = ?position,
+                    time,
+                    short_ms = HOLD_DELAY_SHORT.as_millis(),
+                    long_ms = HOLD_DELAY_LONG.as_millis(),
+                    "finger hold timer armed"
+                );
                 let ty = ty.clone();
                 let contacts = contacts.clone();
                 let segments = segments.clone();
@@ -166,6 +174,12 @@ pub fn parse_gesture_events(rx: &Receiver<DeviceEvent>, ty: &Sender<Event>, dpi:
                         let mut ct = contacts.lock().unwrap();
                         let sg = segments.lock().unwrap();
                         if ct.len() > 1 || !sg.is_empty() {
+                            tracing::trace!(
+                                id,
+                                contacts = ct.len(),
+                                segments = sg.len(),
+                                "hold finger short cancelled"
+                            );
                             return;
                         }
                         if let Some(ts) = ct.get(&id) {
@@ -175,11 +189,31 @@ pub fn parse_gesture_events(rx: &Receiver<DeviceEvent>, ty: &Sender<Event>, dpi:
                                 && (tp[tp.len() / 2] - position).length() < hold_jitter
                             {
                                 held = true;
+                                tracing::debug!(
+                                    id,
+                                    position = ?position,
+                                    time,
+                                    "hold finger short fired"
+                                );
                                 ty.send(Event::Gesture(GestureEvent::HoldFingerShort(
                                     position, id,
                                 )))
                                 .ok();
+                            } else {
+                                tracing::trace!(
+                                    id,
+                                    position = ?position,
+                                    time,
+                                    "hold finger short cancelled"
+                                );
                             }
+                        } else {
+                            tracing::trace!(
+                                id,
+                                position = ?position,
+                                time,
+                                "hold finger short cancelled"
+                            );
                         }
                         if held {
                             if let Some(ts) = ct.get_mut(&id) {
@@ -194,6 +228,12 @@ pub fn parse_gesture_events(rx: &Receiver<DeviceEvent>, ty: &Sender<Event>, dpi:
                         let mut ct = contacts.lock().unwrap();
                         let sg = segments.lock().unwrap();
                         if ct.len() > 1 || !sg.is_empty() {
+                            tracing::trace!(
+                                id,
+                                contacts = ct.len(),
+                                segments = sg.len(),
+                                "hold finger long cancelled"
+                            );
                             return;
                         }
                         if let Some(ts) = ct.get_mut(&id) {
@@ -202,9 +242,29 @@ pub fn parse_gesture_events(rx: &Receiver<DeviceEvent>, ty: &Sender<Event>, dpi:
                                 && (tp[tp.len() - 1] - position).length() < hold_jitter
                                 && (tp[tp.len() / 2] - position).length() < hold_jitter
                             {
+                                tracing::debug!(
+                                    id,
+                                    position = ?position,
+                                    time,
+                                    "hold finger long fired"
+                                );
                                 ty.send(Event::Gesture(GestureEvent::HoldFingerLong(position, id)))
                                     .ok();
+                            } else {
+                                tracing::trace!(
+                                    id,
+                                    position = ?position,
+                                    time,
+                                    "hold finger long cancelled"
+                                );
                             }
+                        } else {
+                            tracing::trace!(
+                                id,
+                                position = ?position,
+                                time,
+                                "hold finger long cancelled"
+                            );
                         }
                     }
                 });
@@ -229,10 +289,22 @@ pub fn parse_gesture_events(rx: &Receiver<DeviceEvent>, ty: &Sender<Event>, dpi:
                 let mut ct = contacts.lock().unwrap();
                 let mut sg = segments.lock().unwrap();
                 if let Some(mut ts) = ct.remove(&id) {
+                    tracing::debug!(
+                        id,
+                        position = ?position,
+                        was_held = ts.held,
+                        "finger hold cleared on up"
+                    );
                     if !ts.held {
                         ts.positions.push(position);
                         sg.push(ts.positions);
                     }
+                } else {
+                    tracing::trace!(
+                        id,
+                        position = ?position,
+                        "finger up with no active contact"
+                    );
                 }
                 if ct.is_empty() && !sg.is_empty() {
                     let len = sg.len();
@@ -495,26 +567,73 @@ pub fn parse_gesture_events(rx: &Receiver<DeviceEvent>, ty: &Sender<Event>, dpi:
             } => {
                 let mut bt = buttons.lock().unwrap();
                 bt.insert(code, time);
+                tracing::debug!(
+                    code = ?code,
+                    time,
+                    short_ms = HOLD_DELAY_SHORT.as_millis(),
+                    long_ms = HOLD_DELAY_LONG.as_millis(),
+                    "button hold timer armed"
+                );
                 let ty = ty.clone();
                 let buttons = buttons.clone();
                 thread::spawn(move || {
                     thread::sleep(HOLD_DELAY_SHORT);
                     {
                         let bt = buttons.lock().unwrap();
-                        if let Some(&initial_time) = bt.get(&code) {
-                            if (initial_time - time).abs() < f64::EPSILON {
+                        match bt.get(&code) {
+                            Some(&initial_time) if (initial_time - time).abs() < f64::EPSILON => {
+                                tracing::debug!(
+                                    code = ?code,
+                                    time,
+                                    "hold button short fired"
+                                );
                                 ty.send(Event::Gesture(GestureEvent::HoldButtonShort(code)))
                                     .ok();
+                            }
+                            Some(&initial_time) => {
+                                tracing::trace!(
+                                    code = ?code,
+                                    time,
+                                    initial_time,
+                                    "hold button short cancelled"
+                                );
+                            }
+                            None => {
+                                tracing::trace!(
+                                    code = ?code,
+                                    time,
+                                    "hold button short cancelled"
+                                );
                             }
                         }
                     }
                     thread::sleep(HOLD_DELAY_LONG - HOLD_DELAY_SHORT);
                     {
                         let bt = buttons.lock().unwrap();
-                        if let Some(&initial_time) = bt.get(&code) {
-                            if (initial_time - time).abs() < f64::EPSILON {
+                        match bt.get(&code) {
+                            Some(&initial_time) if (initial_time - time).abs() < f64::EPSILON => {
+                                tracing::debug!(
+                                    code = ?code,
+                                    time,
+                                    "hold button long fired"
+                                );
                                 ty.send(Event::Gesture(GestureEvent::HoldButtonLong(code)))
                                     .ok();
+                            }
+                            Some(&initial_time) => {
+                                tracing::trace!(
+                                    code = ?code,
+                                    time,
+                                    initial_time,
+                                    "hold button long cancelled"
+                                );
+                            }
+                            None => {
+                                tracing::trace!(
+                                    code = ?code,
+                                    time,
+                                    "hold button long cancelled"
+                                );
                             }
                         }
                     }
@@ -526,7 +645,8 @@ pub fn parse_gesture_events(rx: &Receiver<DeviceEvent>, ty: &Sender<Event>, dpi:
                 ..
             } => {
                 let mut bt = buttons.lock().unwrap();
-                bt.remove(&code);
+                let cleared = bt.remove(&code).is_some();
+                tracing::debug!(code = ?code, cleared, "button hold cleared on release");
             }
             _ => (),
         }
