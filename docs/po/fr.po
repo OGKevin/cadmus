@@ -13,7 +13,7 @@ msgstr ""
 "X-Crowdin-File: /docs/po/messages.pot\n"
 "X-Crowdin-File-ID: 51\n"
 "Language-Team: French\n"
-"PO-Revision-Date: 2026-08-04 14:18\n"
+"PO-Revision-Date: 2026-08-08 05:10\n"
 
 #: src/SUMMARY.md:1
 msgid "Overview"

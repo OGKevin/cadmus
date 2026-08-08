@@ -1,10 +1,14 @@
 # Keep the message ID's sorted please.
 
 -app-name = Cadmus
+-minutes = minutes
+-wifi-idle-timeout = Délai de réponse maximum du Wifi
 build-attributes =
     Version du { $timestamp }
     Par { $user }@{ $host }
 build-features = Nouveautés : { $features }
+build-kind-main = Main
+build-kind-test = Test
 english = Anglais
 startup-loading = Cadmus démarre…
 
@@ -31,10 +35,16 @@ top-menu-restart-app = Redémarrer { -app-name }
 top-menu-suspend = Mise en veille
 top-menu-quit = Quitter
 top-menu-power-off = Éteindre
+top-menu-switch-to = Changer pour la version { $build }
 top-menu-sync-time = Synchroniser l'horloge
+top-menu-wifi = Wifi
 # Settings - Button Scheme
 settings-button-scheme-natural = Naturel
 settings-button-scheme-inverted = Inversé
+# Settings - WiFi Mode
+settings-wifi-mode-off = Éteint
+settings-wifi-mode-always-on = Toujours allumé
+settings-wifi-mode-auto = Auto
 # Settings - Finished Actions
 settings-finished-action-notify = Notifier
 settings-finished-action-close = Fermer
@@ -59,12 +69,17 @@ settings-general-keyboard-layout = Disposition du clavier
 settings-general-language = Langue
 settings-general-never = Jamais
 settings-general-not-set = Non Défini
+settings-general-ntp-server = Serveur NTP
+settings-general-ntp-server-input = Serveur NTP (domaine ou IP)
 settings-general-settings-retention = Rétention des paramètres
 settings-general-startup-mode = Mode de démarrage
 settings-general-toggle-off = off
 settings-general-toggle-on = on
 settings-general-trigger = Déclencher
 settings-general-unknown = Inconnu
+settings-general-wifi-idle-immediate = Immédiat
+settings-general-wifi-idle-timeout = { -wifi-idle-timeout } ({ -minutes })
+settings-general-wifi-idle-timeout-input = { -wifi-idle-timeout } ({ -minutes }, 0 = { settings-general-wifi-idle-immediate })
 # Settings - Startup Mode
 settings-startup-mode-home = Page d'accueil
 settings-startup-mode-last-file = Fichier précédent

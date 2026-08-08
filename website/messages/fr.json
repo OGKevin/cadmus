@@ -25,7 +25,7 @@
       "description": "Documentation des crates Rust"
     },
     "storybook": {
-      "label": "",
+      "label": "Navigateur de la bibliothèque des éléments",
       "description": "Parcourir les composants de l'UI"
     },
     "planning": {
