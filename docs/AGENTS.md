@@ -46,12 +46,8 @@ Audience: developers and contributors. Technical terminology is appropriate.
 
 ## devenv.nix Documentation Sync
 
-When modifying `devenv.nix`, update `docs/src/contributing/devenv-setup.md`:
-
-- **Available Commands** table — if scripts in `scripts = { ... }` change.
-- **Platform Support** — if `isLinux`/`isDarwin` conditionals change.
-- **Observability Stack** — if services/ports change.
-- **Troubleshooting** — for known platform-specific issues.
+When modifying `devenv.nix`, update docs per the devenv section in
+[`docs/REVIEW.md`](REVIEW.md).
 
 ## Formatting
 
