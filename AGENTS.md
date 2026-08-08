@@ -269,6 +269,9 @@ After code changes, complete every step before considering work done:
    compile `cadmus-core`)
 4. Kobo ARM build — `build-kobo` skill (**required**; host builds can pass while
    ARM fails)
+5. Documentation freshness — if the change updates or introduces
+   user/contributor-facing behavior, follow [`REVIEW.md`](REVIEW.md) (update or
+   add `docs/src` pages, or justify why not)
 
 After modifying `Cargo.toml`, run the full verification sequence above.
 

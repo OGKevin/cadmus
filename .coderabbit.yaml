@@ -35,11 +35,28 @@ reviews:
       requirements: It should follow https://www.conventionalcommits.org/en/v1.0.0/
     description:
       mode: "off"
+    custom_checks:
+      - name: Docs freshness
+        mode: warning
+        instructions: >
+          Apply Documentation freshness in REVIEW.md (and nested REVIEW.md
+          files). Warn when docs are stale, or when a new user/contributor-facing
+          feature lacks matching docs/src coverage (and SUMMARY/POT where
+          required), unless the PR justifies skipping.
   tools:
     github-checks:
       timeout_ms: 900000
 chat: {}
-knowledge_base: {}
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - files: "REVIEW.md"
+        applyTo: "**/*"
+      - files: "crates/core/REVIEW.md"
+        applyTo: "crates/core/**,crates/cadmus/**,contrib/Settings-sample.toml"
+      - files: "docs/REVIEW.md"
+        applyTo: "docs/**,devenv.nix"
 code_generation: {}
 issue_enrichment:
   planning:
