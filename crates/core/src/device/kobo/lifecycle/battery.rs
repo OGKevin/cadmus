@@ -51,7 +51,7 @@ pub(super) fn handle_event(
         runtime.tasks,
     );
 
-    if is_suspend_active(runtime.tasks) {
+    if is_suspend_active(context, runtime.tasks) {
         return EventOutcome::Handled;
     }
 

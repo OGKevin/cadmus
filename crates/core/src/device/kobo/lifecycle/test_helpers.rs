@@ -26,7 +26,6 @@ use crate::framebuffer::Framebuffer as _;
 use crate::view::filler::Filler;
 use crate::view::{Bus, Event, Hub, RenderQueue, UpdateData, View};
 use std::sync::mpsc::Receiver;
-use std::time::Instant;
 
 /// Minimal runtime shell for lifecycle handler tests.
 ///
@@ -44,7 +43,6 @@ pub struct LifecycleHarness {
     pub tasks: Vec<DeviceTask>,
     pub history: Vec<HistoryItem>,
     pub updating: Vec<UpdateData>,
-    pub inactive_since: Instant,
 }
 
 impl LifecycleHarness {
@@ -64,7 +62,6 @@ impl LifecycleHarness {
             tasks: Vec::new(),
             history: Vec::new(),
             updating: Vec::new(),
-            inactive_since: Instant::now(),
         }
     }
 
@@ -94,7 +91,6 @@ impl LifecycleHarness {
             history: &mut self.history,
             tasks: &mut self.tasks,
             updating: &mut self.updating,
-            inactive_since: &mut self.inactive_since,
             settings_manager: None,
             startup_cwd: None,
             background_tasks: None,
@@ -118,7 +114,6 @@ impl LifecycleHarness {
             history: &mut self.history,
             tasks: &mut self.tasks,
             updating: &mut self.updating,
-            inactive_since: &mut self.inactive_since,
             settings_manager: None,
             startup_cwd: None,
             background_tasks: None,

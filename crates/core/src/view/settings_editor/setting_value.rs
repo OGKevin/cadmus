@@ -274,6 +274,11 @@ impl View for SettingValue {
 
         if let (Some(display), handled) = self.kind.handle(evt, context, bus) {
             self.update(display, &context.settings, rq);
+            if let Event::Submit(submitted_id, _) = evt
+                && self.active_input == Some(*submitted_id)
+            {
+                self.active_input = None;
+            }
             if !self.kind.keep_menu_open() {
                 bus.push_back(Event::Close(ViewId::SettingsValueMenu));
             }
@@ -527,8 +532,23 @@ mod tests {
 
     #[test]
     fn test_auto_suspend_submit_updates_value() {
+        use crate::AlarmType;
+        use crate::view::{EntryId, ViewId};
+        use std::time::Duration;
+
         let mut context = create_test_context();
-        let settings = Settings::default();
+        context.settings.auto_suspend = 30.0;
+        context.reschedule_auto_suspend_alarm();
+        let first = context
+            .alarm_manager
+            .as_ref()
+            .unwrap()
+            .lock()
+            .unwrap()
+            .time_until_alarm(AlarmType::AutoSuspend)
+            .unwrap();
+
+        let settings = context.settings.clone();
         let rect = rect![0, 0, 200, 50];
 
         let mut value = SettingValue::new(
@@ -543,14 +563,93 @@ mod tests {
         let (hub, _receiver) = channel();
         let mut bus = VecDeque::new();
 
-        let update_event = Event::Settings(SettingsEvent::UpdateValue {
-            kind: SettingIdentity::AutoSuspend,
-            value: "15.0".to_string(),
-        });
-        value.handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context);
+        value.handle_event(
+            &Event::Select(EntryId::EditAutoSuspend),
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        );
+        std::thread::sleep(Duration::from_millis(20));
+        value.handle_event(
+            &Event::Submit(ViewId::AutoSuspendInput, "15.0".to_string()),
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        );
 
+        assert_eq!(context.settings.auto_suspend, 15.0);
         assert_eq!(value.value(), "15.0");
-        assert!(!rq.is_empty());
+        let second = context
+            .alarm_manager
+            .as_ref()
+            .unwrap()
+            .lock()
+            .unwrap()
+            .time_until_alarm(AlarmType::AutoSuspend)
+            .unwrap();
+        assert!((second - 15 * 60).abs() < 2);
+        assert!(second < first);
+    }
+
+    #[test]
+    fn test_auto_suspend_submit_zero_cancels_alarm() {
+        use crate::AlarmType;
+        use crate::view::{EntryId, ViewId};
+
+        let mut context = create_test_context();
+        context.settings.auto_suspend = 30.0;
+        context.reschedule_auto_suspend_alarm();
+        assert!(
+            context
+                .alarm_manager
+                .as_ref()
+                .unwrap()
+                .lock()
+                .unwrap()
+                .has_alarm(AlarmType::AutoSuspend)
+        );
+
+        let settings = context.settings.clone();
+        let rect = rect![0, 0, 200, 50];
+        let mut value = SettingValue::new(
+            &AutoSuspend,
+            rect,
+            &settings,
+            &mut context.fonts,
+            context.device.dpi(),
+            &context.device.install_dir(),
+        );
+        let mut rq = RenderQueue::new();
+        let (hub, _receiver) = channel();
+        let mut bus = VecDeque::new();
+
+        value.handle_event(
+            &Event::Select(EntryId::EditAutoSuspend),
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        );
+        value.handle_event(
+            &Event::Submit(ViewId::AutoSuspendInput, "0".to_string()),
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        );
+
+        assert_eq!(context.settings.auto_suspend, 0.0);
+        assert!(
+            !context
+                .alarm_manager
+                .as_ref()
+                .unwrap()
+                .lock()
+                .unwrap()
+                .has_alarm(AlarmType::AutoSuspend)
+        );
     }
 
     #[test]

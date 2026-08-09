@@ -1,5 +1,6 @@
 //! Power-off and application exit event handling.
 
+use super::helpers::{cancel_suspend_if_pending, is_suspend_active};
 use super::{begin_suspend, show_power_off_intermission};
 use crate::device::DevicePaths as _;
 use crate::device::{AppContext, DeviceRuntime, EventOutcome, ExitStatus};
@@ -18,6 +19,10 @@ pub(super) fn handle_event(
 ) -> EventOutcome {
     match event {
         Event::Gesture(GestureEvent::HoldButtonLong(ButtonCode::Power)) => {
+            if is_suspend_active(context, runtime.tasks) {
+                cancel_suspend_if_pending(context, runtime.tasks, runtime.view.as_mut(), hub, rq);
+                return EventOutcome::Handled;
+            }
             show_power_off_intermission(
                 context,
                 runtime.view.as_mut(),

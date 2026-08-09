@@ -2,22 +2,27 @@
 
 use anyhow::Error;
 use chrono::{DateTime, Utc};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
+use std::time::Duration;
 
 use super::manager::Rtc;
 use super::{RtcTime, RtcWkalrm};
+
+const RTC_AF: u32 = 0x20;
 
 #[derive(Debug)]
 struct TestRtcState {
     current_time: DateTime<Utc>,
     alarm_enabled: bool,
     alarm_wake_time: Option<DateTime<Utc>>,
+    irq_pending: bool,
 }
 
 /// Assertable RTC test double for unit tests.
 #[derive(Clone)]
 pub struct TestRtc {
     state: Arc<Mutex<TestRtcState>>,
+    cond: Arc<Condvar>,
 }
 
 impl TestRtc {
@@ -27,7 +32,9 @@ impl TestRtc {
                 current_time: Utc::now(),
                 alarm_enabled: false,
                 alarm_wake_time: None,
+                irq_pending: false,
             })),
+            cond: Arc::new(Condvar::new()),
         }
     }
 
@@ -42,12 +49,15 @@ impl TestRtc {
     pub fn simulate_alarm_fired(&self) {
         if let Ok(mut state) = self.state.lock() {
             state.alarm_enabled = false;
+            state.irq_pending = true;
+            self.cond.notify_all();
         }
     }
 
     pub fn set_current_time(&self, time: DateTime<Utc>) {
         if let Ok(mut state) = self.state.lock() {
             state.current_time = time;
+            self.cond.notify_all();
         }
     }
 }
@@ -82,6 +92,7 @@ impl Rtc for TestRtc {
             .map_err(|e| anyhow::anyhow!("lock poisoned: {}", e))?;
         state.alarm_enabled = true;
         state.alarm_wake_time = Some(wake_time);
+        self.cond.notify_all();
         Ok(0)
     }
 
@@ -91,6 +102,7 @@ impl Rtc for TestRtc {
             .lock()
             .map_err(|e| anyhow::anyhow!("lock poisoned: {}", e))?;
         state.alarm_enabled = false;
+        self.cond.notify_all();
         Ok(0)
     }
 
@@ -108,6 +120,39 @@ impl Rtc for TestRtc {
             .lock()
             .map_err(|e| anyhow::anyhow!("lock poisoned: {}", e))?;
         state.current_time = time;
+        self.cond.notify_all();
         Ok(())
+    }
+
+    fn wait_for_alarm_irq(&self, timeout: Option<Duration>) -> Result<Option<u32>, Error> {
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|e| anyhow::anyhow!("lock poisoned: {}", e))?;
+        loop {
+            if state.irq_pending {
+                state.irq_pending = false;
+                return Ok(Some(RTC_AF));
+            }
+
+            match timeout {
+                Some(duration) => {
+                    let (guard, timed_out) = self
+                        .cond
+                        .wait_timeout(state, duration)
+                        .map_err(|e| anyhow::anyhow!("condvar wait poisoned: {}", e))?;
+                    state = guard;
+                    if timed_out.timed_out() && !state.irq_pending {
+                        return Ok(None);
+                    }
+                }
+                None => {
+                    state = self
+                        .cond
+                        .wait(state)
+                        .map_err(|e| anyhow::anyhow!("condvar wait poisoned: {}", e))?;
+                }
+            }
+        }
     }
 }

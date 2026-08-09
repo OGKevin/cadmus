@@ -89,7 +89,6 @@ use crate::view::{Bus, Event, Hub, RenderQueue, UpdateData, View};
 use std::fmt::Debug;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Receiver;
-use std::time::Instant;
 
 pub struct HistoryItem {
     pub view: Box<dyn View>,
@@ -108,7 +107,6 @@ pub enum DeviceTaskId {
     CheckBattery,
     PrepareSuspend,
     Exit,
-    Suspend,
 }
 
 pub struct DeviceRuntime<'a> {
@@ -116,7 +114,6 @@ pub struct DeviceRuntime<'a> {
     pub history: &'a mut Vec<HistoryItem>,
     pub tasks: &'a mut Vec<DeviceTask>,
     pub updating: &'a mut Vec<UpdateData>,
-    pub inactive_since: &'a mut Instant,
     pub settings_manager: Option<&'a SettingsManager>,
     pub startup_cwd: Option<&'a Option<PathBuf>>,
     pub background_tasks: Option<&'a mut TaskManager>,

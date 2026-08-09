@@ -2,6 +2,7 @@
 
 use anyhow::Error;
 use chrono::{DateTime, Utc};
+use std::time::Duration;
 
 use super::RtcWkalrm;
 
@@ -13,8 +14,8 @@ use super::RtcWkalrm;
 ///
 /// # Consumers
 ///
-/// [`super::AlarmManager`] multiplexes logical alarms onto one wake alarm and
-/// reads alarm state after wake to detect which alarms fired.
+/// [`super::AlarmManager`] multiplexes logical alarms onto one wake alarm,
+/// waits for alarm IRQs, and claims which logical alarms fired.
 /// [`crate::time_manager::TimeManager`] writes NTP-synced time back to the RTC
 /// after a successful sync so the battery-backed clock matches the system clock.
 ///
@@ -73,6 +74,17 @@ pub trait Rtc: Send + Sync {
     ///
     /// Returns an error when the clock cannot be updated.
     fn set_time(&self, time: DateTime<Utc>) -> Result<(), Error>;
+
+    /// Blocks until an alarm IRQ is readable, or until `timeout` elapses.
+    ///
+    /// Returns `Ok(Some(data))` with the kernel IRQ data word when an alarm
+    /// interrupt is delivered, `Ok(None)` when `timeout` expires without an
+    /// IRQ, or an error on I/O failure. A `timeout` of `None` waits indefinitely.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when waiting or reading the IRQ fails.
+    fn wait_for_alarm_irq(&self, timeout: Option<Duration>) -> Result<Option<u32>, Error>;
 }
 
 impl<T: Rtc + ?Sized> Rtc for std::sync::Arc<T> {
@@ -94,5 +106,9 @@ impl<T: Rtc + ?Sized> Rtc for std::sync::Arc<T> {
 
     fn set_time(&self, time: DateTime<Utc>) -> Result<(), Error> {
         (**self).set_time(time)
+    }
+
+    fn wait_for_alarm_irq(&self, timeout: Option<Duration>) -> Result<Option<u32>, Error> {
+        (**self).wait_for_alarm_irq(timeout)
     }
 }
