@@ -11,7 +11,21 @@ use crate::framebuffer::UpdateMode;
 use crate::geom::{Point, Rectangle};
 use crate::settings::{ButtonScheme, RotationLock};
 use chrono::Local;
+use std::fmt::{self, Display, Formatter};
 use std::sync::mpsc;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum AppMenuCommand {
+    Terminal,
+}
+
+impl Display for AppMenuCommand {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Terminal => formatter.write_str("Terminal"),
+        }
+    }
+}
 
 pub fn shift(view: &mut dyn View, delta: Point) {
     *view.rect_mut() += delta;
@@ -145,6 +159,11 @@ pub fn toggle_main_menu(
                 EntryId::Launch(AppCmd::Calculator),
             ),
             EntryKind::Command("Sketch".to_string(), EntryId::Launch(AppCmd::Sketch)),
+            // TODO: Let EntryKind::Command accept typed labels instead of converting here.
+            EntryKind::Command(
+                AppMenuCommand::Terminal.to_string(),
+                EntryId::Launch(AppCmd::Terminal),
+            ),
             EntryKind::Separator,
             EntryKind::Command(
                 "Touch Events".to_string(),

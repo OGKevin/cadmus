@@ -39,6 +39,8 @@ pub struct ToggleableKeyboard {
     visible: bool,
     parent_rect: Rectangle,
     number_mode: bool,
+    layout: Option<String>,
+    has_bottom_bar: bool,
 }
 
 impl ToggleableKeyboard {
@@ -63,7 +65,35 @@ impl ToggleableKeyboard {
             visible: false,
             parent_rect,
             number_mode,
+            layout: None,
+            has_bottom_bar: true,
         }
+    }
+
+    /// Sets a custom keyboard layout to use instead of the default.
+    ///
+    /// When set, this layout will be used whenever the keyboard is shown,
+    /// temporarily overriding `context.settings.keyboard_layout`.
+    ///
+    /// # Arguments
+    ///
+    /// * `layout` - The name of the keyboard layout (e.g., "Terminal")
+    pub fn with_layout(mut self, layout: impl Into<String>) -> Self {
+        self.layout = Some(layout.into());
+        self
+    }
+
+    /// Configures whether to reserve space for a bottom bar below the keyboard.
+    ///
+    /// By default, the keyboard reserves space for a bottom bar (e.g., status bar).
+    /// Set this to `false` for full-screen views without a bottom bar.
+    ///
+    /// # Arguments
+    ///
+    /// * `has_bottom_bar` - `true` to reserve space, `false` for keyboard at screen bottom
+    pub fn with_bottom_bar(mut self, has_bottom_bar: bool) -> Self {
+        self.has_bottom_bar = has_bottom_bar;
+        self
     }
 
     /// Toggles the keyboard visibility between hidden and visible.
@@ -137,25 +167,46 @@ impl ToggleableKeyboard {
         self.visible
     }
 
+    /// Returns the height the keyboard will occupy when visible.
+    ///
+    /// This is useful for layout calculations before showing the keyboard.
+    /// The height includes the separator line and all keyboard rows.
+    /// If `has_bottom_bar` is true, includes space for a bottom bar.
+    pub fn keyboard_height(&self, context: &AppContext) -> i32 {
+        let dpi = context.device.dpi();
+        let small_height = scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32;
+        let big_height = scale_by_dpi(BIG_BAR_HEIGHT, dpi) as i32;
+        let thickness = scale_by_dpi(THICKNESS_MEDIUM, dpi) as i32;
+        if self.has_bottom_bar {
+            small_height + 3 * big_height + thickness
+        } else {
+            3 * big_height + thickness
+        }
+    }
+
     /// Shows the keyboard by creating the separator and keyboard views.
     ///
     /// This method calculates the proper positioning based on the parent rect
     /// and creates both the separator line and the keyboard itself.
     fn show(&mut self, rq: &mut RenderQueue, context: &mut AppContext) {
         let dpi = context.device.dpi();
-        let (small_height, big_height) = (
-            scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32,
-            scale_by_dpi(BIG_BAR_HEIGHT, dpi) as i32,
-        );
+        let small_height = scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32;
         let thickness = scale_by_dpi(THICKNESS_MEDIUM, dpi) as i32;
-        let (_small_thickness, big_thickness) = halves(thickness);
+        let (small_thickness, big_thickness) = halves(thickness);
+
+        let keyboard_height = self.keyboard_height(context);
+        let bottom_offset = if self.has_bottom_bar {
+            small_height + big_thickness
+        } else {
+            small_thickness
+        };
 
         let separator = Filler::new(
             rect![
                 self.parent_rect.min.x,
-                self.parent_rect.max.y - (small_height + 3 * big_height),
+                self.parent_rect.max.y - keyboard_height,
                 self.parent_rect.max.x,
-                self.parent_rect.max.y - (small_height + 3 * big_height) + thickness
+                self.parent_rect.max.y - keyboard_height + thickness
             ],
             BLACK,
         );
@@ -163,13 +214,23 @@ impl ToggleableKeyboard {
 
         let mut kb_rect = rect![
             self.parent_rect.min.x,
-            self.parent_rect.max.y - (small_height + 3 * big_height) + big_thickness,
+            self.parent_rect.max.y - keyboard_height + big_thickness,
             self.parent_rect.max.x,
-            self.parent_rect.max.y - small_height - big_thickness
+            self.parent_rect.max.y - bottom_offset
         ];
+
+        let saved_layout = self.layout.as_ref().map(|layout| {
+            let saved = context.settings.keyboard_layout.clone();
+            context.settings.keyboard_layout = layout.clone();
+            saved
+        });
 
         let keyboard = Keyboard::new(&mut kb_rect, self.number_mode, context);
         self.children.push(Box::new(keyboard) as Box<dyn View>);
+
+        if let Some(saved) = saved_layout {
+            context.settings.keyboard_layout = saved;
+        }
 
         self.rect = kb_rect;
         self.rect.absorb(self.children[0].rect());
@@ -323,6 +384,66 @@ mod tests {
         let parent_rect = rect![10, 20, 590, 780];
         let keyboard = ToggleableKeyboard::new(parent_rect, false);
         assert_eq!(keyboard.parent_rect, parent_rect);
+    }
+
+    #[test]
+    fn test_with_layout_sets_custom_layout() {
+        let parent_rect = rect![0, 0, 600, 800];
+        let keyboard = ToggleableKeyboard::new(parent_rect, false).with_layout("Terminal");
+        assert_eq!(keyboard.layout, Some("Terminal".to_string()));
+    }
+
+    #[test]
+    fn test_default_layout_is_none() {
+        let keyboard = create_test_keyboard();
+        assert!(keyboard.layout.is_none());
+    }
+
+    #[test]
+    fn test_default_has_bottom_bar_is_true() {
+        let keyboard = create_test_keyboard();
+        assert!(keyboard.has_bottom_bar);
+    }
+
+    #[test]
+    fn test_with_bottom_bar_false() {
+        let parent_rect = rect![0, 0, 600, 800];
+        let keyboard = ToggleableKeyboard::new(parent_rect, false).with_bottom_bar(false);
+        assert!(!keyboard.has_bottom_bar);
+    }
+
+    #[test]
+    fn test_with_bottom_bar_true() {
+        let parent_rect = rect![0, 0, 600, 800];
+        let keyboard = ToggleableKeyboard::new(parent_rect, false).with_bottom_bar(true);
+        assert!(keyboard.has_bottom_bar);
+    }
+
+    #[test]
+    fn test_keyboard_height_with_bottom_bar() {
+        let parent_rect = rect![0, 0, 600, 800];
+        let context = create_test_context();
+        let keyboard_with_bar = ToggleableKeyboard::new(parent_rect, false).with_bottom_bar(true);
+        let keyboard_without_bar =
+            ToggleableKeyboard::new(parent_rect, false).with_bottom_bar(false);
+
+        let height_with_bar = keyboard_with_bar.keyboard_height(&context);
+        let height_without_bar = keyboard_without_bar.keyboard_height(&context);
+
+        assert!(height_with_bar > height_without_bar);
+        assert!(height_with_bar > 0);
+        assert!(height_without_bar > 0);
+    }
+
+    #[test]
+    fn test_builder_chaining() {
+        let parent_rect = rect![0, 0, 600, 800];
+        let keyboard = ToggleableKeyboard::new(parent_rect, false)
+            .with_layout("Terminal")
+            .with_bottom_bar(false);
+
+        assert_eq!(keyboard.layout, Some("Terminal".to_string()));
+        assert!(!keyboard.has_bottom_bar);
     }
 
     #[test]

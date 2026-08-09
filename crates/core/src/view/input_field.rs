@@ -295,6 +295,10 @@ impl View for InputField {
                         bus.push_back(Event::Submit(self.view_id, self.text.clone()));
                         context.record_input(&self.text, self.view_id);
                     }
+                    KeyboardEvent::Arrow(_) => {}
+                    KeyboardEvent::Tab => {}
+                    KeyboardEvent::Escape => {}
+                    KeyboardEvent::Control(_) => {}
                 };
                 rq.add(RenderData::no_wait(self.id, self.rect, UpdateMode::Gui));
                 true

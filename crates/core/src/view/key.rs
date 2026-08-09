@@ -21,6 +21,13 @@ pub enum KeyKind {
     Return,
     Combine,
     Alternate,
+    Tab,
+    Escape,
+    Control,
+    ArrowUp,
+    ArrowDown,
+    ArrowLeft,
+    ArrowRight,
 }
 
 use serde::de::{self, Visitor};
@@ -57,6 +64,19 @@ impl<'de> Deserialize<'de> for KeyKind {
             "DB",
             "Space",
             "Spc",
+            "Tab",
+            "Escape",
+            "Esc",
+            "Control",
+            "Ctrl",
+            "ArrowUp",
+            "Up",
+            "ArrowDown",
+            "Down",
+            "ArrowLeft",
+            "Left",
+            "ArrowRight",
+            "Right",
         ];
 
         impl<'de> Visitor<'de> for FieldVisitor {
@@ -80,6 +100,13 @@ impl<'de> Deserialize<'de> for KeyKind {
                     "DelFwd" | "DelF" | "DF" => Ok(KeyKind::Delete(LinearDir::Forward)),
                     "DelBwd" | "DelB" | "DB" => Ok(KeyKind::Delete(LinearDir::Backward)),
                     "Space" | "Spc" => Ok(KeyKind::Output(' ')),
+                    "Tab" => Ok(KeyKind::Tab),
+                    "Escape" | "Esc" => Ok(KeyKind::Escape),
+                    "Control" | "Ctrl" => Ok(KeyKind::Control),
+                    "ArrowUp" | "Up" => Ok(KeyKind::ArrowUp),
+                    "ArrowDown" | "Down" => Ok(KeyKind::ArrowDown),
+                    "ArrowLeft" | "Left" => Ok(KeyKind::ArrowLeft),
+                    "ArrowRight" | "Right" => Ok(KeyKind::ArrowRight),
                     _ => {
                         if value.chars().count() != 1 {
                             return Err(serde::de::Error::unknown_field(value, FIELDS));
@@ -113,6 +140,13 @@ impl KeyKind {
     pub fn label(self, ratio: f32) -> KeyLabel {
         match self {
             KeyKind::Output(ch) => KeyLabel::Char(ch),
+            KeyKind::Tab => KeyLabel::Text("TAB"),
+            KeyKind::Escape => KeyLabel::Text("ESC"),
+            KeyKind::Control => KeyLabel::Text("CTRL"),
+            KeyKind::ArrowUp => KeyLabel::Text("▲"),
+            KeyKind::ArrowDown => KeyLabel::Text("▼"),
+            KeyKind::ArrowLeft => KeyLabel::Text("◀"),
+            KeyKind::ArrowRight => KeyLabel::Text("▶"),
             KeyKind::Delete(dir) => match dir {
                 LinearDir::Forward => KeyLabel::Icon("delete-forward"),
                 LinearDir::Backward => KeyLabel::Icon("delete-backward"),
@@ -230,7 +264,7 @@ impl View for Key {
             },
             Event::Gesture(GestureEvent::Tap(center)) if self.rect.includes(center) => {
                 match self.kind {
-                    KeyKind::Shift | KeyKind::Alternate | KeyKind::Combine => {
+                    KeyKind::Shift | KeyKind::Alternate | KeyKind::Combine | KeyKind::Control => {
                         if self.kind == KeyKind::Combine {
                             self.pressure = (self.pressure + 2) % 4;
                         } else {

@@ -44,6 +44,7 @@ use cadmus_core::view::rotation_values::RotationValues;
 use cadmus_core::view::settings_editor::SettingsEditor;
 use cadmus_core::view::sketch::Sketch;
 use cadmus_core::view::startup::StartupScreen;
+use cadmus_core::view::terminal::Terminal;
 use cadmus_core::view::touch_events::TouchEvents;
 use cadmus_core::view::{
     AppCmd, Bus, EntryId, EntryKind, Event, Hub, NotificationEvent, RenderData, RenderQueue,
@@ -613,6 +614,28 @@ pub fn run() -> Result<(), Error> {
                         &mut rq,
                         &mut context,
                     )),
+                    AppCmd::Terminal => match Terminal::new(
+                        context.device.framebuffer().rect(),
+                        context.settings.terminal.font_size,
+                        &mut rq,
+                        &mut context,
+                        &tx,
+                    ) {
+                        Ok(terminal) => Box::new(terminal),
+                        Err(error) => {
+                            error!(error = %error, application = "terminal", "Failed to launch application");
+                            let notification = Notification::new(
+                                None,
+                                "Failed to open terminal".to_string(),
+                                false,
+                                &tx,
+                                &mut rq,
+                                &mut context,
+                            );
+                            view.children_mut().push(Box::new(notification));
+                            continue;
+                        }
+                    },
                 };
                 transfer_notifications(view.as_mut(), next_view.as_mut(), &mut rq, &mut context);
                 history.push(HistoryItem {

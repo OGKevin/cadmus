@@ -51,6 +51,7 @@ pub mod settings_editor;
 pub mod sketch;
 pub mod slider;
 pub mod startup;
+pub mod terminal;
 pub mod toggle;
 pub mod toggleable_keyboard;
 pub mod top_bar;
@@ -66,7 +67,7 @@ use crate::document::{Location, TextLocation};
 use crate::framebuffer::Framebuffer as _;
 use crate::framebuffer::UpdateMode;
 use crate::frontlight::LightLevels;
-use crate::geom::{Boundary, CycleDir, LinearDir, Rectangle};
+use crate::geom::{Boundary, CycleDir, Dir, LinearDir, Rectangle};
 use crate::gesture::GestureEvent;
 use crate::input::{DeviceEvent, FingerStatus};
 use crate::metadata::{
@@ -603,6 +604,7 @@ pub enum AppCmd {
     Calculator,
     Dictionary { query: String, language: String },
     SettingsEditor,
+    Terminal,
     TouchEvents,
     RotationValues,
 }
@@ -680,6 +682,7 @@ pub enum ViewId {
     ReaderSearchInput,
     DictionarySearchInput,
     CalculatorInput,
+    Terminal,
     SearchBar,
     AddressBar,
     AddressBarInput,
@@ -742,7 +745,11 @@ pub enum KeyboardEvent {
     Partial(char),
     Move { target: TextKind, dir: LinearDir },
     Delete { target: TextKind, dir: LinearDir },
+    Arrow(Dir),
     Submit,
+    Tab,
+    Escape,
+    Control(char),
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -872,6 +879,7 @@ pub enum EntryId {
     /// Switch to the peer Cadmus install (main ↔ test).
     SwitchInstall,
     CheckForUpdates,
+    ToggleKeyboard,
     FileEntry(PathBuf),
     Ota(OtaEntryId),
     /// Open the per-kind refresh rate editor for the given file extension.
