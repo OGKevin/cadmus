@@ -1,24 +1,28 @@
 use super::kinds::SettingKind;
 use super::kinds::dictionary::DictionaryInfo;
 use super::kinds::general::{
-    AutoFrontlight, AutoFrontlightBrightness, AutoFrontlightManualCoordinates, AutoPowerOff,
-    AutoShare, AutoSuspend, AutoTime, ButtonScheme, DbBackupRetentionSetting, KeyboardLayout,
-    Locale, NtpServer, SettingsRetention, SleepCover, StartupModeSetting, WifiIdleTimeout,
+    AutoFrontlight, AutoFrontlightBrightness, AutoFrontlightManualCoordinates, AutoShare, AutoTime,
+    ButtonScheme, DbBackupRetentionSetting, KeyboardLayout, Locale, NtpServer, SettingsRetention,
+    StartupModeSetting, WifiIdleTimeout,
 };
 use super::kinds::import::{AllowedKindsSetting, ForceFullImport, ImportSyncMetadata};
 use super::kinds::intermission::{IntermissionPowerOff, IntermissionShare, IntermissionSuspend};
 use super::kinds::library::LibraryInfo;
+use super::kinds::power::{AutoPowerOff, AutoSuspend, SleepCover};
 use super::kinds::reader::{DitheredKindsSetting, FinishedActionSetting, RefreshRateInfo};
 use super::kinds::telemetry::{LogLevel, LoggingEnabled};
 use crate::device::AppContext;
 use crate::dictionary::MonolingualDictionaryService;
+use crate::fl;
 use std::collections::BTreeSet;
 
 /// Categories of settings available in the settings editor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Category {
-    /// General device settings (auto-suspend, keyboard layout, etc.)
+    /// General device settings (locale, keyboard layout, etc.)
     General,
+    /// Power and sleep settings (auto-suspend, sleep cover, etc.)
+    Power,
     /// Reader behavior settings (finished action, etc.)
     Reader,
     /// Library management settings
@@ -37,13 +41,14 @@ impl Category {
     /// Returns the display label for this category.
     pub fn label(&self) -> String {
         match self {
-            Category::General => "General".to_string(),
-            Category::Reader => "Reader".to_string(),
-            Category::Libraries => "Libraries".to_string(),
-            Category::Intermissions => "Intermission Screens".to_string(),
-            Category::Import => "Import".to_string(),
-            Category::Telemetry => "Telemetry".to_string(),
-            Category::Dictionaries => "Dictionaries".to_string(),
+            Category::General => fl!("settings-category-general"),
+            Category::Power => fl!("settings-category-power"),
+            Category::Reader => fl!("settings-category-reader"),
+            Category::Libraries => fl!("settings-category-libraries"),
+            Category::Intermissions => fl!("settings-category-intermissions"),
+            Category::Import => fl!("settings-category-import"),
+            Category::Telemetry => fl!("settings-category-telemetry"),
+            Category::Dictionaries => fl!("settings-category-dictionaries"),
         }
     }
 
@@ -70,15 +75,17 @@ impl Category {
                 Box::new(AutoFrontlight),
                 Box::new(AutoFrontlightBrightness),
                 Box::new(AutoFrontlightManualCoordinates),
-                Box::new(AutoSuspend),
                 Box::new(WifiIdleTimeout),
-                Box::new(AutoPowerOff),
                 Box::new(ButtonScheme),
                 Box::new(KeyboardLayout),
-                Box::new(SleepCover),
                 Box::new(SettingsRetention),
                 Box::new(DbBackupRetentionSetting),
                 Box::new(StartupModeSetting),
+            ],
+            Category::Power => vec![
+                Box::new(AutoSuspend),
+                Box::new(AutoPowerOff),
+                Box::new(SleepCover),
             ],
             Category::Reader => vec![
                 Box::new(FinishedActionSetting),
@@ -183,6 +190,7 @@ impl Category {
     pub fn all() -> Vec<Category> {
         vec![
             Category::General,
+            Category::Power,
             Category::Reader,
             Category::Dictionaries,
             Category::Libraries,

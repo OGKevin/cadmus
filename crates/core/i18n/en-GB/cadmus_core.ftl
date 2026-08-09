@@ -58,22 +58,27 @@ settings-finished-action-notify = Notify
 settings-finished-action-close = Close
 settings-finished-action-goto-next = Go to Next
 
+# Settings - Categories
+settings-category-dictionaries = Dictionaries
+settings-category-general = General
+settings-category-import = Import
+settings-category-intermissions = Intermission Screens
+settings-category-libraries = Libraries
+settings-category-power = Power
+settings-category-reader = Reader
+settings-category-telemetry = Telemetry
+
 # Settings - General
 settings-general-auto-frontlight = Automatic Frontlight
 settings-general-auto-frontlight-brightness = Auto Night Brightness
 settings-general-auto-frontlight-brightness-input = Night Brightness (% 0-100)
 settings-general-auto-frontlight-manual-coordinates = Manual Coordinates
 settings-general-auto-frontlight-manual-coordinates-input = lat,lon | coordinates
-settings-general-auto-power-off = Auto Power Off (days)
-settings-general-auto-power-off-input = Auto Power Off (days, 0 = never)
-settings-general-auto-suspend = Auto Suspend (minutes)
-settings-general-auto-suspend-input = Auto Suspend (minutes, 0 = never)
 settings-general-auto-time = Automatic Time Sync
 settings-general-button-scheme = Button Scheme
 settings-general-db-backup-retention = DB Backup Retention
 settings-general-db-backup-retention-input = DB Backup Retention (number of backups)
 settings-general-enable-auto-share = Enable Auto Share
-settings-general-enable-sleep-cover = Enable Sleep Cover
 settings-general-keyboard-layout = Keyboard Layout
 settings-general-language = Language
 settings-general-never = Never
@@ -89,6 +94,13 @@ settings-general-unknown = Unknown
 settings-general-wifi-idle-immediate = Immediate
 settings-general-wifi-idle-timeout = { -wifi-idle-timeout } ({ -minutes })
 settings-general-wifi-idle-timeout-input = { -wifi-idle-timeout } ({ -minutes }, 0 = { settings-general-wifi-idle-immediate })
+
+# Settings - Power
+settings-power-auto-power-off = Auto Power Off (days)
+settings-power-auto-power-off-input = Auto Power Off (days, 0 = never)
+settings-power-auto-suspend = Auto Suspend (minutes)
+settings-power-auto-suspend-input = Auto Suspend (minutes, 0 = never)
+settings-power-enable-sleep-cover = Enable Sleep Cover
 
 # Settings - Startup Mode
 settings-startup-mode-home = Home
