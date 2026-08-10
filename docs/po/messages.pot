@@ -1,7 +1,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Cadmus Documentation\n"
-"POT-Creation-Date: 2026-08-04T11:45:36+02:00\n"
+"POT-Creation-Date: 2026-08-10T15:23:10+02:00\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
@@ -82,103 +82,123 @@ msgstr ""
 msgid "Importing"
 msgstr ""
 
-#: src/SUMMARY.md:22 src/time-sync.md:1
+#: src/SUMMARY.md:22 src/settings/index.md:574 src/reader/index.md:1
+msgid "Reader"
+msgstr ""
+
+#: src/SUMMARY.md:23 src/reader/reflowable.md:1
+msgid "Reflowable books"
+msgstr ""
+
+#: src/SUMMARY.md:24 src/reader/paged.md:1
+msgid "Paged books"
+msgstr ""
+
+#: src/SUMMARY.md:25 src/wifi.md:1
+msgid "WiFi"
+msgstr ""
+
+#: src/SUMMARY.md:26 src/time-sync.md:1
 msgid "Automatic Time Syncing"
 msgstr ""
 
-#: src/SUMMARY.md:23 src/auto-frontlight.md:1
+#: src/SUMMARY.md:27 src/auto-frontlight.md:1
 msgid "Automatic Frontlight"
 msgstr ""
 
-#: src/SUMMARY.md:24 src/database-backup.md:1
+#: src/SUMMARY.md:28 src/database-backup.md:1
 msgid "Database Backup"
 msgstr ""
 
-#: src/SUMMARY.md:25 src/installation/ota.md:86 src/troubleshooting/index.md:1
+#: src/SUMMARY.md:29 src/installation/ota.md:86 src/troubleshooting/index.md:1
 msgid "Troubleshooting"
 msgstr ""
 
-#: src/SUMMARY.md:26
+#: src/SUMMARY.md:30
 msgid "CHANGELOG"
 msgstr ""
 
-#: src/SUMMARY.md:30
+#: src/SUMMARY.md:34
 msgid "Contributor Guide"
 msgstr ""
 
-#: src/SUMMARY.md:32
+#: src/SUMMARY.md:36
 msgid "Development Environment"
 msgstr ""
 
-#: src/SUMMARY.md:33
+#: src/SUMMARY.md:37
 msgid "SSH"
 msgstr ""
 
-#: src/SUMMARY.md:34
+#: src/SUMMARY.md:38
 msgid "Code Style and Linting"
 msgstr ""
 
-#: src/SUMMARY.md:35
+#: src/SUMMARY.md:39
 msgid "Event System"
 msgstr ""
 
-#: src/SUMMARY.md:36 src/settings/index.md:839
+#: src/SUMMARY.md:40
+msgid "WiFi Leases"
+msgstr ""
+
+#: src/SUMMARY.md:41 src/settings/index.md:1084
 msgid "Telemetry"
 msgstr ""
 
-#: src/SUMMARY.md:37
+#: src/SUMMARY.md:42
 msgid "Logging"
 msgstr ""
 
-#: src/SUMMARY.md:38
+#: src/SUMMARY.md:43
 msgid "Tracing"
 msgstr ""
 
-#: src/SUMMARY.md:39
+#: src/SUMMARY.md:44
 msgid "Profiling"
 msgstr ""
 
-#: src/SUMMARY.md:40
+#: src/SUMMARY.md:45
 msgid "Website"
 msgstr ""
 
-#: src/SUMMARY.md:41
+#: src/SUMMARY.md:46
 msgid "User guide"
 msgstr ""
 
-#: src/SUMMARY.md:42
+#: src/SUMMARY.md:47
 msgid "Translations"
 msgstr ""
 
-#: src/SUMMARY.md:43
+#: src/SUMMARY.md:48
 msgid "For developers"
 msgstr ""
 
-#: src/SUMMARY.md:44
+#: src/SUMMARY.md:49
 msgid "SQLite & SQLx"
 msgstr ""
 
-#: src/SUMMARY.md:45
+#: src/SUMMARY.md:50
 msgid "Library Database"
 msgstr ""
 
-#: src/SUMMARY.md:46
+#: src/SUMMARY.md:51
 msgid "Runtime Migrations"
 msgstr ""
 
-#: src/SUMMARY.md:50
+#: src/SUMMARY.md:55
 msgid "Investigations"
 msgstr ""
 
-#: src/SUMMARY.md:52
+#: src/SUMMARY.md:57
 msgid "Intro"
 msgstr ""
 
-#: src/SUMMARY.md:53
+#: src/SUMMARY.md:58
 msgid "DHCP IP Address Changes on WiFi Toggle"
 msgstr ""
 
-#: src/SUMMARY.md:54
+#: src/SUMMARY.md:59
 msgid "Reading IP and ESSID via dhcpcd-dbus"
 msgstr ""
 
@@ -1107,14 +1127,14 @@ msgstr ""
 #: src/settings/index.md:474 src/settings/index.md:494
 #: src/settings/index.md:510 src/settings/index.md:526
 #: src/settings/index.md:542 src/settings/index.md:558
-#: src/settings/index.md:580 src/settings/index.md:601
-#: src/settings/index.md:663 src/settings/index.md:680
-#: src/settings/index.md:686 src/settings/index.md:692
-#: src/settings/index.md:700 src/settings/index.md:725
-#: src/settings/index.md:742 src/settings/index.md:755
-#: src/settings/index.md:763 src/settings/index.md:782
-#: src/settings/index.md:810 src/settings/index.md:867
-#: src/settings/index.md:882
+#: src/settings/index.md:582 src/settings/index.md:846
+#: src/settings/index.md:884 src/settings/index.md:908
+#: src/settings/index.md:925 src/settings/index.md:931
+#: src/settings/index.md:937 src/settings/index.md:945
+#: src/settings/index.md:970 src/settings/index.md:987
+#: src/settings/index.md:1000 src/settings/index.md:1008
+#: src/settings/index.md:1027 src/settings/index.md:1055
+#: src/settings/index.md:1112 src/settings/index.md:1127
 msgid "✏️"
 msgstr ""
 
@@ -1370,250 +1390,444 @@ msgid ""
 "unfinished book in the selected library, the home screen is shown instead."
 msgstr ""
 
-#: src/settings/index.md:574
-msgid "Reader"
-msgstr ""
-
 #: src/settings/index.md:576
-msgid "Settings that control the reading experience."
+msgid ""
+"Settings that control the reading experience. How Cadmus loads "
+"[reflowable](../reader/reflowable.md) and [paged](../reader/paged.md) books "
+"is described in the [Reader](../reader/index.md) section."
 msgstr ""
 
-#: src/settings/index.md:578
+#: src/settings/index.md:580
 msgid "`reader.finished`"
 msgstr ""
 
-#: src/settings/index.md:582
+#: src/settings/index.md:584
 msgid "What to do when you finish reading a book."
 msgstr ""
 
-#: src/settings/index.md:584 src/settings/index.md:705
+#: src/settings/index.md:586 src/settings/index.md:605
+#: src/settings/index.md:623 src/settings/index.md:641
+#: src/settings/index.md:659 src/settings/index.md:678
+#: src/settings/index.md:772 src/settings/index.md:950
 msgid "Possible values:"
 msgstr ""
 
-#: src/settings/index.md:586
+#: src/settings/index.md:588
 msgid "`\"notify\"` (show a notification)"
 msgstr ""
 
-#: src/settings/index.md:587
+#: src/settings/index.md:589
 msgid "`\"close\"` (close the book and go back)"
 msgstr ""
 
-#: src/settings/index.md:588
+#: src/settings/index.md:590
 msgid "`\"go-to-next\"` (open the next book in the library)."
 msgstr ""
 
-#: src/settings/index.md:599
-msgid "`reader.dithered-kinds`"
+#: src/settings/index.md:601
+msgid "`reader.south-east-corner`"
 msgstr ""
 
 #: src/settings/index.md:603
-msgid "File extensions rendered with dithering by default."
+msgid "Action when you tap the south-east corner of the screen."
 msgstr ""
 
-#: src/settings/index.md:614
+#: src/settings/index.md:607
+msgid "`\"go-to-page\"`"
+msgstr ""
+
+#: src/settings/index.md:608 src/settings/index.md:644
+#: src/settings/index.md:662 src/settings/index.md:681
+msgid "`\"next-page\"`"
+msgstr ""
+
+#: src/settings/index.md:619
+msgid "`reader.bottom-right-gesture`"
+msgstr ""
+
+#: src/settings/index.md:621
+msgid "Action for the bottom-right corner gesture."
+msgstr ""
+
+#: src/settings/index.md:625
+msgid "`\"toggle-dithered\"`"
+msgstr ""
+
+#: src/settings/index.md:626
+msgid "`\"toggle-inverted\"`"
+msgstr ""
+
+#: src/settings/index.md:637
+msgid "`reader.south-strip`"
+msgstr ""
+
+#: src/settings/index.md:639
+msgid "Action when you tap the south strip."
+msgstr ""
+
+#: src/settings/index.md:643
+msgid "`\"toggle-bars\"`"
+msgstr ""
+
+#: src/settings/index.md:655
+msgid "`reader.west-strip`"
+msgstr ""
+
+#: src/settings/index.md:657
+msgid "Action when you tap the west strip."
+msgstr ""
+
+#: src/settings/index.md:661 src/settings/index.md:680
+msgid "`\"previous-page\"`"
+msgstr ""
+
+#: src/settings/index.md:663 src/settings/index.md:682
+msgid "`\"none\"`"
+msgstr ""
+
+#: src/settings/index.md:674
+msgid "`reader.east-strip`"
+msgstr ""
+
+#: src/settings/index.md:676
+msgid "Action when you tap the east strip."
+msgstr ""
+
+#: src/settings/index.md:693
+msgid "`reader.strip-width`"
+msgstr ""
+
+#: src/settings/index.md:695
+msgid ""
+"Width ratio of the side and bottom strip touch regions, relative to `min(W, "
+"H) / 2`."
+msgstr ""
+
+#: src/settings/index.md:707
+msgid "`reader.corner-width`"
+msgstr ""
+
+#: src/settings/index.md:709
+msgid "Width ratio of the corner touch regions, relative to `min(W, H) / 2`."
+msgstr ""
+
+#: src/settings/index.md:720
 msgid "`reader.font-path`"
 msgstr ""
 
-#: src/settings/index.md:616
+#: src/settings/index.md:722
 msgid ""
 "The directory Cadmus scans for additional reading fonts. Bundled Cadmus "
 "fonts are always available regardless of this setting. See "
 "[Fonts](../fonts.md) for details on installing custom fonts."
 msgstr ""
 
-#: src/settings/index.md:629
+#: src/settings/index.md:735
 msgid "`reader.font-family`"
 msgstr ""
 
-#: src/settings/index.md:631
+#: src/settings/index.md:737
 msgid ""
 "The default reading font family name. New installs default to `Libron`. "
 "Existing configurations using `Libertinus Serif` continue to work because "
 "Libertinus remains bundled."
 msgstr ""
 
-#: src/settings/index.md:644
+#: src/settings/index.md:750
 msgid "`reader.font-size`"
 msgstr ""
 
-#: src/settings/index.md:646
-msgid "The default font size in points."
+#: src/settings/index.md:752
+msgid ""
+"The default font size in points, plus the minimum and maximum sizes "
+"available while reading."
 msgstr ""
 
-#: src/settings/index.md:659
+#: src/settings/index.md:766
 msgid "See [Fonts](../fonts.md) for more info."
 msgstr ""
 
-#: src/settings/index.md:661
+#: src/settings/index.md:768
+msgid "`reader.text-align`"
+msgstr ""
+
+#: src/settings/index.md:770
+msgid "Default text alignment for reflowable books."
+msgstr ""
+
+#: src/settings/index.md:774
+msgid "`\"left\"`"
+msgstr ""
+
+#: src/settings/index.md:775
+msgid "`\"right\"`"
+msgstr ""
+
+#: src/settings/index.md:776
+msgid "`\"center\"`"
+msgstr ""
+
+#: src/settings/index.md:777
+msgid "`\"justify\"`"
+msgstr ""
+
+#: src/settings/index.md:788
+msgid "`reader.margin-width`"
+msgstr ""
+
+#: src/settings/index.md:790
+msgid ""
+"Default page margin width in millimeters, plus the minimum and maximum "
+"values available while reading."
+msgstr ""
+
+#: src/settings/index.md:804
+msgid "`reader.line-height`"
+msgstr ""
+
+#: src/settings/index.md:806
+msgid "Default line height for reflowable books, in ems."
+msgstr ""
+
+#: src/settings/index.md:817
+msgid "`reader.continuous-fit-to-width`"
+msgstr ""
+
+#: src/settings/index.md:819
+msgid "Scroll mode used for fit-to-width zoom when a document is first opened."
+msgstr ""
+
+#: src/settings/index.md:830
+msgid "`reader.ignore-document-css`"
+msgstr ""
+
+#: src/settings/index.md:832
+msgid ""
+"When `true`, Cadmus ignores stylesheets embedded in reflowable documents and "
+"uses Cadmus viewer styles only."
+msgstr ""
+
+#: src/settings/index.md:844
+msgid "`reader.dithered-kinds`"
+msgstr ""
+
+#: src/settings/index.md:848
+msgid ""
+"File extensions rendered with dithering by default when opened for the first "
+"time."
+msgstr ""
+
+#: src/settings/index.md:860
+msgid "`reader.paragraph-breaker`"
+msgstr ""
+
+#: src/settings/index.md:862
+msgid "Controls how Cadmus breaks paragraphs in reflowable text."
+msgstr ""
+
+#: src/settings/index.md:864
+msgid "`hyphen-penalty`"
+msgstr ""
+
+#: src/settings/index.md:866
+msgid "Penalty for hyphenated lines. The maximum value is `10000`."
+msgstr ""
+
+#: src/settings/index.md:868
+msgid "`stretch-tolerance`"
+msgstr ""
+
+#: src/settings/index.md:870
+msgid "How much inter-word spacing may stretch or shrink when justifying lines."
+msgstr ""
+
+#: src/settings/index.md:882
+msgid "`reader.refresh-rate`"
+msgstr ""
+
+#: src/settings/index.md:886
+msgid ""
+"How often Cadmus fully refreshes the screen while you turn pages. `regular` "
+"applies when colors are not inverted; `inverted` applies when they are. Use "
+"`0` to never force a full refresh on that schedule."
+msgstr ""
+
+#: src/settings/index.md:890
+msgid ""
+"Optional `by-kind` entries override the global pair for specific file "
+"extensions."
+msgstr ""
+
+#: src/settings/index.md:906
 msgid "Libraries"
 msgstr ""
 
-#: src/settings/index.md:665
+#: src/settings/index.md:910
 msgid "Document library configuration. Each library has a name, path, and mode."
 msgstr ""
 
-#: src/settings/index.md:678
+#: src/settings/index.md:923
 msgid "`libraries.name`"
 msgstr ""
 
-#: src/settings/index.md:682
+#: src/settings/index.md:927
 msgid "Display name for the library."
 msgstr ""
 
-#: src/settings/index.md:684
+#: src/settings/index.md:929
 msgid "`libraries.path`"
 msgstr ""
 
-#: src/settings/index.md:688
+#: src/settings/index.md:933
 msgid "Directory path containing documents."
 msgstr ""
 
-#: src/settings/index.md:690
+#: src/settings/index.md:935
 msgid "`libraries.mode`"
 msgstr ""
 
-#: src/settings/index.md:694
+#: src/settings/index.md:939
 msgid "Library indexing mode."
 msgstr ""
 
-#: src/settings/index.md:696
+#: src/settings/index.md:941
 msgid "Possible values: `\"database\"`, `\"filesystem\"`."
 msgstr ""
 
-#: src/settings/index.md:698
+#: src/settings/index.md:943
 msgid "`libraries.finished`"
 msgstr ""
 
-#: src/settings/index.md:702
+#: src/settings/index.md:947
 msgid ""
 "Override the `reader.finished` setting for this specific library. When set, "
 "this takes precedence over the global reader setting."
 msgstr ""
 
-#: src/settings/index.md:707
+#: src/settings/index.md:952
 msgid "`\"notify\"`"
 msgstr ""
 
-#: src/settings/index.md:708
+#: src/settings/index.md:953
 msgid "`\"close\"`"
 msgstr ""
 
-#: src/settings/index.md:709
+#: src/settings/index.md:954
 msgid "`\"go-to-next\"`."
 msgstr ""
 
-#: src/settings/index.md:710
+#: src/settings/index.md:955
 msgid "Leave unset to inherit the global `reader.finished` setting."
 msgstr ""
 
-#: src/settings/index.md:723
+#: src/settings/index.md:968
 msgid "Intermissions"
 msgstr ""
 
-#: src/settings/index.md:727
+#: src/settings/index.md:972
 msgid "Defines the images displayed when entering an intermission state."
 msgstr ""
 
-#: src/settings/index.md:740
+#: src/settings/index.md:985
 msgid "`intermissions.suspend`"
 msgstr ""
 
-#: src/settings/index.md:744
+#: src/settings/index.md:989
 msgid "Image displayed when the device enters sleep mode."
 msgstr ""
 
-#: src/settings/index.md:746
+#: src/settings/index.md:991
 msgid ""
 "Setting this to `\"calendar:\"` also enables the calendar refresh: every 5 "
 "minutes, the device wakes, shows the calendar, and then goes back to sleep "
 "automatically."
 msgstr ""
 
-#: src/settings/index.md:750
+#: src/settings/index.md:995
 msgid ""
 "Possible values: `\"logo:\"` (built-in logo), `\"cover:\"` (current book "
 "cover), `\"calendar:\"` (built-in calendar), or a path to a custom image "
 "file."
 msgstr ""
 
-#: src/settings/index.md:753
+#: src/settings/index.md:998
 msgid "`intermissions.power-off`"
 msgstr ""
 
-#: src/settings/index.md:757
+#: src/settings/index.md:1002
 msgid "Image displayed when the device powers off."
 msgstr ""
 
-#: src/settings/index.md:759 src/settings/index.md:767
+#: src/settings/index.md:1004 src/settings/index.md:1012
 msgid ""
 "Possible values: `\"logo:\"` (built-in logo), `\"cover:\"` (current book "
 "cover), or a path to a custom image file."
 msgstr ""
 
-#: src/settings/index.md:761
+#: src/settings/index.md:1006
 msgid "`intermissions.share`"
 msgstr ""
 
-#: src/settings/index.md:765
+#: src/settings/index.md:1010
 msgid "Image displayed when entering USB sharing mode."
 msgstr ""
 
-#: src/settings/index.md:769
+#: src/settings/index.md:1014
 msgid "Import"
 msgstr ""
 
-#: src/settings/index.md:771
+#: src/settings/index.md:1016
 msgid ""
 "These settings control how Cadmus imports documents from your device. They "
 "are available in the **Settings → Import** menu."
 msgstr ""
 
-#: src/settings/index.md:774
+#: src/settings/index.md:1019
 msgid ""
 "Import scanning happens automatically on startup using incremental file "
 "checking — files are only re-scanned if their modification time or size has "
 "changed since the last import."
 msgstr ""
 
-#: src/settings/index.md:777
+#: src/settings/index.md:1022
 msgid ""
 "To trigger a full re-scan of all files regardless of cached values, use the "
 "**Force Full Import** action button in the Import settings category."
 msgstr ""
 
-#: src/settings/index.md:780
+#: src/settings/index.md:1025
 msgid "`import.sync-metadata`"
 msgstr ""
 
-#: src/settings/index.md:784
+#: src/settings/index.md:1029
 msgid "Re-extract metadata (title, author, etc.) whenever a document changes."
 msgstr ""
 
-#: src/settings/index.md:795
+#: src/settings/index.md:1040
 msgid "`import.metadata-kinds`"
 msgstr ""
 
-#: src/settings/index.md:797
+#: src/settings/index.md:1042
 msgid "File extensions of documents whose metadata is extracted during import."
 msgstr ""
 
-#: src/settings/index.md:808
+#: src/settings/index.md:1053
 msgid "`import.allowed-kinds`"
 msgstr ""
 
-#: src/settings/index.md:812
+#: src/settings/index.md:1057
 msgid "File extensions of documents considered during the import process."
 msgstr ""
 
-#: src/settings/index.md:823
+#: src/settings/index.md:1068
 msgid "OTA"
 msgstr ""
 
-#: src/settings/index.md:825
+#: src/settings/index.md:1070
 msgid "The OTA feature downloads builds from GitHub."
 msgstr ""
 
-#: src/settings/index.md:827
+#: src/settings/index.md:1072
 msgid ""
 "Authentication for main branch and PR builds uses **GitHub device auth "
 "flow**. When you select a build that requires authentication, Cadmus will "
@@ -1622,188 +1836,188 @@ msgid ""
 "once you authorize."
 msgstr ""
 
-#: src/settings/index.md:833
+#: src/settings/index.md:1078
 msgid ""
 "The token is saved to disk after the first authorization so you will not be "
 "prompted again on subsequent downloads."
 msgstr ""
 
-#: src/settings/index.md:836
+#: src/settings/index.md:1081
 msgid ""
 "For step-by-step instructions with screenshots, see the [OTA "
 "updates](../installation/ota.md) guide."
 msgstr ""
 
-#: src/settings/index.md:841
+#: src/settings/index.md:1086
 msgid ""
 "Cadmus writes JSON logs to disk. When the build enables the `tracing` "
 "feature, it can also export logs to an OpenTelemetry endpoint."
 msgstr ""
 
-#: src/settings/index.md:844
+#: src/settings/index.md:1089
 msgid "These settings are available in the **Settings → Telemetry** menu."
 msgstr ""
 
-#: src/settings/index.md:847
+#: src/settings/index.md:1092
 msgid ""
 "Changes to these settings only take effect after restarting Cadmus. The "
 "application initializes telemetry on startup."
 msgstr ""
 
-#: src/settings/index.md:850
+#: src/settings/index.md:1095
 msgid "`logging`"
 msgstr ""
 
-#: src/settings/index.md:865
+#: src/settings/index.md:1110
 msgid "`logging.enabled`"
 msgstr ""
 
-#: src/settings/index.md:869
+#: src/settings/index.md:1114
 msgid "Enable or disable structured JSON logging."
 msgstr ""
 
-#: src/settings/index.md:880
+#: src/settings/index.md:1125
 msgid "`logging.level`"
 msgstr ""
 
-#: src/settings/index.md:884
+#: src/settings/index.md:1129
 msgid "Minimum log level to record."
 msgstr ""
 
-#: src/settings/index.md:886
+#: src/settings/index.md:1131
 msgid ""
 "Possible values: `\"trace\"`, `\"debug\"`, `\"info\"`, `\"warn\"`, "
 "`\"error\"`."
 msgstr ""
 
-#: src/settings/index.md:897
+#: src/settings/index.md:1142
 msgid "`logging.max-files`"
 msgstr ""
 
-#: src/settings/index.md:899
+#: src/settings/index.md:1144
 msgid ""
 "Number of log files to keep. Only the most recent N files are kept — older "
 "ones are deleted automatically when Cadmus starts."
 msgstr ""
 
-#: src/settings/index.md:902 src/settings/index.md:997
+#: src/settings/index.md:1147 src/settings/index.md:1242
 msgid "Default: `3`"
 msgstr ""
 
-#: src/settings/index.md:903
+#: src/settings/index.md:1148
 msgid "Set to `0` to keep all log files."
 msgstr ""
 
-#: src/settings/index.md:914
+#: src/settings/index.md:1159
 msgid "`logging.otlp-endpoint`"
 msgstr ""
 
-#: src/settings/index.md:916
+#: src/settings/index.md:1161
 msgid "✏️ (only when the `tracing` feature is enabled)"
 msgstr ""
 
-#: src/settings/index.md:918
+#: src/settings/index.md:1163
 msgid "Optional OTLP endpoint for exporting logs to an OpenTelemetry collector."
 msgstr ""
 
-#: src/settings/index.md:929 src/settings/index.md:950
+#: src/settings/index.md:1174 src/settings/index.md:1195
 msgid "Environment override:"
 msgstr ""
 
-#: src/settings/index.md:931
+#: src/settings/index.md:1176
 msgid ""
 "`OTEL_EXPORTER_OTLP_ENDPOINT` takes precedence over `logging.otlp-endpoint`."
 msgstr ""
 
-#: src/settings/index.md:933
+#: src/settings/index.md:1178
 msgid "`logging.pyroscope-endpoint`"
 msgstr ""
 
-#: src/settings/index.md:935
+#: src/settings/index.md:1180
 msgid "✏️ (only when the `profiling` feature is enabled)"
 msgstr ""
 
-#: src/settings/index.md:937
+#: src/settings/index.md:1182
 msgid ""
 "Optional Pyroscope server URL for continuous profiling. When set, Cadmus "
 "starts both a heap profiling agent (via jemalloc) and a CPU profiling agent "
 "(via pprof) that push profiles to this endpoint."
 msgstr ""
 
-#: src/settings/index.md:952
+#: src/settings/index.md:1197
 msgid ""
 "`PYROSCOPE_SERVER_URL` takes precedence over `logging.pyroscope-endpoint`."
 msgstr ""
 
-#: src/settings/index.md:954
+#: src/settings/index.md:1199
 msgid "`logging.enable-kern-log`"
 msgstr ""
 
-#: src/settings/index.md:956 src/settings/index.md:972
+#: src/settings/index.md:1201 src/settings/index.md:1217
 msgid "🧪 📱 ✏️"
 msgstr ""
 
-#: src/settings/index.md:958
+#: src/settings/index.md:1203
 msgid ""
 "Captures kernel logs via `logread -F` and forwards them to structured "
 "logging with the target `cadmus_core::logging:kern`."
 msgstr ""
 
-#: src/settings/index.md:970
+#: src/settings/index.md:1215
 msgid "`logging.enable-dbus-log`"
 msgstr ""
 
-#: src/settings/index.md:974
+#: src/settings/index.md:1219
 msgid ""
 "Captures D-Bus signals via the built-in zbus-based DbusMonitorTask and "
 "forwards them to structured logging."
 msgstr ""
 
-#: src/settings/index.md:986
+#: src/settings/index.md:1231
 msgid "Settings Retention"
 msgstr ""
 
-#: src/settings/index.md:988
+#: src/settings/index.md:1233
 msgid ""
 "Cadmus stores each version's settings in a separate file in the `Settings/` "
 "directory (for example, `Settings-v1.2.3.toml`). This ensures backward and "
 "forward compatibility when you upgrade."
 msgstr ""
 
-#: src/settings/index.md:992
+#: src/settings/index.md:1237
 msgid "`settings-retention`"
 msgstr ""
 
-#: src/settings/index.md:994
+#: src/settings/index.md:1239
 msgid ""
 "Number of recent version settings files to keep. Only the most recent N "
 "version files are kept. When a new version is saved, older versions beyond "
 "this limit are deleted automatically."
 msgstr ""
 
-#: src/settings/index.md:998
+#: src/settings/index.md:1243
 msgid "Set to `0` to keep all version files"
 msgstr ""
 
-#: src/settings/index.md:1008
+#: src/settings/index.md:1253
 msgid "`db-backup-retention`"
 msgstr ""
 
-#: src/settings/index.md:1010
+#: src/settings/index.md:1255
 msgid ""
 "Number of database backups to keep. When a new backup is created and the "
 "total would exceed this limit, the oldest backups are deleted automatically."
 msgstr ""
 
-#: src/settings/index.md:1013 src/database-backup.md:76
+#: src/settings/index.md:1258 src/database-backup.md:76
 msgid "Default: `2`"
 msgstr ""
 
-#: src/settings/index.md:1014 src/database-backup.md:77
+#: src/settings/index.md:1259 src/database-backup.md:77
 msgid "Set to `0` to disable backups entirely."
 msgstr ""
 
-#: src/settings/index.md:1016
+#: src/settings/index.md:1261
 msgid "See [Database Backup](../database-backup.md) for more details."
 msgstr ""
 
@@ -2474,26 +2688,28 @@ msgid "**Power** — auto-suspend, auto power off, sleep cover"
 msgstr ""
 
 #: src/ui/settings/index.md:14
-msgid "**Reader** — what happens when you finish a book"
-msgstr ""
-
-#: src/ui/settings/index.md:15
-msgid "**Libraries** — add, edit, or remove your book libraries"
+msgid ""
+"**Reader** — finished-book action, default dithering by file type, and "
+"screen refresh rates"
 msgstr ""
 
 #: src/ui/settings/index.md:16
-msgid "**Dictionaries** — download and manage offline dictionaries"
+msgid "**Libraries** — add, edit, or remove your book libraries"
 msgstr ""
 
 #: src/ui/settings/index.md:17
-msgid "**Import** — control how new books are picked up automatically"
+msgid "**Dictionaries** — download and manage offline dictionaries"
 msgstr ""
 
 #: src/ui/settings/index.md:18
-msgid "**OTA** — download Cadmus updates directly to your Kobo"
+msgid "**Import** — control how new books are picked up automatically"
 msgstr ""
 
 #: src/ui/settings/index.md:19
+msgid "**OTA** — download Cadmus updates directly to your Kobo"
+msgstr ""
+
+#: src/ui/settings/index.md:20
 msgid "**Telemetry** — logging options"
 msgstr ""
 
@@ -2821,6 +3037,396 @@ msgid ""
 "This bypasses the incremental import cache and re-fingerprints all files in "
 "your library directories. Be aware that this can take time and drain the "
 "battery for large libraries, so keep your device plugged in while it runs."
+msgstr ""
+
+#: src/reader/index.md:3
+msgid ""
+"When you open a book, Cadmus shows it in the **Reader**. How a book is "
+"loaded depends on its type:"
+msgstr ""
+
+#: src/reader/index.md:6
+msgid ""
+"[Reflowable books](reflowable.md) — EPUB and HTML. Text is laid out to fit "
+"your screen, font size, and margins."
+msgstr ""
+
+#: src/reader/index.md:8
+msgid ""
+"[Paged books](paged.md) — comics (CBZ) and other page-based files such as "
+"PDF. Each page is a fixed image or sheet."
+msgstr ""
+
+#: src/reader/index.md:11
+msgid "What stays in memory while you read"
+msgstr ""
+
+#: src/reader/index.md:13
+msgid "Cadmus uses two kinds of memory, depending on the book type:"
+msgstr ""
+
+#: src/reader/index.md:15
+msgid ""
+"**Screen pages (all books)** — Cadmus draws a page only when it needs to "
+"show it (or to prepare a neighbor). It does **not** pre-draw the whole book. "
+"At most **three** of those finished screen images stay in memory at once."
+msgstr ""
+
+#: src/reader/index.md:18
+msgid ""
+"**HTML file layouts (reflowable only)** — the laid-out pages of each EPUB "
+"HTML file you have already opened. See [Reflowable books](reflowable.md)."
+msgstr ""
+
+#: src/reader/index.md:21
+msgid "Screen pages in memory"
+msgstr ""
+
+#: src/reader/index.md:23
+msgid ""
+"Only the page you are on is required. Cadmus usually also keeps the previous "
+"and next pages when they exist — **up to three** finished screen images "
+"total. Pages outside that window are discarded from memory and drawn again "
+"if you return to them."
+msgstr ""
+
+#: src/reader/index.md:28
+msgid ""
+"In **fit-to-page** and **fit-to-width** zoom modes, Cadmus prepares the "
+"previous and next pages in the background after a turn, so they are ready "
+"when you move again."
+msgstr ""
+
+#: src/reader/index.md:32
+msgid ""
+"```mermaid\n"
+"flowchart LR\n"
+"  prev[\"Previous page<br/>(in memory)\"] --- curr[\"Current page<br/>(in "
+"memory)\"] --- next[\"Next page<br/>(in memory)\"]\n"
+"```"
+msgstr ""
+
+#: src/reader/index.md:37
+msgid "How Cadmus first opens the file still differs by mode:"
+msgstr ""
+
+#: src/reader/index.md:39
+msgid ""
+"```mermaid\n"
+"flowchart TD\n"
+"  open[Open a book] --> mode{Reading mode?}\n"
+"  mode -->|Reflowable| reflow[\"Load HTML file list only<br/>then one HTML "
+"file<br/>when you reach it\"]\n"
+"  mode -->|Paged| paged[\"List pages only<br/>then decode one page<br/>when "
+"you view it\"]\n"
+"  reflow --> render[\"Keep up to 3<br/>screen pages in memory\"]\n"
+"  paged --> render\n"
+"```"
+msgstr ""
+
+#: src/reader/index.md:48
+msgid "Details:"
+msgstr ""
+
+#: src/reader/index.md:50
+msgid "[Reflowable books](reflowable.md)"
+msgstr ""
+
+#: src/reader/index.md:51
+msgid "[Paged books](paged.md)"
+msgstr ""
+
+#: src/reader/index.md:53 src/reader/reflowable.md:61 src/reader/paged.md:47
+msgid "Related settings"
+msgstr ""
+
+#: src/reader/index.md:55
+msgid ""
+"Shared reader options live under `[reader]` in "
+"[Settings](../settings/index.md#reader), including what happens when you "
+"finish a book, touch gestures, and screen refresh rates."
+msgstr ""
+
+#: src/reader/reflowable.md:3
+msgid ""
+"Reflowable books are EPUB files (and HTML documents). Cadmus lays the text "
+"out to match your screen size, font, and margins."
+msgstr ""
+
+#: src/reader/reflowable.md:6
+msgid "Opening a book"
+msgstr ""
+
+#: src/reader/reflowable.md:8
+msgid ""
+"An EPUB is a package of **HTML files** (plus styles and images) listed in "
+"reading order. When you open one, Cadmus reads that file list and related "
+"metadata. It does **not** load every HTML file at that moment."
+msgstr ""
+
+#: src/reader/reflowable.md:12
+msgid ""
+"```mermaid\n"
+"flowchart TD\n"
+"  open[Open EPUB] --> meta[\"Read HTML file list<br/>and metadata\"]\n"
+"  meta --> idle[\"No HTML content files<br/>loaded yet\"]\n"
+"```"
+msgstr ""
+
+#: src/reader/reflowable.md:18
+msgid "Opening an HTML file"
+msgstr ""
+
+#: src/reader/reflowable.md:20
+msgid "When you first reach content that lives in a given HTML file, Cadmus:"
+msgstr ""
+
+#: src/reader/reflowable.md:22
+msgid ""
+"Loads **that one HTML file** (and its stylesheets, unless document CSS is "
+"ignored — see [Settings](../settings/index.md#readerignore-document-css))."
+msgstr ""
+
+#: src/reader/reflowable.md:25
+msgid ""
+"Lays **the whole file** out into screen pages for your current font, "
+"margins, and screen size."
+msgstr ""
+
+#: src/reader/reflowable.md:27
+msgid "Keeps that file's **layout** in memory for the rest of the session."
+msgstr ""
+
+#: src/reader/reflowable.md:29
+msgid ""
+"So the unit Cadmus loads is an HTML file, not a table-of-contents chapter. "
+"If the EPUB puts the entire book in a single HTML file, opening it loads and "
+"lays out that whole book at once. If the book is split across many HTML "
+"files, Cadmus loads each file only when you reach it."
+msgstr ""
+
+#: src/reader/reflowable.md:34
+msgid ""
+"If you later return to an HTML file you already opened, Cadmus reuses the "
+"stored layout instead of reading the file again. Visiting several files "
+"means several layouts can sit in memory at once — still only the files you "
+"have opened."
+msgstr ""
+
+#: src/reader/reflowable.md:38
+msgid ""
+"```mermaid\n"
+"flowchart TD\n"
+"  visit[\"Reach an HTML file\"] --> loaded{\"Layout already<br/>in "
+"memory?\"}\n"
+"  loaded -->|Yes| reuse[\"Reuse stored layout\"]\n"
+"  loaded -->|No| html[\"Load that one<br/>HTML file\"]\n"
+"  html --> layout[\"Layout the whole file<br/>into screen pages\"]\n"
+"  layout --> store[\"Store that file layout<br/>in memory\"]\n"
+"  reuse --> screen[\"Draw current<br/>screen page\"]\n"
+"  store --> screen\n"
+"```"
+msgstr ""
+
+#: src/reader/reflowable.md:49
+msgid ""
+"Changing reading options that affect layout (for example font family, font "
+"size, margins, line height, text alignment, or whether document CSS is used) "
+"clears **all** stored HTML file layouts. Cadmus rebuilds a file the next "
+"time you reach it."
+msgstr ""
+
+#: src/reader/reflowable.md:54
+msgid ""
+"Images referenced by an HTML file are loaded from the book when that file is "
+"laid out or drawn."
+msgstr ""
+
+#: src/reader/reflowable.md:57
+msgid ""
+"On top of those file layouts, Cadmus still keeps **up to three screen "
+"pages** in memory (current, and usually previous and next). See "
+"[Reader](index.md#what-stays-in-memory-while-you-read)."
+msgstr ""
+
+#: src/reader/reflowable.md:63
+msgid ""
+"These `[reader]` options affect reflowable layout. See "
+"[Settings](../settings/index.md#reader) for full details:"
+msgstr ""
+
+#: src/reader/reflowable.md:66
+msgid ""
+"[`font-path`](../settings/index.md#readerfont-path), "
+"[`font-family`](../settings/index.md#readerfont-family), "
+"[`font-size`](../settings/index.md#readerfont-size)"
+msgstr ""
+
+#: src/reader/reflowable.md:69
+msgid "[`text-align`](../settings/index.md#readertext-align)"
+msgstr ""
+
+#: src/reader/reflowable.md:70
+msgid "[`margin-width`](../settings/index.md#readermargin-width)"
+msgstr ""
+
+#: src/reader/reflowable.md:71
+msgid "[`line-height`](../settings/index.md#readerline-height)"
+msgstr ""
+
+#: src/reader/reflowable.md:72
+msgid "[`ignore-document-css`](../settings/index.md#readerignore-document-css)"
+msgstr ""
+
+#: src/reader/reflowable.md:73
+msgid "[`paragraph-breaker`](../settings/index.md#readerparagraph-breaker)"
+msgstr ""
+
+#: src/reader/reflowable.md:75
+msgid "Installing and choosing fonts is covered in [Fonts](../fonts.md)."
+msgstr ""
+
+#: src/reader/paged.md:3
+msgid ""
+"Paged books are made of fixed pages — typically one image or sheet per page. "
+"Cadmus opens CBZ comic archives this way. Other page-based formats such as "
+"PDF and standalone images use the same page-at-a-time model. DjVu books "
+"follow a similar pattern through a separate decoder."
+msgstr ""
+
+#: src/reader/paged.md:8
+msgid "Opening a CBZ"
+msgstr ""
+
+#: src/reader/paged.md:10
+msgid ""
+"A CBZ file is a zip archive of images. When you open one, Cadmus opens the "
+"archive and builds an ordered **list of image file names** that count as "
+"pages. It does **not** decode every image up front."
+msgstr ""
+
+#: src/reader/paged.md:14
+msgid ""
+"```mermaid\n"
+"flowchart TD\n"
+"  open[Open CBZ] --> zip[Open zip archive]\n"
+"  zip --> names[\"List image<br/>page names\"]\n"
+"  names --> idle[\"No page images<br/>decoded yet\"]\n"
+"```"
+msgstr ""
+
+#: src/reader/paged.md:21
+msgid "Turning pages"
+msgstr ""
+
+#: src/reader/paged.md:23
+msgid "When you view a page, Cadmus:"
+msgstr ""
+
+#: src/reader/paged.md:25
+msgid "Reads **that one page's image** from the archive."
+msgstr ""
+
+#: src/reader/paged.md:26
+msgid "Decodes it into a rendered screen page."
+msgstr ""
+
+#: src/reader/paged.md:27
+msgid ""
+"Keeps **up to three** rendered pages in memory — typically the current page "
+"plus the previous and next pages when they exist."
+msgstr ""
+
+#: src/reader/paged.md:30
+msgid ""
+"In **fit-to-page** and **fit-to-width** zoom modes, Cadmus prepares the "
+"previous and next pages in the background after a turn. Pages outside that "
+"window are not kept as finished screen images."
+msgstr ""
+
+#: src/reader/paged.md:34
+msgid ""
+"```mermaid\n"
+"flowchart TD\n"
+"  view[View page N] --> read[\"Read image N<br/>from archive\"]\n"
+"  read --> decode[\"Decode into a<br/>rendered page\"]\n"
+"  decode --> window[\"Memory: previous / current / next<br/>(up to 3 "
+"rendered pages)\"]\n"
+"```"
+msgstr ""
+
+#: src/reader/paged.md:41
+msgid ""
+"The rest of the CBZ stays on disk as zip entries until you navigate to those "
+"pages. Cadmus may also reuse a limited amount of lower-level decoded data "
+"from the page engine, but the Reader itself only retains that small "
+"rendered-page window. See "
+"[Reader](index.md#what-stays-in-memory-while-you-read)."
+msgstr ""
+
+#: src/reader/paged.md:49
+msgid ""
+"These `[reader]` options are especially relevant for paged books. See "
+"[Settings](../settings/index.md#reader) for full details:"
+msgstr ""
+
+#: src/reader/paged.md:52
+msgid ""
+"[`dithered-kinds`](../settings/index.md#readerdithered-kinds) — which file "
+"types start with dithering on first open"
+msgstr ""
+
+#: src/reader/paged.md:54
+msgid ""
+"[`continuous-fit-to-width`](../settings/index.md#readercontinuous-fit-to-width) "
+"— scroll mode used with fit-to-width zoom when a document is first opened"
+msgstr ""
+
+#: src/reader/paged.md:56
+msgid ""
+"[`refresh-rate`](../settings/index.md#readerrefresh-rate) — including "
+"optional per-file-type overrides such as `cbz`"
+msgstr ""
+
+#: src/wifi.md:3
+msgid ""
+"Cadmus can turn WiFi on when something needs the network, then turn it off "
+"again when it is idle."
+msgstr ""
+
+#: src/wifi.md:6
+msgid "Modes"
+msgstr ""
+
+#: src/wifi.md:8
+msgid "Open the **WiFi** control in the top menu and choose one of:"
+msgstr ""
+
+#: src/wifi.md:10
+msgid ""
+"**Off** — WiFi stays off. Features that need the network cannot turn it on "
+"automatically; you must turn WiFi on yourself beforehand."
+msgstr ""
+
+#: src/wifi.md:12
+msgid "**Always On** — WiFi stays on."
+msgstr ""
+
+#: src/wifi.md:13
+msgid ""
+"**Auto** — Cadmus turns WiFi on when something needs the network, then "
+"powers it down after a period of inactivity."
+msgstr ""
+
+#: src/wifi.md:16
+msgid "Idle timeout"
+msgstr ""
+
+#: src/wifi.md:18
+msgid ""
+"When WiFi is set to **Auto**, Cadmus waits a short time after the last "
+"network use before powering the radio down. Change that delay in the "
+"[settings editor](ui/settings/index.md)."
 msgstr ""
 
 #: src/time-sync.md:3
