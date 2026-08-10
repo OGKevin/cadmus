@@ -299,7 +299,9 @@ startup-mode = "home"
 
 ## Reader
 
-Settings that control the reading experience.
+Settings that control the reading experience. How Cadmus loads
+[reflowable](../reader/reflowable.md) and [paged](../reader/paged.md) books is
+described in the [Reader](../reader/index.md) section.
 
 ### `reader.finished`
 
@@ -322,17 +324,121 @@ finished = "close"
 
 <!-- i18n:skip-end -->
 
-### `reader.dithered-kinds`
+### `reader.south-east-corner`
 
-✏️
+Action when you tap the south-east corner of the screen.
 
-File extensions rendered with dithering by default.
+Possible values:
+
+- `"go-to-page"`
+- `"next-page"`
 
 <!-- i18n:skip-start -->
 
 ```toml
 [reader]
-dithered-kinds = ["cbz", "png", "jpg", "jpeg", "webp"]
+south-east-corner = "go-to-page"
+```
+
+<!-- i18n:skip-end -->
+
+### `reader.bottom-right-gesture`
+
+Action for the bottom-right corner gesture.
+
+Possible values:
+
+- `"toggle-dithered"`
+- `"toggle-inverted"`
+
+<!-- i18n:skip-start -->
+
+```toml
+[reader]
+bottom-right-gesture = "toggle-dithered"
+```
+
+<!-- i18n:skip-end -->
+
+### `reader.south-strip`
+
+Action when you tap the south strip.
+
+Possible values:
+
+- `"toggle-bars"`
+- `"next-page"`
+
+<!-- i18n:skip-start -->
+
+```toml
+[reader]
+south-strip = "toggle-bars"
+```
+
+<!-- i18n:skip-end -->
+
+### `reader.west-strip`
+
+Action when you tap the west strip.
+
+Possible values:
+
+- `"previous-page"`
+- `"next-page"`
+- `"none"`
+
+<!-- i18n:skip-start -->
+
+```toml
+[reader]
+west-strip = "previous-page"
+```
+
+<!-- i18n:skip-end -->
+
+### `reader.east-strip`
+
+Action when you tap the east strip.
+
+Possible values:
+
+- `"previous-page"`
+- `"next-page"`
+- `"none"`
+
+<!-- i18n:skip-start -->
+
+```toml
+[reader]
+east-strip = "next-page"
+```
+
+<!-- i18n:skip-end -->
+
+### `reader.strip-width`
+
+Width ratio of the side and bottom strip touch regions, relative to
+`min(W, H) / 2`.
+
+<!-- i18n:skip-start -->
+
+```toml
+[reader]
+strip-width = 0.6
+```
+
+<!-- i18n:skip-end -->
+
+### `reader.corner-width`
+
+Width ratio of the corner touch regions, relative to `min(W, H) / 2`.
+
+<!-- i18n:skip-start -->
+
+```toml
+[reader]
+corner-width = 0.4
 ```
 
 <!-- i18n:skip-end -->
@@ -369,7 +475,8 @@ font-family = "Libron"
 
 ### `reader.font-size`
 
-The default font size in points.
+The default font size in points, plus the minimum and maximum sizes available
+while reading.
 
 <!-- i18n:skip-start -->
 
@@ -383,6 +490,144 @@ max-font-size = 16.5
 <!-- i18n:skip-end -->
 
 See [Fonts](../fonts.md) for more info.
+
+### `reader.text-align`
+
+Default text alignment for reflowable books.
+
+Possible values:
+
+- `"left"`
+- `"right"`
+- `"center"`
+- `"justify"`
+
+<!-- i18n:skip-start -->
+
+```toml
+[reader]
+text-align = "left"
+```
+
+<!-- i18n:skip-end -->
+
+### `reader.margin-width`
+
+Default page margin width in millimeters, plus the minimum and maximum values
+available while reading.
+
+<!-- i18n:skip-start -->
+
+```toml
+[reader]
+margin-width = 8
+min-margin-width = 0
+max-margin-width = 10
+```
+
+<!-- i18n:skip-end -->
+
+### `reader.line-height`
+
+Default line height for reflowable books, in ems.
+
+<!-- i18n:skip-start -->
+
+```toml
+[reader]
+line-height = 1.2
+```
+
+<!-- i18n:skip-end -->
+
+### `reader.continuous-fit-to-width`
+
+Scroll mode used for fit-to-width zoom when a document is first opened.
+
+<!-- i18n:skip-start -->
+
+```toml
+[reader]
+continuous-fit-to-width = true
+```
+
+<!-- i18n:skip-end -->
+
+### `reader.ignore-document-css`
+
+When `true`, Cadmus ignores stylesheets embedded in reflowable documents and
+uses Cadmus viewer styles only.
+
+<!-- i18n:skip-start -->
+
+```toml
+[reader]
+ignore-document-css = false
+```
+
+<!-- i18n:skip-end -->
+
+### `reader.dithered-kinds`
+
+✏️
+
+File extensions rendered with dithering by default when opened for the first
+time.
+
+<!-- i18n:skip-start -->
+
+```toml
+[reader]
+dithered-kinds = ["cbz", "png", "jpg", "jpeg", "webp"]
+```
+
+<!-- i18n:skip-end -->
+
+### `reader.paragraph-breaker`
+
+Controls how Cadmus breaks paragraphs in reflowable text.
+
+#### `hyphen-penalty`
+
+Penalty for hyphenated lines. The maximum value is `10000`.
+
+#### `stretch-tolerance`
+
+How much inter-word spacing may stretch or shrink when justifying lines.
+
+<!-- i18n:skip-start -->
+
+```toml
+[reader.paragraph-breaker]
+hyphen-penalty = 50
+stretch-tolerance = 1.26
+```
+
+<!-- i18n:skip-end -->
+
+### `reader.refresh-rate`
+
+✏️
+
+How often Cadmus fully refreshes the screen while you turn pages. `regular`
+applies when colors are not inverted; `inverted` applies when they are. Use
+`0` to never force a full refresh on that schedule.
+
+Optional `by-kind` entries override the global pair for specific file
+extensions.
+
+<!-- i18n:skip-start -->
+
+```toml
+[reader.refresh-rate]
+regular = 8
+inverted = 2
+
+# [reader.refresh-rate.by-kind]
+# cbz = { regular = 1, inverted = 1 }
+```
+
+<!-- i18n:skip-end -->
 
 ## Libraries
 
