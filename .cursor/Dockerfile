@@ -1,7 +1,7 @@
 # Cadmus Cursor Cloud base image — toolchain only (no project COPY).
 # Checkout-dependent setup runs via .cursor/cloud-install.sh on each agent boot.
 
-FROM ubuntu:24.04
+FROM ubuntu:26.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
