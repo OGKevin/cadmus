@@ -45,7 +45,7 @@ owns:
   <a href="/api/cadmus_core/lease/struct.LeaseTracker.html">`LeaseTracker`</a>
   whose observer maps 0→1 to the single kernel lock name `cadmus`, and 1→0 to a
   deferred `wake_unlock` via
-  <a href="/api/cadmus_core/device/soft_suspend/session/struct.WakeLockArmer.html">`WakeLockArmer`</a>
+  <a href="/api/cadmus_core/device/linux/soft_suspend/session/struct.WakeLockArmer.html">`WakeLockArmer`</a>
   after autosleep grace seconds (zero = unlock immediately). A new lease during
   the grace cancels the pending unlock.
 - Optional LED indicator via

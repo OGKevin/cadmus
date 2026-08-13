@@ -31,7 +31,7 @@ orchestrator:
 1. RTC
    <a href="/api/cadmus_core/device/rtc/enum.AlarmType.html#variant.AutoSuspend">`AlarmType::AutoSuspend`</a>
    fires →
-   <a href="/api/cadmus_core/device/suspend/fn.start_cycle.html">`start_cycle`</a>
+   <a href="/api/cadmus_core/device/suspend/orchestrator/fn.start_cycle.html">`start_cycle`</a>
    (<a href="/api/cadmus_core/device/suspend/cycle/enum.SuspendKind.html#variant.Classic">`Classic`</a>)
 2. Intermission UI; wait prepare delay (3s) then PrepareSuspend teardown
 3. Wait suspend delay (15s) then
