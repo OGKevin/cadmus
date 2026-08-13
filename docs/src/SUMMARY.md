@@ -57,3 +57,4 @@
 - [Intro](investigations/index.md)
   - [DHCP IP Address Changes on WiFi Toggle](investigations/kobo/issue-51-dhcp-investigation.md)
   - [Reading IP and ESSID via dhcpcd-dbus](investigations/kobo/issue-261-dhcpcd-dbus-network-info.md)
+  - [Soft suspend via autosleep and wake_lock](investigations/kobo/issue-361-autosleep-wake-lock.md)
