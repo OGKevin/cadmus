@@ -1,7 +1,7 @@
 //! Linux ioctl RTC implementation.
 
 use anyhow::Error;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
 use nix::{ioctl_none, ioctl_read, ioctl_write_ptr};
 use std::fs::{File, OpenOptions};
@@ -43,6 +43,23 @@ ioctl_write_ptr!(rtc_set_time, b'p', 0x0a, RtcTime);
 pub struct LinuxRtc {
     file: Arc<Mutex<File>>,
     wait_file: Arc<Mutex<File>>,
+    /// Cached RTC↔civil relationship and last `set_time` step.
+    clock: Arc<Mutex<LinuxRtcClock>>,
+}
+
+/// Cached conversion state between the hardware RTC and the civil system clock.
+#[derive(Debug)]
+struct LinuxRtcClock {
+    /// `RTC_now − system_now` from the last drift refresh (`new` / `set_time`).
+    ///
+    /// Positive means the RTC reads ahead of civil time. Used by [`Rtc::to_rtc`]
+    /// / [`Rtc::to_civil`].
+    drift: ChronoDuration,
+    /// `new_time − old_time` from the latest [`Rtc::set_time`], if not yet taken.
+    ///
+    /// [`AlarmManager::sync`] consumes this via [`Rtc::take_pending_step`] to
+    /// rebase relative and RTC-absolute alarms after a clock write.
+    pending_step: Option<ChronoDuration>,
 }
 
 impl LinuxRtc {
@@ -67,10 +84,30 @@ impl LinuxRtc {
         let file = OpenOptions::new().read(true).write(true).open(path)?;
         let wait_fd = nix::unistd::dup(file.as_fd())?;
         let wait_file = File::from(wait_fd);
-        Ok(LinuxRtc {
+        let rtc = LinuxRtc {
             file: Arc::new(Mutex::new(file)),
             wait_file: Arc::new(Mutex::new(wait_file)),
-        })
+            clock: Arc::new(Mutex::new(LinuxRtcClock {
+                drift: ChronoDuration::zero(),
+                pending_step: None,
+            })),
+        };
+        rtc.refresh_drift_from_hardware()?;
+        Ok(rtc)
+    }
+
+    fn refresh_drift_from_hardware(&self) -> Result<(), Error> {
+        match self.read_time() {
+            Ok(rtc_now) => {
+                self.clock
+                    .lock()
+                    .map_err(|e| anyhow::anyhow!("lock poisoned: {}", e))?
+                    .drift = rtc_now.signed_duration_since(Utc::now());
+                Ok(())
+            }
+            Err(_) if cfg!(test) => Ok(()),
+            Err(err) => Err(err),
+        }
     }
 }
 
@@ -123,6 +160,7 @@ impl Rtc for LinuxRtc {
 
     /// Issues `RTC_SET_TIME`; requires write access to the device node.
     fn set_time(&self, time: DateTime<Utc>) -> Result<(), Error> {
+        let old_time = self.read_time()?;
         let rt: RtcTime = time.into();
         let file = self
             .file
@@ -131,7 +169,28 @@ impl Rtc for LinuxRtc {
         unsafe {
             rtc_set_time(file.as_raw_fd(), &rt)?;
         }
+        drop(file);
+        let mut clock = self
+            .clock
+            .lock()
+            .map_err(|e| anyhow::anyhow!("lock poisoned: {}", e))?;
+        clock.drift = time.signed_duration_since(Utc::now());
+        clock.pending_step = Some(time.signed_duration_since(old_time));
         Ok(())
+    }
+
+    fn drift(&self) -> Result<ChronoDuration, Error> {
+        self.clock
+            .lock()
+            .map(|clock| clock.drift)
+            .map_err(|e| anyhow::anyhow!("lock poisoned: {}", e))
+    }
+
+    fn take_pending_step(&self) -> Result<Option<ChronoDuration>, Error> {
+        self.clock
+            .lock()
+            .map(|mut clock| clock.pending_step.take())
+            .map_err(|e| anyhow::anyhow!("lock poisoned: {}", e))
     }
 
     fn wait_for_alarm_irq(&self, timeout: Option<Duration>) -> Result<Option<u32>, Error> {

@@ -388,7 +388,7 @@ mod tests {
                 .lock()
                 .unwrap();
             alarms
-                .schedule_alarm(
+                .schedule_in(
                     crate::AlarmType::Suspend,
                     crate::chrono::Duration::seconds(15),
                 )

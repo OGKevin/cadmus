@@ -1,7 +1,7 @@
-use std::sync::Arc;
 use std::sync::mpsc::Sender;
+use std::sync::{Arc, Mutex};
 
-use crate::device::rtc::Rtc;
+use crate::device::rtc::{AlarmManager, Rtc};
 use crate::device::wifi::WifiSession;
 use crate::geolocation::fetch_geolocation;
 use crate::http::Client;
@@ -15,6 +15,7 @@ pub struct TimeSyncTask<R: Rtc> {
     ntp_server: NetworkAddress,
     manual: bool,
     wifi_session: Arc<WifiSession>,
+    alarm_manager: Arc<Mutex<AlarmManager<R>>>,
 }
 
 impl<R: Rtc> TimeSyncTask<R> {
@@ -23,12 +24,14 @@ impl<R: Rtc> TimeSyncTask<R> {
         ntp_server: NetworkAddress,
         manual: bool,
         wifi_session: Arc<WifiSession>,
+        alarm_manager: Arc<Mutex<AlarmManager<R>>>,
     ) -> Self {
         TimeSyncTask {
             time_manager,
             ntp_server,
             manual,
             wifi_session,
+            alarm_manager,
         }
     }
 }
@@ -69,9 +72,9 @@ impl<R: Rtc + Send + 'static> BackgroundTask for TimeSyncTask<R> {
 
         let coordinates = geo.as_ref().map(|geo| geo.coordinates);
 
-        if let Err(e) = self
-            .time_manager
-            .sync(&self.ntp_server, self.manual, geo, hub)
+        if let Err(e) =
+            self.time_manager
+                .sync(&self.ntp_server, self.manual, geo, hub, &self.alarm_manager)
         {
             tracing::error!(error = %e, "time sync failed");
         }

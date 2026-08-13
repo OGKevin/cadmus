@@ -1,7 +1,7 @@
 //! In-memory emulator RTC with Condvar-backed alarm IRQ waits.
 
 use anyhow::Error;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
@@ -11,9 +11,20 @@ const RTC_AF: u32 = 0x20;
 
 #[derive(Debug)]
 struct EmulatorRtcState {
+    /// Whether the in-memory hardware wake alarm is armed.
     alarm_enabled: bool,
+    /// Programmed wake instant on the emulated RTC timeline, if any.
     alarm_wake_time: Option<DateTime<Utc>>,
+    /// Set when an IRQ should unblock [`Rtc::wait_for_alarm_irq`].
     irq_pending: bool,
+    /// Emulated RTC timeline as `system_now + offset` (see [`Rtc::read_time`]).
+    offset: ChronoDuration,
+    /// `RTC_now − system_now`; for the emulator this equals [`Self::offset`].
+    ///
+    /// Positive means the emulated RTC reads ahead of civil time.
+    drift: ChronoDuration,
+    /// `new_time − old_time` from the latest [`Rtc::set_time`], if not yet taken.
+    pending_step: Option<ChronoDuration>,
 }
 
 /// Emulator RTC that schedules in-memory wake alarms and wakes IRQ waiters.
@@ -30,6 +41,9 @@ impl EmulatorRtc {
                 alarm_enabled: false,
                 alarm_wake_time: None,
                 irq_pending: false,
+                offset: ChronoDuration::zero(),
+                drift: ChronoDuration::zero(),
+                pending_step: None,
             })),
             cond: Arc::new(Condvar::new()),
         }
@@ -74,11 +88,38 @@ impl Rtc for EmulatorRtc {
     }
 
     fn read_time(&self) -> Result<DateTime<Utc>, Error> {
-        Ok(Utc::now())
+        self.state
+            .lock()
+            .map(|state| Utc::now() + state.offset)
+            .map_err(|e| anyhow::anyhow!("lock poisoned: {}", e))
     }
 
-    fn set_time(&self, _time: DateTime<Utc>) -> Result<(), Error> {
+    fn set_time(&self, time: DateTime<Utc>) -> Result<(), Error> {
+        let system_now = Utc::now();
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|e| anyhow::anyhow!("lock poisoned: {}", e))?;
+        let old_time = system_now + state.offset;
+        state.offset = time.signed_duration_since(system_now);
+        state.drift = state.offset;
+        state.pending_step = Some(time.signed_duration_since(old_time));
+        self.cond.notify_all();
         Ok(())
+    }
+
+    fn drift(&self) -> Result<ChronoDuration, Error> {
+        self.state
+            .lock()
+            .map(|state| state.drift)
+            .map_err(|e| anyhow::anyhow!("lock poisoned: {}", e))
+    }
+
+    fn take_pending_step(&self) -> Result<Option<ChronoDuration>, Error> {
+        self.state
+            .lock()
+            .map(|mut state| state.pending_step.take())
+            .map_err(|e| anyhow::anyhow!("lock poisoned: {}", e))
     }
 
     fn wait_for_alarm_irq(&self, timeout: Option<Duration>) -> Result<Option<u32>, Error> {
@@ -94,7 +135,7 @@ impl Rtc for EmulatorRtc {
                 return Ok(Some(RTC_AF));
             }
 
-            let now = Utc::now();
+            let now = Utc::now() + state.offset;
             if state.alarm_enabled
                 && let Some(wake_time) = state.alarm_wake_time
                 && wake_time <= now

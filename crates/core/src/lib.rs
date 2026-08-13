@@ -41,7 +41,7 @@ pub mod logging;
 pub mod metadata;
 pub mod network_address;
 pub mod ota;
-pub use device::rtc::{AlarmManager, AlarmType};
+pub use device::rtc::{AlarmManager, AlarmType, AlarmWhen, ClockInstant};
 pub mod runtime;
 pub mod settings;
 pub mod task;

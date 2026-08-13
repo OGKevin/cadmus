@@ -83,7 +83,7 @@ mod tests {
                 .lock()
                 .unwrap();
             alarms
-                .schedule_alarm(AlarmType::Suspend, ChronoDuration::seconds(15))
+                .schedule_in(AlarmType::Suspend, ChronoDuration::seconds(15))
                 .unwrap();
         }
         assert!(is_suspend_active(&harness.context, &harness.tasks));
@@ -107,7 +107,7 @@ mod tests {
                 .lock()
                 .unwrap();
             alarms
-                .schedule_alarm(AlarmType::Suspend, ChronoDuration::seconds(-1))
+                .schedule_in(AlarmType::Suspend, ChronoDuration::seconds(-1))
                 .unwrap();
             assert!(alarms.has_alarm(AlarmType::Suspend));
             assert!(!alarms.is_alarm_scheduled(AlarmType::Suspend));
@@ -148,7 +148,7 @@ mod tests {
                 .lock()
                 .unwrap();
             alarms
-                .schedule_alarm(AlarmType::Suspend, ChronoDuration::seconds(15))
+                .schedule_in(AlarmType::Suspend, ChronoDuration::seconds(15))
                 .unwrap();
         }
         cancel_suspend_if_pending(
@@ -174,7 +174,7 @@ mod tests {
                 .lock()
                 .unwrap();
             alarms
-                .schedule_alarm(AlarmType::WakeDebounce, ChronoDuration::seconds(15))
+                .schedule_in(AlarmType::WakeDebounce, ChronoDuration::seconds(15))
                 .unwrap();
         }
         cancel_suspend_if_pending(
@@ -222,7 +222,7 @@ mod tests {
                 .lock()
                 .unwrap();
             alarms
-                .schedule_alarm(AlarmType::Suspend, ChronoDuration::seconds(-1))
+                .schedule_in(AlarmType::Suspend, ChronoDuration::seconds(-1))
                 .unwrap();
         }
         cancel_suspend_if_pending(

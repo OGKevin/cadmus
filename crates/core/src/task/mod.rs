@@ -600,6 +600,11 @@ impl TaskManager {
             return;
         }
 
+        let Some(alarm_manager) = context.alarm_manager.as_ref() else {
+            tracing::warn!("alarm manager unavailable, cannot sync time");
+            return;
+        };
+
         match context.device.time_manager() {
             Ok(time_manager) => {
                 let task = Box::new(time_sync::TimeSyncTask::new(
@@ -607,6 +612,7 @@ impl TaskManager {
                     context.settings.ntp_server.clone(),
                     manual,
                     context.wifi_session.clone(),
+                    alarm_manager.clone(),
                 ));
                 if let Err(e) = self.start(task, hub.clone()) {
                     tracing::warn!(error = %e, "failed to start time sync task");

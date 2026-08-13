@@ -170,6 +170,39 @@ pub enum AlarmType {
     CalendarUpdate,
 }
 
+/// Instant on either the hardware RTC timeline or the civil system wall clock.
+///
+/// **Civil** means the system wall clock (`Utc::now()` / `Local`) — what the UI
+/// and NTP use — not the hardware RTC register.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClockInstant {
+    /// Instant already expressed on the hardware RTC timeline.
+    Rtc(DateTime<Utc>),
+    /// Instant on the civil system wall clock; convert with [`Rtc::to_rtc`].
+    Civil(DateTime<Utc>),
+}
+
+/// Describes when a logical alarm should fire.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AlarmWhen {
+    /// Fires after the duration elapses on the RTC timeline.
+    In(Duration),
+    /// Fires at an absolute [`ClockInstant`] (RTC or civil).
+    At(ClockInstant),
+}
+
+impl From<Duration> for AlarmWhen {
+    fn from(duration: Duration) -> Self {
+        Self::In(duration)
+    }
+}
+
+impl From<ClockInstant> for AlarmWhen {
+    fn from(instant: ClockInstant) -> Self {
+        Self::At(instant)
+    }
+}
+
 /// Describes what [`AlarmManager::ensure_scheduled`] should do when an alarm
 /// exists in the map but its wake time is already in the past.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -202,8 +235,15 @@ impl AlarmType {
     }
 }
 
+/// One logical alarm retained by [`AlarmManager`] until claimed or cancelled.
 pub struct ScheduledAlarm {
+    /// Logical alarm identity multiplexed onto the single hardware wake slot.
     pub alarm_type: AlarmType,
+    /// Original scheduling intent; kept so [`AlarmManager::sync`] can rebase
+    /// after an RTC clock step (`In` / `At(Rtc)` shift by the step, `At(Civil)`
+    /// reconverts through refreshed drift).
+    pub when: AlarmWhen,
+    /// Resolved wake instant on the RTC timeline (what hardware is programmed with).
     pub wake_time: DateTime<Utc>,
 }
 
@@ -234,25 +274,19 @@ impl<R: Rtc> AlarmManager<R> {
         }
     }
 
-    /// Schedule a logical alarm to fire `duration` from now.
+    /// Schedules a logical alarm with an explicit relative or absolute intent.
     ///
-    /// If an alarm of the same type is already scheduled it is replaced.
-    /// The hardware RTC is updated to reflect the new earliest wake time.
-    pub fn schedule_alarm(
-        &mut self,
-        alarm_type: AlarmType,
-        duration: Duration,
-    ) -> Result<(), Error> {
-        let wake_time = Utc::now() + duration;
-        self.scheduled_alarms.insert(
-            alarm_type,
-            ScheduledAlarm {
-                alarm_type,
-                wake_time,
-            },
-        );
-        self.update_hardware_alarm()?;
-        Ok(())
+    /// Relative alarms use RTC time as their base. If the RTC cannot be read,
+    /// the operation uses system time consistently as its fallback.
+    pub fn schedule(&mut self, alarm_type: AlarmType, when: AlarmWhen) -> Result<(), Error> {
+        let now = self.authority_now();
+        self.schedule_at(alarm_type, when, now)?;
+        self.update_hardware_alarm_at(now)
+    }
+
+    /// Schedules a logical alarm to fire after `duration` on the RTC timeline.
+    pub fn schedule_in(&mut self, alarm_type: AlarmType, duration: Duration) -> Result<(), Error> {
+        self.schedule(alarm_type, AlarmWhen::In(duration))
     }
 
     /// Cancel a previously scheduled logical alarm.
@@ -260,16 +294,17 @@ impl<R: Rtc> AlarmManager<R> {
     /// If no alarm of that type is scheduled this is a no-op. The hardware
     /// RTC is updated to reflect the new earliest remaining wake time.
     pub fn cancel_alarm(&mut self, alarm_type: AlarmType) -> Result<(), Error> {
+        let now = self.authority_now();
         self.scheduled_alarms.remove(&alarm_type);
-        self.update_hardware_alarm()?;
-        Ok(())
+        self.update_hardware_alarm_at(now)
     }
 
     /// Returns `true` if an alarm of `alarm_type` is scheduled for a future time.
     pub fn is_alarm_scheduled(&self, alarm_type: AlarmType) -> bool {
+        let now = self.authority_now();
         self.scheduled_alarms
             .get(&alarm_type)
-            .map(|alarm| alarm.wake_time > Utc::now())
+            .map(|alarm| alarm.wake_time > now)
             .unwrap_or(false)
     }
 
@@ -278,77 +313,92 @@ impl<R: Rtc> AlarmManager<R> {
         self.scheduled_alarms.contains_key(&alarm_type)
     }
 
-    /// Ensures an alarm of `alarm_type` is active and scheduled for the future.
-    pub fn ensure_scheduled(
+    /// Ensures an alarm is active and scheduled for the future.
+    ///
+    /// Accepts either an [`AlarmWhen`] or a relative [`Duration`]. A stale
+    /// alarm is handled according to `past_due_action`.
+    pub fn ensure_scheduled<W: Into<AlarmWhen>>(
         &mut self,
         alarm_type: AlarmType,
-        duration: Duration,
+        when: W,
         past_due_action: PastDueAction,
     ) -> Result<EnsureAlarmOutcome, Error> {
-        if !self.has_alarm(alarm_type) {
-            self.schedule_alarm(alarm_type, duration)?;
-            return Ok(EnsureAlarmOutcome::Scheduled);
-        }
-
-        if self.is_alarm_scheduled(alarm_type) {
-            return Ok(EnsureAlarmOutcome::AlreadyScheduled);
-        }
-
-        self.cancel_alarm(alarm_type)?;
-
-        match past_due_action {
-            PastDueAction::Reschedule => {
-                self.schedule_alarm(alarm_type, duration)?;
-                Ok(EnsureAlarmOutcome::Scheduled)
+        let now = self.authority_now();
+        let when = when.into();
+        let outcome = match self.scheduled_alarms.get(&alarm_type) {
+            None => {
+                self.schedule_at(alarm_type, when, now)?;
+                EnsureAlarmOutcome::Scheduled
             }
-            PastDueAction::Cancel => Ok(EnsureAlarmOutcome::PastDue),
-        }
+            Some(alarm) if alarm.wake_time > now => EnsureAlarmOutcome::AlreadyScheduled,
+            Some(_) => {
+                self.scheduled_alarms.remove(&alarm_type);
+                match past_due_action {
+                    PastDueAction::Reschedule => {
+                        self.schedule_at(alarm_type, when, now)?;
+                        EnsureAlarmOutcome::Scheduled
+                    }
+                    PastDueAction::Cancel => EnsureAlarmOutcome::PastDue,
+                }
+            }
+        };
+        self.update_hardware_alarm_at(now)?;
+        Ok(outcome)
     }
 
     /// Returns the number of seconds until `alarm_type` fires, or `None` if
     /// it is not scheduled.
     pub fn time_until_alarm(&self, alarm_type: AlarmType) -> Option<i64> {
-        self.scheduled_alarms.get(&alarm_type).map(|alarm| {
-            alarm
-                .wake_time
-                .signed_duration_since(Utc::now())
-                .num_seconds()
-        })
+        let now = self.authority_now();
+        self.scheduled_alarms
+            .get(&alarm_type)
+            .map(|alarm| alarm.wake_time.signed_duration_since(now).num_seconds())
     }
 
     /// Determines which logical alarms fired during the last sleep cycle.
+    ///
+    /// `before` and `after` are tagged with [`ClockInstant`] so both ends are
+    /// normalized to the RTC timeline before comparing sleep length to the
+    /// expected wake. Prefer the same variant for both ends of one call.
     pub fn check_fired_alarms(
         &mut self,
-        before: DateTime<Utc>,
-        after: DateTime<Utc>,
+        before: ClockInstant,
+        after: ClockInstant,
     ) -> Result<Vec<AlarmType>, Error> {
+        let now = self.authority_now();
+        let before_rtc = self.resolve_instant(before)?;
+        let after_rtc = self.resolve_instant(after)?;
         if let Some((_, earliest_alarm)) = self
             .scheduled_alarms
             .iter()
             .min_by_key(|(_, alarm)| &alarm.wake_time)
         {
-            let expected_duration = earliest_alarm.wake_time.signed_duration_since(before);
+            let expected_duration = earliest_alarm.wake_time.signed_duration_since(before_rtc);
 
             let rwa = self.rtc.alarm()?;
             let hardware_alarm_fired = !rwa.enabled()
                 || (rwa.year() <= 1970
-                    && ((after - before) - expected_duration).num_seconds().abs() < 3);
+                    && ((after_rtc - before_rtc) - expected_duration)
+                        .num_seconds()
+                        .abs()
+                        < 3);
 
             if hardware_alarm_fired {
-                return self.claim_due_alarms_at(after);
+                return self.claim_due_alarms_at(now);
             }
         }
 
-        self.update_hardware_alarm()?;
+        self.update_hardware_alarm_at(now)?;
         Ok(Vec::new())
     }
 
-    /// Removes and returns logical alarms that are due at the current wall clock.
+    /// Removes and returns logical alarms due on the RTC authority clock.
     ///
-    /// An alarm is due when its wake time is at or before `at`. Reprograms the
-    /// hardware for any remaining future alarms.
+    /// Falls back to system time for the entire claim operation when RTC time
+    /// cannot be read.
     pub fn claim_due_alarms(&mut self) -> Result<Vec<AlarmType>, Error> {
-        self.claim_due_alarms_at(Utc::now())
+        let now = self.authority_now();
+        self.claim_due_alarms_at(now)
     }
 
     fn claim_due_alarms_at(&mut self, at: DateTime<Utc>) -> Result<Vec<AlarmType>, Error> {
@@ -365,13 +415,70 @@ impl<R: Rtc> AlarmManager<R> {
             fired_types.push(alarm_type);
         }
 
-        self.update_hardware_alarm()?;
+        self.update_hardware_alarm_at(at)?;
         Ok(fired_types)
     }
 
-    fn update_hardware_alarm(&self) -> Result<(), Error> {
-        let now = Utc::now();
+    /// Rebases scheduled alarms after an RTC clock write and reprograms hardware.
+    ///
+    /// Relative and RTC-absolute intents retain their remaining RTC duration.
+    /// Civil intents are converted again using the RTC's refreshed drift.
+    pub fn sync(&mut self) -> Result<(), Error> {
+        if let Some(step) = self.rtc.take_pending_step()? {
+            for alarm in self.scheduled_alarms.values_mut() {
+                alarm.wake_time = match alarm.when {
+                    AlarmWhen::In(_) | AlarmWhen::At(ClockInstant::Rtc(_)) => {
+                        alarm.wake_time + step
+                    }
+                    AlarmWhen::At(ClockInstant::Civil(civil)) => self.rtc.to_rtc(civil)?,
+                };
+            }
+        }
+        let now = self.authority_now();
+        self.update_hardware_alarm_at(now)
+    }
 
+    fn authority_now(&self) -> DateTime<Utc> {
+        self.rtc.read_time().unwrap_or_else(|error| {
+            tracing::warn!(error = %error, "RTC read failed; using system clock");
+            Utc::now()
+        })
+    }
+
+    fn resolve_instant(&self, instant: ClockInstant) -> Result<DateTime<Utc>, Error> {
+        match instant {
+            ClockInstant::Rtc(time) => Ok(time),
+            ClockInstant::Civil(civil) => self.rtc.to_rtc(civil),
+        }
+    }
+
+    fn schedule_at(
+        &mut self,
+        alarm_type: AlarmType,
+        when: AlarmWhen,
+        now: DateTime<Utc>,
+    ) -> Result<(), Error> {
+        let wake_time = match when {
+            AlarmWhen::In(duration) => now + duration,
+            AlarmWhen::At(instant) => self.resolve_instant(instant)?,
+        };
+        tracing::debug!(
+            alarm_type = ?alarm_type,
+            wake_at = %wake_time,
+            "Scheduled logical RTC alarm"
+        );
+        self.scheduled_alarms.insert(
+            alarm_type,
+            ScheduledAlarm {
+                alarm_type,
+                when,
+                wake_time,
+            },
+        );
+        Ok(())
+    }
+
+    fn update_hardware_alarm_at(&self, now: DateTime<Utc>) -> Result<(), Error> {
         if let Some((_, earliest_alarm)) = self
             .scheduled_alarms
             .iter()
@@ -385,6 +492,19 @@ impl<R: Rtc> AlarmManager<R> {
 
         Ok(())
     }
+}
+
+/// Sets RTC time and synchronizes logical alarms before returning.
+///
+/// App clock synchronization paths, including NTP, should use this helper so
+/// relative and civil alarm intents remain coherent across an RTC clock step.
+pub fn set_time<R: Rtc>(
+    rtc: &R,
+    alarms: &mut AlarmManager<R>,
+    time: DateTime<Utc>,
+) -> Result<(), Error> {
+    rtc.set_time(time)?;
+    alarms.sync()
 }
 
 impl<R: Rtc + 'static> AlarmManager<R> {
@@ -460,6 +580,107 @@ mod tests {
     }
 
     #[test]
+    fn relative_schedule_uses_rtc_now() {
+        let (rtc, mut manager) = test_alarm_manager();
+        let rtc_now = Utc::now() - Duration::hours(4);
+        rtc.set_current_time(rtc_now);
+
+        manager
+            .schedule_in(AlarmType::AutoSuspend, Duration::minutes(10))
+            .unwrap();
+
+        let wake_time = manager
+            .scheduled_alarms
+            .get(&AlarmType::AutoSuspend)
+            .unwrap()
+            .wake_time;
+        assert_eq!(wake_time, rtc_now + Duration::minutes(10));
+        assert_eq!(rtc.scheduled_wake_time(), Some(wake_time));
+    }
+
+    #[test]
+    fn rtc_lag_does_not_disable_future_hardware_alarm() {
+        let (rtc, mut manager) = test_alarm_manager();
+        rtc.set_current_time(Utc::now() - Duration::hours(1));
+
+        manager
+            .schedule_in(AlarmType::AutoSuspend, Duration::minutes(10))
+            .unwrap();
+        let claimed = manager.claim_due_alarms().unwrap();
+
+        assert!(claimed.is_empty());
+        assert!(manager.has_alarm(AlarmType::AutoSuspend));
+        assert!(rtc.alarm_enabled());
+    }
+
+    #[test]
+    fn helper_preserves_relative_remaining_time() {
+        let (rtc, mut manager) = test_alarm_manager();
+        let old_time = Utc::now() - Duration::hours(2);
+        rtc.set_current_time(old_time);
+        manager
+            .schedule_in(AlarmType::AutoPowerOff, Duration::minutes(20))
+            .unwrap();
+
+        let new_time = old_time + Duration::hours(1);
+        set_time(&rtc, &mut manager, new_time).unwrap();
+
+        let wake_time = manager
+            .scheduled_alarms
+            .get(&AlarmType::AutoPowerOff)
+            .unwrap()
+            .wake_time;
+        assert_eq!(
+            wake_time.signed_duration_since(new_time),
+            Duration::minutes(20)
+        );
+        assert_eq!(rtc.scheduled_wake_time(), Some(wake_time));
+    }
+
+    #[test]
+    fn civil_alarm_rebases_with_updated_drift() {
+        let (rtc, mut manager) = test_alarm_manager();
+        let rtc_now = Utc::now() - Duration::hours(3);
+        rtc.set_time(rtc_now).unwrap();
+        rtc.take_pending_step().unwrap();
+        let civil = Utc::now() + Duration::hours(2);
+
+        manager
+            .schedule(
+                AlarmType::CalendarUpdate,
+                AlarmWhen::At(ClockInstant::Civil(civil)),
+            )
+            .unwrap();
+        let initial_wake = manager
+            .scheduled_alarms
+            .get(&AlarmType::CalendarUpdate)
+            .unwrap()
+            .wake_time;
+
+        set_time(&rtc, &mut manager, rtc_now + Duration::hours(1)).unwrap();
+
+        let wake_time = manager
+            .scheduled_alarms
+            .get(&AlarmType::CalendarUpdate)
+            .unwrap()
+            .wake_time;
+        assert_ne!(wake_time, initial_wake);
+        assert_eq!(wake_time, rtc.to_rtc(civil).unwrap());
+        assert_eq!(rtc.to_civil(wake_time).unwrap(), civil);
+    }
+
+    #[test]
+    fn read_time_does_not_refresh_drift() {
+        let rtc = TestRtc::new();
+        let drift = rtc.drift().unwrap();
+        rtc.set_current_time(Utc::now() + Duration::days(1));
+
+        rtc.read_time().unwrap();
+
+        assert_eq!(rtc.drift().unwrap(), drift);
+    }
+
+    #[test]
     fn ensure_scheduled_fresh() {
         let (_rtc, mut manager) = test_alarm_manager();
         let outcome = manager
@@ -499,7 +720,7 @@ mod tests {
         let past = Utc::now() - Duration::hours(2);
         rtc.set_current_time(past + Duration::minutes(30));
         manager
-            .schedule_alarm(AlarmType::CalendarUpdate, Duration::minutes(-90))
+            .schedule_in(AlarmType::CalendarUpdate, Duration::minutes(-90))
             .unwrap();
         rtc.set_current_time(Utc::now());
         let outcome = manager
@@ -517,7 +738,7 @@ mod tests {
     fn ensure_scheduled_past_due_cancel() {
         let (rtc, mut manager) = test_alarm_manager();
         manager
-            .schedule_alarm(AlarmType::AutoPowerOff, Duration::seconds(-10))
+            .schedule_in(AlarmType::AutoPowerOff, Duration::seconds(-10))
             .unwrap();
         rtc.set_current_time(Utc::now());
         let outcome = manager
@@ -534,25 +755,54 @@ mod tests {
     #[test]
     fn check_fired_alarms_detects_fired() {
         let (rtc, mut manager) = test_alarm_manager();
-        let before = Utc::now();
+        let before = rtc.read_time().unwrap();
         manager
-            .schedule_alarm(AlarmType::AutoPowerOff, Duration::minutes(5))
+            .schedule_in(AlarmType::AutoPowerOff, Duration::minutes(5))
             .unwrap();
         rtc.simulate_alarm_fired();
         let after = before + Duration::minutes(5) + Duration::seconds(1);
-        let fired = manager.check_fired_alarms(before, after).unwrap();
+        rtc.set_current_time(after);
+        let fired = manager
+            .check_fired_alarms(ClockInstant::Rtc(before), ClockInstant::Rtc(after))
+            .unwrap();
+        assert!(fired.contains(&AlarmType::AutoPowerOff));
+    }
+
+    #[test]
+    fn check_fired_alarms_civil_window_under_rtc_lag() {
+        let (rtc, mut manager) = test_alarm_manager();
+        let civil_before = Utc::now();
+        rtc.set_time(civil_before - Duration::hours(1)).unwrap();
+        let _ = rtc.take_pending_step().unwrap();
+
+        manager
+            .schedule_in(AlarmType::AutoPowerOff, Duration::minutes(5))
+            .unwrap();
+        rtc.simulate_alarm_fired();
+
+        let civil_after = civil_before + Duration::minutes(5) + Duration::seconds(1);
+        rtc.set_current_time(rtc.to_rtc(civil_after).unwrap());
+
+        let fired = manager
+            .check_fired_alarms(
+                ClockInstant::Civil(civil_before),
+                ClockInstant::Civil(civil_after),
+            )
+            .unwrap();
         assert!(fired.contains(&AlarmType::AutoPowerOff));
     }
 
     #[test]
     fn check_fired_alarms_not_fired() {
         let (rtc, mut manager) = test_alarm_manager();
-        let before = Utc::now();
+        let before = rtc.read_time().unwrap();
         manager
-            .schedule_alarm(AlarmType::AutoPowerOff, Duration::hours(1))
+            .schedule_in(AlarmType::AutoPowerOff, Duration::hours(1))
             .unwrap();
         let after = before + Duration::minutes(1);
-        let fired = manager.check_fired_alarms(before, after).unwrap();
+        let fired = manager
+            .check_fired_alarms(ClockInstant::Rtc(before), ClockInstant::Rtc(after))
+            .unwrap();
         assert!(fired.is_empty());
         assert!(!rtc.alarm_enabled() || manager.has_alarm(AlarmType::AutoPowerOff));
     }
@@ -561,10 +811,10 @@ mod tests {
     fn multiplexing_earliest_alarm_wins() {
         let (rtc, mut manager) = test_alarm_manager();
         manager
-            .schedule_alarm(AlarmType::AutoPowerOff, Duration::hours(2))
+            .schedule_in(AlarmType::AutoPowerOff, Duration::hours(2))
             .unwrap();
         manager
-            .schedule_alarm(AlarmType::CalendarUpdate, Duration::minutes(30))
+            .schedule_in(AlarmType::CalendarUpdate, Duration::minutes(30))
             .unwrap();
         let wake = rtc.scheduled_wake_time().unwrap();
         let expected = Utc::now() + Duration::minutes(30);
@@ -575,10 +825,10 @@ mod tests {
     fn auto_suspend_can_be_earliest_alarm() {
         let (rtc, mut manager) = test_alarm_manager();
         manager
-            .schedule_alarm(AlarmType::AutoPowerOff, Duration::hours(2))
+            .schedule_in(AlarmType::AutoPowerOff, Duration::hours(2))
             .unwrap();
         manager
-            .schedule_alarm(AlarmType::AutoSuspend, Duration::minutes(10))
+            .schedule_in(AlarmType::AutoSuspend, Duration::minutes(10))
             .unwrap();
         let wake = rtc.scheduled_wake_time().unwrap();
         let expected = Utc::now() + Duration::minutes(10);
@@ -617,7 +867,7 @@ mod tests {
     fn claim_due_alarms_returns_past_due_once() {
         let (_rtc, mut manager) = test_alarm_manager();
         manager
-            .schedule_alarm(AlarmType::AutoSuspend, Duration::seconds(-10))
+            .schedule_in(AlarmType::AutoSuspend, Duration::seconds(-10))
             .unwrap();
         let first = manager.claim_due_alarms().unwrap();
         assert_eq!(first, vec![AlarmType::AutoSuspend]);
@@ -630,7 +880,7 @@ mod tests {
     fn claim_due_alarms_ignores_near_future_wake() {
         let (_rtc, mut manager) = test_alarm_manager();
         manager
-            .schedule_alarm(AlarmType::AutoSuspend, Duration::seconds(2))
+            .schedule_in(AlarmType::AutoSuspend, Duration::seconds(2))
             .unwrap();
         let claimed = manager.claim_due_alarms().unwrap();
         assert!(claimed.is_empty());
@@ -646,7 +896,7 @@ mod tests {
         {
             let mut locked = manager.lock().unwrap();
             locked
-                .schedule_alarm(AlarmType::AutoSuspend, Duration::seconds(-10))
+                .schedule_in(AlarmType::AutoSuspend, Duration::seconds(-10))
                 .unwrap();
         }
 
