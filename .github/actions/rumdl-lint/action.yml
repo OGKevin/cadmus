@@ -44,7 +44,7 @@ runs:
       if: inputs.output == ''
 
     - name: Install rumdl
-      uses: taiki-e/install-action@67729d5c413db75907f0ad1e39bb04b9c868ff60 # v2.85.7
+      uses: taiki-e/install-action@91ddec75689c4c78665b598d188dc821c5a43e5c # v2.85.9
       with:
         tool: rumdl@${{ inputs.rumdl_version }}
 
