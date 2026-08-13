@@ -31,15 +31,25 @@ flowchart TD
   unlock --> kernel
 ```
 
-`SoftSuspendSession` owns:
+<a href="/api/cadmus_core/device/soft_suspend/struct.SoftSuspendSession.html">`SoftSuspendSession`</a>
+owns:
 
 - Reading `/sys/power/state` to discover available targets
-- Writing `/sys/power/autosleep` (`off` / `freeze` / `mem`)
-- A lease tracker whose observer maps 0→1 to the single kernel lock name
-  `cadmus`, and 1→0 to a deferred `wake_unlock` after autosleep grace
-  seconds (zero = unlock immediately). A new lease during the grace cancels
-  the pending unlock.
-- Optional LED indicator via `DeviceLeds`
+- Writing `/sys/power/autosleep`
+  (<a href="/api/cadmus_core/device/soft_suspend/enum.AutosleepMode.html#variant.Off">`off`</a>
+  /
+  <a href="/api/cadmus_core/device/soft_suspend/enum.AutosleepMode.html#variant.Freeze">`freeze`</a>
+  /
+  <a href="/api/cadmus_core/device/soft_suspend/enum.AutosleepMode.html#variant.Mem">`mem`</a>)
+- A
+  <a href="/api/cadmus_core/lease/struct.LeaseTracker.html">`LeaseTracker`</a>
+  whose observer maps 0→1 to the single kernel lock name `cadmus`, and 1→0 to a
+  deferred `wake_unlock` via
+  <a href="/api/cadmus_core/device/soft_suspend/session/struct.WakeLockArmer.html">`WakeLockArmer`</a>
+  after autosleep grace seconds (zero = unlock immediately). A new lease during
+  the grace cancels the pending unlock.
+- Optional LED indicator via
+  <a href="/api/cadmus_core/device/leds/trait.DeviceLeds.html">`DeviceLeds`</a>
 
 Missing autosleep / wake_lock sysfs is a no-op (emulator and hosts without
 those nodes).
@@ -53,6 +63,8 @@ Upstream references:
 Named leases only adjust the Cadmus refcount; the kernel still sees one lock
 (`cadmus`). Holders include the main loop, input, Wi‑Fi, and background
 tasks while they run. Dropping the last lease (after grace) lets the kernel
-enter the armed autosleep target.
+enter the armed
+<a href="/api/cadmus_core/device/soft_suspend/enum.AutosleepMode.html">`AutosleepMode`</a>
+target.
 
 <!-- i18n:skip-end -->
