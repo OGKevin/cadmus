@@ -12,6 +12,7 @@
 use super::helpers::is_suspend_active;
 use super::{SUSPEND_WAIT_DELAY, begin_suspend, show_power_off_intermission};
 use crate::AlarmType;
+use crate::ClockInstant;
 use crate::chrono::{Duration as ChronoDuration, Local, Timelike};
 use crate::device::DeviceHardware as _;
 use crate::device::power::PowerManager;
@@ -65,7 +66,7 @@ pub(super) fn schedule_wake_debounce_alarm(context: &mut AppContext) {
     let mut alarm_manager = alarm_manager.lock().unwrap_or_else(|e| e.into_inner());
     let duration = ChronoDuration::from_std(super::SUSPEND_WAIT_DELAY)
         .unwrap_or_else(|_| ChronoDuration::seconds(15));
-    if let Err(error) = alarm_manager.schedule_alarm(AlarmType::WakeDebounce, duration) {
+    if let Err(error) = alarm_manager.schedule_in(AlarmType::WakeDebounce, duration) {
         tracing::error!(error = %error, "failed to schedule WakeDebounce alarm");
     }
 }
@@ -99,7 +100,7 @@ pub(super) fn schedule_suspend_alarm(context: &mut AppContext, delay: std::time:
     };
     let mut alarm_manager = alarm_manager.lock().unwrap_or_else(|e| e.into_inner());
     let duration = ChronoDuration::from_std(delay).unwrap_or_else(|_| ChronoDuration::seconds(15));
-    if let Err(error) = alarm_manager.schedule_alarm(AlarmType::Suspend, duration) {
+    if let Err(error) = alarm_manager.schedule_in(AlarmType::Suspend, duration) {
         tracing::error!(error = %error, "failed to schedule Suspend alarm");
     }
 }
@@ -326,6 +327,13 @@ fn schedule_alarms_before_sleep(
     context: &mut AppContext,
     runtime: &mut DeviceRuntime<'_>,
 ) -> Option<EventOutcome> {
+    let calendar_duration = (context.settings.intermissions[IntermKind::Suspend]
+        == crate::settings::IntermissionDisplay::Calendar)
+        .then(|| {
+            let now = Local::now();
+            let seconds_into_current_5min = (now.minute() as i64 % 5) * 60 + now.second() as i64;
+            ChronoDuration::seconds(300 - seconds_into_current_5min + 1)
+        });
     let alarm_manager = context.alarm_manager.as_ref()?;
     let mut alarm_manager = alarm_manager.lock().unwrap_or_else(|e| e.into_inner());
 
@@ -354,16 +362,11 @@ fn schedule_alarms_before_sleep(
         }
     }
 
-    if context.settings.intermissions[IntermKind::Suspend]
-        == crate::settings::IntermissionDisplay::Calendar
-    {
-        let now = Local::now();
-        let seconds_into_current_5min = (now.minute() as i64 % 5) * 60 + now.second() as i64;
-        let seconds_until_next_5min = 300 - seconds_into_current_5min + 1;
+    if let Some(duration) = calendar_duration {
         alarm_manager
             .ensure_scheduled(
                 AlarmType::CalendarUpdate,
-                ChronoDuration::seconds(seconds_until_next_5min),
+                duration,
                 PastDueAction::Reschedule,
             )
             .map_err(
@@ -428,7 +431,10 @@ fn handle_post_wake(
     if let Some(alarm_manager) = context.alarm_manager.as_ref() {
         let fired_alarms = {
             let mut alarm_manager = alarm_manager.lock().unwrap_or_else(|e| e.into_inner());
-            match alarm_manager.check_fired_alarms(before.to_utc(), after.to_utc()) {
+            match alarm_manager.check_fired_alarms(
+                ClockInstant::Civil(before.to_utc()),
+                ClockInstant::Civil(after.to_utc()),
+            ) {
                 Ok(fired) => {
                     tracing::info!(alarms = ?fired, "Checked fired alarms after wake");
                     fired
@@ -533,7 +539,7 @@ mod tests {
         let mut harness = LifecycleHarness::new();
         harness.context.settings.auto_power_off = 1.0;
         lock_alarms(&mut harness)
-            .schedule_alarm(AlarmType::AutoPowerOff, ChronoDuration::seconds(-10))
+            .schedule_in(AlarmType::AutoPowerOff, ChronoDuration::seconds(-10))
             .unwrap();
         let outcome = harness.with_runtime_only(schedule_alarms_before_sleep);
         assert_eq!(outcome, Some(EventOutcome::Exit(ExitStatus::PowerOff)));
@@ -554,13 +560,16 @@ mod tests {
         let before = Local::now();
         {
             lock_alarms(&mut harness)
-                .schedule_alarm(AlarmType::AutoPowerOff, ChronoDuration::minutes(5))
+                .schedule_in(AlarmType::AutoPowerOff, ChronoDuration::minutes(5))
                 .unwrap();
             if let Ok(rtc) = harness.context.device.rtc() {
                 rtc.simulate_alarm_fired();
             }
         }
         let after = before + ChronoDuration::minutes(5) + ChronoDuration::seconds(1);
+        if let Ok(rtc) = harness.context.device.rtc() {
+            rtc.set_current_time(after.to_utc());
+        }
         let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
             handle_post_wake(before, after, hub, bus, rq, context, runtime)
         });
@@ -797,7 +806,7 @@ mod tests {
         {
             let mut alarms = lock_alarms(&mut harness);
             alarms
-                .schedule_alarm(AlarmType::Suspend, ChronoDuration::seconds(15))
+                .schedule_in(AlarmType::Suspend, ChronoDuration::seconds(15))
                 .unwrap();
         }
         harness.with_parts(|hub, _bus, rq, context, runtime| {

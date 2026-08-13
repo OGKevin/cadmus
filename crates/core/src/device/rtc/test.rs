@@ -1,7 +1,7 @@
 //! In-memory RTC for unit tests with assertion helpers.
 
 use anyhow::Error;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
@@ -12,10 +12,20 @@ const RTC_AF: u32 = 0x20;
 
 #[derive(Debug)]
 struct TestRtcState {
+    /// Emulated hardware clock instant used by [`Rtc::read_time`] and due checks.
     current_time: DateTime<Utc>,
+    /// Whether the in-memory hardware wake alarm is armed.
     alarm_enabled: bool,
+    /// Programmed wake instant on the test RTC timeline, if any.
     alarm_wake_time: Option<DateTime<Utc>>,
+    /// Set when an IRQ should unblock [`Rtc::wait_for_alarm_irq`].
     irq_pending: bool,
+    /// `RTC_now − system_now` from the last drift refresh (`new` / `set_time`).
+    ///
+    /// Positive means the test RTC reads ahead of civil time.
+    drift: ChronoDuration,
+    /// `new_time − old_time` from the latest [`Rtc::set_time`], if not yet taken.
+    pending_step: Option<ChronoDuration>,
 }
 
 /// Assertable RTC test double for unit tests.
@@ -27,12 +37,15 @@ pub struct TestRtc {
 
 impl TestRtc {
     pub fn new() -> Self {
+        let current_time = Utc::now();
         Self {
             state: Arc::new(Mutex::new(TestRtcState {
-                current_time: Utc::now(),
+                current_time,
                 alarm_enabled: false,
                 alarm_wake_time: None,
                 irq_pending: false,
+                drift: current_time.signed_duration_since(Utc::now()),
+                pending_step: None,
             })),
             cond: Arc::new(Condvar::new()),
         }
@@ -119,9 +132,26 @@ impl Rtc for TestRtc {
             .state
             .lock()
             .map_err(|e| anyhow::anyhow!("lock poisoned: {}", e))?;
+        let old_time = state.current_time;
         state.current_time = time;
+        state.drift = time.signed_duration_since(Utc::now());
+        state.pending_step = Some(time.signed_duration_since(old_time));
         self.cond.notify_all();
         Ok(())
+    }
+
+    fn drift(&self) -> Result<ChronoDuration, Error> {
+        self.state
+            .lock()
+            .map(|state| state.drift)
+            .map_err(|e| anyhow::anyhow!("lock poisoned: {}", e))
+    }
+
+    fn take_pending_step(&self) -> Result<Option<ChronoDuration>, Error> {
+        self.state
+            .lock()
+            .map(|mut state| state.pending_step.take())
+            .map_err(|e| anyhow::anyhow!("lock poisoned: {}", e))
     }
 
     fn wait_for_alarm_irq(&self, timeout: Option<Duration>) -> Result<Option<u32>, Error> {

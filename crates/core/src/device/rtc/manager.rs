@@ -1,7 +1,7 @@
 //! RTC trait definition.
 
 use anyhow::Error;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use std::time::Duration;
 
 use super::RtcWkalrm;
@@ -67,13 +67,38 @@ pub trait Rtc: Send + Sync {
 
     /// Sets the RTC to `time`.
     ///
-    /// [`crate::time_manager::TimeManager`] calls this after a successful NTP
-    /// sync. May require elevated privileges on some platforms.
+    /// This low-level operation records a pending step but does not synchronize
+    /// logical alarms. App clock updates should call [`super::set_time`] so
+    /// [`super::AlarmManager::sync`] consumes the step immediately. May require
+    /// elevated privileges on some platforms.
     ///
     /// # Errors
     ///
     /// Returns an error when the clock cannot be updated.
     fn set_time(&self, time: DateTime<Utc>) -> Result<(), Error>;
+
+    /// Returns the RTC offset from the civil system clock (`RTC_now − system_now`).
+    ///
+    /// Positive means the RTC reads ahead of civil time. Implementations
+    /// establish this value during initialization and refresh it only after
+    /// [`Rtc::set_time`], while Cadmus retains exclusive RTC access.
+    fn drift(&self) -> Result<ChronoDuration, Error>;
+
+    /// Converts a civil system-clock instant to the RTC timeline.
+    fn to_rtc(&self, civil: DateTime<Utc>) -> Result<DateTime<Utc>, Error> {
+        Ok(civil + self.drift()?)
+    }
+
+    /// Converts an RTC-timeline instant to the civil system-clock timeline.
+    fn to_civil(&self, rtc: DateTime<Utc>) -> Result<DateTime<Utc>, Error> {
+        Ok(rtc - self.drift()?)
+    }
+
+    /// Takes the clock step recorded by the latest [`Rtc::set_time`] call.
+    ///
+    /// The returned duration is `new_time - old_time`. Taking it clears the
+    /// pending value.
+    fn take_pending_step(&self) -> Result<Option<ChronoDuration>, Error>;
 
     /// Blocks until an alarm IRQ is readable, or until `timeout` elapses.
     ///
@@ -106,6 +131,14 @@ impl<T: Rtc + ?Sized> Rtc for std::sync::Arc<T> {
 
     fn set_time(&self, time: DateTime<Utc>) -> Result<(), Error> {
         (**self).set_time(time)
+    }
+
+    fn drift(&self) -> Result<ChronoDuration, Error> {
+        (**self).drift()
+    }
+
+    fn take_pending_step(&self) -> Result<Option<ChronoDuration>, Error> {
+        (**self).take_pending_step()
     }
 
     fn wait_for_alarm_irq(&self, timeout: Option<Duration>) -> Result<Option<u32>, Error> {

@@ -6,14 +6,14 @@ use std::net::{IpAddr, SocketAddr, ToSocketAddrs, UdpSocket};
 use std::sync::mpsc::Sender;
 use std::time::Duration;
 
-use crate::device::rtc::Rtc;
+use crate::device::rtc::{AlarmManager, Rtc};
 use crate::geolocation;
 use crate::geolocation::GeoLocation;
 use crate::http::Client as HttpClient;
 use crate::network_address::NetworkAddress;
 use crate::view::{Event, NotificationEvent};
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 const NTP_PORT: u16 = 123;
 const NTP_TIMEOUT: Duration = Duration::from_secs(5);
@@ -38,6 +38,7 @@ impl<R: Rtc> TimeManager<R> {
         manual: bool,
         geolocation: Option<GeoLocation>,
         hub: &Sender<Event>,
+        alarm_manager: &Arc<Mutex<AlarmManager<R>>>,
     ) -> Result<(), Error> {
         if let Err(e) = self.detect_and_set_timezone(geolocation) {
             if manual {
@@ -64,9 +65,10 @@ impl<R: Rtc> TimeManager<R> {
             }
         };
 
-        let result = self
-            .set_system_clock(ntp_time)
-            .and_then(|()| self.rtc.set_time(ntp_time));
+        let result = self.set_system_clock(ntp_time).and_then(|()| {
+            let mut alarms = alarm_manager.lock().unwrap_or_else(|e| e.into_inner());
+            crate::device::rtc::set_time(self.rtc.as_ref(), &mut alarms, ntp_time)
+        });
 
         match result {
             Ok(()) => {

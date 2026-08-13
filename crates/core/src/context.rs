@@ -259,7 +259,7 @@ impl<D: Device> Context<D> {
         }
 
         let duration = auto_suspend_chrono_duration(minutes);
-        if let Err(error) = alarm_manager.schedule_alarm(AlarmType::AutoSuspend, duration) {
+        if let Err(error) = alarm_manager.schedule_in(AlarmType::AutoSuspend, duration) {
             tracing::error!(error = %error, "failed to schedule AutoSuspend alarm");
         }
     }
