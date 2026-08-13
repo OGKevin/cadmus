@@ -24,6 +24,23 @@ pub trait PowerManager: Send + Sync {
     /// Returns [`PowerError`] if any write operation fails.
     fn resume(&self) -> Result<(), PowerError>;
 
+    /// Arms vendor deep-idle peripheral state without writing `/sys/power/state`.
+    ///
+    /// On Kobo this writes `1` to `/sys/power/state-extended` (touch prep). It does
+    /// **not** suspend by itself — callers pair it with autosleep `mem` and releasing
+    /// wake locks. Default is a no-op.
+    fn arm_deep_idle(&self) -> Result<(), PowerError> {
+        Ok(())
+    }
+
+    /// Clears vendor deep-idle peripheral state after wake or cancel.
+    ///
+    /// On Kobo this matches the touch-restore half of [`Self::resume`]. Default is a
+    /// no-op.
+    fn disarm_deep_idle(&self) -> Result<(), PowerError> {
+        Ok(())
+    }
+
     /// Initializes and enables all available CPU cores on startup.
     ///
     /// # Errors
@@ -49,6 +66,12 @@ impl<T: PowerManager + ?Sized> PowerManager for Box<T> {
     }
     fn resume(&self) -> Result<(), PowerError> {
         (**self).resume()
+    }
+    fn arm_deep_idle(&self) -> Result<(), PowerError> {
+        (**self).arm_deep_idle()
+    }
+    fn disarm_deep_idle(&self) -> Result<(), PowerError> {
+        (**self).disarm_deep_idle()
     }
     fn init_cores(&self) -> Result<(), PowerError> {
         (**self).init_cores()

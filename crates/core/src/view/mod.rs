@@ -503,6 +503,8 @@ pub enum Event {
     RtcAlarmFired(crate::AlarmType),
     PrepareSuspend,
     Suspend,
+    /// Advance a non-blocking soft-suspend deep-idle wait (sleep detect / timeout).
+    PollDeepIdleWait,
     Share,
     PrepareShare,
     Validate,

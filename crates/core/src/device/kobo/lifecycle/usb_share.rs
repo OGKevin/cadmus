@@ -1,7 +1,8 @@
 //! USB mass-storage share preparation and session handling.
 
-use super::{KOBO_UPDATE_BUNDLE, schedule_device_task};
+use super::KOBO_UPDATE_BUNDLE;
 use crate::device::DeviceHardware as _;
+use crate::device::schedule_device_task;
 use crate::device::usb::UsbManager;
 use crate::device::{
     AppContext, DeviceRuntime, DeviceTask, DeviceTaskId, EventOutcome, HistoryItem,
@@ -276,12 +277,12 @@ pub(super) fn handle_event(
 #[cfg(all(test, feature = "kobo"))]
 mod tests {
     use super::*;
-    use crate::device::kobo::lifecycle::test_helpers::LifecycleHarness;
+    use crate::device::test_harness::DeviceRuntimeHarness;
     use crate::view::EntryId;
 
     #[test]
     fn handle_prepare_share_returns_error_without_settings_manager() {
-        let mut harness = LifecycleHarness::new();
+        let mut harness = DeviceRuntimeHarness::new();
         let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
             runtime.settings_manager = None;
             handle_prepare_share(hub, bus, rq, context, runtime)
@@ -291,7 +292,7 @@ mod tests {
 
     #[test]
     fn handle_prepare_share_early_return_when_shared() {
-        let mut harness = LifecycleHarness::new();
+        let mut harness = DeviceRuntimeHarness::new();
         harness.context.shared = true;
         let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
             handle_event(&Event::PrepareShare, hub, bus, rq, context, runtime)
@@ -301,7 +302,7 @@ mod tests {
 
     #[test]
     fn handle_share_early_return_when_shared() {
-        let mut harness = LifecycleHarness::new();
+        let mut harness = DeviceRuntimeHarness::new();
         harness.context.shared = true;
         let hub = harness.hub_tx.clone();
         let outcome = harness.with_runtime_only(|context, runtime| {
@@ -319,7 +320,7 @@ mod tests {
 
     #[test]
     fn handle_share_enables_usb_mass_storage() {
-        let mut harness = LifecycleHarness::new();
+        let mut harness = DeviceRuntimeHarness::new();
         let hub = harness.hub_tx.clone();
         let outcome =
             harness.with_runtime_only(|context, runtime| handle_share(&hub, context, runtime));
@@ -341,7 +342,7 @@ mod tests {
 
     #[test]
     fn disable_usb_share_disables_mass_storage() {
-        let harness = LifecycleHarness::new();
+        let harness = DeviceRuntimeHarness::new();
         disable_usb_share(
             &harness.context,
             None,

@@ -358,6 +358,7 @@ impl View for SettingValue {
 mod tests {
     use super::*;
     use crate::context::test_helpers::create_test_context;
+    use crate::device::reschedule_auto_suspend_alarm;
     use crate::device::{DeviceIdentity as _, DevicePaths as _};
     use crate::gesture::GestureEvent;
     use crate::settings::Settings;
@@ -537,7 +538,7 @@ mod tests {
 
         let mut context = create_test_context();
         context.settings.auto_suspend = 30.0;
-        context.reschedule_auto_suspend_alarm();
+        reschedule_auto_suspend_alarm(&mut context);
         let first = context
             .alarm_manager
             .as_ref()
@@ -599,7 +600,7 @@ mod tests {
 
         let mut context = create_test_context();
         context.settings.auto_suspend = 30.0;
-        context.reschedule_auto_suspend_alarm();
+        reschedule_auto_suspend_alarm(&mut context);
         assert!(
             context
                 .alarm_manager

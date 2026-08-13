@@ -14,6 +14,7 @@ use crate::battery::FakeBattery;
 use crate::color::Color;
 use crate::device::DeviceHardware as _;
 use crate::device::emulator::rtc::EmulatorRtc;
+use crate::device::reschedule_auto_suspend_alarm;
 use crate::device::types::FrontlightKind;
 use crate::device::{AppContext, Model};
 use crate::device::{
@@ -597,7 +598,7 @@ impl DeviceLifecycle for EmulatorDevice {
         _runtime: &mut DeviceRuntime<'_>,
     ) -> Result<(), anyhow::Error> {
         if let Some(alarm_manager) = context.alarm_manager.clone() {
-            context.reschedule_auto_suspend_alarm();
+            reschedule_auto_suspend_alarm(context);
             let hub = hub.clone();
             crate::device::rtc::AlarmManager::start_irq_listener(
                 &alarm_manager,

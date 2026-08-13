@@ -1,12 +1,14 @@
 //! Device input event handling for suspend, power, cover, and USB plug events.
 
 use super::super::input::BATTERY_REFRESH_INTERVAL;
-use super::helpers::{cancel_suspend_if_pending, is_suspend_active};
-use super::suspend::is_suspend_rtc_pending;
 use super::usb_share::disable_usb_share;
-use super::{begin_suspend, schedule_device_task};
 use crate::device::DeviceHardware as _;
 use crate::device::DeviceRotation as _;
+use crate::device::reschedule_auto_suspend_alarm;
+use crate::device::schedule_device_task;
+use crate::device::suspend::{
+    cancel_suspend_if_pending, is_suspend_active, is_suspend_rtc_pending, start_cycle,
+};
 use crate::device::wifi::WifiManager;
 use crate::device::{AppContext, DeviceRuntime, DeviceTaskId, EventOutcome, Orientation};
 use crate::fl;
@@ -52,7 +54,7 @@ pub(super) fn handle_event(
 /// Handles a power-button release to begin or cancel suspend.
 ///
 /// Ignored when USB sharing is active or the cover is closed. Toggles between
-/// starting suspend via [`begin_suspend`] and cancelling a pending suspend task.
+/// starting suspend via [`start_cycle`] and cancelling a pending suspend task.
 fn handle_power_button_released(
     hub: &Hub,
     bus: &mut crate::view::Bus,
@@ -67,7 +69,7 @@ fn handle_power_button_released(
     if is_suspend_active(context, runtime.tasks) {
         cancel_suspend_if_pending(context, runtime.tasks, runtime.view.as_mut(), hub, rq);
     } else {
-        begin_suspend(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks);
+        start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks);
     }
 
     EventOutcome::Handled
@@ -173,7 +175,7 @@ fn handle_cover_on(
         return EventOutcome::Handled;
     }
 
-    begin_suspend(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks);
+    start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks);
 
     EventOutcome::Handled
 }
@@ -206,7 +208,7 @@ fn handle_cover_off(
 fn handle_user_activity(context: &mut AppContext, runtime: &mut DeviceRuntime<'_>) -> EventOutcome {
     let _ = runtime;
     if context.settings.auto_suspend > 0.0 {
-        super::suspend::reschedule_auto_suspend_alarm(context);
+        reschedule_auto_suspend_alarm(context);
     }
     EventOutcome::Handled
 }
@@ -271,7 +273,7 @@ fn handle_plug_host(
     }
 
     if context.settings.auto_suspend > 0.0 {
-        super::suspend::reschedule_auto_suspend_alarm(context);
+        reschedule_auto_suspend_alarm(context);
     }
 }
 
@@ -307,7 +309,7 @@ fn handle_unplug(
         );
         if is_suspend_rtc_pending(context) {
             if !context.covered {
-                super::helpers::cancel_suspend_if_pending(
+                crate::device::suspend::cancel_suspend_if_pending(
                     context,
                     runtime.tasks,
                     runtime.view.as_mut(),
@@ -326,14 +328,14 @@ fn handle_unplug(
 #[cfg(all(test, feature = "kobo"))]
 mod tests {
     use super::*;
-    use crate::device::kobo::lifecycle::helpers::has_task;
-    use crate::device::kobo::lifecycle::test_helpers::LifecycleHarness;
+    use crate::device::suspend::has_task;
+    use crate::device::test_harness::DeviceRuntimeHarness;
     use crate::input::PowerSource;
     use crate::view::EntryId;
 
     #[test]
     fn handle_power_button_ignored_when_shared() {
-        let mut harness = LifecycleHarness::new();
+        let mut harness = DeviceRuntimeHarness::new();
         harness.context.shared = true;
         let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
             handle_power_button_released(hub, bus, rq, context, runtime)
@@ -344,7 +346,7 @@ mod tests {
 
     #[test]
     fn handle_power_button_begins_suspend() {
-        let mut harness = LifecycleHarness::new();
+        let mut harness = DeviceRuntimeHarness::new();
         let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
             handle_power_button_released(hub, bus, rq, context, runtime)
         });
@@ -354,7 +356,7 @@ mod tests {
 
     #[test]
     fn handle_power_button_cancels_suspend() {
-        let mut harness = LifecycleHarness::new();
+        let mut harness = DeviceRuntimeHarness::new();
         harness.push_task(DeviceTaskId::PrepareSuspend);
         let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
             handle_power_button_released(hub, bus, rq, context, runtime)
@@ -365,7 +367,7 @@ mod tests {
 
     #[test]
     fn handle_light_button_forwards_toggle() {
-        let harness = LifecycleHarness::new();
+        let harness = DeviceRuntimeHarness::new();
         let outcome = handle_light_button_pressed(&harness.hub_tx);
         assert_eq!(outcome, EventOutcome::Handled);
         assert!(
@@ -378,7 +380,7 @@ mod tests {
 
     #[test]
     fn handle_rotate_screen_blocked_during_suspend() {
-        let mut harness = LifecycleHarness::new();
+        let mut harness = DeviceRuntimeHarness::new();
         {
             let mut alarms = harness
                 .context
@@ -403,7 +405,7 @@ mod tests {
 
     #[test]
     fn handle_rotate_screen_forwards_select() {
-        let mut harness = LifecycleHarness::new();
+        let mut harness = DeviceRuntimeHarness::new();
         let hub = harness.hub_tx.clone();
         let outcome = harness
             .with_runtime_only(|context, runtime| handle_rotate_screen(2, &hub, context, runtime));
@@ -422,7 +424,7 @@ mod tests {
         use crate::fl;
         use std::net::{IpAddr, Ipv4Addr};
 
-        let mut harness = LifecycleHarness::new();
+        let mut harness = DeviceRuntimeHarness::new();
         let ip = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 128));
         let essid = Essid::new("TestNet");
         harness
@@ -455,7 +457,7 @@ mod tests {
 
     #[test]
     fn handle_net_up_online_without_notification_when_no_association() {
-        let mut harness = LifecycleHarness::new();
+        let mut harness = DeviceRuntimeHarness::new();
         harness
             .context
             .device
@@ -476,7 +478,7 @@ mod tests {
 
     #[test]
     fn handle_net_up_online_without_notification_when_disabled() {
-        let mut harness = LifecycleHarness::new();
+        let mut harness = DeviceRuntimeHarness::new();
         harness
             .context
             .device
@@ -497,7 +499,7 @@ mod tests {
 
     #[test]
     fn handle_net_up_noop_when_online() {
-        let mut harness = LifecycleHarness::new();
+        let mut harness = DeviceRuntimeHarness::new();
         harness.context.online = true;
         let outcome = harness
             .with_parts(|hub, _bus, _rq, context, runtime| handle_net_up(hub, context, runtime));
@@ -507,7 +509,7 @@ mod tests {
 
     #[test]
     fn handle_cover_on_sets_covered_and_begins_suspend() {
-        let mut harness = LifecycleHarness::new();
+        let mut harness = DeviceRuntimeHarness::new();
         harness.context.settings.sleep_cover = true;
         let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
             handle_cover_on(hub, bus, rq, context, runtime)
@@ -519,7 +521,7 @@ mod tests {
 
     #[test]
     fn handle_cover_off_cancels_suspend() {
-        let mut harness = LifecycleHarness::new();
+        let mut harness = DeviceRuntimeHarness::new();
         harness.context.covered = true;
         harness.context.settings.sleep_cover = true;
         harness.push_task(DeviceTaskId::PrepareSuspend);
@@ -533,7 +535,7 @@ mod tests {
 
     #[test]
     fn handle_user_activity_reschedules_auto_suspend() {
-        let mut harness = LifecycleHarness::new();
+        let mut harness = DeviceRuntimeHarness::new();
         harness.context.settings.auto_suspend = 30.0;
         harness.with_runtime_only(handle_user_activity);
         let first = harness
@@ -562,7 +564,7 @@ mod tests {
 
     #[test]
     fn handle_plug_host_auto_share() {
-        let mut harness = LifecycleHarness::new();
+        let mut harness = DeviceRuntimeHarness::new();
         harness.context.settings.auto_share = true;
         let outcome = harness.with_parts(|hub, _bus, rq, context, runtime| {
             handle_plug(PowerSource::Host, hub, rq, context, runtime)
@@ -579,7 +581,7 @@ mod tests {
 
     #[test]
     fn handle_unplug_reschedules_battery_check() {
-        let mut harness = LifecycleHarness::new();
+        let mut harness = DeviceRuntimeHarness::new();
         harness.context.plugged = true;
         let outcome = harness
             .with_parts(|hub, _bus, rq, context, runtime| handle_unplug(hub, rq, context, runtime));
@@ -590,7 +592,7 @@ mod tests {
 
     #[test]
     fn handle_unplug_when_shared_disables_usb() {
-        let mut harness = LifecycleHarness::new();
+        let mut harness = DeviceRuntimeHarness::new();
         harness.context.plugged = true;
         harness.context.shared = true;
         let outcome = harness

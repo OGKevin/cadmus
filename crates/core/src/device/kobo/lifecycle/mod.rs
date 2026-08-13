@@ -3,11 +3,7 @@
 mod battery;
 mod device_events;
 mod frontlight;
-mod helpers;
 mod power;
-mod suspend;
-#[cfg(test)]
-mod test_helpers;
 mod usb_share;
 mod wifi;
 
@@ -19,132 +15,27 @@ use crate::device::DeviceHardware as _;
 use crate::device::DeviceLifecycle;
 use crate::device::DeviceRotation as _;
 use crate::device::power::PowerManager;
-use crate::device::rtc::AlarmType;
-use crate::device::{
-    AppContext, DeviceRuntime, DeviceTask, DeviceTaskId, EventOutcome, ExitStatus, HistoryItem,
-};
+use crate::device::reschedule_auto_suspend_alarm;
+use crate::device::schedule_device_task;
+use crate::device::suspend::{handle_event as handle_suspend_event, is_suspend_active};
+use crate::device::{AppContext, DeviceRuntime, DeviceTaskId, EventOutcome, ExitStatus};
 use crate::framebuffer::Framebuffer as _;
-use crate::framebuffer::UpdateMode;
 use crate::frontlight::Frontlight as _;
 use crate::gesture::GestureEvent;
 use crate::input::{ButtonCode, DeviceEvent};
-use crate::view::common::locate;
-use crate::view::intermission::Intermission;
-use crate::view::{EntryId, Event, RenderData, View, wait_for_all};
+use crate::view::{EntryId, Event};
 use std::fs::File;
-use std::sync::mpsc::{self, Sender};
+use std::sync::mpsc;
 use std::thread;
-use std::time::Duration;
 
-pub(super) const PREPARE_SUSPEND_WAIT_DELAY: Duration = Duration::from_secs(3);
-pub(super) const SUSPEND_WAIT_DELAY: Duration = Duration::from_secs(15);
-pub(super) const KOBO_UPDATE_BUNDLE: &str = "/mnt/onboard/.kobo/KoboRoot.tgz";
-
-/// Schedules a delayed [`Event`] and tracks it in `tasks`.
+/// Onboard path where a Nickel/OTA `KoboRoot.tgz` appears after USB mass storage.
 ///
-/// Replaces any existing task with the same [`DeviceTaskId`]. The spawned
-/// thread is dropped when the receiver side is closed, for example when the
-/// task is superseded or cleared.
-fn schedule_device_task(
-    id: DeviceTaskId,
-    event: Event,
-    delay: Duration,
-    hub: &Sender<Event>,
-    tasks: &mut Vec<DeviceTask>,
-) {
-    let (ty, ry) = mpsc::channel();
-    let hub2 = hub.clone();
-    tasks.retain(|task| task.id != id);
-    tasks.push(DeviceTask { id, _chan: ry });
-    thread::spawn(move || {
-        thread::sleep(delay);
-        if ty.send(()).is_ok() {
-            hub2.send(event).ok();
-        }
-    });
-}
-
-/// Ends an in-progress suspend cycle and returns to interactive use.
-///
-/// Drops PrepareSuspend task channels, restores frontlight and wifi-at-rest,
-/// cancels post-resume alarms, re-arms AutoSuspend, and removes the suspend
-/// intermission.
-pub(super) fn finish_suspend_cycle(
-    context: &mut AppContext,
-    tasks: &mut Vec<DeviceTask>,
-    view: &mut dyn View,
-    hub: &Sender<Event>,
-    rq: &mut crate::view::RenderQueue,
-) {
-    tasks.retain(|task| task.id != DeviceTaskId::PrepareSuspend);
-    context.set_frontlight(context.settings.frontlight);
-    if context.settings.wifi.wants_radio_at_rest() {
-        let session = context.wifi_session.clone();
-        let hub = hub.clone();
-        thread::spawn(move || match session.enable_radio() {
-            Ok(true) => {
-                hub.send(Event::Device(DeviceEvent::NetUp)).ok();
-            }
-            Ok(false) => {}
-            Err(error) => {
-                tracing::error!(error = %error, "Failed to enable WiFi on resume");
-            }
-        });
-    }
-    if let Some(alarm_manager) = context.alarm_manager.as_ref() {
-        let mut alarm_manager = alarm_manager.lock().unwrap_or_else(|e| e.into_inner());
-        for alarm in AlarmType::alarms_to_cancel_after_resume() {
-            if let Err(error) = alarm_manager.cancel_alarm(alarm) {
-                tracing::error!(error = ?error, alarm = ?alarm, "failed to cancel alarm after resume");
-            }
-        }
-    }
-    suspend::reschedule_auto_suspend_alarm(context);
-    if let Some(index) = locate::<Intermission>(view) {
-        let rect = *view.child(index).rect();
-        view.children_mut().remove(index);
-        rq.add(RenderData::expose(rect, UpdateMode::Full));
-    } else {
-        tracing::warn!("resume called but no intermission view found to remove");
-    }
-    hub.send(Event::ClockTick).ok();
-    hub.send(Event::BatteryTick).ok();
-    context.suspend_cycle_active = false;
-}
-
-/// Aborts an in-progress PrepareSuspend and restores UI without full resume.
-///
-/// Drops the prepare task and clears the intermission, then re-arms AutoSuspend
-/// so aborting during prepare does not leave idle tracking disabled. Full cycle
-/// cancels after Suspend RTC arming use [`finish_suspend_cycle`].
-fn cancel_suspend(
-    context: &mut AppContext,
-    id: DeviceTaskId,
-    tasks: &mut Vec<DeviceTask>,
-    view: &mut dyn View,
-    hub: &Sender<Event>,
-    rq: &mut crate::view::RenderQueue,
-) {
-    if id != DeviceTaskId::PrepareSuspend {
-        return;
-    }
-
-    tasks.retain(|task| task.id != DeviceTaskId::PrepareSuspend);
-    if let Some(index) = locate::<Intermission>(view) {
-        let rect = *view.child(index).rect();
-        view.children_mut().remove(index);
-        rq.add(RenderData::expose(rect, UpdateMode::Full));
-    } else {
-        tracing::warn!("resume called but no intermission view found to remove");
-    }
-    hub.send(Event::ClockTick).ok();
-    hub.send(Event::BatteryTick).ok();
-    suspend::reschedule_auto_suspend_alarm(context);
-    context.suspend_cycle_active = false;
-}
+/// After USB share ends, presence of this file triggers reboot instead of a
+/// plain app restart so the firmware update can apply.
+const KOBO_UPDATE_BUNDLE: &str = "/mnt/onboard/.kobo/KoboRoot.tgz";
 
 /// Restores the display rotation observed at device init for non-gyro devices.
-pub(super) fn restore_boot_rotation_if_needed(context: &mut AppContext) {
+fn restore_boot_rotation_if_needed(context: &mut AppContext) {
     if context.device.has_gyroscope() {
         return;
     }
@@ -155,90 +46,16 @@ pub(super) fn restore_boot_rotation_if_needed(context: &mut AppContext) {
     }
 }
 
-/// Begins the suspend flow.
-///
-/// Cancels [`crate::AlarmType::AutoSuspend`], [`crate::AlarmType::Suspend`], and
-/// [`crate::AlarmType::WakeDebounce`] so idle / arming / wake-debounce RTCs do
-/// not compete with AutoPowerOff / Calendar during the suspend cycle. Suspends
-/// the current view and shows the suspend intermission immediately, so the
-/// device already appears asleep to the user. A [`DeviceTaskId::PrepareSuspend`]
-/// task is scheduled to send [`Event::PrepareSuspend`] after
-/// [`PREPARE_SUSPEND_WAIT_DELAY`].
-fn begin_suspend(
-    context: &mut AppContext,
-    view: &mut dyn View,
-    hub: &Sender<Event>,
-    bus: &mut crate::view::Bus,
-    rq: &mut crate::view::RenderQueue,
-    tasks: &mut Vec<DeviceTask>,
-) {
-    suspend::cancel_auto_suspend_alarm(context);
-    suspend::cancel_suspend_rtcs(context);
-    context.suspend_cycle_active = true;
-    view.handle_event(&Event::Suspend, hub, bus, rq, context);
-    let interm = Intermission::new(
-        context.device.framebuffer().rect(),
-        crate::settings::IntermKind::Suspend,
-        context,
-    );
-    rq.add(RenderData::new(
-        interm.id(),
-        *interm.rect(),
-        UpdateMode::Full,
-    ));
-    schedule_device_task(
-        DeviceTaskId::PrepareSuspend,
-        Event::PrepareSuspend,
-        PREPARE_SUSPEND_WAIT_DELAY,
-        hub,
-        tasks,
-    );
-    view.children_mut().push(Box::new(interm));
-}
-
-/// Tears down the view stack and renders the power-off intermission.
-///
-/// Called on every power-off path so the device shows a final screen before
-/// the process exits with [`ExitStatus::PowerOff`].
-fn show_power_off_intermission(
-    context: &mut AppContext,
-    view: &mut dyn View,
-    history: &mut Vec<HistoryItem>,
-    updating: &mut Vec<crate::view::UpdateData>,
-) {
-    let (tx, _rx) = mpsc::channel();
-    view.handle_event(
-        &Event::Back,
-        &tx,
-        &mut crate::view::Bus::new(),
-        &mut crate::view::RenderQueue::new(),
-        context,
-    );
-    while let Some(mut item) = history.pop() {
-        item.view.handle_event(
-            &Event::Back,
-            &tx,
-            &mut crate::view::Bus::new(),
-            &mut crate::view::RenderQueue::new(),
-            context,
-        );
-    }
-    let interm = Intermission::new(
-        context.device.framebuffer().rect(),
-        crate::settings::IntermKind::PowerOff,
-        context,
-    );
-    wait_for_all(updating, context);
-    interm.render(context, *interm.rect());
-    context
-        .device
-        .framebuffer_mut()
-        .update(interm.rect(), UpdateMode::Full)
-        .ok();
-}
-
 impl DeviceLifecycle for Device {
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(context, hub, runtime), level = tracing::Level::TRACE))]
+    fn should_skip_main_loop_soft_suspend_lease(context: &AppContext, event: &Event) -> bool {
+        context
+            .suspend
+            .as_ref()
+            .is_some_and(|cycle| cycle.should_skip_main_loop_lease(event))
+    }
+
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(context, hub, runtime), level = tracing::Level::TRACE
+    ))]
     fn on_startup(
         context: &mut AppContext,
         hub: &crate::view::Hub,
@@ -307,7 +124,7 @@ impl DeviceLifecycle for Device {
             runtime.tasks,
         );
         hub.send(Event::WakeUp).ok();
-        suspend::reschedule_auto_suspend_alarm(context);
+        reschedule_auto_suspend_alarm(context);
         if let Some(alarm_manager) = context.alarm_manager.clone() {
             let hub = hub.clone();
             crate::device::rtc::AlarmManager::start_irq_listener(
@@ -323,7 +140,8 @@ impl DeviceLifecycle for Device {
         Ok(())
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(context, status, runtime), level = tracing::Level::TRACE))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(context, status, runtime), level = tracing::Level::TRACE
+    ))]
     fn on_shutdown(
         context: &mut AppContext,
         status: ExitStatus,
@@ -333,13 +151,7 @@ impl DeviceLifecycle for Device {
             restore_boot_rotation_if_needed(context);
         }
 
-        if !suspend::is_suspend_rtc_pending(context)
-            && runtime
-                .tasks
-                .iter()
-                .all(|task| task.id != DeviceTaskId::PrepareSuspend)
-            && context.settings.frontlight
-        {
+        if !is_suspend_active(context, runtime.tasks) && context.settings.frontlight {
             context.settings.frontlight_levels = context.device.frontlight().levels();
         }
 
@@ -380,7 +192,8 @@ impl DeviceLifecycle for Device {
         Ok(())
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(event, hub, bus, rq, context, runtime), level = tracing::Level::TRACE, ret(level = tracing::Level::TRACE)))]
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(event, hub, bus, rq, context, runtime), level = tracing::Level::TRACE, ret(level = tracing::Level::TRACE)
+    ))]
     fn handle_event(
         event: &Event,
         hub: &crate::view::Hub,
@@ -394,8 +207,11 @@ impl DeviceLifecycle for Device {
             Event::SetWifiMode(_)
             | Event::Select(EntryId::SetWifiMode(_))
             | Event::MightDisableWifi => wifi::handle_event(event, hub, context),
-            Event::PrepareSuspend | Event::Suspend | Event::RtcAlarmFired(_) => {
-                suspend::handle_event(event, hub, bus, rq, context, runtime)
+            Event::PrepareSuspend
+            | Event::Suspend
+            | Event::PollDeepIdleWait
+            | Event::RtcAlarmFired(_) => {
+                handle_suspend_event(event, hub, bus, rq, context, runtime)
             }
             Event::PrepareShare | Event::Share => {
                 usb_share::handle_event(event, hub, bus, rq, context, runtime)
@@ -421,9 +237,13 @@ impl DeviceLifecycle for Device {
 }
 
 #[cfg(all(test, feature = "kobo"))]
+#[path = "suspend_tests.rs"]
+mod suspend_tests;
+
+#[cfg(all(test, feature = "kobo"))]
 mod tests {
     use super::*;
-    use crate::device::kobo::lifecycle::test_helpers::LifecycleHarness;
+    use crate::device::test_harness::DeviceRuntimeHarness;
     use crate::device::wifi::{Essid, NetworkInfo};
     use crate::input::{ButtonCode, ButtonStatus, DeviceEvent};
     use crate::settings::WifiMode;
@@ -435,7 +255,7 @@ mod tests {
 
     #[test]
     fn on_startup_auto_disables_without_netup() {
-        let mut harness = LifecycleHarness::new();
+        let mut harness = DeviceRuntimeHarness::new();
         harness.context.settings.wifi = WifiMode::Auto;
         harness.context.online = true;
         harness
@@ -470,7 +290,7 @@ mod tests {
 
     #[test]
     fn on_startup_always_on_sends_netup_when_connected() {
-        let mut harness = LifecycleHarness::new();
+        let mut harness = DeviceRuntimeHarness::new();
         harness.context.settings.wifi = WifiMode::AlwaysOn;
         harness
             .context
@@ -503,7 +323,7 @@ mod tests {
 
     #[test]
     fn handle_event_device_delegates() {
-        let mut harness = LifecycleHarness::new();
+        let mut harness = DeviceRuntimeHarness::new();
         let event = Event::Device(DeviceEvent::Button {
             code: ButtonCode::Light,
             status: ButtonStatus::Pressed,
@@ -517,7 +337,7 @@ mod tests {
 
     #[test]
     fn handle_event_check_battery_delegates() {
-        let mut harness = LifecycleHarness::new();
+        let mut harness = DeviceRuntimeHarness::new();
         let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
             Device::handle_event(&Event::CheckBattery, hub, bus, rq, context, runtime)
         });
@@ -526,7 +346,7 @@ mod tests {
 
     #[test]
     fn handle_event_set_wifi_delegates() {
-        let mut harness = LifecycleHarness::new();
+        let mut harness = DeviceRuntimeHarness::new();
         let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
             Device::handle_event(
                 &Event::SetWifiMode(crate::settings::WifiMode::AlwaysOn),
@@ -542,7 +362,7 @@ mod tests {
 
     #[test]
     fn restore_boot_rotation_if_needed_noop_when_rotation_matches() {
-        let mut harness = LifecycleHarness::new();
+        let mut harness = DeviceRuntimeHarness::new();
         let boot_rotation = harness.context.device.boot_transformed_rotation();
         harness.context.display.rotation = boot_rotation;
 

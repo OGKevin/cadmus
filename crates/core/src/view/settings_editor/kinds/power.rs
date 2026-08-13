@@ -5,6 +5,7 @@ use super::{
     WidgetKind,
 };
 use crate::device::AppContext;
+use crate::device::reschedule_auto_suspend_alarm;
 use crate::fl;
 use crate::settings::Settings;
 use crate::view::{Bus, EntryId, Event, ToggleEvent, ViewId};
@@ -42,7 +43,7 @@ impl SettingKind for AutoSuspend {
     ) -> (Option<String>, bool) {
         if let Event::Submit(ViewId::AutoSuspendInput, text) = evt {
             let display = self.apply_text(text, &mut context.settings);
-            context.reschedule_auto_suspend_alarm();
+            reschedule_auto_suspend_alarm(context);
             return (Some(display), true);
         }
 
@@ -249,7 +250,7 @@ mod tests {
             let setting = AutoSuspend;
             let mut context = create_test_context();
             context.settings.auto_suspend = 30.0;
-            context.reschedule_auto_suspend_alarm();
+            reschedule_auto_suspend_alarm(&mut context);
             let first = context
                 .alarm_manager
                 .as_ref()
@@ -289,7 +290,7 @@ mod tests {
             let setting = AutoSuspend;
             let mut context = create_test_context();
             context.settings.auto_suspend = 30.0;
-            context.reschedule_auto_suspend_alarm();
+            reschedule_auto_suspend_alarm(&mut context);
             let mut bus: Bus = VecDeque::new();
 
             let (display, handled) = setting.handle(
