@@ -10,9 +10,8 @@
 //!
 //! 1. Verify the Linaro ARM toolchain (`arm-linux-gnueabihf-gcc`)
 //!    is on `PATH`.
-//! 2. Initialize git submodules when SQLite is not already cached.
-//! 3. Build SQLite from source with UDL support for the ARM target
-//!    (placed in `target/cadmus-build-deps/arm-unknown-linux-gnueabihf/sqlite/`).
+//! 2. Ensure custom SQLite with UDL support for the ARM target via the
+//!    shared sqlite preflight helper (submodules + build when cold).
 //!
 //! The Kobo build is only available on Linux and macOS hosts.
 
@@ -24,7 +23,7 @@ use clap::Args;
 use build_deps::build::sqlite;
 use build_deps::versions::CROSS_ENV;
 
-use super::util::{cmd, workspace};
+use super::util::{cmd, sqlite_preflight, workspace};
 
 /// Arguments for `cargo xtask build-kobo`.
 #[derive(Debug, Args)]
@@ -43,9 +42,8 @@ pub struct BuildKoboArgs {
 /// - The Linaro ARM toolchain is not on `PATH`.
 /// - The underlying `cargo build` invocation fails.
 ///
-/// The `ensure_submodules` and `ensure_sqlite` preflight steps run
-/// eagerly so that `libs/` and `target/cadmus-build-deps/...` are
-/// populated before `cargo build` starts.
+/// The shared SQLite preflight runs eagerly so that
+/// `target/cadmus-build-deps/...` is populated before `cargo build` starts.
 pub fn run(args: BuildKoboArgs) -> Result<()> {
     if !cfg!(any(target_os = "linux", target_os = "macos")) {
         bail!(
@@ -58,10 +56,8 @@ pub fn run(args: BuildKoboArgs) -> Result<()> {
 
     ensure_linaro_toolchain()?;
 
-    if !sqlite::is_cached(&root, sqlite::KOBO_TARGET) {
-        build_deps::ensure_submodules(&root).context("failed to initialise git submodules")?;
-    }
-    sqlite::ensure_sqlite(&root, sqlite::KOBO_TARGET).context("failed to build SQLite for Kobo")?;
+    sqlite_preflight::ensure_for_target(&root, sqlite::KOBO_TARGET)
+        .context("failed to build SQLite for Kobo")?;
 
     cargo_build_kobo(&root, args.features.as_deref())?;
 

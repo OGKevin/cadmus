@@ -5,4 +5,5 @@ pub mod fs;
 pub mod github;
 pub mod http;
 pub mod matrix;
+pub mod sqlite_preflight;
 pub mod workspace;

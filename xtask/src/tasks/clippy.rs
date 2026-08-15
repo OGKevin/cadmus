@@ -46,7 +46,7 @@ use anyhow::{Context, Result, bail};
 use clap::Args;
 use io_tee::WriteExt;
 
-use super::util::{cmd, matrix, workspace};
+use super::util::{cmd, matrix, sqlite_preflight, workspace};
 
 /// Arguments for `cargo xtask clippy`.
 #[derive(Debug, Args)]
@@ -103,6 +103,7 @@ pub struct ClippyArgs {
 /// Returns the first clippy error encountered, or a spawn/IO error.
 pub fn run(args: ClippyArgs) -> Result<()> {
     let root = workspace::root()?;
+    sqlite_preflight::ensure_host(&root)?;
     let entries = matrix::scan(&root, &["local"])?;
     let entries = filter(&entries, args.features.as_deref())?;
 

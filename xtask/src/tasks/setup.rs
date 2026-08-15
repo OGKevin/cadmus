@@ -20,12 +20,12 @@
 //! After running, set the printed environment variables before
 //! `cargo build` or `cargo xtask build-kobo`.
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use clap::Args;
 
 use build_deps::build::sqlite;
 
-use super::util::workspace;
+use super::util::{sqlite_preflight, workspace};
 
 /// Arguments for `cargo xtask setup`.
 #[derive(Debug, Args)]
@@ -63,13 +63,8 @@ pub fn run(args: SetupArgs) -> Result<()> {
     let root = workspace::root()?;
     let targets = resolve_targets(&args);
 
-    let all_cached = targets.iter().all(|t| sqlite::is_cached(&root, t));
-    if !all_cached {
-        build_deps::ensure_submodules(&root).context("failed to initialise git submodules")?;
-    }
-
     for target in &targets {
-        let artifacts = sqlite::ensure_sqlite(&root, target).context("failed to build sqlite")?;
+        let artifacts = sqlite_preflight::ensure_for_target(&root, target)?;
 
         println!();
         println!("SQLite artifacts ready for {target}:");
@@ -97,28 +92,10 @@ fn resolve_targets(args: &SetupArgs) -> Vec<String> {
 
     let mut targets = Vec::new();
     if build_all || args.host {
-        targets.push(guess_host_triple());
+        targets.push(sqlite_preflight::guess_host_triple());
     }
     if build_all || args.kobo {
         targets.push(sqlite::KOBO_TARGET.to_string());
     }
     targets
-}
-
-/// Best-effort detection of the host target triple.
-#[must_use]
-fn guess_host_triple() -> String {
-    std::env::var("TARGET").unwrap_or_else(|_| {
-        if cfg!(target_arch = "x86_64") && cfg!(target_os = "linux") {
-            "x86_64-unknown-linux-gnu".to_string()
-        } else if cfg!(target_arch = "aarch64") && cfg!(target_os = "linux") {
-            "aarch64-unknown-linux-gnu".to_string()
-        } else if cfg!(target_arch = "x86_64") && cfg!(target_os = "macos") {
-            "x86_64-apple-darwin".to_string()
-        } else if cfg!(target_arch = "aarch64") && cfg!(target_os = "macos") {
-            "aarch64-apple-darwin".to_string()
-        } else {
-            "x86_64-unknown-linux-gnu".to_string()
-        }
-    })
 }
