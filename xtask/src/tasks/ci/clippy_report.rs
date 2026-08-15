@@ -4,7 +4,7 @@
 //! ## How it fits into CI
 //!
 //! The `clippy` matrix job runs `cargo xtask clippy --save-json <file>` for
-//! every feature label on `ubuntu-latest`, uploading each file as a GitHub
+//! every feature label on `ubuntu-26.04`, uploading each file as a GitHub
 //! Actions artifact.  After the matrix completes, the `clippy-report` job
 //! downloads all artifacts into a single directory and calls:
 //!

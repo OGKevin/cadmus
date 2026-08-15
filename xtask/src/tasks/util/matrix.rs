@@ -16,7 +16,11 @@ use anyhow::{Context, Result};
 use serde::Serialize;
 
 /// Operating systems included in the CI clippy matrix.
-pub const CI_CLIPPY_OS: &[&str] = &["ubuntu-latest"];
+///
+/// `libsdl3-dev` is unavailable on Ubuntu 24.04 (`ubuntu-latest`); match the
+/// Cursor Cloud Dockerfile and use Ubuntu 26.04 for native Linux builds.
+pub const CI_LINUX_OS: &str = "ubuntu-26.04";
+pub const CI_CLIPPY_OS: &[&str] = &[CI_LINUX_OS];
 
 /// One entry in the feature × OS matrix.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -26,7 +30,7 @@ pub struct MatrixEntry {
     /// Comma-separated feature list passed to `--features`, or empty for the
     /// default build.
     pub features: String,
-    /// GitHub Actions runner OS (e.g. `ubuntu-latest`, `macos-latest`).
+    /// GitHub Actions runner OS (e.g. `ubuntu-26.04`, `macos-latest`).
     pub os: String,
 }
 
@@ -76,7 +80,7 @@ pub fn scan(root: &Path, os_list: &[&str]) -> Result<Vec<MatrixEntry>> {
 /// without relying on matrix cross-product behavior:
 ///
 /// ```json
-/// {"include": [{"label": "default", "features": "", "os": "ubuntu-latest"}, ...]}
+/// {"include": [{"label": "default", "features": "", "os": "ubuntu-26.04"}, ...]}
 /// ```
 ///
 /// # Errors
@@ -97,7 +101,7 @@ pub fn to_github_test_matrix_json(entries: &[MatrixEntry]) -> Result<String> {
 
     let include: Vec<TestEntry<'_>> = entries
         .iter()
-        .filter(|e| e.os == "ubuntu-latest")
+        .filter(|e| e.os == CI_LINUX_OS)
         .map(|e| TestEntry {
             label: &e.label,
             features: &e.features,
@@ -304,7 +308,7 @@ mod tests {
     use super::*;
     use crate::tasks::util::workspace;
 
-    const ONE_OS: &[&str] = &["ubuntu-latest"];
+    const ONE_OS: &[&str] = &[CI_LINUX_OS];
 
     #[test]
     fn build_matrix_empty_features_yields_one_entry_per_os() {
@@ -313,7 +317,7 @@ mod tests {
         assert!(entries.iter().all(|e| e.label == "default"));
         assert!(entries.iter().all(|e| e.features.is_empty()));
         let oses: Vec<&str> = entries.iter().map(|e| e.os.as_str()).collect();
-        assert!(oses.contains(&"ubuntu-latest"));
+        assert!(oses.contains(&CI_LINUX_OS));
     }
 
     #[test]
@@ -386,7 +390,7 @@ mod tests {
         let entry = MatrixEntry {
             label: "default".to_owned(),
             features: String::new(),
-            os: "ubuntu-latest".to_owned(),
+            os: CI_LINUX_OS.to_owned(),
         };
         assert_eq!(entry.cargo_args(), vec!["--workspace"]);
     }
@@ -396,7 +400,7 @@ mod tests {
         let entry = MatrixEntry {
             label: "test + tracing".to_owned(),
             features: "test,tracing".to_owned(),
-            os: "ubuntu-latest".to_owned(),
+            os: CI_LINUX_OS.to_owned(),
         };
         assert_eq!(
             entry.cargo_args(),
@@ -414,12 +418,12 @@ mod tests {
         let entries = vec![MatrixEntry {
             label: "default".to_owned(),
             features: String::new(),
-            os: "ubuntu-latest".to_owned(),
+            os: CI_LINUX_OS.to_owned(),
         }];
         let json = to_github_matrix_json(&entries).unwrap();
         assert!(json.contains("\"include\""));
         assert!(json.contains("\"default\""));
-        assert!(json.contains("\"ubuntu-latest\""));
+        assert!(json.contains(&format!("\"{CI_LINUX_OS}\"")));
     }
 
     #[test]

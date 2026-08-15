@@ -120,7 +120,7 @@ jobs:
     if: github.event_name != 'pull_request' || needs.changes.outputs.cargo == 'true'
     permissions:
       contents: read
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -257,6 +257,10 @@ jobs:
         with:
           name: docs-epub
           path: docs/book/epub
+
+      - name: Install apt packages (Linux)
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/apt
 
       - name: Save clippy JSON artifact
         if: github.event_name == 'pull_request'
@@ -480,7 +484,7 @@ jobs:
   build-kobo:
     needs: [changes, cache-warmup, build-docs-epub]
     if: github.event_name != 'pull_request' || needs.changes.outputs.cargo == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
 
     permissions: &build-permissions
       id-token: write
@@ -554,7 +558,7 @@ jobs:
   build-kobo-test:
     needs: [changes, cache-warmup, build-docs-epub]
     if: github.event_name != 'pull_request' || needs.changes.outputs.cargo == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
 
     permissions: *build-permissions
 
