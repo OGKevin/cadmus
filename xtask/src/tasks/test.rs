@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, bail};
 use clap::Args;
 
-use super::util::{cmd, matrix, workspace};
+use super::util::{cmd, matrix, sqlite_preflight, workspace};
 
 /// Paths excluded from coverage reports (vendored code, build scripts).
 const COVERAGE_IGNORE_RE: &str = r"(thirdparty/|mupdf_wrapper/|build\.rs)";
@@ -71,6 +71,7 @@ pub fn run(args: TestArgs) -> Result<()> {
     }
 
     let root = workspace::root()?;
+    sqlite_preflight::ensure_host(&root)?;
     let root_str = root.to_string_lossy().into_owned();
     let env = [("TEST_ROOT_DIR", root_str.as_str())];
 

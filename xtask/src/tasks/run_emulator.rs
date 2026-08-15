@@ -1,9 +1,9 @@
 //! `cargo xtask run-emulator` — run the Cadmus emulator.
 //!
-//! Ensures the embedded documentation EPUB is ready, then launches
-//! `cargo run -p cadmus --features emulator`. Any extra arguments are forwarded
-//! to the cargo invocation. Native dependencies (MuPDF, libwebp) are built
-//! automatically by `build.rs`.
+//! Ensures host SQLite and the embedded documentation EPUB are ready, then
+//! launches `cargo run -p cadmus --features emulator`. Any extra arguments are
+//! forwarded to the cargo invocation. Other native dependencies (MuPDF,
+//! libwebp) are built automatically by `build.rs`.
 
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -12,7 +12,7 @@ use anyhow::Result;
 use clap::Args;
 
 use super::docs::{self, DocsArgs};
-use super::util::{cmd, workspace};
+use super::util::{cmd, sqlite_preflight, workspace};
 
 /// Arguments for `cargo xtask run-emulator`.
 #[derive(Debug, Args)]
@@ -45,9 +45,11 @@ fn emulator_features(extra: Option<&str>) -> String {
     features.into_iter().collect::<Vec<_>>().join(",")
 }
 
-/// Ensures documentation is built then launches the emulator.
+/// Ensures host SQLite and documentation are built then launches the emulator.
 pub fn run(args: RunEmulatorArgs) -> Result<()> {
     let root = workspace::root()?;
+
+    sqlite_preflight::ensure_host(&root)?;
 
     if !mdbook_epub_built(&root) {
         println!("Documentation EPUB not found — building mdBook…");
