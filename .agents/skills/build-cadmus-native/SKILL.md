@@ -29,6 +29,18 @@ it when documentation sources change.
 
 ## One-time setup
 
+### Custom SQLite
+
+**Required before any native compile** — `libsqlite3-sys` runs before
+`cadmus-core`'s `build.rs`, so the UDL-enabled SQLite library must already
+exist:
+
+```bash
+cargo xtask setup
+```
+
+Default (no flags) builds for the host and Kobo targets.
+
 ### Runtime assets
 
 **Required for Kobo builds** — run both before `cargo xtask build-kobo`:
@@ -41,9 +53,9 @@ cargo xtask download-fonts
 `download-assets` pulls Plato runtime directories (`bin/`, `resources/`,
 `hyphenation-patterns/`). `download-fonts` assembles the `fonts/`.
 
-Native dependencies (MuPDF, libwebp, and the C wrapper) are now built
+Other native dependencies (MuPDF, libwebp, and the C wrapper) are built
 automatically by `build.rs` when you run any Cargo command that compiles
-`cadmus-core`.
+`cadmus-core`. SQLite is the exception — use `cargo xtask setup` first.
 
 ## Daily workflow commands
 
