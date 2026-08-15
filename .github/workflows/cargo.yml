@@ -363,7 +363,7 @@ jobs:
           restore-keys: ${{ runner.os }}-brew-
       - name: Install Homebrew packages (macOS)
         if: runner.os == 'macOS'
-        run: brew install sdl2 freetype harfbuzz openjpeg jpeg-turbo libpng jbig2dec gumbo-parser djvulibre pkg-config
+        run: brew install sdl3 freetype harfbuzz openjpeg jpeg-turbo libpng jbig2dec gumbo-parser djvulibre pkg-config
 
       - name: Restore bundled fonts
         uses: ./.github/actions/cache-fonts

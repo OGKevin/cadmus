@@ -79,7 +79,7 @@ sqlx = { version = "0.9", features = [
     "macros",
 ], default-features = false }
 tokio = { version = "1.40", features = ["fs", "macros", "rt", "rt-multi-thread", "sync"] }
-sdl2 = { workspace = true, optional = true }
+sdl3 = { workspace = true, optional = true }
 
 tracing = "0.1"
 tracing-log = "0.2"
@@ -126,7 +126,7 @@ uuid = { version = "1.20.0", features = ["v7"] }
 default = []
 device = []
 # device-list-start
-emulator = ["sdl2", "device"]
+emulator = ["sdl3", "device"]
 deviceless = ["device"]
 kobo = ["procfs", "zbus", "futures-util", "device"]
 # device-list-end
@@ -147,7 +147,7 @@ docs = [
     "deviceless",
     "zbus",
     "futures-util",
-    "sdl2",
+    "sdl3",
     "procfs",
     "device",
 ]

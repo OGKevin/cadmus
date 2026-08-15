@@ -31,13 +31,14 @@ use crate::view::common::locate;
 use crate::view::intermission::Intermission;
 use crate::view::{Bus, EntryId, Event, Hub, RenderData, RenderQueue, View};
 use anyhow::{Context as ResultExt, Error};
-use sdl2::Sdl;
-use sdl2::event::Event as SdlEvent;
-use sdl2::keyboard::{Keycode, Mod, Scancode};
-use sdl2::pixels::{Color as SdlColor, PixelFormatEnum};
-use sdl2::rect::Point as SdlPoint;
-use sdl2::rect::Rect as SdlRect;
-use sdl2::render::{BlendMode, WindowCanvas};
+use sdl3::Sdl;
+use sdl3::VideoSubsystem;
+use sdl3::event::Event as SdlEvent;
+use sdl3::keyboard::{Keycode, Mod, Scancode};
+use sdl3::pixels::{Color as SdlColor, PixelFormat};
+use sdl3::rect::Point as SdlPoint;
+use sdl3::rect::Rect as SdlRect;
+use sdl3::render::{BlendMode, WindowCanvas, create_renderer};
 use std::fs::File;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -56,11 +57,11 @@ struct SendableSdl(Sdl);
 // into. The event pump is created and used exclusively on the spawned thread.
 unsafe impl Send for SendableSdl {}
 
-struct SendableEventPump(sdl2::EventPump);
+struct SendableEventPump(sdl3::EventPump);
 unsafe impl Send for SendableEventPump {}
 
 impl std::ops::Deref for SendableEventPump {
-    type Target = sdl2::EventPump;
+    type Target = sdl3::EventPump;
     fn deref(&self) -> &Self::Target {
         &self.0
     }
@@ -121,7 +122,8 @@ impl InputSource for EmulatorInputSource {
         if let Some(sendable_sdl) = self.sdl_context.take() {
             let hub = hub.clone();
             let sender = device_tx;
-            let mut event_pump = SendableEventPump(sendable_sdl.0.event_pump().unwrap());
+            let mut event_pump =
+                SendableEventPump(sendable_sdl.0.event_pump().expect("SDL3 event pump failed"));
             std::thread::spawn(move || {
                 'outer: loop {
                     while let Some(sdl_evt) = event_pump.poll_event() {
@@ -193,8 +195,8 @@ impl InputSource for EmulatorInputSource {
                                     }
                                     Scancode::I | Scancode::O => {
                                         let mouse_state = event_pump.mouse_state();
-                                        let x = mouse_state.x();
-                                        let y = mouse_state.y();
+                                        let x = mouse_state.x() as i32;
+                                        let y = mouse_state.y() as i32;
                                         let center = pt!(x, y);
                                         if scancode == Scancode::I {
                                             hub.send(Event::Gesture(GestureEvent::Spread {
@@ -272,6 +274,10 @@ impl InputSource for EmulatorInputSource {
 ///
 /// Rotation is unsupported: [`Framebuffer::rotation`] always returns
 /// [`DEFAULT_ROTATION`] and [`Framebuffer::set_rotation`] is a no-op.
+///
+/// The canvas must use SDL's software renderer: accelerated backends clear
+/// undefined regions on partial presents, so the UI goes black between
+/// updates that only redraw part of the framebuffer.
 pub struct FBCanvas(pub WindowCanvas);
 
 unsafe impl Send for FBCanvas {}
@@ -297,7 +303,7 @@ impl Framebuffer for FBCanvas {
     fn invert_region(&mut self, rect: &Rectangle) {
         let width = rect.width();
         let s_rect = Some(SdlRect::new(rect.min.x, rect.min.y, width, rect.height()));
-        if let Ok(data) = self.0.read_pixels(s_rect, PixelFormatEnum::RGB24) {
+        if let Ok(data) = read_rgb24_pixels(&self.0, s_rect) {
             for y in rect.min.y..rect.max.y {
                 let v = (y - rect.min.y) as u32;
                 for x in rect.min.x..rect.max.x {
@@ -317,7 +323,7 @@ impl Framebuffer for FBCanvas {
     fn shift_region(&mut self, rect: &Rectangle, drift: u8) {
         let width = rect.width();
         let s_rect = Some(SdlRect::new(rect.min.x, rect.min.y, width, rect.height()));
-        if let Ok(data) = self.0.read_pixels(s_rect, PixelFormatEnum::RGB24) {
+        if let Ok(data) = read_rgb24_pixels(&self.0, s_rect) {
             for y in rect.min.y..rect.max.y {
                 let v = (y - rect.min.y) as u32;
                 for x in rect.min.x..rect.max.x {
@@ -353,10 +359,7 @@ impl Framebuffer for FBCanvas {
         let mut writer = encoder
             .write_header()
             .with_context(|| format!("can't write PNG header for {}", path))?;
-        let data = self
-            .0
-            .read_pixels(self.0.viewport(), PixelFormatEnum::RGB24)
-            .unwrap_or_default();
+        let data = read_rgb24_pixels(&self.0, Some(self.0.viewport())).unwrap_or_default();
         writer
             .write_image_data(&data)
             .with_context(|| format!("can't write PNG data to {}", path))?;
@@ -409,16 +412,11 @@ pub struct EmulatorDevice {
 
 impl Default for EmulatorDevice {
     fn default() -> Self {
-        let sdl_context = sdl2::init().unwrap();
-        let video_subsystem = sdl_context.video().unwrap();
-
-        let window = video_subsystem
-            .window("Cadmus Emulator", EMULATOR_WIDTH, EMULATOR_HEIGHT)
-            .position_centered()
-            .build()
-            .unwrap();
-        let canvas = window.into_canvas().software().build().unwrap();
-
+        let sdl_context = sdl3::init().expect("SDL3 init failed");
+        let video_subsystem = sdl_context
+            .video()
+            .expect("SDL3 video subsystem init failed");
+        let canvas = create_emulator_canvas(&video_subsystem);
         Self::from_sdl_canvas(canvas, sdl_context)
     }
 }
@@ -679,8 +677,49 @@ impl DeviceLifecycle for EmulatorDevice {
 }
 
 #[inline]
-fn seconds(timestamp: u32) -> f64 {
-    timestamp as f64 / 1000.0
+fn seconds(timestamp: u64) -> f64 {
+    timestamp as f64 / 1_000_000_000.0
+}
+
+fn build_emulator_window(video: &VideoSubsystem) -> sdl3::video::Window {
+    video
+        .window("Cadmus Emulator", EMULATOR_WIDTH, EMULATOR_HEIGHT)
+        .position_centered()
+        .build()
+        .expect("SDL3 window creation failed")
+}
+
+/// Build the emulator canvas with SDL's software renderer.
+///
+/// Accelerated renderers clear undefined regions when only part of the
+/// framebuffer is presented, which blanks the UI during Cadmus's partial
+/// update path. Software rendering preserves prior pixels across those
+/// presents.
+fn create_emulator_canvas(video: &VideoSubsystem) -> WindowCanvas {
+    let window = build_emulator_window(video);
+    let canvas = create_renderer(window, Some(c"software"))
+        .unwrap_or_else(|err| panic!("SDL3 software renderer creation failed: {err}"));
+    tracing::debug!(
+        renderer = %canvas.renderer_name,
+        "using SDL3 software renderer"
+    );
+    canvas
+}
+
+fn read_rgb24_pixels(canvas: &WindowCanvas, rect: Option<SdlRect>) -> Result<Vec<u8>, sdl3::Error> {
+    let surface = canvas.read_pixels(rect)?;
+    let converted = surface.convert_format(PixelFormat::RGB24)?;
+    let width = converted.width() as usize;
+    let height = converted.height() as usize;
+    let pitch = converted.pitch() as usize;
+    Ok(converted.with_lock(|pixels| {
+        let mut tightly_packed = Vec::with_capacity(width * height * 3);
+        for row in 0..height {
+            let start = row * pitch;
+            tightly_packed.extend_from_slice(&pixels[start..start + width * 3]);
+        }
+        tightly_packed
+    }))
 }
 
 pub fn device_event(event: SdlEvent) -> Option<DeviceEvent> {
@@ -690,7 +729,7 @@ pub fn device_event(event: SdlEvent) -> Option<DeviceEvent> {
         } => Some(DeviceEvent::Finger {
             id: 0,
             status: FingerStatus::Down,
-            position: pt!(x, y),
+            position: pt!(x as i32, y as i32),
             time: seconds(timestamp),
         }),
         SdlEvent::MouseButtonUp {
@@ -698,7 +737,7 @@ pub fn device_event(event: SdlEvent) -> Option<DeviceEvent> {
         } => Some(DeviceEvent::Finger {
             id: 0,
             status: FingerStatus::Up,
-            position: pt!(x, y),
+            position: pt!(x as i32, y as i32),
             time: seconds(timestamp),
         }),
         SdlEvent::MouseMotion {
@@ -706,7 +745,7 @@ pub fn device_event(event: SdlEvent) -> Option<DeviceEvent> {
         } => Some(DeviceEvent::Finger {
             id: 0,
             status: FingerStatus::Motion,
-            position: pt!(x, y),
+            position: pt!(x as i32, y as i32),
             time: seconds(timestamp),
         }),
         _ => None,

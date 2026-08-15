@@ -20,7 +20,7 @@ rustls = { version = "0.23", default-features = false, features = [
   "std",
   "tls12",
 ] }
-sdl2 = "0.38.0"
+sdl3 = { version = "0.18.4", features = ["use-pkg-config"] }
 
 [workspace.lints]
 rustdoc.private_intra_doc_links = "allow"
