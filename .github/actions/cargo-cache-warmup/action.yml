@@ -1,0 +1,125 @@
+name: Cargo cache warmup
+description: >
+  Warm Cargo build artifacts and save the shared caches used by Cargo CI.
+  Intended for push runs only; pull requests should no-op at the job level and
+  restore caches written on the default/base branch.
+
+inputs:
+  gh-token:
+    description: "GitHub token for downloading assets and font releases"
+    required: true
+  nextest-version:
+    description: "cargo-nextest version pin (e.g. 0.9.143)"
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
+      id: rust-toolchain
+      with:
+        targets: arm-unknown-linux-gnueabihf
+        components: llvm-tools
+
+    - name: Install apt packages
+      uses: ./.github/actions/apt
+
+    - name: Cache Linaro toolchain
+      id: cache-linaro
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/linaro-toolchain
+        key: linaro-gcc-4.9.4-2017.01
+
+    - name: Download Linaro toolchain
+      if: steps.cache-linaro.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        mkdir -p ~/linaro-toolchain
+        cd ~/linaro-toolchain
+        wget -q https://developer.arm.com/-/cdn-downloads/permalink/legacy-linaro-gnu-toolchains/4.9-2017.01/gcc-linaro-4.9.4-2017.01-x86_64_arm-linux-gnueabihf.tar.xz
+        tar xf gcc-linaro-4.9.4-2017.01-x86_64_arm-linux-gnueabihf.tar.xz --strip-components=1
+        rm gcc-linaro-4.9.4-2017.01-x86_64_arm-linux-gnueabihf.tar.xz
+
+    - name: Setup Linaro toolchain
+      shell: bash
+      run: echo "$HOME/linaro-toolchain/bin" >> "$GITHUB_PATH"
+
+    - name: Cache shared cargo artifacts
+      id: cache
+      uses: ./.github/actions/cargo-cache
+      with:
+        cachekey: ${{ steps.rust-toolchain.outputs.cachekey }}
+        mode: save
+
+    - name: Install cargo-nextest
+      uses: taiki-e/install-action@91ddec75689c4c78665b598d188dc821c5a43e5c # v2.85.9
+      with:
+        tool: nextest@${{ inputs.nextest-version }}
+
+    - name: Cache cargo-llvm-cov
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      id: cargo-llvm-cov-cache
+      with:
+        path: ~/.cargo/bin/cargo-llvm-cov
+        key: ${{ runner.os }}-cargo-llvm-cov
+
+    - name: Install cargo-llvm-cov
+      if: steps.cargo-llvm-cov-cache.outputs.cache-hit != 'true'
+      uses: taiki-e/install-action@eba66cc6f87204a1e73f96e528e759b6c1fcf573 # cargo-llvm-cov
+
+    - name: Cache bundled fonts
+      uses: ./.github/actions/cache-fonts
+      with:
+        mode: save
+        gh-token: ${{ inputs.gh-token }}
+
+    - name: Download documentation EPUB
+      if: steps.cache.outputs.cache-hit != 'true'
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      with:
+        name: docs-epub
+        path: docs/book/epub
+
+    - name: Cache Plato static assets
+      if: steps.cache.outputs.cache-hit != 'true'
+      uses: ./.github/actions/cache-assets
+
+    - name: Download static assets
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.gh-token }}
+      run: cargo xtask download-assets
+
+    - name: Build SQLite from source
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: cargo xtask setup
+
+    - name: Warmup build (native)
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        cargo check --workspace --features emulator,test,telemetry
+        cargo check --workspace --features kobo,test,telemetry
+        cargo check --workspace --features deviceless
+
+    - name: Warmup llvm-cov build
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        for features in emulator kobo deviceless; do
+          cargo llvm-cov nextest-archive \
+            --workspace --all-targets \
+            --features "$features" \
+            --archive-file "target/llvm-cov-warmup-${features}.tar.zst"
+          rm -f "target/llvm-cov-warmup-${features}.tar.zst"
+        done
+
+    - name: Warmup build (Kobo release)
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        cargo build --release --target arm-unknown-linux-gnueabihf -p cadmus --features kobo
+        cargo build --release --target arm-unknown-linux-gnueabihf -p cadmus --features kobo,test
