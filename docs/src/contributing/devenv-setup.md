@@ -20,7 +20,23 @@ This guide covers setup on both Linux and macOS.
    devenv shell
    ```
 
-2. Download the packaged runtime assets used by Kobo builds:
+2. Build the custom SQLite library (required before any Cargo compile):
+
+   ```bash
+   cargo xtask setup
+   ```
+
+   > [!NOTE]
+   > Cadmus needs a custom SQLite build with `DELETE … LIMIT` support.
+   > `libsqlite3-sys` runs before `cadmus-core`'s `build.rs`, so these
+   > artifacts must already exist. Default `cargo xtask setup` (no flags)
+   > builds for the host and Kobo targets.
+   >
+   > Other thirdparty C/C++ dependencies (MuPDF, libwebp, zlib, etc.) are
+   > tracked as git submodules and built automatically by `build.rs` when
+   > you run `cargo build` or `cargo xtask run-emulator`.
+
+3. Download the packaged runtime assets used by Kobo builds:
 
    ```bash
    cargo xtask download-assets
@@ -32,12 +48,8 @@ This guide covers setup on both Linux and macOS.
    > directories. For Kobo builds, make sure `bin/`, `resources/`,
    > `hyphenation-patterns/`, and `fonts/` are present before
    > `cargo xtask build-kobo` so the generated asset list is complete.
-   >
-   > Thirdparty C/C++ dependencies (MuPDF, libwebp, zlib, etc.) are tracked as git
-   > submodules and built automatically by `build.rs` when you run `cargo build` or
-   > `cargo xtask run-emulator`. No separate setup step is required.
 
-3. Run the emulator:
+4. Run the emulator:
 
    ```bash
    cargo xtask run-emulator
@@ -49,6 +61,7 @@ Once inside the devenv shell, these commands are available:
 
 | Command                       | Description                                                 |
 | ----------------------------- | ----------------------------------------------------------- |
+| `cargo xtask setup`           | Build custom SQLite for host and Kobo (run before compile)  |
 | `cargo xtask download-assets` | Download packaged Plato runtime assets                      |
 | `cargo xtask download-fonts`  | Download bundled font files into `fonts/`                   |
 | `cargo xtask test`            | Run the test suite across the feature matrix                |
@@ -97,6 +110,9 @@ The `docs:build` task uses `execIfModified` to only rebuild when documentation f
 
 ## Kobo Build Notes
 
+- Run `cargo xtask setup` before host-side Cargo commands. `cargo xtask
+  build-kobo` also ensures the ARM SQLite artifacts, but running setup up
+  front covers both native and device paths.
 - `cargo xtask download-assets` and `cargo xtask download-fonts` must run before `cargo xtask build-kobo`.
 - OTA updates delete Cadmus-owned bundled files before reboot, then Kobo
   extracts the new `KoboRoot.tgz` over the install directory.
@@ -232,6 +248,16 @@ Set the environment variable before running tests:
 ```bash
 TEST_ROOT_DIR=$(pwd) cargo test
 ```
+
+### `libsqlite3-sys` fails with `sqlite3.h` not found
+
+Custom SQLite has not been built yet. Inside `devenv shell`, run:
+
+```bash
+cargo xtask setup
+```
+
+Then retry the build or `cargo xtask run-emulator`.
 
 ## Local Configuration
 
