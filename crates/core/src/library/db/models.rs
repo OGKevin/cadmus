@@ -1,4 +1,5 @@
 use crate::db::types::{FileSize, OptionalUuid7, UnixTimestamp, Uuid7};
+use crate::document::file_extension::FileExtension;
 use crate::helpers::Fp;
 use sqlx::FromRow;
 use std::path::PathBuf;
@@ -19,7 +20,7 @@ pub struct BookRow {
     pub identifier: String,
     pub file_path: String,
     pub absolute_path: String,
-    pub file_kind: String,
+    pub file_kind: FileExtension,
     pub file_size: i64,
     pub added_at: UnixTimestamp,
 }

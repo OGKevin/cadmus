@@ -2,10 +2,11 @@
 
 use super::{SettingData, SettingIdentity, SettingKind, SettingsFetchData, WidgetKind};
 use crate::device::AppContext;
+use crate::document::file_extension::FileExtension;
 use crate::fl;
 use crate::geom::Rectangle;
 use crate::i18n::I18nDisplay;
-use crate::settings::{FileExtension, FinishedAction, RefreshRatePair, Settings};
+use crate::settings::{FinishedAction, RefreshRatePair, Settings};
 use crate::view::{Bus, EntryId, EntryKind, Event, ViewId};
 
 /// Reader finished action setting
@@ -201,7 +202,7 @@ impl SettingKind for RefreshRateByKindInfo {
             .reader
             .refresh_rate
             .by_kind
-            .get(self.0.as_str())
+            .get(&self.0)
             .cloned()
             .unwrap_or(RefreshRatePair {
                 regular: 0,
@@ -342,7 +343,7 @@ impl SettingKind for RefreshRateByKindRegular {
             .reader
             .refresh_rate
             .by_kind
-            .get(self.0.as_str())
+            .get(&self.0)
             .map(|p| p.regular)
             .unwrap_or(0);
 
@@ -374,7 +375,7 @@ impl SettingKind for RefreshRateByKindRegular {
                 .reader
                 .refresh_rate
                 .by_kind
-                .entry(self.0.as_str().to_string())
+                .entry(self.0)
                 .or_insert(RefreshRatePair {
                     regular: 0,
                     inverted: 0,
@@ -405,7 +406,7 @@ impl SettingKind for RefreshRateByKindInverted {
             .reader
             .refresh_rate
             .by_kind
-            .get(self.0.as_str())
+            .get(&self.0)
             .map(|p| p.inverted)
             .unwrap_or(0);
 
@@ -437,7 +438,7 @@ impl SettingKind for RefreshRateByKindInverted {
                 .reader
                 .refresh_rate
                 .by_kind
-                .entry(self.0.as_str().to_string())
+                .entry(self.0)
                 .or_insert(RefreshRatePair {
                     regular: 0,
                     inverted: 0,
@@ -454,7 +455,8 @@ impl SettingKind for RefreshRateByKindInverted {
 mod tests {
     use super::*;
     use crate::context::test_helpers::create_test_context;
-    use crate::settings::{FileExtension, FinishedAction, Settings};
+    use crate::document::file_extension::FileExtension;
+    use crate::settings::{FinishedAction, Settings};
     use crate::view::{Bus, EntryId, Event};
     use std::collections::VecDeque;
 

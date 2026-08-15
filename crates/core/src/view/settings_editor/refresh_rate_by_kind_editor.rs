@@ -12,11 +12,12 @@ use super::setting_value::SettingsEvent;
 use crate::color::WHITE;
 use crate::device::AppContext;
 use crate::device::{DeviceIdentity as _, DevicePaths as _};
+use crate::document::file_extension::FileExtension;
 use crate::fl;
 use crate::font::Fonts;
 use crate::framebuffer::UpdateMode;
 use crate::geom::Rectangle;
-use crate::settings::{FileExtension, RefreshRatePair, Settings};
+use crate::settings::{RefreshRatePair, Settings};
 use crate::unit::scale_by_dpi;
 use crate::view::SMALL_BAR_HEIGHT;
 use crate::view::common::locate_by_id;
@@ -155,32 +156,30 @@ impl RefreshRateByKindEditor {
             current_y += row_height;
         }
 
-        let mut by_kind: Vec<&str> = settings
+        let mut by_kind: Vec<FileExtension> = settings
             .reader
             .refresh_rate
             .by_kind
             .keys()
-            .map(String::as_str)
+            .copied()
             .collect();
         by_kind.sort_unstable();
 
-        for ext_str in by_kind {
+        for ext in by_kind {
             if current_y + row_height > content_end_y {
                 break;
             }
 
-            if let Some(ext) = ext_str_to_file_extension(ext_str) {
-                let row_rect = rect![rect.min.x, current_y, rect.max.x, current_y + row_height];
-                rows.push(Box::new(SettingRow::new(
-                    Box::new(RefreshRateByKindInfo(ext)),
-                    row_rect,
-                    settings,
-                    fonts,
-                    dpi,
-                    install_dir,
-                )));
-                current_y += row_height;
-            }
+            let row_rect = rect![rect.min.x, current_y, rect.max.x, current_y + row_height];
+            rows.push(Box::new(SettingRow::new(
+                Box::new(RefreshRateByKindInfo(ext)),
+                row_rect,
+                settings,
+                fonts,
+                dpi,
+                install_dir,
+            )));
+            current_y += row_height;
         }
 
         rows
@@ -270,18 +269,18 @@ impl RefreshRateByKindEditor {
     #[inline]
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, rq, context)))]
     fn handle_add_by_kind_event(&mut self, rq: &mut RenderQueue, context: &mut AppContext) -> bool {
-        let already: std::collections::HashSet<String> = context
+        let already: std::collections::HashSet<FileExtension> = context
             .settings
             .reader
             .refresh_rate
             .by_kind
             .keys()
-            .cloned()
+            .copied()
             .collect();
 
         let entries: Vec<crate::view::EntryKind> = FileExtension::all()
             .iter()
-            .filter(|ext| !already.contains(ext.as_str()))
+            .filter(|ext| !already.contains(ext))
             .map(|ext| {
                 crate::view::EntryKind::Command(
                     ext.to_string(),
@@ -350,7 +349,7 @@ impl RefreshRateByKindEditor {
             .reader
             .refresh_rate
             .by_kind
-            .insert(ext.as_str().to_string(), pair.clone());
+            .insert(ext, pair.clone());
         self.rebuild_rows(rq, context);
         true
     }
@@ -370,12 +369,7 @@ impl RefreshRateByKindEditor {
         rq: &mut RenderQueue,
         context: &mut AppContext,
     ) -> bool {
-        context
-            .settings
-            .reader
-            .refresh_rate
-            .by_kind
-            .remove(ext.as_str());
+        context.settings.reader.refresh_rate.by_kind.remove(&ext);
 
         if let Some(index) = locate_by_id(self, ViewId::RefreshRateKindPairEditor) {
             self.children.remove(index);
@@ -572,7 +566,7 @@ impl RefreshRateKindPairEditor {
             .reader
             .refresh_rate
             .by_kind
-            .get(ext.as_str())
+            .get(&ext)
             .cloned()
             .unwrap_or(RefreshRatePair {
                 regular: 0,
@@ -824,11 +818,4 @@ impl View for RefreshRateKindPairEditor {
     fn view_id(&self) -> Option<ViewId> {
         Some(ViewId::RefreshRateKindPairEditor)
     }
-}
-
-fn ext_str_to_file_extension(s: &str) -> Option<FileExtension> {
-    FileExtension::all()
-        .iter()
-        .find(|e| e.as_str() == s)
-        .copied()
 }

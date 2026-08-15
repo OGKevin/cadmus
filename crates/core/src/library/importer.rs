@@ -294,13 +294,17 @@ fn scan_entries(
                         file: FileInfo {
                             path: relat.to_path_buf(),
                             absolute_path: path.to_path_buf(),
-                            kind: kind.as_str().to_owned(),
+                            kind: Some(kind),
                             size,
                             mtime: current_mtime,
                         },
                         ..Default::default()
                     };
-                    if settings.metadata_kinds.contains(&book_info.file.kind) {
+                    if book_info
+                        .file
+                        .kind
+                        .is_some_and(|k| settings.metadata_kinds.contains(&k))
+                    {
                         extract_metadata_from_document(home, &mut book_info, install_dir);
                     }
                     result.books_to_update.push(BookWrite {
@@ -361,13 +365,17 @@ fn scan_entries(
                 file: FileInfo {
                     path: relat.to_path_buf(),
                     absolute_path: path.to_path_buf(),
-                    kind: kind.as_str().to_owned(),
+                    kind: Some(kind),
                     size,
                     mtime: current_mtime,
                 },
                 ..Default::default()
             };
-            if settings.metadata_kinds.contains(&book_info.file.kind) {
+            if book_info
+                .file
+                .kind
+                .is_some_and(|k| settings.metadata_kinds.contains(&k))
+            {
                 extract_metadata_from_document(home, &mut book_info, install_dir);
             }
             handles_by_fp.insert(fp, (relat.to_path_buf(), path.to_path_buf()));
@@ -449,7 +457,12 @@ fn resolve_relocations(
                 file_size,
             } => {
                 if let Some(mut info) = fetched.remove(&old_fp) {
-                    if settings.sync_metadata && settings.metadata_kinds.contains(&info.file.kind) {
+                    if settings.sync_metadata
+                        && info
+                            .file
+                            .kind
+                            .is_some_and(|k| settings.metadata_kinds.contains(&k))
+                    {
                         extract_metadata_from_document(home, &mut info, install_dir);
                     }
                     info.file.size = file_size;
@@ -688,6 +701,7 @@ pub fn run(
 mod tests {
     use super::*;
     use crate::db::Database;
+    use crate::document::file_extension::FileExtension;
     use crate::library::Library;
     use crate::metadata::{FileInfo, Info};
     use crate::settings::ImportSettings;
@@ -864,7 +878,7 @@ mod tests {
             file: FileInfo {
                 path: PathBuf::new(),
                 absolute_path: dir.path().join("missing.epub"),
-                kind: "epub".to_string(),
+                kind: Some(FileExtension::Epub),
                 size: 1,
                 mtime: None,
             },
@@ -886,7 +900,7 @@ mod tests {
 
     #[test]
     fn skips_fingerprinting_disallowed_new_files() {
-        use crate::settings::FileExtension;
+        use crate::document::file_extension::FileExtension;
         use fxhash::FxHashSet;
 
         let dir = tempfile::tempdir().expect("tempdir");
@@ -936,7 +950,7 @@ mod tests {
 
     #[test]
     fn purges_disallowed_books_on_import() {
-        use crate::settings::FileExtension;
+        use crate::document::file_extension::FileExtension;
         use fxhash::FxHashSet;
 
         let dir = tempfile::tempdir().expect("tempdir");
@@ -1005,9 +1019,9 @@ mod tests {
 
     #[test]
     fn pending_discovery_fills_and_promotes_on_import() {
+        use crate::document::file_extension::FileExtension;
         use crate::helpers::Fingerprint;
         use crate::library::book_status::BookStatus;
-        use crate::settings::FileExtension;
         use fxhash::FxHashSet;
 
         let dir = tempfile::tempdir().expect("tempdir");
@@ -1097,7 +1111,9 @@ mod tests {
 
         let books = lib.db.get_all_books(lib.library_id).expect("shelf");
         assert!(
-            books.iter().any(|b| b.file.kind == "epub"),
+            books
+                .iter()
+                .any(|b| b.file.kind == Some(FileExtension::Epub)),
             "filled book should appear on shelf with kind"
         );
     }

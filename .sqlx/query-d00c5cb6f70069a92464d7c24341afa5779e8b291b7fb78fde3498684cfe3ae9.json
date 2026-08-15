@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n                SELECT\n                    lb.book_fingerprint AS \"fingerprint!: Fp\",\n                    b.file_kind AS \"file_kind!: FileExtension\"\n                FROM library_books lb\n                INNER JOIN books b ON b.fingerprint = lb.book_fingerprint\n                WHERE lb.library_id = ?\n                  AND b.status = 'active'\n                ",
+  "query": "\n                SELECT\n                    lb.book_fingerprint AS \"fingerprint!: Fp\",\n                    b.file_kind AS \"file_kind!: OptionalFileExtension\"\n                FROM library_books lb\n                INNER JOIN books b ON b.fingerprint = lb.book_fingerprint\n                WHERE lb.library_id = ?\n                  AND b.status = 'active'\n                ",
   "describe": {
     "columns": [
       {
@@ -15,7 +15,7 @@
         }
       },
       {
-        "name": "file_kind!: FileExtension",
+        "name": "file_kind!: OptionalFileExtension",
         "ordinal": 1,
         "type_info": "Text",
         "origin": {
@@ -34,5 +34,5 @@
       false
     ]
   },
-  "hash": "ef58fbce061494c12890a90ddb657775131a0c31540cc0e05d8b67e104752595"
+  "hash": "d00c5cb6f70069a92464d7c24341afa5779e8b291b7fb78fde3498684cfe3ae9"
 }

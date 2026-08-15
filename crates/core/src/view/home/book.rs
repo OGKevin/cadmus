@@ -284,8 +284,8 @@ impl View for Book {
         }
 
         // File kind
-        {
-            let kind = file_info.kind.to_uppercase();
+        if let Some(kind) = file_info.kind {
+            let kind = kind.as_str().to_uppercase();
             let font = font_from_style(fonts, &MD_KIND, dpi);
             let mut plan = font.plan(&kind, None, None);
             let letter_spacing = scale_by_dpi(3.0, dpi) as i32;

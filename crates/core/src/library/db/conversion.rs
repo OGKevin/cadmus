@@ -6,8 +6,8 @@ use anyhow::{Context as AnyhowContext, Error};
 
 /// Convert Info struct to BookRow for database insertion.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(fp, info), fields(fingerprint = %fp), ret(level = tracing::Level::TRACE)))]
-pub fn info_to_book_row(fp: Fp, info: &Info) -> BookRow {
-    BookRow {
+pub fn info_to_book_row(fp: Fp, info: &Info) -> Result<BookRow, Error> {
+    Ok(BookRow {
         fingerprint: fp.to_string(),
         title: info.title.clone(),
         subtitle: info.subtitle.clone(),
@@ -21,10 +21,10 @@ pub fn info_to_book_row(fp: Fp, info: &Info) -> BookRow {
         identifier: info.identifier.clone(),
         file_path: info.file.path.display().to_string(),
         absolute_path: info.file.absolute_path.display().to_string(),
-        file_kind: info.file.kind.clone(),
+        file_kind: info.file.kind.context("missing file kind")?,
         file_size: info.file.size as i64,
         added_at: info.added.into(),
-    }
+    })
 }
 
 /// Extract authors from Info.author (comma-separated string)
@@ -226,6 +226,7 @@ mod tests {
     use super::*;
     use crate::db::types::{OptionalUuid7, Uuid7};
     use crate::document::TocLocation;
+    use crate::document::file_extension::FileExtension;
     use crate::metadata::FileInfo;
     use std::path::PathBuf;
     use std::str::FromStr;
@@ -249,14 +250,14 @@ mod tests {
             file: FileInfo {
                 path: PathBuf::from("/tmp/test.pdf"),
                 absolute_path: PathBuf::from("/mnt/onboard/tmp/test.pdf"),
-                kind: "pdf".to_string(),
+                kind: Some(FileExtension::Pdf),
                 size: 1024,
                 mtime: None,
             },
             ..Default::default()
         };
 
-        let row = info_to_book_row(fp, &info);
+        let row = info_to_book_row(fp, &info).unwrap();
 
         assert_eq!(row.fingerprint, fp.to_string());
         assert_eq!(row.title, "Test Book");

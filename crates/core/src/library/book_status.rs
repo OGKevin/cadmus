@@ -7,7 +7,7 @@ use std::fmt;
 
 /// Lifecycle status for a row in `books`.
 ///
-/// Distinct from file format ([`crate::settings::FileExtension`]): this tracks
+/// Distinct from file format ([`crate::document::file_extension::FileExtension`]): this tracks
 /// whether a book is awaiting on-disk discovery or is ready for the shelf.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub(crate) enum BookStatus {

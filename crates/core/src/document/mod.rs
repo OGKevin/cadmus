@@ -1,5 +1,6 @@
 pub mod djvu;
 pub mod epub;
+pub mod file_extension;
 pub mod html;
 pub mod pdf;
 
@@ -11,10 +12,11 @@ use self::djvu::DjvuOpener;
 use self::epub::EpubDocument;
 use self::html::HtmlDocument;
 use self::pdf::PdfOpener;
+use crate::document::file_extension::FileExtension;
 use crate::framebuffer::Pixmap;
 use crate::geom::{Boundary, CycleDir};
 use crate::metadata::{Annotation, TextAlign};
-use crate::settings::{FileExtension, INTERNAL_CARD_ROOT};
+use crate::settings::INTERNAL_CARD_ROOT;
 use crate::version::get_version;
 use anyhow::{Error, format_err};
 use fxhash::FxHashMap;

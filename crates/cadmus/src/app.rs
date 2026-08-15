@@ -174,8 +174,6 @@ fn open_document(
         context.device.framebuffer_mut().set_dithered(
             info.file
                 .kind
-                .parse()
-                .ok()
                 .is_some_and(|kind| context.settings.reader.dithered_kinds.contains(&kind)),
         );
     }

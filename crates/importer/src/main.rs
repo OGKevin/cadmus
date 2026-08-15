@@ -3,6 +3,7 @@ use cadmus_core::chrono::NaiveDateTime;
 use cadmus_core::db::Database;
 use cadmus_core::helpers::datetime_format;
 // use cadmus_core::library::importer;
+use cadmus_core::document::file_extension::FileExtension;
 use cadmus_core::library::Library;
 use cadmus_core::metadata::{consolidate, rename_from_info};
 use cadmus_core::metadata::{extract_metadata_from_document, extract_metadata_from_filename};
@@ -87,30 +88,38 @@ fn main() -> Result<(), Error> {
     let library_path = Path::new(&matches.free[0]);
 
     let mut import_settings = ImportSettings {
-        metadata_kinds: ["epub"].iter().map(|k| k.to_string()).collect(),
+        metadata_kinds: ["epub"]
+            .iter()
+            .filter_map(|k| k.parse::<FileExtension>().ok())
+            .collect(),
         ..Default::default()
     };
 
     if let Some(allowed_kinds) = matches.opt_str("k").map(|v| {
         v.split(',')
-            .filter_map(
-                |k| match k.parse::<cadmus_core::settings::FileExtension>() {
-                    Ok(ext) => Some(ext),
-                    Err(e) => {
-                        eprintln!("Warning: {e}, skipping");
-                        None
-                    }
-                },
-            )
+            .filter_map(|k| match k.parse::<FileExtension>() {
+                Ok(ext) => Some(ext),
+                Err(e) => {
+                    eprintln!("Warning: {e}, skipping");
+                    None
+                }
+            })
             .collect()
     }) {
         import_settings.allowed_kinds = allowed_kinds;
     }
 
-    if let Some(metadata_kinds) = matches
-        .opt_str("e")
-        .map(|v| v.split(',').map(|k| k.to_string()).collect())
-    {
+    if let Some(metadata_kinds) = matches.opt_str("e").map(|v| {
+        v.split(',')
+            .filter_map(|k| match k.parse::<FileExtension>() {
+                Ok(ext) => Some(ext),
+                Err(e) => {
+                    eprintln!("Warning: {e}, skipping");
+                    None
+                }
+            })
+            .collect()
+    }) {
         import_settings.metadata_kinds = metadata_kinds;
     }
 
@@ -156,7 +165,10 @@ fn main() -> Result<(), Error> {
         library.apply(|path, info| {
             if added_after.is_none_or(|added| info.added >= added) {
                 if opt_extract_metadata_document
-                    && import_settings.metadata_kinds.contains(&info.file.kind)
+                    && info
+                        .file
+                        .kind
+                        .is_some_and(|k| import_settings.metadata_kinds.contains(&k))
                 {
                     extract_metadata_from_document(path, info, Path::new(""));
                 }

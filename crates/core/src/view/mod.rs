@@ -63,6 +63,7 @@ use self::key::KeyKind;
 use crate::color::Color;
 use crate::device::AppContext;
 use crate::device::DeviceHardware as _;
+use crate::document::file_extension::FileExtension;
 use crate::document::{Location, TextLocation};
 use crate::framebuffer::Framebuffer as _;
 use crate::framebuffer::UpdateMode;
@@ -472,11 +473,11 @@ pub enum Event {
     /// Open the refresh rate editor (global + per-kind overrides).
     OpenRefreshRateEditor,
     /// Open the per-kind refresh rate editor for the given file extension.
-    EditRefreshRateByKind(settings::FileExtension),
+    EditRefreshRateByKind(FileExtension),
     /// Commit a new or updated per-kind refresh rate pair to settings.
-    UpdateRefreshRateByKind(settings::FileExtension, Box<settings::RefreshRatePair>),
+    UpdateRefreshRateByKind(FileExtension, Box<settings::RefreshRatePair>),
     /// Delete the per-kind override for the given extension.
-    DeleteRefreshRateByKind(settings::FileExtension),
+    DeleteRefreshRateByKind(FileExtension),
     ProcessLine(LineOrigin, String),
     History(CycleDir, bool),
     Toggle(ToggleEvent),
@@ -892,15 +893,15 @@ pub enum EntryId {
     FileEntry(PathBuf),
     Ota(OtaEntryId),
     /// Open the per-kind refresh rate editor for the given file extension.
-    EditRefreshRateByKind(settings::FileExtension),
+    EditRefreshRateByKind(FileExtension),
     /// Delete the per-kind refresh rate override for the given file extension.
-    DeleteRefreshRateByKind(settings::FileExtension),
+    DeleteRefreshRateByKind(FileExtension),
     /// Add a new per-kind refresh rate override (opens extension picker submenu).
     AddRefreshRateByKind,
     /// Toggle whether a file extension is indexed during import.
-    ToggleAllowedKind(settings::FileExtension),
+    ToggleAllowedKind(FileExtension),
     /// Toggle whether a file extension is rendered with dithering.
-    ToggleDitheredKind(settings::FileExtension),
+    ToggleDitheredKind(FileExtension),
     SyncTime,
 }
 
