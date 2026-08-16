@@ -31,6 +31,7 @@ pub struct BookHandle {
     pub abs: PathBuf,
     pub mtime: Option<UnixTimestamp>,
     pub file_size: Option<FileSize>,
+    pub(crate) status: crate::library::book_status::BookStatus,
 }
 
 /// A pending write that records a book's new paths and current mtime/size.

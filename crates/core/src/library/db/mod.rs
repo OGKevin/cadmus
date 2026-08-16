@@ -6,6 +6,7 @@ use crate::db::types::{FileSize, OptionalUuid7, UnixTimestamp, Uuid7};
 use crate::document::SimpleTocEntry;
 use crate::geom::Point;
 use crate::helpers::Fp;
+use crate::library::book_status::BookStatus;
 use crate::metadata::{
     CroppingMargins, FileInfo, Info, ReaderInfo, ScrollMode, SortMethod, TextAlign, ZoomMode,
     alphabetic_author, alphabetic_title, natural_cmp, sorter,
@@ -554,6 +555,7 @@ impl Db {
                     categories            as "categories?: String"
                 FROM library_books_full_info
                 WHERE library_id = ?
+                  AND status = 'active'
                 ORDER BY added_at DESC
                 "#,
                 library_id
@@ -689,6 +691,7 @@ impl Db {
                     categories            as "categories?: String"
                 FROM library_books_full_info
                 WHERE library_id = ? AND file_path = ?
+                  AND status = 'active'
                 LIMIT 1
                 "#,
                 library_id,
@@ -766,6 +769,7 @@ impl Db {
                     categories            as "categories?: String"
                 FROM library_books_full_info
                 WHERE library_id = ? AND fingerprint = ?
+                  AND status = 'active'
                 LIMIT 1
                 "#,
                 library_id,
@@ -795,8 +799,9 @@ impl Db {
     /// Fetches complete `Info` for multiple fingerprints in a single library using one
     /// pooled connection. Missing fingerprints are silently skipped.
     ///
-    /// Used by `import()` to retrieve book metadata (title, authors, reading state, etc.)
-    /// for all fingerprint relocations in one batch, before re-inserting under new FPs.
+    /// Reads `library_books_full_info` without a status filter so import
+    /// relocation can copy metadata for `pending_discovery` stubs before the
+    /// old fingerprint is removed. Shelf queries must filter `status = 'active'`.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fps), fields(library_id, count = fps.len())))]
     pub fn batch_get_books_by_fingerprints(
         &self,
@@ -897,6 +902,7 @@ impl Db {
         })
     }
 
+    /// Counts shelf-visible books so empty-library and trash UI match `get_all_books`.
     #[cfg_attr(
         feature = "tracing",
         tracing::instrument(skip(self), fields(library_id))
@@ -904,7 +910,13 @@ impl Db {
     pub fn count_books(&self, library_id: i64) -> Result<usize, Error> {
         RUNTIME.block_on(async {
             let count: i64 = sqlx::query_scalar!(
-                r#"SELECT COUNT(*) AS "count!: i64" FROM library_books WHERE library_id = ?"#,
+                r#"
+                SELECT COUNT(*) AS "count!: i64"
+                FROM library_books lb
+                INNER JOIN books b ON b.fingerprint = lb.book_fingerprint
+                WHERE lb.library_id = ?
+                  AND b.status = 'active'
+                "#,
                 library_id,
             )
             .fetch_one(&self.pool)
@@ -973,6 +985,7 @@ impl Db {
                     categories            as "categories?: String"
                 FROM library_books_full_info
                 WHERE library_id = ?1
+                  AND status = 'active'
                   AND (?2 IS NULL OR file_path = ?2 OR file_path LIKE (?2 || '/%'))
                 "#,
                 library_id,
@@ -1038,6 +1051,7 @@ impl Db {
                     categories            as "categories?: String"
                 FROM library_books_full_info
                 WHERE library_id = ?1
+                  AND status = 'active'
                   AND finished = 0
                   AND opened IS NOT NULL
                 ORDER BY opened DESC
@@ -1352,6 +1366,7 @@ impl Db {
                 SELECT title, language, file_path, sort_title as "sort_title?: i64"
                 FROM library_books_full_info
                 WHERE library_id = ? AND fingerprint != ?
+                  AND status = 'active'
                 ORDER BY sort_title ASC NULLS LAST
                 "#,
                 library_id,
@@ -1375,6 +1390,7 @@ impl Db {
                 SELECT authors as "authors?: String", sort_author as "sort_author?: i64"
                 FROM library_books_full_info
                 WHERE library_id = ? AND fingerprint != ?
+                  AND status = 'active'
                 ORDER BY sort_author ASC NULLS LAST
                 "#,
                 library_id,
@@ -1398,6 +1414,7 @@ impl Db {
                 SELECT file_path, sort_filepath as "sort_filepath?: i64"
                 FROM library_books_full_info
                 WHERE library_id = ? AND fingerprint != ?
+                  AND status = 'active'
                 ORDER BY sort_filepath ASC NULLS LAST
                 "#,
                 library_id,
@@ -1421,6 +1438,7 @@ impl Db {
                 SELECT file_path, sort_filename as "sort_filename?: i64"
                 FROM library_books_full_info
                 WHERE library_id = ? AND fingerprint != ?
+                  AND status = 'active'
                 ORDER BY sort_filename ASC NULLS LAST
                 "#,
                 library_id,
@@ -1444,6 +1462,7 @@ impl Db {
                 SELECT series, number, sort_series as "sort_series?: i64"
                 FROM library_books_full_info
                 WHERE library_id = ? AND fingerprint != ?
+                  AND status = 'active'
                 ORDER BY sort_series ASC NULLS LAST
                 "#,
                 library_id,
@@ -1546,6 +1565,7 @@ impl Db {
                 categories
             FROM library_books_full_info
             WHERE library_id = ?
+              AND status = 'active'
               AND (? IS NULL OR file_path = ? OR file_path LIKE (? || '/%'))
             ORDER BY {order_expr}
             LIMIT ? OFFSET ?
@@ -1558,6 +1578,7 @@ impl Db {
                 SELECT COUNT(*)
                 FROM library_books_full_info
                 WHERE library_id = ?
+                  AND status = 'active'
                   AND (? IS NULL OR file_path = ? OR file_path LIKE (? || '/%'))
                 "#,
                 library_id,
@@ -1611,7 +1632,9 @@ impl Db {
                                 instr(substr(lb.file_path, length(?2) + 2), '/') - 1
                             ) AS "child!: String"
                         FROM library_books lb
+                        INNER JOIN books b ON b.fingerprint = lb.book_fingerprint
                         WHERE lb.library_id = ?1
+                          AND b.status = 'active'
                           AND lb.file_path LIKE (?2 || '/%/%')
                         "#,
                         library_id,
@@ -1626,7 +1649,9 @@ impl Db {
                         SELECT DISTINCT
                             substr(lb.file_path, 1, instr(lb.file_path, '/') - 1) AS "child!: String"
                         FROM library_books lb
+                        INNER JOIN books b ON b.fingerprint = lb.book_fingerprint
                         WHERE lb.library_id = ?1
+                          AND b.status = 'active'
                           AND lb.file_path LIKE '%/%'
                         "#,
                         library_id,
@@ -1643,158 +1668,256 @@ impl Db {
         })
     }
 
+    /// Returns the lifecycle status for a fingerprint, if a `books` row exists.
+    pub(crate) fn book_status(&self, fp: Fp) -> Result<Option<BookStatus>, Error> {
+        let fp_str = fp.to_string();
+        RUNTIME.block_on(async {
+            sqlx::query_scalar!(
+                r#"
+                SELECT status AS "status: BookStatus"
+                FROM books
+                WHERE fingerprint = ?
+                "#,
+                fp_str,
+            )
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(Into::into)
+        })
+    }
+
+    /// Status of every row in `books`, including those not linked to a given library.
+    pub(crate) fn all_book_statuses(&self) -> Result<FxHashMap<Fp, BookStatus>, Error> {
+        RUNTIME.block_on(async {
+            let rows = sqlx::query!(
+                r#"
+                SELECT fingerprint AS "fingerprint!: Fp",
+                       status AS "status!: BookStatus"
+                FROM books
+                "#,
+            )
+            .fetch_all(&self.pool)
+            .await?;
+
+            Ok(rows
+                .into_iter()
+                .map(|row| (row.fingerprint, row.status))
+                .collect())
+        })
+    }
+
+    async fn insert_books_row(
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        book_row: &models::BookRow,
+        status: BookStatus,
+    ) -> Result<(), Error> {
+        sqlx::query!(
+            r#"
+            INSERT INTO books (
+                fingerprint, title, subtitle, year, language, publisher,
+                series, edition, volume, number, identifier,
+                file_kind, file_size, added_at, status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            "#,
+            book_row.fingerprint,
+            book_row.title,
+            book_row.subtitle,
+            book_row.year,
+            book_row.language,
+            book_row.publisher,
+            book_row.series,
+            book_row.edition,
+            book_row.volume,
+            book_row.number,
+            book_row.identifier,
+            book_row.file_kind,
+            book_row.file_size,
+            book_row.added_at,
+            status,
+        )
+        .execute(&mut **tx)
+        .await?;
+        Ok(())
+    }
+
+    /// Inserts a `library_books` membership or refreshes its path and scan cache.
+    ///
+    /// Matches `PRIMARY KEY (library_id, book_fingerprint)`. `added_to_library_at`
+    /// is written only when the row is new.
+    async fn upsert_library_book(
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        library_id: i64,
+        fp_str: &str,
+        book_row: &models::BookRow,
+        info: &Info,
+    ) -> Result<(), Error> {
+        let file_size = info.file.size as i64;
+        sqlx::query!(
+            r#"
+            INSERT INTO library_books (
+                library_id, book_fingerprint, added_to_library_at,
+                file_path, absolute_path, mtime, file_size
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(library_id, book_fingerprint) DO UPDATE SET
+                file_path = excluded.file_path,
+                absolute_path = excluded.absolute_path,
+                mtime = excluded.mtime,
+                file_size = excluded.file_size
+            "#,
+            library_id,
+            fp_str,
+            book_row.added_at,
+            book_row.file_path,
+            book_row.absolute_path,
+            info.file.mtime,
+            file_size,
+        )
+        .execute(&mut **tx)
+        .await?;
+        Ok(())
+    }
+
+    /// Links an existing `books` row into a library and upserts author/category
+    /// (and optional reading-state) side tables. Does not modify `books`.
+    async fn attach_book_to_library(
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        library_id: i64,
+        fp: Fp,
+        info: &Info,
+        book_row: &models::BookRow,
+    ) -> Result<(), Error> {
+        let fp_str = book_row.fingerprint.as_str();
+        Self::upsert_library_book(tx, library_id, fp_str, book_row, info).await?;
+
+        let authors = extract_authors(&info.author);
+        for (position, author_name) in authors.iter().enumerate() {
+            sqlx::query!(
+                r#"INSERT OR IGNORE INTO authors (name) VALUES (?)"#,
+                author_name
+            )
+            .execute(&mut **tx)
+            .await?;
+
+            let author_id: i64 =
+                sqlx::query_scalar!(r#"SELECT id FROM authors WHERE name = ?"#, author_name)
+                    .fetch_one(&mut **tx)
+                    .await?;
+
+            let pos = position as i64;
+            sqlx::query!(
+                r#"
+                INSERT OR IGNORE INTO book_authors (book_fingerprint, author_id, position)
+                VALUES (?, ?, ?)
+                "#,
+                fp_str,
+                author_id,
+                pos
+            )
+            .execute(&mut **tx)
+            .await?;
+        }
+
+        for category_name in &info.categories {
+            sqlx::query!(
+                r#"INSERT OR IGNORE INTO categories (name) VALUES (?)"#,
+                category_name
+            )
+            .execute(&mut **tx)
+            .await?;
+
+            let category_id: i64 =
+                sqlx::query_scalar!(r#"SELECT id FROM categories WHERE name = ?"#, category_name)
+                    .fetch_one(&mut **tx)
+                    .await?;
+
+            sqlx::query!(
+                r#"
+                INSERT OR IGNORE INTO book_categories (book_fingerprint, category_id)
+                VALUES (?, ?)
+                "#,
+                fp_str,
+                category_id
+            )
+            .execute(&mut **tx)
+            .await?;
+        }
+
+        if let Some(reader_info) = &info.reader_info {
+            let rs_row = reader_info_to_reading_state_row(fp, reader_info);
+
+            sqlx::query!(
+                r#"
+                INSERT OR IGNORE INTO reading_states (
+                    fingerprint, opened, current_page, pages_count, finished, dithered,
+                    zoom_mode, scroll_mode, page_offset_x, page_offset_y, rotation,
+                    cropping_margins_json, margin_width, screen_margin_width,
+                    font_family, font_size, text_align, line_height,
+                    contrast_exponent, contrast_gray,
+                    page_names_json, bookmarks_json, annotations_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                "#,
+                rs_row.fingerprint,
+                rs_row.opened,
+                rs_row.current_page,
+                rs_row.pages_count,
+                rs_row.finished,
+                rs_row.dithered,
+                rs_row.zoom_mode,
+                rs_row.scroll_mode,
+                rs_row.page_offset_x,
+                rs_row.page_offset_y,
+                rs_row.rotation,
+                rs_row.cropping_margins_json,
+                rs_row.margin_width,
+                rs_row.screen_margin_width,
+                rs_row.font_family,
+                rs_row.font_size,
+                rs_row.text_align,
+                rs_row.line_height,
+                rs_row.contrast_exponent,
+                rs_row.contrast_gray,
+                rs_row.page_names_json,
+                rs_row.bookmarks_json,
+                rs_row.annotations_json,
+            )
+            .execute(&mut **tx)
+            .await?;
+        }
+
+        Ok(())
+    }
+
+    /// Inserts, activates, or links a book into `library_id` based on existing status.
+    ///
+    /// - missing → [`Self::insert_book`]
+    /// - pending → [`Self::update_book`] with [`BookStatus::Active`]
+    /// - active → [`Self::link_book_to_library`]
+    pub(crate) fn ensure_active_book_in_library(
+        &self,
+        library_id: i64,
+        fp: Fp,
+        info: &Info,
+    ) -> Result<(), Error> {
+        match self.book_status(fp)? {
+            None => self.insert_book(library_id, fp, info),
+            Some(BookStatus::PendingDiscovery) => {
+                self.update_book(library_id, fp, info, BookStatus::Active)
+            }
+            Some(BookStatus::Active) => self.link_book_to_library(library_id, fp, info),
+        }
+    }
+
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, info), fields(fp = %fp, library_id)))]
     pub fn insert_book(&self, library_id: i64, fp: Fp, info: &Info) -> Result<(), Error> {
         tracing::debug!(fp = %fp, library_id, "inserting book into database");
-        let fp_str = fp.to_string();
 
         RUNTIME.block_on(async {
             let mut tx = self.pool.begin().await?;
 
             let book_row = info_to_book_row(fp, info);
-
-            sqlx::query!(
-                r#"
-                INSERT OR IGNORE INTO books (
-                    fingerprint, title, subtitle, year, language, publisher,
-                    series, edition, volume, number, identifier,
-                    file_kind, file_size, added_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                "#,
-                book_row.fingerprint,
-                book_row.title,
-                book_row.subtitle,
-                book_row.year,
-                book_row.language,
-                book_row.publisher,
-                book_row.series,
-                book_row.edition,
-                book_row.volume,
-                book_row.number,
-                book_row.identifier,
-                book_row.file_kind,
-                book_row.file_size,
-                book_row.added_at,
-            )
-            .execute(&mut *tx)
-            .await?;
-
-            let file_size_i64 = info.file.size as i64;
-
-            sqlx::query!(
-                r#"
-                INSERT OR IGNORE INTO library_books (library_id, book_fingerprint, added_to_library_at, file_path, absolute_path, mtime, file_size)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                "#,
-                library_id,
-                fp_str,
-                book_row.added_at,
-                book_row.file_path,
-                book_row.absolute_path,
-                info.file.mtime,
-                file_size_i64,
-            )
-            .execute(&mut *tx)
-            .await?;
-
-            let authors = extract_authors(&info.author);
-            for (position, author_name) in authors.iter().enumerate() {
-                sqlx::query!(
-                    r#"INSERT OR IGNORE INTO authors (name) VALUES (?)"#,
-                    author_name
-                )
-                .execute(&mut *tx)
-                .await?;
-
-                let author_id: i64 = sqlx::query_scalar!(
-                    r#"SELECT id FROM authors WHERE name = ?"#,
-                    author_name
-                )
-                .fetch_one(&mut *tx)
-                .await?;
-
-                let pos = position as i64;
-                sqlx::query!(
-                    r#"
-                    INSERT OR IGNORE INTO book_authors (book_fingerprint, author_id, position)
-                    VALUES (?, ?, ?)
-                    "#,
-                    fp_str,
-                    author_id,
-                    pos
-                )
-                .execute(&mut *tx)
-                .await?;
-            }
-
-            for category_name in &info.categories {
-                sqlx::query!(
-                    r#"INSERT OR IGNORE INTO categories (name) VALUES (?)"#,
-                    category_name
-                )
-                .execute(&mut *tx)
-                .await?;
-
-                let category_id: i64 = sqlx::query_scalar!(
-                    r#"SELECT id FROM categories WHERE name = ?"#,
-                    category_name
-                )
-                .fetch_one(&mut *tx)
-                .await?;
-
-                sqlx::query!(
-                        r#"
-                        INSERT OR IGNORE INTO book_categories (book_fingerprint, category_id)
-                        VALUES (?, ?)
-                        "#,
-                    fp_str,
-                    category_id
-                )
-                .execute(&mut *tx)
-                .await?;
-            }
-
-            if let Some(reader_info) = &info.reader_info {
-                let rs_row = reader_info_to_reading_state_row(fp, reader_info);
-
-                sqlx::query!(
-                    r#"
-                    INSERT INTO reading_states (
-                        fingerprint, opened, current_page, pages_count, finished, dithered,
-                        zoom_mode, scroll_mode, page_offset_x, page_offset_y, rotation,
-                        cropping_margins_json, margin_width, screen_margin_width,
-                        font_family, font_size, text_align, line_height,
-                        contrast_exponent, contrast_gray,
-                        page_names_json, bookmarks_json, annotations_json
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    "#,
-                    rs_row.fingerprint,
-                    rs_row.opened,
-                    rs_row.current_page,
-                    rs_row.pages_count,
-                    rs_row.finished,
-                    rs_row.dithered,
-                    rs_row.zoom_mode,
-                    rs_row.scroll_mode,
-                    rs_row.page_offset_x,
-                    rs_row.page_offset_y,
-                    rs_row.rotation,
-                    rs_row.cropping_margins_json,
-                    rs_row.margin_width,
-                    rs_row.screen_margin_width,
-                    rs_row.font_family,
-                    rs_row.font_size,
-                    rs_row.text_align,
-                    rs_row.line_height,
-                    rs_row.contrast_exponent,
-                    rs_row.contrast_gray,
-                    rs_row.page_names_json,
-                    rs_row.bookmarks_json,
-                    rs_row.annotations_json,
-                )
-                .execute(&mut *tx)
-                .await?;
-            }
+            Self::insert_books_row(&mut tx, &book_row, BookStatus::Active).await?;
+            Self::attach_book_to_library(&mut tx, library_id, fp, info, &book_row).await?;
 
             tx.commit().await?;
 
@@ -1803,10 +1926,36 @@ impl Db {
         })
     }
 
-    /// Rewrites the stored metadata for one book and its library-specific path fields.
+    /// Links an already-active book into a library without rewriting `books`.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, info), fields(fp = %fp, library_id)))]
-    pub fn update_book(&self, library_id: i64, fp: Fp, info: &Info) -> Result<(), Error> {
-        tracing::debug!(fp = %fp, library_id, "updating book in database");
+    pub(crate) fn link_book_to_library(
+        &self,
+        library_id: i64,
+        fp: Fp,
+        info: &Info,
+    ) -> Result<(), Error> {
+        tracing::debug!(fp = %fp, library_id, "linking book into library");
+
+        RUNTIME.block_on(async {
+            let mut tx = self.pool.begin().await?;
+            let book_row = info_to_book_row(fp, info);
+            Self::attach_book_to_library(&mut tx, library_id, fp, info, &book_row).await?;
+            tx.commit().await?;
+            tracing::debug!(fp = %fp, "book link complete");
+            Ok(())
+        })
+    }
+
+    /// Rewrites the stored metadata for one book and its library-specific path fields.
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, info), fields(fp = %fp, library_id, status = %status)))]
+    pub(crate) fn update_book(
+        &self,
+        library_id: i64,
+        fp: Fp,
+        info: &Info,
+        status: BookStatus,
+    ) -> Result<(), Error> {
+        tracing::debug!(fp = %fp, library_id, status = %status, "updating book in database");
         let fp_str = fp.to_string();
 
         RUNTIME.block_on(async {
@@ -1819,7 +1968,7 @@ impl Db {
                 UPDATE books SET
                     title = ?, subtitle = ?, year = ?, language = ?, publisher = ?,
                     series = ?, edition = ?, volume = ?, number = ?, identifier = ?,
-                    file_kind = ?, file_size = ?, added_at = ?
+                    file_kind = ?, file_size = ?, added_at = ?, status = ?
                 WHERE fingerprint = ?
                 "#,
                 book_row.title,
@@ -1835,23 +1984,13 @@ impl Db {
                 book_row.file_kind,
                 book_row.file_size,
                 book_row.added_at,
+                status,
                 fp_str,
             )
             .execute(&mut *tx)
             .await?;
 
-            sqlx::query!(
-                r#"
-                UPDATE library_books SET file_path = ?, absolute_path = ?
-                WHERE library_id = ? AND book_fingerprint = ?
-                "#,
-                book_row.file_path,
-                book_row.absolute_path,
-                library_id,
-                fp_str,
-            )
-            .execute(&mut *tx)
-            .await?;
+            Self::upsert_library_book(&mut tx, library_id, &fp_str, &book_row, info).await?;
 
             sqlx::query!(
                 r#"DELETE FROM book_authors WHERE book_fingerprint = ?"#,
@@ -2247,149 +2386,8 @@ impl Db {
             for (fp, info) in books {
                 let fp_str = fp.to_string();
                 let book_row = info_to_book_row(*fp, info);
-
-                sqlx::query!(
-                    r#"
-                    INSERT OR IGNORE INTO books (
-                        fingerprint, title, subtitle, year, language, publisher,
-                        series, edition, volume, number, identifier,
-                        file_kind, file_size, added_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    "#,
-                    book_row.fingerprint,
-                    book_row.title,
-                    book_row.subtitle,
-                    book_row.year,
-                    book_row.language,
-                    book_row.publisher,
-                    book_row.series,
-                    book_row.edition,
-                    book_row.volume,
-                    book_row.number,
-                    book_row.identifier,
-                    book_row.file_kind,
-                    book_row.file_size,
-                    book_row.added_at,
-                )
-                .execute(&mut *tx)
-                .await?;
-
-                let file_size_i64 = info.file.size as i64;
-
-                sqlx::query!(
-                    r#"
-                    INSERT OR IGNORE INTO library_books (library_id, book_fingerprint, added_to_library_at, file_path, absolute_path, mtime, file_size)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                    "#,
-                    library_id,
-                    fp_str,
-                    book_row.added_at,
-                    book_row.file_path,
-                    book_row.absolute_path,
-                    info.file.mtime,
-                    file_size_i64,
-                )
-                .execute(&mut *tx)
-                .await?;
-
-                let authors = extract_authors(&info.author);
-                for (position, author_name) in authors.iter().enumerate() {
-                    sqlx::query!(
-                        r#"INSERT OR IGNORE INTO authors (name) VALUES (?)"#,
-                        author_name
-                    )
-                    .execute(&mut *tx)
-                    .await?;
-
-                    let author_id: i64 = sqlx::query_scalar!(
-                        r#"SELECT id FROM authors WHERE name = ?"#,
-                        author_name
-                    )
-                    .fetch_one(&mut *tx)
-                    .await?;
-
-                    let pos = position as i64;
-                    sqlx::query!(
-                        r#"
-                         INSERT OR IGNORE INTO book_authors (book_fingerprint, author_id, position)
-                         VALUES (?, ?, ?)
-                         "#,
-                         fp_str,
-                         author_id,
-                         pos
-                     )
-                     .execute(&mut *tx)
-                     .await?;
-                 }
-
-                 for category_name in &info.categories {
-                     sqlx::query!(
-                         r#"INSERT OR IGNORE INTO categories (name) VALUES (?)"#,
-                        category_name
-                    )
-                    .execute(&mut *tx)
-                    .await?;
-
-                    let category_id: i64 = sqlx::query_scalar!(
-                        r#"SELECT id FROM categories WHERE name = ?"#,
-                        category_name
-                    )
-                    .fetch_one(&mut *tx)
-                    .await?;
-
-                     sqlx::query!(
-                         r#"
-                         INSERT OR IGNORE INTO book_categories (book_fingerprint, category_id)
-                         VALUES (?, ?)
-                         "#,
-                         fp_str,
-                         category_id
-                     )
-                     .execute(&mut *tx)
-                     .await?;
-                 }
-
-                 if let Some(reader_info) = &info.reader_info {
-                    let rs_row = reader_info_to_reading_state_row(*fp, reader_info);
-
-                    sqlx::query!(
-                        r#"
-                        INSERT INTO reading_states (
-                            fingerprint, opened, current_page, pages_count, finished, dithered,
-                            zoom_mode, scroll_mode, page_offset_x, page_offset_y, rotation,
-                            cropping_margins_json, margin_width, screen_margin_width,
-                            font_family, font_size, text_align, line_height,
-                            contrast_exponent, contrast_gray,
-                            page_names_json, bookmarks_json, annotations_json
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        "#,
-                        rs_row.fingerprint,
-                        rs_row.opened,
-                        rs_row.current_page,
-                        rs_row.pages_count,
-                        rs_row.finished,
-                        rs_row.dithered,
-                        rs_row.zoom_mode,
-                        rs_row.scroll_mode,
-                        rs_row.page_offset_x,
-                        rs_row.page_offset_y,
-                        rs_row.rotation,
-                        rs_row.cropping_margins_json,
-                        rs_row.margin_width,
-                        rs_row.screen_margin_width,
-                        rs_row.font_family,
-                        rs_row.font_size,
-                        rs_row.text_align,
-                        rs_row.line_height,
-                        rs_row.contrast_exponent,
-                        rs_row.contrast_gray,
-                        rs_row.page_names_json,
-                        rs_row.bookmarks_json,
-                        rs_row.annotations_json,
-                    )
-                    .execute(&mut *tx)
-                    .await?;
-                }
+                Self::insert_books_row(&mut tx, &book_row, BookStatus::Active).await?;
+                Self::attach_book_to_library(&mut tx, library_id, *fp, info, &book_row).await?;
 
                 if let Some(ref toc) = info.toc {
                     sqlx::query!("DELETE FROM toc_entries WHERE book_fingerprint = ?", fp_str)
@@ -2406,13 +2404,18 @@ impl Db {
         })
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, books), fields(library_id, count = books.len())))]
-    pub fn batch_update_books(&self, library_id: i64, books: &[(Fp, &Info)]) -> Result<(), Error> {
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, books), fields(library_id, count = books.len(), status = %status)))]
+    pub(crate) fn batch_update_books(
+        &self,
+        library_id: i64,
+        books: &[(Fp, &Info)],
+        status: BookStatus,
+    ) -> Result<(), Error> {
         if books.is_empty() {
             return Ok(());
         }
 
-        tracing::debug!(library_id, count = books.len(), "batch updating books");
+        tracing::debug!(library_id, count = books.len(), status = %status, "batch updating books");
 
         RUNTIME.block_on(async {
             let mut tx = self.pool.begin().await?;
@@ -2427,7 +2430,7 @@ impl Db {
                     UPDATE books SET
                         title = ?, subtitle = ?, year = ?, language = ?, publisher = ?,
                         series = ?, edition = ?, volume = ?, number = ?, identifier = ?,
-                        file_kind = ?, file_size = ?, added_at = ?
+                        file_kind = ?, file_size = ?, added_at = ?, status = ?
                     WHERE fingerprint = ?
                     "#,
                     book_row.title,
@@ -2443,23 +2446,13 @@ impl Db {
                     book_row.file_kind,
                     book_row.file_size,
                     book_row.added_at,
+                    status,
                     fp_str,
                 )
                 .execute(&mut *tx)
                 .await?;
 
-                sqlx::query!(
-                    r#"
-                    UPDATE library_books SET file_path = ?, absolute_path = ?
-                    WHERE library_id = ? AND book_fingerprint = ?
-                    "#,
-                    book_row.file_path,
-                    book_row.absolute_path,
-                    library_id,
-                    fp_str,
-                )
-                .execute(&mut *tx)
-                .await?;
+                Self::upsert_library_book(&mut tx, library_id, &fp_str, &book_row, info).await?;
 
                 sqlx::query!(
                     r#"DELETE FROM book_authors WHERE book_fingerprint = ?"#,
@@ -2568,8 +2561,10 @@ impl Db {
                        lb.file_path        AS "file_path!: String",
                        lb.absolute_path    AS "absolute_path!: String",
                        lb.mtime            AS "mtime?: UnixTimestamp",
-                       lb.file_size        AS "file_size?: FileSize"
+                       lb.file_size        AS "file_size?: FileSize",
+                       b.status            AS "status!: BookStatus"
                 FROM library_books lb
+                INNER JOIN books b ON b.fingerprint = lb.book_fingerprint
                 WHERE lb.library_id = ?
                 "#,
                 library_id,
@@ -2585,6 +2580,7 @@ impl Db {
                     abs: PathBuf::from(row.absolute_path),
                     mtime: row.mtime,
                     file_size: row.file_size,
+                    status: row.status,
                 })
                 .collect())
         })
@@ -2774,6 +2770,7 @@ impl Db {
                 FROM library_books lb
                 INNER JOIN books b ON b.fingerprint = lb.book_fingerprint
                 WHERE lb.library_id = ?
+                  AND b.status = 'active'
                 "#,
                 library_id,
             )
@@ -2828,6 +2825,7 @@ impl Db {
 mod tests {
     use super::*;
     use crate::db::Database;
+    use crate::library::book_status::BookStatus;
     use crate::metadata::ReaderInfo;
     use chrono::Local;
     use std::collections::BTreeSet;
@@ -3133,7 +3131,7 @@ mod tests {
         info.year = "2025".to_string();
 
         libdb
-            .update_book(library_id, fp, &info)
+            .update_book(library_id, fp, &info, BookStatus::Active)
             .expect("failed to update book");
 
         let books = libdb
@@ -3551,7 +3549,7 @@ mod tests {
         let book_refs: Vec<(Fp, &Info)> = books.iter().map(|(fp, info)| (*fp, info)).collect();
 
         libdb
-            .batch_update_books(library_id, &book_refs)
+            .batch_update_books(library_id, &book_refs, BookStatus::Active)
             .expect("failed to batch update books");
 
         let all_books = libdb
@@ -4046,7 +4044,7 @@ mod tests {
             .batch_insert_books(library_id, &empty_books)
             .expect("empty batch insert should succeed");
         libdb
-            .batch_update_books(library_id, &empty_books)
+            .batch_update_books(library_id, &empty_books, BookStatus::Active)
             .expect("empty batch update should succeed");
         libdb
             .batch_delete_books(library_id, &empty_fps)
@@ -4122,7 +4120,7 @@ mod tests {
             .map(|s| s.to_string())
             .collect();
         libdb
-            .update_book(library_id, fp, &info)
+            .update_book(library_id, fp, &info, BookStatus::Active)
             .expect("failed to update book");
 
         let books = libdb
@@ -4778,5 +4776,431 @@ mod tests {
 
         assert!(fps.contains(&epub_fp), "epub should remain");
         assert!(!fps.contains(&pdf_fp), "pdf should be gone");
+    }
+
+    #[test]
+    fn pending_stub_survives_disallowed_kind_purge_with_reading_state() {
+        use crate::settings::FileExtension;
+
+        let (db, libdb) = create_test_db();
+        let library_id = register_test_library(&libdb, "/tmp/test_pending_purge", "Pending Purge");
+
+        let stub_fp = Fp::from_u64(9101);
+        let fp_str = stub_fp.to_string();
+        let now = crate::db::types::UnixTimestamp::now();
+
+        crate::runtime::RUNTIME.block_on(async {
+            sqlx::query!(
+                r#"
+                INSERT INTO books (fingerprint, file_kind, file_size, added_at, status)
+                VALUES (?, '', 0, ?, ?)
+                "#,
+                fp_str,
+                now,
+                BookStatus::PendingDiscovery,
+            )
+            .execute(db.pool())
+            .await
+            .expect("insert stub");
+
+            sqlx::query!(
+                r#"
+                INSERT INTO library_books (library_id, book_fingerprint, added_to_library_at)
+                VALUES (?, ?, ?)
+                "#,
+                library_id,
+                fp_str,
+                now,
+            )
+            .execute(db.pool())
+            .await
+            .expect("link stub");
+
+            sqlx::query!(
+                r#"
+                INSERT INTO reading_states (
+                    fingerprint, opened, current_page, pages_count, finished, dithered
+                ) VALUES (?, ?, 3, 10, 0, 0)
+                "#,
+                fp_str,
+                now,
+            )
+            .execute(db.pool())
+            .await
+            .expect("insert reading state");
+        });
+
+        let mut allowed = FxHashSet::default();
+        allowed.insert(FileExtension::Epub);
+
+        let purged = libdb
+            .delete_books_with_disallowed_kinds(library_id, &allowed)
+            .expect("purge");
+
+        assert!(purged.is_empty(), "pending stub must not be purged");
+
+        let handles = libdb.list_book_handles(library_id).expect("handles");
+        assert!(
+            handles.iter().any(|h| h.fp == stub_fp),
+            "stub handle should remain for import"
+        );
+        assert_eq!(
+            handles.iter().find(|h| h.fp == stub_fp).unwrap().status,
+            BookStatus::PendingDiscovery
+        );
+
+        let page = crate::runtime::RUNTIME.block_on(async {
+            sqlx::query_scalar!(
+                r#"SELECT current_page AS "current_page!" FROM reading_states WHERE fingerprint = ?"#,
+                fp_str,
+            )
+            .fetch_one(db.pool())
+            .await
+            .expect("reading state")
+        });
+        assert_eq!(page, 3);
+    }
+
+    #[test]
+    fn shelf_view_omits_pending_includes_active() {
+        let (db, libdb) = create_test_db();
+        let library_id = register_test_library(&libdb, "/tmp/test_shelf_status", "Shelf Status");
+
+        let active_fp = Fp::from_u64(9201);
+        let pending_fp = Fp::from_u64(9202);
+
+        let active_info = Info {
+            title: "Active".to_string(),
+            file: FileInfo {
+                path: PathBuf::from("active.epub"),
+                kind: "epub".to_string(),
+                size: 10,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        libdb
+            .batch_insert_books(library_id, &[(active_fp, &active_info)])
+            .expect("insert active");
+
+        let pending_str = pending_fp.to_string();
+        let now = crate::db::types::UnixTimestamp::now();
+        crate::runtime::RUNTIME.block_on(async {
+            sqlx::query!(
+                r#"
+                INSERT INTO books (fingerprint, file_kind, file_size, added_at, status)
+                VALUES (?, '', 0, ?, ?)
+                "#,
+                pending_str,
+                now,
+                BookStatus::PendingDiscovery,
+            )
+            .execute(db.pool())
+            .await
+            .expect("insert pending");
+
+            sqlx::query!(
+                r#"
+                INSERT INTO library_books (library_id, book_fingerprint, added_to_library_at)
+                VALUES (?, ?, ?)
+                "#,
+                library_id,
+                pending_str,
+                now,
+            )
+            .execute(db.pool())
+            .await
+            .expect("link pending");
+        });
+
+        let books = libdb.get_all_books(library_id).expect("shelf books");
+        let titles: Vec<_> = books.iter().map(|b| b.title.as_str()).collect();
+        assert!(titles.contains(&"Active"));
+        assert_eq!(books.len(), 1, "pending must be hidden from shelf queries");
+
+        let handles = libdb.list_book_handles(library_id).expect("handles");
+        assert_eq!(handles.len(), 2, "import handles include pending");
+    }
+
+    #[test]
+    fn update_activates_existing_pending_stub_onto_shelf() {
+        let (db, libdb) = create_test_db();
+        let library_a = register_test_library(&libdb, "/tmp/test_promote_a", "Lib A");
+        let library_b = register_test_library(&libdb, "/tmp/test_promote_b", "Lib B");
+
+        let fp = Fp::from_u64(9301);
+        let fp_str = fp.to_string();
+        let now = crate::db::types::UnixTimestamp::now();
+
+        crate::runtime::RUNTIME.block_on(async {
+            sqlx::query!(
+                r#"
+                INSERT INTO books (fingerprint, file_kind, file_size, added_at, status)
+                VALUES (?, '', 0, ?, ?)
+                "#,
+                fp_str,
+                now,
+                BookStatus::PendingDiscovery,
+            )
+            .execute(db.pool())
+            .await
+            .expect("insert stub");
+
+            sqlx::query!(
+                r#"
+                INSERT INTO library_books (library_id, book_fingerprint, added_to_library_at)
+                VALUES (?, ?, ?)
+                "#,
+                library_a,
+                fp_str,
+                now,
+            )
+            .execute(db.pool())
+            .await
+            .expect("link stub to A");
+        });
+
+        let info = Info {
+            title: "Promoted".to_string(),
+            file: FileInfo {
+                path: PathBuf::from("promoted.epub"),
+                kind: "epub".to_string(),
+                size: 42,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        libdb
+            .update_book(library_b, fp, &info, BookStatus::Active)
+            .expect("update into B should activate pending");
+
+        let shelf_a = libdb.get_all_books(library_a).expect("shelf A");
+        assert!(
+            shelf_a.iter().any(|b| b.title == "Promoted"),
+            "library A should see activated book via shared books row"
+        );
+
+        let shelf_b = libdb.get_all_books(library_b).expect("shelf B");
+        assert!(
+            shelf_b.iter().any(|b| b.title == "Promoted"),
+            "library B should see the book after update+link"
+        );
+
+        let status = crate::runtime::RUNTIME.block_on(async {
+            sqlx::query_scalar!(
+                r#"SELECT status AS "status!: BookStatus" FROM books WHERE fingerprint = ?"#,
+                fp_str,
+            )
+            .fetch_one(db.pool())
+            .await
+            .expect("status")
+        });
+        assert_eq!(status, BookStatus::Active);
+    }
+
+    #[test]
+    fn update_and_batch_update_write_mtime_and_file_size_on_existing_membership() {
+        let (db, libdb) = create_test_db();
+        let library_id =
+            register_test_library(&libdb, "/tmp/test_update_mtime_size", "Update Mtime Size");
+
+        let update_fp = Fp::from_u64(9601);
+        let batch_fp = Fp::from_u64(9602);
+        let now = crate::db::types::UnixTimestamp::now();
+
+        crate::runtime::RUNTIME.block_on(async {
+            for fp in [update_fp, batch_fp] {
+                let fp_str = fp.to_string();
+                sqlx::query!(
+                    r#"
+                    INSERT INTO books (fingerprint, file_kind, file_size, added_at, status)
+                    VALUES (?, '', 0, ?, ?)
+                    "#,
+                    fp_str,
+                    now,
+                    BookStatus::PendingDiscovery,
+                )
+                .execute(db.pool())
+                .await
+                .expect("insert stub");
+
+                sqlx::query!(
+                    r#"
+                    INSERT INTO library_books (library_id, book_fingerprint, added_to_library_at)
+                    VALUES (?, ?, ?)
+                    "#,
+                    library_id,
+                    fp_str,
+                    now,
+                )
+                .execute(db.pool())
+                .await
+                .expect("link stub");
+            }
+        });
+
+        let update_mtime = UnixTimestamp::from(1_700_000_101);
+        let batch_mtime = UnixTimestamp::from(1_700_000_102);
+        let update_info = Info {
+            title: "Updated".to_string(),
+            file: FileInfo {
+                path: PathBuf::from("updated.epub"),
+                absolute_path: PathBuf::from("/tmp/updated.epub"),
+                kind: "epub".to_string(),
+                size: 111,
+                mtime: Some(update_mtime),
+            },
+            ..Default::default()
+        };
+        let batch_info = Info {
+            title: "Batched".to_string(),
+            file: FileInfo {
+                path: PathBuf::from("batched.epub"),
+                absolute_path: PathBuf::from("/tmp/batched.epub"),
+                kind: "epub".to_string(),
+                size: 222,
+                mtime: Some(batch_mtime),
+            },
+            ..Default::default()
+        };
+
+        libdb
+            .update_book(library_id, update_fp, &update_info, BookStatus::Active)
+            .expect("update_book");
+        libdb
+            .batch_update_books(library_id, &[(batch_fp, &batch_info)], BookStatus::Active)
+            .expect("batch_update_books");
+
+        let handles = libdb.list_book_handles(library_id).expect("handles");
+        let updated = handles.iter().find(|h| h.fp == update_fp).expect("updated");
+        assert_eq!(updated.mtime, Some(update_mtime));
+        assert_eq!(updated.file_size, Some(FileSize::from(111)));
+        assert_eq!(updated.relat, PathBuf::from("updated.epub"));
+
+        let batched = handles.iter().find(|h| h.fp == batch_fp).expect("batched");
+        assert_eq!(batched.mtime, Some(batch_mtime));
+        assert_eq!(batched.file_size, Some(FileSize::from(222)));
+        assert_eq!(batched.relat, PathBuf::from("batched.epub"));
+    }
+
+    #[test]
+    fn batch_get_books_includes_pending_discovery_rows() {
+        let (db, libdb) = create_test_db();
+        let library_id =
+            register_test_library(&libdb, "/tmp/test_batch_get_pending", "Pending Fetch");
+
+        let fp = Fp::from_u64(9401);
+        let fp_str = fp.to_string();
+        let now = crate::db::types::UnixTimestamp::now();
+
+        crate::runtime::RUNTIME.block_on(async {
+            sqlx::query!(
+                r#"
+                INSERT INTO books (fingerprint, title, file_kind, file_size, added_at, status)
+                VALUES (?, 'Stub Title', '', 0, ?, ?)
+                "#,
+                fp_str,
+                now,
+                BookStatus::PendingDiscovery,
+            )
+            .execute(db.pool())
+            .await
+            .expect("insert stub");
+
+            sqlx::query!(
+                r#"
+                INSERT INTO library_books (
+                    library_id, book_fingerprint, added_to_library_at, file_path, absolute_path
+                ) VALUES (?, ?, ?, 'stub.epub', '/tmp/stub.epub')
+                "#,
+                library_id,
+                fp_str,
+                now,
+            )
+            .execute(db.pool())
+            .await
+            .expect("link stub");
+        });
+
+        assert!(
+            libdb.get_all_books(library_id).expect("shelf").is_empty(),
+            "pending stays off shelf queries"
+        );
+
+        let fetched = libdb
+            .batch_get_books_by_fingerprints(library_id, &[fp])
+            .expect("fetch");
+        let info = fetched.get(&fp).expect("pending row must be fetchable");
+        assert_eq!(info.title, "Stub Title");
+    }
+
+    #[test]
+    fn count_and_directories_exclude_pending_discovery() {
+        let (db, libdb) = create_test_db();
+        let library_id =
+            register_test_library(&libdb, "/tmp/test_count_dirs_pending", "Pending Count Dirs");
+
+        let pending_fp = Fp::from_u64(9501);
+        let pending_fp_str = pending_fp.to_string();
+        let now = crate::db::types::UnixTimestamp::now();
+
+        crate::runtime::RUNTIME.block_on(async {
+            sqlx::query!(
+                r#"
+                INSERT INTO books (fingerprint, file_kind, file_size, added_at, status)
+                VALUES (?, '', 0, ?, ?)
+                "#,
+                pending_fp_str,
+                now,
+                BookStatus::PendingDiscovery,
+            )
+            .execute(db.pool())
+            .await
+            .expect("insert pending stub");
+
+            sqlx::query!(
+                r#"
+                INSERT INTO library_books (
+                    library_id, book_fingerprint, added_to_library_at, file_path, absolute_path
+                ) VALUES (?, ?, ?, 'pending-only/stub.epub', '/tmp/pending-only/stub.epub')
+                "#,
+                library_id,
+                pending_fp_str,
+                now,
+            )
+            .execute(db.pool())
+            .await
+            .expect("link pending stub");
+        });
+
+        assert_eq!(
+            libdb.count_books(library_id).expect("count"),
+            0,
+            "pending stub must not count as a visible book"
+        );
+        assert!(
+            libdb
+                .list_directories_under_prefix(library_id, Path::new(""))
+                .expect("dirs")
+                .is_empty(),
+            "pending-only folder must not appear"
+        );
+
+        libdb
+            .insert_book(
+                library_id,
+                Fp::from_u64(9502),
+                &make_info("dir1/book.pdf", "Visible", "Author"),
+            )
+            .expect("insert active book");
+
+        assert_eq!(libdb.count_books(library_id).expect("count"), 1);
+        assert_eq!(
+            libdb
+                .list_directories_under_prefix(library_id, Path::new(""))
+                .expect("dirs"),
+            BTreeSet::from([PathBuf::from("dir1")])
+        );
     }
 }

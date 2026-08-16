@@ -57,6 +57,11 @@ const SERVICE_NAME: &str = "cadmus";
 static TRACER_PROVIDER: OnceLock<SdkTracerProvider> = OnceLock::new();
 static LOGGER_PROVIDER: OnceLock<SdkLoggerProvider> = OnceLock::new();
 
+/// Debug import scans emit a span per file. The bounded SDK queue drops
+/// spans when full; 100k covers a 50k+ file walk with headroom.
+#[cfg(debug_assertions)]
+const DEBUG_SPAN_QUEUE_SIZE: usize = 100_000;
+
 /// Initializes OpenTelemetry telemetry with trace and log exporters.
 ///
 /// This function sets up:
@@ -239,14 +244,14 @@ fn build_tracer_provider(endpoint: &str, resource: Resource) -> Result<SdkTracer
         .build()
         .context("can't build otlp span exporter")?;
 
+    let batch_config = opentelemetry_sdk::trace::BatchConfigBuilder::default()
+        .with_max_export_batch_size(1024)
+        .with_scheduled_delay(Duration::from_millis(500));
+    #[cfg(debug_assertions)]
+    let batch_config = batch_config.with_max_queue_size(DEBUG_SPAN_QUEUE_SIZE);
+
     let processor = BatchSpanProcessor::builder(exporter)
-        .with_batch_config(
-            opentelemetry_sdk::trace::BatchConfigBuilder::default()
-                .with_max_queue_size(32768)
-                .with_max_export_batch_size(1024)
-                .with_scheduled_delay(Duration::from_millis(500))
-                .build(),
-        )
+        .with_batch_config(batch_config.build())
         .build();
 
     Ok(SdkTracerProvider::builder()

@@ -490,12 +490,12 @@ async fn insert_rekeyed_book(
         INSERT INTO books (
             fingerprint, title, subtitle, year, language, publisher,
             series, edition, volume, number, identifier,
-            file_kind, file_size, added_at
+            file_kind, file_size, added_at, status
         )
         SELECT
             ?, title, subtitle, year, language, publisher,
             series, edition, volume, number, identifier,
-            file_kind, file_size, added_at
+            file_kind, file_size, added_at, status
         FROM books WHERE fingerprint = ?
         "#,
     )
@@ -786,11 +786,12 @@ async fn ensure_stub_book(
 
     sqlx::query!(
         r#"
-        INSERT OR IGNORE INTO books (fingerprint, file_kind, file_size, added_at)
-        VALUES (?, '', 0, ?)
+        INSERT OR IGNORE INTO books (fingerprint, file_kind, file_size, added_at, status)
+        VALUES (?, '', 0, ?, ?)
         "#,
         fp_str,
         now,
+        crate::library::book_status::BookStatus::PendingDiscovery,
     )
     .execute(&mut **tx)
     .await?;
@@ -860,14 +861,15 @@ async fn insert_book(
 ) -> Result<(), anyhow::Error> {
     let book_row = info_to_book_row(fp, info);
     let fp_str = fp.to_string();
+    let status = crate::library::book_status::BookStatus::Active;
 
     sqlx::query!(
         r#"
         INSERT OR IGNORE INTO books (
             fingerprint, title, subtitle, year, language, publisher,
             series, edition, volume, number, identifier,
-            file_kind, file_size, added_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            file_kind, file_size, added_at, status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
         book_row.fingerprint,
         book_row.title,
@@ -883,6 +885,7 @@ async fn insert_book(
         book_row.file_kind,
         book_row.file_size,
         book_row.added_at,
+        status,
     )
     .execute(&mut **tx)
     .await?;
@@ -1280,15 +1283,12 @@ mod tests {
             run_rehash_fingerprints(&db).await;
         });
 
-        let books = libdb
-            .get_all_books(library_id)
+        let handles = libdb
+            .list_book_handles(library_id)
             .expect("canonicalized legacy books should load");
 
-        assert_eq!(books.len(), 1);
-        assert_eq!(
-            books[0].fp.map(|fp| fp.to_string()).as_deref(),
-            Some(canonical_fp.as_str())
-        );
+        assert_eq!(handles.len(), 1);
+        assert_eq!(handles[0].fp.to_string(), canonical_fp);
 
         RUNTIME.block_on(async {
             let old_row = sqlx::query_scalar!(
@@ -1333,8 +1333,8 @@ mod tests {
                 INSERT INTO books (
                     fingerprint, title, subtitle, year, language, publisher,
                     series, edition, volume, number, identifier,
-                    file_kind, file_size, added_at
-                ) VALUES (?, ?, '', '', '', '', '', '', '', '', '', ?, ?, ?)
+                    file_kind, file_size, added_at, status
+                ) VALUES (?, ?, '', '', '', '', '', '', '', '', '', ?, ?, ?, ?)
                 "#,
             )
             .bind(legacy_fp)
@@ -1342,6 +1342,7 @@ mod tests {
             .bind("epub")
             .bind(9_i64)
             .bind(now)
+            .bind("active")
             .execute(db.pool())
             .await
             .expect("failed to insert legacy book");

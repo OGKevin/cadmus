@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                    INSERT INTO books (fingerprint, file_kind, file_size, added_at, status)\n                    VALUES (?, '', 0, ?, ?)\n                    ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "d1b256480c69f866d88d2e363128dd16f5eb3dc96c46ed618ff3f71727857600"
+}

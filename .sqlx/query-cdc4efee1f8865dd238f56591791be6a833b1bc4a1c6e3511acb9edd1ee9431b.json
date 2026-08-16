@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                        SELECT DISTINCT\n                            substr(lb.file_path, 1, instr(lb.file_path, '/') - 1) AS \"child!: String\"\n                        FROM library_books lb\n                        INNER JOIN books b ON b.fingerprint = lb.book_fingerprint\n                        WHERE lb.library_id = ?1\n                          AND b.status = 'active'\n                          AND lb.file_path LIKE '%/%'\n                        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "child!: String",
+        "ordinal": 0,
+        "type_info": "Null",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "cdc4efee1f8865dd238f56591791be6a833b1bc4a1c6e3511acb9edd1ee9431b"
+}

@@ -2,12 +2,13 @@ use crate::db::types::{FileSize, UnixTimestamp};
 use crate::document::file_kind;
 use crate::fl;
 use crate::helpers::{Fingerprint, Fp, IsHidden};
+use crate::library::book_status::BookStatus;
 use crate::library::db::{Db as LibraryDb, PathUpdate};
 use crate::metadata::{FileInfo, Info, extract_metadata_from_document};
 use crate::settings::ImportSettings;
 use crate::task::ShutdownSignal;
 use crate::view::{Event, NotificationEvent, ViewId};
-use fxhash::FxHashMap;
+use fxhash::{FxHashMap, FxHashSet};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, UNIX_EPOCH};
 use tracing::{debug, error, info};
@@ -71,12 +72,41 @@ struct ScanContext<'a> {
     shutdown: &'a ShutdownSignal,
 }
 
+struct BookWrite {
+    fp: Fp,
+    info: Info,
+}
+
 struct ScanResult {
-    books_to_insert: Vec<(Fp, Info)>,
+    books_to_insert: Vec<BookWrite>,
+    books_to_update: Vec<BookWrite>,
+    books_to_link: Vec<BookWrite>,
     path_updates: Vec<PathUpdate>,
     books_to_delete: Vec<Fp>,
     pending_relocations: Vec<PendingRelocation>,
     thumbnails_to_delete: Vec<Fp>,
+}
+
+impl ScanResult {
+    fn empty() -> Self {
+        Self {
+            books_to_insert: Vec::new(),
+            books_to_update: Vec::new(),
+            books_to_link: Vec::new(),
+            path_updates: Vec::new(),
+            books_to_delete: Vec::new(),
+            pending_relocations: Vec::new(),
+            thumbnails_to_delete: Vec::new(),
+        }
+    }
+
+    fn push_new_book(&mut self, existing: Option<BookStatus>, book: BookWrite) {
+        match existing {
+            None => self.books_to_insert.push(book),
+            Some(BookStatus::PendingDiscovery) => self.books_to_update.push(book),
+            Some(BookStatus::Active) => self.books_to_link.push(book),
+        }
+    }
 }
 
 #[cfg(feature = "emulator")]
@@ -117,7 +147,10 @@ fn walk_files(home: &Path) -> Vec<DirEntry> {
             tracker,
             mtime_by_abs,
             handles_by_fp,
-            handles_by_path
+            handles_by_path,
+            pending_fps,
+            book_statuses,
+            entries
         ),
         fields(total)
     )
@@ -133,6 +166,8 @@ fn scan_entries(
     mtime_by_abs: &FxHashMap<PathBuf, (UnixTimestamp, FileSize)>,
     handles_by_fp: &mut FxHashMap<Fp, (PathBuf, PathBuf)>,
     handles_by_path: &mut FxHashMap<PathBuf, Fp>,
+    pending_fps: &FxHashSet<Fp>,
+    book_statuses: &FxHashMap<Fp, BookStatus>,
 ) -> Option<ScanResult> {
     let total = entries.len();
     tracing::Span::current().record("total", total);
@@ -141,11 +176,7 @@ fn scan_entries(
     let mut mtime_miss_count = 0u32;
     debug!(mtime_map_size = mtime_by_abs.len(), "starting scan");
 
-    let mut books_to_insert: Vec<(Fp, Info)> = Vec::new();
-    let mut path_updates: Vec<PathUpdate> = Vec::new();
-    let mut books_to_delete: Vec<Fp> = Vec::new();
-    let mut pending_relocations: Vec<PendingRelocation> = Vec::new();
-    let mut thumbnails_to_delete: Vec<Fp> = Vec::new();
+    let mut result = ScanResult::empty();
 
     for (idx, entry) in entries.iter().enumerate() {
         #[cfg(feature = "tracing")]
@@ -162,6 +193,9 @@ fn scan_entries(
         let kind = file_kind(path);
         let is_known_to_db = handles_by_path.contains_key(relat);
         let allowed_kind = kind.filter(|k| settings.is_kind_allowed(*k));
+        let path_is_pending = handles_by_path
+            .get(relat)
+            .is_some_and(|fp| pending_fps.contains(fp));
 
         if !is_known_to_db && allowed_kind.is_none() {
             send_progress(ctx.hub, ctx.notif_id, tracker, idx, total);
@@ -184,7 +218,10 @@ fn scan_entries(
             .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
             .map(|d| UnixTimestamp::from((d.as_secs().div_ceil(2) * 2) as i64));
 
-        if !force && let Some(mtime) = current_mtime {
+        if !force
+            && !path_is_pending
+            && let Some(mtime) = current_mtime
+        {
             match mtime_by_abs.get(path) {
                 Some(&(stored_mtime, stored_size)) => {
                     if stored_mtime == mtime && stored_size == current_size {
@@ -241,13 +278,43 @@ fn scan_entries(
                 handles_by_fp.insert(fp, (relat.to_path_buf(), path.to_path_buf()));
             }
 
-            path_updates.push(PathUpdate {
+            result.path_updates.push(PathUpdate {
                 fp,
                 relat: relat.to_path_buf(),
                 abs: path.to_path_buf(),
                 mtime: current_mtime,
                 file_size: Some(current_size),
             });
+
+            if pending_fps.contains(&fp) {
+                if let Some(kind) = allowed_kind {
+                    info!(fp = %fp, path = %relat.display(), "filling pending discovery book");
+                    let size = i64::from(current_size) as u64;
+                    let mut book_info = Info {
+                        file: FileInfo {
+                            path: relat.to_path_buf(),
+                            absolute_path: path.to_path_buf(),
+                            kind: kind.as_str().to_owned(),
+                            size,
+                            mtime: current_mtime,
+                        },
+                        ..Default::default()
+                    };
+                    if settings.metadata_kinds.contains(&book_info.file.kind) {
+                        extract_metadata_from_document(home, &mut book_info, install_dir);
+                    }
+                    result.books_to_update.push(BookWrite {
+                        fp,
+                        info: book_info,
+                    });
+                } else {
+                    debug!(
+                        fp = %fp,
+                        path = %relat.display(),
+                        "pending book found but kind not allowed; leaving pending"
+                    );
+                }
+            }
 
             send_progress(ctx.hub, ctx.notif_id, tracker, idx, total);
             continue;
@@ -265,16 +332,18 @@ fn scan_entries(
             handles_by_path.remove(relat);
             handles_by_fp.insert(fp, (relat.to_path_buf(), path.to_path_buf()));
             handles_by_path.insert(relat.to_path_buf(), fp);
-            books_to_delete.push(old_fp);
+            result.books_to_delete.push(old_fp);
 
-            pending_relocations.push(PendingRelocation::FingerprintChanged {
-                new_fp: fp,
-                old_fp,
-                file_size: i64::from(current_size) as u64,
-            });
+            result
+                .pending_relocations
+                .push(PendingRelocation::FingerprintChanged {
+                    new_fp: fp,
+                    old_fp,
+                    file_size: i64::from(current_size) as u64,
+                });
 
-            thumbnails_to_delete.push(old_fp);
-            path_updates.push(PathUpdate {
+            result.thumbnails_to_delete.push(old_fp);
+            result.path_updates.push(PathUpdate {
                 fp,
                 relat: relat.to_path_buf(),
                 abs: path.to_path_buf(),
@@ -303,7 +372,13 @@ fn scan_entries(
             }
             handles_by_fp.insert(fp, (relat.to_path_buf(), path.to_path_buf()));
             handles_by_path.insert(relat.to_path_buf(), fp);
-            books_to_insert.push((fp, book_info));
+            result.push_new_book(
+                book_statuses.get(&fp).copied(),
+                BookWrite {
+                    fp,
+                    info: book_info,
+                },
+            );
         }
 
         send_progress(ctx.hub, ctx.notif_id, tracker, idx, total);
@@ -317,13 +392,7 @@ fn scan_entries(
         "scan complete"
     );
 
-    Some(ScanResult {
-        books_to_insert,
-        path_updates,
-        books_to_delete,
-        pending_relocations,
-        thumbnails_to_delete,
-    })
+    Some(result)
 }
 
 fn send_progress(
@@ -349,7 +418,8 @@ fn send_progress(
         install_dir,
         settings,
         pending_relocations,
-        books_to_insert
+        result,
+        book_statuses
     ))
 )]
 fn resolve_relocations(
@@ -359,7 +429,8 @@ fn resolve_relocations(
     install_dir: &Path,
     settings: &ImportSettings,
     pending_relocations: Vec<PendingRelocation>,
-    books_to_insert: &mut Vec<(Fp, Info)>,
+    result: &mut ScanResult,
+    book_statuses: &FxHashMap<Fp, BookStatus>,
 ) {
     let old_fps: Vec<Fp> = pending_relocations
         .iter()
@@ -382,7 +453,10 @@ fn resolve_relocations(
                         extract_metadata_from_document(home, &mut info, install_dir);
                     }
                     info.file.size = file_size;
-                    books_to_insert.push((new_fp, info));
+                    result.push_new_book(
+                        book_statuses.get(&new_fp).copied(),
+                        BookWrite { fp: new_fp, info },
+                    );
                 }
             }
         }
@@ -401,54 +475,56 @@ fn find_deleted_books(handles_by_fp: &FxHashMap<Fp, (PathBuf, PathBuf)>, home: &
         .collect()
 }
 
-#[cfg_attr(
-    feature = "tracing",
-    tracing::instrument(skip(
-        db,
-        books_to_insert,
-        path_updates,
-        books_to_delete,
-        thumbnails_to_delete
-    ))
-)]
-fn flush_to_db(
-    db: &LibraryDb,
-    library_id: i64,
-    books_to_insert: Vec<(Fp, Info)>,
-    path_updates: Vec<PathUpdate>,
-    books_to_delete: Vec<Fp>,
-    thumbnails_to_delete: Vec<Fp>,
-) {
-    if let Err(e) = db.batch_delete_thumbnails(&thumbnails_to_delete) {
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(db, result)))]
+fn flush_to_db(db: &LibraryDb, library_id: i64, result: ScanResult) {
+    if let Err(e) = db.batch_delete_thumbnails(&result.thumbnails_to_delete) {
         error!(
             error = %e,
-            count = thumbnails_to_delete.len(),
+            count = result.thumbnails_to_delete.len(),
             "batch delete thumbnails failed"
         );
     }
 
-    if !books_to_insert.is_empty() {
-        let book_refs: Vec<(Fp, &Info)> = books_to_insert
+    if !result.books_to_insert.is_empty() {
+        let book_refs: Vec<(Fp, &Info)> = result
+            .books_to_insert
             .iter()
-            .map(|(fp, info)| (*fp, info))
+            .map(|book| (book.fp, &book.info))
             .collect();
         if let Err(e) = db.batch_insert_books(library_id, &book_refs) {
             error!(error = %e, count = book_refs.len(), "batch insert failed");
         }
     }
 
-    if let Err(e) = db.batch_update_book_paths(library_id, &path_updates) {
+    if !result.books_to_update.is_empty() {
+        let book_refs: Vec<(Fp, &Info)> = result
+            .books_to_update
+            .iter()
+            .map(|book| (book.fp, &book.info))
+            .collect();
+        if let Err(e) = db.batch_update_books(library_id, &book_refs, BookStatus::Active) {
+            error!(error = %e, count = book_refs.len(), "batch update failed");
+        }
+    }
+
+    for book in &result.books_to_link {
+        if let Err(e) = db.link_book_to_library(library_id, book.fp, &book.info) {
+            error!(fp = %book.fp, error = %e, "link book to library failed");
+        }
+    }
+
+    if let Err(e) = db.batch_update_book_paths(library_id, &result.path_updates) {
         error!(
             error = %e,
-            count = path_updates.len(),
+            count = result.path_updates.len(),
             "batch update book paths failed"
         );
     }
 
-    if !books_to_delete.is_empty() {
-        if let Err(e) = db.batch_delete_books(library_id, &books_to_delete) {
-            error!(error = %e, count = books_to_delete.len(), "batch delete failed");
-        }
+    if !result.books_to_delete.is_empty()
+        && let Err(e) = db.batch_delete_books(library_id, &result.books_to_delete)
+    {
+        error!(error = %e, count = result.books_to_delete.len(), "batch delete failed");
     }
 
     if let Err(e) = db.compute_sort_keys(library_id) {
@@ -481,6 +557,21 @@ pub fn run(
     notif_id: ViewId,
     shutdown: &ShutdownSignal,
 ) {
+    info!(
+        library_id,
+        home = %home.display(),
+        force,
+        "import starting"
+    );
+    let started = Instant::now();
+    let log_finished = || {
+        info!(
+            library_id,
+            elapsed_ms = started.elapsed().as_millis() as u64,
+            "import finished"
+        );
+    };
+
     hub.send(
         (Event::Notification(NotificationEvent::ShowPinned(
             notif_id,
@@ -495,6 +586,7 @@ pub fn run(
         Err(e) => {
             error!(error = %e, "failed to load book handles for import");
             hub.send((Event::Close(notif_id)).into()).ok();
+            log_finished();
             return;
         }
     };
@@ -513,6 +605,11 @@ pub fn run(
             Some((h.abs.clone(), (mtime, size)))
         })
         .collect();
+    let mut pending_fps: FxHashSet<Fp> = handles
+        .iter()
+        .filter(|h| h.status == BookStatus::PendingDiscovery)
+        .map(|h| h.fp)
+        .collect();
 
     let purged_fps = db
         .delete_books_with_disallowed_kinds(library_id, &settings.allowed_kinds)
@@ -522,6 +619,7 @@ pub fn run(
         });
 
     for fp in &purged_fps {
+        pending_fps.remove(fp);
         if let Some((relat, _abs)) = handles_by_fp.remove(fp) {
             handles_by_path.remove(&relat);
         }
@@ -543,6 +641,8 @@ pub fn run(
 
     let mut tracker = ProgressTracker::new();
 
+    let book_statuses = db.all_book_statuses().unwrap_or_default();
+
     let Some(mut result) = scan_entries(
         home,
         install_dir,
@@ -554,8 +654,11 @@ pub fn run(
         &mtime_by_abs,
         &mut handles_by_fp,
         &mut handles_by_path,
+        &pending_fps,
+        &book_statuses,
     ) else {
         hub.send((Event::Close(notif_id)).into()).ok();
+        log_finished();
         return;
     };
 
@@ -569,21 +672,16 @@ pub fn run(
             home,
             install_dir,
             settings,
-            result.pending_relocations,
-            &mut result.books_to_insert,
+            std::mem::take(&mut result.pending_relocations),
+            &mut result,
+            &book_statuses,
         );
     }
 
-    flush_to_db(
-        db,
-        library_id,
-        result.books_to_insert,
-        result.path_updates,
-        result.books_to_delete,
-        result.thumbnails_to_delete,
-    );
+    flush_to_db(db, library_id, result);
 
     hub.send((Event::Close(notif_id)).into()).ok();
+    log_finished();
 }
 
 #[cfg(test)]
@@ -902,6 +1000,105 @@ mod tests {
         assert!(
             paths.iter().any(|p| p.ends_with("book.epub")),
             "epub should still be present"
+        );
+    }
+
+    #[test]
+    fn pending_discovery_fills_and_promotes_on_import() {
+        use crate::helpers::Fingerprint;
+        use crate::library::book_status::BookStatus;
+        use crate::settings::FileExtension;
+        use fxhash::FxHashSet;
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db = create_migrated_db();
+        let book_path = dir.path().join("pending.epub");
+        std::fs::write(&book_path, b"pending discovery content").expect("write epub");
+        let fp = book_path.fingerprint().expect("fingerprint");
+        let fp_str = fp.to_string();
+        let file_meta = std::fs::metadata(&book_path).expect("metadata");
+        let file_size = file_meta.len() as i64;
+        let file_mtime = file_meta
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| UnixTimestamp::from((d.as_secs().div_ceil(2) * 2) as i64))
+            .expect("mtime");
+        let now = UnixTimestamp::now();
+
+        let lib = Library::new(dir.path(), &db, "test").expect("library");
+
+        crate::runtime::RUNTIME.block_on(async {
+            sqlx::query!(
+                r#"
+                INSERT INTO books (fingerprint, file_kind, file_size, added_at, status)
+                VALUES (?, '', 0, ?, ?)
+                "#,
+                fp_str,
+                now,
+                BookStatus::PendingDiscovery,
+            )
+            .execute(db.pool())
+            .await
+            .expect("insert stub");
+
+            let abs = book_path.to_string_lossy().into_owned();
+            sqlx::query!(
+                r#"
+                INSERT INTO library_books (
+                    library_id, book_fingerprint, added_to_library_at,
+                    file_path, absolute_path, mtime, file_size
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                "#,
+                lib.library_id,
+                fp_str,
+                now,
+                "pending.epub",
+                abs,
+                file_mtime,
+                file_size,
+            )
+            .execute(db.pool())
+            .await
+            .expect("link stub with matching mtime path");
+        });
+
+        let mut allowed: FxHashSet<FileExtension> = FxHashSet::default();
+        allowed.insert(FileExtension::Epub);
+        let settings = ImportSettings {
+            allowed_kinds: allowed,
+            ..ImportSettings::default()
+        };
+
+        let (tx, rx) = std::sync::mpsc::channel();
+        let notif_id = ViewId::MessageNotif(0);
+        let shutdown = ShutdownSignal::never();
+
+        run(
+            &lib.db,
+            lib.library_id,
+            dir.path(),
+            Path::new(""),
+            &settings,
+            false,
+            &tx,
+            notif_id,
+            &shutdown,
+        );
+        drop(tx);
+        let _: Vec<Event> = rx.try_iter().map(|message| message.event).collect();
+
+        let handles = lib.db.list_book_handles(lib.library_id).expect("handles");
+        let handle = handles
+            .iter()
+            .find(|h| h.fp == fp)
+            .expect("pending book handle");
+        assert_eq!(handle.status, BookStatus::Active);
+
+        let books = lib.db.get_all_books(lib.library_id).expect("shelf");
+        assert!(
+            books.iter().any(|b| b.file.kind == "epub"),
+            "filled book should appear on shelf with kind"
         );
     }
 }

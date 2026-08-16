@@ -1,3 +1,4 @@
+pub(crate) mod book_status;
 pub(crate) mod db;
 pub mod importer;
 mod migrations;
@@ -302,7 +303,10 @@ impl Library {
             }
         };
 
-        if let Err(e) = self.db.insert_book(self.library_id, fp, &info) {
+        if let Err(e) = self
+            .db
+            .ensure_active_book_in_library(self.library_id, fp, &info)
+        {
             error!(fp = %fp, error = %e, "failed to insert book into database");
             return;
         }
@@ -331,7 +335,12 @@ impl Library {
             info.file.path = new_path.to_path_buf();
             info.file.absolute_path = dest.clone();
 
-            if let Err(e) = self.db.update_book(self.library_id, fp, &info) {
+            if let Err(e) = self.db.update_book(
+                self.library_id,
+                fp,
+                &info,
+                crate::library::book_status::BookStatus::Active,
+            ) {
                 error!(fp = %fp, error = %e, "failed to update book path in database");
             } else {
                 debug!(fp = %fp, new_path = %new_path.display(), "book path updated in database");
@@ -413,7 +422,10 @@ impl Library {
             info.file.path = dest_path.to_path_buf();
             info.file.absolute_path = dest.clone();
 
-            if let Err(e) = other.db.insert_book(other.library_id, fp, &info) {
+            if let Err(e) = other
+                .db
+                .ensure_active_book_in_library(other.library_id, fp, &info)
+            {
                 error!(fp = %fp, error = %e, "failed to insert copied book into target database");
             } else {
                 debug!(fp = %fp, "book copied to target database");
@@ -466,7 +478,10 @@ impl Library {
             info.file.path = dest_path.to_path_buf();
             info.file.absolute_path = dest.clone();
 
-            if let Err(e) = other.db.insert_book(other.library_id, fp, &info) {
+            if let Err(e) = other
+                .db
+                .ensure_active_book_in_library(other.library_id, fp, &info)
+            {
                 error!(fp = %fp, error = %e, "failed to insert moved book into target database");
             } else {
                 debug!(fp = %fp, "book moved to target database");
@@ -522,7 +537,11 @@ impl Library {
             .filter_map(|info| info.fp.map(|fp| (fp, info)))
             .collect();
 
-        if let Err(e) = self.db.batch_update_books(self.library_id, &refs) {
+        if let Err(e) = self.db.batch_update_books(
+            self.library_id,
+            &refs,
+            crate::library::book_status::BookStatus::Active,
+        ) {
             error!(error = %e, "failed to persist apply changes to database");
         }
     }
