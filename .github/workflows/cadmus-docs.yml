@@ -78,15 +78,15 @@ jobs:
             echo "GIT_VERSION=$(git describe --tags --always)"
           } >> "$GITHUB_ENV"
 
-      - name: Install doc tools
-        uses: ./.github/actions/install-doc-tools
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
       - uses: ./.github/actions/cargo-cache
         with:
           cachekey: ${{ steps.rust-toolchain.outputs.cachekey }}
           mode: restore
+
+      - name: Install doc tools
+        uses: ./.github/actions/install-doc-tools
+        with:
+          node-version: ${{ env.NODE_VERSION }}
 
       - name: Build documentation portal
         env:
