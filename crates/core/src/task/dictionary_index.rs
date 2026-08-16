@@ -167,7 +167,7 @@ impl DictionaryIndexTask {
             }
 
             return Some((
-                row.dict_id?,
+                row.dict_id,
                 row.indexed_lines as u64,
                 row.total_lines as u64,
                 false,
@@ -201,15 +201,16 @@ impl DictionaryIndexTask {
             return None;
         }
 
-        let dict_id: i64 = RUNTIME.block_on(async {
-            sqlx::query_scalar!(
-                "SELECT dict_id FROM dictionary_index_meta WHERE fingerprint = ?",
-                fp_str
-            )
-            .fetch_one(&pool)
-            .await
-            .ok()?
-        })?;
+        let dict_id: i64 = RUNTIME
+            .block_on(async {
+                sqlx::query_scalar!(
+                    "SELECT dict_id FROM dictionary_index_meta WHERE fingerprint = ?",
+                    fp_str
+                )
+                .fetch_one(&pool)
+                .await
+            })
+            .ok()?;
 
         Some((dict_id, 0u64, total as u64, true))
     }
@@ -551,13 +552,7 @@ impl DictionaryIndexTask {
                     continue;
                 }
 
-                let dict_id = match row.dict_id {
-                    Some(id) => id,
-                    None => {
-                        tracing::warn!(fingerprint = %fp, "dict_id missing for stale fingerprint, skipping");
-                        continue;
-                    }
-                };
+                let dict_id = row.dict_id;
 
                 tracing::info!(fingerprint = %fp, "removing stale dictionary index");
 

@@ -6,7 +6,13 @@
       {
         "name": "thumbnail_data",
         "ordinal": 0,
-        "type_info": "Blob"
+        "type_info": "Blob",
+        "origin": {
+          "Table": {
+            "table": "thumbnails",
+            "name": "thumbnail_data"
+          }
+        }
       }
     ],
     "parameters": {

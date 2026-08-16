@@ -187,12 +187,11 @@ impl Db {
         tracing::debug!(path = %path, "looking up library by path");
 
         RUNTIME.block_on(async {
-            let id: Option<Option<i64>> =
-                sqlx::query_scalar!(r#"SELECT id FROM libraries WHERE path = ?"#, path)
-                    .fetch_optional(&self.pool)
-                    .await?;
+            let id = sqlx::query_scalar!(r#"SELECT id FROM libraries WHERE path = ?"#, path)
+                .fetch_optional(&self.pool)
+                .await?;
 
-            Ok(id.flatten())
+            Ok(id)
         })
     }
 

@@ -42,7 +42,10 @@ impl DbIndexReader {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(headword = %headword)))]
     async fn exact_scoped(&self, headword: &str, id: i64) -> Vec<Entry> {
         match sqlx::query!(
-            r#"SELECT word, offset, size, original
+            r#"SELECT word,
+                      offset AS "offset!",
+                      size AS "size!",
+                      original
                FROM dictionary_index_entry
                WHERE dict_id = ? AND word = ?"#,
             id,
@@ -70,7 +73,10 @@ impl DbIndexReader {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(headword = %headword)))]
     async fn exact_global(&self, headword: &str) -> Vec<Entry> {
         match sqlx::query!(
-            r#"SELECT word, offset, size, original
+            r#"SELECT word,
+                      offset AS "offset!",
+                      size AS "size!",
+                      original
                FROM dictionary_index_entry
                WHERE word = ?"#,
             headword,
@@ -97,7 +103,10 @@ impl DbIndexReader {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(headword = %headword, prefix = %prefix)))]
     async fn fuzzy_scoped(&self, headword: &str, prefix: &str, id: i64) -> Vec<Entry> {
         match sqlx::query!(
-            r#"SELECT word, offset, size, original
+            r#"SELECT word,
+                      offset AS "offset!",
+                      size AS "size!",
+                      original
                FROM dictionary_index_entry
                WHERE dict_id = ? AND word LIKE ? || '%' ESCAPE '\'"#,
             id,
@@ -126,7 +135,10 @@ impl DbIndexReader {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(headword = %headword, prefix = %prefix)))]
     async fn fuzzy_global(&self, headword: &str, prefix: &str) -> Vec<Entry> {
         match sqlx::query!(
-            r#"SELECT word, offset, size, original
+            r#"SELECT word,
+                      offset AS "offset!",
+                      size AS "size!",
+                      original
                FROM dictionary_index_entry
                WHERE word LIKE ? || '%' ESCAPE '\'"#,
             prefix,

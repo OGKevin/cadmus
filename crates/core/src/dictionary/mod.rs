@@ -126,18 +126,16 @@ pub fn resolve_dict_id(database: &Database, fingerprint: &Fp) -> Option<i64> {
     let fp_str = fingerprint.to_string();
     let pool = database.pool().clone();
 
-    crate::runtime::RUNTIME
-        .block_on(async {
-            sqlx::query_scalar!(
-                "SELECT dict_id FROM dictionary_index_meta WHERE fingerprint = ?",
-                fp_str
-            )
-            .fetch_optional(&pool)
-            .await
-            .ok()
-            .flatten()
-        })
+    crate::runtime::RUNTIME.block_on(async {
+        sqlx::query_scalar!(
+            "SELECT dict_id FROM dictionary_index_meta WHERE fingerprint = ?",
+            fp_str
+        )
+        .fetch_optional(&pool)
+        .await
+        .ok()
         .flatten()
+    })
 }
 
 /// Load dictionary using a database-backed index reader.
