@@ -64,6 +64,19 @@ fn drain_bus(bus: &mut Bus, tx: &Hub) {
     }
 }
 
+struct MainLoopSoftSuspendGuard {
+    _lease: cadmus_core::device::soft_suspend::SoftSuspendLease,
+}
+
+impl Drop for MainLoopSoftSuspendGuard {
+    fn drop(&mut self) {
+        tracing::trace!(
+            soft_suspend_lease = "main-loop",
+            "soft-suspend lease released for main-loop event"
+        );
+    }
+}
+
 /// Keeps the root view in sync after a rotation changes framebuffer dimensions.
 fn sync_view_after_rotation(
     view: &mut Box<dyn View>,
@@ -378,12 +391,35 @@ pub fn run() -> Result<(), Error> {
     tracing::info!(duration = ?start_time.elapsed(), "App started");
 
     while let Ok(evt) = rx.recv() {
+        let skip_main_loop_lease =
+            AppDevice::should_skip_main_loop_soft_suspend_lease(&context, &evt);
+        let _soft_suspend = if skip_main_loop_lease {
+            tracing::trace!(
+                event = ?evt,
+                "skipping main-loop soft-suspend lease during deep-idle cycle"
+            );
+            None
+        } else {
+            tracing::trace!(
+                soft_suspend_lease = "main-loop",
+                event = ?evt,
+                "soft-suspend lease acquired for main-loop event"
+            );
+            Some(MainLoopSoftSuspendGuard {
+                _lease: context.soft_suspend_session.acquire("main-loop"),
+            })
+        };
+
         #[cfg(feature = "tracing")]
         let span = tracing::trace_span!("main-event-loop", event = ?evt);
         #[cfg(feature = "tracing")]
         let _enter = span.enter();
         #[cfg(feature = "tracing")]
-        tracing::trace!(event = ?evt, "handling event");
+        tracing::trace!(
+            soft_suspend_lease = "main-loop",
+            event = ?evt,
+            "handling event"
+        );
 
         background_tasks.handle_event(&evt, &tx, &context);
 
@@ -840,6 +876,8 @@ pub fn run() -> Result<(), Error> {
         process_render_queue(view.as_ref(), &mut rq, &mut context, &mut updating);
         drain_bus(&mut bus, &tx);
     }
+
+    let _shutdown_wake = context.soft_suspend_session.acquire("shutdown");
 
     background_tasks.stop_all();
 
