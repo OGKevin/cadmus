@@ -1,7 +1,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Cadmus Documentation\n"
-"POT-Creation-Date: 2026-08-15T06:09:52+02:00\n"
+"POT-Creation-Date: 2026-08-15T14:48:31+02:00\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
@@ -82,7 +82,7 @@ msgstr ""
 msgid "Importing"
 msgstr ""
 
-#: src/SUMMARY.md:22 src/settings/index.md:574 src/reader/index.md:1
+#: src/SUMMARY.md:22 src/settings/index.md:634 src/reader/index.md:1
 msgid "Reader"
 msgstr ""
 
@@ -106,123 +106,124 @@ msgstr ""
 msgid "Automatic Frontlight"
 msgstr ""
 
-#: src/SUMMARY.md:28 src/database-backup.md:1
-msgid "Database Backup"
-msgstr ""
-
-#: src/SUMMARY.md:29 src/installation/ota.md:86 src/troubleshooting/index.md:1
-msgid "Troubleshooting"
-msgstr ""
-
-#: src/SUMMARY.md:30
-msgid "CHANGELOG"
-msgstr ""
-
-#: src/SUMMARY.md:34
-msgid "Contributor Guide"
-msgstr ""
-
-#: src/SUMMARY.md:36
-msgid "Development Environment"
-msgstr ""
-
-#: src/SUMMARY.md:37
-msgid "SSH"
-msgstr ""
-
-#: src/SUMMARY.md:38
-msgid "Code Style and Linting"
-msgstr ""
-
-#: src/SUMMARY.md:39
-msgid "Event System"
-msgstr ""
-
-#: src/SUMMARY.md:40
-msgid "WiFi Leases"
-msgstr ""
-
-#: src/SUMMARY.md:41
-msgid "Device"
-msgstr ""
-
-#: src/SUMMARY.md:42
-msgid "Suspend"
-msgstr ""
-
-#: src/SUMMARY.md:43
-msgid "Suspend orchestrator"
-msgstr ""
-
-#: src/SUMMARY.md:44
+#: src/SUMMARY.md:28 src/SUMMARY.md:45 src/soft-suspend.md:1
+#: src/soft-suspend.md:73
 msgid "Soft Suspend"
 msgstr ""
 
-#: src/SUMMARY.md:45
+#: src/SUMMARY.md:29 src/database-backup.md:1
+msgid "Database Backup"
+msgstr ""
+
+#: src/SUMMARY.md:30 src/installation/ota.md:86 src/troubleshooting/index.md:1
+msgid "Troubleshooting"
+msgstr ""
+
+#: src/SUMMARY.md:31
+msgid "CHANGELOG"
+msgstr ""
+
+#: src/SUMMARY.md:35
+msgid "Contributor Guide"
+msgstr ""
+
+#: src/SUMMARY.md:37
+msgid "Development Environment"
+msgstr ""
+
+#: src/SUMMARY.md:38
+msgid "SSH"
+msgstr ""
+
+#: src/SUMMARY.md:39
+msgid "Code Style and Linting"
+msgstr ""
+
+#: src/SUMMARY.md:40
+msgid "Event System"
+msgstr ""
+
+#: src/SUMMARY.md:41
+msgid "WiFi Leases"
+msgstr ""
+
+#: src/SUMMARY.md:42
+msgid "Device"
+msgstr ""
+
+#: src/SUMMARY.md:43
+msgid "Suspend"
+msgstr ""
+
+#: src/SUMMARY.md:44
+msgid "Suspend orchestrator"
+msgstr ""
+
+#: src/SUMMARY.md:46
 msgid "Kobo suspend"
 msgstr ""
 
-#: src/SUMMARY.md:46 src/settings/index.md:1084
+#: src/SUMMARY.md:47 src/settings/index.md:1144
 msgid "Telemetry"
 msgstr ""
 
-#: src/SUMMARY.md:47
+#: src/SUMMARY.md:48
 msgid "Logging"
 msgstr ""
 
-#: src/SUMMARY.md:48
+#: src/SUMMARY.md:49
 msgid "Tracing"
 msgstr ""
 
-#: src/SUMMARY.md:49
+#: src/SUMMARY.md:50
 msgid "Profiling"
 msgstr ""
 
-#: src/SUMMARY.md:50
+#: src/SUMMARY.md:51
 msgid "Website"
 msgstr ""
 
-#: src/SUMMARY.md:51
+#: src/SUMMARY.md:52
 msgid "User guide"
 msgstr ""
 
-#: src/SUMMARY.md:52
+#: src/SUMMARY.md:53
 msgid "Translations"
 msgstr ""
 
-#: src/SUMMARY.md:53
+#: src/SUMMARY.md:54
 msgid "For developers"
 msgstr ""
 
-#: src/SUMMARY.md:54
+#: src/SUMMARY.md:55
 msgid "SQLite & SQLx"
 msgstr ""
 
-#: src/SUMMARY.md:55
+#: src/SUMMARY.md:56
 msgid "Library Database"
 msgstr ""
 
-#: src/SUMMARY.md:56
+#: src/SUMMARY.md:57
 msgid "Runtime Migrations"
 msgstr ""
 
-#: src/SUMMARY.md:60
+#: src/SUMMARY.md:61
 msgid "Investigations"
 msgstr ""
 
-#: src/SUMMARY.md:62
+#: src/SUMMARY.md:63
 msgid "Intro"
 msgstr ""
 
-#: src/SUMMARY.md:63
+#: src/SUMMARY.md:64
 msgid "DHCP IP Address Changes on WiFi Toggle"
 msgstr ""
 
-#: src/SUMMARY.md:64
+#: src/SUMMARY.md:65
 msgid "Reading IP and ESSID via dhcpcd-dbus"
 msgstr ""
 
-#: src/SUMMARY.md:65
+#: src/SUMMARY.md:66
 msgid "Soft suspend via autosleep and wake_lock"
 msgstr ""
 
@@ -1136,722 +1137,776 @@ msgstr ""
 msgid "Example Full Config"
 msgstr ""
 
-#: src/settings/index.md:302
+#: src/settings/index.md:310
 msgid "General Settings"
 msgstr ""
 
-#: src/settings/index.md:304
+#: src/settings/index.md:312
 msgid "`keyboard-layout`"
 msgstr ""
 
-#: src/settings/index.md:306 src/settings/index.md:322
-#: src/settings/index.md:336 src/settings/index.md:355
-#: src/settings/index.md:370 src/settings/index.md:384
-#: src/settings/index.md:406 src/settings/index.md:422
-#: src/settings/index.md:474 src/settings/index.md:494
-#: src/settings/index.md:510 src/settings/index.md:526
-#: src/settings/index.md:542 src/settings/index.md:558
-#: src/settings/index.md:582 src/settings/index.md:846
-#: src/settings/index.md:884 src/settings/index.md:908
-#: src/settings/index.md:925 src/settings/index.md:931
-#: src/settings/index.md:937 src/settings/index.md:945
-#: src/settings/index.md:970 src/settings/index.md:987
-#: src/settings/index.md:1000 src/settings/index.md:1008
-#: src/settings/index.md:1027 src/settings/index.md:1055
-#: src/settings/index.md:1112 src/settings/index.md:1127
+#: src/settings/index.md:314 src/settings/index.md:330
+#: src/settings/index.md:344 src/settings/index.md:363
+#: src/settings/index.md:378 src/settings/index.md:392
+#: src/settings/index.md:414 src/settings/index.md:430
+#: src/settings/index.md:482 src/settings/index.md:554
+#: src/settings/index.md:570 src/settings/index.md:586
+#: src/settings/index.md:602 src/settings/index.md:618
+#: src/settings/index.md:642 src/settings/index.md:906
+#: src/settings/index.md:944 src/settings/index.md:968
+#: src/settings/index.md:985 src/settings/index.md:991
+#: src/settings/index.md:997 src/settings/index.md:1005
+#: src/settings/index.md:1030 src/settings/index.md:1047
+#: src/settings/index.md:1060 src/settings/index.md:1068
+#: src/settings/index.md:1087 src/settings/index.md:1115
+#: src/settings/index.md:1172 src/settings/index.md:1187
 msgid "✏️"
 msgstr ""
 
-#: src/settings/index.md:308
+#: src/settings/index.md:316
 msgid "Keyboard layout to use for text input."
 msgstr ""
 
-#: src/settings/index.md:310
+#: src/settings/index.md:318
 msgid "Possible values: `\"English\"`, `\"Russian\"`."
 msgstr ""
 
-#: src/settings/index.md:320
+#: src/settings/index.md:328
 msgid "`sleep-cover`"
 msgstr ""
 
-#: src/settings/index.md:324
+#: src/settings/index.md:332
 msgid "Handle the magnetic sleep cover event."
 msgstr ""
 
-#: src/settings/index.md:334
+#: src/settings/index.md:342
 msgid "`auto-share`"
 msgstr ""
 
-#: src/settings/index.md:338
+#: src/settings/index.md:346
 msgid ""
 "Automatically enter shared mode when connected to a computer, skipping the "
 "\"Share storage via USB?\" prompt."
 msgstr ""
 
-#: src/settings/index.md:342
+#: src/settings/index.md:350
 msgid ""
 "Turn this on if you update Cadmus via USB often — you won't have to confirm "
 "the sharing dialog each time you plug in."
 msgstr ""
 
-#: src/settings/index.md:353
+#: src/settings/index.md:361
 msgid "`auto-time`"
 msgstr ""
 
-#: src/settings/index.md:357
+#: src/settings/index.md:365
 msgid ""
 "Automatically synchronize the device time via NTP when WiFi connects. This "
 "will also set the correct timezone. Uses the configured `ntp-server` and "
 "ipapi.co."
 msgstr ""
 
-#: src/settings/index.md:368
+#: src/settings/index.md:376
 msgid "`ntp-server`"
 msgstr ""
 
-#: src/settings/index.md:372
+#: src/settings/index.md:380
 msgid ""
 "Hostname or IP of the NTP server used for automatic and manual time sync. "
 "Port 123 is fixed."
 msgstr ""
 
-#: src/settings/index.md:382
+#: src/settings/index.md:390
 msgid "`auto-frontlight`"
 msgstr ""
 
-#: src/settings/index.md:386
+#: src/settings/index.md:394
 msgid ""
 "Automatically adjust the frontlight warmth and brightness based on the sun's "
 "position at the device's location."
 msgstr ""
 
-#: src/settings/index.md:388
+#: src/settings/index.md:396
 msgid "During the day warmth is at its minimum."
 msgstr ""
 
-#: src/settings/index.md:389
+#: src/settings/index.md:397
 msgid "Around sunrise and sunset warmth ramps gradually between zero and full."
 msgstr ""
 
-#: src/settings/index.md:390
+#: src/settings/index.md:398
 msgid ""
 "After sunset brightness is reduced to `auto-frontlight-night-brightness` and "
 "warmth stays at its maximum until sunrise."
 msgstr ""
 
-#: src/settings/index.md:393
+#: src/settings/index.md:401
 msgid ""
 "Coordinates are auto-detected during each time sync (via ipapi.co) and "
 "stored in `auto-frontlight-last-coordinates`. Set "
 "`auto-frontlight-manual-coordinates` to override the detected location."
 msgstr ""
 
-#: src/settings/index.md:404
+#: src/settings/index.md:412
 msgid "`auto-frontlight-night-brightness`"
 msgstr ""
 
-#: src/settings/index.md:408
+#: src/settings/index.md:416
 msgid ""
 "Frontlight brightness level (0.0–100.0) applied when the sun is below the "
 "horizon."
 msgstr ""
 
-#: src/settings/index.md:410
+#: src/settings/index.md:418
 msgid "This setting is optional. When not set, a default of `1.0` is used."
 msgstr ""
 
-#: src/settings/index.md:420
+#: src/settings/index.md:428
 msgid "`auto-frontlight-manual-coordinates`"
 msgstr ""
 
-#: src/settings/index.md:424
+#: src/settings/index.md:432
 msgid ""
 "GPS coordinates `[latitude, longitude]` to use for sun-position calculations "
 "instead of the auto-detected location. Takes priority over "
 "`auto-frontlight-last-coordinates`."
 msgstr ""
 
-#: src/settings/index.md:427
+#: src/settings/index.md:435
 msgid "This setting is optional."
 msgstr ""
 
-#: src/settings/index.md:437
+#: src/settings/index.md:445
 msgid "`auto-frontlight-last-coordinates`"
 msgstr ""
 
-#: src/settings/index.md:439
+#: src/settings/index.md:447
 msgid ""
 "GPS coordinates `[latitude, longitude]` last detected during a time sync. "
 "Written automatically — do not edit this by hand; set "
 "`auto-frontlight-manual-coordinates` to override the location instead."
 msgstr ""
 
-#: src/settings/index.md:442
+#: src/settings/index.md:450
 msgid "This setting is optional and managed automatically."
 msgstr ""
 
-#: src/settings/index.md:452
+#: src/settings/index.md:460
 msgid "`wifi`"
 msgstr ""
 
-#: src/settings/index.md:454
+#: src/settings/index.md:462
 msgid "Radio button in the top menu."
 msgstr ""
 
-#: src/settings/index.md:456
+#: src/settings/index.md:464
 msgid "WiFi operating mode:"
 msgstr ""
 
-#: src/settings/index.md:458
+#: src/settings/index.md:466
 msgid "`off` — radio stays powered down; on-demand features cannot enable it"
 msgstr ""
 
-#: src/settings/index.md:459
+#: src/settings/index.md:467
 msgid "`always-on` — radio stays enabled (legacy `wifi = true`)"
 msgstr ""
 
-#: src/settings/index.md:460
+#: src/settings/index.md:468
 msgid ""
 "`auto` — enable when a feature needs the network, then power down after idle"
 msgstr ""
 
-#: src/settings/index.md:462
+#: src/settings/index.md:470
 msgid ""
 "Legacy boolean values still load: `true` becomes `always-on`, `false` "
 "becomes `off`."
 msgstr ""
 
-#: src/settings/index.md:472
+#: src/settings/index.md:480
 msgid "`wifi-idle-timeout`"
 msgstr ""
 
-#: src/settings/index.md:476
+#: src/settings/index.md:484
 msgid ""
 "Number of minutes after the last Auto-mode WiFi use before the radio is "
 "powered down."
 msgstr ""
 
-#: src/settings/index.md:478
+#: src/settings/index.md:486
 msgid "Zero means disable as soon as the last WiFi lease is released."
 msgstr ""
 
-#: src/settings/index.md:479
+#: src/settings/index.md:487
 msgid "Only applies when `wifi = \"auto\"`."
 msgstr ""
 
-#: src/settings/index.md:480
+#: src/settings/index.md:488
 msgid ""
 "Minimum non-zero value is `0.5` (30 seconds). The idle poller checks every "
 "30 seconds, so shorter positive timeouts are raised to `0.5` when settings "
 "are loaded or edited."
 msgstr ""
 
-#: src/settings/index.md:492
+#: src/settings/index.md:500
+msgid "`autosleep-mode`"
+msgstr ""
+
+#: src/settings/index.md:502 src/settings/index.md:520
+#: src/settings/index.md:536
+msgid "✏️ 📱"
+msgstr ""
+
+#: src/settings/index.md:504
+msgid ""
+"Soft-suspend target written to the kernel autosleep interface. See [Soft "
+"Suspend](../soft-suspend.md)."
+msgstr ""
+
+#: src/settings/index.md:507
+msgid "Possible values: `\"off\"` (default), `\"freeze\"`, `\"mem\"`."
+msgstr ""
+
+#: src/settings/index.md:508
+msgid "Unsupported values for your device fall back to `\"off\"`."
+msgstr ""
+
+#: src/settings/index.md:518
+msgid "`indicate-autosleep-led`"
+msgstr ""
+
+#: src/settings/index.md:522
+msgid ""
+"When soft suspend is armed, keep the status LED on while the device is awake."
+msgstr ""
+
+#: src/settings/index.md:524
+msgid "Default: `false`."
+msgstr ""
+
+#: src/settings/index.md:534
+msgid "`autosleep-grace`"
+msgstr ""
+
+#: src/settings/index.md:538
+msgid ""
+"Seconds to keep the soft-suspend wake lock after the last Cadmus lease "
+"drops. See [Soft Suspend](../soft-suspend.md)."
+msgstr ""
+
+#: src/settings/index.md:541
+msgid "Default: `5.0`."
+msgstr ""
+
+#: src/settings/index.md:542
+msgid "Zero unlocks immediately."
+msgstr ""
+
+#: src/settings/index.md:552
 msgid "`auto-suspend`"
 msgstr ""
 
-#: src/settings/index.md:496
+#: src/settings/index.md:556
 msgid ""
 "Number of minutes of inactivity after which the device will automatically go "
 "to sleep."
 msgstr ""
 
-#: src/settings/index.md:498 src/settings/index.md:514
+#: src/settings/index.md:558 src/settings/index.md:574
 msgid "Zero means never."
 msgstr ""
 
-#: src/settings/index.md:508
+#: src/settings/index.md:568
 msgid "`auto-power-off`"
 msgstr ""
 
-#: src/settings/index.md:512
+#: src/settings/index.md:572
 msgid "Delay in days after which a suspended device will power off."
 msgstr ""
 
-#: src/settings/index.md:524
+#: src/settings/index.md:584
 msgid "`button-scheme`"
 msgstr ""
 
-#: src/settings/index.md:528
+#: src/settings/index.md:588
 msgid ""
 "Defines how the back and forward buttons are mapped to page forward and page "
 "backward actions."
 msgstr ""
 
-#: src/settings/index.md:530
+#: src/settings/index.md:590
 msgid "Possible values: `\"natural\"`, `\"inverted\"`."
 msgstr ""
 
-#: src/settings/index.md:540
+#: src/settings/index.md:600
 msgid "`locale`"
 msgstr ""
 
-#: src/settings/index.md:544
+#: src/settings/index.md:604
 msgid ""
 "The preferred language for the user interface, using BCP 47 format (e.g., "
 "`\"en-US\"`, `\"de-DE\"`)."
 msgstr ""
 
-#: src/settings/index.md:546
+#: src/settings/index.md:606
 msgid "This setting is optional. When not set, `en-GB` is used."
 msgstr ""
 
-#: src/settings/index.md:556
+#: src/settings/index.md:616
 msgid "`startup-mode`"
 msgstr ""
 
-#: src/settings/index.md:560
+#: src/settings/index.md:620
 msgid "What to show when Cadmus starts."
 msgstr ""
 
-#: src/settings/index.md:562
+#: src/settings/index.md:622
 msgid "`\"home\"` — open the home screen (default)."
 msgstr ""
 
-#: src/settings/index.md:563
+#: src/settings/index.md:623
 msgid ""
 "`\"last-file\"` — re-open the last book you were reading. If there is no "
 "unfinished book in the selected library, the home screen is shown instead."
 msgstr ""
 
-#: src/settings/index.md:576
+#: src/settings/index.md:636
 msgid ""
 "Settings that control the reading experience. How Cadmus loads "
 "[reflowable](../reader/reflowable.md) and [paged](../reader/paged.md) books "
 "is described in the [Reader](../reader/index.md) section."
 msgstr ""
 
-#: src/settings/index.md:580
+#: src/settings/index.md:640
 msgid "`reader.finished`"
 msgstr ""
 
-#: src/settings/index.md:584
+#: src/settings/index.md:644
 msgid "What to do when you finish reading a book."
 msgstr ""
 
-#: src/settings/index.md:586 src/settings/index.md:605
-#: src/settings/index.md:623 src/settings/index.md:641
-#: src/settings/index.md:659 src/settings/index.md:678
-#: src/settings/index.md:772 src/settings/index.md:950
+#: src/settings/index.md:646 src/settings/index.md:665
+#: src/settings/index.md:683 src/settings/index.md:701
+#: src/settings/index.md:719 src/settings/index.md:738
+#: src/settings/index.md:832 src/settings/index.md:1010
 msgid "Possible values:"
 msgstr ""
 
-#: src/settings/index.md:588
+#: src/settings/index.md:648
 msgid "`\"notify\"` (show a notification)"
 msgstr ""
 
-#: src/settings/index.md:589
+#: src/settings/index.md:649
 msgid "`\"close\"` (close the book and go back)"
 msgstr ""
 
-#: src/settings/index.md:590
+#: src/settings/index.md:650
 msgid "`\"go-to-next\"` (open the next book in the library)."
 msgstr ""
 
-#: src/settings/index.md:601
+#: src/settings/index.md:661
 msgid "`reader.south-east-corner`"
 msgstr ""
 
-#: src/settings/index.md:603
+#: src/settings/index.md:663
 msgid "Action when you tap the south-east corner of the screen."
 msgstr ""
 
-#: src/settings/index.md:607
+#: src/settings/index.md:667
 msgid "`\"go-to-page\"`"
 msgstr ""
 
-#: src/settings/index.md:608 src/settings/index.md:644
-#: src/settings/index.md:662 src/settings/index.md:681
+#: src/settings/index.md:668 src/settings/index.md:704
+#: src/settings/index.md:722 src/settings/index.md:741
 msgid "`\"next-page\"`"
 msgstr ""
 
-#: src/settings/index.md:619
+#: src/settings/index.md:679
 msgid "`reader.bottom-right-gesture`"
 msgstr ""
 
-#: src/settings/index.md:621
+#: src/settings/index.md:681
 msgid "Action for the bottom-right corner gesture."
 msgstr ""
 
-#: src/settings/index.md:625
+#: src/settings/index.md:685
 msgid "`\"toggle-dithered\"`"
 msgstr ""
 
-#: src/settings/index.md:626
+#: src/settings/index.md:686
 msgid "`\"toggle-inverted\"`"
 msgstr ""
 
-#: src/settings/index.md:637
+#: src/settings/index.md:697
 msgid "`reader.south-strip`"
 msgstr ""
 
-#: src/settings/index.md:639
+#: src/settings/index.md:699
 msgid "Action when you tap the south strip."
 msgstr ""
 
-#: src/settings/index.md:643
+#: src/settings/index.md:703
 msgid "`\"toggle-bars\"`"
 msgstr ""
 
-#: src/settings/index.md:655
+#: src/settings/index.md:715
 msgid "`reader.west-strip`"
 msgstr ""
 
-#: src/settings/index.md:657
+#: src/settings/index.md:717
 msgid "Action when you tap the west strip."
 msgstr ""
 
-#: src/settings/index.md:661 src/settings/index.md:680
+#: src/settings/index.md:721 src/settings/index.md:740
 msgid "`\"previous-page\"`"
 msgstr ""
 
-#: src/settings/index.md:663 src/settings/index.md:682
+#: src/settings/index.md:723 src/settings/index.md:742
 msgid "`\"none\"`"
 msgstr ""
 
-#: src/settings/index.md:674
+#: src/settings/index.md:734
 msgid "`reader.east-strip`"
 msgstr ""
 
-#: src/settings/index.md:676
+#: src/settings/index.md:736
 msgid "Action when you tap the east strip."
 msgstr ""
 
-#: src/settings/index.md:693
+#: src/settings/index.md:753
 msgid "`reader.strip-width`"
 msgstr ""
 
-#: src/settings/index.md:695
+#: src/settings/index.md:755
 msgid ""
 "Width ratio of the side and bottom strip touch regions, relative to `min(W, "
 "H) / 2`."
 msgstr ""
 
-#: src/settings/index.md:707
+#: src/settings/index.md:767
 msgid "`reader.corner-width`"
 msgstr ""
 
-#: src/settings/index.md:709
+#: src/settings/index.md:769
 msgid "Width ratio of the corner touch regions, relative to `min(W, H) / 2`."
 msgstr ""
 
-#: src/settings/index.md:720
+#: src/settings/index.md:780
 msgid "`reader.font-path`"
 msgstr ""
 
-#: src/settings/index.md:722
+#: src/settings/index.md:782
 msgid ""
 "The directory Cadmus scans for additional reading fonts. Bundled Cadmus "
 "fonts are always available regardless of this setting. See "
 "[Fonts](../fonts.md) for details on installing custom fonts."
 msgstr ""
 
-#: src/settings/index.md:735
+#: src/settings/index.md:795
 msgid "`reader.font-family`"
 msgstr ""
 
-#: src/settings/index.md:737
+#: src/settings/index.md:797
 msgid ""
 "The default reading font family name. New installs default to `Libron`. "
 "Existing configurations using `Libertinus Serif` continue to work because "
 "Libertinus remains bundled."
 msgstr ""
 
-#: src/settings/index.md:750
+#: src/settings/index.md:810
 msgid "`reader.font-size`"
 msgstr ""
 
-#: src/settings/index.md:752
+#: src/settings/index.md:812
 msgid ""
 "The default font size in points, plus the minimum and maximum sizes "
 "available while reading."
 msgstr ""
 
-#: src/settings/index.md:766
+#: src/settings/index.md:826
 msgid "See [Fonts](../fonts.md) for more info."
 msgstr ""
 
-#: src/settings/index.md:768
+#: src/settings/index.md:828
 msgid "`reader.text-align`"
 msgstr ""
 
-#: src/settings/index.md:770
+#: src/settings/index.md:830
 msgid "Default text alignment for reflowable books."
 msgstr ""
 
-#: src/settings/index.md:774
+#: src/settings/index.md:834
 msgid "`\"left\"`"
 msgstr ""
 
-#: src/settings/index.md:775
+#: src/settings/index.md:835
 msgid "`\"right\"`"
 msgstr ""
 
-#: src/settings/index.md:776
+#: src/settings/index.md:836
 msgid "`\"center\"`"
 msgstr ""
 
-#: src/settings/index.md:777
+#: src/settings/index.md:837
 msgid "`\"justify\"`"
 msgstr ""
 
-#: src/settings/index.md:788
+#: src/settings/index.md:848
 msgid "`reader.margin-width`"
 msgstr ""
 
-#: src/settings/index.md:790
+#: src/settings/index.md:850
 msgid ""
 "Default page margin width in millimeters, plus the minimum and maximum "
 "values available while reading."
 msgstr ""
 
-#: src/settings/index.md:804
+#: src/settings/index.md:864
 msgid "`reader.line-height`"
 msgstr ""
 
-#: src/settings/index.md:806
+#: src/settings/index.md:866
 msgid "Default line height for reflowable books, in ems."
 msgstr ""
 
-#: src/settings/index.md:817
+#: src/settings/index.md:877
 msgid "`reader.continuous-fit-to-width`"
 msgstr ""
 
-#: src/settings/index.md:819
+#: src/settings/index.md:879
 msgid "Scroll mode used for fit-to-width zoom when a document is first opened."
 msgstr ""
 
-#: src/settings/index.md:830
+#: src/settings/index.md:890
 msgid "`reader.ignore-document-css`"
 msgstr ""
 
-#: src/settings/index.md:832
+#: src/settings/index.md:892
 msgid ""
 "When `true`, Cadmus ignores stylesheets embedded in reflowable documents and "
 "uses Cadmus viewer styles only."
 msgstr ""
 
-#: src/settings/index.md:844
+#: src/settings/index.md:904
 msgid "`reader.dithered-kinds`"
 msgstr ""
 
-#: src/settings/index.md:848
+#: src/settings/index.md:908
 msgid ""
 "File extensions rendered with dithering by default when opened for the first "
 "time."
 msgstr ""
 
-#: src/settings/index.md:860
+#: src/settings/index.md:920
 msgid "`reader.paragraph-breaker`"
 msgstr ""
 
-#: src/settings/index.md:862
+#: src/settings/index.md:922
 msgid "Controls how Cadmus breaks paragraphs in reflowable text."
 msgstr ""
 
-#: src/settings/index.md:864
+#: src/settings/index.md:924
 msgid "`hyphen-penalty`"
 msgstr ""
 
-#: src/settings/index.md:866
+#: src/settings/index.md:926
 msgid "Penalty for hyphenated lines. The maximum value is `10000`."
 msgstr ""
 
-#: src/settings/index.md:868
+#: src/settings/index.md:928
 msgid "`stretch-tolerance`"
 msgstr ""
 
-#: src/settings/index.md:870
+#: src/settings/index.md:930
 msgid "How much inter-word spacing may stretch or shrink when justifying lines."
 msgstr ""
 
-#: src/settings/index.md:882
+#: src/settings/index.md:942
 msgid "`reader.refresh-rate`"
 msgstr ""
 
-#: src/settings/index.md:886
+#: src/settings/index.md:946
 msgid ""
 "How often Cadmus fully refreshes the screen while you turn pages. `regular` "
 "applies when colors are not inverted; `inverted` applies when they are. Use "
 "`0` to never force a full refresh on that schedule."
 msgstr ""
 
-#: src/settings/index.md:890
+#: src/settings/index.md:950
 msgid ""
 "Optional `by-kind` entries override the global pair for specific file "
 "extensions."
 msgstr ""
 
-#: src/settings/index.md:906
+#: src/settings/index.md:966
 msgid "Libraries"
 msgstr ""
 
-#: src/settings/index.md:910
+#: src/settings/index.md:970
 msgid "Document library configuration. Each library has a name, path, and mode."
 msgstr ""
 
-#: src/settings/index.md:923
+#: src/settings/index.md:983
 msgid "`libraries.name`"
 msgstr ""
 
-#: src/settings/index.md:927
+#: src/settings/index.md:987
 msgid "Display name for the library."
 msgstr ""
 
-#: src/settings/index.md:929
+#: src/settings/index.md:989
 msgid "`libraries.path`"
 msgstr ""
 
-#: src/settings/index.md:933
+#: src/settings/index.md:993
 msgid "Directory path containing documents."
 msgstr ""
 
-#: src/settings/index.md:935
+#: src/settings/index.md:995
 msgid "`libraries.mode`"
 msgstr ""
 
-#: src/settings/index.md:939
+#: src/settings/index.md:999
 msgid "Library indexing mode."
 msgstr ""
 
-#: src/settings/index.md:941
+#: src/settings/index.md:1001
 msgid "Possible values: `\"database\"`, `\"filesystem\"`."
 msgstr ""
 
-#: src/settings/index.md:943
+#: src/settings/index.md:1003
 msgid "`libraries.finished`"
 msgstr ""
 
-#: src/settings/index.md:947
+#: src/settings/index.md:1007
 msgid ""
 "Override the `reader.finished` setting for this specific library. When set, "
 "this takes precedence over the global reader setting."
 msgstr ""
 
-#: src/settings/index.md:952
+#: src/settings/index.md:1012
 msgid "`\"notify\"`"
 msgstr ""
 
-#: src/settings/index.md:953
+#: src/settings/index.md:1013
 msgid "`\"close\"`"
 msgstr ""
 
-#: src/settings/index.md:954
+#: src/settings/index.md:1014
 msgid "`\"go-to-next\"`."
 msgstr ""
 
-#: src/settings/index.md:955
+#: src/settings/index.md:1015
 msgid "Leave unset to inherit the global `reader.finished` setting."
 msgstr ""
 
-#: src/settings/index.md:968
+#: src/settings/index.md:1028
 msgid "Intermissions"
 msgstr ""
 
-#: src/settings/index.md:972
+#: src/settings/index.md:1032
 msgid "Defines the images displayed when entering an intermission state."
 msgstr ""
 
-#: src/settings/index.md:985
+#: src/settings/index.md:1045
 msgid "`intermissions.suspend`"
 msgstr ""
 
-#: src/settings/index.md:989
+#: src/settings/index.md:1049
 msgid "Image displayed when the device enters sleep mode."
 msgstr ""
 
-#: src/settings/index.md:991
+#: src/settings/index.md:1051
 msgid ""
 "Setting this to `\"calendar:\"` also enables the calendar refresh: every 5 "
 "minutes, the device wakes, shows the calendar, and then goes back to sleep "
 "automatically."
 msgstr ""
 
-#: src/settings/index.md:995
+#: src/settings/index.md:1055
 msgid ""
 "Possible values: `\"logo:\"` (built-in logo), `\"cover:\"` (current book "
 "cover), `\"calendar:\"` (built-in calendar), or a path to a custom image "
 "file."
 msgstr ""
 
-#: src/settings/index.md:998
+#: src/settings/index.md:1058
 msgid "`intermissions.power-off`"
 msgstr ""
 
-#: src/settings/index.md:1002
+#: src/settings/index.md:1062
 msgid "Image displayed when the device powers off."
 msgstr ""
 
-#: src/settings/index.md:1004 src/settings/index.md:1012
+#: src/settings/index.md:1064 src/settings/index.md:1072
 msgid ""
 "Possible values: `\"logo:\"` (built-in logo), `\"cover:\"` (current book "
 "cover), or a path to a custom image file."
 msgstr ""
 
-#: src/settings/index.md:1006
+#: src/settings/index.md:1066
 msgid "`intermissions.share`"
 msgstr ""
 
-#: src/settings/index.md:1010
+#: src/settings/index.md:1070
 msgid "Image displayed when entering USB sharing mode."
 msgstr ""
 
-#: src/settings/index.md:1014
+#: src/settings/index.md:1074
 msgid "Import"
 msgstr ""
 
-#: src/settings/index.md:1016
+#: src/settings/index.md:1076
 msgid ""
 "These settings control how Cadmus imports documents from your device. They "
 "are available in the **Settings → Import** menu."
 msgstr ""
 
-#: src/settings/index.md:1019
+#: src/settings/index.md:1079
 msgid ""
 "Import scanning happens automatically on startup using incremental file "
 "checking — files are only re-scanned if their modification time or size has "
 "changed since the last import."
 msgstr ""
 
-#: src/settings/index.md:1022
+#: src/settings/index.md:1082
 msgid ""
 "To trigger a full re-scan of all files regardless of cached values, use the "
 "**Force Full Import** action button in the Import settings category."
 msgstr ""
 
-#: src/settings/index.md:1025
+#: src/settings/index.md:1085
 msgid "`import.sync-metadata`"
 msgstr ""
 
-#: src/settings/index.md:1029
+#: src/settings/index.md:1089
 msgid "Re-extract metadata (title, author, etc.) whenever a document changes."
 msgstr ""
 
-#: src/settings/index.md:1040
+#: src/settings/index.md:1100
 msgid "`import.metadata-kinds`"
 msgstr ""
 
-#: src/settings/index.md:1042
+#: src/settings/index.md:1102
 msgid "File extensions of documents whose metadata is extracted during import."
 msgstr ""
 
-#: src/settings/index.md:1053
+#: src/settings/index.md:1113
 msgid "`import.allowed-kinds`"
 msgstr ""
 
-#: src/settings/index.md:1057
+#: src/settings/index.md:1117
 msgid "File extensions of documents considered during the import process."
 msgstr ""
 
-#: src/settings/index.md:1068
+#: src/settings/index.md:1128
 msgid "OTA"
 msgstr ""
 
-#: src/settings/index.md:1070
+#: src/settings/index.md:1130
 msgid "The OTA feature downloads builds from GitHub."
 msgstr ""
 
-#: src/settings/index.md:1072
+#: src/settings/index.md:1132
 msgid ""
 "Authentication for main branch and PR builds uses **GitHub device auth "
 "flow**. When you select a build that requires authentication, Cadmus will "
@@ -1860,188 +1915,188 @@ msgid ""
 "once you authorize."
 msgstr ""
 
-#: src/settings/index.md:1078
+#: src/settings/index.md:1138
 msgid ""
 "The token is saved to disk after the first authorization so you will not be "
 "prompted again on subsequent downloads."
 msgstr ""
 
-#: src/settings/index.md:1081
+#: src/settings/index.md:1141
 msgid ""
 "For step-by-step instructions with screenshots, see the [OTA "
 "updates](../installation/ota.md) guide."
 msgstr ""
 
-#: src/settings/index.md:1086
+#: src/settings/index.md:1146
 msgid ""
 "Cadmus writes JSON logs to disk. When the build enables the `tracing` "
 "feature, it can also export logs to an OpenTelemetry endpoint."
 msgstr ""
 
-#: src/settings/index.md:1089
+#: src/settings/index.md:1149
 msgid "These settings are available in the **Settings → Telemetry** menu."
 msgstr ""
 
-#: src/settings/index.md:1092
+#: src/settings/index.md:1152
 msgid ""
 "Changes to these settings only take effect after restarting Cadmus. The "
 "application initializes telemetry on startup."
 msgstr ""
 
-#: src/settings/index.md:1095
+#: src/settings/index.md:1155
 msgid "`logging`"
 msgstr ""
 
-#: src/settings/index.md:1110
+#: src/settings/index.md:1170
 msgid "`logging.enabled`"
 msgstr ""
 
-#: src/settings/index.md:1114
+#: src/settings/index.md:1174
 msgid "Enable or disable structured JSON logging."
 msgstr ""
 
-#: src/settings/index.md:1125
+#: src/settings/index.md:1185
 msgid "`logging.level`"
 msgstr ""
 
-#: src/settings/index.md:1129
+#: src/settings/index.md:1189
 msgid "Minimum log level to record."
 msgstr ""
 
-#: src/settings/index.md:1131
+#: src/settings/index.md:1191
 msgid ""
 "Possible values: `\"trace\"`, `\"debug\"`, `\"info\"`, `\"warn\"`, "
 "`\"error\"`."
 msgstr ""
 
-#: src/settings/index.md:1142
+#: src/settings/index.md:1202
 msgid "`logging.max-files`"
 msgstr ""
 
-#: src/settings/index.md:1144
+#: src/settings/index.md:1204
 msgid ""
 "Number of log files to keep. Only the most recent N files are kept — older "
 "ones are deleted automatically when Cadmus starts."
 msgstr ""
 
-#: src/settings/index.md:1147 src/settings/index.md:1242
+#: src/settings/index.md:1207 src/settings/index.md:1302
 msgid "Default: `3`"
 msgstr ""
 
-#: src/settings/index.md:1148
+#: src/settings/index.md:1208
 msgid "Set to `0` to keep all log files."
 msgstr ""
 
-#: src/settings/index.md:1159
+#: src/settings/index.md:1219
 msgid "`logging.otlp-endpoint`"
 msgstr ""
 
-#: src/settings/index.md:1161
+#: src/settings/index.md:1221
 msgid "✏️ (only when the `tracing` feature is enabled)"
 msgstr ""
 
-#: src/settings/index.md:1163
+#: src/settings/index.md:1223
 msgid "Optional OTLP endpoint for exporting logs to an OpenTelemetry collector."
 msgstr ""
 
-#: src/settings/index.md:1174 src/settings/index.md:1195
+#: src/settings/index.md:1234 src/settings/index.md:1255
 msgid "Environment override:"
 msgstr ""
 
-#: src/settings/index.md:1176
+#: src/settings/index.md:1236
 msgid ""
 "`OTEL_EXPORTER_OTLP_ENDPOINT` takes precedence over `logging.otlp-endpoint`."
 msgstr ""
 
-#: src/settings/index.md:1178
+#: src/settings/index.md:1238
 msgid "`logging.pyroscope-endpoint`"
 msgstr ""
 
-#: src/settings/index.md:1180
+#: src/settings/index.md:1240
 msgid "✏️ (only when the `profiling` feature is enabled)"
 msgstr ""
 
-#: src/settings/index.md:1182
+#: src/settings/index.md:1242
 msgid ""
 "Optional Pyroscope server URL for continuous profiling. When set, Cadmus "
 "starts both a heap profiling agent (via jemalloc) and a CPU profiling agent "
 "(via pprof) that push profiles to this endpoint."
 msgstr ""
 
-#: src/settings/index.md:1197
+#: src/settings/index.md:1257
 msgid ""
 "`PYROSCOPE_SERVER_URL` takes precedence over `logging.pyroscope-endpoint`."
 msgstr ""
 
-#: src/settings/index.md:1199
+#: src/settings/index.md:1259
 msgid "`logging.enable-kern-log`"
 msgstr ""
 
-#: src/settings/index.md:1201 src/settings/index.md:1217
+#: src/settings/index.md:1261 src/settings/index.md:1277
 msgid "🧪 📱 ✏️"
 msgstr ""
 
-#: src/settings/index.md:1203
+#: src/settings/index.md:1263
 msgid ""
 "Captures kernel logs via `logread -F` and forwards them to structured "
 "logging with the target `cadmus_core::logging:kern`."
 msgstr ""
 
-#: src/settings/index.md:1215
+#: src/settings/index.md:1275
 msgid "`logging.enable-dbus-log`"
 msgstr ""
 
-#: src/settings/index.md:1219
+#: src/settings/index.md:1279
 msgid ""
 "Captures D-Bus signals via the built-in zbus-based DbusMonitorTask and "
 "forwards them to structured logging."
 msgstr ""
 
-#: src/settings/index.md:1231
+#: src/settings/index.md:1291
 msgid "Settings Retention"
 msgstr ""
 
-#: src/settings/index.md:1233
+#: src/settings/index.md:1293
 msgid ""
 "Cadmus stores each version's settings in a separate file in the `Settings/` "
 "directory (for example, `Settings-v1.2.3.toml`). This ensures backward and "
 "forward compatibility when you upgrade."
 msgstr ""
 
-#: src/settings/index.md:1237
+#: src/settings/index.md:1297
 msgid "`settings-retention`"
 msgstr ""
 
-#: src/settings/index.md:1239
+#: src/settings/index.md:1299
 msgid ""
 "Number of recent version settings files to keep. Only the most recent N "
 "version files are kept. When a new version is saved, older versions beyond "
 "this limit are deleted automatically."
 msgstr ""
 
-#: src/settings/index.md:1243
+#: src/settings/index.md:1303
 msgid "Set to `0` to keep all version files"
 msgstr ""
 
-#: src/settings/index.md:1253
+#: src/settings/index.md:1313
 msgid "`db-backup-retention`"
 msgstr ""
 
-#: src/settings/index.md:1255
+#: src/settings/index.md:1315
 msgid ""
 "Number of database backups to keep. When a new backup is created and the "
 "total would exceed this limit, the oldest backups are deleted automatically."
 msgstr ""
 
-#: src/settings/index.md:1258 src/database-backup.md:76
+#: src/settings/index.md:1318 src/database-backup.md:76
 msgid "Default: `2`"
 msgstr ""
 
-#: src/settings/index.md:1259 src/database-backup.md:77
+#: src/settings/index.md:1319 src/database-backup.md:77
 msgid "Set to `0` to disable backups entirely."
 msgstr ""
 
-#: src/settings/index.md:1261
+#: src/settings/index.md:1321
 msgid "See [Database Backup](../database-backup.md) for more details."
 msgstr ""
 
@@ -2708,7 +2763,7 @@ msgid "**General** — language, button layout, Wi‑Fi idle timeout, startup mo
 msgstr ""
 
 #: src/ui/settings/index.md:13
-msgid "**Power** — auto-suspend, auto power off, sleep cover"
+msgid "**Power** — soft suspend, auto-suspend, auto power off, sleep cover"
 msgstr ""
 
 #: src/ui/settings/index.md:14
@@ -2735,6 +2790,44 @@ msgstr ""
 
 #: src/ui/settings/index.md:20
 msgid "**Telemetry** — logging options"
+msgstr ""
+
+#: src/ui/settings/index.md:22
+msgid "Power"
+msgstr ""
+
+#: src/ui/settings/index.md:24
+msgid "Use the **Power** tab for sleep-related options:"
+msgstr ""
+
+#: src/ui/settings/index.md:26
+msgid ""
+"**Soft Suspend** — optional opportunistic sleep (`Off`, `Freeze`, or "
+"`Memory`). See [Soft Suspend](../../soft-suspend.md)."
+msgstr ""
+
+#: src/ui/settings/index.md:28
+msgid ""
+"**Use LED to Indicate Soft Suspend** — keep the status LED on while soft "
+"suspend is armed and the device is awake."
+msgstr ""
+
+#: src/ui/settings/index.md:30
+msgid ""
+"**Soft Suspend Release Grace** — seconds to stay awake after the last busy "
+"activity (`0` = unlock immediately)."
+msgstr ""
+
+#: src/ui/settings/index.md:32
+msgid "**Auto Suspend** — minutes of inactivity before a full suspend."
+msgstr ""
+
+#: src/ui/settings/index.md:33
+msgid "**Auto Power Off** — days of inactivity before power off."
+msgstr ""
+
+#: src/ui/settings/index.md:34
+msgid "**Enable Sleep Cover** — suspend when the cover closes."
 msgstr ""
 
 #: src/ui/settings/dictionaries.md:3
@@ -3459,7 +3552,8 @@ msgid ""
 "whenever WiFi connects."
 msgstr ""
 
-#: src/time-sync.md:6 src/auto-frontlight.md:6 src/database-backup.md:5
+#: src/time-sync.md:6 src/auto-frontlight.md:6 src/soft-suspend.md:13
+#: src/database-backup.md:5
 msgid "How it works"
 msgstr ""
 
@@ -3670,6 +3764,162 @@ msgid ""
 "`ipapi.co` to resolve your timezone. That same response includes an "
 "approximate latitude and longitude derived from your public IP address, "
 "which Cadmus stores as `auto-frontlight-last-coordinates`."
+msgstr ""
+
+#: src/soft-suspend.md:3
+msgid ""
+"Soft suspend lets Cadmus save battery between interactions by asking the "
+"system to sleep when nothing important is running. It is optional and off by "
+"default."
+msgstr ""
+
+#: src/soft-suspend.md:7
+msgid ""
+"This is separate from Auto Suspend (the timed “put the device to sleep” "
+"setting) and from pressing the power button or closing a sleep cover. Auto "
+"Suspend still applies when soft suspend is on: after the idle timeout Cadmus "
+"prepares the touchscreen and other peripherals, then enters a deeper sleep "
+"than the light nap used between taps."
+msgstr ""
+
+#: src/soft-suspend.md:15
+msgid ""
+"When soft suspend is enabled, Cadmus tells the system which sleep target to "
+"use (**Freeze** or **Memory**). While Cadmus is busy — handling a tap, using "
+"the network, or running background work — it holds a wake lock so the device "
+"stays awake. When that work finishes and nothing else needs attention, the "
+"system can sleep."
+msgstr ""
+
+#: src/soft-suspend.md:21
+msgid "Enabling soft suspend"
+msgstr ""
+
+#: src/soft-suspend.md:23
+msgid "Open **Main Menu → Settings → Power** and set **Soft Suspend** to one of:"
+msgstr ""
+
+#: src/soft-suspend.md:25
+msgid "Option"
+msgstr ""
+
+#: src/soft-suspend.md:25
+msgid "Meaning"
+msgstr ""
+
+#: src/soft-suspend.md:27 src/soft-suspend.md:76
+msgid "Off"
+msgstr ""
+
+#: src/soft-suspend.md:27
+msgid "Soft suspend disabled (default)"
+msgstr ""
+
+#: src/soft-suspend.md:28
+msgid "Freeze"
+msgstr ""
+
+#: src/soft-suspend.md:28
+msgid "Lighter sleep (when your device supports it)"
+msgstr ""
+
+#: src/soft-suspend.md:29
+msgid "Memory"
+msgstr ""
+
+#: src/soft-suspend.md:29
+msgid "Deeper sleep to RAM (when your device supports it)"
+msgstr ""
+
+#: src/soft-suspend.md:31
+msgid ""
+"Only options your device supports appear in the list. You can also set this "
+"in your settings file:"
+msgstr ""
+
+#: src/soft-suspend.md:42
+msgid "Status LED indicator"
+msgstr ""
+
+#: src/soft-suspend.md:44
+msgid ""
+"Under **Settings → Power**, turn on **Use LED to Indicate Soft Suspend** if "
+"you want the status LED on while soft suspend is armed and the device is "
+"awake. The LED turns off when the device sleeps."
+msgstr ""
+
+#: src/soft-suspend.md:56
+msgid "Release grace"
+msgstr ""
+
+#: src/soft-suspend.md:58
+msgid ""
+"Under **Settings → Power**, **Soft Suspend Release Grace** is how many "
+"seconds Cadmus keeps the wake lock after the last busy activity ends. That "
+"avoids rapid sleep/wake when short gaps fall between taps or background "
+"work. Set it to `0` to unlock immediately. The default is five seconds."
+msgstr ""
+
+#: src/soft-suspend.md:71
+msgid "Soft suspend vs Auto Suspend"
+msgstr ""
+
+#: src/soft-suspend.md:73
+msgid "Feature"
+msgstr ""
+
+#: src/soft-suspend.md:73
+msgid "Auto Suspend"
+msgstr ""
+
+#: src/soft-suspend.md:75
+msgid "Purpose"
+msgstr ""
+
+#: src/soft-suspend.md:75
+msgid "Opportunistic battery saving"
+msgstr ""
+
+#: src/soft-suspend.md:75
+msgid "Timed sleep after inactivity"
+msgstr ""
+
+#: src/soft-suspend.md:76
+msgid "Default"
+msgstr ""
+
+#: src/soft-suspend.md:76
+msgid "On by default (30 minutes)"
+msgstr ""
+
+#: src/soft-suspend.md:77
+msgid "Settings tab"
+msgstr ""
+
+#: src/soft-suspend.md:77
+msgid "Power → Soft Suspend"
+msgstr ""
+
+#: src/soft-suspend.md:77
+msgid "Power → Auto Suspend"
+msgstr ""
+
+#: src/soft-suspend.md:78
+msgid "User action"
+msgstr ""
+
+#: src/soft-suspend.md:78
+msgid "Opt-in"
+msgstr ""
+
+#: src/soft-suspend.md:78
+msgid "Happens after idle timeout"
+msgstr ""
+
+#: src/soft-suspend.md:80
+msgid ""
+"You can use both together. Soft suspend naps between events; after the idle "
+"timeout, Auto Suspend still puts the device into a deeper sleep."
 msgstr ""
 
 #: src/database-backup.md:3
