@@ -192,7 +192,7 @@ impl ToggleableKeyboard {
         self.rect = Rectangle::default();
         self.visible = false;
 
-        hub.send(Event::Focus(None)).ok();
+        hub.send((Event::Focus(None)).into()).ok();
         rq.add(RenderData::expose(rect, UpdateMode::Gui));
     }
 }
@@ -363,7 +363,7 @@ mod tests {
         assert_eq!(context.kb_rect, Rectangle::default());
 
         let focus_event = receiver.try_recv().unwrap();
-        assert!(matches!(focus_event, Event::Focus(None)));
+        assert!(matches!(focus_event.event, Event::Focus(None)));
     }
 
     #[test]
@@ -432,7 +432,7 @@ mod tests {
         assert_eq!(context.kb_rect, Rectangle::default());
 
         let focus_event = receiver.try_recv().unwrap();
-        assert!(matches!(focus_event, Event::Focus(None)));
+        assert!(matches!(focus_event.event, Event::Focus(None)));
     }
 
     #[test]

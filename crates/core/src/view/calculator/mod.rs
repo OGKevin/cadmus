@@ -96,7 +96,7 @@ impl Calculator {
             let reader = BufReader::new(stdout);
             for line_res in reader.lines() {
                 if let Ok(line) = line_res {
-                    hub2.send(Event::ProcessLine(LineOrigin::Output, line.clone()))
+                    hub2.send((Event::ProcessLine(LineOrigin::Output, line.clone())).into())
                         .ok();
                 } else {
                     break;
@@ -109,7 +109,7 @@ impl Calculator {
             let reader = BufReader::new(stderr);
             for line_res in reader.lines() {
                 if let Ok(line) = line_res {
-                    hub3.send(Event::ProcessLine(LineOrigin::Error, line.clone()))
+                    hub3.send((Event::ProcessLine(LineOrigin::Error, line.clone())).into())
                         .ok();
                 } else {
                     break;
@@ -250,7 +250,8 @@ impl Calculator {
         let lines_count = (code_area_rect.height() as i32 - 2 * margin_width_px) / line_height;
 
         rq.add(RenderData::new(id, rect, UpdateMode::Full));
-        hub.send(Event::Focus(Some(ViewId::CalculatorInput))).ok();
+        hub.send((Event::Focus(Some(ViewId::CalculatorInput))).into())
+            .ok();
 
         Ok(Calculator {
             id,
@@ -724,7 +725,7 @@ impl View for Calculator {
             Event::Gesture(GestureEvent::Rotate { quarter_turns, .. }) if quarter_turns != 0 => {
                 let (_, dir) = context.device.mirroring_scheme();
                 let n = (4 + (context.display.rotation - dir * quarter_turns)) % 4;
-                hub.send(Event::Select(EntryId::Rotate(n))).ok();
+                hub.send((Event::Select(EntryId::Rotate(n))).into()).ok();
                 true
             }
             Event::Gesture(GestureEvent::HoldFingerShort(center, ..))
@@ -755,7 +756,7 @@ impl View for Calculator {
             }
             Event::Back | Event::Select(EntryId::Quit) => {
                 self.quit(context);
-                hub.send(Event::Back).ok();
+                hub.send((Event::Back).into()).ok();
                 true
             }
             Event::Reseed => {

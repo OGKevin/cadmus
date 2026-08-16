@@ -114,7 +114,7 @@ impl Notification {
             let hub2 = hub.clone();
             thread::spawn(move || {
                 thread::sleep(NOTIFICATION_CLOSE_DELAY);
-                hub2.send(Event::Close(view_id)).ok();
+                hub2.send((Event::Close(view_id)).into()).ok();
             });
         }
 

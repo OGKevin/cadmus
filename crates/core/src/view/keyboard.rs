@@ -227,17 +227,20 @@ impl View for Keyboard {
                     KeyKind::Output(ch) => {
                         if self.state.combine {
                             self.combine_buffer.push(ch);
-                            hub.send(Event::Keyboard(KeyboardEvent::Partial(ch))).ok();
+                            hub.send((Event::Keyboard(KeyboardEvent::Partial(ch))).into())
+                                .ok();
                             if self.combine_buffer.len() > 1 {
                                 if let Some(&ch) =
                                     DEFAULT_COMBINATIONS.get(&self.combine_buffer[..])
                                 {
-                                    hub.send(Event::Keyboard(KeyboardEvent::Append(ch))).ok();
+                                    hub.send((Event::Keyboard(KeyboardEvent::Append(ch))).into())
+                                        .ok();
                                 }
                                 self.release_combine(rq);
                             }
                         } else {
-                            hub.send(Event::Keyboard(KeyboardEvent::Append(ch))).ok();
+                            hub.send((Event::Keyboard(KeyboardEvent::Append(ch))).into())
+                                .ok();
                         }
                         if ch != ' ' {
                             self.release_modifiers(rq);
@@ -256,23 +259,30 @@ impl View for Keyboard {
                         }
                     }
                     KeyKind::Delete(dir) => {
-                        hub.send(Event::Keyboard(KeyboardEvent::Delete {
-                            target: TextKind::Char,
-                            dir,
-                        }))
+                        hub.send(
+                            (Event::Keyboard(KeyboardEvent::Delete {
+                                target: TextKind::Char,
+                                dir,
+                            }))
+                            .into(),
+                        )
                         .ok();
                     }
                     KeyKind::Move(dir) => {
-                        hub.send(Event::Keyboard(KeyboardEvent::Move {
-                            target: TextKind::Char,
-                            dir,
-                        }))
+                        hub.send(
+                            (Event::Keyboard(KeyboardEvent::Move {
+                                target: TextKind::Char,
+                                dir,
+                            }))
+                            .into(),
+                        )
                         .ok();
                     }
                     KeyKind::Combine => self.state.combine = !self.state.combine,
                     KeyKind::Return => {
                         self.release_combine(rq);
-                        hub.send(Event::Keyboard(KeyboardEvent::Submit)).ok();
+                        hub.send((Event::Keyboard(KeyboardEvent::Submit)).into())
+                            .ok();
                     }
                 };
                 true

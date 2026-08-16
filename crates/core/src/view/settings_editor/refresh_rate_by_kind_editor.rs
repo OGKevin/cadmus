@@ -427,7 +427,7 @@ impl RefreshRateByKindEditor {
             NamedInput::new(label.to_string(), view_id, view_id, max_chars, context);
         named_input.set_text(initial_text, rq, context);
         self.children.push(Box::new(named_input));
-        hub.send(Event::Focus(Some(view_id))).ok();
+        hub.send((Event::Focus(Some(view_id))).into()).ok();
         rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
         true
     }
@@ -449,7 +449,7 @@ impl RefreshRateByKindEditor {
                     self.children.remove(index);
                     rq.add(RenderData::expose(input_rect, UpdateMode::Gui));
                 }
-                hub.send(Event::Focus(None)).ok();
+                hub.send((Event::Focus(None)).into()).ok();
                 true
             }
             _ => false,
@@ -669,9 +669,12 @@ impl RefreshRateKindPairEditor {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, bus)))]
     fn handle_validate(&self, hub: &Hub, bus: &mut Bus) -> bool {
         if !self.regular_input_valid || !self.inverted_input_valid {
-            hub.send(Event::Notification(NotificationEvent::Show(fl!(
-                "notification-refresh-rate-invalid"
-            ))))
+            hub.send(
+                (Event::Notification(NotificationEvent::Show(fl!(
+                    "notification-refresh-rate-invalid"
+                ))))
+                .into(),
+            )
             .ok();
             return true;
         }
@@ -731,7 +734,7 @@ impl RefreshRateKindPairEditor {
             NamedInput::new(label.to_string(), view_id, view_id, max_chars, context);
         named_input.set_text(initial_text, rq, context);
         self.children.push(Box::new(named_input));
-        hub.send(Event::Focus(Some(view_id))).ok();
+        hub.send((Event::Focus(Some(view_id))).into()).ok();
         rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
         true
     }
@@ -746,7 +749,7 @@ impl RefreshRateKindPairEditor {
                     self.children.remove(index);
                     rq.add(RenderData::expose(input_rect, UpdateMode::Gui));
                 }
-                hub.send(Event::Focus(None)).ok();
+                hub.send((Event::Focus(None)).into()).ok();
                 true
             }
             _ => false,

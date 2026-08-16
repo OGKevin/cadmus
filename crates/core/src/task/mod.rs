@@ -12,11 +12,10 @@
 //! # Example
 //!
 //! ```no_run
-//! use std::sync::mpsc::Sender;
 //! use std::time::Duration;
 //!
 //! use cadmus_core::task::{BackgroundTask, ShutdownSignal, TaskId};
-//! use cadmus_core::view::Event;
+//! use cadmus_core::view::Hub;
 //!
 //! struct MyTask;
 //!
@@ -25,7 +24,7 @@
 //!         TaskId::Placeholder
 //!     }
 //!
-//!     fn run(&mut self, hub: &Sender<Event>, shutdown: &ShutdownSignal) {
+//!     fn run(&mut self, _hub: &Hub, shutdown: &ShutdownSignal) {
 //!         while !shutdown.should_stop() {
 //!             // Do work...
 //!             if shutdown.wait(Duration::from_secs(60)) {
@@ -234,7 +233,7 @@ pub trait BackgroundTask: Send {
     ///
     /// This method is called in a dedicated thread. Use `hub` to send
     /// events to the main loop and `shutdown` to check for termination.
-    fn run(&mut self, hub: &Sender<Event>, shutdown: &ShutdownSignal);
+    fn run(&mut self, hub: &crate::view::Hub, shutdown: &ShutdownSignal);
 
     /// Called when the task is being stopped.
     ///
@@ -293,7 +292,7 @@ impl TaskManager {
     pub fn start(
         &mut self,
         task: Box<dyn BackgroundTask>,
-        hub: Sender<Event>,
+        hub: crate::view::Hub,
     ) -> Result<TaskId, TaskError> {
         let id = task.id();
 
@@ -401,9 +400,9 @@ impl TaskManager {
     }
 
     /// Sends any buffered completion events from naturally finished tasks.
-    fn flush_buffered_events(&mut self, hub: &Sender<Event>) {
+    fn flush_buffered_events(&mut self, hub: &crate::view::Hub) {
         for evt in self.buffered_events.drain(..) {
-            hub.send(evt).ok();
+            hub.send((evt).into()).ok();
         }
     }
 
@@ -412,7 +411,12 @@ impl TaskManager {
     /// Must be called for every event before passing it to the view tree.
     /// Always returns `false` — it never consumes events.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, context)))]
-    pub fn handle_event(&mut self, evt: &Event, hub: &Sender<Event>, context: &AppContext) -> bool {
+    pub fn handle_event(
+        &mut self,
+        evt: &Event,
+        hub: &crate::view::Hub,
+        context: &AppContext,
+    ) -> bool {
         self.cleanup_finished();
         self.flush_buffered_events(hub);
 
@@ -476,9 +480,12 @@ impl TaskManager {
                 #[cfg(feature = "kobo")]
                 {
                     if !context.online && !context.settings.wifi.allows_on_demand() {
-                        hub.send(Event::Notification(NotificationEvent::Show(fl!(
-                            "notification-not-online"
-                        ))))
+                        hub.send(
+                            (Event::Notification(NotificationEvent::Show(fl!(
+                                "notification-not-online"
+                            ))))
+                            .into(),
+                        )
                         .ok();
                     } else {
                         self.schedule_time_sync(true, hub, context);
@@ -496,7 +503,7 @@ impl TaskManager {
         &mut self,
         library_index: Option<usize>,
         force: bool,
-        hub: &Sender<Event>,
+        hub: &crate::view::Hub,
         database: &Database,
         settings: &Settings,
         install_dir: &std::path::Path,
@@ -527,7 +534,7 @@ impl TaskManager {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
     fn drain_pending_imports(
         &mut self,
-        hub: &Sender<Event>,
+        hub: &crate::view::Hub,
         database: &Database,
         settings: &Settings,
         install_dir: &std::path::Path,
@@ -546,7 +553,7 @@ impl TaskManager {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
     fn schedule_dictionary_index(
         &mut self,
-        hub: &Sender<Event>,
+        hub: &crate::view::Hub,
         database: &Database,
         data_path: std::path::PathBuf,
     ) {
@@ -571,7 +578,7 @@ impl TaskManager {
 
     #[cfg(feature = "kobo")]
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-    fn sync_auto_frontlight(&mut self, hub: &Sender<Event>, settings: &Settings) {
+    fn sync_auto_frontlight(&mut self, hub: &crate::view::Hub, settings: &Settings) {
         if self.is_running(&TaskId::AutoFrontlight) {
             tracing::debug!("stopping running auto_frontlight task for restart");
             if let Err(e) = self.stop(&TaskId::AutoFrontlight) {
@@ -593,7 +600,7 @@ impl TaskManager {
 
     #[cfg(feature = "kobo")]
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-    fn schedule_time_sync(&mut self, manual: bool, hub: &Sender<Event>, context: &AppContext) {
+    fn schedule_time_sync(&mut self, manual: bool, hub: &crate::view::Hub, context: &AppContext) {
         if self.is_running(&TaskId::TimeSync) {
             tracing::warn!("Time sync task already running, not scheduling");
 
@@ -629,7 +636,7 @@ impl TaskManager {
     pub fn schedule_thumbnail_extraction(
         &mut self,
         library_index: Option<usize>,
-        hub: &Sender<Event>,
+        hub: &crate::view::Hub,
         database: &Database,
         settings: &Settings,
         dpi: u16,
@@ -662,7 +669,7 @@ impl TaskManager {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
     fn drain_pending_thumbnails(
         &mut self,
-        hub: &Sender<Event>,
+        hub: &crate::view::Hub,
         database: &Database,
         settings: &Settings,
         dpi: u16,
@@ -727,7 +734,7 @@ impl Drop for TaskManager {
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(manager, hub, settings, database, data_path, install_dir), level = tracing::Level::TRACE))]
 pub fn register_startup_tasks(
     manager: &mut TaskManager,
-    hub: Sender<Event>,
+    hub: crate::view::Hub,
     settings: &Settings,
     database: &Database,
     data_path: std::path::PathBuf,
@@ -802,7 +809,7 @@ mod tests {
             TaskId::TestTask2
         }
 
-        fn run(&mut self, _hub: &Sender<Event>, _shutdown: &ShutdownSignal) {}
+        fn run(&mut self, _hub: &crate::view::Hub, _shutdown: &ShutdownSignal) {}
     }
 
     struct WaitingTask;
@@ -812,7 +819,7 @@ mod tests {
             TaskId::TestTask
         }
 
-        fn run(&mut self, _hub: &Sender<Event>, shutdown: &ShutdownSignal) {
+        fn run(&mut self, _hub: &crate::view::Hub, shutdown: &ShutdownSignal) {
             shutdown.wait(Duration::from_secs(60));
         }
     }

@@ -620,7 +620,7 @@ impl Home {
             }
 
             context.kb_rect = Rectangle::default();
-            hub.send(Event::Focus(None)).ok();
+            hub.send((Event::Focus(None)).into()).ok();
             if update {
                 let rect = rect![self.rect.min.x, y_min, self.rect.max.x, y_min + delta_y];
                 rq.add(RenderData::expose(rect, UpdateMode::Gui));
@@ -1021,7 +1021,8 @@ impl Home {
                     has_keyboard = true;
                 }
 
-                hub.send(Event::Focus(Some(ViewId::HomeSearchInput))).ok();
+                hub.send((Event::Focus(Some(ViewId::HomeSearchInput))).into())
+                    .ok();
             }
 
             search_visible = true;
@@ -1123,7 +1124,7 @@ impl Home {
                 *ren_doc.rect(),
                 UpdateMode::Gui,
             ));
-            hub.send(Event::Focus(Some(ViewId::RenameDocumentInput)))
+            hub.send((Event::Focus(Some(ViewId::RenameDocumentInput))).into())
                 .ok();
             self.children.push(Box::new(ren_doc) as Box<dyn View>);
         }
@@ -1167,7 +1168,8 @@ impl Home {
                 *go_to_page.rect(),
                 UpdateMode::Gui,
             ));
-            hub.send(Event::Focus(Some(ViewId::GoToPageInput))).ok();
+            hub.send((Event::Focus(Some(ViewId::GoToPageInput))).into())
+                .ok();
             self.children.push(Box::new(go_to_page) as Box<dyn View>);
         }
     }
@@ -1778,14 +1780,15 @@ impl Home {
                 fetcher.process.wait().ok();
                 if update {
                     if let Some(sort_method) = fetcher.sort_method {
-                        hub.send(Event::Select(EntryId::Sort(sort_method))).ok();
+                        hub.send((Event::Select(EntryId::Sort(sort_method))).into())
+                            .ok();
                     }
                     if let Some(first_column) = fetcher.first_column {
-                        hub.send(Event::Select(EntryId::FirstColumn(first_column)))
+                        hub.send((Event::Select(EntryId::FirstColumn(first_column))).into())
                             .ok();
                     }
                     if let Some(second_column) = fetcher.second_column {
-                        hub.send(Event::Select(EntryId::SecondColumn(second_column)))
+                        hub.send((Event::Select(EntryId::SecondColumn(second_column))).into())
                             .ok();
                     }
                 } else {
@@ -1824,19 +1827,20 @@ impl Home {
                 let mut first_column = hook.first_column;
                 let mut second_column = hook.second_column;
                 if let Some(sort_method) = sort_method.replace(self.sort_method) {
-                    hub.send(Event::Select(EntryId::Sort(sort_method))).ok();
+                    hub.send((Event::Select(EntryId::Sort(sort_method))).into())
+                        .ok();
                 }
                 let selected_library = context.settings.selected_library;
                 if let Some(first_column) =
                     first_column.replace(context.settings.libraries[selected_library].first_column)
                 {
-                    hub.send(Event::Select(EntryId::FirstColumn(first_column)))
+                    hub.send((Event::Select(EntryId::FirstColumn(first_column))).into())
                         .ok();
                 }
                 if let Some(second_column) = second_column
                     .replace(context.settings.libraries[selected_library].second_column)
                 {
-                    hub.send(Event::Select(EntryId::SecondColumn(second_column)))
+                    hub.send((Event::Select(EntryId::SecondColumn(second_column))).into())
                         .ok();
                 }
                 self.background_fetchers.insert(
@@ -1890,9 +1894,12 @@ impl Home {
                             Some("notify") => {
                                 if let Some(msg) = event.get("message").and_then(JsonValue::as_str)
                                 {
-                                    hub2.send(Event::Notification(NotificationEvent::Show(
-                                        msg.to_string(),
-                                    )))
+                                    hub2.send(
+                                        (Event::Notification(NotificationEvent::Show(
+                                            msg.to_string(),
+                                        )))
+                                        .into(),
+                                    )
                                     .ok();
                                 }
                             }
@@ -1902,16 +1909,18 @@ impl Home {
                                     .map(ToString::to_string)
                                     .and_then(|v| serde_json::from_str(&v).ok())
                                 {
-                                    hub2.send(Event::FetcherAddDocument(id, Box::new(info)))
-                                        .ok();
+                                    hub2.send(
+                                        (Event::FetcherAddDocument(id, Box::new(info))).into(),
+                                    )
+                                    .ok();
                                 }
                             }
                             Some("removeDocument") => {
                                 if let Some(path) = event.get("path").and_then(JsonValue::as_str) {
-                                    hub2.send(Event::FetcherRemoveDocument(
-                                        id,
-                                        PathBuf::from(path),
-                                    ))
+                                    hub2.send(
+                                        (Event::FetcherRemoveDocument(id, PathBuf::from(path)))
+                                            .into(),
+                                    )
                                     .ok();
                                 }
                             }
@@ -1928,12 +1937,15 @@ impl Home {
                                     .get("sortBy")
                                     .map(ToString::to_string)
                                     .and_then(|v| serde_json::from_str(&v).ok());
-                                hub2.send(Event::FetcherSearch {
-                                    id,
-                                    path,
-                                    query,
-                                    sort_by,
-                                })
+                                hub2.send(
+                                    (Event::FetcherSearch {
+                                        id,
+                                        path,
+                                        query,
+                                        sort_by,
+                                    })
+                                    .into(),
+                                )
                                 .ok();
                             }
                             _ => (),
@@ -1943,7 +1955,7 @@ impl Home {
                     break;
                 }
             }
-            hub2.send(Event::CheckFetcher(id)).ok();
+            hub2.send((Event::CheckFetcher(id)).into()).ok();
         });
         Ok(process)
     }
@@ -2005,7 +2017,7 @@ impl View for Home {
             Event::Gesture(GestureEvent::Rotate { quarter_turns, .. }) if quarter_turns != 0 => {
                 let (_, dir) = context.device.mirroring_scheme();
                 let n = (4 + (context.display.rotation - dir * quarter_turns)) % 4;
-                hub.send(Event::Select(EntryId::Rotate(n))).ok();
+                hub.send((Event::Select(EntryId::Rotate(n))).into()).ok();
                 true
             }
             Event::Gesture(GestureEvent::Arrow { dir, .. }) => {
@@ -2391,7 +2403,7 @@ impl View for Home {
                     .is_none()
                 {
                     context.settings.auto_frontlight_last_coordinates = Some(coordinates);
-                    hub.send(Event::AutoFrontlightConfigChanged).ok();
+                    hub.send((Event::AutoFrontlightConfigChanged).into()).ok();
                 }
                 true
             }

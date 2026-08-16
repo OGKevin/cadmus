@@ -130,7 +130,7 @@ impl View for RotationValues {
                     let dir = if next.x < next.y { polarity } else { -polarity };
                     info!("Startup rotation: {}.", startup_rotation);
                     info!("Mirroring scheme: ({}, {}).", center, dir);
-                    hub.send(Event::Back).ok();
+                    hub.send((Event::Back).into()).ok();
                 } else {
                     rq.add(RenderData::new(self.id, self.rect, UpdateMode::Full));
                 }

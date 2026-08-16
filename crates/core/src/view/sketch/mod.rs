@@ -237,10 +237,13 @@ impl Sketch {
     }
 
     fn quit(&self, hub: &Hub, context: &AppContext) {
-        hub.send(Event::ImportLibrary {
-            library_index: Some(context.settings.selected_library),
-            force: false,
-        })
+        hub.send(
+            (Event::ImportLibrary {
+                library_index: Some(context.settings.selected_library),
+                force: false,
+            })
+            .into(),
+        )
         .ok();
     }
 }
@@ -416,7 +419,7 @@ impl View for Sketch {
             }
             Event::Select(EntryId::Quit) => {
                 self.quit(hub, context);
-                hub.send(Event::Back).ok();
+                hub.send((Event::Back).into()).ok();
                 true
             }
             _ => false,

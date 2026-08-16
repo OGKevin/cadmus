@@ -315,18 +315,18 @@ impl View for FrontlightWindow {
                 let mut levels = self.frontlight_levels;
                 levels.intensity = value.into();
                 self.frontlight_levels = levels;
-                hub.send(Event::SetFrontlightLevels(levels)).ok();
+                hub.send((Event::SetFrontlightLevels(levels)).into()).ok();
                 true
             }
             Event::Slider(SliderId::LightWarmth, value, _) => {
                 let mut levels = self.frontlight_levels;
                 levels.warmth = value.into();
                 self.frontlight_levels = levels;
-                hub.send(Event::SetFrontlightLevels(levels)).ok();
+                hub.send((Event::SetFrontlightLevels(levels)).into()).ok();
                 true
             }
             Event::Gesture(GestureEvent::Tap(center)) if !self.rect.includes(center) => {
-                hub.send(Event::Close(ViewId::Frontlight)).ok();
+                hub.send((Event::Close(ViewId::Frontlight)).into()).ok();
                 true
             }
             Event::Gesture(..) => true,
@@ -392,7 +392,8 @@ impl View for FrontlightWindow {
                 let frontlight_levels =
                     context.settings.frontlight_presets[index].frontlight_levels;
                 self.set_frontlight_levels(frontlight_levels, rq, context);
-                hub.send(Event::SetFrontlightLevels(frontlight_levels)).ok();
+                hub.send((Event::SetFrontlightLevels(frontlight_levels)).into())
+                    .ok();
                 true
             }
             Event::Guess => {
@@ -405,7 +406,7 @@ impl View for FrontlightWindow {
                     guess_frontlight(lightsensor_level, &context.settings.frontlight_presets)
                 {
                     self.set_frontlight_levels(*frontlight_levels, rq, context);
-                    hub.send(Event::SetFrontlightLevels(*frontlight_levels))
+                    hub.send((Event::SetFrontlightLevels(*frontlight_levels)).into())
                         .ok();
                 }
                 true

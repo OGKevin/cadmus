@@ -7,8 +7,7 @@ use super::orchestrator::{
 };
 use crate::device::AppContext;
 use crate::device::{DeviceTask, DeviceTaskId};
-use crate::view::{RenderQueue, View};
-use std::sync::mpsc::Sender;
+use crate::view::{Hub, RenderQueue, View};
 
 /// Returns whether `tasks` contains a task with the given `id`.
 pub(crate) fn has_task(tasks: &[DeviceTask], id: DeviceTaskId) -> bool {
@@ -34,7 +33,7 @@ pub(crate) fn cancel_suspend_if_pending(
     context: &mut AppContext,
     tasks: &mut Vec<DeviceTask>,
     view: &mut dyn View,
-    hub: &Sender<crate::view::Event>,
+    hub: &Hub,
     rq: &mut RenderQueue,
 ) {
     let had_cycle = context.suspend.is_some();

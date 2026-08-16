@@ -105,7 +105,6 @@ mod tests {
     use crate::frontlight::LightLevels;
     use crate::task::{BackgroundTask, ShutdownSignal, TaskId, TaskManager};
     use crate::view::Event;
-    use std::sync::mpsc::Sender;
     use std::time::Duration;
 
     struct WaitingTask;
@@ -115,7 +114,7 @@ mod tests {
             TaskId::AutoFrontlight
         }
 
-        fn run(&mut self, _hub: &Sender<Event>, shutdown: &ShutdownSignal) {
+        fn run(&mut self, _hub: &crate::view::Hub, shutdown: &ShutdownSignal) {
             shutdown.wait(Duration::from_secs(60));
         }
     }

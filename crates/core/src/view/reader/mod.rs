@@ -458,7 +458,7 @@ impl Reader {
 
             info!("{}", info.file.path.display());
 
-            hub.send(Event::Update(UpdateMode::Partial)).ok();
+            hub.send((Event::Update(UpdateMode::Partial)).into()).ok();
 
             Some(Reader {
                 id,
@@ -530,7 +530,7 @@ impl Reader {
             }
         }
 
-        hub.send(Event::Update(UpdateMode::Partial)).ok();
+        hub.send((Event::Update(UpdateMode::Partial)).into()).ok();
 
         Reader {
             id,
@@ -591,7 +591,7 @@ impl Reader {
         doc.set_margin_width(mm_to_px(0.0, context.device.dpi()) as i32);
         let pages_count = doc.pages_count();
 
-        hub.send(Event::Update(UpdateMode::Partial)).ok();
+        hub.send((Event::Update(UpdateMode::Partial)).into()).ok();
 
         Some(Reader {
             id,
@@ -1152,7 +1152,7 @@ impl Reader {
                         }
                         FinishedAction::Close => {
                             self.quit(context);
-                            hub.send(Event::Back).ok();
+                            hub.send((Event::Back).into()).ok();
                         }
                         FinishedAction::GoToNext => {
                             let next = self
@@ -1164,10 +1164,10 @@ impl Reader {
 
                             match next {
                                 Some(next_info) => {
-                                    hub.send(Event::Open(Box::new(next_info))).ok();
+                                    hub.send((Event::Open(Box::new(next_info))).into()).ok();
                                 }
                                 None => {
-                                    hub.send(Event::Back).ok();
+                                    hub.send((Event::Back).into()).ok();
                                 }
                             }
                         }
@@ -1560,7 +1560,7 @@ impl Reader {
             thread::spawn(move || {
                 let mut doc = doc2.lock().unwrap();
                 if let Some(next_location) = doc.resolve_location(Location::Next(last_location)) {
-                    hub2.send(Event::LoadPixmap(next_location)).ok();
+                    hub2.send((Event::LoadPixmap(next_location)).into()).ok();
                 }
             });
             let doc3 = self.doc.clone();
@@ -1570,7 +1570,8 @@ impl Reader {
                 if let Some(previous_location) =
                     doc.resolve_location(Location::Previous(first_location))
                 {
-                    hub3.send(Event::LoadPixmap(previous_location)).ok();
+                    hub3.send((Event::LoadPixmap(previous_location)).into())
+                        .ok();
                 }
             });
         }
@@ -1625,7 +1626,8 @@ impl Reader {
                                 for (_, rect) in rects.range(*first..m.end()) {
                                     match_rects.push(*rect);
                                 }
-                                hub2.send(Event::SearchResult(location, match_rects)).ok();
+                                hub2.send((Event::SearchResult(location, match_rects)).into())
+                                    .ok();
                             }
                         }
                     }
@@ -1644,7 +1646,7 @@ impl Reader {
             }
 
             running.store(false, AtomicOrdering::Relaxed);
-            hub2.send(Event::EndOfSearch).ok();
+            hub2.send((Event::EndOfSearch).into()).ok();
         });
 
         if self.search.is_some() {
@@ -1696,7 +1698,7 @@ impl Reader {
             }
 
             context.kb_rect = Rectangle::default();
-            hub.send(Event::Focus(None)).ok();
+            hub.send((Event::Focus(None)).into()).ok();
         } else {
             if !enable {
                 return;
@@ -1974,7 +1976,8 @@ impl Reader {
             }
 
             self.toggle_keyboard(true, Some(ViewId::ReaderSearchInput), hub, rq, context);
-            hub.send(Event::Focus(Some(ViewId::ReaderSearchInput))).ok();
+            hub.send((Event::Focus(Some(ViewId::ReaderSearchInput))).into())
+                .ok();
         }
     }
 
@@ -2002,7 +2005,7 @@ impl Reader {
 
                 rq.add(RenderData::expose(top_rect, UpdateMode::Gui));
                 rq.add(RenderData::expose(bottom_rect, UpdateMode::Gui));
-                hub.send(Event::Focus(None)).ok();
+                hub.send((Event::Focus(None)).into()).ok();
             }
         } else {
             if let Some(false) = enable {
@@ -2295,7 +2298,8 @@ impl Reader {
                 *edit_note.rect(),
                 UpdateMode::Gui,
             ));
-            hub.send(Event::Focus(Some(ViewId::EditNoteInput))).ok();
+            hub.send((Event::Focus(Some(ViewId::EditNoteInput))).into())
+                .ok();
 
             self.children.push(Box::new(edit_note) as Box<dyn View>);
         }
@@ -2343,7 +2347,8 @@ impl Reader {
                 *name_page.rect(),
                 UpdateMode::Gui,
             ));
-            hub.send(Event::Focus(Some(ViewId::NamePageInput))).ok();
+            hub.send((Event::Focus(Some(ViewId::NamePageInput))).into())
+                .ok();
 
             self.children.push(Box::new(name_page) as Box<dyn View>);
         }
@@ -2392,7 +2397,7 @@ impl Reader {
                 *go_to_page.rect(),
                 UpdateMode::Gui,
             ));
-            hub.send(Event::Focus(Some(input_id))).ok();
+            hub.send((Event::Focus(Some(input_id))).into()).ok();
 
             self.children.push(Box::new(go_to_page) as Box<dyn View>);
         }
@@ -3914,7 +3919,7 @@ impl View for Reader {
             Event::Gesture(GestureEvent::Rotate { quarter_turns, .. }) if quarter_turns != 0 => {
                 let (_, dir) = context.device.mirroring_scheme();
                 let n = (4 + (context.display.rotation - dir * quarter_turns)) % 4;
-                hub.send(Event::Select(EntryId::Rotate(n))).ok();
+                hub.send((Event::Select(EntryId::Rotate(n))).into()).ok();
                 true
             }
             Event::Gesture(GestureEvent::Swipe { dir, start, end })
@@ -4036,10 +4041,12 @@ impl View for Reader {
                     DiagDir::NorthEast => self.go_to_bookmark(CycleDir::Next, hub, rq, context),
                     DiagDir::SouthEast => match context.settings.reader.bottom_right_gesture {
                         BottomRightGestureAction::ToggleDithered => {
-                            hub.send(Event::Select(EntryId::ToggleDithered)).ok();
+                            hub.send((Event::Select(EntryId::ToggleDithered)).into())
+                                .ok();
                         }
                         BottomRightGestureAction::ToggleInverted => {
-                            hub.send(Event::Select(EntryId::ToggleInverted)).ok();
+                            hub.send((Event::Select(EntryId::ToggleInverted)).into())
+                                .ok();
                         }
                     },
                     DiagDir::SouthWest => {
@@ -4068,7 +4075,7 @@ impl View for Reader {
                                 }
                             }
                         } else {
-                            hub.send(Event::ToggleFrontlight).ok();
+                            hub.send((Event::ToggleFrontlight).into()).ok();
                         }
                     }
                 };
@@ -4086,7 +4093,7 @@ impl View for Reader {
             }
             Event::Gesture(GestureEvent::Cross(_)) => {
                 self.quit(context);
-                hub.send(Event::Back).ok();
+                hub.send((Event::Back).into()).ok();
                 true
             }
             Event::Gesture(GestureEvent::Diamond(_)) => {
@@ -4405,8 +4412,8 @@ impl View for Reader {
                         };
                         if let Some(location) = loc_opt {
                             self.quit(context);
-                            hub.send(Event::Back).ok();
-                            hub.send(Event::GoToLocation(location)).ok();
+                            hub.send((Event::Back).into()).ok();
+                            hub.send((Event::GoToLocation(location)).into()).ok();
                         }
                     } else if let Some(caps) = pdf_page.captures(&link.text) {
                         if let Ok(index) = caps[1].parse::<usize>() {
@@ -4426,7 +4433,7 @@ impl View for Reader {
                         let mut doc = self.doc.lock().unwrap();
                         let loc = Location::LocalUri(self.current_page, link.text.clone());
                         if let Some(location) = doc.resolve_location(loc) {
-                            hub.send(Event::GoTo(location)).ok();
+                            hub.send((Event::GoTo(location)).into()).ok();
                         } else if link.text.starts_with("https:") || link.text.starts_with("http:")
                         {
                             if let Some(path) = context.settings.external_urls_queue.as_ref() {
@@ -4500,9 +4507,10 @@ impl View for Reader {
                             if self.search.is_none() {
                                 match context.settings.reader.south_east_corner {
                                     SouthEastCornerAction::GoToPage => {
-                                        hub.send(Event::Toggle(ToggleEvent::View(
-                                            ViewId::GoToPage,
-                                        )))
+                                        hub.send(
+                                            (Event::Toggle(ToggleEvent::View(ViewId::GoToPage)))
+                                                .into(),
+                                        )
                                         .ok();
                                     }
                                     SouthEastCornerAction::NextPage => {
@@ -4519,9 +4527,9 @@ impl View for Reader {
                                     && self.info.file.path == PathBuf::from(MEM_SCHEME)
                                 {
                                     self.quit(context);
-                                    hub.send(Event::Back).ok();
+                                    hub.send((Event::Back).into()).ok();
                                 } else {
-                                    hub.send(Event::Show(ViewId::TableOfContents)).ok();
+                                    hub.send((Event::Show(ViewId::TableOfContents)).into()).ok();
                                 }
                             } else {
                                 self.go_to_neighbor(CycleDir::Previous, hub, rq, context);
@@ -4651,10 +4659,10 @@ impl View for Reader {
                         .trim_matches(|c: char| !c.is_alphanumeric())
                         .to_string();
                     let language = self.info.language.clone();
-                    hub.send(Event::Select(EntryId::Launch(AppCmd::Dictionary {
-                        query,
-                        language,
-                    })))
+                    hub.send(
+                        (Event::Select(EntryId::Launch(AppCmd::Dictionary { query, language })))
+                            .into(),
+                    )
                     .ok();
                 }
                 self.selection = None;
@@ -4957,7 +4965,7 @@ impl View for Reader {
                         Location::Exact(offset) => Some(format!("@{}", offset)),
                         _ => None,
                     });
-                    hub.send(Event::OpenHtml(html, link_uri)).ok();
+                    hub.send((Event::OpenHtml(html, link_uri)).into()).ok();
                 }
                 true
             }
@@ -4981,7 +4989,7 @@ impl View for Reader {
                         .filter(|annot| annot.selection[0].location() <= self.current_page)
                         .max_by_key(|annot| annot.selection[0])
                         .map(|annot| format!("@{}", annot.selection[0].location()));
-                    hub.send(Event::OpenHtml(html, link_uri)).ok();
+                    hub.send((Event::OpenHtml(html, link_uri)).into()).ok();
                 }
                 true
             }
@@ -4993,7 +5001,7 @@ impl View for Reader {
                         .range(..=self.current_page)
                         .next_back()
                         .map(|index| format!("@{}", index));
-                    hub.send(Event::OpenHtml(html, link_uri)).ok();
+                    hub.send((Event::OpenHtml(html, link_uri)).into()).ok();
                 }
                 true
             }
@@ -5061,7 +5069,8 @@ impl View for Reader {
                     );
                     self.children.push(Box::new(notif) as Box<dyn View>);
                     self.toggle_search_bar(true, hub, rq, context);
-                    hub.send(Event::Focus(Some(ViewId::ReaderSearchInput))).ok();
+                    hub.send((Event::Focus(Some(ViewId::ReaderSearchInput))).into())
+                        .ok();
                 }
                 true
             }
@@ -5094,10 +5103,10 @@ impl View for Reader {
                         .trim_matches(|c: char| !c.is_alphanumeric())
                         .to_string();
                     let language = self.info.language.clone();
-                    hub.send(Event::Select(EntryId::Launch(AppCmd::Dictionary {
-                        query,
-                        language,
-                    })))
+                    hub.send(
+                        (Event::Select(EntryId::Launch(AppCmd::Dictionary { query, language })))
+                            .into(),
+                    )
                     .ok();
                 }
                 self.selection = None;
@@ -5299,7 +5308,7 @@ impl View for Reader {
                 ..
             }) => {
                 self.quit(context);
-                hub.send(Event::Back).ok();
+                hub.send((Event::Back).into()).ok();
                 true
             }
             Event::Select(EntryId::Quit)

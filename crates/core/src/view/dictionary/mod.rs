@@ -257,10 +257,10 @@ impl Dictionary {
         rq.add(RenderData::new(id, rect, UpdateMode::Gui));
 
         if query.is_empty() {
-            hub.send(Event::Focus(Some(ViewId::DictionarySearchInput)))
+            hub.send((Event::Focus(Some(ViewId::DictionarySearchInput))).into())
                 .ok();
         } else {
-            hub.send(Event::Define(query.to_string())).ok();
+            hub.send((Event::Define(query.to_string())).into()).ok();
         }
 
         Dictionary {
@@ -440,7 +440,7 @@ impl Dictionary {
 
             context.kb_rect = Rectangle::default();
             rq.add(RenderData::expose(rect, UpdateMode::Gui));
-            hub.send(Event::Focus(None)).ok();
+            hub.send((Event::Focus(None)).into()).ok();
         } else {
             if !enable {
                 return;
@@ -542,7 +542,7 @@ impl Dictionary {
                 *edit_languages.rect(),
                 UpdateMode::Gui,
             ));
-            hub.send(Event::Focus(Some(ViewId::EditLanguagesInput)))
+            hub.send((Event::Focus(Some(ViewId::EditLanguagesInput))).into())
                 .ok();
 
             self.children
@@ -727,7 +727,7 @@ impl View for Dictionary {
                     let loc = self.location;
                     self.go_to_neighbor(cd, rq, context);
                     if self.location == loc {
-                        hub.send(Event::Back).ok();
+                        hub.send((Event::Back).into()).ok();
                     }
                 }
                 true
@@ -803,7 +803,7 @@ impl View for Dictionary {
                 false
             }
             Event::Close(ViewId::SearchBar) => {
-                hub.send(Event::Back).ok();
+                hub.send((Event::Back).into()).ok();
                 true
             }
             Event::Focus(v) => {
@@ -842,7 +842,7 @@ impl View for Dictionary {
                 true
             }
             Event::Gesture(GestureEvent::Cross(_)) => {
-                hub.send(Event::Back).ok();
+                hub.send((Event::Back).into()).ok();
                 true
             }
             _ => false,

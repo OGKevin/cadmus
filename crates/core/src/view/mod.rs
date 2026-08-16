@@ -23,6 +23,7 @@ pub mod filler;
 pub mod frontlight;
 pub mod github;
 pub mod home;
+pub mod hub_message;
 pub mod icon;
 pub mod image;
 pub mod input_field;
@@ -106,7 +107,9 @@ pub const BIG_BAR_HEIGHT: f32 = 163.0;
 pub const CLOSE_IGNITION_DELAY: Duration = Duration::from_millis(150);
 
 pub type Bus = VecDeque<Event>;
-pub type Hub = Sender<Event>;
+pub type Hub = Sender<hub_message::HubMessage>;
+
+pub use hub_message::{HubLease, HubMessage};
 
 pub trait View: Downcast {
     fn handle_event(
@@ -419,7 +422,7 @@ pub enum Event {
     ///
     /// # Sending
     ///
-    /// Typically sent through the hub (`hub.send(...)`) by:
+    /// Typically sent through the hub (`hub.send((...).into())`) by:
     /// - An [`InputField`](input_field::InputField) when tapped while unfocused
     /// - A parent view after building a screen that contains an input field
     /// - A keyboard's hide method to clear focus
@@ -427,16 +430,16 @@ pub enum Event {
     /// # Example
     ///
     /// ```no_run
-    /// use cadmus_core::view::{Event, ViewId};
+    /// use cadmus_core::view::{Event, Hub, ViewId};
     /// use cadmus_core::view::ota::OtaViewId;
     ///
     /// // Focus the PR input field (e.g. after building the PR input screen).
     /// // Note: `hub` is provided by the application's event loop.
-    /// # let (hub, _) = std::sync::mpsc::channel();
-    /// hub.send(Event::Focus(Some(ViewId::Ota(OtaViewId::PrInput)))).ok();
+    /// # let (hub, _): (Hub, _) = std::sync::mpsc::channel();
+    /// hub.send(Event::Focus(Some(ViewId::Ota(OtaViewId::PrInput))).into()).ok();
     ///
     /// // Clear focus from all views.
-    /// hub.send(Event::Focus(None)).ok();
+    /// hub.send(Event::Focus(None).into()).ok();
     /// ```
     Focus(Option<ViewId>),
     Select(EntryId),

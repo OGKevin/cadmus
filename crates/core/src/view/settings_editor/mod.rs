@@ -115,10 +115,10 @@
 //! // partial snippet and cannot compile standalone.
 //! fn handle_my_new_setting(&mut self, value: f32, hub: &Hub, context: &mut AppContext) -> bool {
 //!     context.settings.my_new_setting = value;
-//!     hub.send(Event::Settings(SettingsEvent::UpdateValue {
+//!     hub.send((Event::Settings(SettingsEvent::UpdateValue {
 //!         kind: SettingIdentity::MyNewSetting,
 //!         value: value.to_string(),
-//!     }))
+//!     })).into())
 //!     .ok();
 //!     true
 //! }

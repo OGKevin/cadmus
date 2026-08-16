@@ -9,7 +9,6 @@ use crate::task::ShutdownSignal;
 use crate::view::{Event, NotificationEvent, ViewId};
 use fxhash::FxHashMap;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::Sender;
 use std::time::{Duration, Instant, UNIX_EPOCH};
 use tracing::{debug, error, info};
 use walkdir::{DirEntry, WalkDir};
@@ -67,7 +66,7 @@ impl ProgressTracker {
 }
 
 struct ScanContext<'a> {
-    hub: &'a Sender<Event>,
+    hub: &'a crate::view::Hub,
     notif_id: ViewId,
     shutdown: &'a ShutdownSignal,
 }
@@ -328,7 +327,7 @@ fn scan_entries(
 }
 
 fn send_progress(
-    hub: &Sender<Event>,
+    hub: &crate::view::Hub,
     notif_id: ViewId,
     tracker: &mut ProgressTracker,
     idx: usize,
@@ -338,10 +337,8 @@ fn send_progress(
         return;
     };
     debug!(percent, "import progress");
-    hub.send(Event::Notification(NotificationEvent::UpdateProgress(
-        notif_id, percent,
-    )))
-    .ok();
+    hub.send((Event::Notification(NotificationEvent::UpdateProgress(notif_id, percent))).into())
+        .ok();
 }
 
 #[cfg_attr(
@@ -480,21 +477,24 @@ pub fn run(
     install_dir: &Path,
     settings: &ImportSettings,
     force: bool,
-    hub: &Sender<Event>,
+    hub: &crate::view::Hub,
     notif_id: ViewId,
     shutdown: &ShutdownSignal,
 ) {
-    hub.send(Event::Notification(NotificationEvent::ShowPinned(
-        notif_id,
-        fl!("importer-importing-library"),
-    )))
+    hub.send(
+        (Event::Notification(NotificationEvent::ShowPinned(
+            notif_id,
+            fl!("importer-importing-library"),
+        )))
+        .into(),
+    )
     .ok();
 
     let handles = match db.list_book_handles(library_id) {
         Ok(h) => h,
         Err(e) => {
             error!(error = %e, "failed to load book handles for import");
-            hub.send(Event::Close(notif_id)).ok();
+            hub.send((Event::Close(notif_id)).into()).ok();
             return;
         }
     };
@@ -555,7 +555,7 @@ pub fn run(
         &mut handles_by_fp,
         &mut handles_by_path,
     ) else {
-        hub.send(Event::Close(notif_id)).ok();
+        hub.send((Event::Close(notif_id)).into()).ok();
         return;
     };
 
@@ -583,7 +583,7 @@ pub fn run(
         result.thumbnails_to_delete,
     );
 
-    hub.send(Event::Close(notif_id)).ok();
+    hub.send((Event::Close(notif_id)).into()).ok();
 }
 
 #[cfg(test)]
@@ -619,7 +619,7 @@ mod tests {
             shutdown,
         );
         drop(tx);
-        rx.try_iter().collect()
+        rx.try_iter().map(|message| message.event).collect()
     }
 
     #[test]
@@ -675,7 +675,7 @@ mod tests {
             &shutdown,
         );
         drop(tx);
-        let events: Vec<Event> = rx.try_iter().collect();
+        let events: Vec<Event> = rx.try_iter().map(|message| message.event).collect();
 
         assert!(
             events.iter().any(|e| matches!(e, Event::Close(_))),
@@ -821,7 +821,7 @@ mod tests {
             &shutdown,
         );
         drop(tx);
-        let _events: Vec<Event> = rx.try_iter().collect();
+        let _events: Vec<Event> = rx.try_iter().map(|message| message.event).collect();
 
         let handles = lib.db.list_book_handles(lib.library_id).expect("handles");
         let paths: Vec<_> = handles.iter().map(|h| h.relat.clone()).collect();
@@ -864,7 +864,7 @@ mod tests {
             &shutdown,
         );
         drop(tx);
-        let _: Vec<Event> = rx.try_iter().collect();
+        let _: Vec<Event> = rx.try_iter().map(|message| message.event).collect();
 
         let handles = lib.db.list_book_handles(lib.library_id).expect("handles");
         assert_eq!(handles.len(), 2, "both files should be imported initially");
@@ -890,7 +890,7 @@ mod tests {
             &shutdown,
         );
         drop(tx2);
-        let _: Vec<Event> = rx2.try_iter().collect();
+        let _: Vec<Event> = rx2.try_iter().map(|message| message.event).collect();
 
         let handles = lib
             .db

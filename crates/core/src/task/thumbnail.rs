@@ -1,7 +1,6 @@
 //! Background task that extracts book cover thumbnails.
 
 use std::path::PathBuf;
-use std::sync::mpsc::Sender;
 
 use crate::db::Database;
 use crate::document::open;
@@ -43,7 +42,7 @@ impl ThumbnailExtractionTask {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(hub, shutdown, self)))]
-    fn run_for_index(&self, index: usize, hub: &Sender<Event>, shutdown: &ShutdownSignal) {
+    fn run_for_index(&self, index: usize, hub: &crate::view::Hub, shutdown: &ShutdownSignal) {
         let lib_settings = match self.settings.libraries.get(index) {
             Some(s) => s,
             None => {
@@ -107,7 +106,7 @@ impl ThumbnailExtractionTask {
                     if let Err(e) = library.db.save_thumbnail(fp, &bytes) {
                         tracing::error!(error = %e, path = %path.display(), "failed to save thumbnail to database");
                     } else {
-                        hub.send(Event::RefreshBookPreview(path)).ok();
+                        hub.send((Event::RefreshBookPreview(path)).into()).ok();
                     }
                 }
                 None => {
@@ -124,7 +123,7 @@ impl BackgroundTask for ThumbnailExtractionTask {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-    fn run(&mut self, hub: &Sender<Event>, shutdown: &ShutdownSignal) {
+    fn run(&mut self, hub: &crate::view::Hub, shutdown: &ShutdownSignal) {
         match self.library_index {
             Some(index) => {
                 self.run_for_index(index, hub, shutdown);

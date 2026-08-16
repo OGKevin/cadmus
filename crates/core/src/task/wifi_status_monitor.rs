@@ -6,7 +6,6 @@
 //! (enable/disable + `network_info`), not by probing dhcpcd here.
 
 use std::collections::HashMap;
-use std::sync::mpsc::Sender;
 use std::time::Duration;
 
 use futures_util::stream::StreamExt;
@@ -31,7 +30,7 @@ impl BackgroundTask for WifiStatusMonitorTask {
         TaskId::WifiStatusMonitor
     }
 
-    fn run(&mut self, hub: &Sender<Event>, shutdown: &ShutdownSignal) {
+    fn run(&mut self, hub: &crate::view::Hub, shutdown: &ShutdownSignal) {
         let rt = match tokio::runtime::Runtime::new() {
             Ok(rt) => rt,
             Err(e) => {
@@ -49,7 +48,7 @@ impl BackgroundTask for WifiStatusMonitorTask {
 }
 
 async fn monitor(
-    hub: &Sender<Event>,
+    hub: &crate::view::Hub,
     shutdown: &ShutdownSignal,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let connection = zbus::Connection::system().await?;
@@ -116,7 +115,7 @@ async fn monitor(
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(msg, hub), ret(level=tracing::Level::TRACE)))]
 fn process_wpa_status(
     msg: &zbus::Message,
-    hub: &Sender<Event>,
+    hub: &crate::view::Hub,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let body = msg.body();
 
@@ -131,7 +130,7 @@ fn process_wpa_status(
 ///
 /// This is a separate function to enable unit testing without requiring
 /// a full zbus::Message.
-fn check_interfaces(interfaces: &HashMap<String, HashMap<String, String>>, hub: &Sender<Event>) {
+fn check_interfaces(interfaces: &HashMap<String, HashMap<String, String>>, hub: &crate::view::Hub) {
     for (interface_name, properties) in interfaces {
         if let Some(wpa_state) = properties.get("wpa_state") {
             tracing::debug!(
@@ -146,7 +145,7 @@ fn check_interfaces(interfaces: &HashMap<String, HashMap<String, String>>, hub: 
 
             if wpa_state == "COMPLETED" && has_ip {
                 tracing::info!("network up detected via dhcpcd-dbus");
-                hub.send(Event::Device(DeviceEvent::NetUp)).ok();
+                hub.send((Event::Device(DeviceEvent::NetUp)).into()).ok();
             }
         }
     }
@@ -170,7 +169,7 @@ mod tests {
         check_interfaces(&interfaces, &tx);
 
         let event = rx.try_recv().expect("should receive NetUp event");
-        assert!(matches!(event, Event::Device(DeviceEvent::NetUp)));
+        assert!(matches!(event.event, Event::Device(DeviceEvent::NetUp)));
     }
 
     #[test]

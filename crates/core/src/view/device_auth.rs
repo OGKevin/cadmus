@@ -75,7 +75,7 @@ impl DeviceAuthView {
             Ok((url, code)) => (format!("Go to: {}", url), format!("Enter code: {}", code)),
             Err(e) => {
                 tracing::error!(error = %e, "Device flow initiation failed");
-                hub.send(Event::Github(GithubEvent::DeviceAuthError(e.to_string())))
+                hub.send((Event::Github(GithubEvent::DeviceAuthError(e.to_string()))).into())
                     .ok();
                 (
                     "GitHub auth failed".to_owned(),
@@ -166,7 +166,7 @@ impl DeviceAuthView {
                 Ok(c) => c,
                 Err(e) => {
                     tracing::error!(error = %e, "Failed to create poll client");
-                    hub2.send(Event::Github(GithubEvent::DeviceAuthError(e.to_string())))
+                    hub2.send((Event::Github(GithubEvent::DeviceAuthError(e.to_string()))).into())
                         .ok();
                     return;
                 }
@@ -192,27 +192,30 @@ impl DeviceAuthView {
                     }
                     Ok(TokenPollResult::Complete(token)) => {
                         tracing::info!("Device flow authorization complete");
-                        hub2.send(Event::Github(GithubEvent::DeviceAuthComplete(token)))
+                        hub2.send((Event::Github(GithubEvent::DeviceAuthComplete(token))).into())
                             .ok();
                         return;
                     }
                     Ok(TokenPollResult::Expired) => {
                         tracing::warn!("Device flow code expired");
-                        hub2.send(Event::Github(GithubEvent::DeviceAuthExpired))
+                        hub2.send((Event::Github(GithubEvent::DeviceAuthExpired)).into())
                             .ok();
                         return;
                     }
                     Ok(TokenPollResult::Cancelled) => {
                         tracing::info!("Device flow cancelled by user on GitHub");
-                        hub2.send(Event::Github(GithubEvent::DeviceAuthError(
-                            "Authorization cancelled".to_owned(),
-                        )))
+                        hub2.send(
+                            (Event::Github(GithubEvent::DeviceAuthError(
+                                "Authorization cancelled".to_owned(),
+                            )))
+                            .into(),
+                        )
                         .ok();
                         return;
                     }
                     Err(e) => {
                         tracing::error!(error = %e, "Device flow poll error");
-                        hub2.send(Event::Github(GithubEvent::DeviceAuthError(e)))
+                        hub2.send((Event::Github(GithubEvent::DeviceAuthError(e))).into())
                             .ok();
                         return;
                     }

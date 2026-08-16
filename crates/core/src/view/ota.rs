@@ -361,9 +361,10 @@ impl OtaView {
             rq.add(RenderData::new(self.id, self.rect, UpdateMode::Full));
             self.start_pr_download(pr_number, hub, context);
         } else {
-            hub.send(Event::Notification(NotificationEvent::Show(
-                "Invalid PR number".to_string(),
-            )))
+            hub.send(
+                (Event::Notification(NotificationEvent::Show("Invalid PR number".to_string())))
+                    .into(),
+            )
             .ok();
         }
     }
@@ -387,7 +388,7 @@ impl OtaView {
             && !context.kb_rect.includes(tap_position)
             && !context.kb_rect.is_empty()
         {
-            hub.send(Event::Close(self.view_id)).ok();
+            hub.send((Event::Close(self.view_id)).into()).ok();
         }
     }
 
@@ -445,10 +446,13 @@ impl OtaView {
                 Ok(lease) => lease,
                 Err(e) => {
                     error!(error = %e, "Failed to acquire WiFi lease for OTA download");
-                    hub2.send(Event::Close(ota_view_id)).ok();
-                    hub2.send(Event::Notification(NotificationEvent::Show(fl!(
-                        "notification-not-online"
-                    ))))
+                    hub2.send((Event::Close(ota_view_id)).into()).ok();
+                    hub2.send(
+                        (Event::Notification(NotificationEvent::Show(fl!(
+                            "notification-not-online"
+                        ))))
+                        .into(),
+                    )
                     .ok();
                     return;
                 }
@@ -457,30 +461,39 @@ impl OtaView {
                 Ok(c) => c,
                 Err(e) => {
                     error!(error = %e, "Failed to create GitHub client");
-                    hub2.send(Event::Close(ota_view_id)).ok();
-                    hub2.send(Event::Notification(NotificationEvent::Show(format!(
-                        "Failed to create client: {}",
-                        e
-                    ))))
+                    hub2.send((Event::Close(ota_view_id)).into()).ok();
+                    hub2.send(
+                        (Event::Notification(NotificationEvent::Show(format!(
+                            "Failed to create client: {}",
+                            e
+                        ))))
+                        .into(),
+                    )
                     .ok();
                     return;
                 }
             };
             let client = OtaClient::new(github, tmp_dir);
 
-            hub2.send(Event::OtaDownloadProgress {
-                label: format!("Downloading PR #{} build… 0%", pr_number),
-                percent: 0,
-            })
+            hub2.send(
+                (Event::OtaDownloadProgress {
+                    label: format!("Downloading PR #{} build… 0%", pr_number),
+                    percent: 0,
+                })
+                .into(),
+            )
             .ok();
 
             let download_result = client.download_pr_artifact(pr_number, |ota_progress| {
                 if let OtaProgress::DownloadingArtifact { downloaded, total } = ota_progress {
                     let percent = (downloaded as f32 / total as f32 * 100.0) as u8;
-                    hub2.send(Event::OtaDownloadProgress {
-                        label: format!("Downloading PR #{} build… {}%", pr_number, percent),
-                        percent,
-                    })
+                    hub2.send(
+                        (Event::OtaDownloadProgress {
+                            label: format!("Downloading PR #{} build… {}%", pr_number, percent),
+                            percent,
+                        })
+                        .into(),
+                    )
                     .ok();
                 }
             });
@@ -493,35 +506,45 @@ impl OtaView {
                             if let Err(e) = clean_bundled_files(&install_dir) {
                                 tracing::warn!(path = ?install_dir, error = %e, "Failed to clean bundled OTA files");
                             }
-                            hub2.send(Event::OtaDownloadProgress {
-                                label: "Installing and rebooting…".to_string(),
-                                percent: 100,
-                            })
+                            hub2.send(
+                                (Event::OtaDownloadProgress {
+                                    label: "Installing and rebooting…".to_string(),
+                                    percent: 100,
+                                })
+                                .into(),
+                            )
                             .ok();
                             send_reboot_after_delay(hub2.clone());
                         }
                         Err(e) => {
                             error!(error = %e, "Deployment failed");
-                            hub2.send(Event::Close(ota_view_id)).ok();
-                            hub2.send(Event::Notification(NotificationEvent::Show(format!(
-                                "Deployment failed: {}",
-                                e
-                            ))))
+                            hub2.send((Event::Close(ota_view_id)).into()).ok();
+                            hub2.send(
+                                (Event::Notification(NotificationEvent::Show(format!(
+                                    "Deployment failed: {}",
+                                    e
+                                ))))
+                                .into(),
+                            )
                             .ok();
                         }
                     }
                 }
                 Err(OtaError::Unauthorized) | Err(OtaError::InsufficientScopes(_)) => {
                     tracing::warn!(pr_number, "GitHub token rejected — triggering re-auth");
-                    hub2.send(Event::Github(GithubEvent::TokenInvalid)).ok();
+                    hub2.send((Event::Github(GithubEvent::TokenInvalid)).into())
+                        .ok();
                 }
                 Err(e) => {
                     error!(error = %e, "PR download failed");
-                    hub2.send(Event::Close(ota_view_id)).ok();
-                    hub2.send(Event::Notification(NotificationEvent::Show(format!(
-                        "Download failed: {}",
-                        e
-                    ))))
+                    hub2.send((Event::Close(ota_view_id)).into()).ok();
+                    hub2.send(
+                        (Event::Notification(NotificationEvent::Show(format!(
+                            "Download failed: {}",
+                            e
+                        ))))
+                        .into(),
+                    )
                     .ok();
                 }
             }
@@ -558,10 +581,13 @@ impl OtaView {
                 Ok(lease) => lease,
                 Err(e) => {
                     error!(error = %e, "Failed to acquire WiFi lease for OTA download");
-                    hub2.send(Event::Close(ota_view_id)).ok();
-                    hub2.send(Event::Notification(NotificationEvent::Show(fl!(
-                        "notification-not-online"
-                    ))))
+                    hub2.send((Event::Close(ota_view_id)).into()).ok();
+                    hub2.send(
+                        (Event::Notification(NotificationEvent::Show(fl!(
+                            "notification-not-online"
+                        ))))
+                        .into(),
+                    )
                     .ok();
                     return;
                 }
@@ -570,30 +596,39 @@ impl OtaView {
                 Ok(c) => c,
                 Err(e) => {
                     error!(error = %e, "Failed to create GitHub client");
-                    hub2.send(Event::Close(ota_view_id)).ok();
-                    hub2.send(Event::Notification(NotificationEvent::Show(format!(
-                        "Failed to create client: {}",
-                        e
-                    ))))
+                    hub2.send((Event::Close(ota_view_id)).into()).ok();
+                    hub2.send(
+                        (Event::Notification(NotificationEvent::Show(format!(
+                            "Failed to create client: {}",
+                            e
+                        ))))
+                        .into(),
+                    )
                     .ok();
                     return;
                 }
             };
             let client = OtaClient::new(github, tmp_dir);
 
-            hub2.send(Event::OtaDownloadProgress {
-                label: "Downloading main branch build… 0%".to_string(),
-                percent: 0,
-            })
+            hub2.send(
+                (Event::OtaDownloadProgress {
+                    label: "Downloading main branch build… 0%".to_string(),
+                    percent: 0,
+                })
+                .into(),
+            )
             .ok();
 
             let download_result = client.download_default_branch_artifact(|ota_progress| {
                 if let OtaProgress::DownloadingArtifact { downloaded, total } = ota_progress {
                     let percent = (downloaded as f32 / total as f32 * 100.0) as u8;
-                    hub2.send(Event::OtaDownloadProgress {
-                        label: format!("Downloading main branch build… {}%", percent),
-                        percent,
-                    })
+                    hub2.send(
+                        (Event::OtaDownloadProgress {
+                            label: format!("Downloading main branch build… {}%", percent),
+                            percent,
+                        })
+                        .into(),
+                    )
                     .ok();
                 }
             });
@@ -606,35 +641,45 @@ impl OtaView {
                             if let Err(e) = clean_bundled_files(&install_dir) {
                                 tracing::warn!(path = ?install_dir, error = %e, "Failed to clean bundled OTA files");
                             }
-                            hub2.send(Event::OtaDownloadProgress {
-                                label: "Installing and rebooting…".to_string(),
-                                percent: 100,
-                            })
+                            hub2.send(
+                                (Event::OtaDownloadProgress {
+                                    label: "Installing and rebooting…".to_string(),
+                                    percent: 100,
+                                })
+                                .into(),
+                            )
                             .ok();
                             send_reboot_after_delay(hub2.clone());
                         }
                         Err(e) => {
                             error!(error = %e, "Deployment failed");
-                            hub2.send(Event::Close(ota_view_id)).ok();
-                            hub2.send(Event::Notification(NotificationEvent::Show(format!(
-                                "Deployment failed: {}",
-                                e
-                            ))))
+                            hub2.send((Event::Close(ota_view_id)).into()).ok();
+                            hub2.send(
+                                (Event::Notification(NotificationEvent::Show(format!(
+                                    "Deployment failed: {}",
+                                    e
+                                ))))
+                                .into(),
+                            )
                             .ok();
                         }
                     }
                 }
                 Err(OtaError::Unauthorized) | Err(OtaError::InsufficientScopes(_)) => {
                     tracing::warn!("GitHub token rejected — triggering re-auth");
-                    hub2.send(Event::Github(GithubEvent::TokenInvalid)).ok();
+                    hub2.send((Event::Github(GithubEvent::TokenInvalid)).into())
+                        .ok();
                 }
                 Err(e) => {
                     error!(error = %e, "Main branch download failed");
-                    hub2.send(Event::Close(ota_view_id)).ok();
-                    hub2.send(Event::Notification(NotificationEvent::Show(format!(
-                        "Download failed: {}",
-                        e
-                    ))))
+                    hub2.send((Event::Close(ota_view_id)).into()).ok();
+                    hub2.send(
+                        (Event::Notification(NotificationEvent::Show(format!(
+                            "Download failed: {}",
+                            e
+                        ))))
+                        .into(),
+                    )
                     .ok();
                 }
             }
@@ -671,10 +716,13 @@ impl OtaView {
                 Ok(lease) => lease,
                 Err(e) => {
                     error!(error = %e, "Failed to acquire WiFi lease for OTA download");
-                    hub2.send(Event::Close(ota_view_id)).ok();
-                    hub2.send(Event::Notification(NotificationEvent::Show(fl!(
-                        "notification-not-online"
-                    ))))
+                    hub2.send((Event::Close(ota_view_id)).into()).ok();
+                    hub2.send(
+                        (Event::Notification(NotificationEvent::Show(fl!(
+                            "notification-not-online"
+                        ))))
+                        .into(),
+                    )
                     .ok();
                     return;
                 }
@@ -683,30 +731,39 @@ impl OtaView {
                 Ok(c) => c,
                 Err(e) => {
                     error!(error = %e, "Failed to create GitHub client");
-                    hub2.send(Event::Close(ota_view_id)).ok();
-                    hub2.send(Event::Notification(NotificationEvent::Show(format!(
-                        "Failed to create client: {}",
-                        e
-                    ))))
+                    hub2.send((Event::Close(ota_view_id)).into()).ok();
+                    hub2.send(
+                        (Event::Notification(NotificationEvent::Show(format!(
+                            "Failed to create client: {}",
+                            e
+                        ))))
+                        .into(),
+                    )
                     .ok();
                     return;
                 }
             };
             let client = OtaClient::new(github, tmp_dir);
 
-            hub2.send(Event::OtaDownloadProgress {
-                label: "Downloading stable release… 0%".to_string(),
-                percent: 0,
-            })
+            hub2.send(
+                (Event::OtaDownloadProgress {
+                    label: "Downloading stable release… 0%".to_string(),
+                    percent: 0,
+                })
+                .into(),
+            )
             .ok();
 
             let download_result = client.download_stable_release_artifact(|ota_progress| {
                 if let OtaProgress::DownloadingArtifact { downloaded, total } = ota_progress {
                     let percent = (downloaded as f32 / total as f32 * 100.0) as u8;
-                    hub2.send(Event::OtaDownloadProgress {
-                        label: format!("Downloading stable release… {}%", percent),
-                        percent,
-                    })
+                    hub2.send(
+                        (Event::OtaDownloadProgress {
+                            label: format!("Downloading stable release… {}%", percent),
+                            percent,
+                        })
+                        .into(),
+                    )
                     .ok();
                 }
             });
@@ -719,35 +776,45 @@ impl OtaView {
                             if let Err(e) = clean_bundled_files(&install_dir) {
                                 tracing::warn!(path = ?install_dir, error = %e, "Failed to clean bundled OTA files");
                             }
-                            hub2.send(Event::OtaDownloadProgress {
-                                label: "Installing and rebooting…".to_string(),
-                                percent: 100,
-                            })
+                            hub2.send(
+                                (Event::OtaDownloadProgress {
+                                    label: "Installing and rebooting…".to_string(),
+                                    percent: 100,
+                                })
+                                .into(),
+                            )
                             .ok();
                             send_reboot_after_delay(hub2.clone());
                         }
                         Err(e) => {
                             error!(error = %e, "Deployment failed");
-                            hub2.send(Event::Close(ota_view_id)).ok();
-                            hub2.send(Event::Notification(NotificationEvent::Show(format!(
-                                "Deployment failed: {}",
-                                e
-                            ))))
+                            hub2.send((Event::Close(ota_view_id)).into()).ok();
+                            hub2.send(
+                                (Event::Notification(NotificationEvent::Show(format!(
+                                    "Deployment failed: {}",
+                                    e
+                                ))))
+                                .into(),
+                            )
                             .ok();
                         }
                     }
                 }
                 Err(OtaError::Unauthorized) | Err(OtaError::InsufficientScopes(_)) => {
                     tracing::warn!("GitHub token rejected on stable release — triggering re-auth");
-                    hub2.send(Event::Github(GithubEvent::TokenInvalid)).ok();
+                    hub2.send((Event::Github(GithubEvent::TokenInvalid)).into())
+                        .ok();
                 }
                 Err(e) => {
                     error!(error = %e, "Stable release download failed");
-                    hub2.send(Event::Close(ota_view_id)).ok();
-                    hub2.send(Event::Notification(NotificationEvent::Show(format!(
-                        "Download failed: {}",
-                        e
-                    ))))
+                    hub2.send((Event::Close(ota_view_id)).into()).ok();
+                    hub2.send(
+                        (Event::Notification(NotificationEvent::Show(format!(
+                            "Download failed: {}",
+                            e
+                        ))))
+                        .into(),
+                    )
                     .ok();
                 }
             }
@@ -762,7 +829,7 @@ impl OtaView {
 fn send_reboot_after_delay(hub: Hub) {
     thread::spawn(move || {
         thread::sleep(std::time::Duration::from_secs(1));
-        hub.send(Event::Select(EntryId::Reboot)).ok();
+        hub.send((Event::Select(EntryId::Reboot)).into()).ok();
     });
 }
 
@@ -794,11 +861,14 @@ impl OtaView {
             Ok(c) => c,
             Err(e) => {
                 tracing::error!(error = %e, "Failed to create GitHub client");
-                hub.send(Event::Close(ota_view_id)).ok();
-                hub.send(Event::Notification(NotificationEvent::Show(format!(
-                    "Failed to create client: {}",
-                    e
-                ))))
+                hub.send((Event::Close(ota_view_id)).into()).ok();
+                hub.send(
+                    (Event::Notification(NotificationEvent::Show(format!(
+                        "Failed to create client: {}",
+                        e
+                    ))))
+                    .into(),
+                )
                 .ok();
                 return true;
             }
@@ -809,11 +879,14 @@ impl OtaView {
             Ok(version) => version,
             Err(e) => {
                 tracing::error!(error = %e, "Failed to fetch or parse latest release version");
-                hub.send(Event::Close(ota_view_id)).ok();
-                hub.send(Event::Notification(NotificationEvent::Show(format!(
-                    "Failed to check for updates: {}",
-                    e
-                ))))
+                hub.send((Event::Close(ota_view_id)).into()).ok();
+                hub.send(
+                    (Event::Notification(NotificationEvent::Show(format!(
+                        "Failed to check for updates: {}",
+                        e
+                    ))))
+                    .into(),
+                )
                 .ok();
                 return true;
             }
@@ -830,39 +903,51 @@ impl OtaView {
         match current_version.compare(&remote_version) {
             Ok(VersionComparison::Equal) => {
                 tracing::info!("Current version equals remote version - already latest");
-                hub.send(Event::Close(ota_view_id)).ok();
-                hub.send(Event::Notification(NotificationEvent::Show(
-                    "You already have the latest version".to_string(),
-                )))
+                hub.send((Event::Close(ota_view_id)).into()).ok();
+                hub.send(
+                    (Event::Notification(NotificationEvent::Show(
+                        "You already have the latest version".to_string(),
+                    )))
+                    .into(),
+                )
                 .ok();
             }
             Ok(VersionComparison::Newer) => {
                 tracing::info!("Current version is newer than remote version");
-                hub.send(Event::Close(ota_view_id)).ok();
-                hub.send(Event::Notification(NotificationEvent::Show(
-                    "Your version is newer than the latest release".to_string(),
-                )))
+                hub.send((Event::Close(ota_view_id)).into()).ok();
+                hub.send(
+                    (Event::Notification(NotificationEvent::Show(
+                        "Your version is newer than the latest release".to_string(),
+                    )))
+                    .into(),
+                )
                 .ok();
             }
             Ok(VersionComparison::Older) => {
                 tracing::info!("Remote version is newer - proceeding with download");
-                hub.send(Event::StartStableReleaseDownload).ok();
+                hub.send((Event::StartStableReleaseDownload).into()).ok();
             }
             Ok(VersionComparison::Incomparable) => {
                 tracing::warn!("Cannot compare versions - divergent branches");
-                hub.send(Event::Close(ota_view_id)).ok();
-                hub.send(Event::Notification(NotificationEvent::Show(
-                    "Cannot compare versions - divergent branches".to_string(),
-                )))
+                hub.send((Event::Close(ota_view_id)).into()).ok();
+                hub.send(
+                    (Event::Notification(NotificationEvent::Show(
+                        "Cannot compare versions - divergent branches".to_string(),
+                    )))
+                    .into(),
+                )
                 .ok();
             }
             Err(e) => {
                 tracing::error!(error = %e, "Version comparison error");
-                hub.send(Event::Close(ota_view_id)).ok();
-                hub.send(Event::Notification(NotificationEvent::Show(format!(
-                    "Version comparison error: {}",
-                    e
-                ))))
+                hub.send((Event::Close(ota_view_id)).into()).ok();
+                hub.send(
+                    (Event::Notification(NotificationEvent::Show(format!(
+                        "Version comparison error: {}",
+                        e
+                    ))))
+                    .into(),
+                )
                 .ok();
             }
         }
@@ -883,7 +968,7 @@ impl OtaView {
         self.build_pr_input_screen(context);
         rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
         self.toggle_keyboard(true, hub, rq, context);
-        hub.send(Event::Focus(Some(ViewId::Ota(OtaViewId::PrInput))))
+        hub.send((Event::Focus(Some(ViewId::Ota(OtaViewId::PrInput)))).into())
             .ok();
         true
     }
@@ -941,7 +1026,7 @@ impl OtaView {
                 self.build_pr_input_screen(context);
                 rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
                 self.toggle_keyboard(true, hub, rq, context);
-                hub.send(Event::Focus(Some(ViewId::Ota(OtaViewId::PrInput))))
+                hub.send((Event::Focus(Some(ViewId::Ota(OtaViewId::PrInput)))).into())
                     .ok();
             }
             Some(PendingDownload::Pr(pr_number)) => {
@@ -983,11 +1068,14 @@ impl OtaView {
     fn on_device_auth_expired(&mut self, hub: &Hub) -> bool {
         tracing::warn!("Device flow code expired");
         self.pending_download = None;
-        hub.send(Event::Notification(NotificationEvent::Show(
-            "GitHub authorization timed out. Please try again.".to_string(),
-        )))
+        hub.send(
+            (Event::Notification(NotificationEvent::Show(
+                "GitHub authorization timed out. Please try again.".to_string(),
+            )))
+            .into(),
+        )
         .ok();
-        hub.send(Event::Close(self.view_id)).ok();
+        hub.send((Event::Close(self.view_id)).into()).ok();
         true
     }
 
@@ -995,12 +1083,15 @@ impl OtaView {
     fn on_device_auth_error(&mut self, msg: &str, hub: &Hub) -> bool {
         tracing::error!(error = %msg, "Device flow error");
         self.pending_download = None;
-        hub.send(Event::Notification(NotificationEvent::Show(format!(
-            "GitHub auth error: {}",
-            msg
-        ))))
+        hub.send(
+            (Event::Notification(NotificationEvent::Show(format!(
+                "GitHub auth error: {}",
+                msg
+            ))))
+            .into(),
+        )
         .ok();
-        hub.send(Event::Close(self.view_id)).ok();
+        hub.send((Event::Close(self.view_id)).into()).ok();
         true
     }
 }
@@ -1253,7 +1344,8 @@ mod tests {
             &mut context,
         );
 
-        while let Ok(evt) = rx.try_recv() {
+        while let Ok(message) = rx.try_recv() {
+            let (evt, _) = message.into_parts();
             handle_event(&mut parent, &evt, &hub, &mut bus, &mut rq, &mut context);
         }
 

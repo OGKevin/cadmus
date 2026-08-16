@@ -507,7 +507,7 @@ impl CategoryEditor {
             crate::view::named_input::NamedInput::new(label, view_id, view_id, max_chars, context);
         named_input.set_text(&initial_text, rq, context);
         self.children.push(Box::new(named_input));
-        hub.send(Event::Focus(Some(view_id))).ok();
+        hub.send((Event::Focus(Some(view_id))).into()).ok();
         rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
         true
     }
@@ -582,10 +582,13 @@ impl CategoryEditor {
         let wifi_session = context.wifi_session.clone();
 
         let download_id = ViewId::MessageNotif(ID_FEEDER.next());
-        hub.send(Event::Notification(NotificationEvent::ShowPinned(
-            download_id,
-            fl!("notification-downloading-dictionary", lang = lang),
-        )))
+        hub.send(
+            (Event::Notification(NotificationEvent::ShowPinned(
+                download_id,
+                fl!("notification-downloading-dictionary", lang = lang),
+            )))
+            .into(),
+        )
         .ok();
 
         thread::spawn(move || {
@@ -597,11 +600,14 @@ impl CategoryEditor {
                 Err(e) => {
                     tracing::error!(error = %e, "Failed to acquire WiFi lease for dictionary download");
                     service.finish_install(&lang_owned);
-                    hub2.send(Event::Close(download_id)).ok();
-                    hub2.send(crate::view::Event::DictionaryInstallComplete {
-                        lang: lang_owned,
-                        result: Err(e.to_string()),
-                    })
+                    hub2.send((Event::Close(download_id)).into()).ok();
+                    hub2.send(
+                        (crate::view::Event::DictionaryInstallComplete {
+                            lang: lang_owned,
+                            result: Err(e.to_string()),
+                        })
+                        .into(),
+                    )
                     .ok();
                     return;
                 }
@@ -617,30 +623,39 @@ impl CategoryEditor {
                         let downloaded_str = humanize_bytes_decimal!(downloaded).to_string();
                         let total_str = humanize_bytes_decimal!(total).to_string();
                         let percent = (downloaded as f64 / total as f64 * 100.0) as u8;
-                        hub2.send(Event::Notification(NotificationEvent::UpdateProgress(
-                            download_id,
-                            percent,
-                        )))
+                        hub2.send(
+                            (Event::Notification(NotificationEvent::UpdateProgress(
+                                download_id,
+                                percent,
+                            )))
+                            .into(),
+                        )
                         .ok();
-                        hub2.send(Event::Notification(NotificationEvent::UpdateText(
-                            download_id,
-                            fl!(
-                                "notification-downloading-dictionary-progress",
-                                lang = lang_owned.as_str(),
-                                downloaded = downloaded_str.as_str(),
-                                total = total_str.as_str()
-                            ),
-                        )))
+                        hub2.send(
+                            (Event::Notification(NotificationEvent::UpdateText(
+                                download_id,
+                                fl!(
+                                    "notification-downloading-dictionary-progress",
+                                    lang = lang_owned.as_str(),
+                                    downloaded = downloaded_str.as_str(),
+                                    total = total_str.as_str()
+                                ),
+                            )))
+                            .into(),
+                        )
                         .ok();
                     },
                 )
                 .map_err(|e| e.to_string());
 
-            hub2.send(Event::Close(download_id)).ok();
-            hub2.send(crate::view::Event::DictionaryInstallComplete {
-                lang: lang_owned,
-                result,
-            })
+            hub2.send((Event::Close(download_id)).into()).ok();
+            hub2.send(
+                (crate::view::Event::DictionaryInstallComplete {
+                    lang: lang_owned,
+                    result,
+                })
+                .into(),
+            )
             .ok();
         });
 
@@ -658,9 +673,10 @@ impl CategoryEditor {
         context: &mut AppContext,
     ) -> bool {
         if !context.online && !context.settings.wifi.allows_on_demand() {
-            hub.send(Event::Notification(NotificationEvent::Show(fl!(
-                "notification-not-online"
-            ))))
+            hub.send(
+                (Event::Notification(NotificationEvent::Show(fl!("notification-not-online"))))
+                    .into(),
+            )
             .ok();
 
             return true;
@@ -759,9 +775,10 @@ impl CategoryEditor {
         self.remove_dictionary_download_confirm(rq);
 
         if !context.online && !context.settings.wifi.allows_on_demand() {
-            hub.send(Event::Notification(NotificationEvent::Show(fl!(
-                "notification-not-online"
-            ))))
+            hub.send(
+                (Event::Notification(NotificationEvent::Show(fl!("notification-not-online"))))
+                    .into(),
+            )
             .ok();
 
             return true;
@@ -805,7 +822,7 @@ impl CategoryEditor {
 
         self.current_page = 0;
         self.update_rows_list(rq, context);
-        hub.send(Event::ReindexDictionaries).ok();
+        hub.send((Event::ReindexDictionaries).into()).ok();
         true
     }
 
@@ -836,7 +853,7 @@ impl CategoryEditor {
                     self.children.remove(index);
                     rq.add(RenderData::expose(input_rect, UpdateMode::Gui));
                 }
-                hub.send(Event::Focus(None)).ok();
+                hub.send((Event::Focus(None)).into()).ok();
                 true
             }
             #[cfg(feature = "tracing")]
@@ -846,7 +863,7 @@ impl CategoryEditor {
                     self.children.remove(index);
                     rq.add(RenderData::expose(input_rect, UpdateMode::Gui));
                 }
-                hub.send(Event::Focus(None)).ok();
+                hub.send((Event::Focus(None)).into()).ok();
                 true
             }
             #[cfg(feature = "profiling")]
@@ -856,7 +873,7 @@ impl CategoryEditor {
                     self.children.remove(index);
                     rq.add(RenderData::expose(input_rect, UpdateMode::Gui));
                 }
-                hub.send(Event::Focus(None)).ok();
+                hub.send((Event::Focus(None)).into()).ok();
                 true
             }
             _ => false,
@@ -927,12 +944,15 @@ impl View for CategoryEditor {
 
                         self.current_page = 0;
                         self.update_rows_list(rq, context);
-                        hub.send(Event::ReindexDictionaries).ok();
+                        hub.send((Event::ReindexDictionaries).into()).ok();
 
-                        hub.send(Event::Notification(NotificationEvent::Show(fl!(
-                            "notification-downloading-dictionary-completed",
-                            lang = lang
-                        ))))
+                        hub.send(
+                            (Event::Notification(NotificationEvent::Show(fl!(
+                                "notification-downloading-dictionary-completed",
+                                lang = lang
+                            ))))
+                            .into(),
+                        )
                         .ok();
                     }
                     Err(e) => {
@@ -941,10 +961,13 @@ impl View for CategoryEditor {
                         self.current_page = 0;
                         self.update_rows_list(rq, context);
 
-                        hub.send(Event::Notification(NotificationEvent::Show(fl!(
-                            "notification-dictionary-install-failed",
-                            lang = lang
-                        ))))
+                        hub.send(
+                            (Event::Notification(NotificationEvent::Show(fl!(
+                                "notification-dictionary-install-failed",
+                                lang = lang
+                            ))))
+                            .into(),
+                        )
                         .ok();
                     }
                 }
@@ -1624,7 +1647,7 @@ mod tests {
             assert!(locate_by_id(&editor, view_id).is_some());
 
             let focus_event = receiver.recv().unwrap();
-            assert!(matches!(focus_event, Event::Focus(Some(id)) if id == view_id));
+            assert!(matches!(focus_event.event, Event::Focus(Some(id)) if id == view_id));
             editor.focus = Some(view_id);
 
             let handled = editor.handle_event(
@@ -1639,8 +1662,8 @@ mod tests {
             assert!(locate_by_id(&editor, view_id).is_none());
 
             let focus_event = receiver.recv().unwrap();
-            assert!(matches!(focus_event, Event::Focus(None)));
-            editor.handle_event(&focus_event, &hub, &mut bus, &mut rq, &mut context);
+            assert!(matches!(focus_event.event, Event::Focus(None)));
+            editor.handle_event(&focus_event.event, &hub, &mut bus, &mut rq, &mut context);
             assert_eq!(editor.focus, None);
         }
     }

@@ -335,7 +335,7 @@ impl View for Dialog {
     ) -> bool {
         match *evt {
             Event::Gesture(GestureEvent::Tap(center)) if !self.rect.includes(center) => {
-                hub.send(Event::Close(self.view_id)).ok();
+                hub.send((Event::Close(self.view_id)).into()).ok();
                 true
             }
             Event::Gesture(..) => true,

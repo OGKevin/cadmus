@@ -5,7 +5,6 @@ use std::collections::HashSet;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::num::NonZeroU64;
-use std::sync::mpsc::Sender;
 
 use globset::Glob;
 use walkdir::WalkDir;
@@ -282,7 +281,7 @@ impl DictionaryIndexTask {
         &self,
         job: &IndexFileJob<'_>,
         skip_lines: u64,
-        hub: &Sender<Event>,
+        hub: &crate::view::Hub,
         shutdown: &ShutdownSignal,
     ) -> Option<u64> {
         let file = match File::open(job.index_path) {
@@ -380,7 +379,7 @@ impl DictionaryIndexTask {
     fn index_file(
         &self,
         index_path: &std::path::Path,
-        hub: &Sender<Event>,
+        hub: &crate::view::Hub,
         shutdown: &ShutdownSignal,
     ) {
         let path_str = index_path.display().to_string();
@@ -409,7 +408,7 @@ impl DictionaryIndexTask {
             };
 
         if is_new {
-            hub.send(Event::ReloadDictionaries).ok();
+            hub.send((Event::ReloadDictionaries).into()).ok();
         }
 
         let (case_sensitive, all_chars) = Self::detect_metadata(&path_str);
@@ -419,13 +418,16 @@ impl DictionaryIndexTask {
         };
 
         let notif_id = ViewId::MessageNotif(ID_FEEDER.next());
-        hub.send(Event::Notification(NotificationEvent::ShowPinned(
-            notif_id,
-            fl!(
-                "notification-dictionary-indexing",
-                name = dict_name.as_str()
-            ),
-        )))
+        hub.send(
+            (Event::Notification(NotificationEvent::ShowPinned(
+                notif_id,
+                fl!(
+                    "notification-dictionary-indexing",
+                    name = dict_name.as_str()
+                ),
+            )))
+            .into(),
+        )
         .ok();
 
         let job = IndexFileJob {
@@ -443,11 +445,11 @@ impl DictionaryIndexTask {
         match self.scan_and_batch(&job, skip_lines, hub, shutdown) {
             Some(current_line) => {
                 self.mark_completed(dict_id, &path_str, current_line, total_lines);
-                hub.send(Event::ReloadDictionaries).ok();
-                hub.send(Event::Close(notif_id)).ok();
+                hub.send((Event::ReloadDictionaries).into()).ok();
+                hub.send((Event::Close(notif_id)).into()).ok();
             }
             None => {
-                hub.send(Event::Close(notif_id)).ok();
+                hub.send((Event::Close(notif_id)).into()).ok();
             }
         }
     }
@@ -458,7 +460,7 @@ impl DictionaryIndexTask {
         job: &IndexFileJob<'_>,
         batch: &[(i64, String, i64, i64, Option<String>)],
         current_line: u64,
-        hub: &Sender<Event>,
+        hub: &crate::view::Hub,
     ) -> Result<(), anyhow::Error> {
         let pool = self.database.pool().clone();
         let indexed_lines = current_line as i64;
@@ -502,15 +504,11 @@ impl DictionaryIndexTask {
             .unwrap_or(0)
             .min(100) as u8;
         let msg = fl!("notification-dictionary-indexing", name = job.dict_name);
-        hub.send(Event::Notification(NotificationEvent::UpdateText(
-            job.notif_id,
-            msg,
-        )))
-        .ok();
-        hub.send(Event::Notification(NotificationEvent::UpdateProgress(
-            job.notif_id,
-            progress,
-        )))
+        hub.send((Event::Notification(NotificationEvent::UpdateText(job.notif_id, msg))).into())
+            .ok();
+        hub.send(
+            (Event::Notification(NotificationEvent::UpdateProgress(job.notif_id, progress))).into(),
+        )
         .ok();
 
         Ok(())
@@ -528,7 +526,7 @@ impl DictionaryIndexTask {
     fn delete_stale_entries(
         &self,
         on_disk_fingerprints: &[String],
-        hub: &Sender<Event>,
+        hub: &crate::view::Hub,
         shutdown: &ShutdownSignal,
     ) {
         let pool = self.database.pool().clone();
@@ -587,7 +585,7 @@ impl DictionaryIndexTask {
 
         match result {
             Ok(true) => {
-                hub.send(Event::ReloadDictionaries).ok();
+                hub.send((Event::ReloadDictionaries).into()).ok();
             }
             Ok(false) => {}
             Err(e) => {
@@ -648,7 +646,7 @@ impl BackgroundTask for DictionaryIndexTask {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-    fn run(&mut self, hub: &Sender<Event>, shutdown: &ShutdownSignal) {
+    fn run(&mut self, hub: &crate::view::Hub, shutdown: &ShutdownSignal) {
         let glob = match Glob::new("**/*.index") {
             Ok(g) => g.compile_matcher(),
             Err(e) => {

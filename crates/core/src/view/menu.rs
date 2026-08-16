@@ -296,7 +296,7 @@ impl View for Menu {
                 let view_id = self.view_id;
                 thread::spawn(move || {
                     thread::sleep(CLOSE_IGNITION_DELAY);
-                    hub2.send(Event::Close(view_id)).ok();
+                    hub2.send((Event::Close(view_id)).into()).ok();
                 });
                 true
             }
