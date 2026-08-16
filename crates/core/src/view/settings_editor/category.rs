@@ -8,7 +8,10 @@ use super::kinds::general::{
 use super::kinds::import::{AllowedKindsSetting, ForceFullImport, ImportSyncMetadata};
 use super::kinds::intermission::{IntermissionPowerOff, IntermissionShare, IntermissionSuspend};
 use super::kinds::library::LibraryInfo;
-use super::kinds::power::{AutoPowerOff, AutoSuspend, SleepCover};
+use super::kinds::power::{
+    AutoPowerOff, AutoSuspend, AutosleepGrace, AutosleepModeSetting, IndicateAutosleepLed,
+    SleepCover,
+};
 use super::kinds::reader::{DitheredKindsSetting, FinishedActionSetting, RefreshRateInfo};
 use super::kinds::telemetry::{LogLevel, LoggingEnabled};
 use crate::device::AppContext;
@@ -83,6 +86,9 @@ impl Category {
                 Box::new(StartupModeSetting),
             ],
             Category::Power => vec![
+                Box::new(AutosleepModeSetting),
+                Box::new(IndicateAutosleepLed),
+                Box::new(AutosleepGrace),
                 Box::new(AutoSuspend),
                 Box::new(AutoPowerOff),
                 Box::new(SleepCover),
@@ -203,5 +209,31 @@ impl Category {
     /// Returns the number of categories.
     pub fn count() -> usize {
         Self::all().len()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::context::test_helpers::create_test_context;
+    use crate::view::settings_editor::kinds::SettingIdentity;
+
+    #[test]
+    fn power_includes_soft_suspend_settings() {
+        let context = create_test_context();
+        let identities: Vec<_> = Category::Power
+            .settings(&context, None)
+            .iter()
+            .map(|setting| setting.identity())
+            .collect();
+
+        assert_eq!(
+            identities[..3],
+            [
+                SettingIdentity::AutosleepMode,
+                SettingIdentity::IndicateAutosleepLed,
+                SettingIdentity::AutosleepGrace,
+            ]
+        );
     }
 }

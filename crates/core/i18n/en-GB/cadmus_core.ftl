@@ -106,6 +106,8 @@ settings-power-autosleep-mode-mem = Memory
 settings-power-autosleep-mode-off = Off
 settings-power-enable-sleep-cover = Enable Sleep Cover
 settings-power-indicate-autosleep-led = Use LED to Indicate Soft Suspend
+settings-power-autosleep-grace = Soft Suspend Release Grace (seconds)
+settings-power-autosleep-grace-input = Soft Suspend Release Grace (seconds, 0 = immediate)
 
 # Settings - Startup Mode
 settings-startup-mode-home = Home

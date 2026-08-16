@@ -818,6 +818,7 @@ impl CategoryEditor {
     ) -> bool {
         match view_id {
             ViewId::AutoSuspendInput
+            | ViewId::AutosleepGraceInput
             | ViewId::AutoPowerOffInput
             | ViewId::WifiIdleTimeoutInput
             | ViewId::SettingsRetentionInput

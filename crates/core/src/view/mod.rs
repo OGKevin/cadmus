@@ -647,6 +647,7 @@ pub enum ViewId {
     LibraryRename,
     LibraryRenameInput,
     AutoSuspendInput,
+    AutosleepGraceInput,
     AutoPowerOffInput,
     WifiIdleTimeoutInput,
     AutoFrontlightBrightnessInput,
@@ -838,7 +839,9 @@ pub enum EntryId {
     #[deprecated(note = "Use ToggleEvent::Settings instead")]
     ToggleAutoShare,
     EditAutoSuspend,
+    EditAutosleepGrace,
     SetStartupMode(StartupMode),
+    SetAutosleepMode(crate::device::soft_suspend::AutosleepMode),
     EditAutoPowerOff,
     EditAutoFrontlightBrightness,
     EditAutoFrontlightManualCoordinates,

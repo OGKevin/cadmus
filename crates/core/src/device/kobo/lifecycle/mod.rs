@@ -69,6 +69,11 @@ impl DeviceLifecycle for Device {
 
         let wants_on = context.settings.wifi.wants_radio_at_rest();
         context.wifi_session.set_mode(context.settings.wifi);
+        context.soft_suspend_session.apply_settings(
+            context.settings.autosleep_mode,
+            context.settings.indicate_autosleep_led,
+            std::time::Duration::from_secs_f32(context.settings.autosleep_grace.max(0.0)),
+        );
         if !wants_on {
             context.online = false;
         }
