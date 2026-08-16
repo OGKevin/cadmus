@@ -1,12 +1,13 @@
 //! WiFi session: named leases over [`LeaseTracker`] plus radio bring-up.
 
+use crate::device::soft_suspend::{SoftSuspendLease, SoftSuspendSession};
 use crate::device::wifi::{WifiError, WifiManager};
 use crate::input::DeviceEvent;
-use crate::lease::{Lease, LeaseName, LeaseObserver, LeaseTracker};
+use crate::lease::{Lease, LeaseName, LeaseObserver, LeaseTracker, WeakLeaseTracker};
 use crate::settings::WifiMode;
 use crate::view::{Event, Hub};
 use std::sync::mpsc::Sender;
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use thiserror::Error;
 
@@ -36,13 +37,39 @@ pub enum WifiSessionError {
 struct SessionState {
     mode: WifiMode,
     online: bool,
+    /// Whether the radio was last successfully enabled (cleared by [`WifiSession::disable_radio`]).
+    radio_on: bool,
     idle_since: Option<Instant>,
     idle_wake: Option<Sender<()>>,
     hub: Option<Hub>,
+    soft_suspend: Option<Arc<SoftSuspendSession>>,
+    soft_suspend_lease: Option<SoftSuspendLease>,
 }
 
 struct IdleArmer {
     state: Arc<Mutex<SessionState>>,
+    tracker: OnceLock<WeakLeaseTracker>,
+}
+
+impl IdleArmer {
+    fn has_holders(&self) -> bool {
+        self.tracker
+            .get()
+            .is_some_and(|tracker| !tracker.is_empty())
+    }
+}
+
+fn sync_soft_suspend_lease(state: &mut SessionState, has_holders: bool) {
+    let should_hold = state.radio_on && (state.mode == WifiMode::AlwaysOn || has_holders);
+    if should_hold {
+        if state.soft_suspend_lease.is_none()
+            && let Some(soft_suspend) = state.soft_suspend.clone()
+        {
+            state.soft_suspend_lease = Some(soft_suspend.acquire("wifi"));
+        }
+    } else {
+        state.soft_suspend_lease = None;
+    }
 }
 
 impl LeaseObserver for IdleArmer {
@@ -50,17 +77,20 @@ impl LeaseObserver for IdleArmer {
         tracing::debug!(name = %name, "wifi lease first holder");
         if let Ok(mut state) = self.state.lock() {
             state.idle_since = None;
+            sync_soft_suspend_lease(&mut state, self.has_holders());
         }
     }
 
     fn on_last_release(&self, name: &LeaseName) {
         tracing::debug!(name = %name, "wifi lease last holder released");
-        if let Ok(mut state) = self.state.lock()
-            && state.mode == WifiMode::Auto
-        {
-            state.idle_since = Some(Instant::now());
-            if let Some(idle_wake) = state.idle_wake.as_ref() {
-                idle_wake.send(()).ok();
+        if let Ok(mut state) = self.state.lock() {
+            let has_holders = self.has_holders();
+            sync_soft_suspend_lease(&mut state, has_holders);
+            if !has_holders && state.mode == WifiMode::Auto {
+                state.idle_since = Some(Instant::now());
+                if let Some(idle_wake) = state.idle_wake.as_ref() {
+                    idle_wake.send(()).ok();
+                }
             }
         }
     }
@@ -116,15 +146,24 @@ impl WifiSession {
         let state = Arc::new(Mutex::new(SessionState {
             mode,
             online: false,
+            radio_on: false,
             idle_since: None,
             idle_wake: None,
             hub: None,
+            soft_suspend: None,
+            soft_suspend_lease: None,
         }));
         let observer = Arc::new(IdleArmer {
             state: Arc::clone(&state),
+            tracker: OnceLock::new(),
         });
+        let tracker = LeaseTracker::with_observer(observer.clone());
+        observer
+            .tracker
+            .set(tracker.downgrade())
+            .expect("wifi IdleArmer tracker already set");
         Arc::new(Self {
-            tracker: LeaseTracker::with_observer(observer),
+            tracker,
             wifi,
             state,
             online_cv: Condvar::new(),
@@ -144,6 +183,13 @@ impl WifiSession {
         self.state.lock().unwrap_or_else(|e| e.into_inner()).hub = Some(hub);
     }
 
+    /// Links soft-suspend so AlwaysOn or WiFi holders keep the device awake.
+    pub fn set_soft_suspend_session(&self, session: Arc<SoftSuspendSession>) {
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        state.soft_suspend = Some(session);
+        sync_soft_suspend_lease(&mut state, !self.tracker.is_empty());
+    }
+
     /// Updates the configured WiFi mode (from settings).
     #[cfg_attr(
         feature = "tracing",
@@ -158,6 +204,7 @@ impl WifiSession {
         } else if self.tracker.is_empty() && state.online {
             state.idle_since = Some(Instant::now());
         }
+        sync_soft_suspend_lease(&mut state, !self.tracker.is_empty());
         tracing::debug!(
             previous = %previous,
             mode = %mode,
@@ -323,6 +370,10 @@ impl WifiSession {
         );
 
         let inner = self.tracker.acquire(name.clone());
+        {
+            let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            sync_soft_suspend_lease(&mut state, !self.tracker.is_empty());
+        }
 
         if self.is_online() {
             #[cfg(feature = "tracing")]
@@ -340,6 +391,12 @@ impl WifiSession {
                 tracing::error!(name = %name, error = %error, "failed to enable wifi radio");
                 return Err(error.into());
             }
+        }
+
+        {
+            let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            state.radio_on = true;
+            sync_soft_suspend_lease(&mut state, !self.tracker.is_empty());
         }
 
         if matches!(self.wifi.network_info(), Ok(Some(_))) {
@@ -429,6 +486,11 @@ impl WifiSession {
         tracing::info!("enabling wifi radio");
         match self.wifi.enable() {
             Ok(()) => {
+                {
+                    let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+                    state.radio_on = true;
+                    sync_soft_suspend_lease(&mut state, !self.tracker.is_empty());
+                }
                 let connected =
                     self.wifi.is_enabled() && matches!(self.wifi.network_info(), Ok(Some(_)));
                 tracing::debug!(connected, "wifi radio enabled");
@@ -456,6 +518,11 @@ impl WifiSession {
             tracing::error!(error = %error, "failed to disable wifi radio");
         } else {
             tracing::debug!("wifi radio disabled");
+            {
+                let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+                state.radio_on = false;
+                sync_soft_suspend_lease(&mut state, !self.tracker.is_empty());
+            }
             self.notify_offline();
             self.clear_idle();
         }
@@ -593,5 +660,157 @@ mod tests {
             .unwrap();
         assert!(session.is_online());
         drop(lease);
+    }
+
+    fn soft_suspend_session() -> (
+        tempfile::TempDir,
+        Arc<crate::device::soft_suspend::SoftSuspendSession>,
+    ) {
+        use crate::device::soft_suspend::SoftSuspendPaths;
+        use std::fs;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let paths = SoftSuspendPaths {
+            state: dir.path().join("state"),
+            autosleep: dir.path().join("autosleep"),
+            wake_lock: dir.path().join("wake_lock"),
+            wake_unlock: dir.path().join("wake_unlock"),
+        };
+        fs::write(&paths.state, "freeze mem\n").expect("state");
+        fs::write(&paths.autosleep, "off\n").expect("autosleep");
+        fs::write(&paths.wake_lock, "").expect("wake_lock");
+        fs::write(&paths.wake_unlock, "").expect("wake_unlock");
+        let session = crate::device::soft_suspend::SoftSuspendSession::with_paths(paths, None);
+        (dir, session)
+    }
+
+    #[test]
+    fn always_on_holds_soft_suspend_only_while_radio_on() {
+        let (_dir, soft) = soft_suspend_session();
+        let (session, _) = session(WifiMode::Auto);
+        session.set_soft_suspend_session(Arc::clone(&soft));
+        assert!(soft.is_empty());
+
+        session.set_mode(WifiMode::AlwaysOn);
+        assert!(
+            soft.is_empty(),
+            "AlwaysOn without radio must not pin soft-suspend"
+        );
+
+        session.enable_radio().unwrap();
+        assert!(!soft.is_empty());
+
+        session.disable_radio().unwrap();
+        assert!(
+            soft.is_empty(),
+            "disable_radio must drop soft-suspend wifi lease"
+        );
+
+        session.set_mode(WifiMode::Off);
+        assert!(soft.is_empty());
+    }
+
+    #[test]
+    fn always_on_keeps_soft_suspend_after_last_wifi_holder() {
+        let (_dir, soft) = soft_suspend_session();
+        let (session, _) = session(WifiMode::AlwaysOn);
+        session.set_soft_suspend_session(Arc::clone(&soft));
+        session.enable_radio().unwrap();
+        session.notify_online();
+        assert!(!soft.is_empty());
+
+        let lease = session.acquire("a").unwrap();
+        drop(lease);
+        assert!(!soft.is_empty());
+        assert!(!session.has_holders());
+    }
+
+    #[test]
+    fn leaving_always_on_keeps_soft_suspend_while_holders_remain() {
+        let (_dir, soft) = soft_suspend_session();
+        let (session, _) = session(WifiMode::AlwaysOn);
+        session.set_soft_suspend_session(Arc::clone(&soft));
+        session.enable_radio().unwrap();
+        session.notify_online();
+        let lease = session.acquire("a").unwrap();
+
+        session.set_mode(WifiMode::Auto);
+        assert!(!soft.is_empty());
+
+        drop(lease);
+        assert!(soft.is_empty());
+    }
+
+    #[test]
+    fn disable_radio_drops_always_on_soft_suspend_lease() {
+        let (_dir, soft) = soft_suspend_session();
+        let (session, _) = session(WifiMode::AlwaysOn);
+        session.set_soft_suspend_session(Arc::clone(&soft));
+        session.enable_radio().unwrap();
+        assert!(!soft.is_empty());
+
+        session.disable_radio().unwrap();
+        assert!(soft.is_empty());
+        assert_eq!(session.mode(), WifiMode::AlwaysOn);
+
+        session.enable_radio().unwrap();
+        assert!(!soft.is_empty());
+    }
+
+    #[test]
+    fn auto_holder_pins_soft_suspend_while_radio_on() {
+        let (_dir, soft) = soft_suspend_session();
+        let (session, _) = session(WifiMode::Auto);
+        session.set_soft_suspend_session(Arc::clone(&soft));
+        session.enable_radio().unwrap();
+        session.notify_online();
+
+        let lease = session.acquire("ntp").unwrap();
+        assert!(
+            !soft.is_empty(),
+            "Auto-mode WiFi holder must pin soft-suspend while radio is on"
+        );
+        drop(lease);
+        assert!(soft.is_empty());
+    }
+
+    #[test]
+    fn soft_suspend_stays_pinned_while_holder_active_under_churn() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        let (_dir, soft) = soft_suspend_session();
+        let (session, _) = session(WifiMode::Auto);
+        session.set_soft_suspend_session(Arc::clone(&soft));
+        session.enable_radio().unwrap();
+        session.notify_online();
+
+        let failed = Arc::new(AtomicBool::new(false));
+        let handles: Vec<_> = (0..4)
+            .map(|i| {
+                let session = Arc::clone(&session);
+                let soft = Arc::clone(&soft);
+                let failed = Arc::clone(&failed);
+                thread::spawn(move || {
+                    for n in 0..250 {
+                        if failed.load(Ordering::Relaxed) {
+                            break;
+                        }
+                        let lease = session.acquire(format!("t{i}-{n}")).unwrap();
+                        if session.has_holders() && soft.is_empty() {
+                            failed.store(true, Ordering::Relaxed);
+                            break;
+                        }
+                        drop(lease);
+                    }
+                })
+            })
+            .collect();
+
+        for handle in handles {
+            handle.join().expect("churn thread panicked");
+        }
+        assert!(
+            !failed.load(Ordering::Relaxed),
+            "soft-suspend wifi lease dropped while a WiFi holder was still active"
+        );
     }
 }

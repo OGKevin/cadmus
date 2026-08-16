@@ -31,7 +31,7 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Weak};
 
 /// Display name for a lease holder, used in logs.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -93,7 +93,9 @@ impl fmt::Display for LeaseId {
 ///
 /// Attach one with [`LeaseTracker::with_observer`]. Callbacks run while the
 /// tracker lock is **not** held, so they may acquire leases on the same
-/// tracker if needed.
+/// tracker if needed. Before invoking a callback, the tracker re-checks
+/// emptiness so a concurrent acquire/release can cancel a stale
+/// first/last notification.
 ///
 /// # Examples
 ///
@@ -146,6 +148,16 @@ struct TrackerState {
 #[derive(Clone)]
 pub struct LeaseTracker {
     inner: Arc<TrackerInner>,
+}
+
+/// Weak reference to a [`LeaseTracker`].
+///
+/// Use this from [`LeaseObserver`] implementations that need to re-query
+/// holder state without creating an `Arc` cycle through
+/// [`LeaseTracker::with_observer`].
+#[derive(Clone, Debug)]
+pub struct WeakLeaseTracker {
+    inner: Weak<TrackerInner>,
 }
 
 struct TrackerInner {
@@ -201,6 +213,13 @@ impl LeaseTracker {
         }
     }
 
+    /// Returns a weak reference to this tracker.
+    pub fn downgrade(&self) -> WeakLeaseTracker {
+        WeakLeaseTracker {
+            inner: Arc::downgrade(&self.inner),
+        }
+    }
+
     /// Acquires a named lease. Drop the returned guard to release it.
     #[must_use = "lease is released immediately if unused; bind it (e.g. `let _lease = …`)"]
     #[cfg_attr(
@@ -252,7 +271,10 @@ impl LeaseTracker {
             active: true,
         };
 
-        if became_first && let Some(observer) = &self.inner.observer {
+        if became_first
+            && let Some(observer) = &self.inner.observer
+            && !self.is_empty()
+        {
             tracing::debug!(name = %lease.name(), "notifying observer of first holder");
             observer.on_first_acquire(lease.name());
         }
@@ -338,10 +360,25 @@ impl LeaseTracker {
             empty
         };
 
-        if became_empty && let Some(observer) = &self.inner.observer {
+        if became_empty
+            && let Some(observer) = &self.inner.observer
+            && self.is_empty()
+        {
             tracing::debug!(name = %name, "notifying observer of last holder release");
             observer.on_last_release(name);
         }
+    }
+}
+
+impl WeakLeaseTracker {
+    /// Upgrades to a strong [`LeaseTracker`] if it still exists.
+    pub fn upgrade(&self) -> Option<LeaseTracker> {
+        self.inner.upgrade().map(|inner| LeaseTracker { inner })
+    }
+
+    /// Returns whether there are no active holders, or `true` if the tracker is gone.
+    pub fn is_empty(&self) -> bool {
+        self.upgrade().is_none_or(|tracker| tracker.is_empty())
     }
 }
 

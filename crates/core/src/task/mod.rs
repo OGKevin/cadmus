@@ -432,6 +432,7 @@ impl TaskManager {
                     &context.database,
                     &context.settings,
                     &context.device.install_dir(),
+                    &context.soft_suspend_session,
                 );
             }
             Event::ImportFinished { library_index } => {
@@ -440,6 +441,7 @@ impl TaskManager {
                     &context.database,
                     &context.settings,
                     &context.device.install_dir(),
+                    &context.soft_suspend_session,
                 );
                 self.schedule_thumbnail_extraction(
                     *library_index,
@@ -449,6 +451,7 @@ impl TaskManager {
                     context.device.dpi(),
                     context.device.color_samples(),
                     &context.device.install_dir(),
+                    &context.soft_suspend_session,
                 );
             }
             Event::ThumbnailExtractionFinished { .. } => {
@@ -459,10 +462,16 @@ impl TaskManager {
                     context.device.dpi(),
                     context.device.color_samples(),
                     &context.device.install_dir(),
+                    &context.soft_suspend_session,
                 );
             }
             Event::ReindexDictionaries => {
-                self.schedule_dictionary_index(hub, &context.database, context.device.data_dir());
+                self.schedule_dictionary_index(
+                    hub,
+                    &context.database,
+                    context.device.data_dir(),
+                    &context.soft_suspend_session,
+                );
             }
             Event::Device(DeviceEvent::NetUp) => {
                 #[cfg(feature = "kobo")]
@@ -507,6 +516,7 @@ impl TaskManager {
         database: &Database,
         settings: &Settings,
         install_dir: &std::path::Path,
+        soft_suspend_session: &std::sync::Arc<crate::device::soft_suspend::SoftSuspendSession>,
     ) {
         if self.is_running(&TaskId::Import) {
             tracing::info!(library_index = ?library_index, force, "import already running, queueing");
@@ -523,6 +533,7 @@ impl TaskManager {
             library_index,
             force,
             install_dir,
+            soft_suspend_session.clone(),
         ));
 
         if let Err(e) = self.start(task, hub.clone()) {
@@ -538,6 +549,7 @@ impl TaskManager {
         database: &Database,
         settings: &Settings,
         install_dir: &std::path::Path,
+        soft_suspend_session: &std::sync::Arc<crate::device::soft_suspend::SoftSuspendSession>,
     ) {
         if self.is_running(&TaskId::Import) || self.pending_import_indices.is_empty() {
             return;
@@ -546,7 +558,15 @@ impl TaskManager {
         let Some((next, force)) = self.pending_import_indices.pop_front() else {
             return;
         };
-        self.schedule_import(next, force, hub, database, settings, install_dir);
+        self.schedule_import(
+            next,
+            force,
+            hub,
+            database,
+            settings,
+            install_dir,
+            soft_suspend_session,
+        );
     }
 
     /// Schedules a dictionary index scan, stopping any running instance first.
@@ -556,6 +576,7 @@ impl TaskManager {
         hub: &crate::view::Hub,
         database: &Database,
         data_path: std::path::PathBuf,
+        soft_suspend_session: &std::sync::Arc<crate::device::soft_suspend::SoftSuspendSession>,
     ) {
         if self.is_running(&TaskId::DictionaryIndex) {
             tracing::debug!("stopping running dictionary index task for restart");
@@ -569,6 +590,7 @@ impl TaskManager {
         let task = Box::new(dictionary_index::DictionaryIndexTask::new(
             database.clone(),
             data_path,
+            soft_suspend_session.clone(),
         ));
 
         if let Err(e) = self.start(task, hub.clone()) {
@@ -642,6 +664,7 @@ impl TaskManager {
         dpi: u16,
         color_samples: usize,
         install_dir: &std::path::Path,
+        soft_suspend_session: &std::sync::Arc<crate::device::soft_suspend::SoftSuspendSession>,
     ) {
         if self.is_running(&TaskId::ThumbnailExtraction) {
             tracing::info!(library_index = ?library_index, "thumbnail extraction already running, queueing");
@@ -658,6 +681,7 @@ impl TaskManager {
             dpi,
             color_samples,
             install_dir,
+            soft_suspend_session.clone(),
         ));
 
         if let Err(e) = self.start(task, hub.clone()) {
@@ -675,6 +699,7 @@ impl TaskManager {
         dpi: u16,
         color_samples: usize,
         install_dir: &std::path::Path,
+        soft_suspend_session: &std::sync::Arc<crate::device::soft_suspend::SoftSuspendSession>,
     ) {
         if self.is_running(&TaskId::ThumbnailExtraction)
             || self.pending_thumbnail_indices.is_empty()
@@ -694,6 +719,7 @@ impl TaskManager {
             dpi,
             color_samples,
             install_dir,
+            soft_suspend_session,
         );
     }
 
@@ -731,7 +757,7 @@ impl Drop for TaskManager {
 /// - [`dbus_monitor::DbusMonitorTask`] - monitors D-Bus signals (test + kobo only, when `settings.logging.enable_dbus_log` is true)
 /// - [`import::ImportTask`] - runs an incremental import of all libraries on startup
 /// - [`dictionary_index::DictionaryIndexTask`] - indexes `.index` dictionary files into SQLite
-#[cfg_attr(feature = "tracing", tracing::instrument(skip(manager, hub, settings, database, data_path, install_dir), level = tracing::Level::TRACE))]
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(manager, hub, settings, database, data_path, install_dir, soft_suspend_session), level = tracing::Level::TRACE))]
 pub fn register_startup_tasks(
     manager: &mut TaskManager,
     hub: crate::view::Hub,
@@ -739,6 +765,7 @@ pub fn register_startup_tasks(
     database: &Database,
     data_path: std::path::PathBuf,
     install_dir: &std::path::Path,
+    soft_suspend_session: &std::sync::Arc<crate::device::soft_suspend::SoftSuspendSession>,
 ) {
     #[cfg(feature = "kobo")]
     {
@@ -772,11 +799,20 @@ pub fn register_startup_tasks(
         }
     }
 
-    manager.schedule_import(None, false, &hub, database, settings, install_dir);
+    manager.schedule_import(
+        None,
+        false,
+        &hub,
+        database,
+        settings,
+        install_dir,
+        soft_suspend_session,
+    );
 
     let task = Box::new(dictionary_index::DictionaryIndexTask::new(
         database.clone(),
         data_path,
+        soft_suspend_session.clone(),
     ));
     if let Err(e) = manager.start(task, hub.clone()) {
         tracing::warn!(error = %e, "failed to start dictionary_index task");
@@ -906,6 +942,7 @@ mod tests {
         let mut database = Database::new(":memory:").unwrap();
         database.init_for_test(0).unwrap();
         let settings = Settings::default();
+        let context = create_test_context();
 
         manager.schedule_thumbnail_extraction(
             None,
@@ -915,6 +952,7 @@ mod tests {
             300,
             1,
             Path::new(""),
+            &context.soft_suspend_session,
         );
 
         // Task exits quickly on an unseeded database, so wait for
@@ -951,6 +989,7 @@ mod tests {
         let mut database = Database::new(":memory:").unwrap();
         database.init_for_test(0).unwrap();
         let settings = Settings::default();
+        let context = create_test_context();
 
         manager.schedule_thumbnail_extraction(
             Some(0),
@@ -960,6 +999,7 @@ mod tests {
             300,
             1,
             Path::new(""),
+            &context.soft_suspend_session,
         );
         manager.schedule_thumbnail_extraction(
             Some(1),
@@ -969,18 +1009,35 @@ mod tests {
             300,
             1,
             Path::new(""),
+            &context.soft_suspend_session,
         );
 
         assert_eq!(manager.pending_thumbnail_indices.len(), 2);
 
         manager.stop(&TaskId::ThumbnailExtraction).unwrap();
 
-        manager.drain_pending_thumbnails(&hub, &database, &settings, 300, 1, Path::new(""));
+        manager.drain_pending_thumbnails(
+            &hub,
+            &database,
+            &settings,
+            300,
+            1,
+            Path::new(""),
+            &context.soft_suspend_session,
+        );
         assert_eq!(manager.pending_thumbnail_indices.len(), 1);
 
         wait_until_not_running(&mut manager, &TaskId::ThumbnailExtraction);
 
-        manager.drain_pending_thumbnails(&hub, &database, &settings, 300, 1, Path::new(""));
+        manager.drain_pending_thumbnails(
+            &hub,
+            &database,
+            &settings,
+            300,
+            1,
+            Path::new(""),
+            &context.soft_suspend_session,
+        );
         assert!(manager.pending_thumbnail_indices.is_empty());
 
         wait_until_not_running(&mut manager, &TaskId::ThumbnailExtraction);
