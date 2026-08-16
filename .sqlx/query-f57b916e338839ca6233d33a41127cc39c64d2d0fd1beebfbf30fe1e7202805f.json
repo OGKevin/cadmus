@@ -6,12 +6,24 @@
       {
         "name": "fingerprint!: Fp",
         "ordinal": 0,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "library_books",
+            "name": "book_fingerprint"
+          }
+        }
       },
       {
         "name": "file_path!: String",
         "ordinal": 1,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "library_books",
+            "name": "file_path"
+          }
+        }
       }
     ],
     "parameters": {

@@ -574,8 +574,7 @@ async fn ensure_library(
     let existing: Option<i64> =
         sqlx::query_scalar!("SELECT id FROM libraries WHERE path = ?", path)
             .fetch_optional(pool)
-            .await?
-            .flatten();
+            .await?;
 
     if let Some(id) = existing {
         return Ok(id);

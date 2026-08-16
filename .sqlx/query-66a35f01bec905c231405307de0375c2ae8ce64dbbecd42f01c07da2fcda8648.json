@@ -6,19 +6,26 @@
       {
         "name": "authors?: String",
         "ordinal": 0,
-        "type_info": "Null"
+        "type_info": "Text",
+        "origin": "Expression"
       },
       {
         "name": "sort_author?: i64",
         "ordinal": 1,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "library_books",
+            "name": "sort_author"
+          }
+        }
       }
     ],
     "parameters": {
       "Right": 2
     },
     "nullable": [
-      null,
+      true,
       true
     ]
   },

@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT word,\n                      offset AS \"offset!\",\n                      size AS \"size!\",\n                      original\n               FROM dictionary_index_entry\n               WHERE dict_id = ? AND word LIKE ? || '%' ESCAPE '\\'",
+  "describe": {
+    "columns": [
+      {
+        "name": "word",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "dictionary_index_entry",
+            "name": "word"
+          }
+        }
+      },
+      {
+        "name": "offset!",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "dictionary_index_entry",
+            "name": "offset"
+          }
+        }
+      },
+      {
+        "name": "size!",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "dictionary_index_entry",
+            "name": "size"
+          }
+        }
+      },
+      {
+        "name": "original",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "dictionary_index_entry",
+            "name": "original"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "0b8ba99044491417954a6cc19bd6d8847589931ce9f0a8f4aa9e2adcba05b0f2"
+}

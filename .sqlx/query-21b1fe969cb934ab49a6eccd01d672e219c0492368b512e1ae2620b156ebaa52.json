@@ -6,202 +6,432 @@
       {
         "name": "fingerprint: Fp",
         "ordinal": 0,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "books",
+            "name": "fingerprint"
+          }
+        }
       },
       {
         "name": "title",
         "ordinal": 1,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "books",
+            "name": "title"
+          }
+        }
       },
       {
         "name": "subtitle",
         "ordinal": 2,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "books",
+            "name": "subtitle"
+          }
+        }
       },
       {
         "name": "year",
         "ordinal": 3,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "books",
+            "name": "year"
+          }
+        }
       },
       {
         "name": "language",
         "ordinal": 4,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "books",
+            "name": "language"
+          }
+        }
       },
       {
         "name": "publisher",
         "ordinal": 5,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "books",
+            "name": "publisher"
+          }
+        }
       },
       {
         "name": "series",
         "ordinal": 6,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "books",
+            "name": "series"
+          }
+        }
       },
       {
         "name": "edition",
         "ordinal": 7,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "books",
+            "name": "edition"
+          }
+        }
       },
       {
         "name": "volume",
         "ordinal": 8,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "books",
+            "name": "volume"
+          }
+        }
       },
       {
         "name": "number",
         "ordinal": 9,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "books",
+            "name": "number"
+          }
+        }
       },
       {
         "name": "identifier",
         "ordinal": 10,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "books",
+            "name": "identifier"
+          }
+        }
       },
       {
         "name": "file_path",
         "ordinal": 11,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "library_books",
+            "name": "file_path"
+          }
+        }
       },
       {
         "name": "absolute_path",
         "ordinal": 12,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "library_books",
+            "name": "absolute_path"
+          }
+        }
       },
       {
         "name": "file_kind",
         "ordinal": 13,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "books",
+            "name": "file_kind"
+          }
+        }
       },
       {
         "name": "file_size",
         "ordinal": 14,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "books",
+            "name": "file_size"
+          }
+        }
       },
       {
         "name": "added_at: UnixTimestamp",
         "ordinal": 15,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "books",
+            "name": "added_at"
+          }
+        }
       },
       {
         "name": "opened?: UnixTimestamp",
         "ordinal": 16,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "reading_states",
+            "name": "opened"
+          }
+        }
       },
       {
         "name": "current_page?: i64",
         "ordinal": 17,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "reading_states",
+            "name": "current_page"
+          }
+        }
       },
       {
         "name": "pages_count?: i64",
         "ordinal": 18,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "reading_states",
+            "name": "pages_count"
+          }
+        }
       },
       {
         "name": "finished?: i64",
         "ordinal": 19,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "reading_states",
+            "name": "finished"
+          }
+        }
       },
       {
         "name": "dithered?: i64",
         "ordinal": 20,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "reading_states",
+            "name": "dithered"
+          }
+        }
       },
       {
         "name": "zoom_mode?: String",
         "ordinal": 21,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "reading_states",
+            "name": "zoom_mode"
+          }
+        }
       },
       {
         "name": "scroll_mode?: String",
         "ordinal": 22,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "reading_states",
+            "name": "scroll_mode"
+          }
+        }
       },
       {
         "name": "page_offset_x?: i64",
         "ordinal": 23,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "reading_states",
+            "name": "page_offset_x"
+          }
+        }
       },
       {
         "name": "page_offset_y?: i64",
         "ordinal": 24,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "reading_states",
+            "name": "page_offset_y"
+          }
+        }
       },
       {
         "name": "rotation?: i64",
         "ordinal": 25,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "reading_states",
+            "name": "rotation"
+          }
+        }
       },
       {
         "name": "cropping_margins_json?: String",
         "ordinal": 26,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "reading_states",
+            "name": "cropping_margins_json"
+          }
+        }
       },
       {
         "name": "margin_width?: i64",
         "ordinal": 27,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "reading_states",
+            "name": "margin_width"
+          }
+        }
       },
       {
         "name": "screen_margin_width?: i64",
         "ordinal": 28,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "reading_states",
+            "name": "screen_margin_width"
+          }
+        }
       },
       {
         "name": "font_family?: String",
         "ordinal": 29,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "reading_states",
+            "name": "font_family"
+          }
+        }
       },
       {
         "name": "font_size?: f64",
         "ordinal": 30,
-        "type_info": "Float"
+        "type_info": "Float",
+        "origin": {
+          "Table": {
+            "table": "reading_states",
+            "name": "font_size"
+          }
+        }
       },
       {
         "name": "text_align?: String",
         "ordinal": 31,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "reading_states",
+            "name": "text_align"
+          }
+        }
       },
       {
         "name": "line_height?: f64",
         "ordinal": 32,
-        "type_info": "Float"
+        "type_info": "Float",
+        "origin": {
+          "Table": {
+            "table": "reading_states",
+            "name": "line_height"
+          }
+        }
       },
       {
         "name": "contrast_exponent?: f64",
         "ordinal": 33,
-        "type_info": "Float"
+        "type_info": "Float",
+        "origin": {
+          "Table": {
+            "table": "reading_states",
+            "name": "contrast_exponent"
+          }
+        }
       },
       {
         "name": "contrast_gray?: f64",
         "ordinal": 34,
-        "type_info": "Float"
+        "type_info": "Float",
+        "origin": {
+          "Table": {
+            "table": "reading_states",
+            "name": "contrast_gray"
+          }
+        }
       },
       {
         "name": "page_names_json?: String",
         "ordinal": 35,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "reading_states",
+            "name": "page_names_json"
+          }
+        }
       },
       {
         "name": "bookmarks_json?: String",
         "ordinal": 36,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "reading_states",
+            "name": "bookmarks_json"
+          }
+        }
       },
       {
         "name": "annotations_json?: String",
         "ordinal": 37,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "reading_states",
+            "name": "annotations_json"
+          }
+        }
       },
       {
         "name": "authors?: String",
         "ordinal": 38,
-        "type_info": "Null"
+        "type_info": "Text",
+        "origin": "Expression"
       },
       {
         "name": "categories?: String",
         "ordinal": 39,
-        "type_info": "Null"
+        "type_info": "Text",
+        "origin": "Expression"
       }
     ],
     "parameters": {
@@ -246,8 +476,8 @@
       true,
       true,
       true,
-      null,
-      null
+      true,
+      true
     ]
   },
   "hash": "21b1fe969cb934ab49a6eccd01d672e219c0492368b512e1ae2620b156ebaa52"

@@ -6,12 +6,24 @@
       {
         "name": "version: GitVersion",
         "ordinal": 0,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "_cadmus_version",
+            "name": "version"
+          }
+        }
       },
       {
         "name": "migration_hash: MigrationHash",
         "ordinal": 1,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "_cadmus_version",
+            "name": "migration_hash"
+          }
+        }
       }
     ],
     "parameters": {

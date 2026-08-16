@@ -6,27 +6,57 @@
       {
         "name": "fingerprint!: Fp",
         "ordinal": 0,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "library_books",
+            "name": "book_fingerprint"
+          }
+        }
       },
       {
         "name": "file_path!: String",
         "ordinal": 1,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "library_books",
+            "name": "file_path"
+          }
+        }
       },
       {
         "name": "absolute_path!: String",
         "ordinal": 2,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "library_books",
+            "name": "absolute_path"
+          }
+        }
       },
       {
         "name": "mtime?: UnixTimestamp",
         "ordinal": 3,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "library_books",
+            "name": "mtime"
+          }
+        }
       },
       {
         "name": "file_size?: FileSize",
         "ordinal": 4,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "library_books",
+            "name": "file_size"
+          }
+        }
       }
     ],
     "parameters": {

@@ -6,42 +6,90 @@
       {
         "name": "book_fingerprint",
         "ordinal": 0,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "toc_entries",
+            "name": "book_fingerprint"
+          }
+        }
       },
       {
         "name": "id: Uuid7",
         "ordinal": 1,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "toc_entries",
+            "name": "id"
+          }
+        }
       },
       {
         "name": "parent_id!: OptionalUuid7",
         "ordinal": 2,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "toc_entries",
+            "name": "parent_id"
+          }
+        }
       },
       {
         "name": "position",
         "ordinal": 3,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "toc_entries",
+            "name": "position"
+          }
+        }
       },
       {
         "name": "title",
         "ordinal": 4,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "toc_entries",
+            "name": "title"
+          }
+        }
       },
       {
         "name": "location_kind",
         "ordinal": 5,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "toc_entries",
+            "name": "location_kind"
+          }
+        }
       },
       {
         "name": "location_exact",
         "ordinal": 6,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "toc_entries",
+            "name": "location_exact"
+          }
+        }
       },
       {
         "name": "location_uri",
         "ordinal": 7,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "toc_entries",
+            "name": "location_uri"
+          }
+        }
       }
     ],
     "parameters": {

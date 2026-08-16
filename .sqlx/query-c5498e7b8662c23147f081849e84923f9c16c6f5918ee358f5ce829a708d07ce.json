@@ -6,29 +6,53 @@
       {
         "name": "dict_id",
         "ordinal": 0,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "dictionary_index_meta",
+            "name": "dict_id"
+          }
+        }
       },
       {
         "name": "total_lines",
         "ordinal": 1,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "dictionary_index_meta",
+            "name": "total_lines"
+          }
+        }
       },
       {
         "name": "indexed_lines",
         "ordinal": 2,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "dictionary_index_meta",
+            "name": "indexed_lines"
+          }
+        }
       },
       {
         "name": "completed",
         "ordinal": 3,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "dictionary_index_meta",
+            "name": "completed"
+          }
+        }
       }
     ],
     "parameters": {
       "Right": 1
     },
     "nullable": [
-      true,
+      false,
       false,
       false,
       false
