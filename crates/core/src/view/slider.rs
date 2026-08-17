@@ -226,7 +226,7 @@ pub struct SliderWithButtons {
     id: Id,
     rect: Rectangle,
     children: Vec<Box<dyn View>>,
-    #[cfg_attr(not(test), allow(dead_code))]
+    #[cfg(test)]
     decrement_index: usize,
     slider_index: usize,
 }
@@ -264,7 +264,7 @@ impl SliderWithButtons {
         );
 
         let mut children: Vec<Box<dyn View>> = vec![];
-        let decrement_index = children.len();
+        #[cfg(test)] let decrement_index = children.len();
         children.push(Box::new(decrement));
         let slider_index = children.len();
         children.push(Box::new(slider));
@@ -273,7 +273,7 @@ impl SliderWithButtons {
             rect,
             id: ID_FEEDER.next(),
             children,
-            decrement_index,
+            #[cfg(test)] decrement_index,
             slider_index,
         }
     }
