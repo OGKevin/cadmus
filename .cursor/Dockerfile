@@ -55,7 +55,7 @@ RUN apt-get update \
         libxfixes3 \
         libxkbcommon0 \
         libxrandr2 \
-        libsdl2-dev \
+        libsdl3-dev \
         llvm-dev \
         meson \
         ninja-build \

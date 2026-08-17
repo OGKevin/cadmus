@@ -112,7 +112,7 @@ name = "cadmus-core"
 default = []
 device = []
 # device-list-start
-emulator = ["sdl2", "device"]
+emulator = ["sdl3", "device"]
 deviceless = ["device"]
 kobo = ["procfs", "device"]
 # device-list-end

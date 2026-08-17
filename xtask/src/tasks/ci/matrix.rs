@@ -7,8 +7,8 @@
 //! - `test-matrix` — feature entries for ubuntu test jobs
 //!
 //! ```text
-//! matrix={"include":[{"label":"default","features":"","os":"ubuntu-latest"},…]}
-//! test-matrix={"include":[{"label":"default","features":"","os":"ubuntu-latest"},…]}
+//! matrix={"include":[{"label":"default","features":"","os":"ubuntu-26.04"},…]}
+//! test-matrix={"include":[{"label":"default","features":"","os":"ubuntu-26.04"},…]}
 //! ```
 //!
 //! ## Usage in a workflow

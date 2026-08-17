@@ -331,7 +331,7 @@ in
     pkgs.harfbuzz
 
     # Emulator dependency
-    pkgs.SDL2
+    pkgs.sdl3
 
     # Native build dependencies (development headers)
     pkgs.zlib
@@ -370,7 +370,21 @@ in
     # GCC - on macOS we use clang from Xcode
     pkgs.gcc
 
-    # This seems to be borken on macos
+    # SDL3 runtime backends (Wayland / X11 / GL)
+    pkgs.libGL
+    pkgs.libglvnd
+    pkgs.mesa
+    pkgs.wayland
+    pkgs.libxkbcommon
+    pkgs.libdecor
+    pkgs.xorg.libX11
+    pkgs.xorg.libXext
+    pkgs.xorg.libXcursor
+    pkgs.xorg.libXi
+    pkgs.xorg.libXrandr
+    pkgs.xorg.libXfixes
+    pkgs.xorg.libXrender
+    pkgs.vulkan-loader
   ]
   # macOS-specific packages
   ++ pkgs.lib.optionals isDarwin [
