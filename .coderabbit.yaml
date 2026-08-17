@@ -7,8 +7,8 @@ inheritance: true
 reviews:
   review_status: false
   request_changes_workflow: true
-  high_level_summary: false
-  high_level_summary_in_walkthrough: true
+  high_level_summary: true
+  high_level_summary_in_walkthrough: false
   review_details: true
   changed_files_summary: false
   auto_title_instructions: It should follow https://www.conventionalcommits.org/en/v1.0.0/
