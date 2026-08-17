@@ -15,6 +15,7 @@
 //! [`main`] so failures surface as a coherent error chain with cargo's
 //! expected non-zero exit.
 
+use std::collections::BTreeSet;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -96,6 +97,7 @@ fn try_main() -> Result<()> {
 
     generate_migration_hash()?;
     generate_locales()?;
+    generate_keyboard_layouts(&root)?;
     generate_bundled_assets()?;
 
     if skip_thirdparty_deps() {
@@ -213,6 +215,102 @@ fn generate_locales() -> Result<()> {
     std::fs::write(Path::new(&out_dir).join("locales.rs"), generated)
         .context("failed to write locales.rs")?;
     Ok(())
+}
+
+fn generate_keyboard_layouts(root: &Path) -> Result<()> {
+    let layouts_dir = root.join("keyboard-layouts");
+    let out_dir = env::var("OUT_DIR").context("OUT_DIR not set")?;
+    let mut layouts = Vec::new();
+    let mut variants = BTreeSet::new();
+
+    println!("cargo:rerun-if-changed={}", layouts_dir.display());
+
+    for entry in fs::read_dir(&layouts_dir)
+        .with_context(|| format!("failed to read {}", layouts_dir.display()))?
+    {
+        let entry =
+            entry.with_context(|| format!("failed to read entry in {}", layouts_dir.display()))?;
+        let path = entry.path();
+
+        if !entry
+            .file_type()
+            .with_context(|| format!("failed to read type for {}", path.display()))?
+            .is_file()
+            || path.extension().and_then(|extension| extension.to_str()) != Some("json")
+        {
+            continue;
+        }
+
+        println!("cargo:rerun-if-changed={}", path.display());
+        let document: serde_json::Value = serde_json::from_slice(
+            &fs::read(&path).with_context(|| format!("failed to read {}", path.display()))?,
+        )
+        .with_context(|| format!("failed to parse {}", path.display()))?;
+        let name = document
+            .get("name")
+            .and_then(serde_json::Value::as_str)
+            .with_context(|| format!("layout {} has no string name", path.display()))?;
+        let stem = path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .with_context(|| format!("layout filename is not valid UTF-8: {}", path.display()))?;
+        let variant = keyboard_layout_variant(stem)
+            .with_context(|| format!("invalid layout filename {}", path.display()))?;
+
+        if !variants.insert(variant.clone()) {
+            bail!("layout filename {stem:?} generates duplicate variant {variant}");
+        }
+
+        layouts.push((variant, name.to_string()));
+    }
+
+    layouts.sort_by(|left, right| left.0.cmp(&right.0));
+    if layouts.is_empty() {
+        bail!("no keyboard layouts found in {}", layouts_dir.display());
+    }
+
+    let variants: String = layouts
+        .iter()
+        .map(|(variant, _)| format!("    {variant},\n"))
+        .collect();
+    let names: String = layouts
+        .iter()
+        .map(|(variant, name)| format!("            Self::{variant} => {name:?},\n"))
+        .collect();
+    let generated = format!(
+        "/// A keyboard layout bundled at compile time.\n#[derive(Clone, Copy, Debug, Eq, PartialEq)]\npub enum Layout {{\n{variants}}}\n\nimpl Layout {{\n    fn name(self) -> &'static str {{\n        match self {{\n{names}        }}\n    }}\n}}\n\nimpl std::fmt::Display for Layout {{\n    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {{\n        formatter.write_str(self.name())\n    }}\n}}\n"
+    );
+
+    fs::write(Path::new(&out_dir).join("keyboard_layouts.rs"), generated)
+        .context("failed to write keyboard_layouts.rs")?;
+    Ok(())
+}
+
+fn keyboard_layout_variant(name: &str) -> Result<String> {
+    let mut variant = String::new();
+    let mut capitalize = true;
+
+    for character in name.chars() {
+        if character.is_ascii_alphanumeric() {
+            if variant.is_empty() && character.is_ascii_digit() {
+                bail!("layout names must start with a letter");
+            }
+            if capitalize {
+                variant.extend(character.to_uppercase());
+                capitalize = false;
+            } else {
+                variant.push(character);
+            }
+        } else {
+            capitalize = true;
+        }
+    }
+
+    if variant.is_empty() {
+        bail!("layout names must contain a letter");
+    }
+
+    Ok(variant)
 }
 
 /// Generates the schema migration content hash.

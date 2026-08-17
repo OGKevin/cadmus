@@ -9,7 +9,7 @@ use crate::device::DeviceHardware as _;
 use crate::device::DeviceIdentity as _;
 use crate::framebuffer::Framebuffer as _;
 use crate::framebuffer::UpdateMode;
-use crate::geom::Rectangle;
+use crate::geom::{Dir, Rectangle};
 use crate::gesture::GestureEvent;
 use crate::input::DeviceEvent;
 use crate::unit::scale_by_dpi;
@@ -33,6 +33,7 @@ pub struct State {
     shift: u8,
     alternate: u8,
     combine: bool,
+    control: u8,
 }
 
 pub struct Keyboard {
@@ -166,35 +167,37 @@ impl Keyboard {
     }
 
     fn release_modifiers(&mut self, rq: &mut RenderQueue) {
-        if self.state.shift != 1 && self.state.alternate != 1 {
+        if self.state.shift != 1 && self.state.alternate != 1 && self.state.control != 1 {
             return;
         }
 
         if self.state.shift == 1 {
             self.state.shift = 0;
-            for child in self.children_mut() {
-                if let Some(key) = child.downcast_mut::<Key>() {
-                    if *key.kind() == KeyKind::Shift {
-                        key.release(rq);
-                        break;
-                    }
-                }
-            }
+            self.release_key(KeyKind::Shift, rq);
         }
 
         if self.state.alternate == 1 {
             self.state.alternate = 0;
-            for child in self.children_mut() {
-                if let Some(key) = child.downcast_mut::<Key>() {
-                    if *key.kind() == KeyKind::Alternate {
-                        key.release(rq);
-                        break;
-                    }
-                }
-            }
+            self.release_key(KeyKind::Alternate, rq);
+        }
+
+        if self.state.control == 1 {
+            self.state.control = 0;
+            self.release_key(KeyKind::Control, rq);
         }
 
         self.update(rq);
+    }
+
+    fn release_key(&mut self, kind: KeyKind, rq: &mut RenderQueue) {
+        if let Some(key) = self
+            .children_mut()
+            .iter_mut()
+            .filter_map(|child| child.downcast_mut::<Key>())
+            .find(|key| *key.kind() == kind)
+        {
+            key.release(rq);
+        }
     }
 
     fn release_combine(&mut self, rq: &mut RenderQueue) {
@@ -225,7 +228,10 @@ impl View for Keyboard {
             Event::Key(k) => {
                 match k {
                     KeyKind::Output(ch) => {
-                        if self.state.combine {
+                        if self.state.control > 0 && ch.is_ascii_alphabetic() {
+                            hub.send(Event::Keyboard(KeyboardEvent::Control(ch))).ok();
+                            self.release_modifiers(rq);
+                        } else if self.state.combine {
                             self.combine_buffer.push(ch);
                             hub.send((Event::Keyboard(KeyboardEvent::Partial(ch))).into())
                                 .ok();
@@ -283,6 +289,34 @@ impl View for Keyboard {
                         self.release_combine(rq);
                         hub.send((Event::Keyboard(KeyboardEvent::Submit)).into())
                             .ok();
+                    }
+                    KeyKind::Tab => {
+                        hub.send(Event::Keyboard(KeyboardEvent::Tab)).ok();
+                    }
+                    KeyKind::Escape => {
+                        hub.send(Event::Keyboard(KeyboardEvent::Escape)).ok();
+                    }
+                    KeyKind::ArrowUp => {
+                        hub.send(Event::Keyboard(KeyboardEvent::Arrow(Dir::North)))
+                            .ok();
+                    }
+                    KeyKind::ArrowDown => {
+                        hub.send(Event::Keyboard(KeyboardEvent::Arrow(Dir::South)))
+                            .ok();
+                    }
+                    KeyKind::ArrowRight => {
+                        hub.send(Event::Keyboard(KeyboardEvent::Arrow(Dir::East)))
+                            .ok();
+                    }
+                    KeyKind::ArrowLeft => {
+                        hub.send(Event::Keyboard(KeyboardEvent::Arrow(Dir::West)))
+                            .ok();
+                    }
+                    KeyKind::Control => {
+                        self.state.control = (self.state.control + 1) % 3;
+                        if self.state.control != 2 {
+                            self.update(rq);
+                        }
                     }
                 };
                 true

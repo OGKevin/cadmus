@@ -21,6 +21,13 @@ pub enum KeyKind {
     Return,
     Combine,
     Alternate,
+    Tab,
+    Escape,
+    Control,
+    ArrowUp,
+    ArrowDown,
+    ArrowLeft,
+    ArrowRight,
 }
 
 use serde::de::{self, Visitor};
@@ -57,6 +64,13 @@ impl<'de> Deserialize<'de> for KeyKind {
             "DB",
             "Space",
             "Spc",
+            "Tab",
+            "Escape",
+            "Control",
+            "ArrowUp",
+            "ArrowDown",
+            "ArrowLeft",
+            "ArrowRight",
         ];
 
         impl<'de> Visitor<'de> for FieldVisitor {
@@ -80,6 +94,13 @@ impl<'de> Deserialize<'de> for KeyKind {
                     "DelFwd" | "DelF" | "DF" => Ok(KeyKind::Delete(LinearDir::Forward)),
                     "DelBwd" | "DelB" | "DB" => Ok(KeyKind::Delete(LinearDir::Backward)),
                     "Space" | "Spc" => Ok(KeyKind::Output(' ')),
+                    "Tab" => Ok(KeyKind::Tab),
+                    "Escape" => Ok(KeyKind::Escape),
+                    "Control" => Ok(KeyKind::Control),
+                    "ArrowUp" => Ok(KeyKind::ArrowUp),
+                    "ArrowDown" => Ok(KeyKind::ArrowDown),
+                    "ArrowLeft" => Ok(KeyKind::ArrowLeft),
+                    "ArrowRight" => Ok(KeyKind::ArrowRight),
                     _ => {
                         if value.chars().count() != 1 {
                             return Err(serde::de::Error::unknown_field(value, FIELDS));
@@ -101,7 +122,7 @@ impl<'de> Deserialize<'de> for KeyKind {
 #[derive(Clone, Debug)]
 pub enum KeyLabel {
     Char(char),
-    Text(&'static str),
+    Text(String),
     Icon(&'static str),
 }
 
@@ -113,6 +134,13 @@ impl KeyKind {
     pub fn label(self, ratio: f32) -> KeyLabel {
         match self {
             KeyKind::Output(ch) => KeyLabel::Char(ch),
+            KeyKind::Tab => KeyLabel::Text(crate::fl!("keyboard-key-tab")),
+            KeyKind::Escape => KeyLabel::Text(crate::fl!("keyboard-key-escape")),
+            KeyKind::Control => KeyLabel::Text(crate::fl!("keyboard-key-control")),
+            KeyKind::ArrowUp => KeyLabel::Text(crate::fl!("keyboard-key-arrow-up")),
+            KeyKind::ArrowDown => KeyLabel::Text(crate::fl!("keyboard-key-arrow-down")),
+            KeyKind::ArrowLeft => KeyLabel::Text(crate::fl!("keyboard-key-arrow-left")),
+            KeyKind::ArrowRight => KeyLabel::Text(crate::fl!("keyboard-key-arrow-right")),
             KeyKind::Delete(dir) => match dir {
                 LinearDir::Forward => KeyLabel::Icon("delete-forward"),
                 LinearDir::Backward => KeyLabel::Icon("delete-backward"),
@@ -133,28 +161,28 @@ impl KeyKind {
                 if ratio < 2.0 {
                     KeyLabel::Icon("shift")
                 } else {
-                    KeyLabel::Text("SHIFT")
+                    KeyLabel::Text(crate::fl!("keyboard-key-shift"))
                 }
             }
             KeyKind::Return => {
                 if ratio < 2.0 {
                     KeyLabel::Icon("return")
                 } else {
-                    KeyLabel::Text("RETURN")
+                    KeyLabel::Text(crate::fl!("keyboard-key-return"))
                 }
             }
             KeyKind::Combine => {
                 if ratio <= 1.0 {
                     KeyLabel::Icon("combine")
                 } else {
-                    KeyLabel::Text("CMB")
+                    KeyLabel::Text(crate::fl!("keyboard-key-combine"))
                 }
             }
             KeyKind::Alternate => {
                 if ratio <= 1.0 {
                     KeyLabel::Icon("alternate")
                 } else {
-                    KeyLabel::Text("ALT")
+                    KeyLabel::Text(crate::fl!("keyboard-key-alternate"))
                 }
             }
         }
@@ -230,7 +258,7 @@ impl View for Key {
             },
             Event::Gesture(GestureEvent::Tap(center)) if self.rect.includes(center) => {
                 match self.kind {
-                    KeyKind::Shift | KeyKind::Alternate | KeyKind::Combine => {
+                    KeyKind::Shift | KeyKind::Alternate | KeyKind::Combine | KeyKind::Control => {
                         if self.kind == KeyKind::Combine {
                             self.pressure = (self.pressure + 2) % 4;
                         } else {
@@ -306,7 +334,7 @@ impl View for Key {
             }
             KeyLabel::Text(label) => {
                 let font = font_from_style(fonts, &KBD_LABEL, dpi);
-                let mut plan = font.plan(label, None, None);
+                let mut plan = font.plan(&label, None, None);
                 let letter_spacing = scale_by_dpi(4.0, dpi) as i32;
                 plan.space_out(letter_spacing);
                 let dx = (self.rect.width() as i32 - plan.width) / 2;

@@ -295,6 +295,10 @@ impl View for InputField {
                         bus.push_back(Event::Submit(self.view_id, self.text.clone()));
                         context.record_input(&self.text, self.view_id);
                     }
+                    KeyboardEvent::Arrow(_)
+                    | KeyboardEvent::Tab
+                    | KeyboardEvent::Escape
+                    | KeyboardEvent::Control(_) => return false,
                 };
                 rq.add(RenderData::no_wait(self.id, self.rect, UpdateMode::Gui));
                 true
@@ -415,5 +419,61 @@ impl View for InputField {
 
     fn id(&self) -> Id {
         self.id
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::context::test_helpers::create_test_context;
+    use crate::geom::Dir;
+    use std::sync::mpsc::channel;
+
+    #[test]
+    fn unsupported_keyboard_events_propagate_without_redrawing() {
+        let mut input = InputField::new(Rectangle::default(), ViewId::SearchBar);
+        input.focused = true;
+        let (hub, _) = channel();
+        let mut bus = Bus::new();
+        let mut render_queue = RenderQueue::new();
+        let mut context = create_test_context();
+
+        for keyboard_event in [
+            KeyboardEvent::Arrow(Dir::North),
+            KeyboardEvent::Tab,
+            KeyboardEvent::Escape,
+            KeyboardEvent::Control('c'),
+        ] {
+            assert!(!input.handle_event(
+                &Event::Keyboard(keyboard_event),
+                &hub,
+                &mut bus,
+                &mut render_queue,
+                &mut context,
+            ));
+        }
+
+        assert!(render_queue.is_empty());
+    }
+
+    #[test]
+    fn supported_keyboard_events_are_handled_and_redrawn() {
+        let mut input = InputField::new(Rectangle::default(), ViewId::SearchBar);
+        input.focused = true;
+        let (hub, _) = channel();
+        let mut bus = Bus::new();
+        let mut render_queue = RenderQueue::new();
+        let mut context = create_test_context();
+
+        assert!(input.handle_event(
+            &Event::Keyboard(KeyboardEvent::Append('x')),
+            &hub,
+            &mut bus,
+            &mut render_queue,
+            &mut context,
+        ));
+
+        assert_eq!(input.text, "x");
+        assert_eq!(render_queue.len(), 1);
     }
 }
