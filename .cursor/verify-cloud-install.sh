@@ -10,6 +10,8 @@ export PATH="${CADMUS_HOME}/.local/bin:${CADMUS_HOME}/linaro-toolchain/bin:/usr/
 HOST_TRIPLE="$(rustc -vV | sed -n 's/^host: //p')"
 SQLITE_LIB="${ROOT}/target/cadmus-build-deps/${HOST_TRIPLE}/sqlite/lib/libsqlite3.a"
 EPUB_PATH="${ROOT}/docs/book/epub/Cadmus Documentation.epub"
+FONTS_DIR="${ROOT}/fonts"
+ASSET_DIRS=(bin resources hyphenation-patterns)
 
 for cmd in rustc cargo mdbook mdbook-epub mdbook-mermaid mdbook-gettext cargo-nextest node npm; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
@@ -25,6 +27,24 @@ fi
 
 if [[ ! -f $EPUB_PATH ]]; then
   echo "missing documentation EPUB: $EPUB_PATH" >&2
+  exit 1
+fi
+
+if [[ ! -d $FONTS_DIR ]] || [[ -z "$(find "$FONTS_DIR" -maxdepth 1 -type f -name '*.ttf' -print -quit)" ]]; then
+  echo "missing bundled fonts in: $FONTS_DIR" >&2
+  exit 1
+fi
+
+for asset_dir in "${ASSET_DIRS[@]}"; do
+  if [[ ! -d "${ROOT}/${asset_dir}" ]]; then
+    echo "missing Plato asset directory: ${ROOT}/${asset_dir}" >&2
+    exit 1
+  fi
+done
+
+LIBCLANG_PATH="$(bash "${ROOT}/.cursor/libclang-path.sh")"
+if [[ ! -d $LIBCLANG_PATH ]] || [[ -z "$(find "$LIBCLANG_PATH" -maxdepth 1 \( -name 'libclang.so' -o -name 'libclang-*.so' \) -print -quit)" ]]; then
+  echo "missing libclang shared libraries in: $LIBCLANG_PATH" >&2
   exit 1
 fi
 
