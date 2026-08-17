@@ -8,7 +8,7 @@ Applies only to Cursor Cloud agents. Coding conventions and testing policy:
 | File                                                                        | Role                                                                                                                                                                                                           |
 | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [.cursor/Dockerfile](Dockerfile)                                            | Baked Ubuntu image: apt (incl. clang/gettext), rustup, Linaro, mdbook/mdbook-epub/mdbook-mermaid, cargo-nextest, Node. `ENV` pins match CI (`MDBOOK_*`, `NEXTEST_VERSION`, `NODE_VERSION`). No project `COPY`. |
-| [.cursor/cloud-install.sh](cloud-install.sh)                                | Idempotent install on each agent boot: submodules, `cargo xtask ci install-doc-tools`, `cargo xtask setup --host`, `npm ci`, EPUB if missing, `cargo fetch`, `~/.bashrc` exports.                              |
+| [.cursor/cloud-install.sh](cloud-install.sh)                                | Idempotent install on each agent boot: submodules, `cargo xtask ci install-doc-tools`, `cargo xtask setup --host`, Plato assets and fonts when missing, `npm ci`, EPUB if missing, `cargo fetch`, `~/.bashrc` exports. |
 | [.cursor/environment.json](environment.json)                                | Wires Dockerfile build (`context: ..`) and `install`; `agentCanUpdateSnapshot` lets setup agents promote snapshots.                                                                                            |
 | [.cursor/verify-cloud-install.sh](verify-cloud-install.sh)                  | Post-install assertions (used by CI).                                                                                                                                                                          |
 | [.github/workflows/cursor-cloud.yml](../.github/workflows/cursor-cloud.yml) | Path-filtered CI: `check-jsonschema`, `docker build`, `container-structure-test`, `cloud-install` + verify.                                                                                                    |
@@ -28,7 +28,7 @@ Exported in `~/.bashrc` (managed by cloud-install) — re-source in non-login sh
 
 - `CADMUS_ROOT`, `SQLITE3_STATIC=1`, `SQLITE3_LIB_DIR`, `SQLITE3_INCLUDE_DIR`
 - `PKG_CONFIG_PATH_x86_64_unknown_linux_gnu`, `PKG_CONFIG_PATH_arm_unknown_linux_gnueabihf`
-- `SQLX_OFFLINE=true`, `PKG_CONFIG_ALLOW_CROSS=1`, `LIBCLANG_PATH=/usr/lib/llvm-18/lib`
+- `SQLX_OFFLINE=true`, `PKG_CONFIG_ALLOW_CROSS=1`, `LIBCLANG_PATH` (detected via [libclang-path.sh](libclang-path.sh); matches CI apt action logic)
 - `DISPLAY=:1`
 - `PATH` includes `/home/ubuntu/.local/bin`, `/home/ubuntu/linaro-toolchain/bin`, `/usr/local/cargo/bin`
 
@@ -49,7 +49,8 @@ If a fresh snapshot fails to compile, see the relevant skill:
 
 - Custom SQLite: `cargo xtask setup --host` (cloud-install runs this; rerun manually if needed)
 - EPUB: `build-cadmus-native` skill (`cargo xtask docs --mdbook-only`)
-- Kobo assets: `cargo xtask download-assets` if `bin/`, `resources/`, `hyphenation-patterns/` are missing (not part of cloud-install)
+- Plato assets: `cargo xtask download-assets` if `bin/`, `resources/`, or `hyphenation-patterns/` are missing (cloud-install fetches these on first boot)
+- Fonts: `cargo xtask download-fonts` (cloud-install runs this; rerun manually if `fonts/` is incomplete)
 
 ## Emulator
 

@@ -68,8 +68,6 @@ RUN apt-get update \
         zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
-ENV LIBCLANG_PATH=/usr/lib/llvm-18/lib
-
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
         | sh -s -- -y --no-modify-path --default-toolchain stable \
     && rustup target add arm-unknown-linux-gnueabihf \
@@ -116,5 +114,10 @@ RUN export HOME=/home/ubuntu NVM_DIR=/home/ubuntu/.nvm \
     && ln -sf "$(dirname "$node_path")/npx" /home/ubuntu/.local/bin/npx
 
 RUN chown -R ubuntu:ubuntu /home/ubuntu
+
+COPY .cursor/libclang-path.sh /usr/local/bin/cadmus-libclang-path.sh
+RUN chmod +x /usr/local/bin/cadmus-libclang-path.sh \
+    && LIBCLANG_PATH="$(/usr/local/bin/cadmus-libclang-path.sh)" \
+    && printf 'export LIBCLANG_PATH=%s\n' "$LIBCLANG_PATH" > /etc/profile.d/cadmus-libclang.sh
 
 WORKDIR /workspace

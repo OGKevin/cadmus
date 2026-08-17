@@ -22,6 +22,12 @@ cargo xtask ci install-doc-tools \
 
 cargo xtask setup --host
 
+LIBCLANG_PATH="$(bash "${ROOT}/.cursor/libclang-path.sh")"
+export LIBCLANG_PATH
+
+cargo xtask download-assets
+cargo xtask download-fonts
+
 HOST_TRIPLE="$(rustc -vV | sed -n 's/^host: //p')"
 
 if [[ -f package-lock.json ]]; then
@@ -39,11 +45,11 @@ BASHRC="${HOME}/.bashrc"
 MARKER_START="# >>> cadmus-cloud-env >>>"
 MARKER_END="# <<< cadmus-cloud-env <<<"
 
-python3 - "$BASHRC" "$MARKER_START" "$MARKER_END" "$ROOT" "$HOST_TRIPLE" <<'PY'
+python3 - "$BASHRC" "$MARKER_START" "$MARKER_END" "$ROOT" "$HOST_TRIPLE" "$LIBCLANG_PATH" <<'PY'
 import pathlib
 import sys
 
-bashrc, start, end, root, host_triple = sys.argv[1:6]
+bashrc, start, end, root, host_triple, libclang_path = sys.argv[1:7]
 path = pathlib.Path(bashrc)
 block = f"""{start}
 # Managed by .cursor/cloud-install.sh — do not edit manually.
@@ -55,7 +61,7 @@ export PKG_CONFIG_PATH_x86_64_unknown_linux_gnu="{root}/target/cadmus-build-deps
 export PKG_CONFIG_PATH_arm_unknown_linux_gnueabihf="{root}/target/cadmus-build-deps/arm-unknown-linux-gnueabihf/sqlite/lib/pkgconfig"
 export SQLX_OFFLINE=true
 export PKG_CONFIG_ALLOW_CROSS=1
-export LIBCLANG_PATH=/usr/lib/llvm-18/lib
+export LIBCLANG_PATH="{libclang_path}"
 export DISPLAY=:1
 export PUPPETEER_ARGS="--no-sandbox --disable-setuid-sandbox"
 export CADMUS_HOME="/home/ubuntu"

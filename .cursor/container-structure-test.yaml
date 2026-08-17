@@ -6,16 +6,20 @@ metadataTest:
       value: "true"
     - key: PKG_CONFIG_ALLOW_CROSS
       value: "1"
-    - key: LIBCLANG_PATH
-      value: "/usr/lib/llvm-18/lib"
 
 fileExistenceTests:
+  - name: cadmus-libclang-path
+    path: /usr/local/bin/cadmus-libclang-path.sh
+    shouldExist: true
+    permissions: "-rwxr-xr-x"
   - name: linaro-arm-gcc
     path: /home/ubuntu/linaro-toolchain/bin/arm-linux-gnueabihf-gcc
     shouldExist: true
     permissions: "-rwxr-xr-x"
 
 commandTests:
+  - name: libclang-path
+    command: /usr/local/bin/cadmus-libclang-path.sh
   - name: rustc
     command: rustc
     args: ["--version"]
