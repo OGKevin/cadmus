@@ -281,7 +281,8 @@ impl FrontlightWindow {
             if let Some(slider_warmth) = self.child_mut(5).downcast_mut::<SliderWithButtons>() {
                 slider_warmth.slider().update(warmth.into(), rq);
             }
-        } else if let Some(slider_intensity) = self.child_mut(2).downcast_mut::<SliderWithButtons>() {
+        } else if let Some(slider_intensity) = self.child_mut(2).downcast_mut::<SliderWithButtons>()
+        {
             slider_intensity.slider().update(intensity.into(), rq);
         }
     }

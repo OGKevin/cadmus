@@ -264,7 +264,8 @@ impl SliderWithButtons {
         );
 
         let mut children: Vec<Box<dyn View>> = vec![];
-        #[cfg(test)] let decrement_index = children.len();
+        #[cfg(test)]
+        let decrement_index = children.len();
         children.push(Box::new(decrement));
         let slider_index = children.len();
         children.push(Box::new(slider));
@@ -273,7 +274,8 @@ impl SliderWithButtons {
             rect,
             id: ID_FEEDER.next(),
             children,
-            #[cfg(test)] decrement_index,
+            #[cfg(test)]
+            decrement_index,
             slider_index,
         }
     }
