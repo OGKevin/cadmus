@@ -277,6 +277,12 @@ impl SliderWithButtons {
             slider_index,
         }
     }
+
+    pub fn slider(&mut self) -> &mut Slider {
+        self.child_mut(self.slider_index)
+            .downcast_mut::<Slider>()
+            .unwrap()
+    }
 }
 
 impl View for SliderWithButtons {
@@ -294,15 +300,11 @@ impl View for SliderWithButtons {
             Event::SliderIncrement(amount) => {
                 let id = self.id;
                 let rect = self.rect;
-                let slider = self
-                    .child_mut(self.slider_index)
-                    .downcast_mut::<Slider>()
-                    .unwrap();
-                slider.increment(amount, rq);
+                self.slider().increment(amount, rq);
                 rq.add(RenderData::new(id, rect, UpdateMode::Gui));
                 bus.push_back(Event::Slider(
-                    slider.slider_id,
-                    slider.value,
+                    self.slider().slider_id,
+                    self.slider().value,
                     FingerStatus::Up,
                 ));
                 true
