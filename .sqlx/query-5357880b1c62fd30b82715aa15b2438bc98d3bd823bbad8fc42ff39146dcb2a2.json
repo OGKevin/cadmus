@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                    UPDATE books SET\n                        title = ?, subtitle = ?, year = ?, language = ?, publisher = ?,\n                        series = ?, edition = ?, volume = ?, number = ?, identifier = ?,\n                        file_kind = ?, file_size = ?, added_at = ?, status = ?\n                    WHERE fingerprint = ?\n                    ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 15
+    },
+    "nullable": []
+  },
+  "hash": "5357880b1c62fd30b82715aa15b2438bc98d3bd823bbad8fc42ff39146dcb2a2"
+}

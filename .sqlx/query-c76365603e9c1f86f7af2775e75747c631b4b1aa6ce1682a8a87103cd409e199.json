@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                INSERT INTO reading_states (\n                    fingerprint, opened, current_page, pages_count, finished, dithered\n                ) VALUES (?, ?, 3, 10, 0, 0)\n                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "c76365603e9c1f86f7af2775e75747c631b4b1aa6ce1682a8a87103cd409e199"
+}

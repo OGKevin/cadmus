@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                SELECT fingerprint AS \"fingerprint!: Fp\",\n                       status AS \"status!: BookStatus\"\n                FROM books\n                ",
+  "describe": {
+    "columns": [
+      {
+        "name": "fingerprint!: Fp",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "books",
+            "name": "fingerprint"
+          }
+        }
+      },
+      {
+        "name": "status!: BookStatus",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "books",
+            "name": "status"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "6830530727a59f0d4fc8aca2f8d278d0779fdb044fc0ddaedd1a616056220191"
+}

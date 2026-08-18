@@ -1,0 +1,86 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                SELECT lb.book_fingerprint AS \"fingerprint!: Fp\",\n                       lb.file_path        AS \"file_path!: String\",\n                       lb.absolute_path    AS \"absolute_path!: String\",\n                       lb.mtime            AS \"mtime?: UnixTimestamp\",\n                       lb.file_size        AS \"file_size?: FileSize\",\n                       b.status            AS \"status!: BookStatus\"\n                FROM library_books lb\n                INNER JOIN books b ON b.fingerprint = lb.book_fingerprint\n                WHERE lb.library_id = ?\n                ",
+  "describe": {
+    "columns": [
+      {
+        "name": "fingerprint!: Fp",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "library_books",
+            "name": "book_fingerprint"
+          }
+        }
+      },
+      {
+        "name": "file_path!: String",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "library_books",
+            "name": "file_path"
+          }
+        }
+      },
+      {
+        "name": "absolute_path!: String",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "library_books",
+            "name": "absolute_path"
+          }
+        }
+      },
+      {
+        "name": "mtime?: UnixTimestamp",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "library_books",
+            "name": "mtime"
+          }
+        }
+      },
+      {
+        "name": "file_size?: FileSize",
+        "ordinal": 4,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "library_books",
+            "name": "file_size"
+          }
+        }
+      },
+      {
+        "name": "status!: BookStatus",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "books",
+            "name": "status"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "e6167856481bd08d8e95c1afe1b159c6f8765e5442541224c69b3ff107dc3134"
+}

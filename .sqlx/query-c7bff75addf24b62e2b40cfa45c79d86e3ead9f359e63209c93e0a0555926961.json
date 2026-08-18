@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT current_page AS \"current_page!\" FROM reading_states WHERE fingerprint = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "current_page!",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "reading_states",
+            "name": "current_page"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "c7bff75addf24b62e2b40cfa45c79d86e3ead9f359e63209c93e0a0555926961"
+}

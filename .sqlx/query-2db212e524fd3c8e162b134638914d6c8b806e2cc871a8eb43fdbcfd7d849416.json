@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                INSERT INTO library_books (\n                    library_id, book_fingerprint, added_to_library_at, file_path, absolute_path\n                ) VALUES (?, ?, ?, 'pending-only/stub.epub', '/tmp/pending-only/stub.epub')\n                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "2db212e524fd3c8e162b134638914d6c8b806e2cc871a8eb43fdbcfd7d849416"
+}

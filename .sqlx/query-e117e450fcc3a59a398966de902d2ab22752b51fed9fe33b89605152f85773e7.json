@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO library_books (\n                library_id, book_fingerprint, added_to_library_at,\n                file_path, absolute_path, mtime, file_size\n            )\n            VALUES (?, ?, ?, ?, ?, ?, ?)\n            ON CONFLICT(library_id, book_fingerprint) DO UPDATE SET\n                file_path = excluded.file_path,\n                absolute_path = excluded.absolute_path,\n                mtime = excluded.mtime,\n                file_size = excluded.file_size\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 7
+    },
+    "nullable": []
+  },
+  "hash": "e117e450fcc3a59a398966de902d2ab22752b51fed9fe33b89605152f85773e7"
+}
