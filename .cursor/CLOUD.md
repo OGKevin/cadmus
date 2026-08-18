@@ -5,13 +5,13 @@ Applies only to Cursor Cloud agents. Coding conventions and testing policy:
 
 ## Layout
 
-| File                                                                        | Role                                                                                                                                                                                                           |
-| --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [.cursor/Dockerfile](Dockerfile)                                            | Baked Ubuntu image: apt (incl. clang/gettext), rustup, Linaro, mdbook/mdbook-epub/mdbook-mermaid, cargo-nextest, Node. `ENV` pins match CI (`MDBOOK_*`, `NEXTEST_VERSION`, `NODE_VERSION`). No project `COPY`. |
+| File                                                                        | Role                                                                                                                                                                                                                   |
+| --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [.cursor/Dockerfile](Dockerfile)                                            | Baked Ubuntu image: apt (incl. clang/gettext), rustup, Linaro, mdbook/mdbook-epub/mdbook-mermaid, cargo-nextest, Node. `ENV` pins match CI (`MDBOOK_*`, `NEXTEST_VERSION`, `NODE_VERSION`). No project `COPY`.         |
 | [.cursor/cloud-install.sh](cloud-install.sh)                                | Idempotent install on each agent boot: submodules, `cargo xtask ci install-doc-tools`, `cargo xtask setup --host`, Plato assets and fonts when missing, `npm ci`, EPUB if missing, `cargo fetch`, `~/.bashrc` exports. |
-| [.cursor/environment.json](environment.json)                                | Wires Dockerfile build (`context: ..`) and `install`; `agentCanUpdateSnapshot` lets setup agents promote snapshots.                                                                                            |
-| [.cursor/verify-cloud-install.sh](verify-cloud-install.sh)                  | Post-install assertions (used by CI).                                                                                                                                                                          |
-| [.github/workflows/cursor-cloud.yml](../.github/workflows/cursor-cloud.yml) | Path-filtered CI: `check-jsonschema`, `docker build`, `container-structure-test`, `cloud-install` + verify.                                                                                                    |
+| [.cursor/environment.json](environment.json)                                | Wires Dockerfile build (`context: ..`) and `install`; `agentCanUpdateSnapshot` lets setup agents promote snapshots.                                                                                                    |
+| [.cursor/verify-cloud-install.sh](verify-cloud-install.sh)                  | Post-install assertions (used by CI).                                                                                                                                                                                  |
+| [.github/workflows/cursor-cloud.yml](../.github/workflows/cursor-cloud.yml) | Path-filtered CI: `check-jsonschema`, `docker build`, `container-structure-test`, `cloud-install` + verify.                                                                                                            |
 
 ## Boot sequence
 
