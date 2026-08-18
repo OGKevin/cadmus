@@ -2,6 +2,7 @@ use super::super::cycle::{SuspendCycle, SuspendKind};
 use super::wake::PollResult;
 use super::*;
 use crate::device::reschedule_auto_suspend_alarm;
+use crate::device::soft_suspend::mode::AutosleepMode;
 use crate::device::suspend::test_support::{
     install_armed_soft_suspend, intermission_count, lock_alarms, pump_deep_idle_wake,
 };
@@ -505,7 +506,6 @@ fn soft_deep_idle_has_no_holders_when_cycle_lease_dropped() {
 
 #[test]
 fn soft_deep_idle_forces_mem_without_state_mem_write() {
-    use crate::device::soft_suspend::AutosleepMode;
     use std::fs;
 
     let mut harness = DeviceRuntimeHarness::new();
@@ -552,8 +552,6 @@ fn soft_deep_idle_forces_mem_without_state_mem_write() {
 
 #[test]
 fn soft_deep_idle_schedules_wake_debounce_alarm() {
-    use crate::device::soft_suspend::AutosleepMode;
-
     let mut harness = DeviceRuntimeHarness::new();
     let (_dir, _paths) = install_armed_soft_suspend(&mut harness);
     harness.context.settings.auto_suspend = 30.0;
@@ -857,8 +855,6 @@ fn soft_rtc_calendar_update_rearms_and_reenters() {
 
 #[test]
 fn soft_calendar_update_during_insleep_preserves_deep_idle_restore() {
-    use crate::device::soft_suspend::AutosleepMode;
-
     let mut harness = DeviceRuntimeHarness::new();
     let (_dir, _paths) = install_armed_soft_suspend(&mut harness);
     harness.context.settings.intermissions[IntermKind::Suspend] = IntermissionDisplay::Calendar;
@@ -992,8 +988,6 @@ fn soft_armed_classic_suspend_refused_without_cycle_lease() {
 
 #[test]
 fn soft_cancel_suspend_drops_cycle_lease_and_restores_mode() {
-    use crate::device::soft_suspend::AutosleepMode;
-
     let mut harness = DeviceRuntimeHarness::new();
     let (_dir, _paths) = install_armed_soft_suspend(&mut harness);
     harness.context.settings.auto_suspend = 30.0;
@@ -1026,8 +1020,6 @@ fn soft_cancel_suspend_drops_cycle_lease_and_restores_mode() {
 
 #[test]
 fn deep_idle_reentry_preserves_frontlight_levels() {
-    use crate::device::soft_suspend::AutosleepMode;
-
     let mut harness = DeviceRuntimeHarness::new();
     let (_dir, _paths) = install_armed_soft_suspend(&mut harness);
     harness.context.settings.frontlight = true;
@@ -1139,9 +1131,9 @@ fn deep_idle_timeout_cannot_rearm_finishes_cycle() {
     harness
         .context
         .soft_suspend_session
-        .set_mode(crate::device::soft_suspend::AutosleepMode::Off);
+        .set_mode(AutosleepMode::Off);
     if let Some(cycle) = harness.context.suspend.as_mut() {
-        cycle.deep_idle_restore = Some(crate::device::soft_suspend::AutosleepMode::Off);
+        cycle.deep_idle_restore = Some(AutosleepMode::Off);
     }
     harness
         .context

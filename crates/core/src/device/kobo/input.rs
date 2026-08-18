@@ -1,3 +1,5 @@
+use crate::device::soft_suspend::SoftSuspend;
+use crate::device::soft_suspend::SoftSuspendBackend as _;
 use crate::framebuffer::Display;
 use crate::input::{InputEvent, device_events, raw_events, usb_events};
 use crate::settings::ButtonScheme;
@@ -67,7 +69,7 @@ impl crate::device::InputSource for InputSource {
         &mut self,
         display: Display,
         button_scheme: ButtonScheme,
-        soft_suspend: Arc<crate::device::soft_suspend::SoftSuspendSession>,
+        soft_suspend: Arc<SoftSuspend>,
     ) -> (
         crate::view::Hub,
         std::sync::mpsc::Receiver<crate::view::HubMessage>,

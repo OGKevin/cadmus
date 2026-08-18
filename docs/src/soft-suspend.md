@@ -20,7 +20,12 @@ system can sleep.
 
 ## Enabling soft suspend
 
-Open **Main Menu → Settings → Power** and set **Soft Suspend** to one of:
+Soft Suspend, the LED indicator, and release grace appear under **Settings →
+Power** only when your device supports soft suspend. If those rows are missing,
+Cadmus cannot soft-suspend on this hardware (for example the desktop emulator).
+
+When the Soft Suspend setting is available, open **Main Menu → Settings →
+Power** and set it to one of:
 
 | Option | Meaning                                            |
 | ------ | -------------------------------------------------- |
@@ -28,8 +33,8 @@ Open **Main Menu → Settings → Power** and set **Soft Suspend** to one of:
 | Freeze | Lighter sleep (when your device supports it)       |
 | Memory | Deeper sleep to RAM (when your device supports it) |
 
-Only options your device supports appear in the list. You can also set this in
-your settings file:
+Only sleep targets your device supports appear in the list. You can also set
+this in your settings file:
 
 <!-- i18n:skip-start -->
 
@@ -41,9 +46,9 @@ autosleep-mode = "off"     # or "freeze" or "mem"
 
 ## Status LED indicator
 
-Under **Settings → Power**, turn on **Use LED to Indicate Soft Suspend** if
-you want the status LED on while soft suspend is armed and the device is
-awake. The LED turns off when the device sleeps.
+When soft suspend is available, under **Settings → Power** turn on **Use LED
+to Indicate Soft Suspend** if you want the status LED on while soft suspend is
+armed and the device is awake. The LED turns off when the device sleeps.
 
 <!-- i18n:skip-start -->
 
@@ -55,10 +60,11 @@ indicate-autosleep-led = true
 
 ## Release grace
 
-Under **Settings → Power**, **Soft Suspend Release Grace** is how many seconds
-Cadmus keeps the wake lock after the last busy activity ends. That avoids
-rapid sleep/wake when short gaps fall between taps or background work. Set it
-to `0` to unlock immediately. The default is five seconds.
+When soft suspend is available, **Soft Suspend Release Grace** under
+**Settings → Power** is how many seconds Cadmus keeps the wake lock after the
+last busy activity ends. That avoids rapid sleep/wake when short gaps fall
+between taps or background work. Set it to `0` to unlock immediately. The
+default is five seconds.
 
 <!-- i18n:skip-start -->
 

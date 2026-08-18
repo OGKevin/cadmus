@@ -4,7 +4,7 @@
 //! sits in the hub queue. The main loop drops that lease after acquiring its own
 //! `main-loop` lease, keeping coverage continuous across the hand-off.
 
-use crate::device::soft_suspend::SoftSuspendLease;
+use crate::device::soft_suspend::lease::SoftSuspendLease;
 use crate::view::Event;
 
 /// RAII lease attached to a [`HubMessage`] while it is in flight on the hub.
@@ -62,23 +62,14 @@ impl From<Event> for HubMessage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::device::soft_suspend::{SoftSuspendPaths, SoftSuspendSession};
-    use std::fs;
+    use crate::device::linux::soft_suspend::paths::SoftSuspendPaths;
+    use crate::device::soft_suspend::SoftSuspend;
+    use crate::device::soft_suspend::SoftSuspendBackend as _;
     use std::sync::Arc;
 
-    fn session() -> (tempfile::TempDir, Arc<SoftSuspendSession>) {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let paths = SoftSuspendPaths {
-            state: dir.path().join("state"),
-            autosleep: dir.path().join("autosleep"),
-            wake_lock: dir.path().join("wake_lock"),
-            wake_unlock: dir.path().join("wake_unlock"),
-        };
-        fs::write(&paths.state, "freeze mem\n").expect("state");
-        fs::write(&paths.autosleep, "off\n").expect("autosleep");
-        fs::write(&paths.wake_lock, "").expect("wake_lock");
-        fs::write(&paths.wake_unlock, "").expect("wake_unlock");
-        let session = SoftSuspendSession::with_paths(paths, None);
+    fn session() -> (tempfile::TempDir, Arc<SoftSuspend>) {
+        let (dir, paths) = SoftSuspendPaths::test_fixture();
+        let session = SoftSuspend::with_paths(paths, None);
         (dir, session)
     }
 

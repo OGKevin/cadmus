@@ -11,7 +11,8 @@ use walkdir::WalkDir;
 
 use crate::context::DICTIONARIES_DIRNAME;
 use crate::db::Database;
-use crate::device::soft_suspend::SoftSuspendSession;
+use crate::device::soft_suspend::SoftSuspend;
+use crate::device::soft_suspend::SoftSuspendBackend as _;
 use crate::dictionary::{Entry, Metadata, normalize};
 use crate::fl;
 use crate::helpers::{Fingerprint, IsHidden};
@@ -74,7 +75,7 @@ fn decode_number(word: &str) -> Option<u64> {
 pub struct DictionaryIndexTask {
     database: Database,
     data_path: std::path::PathBuf,
-    soft_suspend_session: Arc<SoftSuspendSession>,
+    soft_suspend_session: Arc<SoftSuspend>,
 }
 
 impl DictionaryIndexTask {
@@ -82,7 +83,7 @@ impl DictionaryIndexTask {
     pub fn new(
         database: Database,
         data_path: std::path::PathBuf,
-        soft_suspend_session: Arc<SoftSuspendSession>,
+        soft_suspend_session: Arc<SoftSuspend>,
     ) -> Self {
         Self {
             database,

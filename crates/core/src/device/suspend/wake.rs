@@ -62,7 +62,7 @@ fn production_resolve(state: &DeepIdleWaitState) -> PollResult {
 
 /// Reads `CLOCK_BOOTTIME` as a duration since an unspecified epoch.
 pub(in crate::device::suspend) fn clock_boottime() -> Option<Duration> {
-    #[cfg(unix)]
+    #[cfg(target_os = "linux")]
     {
         use nix::time::{ClockId, clock_gettime};
         match clock_gettime(ClockId::CLOCK_BOOTTIME) {
@@ -73,7 +73,7 @@ pub(in crate::device::suspend) fn clock_boottime() -> Option<Duration> {
             }
         }
     }
-    #[cfg(not(unix))]
+    #[cfg(not(target_os = "linux"))]
     {
         tracing::warn!(
             "CLOCK_BOOTTIME unavailable on this platform; deep-idle wake uses monotonic timeout only"

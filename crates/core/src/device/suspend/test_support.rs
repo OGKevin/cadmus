@@ -30,24 +30,16 @@ pub(crate) fn install_armed_soft_suspend(
     harness: &mut DeviceRuntimeHarness,
 ) -> (
     tempfile::TempDir,
-    crate::device::soft_suspend::SoftSuspendPaths,
+    crate::device::linux::soft_suspend::paths::SoftSuspendPaths,
 ) {
-    use crate::device::soft_suspend::{AutosleepMode, SoftSuspendPaths, SoftSuspendSession};
-    use std::fs;
+    use crate::device::linux::soft_suspend::paths::SoftSuspendPaths;
+    use crate::device::soft_suspend::SoftSuspend;
+    use crate::device::soft_suspend::SoftSuspendBackend as _;
+    use crate::device::soft_suspend::mode::AutosleepMode;
     use std::sync::Arc;
 
-    let dir = tempfile::tempdir().expect("tempdir");
-    let paths = SoftSuspendPaths {
-        state: dir.path().join("state"),
-        autosleep: dir.path().join("autosleep"),
-        wake_lock: dir.path().join("wake_lock"),
-        wake_unlock: dir.path().join("wake_unlock"),
-    };
-    fs::write(&paths.state, "freeze mem\n").expect("state");
-    fs::write(&paths.autosleep, "off\n").expect("autosleep");
-    fs::write(&paths.wake_lock, "").expect("wake_lock");
-    fs::write(&paths.wake_unlock, "").expect("wake_unlock");
-    let session = SoftSuspendSession::with_paths(paths.clone(), None);
+    let (dir, paths) = SoftSuspendPaths::test_fixture();
+    let session = SoftSuspend::with_paths(paths.clone(), None);
     session.set_mode(AutosleepMode::Freeze);
     harness.context.soft_suspend_session = Arc::clone(&session);
     (dir, paths)

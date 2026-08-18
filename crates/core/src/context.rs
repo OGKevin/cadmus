@@ -1,8 +1,8 @@
 use crate::db::Database;
 use crate::device::Device;
-#[cfg(test)]
-use crate::device::DeviceHardware as _;
+use crate::device::DeviceHardware;
 use crate::device::rtc::AlarmManager;
+use crate::device::soft_suspend::SoftSuspendBackend as _;
 use crate::device::wifi::WifiSession;
 use crate::dictionary::{Dictionary, load_dictionary_from_db};
 use crate::font::Fonts;
@@ -54,7 +54,7 @@ pub struct Context<D: Device> {
     #[cfg(any(feature = "kobo", docsrs))]
     pub(crate) suspend: Option<crate::device::suspend::SuspendCycle>,
     pub wifi_session: std::sync::Arc<crate::device::wifi::WifiSession>,
-    pub soft_suspend_session: std::sync::Arc<crate::device::soft_suspend::SoftSuspendSession>,
+    pub soft_suspend_session: std::sync::Arc<crate::device::soft_suspend::SoftSuspend>,
     /// Test-only inject queue for deep-idle wait outcomes.
     #[cfg(all(test, feature = "kobo"))]
     pub(crate) deep_idle_poll_inject:
@@ -99,14 +99,7 @@ impl<D: Device> Context<D> {
                 WifiSession::unavailable(wifi_mode)
             }
         };
-        let leds = match device.leds() {
-            Ok(leds) => Some(leds as std::sync::Arc<dyn crate::device::leds::DeviceLeds>),
-            Err(e) => {
-                tracing::warn!(error = %e, "LED controller unavailable");
-                None
-            }
-        };
-        let soft_suspend_session = crate::device::soft_suspend::SoftSuspendSession::new(leds);
+        let soft_suspend_session = <D as DeviceHardware>::soft_suspend(&device);
         soft_suspend_session.apply_settings(
             settings.autosleep_mode,
             settings.indicate_autosleep_led,
@@ -360,6 +353,27 @@ pub mod test_helpers {
         create_test_context_from_device(TestDevice::new())
     }
 
+    /// Installs a Linux soft-suspend session backed by temporary writable sysfs files.
+    #[cfg(all(test, target_os = "linux"))]
+    pub fn install_linux_soft_suspend(context: &mut AppContext) -> tempfile::TempDir {
+        use crate::device::linux::soft_suspend::paths::SoftSuspendPaths;
+        use crate::device::soft_suspend::SoftSuspend;
+        use std::sync::Arc;
+
+        let (dir, paths) = SoftSuspendPaths::test_fixture();
+        let session = SoftSuspend::with_paths(paths, None);
+        session.apply_settings(
+            context.settings.autosleep_mode,
+            context.settings.indicate_autosleep_led,
+            std::time::Duration::from_secs_f32(context.settings.autosleep_grace.max(0.0)),
+        );
+        context
+            .wifi_session
+            .set_soft_suspend_session(Arc::clone(&session));
+        context.soft_suspend_session = session;
+        dir
+    }
+
     pub fn create_test_context_from_device(device: TestDevice) -> AppContext {
         let mut database = Database::new(":memory:").expect("failed to create in-memory database");
         let mut settings = Settings::default();
@@ -396,6 +410,12 @@ pub mod test_helpers {
         assert!(context.keyboard_layouts.is_empty());
         assert!(context.input_history.is_empty());
         assert_eq!(context.kb_rect, Rectangle::default());
+        assert!(!context.soft_suspend_session.is_supported());
+        assert!(context.soft_suspend_session.is_empty());
+        let _lease = context.soft_suspend_session.acquire("test");
+        assert!(!context.soft_suspend_session.is_supported());
+        assert!(context.soft_suspend_session.is_empty());
+        assert!(context.soft_suspend_session.holders().is_empty());
     }
 
     #[test]

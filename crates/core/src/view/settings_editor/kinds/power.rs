@@ -6,7 +6,8 @@ use super::{
 };
 use crate::device::AppContext;
 use crate::device::reschedule_auto_suspend_alarm;
-use crate::device::soft_suspend::{AutosleepMode, SoftSuspendPaths, discover_available_modes};
+use crate::device::soft_suspend::SoftSuspendBackend as _;
+use crate::device::soft_suspend::mode::AutosleepMode;
 use crate::fl;
 use crate::i18n::I18nDisplay;
 use crate::settings::Settings;
@@ -201,7 +202,15 @@ impl SettingKind for SleepCover {
 }
 
 /// Soft-suspend autosleep mode (`Off` / `Freeze` / `Mem`).
-pub struct AutosleepModeSetting;
+pub struct AutosleepModeSetting {
+    available: Vec<AutosleepMode>,
+}
+
+impl AutosleepModeSetting {
+    pub(crate) fn new(available: Vec<AutosleepMode>) -> Self {
+        Self { available }
+    }
+}
 
 fn resolve_autosleep_mode(saved: AutosleepMode, available: &[AutosleepMode]) -> AutosleepMode {
     if available.contains(&saved) {
@@ -221,10 +230,11 @@ impl SettingKind for AutosleepModeSetting {
     }
 
     fn fetch(&self, data: SettingsFetchData) -> SettingData {
-        let available = discover_available_modes(&SoftSuspendPaths::system().state);
-        let current = resolve_autosleep_mode(data.settings.autosleep_mode, &available);
-        let entries = available
-            .into_iter()
+        let current = resolve_autosleep_mode(data.settings.autosleep_mode, &self.available);
+        let entries = self
+            .available
+            .iter()
+            .copied()
             .map(|mode| {
                 EntryKind::RadioButton(
                     mode.to_i18n_string(),
@@ -577,7 +587,7 @@ mod tests {
 
         #[test]
         fn identity_and_label() {
-            let setting = AutosleepModeSetting;
+            let setting = AutosleepModeSetting::new(vec![AutosleepMode::Off]);
             assert_eq!(setting.identity(), SettingIdentity::AutosleepMode);
             assert_eq!(
                 setting.label(&Settings::default()),
@@ -587,9 +597,13 @@ mod tests {
 
         #[test]
         fn fetch_builds_radio_submenu_for_available_modes() {
-            let setting = AutosleepModeSetting;
+            let available = vec![
+                AutosleepMode::Off,
+                AutosleepMode::Freeze,
+                AutosleepMode::Mem,
+            ];
+            let setting = AutosleepModeSetting::new(available.clone());
             let settings = Settings::default();
-            let available = discover_available_modes(&SoftSuspendPaths::system().state);
 
             let data = setting.fetch(SettingsFetchData {
                 settings: &settings,
@@ -627,9 +641,15 @@ mod tests {
         }
 
         #[test]
+        #[cfg(target_os = "linux")]
         fn handle_select_updates_settings_and_session() {
-            let setting = AutosleepModeSetting;
+            let setting = AutosleepModeSetting::new(vec![
+                AutosleepMode::Off,
+                AutosleepMode::Freeze,
+                AutosleepMode::Mem,
+            ]);
             let mut context = create_test_context();
+            let _linux = crate::context::test_helpers::install_linux_soft_suspend(&mut context);
             context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
             let event = Event::Select(EntryId::SetAutosleepMode(AutosleepMode::Off));
@@ -644,9 +664,26 @@ mod tests {
         }
 
         #[test]
+        #[cfg(target_os = "linux")]
         fn handle_select_persists_mode_even_if_session_sanitizes() {
-            let setting = AutosleepModeSetting;
+            use crate::device::linux::soft_suspend::paths::SoftSuspendPaths;
+            use crate::device::soft_suspend::SoftSuspend;
+            use std::fs;
+            use std::sync::Arc;
+
+            let setting = AutosleepModeSetting::new(vec![
+                AutosleepMode::Off,
+                AutosleepMode::Freeze,
+                AutosleepMode::Mem,
+            ]);
             let mut context = create_test_context();
+            let (_dir, paths) = SoftSuspendPaths::test_fixture();
+            fs::write(&paths.state, "freeze\n").expect("state without mem");
+            let session = SoftSuspend::with_paths(paths, None);
+            context
+                .wifi_session
+                .set_soft_suspend_session(Arc::clone(&session));
+            context.soft_suspend_session = session;
             context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
             let event = Event::Select(EntryId::SetAutosleepMode(AutosleepMode::Mem));
@@ -656,17 +693,16 @@ mod tests {
             assert_eq!(result.0, Some(AutosleepMode::Mem.to_i18n_string()));
             assert!(result.1);
             assert_eq!(context.settings.autosleep_mode, AutosleepMode::Mem);
-            assert_eq!(
-                context.soft_suspend_session.mode(),
-                context
-                    .soft_suspend_session
-                    .sanitize_mode(AutosleepMode::Mem)
-            );
+            assert_eq!(context.soft_suspend_session.mode(), AutosleepMode::Off);
         }
 
         #[test]
         fn handle_returns_none_for_wrong_event() {
-            let setting = AutosleepModeSetting;
+            let setting = AutosleepModeSetting::new(vec![
+                AutosleepMode::Off,
+                AutosleepMode::Freeze,
+                AutosleepMode::Mem,
+            ]);
             let mut context = create_test_context();
             context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
@@ -719,9 +755,11 @@ mod tests {
         }
 
         #[test]
+        #[cfg(target_os = "linux")]
         fn handle_toggle_event_toggles_value_and_session() {
             let setting = IndicateAutosleepLed;
             let mut context = create_test_context();
+            let _linux = crate::context::test_helpers::install_linux_soft_suspend(&mut context);
             context.settings = Settings {
                 indicate_autosleep_led: true,
                 ..Default::default()
@@ -739,9 +777,11 @@ mod tests {
         }
 
         #[test]
+        #[cfg(target_os = "linux")]
         fn handle_toggle_enables_when_disabled() {
             let setting = IndicateAutosleepLed;
             let mut context = create_test_context();
+            let _linux = crate::context::test_helpers::install_linux_soft_suspend(&mut context);
             context.settings = Settings {
                 indicate_autosleep_led: false,
                 ..Default::default()
@@ -862,9 +902,11 @@ mod tests {
         }
 
         #[test]
+        #[cfg(target_os = "linux")]
         fn handle_submit_applies_grace_to_session() {
             let setting = AutosleepGrace;
             let mut context = create_test_context();
+            let _linux = crate::context::test_helpers::install_linux_soft_suspend(&mut context);
             context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
             let event = Event::Submit(ViewId::AutosleepGraceInput, "2.5".into());

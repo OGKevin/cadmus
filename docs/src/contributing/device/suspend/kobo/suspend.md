@@ -22,9 +22,9 @@ and phase live on
 ## Classic hard suspend (soft suspend Off)
 
 When
-<a href="/api/cadmus_core/device/soft_suspend/enum.AutosleepMode.html">`AutosleepMode`</a>
+<a href="/api/cadmus_core/device/soft_suspend/mode/enum.AutosleepMode.html">`AutosleepMode`</a>
 is
-<a href="/api/cadmus_core/device/soft_suspend/enum.AutosleepMode.html#variant.Off">`Off`</a>,
+<a href="/api/cadmus_core/device/soft_suspend/mode/enum.AutosleepMode.html#variant.Off">`Off`</a>,
 Auto Suspend / power button / sleep cover use the classic path via the
 orchestrator:
 
@@ -50,7 +50,7 @@ When soft suspend is armed, the same triggers use
 1. Acquire a named `deep-idle` cycle lease through the orchestrator
 2. PrepareSuspend runs immediately, then deep-idle wait (no Suspend RTC)
 3. Force session autosleep to
-   **<a href="/api/cadmus_core/device/soft_suspend/enum.AutosleepMode.html#variant.Mem">`mem`</a>**,
+   **<a href="/api/cadmus_core/device/soft_suspend/mode/enum.AutosleepMode.html#variant.Mem">`mem`</a>**,
    arm `state-extended=1`, drop the lease
 4. Poll until wake (boottime−monotonic) or timeout → retry / finish
 5. On wake: `state-extended=0`, restore autosleep mode; WakeDebounce /
@@ -74,7 +74,7 @@ sleeps when soft suspend is armed.
 | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
 | <a href="/api/cadmus_core/device/suspend/index.html">`device::suspend`</a> orchestrator                                                                                                                                                 | Kind, phase, begin → finish                |
 | <a href="/api/cadmus_core/device/rtc/enum.AlarmType.html#variant.AutoSuspend">`AlarmType::AutoSuspend`</a> / <a href="/api/cadmus_core/device/rtc/struct.AlarmManager.html">`AlarmManager`</a>                                          | Wall-clock idle deadline                   |
-| <a href="/api/cadmus_core/device/soft_suspend/struct.SoftSuspendSession.html">`SoftSuspendSession`</a>                                                                                                                                  | Autosleep mode + `cadmus` wake lock leases |
+| <a href="/api/cadmus_core/device/linux/soft_suspend/session/struct.SoftSuspendSession.html">`SoftSuspendSession`</a>                                                                                                                    | Autosleep mode + `cadmus` wake lock leases |
 | <a href="/api/cadmus_core/device/power/trait.PowerManager.html#method.arm_deep_idle">`PowerManager::arm_deep_idle`</a> / <a href="/api/cadmus_core/device/power/trait.PowerManager.html#method.disarm_deep_idle">`disarm_deep_idle`</a> | Kobo `state-extended`                      |
 | <a href="/api/cadmus_core/device/kobo/power/struct.KoboPowerManager.html#method.suspend">`KoboPowerManager::suspend`</a>                                                                                                                | Classic `state-extended` + `state=mem`     |
 

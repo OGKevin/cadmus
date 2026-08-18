@@ -171,6 +171,7 @@ crate::impl_device_hardware!(
         metadata_from metadata,
         set_system_timezone linux,
         refresh_framebuffer_from_kernel framebuffer,
+        soft_suspend from_system,
 );
 
 impl crate::device::DeviceInput for Device {

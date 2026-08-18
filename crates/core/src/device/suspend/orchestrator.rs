@@ -22,7 +22,8 @@ use crate::chrono::{Duration as ChronoDuration, Local, Timelike};
 use crate::device::DeviceHardware as _;
 use crate::device::power::PowerManager;
 use crate::device::rtc::{EnsureAlarmOutcome, PastDueAction};
-use crate::device::soft_suspend::AutosleepMode;
+use crate::device::soft_suspend::SoftSuspendBackend as _;
+use crate::device::soft_suspend::mode::AutosleepMode;
 use crate::device::{
     AppContext, DeviceRuntime, DeviceTask, DeviceTaskId, EventOutcome, ExitStatus, HistoryItem,
     reschedule_auto_suspend_alarm, schedule_device_task,

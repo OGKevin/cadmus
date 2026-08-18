@@ -4,7 +4,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::db::Database;
-use crate::device::soft_suspend::SoftSuspendSession;
+use crate::device::soft_suspend::SoftSuspend;
+use crate::device::soft_suspend::SoftSuspendBackend as _;
 use crate::document::open;
 use crate::library::Library;
 use crate::settings::Settings;
@@ -22,7 +23,7 @@ pub struct ThumbnailExtractionTask {
     dpi: u16,
     color_samples: usize,
     install_dir: PathBuf,
-    soft_suspend_session: Arc<SoftSuspendSession>,
+    soft_suspend_session: Arc<SoftSuspend>,
 }
 
 impl ThumbnailExtractionTask {
@@ -33,7 +34,7 @@ impl ThumbnailExtractionTask {
         dpi: u16,
         color_samples: usize,
         install_dir: impl Into<PathBuf>,
-        soft_suspend_session: Arc<SoftSuspendSession>,
+        soft_suspend_session: Arc<SoftSuspend>,
     ) -> Self {
         Self {
             database,

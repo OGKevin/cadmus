@@ -15,6 +15,7 @@ use super::kinds::power::{
 use super::kinds::reader::{DitheredKindsSetting, FinishedActionSetting, RefreshRateInfo};
 use super::kinds::telemetry::{LogLevel, LoggingEnabled};
 use crate::device::AppContext;
+use crate::device::soft_suspend::SoftSuspendBackend as _;
 use crate::dictionary::MonolingualDictionaryService;
 use crate::fl;
 use std::collections::BTreeSet;
@@ -85,14 +86,20 @@ impl Category {
                 Box::new(DbBackupRetentionSetting),
                 Box::new(StartupModeSetting),
             ],
-            Category::Power => vec![
-                Box::new(AutosleepModeSetting),
-                Box::new(IndicateAutosleepLed),
-                Box::new(AutosleepGrace),
-                Box::new(AutoSuspend),
-                Box::new(AutoPowerOff),
-                Box::new(SleepCover),
-            ],
+            Category::Power => {
+                let mut rows: Vec<Box<dyn SettingKind>> = Vec::new();
+                if context.soft_suspend_session.is_supported() {
+                    rows.push(Box::new(AutosleepModeSetting::new(
+                        context.soft_suspend_session.available_modes(),
+                    )));
+                    rows.push(Box::new(IndicateAutosleepLed));
+                    rows.push(Box::new(AutosleepGrace));
+                }
+                rows.push(Box::new(AutoSuspend));
+                rows.push(Box::new(AutoPowerOff));
+                rows.push(Box::new(SleepCover));
+                rows
+            }
             Category::Reader => vec![
                 Box::new(FinishedActionSetting),
                 Box::new(DitheredKindsSetting),
@@ -219,7 +226,7 @@ mod tests {
     use crate::view::settings_editor::kinds::SettingIdentity;
 
     #[test]
-    fn power_includes_soft_suspend_settings() {
+    fn power_omits_soft_suspend_settings_when_unsupported() {
         let context = create_test_context();
         let identities: Vec<_> = Category::Power
             .settings(&context, None)
@@ -228,11 +235,35 @@ mod tests {
             .collect();
 
         assert_eq!(
-            identities[..3],
+            identities,
+            [
+                SettingIdentity::AutoSuspend,
+                SettingIdentity::AutoPowerOff,
+                SettingIdentity::SleepCover,
+            ]
+        );
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn power_includes_soft_suspend_settings_when_supported() {
+        let mut context = create_test_context();
+        let _linux = crate::context::test_helpers::install_linux_soft_suspend(&mut context);
+        let identities: Vec<_> = Category::Power
+            .settings(&context, None)
+            .iter()
+            .map(|setting| setting.identity())
+            .collect();
+
+        assert_eq!(
+            identities,
             [
                 SettingIdentity::AutosleepMode,
                 SettingIdentity::IndicateAutosleepLed,
                 SettingIdentity::AutosleepGrace,
+                SettingIdentity::AutoSuspend,
+                SettingIdentity::AutoPowerOff,
+                SettingIdentity::SleepCover,
             ]
         );
     }

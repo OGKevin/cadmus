@@ -220,7 +220,8 @@ wifi-idle-timeout = 5.0
 ✏️ 📱
 
 Soft-suspend target written to the kernel autosleep interface. See
-[Soft Suspend](../soft-suspend.md).
+[Soft Suspend](../soft-suspend.md). The settings editor shows Soft Suspend only
+when the device supports it; on unsupported hosts this key has no effect.
 
 - Possible values: `"off"` (default), `"freeze"`, `"mem"`.
 - Unsupported values for your device fall back to `"off"`.
@@ -238,6 +239,7 @@ autosleep-mode = "off"
 ✏️ 📱
 
 When soft suspend is armed, keep the status LED on while the device is awake.
+Hidden in the settings editor when soft suspend is unsupported.
 
 - Default: `false`.
 
@@ -254,7 +256,8 @@ indicate-autosleep-led = false
 ✏️ 📱
 
 Seconds to keep the soft-suspend wake lock after the last Cadmus lease drops.
-See [Soft Suspend](../soft-suspend.md).
+See [Soft Suspend](../soft-suspend.md). Hidden in the settings editor when soft
+suspend is unsupported.
 
 - Default: `5.0`.
 - Zero unlocks immediately.
