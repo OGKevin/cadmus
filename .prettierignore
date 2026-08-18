@@ -1,5 +1,6 @@
 docs/**
 .agents/skills/**
+.cursor/CLOUD.md
 **/AGENTS.md
 **/REVIEW.md
 thirdparty/**/*-kobo.md
