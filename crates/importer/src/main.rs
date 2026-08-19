@@ -88,10 +88,7 @@ fn main() -> Result<(), Error> {
     let library_path = Path::new(&matches.free[0]);
 
     let mut import_settings = ImportSettings {
-        metadata_kinds: ["epub"]
-            .iter()
-            .filter_map(|k| k.parse::<FileExtension>().ok())
-            .collect(),
+        metadata_kinds: [FileExtension::Epub].iter().copied().collect(),
         ..Default::default()
     };
 
