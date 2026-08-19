@@ -1031,7 +1031,9 @@ pub fn extract_metadata_from_document(prefix: &Path, info: &mut Info, install_di
                 info.language = doc.language().unwrap_or_default();
                 info.categories.append(&mut doc.categories());
             }
-            Err(e) => error!("Can't open {}: {:#}.", info.file.path.display(), e),
+            Err(e) => {
+                error!(path = %info.file.path.display(), error = ?e, "Can't open document");
+            }
         },
         Some(FileExtension::Html) => match HtmlDocument::new(&path, install_dir) {
             Ok(doc) => {
@@ -1039,14 +1041,16 @@ pub fn extract_metadata_from_document(prefix: &Path, info: &mut Info, install_di
                 info.author = doc.author().unwrap_or_default();
                 info.language = doc.language().unwrap_or_default();
             }
-            Err(e) => error!("Can't open {}: {:#}.", info.file.path.display(), e),
+            Err(e) => {
+                error!(path = %info.file.path.display(), error = ?e, "Can't open document");
+            }
         },
         Some(FileExtension::Pdf) => match PdfOpener::new().and_then(|o| o.open(path).ok()) {
             Some(doc) => {
                 info.title = doc.title().unwrap_or_default();
                 info.author = doc.author().unwrap_or_default();
             }
-            None => error!("Can't open {}.", info.file.path.display()),
+            None => error!(path = %info.file.path.display(), "Can't open document"),
         },
         Some(FileExtension::Djvu) => match DjvuOpener::new().and_then(|o| o.open(path)) {
             Some(doc) => {
@@ -1056,7 +1060,7 @@ pub fn extract_metadata_from_document(prefix: &Path, info: &mut Info, install_di
                 info.series = doc.series().unwrap_or_default();
                 info.publisher = doc.publisher().unwrap_or_default();
             }
-            None => error!("Can't open {}.", info.file.path.display()),
+            None => error!(path = %info.file.path.display(), "Can't open document"),
         },
         kind => {
             warn!(?kind, "Don't know how to extract metadata from kind");

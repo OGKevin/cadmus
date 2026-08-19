@@ -300,11 +300,7 @@ fn scan_entries(
                         },
                         ..Default::default()
                     };
-                    if book_info
-                        .file
-                        .kind
-                        .is_some_and(|k| settings.metadata_kinds.contains(&k))
-                    {
+                    if settings.metadata_kinds.contains(&kind) {
                         extract_metadata_from_document(home, &mut book_info, install_dir);
                     }
                     result.books_to_update.push(BookWrite {
@@ -371,11 +367,7 @@ fn scan_entries(
                 },
                 ..Default::default()
             };
-            if book_info
-                .file
-                .kind
-                .is_some_and(|k| settings.metadata_kinds.contains(&k))
-            {
+            if settings.metadata_kinds.contains(&kind) {
                 extract_metadata_from_document(home, &mut book_info, install_dir);
             }
             handles_by_fp.insert(fp, (relat.to_path_buf(), path.to_path_buf()));

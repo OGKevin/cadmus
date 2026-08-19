@@ -21,12 +21,14 @@ pub enum FileExtension {
     /// Comic book ZIP archive.
     Cbz,
     /// DjVu document.
+    #[serde(alias = "djv")]
     Djvu,
     /// EPUB ebook.
     Epub,
     /// FictionBook document.
     Fb2,
     /// HTML document.
+    #[serde(alias = "htm")]
     Html,
     /// JPEG image using the long extension.
     Jpeg,
@@ -149,8 +151,7 @@ impl sqlx::Encode<'_, Sqlite> for FileExtension {
 impl<'r> sqlx::Decode<'r, Sqlite> for FileExtension {
     fn decode(value: SqliteValueRef<'r>) -> Result<Self, BoxDynError> {
         let s = <String as sqlx::Decode<'r, Sqlite>>::decode(value)?;
-        s.parse()
-            .map_err(|UnknownFileExtension(ext)| format!("unknown file extension: {ext}").into())
+        Ok(s.parse()?)
     }
 }
 
@@ -314,6 +315,14 @@ mod tests {
         assert_eq!("htm".parse(), Ok(FileExtension::Html));
         assert_eq!("html".parse(), Ok(FileExtension::Html));
         assert_eq!(FileExtension::Html.as_str(), "html");
+        assert_eq!(
+            serde_json::from_str::<FileExtension>(r#""htm""#).unwrap(),
+            FileExtension::Html
+        );
+        assert_eq!(
+            serde_json::to_string(&FileExtension::Html).unwrap(),
+            r#""html""#
+        );
     }
 
     #[test]
@@ -321,6 +330,14 @@ mod tests {
         assert_eq!("djv".parse(), Ok(FileExtension::Djvu));
         assert_eq!("djvu".parse(), Ok(FileExtension::Djvu));
         assert_eq!(FileExtension::Djvu.as_str(), "djvu");
+        assert_eq!(
+            serde_json::from_str::<FileExtension>(r#""djv""#).unwrap(),
+            FileExtension::Djvu
+        );
+        assert_eq!(
+            serde_json::to_string(&FileExtension::Djvu).unwrap(),
+            r#""djvu""#
+        );
     }
 
     #[test]
