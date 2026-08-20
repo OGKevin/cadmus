@@ -75,6 +75,12 @@ settings-general-unknown = Inconnu
 settings-general-wifi-idle-immediate = Immédiat
 settings-general-wifi-idle-timeout = { -wifi-idle-timeout } ({ -minutes })
 settings-general-wifi-idle-timeout-input = { -wifi-idle-timeout } ({ -minutes }, 0 = { settings-general-wifi-idle-immediate })
+# Settings - Power
+settings-power-auto-power-off = Extinction Auto (jours)
+settings-power-auto-power-off-input = Extinction Auto (jours, 0 = jamais)
+settings-power-auto-suspend = Mise en veille Auto (minutes)
+settings-power-auto-suspend-input = Mise en veille Auto (minutes, 0 = jamais)
+settings-power-enable-sleep-cover = Activer Sleep Cover
 # Settings - Startup Mode
 settings-startup-mode-home = Page d'accueil
 settings-startup-mode-last-file = Fichier précédent
