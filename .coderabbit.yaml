@@ -8,6 +8,33 @@ reviews:
   review_status: false
   request_changes_workflow: true
   high_level_summary: true
+  high_level_summary_instructions: |
+    Short reviewer brief in these sections, in order.
+    Omit a section only if it is empty.
+
+    ## What
+    1–3 sentences on the user- or system-visible change.
+
+    ## Why
+    Motivation, from the description, linked issues, and commits.
+
+    ## How
+    2–5 bullets on the approach, not every touched path.
+    Mention migrations, feature flags, settings, or docs only when
+    they exist.
+
+    ## Related
+    Links to related issues and PRs as [#123](url), including
+    mentioned items and closely related open or merged work.
+    "None found." if empty; do not invent numbers.
+
+    ## Risk
+    `**Risk:** {Low|Medium|High} ({1–5}/5) — {one-sentence why}`
+    Use the highest matching band:
+    - 1–2 Low: docs, tests, CI, refactors with no behavior change
+    - 3 Medium: localized, reversible behavior or settings/UI
+    - 4–5 High: SQLite, OTA/install, power/suspend, native/device
+      paths, security, or hard-to-rollback data
   high_level_summary_in_walkthrough: false
   review_details: true
   changed_files_summary: false
