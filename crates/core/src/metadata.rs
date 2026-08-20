@@ -2,6 +2,7 @@ use crate::db::types::UnixTimestamp;
 use crate::document::asciify;
 use crate::document::djvu::DjvuOpener;
 use crate::document::epub::EpubDocument;
+use crate::document::file_extension::FileExtension;
 use crate::document::html::HtmlDocument;
 use crate::document::pdf::PdfOpener;
 use crate::document::{Document, SimpleTocEntry, TextLocation};
@@ -73,7 +74,7 @@ pub struct FileInfo {
     pub path: PathBuf,
     #[serde(skip)]
     pub absolute_path: PathBuf,
-    pub kind: String,
+    pub kind: Option<FileExtension>,
     pub size: u64,
     #[serde(skip)]
     pub mtime: Option<UnixTimestamp>,
@@ -84,7 +85,7 @@ impl Default for FileInfo {
         FileInfo {
             path: PathBuf::default(),
             absolute_path: PathBuf::default(),
-            kind: String::default(),
+            kind: None,
             size: u64::default(),
             mtime: None,
         }
@@ -1016,8 +1017,8 @@ lazy_static! {
 pub fn extract_metadata_from_document(prefix: &Path, info: &mut Info, install_dir: &Path) {
     let path = prefix.join(&info.file.path);
 
-    match info.file.kind.as_ref() {
-        "epub" => match EpubDocument::new(&path, install_dir) {
+    match info.file.kind {
+        Some(FileExtension::Epub) => match EpubDocument::new(&path, install_dir) {
             Ok(doc) => {
                 info.title = doc.title().unwrap_or_default();
                 info.author = doc.author().unwrap_or_default();
@@ -1030,24 +1031,28 @@ pub fn extract_metadata_from_document(prefix: &Path, info: &mut Info, install_di
                 info.language = doc.language().unwrap_or_default();
                 info.categories.append(&mut doc.categories());
             }
-            Err(e) => error!("Can't open {}: {:#}.", info.file.path.display(), e),
+            Err(e) => {
+                error!(path = %info.file.path.display(), error = ?e, "Can't open document");
+            }
         },
-        "html" | "htm" => match HtmlDocument::new(&path, install_dir) {
+        Some(FileExtension::Html) => match HtmlDocument::new(&path, install_dir) {
             Ok(doc) => {
                 info.title = doc.title().unwrap_or_default();
                 info.author = doc.author().unwrap_or_default();
                 info.language = doc.language().unwrap_or_default();
             }
-            Err(e) => error!("Can't open {}: {:#}.", info.file.path.display(), e),
+            Err(e) => {
+                error!(path = %info.file.path.display(), error = ?e, "Can't open document");
+            }
         },
-        "pdf" => match PdfOpener::new().and_then(|o| o.open(path).ok()) {
+        Some(FileExtension::Pdf) => match PdfOpener::new().and_then(|o| o.open(path).ok()) {
             Some(doc) => {
                 info.title = doc.title().unwrap_or_default();
                 info.author = doc.author().unwrap_or_default();
             }
-            None => error!("Can't open {}.", info.file.path.display()),
+            None => error!(path = %info.file.path.display(), "Can't open document"),
         },
-        "djvu" | "djv" => match DjvuOpener::new().and_then(|o| o.open(path)) {
+        Some(FileExtension::Djvu) => match DjvuOpener::new().and_then(|o| o.open(path)) {
             Some(doc) => {
                 info.title = doc.title().unwrap_or_default();
                 info.author = doc.author().unwrap_or_default();
@@ -1055,13 +1060,10 @@ pub fn extract_metadata_from_document(prefix: &Path, info: &mut Info, install_di
                 info.series = doc.series().unwrap_or_default();
                 info.publisher = doc.publisher().unwrap_or_default();
             }
-            None => error!("Can't open {}.", info.file.path.display()),
+            None => error!(path = %info.file.path.display(), "Can't open document"),
         },
-        _ => {
-            warn!(
-                "Don't know how to extract metadata from {}.",
-                &info.file.kind
-            );
+        kind => {
+            warn!(?kind, "Don't know how to extract metadata from kind");
         }
     }
 }
@@ -1186,7 +1188,9 @@ pub fn file_name_from_info(info: &Info) -> String {
     if !info.author.is_empty() {
         base = format!("{} - {}", base, asciify(&info.author));
     }
-    base = format!("{}.{}", base, info.file.kind);
+    if let Some(kind) = info.file.kind {
+        base = format!("{}.{}", base, kind);
+    }
     base.replace("..", ".")
         .replace('/', " ")
         .replace('?', "")
@@ -1205,7 +1209,7 @@ mod tests {
             file: FileInfo {
                 path: PathBuf::from(filename),
                 absolute_path: PathBuf::new(),
-                kind: "epub".to_string(),
+                kind: Some(FileExtension::Epub),
                 size: 0,
                 mtime: None,
             },

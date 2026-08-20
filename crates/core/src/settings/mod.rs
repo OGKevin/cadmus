@@ -3,6 +3,9 @@ mod preset;
 pub mod versioned;
 
 use crate::color::{BLACK, Color};
+use crate::document::file_extension::{
+    FileExtension, deserialize_file_extension_map, deserialize_file_extension_set,
+};
 use crate::fl;
 use crate::frontlight::{LightLevel, LightLevels};
 use crate::geolocation::Coordinates;
@@ -10,9 +13,6 @@ use crate::i18n::I18nDisplay;
 use crate::metadata::{SortMethod, TextAlign};
 use crate::network_address::NetworkAddress;
 use fxhash::FxHashSet;
-use sqlx::encode::IsNull;
-use sqlx::error::BoxDynError;
-use sqlx::sqlite::{Sqlite, SqliteArgumentsBuffer, SqliteTypeInfo, SqliteValueRef};
 use unic_langid::LanguageIdentifier;
 
 pub use self::preset::{LightPreset, guess_frontlight};
@@ -506,7 +506,8 @@ impl Default for LibrarySettings {
 #[serde(default, rename_all = "kebab-case")]
 pub struct ImportSettings {
     pub sync_metadata: bool,
-    pub metadata_kinds: FxHashSet<String>,
+    #[serde(deserialize_with = "deserialize_file_extension_set")]
+    pub metadata_kinds: FxHashSet<FileExtension>,
     #[serde(deserialize_with = "deserialize_file_extension_set")]
     pub allowed_kinds: FxHashSet<FileExtension>,
 }
@@ -647,198 +648,12 @@ pub struct HomeSettings {
 pub struct RefreshRateSettings {
     #[serde(flatten)]
     pub global: RefreshRatePair,
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
-    pub by_kind: HashMap<String, RefreshRatePair>,
-}
-
-/// A known file extension for which per-kind refresh rates can be configured.
-///
-/// The serialized string (e.g. `"epub"`, `"cbz"`) is used as the key in
-/// [`RefreshRateSettings::by_kind`] and as values in [`ImportSettings::allowed_kinds`].
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum FileExtension {
-    /// Comic book RAR archive.
-    Cbr,
-    /// Comic book ZIP archive.
-    Cbz,
-    /// DjVu document.
-    Djvu,
-    /// EPUB ebook.
-    Epub,
-    /// FictionBook document.
-    Fb2,
-    /// HTML document.
-    Html,
-    /// JPEG image using the long extension.
-    Jpeg,
-    /// JPEG image using the short extension.
-    Jpg,
-    /// Mobipocket ebook.
-    Mobi,
-    /// OpenXPS document.
-    Oxps,
-    /// PDF document.
-    Pdf,
-    /// PNG image.
-    Png,
-    /// SVG image.
-    Svg,
-    /// Plain text document.
-    Txt,
-    /// WebP image.
-    Webp,
-    /// XPS document.
-    Xps,
-}
-
-impl FileExtension {
-    /// Returns all known file extensions.
-    pub fn all() -> &'static [FileExtension] {
-        &[
-            FileExtension::Cbr,
-            FileExtension::Cbz,
-            FileExtension::Djvu,
-            FileExtension::Epub,
-            FileExtension::Fb2,
-            FileExtension::Html,
-            FileExtension::Jpeg,
-            FileExtension::Jpg,
-            FileExtension::Mobi,
-            FileExtension::Oxps,
-            FileExtension::Pdf,
-            FileExtension::Png,
-            FileExtension::Svg,
-            FileExtension::Txt,
-            FileExtension::Webp,
-            FileExtension::Xps,
-        ]
-    }
-
-    /// Returns the lowercase string representation used as the TOML key.
-    pub fn as_str(self) -> &'static str {
-        match self {
-            FileExtension::Cbr => "cbr",
-            FileExtension::Cbz => "cbz",
-            FileExtension::Djvu => "djvu",
-            FileExtension::Epub => "epub",
-            FileExtension::Fb2 => "fb2",
-            FileExtension::Html => "html",
-            FileExtension::Jpeg => "jpeg",
-            FileExtension::Jpg => "jpg",
-            FileExtension::Mobi => "mobi",
-            FileExtension::Oxps => "oxps",
-            FileExtension::Pdf => "pdf",
-            FileExtension::Png => "png",
-            FileExtension::Svg => "svg",
-            FileExtension::Txt => "txt",
-            FileExtension::Webp => "webp",
-            FileExtension::Xps => "xps",
-        }
-    }
-}
-
-/// Error returned when a string does not match any known file extension.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[error("unknown file extension: {0}")]
-pub struct UnknownFileExtension(
-    /// Extension string that could not be parsed.
-    pub String,
-);
-
-impl std::str::FromStr for FileExtension {
-    type Err = UnknownFileExtension;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "cbr" => Ok(FileExtension::Cbr),
-            "cbz" => Ok(FileExtension::Cbz),
-            "djvu" => Ok(FileExtension::Djvu),
-            "epub" => Ok(FileExtension::Epub),
-            "fb2" => Ok(FileExtension::Fb2),
-            "html" | "htm" => Ok(FileExtension::Html),
-            "jpeg" => Ok(FileExtension::Jpeg),
-            "jpg" => Ok(FileExtension::Jpg),
-            "mobi" => Ok(FileExtension::Mobi),
-            "oxps" => Ok(FileExtension::Oxps),
-            "pdf" => Ok(FileExtension::Pdf),
-            "png" => Ok(FileExtension::Png),
-            "svg" => Ok(FileExtension::Svg),
-            "txt" => Ok(FileExtension::Txt),
-            "webp" => Ok(FileExtension::Webp),
-            "xps" => Ok(FileExtension::Xps),
-            _ => Err(UnknownFileExtension(s.to_owned())),
-        }
-    }
-}
-
-impl sqlx::Type<Sqlite> for FileExtension {
-    fn type_info() -> SqliteTypeInfo {
-        <String as sqlx::Type<Sqlite>>::type_info()
-    }
-
-    fn compatible(ty: &SqliteTypeInfo) -> bool {
-        <String as sqlx::Type<Sqlite>>::compatible(ty)
-    }
-}
-
-impl sqlx::Encode<'_, Sqlite> for FileExtension {
-    fn encode_by_ref(&self, buf: &mut SqliteArgumentsBuffer) -> Result<IsNull, BoxDynError> {
-        self.as_str().encode_by_ref(buf)
-    }
-}
-
-impl<'r> sqlx::Decode<'r, Sqlite> for FileExtension {
-    fn decode(value: SqliteValueRef<'r>) -> Result<Self, BoxDynError> {
-        let s = <String as sqlx::Decode<'r, Sqlite>>::decode(value)?;
-        s.parse()
-            .map_err(|UnknownFileExtension(ext)| format!("unknown file extension: {ext}").into())
-    }
-}
-
-fn deserialize_file_extension_set<'de, D>(
-    deserializer: D,
-) -> Result<FxHashSet<FileExtension>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    struct FileExtensionSetVisitor;
-
-    impl<'de> serde::de::Visitor<'de> for FileExtensionSetVisitor {
-        type Value = FxHashSet<FileExtension>;
-
-        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-            formatter.write_str("a sequence of file extension strings")
-        }
-
-        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
-        where
-            A: serde::de::SeqAccess<'de>,
-        {
-            let mut set = FxHashSet::default();
-
-            while let Some(s) = seq.next_element::<String>()? {
-                match s.parse::<FileExtension>() {
-                    Ok(ext) => {
-                        set.insert(ext);
-                    }
-                    Err(e) => {
-                        tracing::warn!(extension = %s, error = %e, "failed to load extension");
-                    }
-                }
-            }
-
-            Ok(set)
-        }
-    }
-
-    deserializer.deserialize_seq(FileExtensionSetVisitor)
-}
-
-impl fmt::Display for FileExtension {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.as_str())
-    }
+    #[serde(
+        default,
+        skip_serializing_if = "HashMap::is_empty",
+        deserialize_with = "deserialize_file_extension_map"
+    )]
+    pub by_kind: HashMap<FileExtension, RefreshRatePair>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1064,9 +879,9 @@ impl Default for ImportSettings {
     fn default() -> Self {
         ImportSettings {
             sync_metadata: true,
-            metadata_kinds: ["epub", "pdf", "djvu"]
+            metadata_kinds: [FileExtension::Epub, FileExtension::Pdf, FileExtension::Djvu]
                 .iter()
-                .map(|k| k.to_string())
+                .copied()
                 .collect(),
             allowed_kinds: [
                 FileExtension::Pdf,
@@ -1437,23 +1252,21 @@ dithered-kinds = ["cbz", "unknown-format"]
     }
 
     #[test]
-    fn test_file_extension_round_trip_via_from_str() {
-        for ext in FileExtension::all() {
-            let parsed = ext.as_str().parse::<FileExtension>().ok();
-            assert_eq!(parsed, Some(*ext), "round trip failed for {:?}", ext);
-        }
-    }
+    fn test_by_kind_silently_drops_unknown_extensions() {
+        let toml_str = r#"
+regular = 8
+inverted = 6
 
-    #[test]
-    fn test_htm_extension_parses_as_html() {
-        let parsed = "htm".parse::<FileExtension>();
-        assert_eq!(parsed, Ok(FileExtension::Html));
-    }
+[by-kind]
+epub = { regular = 4, inverted = 2 }
+unknown-format = { regular = 1, inverted = 1 }
+"#;
+        let settings: RefreshRateSettings =
+            toml::from_str(toml_str).expect("Failed to deserialize");
 
-    #[test]
-    fn test_html_extension_still_parses() {
-        let parsed = "html".parse::<FileExtension>();
-        assert_eq!(parsed, Ok(FileExtension::Html));
+        assert!(settings.by_kind.contains_key(&FileExtension::Epub));
+        assert_eq!(settings.by_kind.len(), 1);
+        assert_eq!(settings.global.regular, 8);
     }
 
     #[test]

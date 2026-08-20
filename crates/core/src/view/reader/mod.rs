@@ -16,6 +16,7 @@ use crate::device::DeviceHardware as _;
 use crate::device::{DeviceCapabilities as _, DeviceRotation as _};
 use crate::device::{DeviceIdentity as _, DevicePaths as _};
 use crate::document::epub::EpubDocumentStatic;
+use crate::document::file_extension::FileExtension;
 use crate::document::html::HtmlDocument;
 use crate::document::{
     BYTES_PER_PAGE, BoundedText, Document, Location, Neighbors, TextLocation, open,
@@ -504,7 +505,7 @@ impl Reader {
         let mut info = Info {
             file: FileInfo {
                 path: PathBuf::from(MEM_SCHEME),
-                kind: "html".to_string(),
+                kind: Some(FileExtension::Html),
                 size: html.len() as u64,
                 ..Default::default()
             },
@@ -578,7 +579,7 @@ impl Reader {
         let info = Info {
             file: FileInfo {
                 path: PathBuf::from("mem:documentation.epub"),
-                kind: "epub".to_string(),
+                kind: Some(FileExtension::Epub),
                 size: epub_bytes.len() as u64,
                 ..Default::default()
             },
@@ -1401,13 +1402,12 @@ impl Reader {
     ) {
         self.page_turns += 1;
         let update_mode = update_mode.unwrap_or_else(|| {
-            let pair = context
-                .settings
-                .reader
-                .refresh_rate
-                .by_kind
-                .get(&self.info.file.kind)
-                .unwrap_or_else(|| &context.settings.reader.refresh_rate.global);
+            let pair = self
+                .info
+                .file
+                .kind
+                .and_then(|kind| context.settings.reader.refresh_rate.by_kind.get(&kind))
+                .unwrap_or(&context.settings.reader.refresh_rate.global);
             let refresh_rate = if context.device.framebuffer().inverted() {
                 pair.inverted
             } else {
@@ -5205,7 +5205,7 @@ impl View for Reader {
                     "{}-{}.{}",
                     self.info.title.to_lowercase().replace(' ', "_"),
                     Local::now().format("%Y%m%d_%H%M%S"),
-                    self.info.file.kind
+                    self.info.file.kind.map(|k| k.as_str()).unwrap_or("bin")
                 );
                 let doc = self.doc.lock().unwrap();
                 let msg = match doc.save(&name) {

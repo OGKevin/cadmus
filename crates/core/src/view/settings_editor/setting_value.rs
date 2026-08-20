@@ -1105,7 +1105,7 @@ mod tests {
 
     #[test]
     fn test_keep_open_submenu_does_not_queue_menu_close() {
-        use crate::settings::FileExtension;
+        use crate::document::file_extension::FileExtension;
 
         let rect = rect![0, 0, 200, 50];
         let mut context = create_test_context();

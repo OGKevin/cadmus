@@ -4,6 +4,7 @@ pub mod models;
 use crate::db::Database;
 use crate::db::types::{FileSize, OptionalUuid7, UnixTimestamp, Uuid7};
 use crate::document::SimpleTocEntry;
+use crate::document::file_extension::{FileExtension, OptionalFileExtension};
 use crate::geom::Point;
 use crate::helpers::Fp;
 use crate::library::book_status::BookStatus;
@@ -12,7 +13,6 @@ use crate::metadata::{
     alphabetic_author, alphabetic_title, natural_cmp, sorter,
 };
 use crate::runtime::RUNTIME;
-use crate::settings::FileExtension;
 use anyhow::Error;
 use conversion::{
     extract_authors, info_to_book_row, reader_info_to_reading_state_row, rows_to_toc_entries,
@@ -117,7 +117,7 @@ struct StoredBookRow {
     identifier: String,
     file_path: String,
     absolute_path: String,
-    file_kind: String,
+    file_kind: OptionalFileExtension,
     file_size: i64,
     added_at: UnixTimestamp,
     opened: Option<UnixTimestamp>,
@@ -373,7 +373,7 @@ impl Db {
             file: FileInfo {
                 path: PathBuf::from(&row.file_path),
                 absolute_path: PathBuf::from(&row.absolute_path),
-                kind: row.file_kind,
+                kind: row.file_kind.into(),
                 size: row.file_size as u64,
                 mtime: None,
             },
@@ -526,7 +526,7 @@ impl Db {
                     identifier,
                     file_path,
                     absolute_path,
-                    file_kind,
+                    file_kind              AS "file_kind!: OptionalFileExtension",
                     file_size,
                     added_at              as "added_at: UnixTimestamp",
                     opened                as "opened?: UnixTimestamp",
@@ -592,7 +592,7 @@ impl Db {
                     file: FileInfo {
                         path: PathBuf::from(&row.file_path),
                         absolute_path: PathBuf::from(&row.absolute_path),
-                        kind: row.file_kind,
+                        kind: row.file_kind.into(),
                         size: row.file_size as u64,
                         mtime: None,
                     },
@@ -662,7 +662,7 @@ impl Db {
                     identifier,
                     file_path,
                     absolute_path,
-                    file_kind,
+                    file_kind              AS "file_kind!: OptionalFileExtension",
                     file_size,
                     added_at              as "added_at: UnixTimestamp",
                     opened                as "opened?: UnixTimestamp",
@@ -740,7 +740,7 @@ impl Db {
                     identifier,
                     file_path,
                     absolute_path,
-                    file_kind,
+                    file_kind              AS "file_kind!: OptionalFileExtension",
                     file_size,
                     added_at              as "added_at: UnixTimestamp",
                     opened                as "opened?: UnixTimestamp",
@@ -842,7 +842,7 @@ impl Db {
                         identifier,
                         file_path,
                         absolute_path,
-                        file_kind,
+                        file_kind              AS "file_kind!: OptionalFileExtension",
                         file_size,
                         added_at              as "added_at: UnixTimestamp",
                         opened                as "opened?: UnixTimestamp",
@@ -956,7 +956,7 @@ impl Db {
                     identifier,
                     file_path,
                     absolute_path,
-                    file_kind,
+                    file_kind              AS "file_kind!: OptionalFileExtension",
                     file_size,
                     added_at              as "added_at: UnixTimestamp",
                     opened                as "opened?: UnixTimestamp",
@@ -1022,7 +1022,7 @@ impl Db {
                     identifier,
                     file_path,
                     absolute_path,
-                    file_kind,
+                    file_kind              AS "file_kind!: OptionalFileExtension",
                     file_size,
                     added_at              as "added_at: UnixTimestamp",
                     opened                as "opened?: UnixTimestamp",
@@ -1915,7 +1915,7 @@ impl Db {
         RUNTIME.block_on(async {
             let mut tx = self.pool.begin().await?;
 
-            let book_row = info_to_book_row(fp, info);
+            let book_row = info_to_book_row(fp, info)?;
             Self::insert_books_row(&mut tx, &book_row, BookStatus::Active).await?;
             Self::attach_book_to_library(&mut tx, library_id, fp, info, &book_row).await?;
 
@@ -1938,7 +1938,7 @@ impl Db {
 
         RUNTIME.block_on(async {
             let mut tx = self.pool.begin().await?;
-            let book_row = info_to_book_row(fp, info);
+            let book_row = info_to_book_row(fp, info)?;
             Self::attach_book_to_library(&mut tx, library_id, fp, info, &book_row).await?;
             tx.commit().await?;
             tracing::debug!(fp = %fp, "book link complete");
@@ -1961,7 +1961,7 @@ impl Db {
         RUNTIME.block_on(async {
             let mut tx = self.pool.begin().await?;
 
-            let book_row = info_to_book_row(fp, info);
+            let book_row = info_to_book_row(fp, info)?;
 
             sqlx::query!(
                 r#"
@@ -2385,7 +2385,7 @@ impl Db {
 
             for (fp, info) in books {
                 let fp_str = fp.to_string();
-                let book_row = info_to_book_row(*fp, info);
+                let book_row = info_to_book_row(*fp, info)?;
                 Self::insert_books_row(&mut tx, &book_row, BookStatus::Active).await?;
                 Self::attach_book_to_library(&mut tx, library_id, *fp, info, &book_row).await?;
 
@@ -2423,7 +2423,7 @@ impl Db {
             for (fp, info) in books {
                 let fp_str = fp.to_string();
 
-                let book_row = info_to_book_row(*fp, info);
+                let book_row = info_to_book_row(*fp, info)?;
 
                 sqlx::query!(
                     r#"
@@ -2766,7 +2766,7 @@ impl Db {
                 r#"
                 SELECT
                     lb.book_fingerprint AS "fingerprint!: Fp",
-                    b.file_kind AS "file_kind!: FileExtension"
+                    b.file_kind AS "file_kind!: OptionalFileExtension"
                 FROM library_books lb
                 INNER JOIN books b ON b.fingerprint = lb.book_fingerprint
                 WHERE lb.library_id = ?
@@ -2780,9 +2780,8 @@ impl Db {
             let mut purged: Vec<Fp> = Vec::new();
 
             for row in rows {
-                let kind = row.file_kind;
-
-                if allowed_kinds.contains(&kind) {
+                let kind = row.file_kind.0;
+                if kind.is_some_and(|k| allowed_kinds.contains(&k)) {
                     continue;
                 }
 
@@ -2810,7 +2809,11 @@ impl Db {
                     .await?;
                 }
 
-                tracing::info!(fp = %row.fingerprint, kind = %kind, "removed disallowed book from library");
+                tracing::info!(
+                    fp = %row.fingerprint,
+                    kind = ?kind,
+                    "removed disallowed book from library"
+                );
                 purged.push(row.fingerprint);
             }
 
@@ -2851,7 +2854,7 @@ mod tests {
             author: author.to_string(),
             file: FileInfo {
                 path: PathBuf::from(path),
-                kind: "epub".to_string(),
+                kind: Some(FileExtension::Epub),
                 size: 1024,
                 ..Default::default()
             },
@@ -2941,7 +2944,7 @@ mod tests {
                 .collect(),
             file: FileInfo {
                 path: PathBuf::from("/tmp/test.pdf"),
-                kind: "pdf".to_string(),
+                kind: Some(FileExtension::Pdf),
                 size: 1024,
                 ..Default::default()
             },
@@ -2970,7 +2973,7 @@ mod tests {
         assert_eq!(retrieved_info.series, "Test Series");
         assert_eq!(retrieved_info.number, "1");
         assert_eq!(retrieved_info.file.path, PathBuf::from("/tmp/test.pdf"));
-        assert_eq!(retrieved_info.file.kind, "pdf");
+        assert_eq!(retrieved_info.file.kind, Some(FileExtension::Pdf));
         assert_eq!(retrieved_info.file.size, 1024);
     }
 
@@ -2989,7 +2992,7 @@ mod tests {
             author: "Test Author".to_string(),
             file: FileInfo {
                 path: PathBuf::from("/tmp/test2.pdf"),
-                kind: "pdf".to_string(),
+                kind: Some(FileExtension::Pdf),
                 size: 2048,
                 ..Default::default()
             },
@@ -3032,7 +3035,7 @@ mod tests {
             author: "Delete Author".to_string(),
             file: FileInfo {
                 path: PathBuf::from("/tmp/delete.pdf"),
-                kind: "pdf".to_string(),
+                kind: Some(FileExtension::Pdf),
                 size: 512,
                 ..Default::default()
             },
@@ -3077,7 +3080,7 @@ mod tests {
                 author: format!("Author {}", i),
                 file: FileInfo {
                     path: PathBuf::from(format!("/tmp/book{}.pdf", i)),
-                    kind: "pdf".to_string(),
+                    kind: Some(FileExtension::Pdf),
                     size: (i * 100) as u64,
                     ..Default::default()
                 },
@@ -3114,7 +3117,7 @@ mod tests {
             author: "Original Author".to_string(),
             file: FileInfo {
                 path: PathBuf::from("/tmp/update.pdf"),
-                kind: "pdf".to_string(),
+                kind: Some(FileExtension::Pdf),
                 size: 1024,
                 ..Default::default()
             },
@@ -3159,7 +3162,7 @@ mod tests {
                 author: format!("Author {}", i),
                 file: FileInfo {
                     path: PathBuf::from(format!("/tmp/book{}.pdf", i)),
-                    kind: "pdf".to_string(),
+                    kind: Some(FileExtension::Pdf),
                     size: (i * 100) as u64,
                     ..Default::default()
                 },
@@ -3413,7 +3416,7 @@ mod tests {
             author: "State Author".to_string(),
             file: FileInfo {
                 path: PathBuf::from("/tmp/state.pdf"),
-                kind: "pdf".to_string(),
+                kind: Some(FileExtension::Pdf),
                 size: 1024,
                 ..Default::default()
             },
@@ -3483,7 +3486,7 @@ mod tests {
                 year: format!("{}", 2020 + i),
                 file: FileInfo {
                     path: PathBuf::from(format!("/tmp/batch{}.pdf", i)),
-                    kind: "pdf".to_string(),
+                    kind: Some(FileExtension::Pdf),
                     size: (i * 100) as u64,
                     ..Default::default()
                 },
@@ -3531,7 +3534,7 @@ mod tests {
                 author: format!("Original Author {}", i),
                 file: FileInfo {
                     path: PathBuf::from(format!("/tmp/update{}.pdf", i)),
-                    kind: "pdf".to_string(),
+                    kind: Some(FileExtension::Pdf),
                     size: (i * 100) as u64,
                     ..Default::default()
                 },
@@ -3576,7 +3579,7 @@ mod tests {
             author: "Author".to_string(),
             file: FileInfo {
                 path: PathBuf::from("/tmp/book.pdf"),
-                kind: "pdf".to_string(),
+                kind: Some(FileExtension::Pdf),
                 size: 100,
                 ..Default::default()
             },
@@ -4001,7 +4004,7 @@ mod tests {
                 author: format!("Delete Author {}", i),
                 file: FileInfo {
                     path: PathBuf::from(format!("/tmp/delete{}.pdf", i)),
-                    kind: "pdf".to_string(),
+                    kind: Some(FileExtension::Pdf),
                     size: (i * 100) as u64,
                     ..Default::default()
                 },
@@ -4061,7 +4064,7 @@ mod tests {
             author: "Cat Author".to_string(),
             file: FileInfo {
                 path: PathBuf::from("/tmp/cat.pdf"),
-                kind: "pdf".to_string(),
+                kind: Some(FileExtension::Pdf),
                 size: 512,
                 ..Default::default()
             },
@@ -4101,7 +4104,7 @@ mod tests {
             author: "Update Author".to_string(),
             file: FileInfo {
                 path: PathBuf::from("/tmp/upd_cat.pdf"),
-                kind: "pdf".to_string(),
+                kind: Some(FileExtension::Pdf),
                 size: 512,
                 ..Default::default()
             },
@@ -4335,7 +4338,7 @@ mod tests {
             let fp = Fp::from_str(&format!("EE{:014X}", i + 1)).unwrap();
             let mut info = make_info(path, title, author);
             info.year = year.to_string();
-            info.file.kind = kind.to_string();
+            info.file.kind = Some(kind.parse().unwrap());
             info.file.size = *size;
             info.reader_info = Some(ReaderInfo {
                 current_page: pages / 2,
@@ -4394,7 +4397,7 @@ mod tests {
             .page_books(library_id, Path::new(""), SortMethod::Kind, false, 10, 0)
             .unwrap();
         // epub < pdf alphabetically
-        assert_eq!(books[0].file.kind, "epub");
+        assert_eq!(books[0].file.kind, Some(FileExtension::Epub));
     }
 
     #[test]
@@ -4686,7 +4689,7 @@ mod tests {
                 author: format!("State Author {}", i),
                 file: FileInfo {
                     path: PathBuf::from(format!("/tmp/state{}.pdf", i)),
-                    kind: "pdf".to_string(),
+                    kind: Some(FileExtension::Pdf),
                     size: (i * 100) as u64,
                     ..Default::default()
                 },
@@ -4728,7 +4731,7 @@ mod tests {
 
     #[test]
     fn delete_books_with_disallowed_kinds_removes_wrong_kind() {
-        use crate::settings::FileExtension;
+        use crate::document::file_extension::FileExtension;
 
         let (_db, libdb) = create_test_db();
         let library_id =
@@ -4741,7 +4744,7 @@ mod tests {
             title: "Epub Book".to_string(),
             file: FileInfo {
                 path: PathBuf::from("book.epub"),
-                kind: "epub".to_string(),
+                kind: Some(FileExtension::Epub),
                 size: 100,
                 ..Default::default()
             },
@@ -4751,7 +4754,7 @@ mod tests {
             title: "Pdf Book".to_string(),
             file: FileInfo {
                 path: PathBuf::from("book.pdf"),
-                kind: "pdf".to_string(),
+                kind: Some(FileExtension::Pdf),
                 size: 200,
                 ..Default::default()
             },
@@ -4780,8 +4783,6 @@ mod tests {
 
     #[test]
     fn pending_stub_survives_disallowed_kind_purge_with_reading_state() {
-        use crate::settings::FileExtension;
-
         let (db, libdb) = create_test_db();
         let library_id = register_test_library(&libdb, "/tmp/test_pending_purge", "Pending Purge");
 
@@ -4873,7 +4874,7 @@ mod tests {
             title: "Active".to_string(),
             file: FileInfo {
                 path: PathBuf::from("active.epub"),
-                kind: "epub".to_string(),
+                kind: Some(FileExtension::Epub),
                 size: 10,
                 ..Default::default()
             },
@@ -4964,7 +4965,7 @@ mod tests {
             title: "Promoted".to_string(),
             file: FileInfo {
                 path: PathBuf::from("promoted.epub"),
-                kind: "epub".to_string(),
+                kind: Some(FileExtension::Epub),
                 size: 42,
                 ..Default::default()
             },
@@ -5047,7 +5048,7 @@ mod tests {
             file: FileInfo {
                 path: PathBuf::from("updated.epub"),
                 absolute_path: PathBuf::from("/tmp/updated.epub"),
-                kind: "epub".to_string(),
+                kind: Some(FileExtension::Epub),
                 size: 111,
                 mtime: Some(update_mtime),
             },
@@ -5058,7 +5059,7 @@ mod tests {
             file: FileInfo {
                 path: PathBuf::from("batched.epub"),
                 absolute_path: PathBuf::from("/tmp/batched.epub"),
-                kind: "epub".to_string(),
+                kind: Some(FileExtension::Epub),
                 size: 222,
                 mtime: Some(batch_mtime),
             },

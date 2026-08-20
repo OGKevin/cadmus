@@ -706,6 +706,7 @@ impl Library {
 mod tests {
     use super::*;
     use crate::db::Database;
+    use crate::document::file_extension::FileExtension;
     use crate::geom::CycleDir;
     use crate::metadata::FileInfo;
     use crate::settings::ImportSettings;
@@ -744,7 +745,7 @@ mod tests {
             file: FileInfo {
                 path: PathBuf::from(path),
                 absolute_path: PathBuf::from(format!("/library/{path}")),
-                kind: "pdf".to_string(),
+                kind: Some(FileExtension::Pdf),
                 size: 1024,
                 mtime: None,
             },
@@ -1450,7 +1451,7 @@ mod tests {
         ] {
             let fp = Fp::from_str(fp_hex).expect("invalid fp");
             let mut info = make_info(path, title, fp);
-            info.file.kind = kind.to_string();
+            info.file.kind = Some(kind.parse().unwrap());
             lib.db
                 .insert_book(lib.library_id, fp, &info)
                 .expect("failed to insert book");

@@ -4,8 +4,9 @@ use super::{
     SettingData, SettingIdentity, SettingKind, SettingsFetchData, ToggleSettings, WidgetKind,
 };
 use crate::device::AppContext;
+use crate::document::file_extension::FileExtension;
 use crate::fl;
-use crate::settings::{FileExtension, Settings};
+use crate::settings::Settings;
 use crate::view::{Bus, EntryId, EntryKind, Event, ToggleEvent};
 
 /// Force full library re-import action setting.
@@ -142,7 +143,8 @@ fn kinds_summary(selected: usize) -> String {
 mod tests {
     use super::*;
     use crate::context::test_helpers::create_test_context;
-    use crate::settings::{FileExtension, Settings};
+    use crate::document::file_extension::FileExtension;
+    use crate::settings::Settings;
     use crate::view::{Bus, EntryKind, Event};
     use std::collections::VecDeque;
 

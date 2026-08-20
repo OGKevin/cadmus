@@ -859,7 +859,7 @@ async fn insert_book(
     fp: Fp,
     info: &Info,
 ) -> Result<(), anyhow::Error> {
-    let book_row = info_to_book_row(fp, info);
+    let book_row = info_to_book_row(fp, info)?;
     let fp_str = fp.to_string();
     let status = crate::library::book_status::BookStatus::Active;
 
@@ -1015,6 +1015,7 @@ mod tests {
     use super::*;
     use crate::db::Database;
     use crate::db::migrations::{MigrationContext, MigrationDevice};
+    use crate::document::file_extension::FileExtension;
     use crate::document::{SimpleTocEntry, TocLocation};
     use crate::library::db::Db;
     use crate::metadata::{FileInfo, ReaderInfo};
@@ -1061,7 +1062,7 @@ mod tests {
             file: FileInfo {
                 path: PathBuf::from(path),
                 absolute_path: PathBuf::from(path),
-                kind: "epub".to_string(),
+                kind: Some(FileExtension::Epub),
                 size: 1024,
                 mtime: None,
             },
