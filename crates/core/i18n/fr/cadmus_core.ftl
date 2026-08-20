@@ -55,16 +55,11 @@ settings-general-auto-frontlight-brightness = Luminosité nocturne automatique
 settings-general-auto-frontlight-brightness-input = Luminosité nocturne (% 0-100)
 settings-general-auto-frontlight-manual-coordinates = Coordonnées manuelles
 settings-general-auto-frontlight-manual-coordinates-input = lat,lon | coordonnées
-settings-general-auto-power-off = Extinction Auto (jours)
-settings-general-auto-power-off-input = Extinction Auto (jours, 0 = jamais)
-settings-general-auto-suspend = Mise en veille Auto (minutes)
-settings-general-auto-suspend-input = Mise en veille Auto (minutes, 0 = jamais)
 settings-general-auto-time = Synchronisation automatique de l'horloge
 settings-general-button-scheme = Schéma des boutons
 settings-general-db-backup-retention = Rétention de sauvegardes de la base de données
 settings-general-db-backup-retention-input = Nombre de sauvegardes gardées
 settings-general-enable-auto-share = Activer Partage Auto
-settings-general-enable-sleep-cover = Activer Sleep Cover
 settings-general-keyboard-layout = Disposition du clavier
 settings-general-language = Langue
 settings-general-never = Jamais
