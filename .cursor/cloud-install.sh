@@ -17,7 +17,7 @@ MDBOOK_I18N_HELPERS_REV="$(git rev-parse HEAD:thirdparty/mdbook-i18n-helpers)"
 cargo xtask ci install-doc-tools \
   --mdbook-version "${MDBOOK_VERSION:-0.5.4}" \
   --mdbook-epub-rev "${MDBOOK_EPUB_REV:-21a1c8134134201a2d555313447c96e56e2a8996}" \
-  --mdbook-mermaid-version "${MDBOOK_MERMAID_VERSION:-0.17.0}" \
+  --mdbook-mermaid-version "${MDBOOK_MERMAID_VERSION:-0.17.1}" \
   --mdbook-i18n-helpers-rev "${MDBOOK_I18N_HELPERS_REV}"
 
 cargo xtask setup --host
