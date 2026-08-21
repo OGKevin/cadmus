@@ -116,6 +116,7 @@ settings-startup-mode-last-file = Last File
 # Settings - Reader
 settings-reader-end-of-book-action = End of Book Action
 settings-reader-dithered-kinds = Dithered File Types
+settings-reader-font-family = Font Family
 settings-reader-refresh-rate = Refresh Rate
 settings-reader-refresh-rate-by-kind-inverted-input = { $ext } inverted refresh rate (0 = never)
 settings-reader-refresh-rate-by-kind-regular-input = { $ext } regular refresh rate (0 = never)

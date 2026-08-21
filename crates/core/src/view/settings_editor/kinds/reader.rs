@@ -6,7 +6,7 @@ use crate::document::file_extension::FileExtension;
 use crate::fl;
 use crate::geom::Rectangle;
 use crate::i18n::I18nDisplay;
-use crate::settings::{FinishedAction, RefreshRatePair, Settings};
+use crate::settings::{DEFAULT_FONT_FAMILY, FinishedAction, RefreshRatePair, Settings};
 use crate::view::{Bus, EntryId, EntryKind, Event, ViewId};
 
 /// Reader finished action setting
@@ -14,6 +14,9 @@ pub struct FinishedActionSetting;
 
 /// File kinds rendered with dithering.
 pub struct DitheredKindsSetting;
+
+/// Default reading font family.
+pub(crate) struct FontFamily;
 
 impl SettingKind for DitheredKindsSetting {
     fn identity(&self) -> SettingIdentity {
@@ -70,6 +73,54 @@ impl SettingKind for DitheredKindsSetting {
 
 fn kinds_summary(selected: usize) -> String {
     format!("{selected} / {}", FileExtension::all().len())
+}
+
+impl SettingKind for FontFamily {
+    fn identity(&self) -> SettingIdentity {
+        SettingIdentity::FontFamily
+    }
+
+    fn label(&self, _settings: &Settings) -> String {
+        fl!("settings-reader-font-family")
+    }
+
+    fn fetch(&self, data: SettingsFetchData) -> SettingData {
+        let current = data.settings.reader.font_family.clone();
+        let mut families = crate::font::installed_family_names(
+            &data.settings.reader.font_path,
+            data.install_dir.map(|dir| dir.join("fonts")),
+        );
+        families.insert(DEFAULT_FONT_FAMILY.to_string());
+        let entries = families
+            .into_iter()
+            .map(|family| {
+                let checked = current == family;
+                EntryKind::RadioButton(
+                    family.clone(),
+                    EntryId::SetDefaultFontFamily(family),
+                    checked,
+                )
+            })
+            .collect();
+
+        SettingData {
+            value: current,
+            widget: WidgetKind::SubMenu(entries),
+        }
+    }
+
+    fn handle(
+        &self,
+        evt: &Event,
+        context: &mut AppContext,
+        _bus: &mut Bus,
+    ) -> (Option<String>, bool) {
+        if let Event::Select(EntryId::SetDefaultFontFamily(name)) = evt {
+            context.settings.reader.font_family.clone_from(name);
+            return (Some(name.clone()), true);
+        }
+        (None, false)
+    }
 }
 
 impl SettingKind for FinishedActionSetting {
@@ -456,9 +507,80 @@ mod tests {
     use super::*;
     use crate::context::test_helpers::create_test_context;
     use crate::document::file_extension::FileExtension;
-    use crate::settings::{FinishedAction, Settings};
+    use crate::settings::{DEFAULT_FONT_FAMILY, FinishedAction, Settings};
     use crate::view::{Bus, EntryId, Event};
     use std::collections::VecDeque;
+
+    mod font_family {
+        use super::*;
+
+        #[test]
+        fn fetch_always_includes_default_family() {
+            let setting = FontFamily;
+            let settings = Settings::default();
+            let data = setting.fetch(SettingsFetchData {
+                settings: &settings,
+                install_dir: None,
+            });
+
+            assert_eq!(data.value, DEFAULT_FONT_FAMILY);
+            let WidgetKind::SubMenu(entries) = data.widget else {
+                panic!("expected submenu widget");
+            };
+            assert!(entries.iter().any(|entry| matches!(
+                entry,
+                EntryKind::RadioButton(name, EntryId::SetDefaultFontFamily(_), true)
+                    if name == DEFAULT_FONT_FAMILY
+            )));
+        }
+
+        #[test]
+        fn handle_set_family_updates_settings() {
+            let setting = FontFamily;
+            let mut context = create_test_context();
+            context.settings = Settings::default();
+            let mut bus: Bus = VecDeque::new();
+            let event = Event::Select(EntryId::SetDefaultFontFamily("Sourcerer".to_string()));
+
+            let result = setting.handle(&event, &mut context, &mut bus);
+
+            assert_eq!(result.0.as_deref(), Some("Sourcerer"));
+            assert!(result.1);
+            assert_eq!(context.settings.reader.font_family, "Sourcerer");
+        }
+
+        #[test]
+        fn handle_ignores_book_scoped_font_family() {
+            let setting = FontFamily;
+            let mut context = create_test_context();
+            context.settings = Settings::default();
+            let original = context.settings.reader.font_family.clone();
+            let mut bus: Bus = VecDeque::new();
+
+            let result = setting.handle(
+                &Event::Select(EntryId::SetFontFamily("Sourcerer".to_string())),
+                &mut context,
+                &mut bus,
+            );
+
+            assert!(result.0.is_none());
+            assert!(!result.1);
+            assert_eq!(context.settings.reader.font_family, original);
+        }
+
+        #[test]
+        fn handle_returns_none_for_wrong_event() {
+            let setting = FontFamily;
+            let mut context = create_test_context();
+            context.settings = Settings::default();
+            let mut bus: Bus = VecDeque::new();
+
+            let result = setting.handle(&Event::Select(EntryId::About), &mut context, &mut bus);
+
+            assert!(result.0.is_none());
+            assert!(!result.1);
+        }
+    }
 
     mod finished_action_setting {
         use super::*;

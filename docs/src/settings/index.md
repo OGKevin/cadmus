@@ -515,6 +515,8 @@ font-path = "/mnt/onboard/fonts"
 
 ### `reader.font-family`
 
+✏️
+
 The default reading font family name. New installs default to `Libron`.
 Existing configurations using `Libertinus Serif` continue to work because
 Libertinus remains bundled.
