@@ -246,17 +246,17 @@ misses `#[cfg(not(feature = "..."))]` paths.
 
 For workflows, load the matching skill from [`.agents/skills/`](.agents/skills/):
 
-| Skill                 | Use when                                                  |
-| --------------------- | --------------------------------------------------------- |
-| `build-cadmus-native` | Compile, test, lint, or run the emulator on a native host |
-| `build-kobo`          | Cross-compile for Kobo (ARM); required after code changes |
-| `fmt`                 | Check or apply rustfmt                                    |
-| `clippy-diff-report`  | Lint only the current diff (matches CI reviewdog)         |
-| `dependency-updater`  | Fix failed Renovate/Dependabot dependency PRs             |
-| `sqlx`                | Regenerate `.sqlx/` after query macro changes             |
-| `docs`                | Build or preview the documentation site                   |
-| `translations-sync`   | Regenerate the translations POT after doc edits           |
-| `fetch-cadmus-logs`   | Look up device logs in Loki by run ID                     |
+| Skill                 | Use when                                                    |
+| --------------------- | ----------------------------------------------------------- |
+| `build-cadmus-native` | Compile, test, lint, or run the emulator on a native host   |
+| `build-kobo`          | Cross-compile for Kobo (ARM); required after code changes   |
+| `fmt`                 | Check or apply rustfmt                                      |
+| `clippy-diff-report`  | Lint only the current diff (matches CI reviewdog)           |
+| `dependency-updater`  | Fix failed Renovate/Dependabot dependency PRs               |
+| `sqlx`                | Regenerate `.sqlx/` after query macro changes               |
+| `docs`                | Build or preview the documentation site                     |
+| `translations-sync`   | Regenerate the translations POT after user-facing doc edits |
+| `fetch-cadmus-logs`   | Look up device logs in Loki by run ID                       |
 
 ## Testing
 

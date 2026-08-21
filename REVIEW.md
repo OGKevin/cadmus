@@ -22,6 +22,8 @@ workflow, setting category, install path, CLI/dev command, subsystem):
   [`docs/REVIEW.md`](docs/REVIEW.md).
 - **Contributor/dev** — add or extend page(s) under `docs/src/contributing/**`
   (and `SUMMARY.md`); follow tone in [`docs/AGENTS.md`](docs/AGENTS.md).
+  Wrap pages in `<!-- i18n:skip-start -->` / `<!-- i18n:skip-end -->`.
+  POT sync is not required for contributor-only changes.
 - Prefer extending an existing page when the change is a small addition to an
   existing topic. Add a new page when it is a distinct workflow users or
   contributors must discover.

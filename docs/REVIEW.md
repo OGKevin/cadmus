@@ -2,16 +2,24 @@
 
 ## Translations POT Sync
 
-When any English doc source (`docs/src/**/*.md`) is modified — including **new**
-user-facing pages — the POT file must be regenerated. New user-facing pages must
+When any English **user-facing** doc source (`docs/src/**/*.md` outside
+`docs/src/contributing/`) is modified — including **new** user-facing
+pages — the POT file must be regenerated. New user-facing pages must
 also appear in `docs/src/SUMMARY.md`.
+
+Contributor docs under `docs/src/contributing/**` are wrapped in
+`<!-- i18n:skip-start -->` / `<!-- i18n:skip-end -->` markers and are not
+translated, so they are excluded from POT regeneration.
 
 ### Checklist
 
 - [ ] New user-facing pages are listed in `docs/src/SUMMARY.md`.
-- [ ] `docs/po/messages.pot` is updated in the same commit or PR.
+- [ ] `docs/po/messages.pot` is updated in the same commit or PR when
+      user-facing English docs change.
 - [ ] New or changed English strings appear in `messages.pot`.
 - [ ] Removed strings are no longer present in `messages.pot`.
+- [ ] Contributor-only changes under `docs/src/contributing/**` do not
+      include a POT update.
 
 ## devenv.nix Sync
 
