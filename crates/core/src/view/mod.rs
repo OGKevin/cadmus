@@ -825,6 +825,7 @@ pub enum EntryId {
     SearchDirection(LinearDir),
     SetButtonScheme(ButtonScheme),
     SetFontFamily(String),
+    SetDefaultFontFamily(String),
     SetFontSize(i32),
     SetTextAlign(TextAlign),
     SetMarginWidth(i32),

@@ -11,8 +11,8 @@ Settings are organised into tabs — tap a category to open it.
 
 - **General** — language, button layout, Wi‑Fi idle timeout, startup mode
 - **Power** — soft suspend, auto-suspend, auto power off, sleep cover
-- **Reader** — finished-book action, default dithering by file type, and
-  screen refresh rates
+- **Reader** — default font family, finished-book action, default dithering
+  by file type, and screen refresh rates
 - **Libraries** — add, edit, or remove your book libraries
 - **Dictionaries** — download and manage offline dictionaries
 - **Import** — control how new books are picked up automatically

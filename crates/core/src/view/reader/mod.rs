@@ -24,7 +24,7 @@ use crate::document::{
 use crate::document::{
     SimpleTocEntry, TocEntry, TocLocation, annotations_as_html, bookmarks_as_html, toc_as_html,
 };
-use crate::font::family_names;
+use crate::font::installed_family_names;
 use crate::framebuffer::Framebuffer as _;
 use crate::framebuffer::{Pixmap, UpdateMode};
 use crate::frontlight::Frontlight as _;
@@ -2710,12 +2710,10 @@ impl Reader {
                 return;
             }
 
-            let mut families = family_names(&context.settings.reader.font_path)
-                .map_err(|e| error!("Can't get family names: {:#}.", e))
-                .unwrap_or_default();
-            if let Ok(install_families) = family_names(context.device.install_path("fonts")) {
-                families.extend(install_families);
-            }
+            let mut families = installed_family_names(
+                &context.settings.reader.font_path,
+                Some(context.device.install_path("fonts")),
+            );
             let current_family = self
                 .info
                 .reader

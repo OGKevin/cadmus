@@ -28,6 +28,7 @@ pub enum SettingIdentity {
     AutoFrontlightManualCoordinates,
     ButtonScheme,
     LoggingEnabled,
+    FontFamily,
     FinishedAction,
     LibraryInfo(usize),
     LibraryName(usize),

@@ -1,7 +1,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Cadmus Documentation\n"
-"POT-Creation-Date: 2026-08-21T15:18:22+02:00\n"
+"POT-Creation-Date: 2026-08-21T19:58:40Z\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
@@ -163,7 +163,7 @@ msgstr ""
 msgid "Kobo suspend"
 msgstr ""
 
-#: src/SUMMARY.md:47 src/settings/index.md:1147
+#: src/SUMMARY.md:47 src/settings/index.md:1149
 msgid "Telemetry"
 msgstr ""
 
@@ -1152,14 +1152,15 @@ msgstr ""
 #: src/settings/index.md:482 src/settings/index.md:557
 #: src/settings/index.md:573 src/settings/index.md:589
 #: src/settings/index.md:605 src/settings/index.md:621
-#: src/settings/index.md:645 src/settings/index.md:909
-#: src/settings/index.md:947 src/settings/index.md:971
-#: src/settings/index.md:988 src/settings/index.md:994
-#: src/settings/index.md:1000 src/settings/index.md:1008
-#: src/settings/index.md:1033 src/settings/index.md:1050
-#: src/settings/index.md:1063 src/settings/index.md:1071
-#: src/settings/index.md:1090 src/settings/index.md:1118
-#: src/settings/index.md:1175 src/settings/index.md:1190
+#: src/settings/index.md:645 src/settings/index.md:800
+#: src/settings/index.md:911 src/settings/index.md:949
+#: src/settings/index.md:973 src/settings/index.md:990
+#: src/settings/index.md:996 src/settings/index.md:1002
+#: src/settings/index.md:1010 src/settings/index.md:1035
+#: src/settings/index.md:1052 src/settings/index.md:1065
+#: src/settings/index.md:1073 src/settings/index.md:1092
+#: src/settings/index.md:1120 src/settings/index.md:1177
+#: src/settings/index.md:1192
 msgid "✏️"
 msgstr ""
 
@@ -1490,7 +1491,7 @@ msgstr ""
 #: src/settings/index.md:649 src/settings/index.md:668
 #: src/settings/index.md:686 src/settings/index.md:704
 #: src/settings/index.md:722 src/settings/index.md:741
-#: src/settings/index.md:835 src/settings/index.md:1013
+#: src/settings/index.md:837 src/settings/index.md:1015
 msgid "Possible values:"
 msgstr ""
 
@@ -1608,308 +1609,308 @@ msgstr ""
 msgid "`reader.font-family`"
 msgstr ""
 
-#: src/settings/index.md:800
+#: src/settings/index.md:802
 msgid ""
 "The default reading font family name. New installs default to `Libron`. "
 "Existing configurations using `Libertinus Serif` continue to work because "
 "Libertinus remains bundled."
 msgstr ""
 
-#: src/settings/index.md:813
+#: src/settings/index.md:815
 msgid "`reader.font-size`"
 msgstr ""
 
-#: src/settings/index.md:815
+#: src/settings/index.md:817
 msgid ""
 "The default font size in points, plus the minimum and maximum sizes "
 "available while reading."
 msgstr ""
 
-#: src/settings/index.md:829
+#: src/settings/index.md:831
 msgid "See [Fonts](../fonts.md) for more info."
 msgstr ""
 
-#: src/settings/index.md:831
+#: src/settings/index.md:833
 msgid "`reader.text-align`"
 msgstr ""
 
-#: src/settings/index.md:833
+#: src/settings/index.md:835
 msgid "Default text alignment for reflowable books."
 msgstr ""
 
-#: src/settings/index.md:837
+#: src/settings/index.md:839
 msgid "`\"left\"`"
 msgstr ""
 
-#: src/settings/index.md:838
+#: src/settings/index.md:840
 msgid "`\"right\"`"
 msgstr ""
 
-#: src/settings/index.md:839
+#: src/settings/index.md:841
 msgid "`\"center\"`"
 msgstr ""
 
-#: src/settings/index.md:840
+#: src/settings/index.md:842
 msgid "`\"justify\"`"
 msgstr ""
 
-#: src/settings/index.md:851
+#: src/settings/index.md:853
 msgid "`reader.margin-width`"
 msgstr ""
 
-#: src/settings/index.md:853
+#: src/settings/index.md:855
 msgid ""
 "Default page margin width in millimeters, plus the minimum and maximum "
 "values available while reading."
 msgstr ""
 
-#: src/settings/index.md:867
+#: src/settings/index.md:869
 msgid "`reader.line-height`"
 msgstr ""
 
-#: src/settings/index.md:869
+#: src/settings/index.md:871
 msgid "Default line height for reflowable books, in ems."
 msgstr ""
 
-#: src/settings/index.md:880
+#: src/settings/index.md:882
 msgid "`reader.continuous-fit-to-width`"
 msgstr ""
 
-#: src/settings/index.md:882
+#: src/settings/index.md:884
 msgid "Scroll mode used for fit-to-width zoom when a document is first opened."
 msgstr ""
 
-#: src/settings/index.md:893
+#: src/settings/index.md:895
 msgid "`reader.ignore-document-css`"
 msgstr ""
 
-#: src/settings/index.md:895
+#: src/settings/index.md:897
 msgid ""
 "When `true`, Cadmus ignores stylesheets embedded in reflowable documents and "
 "uses Cadmus viewer styles only."
 msgstr ""
 
-#: src/settings/index.md:907
+#: src/settings/index.md:909
 msgid "`reader.dithered-kinds`"
 msgstr ""
 
-#: src/settings/index.md:911
+#: src/settings/index.md:913
 msgid ""
 "File extensions rendered with dithering by default when opened for the first "
 "time."
 msgstr ""
 
-#: src/settings/index.md:923
+#: src/settings/index.md:925
 msgid "`reader.paragraph-breaker`"
 msgstr ""
 
-#: src/settings/index.md:925
+#: src/settings/index.md:927
 msgid "Controls how Cadmus breaks paragraphs in reflowable text."
 msgstr ""
 
-#: src/settings/index.md:927
+#: src/settings/index.md:929
 msgid "`hyphen-penalty`"
 msgstr ""
 
-#: src/settings/index.md:929
+#: src/settings/index.md:931
 msgid "Penalty for hyphenated lines. The maximum value is `10000`."
 msgstr ""
 
-#: src/settings/index.md:931
+#: src/settings/index.md:933
 msgid "`stretch-tolerance`"
 msgstr ""
 
-#: src/settings/index.md:933
+#: src/settings/index.md:935
 msgid "How much inter-word spacing may stretch or shrink when justifying lines."
 msgstr ""
 
-#: src/settings/index.md:945
+#: src/settings/index.md:947
 msgid "`reader.refresh-rate`"
 msgstr ""
 
-#: src/settings/index.md:949
+#: src/settings/index.md:951
 msgid ""
 "How often Cadmus fully refreshes the screen while you turn pages. `regular` "
 "applies when colors are not inverted; `inverted` applies when they are. Use "
 "`0` to never force a full refresh on that schedule."
 msgstr ""
 
-#: src/settings/index.md:953
+#: src/settings/index.md:955
 msgid ""
 "Optional `by-kind` entries override the global pair for specific file "
 "extensions."
 msgstr ""
 
-#: src/settings/index.md:969
+#: src/settings/index.md:971
 msgid "Libraries"
 msgstr ""
 
-#: src/settings/index.md:973
+#: src/settings/index.md:975
 msgid "Document library configuration. Each library has a name, path, and mode."
 msgstr ""
 
-#: src/settings/index.md:986
+#: src/settings/index.md:988
 msgid "`libraries.name`"
 msgstr ""
 
-#: src/settings/index.md:990
+#: src/settings/index.md:992
 msgid "Display name for the library."
 msgstr ""
 
-#: src/settings/index.md:992
+#: src/settings/index.md:994
 msgid "`libraries.path`"
 msgstr ""
 
-#: src/settings/index.md:996
+#: src/settings/index.md:998
 msgid "Directory path containing documents."
 msgstr ""
 
-#: src/settings/index.md:998
+#: src/settings/index.md:1000
 msgid "`libraries.mode`"
 msgstr ""
 
-#: src/settings/index.md:1002
+#: src/settings/index.md:1004
 msgid "Library indexing mode."
 msgstr ""
 
-#: src/settings/index.md:1004
+#: src/settings/index.md:1006
 msgid "Possible values: `\"database\"`, `\"filesystem\"`."
 msgstr ""
 
-#: src/settings/index.md:1006
+#: src/settings/index.md:1008
 msgid "`libraries.finished`"
 msgstr ""
 
-#: src/settings/index.md:1010
+#: src/settings/index.md:1012
 msgid ""
 "Override the `reader.finished` setting for this specific library. When set, "
 "this takes precedence over the global reader setting."
 msgstr ""
 
-#: src/settings/index.md:1015
+#: src/settings/index.md:1017
 msgid "`\"notify\"`"
 msgstr ""
 
-#: src/settings/index.md:1016
+#: src/settings/index.md:1018
 msgid "`\"close\"`"
 msgstr ""
 
-#: src/settings/index.md:1017
+#: src/settings/index.md:1019
 msgid "`\"go-to-next\"`."
 msgstr ""
 
-#: src/settings/index.md:1018
+#: src/settings/index.md:1020
 msgid "Leave unset to inherit the global `reader.finished` setting."
 msgstr ""
 
-#: src/settings/index.md:1031
+#: src/settings/index.md:1033
 msgid "Intermissions"
 msgstr ""
 
-#: src/settings/index.md:1035
+#: src/settings/index.md:1037
 msgid "Defines the images displayed when entering an intermission state."
 msgstr ""
 
-#: src/settings/index.md:1048
+#: src/settings/index.md:1050
 msgid "`intermissions.suspend`"
 msgstr ""
 
-#: src/settings/index.md:1052
+#: src/settings/index.md:1054
 msgid "Image displayed when the device enters sleep mode."
 msgstr ""
 
-#: src/settings/index.md:1054
+#: src/settings/index.md:1056
 msgid ""
 "Setting this to `\"calendar:\"` also enables the calendar refresh: every 5 "
 "minutes, the device wakes, shows the calendar, and then goes back to sleep "
 "automatically."
 msgstr ""
 
-#: src/settings/index.md:1058
+#: src/settings/index.md:1060
 msgid ""
 "Possible values: `\"logo:\"` (built-in logo), `\"cover:\"` (current book "
 "cover), `\"calendar:\"` (built-in calendar), or a path to a custom image "
 "file."
 msgstr ""
 
-#: src/settings/index.md:1061
+#: src/settings/index.md:1063
 msgid "`intermissions.power-off`"
 msgstr ""
 
-#: src/settings/index.md:1065
+#: src/settings/index.md:1067
 msgid "Image displayed when the device powers off."
 msgstr ""
 
-#: src/settings/index.md:1067 src/settings/index.md:1075
+#: src/settings/index.md:1069 src/settings/index.md:1077
 msgid ""
 "Possible values: `\"logo:\"` (built-in logo), `\"cover:\"` (current book "
 "cover), or a path to a custom image file."
 msgstr ""
 
-#: src/settings/index.md:1069
+#: src/settings/index.md:1071
 msgid "`intermissions.share`"
 msgstr ""
 
-#: src/settings/index.md:1073
+#: src/settings/index.md:1075
 msgid "Image displayed when entering USB sharing mode."
 msgstr ""
 
-#: src/settings/index.md:1077
+#: src/settings/index.md:1079
 msgid "Import"
 msgstr ""
 
-#: src/settings/index.md:1079
+#: src/settings/index.md:1081
 msgid ""
 "These settings control how Cadmus imports documents from your device. They "
 "are available in the **Settings → Import** menu."
 msgstr ""
 
-#: src/settings/index.md:1082
+#: src/settings/index.md:1084
 msgid ""
 "Import scanning happens automatically on startup using incremental file "
 "checking — files are only re-scanned if their modification time or size has "
 "changed since the last import."
 msgstr ""
 
-#: src/settings/index.md:1085
+#: src/settings/index.md:1087
 msgid ""
 "To trigger a full re-scan of all files regardless of cached values, use the "
 "**Force Full Import** action button in the Import settings category."
 msgstr ""
 
-#: src/settings/index.md:1088
+#: src/settings/index.md:1090
 msgid "`import.sync-metadata`"
 msgstr ""
 
-#: src/settings/index.md:1092
+#: src/settings/index.md:1094
 msgid "Re-extract metadata (title, author, etc.) whenever a document changes."
 msgstr ""
 
-#: src/settings/index.md:1103
+#: src/settings/index.md:1105
 msgid "`import.metadata-kinds`"
 msgstr ""
 
-#: src/settings/index.md:1105
+#: src/settings/index.md:1107
 msgid "File extensions of documents whose metadata is extracted during import."
 msgstr ""
 
-#: src/settings/index.md:1116
+#: src/settings/index.md:1118
 msgid "`import.allowed-kinds`"
 msgstr ""
 
-#: src/settings/index.md:1120
+#: src/settings/index.md:1122
 msgid "File extensions of documents considered during the import process."
 msgstr ""
 
-#: src/settings/index.md:1131
+#: src/settings/index.md:1133
 msgid "OTA"
 msgstr ""
 
-#: src/settings/index.md:1133
+#: src/settings/index.md:1135
 msgid "The OTA feature downloads builds from GitHub."
 msgstr ""
 
-#: src/settings/index.md:1135
+#: src/settings/index.md:1137
 msgid ""
 "Authentication for main branch and PR builds uses **GitHub device auth "
 "flow**. When you select a build that requires authentication, Cadmus will "
@@ -1918,188 +1919,188 @@ msgid ""
 "once you authorize."
 msgstr ""
 
-#: src/settings/index.md:1141
+#: src/settings/index.md:1143
 msgid ""
 "The token is saved to disk after the first authorization so you will not be "
 "prompted again on subsequent downloads."
 msgstr ""
 
-#: src/settings/index.md:1144
+#: src/settings/index.md:1146
 msgid ""
 "For step-by-step instructions with screenshots, see the [OTA "
 "updates](../installation/ota.md) guide."
 msgstr ""
 
-#: src/settings/index.md:1149
+#: src/settings/index.md:1151
 msgid ""
 "Cadmus writes JSON logs to disk. When the build enables the `tracing` "
 "feature, it can also export logs to an OpenTelemetry endpoint."
 msgstr ""
 
-#: src/settings/index.md:1152
+#: src/settings/index.md:1154
 msgid "These settings are available in the **Settings → Telemetry** menu."
 msgstr ""
 
-#: src/settings/index.md:1155
+#: src/settings/index.md:1157
 msgid ""
 "Changes to these settings only take effect after restarting Cadmus. The "
 "application initializes telemetry on startup."
 msgstr ""
 
-#: src/settings/index.md:1158
+#: src/settings/index.md:1160
 msgid "`logging`"
 msgstr ""
 
-#: src/settings/index.md:1173
+#: src/settings/index.md:1175
 msgid "`logging.enabled`"
 msgstr ""
 
-#: src/settings/index.md:1177
+#: src/settings/index.md:1179
 msgid "Enable or disable structured JSON logging."
 msgstr ""
 
-#: src/settings/index.md:1188
+#: src/settings/index.md:1190
 msgid "`logging.level`"
 msgstr ""
 
-#: src/settings/index.md:1192
+#: src/settings/index.md:1194
 msgid "Minimum log level to record."
 msgstr ""
 
-#: src/settings/index.md:1194
+#: src/settings/index.md:1196
 msgid ""
 "Possible values: `\"trace\"`, `\"debug\"`, `\"info\"`, `\"warn\"`, "
 "`\"error\"`."
 msgstr ""
 
-#: src/settings/index.md:1205
+#: src/settings/index.md:1207
 msgid "`logging.max-files`"
 msgstr ""
 
-#: src/settings/index.md:1207
+#: src/settings/index.md:1209
 msgid ""
 "Number of log files to keep. Only the most recent N files are kept — older "
 "ones are deleted automatically when Cadmus starts."
 msgstr ""
 
-#: src/settings/index.md:1210 src/settings/index.md:1305
+#: src/settings/index.md:1212 src/settings/index.md:1307
 msgid "Default: `3`"
 msgstr ""
 
-#: src/settings/index.md:1211
+#: src/settings/index.md:1213
 msgid "Set to `0` to keep all log files."
 msgstr ""
 
-#: src/settings/index.md:1222
+#: src/settings/index.md:1224
 msgid "`logging.otlp-endpoint`"
 msgstr ""
 
-#: src/settings/index.md:1224
+#: src/settings/index.md:1226
 msgid "✏️ (only when the `tracing` feature is enabled)"
 msgstr ""
 
-#: src/settings/index.md:1226
+#: src/settings/index.md:1228
 msgid "Optional OTLP endpoint for exporting logs to an OpenTelemetry collector."
 msgstr ""
 
-#: src/settings/index.md:1237 src/settings/index.md:1258
+#: src/settings/index.md:1239 src/settings/index.md:1260
 msgid "Environment override:"
 msgstr ""
 
-#: src/settings/index.md:1239
+#: src/settings/index.md:1241
 msgid ""
 "`OTEL_EXPORTER_OTLP_ENDPOINT` takes precedence over `logging.otlp-endpoint`."
 msgstr ""
 
-#: src/settings/index.md:1241
+#: src/settings/index.md:1243
 msgid "`logging.pyroscope-endpoint`"
 msgstr ""
 
-#: src/settings/index.md:1243
+#: src/settings/index.md:1245
 msgid "✏️ (only when the `profiling` feature is enabled)"
 msgstr ""
 
-#: src/settings/index.md:1245
+#: src/settings/index.md:1247
 msgid ""
 "Optional Pyroscope server URL for continuous profiling. When set, Cadmus "
 "starts both a heap profiling agent (via jemalloc) and a CPU profiling agent "
 "(via pprof) that push profiles to this endpoint."
 msgstr ""
 
-#: src/settings/index.md:1260
+#: src/settings/index.md:1262
 msgid ""
 "`PYROSCOPE_SERVER_URL` takes precedence over `logging.pyroscope-endpoint`."
 msgstr ""
 
-#: src/settings/index.md:1262
+#: src/settings/index.md:1264
 msgid "`logging.enable-kern-log`"
 msgstr ""
 
-#: src/settings/index.md:1264 src/settings/index.md:1280
+#: src/settings/index.md:1266 src/settings/index.md:1282
 msgid "🧪 📱 ✏️"
 msgstr ""
 
-#: src/settings/index.md:1266
+#: src/settings/index.md:1268
 msgid ""
 "Captures kernel logs via `logread -F` and forwards them to structured "
 "logging with the target `cadmus_core::logging:kern`."
 msgstr ""
 
-#: src/settings/index.md:1278
+#: src/settings/index.md:1280
 msgid "`logging.enable-dbus-log`"
 msgstr ""
 
-#: src/settings/index.md:1282
+#: src/settings/index.md:1284
 msgid ""
 "Captures D-Bus signals via the built-in zbus-based DbusMonitorTask and "
 "forwards them to structured logging."
 msgstr ""
 
-#: src/settings/index.md:1294
+#: src/settings/index.md:1296
 msgid "Settings Retention"
 msgstr ""
 
-#: src/settings/index.md:1296
+#: src/settings/index.md:1298
 msgid ""
 "Cadmus stores each version's settings in a separate file in the `Settings/` "
 "directory (for example, `Settings-v1.2.3.toml`). This ensures backward and "
 "forward compatibility when you upgrade."
 msgstr ""
 
-#: src/settings/index.md:1300
+#: src/settings/index.md:1302
 msgid "`settings-retention`"
 msgstr ""
 
-#: src/settings/index.md:1302
+#: src/settings/index.md:1304
 msgid ""
 "Number of recent version settings files to keep. Only the most recent N "
 "version files are kept. When a new version is saved, older versions beyond "
 "this limit are deleted automatically."
 msgstr ""
 
-#: src/settings/index.md:1306
+#: src/settings/index.md:1308
 msgid "Set to `0` to keep all version files"
 msgstr ""
 
-#: src/settings/index.md:1316
+#: src/settings/index.md:1318
 msgid "`db-backup-retention`"
 msgstr ""
 
-#: src/settings/index.md:1318
+#: src/settings/index.md:1320
 msgid ""
 "Number of database backups to keep. When a new backup is created and the "
 "total would exceed this limit, the oldest backups are deleted automatically."
 msgstr ""
 
-#: src/settings/index.md:1321 src/database-backup.md:76
+#: src/settings/index.md:1323 src/database-backup.md:76
 msgid "Default: `2`"
 msgstr ""
 
-#: src/settings/index.md:1322 src/database-backup.md:77
+#: src/settings/index.md:1324 src/database-backup.md:77
 msgid "Set to `0` to disable backups entirely."
 msgstr ""
 
-#: src/settings/index.md:1324
+#: src/settings/index.md:1326
 msgid "See [Database Backup](../database-backup.md) for more details."
 msgstr ""
 
@@ -2771,8 +2772,8 @@ msgstr ""
 
 #: src/ui/settings/index.md:14
 msgid ""
-"**Reader** — finished-book action, default dithering by file type, and "
-"screen refresh rates"
+"**Reader** — default font family, finished-book action, default dithering by "
+"file type, and screen refresh rates"
 msgstr ""
 
 #: src/ui/settings/index.md:16

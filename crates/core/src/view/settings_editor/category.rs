@@ -12,7 +12,9 @@ use super::kinds::power::{
     AutoPowerOff, AutoSuspend, AutosleepGrace, AutosleepModeSetting, IndicateAutosleepLed,
     SleepCover,
 };
-use super::kinds::reader::{DitheredKindsSetting, FinishedActionSetting, RefreshRateInfo};
+use super::kinds::reader::{
+    DitheredKindsSetting, FinishedActionSetting, FontFamily, RefreshRateInfo,
+};
 use super::kinds::telemetry::{LogLevel, LoggingEnabled};
 use crate::device::AppContext;
 use crate::device::soft_suspend::SoftSuspendBackend as _;
@@ -101,6 +103,7 @@ impl Category {
                 rows
             }
             Category::Reader => vec![
+                Box::new(FontFamily),
                 Box::new(FinishedActionSetting),
                 Box::new(DitheredKindsSetting),
                 Box::new(RefreshRateInfo),
@@ -266,5 +269,17 @@ mod tests {
                 SettingIdentity::SleepCover,
             ]
         );
+    }
+
+    #[test]
+    fn reader_includes_font_family() {
+        let context = create_test_context();
+        let identities: Vec<_> = Category::Reader
+            .settings(&context, None)
+            .iter()
+            .map(|setting| setting.identity())
+            .collect();
+
+        assert_eq!(identities[0], SettingIdentity::FontFamily);
     }
 }

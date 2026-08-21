@@ -595,6 +595,21 @@ pub fn family_names<P: AsRef<Path>>(search_path: P) -> Result<BTreeSet<String>, 
     Ok(families)
 }
 
+/// Returns font family names from the user font directory and, when provided,
+/// bundled fonts shipped with Cadmus.
+///
+/// Missing or unreadable paths are skipped.
+pub fn installed_family_names(
+    user_font_path: impl AsRef<Path>,
+    bundled_font_path: Option<impl AsRef<Path>>,
+) -> BTreeSet<String> {
+    let mut families = family_names(user_font_path).unwrap_or_default();
+    if let Some(path) = bundled_font_path {
+        families.extend(family_names(path).unwrap_or_default());
+    }
+    families
+}
+
 impl FontFamily {
     /// Resolves `family_name` by searching `search_paths` in order.
     ///
