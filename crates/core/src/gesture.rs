@@ -2,7 +2,7 @@ use crate::geom::{Axis, DiagDir, Dir, Point, Vec2, elbow, nearest_segment_point}
 use crate::input::{ButtonCode, ButtonStatus, DeviceEvent, FingerStatus};
 use crate::unit::mm_to_px;
 use crate::view::Event;
-use fxhash::FxHashMap;
+use rustc_hash::FxHashMap;
 use std::f64;
 use std::fmt;
 use std::sync::mpsc::{self, Receiver, Sender};

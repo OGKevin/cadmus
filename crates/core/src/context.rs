@@ -15,10 +15,10 @@ use crate::settings::Settings;
 use crate::view::ViewId;
 use crate::view::keyboard::Layout;
 use chrono::Local;
-use fxhash::FxHashMap;
 use globset::Glob;
 use rand_core::SeedableRng;
 use rand_xoshiro::Xoroshiro128Plus;
+use rustc_hash::FxHashMap;
 use std::collections::{BTreeMap, VecDeque};
 #[cfg(test)]
 use std::env;

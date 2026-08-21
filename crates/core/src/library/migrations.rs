@@ -24,8 +24,8 @@ use crate::library::db::conversion::{
 use crate::library::db::models::TocEntryRow;
 use crate::library::{METADATA_FILENAME, READING_STATES_DIRNAME};
 use crate::metadata::Info;
-use fxhash::FxBuildHasher;
 use indexmap::IndexMap;
+use rustc_hash::FxBuildHasher;
 use sqlx::{Row, Sqlite, Transaction};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};

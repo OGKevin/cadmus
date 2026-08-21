@@ -1,7 +1,7 @@
 use super::css::{AttributeOperator, Combinator, PseudoClass};
 use super::css::{CssParser, Rule, Selector, SimpleSelector};
 use super::dom::NodeRef;
-use fxhash::FxHashMap;
+use rustc_hash::FxHashMap;
 
 pub type PropertyMap = FxHashMap<String, String>;
 

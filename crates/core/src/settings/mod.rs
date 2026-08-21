@@ -12,7 +12,7 @@ use crate::geolocation::Coordinates;
 use crate::i18n::I18nDisplay;
 use crate::metadata::{SortMethod, TextAlign};
 use crate::network_address::NetworkAddress;
-use fxhash::FxHashSet;
+use rustc_hash::FxHashSet;
 use unic_langid::LanguageIdentifier;
 
 pub use self::preset::{LightPreset, guess_frontlight};

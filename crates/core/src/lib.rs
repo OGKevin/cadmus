@@ -55,7 +55,6 @@ pub mod view;
 pub use anyhow;
 pub use chrono;
 pub use ctor;
-pub use fxhash;
 pub use globset;
 pub use png;
 pub use rand_core;

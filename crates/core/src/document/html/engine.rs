@@ -27,11 +27,11 @@ use crate::settings::{
 use crate::settings::{HYPHEN_PENALTY, STRETCH_TOLERANCE};
 use crate::unit::{mm_to_px, pt_to_px};
 use anyhow::Error;
-use fxhash::FxHashMap;
 use kl_hyphenate::{Hyphenator, Iter, Language, Standard};
 use paragraph_breaker::{Breakpoint, INFINITE_PENALTY, Item as ParagraphItem};
 use paragraph_breaker::{standard_fit, total_fit};
 use percent_encoding::percent_decode_str;
+use rustc_hash::FxHashMap;
 use septem::Roman;
 use std::convert::TryFrom;
 use std::path::{Path, PathBuf};

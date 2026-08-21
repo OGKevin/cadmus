@@ -62,9 +62,9 @@ use crate::view::{AppCmd, Bus, Event, Hub, RenderData, RenderQueue, ToggleEvent,
 use crate::view::{BIG_BAR_HEIGHT, SMALL_BAR_HEIGHT, THICKNESS_MEDIUM};
 use crate::view::{EntryId, EntryKind, ID_FEEDER, Id, SliderId, ViewId};
 use chrono::Local;
-use fxhash::{FxHashMap, FxHashSet};
 use rand_core::Rng;
 use regex::Regex;
+use rustc_hash::{FxHashMap, FxHashSet};
 use septem::prelude::*;
 use septem::{Digit, Roman};
 use std::collections::{BTreeMap, VecDeque};

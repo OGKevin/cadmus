@@ -136,7 +136,7 @@ use crate::view::navigation::stack_navigation_bar::StackNavigationBar;
 use crate::view::top_bar::{TopBar, TopBarVariant};
 use crate::view::{Bus, Event, Hub, ID_FEEDER, Id, RenderData, RenderQueue, View, ViewId};
 use crate::view::{SMALL_BAR_HEIGHT, THICKNESS_MEDIUM};
-use fxhash::FxHashMap;
+use rustc_hash::FxHashMap;
 
 pub mod kinds;
 

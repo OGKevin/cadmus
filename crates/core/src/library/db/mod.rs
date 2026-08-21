@@ -17,8 +17,8 @@ use anyhow::Error;
 use conversion::{
     extract_authors, info_to_book_row, reader_info_to_reading_state_row, rows_to_toc_entries,
 };
-use fxhash::{FxHashMap, FxHashSet};
 use models::TocEntryRow;
+use rustc_hash::{FxHashMap, FxHashSet};
 use sqlx::AssertSqlSafe;
 use sqlx::sqlite::SqlitePool;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
