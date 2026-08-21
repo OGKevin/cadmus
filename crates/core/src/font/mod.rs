@@ -599,7 +599,7 @@ pub fn family_names<P: AsRef<Path>>(search_path: P) -> Result<BTreeSet<String>, 
 /// bundled fonts shipped with Cadmus.
 ///
 /// Missing or unreadable paths are skipped.
-pub fn installed_family_names(
+pub(crate) fn installed_family_names(
     user_font_path: impl AsRef<Path>,
     bundled_font_path: Option<impl AsRef<Path>>,
 ) -> BTreeSet<String> {

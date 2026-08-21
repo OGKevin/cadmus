@@ -16,7 +16,7 @@ pub struct FinishedActionSetting;
 pub struct DitheredKindsSetting;
 
 /// Default reading font family.
-pub struct FontFamily;
+pub(crate) struct FontFamily;
 
 impl SettingKind for DitheredKindsSetting {
     fn identity(&self) -> SettingIdentity {
