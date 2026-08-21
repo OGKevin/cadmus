@@ -40,6 +40,12 @@ Source: <https://rust-lang.github.io/mdBook/format/markdown.html?highlight=note#
 
 Audience: developers and contributors. Technical terminology is appropriate.
 
+Contributor pages are not translated. Wrap the entire page in
+`<!-- i18n:skip-start -->` / `<!-- i18n:skip-end -->` so extraction omits
+them from `docs/po/messages.pot`. POT regeneration is not required for
+changes confined to `docs/src/contributing/**`; see
+[`docs/REVIEW.md`](REVIEW.md).
+
 - Clear and direct — get to the point.
 - Include code examples where helpful.
 - Document setup steps precisely.
