@@ -2,7 +2,7 @@
 use super::{Frontlight, LightLevel, LightLevels};
 use crate::device::Model;
 use anyhow::Error;
-use fxhash::FxHashMap;
+use rustc_hash::FxHashMap;
 use std::fs::File;
 use std::fs::OpenOptions;
 #[cfg(not(test))]

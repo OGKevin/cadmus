@@ -79,7 +79,7 @@ use crate::settings::{
 };
 use crate::view::ota::OtaEntryId;
 use downcast_rs::{Downcast, impl_downcast};
-use fxhash::FxHashMap;
+use rustc_hash::FxHashMap;
 use std::collections::VecDeque;
 use std::fmt::{self, Debug};
 use std::ops::{Deref, DerefMut};

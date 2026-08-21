@@ -13,8 +13,8 @@ use crate::geom::Rectangle;
 use crate::gesture::GestureEvent;
 use crate::input::DeviceEvent;
 use crate::unit::scale_by_dpi;
-use fxhash::FxHashMap;
 use lazy_static::lazy_static;
+use rustc_hash::FxHashMap;
 use serde::Deserialize;
 
 const PADDING_RATIO: f32 = 0.06;

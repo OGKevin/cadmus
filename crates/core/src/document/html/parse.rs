@@ -5,8 +5,8 @@ use crate::color::{BLACK, Color, WHITE};
 use crate::geom::Edge;
 use crate::unit::{CENTIMETERS_PER_INCH, MILLIMETERS_PER_INCH, PICAS_PER_INCH, POINTS_PER_INCH};
 use crate::unit::{in_to_px, mm_to_px, pc_to_px, pt_to_px};
-use fxhash::FxHashSet;
 use regex::Regex;
+use rustc_hash::FxHashSet;
 
 const SIZE_FACTOR: f32 = 1.26;
 const ABSOLUTE_SIZE_KEYWORDS: [&str; 7] = [

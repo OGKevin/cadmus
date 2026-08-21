@@ -1,6 +1,6 @@
 //! Known document file extensions used across import, settings, and the library.
 
-use fxhash::FxHashSet;
+use rustc_hash::FxHashSet;
 use serde::{Deserialize, Serialize};
 use sqlx::encode::IsNull;
 use sqlx::error::BoxDynError;

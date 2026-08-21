@@ -14,10 +14,10 @@
 //!   not required (e.g. the dictionary view).
 
 use super::dom::{Attributes, NodeId, XmlTree, element, text, whitespace};
-use fxhash::FxHashMap;
 use html5ever::tendril::{Tendril, TendrilSink};
 use html5ever::tree_builder::{ElementFlags, NodeOrText, QuirksMode, TreeSink};
 use html5ever::{Attribute, QualName};
+use rustc_hash::FxHashMap;
 use std::cell::{Ref, RefCell};
 
 /// Extension trait that adds XML whitespace detection to [`char`].

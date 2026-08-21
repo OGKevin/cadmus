@@ -1,4 +1,4 @@
-use fxhash::{FxHashMap, FxHashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
 use std::num::NonZeroUsize;
 
 pub type Attributes = FxHashMap<String, String>;

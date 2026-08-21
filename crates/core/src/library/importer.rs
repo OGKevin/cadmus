@@ -8,7 +8,7 @@ use crate::metadata::{FileInfo, Info, extract_metadata_from_document};
 use crate::settings::ImportSettings;
 use crate::task::ShutdownSignal;
 use crate::view::{Event, NotificationEvent, ViewId};
-use fxhash::{FxHashMap, FxHashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, UNIX_EPOCH};
 use tracing::{debug, error, info};
@@ -893,7 +893,7 @@ mod tests {
     #[test]
     fn skips_fingerprinting_disallowed_new_files() {
         use crate::document::file_extension::FileExtension;
-        use fxhash::FxHashSet;
+        use rustc_hash::FxHashSet;
 
         let dir = tempfile::tempdir().expect("tempdir");
         let db = create_migrated_db();
@@ -943,7 +943,7 @@ mod tests {
     #[test]
     fn purges_disallowed_books_on_import() {
         use crate::document::file_extension::FileExtension;
-        use fxhash::FxHashSet;
+        use rustc_hash::FxHashSet;
 
         let dir = tempfile::tempdir().expect("tempdir");
         let db = create_migrated_db();
@@ -1014,7 +1014,7 @@ mod tests {
         use crate::document::file_extension::FileExtension;
         use crate::helpers::Fingerprint;
         use crate::library::book_status::BookStatus;
-        use fxhash::FxHashSet;
+        use rustc_hash::FxHashSet;
 
         let dir = tempfile::tempdir().expect("tempdir");
         let db = create_migrated_db();

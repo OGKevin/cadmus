@@ -1,7 +1,7 @@
 use anyhow::{Context, Error};
 use entities::ENTITIES;
-use fxhash::FxHashMap;
 use lazy_static::lazy_static;
+use rustc_hash::FxHashMap;
 use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::borrow::Cow;

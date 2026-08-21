@@ -2,7 +2,7 @@ use crate::framebuffer::Display;
 use crate::geom::{LinearDir, Point};
 use crate::settings::ButtonScheme;
 use anyhow::{Context, Error};
-use fxhash::FxHashMap;
+use rustc_hash::FxHashMap;
 use std::ffi::CString;
 use std::fs::File;
 use std::io::Read;

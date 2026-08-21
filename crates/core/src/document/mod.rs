@@ -19,11 +19,11 @@ use crate::metadata::{Annotation, TextAlign};
 use crate::settings::INTERNAL_CARD_ROOT;
 use crate::version::get_version;
 use anyhow::{Error, format_err};
-use fxhash::FxHashMap;
 use nix::sys::statvfs;
 #[cfg(target_os = "linux")]
 use nix::sys::sysinfo;
 use regex::Regex;
+use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::env;

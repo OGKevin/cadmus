@@ -1,5 +1,5 @@
 use super::style::StyleSheet;
-use fxhash::FxHashSet;
+use rustc_hash::FxHashSet;
 
 #[derive(Debug, Clone)]
 pub struct Selector {
