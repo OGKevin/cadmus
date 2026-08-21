@@ -854,7 +854,7 @@ pub enum EntryId {
     EditAutoSuspend,
     EditAutosleepGrace,
     SetStartupMode(StartupMode),
-    SetAutosleepMode(crate::device::soft_suspend::AutosleepMode),
+    SetAutosleepMode(crate::device::soft_suspend::mode::AutosleepMode),
     EditAutoPowerOff,
     EditAutoFrontlightBrightness,
     EditAutoFrontlightManualCoordinates,

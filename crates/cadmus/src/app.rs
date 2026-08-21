@@ -6,6 +6,7 @@ use cadmus_core::device::AppContext;
 use cadmus_core::device::AppDevice;
 use cadmus_core::device::DeviceHardware as _;
 use cadmus_core::device::DeviceRotation as _;
+use cadmus_core::device::soft_suspend::SoftSuspendBackend as _;
 use cadmus_core::device::wifi::WifiManager;
 use cadmus_core::device::{
     DeviceIdentity, DeviceInput, DeviceLifecycle, DevicePaths, DeviceRuntime, DeviceTask,
@@ -65,7 +66,7 @@ fn drain_bus(bus: &mut Bus, tx: &Hub) {
 }
 
 struct MainLoopSoftSuspendGuard {
-    _lease: cadmus_core::device::soft_suspend::SoftSuspendLease,
+    _lease: cadmus_core::device::soft_suspend::lease::SoftSuspendLease,
 }
 
 impl Drop for MainLoopSoftSuspendGuard {

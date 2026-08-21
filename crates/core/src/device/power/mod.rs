@@ -6,7 +6,7 @@ mod manager;
 pub use error::PowerError;
 pub use manager::PowerManager;
 
-#[cfg(unix)]
+#[cfg(all(target_os = "linux", feature = "kobo"))]
 pub(crate) fn discover_cores(
     cpu_dir: &std::path::Path,
 ) -> Result<Vec<(std::path::PathBuf, String)>, std::io::Error> {
@@ -49,7 +49,7 @@ pub(crate) fn discover_cores(
     Ok(discovered)
 }
 
-#[cfg(all(test, unix))]
+#[cfg(all(test, target_os = "linux", feature = "kobo"))]
 mod tests {
     use super::*;
 

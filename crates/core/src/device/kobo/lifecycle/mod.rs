@@ -17,6 +17,8 @@ use crate::device::DeviceRotation as _;
 use crate::device::power::PowerManager;
 use crate::device::reschedule_auto_suspend_alarm;
 use crate::device::schedule_device_task;
+use crate::device::soft_suspend::SoftSuspendBackend as _;
+use crate::device::soft_suspend::mode::AutosleepMode;
 use crate::device::suspend::{handle_event as handle_suspend_event, is_suspend_active};
 use crate::device::{AppContext, DeviceRuntime, DeviceTaskId, EventOutcome, ExitStatus};
 use crate::framebuffer::Framebuffer as _;
@@ -159,9 +161,7 @@ impl DeviceLifecycle for Device {
         status: ExitStatus,
         runtime: &mut DeviceRuntime<'_>,
     ) -> Result<(), anyhow::Error> {
-        context
-            .soft_suspend_session
-            .set_mode(crate::device::soft_suspend::AutosleepMode::Off);
+        context.soft_suspend_session.set_mode(AutosleepMode::Off);
 
         if status == ExitStatus::Quit {
             restore_boot_rotation_if_needed(context);
@@ -389,8 +389,6 @@ mod tests {
 
     #[test]
     fn on_shutdown_disarms_soft_suspend_without_changing_settings() {
-        use crate::device::soft_suspend::AutosleepMode;
-
         let mut harness = DeviceRuntimeHarness::new();
         harness.context.settings.autosleep_mode = AutosleepMode::Mem;
         harness

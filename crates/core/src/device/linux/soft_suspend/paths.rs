@@ -1,6 +1,6 @@
 //! Sysfs paths and discovery helpers for soft suspend.
 
-use crate::device::soft_suspend::AutosleepMode;
+use crate::device::soft_suspend::mode::AutosleepMode;
 use std::fs;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
@@ -29,10 +29,79 @@ impl SoftSuspendPaths {
         }
     }
 
-    /// Returns whether autosleep and wake_lock nodes exist.
-    pub fn is_available(&self) -> bool {
-        self.autosleep.exists() && self.wake_lock.exists() && self.wake_unlock.exists()
+    /// Returns whether the full sysfs set exists and is usable (writable locks, readable state).
+    ///
+    /// Opens for write without writing values.
+    pub fn probe_supported(&self) -> bool {
+        can_open_write(&self.autosleep)
+            && can_open_write(&self.wake_lock)
+            && can_open_write(&self.wake_unlock)
+            && can_open_read(&self.state)
     }
+
+    /// Probes sysfs and returns a capability token when the backend is usable.
+    ///
+    /// On failure, returns the original paths so callers can log them.
+    pub(crate) fn probe(self) -> Result<SoftSuspendProbeOk, SoftSuspendPaths> {
+        if self.probe_supported() {
+            Ok(SoftSuspendProbeOk { paths: self })
+        } else {
+            Err(self)
+        }
+    }
+
+    /// Temporary writable sysfs tree for tests (`freeze mem` in `state`).
+    #[cfg(test)]
+    pub fn test_fixture() -> (tempfile::TempDir, Self) {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let paths = Self {
+            state: dir.path().join("state"),
+            autosleep: dir.path().join("autosleep"),
+            wake_lock: dir.path().join("wake_lock"),
+            wake_unlock: dir.path().join("wake_unlock"),
+        };
+        fs::write(&paths.state, "freeze mem\n").expect("state");
+        fs::write(&paths.autosleep, "off\n").expect("autosleep");
+        fs::write(&paths.wake_lock, "").expect("wake_lock");
+        fs::write(&paths.wake_unlock, "").expect("wake_unlock");
+        (dir, paths)
+    }
+}
+
+/// Proof that soft-suspend sysfs was probed successfully.
+///
+/// Outside tests, [`SoftSuspendSession::open`](super::session::SoftSuspendSession::open)
+/// is the only way to build a live session, and it requires this token from
+/// [`SoftSuspendPaths::probe`]. Fields are private so the token cannot be forged
+/// by struct literal; tests use [`SoftSuspendProbeOk::assume`].
+#[derive(Debug)]
+pub(crate) struct SoftSuspendProbeOk {
+    paths: SoftSuspendPaths,
+}
+
+impl SoftSuspendProbeOk {
+    /// Forges a probe token without checking sysfs (tests only).
+    #[cfg(test)]
+    pub(crate) fn assume(paths: SoftSuspendPaths) -> Self {
+        Self { paths }
+    }
+
+    /// Path to the autosleep sysfs node.
+    pub(crate) fn autosleep(&self) -> &Path {
+        &self.paths.autosleep
+    }
+
+    pub(crate) fn into_paths(self) -> SoftSuspendPaths {
+        self.paths
+    }
+}
+
+fn can_open_write(path: &Path) -> bool {
+    fs::OpenOptions::new().write(true).open(path).is_ok()
+}
+
+fn can_open_read(path: &Path) -> bool {
+    fs::File::open(path).is_ok()
 }
 
 /// Successful outcome of a soft-suspend sysfs write.
@@ -137,5 +206,38 @@ mod tests {
         fs::write(&path, "off\n").expect("create");
         assert_eq!(write_sysfs(&path, "mem").unwrap(), SysfsWrite::Written);
         assert_eq!(fs::read_to_string(&path).expect("read").trim(), "mem");
+    }
+
+    #[test]
+    fn probe_supported_when_all_nodes_writable() {
+        let (_dir, paths) = SoftSuspendPaths::test_fixture();
+        assert!(paths.probe_supported());
+        assert!(paths.probe().is_ok());
+    }
+
+    #[test]
+    fn probe_fails_when_autosleep_missing() {
+        let (_dir, paths) = SoftSuspendPaths::test_fixture();
+        fs::remove_file(&paths.autosleep).expect("remove");
+        assert!(!paths.probe_supported());
+        assert!(paths.probe().is_err());
+    }
+
+    #[test]
+    fn probe_fails_when_wake_lock_is_not_a_writable_file() {
+        let (_dir, paths) = SoftSuspendPaths::test_fixture();
+        fs::remove_file(&paths.wake_lock).expect("remove");
+        fs::create_dir(&paths.wake_lock).expect("create directory");
+        assert!(!paths.probe_supported());
+        assert!(paths.probe().is_err());
+    }
+
+    #[test]
+    fn assume_forges_probe_token() {
+        let (_dir, paths) = SoftSuspendPaths::test_fixture();
+        fs::remove_file(&paths.autosleep).expect("remove");
+        assert!(!paths.probe_supported());
+        let ok = SoftSuspendProbeOk::assume(paths);
+        assert!(!ok.autosleep().exists());
     }
 }

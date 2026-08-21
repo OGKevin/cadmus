@@ -1,12 +1,12 @@
 //! Soft-suspend session: named leases over one `cadmus` wake lock.
 
+use super::WAKE_LOCK_NAME;
+use super::paths::{SoftSuspendPaths, SysfsWrite, discover_available_modes, write_sysfs};
 use crate::device::leds::DeviceLeds;
-use crate::device::soft_suspend::WAKE_LOCK_NAME;
+use crate::device::soft_suspend::SoftSuspendBackend;
+use crate::device::soft_suspend::lease::SoftSuspendLease;
 use crate::device::soft_suspend::mode::AutosleepMode;
-use crate::device::soft_suspend::paths::{
-    SoftSuspendPaths, SysfsWrite, discover_available_modes, write_sysfs,
-};
-use crate::lease::{Lease, LeaseName, LeaseObserver, LeaseTracker};
+use crate::lease::{LeaseName, LeaseObserver, LeaseTracker};
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
@@ -57,7 +57,7 @@ struct UnlockInner {
     state: Mutex<UnlockState>,
     /// Wakes the grace worker when `due_at`, `shutdown`, or arming changes.
     cv: Condvar,
-    /// Count of in-flight [`SoftSuspendSession::acquire`] calls.
+    /// Count of in-flight [`SoftSuspendBackend::acquire`] calls.
     ///
     /// Distinct from [`UnlockState::held`]: pins cover only the acquire stack
     /// frame (tracker insert + `take_wake_lock`), so the grace worker can skip
@@ -298,6 +298,8 @@ impl LeaseObserver for WakeLockArmer {
 }
 
 /// Coordinates named soft-suspend leases, autosleep mode, and optional LED indicator.
+///
+/// Implements [`crate::device::soft_suspend::SoftSuspendBackend`].
 pub struct SoftSuspendSession {
     tracker: LeaseTracker,
     state: Arc<Mutex<SessionState>>,
@@ -305,23 +307,23 @@ pub struct SoftSuspendSession {
     armer: Arc<WakeLockArmer>,
 }
 
-/// RAII guard holding a soft-suspend lease.
-#[must_use = "lease is released immediately if unused; bind it (e.g. `let _lease = …`)"]
-pub struct SoftSuspendLease {
-    inner: Option<Lease>,
-}
-
 impl SoftSuspendSession {
-    /// Creates a session using system sysfs paths and optional LED controller.
-    pub fn new(leds: Option<Arc<dyn DeviceLeds>>) -> Arc<Self> {
-        Self::with_paths(SoftSuspendPaths::system(), leds)
+    /// Opens a live session after a successful [`SoftSuspendPaths::probe`].
+    pub(crate) fn open(
+        ok: super::paths::SoftSuspendProbeOk,
+        leds: Option<Arc<dyn DeviceLeds>>,
+    ) -> Self {
+        Self::new(ok.into_paths(), leds)
     }
 
-    /// Creates a session with injectable sysfs paths (tests / unavailable hosts).
-    pub fn with_paths(paths: SoftSuspendPaths, leds: Option<Arc<dyn DeviceLeds>>) -> Arc<Self> {
-        let available = paths.is_available();
+    /// Builds a session without probing (tests only).
+    #[cfg(test)]
+    pub(crate) fn with_paths(paths: SoftSuspendPaths, leds: Option<Arc<dyn DeviceLeds>>) -> Self {
+        Self::open(super::paths::SoftSuspendProbeOk::assume(paths), leds)
+    }
+
+    fn new(paths: SoftSuspendPaths, leds: Option<Arc<dyn DeviceLeds>>) -> Self {
         tracing::debug!(
-            available,
             autosleep = %paths.autosleep.display(),
             "creating soft-suspend session"
         );
@@ -336,16 +338,21 @@ impl SoftSuspendSession {
             unlock,
             leds,
         });
-        Arc::new(Self {
+        Self {
             tracker: LeaseTracker::with_observer(Arc::clone(&armer) as Arc<dyn LeaseObserver>),
             state,
             paths,
             armer,
-        })
+        }
+    }
+}
+
+impl SoftSuspendBackend for SoftSuspendSession {
+    fn is_supported(&self) -> bool {
+        true
     }
 
     /// Acquires a named soft-suspend lease (holds the `cadmus` wake lock while any exist).
-    #[must_use = "lease is released immediately if unused; bind it (e.g. `let _lease = …`)"]
     #[cfg_attr(
         feature = "tracing",
         tracing::instrument(
@@ -354,7 +361,7 @@ impl SoftSuspendSession {
             level = tracing::Level::TRACE,
         )
     )]
-    pub fn acquire(&self, name: impl Into<LeaseName>) -> SoftSuspendLease {
+    fn acquire(&self, name: impl Into<LeaseName>) -> SoftSuspendLease {
         let name = name.into();
         #[cfg(feature = "tracing")]
         tracing::Span::current().record("name", tracing::field::display(&name));
@@ -363,67 +370,45 @@ impl SoftSuspendSession {
         self.armer.unlock.unpin();
         #[cfg(feature = "tracing")]
         tracing::Span::current().record("holders", self.tracker.len());
-        SoftSuspendLease { inner: Some(lease) }
+        SoftSuspendLease::from_lease(lease)
     }
 
-    /// Runs `f` while holding a named soft-suspend lease.
-    pub fn with<R>(&self, name: impl Into<LeaseName>, f: impl FnOnce() -> R) -> R {
-        let _lease = self.acquire(name);
-        f()
-    }
-
-    /// Returns current lease holder count.
-    pub fn len(&self) -> usize {
+    fn len(&self) -> usize {
         self.tracker.len()
     }
 
-    /// Returns whether any soft-suspend leases are held.
-    pub fn is_empty(&self) -> bool {
-        self.tracker.is_empty()
-    }
-
-    /// Returns whether any soft-suspend leases are held.
-    pub fn has_holders(&self) -> bool {
-        !self.is_empty()
-    }
-
-    /// Returns the names of all active soft-suspend lease holders.
-    pub fn holders(&self) -> Vec<crate::lease::LeaseName> {
+    fn holders(&self) -> Vec<LeaseName> {
         self.tracker.holders()
     }
 
-    /// Returns the current autosleep mode.
-    pub fn mode(&self) -> AutosleepMode {
+    fn mode(&self) -> AutosleepMode {
         self.state.lock().unwrap_or_else(|e| e.into_inner()).mode
     }
 
-    /// Returns whether the status LED indicates armed soft suspend while awake.
-    ///
     /// The LED tracks mode + this setting, not the `cadmus` wake lock. The kernel
     /// clears it on suspend; Cadmus turns it off only when mode is [`AutosleepMode::Off`]
     /// or this setting is disabled.
-    pub fn indicate_autosleep_led(&self) -> bool {
+    fn indicate_autosleep_led(&self) -> bool {
         self.state
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .indicate_autosleep_led
     }
 
-    /// Returns the delay after the last lease drops before writing `wake_unlock`.
-    pub fn autosleep_grace(&self) -> Duration {
+    fn autosleep_grace(&self) -> Duration {
         self.state
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .autosleep_grace
     }
 
-    /// Modes supported by this device (`Off` plus tokens from `/sys/power/state`).
-    pub fn available_modes(&self) -> Vec<AutosleepMode> {
+    /// `Off` plus tokens from `/sys/power/state`.
+    fn available_modes(&self) -> Vec<AutosleepMode> {
         discover_available_modes(&self.paths.state)
     }
 
-    /// Sanitizes `mode` against discovery; unsupported values become [`AutosleepMode::Off`].
-    pub fn sanitize_mode(&self, mode: AutosleepMode) -> AutosleepMode {
+    /// Unsupported values become [`AutosleepMode::Off`].
+    fn sanitize_mode(&self, mode: AutosleepMode) -> AutosleepMode {
         if mode == AutosleepMode::Off {
             return AutosleepMode::Off;
         }
@@ -435,15 +420,13 @@ impl SoftSuspendSession {
         }
     }
 
-    /// Sets autosleep mode and writes `/sys/power/autosleep`.
-    ///
-    /// In-memory mode and LED policy update only after the sysfs write succeeds
-    /// (or the node is missing — a no-op on hosts without autosleep).
+    /// Writes `/sys/power/autosleep`. In-memory mode and LED policy update only
+    /// after the sysfs write succeeds (or the node is missing).
     #[cfg_attr(
         feature = "tracing",
         tracing::instrument(skip(self), fields(mode = %mode), level = tracing::Level::TRACE)
     )]
-    pub fn set_mode(&self, mode: AutosleepMode) {
+    fn set_mode(&self, mode: AutosleepMode) {
         let mode = self.sanitize_mode(mode);
         let value = mode.as_sysfs();
         match write_sysfs(&self.paths.autosleep, value) {
@@ -489,15 +472,13 @@ impl SoftSuspendSession {
         }
     }
 
-    /// Enables or disables the status LED while soft suspend is armed.
-    ///
     /// Independent of lease holders: unlock does not clear the LED. The kernel
     /// clears it on suspend.
     #[cfg_attr(
         feature = "tracing",
         tracing::instrument(skip(self), level = tracing::Level::TRACE)
     )]
-    pub fn set_indicate_autosleep_led(&self, enabled: bool) {
+    fn set_indicate_autosleep_led(&self, enabled: bool) {
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         state.indicate_autosleep_led = enabled;
         let mode = state.mode;
@@ -515,15 +496,13 @@ impl SoftSuspendSession {
         }
     }
 
-    /// Sets how long to keep the wake lock after the last lease drops.
-    ///
     /// Zero means unlock immediately. Changing grace cancels any pending unlock
     /// and, if the wake lock is still held with no leases, reschedules.
     #[cfg_attr(
         feature = "tracing",
         tracing::instrument(skip(self), level = tracing::Level::TRACE)
     )]
-    pub fn set_autosleep_grace(&self, grace: Duration) {
+    fn set_autosleep_grace(&self, grace: Duration) {
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         state.autosleep_grace = grace;
         tracing::info!(
@@ -536,37 +515,13 @@ impl SoftSuspendSession {
             self.armer.schedule_unlock(&LeaseName::from("grace-update"));
         }
     }
-
-    /// Applies mode, LED policy, and release grace from settings (boot / settings change).
-    pub fn apply_settings(
-        &self,
-        mode: AutosleepMode,
-        indicate_autosleep_led: bool,
-        autosleep_grace: Duration,
-    ) {
-        self.set_autosleep_grace(autosleep_grace);
-        self.set_indicate_autosleep_led(indicate_autosleep_led);
-        self.set_mode(mode);
-    }
-}
-
-impl SoftSuspendLease {
-    /// Returns whether this guard still holds the lease.
-    pub fn is_active(&self) -> bool {
-        self.inner.is_some()
-    }
-}
-
-impl Drop for SoftSuspendLease {
-    fn drop(&mut self) {
-        self.inner.take();
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::device::leds::{DeviceLeds, LedsError};
+    use crate::device::soft_suspend::SoftSuspendBackend;
     use std::fs;
     use std::sync::atomic::{AtomicU32, Ordering};
 
@@ -588,18 +543,7 @@ mod tests {
     }
 
     fn temp_paths() -> (tempfile::TempDir, SoftSuspendPaths) {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let paths = SoftSuspendPaths {
-            state: dir.path().join("state"),
-            autosleep: dir.path().join("autosleep"),
-            wake_lock: dir.path().join("wake_lock"),
-            wake_unlock: dir.path().join("wake_unlock"),
-        };
-        fs::write(&paths.state, "freeze mem\n").expect("state");
-        fs::write(&paths.autosleep, "off\n").expect("autosleep");
-        fs::write(&paths.wake_lock, "").expect("wake_lock");
-        fs::write(&paths.wake_unlock, "").expect("wake_unlock");
-        (dir, paths)
+        SoftSuspendPaths::test_fixture()
     }
 
     fn unlock_name(paths: &SoftSuspendPaths) -> String {
@@ -791,6 +735,7 @@ mod tests {
 
         drop(session.acquire("main-loop"));
 
+        let session = Arc::new(session);
         let session_thread = Arc::clone(&session);
         let join = thread::spawn(move || {
             thread::sleep(Duration::from_millis(40));

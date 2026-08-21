@@ -416,7 +416,7 @@ pub struct Settings {
     pub auto_suspend: f32,
     pub auto_power_off: f32,
     /// Soft-suspend autosleep target (`off`, `freeze`, or `mem`).
-    pub autosleep_mode: crate::device::soft_suspend::AutosleepMode,
+    pub autosleep_mode: crate::device::soft_suspend::mode::AutosleepMode,
     /// When soft suspend is armed, keep the status LED on while awake.
     pub indicate_autosleep_led: bool,
     /// Seconds to keep the wake lock after the last soft-suspend lease drops.
@@ -998,7 +998,7 @@ impl Default for Settings {
             button_scheme: ButtonScheme::Natural,
             auto_suspend: 30.0,
             auto_power_off: 3.0,
-            autosleep_mode: crate::device::soft_suspend::AutosleepMode::Off,
+            autosleep_mode: crate::device::soft_suspend::mode::AutosleepMode::Off,
             indicate_autosleep_led: false,
             autosleep_grace: 5.0,
             time_format: "%H:%M".to_string(),

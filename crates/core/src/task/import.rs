@@ -4,7 +4,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::db::Database;
-use crate::device::soft_suspend::SoftSuspendSession;
+use crate::device::soft_suspend::SoftSuspend;
+use crate::device::soft_suspend::SoftSuspendBackend as _;
 use crate::library::Library;
 use crate::library::importer;
 use crate::settings::Settings;
@@ -24,7 +25,7 @@ pub struct ImportTask {
     /// When `true`, skip the mtime/size cache and re-fingerprint every file.
     force: bool,
     install_dir: PathBuf,
-    soft_suspend_session: Arc<SoftSuspendSession>,
+    soft_suspend_session: Arc<SoftSuspend>,
 }
 
 impl ImportTask {
@@ -34,7 +35,7 @@ impl ImportTask {
         library_index: Option<usize>,
         force: bool,
         install_dir: impl Into<PathBuf>,
-        soft_suspend_session: Arc<SoftSuspendSession>,
+        soft_suspend_session: Arc<SoftSuspend>,
     ) -> Self {
         Self {
             database,

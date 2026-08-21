@@ -50,6 +50,7 @@ mod time_sync;
 mod wifi_status_monitor;
 
 use std::collections::{HashMap, VecDeque};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread::{self, JoinHandle};
@@ -61,6 +62,7 @@ use crate::db::Database;
 use crate::device::DeviceCapabilities as _;
 #[cfg(feature = "kobo")]
 use crate::device::DeviceHardware as _;
+use crate::device::soft_suspend::SoftSuspend;
 use crate::device::{AppContext, DeviceIdentity as _, DevicePaths as _};
 #[cfg(feature = "kobo")]
 use crate::fl;
@@ -516,7 +518,7 @@ impl TaskManager {
         database: &Database,
         settings: &Settings,
         install_dir: &std::path::Path,
-        soft_suspend_session: &std::sync::Arc<crate::device::soft_suspend::SoftSuspendSession>,
+        soft_suspend_session: &Arc<SoftSuspend>,
     ) {
         if self.is_running(&TaskId::Import) {
             tracing::info!(library_index = ?library_index, force, "import already running, queueing");
@@ -549,7 +551,7 @@ impl TaskManager {
         database: &Database,
         settings: &Settings,
         install_dir: &std::path::Path,
-        soft_suspend_session: &std::sync::Arc<crate::device::soft_suspend::SoftSuspendSession>,
+        soft_suspend_session: &Arc<SoftSuspend>,
     ) {
         if self.is_running(&TaskId::Import) || self.pending_import_indices.is_empty() {
             return;
@@ -576,7 +578,7 @@ impl TaskManager {
         hub: &crate::view::Hub,
         database: &Database,
         data_path: std::path::PathBuf,
-        soft_suspend_session: &std::sync::Arc<crate::device::soft_suspend::SoftSuspendSession>,
+        soft_suspend_session: &Arc<SoftSuspend>,
     ) {
         if self.is_running(&TaskId::DictionaryIndex) {
             tracing::debug!("stopping running dictionary index task for restart");
@@ -664,7 +666,7 @@ impl TaskManager {
         dpi: u16,
         color_samples: usize,
         install_dir: &std::path::Path,
-        soft_suspend_session: &std::sync::Arc<crate::device::soft_suspend::SoftSuspendSession>,
+        soft_suspend_session: &Arc<SoftSuspend>,
     ) {
         if self.is_running(&TaskId::ThumbnailExtraction) {
             tracing::info!(library_index = ?library_index, "thumbnail extraction already running, queueing");
@@ -699,7 +701,7 @@ impl TaskManager {
         dpi: u16,
         color_samples: usize,
         install_dir: &std::path::Path,
-        soft_suspend_session: &std::sync::Arc<crate::device::soft_suspend::SoftSuspendSession>,
+        soft_suspend_session: &Arc<SoftSuspend>,
     ) {
         if self.is_running(&TaskId::ThumbnailExtraction)
             || self.pending_thumbnail_indices.is_empty()
@@ -765,7 +767,7 @@ pub fn register_startup_tasks(
     database: &Database,
     data_path: std::path::PathBuf,
     install_dir: &std::path::Path,
-    soft_suspend_session: &std::sync::Arc<crate::device::soft_suspend::SoftSuspendSession>,
+    soft_suspend_session: &Arc<SoftSuspend>,
 ) {
     #[cfg(feature = "kobo")]
     {

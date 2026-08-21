@@ -19,12 +19,11 @@ pub mod rtc;
 mod tasks;
 mod types;
 
-#[cfg(unix)]
-mod linux;
-#[cfg(unix)]
+#[cfg(any(target_os = "linux", docsrs))]
+pub mod linux;
+pub mod soft_suspend;
+#[cfg(any(target_os = "linux", docsrs))]
 pub use linux::LinuxRtc;
-#[cfg(unix)]
-pub use linux::soft_suspend;
 #[cfg(any(feature = "kobo", docsrs))]
 pub(crate) mod suspend;
 pub mod usb;
@@ -46,7 +45,10 @@ pub(crate) mod test_device;
 #[cfg(all(test, feature = "kobo"))]
 pub(crate) mod test_harness;
 
-#[cfg(any(all(feature = "kobo", not(feature = "emulator")), docsrs,))]
+#[cfg(all(
+    target_os = "linux",
+    any(all(feature = "kobo", not(feature = "emulator")), docsrs)
+))]
 pub(crate) mod kobo;
 
 pub(crate) use auto_suspend::reschedule_auto_suspend_alarm;
@@ -83,7 +85,12 @@ pub type AppDevice = TestDevice;
 pub type AppDevice = EmulatorDevice;
 
 #[cfg(not(docsrs))]
-#[cfg(all(not(test), feature = "kobo", not(feature = "emulator")))]
+#[cfg(all(
+    not(test),
+    target_os = "linux",
+    feature = "kobo",
+    not(feature = "emulator")
+))]
 pub type AppDevice = kobo::Device;
 
 #[cfg(docsrs)]
@@ -184,7 +191,7 @@ pub trait InputSource: Send {
         &mut self,
         display: crate::framebuffer::Display,
         button_scheme: ButtonScheme,
-        soft_suspend: Arc<crate::device::soft_suspend::SoftSuspendSession>,
+        soft_suspend: Arc<soft_suspend::SoftSuspend>,
     ) -> (Hub, Receiver<crate::view::HubMessage>);
 
     /// Injects a raw [`InputEvent`] into the input pipeline.
@@ -605,6 +612,14 @@ pub trait DeviceHardware: Send {
     ///
     /// Returns [`crate::device::leds::LedsError`] when LEDs are unavailable.
     fn leds(&self) -> Result<std::sync::Arc<Self::Leds>, crate::device::leds::LedsError>;
+
+    /// Returns this device's opportunistic soft-suspend backend.
+    ///
+    /// Default: [`crate::device::soft_suspend::SoftSuspend::noop`].
+    /// Kobo probes sysfs and may return a live Linux session.
+    fn soft_suspend(&self) -> Arc<soft_suspend::SoftSuspend> {
+        soft_suspend::SoftSuspend::noop()
+    }
 
     /// Returns a shared RTC handle.
     ///

@@ -15,6 +15,8 @@ use crate::color::Color;
 use crate::device::DeviceHardware as _;
 use crate::device::emulator::rtc::EmulatorRtc;
 use crate::device::reschedule_auto_suspend_alarm;
+use crate::device::soft_suspend::SoftSuspend;
+use crate::device::soft_suspend::SoftSuspendBackend as _;
 use crate::device::types::FrontlightKind;
 use crate::device::{AppContext, Model};
 use crate::device::{
@@ -105,7 +107,7 @@ impl InputSource for EmulatorInputSource {
         &mut self,
         _display: crate::framebuffer::Display,
         _button_scheme: crate::settings::ButtonScheme,
-        soft_suspend: Arc<crate::device::soft_suspend::SoftSuspendSession>,
+        soft_suspend: Arc<SoftSuspend>,
     ) -> (Hub, Receiver<crate::view::HubMessage>) {
         let (hub, rx) = mpsc::channel();
         let (device_tx, device_rx) = mpsc::channel();

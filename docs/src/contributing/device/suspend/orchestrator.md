@@ -63,7 +63,7 @@ field). Interactive use is `None`.
 | `phase` | <a href="/api/cadmus_core/device/suspend/cycle/enum.SuspendPhase.html#variant.Preparing">`Preparing`</a> → <a href="/api/cadmus_core/device/suspend/cycle/enum.SuspendPhase.html#variant.ArmingSleep">`ArmingSleep`</a> → <a href="/api/cadmus_core/device/suspend/cycle/enum.SuspendPhase.html#variant.InSleep">`InSleep`</a> / wait → <a href="/api/cadmus_core/device/suspend/cycle/enum.SuspendPhase.html#variant.PostWakeDebounce">`PostWakeDebounce`</a> |
 
 Mid-cycle handlers must not re-select Classic vs DeepIdle by probing
-<a href="/api/cadmus_core/device/soft_suspend/enum.AutosleepMode.html#method.is_armed">`is_armed()`</a>
+<a href="/api/cadmus_core/device/soft_suspend/mode/enum.AutosleepMode.html#method.is_armed">`is_armed()`</a>
 alone. WakeDebounce and CalendarUpdate re-enter with the same kind.
 
 ## Backends

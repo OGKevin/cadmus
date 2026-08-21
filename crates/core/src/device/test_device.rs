@@ -5,6 +5,7 @@
 
 use crate::battery::FakeBattery;
 use crate::device::rtc::TestRtc;
+use crate::device::soft_suspend::SoftSuspend;
 use crate::device::types::FrontlightKind;
 use crate::device::{AppContext, Model};
 use crate::device::{
@@ -350,7 +351,7 @@ impl InputSource for TestInputSource {
         &mut self,
         _display: crate::framebuffer::Display,
         _button_scheme: crate::settings::ButtonScheme,
-        _soft_suspend: Arc<crate::device::soft_suspend::SoftSuspendSession>,
+        _soft_suspend: Arc<SoftSuspend>,
     ) -> (Hub, Receiver<crate::view::HubMessage>) {
         std::sync::mpsc::channel()
     }

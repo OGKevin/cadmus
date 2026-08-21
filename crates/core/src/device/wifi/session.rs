@@ -1,6 +1,8 @@
 //! WiFi session: named leases over [`LeaseTracker`] plus radio bring-up.
 
-use crate::device::soft_suspend::{SoftSuspendLease, SoftSuspendSession};
+use crate::device::soft_suspend::SoftSuspend;
+use crate::device::soft_suspend::SoftSuspendBackend as _;
+use crate::device::soft_suspend::lease::SoftSuspendLease;
 use crate::device::wifi::{WifiError, WifiManager};
 use crate::input::DeviceEvent;
 use crate::lease::{Lease, LeaseName, LeaseObserver, LeaseTracker, WeakLeaseTracker};
@@ -42,7 +44,7 @@ struct SessionState {
     idle_since: Option<Instant>,
     idle_wake: Option<Sender<()>>,
     hub: Option<Hub>,
-    soft_suspend: Option<Arc<SoftSuspendSession>>,
+    soft_suspend: Option<Arc<SoftSuspend>>,
     soft_suspend_lease: Option<SoftSuspendLease>,
 }
 
@@ -184,7 +186,7 @@ impl WifiSession {
     }
 
     /// Links soft-suspend so AlwaysOn or WiFi holders keep the device awake.
-    pub fn set_soft_suspend_session(&self, session: Arc<SoftSuspendSession>) {
+    pub fn set_soft_suspend_session(&self, session: Arc<SoftSuspend>) {
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         state.soft_suspend = Some(session);
         sync_soft_suspend_lease(&mut state, !self.tracker.is_empty());
@@ -662,24 +664,10 @@ mod tests {
         drop(lease);
     }
 
-    fn soft_suspend_session() -> (
-        tempfile::TempDir,
-        Arc<crate::device::soft_suspend::SoftSuspendSession>,
-    ) {
-        use crate::device::soft_suspend::SoftSuspendPaths;
-        use std::fs;
-        let dir = tempfile::tempdir().expect("tempdir");
-        let paths = SoftSuspendPaths {
-            state: dir.path().join("state"),
-            autosleep: dir.path().join("autosleep"),
-            wake_lock: dir.path().join("wake_lock"),
-            wake_unlock: dir.path().join("wake_unlock"),
-        };
-        fs::write(&paths.state, "freeze mem\n").expect("state");
-        fs::write(&paths.autosleep, "off\n").expect("autosleep");
-        fs::write(&paths.wake_lock, "").expect("wake_lock");
-        fs::write(&paths.wake_unlock, "").expect("wake_unlock");
-        let session = crate::device::soft_suspend::SoftSuspendSession::with_paths(paths, None);
+    fn soft_suspend_session() -> (tempfile::TempDir, Arc<SoftSuspend>) {
+        use crate::device::linux::soft_suspend::paths::SoftSuspendPaths;
+        let (dir, paths) = SoftSuspendPaths::test_fixture();
+        let session = SoftSuspend::with_paths(paths, None);
         (dir, session)
     }
 

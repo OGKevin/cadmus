@@ -5,7 +5,8 @@
 //! once in [`super::orchestrator::start_cycle`] and must not be re-selected by
 //! mid-cycle `is_armed()` probes.
 
-use crate::device::soft_suspend::{AutosleepMode, SoftSuspendLease};
+use crate::device::soft_suspend::lease::SoftSuspendLease;
+use crate::device::soft_suspend::mode::AutosleepMode;
 use chrono::{DateTime, Local};
 use std::time::{Duration, Instant};
 

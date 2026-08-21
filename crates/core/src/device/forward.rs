@@ -108,7 +108,8 @@ macro_rules! forward_device_rotation {
 /// Generates [`DeviceHardware`](crate::device::DeviceHardware) for devices with standard field names.
 ///
 /// List associated types as `Name = Type` pairs. Optionally append `override` hooks:
-/// `metadata`, `set_system_timezone`, or `refresh_framebuffer_from_kernel`.
+/// `metadata`, `set_system_timezone`, `refresh_framebuffer_from_kernel`, or
+/// `soft_suspend`.
 ///
 /// ```ignore
 /// crate::impl_device_hardware!(
@@ -243,6 +244,17 @@ macro_rules! impl_device_hardware {
     (@hook refresh_framebuffer_from_kernel framebuffer) => {
         fn refresh_framebuffer_from_kernel(&mut self) {
             self.framebuffer.refresh_from_kernel();
+        }
+    };
+
+    (@hook soft_suspend from_system) => {
+        fn soft_suspend(
+            &self,
+        ) -> std::sync::Arc<$crate::device::soft_suspend::SoftSuspend> {
+            $crate::device::soft_suspend::SoftSuspend::from_system(Some(
+                std::sync::Arc::clone(&self.leds)
+                    as std::sync::Arc<dyn $crate::device::leds::DeviceLeds>,
+            ))
         }
     };
 }
