@@ -44,6 +44,10 @@ top-menu-switch-to = Switch to { $build }
 top-menu-sync-time = Sync Time
 top-menu-wifi = WiFi
 
+# OTA
+
+ota-installing-and-rebooting = Installing and rebooting…
+
 # Settings - Button Scheme
 settings-button-scheme-natural = Natural
 settings-button-scheme-inverted = Inverted
