@@ -259,6 +259,7 @@ mod suspend_tests;
 #[cfg(all(test, feature = "kobo"))]
 mod tests {
     use super::*;
+    use crate::device::rtc::{AlarmType, shutdown_rtc};
     use crate::device::test_harness::DeviceRuntimeHarness;
     use crate::device::wifi::{Essid, NetworkInfo};
     use crate::input::{ButtonCode, ButtonStatus, DeviceEvent};
@@ -405,5 +406,119 @@ mod tests {
             harness.context.soft_suspend_session.mode(),
             AutosleepMode::Off
         );
+    }
+
+    #[test]
+    fn on_shutdown_clears_scheduled_alarms_for_power_off() {
+        let mut harness = DeviceRuntimeHarness::new();
+        {
+            let mut alarms = harness
+                .context
+                .alarm_manager
+                .as_ref()
+                .unwrap()
+                .lock()
+                .unwrap();
+            alarms
+                .schedule_in(AlarmType::WakeDebounce, chrono::Duration::seconds(15))
+                .unwrap();
+            alarms
+                .schedule_in(AlarmType::AutoPowerOff, chrono::Duration::hours(1))
+                .unwrap();
+        }
+        let rtc = harness.context.device.rtc().unwrap();
+        let _ = std::fs::remove_file("/tmp/power_off");
+
+        harness.with_runtime_only(|context, runtime| {
+            shutdown_rtc(context);
+            Device::on_shutdown(context, ExitStatus::PowerOff, runtime).unwrap();
+        });
+
+        let alarms = harness
+            .context
+            .alarm_manager
+            .as_ref()
+            .unwrap()
+            .lock()
+            .unwrap();
+        assert!(!alarms.has_alarm(AlarmType::WakeDebounce));
+        assert!(!alarms.has_alarm(AlarmType::AutoPowerOff));
+        assert!(!rtc.alarm_enabled());
+        assert!(rtc.is_released());
+        assert!(std::path::Path::new("/tmp/power_off").exists());
+        let _ = std::fs::remove_file("/tmp/power_off");
+    }
+
+    #[test]
+    fn on_shutdown_clears_scheduled_alarms_for_quit() {
+        let mut harness = DeviceRuntimeHarness::new();
+        {
+            let mut alarms = harness
+                .context
+                .alarm_manager
+                .as_ref()
+                .unwrap()
+                .lock()
+                .unwrap();
+            alarms
+                .schedule_in(AlarmType::AutoSuspend, chrono::Duration::minutes(10))
+                .unwrap();
+        }
+        let rtc = harness.context.device.rtc().unwrap();
+
+        harness.with_runtime_only(|context, runtime| {
+            shutdown_rtc(context);
+            Device::on_shutdown(context, ExitStatus::Quit, runtime).unwrap();
+        });
+
+        let alarms = harness
+            .context
+            .alarm_manager
+            .as_ref()
+            .unwrap()
+            .lock()
+            .unwrap();
+        assert!(!alarms.has_alarm(AlarmType::AutoSuspend));
+        assert!(!rtc.alarm_enabled());
+    }
+
+    #[test]
+    fn on_shutdown_completes_when_rtc_alarm_disable_fails() {
+        let mut harness = DeviceRuntimeHarness::new();
+        {
+            let mut alarms = harness
+                .context
+                .alarm_manager
+                .as_ref()
+                .unwrap()
+                .lock()
+                .unwrap();
+            alarms
+                .schedule_in(AlarmType::WakeDebounce, chrono::Duration::seconds(15))
+                .unwrap();
+        }
+        let rtc = harness.context.device.rtc().unwrap();
+        rtc.set_fail_disable(true);
+        let _ = std::fs::remove_file("/tmp/restart");
+
+        harness.with_runtime_only(|context, runtime| {
+            shutdown_rtc(context);
+            Device::on_shutdown(context, ExitStatus::Restart, runtime).unwrap();
+        });
+
+        let alarms = harness
+            .context
+            .alarm_manager
+            .as_ref()
+            .unwrap()
+            .lock()
+            .unwrap();
+        assert!(!alarms.has_alarm(AlarmType::WakeDebounce));
+        assert!(
+            rtc.alarm_enabled(),
+            "hardware alarm should stay armed when disable_alarm fails"
+        );
+        assert!(std::path::Path::new("/tmp/restart").exists());
+        let _ = std::fs::remove_file("/tmp/restart");
     }
 }

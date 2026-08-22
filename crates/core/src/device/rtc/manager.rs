@@ -110,6 +110,15 @@ pub trait Rtc: Send + Sync {
     ///
     /// Returns an error when waiting or reading the IRQ fails.
     fn wait_for_alarm_irq(&self, timeout: Option<Duration>) -> Result<Option<u32>, Error>;
+
+    /// Releases platform RTC resources held by this handle.
+    ///
+    /// Default implementation is a no-op. Linux closes exclusive `/dev/rtc0`
+    /// opens so a subsequent Cadmus process can reopen the device.
+    fn release(&self) -> Result<(), Error> {
+        let _ = self;
+        Ok(())
+    }
 }
 
 impl<T: Rtc + ?Sized> Rtc for std::sync::Arc<T> {
@@ -143,5 +152,9 @@ impl<T: Rtc + ?Sized> Rtc for std::sync::Arc<T> {
 
     fn wait_for_alarm_irq(&self, timeout: Option<Duration>) -> Result<Option<u32>, Error> {
         (**self).wait_for_alarm_irq(timeout)
+    }
+
+    fn release(&self) -> Result<(), Error> {
+        (**self).release()
     }
 }

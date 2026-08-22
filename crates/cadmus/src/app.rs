@@ -6,6 +6,7 @@ use cadmus_core::device::AppContext;
 use cadmus_core::device::AppDevice;
 use cadmus_core::device::DeviceHardware as _;
 use cadmus_core::device::DeviceRotation as _;
+use cadmus_core::device::rtc::shutdown_rtc;
 use cadmus_core::device::soft_suspend::SoftSuspendBackend as _;
 use cadmus_core::device::wifi::WifiManager;
 use cadmus_core::device::{
@@ -882,6 +883,8 @@ pub fn run() -> Result<(), Error> {
     let _shutdown_wake = context.soft_suspend_session.acquire("shutdown");
 
     background_tasks.stop_all();
+
+    shutdown_rtc(&context);
 
     let save_settings = match &exit_status {
         ExitStatus::Restart | ExitStatus::Reboot => !context.shared,
