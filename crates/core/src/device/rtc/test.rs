@@ -2,6 +2,7 @@
 
 use anyhow::Error;
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
@@ -29,10 +30,22 @@ struct TestRtcState {
 }
 
 /// Assertable RTC test double for unit tests.
-#[derive(Clone)]
 pub struct TestRtc {
     state: Arc<Mutex<TestRtcState>>,
     cond: Arc<Condvar>,
+    fail_disable: Arc<AtomicBool>,
+    released: Arc<AtomicBool>,
+}
+
+impl Clone for TestRtc {
+    fn clone(&self) -> Self {
+        Self {
+            state: Arc::clone(&self.state),
+            cond: Arc::clone(&self.cond),
+            fail_disable: Arc::clone(&self.fail_disable),
+            released: Arc::clone(&self.released),
+        }
+    }
 }
 
 impl TestRtc {
@@ -48,7 +61,17 @@ impl TestRtc {
                 pending_step: None,
             })),
             cond: Arc::new(Condvar::new()),
+            fail_disable: Arc::new(AtomicBool::new(false)),
+            released: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    pub fn set_fail_disable(&self, fail: bool) {
+        self.fail_disable.store(fail, Ordering::Relaxed);
+    }
+
+    pub fn is_released(&self) -> bool {
+        self.released.load(Ordering::SeqCst)
     }
 
     pub fn scheduled_wake_time(&self) -> Option<DateTime<Utc>> {
@@ -110,6 +133,9 @@ impl Rtc for TestRtc {
     }
 
     fn disable_alarm(&self) -> Result<i32, Error> {
+        if self.fail_disable.load(Ordering::Relaxed) {
+            return Err(anyhow::anyhow!("simulated disable_alarm failure"));
+        }
         let mut state = self
             .state
             .lock()
@@ -184,5 +210,10 @@ impl Rtc for TestRtc {
                 }
             }
         }
+    }
+
+    fn release(&self) -> Result<(), Error> {
+        self.released.store(true, Ordering::SeqCst);
+        Ok(())
     }
 }

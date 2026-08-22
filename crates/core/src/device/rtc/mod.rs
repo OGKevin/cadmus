@@ -299,6 +299,31 @@ impl<R: Rtc> AlarmManager<R> {
         self.update_hardware_alarm_at(now)
     }
 
+    /// Stops the IRQ listener thread and joins it. Idempotent and safe if never started.
+    pub fn stop_irq_listener(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+        if let Some(handle) = self.irq_thread.take() {
+            let _ = handle.join();
+        }
+    }
+
+    /// Clears every logical alarm and disables the hardware wake alarm.
+    pub fn clear_all_alarms(&mut self) -> Result<(), Error> {
+        let cleared: Vec<AlarmType> = self.scheduled_alarms.keys().copied().collect();
+        self.scheduled_alarms.clear();
+        self.rtc.disable_alarm()?;
+        if cleared.is_empty() {
+            tracing::debug!("Cleared RTC alarms on shutdown (none scheduled)");
+        } else {
+            tracing::info!(
+                count = cleared.len(),
+                alarm_types = ?cleared,
+                "Cleared all RTC alarms on shutdown"
+            );
+        }
+        Ok(())
+    }
+
     /// Returns `true` if an alarm of `alarm_type` is scheduled for a future time.
     pub fn is_alarm_scheduled(&self, alarm_type: AlarmType) -> bool {
         let now = self.authority_now();
@@ -507,6 +532,50 @@ pub fn set_time<R: Rtc>(
     alarms.sync()
 }
 
+/// Stops the IRQ listener and clears all logical and hardware RTC alarms.
+fn shutdown_alarm_manager<R: Rtc>(alarm_manager: &Option<Arc<Mutex<AlarmManager<R>>>>) {
+    let Some(alarm_manager) = alarm_manager else {
+        return;
+    };
+    let join_handle = {
+        let mut manager = alarm_manager
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        manager.stop.store(true, Ordering::Relaxed);
+        manager.irq_thread.take()
+    };
+    if let Some(handle) = join_handle {
+        let _ = handle.join();
+    }
+    let mut manager = alarm_manager
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if let Err(error) = manager.clear_all_alarms() {
+        tracing::error!(error = %error, "Failed to clear RTC alarms on shutdown");
+    }
+}
+
+/// Stops the RTC IRQ listener, clears all logical alarms, and releases hardware RTC FDs.
+///
+/// Invoked from the application main loop after background tasks stop and before
+/// device `on_shutdown`. Failures are logged and do not abort shutdown.
+pub fn shutdown_rtc<D>(context: &crate::context::Context<D>)
+where
+    D: crate::device::Device,
+{
+    shutdown_alarm_manager(&context.alarm_manager);
+    match context.device.rtc() {
+        Ok(rtc) => {
+            if let Err(error) = rtc.release() {
+                tracing::error!(error = %error, "Failed to release RTC device on shutdown");
+            }
+        }
+        Err(error) => {
+            tracing::error!(error = %error, "Failed to access RTC device on shutdown");
+        }
+    }
+}
+
 impl<R: Rtc + 'static> AlarmManager<R> {
     /// Starts the owned IRQ listener thread once. Idempotent.
     ///
@@ -562,10 +631,7 @@ impl<R: Rtc + 'static> AlarmManager<R> {
 
 impl<R: Rtc> Drop for AlarmManager<R> {
     fn drop(&mut self) {
-        self.stop.store(true, Ordering::Relaxed);
-        if let Some(handle) = self.irq_thread.take() {
-            let _ = handle.join();
-        }
+        self.stop_irq_listener();
     }
 }
 
@@ -931,5 +997,85 @@ mod tests {
         rtc.simulate_alarm_fired();
         let data = handle.join().unwrap();
         assert_eq!(data, Some(0x20));
+    }
+
+    #[test]
+    fn clear_all_alarms_empties_schedule_and_disables_hardware() {
+        let (rtc, mut manager) = test_alarm_manager();
+        manager
+            .schedule_in(AlarmType::WakeDebounce, Duration::minutes(1))
+            .unwrap();
+        manager
+            .schedule_in(AlarmType::AutoPowerOff, Duration::hours(1))
+            .unwrap();
+        assert!(rtc.alarm_enabled());
+
+        manager.clear_all_alarms().unwrap();
+
+        assert!(manager.scheduled_alarms.is_empty());
+        assert!(!rtc.alarm_enabled());
+    }
+
+    #[test]
+    fn clear_all_alarms_is_idempotent_when_empty() {
+        let (rtc, mut manager) = test_alarm_manager();
+        manager.clear_all_alarms().unwrap();
+        manager.clear_all_alarms().unwrap();
+        assert!(manager.scheduled_alarms.is_empty());
+        assert!(!rtc.alarm_enabled());
+    }
+
+    #[test]
+    fn clear_all_alarms_clears_logical_schedule_when_disable_fails() {
+        let (rtc, mut manager) = test_alarm_manager();
+        manager
+            .schedule_in(AlarmType::WakeDebounce, Duration::minutes(1))
+            .unwrap();
+        manager
+            .schedule_in(AlarmType::AutoPowerOff, Duration::hours(1))
+            .unwrap();
+        rtc.set_fail_disable(true);
+
+        assert!(manager.clear_all_alarms().is_err());
+
+        assert!(manager.scheduled_alarms.is_empty());
+        assert!(!manager.has_alarm(AlarmType::WakeDebounce));
+        assert!(!manager.has_alarm(AlarmType::AutoPowerOff));
+        assert!(
+            rtc.alarm_enabled(),
+            "hardware alarm should stay armed when disable_alarm fails"
+        );
+    }
+
+    #[test]
+    fn shutdown_rtc_clears_logical_alarms_when_disable_fails() {
+        use crate::context::test_helpers::create_test_context;
+        use crate::device::DeviceHardware as _;
+
+        let context = create_test_context();
+        let rtc = context.device.rtc().unwrap();
+        {
+            let mut manager = context.alarm_manager.as_ref().unwrap().lock().unwrap();
+            manager
+                .schedule_in(AlarmType::WakeDebounce, Duration::minutes(1))
+                .unwrap();
+        }
+        rtc.set_fail_disable(true);
+
+        shutdown_rtc(&context);
+
+        let manager = context.alarm_manager.as_ref().unwrap().lock().unwrap();
+        assert!(!manager.has_alarm(AlarmType::WakeDebounce));
+        assert!(
+            rtc.alarm_enabled(),
+            "hardware alarm should stay armed when disable_alarm fails"
+        );
+    }
+
+    #[test]
+    fn stop_irq_listener_is_idempotent() {
+        let (_rtc, mut manager) = test_alarm_manager();
+        manager.stop_irq_listener();
+        manager.stop_irq_listener();
     }
 }
