@@ -142,6 +142,11 @@ path = "/mnt/onboard/.kobo/kepub"
 suspend = "logo:"
 power-off = "logo:"
 share = "logo:"
+# Background fill for letterboxed logo, cover, and custom-image intermissions.
+# Default is white. The settings UI offers white and black only.
+# fill-color = { gray = 255 }
+# fill-color = { gray = 0 }
+# fill-color = { rgb = [128, 64, 32] }
 
 [home]
 # Show the address bar that display the path of the current directory.

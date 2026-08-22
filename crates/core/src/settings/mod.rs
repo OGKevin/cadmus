@@ -2,7 +2,7 @@ mod migrations;
 mod preset;
 pub mod versioned;
 
-use crate::color::{BLACK, Color};
+use crate::color::{BLACK, Color, WHITE};
 use crate::document::file_extension::{
     FileExtension, deserialize_file_extension_map, deserialize_file_extension_set,
 };
@@ -298,11 +298,23 @@ impl IntermKind {
 
 /// Configuration for intermission screen displays.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
+#[serde(default, rename_all = "kebab-case")]
 pub struct Intermissions {
     suspend: IntermissionDisplay,
     power_off: IntermissionDisplay,
     share: IntermissionDisplay,
+    fill_color: Color,
+}
+
+impl Default for Intermissions {
+    fn default() -> Self {
+        Self {
+            suspend: IntermissionDisplay::Logo,
+            power_off: IntermissionDisplay::Logo,
+            share: IntermissionDisplay::Logo,
+            fill_color: WHITE,
+        }
+    }
 }
 
 impl Index<IntermKind> for Intermissions {
@@ -328,6 +340,16 @@ impl IndexMut<IntermKind> for Intermissions {
 }
 
 impl Intermissions {
+    /// Returns the background fill color for logo, cover, and custom-image modes.
+    pub fn fill_color(&self) -> Color {
+        self.fill_color
+    }
+
+    /// Sets the background fill color for logo, cover, and custom-image modes.
+    pub fn set_fill_color(&mut self, color: Color) {
+        self.fill_color = color;
+    }
+
     /// Updates an intermission display when the selected mode is valid for the target kind.
     pub fn set_display(&mut self, kind: IntermKind, display: IntermissionDisplay) -> bool {
         if !display.is_supported_for(kind) {
@@ -1003,11 +1025,7 @@ impl Default for Settings {
             autosleep_grace: 5.0,
             time_format: "%H:%M".to_string(),
             date_format: "%A, %B %-d, %Y".to_string(),
-            intermissions: Intermissions {
-                suspend: IntermissionDisplay::Logo,
-                power_off: IntermissionDisplay::Logo,
-                share: IntermissionDisplay::Logo,
-            },
+            intermissions: Intermissions::default(),
             home: HomeSettings::default(),
             reader: ReaderSettings::default(),
             import: ImportSettings::default(),
@@ -1057,6 +1075,7 @@ mod tests {
             suspend: IntermissionDisplay::Blank,
             power_off: IntermissionDisplay::BlankInverted,
             share: IntermissionDisplay::Image(PathBuf::from("/custom/share.png")),
+            fill_color: BLACK,
         };
 
         let serialized = toml::to_string(&intermissions).expect("Failed to serialize");
@@ -1073,6 +1092,41 @@ mod tests {
             serialized.contains("/custom/share.png"),
             "Should contain custom path for share"
         );
+        assert!(
+            serialized.contains("fill-color"),
+            "Should contain fill-color key"
+        );
+        assert!(
+            serialized.contains("gray = 0"),
+            "Should contain black fill color"
+        );
+    }
+
+    #[test]
+    fn test_intermissions_fill_color_defaults_to_white() {
+        let toml_str = r#"
+suspend = "logo:"
+power-off = "logo:"
+share = "logo:"
+"#;
+
+        let intermissions: Intermissions = toml::from_str(toml_str).expect("Failed to deserialize");
+
+        assert_eq!(intermissions.fill_color(), WHITE);
+    }
+
+    #[test]
+    fn test_intermissions_fill_color_rgb_deserialization() {
+        let toml_str = r#"
+suspend = "logo:"
+power-off = "logo:"
+share = "logo:"
+fill-color = { rgb = [128, 64, 32] }
+"#;
+
+        let intermissions: Intermissions = toml::from_str(toml_str).expect("Failed to deserialize");
+
+        assert_eq!(intermissions.fill_color(), Color::Rgb(128, 64, 32));
     }
 
     #[test]
@@ -1108,6 +1162,7 @@ share = "/path/to/custom.png"
             suspend: IntermissionDisplay::Blank,
             power_off: IntermissionDisplay::BlankInverted,
             share: IntermissionDisplay::Image(PathBuf::from("/some/custom/image.jpg")),
+            fill_color: Color::Rgb(10, 20, 30),
         };
 
         let serialized = toml::to_string(&original).expect("Failed to serialize");
@@ -1126,6 +1181,10 @@ share = "/path/to/custom.png"
             original.share, deserialized.share,
             "share should survive round trip"
         );
+        assert_eq!(
+            original.fill_color, deserialized.fill_color,
+            "fill_color should survive round trip"
+        );
     }
 
     #[test]
@@ -1134,6 +1193,7 @@ share = "/path/to/custom.png"
             suspend: IntermissionDisplay::Logo,
             power_off: IntermissionDisplay::Logo,
             share: IntermissionDisplay::Logo,
+            ..Default::default()
         };
 
         assert!(!intermissions.set_display(IntermKind::PowerOff, IntermissionDisplay::Calendar));
@@ -1157,6 +1217,7 @@ share = "/path/to/custom.png"
             suspend: IntermissionDisplay::Logo,
             power_off: IntermissionDisplay::Logo,
             share: IntermissionDisplay::Logo,
+            ..Default::default()
         };
 
         assert!(intermissions.set_display(IntermKind::Suspend, IntermissionDisplay::Blank));
@@ -1182,6 +1243,7 @@ share = "/path/to/custom.png"
             suspend: IntermissionDisplay::Calendar,
             power_off: IntermissionDisplay::Calendar,
             share: IntermissionDisplay::Calendar,
+            ..Default::default()
         };
 
         assert!(intermissions.sanitize());

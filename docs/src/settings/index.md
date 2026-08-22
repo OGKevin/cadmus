@@ -761,6 +761,7 @@ Defines the images displayed when entering an intermission state.
 suspend = "logo:"
 power-off = "logo:"
 share = "logo:"
+fill-color = { gray = 255 }
 ```
 
 <!-- i18n:skip-end -->
@@ -793,6 +794,19 @@ Image displayed when the device powers off.
 Image displayed when entering USB sharing mode.
 
 - Possible values: `"logo:"` (built-in logo), `"cover:"` (current book cover), or a path to a custom image file.
+
+### `intermissions.fill-color`
+
+✏️
+
+Background color for unused screen area when the suspend, power-off, or share
+screen uses the built-in logo, the current book cover, or a custom image. This
+does not affect blank, inverted-blank, or calendar intermission screens.
+
+- Default: `{ gray = 255 }` (white)
+- In **Settings → Intermissions → Fill Color**, choose **White** or **Black**
+- Advanced: any valid color value accepted elsewhere in settings, for example
+  `{ rgb = [128, 64, 32] }` (no color picker in the UI)
 
 ## Import
 

@@ -845,6 +845,7 @@ pub enum EntryId {
     SetLibraryFinishedAction(usize, FinishedAction),
     ClearLibraryFinishedAction(usize),
     SetIntermission(settings::IntermKind, settings::IntermissionDisplay),
+    SetIntermissionFillColor(Color),
     ShowIntermission(settings::IntermKind),
     EditIntermissionImage(settings::IntermKind),
     ToggleShowHidden,

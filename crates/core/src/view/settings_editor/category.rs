@@ -6,7 +6,9 @@ use super::kinds::general::{
     StartupModeSetting, WifiIdleTimeout,
 };
 use super::kinds::import::{AllowedKindsSetting, ForceFullImport, ImportSyncMetadata};
-use super::kinds::intermission::{IntermissionPowerOff, IntermissionShare, IntermissionSuspend};
+use super::kinds::intermission::{
+    IntermissionFillColor, IntermissionPowerOff, IntermissionShare, IntermissionSuspend,
+};
 use super::kinds::library::LibraryInfo;
 use super::kinds::power::{
     AutoPowerOff, AutoSuspend, AutosleepGrace, AutosleepModeSetting, IndicateAutosleepLed,
@@ -115,6 +117,7 @@ impl Category {
                 Box::new(IntermissionSuspend),
                 Box::new(IntermissionPowerOff),
                 Box::new(IntermissionShare),
+                Box::new(IntermissionFillColor),
             ],
             Category::Import => vec![
                 Box::new(ForceFullImport),

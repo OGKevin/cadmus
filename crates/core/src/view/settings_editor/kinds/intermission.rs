@@ -1,6 +1,7 @@
 //! Setting kinds for the Intermissions category.
 
 use super::{SettingData, SettingIdentity, SettingKind, SettingsFetchData, WidgetKind};
+use crate::color::{BLACK, Color, WHITE};
 use crate::device::AppContext;
 use crate::fl;
 use crate::i18n::I18nDisplay;
@@ -227,6 +228,65 @@ impl SettingKind for IntermissionShare {
 
     fn file_chooser_entry_id(&self) -> Option<EntryId> {
         Some(EntryId::EditIntermissionImage(IntermKind::Share))
+    }
+}
+
+fn intermission_fill_color_name(color: Color) -> String {
+    match color {
+        WHITE => fl!("settings-intermission-fill-color-white"),
+        BLACK => fl!("settings-intermission-fill-color-black"),
+        _ => fl!("settings-intermission-fill-color-custom"),
+    }
+}
+
+/// Global fill color for letterboxed intermission backgrounds.
+pub struct IntermissionFillColor;
+
+impl SettingKind for IntermissionFillColor {
+    fn identity(&self) -> SettingIdentity {
+        SettingIdentity::IntermissionFillColor
+    }
+
+    fn label(&self, _settings: &Settings) -> String {
+        fl!("settings-intermission-fill-color")
+    }
+
+    fn fetch(&self, data: SettingsFetchData) -> SettingData {
+        let fill_color = data.settings.intermissions.fill_color();
+        let value = intermission_fill_color_name(fill_color);
+        let is_selected = |candidate| fill_color == candidate;
+
+        let entries = vec![
+            EntryKind::RadioButton(
+                fl!("settings-intermission-fill-color-white"),
+                EntryId::SetIntermissionFillColor(WHITE),
+                is_selected(WHITE),
+            ),
+            EntryKind::RadioButton(
+                fl!("settings-intermission-fill-color-black"),
+                EntryId::SetIntermissionFillColor(BLACK),
+                is_selected(BLACK),
+            ),
+        ];
+
+        SettingData {
+            value,
+            widget: WidgetKind::SubMenu(entries),
+        }
+    }
+
+    fn handle(
+        &self,
+        evt: &Event,
+        context: &mut AppContext,
+        _bus: &mut Bus,
+    ) -> (Option<String>, bool) {
+        if let Event::Select(EntryId::SetIntermissionFillColor(color)) = evt {
+            context.settings.intermissions.set_fill_color(*color);
+            return (Some(intermission_fill_color_name(*color)), true);
+        }
+
+        (None, false)
     }
 }
 
@@ -652,6 +712,76 @@ mod tests {
                     )
                 )
             }));
+        }
+    }
+
+    mod intermission_fill_color {
+        use super::*;
+        use crate::color::Color;
+        use crate::settings::Intermissions;
+        use crate::view::EntryKind;
+
+        #[test]
+        fn fetch_includes_white_and_black_options() {
+            let setting = IntermissionFillColor;
+            let settings = Settings::default();
+            let data = setting.fetch(super::SettingsFetchData {
+                settings: &settings,
+                install_dir: None,
+            });
+
+            let WidgetKind::SubMenu(entries) = data.widget else {
+                panic!("expected submenu widget");
+            };
+
+            assert!(entries.iter().any(|entry| {
+                matches!(
+                    entry,
+                    EntryKind::RadioButton(_, EntryId::SetIntermissionFillColor(WHITE), true)
+                )
+            }));
+            assert!(entries.iter().any(|entry| {
+                matches!(
+                    entry,
+                    EntryKind::RadioButton(_, EntryId::SetIntermissionFillColor(BLACK), false)
+                )
+            }));
+        }
+
+        #[test]
+        fn handle_set_black_updates_settings() {
+            let setting = IntermissionFillColor;
+            let mut context = create_test_context();
+            context.settings = Settings::default();
+            let mut bus: Bus = VecDeque::new();
+            let event = Event::Select(EntryId::SetIntermissionFillColor(BLACK));
+
+            let result = setting.handle(&event, &mut context, &mut bus);
+
+            assert_eq!(
+                result,
+                (Some(fl!("settings-intermission-fill-color-black")), true)
+            );
+            assert_eq!(context.settings.intermissions.fill_color(), BLACK);
+        }
+
+        #[test]
+        fn fetch_shows_custom_label_for_rgb_fill_color() {
+            let setting = IntermissionFillColor;
+            let settings = Settings {
+                intermissions: {
+                    let mut intermissions = Intermissions::default();
+                    intermissions.set_fill_color(Color::Rgb(128, 64, 32));
+                    intermissions
+                },
+                ..Default::default()
+            };
+            let data = setting.fetch(super::SettingsFetchData {
+                settings: &settings,
+                install_dir: None,
+            });
+
+            assert_eq!(data.value, fl!("settings-intermission-fill-color-custom"));
         }
     }
 }

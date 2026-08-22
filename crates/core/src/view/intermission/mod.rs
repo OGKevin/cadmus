@@ -2,7 +2,7 @@ mod calendar;
 
 use super::{Bus, Event, Hub, ID_FEEDER, Id, RenderQueue, View};
 use crate::AlarmType;
-use crate::color::{BLACK, Color, TEXT_INVERTED_HARD, TEXT_NORMAL, WHITE};
+use crate::color::{BLACK, Color, WHITE};
 use crate::device::AppContext;
 use crate::device::DeviceCapabilities as _;
 use crate::device::DevicePaths as _;
@@ -22,7 +22,6 @@ pub struct Intermission {
     rect: Rectangle,
     children: Vec<Box<dyn View>>,
     message: Message,
-    halt: bool,
 }
 
 enum Message {
@@ -73,7 +72,6 @@ impl Intermission {
             rect,
             children,
             message,
-            halt,
         }
     }
 }
@@ -113,17 +111,15 @@ impl View for Intermission {
     fn render(&self, context: &mut AppContext, _rect: Rectangle) {
         let install_dir = context.device.install_dir();
         let color_samples = context.device.color_samples();
+        let fill_color = context.settings.intermissions.fill_color();
         let (fb, fonts, dpi) = context.framebuffer_and_fonts();
-        let scheme = if self.halt {
-            TEXT_INVERTED_HARD
-        } else {
-            TEXT_NORMAL
-        };
-
-        fb.draw_rectangle(&self.rect, scheme[0]);
 
         match self.message {
             Message::Text(ref text) => {
+                fb.draw_rectangle(&self.rect, fill_color);
+                let mut foreground = fill_color;
+                foreground.invert();
+
                 let font = font_from_style(fonts, &DISPLAY_STYLE, dpi);
                 let padding = font.em() as i32;
                 let max_width = self.rect.width() as i32 - 3 * padding;
@@ -141,7 +137,7 @@ impl View for Intermission {
                 let dx = (self.rect.width() as i32 - plan.width) / 2;
                 let dy = (self.rect.height() as i32) / 3;
 
-                font.render(fb, scheme[1], &plan, pt!(dx, dy));
+                font.render(fb, foreground, &plan, pt!(dx, dy));
 
                 let logo_path = install_dir.join("icons/dodecahedron.svg");
                 match open(&logo_path, &install_dir) {
@@ -156,7 +152,7 @@ impl View for Intermission {
                                     let dx = (self.rect.width() as i32 - pixmap.width as i32) / 2;
                                     let dy = dy + 2 * x_height;
                                     let pt = self.rect.min + pt!(dx, dy);
-                                    fb.draw_blended_pixmap(&pixmap, pt, scheme[1]);
+                                    fb.draw_blended_pixmap(&pixmap, pt, foreground);
                                 }
                             }
                         }
@@ -164,6 +160,8 @@ impl View for Intermission {
                 }
             }
             Message::Image(ref path) => {
+                fb.draw_rectangle(&self.rect, fill_color);
+
                 if let Some(mut doc) = open(path, &install_dir)
                     && let Some((width, height)) = doc.dims(0)
                 {
@@ -184,6 +182,8 @@ impl View for Intermission {
                 }
             }
             Message::Cover(ref path) => {
+                fb.draw_rectangle(&self.rect, fill_color);
+
                 if let Some(mut doc) = open(path, &install_dir)
                     && let Some(pixmap) = doc.preview_pixmap(
                         self.rect.width() as f32,
