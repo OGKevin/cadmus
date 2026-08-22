@@ -37,6 +37,7 @@ nix = { version = "0.31.0", features = ["fs", "ioctl", "mount", "poll", "time"] 
 indexmap = { version = "2.13.0", features = ["serde"] }
 arc-swap = "1"
 anyhow = "1.0.100"
+backon = { workspace = true }
 thiserror = "2.0.17"
 secrecy = { version = "0.10", features = ["serde"] }
 walkdir = "2.5.0"

@@ -154,6 +154,7 @@ impl MonolingualClient {
                 &dest.to_path_buf(),
                 |u| self.http.get(u),
                 progress_callback,
+                None,
             )
             .map_err(|e| MonolingualError::Request(e.to_string()))
     }

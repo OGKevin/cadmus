@@ -135,13 +135,20 @@ impl GithubClient {
         dest: &PathBuf,
         request_builder: B,
         progress_callback: &mut F,
+        should_cancel: Option<crate::http::CancelFunc<'_>>,
     ) -> Result<(), ChunkedDownloadError>
     where
         B: Fn(&str) -> RequestBuilder,
         F: FnMut(u64, u64),
     {
-        self.http
-            .download(url, total_size, dest, request_builder, progress_callback)
+        self.http.download(
+            url,
+            total_size,
+            dest,
+            request_builder,
+            progress_callback,
+            should_cancel,
+        )
     }
 
     fn with_auth(&self, builder: RequestBuilder) -> RequestBuilder {
