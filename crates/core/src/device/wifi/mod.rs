@@ -3,6 +3,7 @@
 mod error;
 mod manager;
 mod network_info;
+mod noop;
 mod session;
 
 pub use error::WifiError;
@@ -17,4 +18,5 @@ pub use error::WifiError;
 pub(crate) use error::clone_wifi_error;
 pub use manager::WifiManager;
 pub use network_info::{Essid, NetworkInfo};
+pub use noop::NoopWifiManager;
 pub use session::{DEFAULT_ACQUIRE_TIMEOUT, WifiLease, WifiSession, WifiSessionError};

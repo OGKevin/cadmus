@@ -8,7 +8,6 @@ mod leds;
 mod power;
 mod rtc;
 mod usb;
-mod wifi;
 
 use crate::battery::FakeBattery;
 use crate::color::Color;
@@ -430,7 +429,7 @@ pub struct EmulatorDevice {
     battery: FakeBattery,
     frontlight: LightLevels,
     lightsensor: u16,
-    wifi_manager: Arc<crate::device::emulator::wifi::EmulatorWifiManager>,
+    wifi_manager: Arc<crate::device::wifi::NoopWifiManager>,
     usb_manager: Arc<crate::device::emulator::usb::EmulatorUsbManager>,
     power_manager: Arc<crate::device::emulator::power::EmulatorPowerManager>,
     leds: Arc<crate::device::emulator::leds::EmulatorLeds>,
@@ -463,7 +462,7 @@ impl EmulatorDevice {
             battery: FakeBattery::new(),
             frontlight: LightLevels::default(),
             lightsensor: 0,
-            wifi_manager: Arc::new(crate::device::emulator::wifi::EmulatorWifiManager),
+            wifi_manager: Arc::new(crate::device::wifi::NoopWifiManager::default()),
             usb_manager: Arc::new(crate::device::emulator::usb::EmulatorUsbManager),
             power_manager: Arc::new(crate::device::emulator::power::EmulatorPowerManager),
             leds: Arc::new(crate::device::emulator::leds::EmulatorLeds),
@@ -536,7 +535,7 @@ crate::impl_device_hardware!(
     Battery = FakeBattery,
     Frontlight = LightLevels,
     LightSensor = u16,
-    WifiManager = crate::device::emulator::wifi::EmulatorWifiManager,
+    WifiManager = crate::device::wifi::NoopWifiManager,
     UsbManager = crate::device::emulator::usb::EmulatorUsbManager,
     PowerManager = crate::device::emulator::power::EmulatorPowerManager,
     Leds = crate::device::emulator::leds::EmulatorLeds,
@@ -804,8 +803,29 @@ mod wifi_tests {
     use super::{handle_net_up, handle_set_wifi_mode};
     use crate::context::test_helpers::create_test_context;
     use crate::device::EventOutcome;
+    use crate::device::wifi::NoopWifiManager;
+    use crate::device::wifi::WifiManager as _;
+    use crate::device::wifi::WifiSession;
     use crate::settings::WifiMode;
+    use std::sync::Arc;
     use std::sync::mpsc;
+
+    #[test]
+    fn ota_download_lease_acquire_succeeds_for_auto_and_always_on() {
+        for mode in [WifiMode::Auto, WifiMode::AlwaysOn] {
+            let wifi = Arc::new(NoopWifiManager::default());
+            assert!(!wifi.is_enabled());
+            wifi.enable().expect("startup enable");
+            assert!(wifi.is_enabled());
+            wifi.disable().expect("return to idle before acquire");
+            assert!(!wifi.is_enabled());
+
+            let session = WifiSession::new(wifi, mode);
+            let _ = session
+                .acquire("ota-download")
+                .expect("acquire should succeed without panic");
+        }
+    }
 
     #[test]
     fn handle_set_wifi_enable_does_not_set_online_immediately() {
