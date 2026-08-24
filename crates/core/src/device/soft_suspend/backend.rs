@@ -1,44 +1,38 @@
-//! Shared soft-suspend operations.
+//! Soft-suspend settings contract.
 //!
-//! The Linux session and [`NoOpSoftSuspend`](super::noop::NoOpSoftSuspend)
-//! implement this contract. [`SoftSuspend`](super::SoftSuspend) implements it
-//! by matching on its variants; the trait is not object-safe — `acquire` is on
-//! the input path and must stay inlineable.
+//! Implemented by the Linux SoftSuspend kind, the NoOp kind, and
+//! [`Inhibitor`](crate::device::inhibitor::Inhibitor). Covers autosleep mode,
+//! LED preference, release grace, and holder introspection. Lease acquire is
+//! **not** on this trait — use
+//! [`Inhibitor::acquire`](crate::device::inhibitor::Inhibitor::acquire).
 
-use super::lease::SoftSuspendLease;
 use super::mode::AutosleepMode;
 use crate::lease::LeaseName;
 use std::time::Duration;
 
-/// Operations every soft-suspend backend must provide.
+/// Settings and diagnostics for SoftSuspend behaviour.
+///
+/// Live Linux backends report [`Self::is_supported`] as `true` and write sysfs;
+/// noop backends accept calls without effect. Settings UI and the suspend
+/// orchestrator use this contract via [`Inhibitor`](crate::device::inhibitor::Inhibitor).
 pub trait SoftSuspendBackend: Send + Sync {
     /// Returns whether this backend can arm kernel autosleep.
     fn is_supported(&self) -> bool;
 
-    /// Acquires a named lease.
-    #[must_use = "lease is released immediately if unused; bind it (e.g. `let _lease = …`)"]
-    fn acquire(&self, name: impl Into<LeaseName>) -> SoftSuspendLease;
-
-    /// Runs `f` while holding a named lease.
-    fn with<R>(&self, name: impl Into<LeaseName>, f: impl FnOnce() -> R) -> R {
-        let _lease = self.acquire(name);
-        f()
-    }
-
-    /// Returns current lease holder count.
+    /// Returns current SoftSuspend lease holder count.
     fn len(&self) -> usize;
 
-    /// Returns whether any leases are held.
+    /// Returns whether no SoftSuspend leases are held.
     fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
-    /// Returns whether any leases are held.
+    /// Returns whether any SoftSuspend leases are held.
     fn has_holders(&self) -> bool {
         !self.is_empty()
     }
 
-    /// Returns active lease holder names.
+    /// Returns active SoftSuspend lease holder names.
     fn holders(&self) -> Vec<LeaseName>;
 
     /// Returns the current autosleep mode.

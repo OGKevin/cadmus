@@ -1,4 +1,8 @@
 //! Autosleep target mode for soft suspend.
+//!
+//! [`AutosleepMode`] is the user-facing choice written to `/sys/power/autosleep`
+//! when soft suspend is armed on Kobo. Modes are discovered from
+//! `/sys/power/state` on startup; unsupported selections fall back to [`Off`](AutosleepMode::Off).
 
 use crate::fl;
 use crate::i18n::I18nDisplay;

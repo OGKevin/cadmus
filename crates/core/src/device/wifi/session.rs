@@ -1,8 +1,6 @@
 //! WiFi session: named leases over [`LeaseTracker`] plus radio bring-up.
 
-use crate::device::soft_suspend::SoftSuspend;
-use crate::device::soft_suspend::SoftSuspendBackend as _;
-use crate::device::soft_suspend::lease::SoftSuspendLease;
+use crate::device::inhibitor::{Inhibitor, InhibitorGuard, Kind, SoftSuspendName};
 use crate::device::wifi::{WifiError, WifiManager};
 use crate::input::DeviceEvent;
 use crate::lease::{Lease, LeaseName, LeaseObserver, LeaseTracker, WeakLeaseTracker};
@@ -44,8 +42,8 @@ struct SessionState {
     idle_since: Option<Instant>,
     idle_wake: Option<Sender<()>>,
     hub: Option<Hub>,
-    soft_suspend: Option<Arc<SoftSuspend>>,
-    soft_suspend_lease: Option<SoftSuspendLease>,
+    inhibitor: Option<Arc<Inhibitor>>,
+    inhibitor_lease: Option<InhibitorGuard>,
 }
 
 struct IdleArmer {
@@ -61,16 +59,17 @@ impl IdleArmer {
     }
 }
 
-fn sync_soft_suspend_lease(state: &mut SessionState, has_holders: bool) {
+fn sync_inhibitor_lease(state: &mut SessionState, has_holders: bool) {
     let should_hold = state.radio_on && (state.mode == WifiMode::AlwaysOn || has_holders);
     if should_hold {
-        if state.soft_suspend_lease.is_none()
-            && let Some(soft_suspend) = state.soft_suspend.clone()
+        if state.inhibitor_lease.is_none()
+            && let Some(inhibitor) = state.inhibitor.clone()
         {
-            state.soft_suspend_lease = Some(soft_suspend.acquire("wifi"));
+            state.inhibitor_lease =
+                Some(inhibitor.acquire(Kind::SoftSuspend, SoftSuspendName::Wifi));
         }
     } else {
-        state.soft_suspend_lease = None;
+        state.inhibitor_lease = None;
     }
 }
 
@@ -79,7 +78,7 @@ impl LeaseObserver for IdleArmer {
         tracing::debug!(name = %name, "wifi lease first holder");
         if let Ok(mut state) = self.state.lock() {
             state.idle_since = None;
-            sync_soft_suspend_lease(&mut state, self.has_holders());
+            sync_inhibitor_lease(&mut state, self.has_holders());
         }
     }
 
@@ -87,7 +86,7 @@ impl LeaseObserver for IdleArmer {
         tracing::debug!(name = %name, "wifi lease last holder released");
         if let Ok(mut state) = self.state.lock() {
             let has_holders = self.has_holders();
-            sync_soft_suspend_lease(&mut state, has_holders);
+            sync_inhibitor_lease(&mut state, has_holders);
             if !has_holders && state.mode == WifiMode::Auto {
                 state.idle_since = Some(Instant::now());
                 if let Some(idle_wake) = state.idle_wake.as_ref() {
@@ -152,8 +151,8 @@ impl WifiSession {
             idle_since: None,
             idle_wake: None,
             hub: None,
-            soft_suspend: None,
-            soft_suspend_lease: None,
+            inhibitor: None,
+            inhibitor_lease: None,
         }));
         let observer = Arc::new(IdleArmer {
             state: Arc::clone(&state),
@@ -185,11 +184,11 @@ impl WifiSession {
         self.state.lock().unwrap_or_else(|e| e.into_inner()).hub = Some(hub);
     }
 
-    /// Links soft-suspend so AlwaysOn or WiFi holders keep the device awake.
-    pub fn set_soft_suspend_session(&self, session: Arc<SoftSuspend>) {
+    /// Links the inhibitor so AlwaysOn or WiFi holders keep SoftSuspend armed.
+    pub fn set_inhibitor(&self, inhibitor: Arc<Inhibitor>) {
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        state.soft_suspend = Some(session);
-        sync_soft_suspend_lease(&mut state, !self.tracker.is_empty());
+        state.inhibitor = Some(inhibitor);
+        sync_inhibitor_lease(&mut state, !self.tracker.is_empty());
     }
 
     /// Updates the configured WiFi mode (from settings).
@@ -206,7 +205,7 @@ impl WifiSession {
         } else if self.tracker.is_empty() && state.online {
             state.idle_since = Some(Instant::now());
         }
-        sync_soft_suspend_lease(&mut state, !self.tracker.is_empty());
+        sync_inhibitor_lease(&mut state, !self.tracker.is_empty());
         tracing::debug!(
             previous = %previous,
             mode = %mode,
@@ -374,7 +373,7 @@ impl WifiSession {
         let inner = self.tracker.acquire(name.clone());
         {
             let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-            sync_soft_suspend_lease(&mut state, !self.tracker.is_empty());
+            sync_inhibitor_lease(&mut state, !self.tracker.is_empty());
         }
 
         if self.is_online() {
@@ -398,7 +397,7 @@ impl WifiSession {
         {
             let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
             state.radio_on = true;
-            sync_soft_suspend_lease(&mut state, !self.tracker.is_empty());
+            sync_inhibitor_lease(&mut state, !self.tracker.is_empty());
         }
 
         if matches!(self.wifi.network_info(), Ok(Some(_))) {
@@ -491,7 +490,7 @@ impl WifiSession {
                 {
                     let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
                     state.radio_on = true;
-                    sync_soft_suspend_lease(&mut state, !self.tracker.is_empty());
+                    sync_inhibitor_lease(&mut state, !self.tracker.is_empty());
                 }
                 let connected =
                     self.wifi.is_enabled() && matches!(self.wifi.network_info(), Ok(Some(_)));
@@ -523,7 +522,7 @@ impl WifiSession {
             {
                 let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
                 state.radio_on = false;
-                sync_soft_suspend_lease(&mut state, !self.tracker.is_empty());
+                sync_inhibitor_lease(&mut state, !self.tracker.is_empty());
             }
             self.notify_offline();
             self.clear_idle();
@@ -553,6 +552,8 @@ impl Drop for WifiLease {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::device::inhibitor::Inhibitor;
+    use crate::device::soft_suspend::SoftSuspendBackend as _;
     use crate::device::test_device::TestWifiManager;
     use std::thread;
 
@@ -664,18 +665,18 @@ mod tests {
         drop(lease);
     }
 
-    fn soft_suspend_session() -> (tempfile::TempDir, Arc<SoftSuspend>) {
+    fn soft_suspend_inhibitor() -> (tempfile::TempDir, Arc<Inhibitor>) {
         use crate::device::linux::soft_suspend::paths::SoftSuspendPaths;
         let (dir, paths) = SoftSuspendPaths::test_fixture();
-        let session = SoftSuspend::with_paths(paths, None);
-        (dir, session)
+        let inhibitor = Inhibitor::with_paths(paths, None);
+        (dir, inhibitor)
     }
 
     #[test]
     fn always_on_holds_soft_suspend_only_while_radio_on() {
-        let (_dir, soft) = soft_suspend_session();
+        let (_dir, soft) = soft_suspend_inhibitor();
         let (session, _) = session(WifiMode::Auto);
-        session.set_soft_suspend_session(Arc::clone(&soft));
+        session.set_inhibitor(Arc::clone(&soft));
         assert!(soft.is_empty());
 
         session.set_mode(WifiMode::AlwaysOn);
@@ -699,9 +700,9 @@ mod tests {
 
     #[test]
     fn always_on_keeps_soft_suspend_after_last_wifi_holder() {
-        let (_dir, soft) = soft_suspend_session();
+        let (_dir, soft) = soft_suspend_inhibitor();
         let (session, _) = session(WifiMode::AlwaysOn);
-        session.set_soft_suspend_session(Arc::clone(&soft));
+        session.set_inhibitor(Arc::clone(&soft));
         session.enable_radio().unwrap();
         session.notify_online();
         assert!(!soft.is_empty());
@@ -714,9 +715,9 @@ mod tests {
 
     #[test]
     fn leaving_always_on_keeps_soft_suspend_while_holders_remain() {
-        let (_dir, soft) = soft_suspend_session();
+        let (_dir, soft) = soft_suspend_inhibitor();
         let (session, _) = session(WifiMode::AlwaysOn);
-        session.set_soft_suspend_session(Arc::clone(&soft));
+        session.set_inhibitor(Arc::clone(&soft));
         session.enable_radio().unwrap();
         session.notify_online();
         let lease = session.acquire("a").unwrap();
@@ -730,9 +731,9 @@ mod tests {
 
     #[test]
     fn disable_radio_drops_always_on_soft_suspend_lease() {
-        let (_dir, soft) = soft_suspend_session();
+        let (_dir, soft) = soft_suspend_inhibitor();
         let (session, _) = session(WifiMode::AlwaysOn);
-        session.set_soft_suspend_session(Arc::clone(&soft));
+        session.set_inhibitor(Arc::clone(&soft));
         session.enable_radio().unwrap();
         assert!(!soft.is_empty());
 
@@ -746,9 +747,9 @@ mod tests {
 
     #[test]
     fn auto_holder_pins_soft_suspend_while_radio_on() {
-        let (_dir, soft) = soft_suspend_session();
+        let (_dir, soft) = soft_suspend_inhibitor();
         let (session, _) = session(WifiMode::Auto);
-        session.set_soft_suspend_session(Arc::clone(&soft));
+        session.set_inhibitor(Arc::clone(&soft));
         session.enable_radio().unwrap();
         session.notify_online();
 
@@ -765,9 +766,9 @@ mod tests {
     fn soft_suspend_stays_pinned_while_holder_active_under_churn() {
         use std::sync::atomic::{AtomicBool, Ordering};
 
-        let (_dir, soft) = soft_suspend_session();
+        let (_dir, soft) = soft_suspend_inhibitor();
         let (session, _) = session(WifiMode::Auto);
-        session.set_soft_suspend_session(Arc::clone(&soft));
+        session.set_inhibitor(Arc::clone(&soft));
         session.enable_radio().unwrap();
         session.notify_online();
 

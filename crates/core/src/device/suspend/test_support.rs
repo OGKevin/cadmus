@@ -32,16 +32,20 @@ pub(crate) fn install_armed_soft_suspend(
     tempfile::TempDir,
     crate::device::linux::soft_suspend::paths::SoftSuspendPaths,
 ) {
+    use crate::device::inhibitor::Inhibitor;
     use crate::device::linux::soft_suspend::paths::SoftSuspendPaths;
-    use crate::device::soft_suspend::SoftSuspend;
     use crate::device::soft_suspend::SoftSuspendBackend as _;
     use crate::device::soft_suspend::mode::AutosleepMode;
     use std::sync::Arc;
 
     let (dir, paths) = SoftSuspendPaths::test_fixture();
-    let session = SoftSuspend::with_paths(paths.clone(), None);
-    session.set_mode(AutosleepMode::Freeze);
-    harness.context.soft_suspend_session = Arc::clone(&session);
+    let inhibitor = Inhibitor::with_paths(paths.clone(), None);
+    inhibitor.set_mode(AutosleepMode::Freeze);
+    harness
+        .context
+        .wifi_session
+        .set_inhibitor(Arc::clone(&inhibitor));
+    harness.context.inhibitor = inhibitor;
     (dir, paths)
 }
 
