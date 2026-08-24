@@ -4,8 +4,8 @@
 //! replacing the `Box<dyn>` parameters in `create_test_context()`.
 
 use crate::device::battery::FakeBattery;
+use crate::device::inhibitor::Inhibitor;
 use crate::device::rtc::TestRtc;
-use crate::device::soft_suspend::SoftSuspend;
 use crate::device::types::FrontlightKind;
 use crate::device::{AppContext, Model};
 use crate::device::{
@@ -351,7 +351,7 @@ impl InputSource for TestInputSource {
         &mut self,
         _display: crate::framebuffer::Display,
         _button_scheme: crate::settings::ButtonScheme,
-        _soft_suspend: Arc<SoftSuspend>,
+        _inhibitor: Arc<Inhibitor>,
     ) -> (Hub, Receiver<crate::view::HubMessage>) {
         std::sync::mpsc::channel()
     }

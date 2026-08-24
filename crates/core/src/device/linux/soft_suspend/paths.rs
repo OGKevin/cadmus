@@ -70,8 +70,9 @@ impl SoftSuspendPaths {
 
 /// Proof that soft-suspend sysfs was probed successfully.
 ///
-/// Outside tests, [`SoftSuspendSession::open`](super::session::SoftSuspendSession::open)
-/// is the only way to build a live session, and it requires this token from
+/// Outside tests, [`LinuxSoftSuspendKind::try_from_paths`](super::kind::LinuxSoftSuspendKind::try_from_paths)
+/// (and the `from_system` / `from_paths` constructors that call it) is the only
+/// way to build a live SoftSuspend kind, and it requires this token from
 /// [`SoftSuspendPaths::probe`]. Fields are private so the token cannot be forged
 /// by struct literal; tests use [`SoftSuspendProbeOk::assume`].
 #[derive(Debug)]
@@ -106,7 +107,7 @@ fn can_open_read(path: &Path) -> bool {
 
 /// Successful outcome of a soft-suspend sysfs write.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum SysfsWrite {
+pub(crate) enum SysfsWrite {
     /// Value was written to an existing sysfs node.
     Written,
     /// Path was absent — no-op on hosts without autosleep / wake locks.
@@ -116,7 +117,7 @@ pub(super) enum SysfsWrite {
 /// Failure writing a soft-suspend sysfs node that exists.
 #[derive(Debug, Error)]
 #[error("failed to write soft-suspend sysfs {}: {source}", path.display())]
-pub(super) struct SysfsWriteError {
+pub(crate) struct SysfsWriteError {
     path: PathBuf,
     #[source]
     source: std::io::Error,
@@ -142,7 +143,7 @@ pub fn discover_available_modes(state_path: &Path) -> Vec<AutosleepMode> {
 ///
 /// Does not log — callers choose how to handle [`SysfsWrite::Missing`] vs
 /// [`SysfsWriteError`].
-pub(super) fn write_sysfs(path: &Path, value: &str) -> Result<SysfsWrite, SysfsWriteError> {
+pub(crate) fn write_sysfs(path: &Path, value: &str) -> Result<SysfsWrite, SysfsWriteError> {
     if !path.exists() {
         return Ok(SysfsWrite::Missing);
     }

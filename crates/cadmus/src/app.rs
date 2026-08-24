@@ -6,8 +6,8 @@ use cadmus_core::device::AppContext;
 use cadmus_core::device::AppDevice;
 use cadmus_core::device::DeviceHardware as _;
 use cadmus_core::device::DeviceRotation as _;
+use cadmus_core::device::inhibitor::{Kind, SoftSuspendName};
 use cadmus_core::device::rtc::shutdown_rtc;
-use cadmus_core::device::soft_suspend::SoftSuspendBackend as _;
 use cadmus_core::device::wifi::WifiManager;
 use cadmus_core::device::{
     DeviceIdentity, DeviceInput, DeviceLifecycle, DevicePaths, DeviceRuntime, DeviceTask,
@@ -67,7 +67,7 @@ fn drain_bus(bus: &mut Bus, tx: &Hub) {
 }
 
 struct MainLoopSoftSuspendGuard {
-    _lease: cadmus_core::device::soft_suspend::lease::SoftSuspendLease,
+    _lease: cadmus_core::device::inhibitor::InhibitorGuard,
 }
 
 impl Drop for MainLoopSoftSuspendGuard {
@@ -311,7 +311,7 @@ pub fn run() -> Result<(), Error> {
     let (tx, rx) = context.device.input_mut().start(
         context.display,
         context.settings.button_scheme,
-        std::sync::Arc::clone(&context.soft_suspend_session),
+        std::sync::Arc::clone(&context.inhibitor),
     );
 
     let mut tasks: Vec<DeviceTask> = Vec::new();
@@ -324,7 +324,7 @@ pub fn run() -> Result<(), Error> {
         &context.database,
         context.device.data_dir(),
         &context.device.install_dir(),
-        &context.soft_suspend_session,
+        &context.inhibitor,
     );
 
     let mut history: Vec<HistoryItem> = Vec::new();
@@ -409,7 +409,9 @@ pub fn run() -> Result<(), Error> {
                 "soft-suspend lease acquired for main-loop event"
             );
             Some(MainLoopSoftSuspendGuard {
-                _lease: context.soft_suspend_session.acquire("main-loop"),
+                _lease: context
+                    .inhibitor
+                    .acquire(Kind::SoftSuspend, SoftSuspendName::MainLoop),
             })
         };
 
@@ -880,7 +882,9 @@ pub fn run() -> Result<(), Error> {
         drain_bus(&mut bus, &tx);
     }
 
-    let _shutdown_wake = context.soft_suspend_session.acquire("shutdown");
+    let _shutdown_wake = context
+        .inhibitor
+        .acquire(Kind::SoftSuspend, SoftSuspendName::Shutdown);
 
     background_tasks.stop_all();
 

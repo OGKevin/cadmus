@@ -10,6 +10,7 @@ mod auto_suspend;
 pub mod battery;
 mod error;
 mod forward;
+pub mod inhibitor;
 pub mod leds;
 mod metadata;
 pub mod migration;
@@ -192,7 +193,7 @@ pub trait InputSource: Send {
         &mut self,
         display: crate::framebuffer::Display,
         button_scheme: ButtonScheme,
-        soft_suspend: Arc<soft_suspend::SoftSuspend>,
+        inhibitor: Arc<crate::device::inhibitor::Inhibitor>,
     ) -> (Hub, Receiver<crate::view::HubMessage>);
 
     /// Injects a raw [`InputEvent`] into the input pipeline.
@@ -614,12 +615,12 @@ pub trait DeviceHardware: Send {
     /// Returns [`crate::device::leds::LedsError`] when LEDs are unavailable.
     fn leds(&self) -> Result<std::sync::Arc<Self::Leds>, crate::device::leds::LedsError>;
 
-    /// Returns this device's opportunistic soft-suspend backend.
+    /// Returns this device's inhibitor (SoftSuspend kind + LED arbiter).
     ///
-    /// Default: [`crate::device::soft_suspend::SoftSuspend::noop`].
-    /// Kobo probes sysfs and may return a live Linux session.
-    fn soft_suspend(&self) -> Arc<soft_suspend::SoftSuspend> {
-        soft_suspend::SoftSuspend::noop()
+    /// Default: [`crate::device::inhibitor::Inhibitor::noop`].
+    /// Kobo probes sysfs via [`Inhibitor::from_system`](crate::device::inhibitor::Inhibitor::from_system).
+    fn inhibitor(&self) -> Arc<crate::device::inhibitor::Inhibitor> {
+        crate::device::inhibitor::Inhibitor::noop()
     }
 
     /// Returns a shared RTC handle.
