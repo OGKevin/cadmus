@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                    INSERT INTO reading_time (book_fingerprint, total_seconds, last_session_start, sessions_count)\n                    VALUES (?, 0, ?, 0)\n                    ON CONFLICT(book_fingerprint) DO UPDATE SET\n                        last_session_start = excluded.last_session_start\n                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "633e382352a153982e48177e7a2967516200fac3d7f5abb9abd957c3921f8ed8"
+}

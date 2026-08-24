@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE reading_sessions SET ended_at = ? WHERE book_fingerprint = ? AND ended_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "7a529db38da548f58844fc32945fe23503e25e0d145c735b5fb037a5a4bcc1dc"
+}

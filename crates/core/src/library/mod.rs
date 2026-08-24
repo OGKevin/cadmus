@@ -7,6 +7,7 @@ use crate::db::Database;
 use crate::document::SimpleTocEntry;
 use crate::helpers::{Fingerprint, Fp};
 use crate::library::db::Db as LibraryDb;
+use crate::library::db::models::ReadingTimeRow;
 use crate::metadata::sorter;
 use crate::metadata::{BookQuery, Info, ReaderInfo, SimpleStatus, SortMethod};
 use anyhow::{Error, bail, format_err};
@@ -699,6 +700,31 @@ impl Library {
                 None
             }
         }
+    }
+
+    /// Start a session for a given book fingerprint
+    pub fn start_reading_session(&self, book_fingerprint: &Fp) -> Result<(), Error> {
+        tracing::debug!(fp = %book_fingerprint, "starting reading session");
+        self.db.start_reading_session(*book_fingerprint)
+    }
+
+    /// End a session for a given book fingerprint
+    pub fn end_reading_session(&self, book_fingerprint: &Fp) -> Result<(), Error> {
+        tracing::debug!(fp = %book_fingerprint, "ending reading session");
+        self.db.end_reading_session(*book_fingerprint)
+    }
+
+    /// Manually clean up possible stale sessions
+    pub fn cleanup_stale_sessions(&self) -> Result<(), Error> {
+        self.db.cleanup_stale_sessions()
+    }
+
+    /// Retrieve reading time aggregate for a given book fingerprint
+    pub fn get_reading_time(
+        &self,
+        book_fingerprint: &Fp,
+    ) -> Result<Option<ReadingTimeRow>, sqlx::Error> {
+        self.db.get_reading_time(*book_fingerprint)
     }
 }
 

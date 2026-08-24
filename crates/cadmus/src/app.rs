@@ -181,6 +181,20 @@ fn open_document(
     }
 
     let path = info.file.path.clone();
+
+    if let Some(fp) = &info.fp {
+        // Sanity check to ensure no stale session remains in case this hasn't happened before
+        if let Some(ref fp) = context.current_reading_book {
+            tracing::debug!(fp = %fp, "ending stale reading session");
+            let _ = context.library.end_reading_session(fp);
+        }
+        tracing::debug!(fp = %fp, "starting reading session for new book");
+        let _ = context.library.start_reading_session(fp);
+        context.current_reading_book = Some(fp.clone());
+    } else {
+        context.current_reading_book = None;
+    }
+
     if let Some(r) = Reader::new(context.device.framebuffer().rect(), *info, tx, context) {
         let mut next_view = Box::new(r) as Box<dyn View>;
         transfer_notifications(view.as_mut(), next_view.as_mut(), rq, context);
@@ -663,6 +677,12 @@ pub fn run() -> Result<(), Error> {
                 view = next_view;
             }
             Event::Back => {
+                if let Some(ref fp) = context.current_reading_book {
+                    tracing::debug!(fp = %fp, "ending reading session on back navigation");
+                    let _ = context.library.end_reading_session(fp);
+                    context.current_reading_book = None;
+                }
+
                 if let Some(mut item) = history.pop() {
                     transfer_notifications(
                         view.as_mut(),

@@ -50,6 +50,7 @@ pub struct Context<D: Device> {
     pub covered: bool,
     pub shared: bool,
     pub online: bool,
+    pub current_reading_book: Option<Fp>,
     /// Active explicit suspend cycle; `None` means interactive.
     #[cfg(any(feature = "kobo", docsrs))]
     pub(crate) suspend: Option<crate::device::suspend::SuspendCycle>,
@@ -106,6 +107,7 @@ impl<D: Device> Context<D> {
             std::time::Duration::from_secs_f32(settings.autosleep_grace.max(0.0)),
         );
         wifi_session.set_soft_suspend_session(std::sync::Arc::clone(&soft_suspend_session));
+        let _ = library.cleanup_stale_sessions();
         Context {
             device,
             alarm_manager,
@@ -124,6 +126,7 @@ impl<D: Device> Context<D> {
             covered: false,
             shared: false,
             online: false,
+            current_reading_book: None,
             #[cfg(any(feature = "kobo", docsrs))]
             suspend: None,
             wifi_session,
@@ -327,6 +330,14 @@ impl<D: Device> Context<D> {
             Ok(new_dims)
         } else {
             result
+        }
+    }
+}
+
+impl<D: Device> Drop for Context<D> {
+    fn drop(&mut self) {
+        if let Some(fp) = self.current_reading_book {
+            let _ = self.library.end_reading_session(&fp);
         }
     }
 }

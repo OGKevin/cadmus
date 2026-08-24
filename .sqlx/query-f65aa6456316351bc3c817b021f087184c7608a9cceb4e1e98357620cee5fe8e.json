@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE reading_sessions SET ended_at = ? WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "f65aa6456316351bc3c817b021f087184c7608a9cceb4e1e98357620cee5fe8e"
+}

@@ -87,3 +87,21 @@ pub struct TocEntryRow {
     pub location_exact: Option<i64>,
     pub location_uri: Option<String>,
 }
+
+/// Database row for the reading_sessions table
+#[derive(Debug, Clone, FromRow)]
+pub struct ReadingSessionRow {
+    pub id: i64,
+    pub book_fingerprint: String,
+    pub started_at: UnixTimestamp,
+    pub ended_at: Option<UnixTimestamp>,
+}
+
+/// Database row for the reading_time table
+#[derive(Debug, Clone, FromRow)]
+pub struct ReadingTimeRow {
+    pub book_fingerprint: String,
+    pub total_seconds: i64,
+    pub last_session_start: Option<UnixTimestamp>,
+    pub sessions_count: i64,
+}

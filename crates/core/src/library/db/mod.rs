@@ -8,6 +8,7 @@ use crate::document::file_extension::{FileExtension, OptionalFileExtension};
 use crate::geom::Point;
 use crate::helpers::Fp;
 use crate::library::book_status::BookStatus;
+use crate::library::db::models::{ReadingSessionRow, ReadingTimeRow};
 use crate::metadata::{
     CroppingMargins, FileInfo, Info, ReaderInfo, ScrollMode, SortMethod, TextAlign, ZoomMode,
     alphabetic_author, alphabetic_title, natural_cmp, sorter,
@@ -2822,6 +2823,131 @@ impl Db {
             Ok(purged)
         })
     }
+
+    pub fn start_reading_session(&self, fp: Fp) -> Result<(), Error> {
+        tracing::debug!(fp = %fp, "starting reading session");
+        RUNTIME.block_on(async {
+            let mut tx = self.pool.begin().await?;
+            let now = UnixTimestamp::now();
+
+            tracing::debug!(fp = %fp, "ending any previously active session");
+            sqlx::query!(
+                "UPDATE reading_sessions SET ended_at = ? WHERE book_fingerprint = ? AND ended_at IS NULL",
+                now,
+                fp
+            ).execute(&mut *tx)
+            .await?;
+
+            tracing::debug!(fp = %fp, now = %now, "inserting new session");                                                                                
+            sqlx::query!(
+                "INSERT INTO reading_sessions (book_fingerprint, started_at) VALUES (?, ?)",
+                fp,
+                now,
+            )
+            .execute(&mut *tx)
+            .await?;
+
+            // Update or insert into reading_time
+            sqlx::query!(
+                r#"
+                    INSERT INTO reading_time (book_fingerprint, total_seconds, last_session_start, sessions_count)
+                    VALUES (?, 0, ?, 0)
+                    ON CONFLICT(book_fingerprint) DO UPDATE SET
+                        last_session_start = excluded.last_session_start
+                "#,
+                fp,
+                now
+            )
+            .execute(&mut *tx)
+            .await?;
+
+            tx.commit().await?;
+
+            Ok(())
+        })
+    }
+
+    pub fn end_reading_session(&self, fp: Fp) -> Result<(), Error> {
+        tracing::debug!(fp = %fp, "ending reading session");
+        RUNTIME.block_on(async {
+            let mut tx = self.pool.begin().await?;
+            let now = UnixTimestamp::now();
+
+            // Find and end the active session
+            let session = sqlx::query_as::<_, ReadingSessionRow>(
+                "SELECT id, book_fingerprint, started_at, ended_at FROM reading_sessions WHERE book_fingerprint = ? AND ended_at IS NULL",
+            )
+            .bind(fp)
+            .fetch_optional(&mut *tx)
+            .await?;
+
+            if let Some(session) = session {
+                // Duration is clamped to 0 to avoid negative numbers if the system clock changes during a session
+                let duration = (Into::<i64>::into(now) - Into::<i64>::into(session.started_at)).max(0);
+                tracing::debug!(fp = %fp, session_id = session.id, duration_secs = duration, "ending active session");
+
+                // End the session
+                sqlx::query!(
+                    "UPDATE reading_sessions SET ended_at = ? WHERE id = ?",
+                    now,
+                    session.id
+                )
+                .execute(&mut *tx)
+                .await?;
+
+                // Update the aggregate
+                sqlx::query!(
+                    r#"
+                    UPDATE reading_time
+                    SET total_seconds = total_seconds + ?,
+                        sessions_count = sessions_count + 1,
+                        last_session_start = NULL
+                    WHERE book_fingerprint = ?
+                    "#,
+                    duration,
+                    fp
+                )
+                .execute(&mut *tx)
+                .await?;
+            } else {
+                tracing::debug!(fp = %fp, "no active session found");
+            }
+            tx.commit().await?;
+            Ok(())
+        })
+    }
+
+    pub fn cleanup_stale_sessions(&self) -> Result<(), Error> {
+        let active = RUNTIME.block_on(async {
+            let mut tx = self.pool.begin().await?;
+
+            let rows = sqlx::query_scalar::<_, Fp>(
+                "SELECT book_fingerprint FROM reading_sessions WHERE ended_at IS NULL",
+            )
+            .fetch_all(&mut *tx)
+            .await?;
+            tx.commit().await?;
+            Ok::<Vec<Fp>, anyhow::Error>(rows)
+        })?;
+
+        for fp in active {
+            let _ = self.end_reading_session(fp);
+        }
+        Ok(())
+    }
+
+    pub fn get_reading_time(&self, fp: Fp) -> Result<Option<ReadingTimeRow>, sqlx::Error> {
+        let fp_str = fp.to_string();
+
+        RUNTIME.block_on(async {
+            sqlx::query_as::<_, ReadingTimeRow>(
+                "SELECT * FROM reading_time WHERE book_fingerprint = ?",
+            )
+            .bind(fp_str)
+            .fetch_optional(&self.pool)
+            .await
+        })
+    }
 }
 
 #[cfg(test)]
@@ -5203,5 +5329,150 @@ mod tests {
                 .expect("dirs"),
             BTreeSet::from([PathBuf::from("dir1")])
         );
+    }
+
+    #[test]
+    fn reading_session_start_and_end() {
+        use std::thread::sleep;
+        use std::time::Duration;
+
+        let (db, libdb) = create_test_db();
+        let library_id = register_test_library(&libdb, "/tmp/test_lib", "Test Library");
+        let fp = Fp::from_u64(12345);
+
+        let info = make_info("test.epub", "Test Book", "Test Author");
+        libdb
+            .insert_book(library_id, fp, &info)
+            .expect("insert book");
+
+        libdb.start_reading_session(fp).expect("start session");
+
+        let session: Option<ReadingSessionRow> = RUNTIME.block_on(async {
+            sqlx::query!(
+                "SELECT id, book_fingerprint, started_at, ended_at FROM reading_sessions WHERE book_fingerprint = ? AND ended_at IS NULL",
+                fp.to_string()
+            )
+            .fetch_optional(db.pool())
+            .await.ok()?
+            .map(|r| ReadingSessionRow {
+                id: r.id,
+                book_fingerprint: r.book_fingerprint,
+                started_at: UnixTimestamp::from(r.started_at),
+                ended_at: r.ended_at.map(UnixTimestamp::from)
+            })
+        });
+        assert!(session.is_some(), "active session should exist");
+
+        let session = session.unwrap();
+        assert_eq!(session.book_fingerprint, fp.to_string());
+
+        let reading_time = libdb.get_reading_time(fp).expect("get reading time");
+        assert!(reading_time.is_some(), "reading_time should exist");
+        let reading_time = reading_time.unwrap();
+        assert_eq!(reading_time.total_seconds, 0);
+        assert!(reading_time.last_session_start.is_some());
+
+        sleep(Duration::from_secs(1));
+
+        libdb.end_reading_session(fp).expect("end session");
+
+        let ended_session: Option<ReadingSessionRow> = RUNTIME.block_on(async {
+            sqlx::query!(
+                "SELECT id, book_fingerprint, started_at, ended_at FROM reading_sessions WHERE book_fingerprint = ? AND ended_at IS NULL",
+                fp.to_string()
+            )
+            .fetch_optional(db.pool())
+            .await.ok()?
+            .map(|r| ReadingSessionRow {
+                id: r.id,
+                book_fingerprint: r.book_fingerprint,
+                started_at: UnixTimestamp::from(r.started_at),
+                ended_at: r.ended_at.map(UnixTimestamp::from)
+            })
+        });
+        assert!(ended_session.is_none(), "no active session should remain");
+
+        let reading_time = libdb
+            .get_reading_time(fp)
+            .expect("get reading time after end");
+        assert!(reading_time.is_some());
+        let reading_time = reading_time.unwrap();
+
+        assert!(
+            reading_time.total_seconds > 0,
+            "total seconds should be positive"
+        );
+        assert_eq!(reading_time.sessions_count, 1);
+        assert!(reading_time.last_session_start.is_none());
+    }
+
+    #[test]
+    fn reading_session_end_without_start() {
+        let (_db, libdb) = create_test_db();
+        let fp = Fp::from_u64(99999);
+
+        let result = libdb.end_reading_session(fp);
+        assert!(result.is_ok(), "ending non-existent session should succeed");
+    }
+
+    #[test]
+    fn reading_session_multiple_for_same_book() {
+        use std::thread::sleep;
+        use std::time::Duration;
+
+        let (db, libdb) = create_test_db();
+        let library_id = register_test_library(&libdb, "/tmp/test_lib2", "Test Library 2");
+        let fp = Fp::from_u64(67890);
+
+        let info = make_info("test2.epub", "Test Book 2", "Test Author");
+        libdb
+            .insert_book(library_id, fp, &info)
+            .expect("insert book");
+
+        libdb.start_reading_session(fp).expect("start 1");
+        sleep(Duration::from_secs(1));
+        libdb.end_reading_session(fp).expect("end 1");
+
+        libdb.start_reading_session(fp).expect("start 2");
+        sleep(Duration::from_secs(1));
+        libdb.end_reading_session(fp).expect("end 2");
+
+        let reading_time = libdb.get_reading_time(fp).expect("get reading time");
+        assert!(reading_time.is_some());
+        let reading_time = reading_time.unwrap();
+        assert_eq!(reading_time.sessions_count, 2);
+        assert!(reading_time.total_seconds >= 2);
+    }
+
+    #[test]
+    fn cleanup_stale_sessions() {
+        let (db, libdb) = create_test_db();
+        let library_id = register_test_library(&libdb, "/tmp/test_lib3", "Test Library 3");
+        let fp = Fp::from_u64(11111);
+
+        let info = make_info("test3.epub", "Test Book 3", "Test Author");
+        libdb
+            .insert_book(library_id, fp, &info)
+            .expect("insert book");
+
+        libdb.start_reading_session(fp).expect("start session");
+
+        let stale_count: i64 = RUNTIME.block_on(async {
+            sqlx::query_scalar!("SELECT COUNT(*) FROM reading_sessions WHERE ended_at IS NULL")
+                .fetch_one(db.pool())
+                .await
+                .expect("count stale")
+        });
+        assert_eq!(stale_count, 1);
+
+        libdb.cleanup_stale_sessions().expect("cleanup");
+
+        let stale_count_after: i64 = RUNTIME.block_on(async {
+            sqlx::query_scalar!("SELECT COUNT(*) FROM reading_sessions WHERE ended_at IS NULL")
+                .fetch_one(db.pool())
+                .await
+                .expect("count stale after")
+        });
+        assert_eq!(stale_count_after, 0);
     }
 }
