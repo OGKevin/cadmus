@@ -55,6 +55,22 @@ This guide covers setup on both Linux and macOS.
    cargo xtask run-emulator
    ```
 
+## Emulator GitHub Authentication
+
+Debug builds (`cargo xtask run-emulator`) can skip GitHub device flow by setting
+`GH_TOKEN` to a personal access token with `public_repo` (or the broader `repo`)
+scope:
+
+```bash
+export GH_TOKEN=ghp_…
+cargo xtask run-emulator
+```
+
+Cadmus reads `GH_TOKEN` first, trims whitespace, and ignores an empty value. If
+the environment token is missing or rejected, it falls back to the token saved
+under the emulator install directory (the same `.github_token` file device flow
+writes). Release builds never read `GH_TOKEN`.
+
 ## Available Commands
 
 Once inside the devenv shell, these commands are available:

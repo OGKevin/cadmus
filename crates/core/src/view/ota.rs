@@ -42,6 +42,10 @@ pub enum OtaEntryId {
     StableRelease,
 }
 
+fn stable_release_download_label(percent: u8) -> String {
+    fl!("ota-downloading-stable-release", percent = percent)
+}
+
 /// Attempts to show the OTA update view with validation checks.
 ///
 /// This function validates prerequisites before showing the OTA view:
@@ -101,6 +105,8 @@ enum PendingDownload {
     DefaultBranch,
     PrInputPending,
     Pr(u32),
+    StableReleaseCheck,
+    StableReleaseDownload,
 }
 
 /// UI view for downloading and installing OTA updates from GitHub.
@@ -128,7 +134,7 @@ pub struct OtaView {
     rect: Rectangle,
     children: Vec<Box<dyn View>>,
     view_id: ViewId,
-    github_token: Option<SecretString>,
+    auth: device_flow::ResolvedAuth,
     keyboard_index: Option<usize>,
     pending_download: Option<PendingDownload>,
     /// Index into `children` of the status `Label` shown during download.
@@ -156,11 +162,11 @@ impl OtaView {
         let view_id = ViewId::Ota(OtaViewId::Main);
         let (width, height) = context.device.dims();
 
-        let github_token = match device_flow::load_token(&context.device.install_dir()) {
-            Ok(token) => token,
+        let auth = match device_flow::ResolvedAuth::load(&context.device.install_dir()) {
+            Ok(auth) => auth,
             Err(e) => {
                 tracing::warn!(error = %e, "Failed to load saved GitHub token");
-                None
+                device_flow::ResolvedAuth::empty()
             }
         };
 
@@ -179,7 +185,7 @@ impl OtaView {
             rect: rect![0, 0, width as i32, height as i32],
             children,
             view_id,
-            github_token,
+            auth,
             keyboard_index: None,
             pending_download: None,
             status_label_index: None,
@@ -392,6 +398,31 @@ impl OtaView {
         }
     }
 
+    /// Returns the GitHub token used for OTA, including a debug-build
+    /// `GH_TOKEN` environment override when present and not suppressed.
+    fn effective_github_token(&self) -> Option<SecretString> {
+        self.auth.effective()
+    }
+
+    /// Restarts the in-flight download with the currently effective token.
+    fn resume_pending_download(&mut self, hub: &Hub, context: &AppContext) {
+        match self.pending_download.clone() {
+            Some(PendingDownload::DefaultBranch) => {
+                self.start_default_branch_download(hub, context);
+            }
+            Some(PendingDownload::Pr(pr_number)) => {
+                self.start_pr_download(pr_number, hub, context);
+            }
+            Some(PendingDownload::StableReleaseCheck) => {
+                self.on_select_stable_release(hub, context);
+            }
+            Some(PendingDownload::StableReleaseDownload) => {
+                self.start_stable_release_download(hub, context);
+            }
+            Some(PendingDownload::PrInputPending) | None => {}
+        }
+    }
+
     /// Checks that a GitHub token is available.
     ///
     /// Returns `true` if a token is present and the caller may proceed.
@@ -404,7 +435,7 @@ impl OtaView {
         rq: &mut RenderQueue,
         context: &mut AppContext,
     ) -> bool {
-        if self.github_token.is_some() {
+        if self.effective_github_token().is_some() {
             return true;
         }
 
@@ -425,7 +456,7 @@ impl OtaView {
     /// the view so re-authentication can proceed.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, context)))]
     fn start_pr_download(&mut self, pr_number: u32, hub: &Hub, context: &AppContext) {
-        let Some(github_token) = self.github_token.clone() else {
+        let Some(github_token) = self.effective_github_token() else {
             tracing::error!(
                 "GitHub token is missing when starting download, this code path should be unreachable due to prior validation"
             );
@@ -560,7 +591,7 @@ impl OtaView {
     /// the view so re-authentication can proceed.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, context)))]
     fn start_default_branch_download(&mut self, hub: &Hub, context: &AppContext) {
-        let Some(github_token) = self.github_token.clone() else {
+        let Some(github_token) = self.effective_github_token() else {
             tracing::error!(
                 "GitHub token is missing when starting download, this code path should be unreachable due to prior validation"
             );
@@ -701,7 +732,7 @@ impl OtaView {
     /// * `hub` - Event hub for sending notifications and status updates
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, context)))]
     fn start_stable_release_download(&mut self, hub: &Hub, context: &AppContext) {
-        let github_token = self.github_token.clone();
+        let github_token = self.effective_github_token();
         let hub2 = hub.clone();
         let parent_span = tracing::Span::current();
         let ota_view_id = self.view_id;
@@ -747,7 +778,7 @@ impl OtaView {
 
             hub2.send(
                 (Event::OtaDownloadProgress {
-                    label: "Downloading stable release… 0%".to_string(),
+                    label: stable_release_download_label(0),
                     percent: 0,
                 })
                 .into(),
@@ -759,7 +790,7 @@ impl OtaView {
                     let percent = (downloaded as f32 / total as f32 * 100.0) as u8;
                     hub2.send(
                         (Event::OtaDownloadProgress {
-                            label: format!("Downloading stable release… {}%", percent),
+                            label: stable_release_download_label(percent),
                             percent,
                         })
                         .into(),
@@ -854,12 +885,14 @@ impl OtaView {
     #[inline]
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, context)))]
     fn on_select_stable_release(&mut self, hub: &Hub, context: &AppContext) -> bool {
-        let github_token = self.github_token.clone();
+        self.pending_download = Some(PendingDownload::StableReleaseCheck);
+        let github_token = self.effective_github_token();
         let ota_view_id = self.view_id;
 
         let github = match GithubClient::new(github_token) {
             Ok(c) => c,
             Err(e) => {
+                self.pending_download = None;
                 tracing::error!(error = %e, "Failed to create GitHub client");
                 hub.send((Event::Close(ota_view_id)).into()).ok();
                 hub.send(
@@ -878,6 +911,7 @@ impl OtaView {
         let remote_version = match client.fetch_latest_release_version() {
             Ok(version) => version,
             Err(e) => {
+                self.pending_download = None;
                 tracing::error!(error = %e, "Failed to fetch or parse latest release version");
                 hub.send((Event::Close(ota_view_id)).into()).ok();
                 hub.send(
@@ -902,6 +936,7 @@ impl OtaView {
 
         match current_version.compare(&remote_version) {
             Ok(VersionComparison::Equal) => {
+                self.pending_download = None;
                 tracing::info!("Current version equals remote version - already latest");
                 hub.send((Event::Close(ota_view_id)).into()).ok();
                 hub.send(
@@ -913,6 +948,7 @@ impl OtaView {
                 .ok();
             }
             Ok(VersionComparison::Newer) => {
+                self.pending_download = None;
                 tracing::info!("Current version is newer than remote version");
                 hub.send((Event::Close(ota_view_id)).into()).ok();
                 hub.send(
@@ -928,6 +964,7 @@ impl OtaView {
                 hub.send((Event::StartStableReleaseDownload).into()).ok();
             }
             Ok(VersionComparison::Incomparable) => {
+                self.pending_download = None;
                 tracing::warn!("Cannot compare versions - divergent branches");
                 hub.send((Event::Close(ota_view_id)).into()).ok();
                 hub.send(
@@ -939,6 +976,7 @@ impl OtaView {
                 .ok();
             }
             Err(e) => {
+                self.pending_download = None;
                 tracing::error!(error = %e, "Version comparison error");
                 hub.send((Event::Close(ota_view_id)).into()).ok();
                 hub.send(
@@ -1014,7 +1052,7 @@ impl OtaView {
             tracing::error!(error = %e, "Failed to save GitHub token");
         }
 
-        self.github_token = Some(token.clone());
+        self.auth.set_saved(token.clone());
 
         match self.pending_download.take() {
             Some(PendingDownload::DefaultBranch) => {
@@ -1037,6 +1075,15 @@ impl OtaView {
                 rq.add(RenderData::new(self.id, self.rect, UpdateMode::Full));
                 self.start_pr_download(pr_number, hub, context);
             }
+            Some(PendingDownload::StableReleaseCheck) => {
+                self.on_select_stable_release(hub, context);
+            }
+            Some(PendingDownload::StableReleaseDownload) => {
+                self.build_progress_screen(&stable_release_download_label(0), context);
+                rq.add(RenderData::new(self.id, self.rect, UpdateMode::Full));
+                self.pending_download = Some(PendingDownload::StableReleaseDownload);
+                self.start_stable_release_download(hub, context);
+            }
             None => {}
         }
 
@@ -1050,13 +1097,24 @@ impl OtaView {
         rq: &mut RenderQueue,
         context: &mut AppContext,
     ) -> bool {
-        tracing::warn!("Saved GitHub token is invalid — clearing and re-authenticating");
-
-        if let Err(e) = device_flow::delete_token(&context.device.install_dir()) {
-            tracing::error!(error = %e, "Failed to delete stale token");
+        match self.auth.reject_effective() {
+            Some(device_flow::AuthOrigin::Environment) => {
+                tracing::warn!("GH_TOKEN rejected — ignoring it for this session");
+                if self.auth.effective().is_some() {
+                    self.resume_pending_download(hub, context);
+                    return true;
+                }
+            }
+            Some(device_flow::AuthOrigin::Saved) => {
+                tracing::warn!("Saved GitHub token is invalid — clearing and re-authenticating");
+                if let Err(e) = device_flow::delete_token(&context.device.install_dir()) {
+                    tracing::error!(error = %e, "Failed to delete stale token");
+                }
+            }
+            None => {
+                tracing::warn!("GitHub token rejected with no token loaded");
+            }
         }
-
-        self.github_token = None;
 
         let auth_view = DeviceAuthView::new(hub, context);
         self.children.push(Box::new(auth_view) as Box<dyn View>);
@@ -1140,7 +1198,8 @@ impl View for OtaView {
             Event::Github(GithubEvent::DeviceAuthExpired) => self.on_device_auth_expired(hub),
             Event::Github(GithubEvent::DeviceAuthError(msg)) => self.on_device_auth_error(msg, hub),
             Event::StartStableReleaseDownload => {
-                self.build_progress_screen("Downloading stable release… 0%", context);
+                self.pending_download = Some(PendingDownload::StableReleaseDownload);
+                self.build_progress_screen(&stable_release_download_label(0), context);
                 rq.add(RenderData::new(self.id, self.rect, UpdateMode::Full));
                 self.start_stable_release_download(hub, context);
                 true

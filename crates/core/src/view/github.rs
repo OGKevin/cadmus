@@ -9,10 +9,11 @@ pub enum GithubEvent {
     DeviceAuthExpired,
     /// Device flow failed with an error message.
     DeviceAuthError(String),
-    /// A GitHub API call returned 401 or 403 — the saved token is invalid,
+    /// A GitHub API call returned 401 or 403 — the token in use is invalid,
     /// revoked, or missing required scopes.
     ///
-    /// `OtaView` handles this by deleting the stale token, clearing its
-    /// in-memory token, and re-triggering device flow for the pending download.
+    /// [`super::ota::OtaView`] drops the rejected token (environment tokens
+    /// are ignored for the rest of the session; saved tokens are deleted) and
+    /// either retries with a remaining credential or re-triggers device flow.
     TokenInvalid,
 }

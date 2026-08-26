@@ -21,7 +21,24 @@ const GITHUB_OAUTH_CLIENT_ID: &str = env!("GH_OAUTH_CLIENT_ID");
 ///
 /// Current requirements:
 /// - `public_repo` — required to download Actions artifacts from public repositories
+///   (`repo` also satisfies this requirement)
 pub const REQUIRED_SCOPES: &[&str] = &["public_repo"];
+
+/// Returns whether `granted` satisfies a scope listed in [`REQUIRED_SCOPES`].
+///
+/// GitHub reports broader classic PAT scopes under different names — for
+/// example `repo` covers everything `public_repo` allows — so this helper
+/// accepts those supersets during verification.
+fn grants_required_scope(required: &str, granted: &[&str]) -> bool {
+    if granted.contains(&required) {
+        return true;
+    }
+
+    match required {
+        "public_repo" => granted.contains(&"repo"),
+        _ => false,
+    }
+}
 
 /// Thin HTTP wrapper around the GitHub REST API.
 ///
@@ -249,7 +266,7 @@ impl GithubClient {
 
         let missing: Vec<String> = REQUIRED_SCOPES
             .iter()
-            .filter(|&&required| !granted.contains(&required))
+            .filter(|&&required| !grants_required_scope(required, &granted))
             .map(|&s| s.to_owned())
             .collect();
 
@@ -349,5 +366,25 @@ impl GithubClient {
                 Err("Empty response from token endpoint".to_owned())
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn grants_required_scope_accepts_public_repo() {
+        assert!(grants_required_scope("public_repo", &["public_repo"]));
+    }
+
+    #[test]
+    fn grants_required_scope_accepts_repo_for_public_repo() {
+        assert!(grants_required_scope("public_repo", &["repo"]));
+    }
+
+    #[test]
+    fn grants_required_scope_rejects_missing_public_repo() {
+        assert!(!grants_required_scope("public_repo", &["gist"]));
     }
 }

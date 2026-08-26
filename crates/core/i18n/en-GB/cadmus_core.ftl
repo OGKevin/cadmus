@@ -225,3 +225,6 @@ calendar-weekday-thu = THU
 calendar-weekday-fri = FRI
 calendar-weekday-sat = SAT
 calendar-weekday-sun = SUN
+
+# OTA
+ota-downloading-stable-release = Downloading stable release… { $percent }%
