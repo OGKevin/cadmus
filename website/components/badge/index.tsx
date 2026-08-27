@@ -4,10 +4,10 @@ import {
   type BadgeVariant,
 } from "@cloudflare/kumo/components/badge";
 
-export interface BadgeProps extends ComponentProps<typeof KumoBadge> {
+export type BadgeProps = ComponentProps<typeof KumoBadge> & {
   variant?: BadgeVariant;
-}
+};
 
-export function Badge({ variant = "secondary", ...props }: BadgeProps) {
-  return <KumoBadge variant={variant} {...props} />;
+export function Badge(props: BadgeProps) {
+  return <KumoBadge variant="secondary" {...props} />;
 }
