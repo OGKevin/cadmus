@@ -9,6 +9,9 @@ use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+
+#[cfg(test)]
+use std::cell::Cell;
 use zip::ZipArchive;
 
 #[cfg(all(not(test), not(feature = "emulator")))]
@@ -117,6 +120,43 @@ pub enum OtaError {
     /// Failed to parse version string
     #[error(transparent)]
     VersionParse(#[from] crate::version::VersionError),
+}
+
+/// Result of committing `KoboRoot.tgz` to the deploy path.
+///
+/// Rename publishes the bundle to Nickel. A later parent-directory sync
+/// failure does not undo that publication, so callers must treat
+/// [`DeployOutcome::CommittedNotDurable`] as a successful install and still
+/// schedule reboot.
+#[derive(Debug)]
+pub enum DeployOutcome {
+    /// The bundle is at this path and the parent directory was synced.
+    Durable(PathBuf),
+    /// The bundle was renamed into place, but the parent directory could not
+    /// be synced. The new file is visible to Nickel; durability is not
+    /// guaranteed across a crash before the next successful directory sync.
+    CommittedNotDurable {
+        /// Path of the published bundle.
+        path: PathBuf,
+        /// Error returned by the parent-directory sync.
+        error: OtaError,
+    },
+}
+
+impl DeployOutcome {
+    /// Returns the path where the bundle was published.
+    pub fn path(&self) -> &Path {
+        match self {
+            Self::Durable(path) | Self::CommittedNotDurable { path, .. } => path,
+        }
+    }
+
+    /// Consumes the outcome and returns the published path.
+    pub fn into_path(self) -> PathBuf {
+        match self {
+            Self::Durable(path) | Self::CommittedNotDurable { path, .. } => path,
+        }
+    }
 }
 
 impl From<ChunkedDownloadError> for OtaError {
@@ -578,52 +618,47 @@ impl OtaClient {
     ///
     /// # Returns
     ///
-    /// The path where the file was deployed, or an error if deployment fails.
+    /// The deploy outcome, or an error if the bundle was not published.
     ///
     /// # Errors
     ///
-    /// * `OtaError::Io` - Failed to read or write files
+    /// * `OtaError::Io` - Failed to read or write files before the bundle was renamed
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
-    pub fn deploy(&self, kobo_root_path: PathBuf) -> Result<PathBuf, OtaError> {
+    pub fn deploy(&self, kobo_root_path: PathBuf) -> Result<DeployOutcome, OtaError> {
         tracing::info!(path = ?kobo_root_path, "Deploying KoboRoot.tgz");
 
-        let deploy_path = self.deploy_path();
-        self.ensure_deploy_dir(&deploy_path)?;
-
         let mut src = File::open(&kobo_root_path)?;
-        let mut dst = File::create(&deploy_path)?;
-        let bytes_copied = std::io::copy(&mut src, &mut dst)?;
+        let outcome = self.write_staging_then_rename(|staging| {
+            let bytes_copied = std::io::copy(&mut src, staging)?;
+            tracing::debug!(
+                bytes = bytes_copied,
+                src = ?kobo_root_path,
+                "Streamed KoboRoot.tgz to staging path"
+            );
+            Ok(())
+        })?;
 
-        tracing::debug!(
-            bytes = bytes_copied,
-            src = ?kobo_root_path,
-            dst = ?deploy_path,
-            "Streamed KoboRoot.tgz to deploy path"
-        );
-
-        if kobo_root_path != deploy_path {
-            if let Err(e) = std::fs::remove_file(&kobo_root_path) {
-                tracing::error!(path = ?kobo_root_path, error = %e, "Failed to remove source file");
-            }
+        if kobo_root_path != outcome.path()
+            && let Err(e) = std::fs::remove_file(&kobo_root_path)
+        {
+            tracing::error!(path = ?kobo_root_path, error = %e, "Failed to remove source file");
         }
 
-        tracing::info!(path = ?deploy_path, "Update deployed successfully");
-        Ok(deploy_path)
+        tracing::info!(path = ?outcome.path(), "Update deployed successfully");
+        Ok(outcome)
     }
 
     /// Returns the platform-specific deployment path for KoboRoot.tgz.
     ///
     /// | Build context        | Path                                              |
     /// |----------------------|---------------------------------------------------|
-    /// | During `cargo test`  | `<temp_dir>/test-kobo-deployment/KoboRoot.tgz`    |
+    /// | During `cargo test`  | `{tmp_dir}/.kobo/KoboRoot.tgz`                    |
     /// | Emulator builds      | `/tmp/.kobo/KoboRoot.tgz`                         |
     /// | Kobo builds          | `{INTERNAL_CARD_ROOT}/.kobo/KoboRoot.tgz`         |
     fn deploy_path(&self) -> PathBuf {
         let path = cfg_select! {
             test => {
-                std::env::temp_dir()
-                    .join("test-kobo-deployment")
-                    .join("KoboRoot.tgz")
+                self.tmp_dir.join(".kobo").join("KoboRoot.tgz")
             }
             feature = "emulator" => { PathBuf::from("/tmp/.kobo/KoboRoot.tgz") }
             _ => { PathBuf::from(format!("{}/.kobo/KoboRoot.tgz", INTERNAL_CARD_ROOT)) }
@@ -631,6 +666,87 @@ impl OtaClient {
 
         tracing::debug!(path = ?path, "Deploy destination");
         path
+    }
+
+    fn staging_path(&self) -> PathBuf {
+        let deploy_path = self.deploy_path();
+        let deploy_name = deploy_path
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "KoboRoot.tgz".to_owned());
+        let staging_name = format!("{deploy_name}.{}.partial", uuid::Uuid::now_v7());
+        deploy_path.with_file_name(staging_name)
+    }
+
+    fn write_staging_then_rename<F>(&self, write: F) -> Result<DeployOutcome, OtaError>
+    where
+        F: FnOnce(&mut File) -> Result<(), OtaError>,
+    {
+        let deploy_path = self.deploy_path();
+        let staging_path = self.staging_path();
+        self.ensure_deploy_dir(&deploy_path)?;
+
+        let result = (|| {
+            let mut staging = File::create(&staging_path)?;
+            write(&mut staging)?;
+            staging.sync_all()?;
+            std::fs::rename(&staging_path, &deploy_path)?;
+            match Self::sync_deploy_parent(&deploy_path) {
+                Ok(()) => Ok(DeployOutcome::Durable(deploy_path.clone())),
+                Err(error) => {
+                    tracing::warn!(
+                        path = ?deploy_path,
+                        error = %error,
+                        "Parent directory sync failed after committing bundle"
+                    );
+                    Ok(DeployOutcome::CommittedNotDurable {
+                        path: deploy_path.clone(),
+                        error,
+                    })
+                }
+            }
+        })();
+
+        if result.is_err()
+            && let Err(e) = std::fs::remove_file(&staging_path)
+            && staging_path.exists()
+        {
+            tracing::warn!(path = ?staging_path, error = %e, "Failed to remove staging file");
+        }
+
+        result
+    }
+
+    fn sync_deploy_parent(deploy_path: &Path) -> Result<(), OtaError> {
+        #[cfg(test)]
+        if FAIL_SYNC_DEPLOY_PARENT.with(|flag| flag.replace(false)) {
+            return Err(OtaError::Io(std::io::Error::other(
+                "injected sync_deploy_parent failure",
+            )));
+        }
+
+        let Some(parent) = deploy_path.parent() else {
+            return Ok(());
+        };
+
+        #[cfg(unix)]
+        {
+            use std::fs::OpenOptions;
+            use std::os::unix::fs::OpenOptionsExt;
+
+            OpenOptions::new()
+                .read(true)
+                .custom_flags(libc::O_DIRECTORY)
+                .open(parent)?
+                .sync_all()?;
+        }
+
+        #[cfg(not(unix))]
+        {
+            let _ = parent;
+        }
+
+        Ok(())
     }
 
     fn ensure_deploy_dir(&self, deploy_path: &Path) -> Result<(), OtaError> {
@@ -653,18 +769,17 @@ impl OtaClient {
         Ok(())
     }
 
-    fn deploy_bytes(&self, data: &[u8]) -> Result<PathBuf, OtaError> {
-        let deploy_path = self.deploy_path();
-        self.ensure_deploy_dir(&deploy_path)?;
+    fn deploy_bytes(&self, data: &[u8]) -> Result<DeployOutcome, OtaError> {
+        let byte_count = data.len();
+        let outcome = self.write_staging_then_rename(|staging| {
+            staging.write_all(data)?;
+            Ok(())
+        })?;
 
-        tracing::debug!(bytes = data.len(), path = ?deploy_path, "Writing file");
-        let mut file = File::create(&deploy_path)?;
-        file.write_all(data)?;
+        tracing::debug!(bytes = byte_count, path = ?outcome.path(), "Deployment complete");
+        tracing::info!(path = ?outcome.path(), "Update deployed successfully");
 
-        tracing::debug!(path = ?deploy_path, "Deployment complete");
-        tracing::info!(path = ?deploy_path, "Update deployed successfully");
-
-        Ok(deploy_path)
+        Ok(outcome)
     }
 
     /// Extracts KoboRoot.tgz from the artifact and deploys it for installation.
@@ -680,15 +795,15 @@ impl OtaClient {
     ///
     /// # Returns
     ///
-    /// The deployment path where KoboRoot.tgz was written.
+    /// The deploy outcome, or an error if the bundle was not published.
     ///
     /// # Errors
     ///
     /// * `OtaError::ZipError` - Failed to open or read ZIP archive
     /// * `OtaError::DeploymentError` - KoboRoot.tgz not found in archive
-    /// * `OtaError::Io` - Failed to write deployment file
+    /// * `OtaError::Io` - Failed to write deployment file before the bundle was renamed
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
-    pub fn extract_and_deploy(&self, zip_path: PathBuf) -> Result<PathBuf, OtaError> {
+    pub fn extract_and_deploy(&self, zip_path: PathBuf) -> Result<DeployOutcome, OtaError> {
         tracing::info!(path = ?zip_path, "Extracting and deploying update");
         tracing::debug!(path = ?zip_path, "Starting extraction");
 
@@ -738,12 +853,12 @@ impl OtaClient {
             "Extracted file"
         );
 
-        let deploy_path = self.deploy_bytes(&kobo_root_data)?;
+        let outcome = self.deploy_bytes(&kobo_root_data)?;
         if let Err(e) = std::fs::remove_file(&zip_path) {
             tracing::error!(path = ?zip_path, error = %e, "Failed to remove source file");
         }
 
-        Ok(deploy_path)
+        Ok(outcome)
     }
 
     /// Queries the GitHub API for the repository's default branch name.
@@ -897,6 +1012,11 @@ fn verify_scopes(github: &crate::github::GithubClient) -> Result<(), OtaError> {
     })
 }
 
+#[cfg(test)]
+thread_local! {
+    static FAIL_SYNC_DEPLOY_PARENT: Cell<bool> = const { Cell::new(false) };
+}
+
 /// Maps a failed `reqwest` response to the appropriate `OtaError`.
 ///
 /// A 401 Unauthorized response means the saved token has been revoked or
@@ -943,9 +1063,47 @@ mod tests {
         OtaClient::new(github, tmp_dir)
     }
 
+    fn ota_test_tempdir() -> tempfile::TempDir {
+        tempfile::Builder::new()
+            .prefix("cadmus-ota-")
+            .tempdir()
+            .expect("failed to create temp dir")
+    }
+
+    fn assert_no_partial_staging(deploy_path: &Path) {
+        let Some(parent) = deploy_path.parent() else {
+            return;
+        };
+        let leftovers: Vec<_> = std::fs::read_dir(parent)
+            .expect("read deploy directory")
+            .filter_map(Result::ok)
+            .filter(|entry| entry.file_name().to_string_lossy().ends_with(".partial"))
+            .map(|entry| entry.path())
+            .collect();
+        assert!(
+            leftovers.is_empty(),
+            "unexpected staging leftovers: {leftovers:?}"
+        );
+    }
+
+    struct FailSyncDeployParent;
+
+    impl FailSyncDeployParent {
+        fn arm() -> Self {
+            FAIL_SYNC_DEPLOY_PARENT.with(|flag| flag.set(true));
+            Self
+        }
+    }
+
+    impl Drop for FailSyncDeployParent {
+        fn drop(&mut self) {
+            FAIL_SYNC_DEPLOY_PARENT.with(|flag| flag.set(false));
+        }
+    }
+
     #[test]
     fn test_extract_and_deploy_success() {
-        let temp_dir = tempfile::tempdir().unwrap();
+        let temp_dir = ota_test_tempdir();
         let client = make_client(temp_dir.path().to_path_buf());
         let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("src/ota/tests/fixtures/test_artifact.zip");
@@ -960,7 +1118,7 @@ mod tests {
             result.err()
         );
 
-        let deploy_path = result.unwrap();
+        let deploy_path = result.unwrap().into_path();
         assert!(
             deploy_path.exists(),
             "Deployed file should exist at {:?}",
@@ -972,8 +1130,7 @@ mod tests {
             content.contains("Mock KoboRoot.tgz"),
             "Deployed file should contain mock content"
         );
-
-        std::fs::remove_file(&deploy_path).ok();
+        assert_no_partial_staging(&deploy_path);
         assert!(
             !artifact_path.exists(),
             "Downloaded artifact should be removed after successful deployment"
@@ -981,8 +1138,157 @@ mod tests {
     }
 
     #[test]
+    fn test_atomic_deploy_success() {
+        let temp_dir = ota_test_tempdir();
+        let client = make_client(temp_dir.path().to_path_buf());
+        let deploy_path = client.deploy_path();
+        let payload = b"new bundle content";
+
+        let result = client.write_staging_then_rename(|staging| {
+            staging.write_all(payload)?;
+            Ok(())
+        });
+
+        assert!(
+            result.is_ok(),
+            "Deployment should succeed: {:?}",
+            result.err()
+        );
+        let outcome = result.unwrap();
+        assert!(matches!(outcome, DeployOutcome::Durable(_)));
+        assert_eq!(outcome.path(), deploy_path.as_path());
+        assert_eq!(std::fs::read(&deploy_path).unwrap(), payload);
+        assert_no_partial_staging(&deploy_path);
+    }
+
+    #[test]
+    fn test_atomic_deploy_parent_sync_failure_is_committed_not_durable() {
+        let temp_dir = ota_test_tempdir();
+        let client = make_client(temp_dir.path().to_path_buf());
+        let deploy_path = client.deploy_path();
+        let existing = b"existing bundle content";
+        let payload = b"new bundle content";
+
+        client.ensure_deploy_dir(&deploy_path).unwrap();
+        std::fs::write(&deploy_path, existing).unwrap();
+
+        let _fail_sync = FailSyncDeployParent::arm();
+        let result = client.write_staging_then_rename(|staging| {
+            staging.write_all(payload)?;
+            Ok(())
+        });
+
+        match result {
+            Ok(DeployOutcome::CommittedNotDurable { path, error }) => {
+                assert_eq!(path, deploy_path);
+                assert_eq!(
+                    error.to_string(),
+                    "I/O error: injected sync_deploy_parent failure"
+                );
+            }
+            other => panic!("expected committed-not-durable outcome, got {other:?}"),
+        }
+        assert_eq!(std::fs::read(&deploy_path).unwrap(), payload);
+        assert_no_partial_staging(&deploy_path);
+    }
+
+    #[test]
+    fn test_deploy_parent_sync_failure_still_removes_source() {
+        let temp_dir = ota_test_tempdir();
+        let client = make_client(temp_dir.path().to_path_buf());
+        let deploy_path = client.deploy_path();
+        let source_path = temp_dir.path().join("source-KoboRoot.tgz");
+        let payload = b"source bundle content";
+
+        std::fs::write(&source_path, payload).unwrap();
+        let _fail_sync = FailSyncDeployParent::arm();
+
+        let outcome = client
+            .deploy(source_path.clone())
+            .expect("published bundle remains a successful deploy");
+
+        assert!(matches!(outcome, DeployOutcome::CommittedNotDurable { .. }));
+        assert_eq!(outcome.path(), deploy_path.as_path());
+        assert_eq!(std::fs::read(&deploy_path).unwrap(), payload);
+        assert!(
+            !source_path.exists(),
+            "source file should be removed after the bundle is committed"
+        );
+        assert_no_partial_staging(&deploy_path);
+    }
+
+    #[test]
+    fn test_atomic_deploy_failed_write_preserves_existing_bundle() {
+        let temp_dir = ota_test_tempdir();
+        let client = make_client(temp_dir.path().to_path_buf());
+        let deploy_path = client.deploy_path();
+        let existing = b"existing bundle content";
+
+        client.ensure_deploy_dir(&deploy_path).unwrap();
+        std::fs::write(&deploy_path, existing).unwrap();
+
+        let result = client.write_staging_then_rename(|staging| {
+            staging.write_all(b"partial data")?;
+            Err(OtaError::Io(std::io::Error::other("simulated failure")))
+        });
+
+        assert!(result.is_err(), "Deployment should fail");
+        assert_eq!(std::fs::read(&deploy_path).unwrap(), existing);
+        assert_no_partial_staging(&deploy_path);
+    }
+
+    #[test]
+    fn test_atomic_deploy_failed_write_without_existing_bundle() {
+        let temp_dir = ota_test_tempdir();
+        let client = make_client(temp_dir.path().to_path_buf());
+        let deploy_path = client.deploy_path();
+
+        let result = client.write_staging_then_rename(|_| {
+            Err(OtaError::Io(std::io::Error::other("simulated failure")))
+        });
+
+        assert!(result.is_err(), "Deployment should fail");
+        assert!(
+            !deploy_path.exists(),
+            "Final deploy path should not exist after failed deployment"
+        );
+        assert_no_partial_staging(&deploy_path);
+    }
+
+    #[test]
+    fn test_staging_path_uses_partial_suffix() {
+        let temp_dir = ota_test_tempdir();
+        let client = make_client(temp_dir.path().to_path_buf());
+        let deploy_path = client.deploy_path();
+        let staging_path = client.staging_path();
+        let staging_name = staging_path
+            .file_name()
+            .expect("staging file name")
+            .to_string_lossy();
+        let deploy_name = deploy_path
+            .file_name()
+            .expect("deploy file name")
+            .to_string_lossy();
+
+        assert_eq!(staging_path.parent(), deploy_path.parent());
+        assert!(
+            staging_name.starts_with(&format!("{deploy_name}.")),
+            "staging name {staging_name} should be derived from deploy name"
+        );
+        assert!(
+            staging_name.ends_with(".partial"),
+            "staging name {staging_name} should end with .partial"
+        );
+        assert_ne!(
+            client.staging_path(),
+            staging_path,
+            "each staging path should be unique"
+        );
+    }
+
+    #[test]
     fn test_extract_and_deploy_missing_koboroot() {
-        let temp_dir = tempfile::tempdir().unwrap();
+        let temp_dir = ota_test_tempdir();
         let client = make_client(temp_dir.path().to_path_buf());
         let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("src/ota/tests/fixtures/empty_artifact.zip");
@@ -1084,7 +1390,7 @@ mod tests {
     #[test]
     #[ignore]
     fn test_external_download_default_branch_and_deploy() {
-        let temp_dir = tempfile::tempdir().unwrap();
+        let temp_dir = ota_test_tempdir();
         let client = create_external_client(temp_dir.path().to_path_buf());
         let mut last_progress = None;
 
@@ -1117,7 +1423,7 @@ mod tests {
             deploy_result.err()
         );
 
-        let deploy_path = deploy_result.unwrap();
+        let deploy_path = deploy_result.unwrap().into_path();
         assert!(
             deploy_path.exists(),
             "Deployed file should exist at {:?}",
@@ -1130,7 +1436,7 @@ mod tests {
     #[test]
     #[ignore]
     fn test_external_download_stable_release_and_deploy() {
-        let temp_dir = tempfile::tempdir().unwrap();
+        let temp_dir = ota_test_tempdir();
         let client = create_external_client(temp_dir.path().to_path_buf());
         let download_result = client.download_stable_release_artifact(|_| {});
 
@@ -1159,7 +1465,7 @@ mod tests {
             deploy_result.err()
         );
 
-        let deploy_path = deploy_result.unwrap();
+        let deploy_path = deploy_result.unwrap().into_path();
         assert!(
             deploy_path.exists(),
             "Deployed file should exist at {:?}",

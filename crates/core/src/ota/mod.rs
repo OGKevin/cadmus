@@ -12,4 +12,4 @@ mod client;
 
 pub use crate::github::OtaProgress;
 pub use cleanup::clean_bundled_files;
-pub use client::{ArtifactSource, OtaClient, OtaError};
+pub use client::{ArtifactSource, DeployOutcome, OtaClient, OtaError};

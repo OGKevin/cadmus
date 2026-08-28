@@ -18,13 +18,14 @@ use crate::geom::Rectangle;
 use crate::gesture::GestureEvent;
 use crate::github::GithubClient;
 use crate::github::device_flow;
-use crate::ota::{OtaClient, OtaError, OtaProgress, clean_bundled_files};
+use crate::ota::{DeployOutcome, OtaClient, OtaError, OtaProgress, clean_bundled_files};
 use crate::unit::scale_by_dpi;
 use crate::version::{VersionComparison, get_current_version};
 use crate::view::BIG_BAR_HEIGHT;
 use crate::view::filler::Filler;
 use crate::view::github::GithubEvent;
 use secrecy::SecretString;
+use std::path::Path;
 use std::thread;
 use tracing::{error, info};
 
@@ -533,20 +534,7 @@ impl OtaView {
                 Ok(zip_path) => {
                     info!(pr_number, "Download completed, starting extraction");
                     match client.extract_and_deploy(zip_path) {
-                        Ok(_) => {
-                            if let Err(e) = clean_bundled_files(&install_dir) {
-                                tracing::warn!(path = ?install_dir, error = %e, "Failed to clean bundled OTA files");
-                            }
-                            hub2.send(
-                                (Event::OtaDownloadProgress {
-                                    label: "Installing and rebooting…".to_string(),
-                                    percent: 100,
-                                })
-                                .into(),
-                            )
-                            .ok();
-                            send_reboot_after_delay(hub2.clone());
-                        }
+                        Ok(outcome) => finish_successful_deploy(&hub2, &install_dir, outcome),
                         Err(e) => {
                             error!(error = %e, "Deployment failed");
                             hub2.send((Event::Close(ota_view_id)).into()).ok();
@@ -668,20 +656,7 @@ impl OtaView {
                 Ok(zip_path) => {
                     info!("Main branch download completed, starting extraction");
                     match client.extract_and_deploy(zip_path) {
-                        Ok(_) => {
-                            if let Err(e) = clean_bundled_files(&install_dir) {
-                                tracing::warn!(path = ?install_dir, error = %e, "Failed to clean bundled OTA files");
-                            }
-                            hub2.send(
-                                (Event::OtaDownloadProgress {
-                                    label: "Installing and rebooting…".to_string(),
-                                    percent: 100,
-                                })
-                                .into(),
-                            )
-                            .ok();
-                            send_reboot_after_delay(hub2.clone());
-                        }
+                        Ok(outcome) => finish_successful_deploy(&hub2, &install_dir, outcome),
                         Err(e) => {
                             error!(error = %e, "Deployment failed");
                             hub2.send((Event::Close(ota_view_id)).into()).ok();
@@ -803,20 +778,7 @@ impl OtaView {
                 Ok(asset_path) => {
                     info!("Stable release download completed, deploying update");
                     match client.deploy(asset_path) {
-                        Ok(_) => {
-                            if let Err(e) = clean_bundled_files(&install_dir) {
-                                tracing::warn!(path = ?install_dir, error = %e, "Failed to clean bundled OTA files");
-                            }
-                            hub2.send(
-                                (Event::OtaDownloadProgress {
-                                    label: "Installing and rebooting…".to_string(),
-                                    percent: 100,
-                                })
-                                .into(),
-                            )
-                            .ok();
-                            send_reboot_after_delay(hub2.clone());
-                        }
+                        Ok(outcome) => finish_successful_deploy(&hub2, &install_dir, outcome),
                         Err(e) => {
                             error!(error = %e, "Deployment failed");
                             hub2.send((Event::Close(ota_view_id)).into()).ok();
@@ -851,6 +813,31 @@ impl OtaView {
             }
         });
     }
+}
+
+/// Completes a published OTA install, including the committed-but-not-durable
+/// case where parent-directory sync failed after rename.
+fn finish_successful_deploy(hub: &Hub, install_dir: &Path, outcome: DeployOutcome) {
+    if let DeployOutcome::CommittedNotDurable { path, error } = &outcome {
+        tracing::warn!(
+            path = ?path,
+            error = %error,
+            "OTA bundle committed but parent directory was not synced"
+        );
+    }
+
+    if let Err(e) = clean_bundled_files(install_dir) {
+        tracing::warn!(path = ?install_dir, error = %e, "Failed to clean bundled OTA files");
+    }
+    hub.send(
+        (Event::OtaDownloadProgress {
+            label: fl!("ota-installing-and-rebooting"),
+            percent: 100,
+        })
+        .into(),
+    )
+    .ok();
+    send_reboot_after_delay(hub.clone());
 }
 
 /// Spawns a thread that sleeps for 1 second then sends `Event::Select(EntryId::Reboot)`.
