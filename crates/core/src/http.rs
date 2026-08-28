@@ -19,16 +19,135 @@
 //! }
 //! ```
 
+use backon::{BackoffBuilder, ExponentialBuilder};
 use reqwest::blocking::{Client as ReqwestClient, RequestBuilder};
 use rustls::RootCertStore;
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::Duration;
 use thiserror::Error;
 
 pub const CLIENT_TIMEOUT_SECS: u64 = 30;
 
 const USER_AGENT: &str = concat!("github.com/OGKevin/cadmus/", env!("GIT_VERSION"));
+
+const CANCEL_STATE_RUNNING: u8 = 0;
+const CANCEL_STATE_CANCELLED: u8 = 1;
+const CANCEL_STATE_COMMITTED: u8 = 2;
+
+/// Shared cancel/commit gate for long-running downloads and deploys.
+///
+/// Cancellation wins until [`Self::try_commit`] succeeds. After a successful
+/// commit transition, further cancel requests are ignored.
+#[derive(Debug, Default)]
+pub struct CancelFlag {
+    state: AtomicU8,
+}
+
+impl CancelFlag {
+    /// Creates a running cancel flag.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            state: AtomicU8::new(CANCEL_STATE_RUNNING),
+        }
+    }
+
+    /// Requests cancellation. No-op if the operation already committed.
+    pub fn request_cancel(&self) {
+        let _ = self.state.compare_exchange(
+            CANCEL_STATE_RUNNING,
+            CANCEL_STATE_CANCELLED,
+            Ordering::AcqRel,
+            Ordering::Acquire,
+        );
+    }
+
+    /// Returns `true` when cancellation won before commit.
+    #[must_use]
+    pub fn is_cancelled(&self) -> bool {
+        self.state.load(Ordering::Acquire) == CANCEL_STATE_CANCELLED
+    }
+
+    /// Atomically commits if still running.
+    ///
+    /// Returns `true` when this call commits the operation. Returns `false`
+    /// when cancellation already won or another caller already committed.
+    #[must_use]
+    pub fn try_commit(&self) -> bool {
+        self.state
+            .compare_exchange(
+                CANCEL_STATE_RUNNING,
+                CANCEL_STATE_COMMITTED,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            )
+            .is_ok()
+    }
+}
+
+/// Pollable cancel check for long-running downloads and deploys.
+///
+/// Prefer [`Self::from_flag`] with a shared [`CancelFlag`] so deploy can
+/// atomically choose between cancellation and publishing. [`Self::new`] wraps a
+/// plain predicate for tests and call sites that only need polling.
+#[derive(Clone, Copy)]
+pub enum CancelFunc<'a> {
+    /// Never cancels and always allows commit.
+    Never,
+    /// Poll-only cancel predicate without an atomic commit transition.
+    Check(&'a dyn Fn() -> bool),
+    /// Shared cancel/commit gate.
+    Flag(&'a CancelFlag),
+}
+
+impl std::fmt::Debug for CancelFunc<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("CancelFunc(..)")
+    }
+}
+
+impl<'a> CancelFunc<'a> {
+    /// Wraps a cancel predicate that returns `true` when work should stop.
+    #[must_use]
+    pub const fn new(check: &'a dyn Fn() -> bool) -> Self {
+        Self::Check(check)
+    }
+
+    /// Wraps a shared [`CancelFlag`] that supports atomic commit.
+    #[must_use]
+    pub const fn from_flag(flag: &'a CancelFlag) -> Self {
+        Self::Flag(flag)
+    }
+
+    /// A cancel check that never requests cancellation.
+    #[must_use]
+    pub const fn never() -> CancelFunc<'static> {
+        CancelFunc::Never
+    }
+
+    /// Returns `true` when the operation should abort.
+    #[must_use]
+    pub fn is_cancelled(self) -> bool {
+        match self {
+            Self::Never => false,
+            Self::Check(check) => check(),
+            Self::Flag(flag) => flag.is_cancelled(),
+        }
+    }
+
+    /// Atomically commits when backed by a [`CancelFlag`]; otherwise re-checks
+    /// cancellation. Returns `false` when cancellation already won.
+    #[must_use]
+    pub fn try_commit(self) -> bool {
+        match self {
+            Self::Never => true,
+            Self::Check(check) => !check(),
+            Self::Flag(flag) => flag.try_commit(),
+        }
+    }
+}
 
 #[derive(Error, Debug)]
 pub enum HttpError {
@@ -42,6 +161,7 @@ const INITIAL_CHUNK_SIZE: usize = 1024 * 1024;
 /// Target 80% of the HTTP timeout to leave headroom for throughput variance.
 const TARGET_CHUNK_SECS: f64 = CLIENT_TIMEOUT_SECS as f64 * 0.8;
 const MAX_RETRIES: usize = 3;
+const CANCEL_POLL_INTERVAL: Duration = Duration::from_millis(50);
 
 /// Error types that can occur during a chunked HTTP download.
 #[derive(Error, Debug)]
@@ -50,6 +170,8 @@ pub enum ChunkedDownloadError {
     Request(#[from] reqwest::Error),
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
+    #[error("Download cancelled")]
+    Cancelled,
 }
 
 /// Pre-configured HTTP client for making network requests.
@@ -125,7 +247,8 @@ impl Client {
     ///
     /// Returns `ChunkedDownloadError::Io` if the destination file cannot be created
     /// or written. Returns `ChunkedDownloadError::Request` if all retry attempts for
-    /// any chunk fail.
+    /// any chunk fail. Returns `ChunkedDownloadError::Cancelled` when `should_cancel`
+    /// reports cancellation, including between retry attempts and during backoff.
     ///
     /// # Example
     ///
@@ -143,6 +266,7 @@ impl Client {
     ///     &dest,
     ///     |url| client.get(url),
     ///     &mut |downloaded, total| println!("{}/{}", downloaded, total),
+    ///     None,
     /// )?;
     /// # Ok(())
     /// # }
@@ -158,6 +282,7 @@ impl Client {
         dest: &PathBuf,
         request_builder: B,
         progress_callback: &mut F,
+        should_cancel: Option<CancelFunc<'_>>,
     ) -> Result<(), ChunkedDownloadError>
     where
         B: Fn(&str) -> RequestBuilder,
@@ -179,6 +304,12 @@ impl Client {
         );
 
         while downloaded < total_size {
+            if should_cancel.is_some_and(CancelFunc::is_cancelled) {
+                drop(file);
+                let _ = std::fs::remove_file(dest);
+                return Err(ChunkedDownloadError::Cancelled);
+            }
+
             let chunk_start = downloaded;
             let chunk_end = std::cmp::min(downloaded + chunk_size as u64 - 1, total_size - 1);
 
@@ -191,8 +322,21 @@ impl Client {
             );
 
             let start = std::time::Instant::now();
-            let chunk_data =
-                Self::download_chunk_with_retries(url, chunk_start, chunk_end, &request_builder)?;
+            let chunk_data = match Self::download_chunk_with_retries(
+                url,
+                chunk_start,
+                chunk_end,
+                &request_builder,
+                should_cancel,
+            ) {
+                Ok(data) => data,
+                Err(ChunkedDownloadError::Cancelled) => {
+                    drop(file);
+                    let _ = std::fs::remove_file(dest);
+                    return Err(ChunkedDownloadError::Cancelled);
+                }
+                Err(e) => return Err(e),
+            };
             let elapsed_secs = start.elapsed().as_secs_f64();
 
             file.write_all(&chunk_data)?;
@@ -230,50 +374,61 @@ impl Client {
     ///
     /// # Errors
     ///
-    /// Returns an error if all `MAX_RETRIES` attempts fail.
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(request_builder)))]
+    /// Returns an error if all retry attempts fail, or
+    /// [`ChunkedDownloadError::Cancelled`] if cancellation is requested before a
+    /// retry or during backoff.
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(skip(request_builder, should_cancel))
+    )]
     fn download_chunk_with_retries<B>(
         url: &str,
         start: u64,
         end: u64,
         request_builder: &B,
+        should_cancel: Option<CancelFunc<'_>>,
     ) -> Result<Vec<u8>, ChunkedDownloadError>
     where
         B: Fn(&str) -> RequestBuilder,
     {
-        let mut last_error = None;
+        let mut backoff = ExponentialBuilder::default()
+            .with_min_delay(Duration::from_secs(1))
+            .with_factor(2.0)
+            .with_max_times(MAX_RETRIES.saturating_sub(1))
+            .build();
+        let mut attempt = 0_u32;
 
-        for attempt in 1..=MAX_RETRIES {
+        loop {
+            if should_cancel.is_some_and(CancelFunc::is_cancelled) {
+                return Err(ChunkedDownloadError::Cancelled);
+            }
+
+            attempt += 1;
             match Self::download_chunk(url, start, end, request_builder) {
                 Ok(data) => {
                     if attempt > 1 {
-                        tracing::debug!(
-                            attempt,
-                            max_retries = MAX_RETRIES,
-                            "Chunk download succeeded after retry"
-                        );
+                        tracing::debug!(attempt, "Chunk download succeeded after retry");
                     }
                     return Ok(data);
                 }
+                Err(ChunkedDownloadError::Cancelled) => {
+                    return Err(ChunkedDownloadError::Cancelled);
+                }
                 Err(e) => {
-                    tracing::warn!(
-                        attempt,
-                        max_retries = MAX_RETRIES,
-                        error = %e,
-                        "Chunk download failed"
-                    );
-                    last_error = Some(e);
-
-                    if attempt < MAX_RETRIES {
-                        let backoff_ms = 1000 * (2u64.pow(attempt as u32 - 1));
-                        tracing::debug!(backoff_ms, "Retrying after backoff");
-                        std::thread::sleep(Duration::from_millis(backoff_ms));
+                    tracing::warn!(attempt, error = %e, "Chunk download failed");
+                    match backoff.next() {
+                        Some(delay) => {
+                            tracing::debug!(
+                                backoff_ms = delay.as_millis(),
+                                "Retrying after backoff"
+                            );
+                            sleep_interruptible(delay, should_cancel)?;
+                        }
+                        None => return Err(e),
                     }
                 }
             }
         }
-
-        Err(last_error.expect("MAX_RETRIES >= 1, so last_error is always set"))
     }
 
     /// Downloads a specific byte range from a URL using the HTTP `Range` header.
@@ -315,4 +470,102 @@ fn build_root_store() -> RootCertStore {
     let mut store = RootCertStore::empty();
     store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
     store
+}
+
+fn sleep_interruptible(
+    duration: Duration,
+    should_cancel: Option<CancelFunc<'_>>,
+) -> Result<(), ChunkedDownloadError> {
+    let Some(should_cancel) = should_cancel else {
+        std::thread::sleep(duration);
+        return Ok(());
+    };
+
+    let deadline = std::time::Instant::now() + duration;
+    while std::time::Instant::now() < deadline {
+        if should_cancel.is_cancelled() {
+            return Err(ChunkedDownloadError::Cancelled);
+        }
+        let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+        std::thread::sleep(remaining.min(CANCEL_POLL_INTERVAL));
+    }
+
+    if should_cancel.is_cancelled() {
+        return Err(ChunkedDownloadError::Cancelled);
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cancel_flag_cancel_wins_before_commit() {
+        let flag = CancelFlag::new();
+        flag.request_cancel();
+        assert!(flag.is_cancelled());
+        assert!(!flag.try_commit());
+    }
+
+    #[test]
+    fn cancel_flag_commit_wins_over_late_cancel() {
+        let flag = CancelFlag::new();
+        assert!(flag.try_commit());
+        flag.request_cancel();
+        assert!(!flag.is_cancelled());
+        assert!(!flag.try_commit());
+    }
+
+    #[test]
+    fn download_returns_cancelled_before_first_chunk() {
+        crate::crypto::init_crypto_provider();
+        let client = Client::new().expect("client");
+        let temp_dir = tempfile::Builder::new()
+            .prefix("cadmus-http-cancel-")
+            .tempdir()
+            .expect("tempdir");
+        let dest = temp_dir.path().join("partial.bin");
+
+        let cancel_check = || true;
+        let result = client.download(
+            "https://example.invalid/unused",
+            1024,
+            &dest,
+            |url| client.get(url),
+            &mut |_, _| {},
+            Some(CancelFunc::new(&cancel_check)),
+        );
+
+        assert!(matches!(result, Err(ChunkedDownloadError::Cancelled)));
+        assert!(!dest.exists(), "partial download file should be removed");
+    }
+
+    #[test]
+    fn download_returns_cancelled_during_chunk_retries() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        crate::crypto::init_crypto_provider();
+        let client = Client::new().expect("client");
+        let temp_dir = tempfile::Builder::new()
+            .prefix("cadmus-http-cancel-retry-")
+            .tempdir()
+            .expect("tempdir");
+        let dest = temp_dir.path().join("partial.bin");
+        let checks = AtomicUsize::new(0);
+        let cancel_check = || checks.fetch_add(1, Ordering::Relaxed) >= 2;
+
+        let result = client.download(
+            "http://127.0.0.1:1/unused",
+            1024,
+            &dest,
+            |url| client.get(url),
+            &mut |_, _| {},
+            Some(CancelFunc::new(&cancel_check)),
+        );
+
+        assert!(matches!(result, Err(ChunkedDownloadError::Cancelled)));
+        assert!(!dest.exists(), "partial download file should be removed");
+    }
 }

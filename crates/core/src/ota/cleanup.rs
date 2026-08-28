@@ -70,9 +70,132 @@ fn remove_empty_dir_if_exists(path: &Path) -> io::Result<bool> {
     }
 }
 
+/// Removes partial OTA download files from a temp directory.
+pub fn cleanup_ota_artifacts(tmp_dir: &Path) {
+    let entries = match std::fs::read_dir(tmp_dir) {
+        Ok(entries) => entries,
+        Err(e) => {
+            tracing::warn!(path = ?tmp_dir, error = %e, "Failed to read OTA temp directory");
+            return;
+        }
+    };
+
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(e) => {
+                tracing::warn!(
+                    path = ?tmp_dir,
+                    error = %e,
+                    "Failed to read OTA temp directory entry"
+                );
+                continue;
+            }
+        };
+        let name = entry.file_name();
+        if name.to_string_lossy().starts_with("cadmus-ota-") {
+            let path = entry.path();
+            if let Err(e) = std::fs::remove_file(&path) {
+                tracing::warn!(path = ?path, error = %e, "Failed to remove OTA download artifact");
+            }
+        }
+    }
+}
+
+/// Removes leftover staging partials next to the deploy path and any partial OTA downloads.
+pub fn cleanup_ota_cancel(tmp_dir: &Path, deploy_path: &Path) {
+    cleanup_ota_artifacts(tmp_dir);
+    cleanup_staging_partials(deploy_path);
+}
+
+fn cleanup_staging_partials(deploy_path: &Path) {
+    let Some(parent) = deploy_path.parent() else {
+        return;
+    };
+    let Some(deploy_name) = deploy_path.file_name() else {
+        return;
+    };
+    let prefix = format!("{}.", deploy_name.to_string_lossy());
+
+    let entries = match std::fs::read_dir(parent) {
+        Ok(entries) => entries,
+        Err(e) => {
+            tracing::warn!(
+                path = ?parent,
+                error = %e,
+                "Failed to read OTA deploy directory for staging cleanup"
+            );
+            return;
+        }
+    };
+
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(e) => {
+                tracing::warn!(
+                    path = ?parent,
+                    error = %e,
+                    "Failed to read OTA deploy directory entry"
+                );
+                continue;
+            }
+        };
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if name.starts_with(&prefix) && name.ends_with(".partial") {
+            let path = entry.path();
+            if let Err(e) = std::fs::remove_file(&path) {
+                tracing::warn!(path = ?path, error = %e, "Failed to remove OTA staging partial");
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cleanup_ota_artifacts_removes_cadmus_ota_prefix_files() {
+        let tmp = tempfile::Builder::new()
+            .prefix("cadmus-ota-cleanup-")
+            .tempdir()
+            .expect("tempdir");
+        let keep = tmp.path().join("other-file.txt");
+        let partial = tmp.path().join("cadmus-ota-123.zip");
+        std::fs::write(&keep, b"keep").unwrap();
+        std::fs::write(&partial, b"partial").unwrap();
+
+        cleanup_ota_artifacts(tmp.path());
+
+        assert!(!partial.exists());
+        assert!(keep.exists());
+    }
+
+    #[test]
+    fn cleanup_ota_cancel_removes_staging_partials_and_artifacts() {
+        let tmp = tempfile::Builder::new()
+            .prefix("cadmus-ota-cancel-")
+            .tempdir()
+            .expect("tempdir");
+        let keep = tmp.path().join("other-file.txt");
+        let partial = tmp.path().join("cadmus-ota-456.zip");
+        let deploy = tmp.path().join("KoboRoot.tgz");
+        let staging = tmp.path().join("KoboRoot.tgz.abc.partial");
+        let other_partial = tmp.path().join("other.tgz.xyz.partial");
+        std::fs::write(&keep, b"keep").unwrap();
+        std::fs::write(&partial, b"partial").unwrap();
+        std::fs::write(&staging, b"staging").unwrap();
+        std::fs::write(&other_partial, b"other").unwrap();
+
+        cleanup_ota_cancel(tmp.path(), &deploy);
+
+        assert!(!partial.exists());
+        assert!(!staging.exists());
+        assert!(other_partial.exists());
+        assert!(keep.exists());
+    }
 
     #[test]
     fn cleanup_removes_bundled_files_but_keeps_user_files() {

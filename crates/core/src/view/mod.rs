@@ -557,6 +557,8 @@ pub enum Event {
     OtaDownloadProgress {
         label: String,
         percent: u8,
+        /// When false, the update is committed and cancel must be hidden.
+        cancelable: bool,
     },
     /// Signal to start downloading the stable release after version check.
     ///

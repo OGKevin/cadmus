@@ -46,7 +46,23 @@ top-menu-wifi = WiFi
 
 # OTA
 
+ota-already-latest = You already have the latest version
+ota-auth-error = GitHub authorization failed
+ota-auth-timed-out = GitHub authorization timed out. Please try again.
+ota-cannot-compare-versions = Cannot compare versions
+ota-check-updates-failed = Failed to check for updates
+ota-client-build-failed = Failed to create client
+ota-deployment-failed = Deployment failed
+ota-download-cancel = {cancel}
+ota-download-failed = Download failed
+ota-downloading-default-branch = Downloading main branch build… { $percent }%
+ota-downloading-pr = Downloading PR #{ $pr_number } build… { $percent }%
+ota-downloading-stable-release = Downloading stable release… { $percent }%
 ota-installing-and-rebooting = Installing and rebooting…
+ota-invalid-pr-number = Invalid PR number
+ota-pr-input-title = Download Build from PR
+ota-version-comparison-error = Version comparison failed
+ota-version-newer = Your version is newer than the latest release
 
 # Settings - Button Scheme
 settings-button-scheme-natural = Natural
@@ -229,6 +245,3 @@ calendar-weekday-thu = THU
 calendar-weekday-fri = FRI
 calendar-weekday-sat = SAT
 calendar-weekday-sun = SUN
-
-# OTA
-ota-downloading-stable-release = Downloading stable release… { $percent }%
