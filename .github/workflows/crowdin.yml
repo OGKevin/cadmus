@@ -38,7 +38,7 @@ jobs:
 
       - name: Upload sources and existing translations, download new translations
         if: steps.filter.outputs.i18n == 'true' || github.event_name == 'push'
-        uses: crowdin/github-action@c7af9bc98b01694653031fef2a0dc6c7888ce9bc # v2
+        uses: crowdin/github-action@8f01d54f70f1713ee3f09d82c2bbb2daeac28689 # v2
         with:
           skip_ref_checkout: true
           dryrun_action: ${{ github.event_name == 'pull_request' }}
