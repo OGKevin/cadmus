@@ -107,7 +107,6 @@ impl<D: Device> Context<D> {
             std::time::Duration::from_secs_f32(settings.autosleep_grace.max(0.0)),
         );
         wifi_session.set_soft_suspend_session(std::sync::Arc::clone(&soft_suspend_session));
-        let _ = library.cleanup_stale_sessions();
         Context {
             device,
             alarm_manager,
@@ -330,14 +329,6 @@ impl<D: Device> Context<D> {
             Ok(new_dims)
         } else {
             result
-        }
-    }
-}
-
-impl<D: Device> Drop for Context<D> {
-    fn drop(&mut self) {
-        if let Some(fp) = self.current_reading_book {
-            let _ = self.library.end_reading_session(&fp);
         }
     }
 }
