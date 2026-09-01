@@ -2,11 +2,8 @@ pub mod db;
 pub mod models;
 
 use crate::db::Database;
-use crate::db::types::UnixTimestamp;
 use crate::helpers::Fp;
-use crate::runtime::RUNTIME;
 use anyhow::Error;
-use sqlx::sqlite::SqlitePool;
 
 use self::db::StatisticsDb;
 use self::models::ReadingEventType;
@@ -42,7 +39,9 @@ impl Statistics {
 mod tests {
     use super::*;
     use crate::context::test_helpers::create_test_context;
+    use crate::db::types::UnixTimestamp;
     use crate::helpers::Fp;
+    use crate::runtime::RUNTIME;
 
     /// Helper to insert a minimal test book into the database.
     /// Required because reading_events has a foreign key constraint on book_fingerprint.
