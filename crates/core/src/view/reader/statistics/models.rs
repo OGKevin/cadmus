@@ -79,7 +79,7 @@ impl sqlx::Type<Sqlite> for ReadingEventType {
     }
 }
 
-impl sqlx::Encode<'_, Sqlite> for ReadingEventType {
+impl<'q> sqlx::Encode<'q, Sqlite> for ReadingEventType {
     fn encode_by_ref(&self, buf: &mut SqliteArgumentsBuffer) -> Result<IsNull, BoxDynError> {
         self.as_str().encode_by_ref(buf)
     }
