@@ -464,10 +464,8 @@ impl Reader {
             info!("{}", info.file.path.display());
 
             let statistics = Statistics::new(&context.database);
-            if let Some(fp) = info.fp {
-                if let Err(e) = statistics.record_event(fp, ReadingEventType::BookOpened) {
-                    tracing::error!(error = %e, fp = %fp, event = %ReadingEventType::BookOpened, "failed to log reading event");
-                }
+            if let Some(fp) = info.fp && let Err(e) = statistics.record_event(fp, ReadingEventType::BookOpened) {
+                tracing::error!(error = %e, fp = %fp, event = %ReadingEventType::BookOpened, "failed to log reading event");
             }
 
             hub.send((Event::Update(UpdateMode::Partial)).into()).ok();
@@ -544,10 +542,10 @@ impl Reader {
         }
 
         let statistics = Statistics::new(&context.database);
-        if let Some(fp) = info.fp {
-            if let Err(e) = statistics.record_event(fp, ReadingEventType::BookOpened) {
-                tracing::error!(error = %e, fp = %fp, event = %ReadingEventType::BookOpened, "failed to log reading event");
-            }
+        if let Some(fp) = info.fp
+            && let Err(e) = statistics.record_event(fp, ReadingEventType::BookOpened)
+        {
+            tracing::error!(error = %e, fp = %fp, event = %ReadingEventType::BookOpened, "failed to log reading event");
         }
 
         hub.send((Event::Update(UpdateMode::Partial)).into()).ok();
@@ -613,10 +611,10 @@ impl Reader {
         let pages_count = doc.pages_count();
 
         let statistics = Statistics::new(&context.database);
-        if let Some(fp) = info.fp {
-            if let Err(e) = statistics.record_event(fp, ReadingEventType::BookOpened) {
-                tracing::error!(error = %e, fp = %fp, event = %ReadingEventType::BookOpened, "failed to log reading event");
-            }
+        if let Some(fp) = info.fp
+            && let Err(e) = statistics.record_event(fp, ReadingEventType::BookOpened)
+        {
+            tracing::error!(error = %e, fp = %fp, event = %ReadingEventType::BookOpened, "failed to log reading event");
         }
 
         hub.send((Event::Update(UpdateMode::Partial)).into()).ok();
@@ -638,7 +636,7 @@ impl Reader {
             selection: None,
             target_annotation: None,
             history: VecDeque::new(),
-            statistics: statistics,
+            statistics,
             state: State::Idle,
             info,
             current_page: 0,
@@ -746,10 +744,10 @@ impl Reader {
                 s.current_page = s.highlights.range(..=location).count().saturating_sub(1);
             }
 
-            if let Some(fp) = self.info.fp {
-                if let Err(e) = self.statistics.record_event(fp, ReadingEventType::PageTurn) {
-                    tracing::error!(error = %e, fp = %fp, event = %ReadingEventType::PageTurn, "failed to log reading event");
-                }
+            if let Some(fp) = self.info.fp
+                && let Err(e) = self.statistics.record_event(fp, ReadingEventType::PageTurn)
+            {
+                tracing::error!(error = %e, fp = %fp, event = %ReadingEventType::PageTurn, "failed to log reading event");
             }
 
             self.current_page = location;
@@ -970,10 +968,10 @@ impl Reader {
         self.update(None, hub, rq, context);
 
         if location_changed {
-            if let Some(fp) = self.info.fp {
-                if let Err(e) = self.statistics.record_event(fp, ReadingEventType::PageTurn) {
-                    tracing::error!(error = %e, fp = %fp, event = %ReadingEventType::PageTurn, "failed to log reading event");
-                }
+            if let Some(fp) = self.info.fp
+                && let Err(e) = self.statistics.record_event(fp, ReadingEventType::PageTurn)
+            {
+                tracing::error!(error = %e, fp = %fp, event = %ReadingEventType::PageTurn, "failed to log reading event");
             }
 
             if let Some(ref mut s) = self.search {
@@ -1152,10 +1150,10 @@ impl Reader {
             Some(location)
                 if location != current_page || self.view_port.page_offset != page_offset =>
             {
-                if let Some(fp) = self.info.fp {
-                    if let Err(e) = self.statistics.record_event(fp, ReadingEventType::PageTurn) {
-                        tracing::error!(error = %e, fp = %fp, event = %ReadingEventType::PageTurn, "failed to log reading event");
-                    }
+                if let Some(fp) = self.info.fp
+                    && let Err(e) = self.statistics.record_event(fp, ReadingEventType::PageTurn)
+                {
+                    tracing::error!(error = %e, fp = %fp, event = %ReadingEventType::PageTurn, "failed to log reading event");
                 }
 
                 if let Some(ref mut s) = self.search {
@@ -3901,15 +3899,13 @@ impl Reader {
                 r.contrast_gray = None;
             }
 
-            if let Some(fp) = self.info.fp {
-                if let Err(e) = self
+            if let Some(fp) = self.info.fp
+                && let Err(e) = self
                     .statistics
                     .record_event(fp, ReadingEventType::BookClosed)
-                {
-                    tracing::error!(error = %e, fp = %fp, event = %ReadingEventType::BookClosed, "failed to log reading event");
-                };
-            }
-
+            {
+                tracing::error!(error = %e, fp = %fp, event = %ReadingEventType::BookClosed, "failed to log reading event");
+            };
             context.library.sync_reader_info(&self.info.file.path, r);
         }
     }
