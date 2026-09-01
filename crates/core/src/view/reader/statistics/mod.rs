@@ -24,9 +24,7 @@ impl Statistics {
 
     /// Record a reading event for a book.
     ///
-    /// This records discrete events (BookOpened, BookClosed, PageTurn) and
-    /// updates the aggregate reading time with capping at 5 minutes between
-    /// consecutive events.
+    /// This records discrete events (BookOpened, BookClosed, PageTurn) to the library database.
     ///
     /// # Arguments
     /// * `fp` - Fingerprint of the book

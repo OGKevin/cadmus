@@ -24,7 +24,6 @@ impl StatisticsDb {
         RUNTIME.block_on(async {
             let now = UnixTimestamp::now();
 
-            // Insert the event
             tracing::debug!(fp = %fp, event_type = %event_type, ts = %now, "inserting event");
             sqlx::query!(
                 "INSERT INTO reading_events (book_fingerprint, timestamp, event_type) VALUES (?, ?, ?)",
