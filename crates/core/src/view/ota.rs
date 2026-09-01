@@ -12,6 +12,7 @@ use super::{
 };
 use crate::color::WHITE;
 use crate::device::AppContext;
+use crate::device::inhibitor::{Inhibitor, InhibitorError, Kind};
 use crate::device::wifi::WifiSession;
 use crate::device::{DeviceIdentity as _, DevicePaths as _};
 use crate::fl;
@@ -499,7 +500,7 @@ impl OtaView {
     }
 
     /// Restarts the in-flight download with the currently effective token.
-    fn resume_pending_download(&mut self, hub: &Hub, context: &AppContext) {
+    fn resume_pending_download(&mut self, hub: &Hub, context: &mut AppContext) {
         match self.pending_download.clone() {
             Some(PendingDownload::DefaultBranch) => {
                 self.start_default_branch_download(hub, context);
@@ -557,7 +558,7 @@ impl OtaView {
     /// Requires a GitHub token; callers must validate with
     /// [`Self::require_github_token`] first.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, context)))]
-    fn start_pr_download(&mut self, pr_number: u32, hub: &Hub, context: &AppContext) {
+    fn start_pr_download(&mut self, pr_number: u32, hub: &Hub, context: &mut AppContext) {
         let Some(github_token) = self.effective_github_token() else {
             tracing::error!(
                 "GitHub token is missing when starting download, this code path should be unreachable due to prior validation"
@@ -575,6 +576,7 @@ impl OtaView {
             github_token: Some(github_token),
             cancelled: Arc::clone(&self.cancelled),
             wifi_session: context.wifi_session.clone(),
+            inhibitor: Arc::clone(&context.inhibitor),
         });
     }
 
@@ -583,7 +585,7 @@ impl OtaView {
     /// Requires a GitHub token; callers must validate with
     /// [`Self::require_github_token`] first.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, context)))]
-    fn start_default_branch_download(&mut self, hub: &Hub, context: &AppContext) {
+    fn start_default_branch_download(&mut self, hub: &Hub, context: &mut AppContext) {
         let Some(github_token) = self.effective_github_token() else {
             tracing::error!(
                 "GitHub token is missing when starting download, this code path should be unreachable due to prior validation"
@@ -601,6 +603,7 @@ impl OtaView {
             github_token: Some(github_token),
             cancelled: Arc::clone(&self.cancelled),
             wifi_session: context.wifi_session.clone(),
+            inhibitor: Arc::clone(&context.inhibitor),
         });
     }
 
@@ -608,7 +611,7 @@ impl OtaView {
     ///
     /// GitHub authentication is optional for this path.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, context)))]
-    fn start_stable_release_download(&mut self, hub: &Hub, context: &AppContext) {
+    fn start_stable_release_download(&mut self, hub: &Hub, context: &mut AppContext) {
         self.begin_download();
         run_ota_download(OtaDownloadContext {
             kind: OtaDownloadKind::StableRelease,
@@ -619,6 +622,7 @@ impl OtaView {
             github_token: self.effective_github_token(),
             cancelled: Arc::clone(&self.cancelled),
             wifi_session: context.wifi_session.clone(),
+            inhibitor: Arc::clone(&context.inhibitor),
         });
     }
 }
@@ -633,6 +637,7 @@ struct OtaDownloadContext {
     github_token: Option<SecretString>,
     cancelled: Arc<CancelFlag>,
     wifi_session: Arc<WifiSession>,
+    inhibitor: Arc<Inhibitor>,
 }
 
 /// Cleans up partial OTA files and closes the view after user cancellation.
@@ -688,8 +693,12 @@ fn send_ota_progress(hub: &Hub, label: String, percent: u8, cancelable: bool) {
 /// [`GithubEvent::TokenInvalid`] without closing the view so re-authentication
 /// can proceed.
 ///
-/// Acquires a WiFi lease for the duration of the download; the lease is
-/// released when the thread exits.
+/// Acquires a WiFi lease `"ota-download"` and a Full `"ota"`
+/// [`InhibitorGuard`](crate::device::inhibitor::InhibitorGuard) for the
+/// download. Both drop when the thread exits (success, cancel, failure,
+/// re-auth, panic). Success sends
+/// [`Event::ClearDeferredSuspend`] **before** the Full guard drops, then
+/// delays reboot, so a deferred Auto Suspend does not race the reboot.
 fn run_ota_download(ctx: OtaDownloadContext) {
     let OtaDownloadContext {
         kind,
@@ -700,6 +709,7 @@ fn run_ota_download(ctx: OtaDownloadContext) {
         github_token,
         cancelled,
         wifi_session,
+        inhibitor,
     } = ctx;
 
     let hub2 = hub.clone();
@@ -732,6 +742,19 @@ fn run_ota_download(ctx: OtaDownloadContext) {
                 hub2.send((Event::Close(ota_view_id)).into()).ok();
                 hub2.send(
                     (Event::Notification(NotificationEvent::Show(fl!("notification-not-online"))))
+                        .into(),
+                )
+                .ok();
+                return;
+            }
+        };
+
+        let _full_hold = match inhibitor.acquire(Kind::Full, "ota") {
+            Ok(guard) => guard,
+            Err(InhibitorError::BatteryTooLow) => {
+                hub2.send((Event::Close(ota_view_id)).into()).ok();
+                hub2.send(
+                    (Event::Notification(NotificationEvent::Show(fl!("ota-battery-too-low"))))
                         .into(),
                 )
                 .ok();
@@ -824,7 +847,10 @@ fn run_ota_download(ctx: OtaDownloadContext) {
                 }
 
                 match deploy_result {
-                    Ok(outcome) => finish_successful_deploy(&hub2, &install_dir, outcome),
+                    Ok(outcome) => {
+                        hub2.send((Event::ClearDeferredSuspend).into()).ok();
+                        finish_successful_deploy(&hub2, &install_dir, outcome);
+                    }
                     Err(e) => {
                         error!(error = %e, "Deployment failed");
                         hub2.send((Event::Close(ota_view_id)).into()).ok();

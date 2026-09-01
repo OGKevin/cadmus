@@ -678,7 +678,11 @@ mod tests {
             let mut context = create_test_context();
             let (_dir, paths) = SoftSuspendPaths::test_fixture();
             fs::write(&paths.state, "freeze\n").expect("state without mem");
-            let inhibitor = crate::device::inhibitor::Inhibitor::with_paths(paths, None);
+            let inhibitor = crate::device::inhibitor::Inhibitor::with_paths(
+                paths,
+                None,
+                std::sync::Arc::new(crate::device::battery::FakeBattery::new()),
+            );
             context.wifi_session.set_inhibitor(Arc::clone(&inhibitor));
             context.inhibitor = inhibitor;
             context.settings = Settings::default();

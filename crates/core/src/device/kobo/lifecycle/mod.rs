@@ -1,4 +1,10 @@
 //! Suspend, power-off, and USB-share event handling.
+//!
+//! On startup, registers
+//! [`Inhibitor::set_full_release_notifier`](crate::device::inhibitor::Inhibitor::set_full_release_notifier)
+//! so the last [`Kind::Full`](crate::device::inhibitor::Kind::Full) drop posts
+//! [`Event::FullInhibitCleared`]. Power and exit paths consult
+//! [`Inhibitor::full_active`](crate::device::inhibitor::Inhibitor::full_active).
 
 mod battery;
 mod device_events;
@@ -14,7 +20,7 @@ use crate::device::DeviceHardware as _;
 use crate::device::DeviceLifecycle;
 use crate::device::DeviceRotation as _;
 use crate::device::battery::Battery as _;
-use crate::device::inhibitor::{Kind, SoftSuspendName};
+use crate::device::inhibitor::SoftSuspendName;
 use crate::device::power::PowerManager;
 use crate::device::reschedule_auto_suspend_alarm;
 use crate::device::schedule_device_task;
@@ -78,6 +84,12 @@ impl DeviceLifecycle for Device {
             context.settings.indicate_autosleep_led,
             std::time::Duration::from_secs_f32(context.settings.autosleep_grace.max(0.0)),
         );
+        let hub_notify = hub.clone();
+        context
+            .inhibitor
+            .set_full_release_notifier(Arc::new(move || {
+                hub_notify.send(Event::FullInhibitCleared.into()).ok();
+            }));
         if !wants_on {
             context.online = false;
         }
@@ -142,9 +154,10 @@ impl DeviceLifecycle for Device {
             crate::device::rtc::AlarmManager::start_irq_listener(
                 &alarm_manager,
                 move |alarm_type| {
-                    hub.send(HubMessage::with_soft_suspend(
+                    hub.send(HubMessage::try_with_soft_suspend(
+                        &inhibitor,
+                        SoftSuspendName::Rtc,
                         Event::RtcAlarmFired(alarm_type),
-                        inhibitor.acquire(Kind::SoftSuspend, SoftSuspendName::Rtc),
                     ))
                     .ok();
                 },
@@ -228,7 +241,9 @@ impl DeviceLifecycle for Device {
             Event::PrepareSuspend
             | Event::Suspend
             | Event::PollDeepIdleWait
-            | Event::RtcAlarmFired(_) => {
+            | Event::RtcAlarmFired(_)
+            | Event::FullInhibitCleared
+            | Event::ClearDeferredSuspend => {
                 handle_suspend_event(event, hub, bus, rq, context, runtime)
             }
             Event::PrepareShare | Event::Share => {

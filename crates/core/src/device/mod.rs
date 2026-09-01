@@ -615,10 +615,13 @@ pub trait DeviceHardware: Send {
     /// Returns [`crate::device::leds::LedsError`] when LEDs are unavailable.
     fn leds(&self) -> Result<std::sync::Arc<Self::Leds>, crate::device::leds::LedsError>;
 
-    /// Returns this device's inhibitor (SoftSuspend kind + LED arbiter).
+    /// Returns this device's inhibitor (SoftSuspend + Full kinds, LED arbiter,
+    /// shared battery for Full acquire gating).
     ///
     /// Default: [`crate::device::inhibitor::Inhibitor::noop`].
-    /// Kobo probes sysfs via [`Inhibitor::from_system`](crate::device::inhibitor::Inhibitor::from_system).
+    /// Emulator / test devices use [`Inhibitor::noop_with_battery`](crate::device::inhibitor::Inhibitor::noop_with_battery)
+    /// with the device battery. Kobo probes sysfs via
+    /// [`Inhibitor::from_system`](crate::device::inhibitor::Inhibitor::from_system).
     fn inhibitor(&self) -> Arc<crate::device::inhibitor::Inhibitor> {
         crate::device::inhibitor::Inhibitor::noop()
     }

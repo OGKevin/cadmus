@@ -67,13 +67,25 @@ fn arm_deep_idle_lease(context: &mut AppContext) -> bool {
     {
         return true;
     }
-    let lease = context
+    match context
         .inhibitor
-        .acquire(Kind::SoftSuspend, SoftSuspendName::DeepIdle);
-    if let Some(cycle) = context.suspend.as_mut() {
-        cycle.cycle_lease = Some(lease);
+        .acquire(Kind::SoftSuspend, SoftSuspendName::DeepIdle)
+    {
+        Ok(lease) => {
+            if let Some(cycle) = context.suspend.as_mut() {
+                cycle.cycle_lease = Some(lease);
+            }
+            true
+        }
+        Err(error) => {
+            tracing::error!(
+                error = %error,
+                soft_suspend_lease = %SoftSuspendName::DeepIdle,
+                "failed to acquire deep-idle cycle lease"
+            );
+            false
+        }
     }
-    true
 }
 
 /// Restores autosleep mode and disarms kernel deep idle when leaving a DeepIdle leg.
@@ -216,8 +228,56 @@ pub(crate) fn handle_event(
         Event::RtcAlarmFired(alarm_type) => {
             handle_rtc_alarm_fired(*alarm_type, hub, bus, rq, context, runtime)
         }
+        Event::FullInhibitCleared => {
+            handle_full_inhibit_cleared(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
+        }
+        Event::ClearDeferredSuspend => handle_clear_deferred_suspend(context),
         _ => EventOutcome::Unhandled,
     }
+}
+
+/// Clears a queued deferred suspend intent without starting a cycle.
+///
+/// Used when the deferred sleep must not run: OTA reboot
+/// ([`Event::ClearDeferredSuspend`])
+/// and user activity ([`crate::device::reschedule_auto_suspend_alarm`]).
+/// Returns whether a flag was actually cleared.
+pub(crate) fn clear_deferred_suspend(context: &mut AppContext, reason: &'static str) -> bool {
+    if !context.deferred_suspend {
+        return false;
+    }
+    context.deferred_suspend = false;
+    tracing::debug!(reason, "cleared deferred suspend intent");
+    true
+}
+
+/// Drops deferred suspend without flushing (OTA success before reboot).
+///
+/// Does not re-arm [`AlarmType::AutoSuspend`]; that needs a later
+/// [`crate::device::reschedule_auto_suspend_alarm`].
+fn handle_clear_deferred_suspend(context: &mut AppContext) -> EventOutcome {
+    clear_deferred_suspend(context, "ota_reboot");
+    EventOutcome::Handled
+}
+
+/// Flushes a deferred suspend intent queued while Full inhibit was active.
+///
+/// Posted by the Full last-release notifier
+/// ([`Inhibitor::set_full_release_notifier`](crate::device::inhibitor::Inhibitor::set_full_release_notifier)).
+/// If [`Context::deferred_suspend`](crate::context::Context::deferred_suspend)
+/// is still set, starts a cycle now that Full is gone.
+fn handle_full_inhibit_cleared(
+    context: &mut AppContext,
+    view: &mut dyn View,
+    hub: &Hub,
+    bus: &mut crate::view::Bus,
+    rq: &mut RenderQueue,
+    tasks: &mut Vec<DeviceTask>,
+) -> EventOutcome {
+    if clear_deferred_suspend(context, "full_inhibit_cleared") {
+        start_cycle(context, view, hub, bus, rq, tasks);
+    }
+    EventOutcome::Handled
 }
 
 /// Dispatches suspend-related RTC IRQ alarms onto phase handlers.
@@ -234,6 +294,9 @@ fn handle_rtc_alarm_fired(
         AlarmType::Suspend => enter_sleep(hub, bus, rq, context, runtime),
         AlarmType::WakeDebounce => handle_wake_debounce_fired(hub, bus, rq, context, runtime),
         AlarmType::AutoPowerOff => {
+            if context.inhibitor.full_active() {
+                return EventOutcome::Handled;
+            }
             show_power_off_intermission(
                 context,
                 runtime.view.as_mut(),
@@ -791,6 +854,11 @@ fn handle_post_wake(
 /// Does **not** put the SoC to sleep. Sleep happens later via
 /// [`prepare_for_sleep`] → [`enter_sleep`]. Kind is taken from an existing cycle
 /// (re-entry) or from soft-suspend armedness (`DeepIdle` vs `Classic`).
+///
+/// When [`Inhibitor::full_active`](crate::device::inhibitor::Inhibitor::full_active)
+/// is true, sets
+/// [`Context::deferred_suspend`](crate::context::Context::deferred_suspend)
+/// and returns without a cycle. SoftSuspend-only holders do not defer.
 pub(crate) fn start_cycle(
     context: &mut AppContext,
     view: &mut dyn View,
@@ -799,6 +867,12 @@ pub(crate) fn start_cycle(
     rq: &mut crate::view::RenderQueue,
     tasks: &mut Vec<DeviceTask>,
 ) {
+    if context.inhibitor.full_active() {
+        context.deferred_suspend = true;
+        tracing::debug!("deferring suspend while Full inhibit active");
+        return;
+    }
+
     cancel_auto_suspend_alarm(context);
     cancel_suspend_rtcs(context);
 
@@ -814,10 +888,20 @@ pub(crate) fn start_cycle(
     let mut cycle = SuspendCycle::new(kind);
     cycle.deep_idle_restore = preserved_restore;
     if kind == SuspendKind::DeepIdle {
-        let lease = context
+        match context
             .inhibitor
-            .acquire(Kind::SoftSuspend, SoftSuspendName::DeepIdle);
-        cycle.cycle_lease = Some(lease);
+            .acquire(Kind::SoftSuspend, SoftSuspendName::DeepIdle)
+        {
+            Ok(lease) => cycle.cycle_lease = Some(lease),
+            Err(error) => {
+                tracing::error!(
+                    error = %error,
+                    soft_suspend_lease = %SoftSuspendName::DeepIdle,
+                    "failed to acquire deep-idle cycle lease; falling back to Classic suspend"
+                );
+                cycle.kind = SuspendKind::Classic;
+            }
+        }
     }
     context.suspend = Some(cycle);
 

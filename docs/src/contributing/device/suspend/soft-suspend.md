@@ -1,142 +1,83 @@
 <!-- i18n:skip-start -->
 
-# Soft Suspend
+# Soft suspend
 
-Cadmus soft suspend is an opt-in opportunistic sleep path driven by the
-kernel autosleep workqueue and a single userspace wake lock. User-facing
-behaviour is documented in [Soft Suspend](../../../soft-suspend.md). Research that
-led to this design is in
-[investigation #361](../../../investigations/kobo/issue-361-autosleep-wake-lock.md).
+Opt-in **opportunistic** sleep: the kernel autosleep workqueue naps between
+Cadmus events when nothing holds the userspace wake lock. This is **not** the
+Auto Suspend intermission path — that is
+[explicit suspend](orchestrator.md).
 
-Kobo Auto Suspend / deep-idle integration (RTC deadline, `state-extended`,
-cycle lease, PrepareSuspend delays) is documented separately in
-[Kobo suspend](kobo/suspend.md). Shared cycle orchestration is in
-[Suspend orchestrator](orchestrator.md).
+User-facing behaviour: [Soft Suspend](../../../soft-suspend.md).
 
 ## Architecture
 
 ```mermaid
 flowchart TD
-  acquire["Inhibitor::acquire<br/>Kind::SoftSuspend"] --> kind["SoftSuspendKind backend"]
-  settings["AutosleepMode<br/>Off / Freeze / Mem"] --> apply["write autosleep sysfs"]
+  acquire["Inhibitor::acquire(Kind::SoftSuspend)"] --> kind["SoftSuspendKind backend"]
+  settings["AutosleepMode Off / Freeze / Mem"] --> apply["write autosleep sysfs"]
   ledSetting["indicate autosleep LED"] --> led["StatusLed soft-indicate"]
-  graceSetting["autosleep grace seconds"] --> armer["WakeLockArmer"]
+  graceSetting["autosleep grace"] --> armer["WakeLockArmer"]
   holders["Named SoftSuspendName leases"] --> tracker["LeaseTracker"]
-  tracker -->|"0 to 1"| lock["wake_lock cadmus"]
-  tracker -->|"0 to 1"| cancel["cancel pending unlock"]
-  tracker -->|"0 to 1"| ledOn["LED on if indicator<br/>enabled"]
-  tracker -->|"1 to 0"| armer
-  armer -->|"after grace or<br/>immediate if 0"| unlock["wake_unlock cadmus"]
+  tracker -->|"0 → 1"| lock["wake_lock cadmus"]
+  tracker -->|"1 → 0"| armer
+  armer -->|"after grace"| unlock["wake_unlock cadmus"]
   apply --> kernel["kernel autosleep"]
   lock --> kernel
   unlock --> kernel
-  kind --> tracker
-  kind --> apply
-  kind --> led
 ```
 
-<a href="/api/cadmus_core/device/inhibitor/struct.Inhibitor.html">`Inhibitor`</a>
-is the single entry point for inhibit leases and SoftSuspend settings.
-It orchestrates two kinds:
-
-| Kind                                                                                             | Wake lock                 | Blocks Cadmus suspend | Blocks user exits |
-| ------------------------------------------------------------------------------------------------ | ------------------------- | --------------------- | ----------------- |
-| <a href="/api/cadmus_core/device/inhibitor/enum.Kind.html#variant.SoftSuspend">`SoftSuspend`</a> | Yes (Linux)               | No                    | No                |
-| <a href="/api/cadmus_core/device/inhibitor/enum.Kind.html#variant.Full">`Full`</a>               | Yes (implies SoftSuspend) | Yes (planned)         | Yes (planned)     |
-
-Callers acquire a named lease with
-<a href="/api/cadmus_core/device/inhibitor/struct.Inhibitor.html#method.acquire">`Inhibitor::acquire`</a>,
-which returns an
-<a href="/api/cadmus_core/device/inhibitor/struct.InhibitorGuard.html">`InhibitorGuard`</a>
-(RAII — drop to release). Use
-<a href="/api/cadmus_core/device/inhibitor/enum.SoftSuspendName.html">`SoftSuspendName`</a>
-for standard SoftSuspend holder names (`input`, `wifi`, `main-loop`, …).
-
+Acquire leases through
+<a href="/api/cadmus_core/device/inhibitor/struct.Inhibitor.html#method.acquire">`Inhibitor::acquire(Kind::SoftSuspend, …)`</a>.
+To also block **explicit** suspend, use
 <a href="/api/cadmus_core/device/inhibitor/enum.Kind.html#variant.Full">`Kind::Full`</a>
-is reserved for OTA and other critical sections that must block Cadmus suspend
-and user exits. It is not implemented yet:
-<a href="/api/cadmus_core/device/inhibitor/struct.Inhibitor.html#method.acquire">`Inhibitor::acquire`</a>
-panics for that kind until the follow-up work lands.
+— [Inhibitor](inhibitor.md).
 
-### Backends and device wiring
+## Backends
 
-SoftSuspend behaviour is injected as `SoftSuspendKind` (`Arc<dyn SoftSuspendKind>`
-inside the inhibitor; see
-<a href="/api/cadmus_core/device/inhibitor/index.html">`device::inhibitor`</a>):
+`SoftSuspendKind` is injected into
+<a href="/api/cadmus_core/device/inhibitor/struct.Inhibitor.html">`Inhibitor`</a>
+at construction:
 
-- **Linux** — live backend built from a sysfs probe
-  (<a href="/api/cadmus_core/device/linux/soft_suspend/index.html">`device::linux::soft_suspend`</a>):
-  one shared `cadmus` wake lock, autosleep mode via
-  <a href="/api/cadmus_core/device/soft_suspend/mode/enum.AutosleepMode.html">`AutosleepMode`</a>,
-  and optional soft-indicate on a shared
-  <a href="/api/cadmus_core/device/leds/struct.StatusLed.html">`StatusLed`</a>
-  arbiter.
-- **NoOp** — inert backend: empty leases, no sysfs, no unlock worker. Used when
-  the probe fails or on emulator / test hosts.
+| Backend   | When                   | Behaviour                                                                   |
+| --------- | ---------------------- | --------------------------------------------------------------------------- |
+| **Linux** | Sysfs probe succeeds   | One shared `cadmus` wake lock, autosleep mode, optional `soft-indicate` LED |
+| **NoOp**  | Probe fails / emulator | Tracks leases in process; no sysfs or unlock worker                         |
 
-<a href="/api/cadmus_core/device/trait.DeviceHardware.html#method.inhibitor">`DeviceHardware::inhibitor`</a>
-returns the device inhibitor. The default is
-<a href="/api/cadmus_core/device/inhibitor/struct.Inhibitor.html#method.noop">`Inhibitor::noop`</a>.
-Kobo calls
+Kobo uses
 <a href="/api/cadmus_core/device/inhibitor/struct.Inhibitor.html#method.from_system">`Inhibitor::from_system`</a>,
-which probes `/sys/power/autosleep`, `wake_lock`, and `wake_unlock` (must exist
-and be writable) plus readable `/sys/power/state`. Any miss or `EPERM` falls
-back to NoOp with one log; Cadmus does not retry sysfs writes. Power settings
-hide Soft Suspend mode, LED, and grace when
+which requires writable `/sys/power/autosleep`, `wake_lock`, `wake_unlock` and
+readable `/sys/power/state`. Power settings hide Soft Suspend rows when
 <a href="/api/cadmus_core/device/soft_suspend/trait.SoftSuspendBackend.html#method.is_supported">`is_supported`</a>
 is false.
 
-The inhibitor is stored on
-<a href="/api/cadmus_core/context/struct.Context.html#structfield.inhibitor">`Context::inhibitor`</a>
-and shared with
-<a href="/api/cadmus_core/device/wifi/struct.WifiSession.html">`WifiSession`</a>
-so radio work can pin SoftSuspend while online.
+Implementation: `crates/core/src/device/linux/soft_suspend/`.
 
-### Settings contract
+## Settings
 
-Power UI and lifecycle code configure autosleep through
-<a href="/api/cadmus_core/device/soft_suspend/trait.SoftSuspendBackend.html">`SoftSuspendBackend`</a>,
-which
-<a href="/api/cadmus_core/device/inhibitor/struct.Inhibitor.html">`Inhibitor`</a>
-implements by delegating to the injected SoftSuspend kind. Lease acquire is
-**not** on this trait — use
-<a href="/api/cadmus_core/device/inhibitor/struct.Inhibitor.html#method.acquire">`Inhibitor::acquire`</a>.
+Power UI configures autosleep via
+<a href="/api/cadmus_core/device/soft_suspend/trait.SoftSuspendBackend.html">`SoftSuspendBackend`</a>
+(implemented by `Inhibitor`). Lease acquire is **not** on this trait.
 
-On Linux, the live kind coordinates:
+On Linux the live kind:
 
-- Reading `/sys/power/state` to discover available targets
-- Writing `/sys/power/autosleep`
-  (<a href="/api/cadmus_core/device/soft_suspend/mode/enum.AutosleepMode.html#variant.Off">`off`</a>
-  /
-  <a href="/api/cadmus_core/device/soft_suspend/mode/enum.AutosleepMode.html#variant.Freeze">`freeze`</a>
-  /
-  <a href="/api/cadmus_core/device/soft_suspend/mode/enum.AutosleepMode.html#variant.Mem">`mem`</a>)
-- A
-  <a href="/api/cadmus_core/lease/struct.LeaseTracker.html">`LeaseTracker`</a>
-  whose observer maps 0→1 to the single kernel lock name `cadmus`, and 1→0 to a
-  deferred `wake_unlock` after autosleep grace seconds (zero = unlock
-  immediately). A new lease during the grace cancels the pending unlock.
-- Optional LED indicator via
-  <a href="/api/cadmus_core/device/leds/trait.DeviceLeds.html">`DeviceLeds`</a>
-  through the shared
+- Writes `/sys/power/autosleep` (`off` / `freeze` / `mem`)
+- Maps lease tracker 0→1 to `wake_lock cadmus`, 1→0 to deferred `wake_unlock`
+  after **autosleep grace** (new lease during grace cancels pending unlock)
+- Optionally drives `soft-indicate` on the shared
   <a href="/api/cadmus_core/device/leds/struct.StatusLed.html">`StatusLed`</a>
-  arbiter (`soft-indicate` command while autosleep is armed and the setting is
-  enabled).
+  arbiter ([priorities in Inhibitor doc](inhibitor.md#status-led-arbiter))
 
-The probe opens nodes for write without writing `"cadmus"` or an autosleep
-token.
+Upstream:
+[sysfs-power ABI](https://www.kernel.org/doc/Documentation/ABI/testing/sysfs-power).
 
-Upstream references:
-[sysfs-power ABI](https://www.kernel.org/doc/Documentation/ABI/testing/sysfs-power)
-(`autosleep`, `wake_lock`, `wake_unlock`, `state`).
+## Typical lease holders
 
-## Lease holders
+Named leases only adjust Cadmus’s refcount; the kernel sees one lock (`cadmus`):
 
-Named leases only adjust the Cadmus refcount; the kernel still sees one lock
-(`cadmus`). Holders include the main loop, input, Wi‑Fi, and background
-tasks while they run. Dropping the last lease (after grace) lets the kernel
-enter the armed
-<a href="/api/cadmus_core/device/soft_suspend/mode/enum.AutosleepMode.html">`AutosleepMode`</a>
-target.
+main loop, input, Wi‑Fi session, background tasks. Dropping the last lease (after
+grace) lets the kernel enter the armed autosleep target.
+
+Kobo **DeepIdle** explicit suspend also forces `mem` autosleep during the cycle
+— see [Kobo suspend](kobo/suspend.md).
 
 <!-- i18n:skip-end -->
