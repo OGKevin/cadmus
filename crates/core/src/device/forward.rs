@@ -247,14 +247,29 @@ macro_rules! impl_device_hardware {
         }
     };
 
+    (@hook inhibitor noop_battery) => {
+        fn inhibitor(
+            &self,
+        ) -> std::sync::Arc<$crate::device::inhibitor::Inhibitor> {
+            $crate::device::inhibitor::Inhibitor::noop_with_battery(
+                std::sync::Arc::clone(&self.battery)
+                    as std::sync::Arc<dyn $crate::device::battery::Battery>,
+            )
+        }
+    };
+
     (@hook inhibitor from_system) => {
         fn inhibitor(
             &self,
         ) -> std::sync::Arc<$crate::device::inhibitor::Inhibitor> {
-            $crate::device::inhibitor::Inhibitor::from_system(Some(
-                std::sync::Arc::clone(&self.leds)
-                    as std::sync::Arc<dyn $crate::device::leds::DeviceLeds>,
-            ))
+            $crate::device::inhibitor::Inhibitor::from_system(
+                Some(
+                    std::sync::Arc::clone(&self.leds)
+                        as std::sync::Arc<dyn $crate::device::leds::DeviceLeds>,
+                ),
+                std::sync::Arc::clone(&self.battery)
+                    as std::sync::Arc<dyn $crate::device::battery::Battery>,
+            )
         }
     };
 }

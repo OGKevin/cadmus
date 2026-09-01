@@ -7,6 +7,8 @@
 use crate::AlarmType;
 use crate::chrono::Duration as ChronoDuration;
 use crate::device::AppContext;
+#[cfg(any(feature = "kobo", docsrs))]
+use crate::device::suspend::clear_deferred_suspend;
 
 /// Converts Auto Suspend minutes to a chrono duration of at least one second.
 fn auto_suspend_chrono_duration(minutes: f32) -> ChronoDuration {
@@ -25,7 +27,12 @@ fn auto_suspend_chrono_duration(minutes: f32) -> ChronoDuration {
 /// When `auto_suspend` is `0`, cancels any pending alarm. Otherwise replaces the
 /// alarm with a wake time of *now + timeout* (setting is minutes). Activity and
 /// cycle end call this to keep the idle deadline aligned with real wall-clock idle.
+///
+/// On Kobo this also clears a queued deferred explicit suspend without
+/// starting a cycle — user activity means that deferred sleep is stale.
 pub(crate) fn reschedule_auto_suspend_alarm(context: &mut AppContext) {
+    #[cfg(any(feature = "kobo", docsrs))]
+    clear_deferred_suspend(context, "auto_suspend_reschedule");
     let Some(alarm_manager) = context.alarm_manager.as_ref() else {
         return;
     };

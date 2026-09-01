@@ -6,6 +6,16 @@ computer. The OTA (Over-The-Air) feature downloads updates directly from GitHub.
 ## What you need
 
 - A WiFi connection
+- At least **20% battery** — Cadmus refuses to start an update below this level
+  (the same floor Kobo firmware uses before installing an update package)
+
+## During an update
+
+While Cadmus downloads and installs an update, the **status LED pulses** when
+one is available. Sleep, power-off, and reboot are blocked until the update
+finishes, fails, or you cancel the download. See
+[Soft Suspend](../soft-suspend.md#status-led-indicator) for how this relates to
+the steady LED used for soft suspend.
 
 ## Authentication
 

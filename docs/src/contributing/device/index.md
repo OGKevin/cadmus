@@ -4,8 +4,8 @@
 
 Contributor docs for device-facing behaviour in Cadmus (`crates/core/src/device/`).
 
-| Section                     | Covers                                                    |
-| --------------------------- | --------------------------------------------------------- |
-| [Suspend](suspend/index.md) | Explicit suspend cycles, soft suspend, and Kobo deep idle |
+| Section                     | Covers                                                   |
+| --------------------------- | -------------------------------------------------------- |
+| [Suspend](suspend/index.md) | Explicit suspend, soft suspend, inhibitor, Kobo platform |
 
 <!-- i18n:skip-end -->
