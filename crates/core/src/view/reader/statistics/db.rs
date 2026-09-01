@@ -42,34 +42,45 @@ impl StatisticsDb {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fp)))]
     pub fn get_last_event(&self, fp: Fp) -> Result<Option<ReadingEventRow>, Error> {
         Ok(RUNTIME.block_on(async {
-            sqlx::query_as::<_, ReadingEventRow>(
+            sqlx::query_as!(
+                ReadingEventRow,
                 r#"
-                SELECT id, book_fingerprint, timestamp, event_type
+                SELECT
+                    id,
+                    book_fingerprint as "book_fingerprint: Fp",
+                    timestamp        as "timestamp: UnixTimestamp",
+                    event_type       as "event_type: ReadingEventType"
                 FROM reading_events
                 WHERE book_fingerprint = ?
                 ORDER BY timestamp DESC, id DESC
                 LIMIT 1
                 "#,
+                fp
             )
-            .bind(fp.to_string())
             .fetch_optional(&self.pool)
             .await
         })?)
     }
 
+    #[cfg(test)]
     /// List all reading events for a book (for debugging/testing)
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fp)))]
     pub fn list_events(&self, fp: Fp) -> Result<Vec<ReadingEventRow>, Error> {
         Ok(RUNTIME.block_on(async {
-            sqlx::query_as::<_, ReadingEventRow>(
+            sqlx::query_as!(
+                ReadingEventRow,
                 r#"
-                SELECT id, book_fingerprint, timestamp, event_type
+                SELECT
+                    id,
+                    book_fingerprint as "book_fingerprint: Fp",
+                    timestamp        as "timestamp: UnixTimestamp",
+                    event_type       as "event_type: ReadingEventType"
                 FROM reading_events
                 WHERE book_fingerprint = ?
                 ORDER BY timestamp ASC, id ASC
                 "#,
+                fp
             )
-            .bind(fp.to_string())
             .fetch_all(&self.pool)
             .await
         })?)
