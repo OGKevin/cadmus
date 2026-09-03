@@ -1,8 +1,8 @@
 //! Periodic battery capacity checks for low-battery warnings and auto power-off.
 
 use super::super::input::BATTERY_REFRESH_INTERVAL;
-use crate::battery::Battery as _;
 use crate::device::DeviceHardware as _;
+use crate::device::battery::Battery as _;
 use crate::device::schedule_device_task;
 use crate::device::suspend::{is_suspend_active, show_power_off_intermission};
 use crate::device::{AppContext, DeviceRuntime, DeviceTaskId, EventOutcome, ExitStatus};
@@ -56,7 +56,7 @@ pub(super) fn handle_event(
 
     let Some(capacity) = context
         .device
-        .battery_mut()
+        .battery()
         .capacity()
         .ok()
         .map(|values| values[0])
@@ -158,7 +158,7 @@ mod tests {
     fn handle_event_skips_during_suspend() {
         let mut harness = DeviceRuntimeHarness::new();
         harness.push_task(DeviceTaskId::PrepareSuspend);
-        harness.context.device.battery_mut().set_capacity(1.0);
+        harness.context.device.battery().set_capacity(1.0);
         let outcome = harness
             .with_parts(|hub, _bus, rq, context, runtime| handle_event(hub, rq, context, runtime));
         assert_eq!(outcome, EventOutcome::Handled);
@@ -168,7 +168,7 @@ mod tests {
     #[test]
     fn handle_event_warn_pushes_notification() {
         let mut harness = DeviceRuntimeHarness::new();
-        harness.context.device.battery_mut().set_capacity(5.0);
+        harness.context.device.battery().set_capacity(5.0);
         let outcome = harness
             .with_parts(|hub, _bus, rq, context, runtime| handle_event(hub, rq, context, runtime));
         assert_eq!(outcome, EventOutcome::Handled);
@@ -184,7 +184,7 @@ mod tests {
     #[test]
     fn handle_event_power_off_exits() {
         let mut harness = DeviceRuntimeHarness::new();
-        harness.context.device.battery_mut().set_capacity(2.0);
+        harness.context.device.battery().set_capacity(2.0);
         let outcome = harness
             .with_parts(|hub, _bus, rq, context, runtime| handle_event(hub, rq, context, runtime));
         assert_eq!(outcome, EventOutcome::Exit(ExitStatus::PowerOff));

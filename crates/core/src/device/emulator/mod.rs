@@ -9,9 +9,9 @@ mod power;
 mod rtc;
 mod usb;
 
-use crate::battery::FakeBattery;
 use crate::color::Color;
 use crate::device::DeviceHardware as _;
+use crate::device::battery::FakeBattery;
 use crate::device::emulator::rtc::EmulatorRtc;
 use crate::device::reschedule_auto_suspend_alarm;
 use crate::device::soft_suspend::SoftSuspend;
@@ -426,7 +426,7 @@ pub struct EmulatorDevice {
     dims: (u32, u32),
     dpi: u16,
     framebuffer: Box<dyn Framebuffer + Send>,
-    battery: FakeBattery,
+    battery: Arc<FakeBattery>,
     frontlight: LightLevels,
     lightsensor: u16,
     wifi_manager: Arc<crate::device::wifi::NoopWifiManager>,
@@ -459,7 +459,7 @@ impl EmulatorDevice {
             dims,
             dpi,
             framebuffer,
-            battery: FakeBattery::new(),
+            battery: Arc::new(FakeBattery::new()),
             frontlight: LightLevels::default(),
             lightsensor: 0,
             wifi_manager: Arc::new(crate::device::wifi::NoopWifiManager::default()),
@@ -532,7 +532,7 @@ impl DevicePaths for EmulatorDevice {
 crate::impl_device_hardware!(
     EmulatorDevice,
     Framebuffer = Box<dyn Framebuffer + Send>,
-    Battery = FakeBattery,
+    Battery = Arc<FakeBattery>,
     Frontlight = LightLevels,
     LightSensor = u16,
     WifiManager = crate::device::wifi::NoopWifiManager,

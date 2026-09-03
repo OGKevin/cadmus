@@ -3,7 +3,7 @@
 //! Provides a `Device` implementation that uses mock hardware components,
 //! replacing the `Box<dyn>` parameters in `create_test_context()`.
 
-use crate::battery::FakeBattery;
+use crate::device::battery::FakeBattery;
 use crate::device::rtc::TestRtc;
 use crate::device::soft_suspend::SoftSuspend;
 use crate::device::types::FrontlightKind;
@@ -364,7 +364,7 @@ pub struct TestDevice {
     dims: (u32, u32),
     dpi: u16,
     framebuffer: Pixmap,
-    battery: FakeBattery,
+    battery: Arc<FakeBattery>,
     frontlight: LightLevels,
     lightsensor: u16,
     wifi_manager: Arc<TestWifiManager>,
@@ -384,7 +384,7 @@ impl TestDevice {
             dims: (600, 800),
             dpi: 300,
             framebuffer: Pixmap::new(600, 800, 1),
-            battery: FakeBattery::new(),
+            battery: Arc::new(FakeBattery::new()),
             frontlight: LightLevels::default(),
             lightsensor: 0,
             wifi_manager: Arc::new(TestWifiManager::new()),
@@ -506,7 +506,7 @@ impl DevicePaths for TestDevice {
 crate::impl_device_hardware!(
     TestDevice,
     Framebuffer = Pixmap,
-    Battery = FakeBattery,
+    Battery = Arc<FakeBattery>,
     Frontlight = LightLevels,
     LightSensor = u16,
     WifiManager = TestWifiManager,

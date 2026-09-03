@@ -1,6 +1,6 @@
-use crate::battery::Battery as _;
 use crate::device::AppContext;
 use crate::device::DeviceHardware as _;
+use crate::device::battery::Battery as _;
 use crate::framebuffer::UpdateMode;
 use crate::geom::Rectangle;
 use crate::gesture::GestureEvent;
@@ -56,16 +56,12 @@ impl TopBar {
         children.push(Box::new(title_label) as Box<dyn View>);
         children.push(Box::new(clock_label) as Box<dyn View>);
 
-        let capacity = context
-            .device
-            .battery_mut()
-            .capacity()
-            .map_or(0.0, |v| v[0]);
+        let capacity = context.device.battery().capacity().map_or(0.0, |v| v[0]);
         let status = context
             .device
-            .battery_mut()
+            .battery()
             .status()
-            .map_or(crate::battery::Status::Discharging, |v| v[0]);
+            .map_or(crate::device::battery::Status::Discharging, |v| v[0]);
         let battery_widget = Battery::new(
             rect![rect.max - pt!(3 * side, side), rect.max - pt!(2 * side, 0)],
             capacity,

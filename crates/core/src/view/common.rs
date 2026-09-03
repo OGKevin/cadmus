@@ -1,9 +1,9 @@
 use super::menu::{Menu, MenuKind};
 use super::notification::Notification;
 use super::{AppCmd, EntryId, EntryKind, RenderData, RenderQueue, View, ViewId};
-use crate::battery::Battery as _;
 use crate::device::AppContext;
 use crate::device::DeviceHardware as _;
+use crate::device::battery::Battery as _;
 use crate::device::{DeviceCapabilities as _, DevicePaths as _, DeviceRotation as _};
 use crate::fl;
 use crate::framebuffer::Framebuffer as _;
@@ -306,10 +306,10 @@ pub fn toggle_battery_menu(
 
         match context
             .device
-            .battery_mut()
+            .battery()
             .status()
             .ok()
-            .zip(context.device.battery_mut().capacity().ok())
+            .zip(context.device.battery().capacity().ok())
         {
             Some((status, capacity)) => {
                 for (i, (s, c)) in status.iter().zip(capacity.iter()).enumerate() {

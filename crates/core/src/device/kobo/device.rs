@@ -6,6 +6,7 @@ use crate::device::metadata::DeviceMetadata;
 use std::env;
 use std::fmt::Debug;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 fn discover_peer_installs(root: &Path, current: &Path) -> Vec<crate::device::PeerInstall> {
     [
@@ -30,7 +31,7 @@ pub struct Device {
     model: Model,
     metadata: DeviceMetadata,
     framebuffer: Box<dyn crate::framebuffer::Framebuffer + Send>,
-    battery: Box<dyn crate::battery::Battery>,
+    battery: Arc<dyn crate::device::battery::Battery>,
     frontlight: Box<dyn crate::frontlight::Frontlight>,
     lightsensor: Box<dyn crate::lightsensor::LightSensor>,
     wifi_manager: std::sync::Arc<crate::device::kobo::wifi::KoboWifiManager>,
@@ -63,7 +64,7 @@ impl Device {
         model: Model,
         metadata: DeviceMetadata,
         framebuffer: Box<dyn crate::framebuffer::Framebuffer + Send>,
-        battery: Box<dyn crate::battery::Battery>,
+        battery: Arc<dyn crate::device::battery::Battery>,
         frontlight: Box<dyn crate::frontlight::Frontlight>,
         lightsensor: Box<dyn crate::lightsensor::LightSensor>,
         wifi_manager: std::sync::Arc<crate::device::kobo::wifi::KoboWifiManager>,
@@ -159,7 +160,7 @@ impl crate::device::DevicePaths for Device {
 crate::impl_device_hardware!(
     Device,
     Framebuffer = Box<dyn crate::framebuffer::Framebuffer + Send>,
-    Battery = Box<dyn crate::battery::Battery>,
+    Battery = Arc<dyn crate::device::battery::Battery>,
     Frontlight = Box<dyn crate::frontlight::Frontlight>,
     LightSensor = Box<dyn crate::lightsensor::LightSensor>,
     WifiManager = crate::device::kobo::wifi::KoboWifiManager,

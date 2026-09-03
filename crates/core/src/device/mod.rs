@@ -7,6 +7,7 @@
 //! selected by `kobo` or `emulator`.
 
 mod auto_suspend;
+pub mod battery;
 mod error;
 mod forward;
 pub mod leds;
@@ -554,7 +555,7 @@ pub trait DevicePaths: Send {
 /// USB, and power subsystems without borrowing the whole device.
 pub trait DeviceHardware: Send {
     type Framebuffer: crate::framebuffer::Framebuffer + Send;
-    type Battery: crate::battery::Battery + Send;
+    type Battery: battery::Battery + Send;
     type Frontlight: crate::frontlight::Frontlight + Send;
     type LightSensor: crate::lightsensor::LightSensor + Send;
     type WifiManager: crate::device::wifi::WifiManager + Send + Sync + 'static;
