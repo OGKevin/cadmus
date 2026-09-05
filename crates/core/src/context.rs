@@ -343,9 +343,9 @@ fn fingerprint_dict_pair(index_path: &Path) -> io::Result<Fp> {
 #[cfg(test)]
 pub mod test_helpers {
     use super::*;
-    use crate::battery::Battery as _;
     use crate::db::Database;
     use crate::device::AppContext;
+    use crate::device::battery::Battery as _;
     use crate::device::test_device::TestDevice;
     use crate::frontlight::LightLevels;
 
@@ -434,10 +434,10 @@ pub mod test_helpers {
 
     #[test]
     fn test_create_test_context_battery() {
-        let mut context = create_test_context();
+        let context = create_test_context();
         let capacity = context
             .device
-            .battery_mut()
+            .battery()
             .capacity()
             .expect("battery capacity");
         assert_eq!(capacity, vec![50.0]);

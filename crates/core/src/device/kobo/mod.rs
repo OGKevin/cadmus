@@ -1,3 +1,4 @@
+pub(crate) mod battery;
 mod device;
 mod factory;
 mod input;

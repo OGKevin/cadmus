@@ -9,6 +9,7 @@ use crate::framebuffer::Framebuffer;
 use crate::framebuffer::{KoboFramebuffer1, KoboFramebuffer2};
 use crate::frontlight::{Frontlight, NaturalFrontlight, PremixedFrontlight, StandardFrontlight};
 use anyhow::Context;
+use std::sync::Arc;
 
 cfg_select! {
     test => {
@@ -58,8 +59,9 @@ impl Model {
             framebuffer.set_rotation(startup_rotation).ok();
         }
 
-        let battery = Box::new(crate::battery::KoboBattery::new(has_power_cover)?)
-            as Box<dyn crate::battery::Battery>;
+        let battery = Arc::new(crate::device::kobo::battery::KoboBattery::new(
+            has_power_cover,
+        )?) as Arc<dyn crate::device::battery::Battery>;
         let lightsensor = if has_lightsensor {
             Box::new(crate::lightsensor::KoboLightSensor::new()?)
                 as Box<dyn crate::lightsensor::LightSensor>

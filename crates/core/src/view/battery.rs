@@ -1,10 +1,10 @@
 use super::icon::load_icon_pixmap;
 use super::{BORDER_RADIUS_SMALL, THICKNESS_LARGE, THICKNESS_MEDIUM};
 use super::{Bus, Event, Hub, ID_FEEDER, Id, RenderData, RenderQueue, View, ViewId};
-use crate::battery::Battery as _;
-use crate::battery::Status;
 use crate::color::{BATTERY_FILL, BLACK, WHITE};
 use crate::device::DeviceHardware as _;
+use crate::device::battery::Battery as _;
+use crate::device::battery::Status;
 use crate::device::{AppContext, DeviceIdentity, DevicePaths};
 use crate::framebuffer::Framebuffer as _;
 use crate::framebuffer::UpdateMode;
@@ -39,12 +39,12 @@ impl Battery {
     pub fn update(&mut self, rq: &mut RenderQueue, context: &mut AppContext) {
         self.capacity = context
             .device
-            .battery_mut()
+            .battery()
             .capacity()
             .map_or(self.capacity, |v| v[0]);
         self.status = context
             .device
-            .battery_mut()
+            .battery()
             .status()
             .map_or(self.status, |v| v[0]);
         rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));

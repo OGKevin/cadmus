@@ -13,7 +13,6 @@ compile_error!("The test feature requires a device feature flag");
 pub mod geom;
 
 pub mod assets;
-pub mod battery;
 pub mod color;
 pub mod context;
 pub mod crypto;

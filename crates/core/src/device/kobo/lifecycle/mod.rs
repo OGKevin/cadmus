@@ -9,11 +9,11 @@ mod wifi;
 
 use super::Device;
 use super::input::BATTERY_REFRESH_INTERVAL;
-use crate::battery::Battery as _;
 use crate::device::DeviceCapabilities as _;
 use crate::device::DeviceHardware as _;
 use crate::device::DeviceLifecycle;
 use crate::device::DeviceRotation as _;
+use crate::device::battery::Battery as _;
 use crate::device::power::PowerManager;
 use crate::device::reschedule_auto_suspend_alarm;
 use crate::device::schedule_device_task;
@@ -117,7 +117,7 @@ impl DeviceLifecycle for Device {
 
         context.plugged = context
             .device
-            .battery_mut()
+            .battery()
             .status()
             .is_ok_and(|v| v[0].is_wired());
         context
