@@ -1236,6 +1236,53 @@ mod tests {
         );
     }
 
+    /// Reproduces https://github.com/baskerville/plato/issues/426:
+    /// EPUB files from royallib.com wrap block elements inside inline `<span>`
+    /// ancestors. The engine's `has_blocks` check only looks at direct children,
+    /// so the outer `<span>` appears inline-only, `gather_inline_material`
+    /// recurses into it, and the nested `<div>`/`<p>` bodies are silently
+    /// dropped — only the chapter title renders.
+    ///
+    /// Spine index 39 is OPS/ch1-38.xhtml. Its body starts with:
+    ///   <span><span><span id="id90">
+    ///     <div class="title6"><p>"Коса" жизни</p></div>
+    ///     <p>Георгий Гамов озаглавил …</p>
+    ///   …
+    /// The first body paragraph is the canary: if block-in-inline
+    /// promotion is broken, gather_inline_material swallows the <p>
+    /// nodes and this text never appears in any DrawCommand.
+    #[test]
+    fn royallib_block_in_inline_renders_body_paragraphs() {
+        let root_dir = PathBuf::from(
+            std::env::var("TEST_ROOT_DIR").expect("TEST_ROOT_DIR must be set for epub tests"),
+        );
+        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let epub_path =
+            manifest_dir.join("src/document/tests/fixtures/royallib-block-in-inline.epub");
+
+        let mut doc =
+            EpubDocumentFile::new(&epub_path, &root_dir).expect("failed to open royallib epub");
+        doc.engine.layout(600, 800, 12.0, 265);
+        doc.engine.set_margin_width(3);
+        doc.engine.load_fonts_from(root_dir);
+
+        let display_list = doc.build_display_list(39, 0);
+
+        let rendered_text: String = display_list
+            .iter()
+            .flat_map(|page| page.iter())
+            .filter_map(|cmd| match cmd {
+                DrawCommand::Text(tc) | DrawCommand::ExtraText(tc) => Some(tc.text.as_str()),
+                _ => None,
+            })
+            .collect();
+
+        assert!(
+            rendered_text.contains("Георгий") && rendered_text.contains("Гамов"),
+            "body paragraph text not rendered — block-in-inline content was silently dropped",
+        );
+    }
+
     #[test]
     fn all_spine_chapters_produce_content() {
         let mut doc = setup_epub();
