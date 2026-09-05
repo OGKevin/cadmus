@@ -1,5 +1,64 @@
 # Changelog
 
+## [0.12.0](https://github.com/OGKevin/cadmus/compare/v0.11.0...v0.12.0) (2026-09-05)
+
+
+### ⚠ BREAKING CHANGES
+
+* **settings:** Power settings moved out of General into a new Power category; UI category layout changed.
+* **all:** The pen setting's unit has been changed to `mm` instead of pixels. It should be auto migrated, but keep an eye out in case things go wrong.
+
+### Features
+
+* **app:** main-loop soft-suspend lease + TRACE ([#845](https://github.com/OGKevin/cadmus/issues/845)) ([dbd5165](https://github.com/OGKevin/cadmus/commit/dbd5165162dab895498d60bbd23724ae2d737e3d))
+* **device:** add DeviceLeds and Kobo LED control ([#803](https://github.com/OGKevin/cadmus/issues/803)) ([06ad0d5](https://github.com/OGKevin/cadmus/commit/06ad0d51460e3664febf07dec20a0ec652be1b59))
+* **fonts:** ship NV fonts and make Libron default ([#700](https://github.com/OGKevin/cadmus/issues/700)) ([aaf4b9b](https://github.com/OGKevin/cadmus/commit/aaf4b9bce2dbe854c405b4e384e7479062759734))
+* **Frontlight:** increment, decrement buttons for finegrain control ([#706](https://github.com/OGKevin/cadmus/issues/706)) ([6cc65b5](https://github.com/OGKevin/cadmus/commit/6cc65b5ba99c841085b958b6ef066d4af7287ce0))
+* **intermissions:** add global fill-color setting ([#895](https://github.com/OGKevin/cadmus/issues/895)) ([2492209](https://github.com/OGKevin/cadmus/commit/249220953f744aed6209109a55100f99941667ad)), closes [#484](https://github.com/OGKevin/cadmus/issues/484)
+* **kobo:** switch between main and test installs ([#771](https://github.com/OGKevin/cadmus/issues/771)) ([5c2ce9e](https://github.com/OGKevin/cadmus/commit/5c2ce9e41429f2f8dfb6406e573e29daf8e0d668))
+* **library:** add BookStatus lifecycle column ([#867](https://github.com/OGKevin/cadmus/issues/867)) ([eb32b98](https://github.com/OGKevin/cadmus/commit/eb32b98490f5cdad149b57ba57d5d22f3ac81aad))
+* **ota:** cancel in-progress downloads ([#900](https://github.com/OGKevin/cadmus/issues/900)) ([db5e20c](https://github.com/OGKevin/cadmus/commit/db5e20c9d6481237d23e90408eed22e469919f83))
+* **ota:** deploy KoboRoot via atomic rename ([09e23a0](https://github.com/OGKevin/cadmus/commit/09e23a098fd5b1f80a461301ebf9f56b5474f1fd))
+* **power:** add SoftSuspendSession and wake_lock ([#810](https://github.com/OGKevin/cadmus/issues/810)) ([61eabe6](https://github.com/OGKevin/cadmus/commit/61eabe693809f2fb83b034374b9dde100ea6c113))
+* **power:** deep idle via soft-suspend mem ([#835](https://github.com/OGKevin/cadmus/issues/835)) ([c0e981a](https://github.com/OGKevin/cadmus/commit/c0e981a8be5c9af3f73549ed42711f50bbb3bce5))
+* **settings:** add AutosleepMode under Power ([#842](https://github.com/OGKevin/cadmus/issues/842)) ([9e7c373](https://github.com/OGKevin/cadmus/commit/9e7c37380e1c63597d853e5d8821f8a0910ceebe))
+* **settings:** expose default font family in the settings editor ([#891](https://github.com/OGKevin/cadmus/issues/891)) ([ede7b43](https://github.com/OGKevin/cadmus/commit/ede7b435276deb4848808c96a19f0dc901612831))
+* **settings:** make NTP server configurable ([#766](https://github.com/OGKevin/cadmus/issues/766)) ([b4012ce](https://github.com/OGKevin/cadmus/commit/b4012ce3a5b1fed2ca324e8d6b8ec443f5a9332a))
+* **soft-suspend:** lease hub messages for in-flight input ([#848](https://github.com/OGKevin/cadmus/issues/848)) ([afab447](https://github.com/OGKevin/cadmus/commit/afab447938b837e9888a5fd079aecbb7af786900))
+* **soft-suspend:** wire wifi and task holders ([#852](https://github.com/OGKevin/cadmus/issues/852)) ([1753f9a](https://github.com/OGKevin/cadmus/commit/1753f9ad556a3b89f835e0396812e8939de3dd63))
+* **System Info:** display enabled Cargo features ([#662](https://github.com/OGKevin/cadmus/issues/662)) ([e5c438a](https://github.com/OGKevin/cadmus/commit/e5c438a3c84b57d1721172184e78db53d43fc5e6))
+* **website:** add Planning card to home page ([#641](https://github.com/OGKevin/cadmus/issues/641)) ([e95635a](https://github.com/OGKevin/cadmus/commit/e95635a538c4af481a421e3dc8b9949d8b9a9833))
+* **website:** add translation support ([#647](https://github.com/OGKevin/cadmus/issues/647)) ([621d669](https://github.com/OGKevin/cadmus/commit/621d669b0518fc5e1400daa3b9ac19aad0521e26))
+* **website:** migrate to Next.js + Kumo ([#626](https://github.com/OGKevin/cadmus/issues/626)) ([694f630](https://github.com/OGKevin/cadmus/commit/694f630e28fb70d47b328dc0aa93fec4c3f20cfe))
+* **wifi:** add modes, named leases, and idle auto-disable ([#784](https://github.com/OGKevin/cadmus/issues/784)) ([3a9a1d9](https://github.com/OGKevin/cadmus/commit/3a9a1d9855d04589ad168677ae1516e52a72fe00))
+* **wifi:** migrate network consumers onto leases ([#786](https://github.com/OGKevin/cadmus/issues/786)) ([0be4f76](https://github.com/OGKevin/cadmus/commit/0be4f76bc0641a4472815097ad95e87c83706853))
+* **wifi:** query IP/ESSID via dhcpcd-dbus ([#763](https://github.com/OGKevin/cadmus/issues/763)) ([6ea5901](https://github.com/OGKevin/cadmus/commit/6ea590142e2371d2b13e6599f31c0f85da10d14e))
+
+
+### Bug Fixes
+
+* **Auto Frontlight:** use absolute solar event times ([#701](https://github.com/OGKevin/cadmus/issues/701)) ([de18ba9](https://github.com/OGKevin/cadmus/commit/de18ba9ebe3da0ab97860fc7055fb872fb33329a))
+* **db:** verify WAL checkpoint completion before backup copy ([90a1bae](https://github.com/OGKevin/cadmus/commit/90a1bae6608c489da7d7cacf31940903c3bcd096))
+* **deps:** update rust crate syn to v3 ([#800](https://github.com/OGKevin/cadmus/issues/800)) ([d8d8bfc](https://github.com/OGKevin/cadmus/commit/d8d8bfcf4394eff1be4c48a1e2b37467ca1ead17))
+* **emulator:** migrate to SDL3 and Linux graphics deps ([#863](https://github.com/OGKevin/cadmus/issues/863)) ([9884029](https://github.com/OGKevin/cadmus/commit/9884029e82fa6a525a4161bbf421fc06f74fdebb)), closes [#855](https://github.com/OGKevin/cadmus/issues/855)
+* **ota:** skip cancelled PR Cargo runs ([#789](https://github.com/OGKevin/cadmus/issues/789)) ([da6768d](https://github.com/OGKevin/cadmus/commit/da6768d62de9d9d86c087eb6cdffe4c89480e945))
+* **rtc:** clear alarms and release FDs on exit ([#896](https://github.com/OGKevin/cadmus/issues/896)) ([48008f6](https://github.com/OGKevin/cadmus/commit/48008f605db32114bc73526a5798f6da4328388e)), closes [#361](https://github.com/OGKevin/cadmus/issues/361)
+* **soft-suspend:** no-op when sysfs is unusable ([#882](https://github.com/OGKevin/cadmus/issues/882)) ([ab786b3](https://github.com/OGKevin/cadmus/commit/ab786b3ec9ac32419329e07dfb5117d2c098efd8)), closes [#361](https://github.com/OGKevin/cadmus/issues/361)
+* **wifi:** reconcile radio at startup ([#796](https://github.com/OGKevin/cadmus/issues/796)) ([7cf9048](https://github.com/OGKevin/cadmus/commit/7cf90488ec50ca42f5088bae3fa2cd9f461af99d))
+* **wifi:** retry idle disable after transient radio failure ([#801](https://github.com/OGKevin/cadmus/issues/801)) ([50e88a4](https://github.com/OGKevin/cadmus/commit/50e88a452aa4834b19aa424a5ee92144ad35861c))
+* **wifi:** use noop manager in emulator ([#899](https://github.com/OGKevin/cadmus/issues/899)) ([82ba429](https://github.com/OGKevin/cadmus/commit/82ba429f1f994cc3f0f37ce92f2e5cb1ef96dfb9)), closes [#475](https://github.com/OGKevin/cadmus/issues/475) [#352](https://github.com/OGKevin/cadmus/issues/352)
+
+
+### Performance Improvements
+
+* **db:** use FS copy for startup backups ([#792](https://github.com/OGKevin/cadmus/issues/792)) ([e11d711](https://github.com/OGKevin/cadmus/commit/e11d711ea1e7d28662f9b2d7d99b97116ddf89c8))
+
+
+### Code Refactoring
+
+* **all:** move codebase to a device-agnostic architecture ([#646](https://github.com/OGKevin/cadmus/issues/646)) ([9b91d69](https://github.com/OGKevin/cadmus/commit/9b91d69a42ae14f32183ac915b716390fa6769b9))
+* **settings:** move power settings to Power ([#802](https://github.com/OGKevin/cadmus/issues/802)) ([3f893e2](https://github.com/OGKevin/cadmus/commit/3f893e21ebec00f56c277e44e356334a2b708c48))
+
 ## [0.11.0](https://github.com/OGKevin/cadmus/compare/v0.10.1...v0.11.0) (2026-06-22)
 
 ### ⚠ BREAKING CHANGES
