@@ -50,6 +50,7 @@ pub struct Context<D: Device> {
     pub covered: bool,
     pub shared: bool,
     pub online: bool,
+    pub current_reading_book: Option<Fp>,
     /// Active explicit suspend cycle; `None` means interactive.
     #[cfg(any(feature = "kobo", docsrs))]
     pub(crate) suspend: Option<crate::device::suspend::SuspendCycle>,
@@ -124,6 +125,7 @@ impl<D: Device> Context<D> {
             covered: false,
             shared: false,
             online: false,
+            current_reading_book: None,
             #[cfg(any(feature = "kobo", docsrs))]
             suspend: None,
             wifi_session,

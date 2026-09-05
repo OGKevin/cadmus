@@ -181,6 +181,7 @@ fn open_document(
     }
 
     let path = info.file.path.clone();
+
     if let Some(r) = Reader::new(context.device.framebuffer().rect(), *info, tx, context) {
         let mut next_view = Box::new(r) as Box<dyn View>;
         transfer_notifications(view.as_mut(), next_view.as_mut(), rq, context);
