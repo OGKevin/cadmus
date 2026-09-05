@@ -1,5 +1,4 @@
-use crate::device::soft_suspend::SoftSuspend;
-use crate::device::soft_suspend::SoftSuspendBackend as _;
+use crate::device::inhibitor::{Inhibitor, Kind, SoftSuspendName};
 use crate::framebuffer::Display;
 use crate::input::{InputEvent, device_events, raw_events, usb_events};
 use crate::settings::ButtonScheme;
@@ -60,7 +59,7 @@ impl crate::device::InputSource for InputSource {
     #[cfg_attr(
         feature = "tracing",
         tracing::instrument(
-            skip(self, display, button_scheme, soft_suspend),
+            skip(self, display, button_scheme, inhibitor),
             level = tracing::Level::TRACE,
             fields(proto = ?self.info.proto),
         )
@@ -69,7 +68,7 @@ impl crate::device::InputSource for InputSource {
         &mut self,
         display: Display,
         button_scheme: ButtonScheme,
-        soft_suspend: Arc<SoftSuspend>,
+        inhibitor: Arc<Inhibitor>,
     ) -> (
         crate::view::Hub,
         std::sync::mpsc::Receiver<crate::view::HubMessage>,
@@ -125,26 +124,26 @@ impl crate::device::InputSource for InputSource {
         let (tx, rx) = mpsc::channel();
 
         let tx2 = tx.clone();
-        let soft_suspend2 = Arc::clone(&soft_suspend);
+        let inhibitor2 = Arc::clone(&inhibitor);
         thread::spawn(move || {
             while let Ok(evt) = touch_screen.recv() {
-                let _short = soft_suspend2.acquire("input");
+                let _short = inhibitor2.acquire(Kind::SoftSuspend, SoftSuspendName::Input);
                 tx2.send(crate::view::HubMessage::with_soft_suspend(
                     evt,
-                    soft_suspend2.acquire("input"),
+                    inhibitor2.acquire(Kind::SoftSuspend, SoftSuspendName::Input),
                 ))
                 .ok();
             }
         });
 
         let tx3 = tx.clone();
-        let soft_suspend3 = Arc::clone(&soft_suspend);
+        let inhibitor3 = Arc::clone(&inhibitor);
         thread::spawn(move || {
             while let Ok(evt) = usb_port.recv() {
-                let _short = soft_suspend3.acquire("input");
+                let _short = inhibitor3.acquire(Kind::SoftSuspend, SoftSuspendName::Input);
                 tx3.send(crate::view::HubMessage::with_soft_suspend(
                     Event::Device(evt),
-                    soft_suspend3.acquire("input"),
+                    inhibitor3.acquire(Kind::SoftSuspend, SoftSuspendName::Input),
                 ))
                 .ok();
             }

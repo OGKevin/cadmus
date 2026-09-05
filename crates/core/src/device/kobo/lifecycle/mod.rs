@@ -14,6 +14,7 @@ use crate::device::DeviceHardware as _;
 use crate::device::DeviceLifecycle;
 use crate::device::DeviceRotation as _;
 use crate::device::battery::Battery as _;
+use crate::device::inhibitor::{Kind, SoftSuspendName};
 use crate::device::power::PowerManager;
 use crate::device::reschedule_auto_suspend_alarm;
 use crate::device::schedule_device_task;
@@ -27,6 +28,7 @@ use crate::gesture::GestureEvent;
 use crate::input::{ButtonCode, DeviceEvent};
 use crate::view::{EntryId, Event, HubMessage};
 use std::fs::File;
+use std::sync::Arc;
 use std::sync::mpsc;
 use std::thread;
 
@@ -71,7 +73,7 @@ impl DeviceLifecycle for Device {
 
         let wants_on = context.settings.wifi.wants_radio_at_rest();
         context.wifi_session.set_mode(context.settings.wifi);
-        context.soft_suspend_session.apply_settings(
+        context.inhibitor.apply_settings(
             context.settings.autosleep_mode,
             context.settings.indicate_autosleep_led,
             std::time::Duration::from_secs_f32(context.settings.autosleep_grace.max(0.0)),
@@ -136,13 +138,13 @@ impl DeviceLifecycle for Device {
         reschedule_auto_suspend_alarm(context);
         if let Some(alarm_manager) = context.alarm_manager.clone() {
             let hub = hub.clone();
-            let soft_suspend = context.soft_suspend_session.clone();
+            let inhibitor = Arc::clone(&context.inhibitor);
             crate::device::rtc::AlarmManager::start_irq_listener(
                 &alarm_manager,
                 move |alarm_type| {
                     hub.send(HubMessage::with_soft_suspend(
                         Event::RtcAlarmFired(alarm_type),
-                        soft_suspend.acquire("rtc"),
+                        inhibitor.acquire(Kind::SoftSuspend, SoftSuspendName::Rtc),
                     ))
                     .ok();
                 },
@@ -161,7 +163,7 @@ impl DeviceLifecycle for Device {
         status: ExitStatus,
         runtime: &mut DeviceRuntime<'_>,
     ) -> Result<(), anyhow::Error> {
-        context.soft_suspend_session.set_mode(AutosleepMode::Off);
+        context.inhibitor.set_mode(AutosleepMode::Off);
 
         if status == ExitStatus::Quit {
             restore_boot_rotation_if_needed(context);
@@ -392,20 +394,14 @@ mod tests {
     fn on_shutdown_disarms_soft_suspend_without_changing_settings() {
         let mut harness = DeviceRuntimeHarness::new();
         harness.context.settings.autosleep_mode = AutosleepMode::Mem;
-        harness
-            .context
-            .soft_suspend_session
-            .set_mode(AutosleepMode::Mem);
+        harness.context.inhibitor.set_mode(AutosleepMode::Mem);
 
         harness.with_runtime_only(|context, runtime| {
             Device::on_shutdown(context, ExitStatus::Quit, runtime).unwrap();
         });
 
         assert_eq!(harness.context.settings.autosleep_mode, AutosleepMode::Mem);
-        assert_eq!(
-            harness.context.soft_suspend_session.mode(),
-            AutosleepMode::Off
-        );
+        assert_eq!(harness.context.inhibitor.mode(), AutosleepMode::Off);
     }
 
     #[test]

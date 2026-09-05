@@ -4,7 +4,7 @@
 
 Shared explicit-suspend orchestration lives in
 <a href="/api/cadmus_core/device/suspend/index.html">`device::suspend`</a>
-(`crates/core/src/device/suspend/`). Soft-suspend leases / session details are
+(`crates/core/src/device/suspend/`). Soft-suspend inhibitor and lease details are
 in [Soft Suspend](soft-suspend.md). Kobo-specific `state-extended` wiring is in
 [Kobo suspend](kobo/suspend.md).
 

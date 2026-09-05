@@ -54,7 +54,8 @@ pub struct Context<D: Device> {
     #[cfg(any(feature = "kobo", docsrs))]
     pub(crate) suspend: Option<crate::device::suspend::SuspendCycle>,
     pub wifi_session: std::sync::Arc<crate::device::wifi::WifiSession>,
-    pub soft_suspend_session: std::sync::Arc<crate::device::soft_suspend::SoftSuspend>,
+    /// Top-level inhibitor: wake locks, SoftSuspend settings, and status-LED arbiter.
+    pub inhibitor: std::sync::Arc<crate::device::inhibitor::Inhibitor>,
     /// Test-only inject queue for deep-idle wait outcomes.
     #[cfg(all(test, feature = "kobo"))]
     pub(crate) deep_idle_poll_inject:
@@ -99,13 +100,13 @@ impl<D: Device> Context<D> {
                 WifiSession::unavailable(wifi_mode)
             }
         };
-        let soft_suspend_session = <D as DeviceHardware>::soft_suspend(&device);
-        soft_suspend_session.apply_settings(
+        let inhibitor = <D as DeviceHardware>::inhibitor(&device);
+        inhibitor.apply_settings(
             settings.autosleep_mode,
             settings.indicate_autosleep_led,
             std::time::Duration::from_secs_f32(settings.autosleep_grace.max(0.0)),
         );
-        wifi_session.set_soft_suspend_session(std::sync::Arc::clone(&soft_suspend_session));
+        wifi_session.set_inhibitor(std::sync::Arc::clone(&inhibitor));
         Context {
             device,
             alarm_manager,
@@ -127,7 +128,7 @@ impl<D: Device> Context<D> {
             #[cfg(any(feature = "kobo", docsrs))]
             suspend: None,
             wifi_session,
-            soft_suspend_session,
+            inhibitor,
             #[cfg(all(test, feature = "kobo"))]
             deep_idle_poll_inject: std::collections::VecDeque::new(),
         }
@@ -346,6 +347,7 @@ pub mod test_helpers {
     use crate::db::Database;
     use crate::device::AppContext;
     use crate::device::battery::Battery as _;
+    use crate::device::inhibitor::{Kind, SoftSuspendName};
     use crate::device::test_device::TestDevice;
     use crate::frontlight::LightLevels;
 
@@ -353,24 +355,23 @@ pub mod test_helpers {
         create_test_context_from_device(TestDevice::new())
     }
 
-    /// Installs a Linux soft-suspend session backed by temporary writable sysfs files.
+    /// Installs a Linux soft-suspend inhibitor backed by temporary writable sysfs files.
     #[cfg(all(test, target_os = "linux"))]
     pub fn install_linux_soft_suspend(context: &mut AppContext) -> tempfile::TempDir {
+        use crate::device::inhibitor::Inhibitor;
         use crate::device::linux::soft_suspend::paths::SoftSuspendPaths;
-        use crate::device::soft_suspend::SoftSuspend;
+        use crate::device::soft_suspend::SoftSuspendBackend as _;
         use std::sync::Arc;
 
         let (dir, paths) = SoftSuspendPaths::test_fixture();
-        let session = SoftSuspend::with_paths(paths, None);
-        session.apply_settings(
+        let inhibitor = Inhibitor::with_paths(paths, None);
+        inhibitor.apply_settings(
             context.settings.autosleep_mode,
             context.settings.indicate_autosleep_led,
             std::time::Duration::from_secs_f32(context.settings.autosleep_grace.max(0.0)),
         );
-        context
-            .wifi_session
-            .set_soft_suspend_session(Arc::clone(&session));
-        context.soft_suspend_session = session;
+        context.wifi_session.set_inhibitor(Arc::clone(&inhibitor));
+        context.inhibitor = inhibitor;
         dir
     }
 
@@ -410,12 +411,17 @@ pub mod test_helpers {
         assert!(context.keyboard_layouts.is_empty());
         assert!(context.input_history.is_empty());
         assert_eq!(context.kb_rect, Rectangle::default());
-        assert!(!context.soft_suspend_session.is_supported());
-        assert!(context.soft_suspend_session.is_empty());
-        let _lease = context.soft_suspend_session.acquire("test");
-        assert!(!context.soft_suspend_session.is_supported());
-        assert!(context.soft_suspend_session.is_empty());
-        assert!(context.soft_suspend_session.holders().is_empty());
+        assert!(!context.inhibitor.is_supported());
+        assert!(context.inhibitor.is_empty());
+        let _lease = context
+            .inhibitor
+            .acquire(Kind::SoftSuspend, SoftSuspendName::Test);
+        assert!(!context.inhibitor.is_supported());
+        assert!(!context.inhibitor.is_empty());
+        assert_eq!(context.inhibitor.holders().len(), 1);
+        drop(_lease);
+        assert!(context.inhibitor.is_empty());
+        assert!(context.inhibitor.holders().is_empty());
     }
 
     #[test]

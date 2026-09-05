@@ -4,8 +4,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::db::Database;
-use crate::device::soft_suspend::SoftSuspend;
-use crate::device::soft_suspend::SoftSuspendBackend as _;
+use crate::device::inhibitor::{Inhibitor, Kind, SoftSuspendName};
 use crate::library::Library;
 use crate::library::importer;
 use crate::settings::Settings;
@@ -25,7 +24,7 @@ pub struct ImportTask {
     /// When `true`, skip the mtime/size cache and re-fingerprint every file.
     force: bool,
     install_dir: PathBuf,
-    soft_suspend_session: Arc<SoftSuspend>,
+    inhibitor: Arc<Inhibitor>,
 }
 
 impl ImportTask {
@@ -35,7 +34,7 @@ impl ImportTask {
         library_index: Option<usize>,
         force: bool,
         install_dir: impl Into<PathBuf>,
-        soft_suspend_session: Arc<SoftSuspend>,
+        inhibitor: Arc<Inhibitor>,
     ) -> Self {
         Self {
             database,
@@ -43,7 +42,7 @@ impl ImportTask {
             library_index,
             force,
             install_dir: install_dir.into(),
-            soft_suspend_session,
+            inhibitor,
         }
     }
 
@@ -90,7 +89,9 @@ impl BackgroundTask for ImportTask {
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
     fn run(&mut self, hub: &crate::view::Hub, shutdown: &ShutdownSignal) {
-        let _soft_suspend = self.soft_suspend_session.acquire("library-import");
+        let _soft_suspend = self
+            .inhibitor
+            .acquire(Kind::SoftSuspend, SoftSuspendName::LibraryImport);
         match self.library_index {
             Some(index) => {
                 self.run_for_index(index, hub, shutdown);

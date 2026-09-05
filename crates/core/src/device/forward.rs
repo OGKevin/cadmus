@@ -109,7 +109,7 @@ macro_rules! forward_device_rotation {
 ///
 /// List associated types as `Name = Type` pairs. Optionally append `override` hooks:
 /// `metadata`, `set_system_timezone`, `refresh_framebuffer_from_kernel`, or
-/// `soft_suspend`.
+/// `inhibitor`.
 ///
 /// ```ignore
 /// crate::impl_device_hardware!(
@@ -247,11 +247,11 @@ macro_rules! impl_device_hardware {
         }
     };
 
-    (@hook soft_suspend from_system) => {
-        fn soft_suspend(
+    (@hook inhibitor from_system) => {
+        fn inhibitor(
             &self,
-        ) -> std::sync::Arc<$crate::device::soft_suspend::SoftSuspend> {
-            $crate::device::soft_suspend::SoftSuspend::from_system(Some(
+        ) -> std::sync::Arc<$crate::device::inhibitor::Inhibitor> {
+            $crate::device::inhibitor::Inhibitor::from_system(Some(
                 std::sync::Arc::clone(&self.leds)
                     as std::sync::Arc<dyn $crate::device::leds::DeviceLeds>,
             ))

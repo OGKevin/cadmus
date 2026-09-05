@@ -116,7 +116,7 @@
     },
     {
       "title": "Core Library (cadmus-core)",
-      "purpose": "Technical overview of the cadmus-core crate: its feature flags (emulator, test, otel), key dependency groups (serde/JSON, reqwest/HTTP, OpenTelemetry), and a map of the major subsystems (view framework, document rendering, HAL, context, library/database).",
+      "purpose": "Technical overview of the cadmus-core crate: its feature flags (emulator, test, otel), key dependency groups (serde/JSON, reqwest/HTTP, OpenTelemetry), and a map of the major subsystems (view framework, document rendering, HAL, inhibitor and suspend, context, library/database).",
       "parent": "Contributor Guide",
       "page_notes": [
         {
@@ -136,7 +136,7 @@
     },
     {
       "title": "Hardware Abstraction Layer",
-      "purpose": "Document the Device struct and CURRENT_DEVICE singleton (model detection, DPI, dims, feature queries), the Framebuffer trait and its implementations, the display update FFI layer, and the InputEvent processing pipeline that translates raw hardware events into DeviceEvents. Currently targets Kobo hardware.",
+      "purpose": "Document the Device struct and CURRENT_DEVICE singleton (model detection, DPI, dims, feature queries), the Framebuffer trait and its implementations, the display update FFI layer, the InputEvent processing pipeline that translates raw hardware events into DeviceEvents, and the inhibitor accessor (`DeviceHardware::inhibitor`) that wires SoftSuspend backends per device. Currently targets Kobo hardware.",
       "parent": "Core Library (cadmus-core)",
       "page_notes": [
         {
@@ -146,7 +146,7 @@
     },
     {
       "title": "Context and Application State",
-      "purpose": "Document the Context struct and its aggregated components (Framebuffer, Rtc, Library, Settings, Fonts, Battery, Frontlight, LightSensor), the initialization sequence in build_context for emulator and device targets, and the RTC alarm interface.",
+      "purpose": "Document the Context struct and its aggregated components (Framebuffer, Rtc, Library, Settings, Fonts, Battery, Frontlight, LightSensor, Inhibitor), the initialization sequence in build_context for emulator and device targets, and the RTC alarm interface.",
       "parent": "Core Library (cadmus-core)",
       "page_notes": [
         {
