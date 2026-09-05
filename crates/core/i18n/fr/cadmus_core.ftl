@@ -38,6 +38,9 @@ top-menu-power-off = Éteindre
 top-menu-switch-to = Changer pour la version { $build }
 top-menu-sync-time = Synchroniser l'horloge
 top-menu-wifi = Wifi
+
+# OTA
+
 # Settings - Button Scheme
 settings-button-scheme-natural = Naturel
 settings-button-scheme-inverted = Inversé
