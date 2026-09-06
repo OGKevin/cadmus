@@ -39,7 +39,11 @@ pub(crate) fn install_armed_soft_suspend(
     use std::sync::Arc;
 
     let (dir, paths) = SoftSuspendPaths::test_fixture();
-    let inhibitor = Inhibitor::with_paths(paths.clone(), None);
+    let inhibitor = Inhibitor::with_paths(
+        paths.clone(),
+        None,
+        std::sync::Arc::new(crate::device::battery::FakeBattery::new()),
+    );
     inhibitor.set_mode(AutosleepMode::Freeze);
     harness
         .context

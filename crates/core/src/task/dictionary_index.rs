@@ -655,9 +655,20 @@ impl BackgroundTask for DictionaryIndexTask {
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
     fn run(&mut self, hub: &crate::view::Hub, shutdown: &ShutdownSignal) {
-        let _soft_suspend = self
+        let _soft_suspend = match self
             .inhibitor
-            .acquire(Kind::SoftSuspend, SoftSuspendName::DictionaryIndex);
+            .acquire(Kind::SoftSuspend, SoftSuspendName::DictionaryIndex)
+        {
+            Ok(guard) => Some(guard),
+            Err(error) => {
+                tracing::error!(
+                    error = %error,
+                    soft_suspend_lease = %SoftSuspendName::DictionaryIndex,
+                    "failed to acquire soft-suspend lease for dictionary index task"
+                );
+                None
+            }
+        };
         let glob = match Glob::new("**/*.index") {
             Ok(g) => g.compile_matcher(),
             Err(e) => {

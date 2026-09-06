@@ -403,16 +403,28 @@ pub fn run() -> Result<(), Error> {
             );
             None
         } else {
-            tracing::trace!(
-                soft_suspend_lease = "main-loop",
-                event = ?evt,
-                "soft-suspend lease acquired for main-loop event"
-            );
-            Some(MainLoopSoftSuspendGuard {
-                _lease: context
-                    .inhibitor
-                    .acquire(Kind::SoftSuspend, SoftSuspendName::MainLoop),
-            })
+            match context
+                .inhibitor
+                .acquire(Kind::SoftSuspend, SoftSuspendName::MainLoop)
+            {
+                Ok(_lease) => {
+                    tracing::trace!(
+                        soft_suspend_lease = "main-loop",
+                        event = ?evt,
+                        "soft-suspend lease acquired for main-loop event"
+                    );
+                    Some(MainLoopSoftSuspendGuard { _lease })
+                }
+                Err(error) => {
+                    tracing::error!(
+                        error = %error,
+                        soft_suspend_lease = "main-loop",
+                        event = ?evt,
+                        "failed to acquire soft-suspend lease for main-loop event"
+                    );
+                    None
+                }
+            }
         };
 
         #[cfg(feature = "tracing")]
@@ -882,9 +894,20 @@ pub fn run() -> Result<(), Error> {
         drain_bus(&mut bus, &tx);
     }
 
-    let _shutdown_wake = context
+    let _shutdown_wake = match context
         .inhibitor
-        .acquire(Kind::SoftSuspend, SoftSuspendName::Shutdown);
+        .acquire(Kind::SoftSuspend, SoftSuspendName::Shutdown)
+    {
+        Ok(guard) => Some(guard),
+        Err(error) => {
+            tracing::error!(
+                error = %error,
+                soft_suspend_lease = "shutdown",
+                "failed to acquire soft-suspend lease for shutdown"
+            );
+            None
+        }
+    };
 
     background_tasks.stop_all();
 

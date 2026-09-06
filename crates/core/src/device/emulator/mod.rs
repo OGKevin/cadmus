@@ -13,7 +13,7 @@ use crate::color::Color;
 use crate::device::DeviceHardware as _;
 use crate::device::battery::FakeBattery;
 use crate::device::emulator::rtc::EmulatorRtc;
-use crate::device::inhibitor::{Inhibitor, Kind, SoftSuspendName};
+use crate::device::inhibitor::{Inhibitor, SoftSuspendName};
 use crate::device::reschedule_auto_suspend_alarm;
 use crate::device::types::FrontlightKind;
 use crate::device::{AppContext, Model};
@@ -117,13 +117,11 @@ impl InputSource for EmulatorInputSource {
 
         std::thread::spawn(move || {
             while let Ok(event) = gesture_rx.recv() {
-                let _short = gesture_inhibitor.acquire(Kind::SoftSuspend, SoftSuspendName::Input);
-                hub_clone
-                    .send(crate::view::HubMessage::with_soft_suspend(
-                        event,
-                        gesture_inhibitor.acquire(Kind::SoftSuspend, SoftSuspendName::Input),
-                    ))
-                    .ok();
+                crate::view::hub_message::send_input_hub_message(
+                    &hub_clone,
+                    &gesture_inhibitor,
+                    event,
+                );
             }
         });
 
@@ -209,35 +207,25 @@ impl InputSource for EmulatorInputSource {
                                         let y = mouse_state.y() as i32;
                                         let center = pt!(x, y);
                                         if scancode == Scancode::I {
-                                            let _short = sdl_inhibitor
-                                                .acquire(Kind::SoftSuspend, SoftSuspendName::Input);
-                                            hub.send(crate::view::HubMessage::with_soft_suspend(
+                                            crate::view::hub_message::send_input_hub_message(
+                                                &hub,
+                                                &sdl_inhibitor,
                                                 Event::Gesture(GestureEvent::Spread {
                                                     center,
                                                     factor: 2.0,
                                                     axis: Axis::Diagonal,
                                                 }),
-                                                sdl_inhibitor.acquire(
-                                                    Kind::SoftSuspend,
-                                                    SoftSuspendName::Input,
-                                                ),
-                                            ))
-                                            .ok();
+                                            );
                                         } else {
-                                            let _short = sdl_inhibitor
-                                                .acquire(Kind::SoftSuspend, SoftSuspendName::Input);
-                                            hub.send(crate::view::HubMessage::with_soft_suspend(
+                                            crate::view::hub_message::send_input_hub_message(
+                                                &hub,
+                                                &sdl_inhibitor,
                                                 Event::Gesture(GestureEvent::Pinch {
                                                     center,
                                                     factor: 0.5,
                                                     axis: Axis::Diagonal,
                                                 }),
-                                                sdl_inhibitor.acquire(
-                                                    Kind::SoftSuspend,
-                                                    SoftSuspendName::Input,
-                                                ),
-                                            ))
-                                            .ok();
+                                            );
                                         }
                                     }
                                     _ => (),
@@ -546,7 +534,8 @@ crate::impl_device_hardware!(
     UsbManager = crate::device::emulator::usb::EmulatorUsbManager,
     PowerManager = crate::device::emulator::power::EmulatorPowerManager,
     Leds = crate::device::emulator::leds::EmulatorLeds,
-    Rtc = crate::device::emulator::rtc::EmulatorRtc,
+    Rtc = crate::device::emulator::rtc::EmulatorRtc;
+    override inhibitor noop_battery,
 );
 
 impl DeviceInput for EmulatorDevice {
@@ -637,9 +626,10 @@ impl DeviceLifecycle for EmulatorDevice {
             crate::device::rtc::AlarmManager::start_irq_listener(
                 &alarm_manager,
                 move |alarm_type| {
-                    hub.send(crate::view::HubMessage::with_soft_suspend(
+                    hub.send(crate::view::HubMessage::try_with_soft_suspend(
+                        &inhibitor,
+                        SoftSuspendName::Rtc,
                         Event::RtcAlarmFired(alarm_type),
-                        inhibitor.acquire(Kind::SoftSuspend, SoftSuspendName::Rtc),
                     ))
                     .ok();
                 },

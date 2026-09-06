@@ -512,6 +512,23 @@ pub enum Event {
     SetWifiMode(crate::settings::WifiMode),
     /// Periodic check whether Auto-mode WiFi should power down after idle.
     MightDisableWifi,
+    /// Last [`crate::device::inhibitor::Kind::Full`] inhibitor guard released.
+    ///
+    /// Posted from the Full last-release notifier (often the OTA worker thread).
+    /// The orchestrator starts a cycle only if a deferred suspend intent is
+    /// still queued.
+    FullInhibitCleared,
+    /// Drop a queued deferred suspend intent without starting a cycle (e.g. before OTA reboot).
+    ///
+    /// <div class="warning">
+    ///
+    /// This does not re-arm [`crate::AlarmType::AutoSuspend`]. When Auto Suspend fired during
+    /// [`crate::device::inhibitor::Kind::Full`] inhibit, the idle RTC alarm was already claimed;
+    /// clearing deferred suspend leaves no idle deadline until
+    /// [`crate::device::reschedule_auto_suspend_alarm`] runs again on user activity.
+    ///
+    /// </div>
+    ClearDeferredSuspend,
     /// An RTC logical alarm claimed by [`crate::device::rtc::AlarmManager`]'s IRQ listener.
     RtcAlarmFired(crate::AlarmType),
     PrepareSuspend,

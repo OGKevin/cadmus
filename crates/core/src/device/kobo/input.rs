@@ -1,4 +1,4 @@
-use crate::device::inhibitor::{Inhibitor, Kind, SoftSuspendName};
+use crate::device::inhibitor::Inhibitor;
 use crate::framebuffer::Display;
 use crate::input::{InputEvent, device_events, raw_events, usb_events};
 use crate::settings::ButtonScheme;
@@ -127,12 +127,7 @@ impl crate::device::InputSource for InputSource {
         let inhibitor2 = Arc::clone(&inhibitor);
         thread::spawn(move || {
             while let Ok(evt) = touch_screen.recv() {
-                let _short = inhibitor2.acquire(Kind::SoftSuspend, SoftSuspendName::Input);
-                tx2.send(crate::view::HubMessage::with_soft_suspend(
-                    evt,
-                    inhibitor2.acquire(Kind::SoftSuspend, SoftSuspendName::Input),
-                ))
-                .ok();
+                crate::view::hub_message::send_input_hub_message(&tx2, &inhibitor2, evt);
             }
         });
 
@@ -140,12 +135,11 @@ impl crate::device::InputSource for InputSource {
         let inhibitor3 = Arc::clone(&inhibitor);
         thread::spawn(move || {
             while let Ok(evt) = usb_port.recv() {
-                let _short = inhibitor3.acquire(Kind::SoftSuspend, SoftSuspendName::Input);
-                tx3.send(crate::view::HubMessage::with_soft_suspend(
+                crate::view::hub_message::send_input_hub_message(
+                    &tx3,
+                    &inhibitor3,
                     Event::Device(evt),
-                    inhibitor3.acquire(Kind::SoftSuspend, SoftSuspendName::Input),
-                ))
-                .ok();
+                );
             }
         });
 

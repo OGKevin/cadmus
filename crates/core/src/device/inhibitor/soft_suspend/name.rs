@@ -1,9 +1,17 @@
 //! Named SoftSuspend lease holders.
+//!
+//! These names are for [`Kind::SoftSuspend`](super::super::Kind::SoftSuspend)
+//! only. Full holders use free-form names such as `"ota"`. The nested wake
+//! lock taken while Full is active is the string `"full-inhibit"`, which is
+//! **not** a variant here.
 
 use crate::lease::LeaseName;
 use std::fmt;
 
 /// SoftSuspend lease name written into the holder tracker / logs.
+///
+/// The kernel still sees one `cadmus` wake lock; these names only distinguish
+/// holders in logs and [`SoftSuspendBackend::holders`](crate::device::soft_suspend::SoftSuspendBackend::holders).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SoftSuspendName {
     /// Gesture / touch / USB input enqueued on the hub.

@@ -226,6 +226,27 @@ fn handle_rtc_auto_power_off_exits() {
 }
 
 #[test]
+fn handle_rtc_auto_power_off_ignored_while_full_inhibit_active() {
+    let mut harness = DeviceRuntimeHarness::new();
+    let _full = harness
+        .context
+        .inhibitor
+        .acquire(Kind::Full, "ota")
+        .unwrap();
+    let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
+        handle_event(
+            &Event::RtcAlarmFired(AlarmType::AutoPowerOff),
+            hub,
+            bus,
+            rq,
+            context,
+            runtime,
+        )
+    });
+    assert_eq!(outcome, EventOutcome::Handled);
+}
+
+#[test]
 fn handle_rtc_auto_suspend_blocked_when_shared_reschedules() {
     let mut harness = DeviceRuntimeHarness::new();
     harness.context.settings.auto_suspend = 30.0;
@@ -753,6 +774,7 @@ fn soft_deep_idle_wait_succeeds_with_input_lease_holders() {
                 .context
                 .inhibitor
                 .acquire(Kind::SoftSuspend, SoftSuspendName::Input)
+                .unwrap()
         })
         .collect();
     assert!(
@@ -776,7 +798,8 @@ fn idle_soft_suspend_input_lease_keeps_holders() {
     let _lease = harness
         .context
         .inhibitor
-        .acquire(Kind::SoftSuspend, SoftSuspendName::Input);
+        .acquire(Kind::SoftSuspend, SoftSuspendName::Input)
+        .unwrap();
     assert!(
         harness.context.inhibitor.has_holders(),
         "interactive input leases must still block opportunistic soft-suspend"
@@ -1163,4 +1186,68 @@ fn wake_detect_inject_woke_without_realtime_step() {
             .is_none()
     );
     assert!(lock_alarms(&mut harness).is_alarm_scheduled(AlarmType::WakeDebounce));
+}
+
+#[test]
+fn start_cycle_defers_while_full_inhibit_active() {
+    let mut harness = DeviceRuntimeHarness::new();
+    let _full = harness
+        .context
+        .inhibitor
+        .acquire(Kind::Full, "ota")
+        .unwrap();
+    harness.with_parts(|hub, bus, rq, context, runtime| {
+        start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks);
+    });
+    assert!(harness.context.deferred_suspend);
+    assert!(!has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
+}
+
+#[test]
+fn full_inhibit_cleared_flushes_deferred_suspend() {
+    let mut harness = DeviceRuntimeHarness::new();
+    let full = harness
+        .context
+        .inhibitor
+        .acquire(Kind::Full, "ota")
+        .unwrap();
+    harness.with_parts(|hub, bus, rq, context, runtime| {
+        start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks);
+    });
+    assert!(harness.context.deferred_suspend);
+    drop(full);
+    harness.with_parts(|hub, bus, rq, context, runtime| {
+        handle_full_inhibit_cleared(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks);
+    });
+    assert!(!harness.context.deferred_suspend);
+    assert!(has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
+}
+
+#[test]
+fn clear_deferred_suspend_before_full_release_prevents_flush() {
+    let mut harness = DeviceRuntimeHarness::new();
+    let _full = harness
+        .context
+        .inhibitor
+        .acquire(Kind::Full, "ota")
+        .unwrap();
+    harness.with_parts(|hub, bus, rq, context, runtime| {
+        start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks);
+    });
+    assert!(harness.context.deferred_suspend);
+    handle_clear_deferred_suspend(&mut harness.context);
+    assert!(!harness.context.deferred_suspend);
+    harness.with_parts(|hub, bus, rq, context, runtime| {
+        handle_full_inhibit_cleared(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks);
+    });
+    assert!(!has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
+}
+
+#[test]
+fn reschedule_auto_suspend_clears_deferred_suspend() {
+    let mut harness = DeviceRuntimeHarness::new();
+    harness.context.deferred_suspend = true;
+    harness.context.settings.auto_suspend = 5.0;
+    reschedule_auto_suspend_alarm(&mut harness.context);
+    assert!(!harness.context.deferred_suspend);
 }

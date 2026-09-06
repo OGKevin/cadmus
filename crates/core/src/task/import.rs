@@ -89,9 +89,20 @@ impl BackgroundTask for ImportTask {
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
     fn run(&mut self, hub: &crate::view::Hub, shutdown: &ShutdownSignal) {
-        let _soft_suspend = self
+        let _soft_suspend = match self
             .inhibitor
-            .acquire(Kind::SoftSuspend, SoftSuspendName::LibraryImport);
+            .acquire(Kind::SoftSuspend, SoftSuspendName::LibraryImport)
+        {
+            Ok(guard) => Some(guard),
+            Err(error) => {
+                tracing::error!(
+                    error = %error,
+                    soft_suspend_lease = %SoftSuspendName::LibraryImport,
+                    "failed to acquire soft-suspend lease for library import task"
+                );
+                None
+            }
+        };
         match self.library_index {
             Some(index) => {
                 self.run_for_index(index, hub, shutdown);

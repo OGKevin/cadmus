@@ -1,7 +1,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Cadmus Documentation\n"
-"POT-Creation-Date: 2026-08-26T14:47:19Z\n"
+"POT-Creation-Date: 2026-09-05T21:29:23+02:00\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
@@ -106,8 +106,7 @@ msgstr ""
 msgid "Automatic Frontlight"
 msgstr ""
 
-#: src/SUMMARY.md:28 src/SUMMARY.md:45 src/soft-suspend.md:1
-#: src/soft-suspend.md:79
+#: src/SUMMARY.md:28 src/soft-suspend.md:1 src/soft-suspend.md:83
 msgid "Soft Suspend"
 msgstr ""
 
@@ -115,7 +114,7 @@ msgstr ""
 msgid "Database Backup"
 msgstr ""
 
-#: src/SUMMARY.md:30 src/installation/ota.md:86 src/troubleshooting/index.md:1
+#: src/SUMMARY.md:30 src/installation/ota.md:96 src/troubleshooting/index.md:1
 msgid "Troubleshooting"
 msgstr ""
 
@@ -159,71 +158,79 @@ msgstr ""
 msgid "Suspend orchestrator"
 msgstr ""
 
+#: src/SUMMARY.md:45
+msgid "Soft suspend"
+msgstr ""
+
 #: src/SUMMARY.md:46
+msgid "Inhibitor"
+msgstr ""
+
+#: src/SUMMARY.md:47
 msgid "Kobo suspend"
 msgstr ""
 
-#: src/SUMMARY.md:47 src/settings/index.md:1168
+#: src/SUMMARY.md:48 src/settings/index.md:1168
 msgid "Telemetry"
 msgstr ""
 
-#: src/SUMMARY.md:48
+#: src/SUMMARY.md:49
 msgid "Logging"
 msgstr ""
 
-#: src/SUMMARY.md:49
+#: src/SUMMARY.md:50
 msgid "Tracing"
 msgstr ""
 
-#: src/SUMMARY.md:50
+#: src/SUMMARY.md:51
 msgid "Profiling"
 msgstr ""
 
-#: src/SUMMARY.md:51
+#: src/SUMMARY.md:52
 msgid "Website"
 msgstr ""
 
-#: src/SUMMARY.md:52
+#: src/SUMMARY.md:53
 msgid "User guide"
 msgstr ""
 
-#: src/SUMMARY.md:53
+#: src/SUMMARY.md:54
 msgid "Translations"
 msgstr ""
 
-#: src/SUMMARY.md:54
+#: src/SUMMARY.md:55
 msgid "For developers"
 msgstr ""
 
-#: src/SUMMARY.md:55
+#: src/SUMMARY.md:56
 msgid "SQLite & SQLx"
 msgstr ""
 
-#: src/SUMMARY.md:56
+#: src/SUMMARY.md:57
 msgid "Library Database"
 msgstr ""
 
-#: src/SUMMARY.md:57
+#: src/SUMMARY.md:58
 msgid "Runtime Migrations"
 msgstr ""
 
-#: src/SUMMARY.md:61
+#: src/SUMMARY.md:62
 msgid "Investigations"
 msgstr ""
 
-#: src/SUMMARY.md:63
+#: src/SUMMARY.md:64
 msgid "Intro"
 msgstr ""
 
-#: src/SUMMARY.md:64
+#: src/SUMMARY.md:65
 msgid "DHCP IP Address Changes on WiFi Toggle"
 msgstr ""
 
-#: src/SUMMARY.md:65
+#: src/SUMMARY.md:66
 msgid "Reading IP and ESSID via dhcpcd-dbus"
 msgstr ""
 
-#: src/SUMMARY.md:66
+#: src/SUMMARY.md:67
 msgid "Soft suspend via autosleep and wake_lock"
 msgstr ""
 
@@ -348,7 +355,7 @@ msgid ""
 "out changes that haven't been released yet"
 msgstr ""
 
-#: src/installation/index.md:25 src/installation/ota.md:80
+#: src/installation/index.md:25 src/installation/ota.md:90
 msgid "First-time setup"
 msgstr ""
 
@@ -529,128 +536,147 @@ msgstr ""
 msgid "A WiFi connection"
 msgstr ""
 
-#: src/installation/ota.md:10
-msgid "Authentication"
+#: src/installation/ota.md:9
+msgid ""
+"At least **20% battery** — Cadmus refuses to start an update below this "
+"level (the same floor Kobo firmware uses before installing an update package)"
 msgstr ""
 
 #: src/installation/ota.md:12
+msgid "During an update"
+msgstr ""
+
+#: src/installation/ota.md:14
+msgid ""
+"While Cadmus downloads and installs an update, the **status LED pulses** "
+"when one is available. Sleep, power-off, and reboot are blocked until the "
+"update finishes, fails, or you cancel the download. See [Soft "
+"Suspend](../soft-suspend.md#status-led-indicator) for how this relates to "
+"the steady LED used for soft suspend."
+msgstr ""
+
+#: src/installation/ota.md:20
+msgid "Authentication"
+msgstr ""
+
+#: src/installation/ota.md:22
 msgid ""
 "Main branch and PR builds require a GitHub account. Stable releases are "
 "public and need no authentication."
 msgstr ""
 
-#: src/installation/ota.md:15
+#: src/installation/ota.md:25
 msgid ""
 "The first time you request a main branch or PR build, Cadmus will show a "
 "screen with a URL and a short code:"
 msgstr ""
 
-#: src/installation/ota.md:18
+#: src/installation/ota.md:28
 msgid "Go to the URL shown on screen"
 msgstr ""
 
-#: src/installation/ota.md:19
+#: src/installation/ota.md:29
 msgid "Enter the code shown on your device"
 msgstr ""
 
-#: src/installation/ota.md:20
+#: src/installation/ota.md:30
 msgid "Sign in to GitHub and approve the request"
 msgstr ""
 
-#: src/installation/ota.md:22
+#: src/installation/ota.md:32
 msgid ""
 "Cadmus detects the approval automatically and starts the download. The token "
 "is saved to disk so you won't need to sign in again."
 msgstr ""
 
-#: src/installation/ota.md:27
+#: src/installation/ota.md:37
 msgid "![ota-pick](./screenshots/ota-pick.png)"
 msgstr ""
 
-#: src/installation/ota.md:27
+#: src/installation/ota.md:37
 msgid "![auth](./screenshots/device-auth.png)"
 msgstr ""
 
-#: src/installation/ota.md:29
+#: src/installation/ota.md:39
 msgid "How to update"
 msgstr ""
 
-#: src/installation/ota.md:31
+#: src/installation/ota.md:41
 msgid ""
 "Open **Main Menu → Check for Updates**. You'll see options for where to get "
 "the update from:"
 msgstr ""
 
-#: src/installation/ota.md:34 src/installation/migration.md:51
+#: src/installation/ota.md:44 src/installation/migration.md:51
 msgid "Source"
 msgstr ""
 
-#: src/installation/ota.md:34
+#: src/installation/ota.md:44
 msgid "Description"
 msgstr ""
 
-#: src/installation/ota.md:36
+#: src/installation/ota.md:46
 msgid "**Stable Release**"
 msgstr ""
 
-#: src/installation/ota.md:36
+#: src/installation/ota.md:46
 msgid "Latest official release from GitHub"
 msgstr ""
 
-#: src/installation/ota.md:37
+#: src/installation/ota.md:47
 msgid "**Main Branch**"
 msgstr ""
 
-#: src/installation/ota.md:37
+#: src/installation/ota.md:47
 msgid "Latest development build (most recent changes)"
 msgstr ""
 
-#: src/installation/ota.md:38
+#: src/installation/ota.md:48
 msgid "**PR Build**"
 msgstr ""
 
-#: src/installation/ota.md:38
+#: src/installation/ota.md:48
 msgid "Test a specific pull request"
 msgstr ""
 
-#: src/installation/ota.md:41
+#: src/installation/ota.md:51
 msgid "The _Stable Release_ option is not shown in test builds."
 msgstr ""
 
-#: src/installation/ota.md:43
+#: src/installation/ota.md:53
 msgid "Updating from the main branch"
 msgstr ""
 
-#: src/installation/ota.md:45
+#: src/installation/ota.md:55
 msgid ""
 "Select **Main Branch** to get the most recent development build. This "
 "includes changes that have been merged but not yet released officially."
 msgstr ""
 
-#: src/installation/ota.md:48
+#: src/installation/ota.md:58
 msgid ""
 "If you haven't authenticated before, Cadmus will guide you through the "
 "GitHub sign-in process. See [Authentication](#authentication) for details."
 msgstr ""
 
-#: src/installation/ota.md:51
+#: src/installation/ota.md:61
 msgid ""
 "The update downloads from GitHub, installs automatically, and reboots the "
 "device to finish."
 msgstr ""
 
-#: src/installation/ota.md:54
+#: src/installation/ota.md:64
 msgid ""
 "Before that reboot, Cadmus removes the files it previously installed so the "
 "new package can replace them cleanly. Your custom fonts, icons, and other "
 "user-added files will be preserved."
 msgstr ""
 
-#: src/installation/ota.md:58
+#: src/installation/ota.md:68
 msgid "Testing a pull request"
 msgstr ""
 
-#: src/installation/ota.md:60
+#: src/installation/ota.md:70
 msgid ""
 "Select **PR Build** to try out a specific change before it's released. Enter "
 "the PR number when prompted. If you haven't authenticated before, Cadmus "
@@ -658,73 +684,73 @@ msgid ""
 "[Authentication](#authentication) for details."
 msgstr ""
 
-#: src/installation/ota.md:66
+#: src/installation/ota.md:76
 msgid ""
 "Find the PR number in the GitHub URL. For example, in "
 "`github.com/OGKevin/cadmus/pull/42` the PR number is **42**."
 msgstr ""
 
-#: src/installation/ota.md:69
+#: src/installation/ota.md:79
 msgid "Normal vs test builds"
 msgstr ""
 
-#: src/installation/ota.md:71
+#: src/installation/ota.md:81
 msgid ""
 "OTA works for both types of builds. The type you're currently using "
 "determines what gets downloaded:"
 msgstr ""
 
-#: src/installation/ota.md:74
+#: src/installation/ota.md:84
 msgid "**Normal builds** update to `KoboRoot.tgz` in `/mnt/onboard/.adds/cadmus`"
 msgstr ""
 
-#: src/installation/ota.md:75
+#: src/installation/ota.md:85
 msgid ""
 "**Test builds** update to `KoboRoot-test.tgz` in "
 "`/mnt/onboard/.adds/cadmus-tst`"
 msgstr ""
 
-#: src/installation/ota.md:77
+#: src/installation/ota.md:87
 msgid ""
 "See the [available packages](./index.md#available-packages) table for all "
 "options."
 msgstr ""
 
-#: src/installation/ota.md:82
+#: src/installation/ota.md:92
 msgid ""
 "OTA only works for updating an existing installation. To install Cadmus for "
 "the first time, follow the [installation guide](./index.md) or the [test "
 "builds guide](./test-builds.md) to copy a KoboRoot file via USB."
 msgstr ""
 
-#: src/installation/ota.md:88
+#: src/installation/ota.md:98
 msgid "\"Insufficient disk space\" error"
 msgstr ""
 
-#: src/installation/ota.md:90
+#: src/installation/ota.md:100
 msgid ""
 "If Cadmus shows an error like _\"Insufficient disk space: need 100MB, have "
 "XMB\"_ while downloading an update:"
 msgstr ""
 
-#: src/installation/ota.md:93
+#: src/installation/ota.md:103
 msgid "Cadmus downloads update files into a `tmp` folder:"
 msgstr ""
 
-#: src/installation/ota.md:94
+#: src/installation/ota.md:104
 msgid "**With SD card**: `/mnt/sd/.cadmus/tmp` (uses SD card space)"
 msgstr ""
 
-#: src/installation/ota.md:95
+#: src/installation/ota.md:105
 msgid ""
 "**Without SD card**: `/mnt/onboard/.adds/cadmus/tmp` (uses internal storage)"
 msgstr ""
 
-#: src/installation/ota.md:96
+#: src/installation/ota.md:106
 msgid "If you see this error and have an SD card inserted, the card may be full"
 msgstr ""
 
-#: src/installation/ota.md:97
+#: src/installation/ota.md:107
 msgid ""
 "If you do not have an SD card, free up space on internal storage by deleting "
 "books or other files you do not need"
@@ -3841,7 +3867,7 @@ msgstr ""
 msgid "Meaning"
 msgstr ""
 
-#: src/soft-suspend.md:32 src/soft-suspend.md:82
+#: src/soft-suspend.md:32 src/soft-suspend.md:86
 msgid "Off"
 msgstr ""
 
@@ -3882,11 +3908,18 @@ msgid ""
 "is armed and the device is awake. The LED turns off when the device sleeps."
 msgstr ""
 
-#: src/soft-suspend.md:61
+#: src/soft-suspend.md:53
+msgid ""
+"During **critical work** (for example a wireless update), the status LED may "
+"**pulse** instead (long on, brief off). While it pulses, Cadmus blocks "
+"sleep, power-off, and reboot until that work finishes or is cancelled."
+msgstr ""
+
+#: src/soft-suspend.md:65
 msgid "Release grace"
 msgstr ""
 
-#: src/soft-suspend.md:63
+#: src/soft-suspend.md:67
 msgid ""
 "When soft suspend is available, **Soft Suspend Release Grace** under "
 "**Settings → Power** is how many seconds Cadmus keeps the wake lock after "
@@ -3895,63 +3928,63 @@ msgid ""
 "The default is five seconds."
 msgstr ""
 
-#: src/soft-suspend.md:77
+#: src/soft-suspend.md:81
 msgid "Soft suspend vs Auto Suspend"
 msgstr ""
 
-#: src/soft-suspend.md:79
+#: src/soft-suspend.md:83
 msgid "Feature"
 msgstr ""
 
-#: src/soft-suspend.md:79
+#: src/soft-suspend.md:83
 msgid "Auto Suspend"
 msgstr ""
 
-#: src/soft-suspend.md:81
+#: src/soft-suspend.md:85
 msgid "Purpose"
 msgstr ""
 
-#: src/soft-suspend.md:81
+#: src/soft-suspend.md:85
 msgid "Opportunistic battery saving"
 msgstr ""
 
-#: src/soft-suspend.md:81
+#: src/soft-suspend.md:85
 msgid "Timed sleep after inactivity"
 msgstr ""
 
-#: src/soft-suspend.md:82
+#: src/soft-suspend.md:86
 msgid "Default"
 msgstr ""
 
-#: src/soft-suspend.md:82
+#: src/soft-suspend.md:86
 msgid "On by default (30 minutes)"
 msgstr ""
 
-#: src/soft-suspend.md:83
+#: src/soft-suspend.md:87
 msgid "Settings tab"
 msgstr ""
 
-#: src/soft-suspend.md:83
+#: src/soft-suspend.md:87
 msgid "Power → Soft Suspend"
 msgstr ""
 
-#: src/soft-suspend.md:83
+#: src/soft-suspend.md:87
 msgid "Power → Auto Suspend"
 msgstr ""
 
-#: src/soft-suspend.md:84
+#: src/soft-suspend.md:88
 msgid "User action"
 msgstr ""
 
-#: src/soft-suspend.md:84
+#: src/soft-suspend.md:88
 msgid "Opt-in"
 msgstr ""
 
-#: src/soft-suspend.md:84
+#: src/soft-suspend.md:88
 msgid "Happens after idle timeout"
 msgstr ""
 
-#: src/soft-suspend.md:86
+#: src/soft-suspend.md:90
 msgid ""
 "You can use both together. Soft suspend naps between events; after the idle "
 "timeout, Auto Suspend still puts the device into a deeper sleep."

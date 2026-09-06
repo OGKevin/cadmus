@@ -49,6 +49,7 @@ top-menu-wifi = WiFi
 ota-already-latest = You already have the latest version
 ota-auth-error = GitHub authorization failed
 ota-auth-timed-out = GitHub authorization timed out. Please try again.
+ota-battery-too-low = Battery too low to start OTA update
 ota-cannot-compare-versions = Cannot compare versions
 ota-check-updates-failed = Failed to check for updates
 ota-client-build-failed = Failed to create client
