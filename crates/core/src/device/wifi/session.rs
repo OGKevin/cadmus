@@ -65,8 +65,16 @@ fn sync_inhibitor_lease(state: &mut SessionState, has_holders: bool) {
         if state.inhibitor_lease.is_none()
             && let Some(inhibitor) = state.inhibitor.clone()
         {
-            state.inhibitor_lease =
-                Some(inhibitor.acquire(Kind::SoftSuspend, SoftSuspendName::Wifi));
+            match inhibitor.acquire(Kind::SoftSuspend, SoftSuspendName::Wifi) {
+                Ok(guard) => state.inhibitor_lease = Some(guard),
+                Err(error) => {
+                    tracing::error!(
+                        error = %error,
+                        soft_suspend_lease = %SoftSuspendName::Wifi,
+                        "failed to acquire soft-suspend lease for WiFi radio"
+                    );
+                }
+            }
         }
     } else {
         state.inhibitor_lease = None;
@@ -668,7 +676,11 @@ mod tests {
     fn soft_suspend_inhibitor() -> (tempfile::TempDir, Arc<Inhibitor>) {
         use crate::device::linux::soft_suspend::paths::SoftSuspendPaths;
         let (dir, paths) = SoftSuspendPaths::test_fixture();
-        let inhibitor = Inhibitor::with_paths(paths, None);
+        let inhibitor = Inhibitor::with_paths(
+            paths,
+            None,
+            std::sync::Arc::new(crate::device::battery::FakeBattery::new()),
+        );
         (dir, inhibitor)
     }
 

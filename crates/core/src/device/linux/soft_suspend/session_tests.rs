@@ -64,10 +64,16 @@ mod session {
     #[test]
     fn first_acquire_writes_wake_lock() {
         let (_dir, paths) = temp_paths();
-        let inhibitor = Inhibitor::with_paths(paths.clone(), None);
+        let inhibitor = Inhibitor::with_paths(
+            paths.clone(),
+            None,
+            std::sync::Arc::new(crate::device::battery::FakeBattery::new()),
+        );
         inhibitor.set_mode(AutosleepMode::Mem);
 
-        let lease = inhibitor.acquire(Kind::SoftSuspend, SoftSuspendName::MainLoop);
+        let lease = inhibitor
+            .acquire(Kind::SoftSuspend, SoftSuspendName::MainLoop)
+            .unwrap();
 
         assert_eq!(
             fs::read_to_string(&paths.wake_lock).expect("read").trim(),
@@ -80,7 +86,11 @@ mod session {
     #[test]
     fn set_mode_writes_autosleep() {
         let (_dir, paths) = temp_paths();
-        let inhibitor = Inhibitor::with_paths(paths.clone(), None);
+        let inhibitor = Inhibitor::with_paths(
+            paths.clone(),
+            None,
+            std::sync::Arc::new(crate::device::battery::FakeBattery::new()),
+        );
 
         inhibitor.set_mode(AutosleepMode::Freeze);
 
@@ -94,7 +104,11 @@ mod session {
     #[test]
     fn set_mode_keeps_previous_when_autosleep_write_fails() {
         let (_dir, paths) = temp_paths();
-        let inhibitor = Inhibitor::with_paths(paths.clone(), None);
+        let inhibitor = Inhibitor::with_paths(
+            paths.clone(),
+            None,
+            std::sync::Arc::new(crate::device::battery::FakeBattery::new()),
+        );
         inhibitor.set_mode(AutosleepMode::Freeze);
         assert_eq!(inhibitor.mode(), AutosleepMode::Freeze);
 
@@ -111,12 +125,18 @@ mod session {
     #[test]
     fn failed_wake_lock_write_does_not_claim_held() {
         let (_dir, paths) = temp_paths();
-        let inhibitor = Inhibitor::with_paths(paths.clone(), None);
+        let inhibitor = Inhibitor::with_paths(
+            paths.clone(),
+            None,
+            std::sync::Arc::new(crate::device::battery::FakeBattery::new()),
+        );
         inhibitor.set_mode(AutosleepMode::Mem);
         inhibitor.set_autosleep_grace(Duration::from_secs(60));
         make_unwritable(&paths.wake_lock);
 
-        let lease = inhibitor.acquire(Kind::SoftSuspend, SoftSuspendName::MainLoop);
+        let lease = inhibitor
+            .acquire(Kind::SoftSuspend, SoftSuspendName::MainLoop)
+            .unwrap();
         assert_eq!(
             fs::read_to_string(&paths.wake_lock).expect("read").trim(),
             ""
@@ -146,7 +166,11 @@ mod session {
         fs::write(&paths.autosleep, "off\n").expect("autosleep");
         fs::write(&paths.wake_lock, "").expect("wake_lock");
         fs::write(&paths.wake_unlock, "").expect("wake_unlock");
-        let inhibitor = Inhibitor::with_paths(paths.clone(), None);
+        let inhibitor = Inhibitor::with_paths(
+            paths.clone(),
+            None,
+            std::sync::Arc::new(crate::device::battery::FakeBattery::new()),
+        );
 
         inhibitor.set_mode(AutosleepMode::Freeze);
 
@@ -164,15 +188,20 @@ mod session {
             on_calls: AtomicU32::new(0),
             off_calls: AtomicU32::new(0),
         });
-        let inhibitor =
-            Inhibitor::with_paths(paths.clone(), Some(leds.clone() as Arc<dyn DeviceLeds>));
+        let inhibitor = Inhibitor::with_paths(
+            paths.clone(),
+            Some(leds.clone() as Arc<dyn DeviceLeds>),
+            std::sync::Arc::new(crate::device::battery::FakeBattery::new()),
+        );
         inhibitor.apply_settings(AutosleepMode::Mem, true, Duration::ZERO);
 
         wait_for(|| leds.on_calls.load(Ordering::SeqCst) >= 1);
         assert!(inhibitor.is_empty());
         let off_after_setup = leds.off_calls.load(Ordering::SeqCst);
 
-        let lease = inhibitor.acquire(Kind::SoftSuspend, SoftSuspendName::Wifi);
+        let lease = inhibitor
+            .acquire(Kind::SoftSuspend, SoftSuspendName::Wifi)
+            .unwrap();
         drop(lease);
         assert_eq!(unlock_name(&paths), WAKE_LOCK_NAME);
         assert_eq!(
@@ -188,11 +217,15 @@ mod session {
     #[test]
     fn nested_leases_keep_single_wake_lock_cycle() {
         let (_dir, paths) = temp_paths();
-        let inhibitor = Inhibitor::with_paths(paths.clone(), None);
+        let inhibitor = Inhibitor::with_paths(
+            paths.clone(),
+            None,
+            std::sync::Arc::new(crate::device::battery::FakeBattery::new()),
+        );
         inhibitor.set_mode(AutosleepMode::Mem);
 
-        let a = inhibitor.acquire(Kind::SoftSuspend, "a");
-        let b = inhibitor.acquire(Kind::SoftSuspend, "b");
+        let a = inhibitor.acquire(Kind::SoftSuspend, "a").unwrap();
+        let b = inhibitor.acquire(Kind::SoftSuspend, "b").unwrap();
         assert_eq!(inhibitor.len(), 2);
         drop(a);
         assert_eq!(unlock_name(&paths), "");
@@ -203,11 +236,17 @@ mod session {
     #[test]
     fn grace_delays_wake_unlock() {
         let (_dir, paths) = temp_paths();
-        let inhibitor = Inhibitor::with_paths(paths.clone(), None);
+        let inhibitor = Inhibitor::with_paths(
+            paths.clone(),
+            None,
+            std::sync::Arc::new(crate::device::battery::FakeBattery::new()),
+        );
         inhibitor.set_mode(AutosleepMode::Mem);
         inhibitor.set_autosleep_grace(Duration::from_millis(80));
 
-        let lease = inhibitor.acquire(Kind::SoftSuspend, SoftSuspendName::MainLoop);
+        let lease = inhibitor
+            .acquire(Kind::SoftSuspend, SoftSuspendName::MainLoop)
+            .unwrap();
         drop(lease);
 
         assert_eq!(unlock_name(&paths), "");
@@ -218,13 +257,21 @@ mod session {
     #[test]
     fn lease_during_grace_cancels_pending_unlock() {
         let (_dir, paths) = temp_paths();
-        let inhibitor = Inhibitor::with_paths(paths.clone(), None);
+        let inhibitor = Inhibitor::with_paths(
+            paths.clone(),
+            None,
+            std::sync::Arc::new(crate::device::battery::FakeBattery::new()),
+        );
         inhibitor.set_mode(AutosleepMode::Mem);
         inhibitor.set_autosleep_grace(Duration::from_millis(80));
 
-        let lease = inhibitor.acquire(Kind::SoftSuspend, SoftSuspendName::MainLoop);
+        let lease = inhibitor
+            .acquire(Kind::SoftSuspend, SoftSuspendName::MainLoop)
+            .unwrap();
         drop(lease);
-        let _again = inhibitor.acquire(Kind::SoftSuspend, SoftSuspendName::MainLoop);
+        let _again = inhibitor
+            .acquire(Kind::SoftSuspend, SoftSuspendName::MainLoop)
+            .unwrap();
         thread::sleep(Duration::from_millis(120));
 
         assert_eq!(unlock_name(&paths), "");
@@ -234,17 +281,27 @@ mod session {
     #[test]
     fn reacquire_from_other_thread_during_grace_keeps_lock() {
         let (_dir, paths) = temp_paths();
-        let inhibitor = Inhibitor::with_paths(paths.clone(), None);
+        let inhibitor = Inhibitor::with_paths(
+            paths.clone(),
+            None,
+            std::sync::Arc::new(crate::device::battery::FakeBattery::new()),
+        );
         inhibitor.set_mode(AutosleepMode::Mem);
         inhibitor.set_autosleep_grace(Duration::from_millis(100));
 
-        drop(inhibitor.acquire(Kind::SoftSuspend, SoftSuspendName::MainLoop));
+        drop(
+            inhibitor
+                .acquire(Kind::SoftSuspend, SoftSuspendName::MainLoop)
+                .unwrap(),
+        );
 
         let inhibitor = Arc::new(inhibitor);
         let inhibitor_thread = Arc::clone(&inhibitor);
         let join = thread::spawn(move || {
             thread::sleep(Duration::from_millis(40));
-            inhibitor_thread.acquire(Kind::SoftSuspend, "worker")
+            inhibitor_thread
+                .acquire(Kind::SoftSuspend, "worker")
+                .unwrap()
         });
         let lease = join.join().expect("acquire thread");
         thread::sleep(Duration::from_millis(120));
@@ -256,11 +313,17 @@ mod session {
     #[test]
     fn set_grace_while_empty_reschedules_deadline() {
         let (_dir, paths) = temp_paths();
-        let inhibitor = Inhibitor::with_paths(paths.clone(), None);
+        let inhibitor = Inhibitor::with_paths(
+            paths.clone(),
+            None,
+            std::sync::Arc::new(crate::device::battery::FakeBattery::new()),
+        );
         inhibitor.set_mode(AutosleepMode::Mem);
         inhibitor.set_autosleep_grace(Duration::from_millis(50));
 
-        let lease = inhibitor.acquire(Kind::SoftSuspend, SoftSuspendName::MainLoop);
+        let lease = inhibitor
+            .acquire(Kind::SoftSuspend, SoftSuspendName::MainLoop)
+            .unwrap();
         drop(lease);
         inhibitor.set_autosleep_grace(Duration::from_millis(150));
 
@@ -273,13 +336,19 @@ mod session {
     #[test]
     fn repeated_empty_cycles_reuse_worker() {
         let (_dir, paths) = temp_paths();
-        let inhibitor = Inhibitor::with_paths(paths.clone(), None);
+        let inhibitor = Inhibitor::with_paths(
+            paths.clone(),
+            None,
+            std::sync::Arc::new(crate::device::battery::FakeBattery::new()),
+        );
         inhibitor.set_mode(AutosleepMode::Mem);
         inhibitor.set_autosleep_grace(Duration::from_millis(40));
 
         for _ in 0..2 {
             fs::write(&paths.wake_unlock, "").expect("clear unlock");
-            let lease = inhibitor.acquire(Kind::SoftSuspend, SoftSuspendName::MainLoop);
+            let lease = inhibitor
+                .acquire(Kind::SoftSuspend, SoftSuspendName::MainLoop)
+                .unwrap();
             drop(lease);
             assert_eq!(unlock_name(&paths), "");
             thread::sleep(Duration::from_millis(80));
@@ -290,11 +359,17 @@ mod session {
     #[test]
     fn drop_inhibitor_mid_grace_shuts_down_cleanly() {
         let (_dir, paths) = temp_paths();
-        let inhibitor = Inhibitor::with_paths(paths.clone(), None);
+        let inhibitor = Inhibitor::with_paths(
+            paths.clone(),
+            None,
+            std::sync::Arc::new(crate::device::battery::FakeBattery::new()),
+        );
         inhibitor.set_mode(AutosleepMode::Mem);
         inhibitor.set_autosleep_grace(Duration::from_millis(200));
 
-        let lease = inhibitor.acquire(Kind::SoftSuspend, SoftSuspendName::MainLoop);
+        let lease = inhibitor
+            .acquire(Kind::SoftSuspend, SoftSuspendName::MainLoop)
+            .unwrap();
         drop(lease);
         drop(inhibitor);
 

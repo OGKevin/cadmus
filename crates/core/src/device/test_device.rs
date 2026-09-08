@@ -513,7 +513,8 @@ crate::impl_device_hardware!(
     UsbManager = TestUsbManager,
     PowerManager = TestPowerManager,
     Leds = TestLeds,
-    Rtc = TestRtc,
+    Rtc = TestRtc;
+    override inhibitor noop_battery,
 );
 
 impl DeviceInput for TestDevice {

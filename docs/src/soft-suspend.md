@@ -50,6 +50,10 @@ When soft suspend is available, under **Settings → Power** turn on **Use LED
 to Indicate Soft Suspend** if you want the status LED on while soft suspend is
 armed and the device is awake. The LED turns off when the device sleeps.
 
+During **critical work** (for example a wireless update), the status LED may
+**pulse** instead (long on, brief off). While it pulses, Cadmus blocks sleep,
+power-off, and reboot until that work finishes or is cancelled.
+
 <!-- i18n:skip-start -->
 
 ```toml

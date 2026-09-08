@@ -53,8 +53,16 @@ pub struct Context<D: Device> {
     /// Active explicit suspend cycle; `None` means interactive.
     #[cfg(any(feature = "kobo", docsrs))]
     pub(crate) suspend: Option<crate::device::suspend::SuspendCycle>,
+    /// Queued when [`crate::device::suspend::start_cycle`] was refused while
+    /// [`crate::device::inhibitor::Kind::Full`] was active.
+    ///
+    /// Flushed on [`Event::FullInhibitCleared`](crate::view::Event::FullInhibitCleared)
+    /// unless [`Event::ClearDeferredSuspend`](crate::view::Event::ClearDeferredSuspend)
+    /// or [`crate::device::reschedule_auto_suspend_alarm`] cleared it first.
+    #[cfg(any(feature = "kobo", docsrs))]
+    pub(crate) deferred_suspend: bool,
     pub wifi_session: std::sync::Arc<crate::device::wifi::WifiSession>,
-    /// Top-level inhibitor: wake locks, SoftSuspend settings, and status-LED arbiter.
+    /// Top-level inhibitor: SoftSuspend settings, Full holders, wake locks, LED.
     pub inhibitor: std::sync::Arc<crate::device::inhibitor::Inhibitor>,
     /// Test-only inject queue for deep-idle wait outcomes.
     #[cfg(all(test, feature = "kobo"))]
@@ -127,6 +135,8 @@ impl<D: Device> Context<D> {
             online: false,
             #[cfg(any(feature = "kobo", docsrs))]
             suspend: None,
+            #[cfg(any(feature = "kobo", docsrs))]
+            deferred_suspend: false,
             wifi_session,
             inhibitor,
             #[cfg(all(test, feature = "kobo"))]
@@ -364,7 +374,11 @@ pub mod test_helpers {
         use std::sync::Arc;
 
         let (dir, paths) = SoftSuspendPaths::test_fixture();
-        let inhibitor = Inhibitor::with_paths(paths, None);
+        let inhibitor = Inhibitor::with_paths(
+            paths,
+            None,
+            std::sync::Arc::new(crate::device::battery::FakeBattery::new()),
+        );
         inhibitor.apply_settings(
             context.settings.autosleep_mode,
             context.settings.indicate_autosleep_led,
@@ -415,7 +429,8 @@ pub mod test_helpers {
         assert!(context.inhibitor.is_empty());
         let _lease = context
             .inhibitor
-            .acquire(Kind::SoftSuspend, SoftSuspendName::Test);
+            .acquire(Kind::SoftSuspend, SoftSuspendName::Test)
+            .unwrap();
         assert!(!context.inhibitor.is_supported());
         assert!(!context.inhibitor.is_empty());
         assert_eq!(context.inhibitor.holders().len(), 1);

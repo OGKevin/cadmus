@@ -50,6 +50,20 @@
 //! between UI events while Cadmus holds named leases. **Deep idle** is the
 //! explicit Auto Suspend / power-button / sleep-cover path once soft suspend is
 //! armed. Classic hard suspend remains when soft suspend is off.
+//!
+//! # Full inhibit
+//!
+//! [`crate::device::inhibitor::Kind::Full`] does **not** cancel an in-flight
+//! cycle. It blocks **starting** one: [`start_cycle`] sets
+//! [`Context::deferred_suspend`](crate::context::Context::deferred_suspend)
+//! and returns. When the last Full holder drops, Kobo posts
+//! [`Event::FullInhibitCleared`](crate::view::Event::FullInhibitCleared) and
+//! the orchestrator flushes that intent. OTA success sends
+//! [`Event::ClearDeferredSuspend`](crate::view::Event::ClearDeferredSuspend)
+//! first so reboot is not raced by a flush.
+//!
+//! [`crate::device::reschedule_auto_suspend_alarm`] also clears deferred
+//! intent (user activity) without starting a cycle.
 
 mod cycle;
 mod helpers;
@@ -64,7 +78,8 @@ pub(crate) use cycle::SuspendCycle;
 pub(crate) use helpers::has_task;
 pub(crate) use helpers::{cancel_suspend_if_pending, is_suspend_active};
 pub(crate) use orchestrator::{
-    handle_event, is_suspend_rtc_pending, show_power_off_intermission, start_cycle,
+    clear_deferred_suspend, handle_event, is_suspend_rtc_pending, show_power_off_intermission,
+    start_cycle,
 };
 #[cfg(test)]
 pub(crate) use wake::PollResult;

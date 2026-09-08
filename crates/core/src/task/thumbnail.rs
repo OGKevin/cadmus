@@ -129,9 +129,20 @@ impl BackgroundTask for ThumbnailExtractionTask {
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
     fn run(&mut self, hub: &crate::view::Hub, shutdown: &ShutdownSignal) {
-        let _soft_suspend = self
+        let _soft_suspend = match self
             .inhibitor
-            .acquire(Kind::SoftSuspend, SoftSuspendName::Thumbnail);
+            .acquire(Kind::SoftSuspend, SoftSuspendName::Thumbnail)
+        {
+            Ok(guard) => Some(guard),
+            Err(error) => {
+                tracing::error!(
+                    error = %error,
+                    soft_suspend_lease = %SoftSuspendName::Thumbnail,
+                    "failed to acquire soft-suspend lease for thumbnail task"
+                );
+                None
+            }
+        };
         match self.library_index {
             Some(index) => {
                 self.run_for_index(index, hub, shutdown);
