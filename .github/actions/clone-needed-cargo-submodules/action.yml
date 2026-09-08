@@ -1,0 +1,9 @@
+name: Clone needed Cargo submodules
+description: Clone only submodules needed for Cargo manifest resolution.
+
+runs:
+  using: composite
+  steps:
+    - name: Clone html5ever submodule
+      shell: bash
+      run: git submodule update --init --depth 1 thirdparty/html5ever
