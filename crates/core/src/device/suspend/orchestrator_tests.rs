@@ -1,6 +1,7 @@
 use super::super::cycle::{SuspendCycle, SuspendKind};
 use super::wake::PollResult;
 use super::*;
+use crate::device::inhibitor::{Kind, SoftSuspendName};
 use crate::device::reschedule_auto_suspend_alarm;
 use crate::device::soft_suspend::mode::AutosleepMode;
 use crate::device::suspend::test_support::{
@@ -418,7 +419,7 @@ fn finish_cycle_clears_auto_power_off_before_post_wake_can_see_it() {
 #[test]
 fn classic_prepare_suspend_still_schedules_with_suspend_rtc() {
     let mut harness = DeviceRuntimeHarness::new();
-    assert!(!harness.context.soft_suspend_session.mode().is_armed());
+    assert!(!harness.context.inhibitor.mode().is_armed());
     harness.with_parts(|hub, bus, rq, context, runtime| {
         start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks);
     });
@@ -451,7 +452,7 @@ fn soft_start_cycle_acquires_cycle_lease() {
             .as_ref()
             .is_some_and(|c| c.holds_cycle_lease())
     );
-    assert!(harness.context.soft_suspend_session.has_holders());
+    assert!(harness.context.inhibitor.has_holders());
     assert!(has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
 }
 
@@ -482,7 +483,7 @@ fn soft_prepare_suspend_enters_deep_idle() {
             .is_some()
     );
     pump_deep_idle_wake(&mut harness);
-    assert!(!harness.context.soft_suspend_session.has_holders());
+    assert!(!harness.context.inhibitor.has_holders());
     assert!(lock_alarms(&mut harness).is_alarm_scheduled(AlarmType::WakeDebounce));
     assert!(!lock_alarms(&mut harness).has_alarm(AlarmType::Suspend));
 }
@@ -494,12 +495,12 @@ fn soft_deep_idle_has_no_holders_when_cycle_lease_dropped() {
     harness.with_parts(|hub, bus, rq, context, runtime| {
         start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks);
     });
-    assert!(harness.context.soft_suspend_session.has_holders());
+    assert!(harness.context.inhibitor.has_holders());
     if let Some(c) = harness.context.suspend.as_mut() {
         c.cycle_lease = None;
     }
     assert!(
-        !harness.context.soft_suspend_session.has_holders(),
+        !harness.context.inhibitor.has_holders(),
         "cycle lease must be the last soft-suspend holder before deep-idle wait"
     );
 }
@@ -530,10 +531,7 @@ fn soft_deep_idle_forces_mem_without_state_mem_write() {
     assert!(!power.was_suspend_called());
     assert!(power.arm_deep_idle_call_count() >= 1);
     assert!(power.disarm_deep_idle_call_count() >= 1);
-    assert_eq!(
-        harness.context.soft_suspend_session.mode(),
-        AutosleepMode::Freeze
-    );
+    assert_eq!(harness.context.inhibitor.mode(), AutosleepMode::Freeze);
     assert!(
         harness
             .context
@@ -575,10 +573,7 @@ fn soft_deep_idle_schedules_wake_debounce_alarm() {
     );
     pump_deep_idle_wake(&mut harness);
     assert!(lock_alarms(&mut harness).is_alarm_scheduled(AlarmType::WakeDebounce));
-    assert_eq!(
-        harness.context.soft_suspend_session.mode(),
-        AutosleepMode::Freeze
-    );
+    assert_eq!(harness.context.inhibitor.mode(), AutosleepMode::Freeze);
     assert!(
         !lock_alarms(&mut harness).is_alarm_scheduled(AlarmType::AutoSuspend),
         "AutoSuspend stays cancelled until valid-wake finish_cycle"
@@ -753,10 +748,15 @@ fn soft_deep_idle_wait_succeeds_with_input_lease_holders() {
         handle_event(&Event::PrepareSuspend, hub, bus, rq, context, runtime)
     });
     let _input_leases: Vec<_> = (0..8)
-        .map(|_| harness.context.soft_suspend_session.acquire("input"))
+        .map(|_| {
+            harness
+                .context
+                .inhibitor
+                .acquire(Kind::SoftSuspend, SoftSuspendName::Input)
+        })
         .collect();
     assert!(
-        !harness.context.soft_suspend_session.is_empty(),
+        !harness.context.inhibitor.is_empty(),
         "input leases must pin wake_lock like a hub backlog"
     );
     pump_deep_idle_wake(&mut harness);
@@ -773,9 +773,12 @@ fn idle_soft_suspend_input_lease_keeps_holders() {
     let mut harness = DeviceRuntimeHarness::new();
     let (_dir, _paths) = install_armed_soft_suspend(&mut harness);
     assert!(harness.context.suspend.is_none());
-    let _lease = harness.context.soft_suspend_session.acquire("input");
+    let _lease = harness
+        .context
+        .inhibitor
+        .acquire(Kind::SoftSuspend, SoftSuspendName::Input);
     assert!(
-        harness.context.soft_suspend_session.has_holders(),
+        harness.context.inhibitor.has_holders(),
         "interactive input leases must still block opportunistic soft-suspend"
     );
 }
@@ -864,10 +867,7 @@ fn soft_calendar_update_during_insleep_preserves_deep_idle_restore() {
     harness.with_parts(|hub, bus, rq, context, runtime| {
         handle_event(&Event::PrepareSuspend, hub, bus, rq, context, runtime)
     });
-    assert_eq!(
-        harness.context.soft_suspend_session.mode(),
-        AutosleepMode::Mem
-    );
+    assert_eq!(harness.context.inhibitor.mode(), AutosleepMode::Mem);
     assert_eq!(
         harness
             .context
@@ -899,17 +899,14 @@ fn soft_calendar_update_during_insleep_preserves_deep_idle_restore() {
         Some(AutosleepMode::Freeze),
         "CalendarUpdate reentry must keep the pre-Mem restore mode"
     );
-    assert_eq!(
-        harness.context.soft_suspend_session.mode(),
-        AutosleepMode::Mem
-    );
+    assert_eq!(harness.context.inhibitor.mode(), AutosleepMode::Mem);
 
     harness.with_parts(|hub, _bus, rq, context, runtime| {
         cancel_suspend_if_pending(context, runtime.tasks, runtime.view.as_mut(), hub, rq);
     });
     assert!(harness.context.suspend.is_none());
     assert_eq!(
-        harness.context.soft_suspend_session.mode(),
+        harness.context.inhibitor.mode(),
         AutosleepMode::Freeze,
         "finish must restore Freeze, not leave Mem"
     );
@@ -1011,10 +1008,7 @@ fn soft_cancel_suspend_drops_cycle_lease_and_restores_mode() {
             .as_ref()
             .is_none_or(|c| !c.holds_cycle_lease())
     );
-    assert_eq!(
-        harness.context.soft_suspend_session.mode(),
-        AutosleepMode::Freeze
-    );
+    assert_eq!(harness.context.inhibitor.mode(), AutosleepMode::Freeze);
     assert!(lock_alarms(&mut harness).is_alarm_scheduled(AlarmType::AutoSuspend));
 }
 
@@ -1077,10 +1071,7 @@ fn deep_idle_reentry_preserves_frontlight_levels() {
     let levels = harness.context.device.frontlight().levels();
     assert_eq!(levels.intensity, LightLevel::from(50.0));
     assert_eq!(levels.warmth, LightLevel::from(30.0));
-    assert_eq!(
-        harness.context.soft_suspend_session.mode(),
-        AutosleepMode::Freeze
-    );
+    assert_eq!(harness.context.inhibitor.mode(), AutosleepMode::Freeze);
     assert!(lock_alarms(&mut harness).is_alarm_scheduled(AlarmType::AutoSuspend));
 }
 
@@ -1128,10 +1119,7 @@ fn deep_idle_timeout_cannot_rearm_finishes_cycle() {
     harness.with_parts(|hub, bus, rq, context, runtime| {
         handle_event(&Event::PrepareSuspend, hub, bus, rq, context, runtime)
     });
-    harness
-        .context
-        .soft_suspend_session
-        .set_mode(AutosleepMode::Off);
+    harness.context.inhibitor.set_mode(AutosleepMode::Off);
     if let Some(cycle) = harness.context.suspend.as_mut() {
         cycle.deep_idle_restore = Some(AutosleepMode::Off);
     }

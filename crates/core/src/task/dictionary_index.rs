@@ -11,8 +11,7 @@ use walkdir::WalkDir;
 
 use crate::context::DICTIONARIES_DIRNAME;
 use crate::db::Database;
-use crate::device::soft_suspend::SoftSuspend;
-use crate::device::soft_suspend::SoftSuspendBackend as _;
+use crate::device::inhibitor::{Inhibitor, Kind, SoftSuspendName};
 use crate::dictionary::{Entry, Metadata, normalize};
 use crate::fl;
 use crate::helpers::{Fingerprint, IsHidden};
@@ -75,7 +74,7 @@ fn decode_number(word: &str) -> Option<u64> {
 pub struct DictionaryIndexTask {
     database: Database,
     data_path: std::path::PathBuf,
-    soft_suspend_session: Arc<SoftSuspend>,
+    inhibitor: Arc<Inhibitor>,
 }
 
 impl DictionaryIndexTask {
@@ -83,12 +82,12 @@ impl DictionaryIndexTask {
     pub fn new(
         database: Database,
         data_path: std::path::PathBuf,
-        soft_suspend_session: Arc<SoftSuspend>,
+        inhibitor: Arc<Inhibitor>,
     ) -> Self {
         Self {
             database,
             data_path,
-            soft_suspend_session,
+            inhibitor,
         }
     }
 
@@ -656,7 +655,9 @@ impl BackgroundTask for DictionaryIndexTask {
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
     fn run(&mut self, hub: &crate::view::Hub, shutdown: &ShutdownSignal) {
-        let _soft_suspend = self.soft_suspend_session.acquire("dictionary-index");
+        let _soft_suspend = self
+            .inhibitor
+            .acquire(Kind::SoftSuspend, SoftSuspendName::DictionaryIndex);
         let glob = match Glob::new("**/*.index") {
             Ok(g) => g.compile_matcher(),
             Err(e) => {

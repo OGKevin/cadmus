@@ -13,9 +13,8 @@ use crate::color::Color;
 use crate::device::DeviceHardware as _;
 use crate::device::battery::FakeBattery;
 use crate::device::emulator::rtc::EmulatorRtc;
+use crate::device::inhibitor::{Inhibitor, Kind, SoftSuspendName};
 use crate::device::reschedule_auto_suspend_alarm;
-use crate::device::soft_suspend::SoftSuspend;
-use crate::device::soft_suspend::SoftSuspendBackend as _;
 use crate::device::types::FrontlightKind;
 use crate::device::{AppContext, Model};
 use crate::device::{
@@ -106,7 +105,7 @@ impl InputSource for EmulatorInputSource {
         &mut self,
         _display: crate::framebuffer::Display,
         _button_scheme: crate::settings::ButtonScheme,
-        soft_suspend: Arc<SoftSuspend>,
+        inhibitor: Arc<Inhibitor>,
     ) -> (Hub, Receiver<crate::view::HubMessage>) {
         let (hub, rx) = mpsc::channel();
         let (device_tx, device_rx) = mpsc::channel();
@@ -114,15 +113,15 @@ impl InputSource for EmulatorInputSource {
 
         let gesture_rx = crate::gesture::gesture_events(device_rx, self.dpi);
         let hub_clone = hub.clone();
-        let gesture_soft_suspend = Arc::clone(&soft_suspend);
+        let gesture_inhibitor = Arc::clone(&inhibitor);
 
         std::thread::spawn(move || {
             while let Ok(event) = gesture_rx.recv() {
-                let _short = gesture_soft_suspend.acquire("input");
+                let _short = gesture_inhibitor.acquire(Kind::SoftSuspend, SoftSuspendName::Input);
                 hub_clone
                     .send(crate::view::HubMessage::with_soft_suspend(
                         event,
-                        gesture_soft_suspend.acquire("input"),
+                        gesture_inhibitor.acquire(Kind::SoftSuspend, SoftSuspendName::Input),
                     ))
                     .ok();
             }
@@ -130,7 +129,7 @@ impl InputSource for EmulatorInputSource {
 
         if let Some(sendable_sdl) = self.sdl_context.take() {
             let hub = hub.clone();
-            let sdl_soft_suspend = Arc::clone(&soft_suspend);
+            let sdl_inhibitor = Arc::clone(&inhibitor);
             let sender = device_tx;
             let mut event_pump =
                 SendableEventPump(sendable_sdl.0.event_pump().expect("SDL3 event pump failed"));
@@ -210,25 +209,33 @@ impl InputSource for EmulatorInputSource {
                                         let y = mouse_state.y() as i32;
                                         let center = pt!(x, y);
                                         if scancode == Scancode::I {
-                                            let _short = sdl_soft_suspend.acquire("input");
+                                            let _short = sdl_inhibitor
+                                                .acquire(Kind::SoftSuspend, SoftSuspendName::Input);
                                             hub.send(crate::view::HubMessage::with_soft_suspend(
                                                 Event::Gesture(GestureEvent::Spread {
                                                     center,
                                                     factor: 2.0,
                                                     axis: Axis::Diagonal,
                                                 }),
-                                                sdl_soft_suspend.acquire("input"),
+                                                sdl_inhibitor.acquire(
+                                                    Kind::SoftSuspend,
+                                                    SoftSuspendName::Input,
+                                                ),
                                             ))
                                             .ok();
                                         } else {
-                                            let _short = sdl_soft_suspend.acquire("input");
+                                            let _short = sdl_inhibitor
+                                                .acquire(Kind::SoftSuspend, SoftSuspendName::Input);
                                             hub.send(crate::view::HubMessage::with_soft_suspend(
                                                 Event::Gesture(GestureEvent::Pinch {
                                                     center,
                                                     factor: 0.5,
                                                     axis: Axis::Diagonal,
                                                 }),
-                                                sdl_soft_suspend.acquire("input"),
+                                                sdl_inhibitor.acquire(
+                                                    Kind::SoftSuspend,
+                                                    SoftSuspendName::Input,
+                                                ),
                                             ))
                                             .ok();
                                         }
@@ -626,13 +633,13 @@ impl DeviceLifecycle for EmulatorDevice {
         if let Some(alarm_manager) = context.alarm_manager.clone() {
             reschedule_auto_suspend_alarm(context);
             let hub = hub.clone();
-            let soft_suspend = context.soft_suspend_session.clone();
+            let inhibitor = context.inhibitor.clone();
             crate::device::rtc::AlarmManager::start_irq_listener(
                 &alarm_manager,
                 move |alarm_type| {
                     hub.send(crate::view::HubMessage::with_soft_suspend(
                         Event::RtcAlarmFired(alarm_type),
-                        soft_suspend.acquire("rtc"),
+                        inhibitor.acquire(Kind::SoftSuspend, SoftSuspendName::Rtc),
                     ))
                     .ok();
                 },

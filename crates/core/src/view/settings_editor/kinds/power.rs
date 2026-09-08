@@ -258,7 +258,7 @@ impl SettingKind for AutosleepModeSetting {
     ) -> (Option<String>, bool) {
         if let Event::Select(EntryId::SetAutosleepMode(mode)) = evt {
             context.settings.autosleep_mode = *mode;
-            context.soft_suspend_session.apply_settings(
+            context.inhibitor.apply_settings(
                 context.settings.autosleep_mode,
                 context.settings.indicate_autosleep_led,
                 Duration::from_secs_f32(context.settings.autosleep_grace.max(0.0)),
@@ -303,7 +303,7 @@ impl SettingKind for IndicateAutosleepLed {
     ) -> (Option<String>, bool) {
         if let Event::Toggle(ToggleEvent::Setting(ToggleSettings::IndicateAutosleepLed)) = evt {
             context.settings.indicate_autosleep_led = !context.settings.indicate_autosleep_led;
-            context.soft_suspend_session.apply_settings(
+            context.inhibitor.apply_settings(
                 context.settings.autosleep_mode,
                 context.settings.indicate_autosleep_led,
                 Duration::from_secs_f32(context.settings.autosleep_grace.max(0.0)),
@@ -344,7 +344,7 @@ impl SettingKind for AutosleepGrace {
     ) -> (Option<String>, bool) {
         if let Event::Submit(ViewId::AutosleepGraceInput, text) = evt {
             let display = self.apply_text(text, &mut context.settings);
-            context.soft_suspend_session.apply_settings(
+            context.inhibitor.apply_settings(
                 context.settings.autosleep_mode,
                 context.settings.indicate_autosleep_led,
                 Duration::from_secs_f32(context.settings.autosleep_grace.max(0.0)),
@@ -659,7 +659,7 @@ mod tests {
             assert_eq!(result.0, Some(AutosleepMode::Off.to_i18n_string()));
             assert!(result.1);
             assert_eq!(context.settings.autosleep_mode, AutosleepMode::Off);
-            assert_eq!(context.soft_suspend_session.mode(), AutosleepMode::Off);
+            assert_eq!(context.inhibitor.mode(), AutosleepMode::Off);
             assert!(bus.is_empty());
         }
 
@@ -667,7 +667,6 @@ mod tests {
         #[cfg(target_os = "linux")]
         fn handle_select_persists_mode_even_if_session_sanitizes() {
             use crate::device::linux::soft_suspend::paths::SoftSuspendPaths;
-            use crate::device::soft_suspend::SoftSuspend;
             use std::fs;
             use std::sync::Arc;
 
@@ -679,11 +678,9 @@ mod tests {
             let mut context = create_test_context();
             let (_dir, paths) = SoftSuspendPaths::test_fixture();
             fs::write(&paths.state, "freeze\n").expect("state without mem");
-            let session = SoftSuspend::with_paths(paths, None);
-            context
-                .wifi_session
-                .set_soft_suspend_session(Arc::clone(&session));
-            context.soft_suspend_session = session;
+            let inhibitor = crate::device::inhibitor::Inhibitor::with_paths(paths, None);
+            context.wifi_session.set_inhibitor(Arc::clone(&inhibitor));
+            context.inhibitor = inhibitor;
             context.settings = Settings::default();
             let mut bus: Bus = VecDeque::new();
             let event = Event::Select(EntryId::SetAutosleepMode(AutosleepMode::Mem));
@@ -693,7 +690,7 @@ mod tests {
             assert_eq!(result.0, Some(AutosleepMode::Mem.to_i18n_string()));
             assert!(result.1);
             assert_eq!(context.settings.autosleep_mode, AutosleepMode::Mem);
-            assert_eq!(context.soft_suspend_session.mode(), AutosleepMode::Off);
+            assert_eq!(context.inhibitor.mode(), AutosleepMode::Off);
         }
 
         #[test]
@@ -772,7 +769,7 @@ mod tests {
             assert_eq!(result.0.as_deref(), Some("false"));
             assert!(result.1);
             assert!(!context.settings.indicate_autosleep_led);
-            assert!(!context.soft_suspend_session.indicate_autosleep_led());
+            assert!(!context.inhibitor.indicate_autosleep_led());
             assert!(bus.is_empty());
         }
 
@@ -794,7 +791,7 @@ mod tests {
             assert_eq!(result.0.as_deref(), Some("true"));
             assert!(result.1);
             assert!(context.settings.indicate_autosleep_led);
-            assert!(context.soft_suspend_session.indicate_autosleep_led());
+            assert!(context.inhibitor.indicate_autosleep_led());
         }
 
         #[test]
@@ -917,7 +914,7 @@ mod tests {
             assert!(result.1);
             assert_eq!(context.settings.autosleep_grace, 2.5);
             assert_eq!(
-                context.soft_suspend_session.autosleep_grace(),
+                context.inhibitor.autosleep_grace(),
                 Duration::from_secs_f32(2.5)
             );
             assert!(bus.is_empty());

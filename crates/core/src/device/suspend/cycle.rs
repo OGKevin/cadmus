@@ -5,7 +5,7 @@
 //! once in [`super::orchestrator::start_cycle`] and must not be re-selected by
 //! mid-cycle `is_armed()` probes.
 
-use crate::device::soft_suspend::lease::SoftSuspendLease;
+use crate::device::inhibitor::InhibitorGuard;
 use crate::device::soft_suspend::mode::AutosleepMode;
 use chrono::{DateTime, Local};
 use std::time::{Duration, Instant};
@@ -94,7 +94,7 @@ pub(crate) struct SuspendCycle {
     pub(in crate::device::suspend) kind: SuspendKind,
     pub(in crate::device::suspend) phase: SuspendPhase,
     /// DeepIdle lease while preparing / before wait; `None` during `InSleep`.
-    pub(in crate::device::suspend) cycle_lease: Option<SoftSuspendLease>,
+    pub(in crate::device::suspend) cycle_lease: Option<InhibitorGuard>,
     /// Autosleep mode to restore after a DeepIdle Mem force.
     pub(in crate::device::suspend) deep_idle_restore: Option<AutosleepMode>,
 }

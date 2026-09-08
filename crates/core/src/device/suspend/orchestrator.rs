@@ -20,6 +20,7 @@ use crate::AlarmType;
 use crate::ClockInstant;
 use crate::chrono::{Duration as ChronoDuration, Local, Timelike};
 use crate::device::DeviceHardware as _;
+use crate::device::inhibitor::{Kind, SoftSuspendName};
 use crate::device::power::PowerManager;
 use crate::device::rtc::{EnsureAlarmOutcome, PastDueAction};
 use crate::device::soft_suspend::SoftSuspendBackend as _;
@@ -38,7 +39,6 @@ use crate::view::{Event, Hub, RenderData, RenderQueue, View, wait_for_all};
 use std::sync::mpsc;
 use std::time::Duration;
 
-const DEEP_IDLE_CYCLE_LEASE: &str = "deep-idle";
 const DEEP_IDLE_POLL_INTERVAL: Duration = Duration::from_millis(100);
 
 /// Whether an explicit suspend cycle is already in flight (prepare task, Suspend
@@ -67,7 +67,9 @@ fn arm_deep_idle_lease(context: &mut AppContext) -> bool {
     {
         return true;
     }
-    let lease = context.soft_suspend_session.acquire(DEEP_IDLE_CYCLE_LEASE);
+    let lease = context
+        .inhibitor
+        .acquire(Kind::SoftSuspend, SoftSuspendName::DeepIdle);
     if let Some(cycle) = context.suspend.as_mut() {
         cycle.cycle_lease = Some(lease);
     }
@@ -81,7 +83,7 @@ fn leave_deep_idle_if_needed(context: &mut AppContext) {
     };
     cycle.cycle_lease = None;
     if let Some(restore) = cycle.deep_idle_restore.take() {
-        context.soft_suspend_session.set_mode(restore);
+        context.inhibitor.set_mode(restore);
     }
     match context.device.power_manager() {
         Ok(power) => {
@@ -371,7 +373,7 @@ fn reenter_sleep(
     runtime: &mut DeviceRuntime<'_>,
 ) -> EventOutcome {
     let kind = context.suspend.as_ref().map(|c| c.kind).unwrap_or_else(|| {
-        if context.soft_suspend_session.mode().is_armed() {
+        if context.inhibitor.mode().is_armed() {
             SuspendKind::DeepIdle
         } else {
             SuspendKind::Classic
@@ -482,7 +484,7 @@ fn enter_sleep(
         return EventOutcome::Handled;
     }
 
-    if context.suspend.is_none() && context.soft_suspend_session.mode().is_armed() {
+    if context.suspend.is_none() && context.inhibitor.mode().is_armed() {
         tracing::error!(
             "refusing classic suspend while soft-suspend is armed without an explicit cycle"
         );
@@ -557,13 +559,13 @@ fn start_deep_idle_wait(hub: &Hub, context: &mut AppContext, tasks: &mut Vec<Dev
         before.format("Entered deep idle on %B %-d, %Y at %H:%M:%S.")
     );
 
-    let restore_mode = context.soft_suspend_session.mode();
+    let restore_mode = context.inhibitor.mode();
     if let Some(cycle) = context.suspend.as_mut()
         && cycle.deep_idle_restore.is_none()
     {
         cycle.deep_idle_restore = Some(restore_mode);
     }
-    context.soft_suspend_session.set_mode(AutosleepMode::Mem);
+    context.inhibitor.set_mode(AutosleepMode::Mem);
 
     match context.device.power_manager() {
         Ok(power) => {
@@ -659,7 +661,7 @@ fn poll_deep_idle_wait(
             if context.suspend.is_none() {
                 return EventOutcome::Handled;
             }
-            if !context.soft_suspend_session.mode().is_armed() {
+            if !context.inhibitor.mode().is_armed() {
                 tracing::error!("deep idle retry failed: soft-suspend not armed; finishing cycle");
                 finish_cycle(context, runtime.tasks, runtime.view.as_mut(), hub, rq);
                 return EventOutcome::Handled;
@@ -680,14 +682,14 @@ fn poll_deep_idle_wait(
 
 /// Debug snapshot of soft-suspend lease holders at suspend milestones.
 fn log_soft_suspend_holders(context: &AppContext, at: &str) {
-    let holders = context.soft_suspend_session.holders();
+    let holders = context.inhibitor.holders();
     let holder_names: Vec<&str> = holders.iter().map(|h| h.as_str()).collect();
     tracing::debug!(
         at,
         holders = holders.len(),
         holder_names = ?holder_names,
-        mode = %context.soft_suspend_session.mode(),
-        grace_secs = context.soft_suspend_session.autosleep_grace().as_secs_f32(),
+        mode = %context.inhibitor.mode(),
+        grace_secs = context.inhibitor.autosleep_grace().as_secs_f32(),
         cycle_lease_held = context
             .suspend
             .as_ref()
@@ -802,7 +804,7 @@ pub(crate) fn start_cycle(
 
     let kind = if let Some(existing) = context.suspend.as_ref() {
         existing.kind
-    } else if context.soft_suspend_session.mode().is_armed() {
+    } else if context.inhibitor.mode().is_armed() {
         SuspendKind::DeepIdle
     } else {
         SuspendKind::Classic
@@ -812,7 +814,9 @@ pub(crate) fn start_cycle(
     let mut cycle = SuspendCycle::new(kind);
     cycle.deep_idle_restore = preserved_restore;
     if kind == SuspendKind::DeepIdle {
-        let lease = context.soft_suspend_session.acquire(DEEP_IDLE_CYCLE_LEASE);
+        let lease = context
+            .inhibitor
+            .acquire(Kind::SoftSuspend, SoftSuspendName::DeepIdle);
         cycle.cycle_lease = Some(lease);
     }
     context.suspend = Some(cycle);

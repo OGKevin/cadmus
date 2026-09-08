@@ -92,9 +92,9 @@ impl Category {
             ],
             Category::Power => {
                 let mut rows: Vec<Box<dyn SettingKind>> = Vec::new();
-                if context.soft_suspend_session.is_supported() {
+                if context.inhibitor.is_supported() {
                     rows.push(Box::new(AutosleepModeSetting::new(
-                        context.soft_suspend_session.available_modes(),
+                        context.inhibitor.available_modes(),
                     )));
                     rows.push(Box::new(IndicateAutosleepLed));
                     rows.push(Box::new(AutosleepGrace));

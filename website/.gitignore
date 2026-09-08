@@ -7,5 +7,8 @@ storybook-static/
 generated/
 i18n/locales.generated.ts
 public/_shared/
+public/api
+public/guide
+public/storybook
 public/*/
 !public/_redirects

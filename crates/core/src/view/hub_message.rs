@@ -4,7 +4,7 @@
 //! sits in the hub queue. The main loop drops that lease after acquiring its own
 //! `main-loop` lease, keeping coverage continuous across the hand-off.
 
-use crate::device::soft_suspend::lease::SoftSuspendLease;
+use crate::device::inhibitor::InhibitorGuard;
 use crate::view::Event;
 
 /// RAII lease attached to a [`HubMessage`] while it is in flight on the hub.
@@ -14,7 +14,7 @@ use crate::view::Event;
 pub enum HubLease {
     /// Soft-suspend wake lock for work that must keep autosleep from entering
     /// `mem` until the main loop takes over.
-    SoftSuspend(SoftSuspendLease),
+    SoftSuspend(InhibitorGuard),
 }
 
 /// Event delivered on the hub, optionally pinning a [`HubLease`] until handled.
@@ -38,8 +38,8 @@ impl HubMessage {
         }
     }
 
-    /// Wraps `event` with a soft-suspend lease (see [`HubLease::SoftSuspend`]).
-    pub fn with_soft_suspend(event: Event, lease: SoftSuspendLease) -> Self {
+    /// Wraps `event` with a soft-suspend inhibitor guard (see [`HubLease::SoftSuspend`]).
+    pub fn with_soft_suspend(event: Event, lease: InhibitorGuard) -> Self {
         Self::with_lease(event, HubLease::SoftSuspend(lease))
     }
 
@@ -59,56 +59,59 @@ impl From<Event> for HubMessage {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_os = "linux"))]
 mod tests {
     use super::*;
+    use crate::device::inhibitor::{Inhibitor, Kind, SoftSuspendName};
     use crate::device::linux::soft_suspend::paths::SoftSuspendPaths;
-    use crate::device::soft_suspend::SoftSuspend;
     use crate::device::soft_suspend::SoftSuspendBackend as _;
     use std::sync::Arc;
 
-    fn session() -> (tempfile::TempDir, Arc<SoftSuspend>) {
+    fn fixture() -> (tempfile::TempDir, Arc<Inhibitor>) {
         let (dir, paths) = SoftSuspendPaths::test_fixture();
-        let session = SoftSuspend::with_paths(paths, None);
-        (dir, session)
+        let inhibitor = Inhibitor::with_paths(paths, None);
+        (dir, inhibitor)
     }
 
     #[test]
     fn soft_suspend_message_holds_lease_until_dropped() {
-        let (_dir, session) = session();
+        let (_dir, inhibitor) = fixture();
 
-        let _short = session.acquire("input");
-        let message = HubMessage::with_soft_suspend(Event::ClockTick, session.acquire("input"));
+        let _short = inhibitor.acquire(Kind::SoftSuspend, SoftSuspendName::Input);
+        let message = HubMessage::with_soft_suspend(
+            Event::ClockTick,
+            inhibitor.acquire(Kind::SoftSuspend, SoftSuspendName::Input),
+        );
 
-        assert!(!session.is_empty());
+        assert!(!inhibitor.is_empty());
         drop(_short);
-        assert!(!session.is_empty());
+        assert!(!inhibitor.is_empty());
         drop(message);
-        assert!(session.is_empty());
+        assert!(inhibitor.is_empty());
     }
 
     #[test]
     fn rtc_alarm_message_holds_lease_until_dropped() {
-        let (_dir, session) = session();
+        let (_dir, inhibitor) = fixture();
 
         let message = HubMessage::with_soft_suspend(
             Event::RtcAlarmFired(crate::AlarmType::AutoSuspend),
-            session.acquire("rtc"),
+            inhibitor.acquire(Kind::SoftSuspend, SoftSuspendName::Rtc),
         );
 
-        assert!(!session.is_empty());
+        assert!(!inhibitor.is_empty());
         drop(message);
-        assert!(session.is_empty());
+        assert!(inhibitor.is_empty());
     }
 
     #[test]
     fn bare_message_does_not_acquire_lease() {
-        let (_dir, session) = session();
+        let (_dir, inhibitor) = fixture();
 
         let message = HubMessage::from(Event::ClockTick);
 
-        assert!(session.is_empty());
+        assert!(inhibitor.is_empty());
         drop(message);
-        assert!(session.is_empty());
+        assert!(inhibitor.is_empty());
     }
 }
