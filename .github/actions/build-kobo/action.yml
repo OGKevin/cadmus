@@ -19,6 +19,12 @@ inputs:
     description: "Build the test variant (installs to .adds/cadmus-tst)"
     required: false
     default: "false"
+  features:
+    description: >
+      Extra cargo features for the Cadmus build (e.g. test,tracing). When empty
+      and test is true, defaults to test.
+    required: false
+    default: ""
 
 runs:
   using: composite
@@ -79,8 +85,12 @@ runs:
         PKG_CONFIG_PATH_arm_unknown_linux_gnueabihf: ${{ github.workspace }}/target/cadmus-build-deps/arm-unknown-linux-gnueabihf/sqlite/lib/pkgconfig
         PKG_CONFIG_ALLOW_CROSS: 1
       run: |
-        if [ "${{ inputs.test }}" = "true" ]; then
-          cargo xtask build-kobo --features test
+        FEATURES="${{ inputs.features }}"
+        if [ -z "$FEATURES" ] && [ "${{ inputs.test }}" = "true" ]; then
+          FEATURES=test
+        fi
+        if [ -n "$FEATURES" ]; then
+          cargo xtask build-kobo --features "$FEATURES"
         else
           cargo xtask build-kobo
         fi
