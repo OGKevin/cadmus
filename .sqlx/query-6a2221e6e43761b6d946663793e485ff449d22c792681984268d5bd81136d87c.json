@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                SELECT\n                    id,\n                    book_fingerprint as \"book_fingerprint: Fp\",\n                    timestamp        as \"timestamp: UnixTimestamp\",\n                    event_type       as \"event_type: ReadingEventType\"\n                FROM reading_events\n                WHERE book_fingerprint = ?\n                ORDER BY timestamp DESC, id DESC\n                LIMIT 1\n                ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "reading_events",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "book_fingerprint: Fp",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "reading_events",
+            "name": "book_fingerprint"
+          }
+        }
+      },
+      {
+        "name": "timestamp: UnixTimestamp",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "reading_events",
+            "name": "timestamp"
+          }
+        }
+      },
+      {
+        "name": "event_type: ReadingEventType",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "reading_events",
+            "name": "event_type"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "6a2221e6e43761b6d946663793e485ff449d22c792681984268d5bd81136d87c"
+}
