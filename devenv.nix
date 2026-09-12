@@ -126,7 +126,10 @@ let
     in
     fixRustToolchainLibSymlink profile;
 
-  # cargo-diff-tools with Rust 1.70 for clap v2 compatibility
+  # cargo-diff-tools with Rust 1.70 for clap v2 compatibility.
+  # Pinned nixpkgs still defaults fetchCrate to the crates.io API, which
+  # returns 403 to Nix's curl User-Agent. Fetch from the static CDN instead
+  # (NixOS/nixpkgs#525067).
   cargo-diff-tools =
     let
       rustPlatform170 = pkgs.makeRustPlatform {
@@ -141,6 +144,7 @@ let
       src = pkgs.fetchCrate {
         inherit pname version;
         sha256 = "1a6878v73zx9kx31jcyzf9gks8dfb1074xk4qhy3xr2gfx2pkmv4";
+        registryDl = "https://static.crates.io/crates";
       };
 
       cargoHash = "sha256-sy1b/bIIsG5eyR0medE5Ztv39jI2HtWeiVc207ViYCA=";
