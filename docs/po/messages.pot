@@ -1,7 +1,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Cadmus Documentation\n"
-"POT-Creation-Date: 2026-09-05T21:29:23+02:00\n"
+"POT-Creation-Date: 2026-09-12T15:21:16+02:00\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
@@ -383,7 +383,7 @@ msgid ""
 "Copy that renamed file to `/mnt/onboard/.kobo/KoboRoot.tgz` on the device."
 msgstr ""
 
-#: src/installation/index.md:32 src/installation/test-builds.md:13
+#: src/installation/index.md:32 src/installation/test-builds.md:15
 msgid "Eject the device and reboot."
 msgstr ""
 
@@ -476,44 +476,59 @@ msgid "Select the run for the change you want to test."
 msgstr ""
 
 #: src/installation/test-builds.md:7
-msgid ""
-"Download the `cadmus-kobo-test-<suffix>` file. ![Download from GitHub "
-"Actions](./screenshots/artifacts.png)"
+msgid "Download the package that matches your setup:"
+msgstr ""
+
+#: src/installation/test-builds.md:8
+msgid "`cadmus-kobo-test-<suffix>` — test build only"
 msgstr ""
 
 #: src/installation/test-builds.md:9
-msgid "Extract it and pick the [package](./index.md) that matches your setup."
+msgid ""
+"`cadmus-kobo-nm-test-<suffix>` — test build + NickelMenu ![Download from "
+"GitHub Actions](./screenshots/artifacts.png)"
 msgstr ""
 
-#: src/installation/test-builds.md:10
-msgid "Rename the selected file to `KoboRoot.tgz`."
+#: src/installation/test-builds.md:11 src/installation/manual-pr-install.md:17
+msgid "Extract the download if your browser saved it as a zip."
 msgstr ""
 
-#: src/installation/test-builds.md:11
+#: src/installation/test-builds.md:12
+msgid "Rename the package to `KoboRoot.tgz`."
+msgstr ""
+
+#: src/installation/test-builds.md:13
 msgid "Copy that renamed file to: `/mnt/onboard/.kobo/KoboRoot.tgz`"
 msgstr ""
 
-#: src/installation/test-builds.md:16
+#: src/installation/test-builds.md:18
 msgid ""
 "Test packages such as `KoboRoot-test.tgz` and `KoboRoot-nm-test.tgz` must be "
 "renamed to `KoboRoot.tgz` before you copy them to your Kobo."
 msgstr ""
 
-#: src/installation/test-builds.md:19
+#: src/installation/test-builds.md:22
+msgid ""
+"Runs also include `cadmus-kobo-test-tracing-<suffix>` (and a NickelMenu "
+"variant). That is a debug package with extra diagnostics. Install it the "
+"same way over USB. Wireless updates will not install it."
+msgstr ""
+
+#: src/installation/test-builds.md:26
 msgid "Updating an existing test build"
 msgstr ""
 
-#: src/installation/test-builds.md:21
+#: src/installation/test-builds.md:28
 msgid ""
 "Use the OTA feature to download updates from a PR number directly on your "
 "device. This lets you test changes without connecting to a computer."
 msgstr ""
 
-#: src/installation/test-builds.md:24
+#: src/installation/test-builds.md:31
 msgid "Switching builds"
 msgstr ""
 
-#: src/installation/test-builds.md:26
+#: src/installation/test-builds.md:33
 msgid ""
 "When both the main and test builds are installed, open the Exit menu and "
 "choose **Switch to Test** or **Switch to Main**. Cadmus hands off to the "
@@ -777,12 +792,30 @@ msgid "Press the cargo job ![cargo job](screenshots/pr-cargo-job.png)"
 msgstr ""
 
 #: src/installation/manual-pr-install.md:10
-msgid ""
-"Scroll down until you find the files ![Download from GitHub "
-"Actions](screenshots/artifacts.png)"
+msgid "Scroll to the files and download the package you want:"
+msgstr ""
+
+#: src/installation/manual-pr-install.md:11
+msgid "`cadmus-kobo-<suffix>` — Cadmus only"
+msgstr ""
+
+#: src/installation/manual-pr-install.md:12
+msgid "`cadmus-kobo-nm-<suffix>` — Cadmus + NickelMenu"
 msgstr ""
 
 #: src/installation/manual-pr-install.md:13
+msgid ""
+"`cadmus-kobo-test-tracing-<suffix>` — test build with extra diagnostics (USB "
+"only; see [Test builds](test-builds.md))"
+msgstr ""
+
+#: src/installation/manual-pr-install.md:15
+msgid ""
+"`cadmus-kobo-nm-test-tracing-<suffix>` — same, plus NickelMenu ![Download "
+"from GitHub Actions](screenshots/artifacts.png)"
+msgstr ""
+
+#: src/installation/manual-pr-install.md:19
 msgid "Afterward, follow the [installation](index.md) instructions accordingly."
 msgstr ""
 

@@ -72,11 +72,28 @@ jobs:
             dist/bin/*
             release-artifacts/*.tgz
 
-      - name: Upload artifacts
+      - name: Upload KoboRoot
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: cadmus-kobo-pr${{ inputs.pr_number }}-${{ steps.commit.outputs.short_sha }}
-          path: release-artifacts/*
+          path: release-artifacts/KoboRoot.tgz
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload KoboRoot with NickelMenu
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: cadmus-kobo-nm-pr${{ inputs.pr_number }}-${{ steps.commit.outputs.short_sha }}
+          path: release-artifacts/KoboRoot-nm.tgz
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload dist tarball
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: cadmus-kobo-dist-pr${{ inputs.pr_number }}-${{ steps.commit.outputs.short_sha }}
+          path: release-artifacts/cadmus-kobo.tar.gz
+          if-no-files-found: error
           retention-days: 14
 
       - name: Comment on PR or Issue
