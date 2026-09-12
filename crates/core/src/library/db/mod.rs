@@ -26,6 +26,21 @@ use std::path::{Path, PathBuf};
 
 pub use models::{BookHandle, PathUpdate};
 
+/// The seven writes of an import flush, applied in one transaction.
+pub(crate) struct ImportFlush<'a> {
+    pub thumbnails_to_delete: &'a [Fp],
+    pub books_to_insert: &'a [(Fp, &'a Info)],
+    pub books_to_update: &'a [(Fp, &'a Info)],
+    pub books_to_link: &'a [(Fp, &'a Info)],
+    pub path_updates: &'a [PathUpdate],
+    pub books_to_delete: &'a [Fp],
+    /// Recompute sort ranks after the book writes in this flush.
+    ///
+    /// Callers set this from purged fingerprints plus the insert, update,
+    /// link, path, and delete batches. Thumbnail-only cleanup leaves it false.
+    pub sort_keys_dirty: bool,
+}
+
 /// Gap between adjacent sort ranks assigned by [`Db::compute_sort_keys`].
 ///
 /// Ranks are stored as multiples of this value (1 000, 2 000, 3 000, …) so
@@ -62,6 +77,15 @@ fn midpoint_rank(existing_ranks: &[Option<i64>], pos: usize) -> Option<i64> {
             if mid <= l { None } else { Some(mid) }
         }
     }
+}
+
+/// Builds the UPDATE that writes one sort-rank column.
+///
+/// SQLx cannot parameterize column identifiers, so the name is interpolated.
+/// `col` is only ever a value from the fixed `methods` list in
+/// [`Db::compute_sort_keys_on`].
+fn sort_key_update_sql(col: &str) -> String {
+    format!("UPDATE library_books SET {col} = ? WHERE library_id = ? AND book_fingerprint = ?")
 }
 
 /// Lightweight row fetched by [`Db::fetch_title_sort_rows`] for binary search.
@@ -466,7 +490,7 @@ impl Db {
     }
 
     async fn fetch_all_toc_entries(
-        pool: &SqlitePool,
+        conn: &mut sqlx::SqliteConnection,
         library_id: i64,
     ) -> Result<HashMap<String, Vec<TocEntryRow>>, Error> {
         let toc_rows: Vec<TocEntryRow> = sqlx::query_as!(
@@ -488,7 +512,7 @@ impl Db {
             "#,
             library_id
         )
-        .fetch_all(pool)
+        .fetch_all(&mut *conn)
         .await?;
 
         let mut map: HashMap<String, Vec<TocEntryRow>> = HashMap::new();
@@ -510,8 +534,17 @@ impl Db {
         tracing::debug!(library_id, "fetching all books from database");
 
         RUNTIME.block_on(async {
-            let book_rows = sqlx::query!(
-                r#"
+            let mut conn = self.pool.acquire().await?;
+            Self::get_all_books_on(&mut conn, library_id).await
+        })
+    }
+
+    async fn get_all_books_on(
+        conn: &mut sqlx::SqliteConnection,
+        library_id: i64,
+    ) -> Result<Vec<Info>, Error> {
+        let book_rows = sqlx::query!(
+            r#"
                 SELECT
                     fingerprint as "fingerprint: Fp",
                     title,
@@ -558,86 +591,84 @@ impl Db {
                   AND status = 'active'
                 ORDER BY added_at DESC
                 "#,
-                library_id
-            )
-            .fetch_all(&self.pool)
-            .await?;
+            library_id
+        )
+        .fetch_all(&mut *conn)
+        .await?;
 
-            let mut toc_by_fingerprint =
-                Self::fetch_all_toc_entries(&self.pool, library_id).await?;
+        let mut toc_by_fingerprint = Self::fetch_all_toc_entries(conn, library_id).await?;
 
-            let mut result = Vec::new();
+        let mut result = Vec::new();
 
-            for row in book_rows {
-                let fp = row.fingerprint;
+        for row in book_rows {
+            let fp = row.fingerprint;
 
-                let toc = toc_by_fingerprint
-                    .remove(&fp.to_string())
-                    .map(|rows| rows_to_toc_entries(&rows))
-                    .transpose()?;
+            let toc = toc_by_fingerprint
+                .remove(&fp.to_string())
+                .map(|rows| rows_to_toc_entries(&rows))
+                .transpose()?;
 
-                let mut info = Info {
-                    title: row.title,
-                    subtitle: row.subtitle,
-                    author: Self::extract_authors(row.authors),
-                    year: row.year,
-                    language: row.language,
-                    publisher: row.publisher,
-                    series: row.series,
-                    edition: row.edition,
-                    volume: row.volume,
-                    number: row.number,
-                    identifier: row.identifier,
-                    categories: Self::extract_categories(row.categories),
-                    file: FileInfo {
-                        path: PathBuf::from(&row.file_path),
-                        absolute_path: PathBuf::from(&row.absolute_path),
-                        kind: row.file_kind.into(),
-                        size: row.file_size as u64,
-                        mtime: None,
-                    },
-                    reader: None,
-                    reader_info: None,
-                    toc,
-                    added: row.added_at.into(),
-                    fp: Some(fp),
+            let mut info = Info {
+                title: row.title,
+                subtitle: row.subtitle,
+                author: Self::extract_authors(row.authors),
+                year: row.year,
+                language: row.language,
+                publisher: row.publisher,
+                series: row.series,
+                edition: row.edition,
+                volume: row.volume,
+                number: row.number,
+                identifier: row.identifier,
+                categories: Self::extract_categories(row.categories),
+                file: FileInfo {
+                    path: PathBuf::from(&row.file_path),
+                    absolute_path: PathBuf::from(&row.absolute_path),
+                    kind: row.file_kind.into(),
+                    size: row.file_size as u64,
+                    mtime: None,
+                },
+                reader: None,
+                reader_info: None,
+                toc,
+                added: row.added_at.into(),
+                fp: Some(fp),
+            };
+            if let Some(opened_ts) = row.opened {
+                let reader_info = ReaderInfo {
+                    opened: opened_ts.into(),
+                    current_page: row.current_page.unwrap_or(0) as usize,
+                    pages_count: row.pages_count.unwrap_or(0) as usize,
+                    finished: row.finished.unwrap_or(0) == 1,
+                    dithered: row.dithered.unwrap_or(0) == 1,
+                    zoom_mode: Self::parse_zoom_mode(row.zoom_mode.as_ref()),
+                    scroll_mode: Self::parse_scroll_mode(row.scroll_mode.as_ref()),
+                    page_offset: Self::parse_page_offset(row.page_offset_x, row.page_offset_y),
+                    rotation: row.rotation.map(|r| r as i8),
+                    cropping_margins: Self::parse_cropping_margins(
+                        row.cropping_margins_json.as_ref(),
+                    ),
+                    margin_width: row.margin_width.map(|m| m as i32),
+                    screen_margin_width: row.screen_margin_width.map(|m| m as i32),
+                    font_family: row.font_family.clone(),
+                    font_size: row.font_size.map(|f| f as f32),
+                    text_align: Self::parse_text_align(row.text_align.as_ref()),
+                    line_height: row.line_height.map(|l| l as f32),
+                    contrast_exponent: row.contrast_exponent.map(|c| c as f32),
+                    contrast_gray: row.contrast_gray.map(|c| c as f32),
+                    page_names: Self::parse_page_names(row.page_names_json.as_ref()),
+                    bookmarks: Self::parse_bookmarks(row.bookmarks_json.as_ref()),
+                    annotations: Self::parse_annotations(row.annotations_json.as_ref()),
                 };
-                if let Some(opened_ts) = row.opened {
-                    let reader_info = ReaderInfo {
-                        opened: opened_ts.into(),
-                        current_page: row.current_page.unwrap_or(0) as usize,
-                        pages_count: row.pages_count.unwrap_or(0) as usize,
-                        finished: row.finished.unwrap_or(0) == 1,
-                        dithered: row.dithered.unwrap_or(0) == 1,
-                        zoom_mode: Self::parse_zoom_mode(row.zoom_mode.as_ref()),
-                        scroll_mode: Self::parse_scroll_mode(row.scroll_mode.as_ref()),
-                        page_offset: Self::parse_page_offset(row.page_offset_x, row.page_offset_y),
-                        rotation: row.rotation.map(|r| r as i8),
-                        cropping_margins: Self::parse_cropping_margins(
-                            row.cropping_margins_json.as_ref(),
-                        ),
-                        margin_width: row.margin_width.map(|m| m as i32),
-                        screen_margin_width: row.screen_margin_width.map(|m| m as i32),
-                        font_family: row.font_family.clone(),
-                        font_size: row.font_size.map(|f| f as f32),
-                        text_align: Self::parse_text_align(row.text_align.as_ref()),
-                        line_height: row.line_height.map(|l| l as f32),
-                        contrast_exponent: row.contrast_exponent.map(|c| c as f32),
-                        contrast_gray: row.contrast_gray.map(|c| c as f32),
-                        page_names: Self::parse_page_names(row.page_names_json.as_ref()),
-                        bookmarks: Self::parse_bookmarks(row.bookmarks_json.as_ref()),
-                        annotations: Self::parse_annotations(row.annotations_json.as_ref()),
-                    };
-                    info.reader = Some(reader_info.clone());
-                    info.reader_info = Some(reader_info);
-                }
-
-                result.push(info);
+                info.reader = Some(reader_info.clone());
+                info.reader_info = Some(reader_info);
             }
 
-            tracing::debug!(library_id, count = result.len(), "fetched all books");
-            Ok(result)
-        })
+            result.push(info);
+        }
+
+        tracing::debug!(library_id, count = result.len(), "fetched all books");
+        Ok(result)
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, path), fields(library_id, path = %path.display())))]
@@ -1084,7 +1115,19 @@ impl Db {
     /// partially exhausted by many consecutive single-book insertions.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     pub fn compute_sort_keys(&self, library_id: i64) -> Result<(), Error> {
-        let books = self.get_all_books(library_id)?;
+        RUNTIME.block_on(async {
+            let mut tx = self.pool.begin().await?;
+            Self::compute_sort_keys_on(&mut tx, library_id).await?;
+            tx.commit().await?;
+            Ok(())
+        })
+    }
+
+    async fn compute_sort_keys_on(
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        library_id: i64,
+    ) -> Result<(), Error> {
+        let books = Self::get_all_books_on(tx, library_id).await?;
         if books.is_empty() {
             return Ok(());
         }
@@ -1097,33 +1140,24 @@ impl Db {
             (SortMethod::Series, "sort_series"),
         ];
 
-        RUNTIME.block_on(async {
-            let mut tx = self.pool.begin().await?;
+        for (method, col) in methods {
+            let mut sorted = books.clone();
+            sorted.sort_by(sorter(*method));
 
-            for (method, col) in methods {
-                let mut sorted = books.clone();
-                sorted.sort_by(sorter(*method));
-
-                let sql = format!(
-                    "UPDATE library_books SET {col} = ? WHERE library_id = ? AND book_fingerprint = ?"
-                );
-                for (rank, info) in sorted.iter().enumerate() {
-                    let fp = info.fp.map(|f| f.to_string()).unwrap_or_default();
-                    // Multiply by SORT_RANK_STRIDE to leave gaps for cheap
-                    // single-book insertions via insert_sort_rank.
-                    let rank = (rank as i64 + 1) * SORT_RANK_STRIDE;
-                    sqlx::query(AssertSqlSafe(sql.as_str()))
-                        .bind(rank)
-                        .bind(library_id)
-                        .bind(&fp)
-                        .execute(&mut *tx)
-                        .await?;
-                }
+            let sql = sort_key_update_sql(col);
+            for (rank, info) in sorted.iter().enumerate() {
+                let fp = info.fp.map(|f| f.to_string()).unwrap_or_default();
+                let rank = (rank as i64 + 1) * SORT_RANK_STRIDE;
+                sqlx::query(AssertSqlSafe(sql.as_str()))
+                    .bind(rank)
+                    .bind(library_id)
+                    .bind(&fp)
+                    .execute(&mut **tx)
+                    .await?;
             }
+        }
 
-            tx.commit().await?;
-            Ok(())
-        })
+        Ok(())
     }
 
     /// Inserts sort ranks for a single newly-added book without recomputing
@@ -1938,12 +1972,21 @@ impl Db {
 
         RUNTIME.block_on(async {
             let mut tx = self.pool.begin().await?;
-            let book_row = info_to_book_row(fp, info)?;
-            Self::attach_book_to_library(&mut tx, library_id, fp, info, &book_row).await?;
+            Self::link_book_to_library_on(&mut tx, library_id, fp, info).await?;
             tx.commit().await?;
             tracing::debug!(fp = %fp, "book link complete");
             Ok(())
         })
+    }
+
+    async fn link_book_to_library_on(
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        library_id: i64,
+        fp: Fp,
+        info: &Info,
+    ) -> Result<(), Error> {
+        let book_row = info_to_book_row(fp, info)?;
+        Self::attach_book_to_library(tx, library_id, fp, info, &book_row).await
     }
 
     /// Rewrites the stored metadata for one book and its library-specific path fields.
@@ -2375,26 +2418,33 @@ impl Db {
 
         RUNTIME.block_on(async {
             let mut tx = self.pool.begin().await?;
-
-            for (fp, info) in books {
-                let fp_str = fp.to_string();
-                let book_row = info_to_book_row(*fp, info)?;
-                Self::insert_books_row(&mut tx, &book_row, BookStatus::Active).await?;
-                Self::attach_book_to_library(&mut tx, library_id, *fp, info, &book_row).await?;
-
-                if let Some(ref toc) = info.toc {
-                    sqlx::query!("DELETE FROM toc_entries WHERE book_fingerprint = ?", fp_str)
-                        .execute(&mut *tx)
-                        .await?;
-                    Self::insert_toc_entries(&mut tx, &fp_str, toc, None).await?;
-                }
-            }
-
+            Self::batch_insert_books_on(&mut tx, library_id, books).await?;
             tx.commit().await?;
 
             tracing::debug!(count = books.len(), "batch insert complete");
             Ok(())
         })
+    }
+
+    async fn batch_insert_books_on(
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        library_id: i64,
+        books: &[(Fp, &Info)],
+    ) -> Result<(), Error> {
+        for (fp, info) in books {
+            let fp_str = fp.to_string();
+            let book_row = info_to_book_row(*fp, info)?;
+            Self::insert_books_row(tx, &book_row, BookStatus::Active).await?;
+            Self::attach_book_to_library(tx, library_id, *fp, info, &book_row).await?;
+
+            if let Some(ref toc) = info.toc {
+                sqlx::query!("DELETE FROM toc_entries WHERE book_fingerprint = ?", fp_str)
+                    .execute(&mut **tx)
+                    .await?;
+                Self::insert_toc_entries(tx, &fp_str, toc, None).await?;
+            }
+        }
+        Ok(())
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, books), fields(library_id, count = books.len(), status = %status)))]
@@ -2412,129 +2462,136 @@ impl Db {
 
         RUNTIME.block_on(async {
             let mut tx = self.pool.begin().await?;
+            Self::batch_update_books_on(&mut tx, library_id, books, status).await?;
+            tx.commit().await?;
 
-            for (fp, info) in books {
-                let fp_str = fp.to_string();
+            tracing::debug!(count = books.len(), "batch update complete");
+            Ok(())
+        })
+    }
 
-                let book_row = info_to_book_row(*fp, info)?;
+    async fn batch_update_books_on(
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        library_id: i64,
+        books: &[(Fp, &Info)],
+        status: BookStatus,
+    ) -> Result<(), Error> {
+        for (fp, info) in books {
+            let fp_str = fp.to_string();
 
-                sqlx::query!(
-                    r#"
+            let book_row = info_to_book_row(*fp, info)?;
+
+            sqlx::query!(
+                r#"
                     UPDATE books SET
                         title = ?, subtitle = ?, year = ?, language = ?, publisher = ?,
                         series = ?, edition = ?, volume = ?, number = ?, identifier = ?,
                         file_kind = ?, file_size = ?, added_at = ?, status = ?
                     WHERE fingerprint = ?
                     "#,
-                    book_row.title,
-                    book_row.subtitle,
-                    book_row.year,
-                    book_row.language,
-                    book_row.publisher,
-                    book_row.series,
-                    book_row.edition,
-                    book_row.volume,
-                    book_row.number,
-                    book_row.identifier,
-                    book_row.file_kind,
-                    book_row.file_size,
-                    book_row.added_at,
-                    status,
-                    fp_str,
-                )
-                .execute(&mut *tx)
-                .await?;
+                book_row.title,
+                book_row.subtitle,
+                book_row.year,
+                book_row.language,
+                book_row.publisher,
+                book_row.series,
+                book_row.edition,
+                book_row.volume,
+                book_row.number,
+                book_row.identifier,
+                book_row.file_kind,
+                book_row.file_size,
+                book_row.added_at,
+                status,
+                fp_str,
+            )
+            .execute(&mut **tx)
+            .await?;
 
-                Self::upsert_library_book(&mut tx, library_id, &fp_str, &book_row, info).await?;
+            Self::upsert_library_book(tx, library_id, &fp_str, &book_row, info).await?;
 
+            sqlx::query!(
+                r#"DELETE FROM book_authors WHERE book_fingerprint = ?"#,
+                fp_str
+            )
+            .execute(&mut **tx)
+            .await?;
+
+            let authors = extract_authors(&info.author);
+            for (position, author_name) in authors.iter().enumerate() {
                 sqlx::query!(
-                    r#"DELETE FROM book_authors WHERE book_fingerprint = ?"#,
-                    fp_str
+                    r#"INSERT OR IGNORE INTO authors (name) VALUES (?)"#,
+                    author_name
                 )
-                .execute(&mut *tx)
+                .execute(&mut **tx)
                 .await?;
 
-                let authors = extract_authors(&info.author);
-                for (position, author_name) in authors.iter().enumerate() {
-                    sqlx::query!(
-                        r#"INSERT OR IGNORE INTO authors (name) VALUES (?)"#,
-                        author_name
-                    )
-                    .execute(&mut *tx)
-                    .await?;
+                let author_id: i64 =
+                    sqlx::query_scalar!(r#"SELECT id FROM authors WHERE name = ?"#, author_name)
+                        .fetch_one(&mut **tx)
+                        .await?;
 
-                    let author_id: i64 = sqlx::query_scalar!(
-                        r#"SELECT id FROM authors WHERE name = ?"#,
-                        author_name
-                    )
-                    .fetch_one(&mut *tx)
-                    .await?;
-
-                    let pos = position as i64;
-                    sqlx::query!(
-                        r#"
+                let pos = position as i64;
+                sqlx::query!(
+                    r#"
                         INSERT INTO book_authors (book_fingerprint, author_id, position)
                         VALUES (?, ?, ?)
                         "#,
-                        fp_str,
-                        author_id,
-                        pos
-                    )
-                    .execute(&mut *tx)
-                    .await?;
-                }
-
-                sqlx::query!(
-                    r#"DELETE FROM book_categories WHERE book_fingerprint = ?"#,
-                    fp_str
+                    fp_str,
+                    author_id,
+                    pos
                 )
-                .execute(&mut *tx)
+                .execute(&mut **tx)
+                .await?;
+            }
+
+            sqlx::query!(
+                r#"DELETE FROM book_categories WHERE book_fingerprint = ?"#,
+                fp_str
+            )
+            .execute(&mut **tx)
+            .await?;
+
+            for category_name in &info.categories {
+                sqlx::query!(
+                    r#"INSERT OR IGNORE INTO categories (name) VALUES (?)"#,
+                    category_name
+                )
+                .execute(&mut **tx)
                 .await?;
 
-                for category_name in &info.categories {
-                    sqlx::query!(
-                        r#"INSERT OR IGNORE INTO categories (name) VALUES (?)"#,
-                        category_name
-                    )
-                    .execute(&mut *tx)
-                    .await?;
+                let category_id: i64 = sqlx::query_scalar!(
+                    r#"SELECT id FROM categories WHERE name = ?"#,
+                    category_name
+                )
+                .fetch_one(&mut **tx)
+                .await?;
 
-                    let category_id: i64 = sqlx::query_scalar!(
-                        r#"SELECT id FROM categories WHERE name = ?"#,
-                        category_name
-                    )
-                    .fetch_one(&mut *tx)
-                    .await?;
-
-                    sqlx::query!(
-                        r#"
+                sqlx::query!(
+                    r#"
                         INSERT INTO book_categories (book_fingerprint, category_id)
                         VALUES (?, ?)
                         "#,
-                        fp_str,
-                        category_id
-                    )
-                    .execute(&mut *tx)
-                    .await?;
-                }
-
-                if let Some(ref toc) = info.toc {
-                    sqlx::query!("DELETE FROM toc_entries WHERE book_fingerprint = ?", fp_str)
-                        .execute(&mut *tx)
-                        .await?;
-                    Self::insert_toc_entries(&mut tx, &fp_str, toc, None).await?;
-                } else {
-                    sqlx::query!("DELETE FROM toc_entries WHERE book_fingerprint = ?", fp_str)
-                        .execute(&mut *tx)
-                        .await?;
-                }
+                    fp_str,
+                    category_id
+                )
+                .execute(&mut **tx)
+                .await?;
             }
 
-            tx.commit().await?;
+            if let Some(ref toc) = info.toc {
+                sqlx::query!("DELETE FROM toc_entries WHERE book_fingerprint = ?", fp_str)
+                    .execute(&mut **tx)
+                    .await?;
+                Self::insert_toc_entries(tx, &fp_str, toc, None).await?;
+            } else {
+                sqlx::query!("DELETE FROM toc_entries WHERE book_fingerprint = ?", fp_str)
+                    .execute(&mut **tx)
+                    .await?;
+            }
+        }
 
-            tracing::debug!(count = books.len(), "batch update complete");
-            Ok(())
-        })
+        Ok(())
     }
 
     /// Returns handles for every book currently linked to a library.
@@ -2658,30 +2715,37 @@ impl Db {
 
         RUNTIME.block_on(async {
             let mut tx = self.pool.begin().await?;
-
-            for update in updates {
-                let fp_str = update.fp.to_string();
-                let rel_str = update.relat.to_string_lossy().into_owned();
-                let abs_str = update.abs.to_string_lossy().into_owned();
-
-                sqlx::query!(
-                    r#"UPDATE library_books
-                       SET file_path = ?, absolute_path = ?, mtime = ?, file_size = ?
-                       WHERE library_id = ? AND book_fingerprint = ?"#,
-                    rel_str,
-                    abs_str,
-                    update.mtime,
-                    update.file_size,
-                    library_id,
-                    fp_str,
-                )
-                .execute(&mut *tx)
-                .await?;
-            }
-
+            Self::batch_update_book_paths_on(&mut tx, library_id, updates).await?;
             tx.commit().await?;
             Ok(())
         })
+    }
+
+    async fn batch_update_book_paths_on(
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        library_id: i64,
+        updates: &[PathUpdate],
+    ) -> Result<(), Error> {
+        for update in updates {
+            let fp_str = update.fp.to_string();
+            let rel_str = update.relat.to_string_lossy().into_owned();
+            let abs_str = update.abs.to_string_lossy().into_owned();
+
+            sqlx::query!(
+                r#"UPDATE library_books
+                       SET file_path = ?, absolute_path = ?, mtime = ?, file_size = ?
+                       WHERE library_id = ? AND book_fingerprint = ?"#,
+                rel_str,
+                abs_str,
+                update.mtime,
+                update.file_size,
+                library_id,
+                fp_str,
+            )
+            .execute(&mut **tx)
+            .await?;
+        }
+        Ok(())
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fps), fields(library_id, count = fps.len())))]
@@ -2698,43 +2762,47 @@ impl Db {
 
         RUNTIME.block_on(async {
             let mut tx = self.pool.begin().await?;
-
-            for fp in fps {
-                let fp_str = fp.to_string();
-
-                sqlx::query!(
-                    r#"DELETE FROM library_books WHERE library_id = ? AND book_fingerprint = ?"#,
-                    library_id,
-                    fp_str
-                )
-                .execute(&mut *tx)
-                .await?;
-
-                let ref_count: i64 = sqlx::query_scalar!(
-                    r#"SELECT COUNT(*) FROM library_books WHERE book_fingerprint = ?"#,
-                    fp_str
-                )
-                .fetch_one(&mut *tx)
-                .await?;
-
-                if ref_count == 0 {
-                    sqlx::query!(
-                        r#"DELETE FROM books WHERE fingerprint = ?"#,
-                        fp_str
-                    )
-                    .execute(&mut *tx)
-                    .await?;
-                    tracing::debug!(fp = %fp, "book removed from database (no more library references)");
-                } else {
-                    tracing::debug!(fp = %fp, ref_count, "book kept in database (still referenced by other libraries)");
-                }
-            }
-
+            Self::batch_delete_books_on(&mut tx, library_id, fps).await?;
             tx.commit().await?;
 
             tracing::debug!(count = fps.len(), "batch delete complete");
             Ok(())
         })
+    }
+
+    async fn batch_delete_books_on(
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        library_id: i64,
+        fps: &[Fp],
+    ) -> Result<(), Error> {
+        for fp in fps {
+            let fp_str = fp.to_string();
+
+            sqlx::query!(
+                r#"DELETE FROM library_books WHERE library_id = ? AND book_fingerprint = ?"#,
+                library_id,
+                fp_str
+            )
+            .execute(&mut **tx)
+            .await?;
+
+            let ref_count: i64 = sqlx::query_scalar!(
+                r#"SELECT COUNT(*) FROM library_books WHERE book_fingerprint = ?"#,
+                fp_str
+            )
+            .fetch_one(&mut **tx)
+            .await?;
+
+            if ref_count == 0 {
+                sqlx::query!(r#"DELETE FROM books WHERE fingerprint = ?"#, fp_str)
+                    .execute(&mut **tx)
+                    .await?;
+                tracing::debug!(fp = %fp, "book removed from database (no more library references)");
+            } else {
+                tracing::debug!(fp = %fp, ref_count, "book kept in database (still referenced by other libraries)");
+            }
+        }
+        Ok(())
     }
 
     /// Deletes all `library_books` rows for this library whose `file_kind` is not in
@@ -2789,6 +2857,53 @@ impl Db {
                 "disallowed kind and thumbnail cleanup complete"
             );
             Ok(purged)
+        })
+    }
+
+    pub(crate) fn flush_import_scan(
+        &self,
+        library_id: i64,
+        flush: ImportFlush<'_>,
+    ) -> Result<(), Error> {
+        RUNTIME.block_on(async {
+            let mut tx = self.pool.begin().await?;
+            batch_delete_thumbnails_on(&mut tx, flush.thumbnails_to_delete).await?;
+
+            #[cfg(test)]
+            if flush_fail_point::should_fail(flush_fail_point::Point::AfterThumbnails) {
+                tx.rollback().await?;
+                return Err(anyhow::anyhow!(
+                    "injected failure after import thumbnail delete"
+                ));
+            }
+
+            Self::batch_insert_books_on(&mut tx, library_id, flush.books_to_insert).await?;
+            Self::batch_update_books_on(
+                &mut tx,
+                library_id,
+                flush.books_to_update,
+                BookStatus::Active,
+            )
+            .await?;
+            for (fp, info) in flush.books_to_link {
+                Self::link_book_to_library_on(&mut tx, library_id, *fp, info).await?;
+            }
+            Self::batch_update_book_paths_on(&mut tx, library_id, flush.path_updates).await?;
+            Self::batch_delete_books_on(&mut tx, library_id, flush.books_to_delete).await?;
+
+            if flush.sort_keys_dirty {
+                #[cfg(test)]
+                if flush_fail_point::should_fail(flush_fail_point::Point::BeforeSortKeys) {
+                    tx.rollback().await?;
+                    return Err(anyhow::anyhow!(
+                        "injected failure before import sort-key compute"
+                    ));
+                }
+
+                Self::compute_sort_keys_on(&mut tx, library_id).await?;
+            }
+            tx.commit().await?;
+            Ok(())
         })
     }
 }
@@ -2895,6 +3010,38 @@ mod purge_fail_point {
 
     pub fn should_fail() -> bool {
         FAIL_AFTER_BOOKS.with(Cell::get)
+    }
+}
+
+#[cfg(test)]
+mod flush_fail_point {
+    use std::cell::Cell;
+
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    pub enum Point {
+        AfterThumbnails,
+        BeforeSortKeys,
+    }
+
+    thread_local! {
+        static POINT: Cell<Option<Point>> = const { Cell::new(None) };
+    }
+
+    pub struct Guard;
+
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            POINT.with(|c| c.set(None));
+        }
+    }
+
+    pub fn arm(point: Point) -> Guard {
+        POINT.with(|c| c.set(Some(point)));
+        Guard
+    }
+
+    pub fn should_fail(point: Point) -> bool {
+        POINT.with(|c| c.get() == Some(point))
     }
 }
 
@@ -4921,6 +5068,230 @@ mod tests {
             Some(b"pdf-thumb".to_vec()),
             "thumbnail should remain after rollback"
         );
+    }
+
+    fn handle_fps(libdb: &Db, library_id: i64) -> Vec<Fp> {
+        let mut fps: Vec<Fp> = libdb
+            .list_book_handles(library_id)
+            .expect("handles")
+            .into_iter()
+            .map(|h| h.fp)
+            .collect();
+        fps.sort_by_key(|fp| fp.to_string());
+        fps
+    }
+
+    fn flush_relocation(
+        libdb: &Db,
+        library_id: i64,
+        old_fp: Fp,
+        new_fp: Fp,
+        new_info: &Info,
+    ) -> Result<(), Error> {
+        libdb.flush_import_scan(
+            library_id,
+            super::ImportFlush {
+                thumbnails_to_delete: &[old_fp],
+                books_to_insert: &[(new_fp, new_info)],
+                books_to_update: &[],
+                books_to_link: &[],
+                path_updates: &[],
+                books_to_delete: &[old_fp],
+                sort_keys_dirty: true,
+            },
+        )
+    }
+
+    #[test]
+    fn flush_import_scan_keeps_relocated_book_and_thumbnail_on_error_after_delete() {
+        let (_db, libdb) = create_test_db();
+        let library_id = register_test_library(&libdb, "/tmp/flush_reloc", "Flush Reloc");
+
+        let old_fp = Fp::from_u64(9201);
+        let new_fp = Fp::from_u64(9202);
+        let old_info = make_info("old.epub", "Old Title", "Author");
+        let new_info = make_info("new.epub", "New Title", "Author");
+
+        libdb
+            .batch_insert_books(library_id, &[(old_fp, &old_info)])
+            .expect("insert old");
+        libdb
+            .save_thumbnail(old_fp, b"old-thumb")
+            .expect("save thumbnail");
+
+        let _fail = super::flush_fail_point::arm(super::flush_fail_point::Point::AfterThumbnails);
+        let err = flush_relocation(&libdb, library_id, old_fp, new_fp, &new_info)
+            .expect_err("injected failure");
+        assert!(err.to_string().contains("injected failure"), "{err}");
+
+        assert_eq!(handle_fps(&libdb, library_id), vec![old_fp]);
+        assert_eq!(
+            libdb.get_thumbnail(old_fp).expect("thumbnail"),
+            Some(b"old-thumb".to_vec())
+        );
+        assert!(
+            libdb.get_thumbnail(new_fp).expect("new thumb").is_none(),
+            "new fingerprint must not exist after rollback"
+        );
+    }
+
+    #[test]
+    fn flush_import_scan_keeps_sort_keys_on_error_before_recompute() {
+        let (_db, libdb) = create_test_db();
+        let library_id = register_test_library(&libdb, "/tmp/flush_sort", "Flush Sort");
+
+        let a = Fp::from_u64(9301);
+        let b = Fp::from_u64(9302);
+        let c = Fp::from_u64(9303);
+        let a_info = make_info("a.epub", "Alpha", "Author");
+        let b_info = make_info("b.epub", "Beta", "Author");
+        let c_info = make_info("c.epub", "Gamma", "Author");
+
+        libdb
+            .batch_insert_books(library_id, &[(a, &a_info), (b, &b_info)])
+            .expect("insert");
+        libdb.compute_sort_keys(library_id).expect("sort");
+        let titles_before: Vec<String> = libdb
+            .get_all_books(library_id)
+            .expect("books")
+            .into_iter()
+            .map(|info| info.title)
+            .collect();
+
+        let _fail = super::flush_fail_point::arm(super::flush_fail_point::Point::BeforeSortKeys);
+        let err = libdb
+            .flush_import_scan(
+                library_id,
+                super::ImportFlush {
+                    thumbnails_to_delete: &[],
+                    books_to_insert: &[(c, &c_info)],
+                    books_to_update: &[],
+                    books_to_link: &[],
+                    path_updates: &[],
+                    books_to_delete: &[],
+                    sort_keys_dirty: true,
+                },
+            )
+            .expect_err("injected failure");
+        assert!(err.to_string().contains("injected failure"), "{err}");
+
+        assert_eq!(handle_fps(&libdb, library_id), vec![a, b]);
+        let titles_after: Vec<String> = libdb
+            .get_all_books(library_id)
+            .expect("books")
+            .into_iter()
+            .map(|info| info.title)
+            .collect();
+        assert_eq!(titles_after, titles_before);
+    }
+
+    #[test]
+    fn flush_import_scan_converges_after_interrupted_then_complete_run() {
+        let (_db, libdb) = create_test_db();
+        let library_id = register_test_library(&libdb, "/tmp/flush_conv", "Flush Conv");
+
+        let old_fp = Fp::from_u64(9401);
+        let new_fp = Fp::from_u64(9402);
+        let old_info = make_info("old.epub", "Old Title", "Author");
+        let new_info = make_info("new.epub", "New Title", "Author");
+
+        libdb
+            .batch_insert_books(library_id, &[(old_fp, &old_info)])
+            .expect("insert old");
+        libdb
+            .save_thumbnail(old_fp, b"old-thumb")
+            .expect("save thumbnail");
+
+        {
+            let (_db2, golden) = create_test_db();
+            let golden_id = register_test_library(&golden, "/tmp/flush_conv_g", "Flush Conv G");
+            golden
+                .batch_insert_books(golden_id, &[(old_fp, &old_info)])
+                .expect("golden insert");
+            golden
+                .save_thumbnail(old_fp, b"old-thumb")
+                .expect("golden thumb");
+            flush_relocation(&golden, golden_id, old_fp, new_fp, &new_info).expect("golden flush");
+            let golden_fps = handle_fps(&golden, golden_id);
+
+            {
+                let _fail =
+                    super::flush_fail_point::arm(super::flush_fail_point::Point::AfterThumbnails);
+                flush_relocation(&libdb, library_id, old_fp, new_fp, &new_info)
+                    .expect_err("interrupted");
+            }
+            flush_relocation(&libdb, library_id, old_fp, new_fp, &new_info).expect("retry");
+
+            assert_eq!(handle_fps(&libdb, library_id), golden_fps);
+            assert_eq!(handle_fps(&libdb, library_id), vec![new_fp]);
+        }
+    }
+
+    #[test]
+    fn flush_import_scan_skips_sort_keys_when_not_dirty() {
+        let (_db, libdb) = create_test_db();
+        let library_id = register_test_library(&libdb, "/tmp/flush_skip_sort", "Flush Skip Sort");
+
+        let a = Fp::from_u64(9501);
+        let b = Fp::from_u64(9502);
+        let c = Fp::from_u64(9503);
+        let a_info = make_info("a.epub", "Alpha", "Author");
+        let b_info = make_info("m.epub", "Mike", "Author");
+        let c_info = make_info("z.epub", "Zulu", "Author");
+
+        libdb
+            .batch_insert_books(library_id, &[(a, &a_info), (b, &b_info), (c, &c_info)])
+            .expect("insert");
+        libdb.compute_sort_keys(library_id).expect("sort");
+
+        let renamed = make_info("a.epub", "Zeta", "Author");
+        libdb
+            .flush_import_scan(
+                library_id,
+                super::ImportFlush {
+                    thumbnails_to_delete: &[],
+                    books_to_insert: &[],
+                    books_to_update: &[(a, &renamed)],
+                    books_to_link: &[],
+                    path_updates: &[],
+                    books_to_delete: &[],
+                    sort_keys_dirty: false,
+                },
+            )
+            .expect("flush");
+
+        let titles: Vec<String> = libdb
+            .page_books(library_id, Path::new(""), SortMethod::Title, false, 10, 0)
+            .expect("page")
+            .0
+            .into_iter()
+            .map(|info| info.title)
+            .collect();
+        assert_eq!(titles, ["Zeta", "Mike", "Zulu"]);
+
+        libdb
+            .flush_import_scan(
+                library_id,
+                super::ImportFlush {
+                    thumbnails_to_delete: &[],
+                    books_to_insert: &[],
+                    books_to_update: &[],
+                    books_to_link: &[],
+                    path_updates: &[],
+                    books_to_delete: &[],
+                    sort_keys_dirty: true,
+                },
+            )
+            .expect("recompute");
+
+        let titles: Vec<String> = libdb
+            .page_books(library_id, Path::new(""), SortMethod::Title, false, 10, 0)
+            .expect("page")
+            .0
+            .into_iter()
+            .map(|info| info.title)
+            .collect();
+        assert_eq!(titles, ["Mike", "Zeta", "Zulu"]);
     }
 
     #[test]

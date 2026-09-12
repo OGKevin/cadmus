@@ -3,7 +3,7 @@ use crate::document::file_kind;
 use crate::fl;
 use crate::helpers::{Fingerprint, Fp, IsHidden};
 use crate::library::book_status::BookStatus;
-use crate::library::db::{Db as LibraryDb, PathUpdate};
+use crate::library::db::{Db as LibraryDb, ImportFlush, PathUpdate};
 use crate::metadata::{FileInfo, Info, extract_metadata_from_document};
 use crate::settings::ImportSettings;
 use crate::task::ShutdownSignal;
@@ -480,60 +480,51 @@ fn find_deleted_books(handles_by_fp: &FxHashMap<Fp, (PathBuf, PathBuf)>, home: &
         .collect()
 }
 
+fn sort_keys_are_dirty(purged_fps: &[Fp], result: &ScanResult) -> bool {
+    !purged_fps.is_empty()
+        || !result.books_to_insert.is_empty()
+        || !result.books_to_update.is_empty()
+        || !result.books_to_link.is_empty()
+        || !result.path_updates.is_empty()
+        || !result.books_to_delete.is_empty()
+}
+
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(db, result)))]
-fn flush_to_db(db: &LibraryDb, library_id: i64, result: ScanResult) {
-    if let Err(e) = db.batch_delete_thumbnails(&result.thumbnails_to_delete) {
-        error!(
-            error = %e,
-            count = result.thumbnails_to_delete.len(),
-            "batch delete thumbnails failed"
-        );
+fn flush_to_db(db: &LibraryDb, library_id: i64, result: ScanResult, purged_fps: &[Fp]) {
+    let sort_keys_dirty = sort_keys_are_dirty(purged_fps, &result);
+    if !sort_keys_dirty && result.thumbnails_to_delete.is_empty() {
+        return;
     }
 
-    if !result.books_to_insert.is_empty() {
-        let book_refs: Vec<(Fp, &Info)> = result
-            .books_to_insert
-            .iter()
-            .map(|book| (book.fp, &book.info))
-            .collect();
-        if let Err(e) = db.batch_insert_books(library_id, &book_refs) {
-            error!(error = %e, count = book_refs.len(), "batch insert failed");
-        }
-    }
+    let books_to_insert: Vec<(Fp, &Info)> = result
+        .books_to_insert
+        .iter()
+        .map(|book| (book.fp, &book.info))
+        .collect();
+    let books_to_update: Vec<(Fp, &Info)> = result
+        .books_to_update
+        .iter()
+        .map(|book| (book.fp, &book.info))
+        .collect();
+    let books_to_link: Vec<(Fp, &Info)> = result
+        .books_to_link
+        .iter()
+        .map(|book| (book.fp, &book.info))
+        .collect();
 
-    if !result.books_to_update.is_empty() {
-        let book_refs: Vec<(Fp, &Info)> = result
-            .books_to_update
-            .iter()
-            .map(|book| (book.fp, &book.info))
-            .collect();
-        if let Err(e) = db.batch_update_books(library_id, &book_refs, BookStatus::Active) {
-            error!(error = %e, count = book_refs.len(), "batch update failed");
-        }
-    }
-
-    for book in &result.books_to_link {
-        if let Err(e) = db.link_book_to_library(library_id, book.fp, &book.info) {
-            error!(fp = %book.fp, error = %e, "link book to library failed");
-        }
-    }
-
-    if let Err(e) = db.batch_update_book_paths(library_id, &result.path_updates) {
-        error!(
-            error = %e,
-            count = result.path_updates.len(),
-            "batch update book paths failed"
-        );
-    }
-
-    if !result.books_to_delete.is_empty()
-        && let Err(e) = db.batch_delete_books(library_id, &result.books_to_delete)
-    {
-        error!(error = %e, count = result.books_to_delete.len(), "batch delete failed");
-    }
-
-    if let Err(e) = db.compute_sort_keys(library_id) {
-        error!(error = %e, library_id, "failed to compute sort keys");
+    if let Err(e) = db.flush_import_scan(
+        library_id,
+        ImportFlush {
+            thumbnails_to_delete: &result.thumbnails_to_delete,
+            books_to_insert: &books_to_insert,
+            books_to_update: &books_to_update,
+            books_to_link: &books_to_link,
+            path_updates: &result.path_updates,
+            books_to_delete: &result.books_to_delete,
+            sort_keys_dirty,
+        },
+    ) {
+        error!(error = %e, library_id, "import flush failed");
     }
 }
 
@@ -677,7 +668,7 @@ pub fn run(
         );
     }
 
-    flush_to_db(db, library_id, result);
+    flush_to_db(db, library_id, result, &purged_fps);
 
     hub.send((Event::Close(notif_id)).into()).ok();
     log_finished();
@@ -851,6 +842,22 @@ mod tests {
             tracker.should_send(150, 200, base + Duration::from_secs(5)),
             Some(75)
         );
+    }
+
+    #[test]
+    fn sort_keys_are_dirty_when_purged_or_book_batches_change() {
+        assert!(!sort_keys_are_dirty(&[], &ScanResult::empty()));
+        assert!(sort_keys_are_dirty(
+            &[Fp::from_u64(1)],
+            &ScanResult::empty()
+        ));
+
+        let mut insert_only = ScanResult::empty();
+        insert_only.books_to_insert.push(BookWrite {
+            fp: Fp::from_u64(2),
+            info: Info::default(),
+        });
+        assert!(sort_keys_are_dirty(&[], &insert_only));
     }
 
     #[test]

@@ -12,11 +12,11 @@ Configure flags:
 
 Outputs:
 
-| Artifact        | Path relative to the gumbo build tree |
-| --------------- | ------------------------------------- |
-| Shared library  | `build/libgumbo.so`                   |
-| SONAME          | `libgumbo.so.4`                       |
-| Public headers  | `src/gumbo.h`, `src/tag_enum.h`       |
+| Artifact       | Path relative to the gumbo build tree |
+| -------------- | ------------------------------------- |
+| Shared library | `build/libgumbo.so`                   |
+| SONAME         | `libgumbo.so.4`                       |
+| Public headers | `src/gumbo.h`, `src/tag_enum.h`       |
 
 Google 0.10.1 used SONAME `libgumbo.so.1`. `cargo xtask dist` copies the
 SONAME filename into `dist/libs/`. MuPDF must be rebuilt against this tree so
