@@ -2209,14 +2209,7 @@ impl Db {
 
         RUNTIME.block_on(async {
             let mut tx = self.pool.begin().await?;
-
-            for fp in fps {
-                let fp_str = fp.to_string();
-                sqlx::query!("DELETE FROM thumbnails WHERE fingerprint = ?", fp_str)
-                    .execute(&mut *tx)
-                    .await?;
-            }
-
+            batch_delete_thumbnails_on(&mut tx, fps).await?;
             tx.commit().await?;
             Ok(())
         })
@@ -2761,9 +2754,52 @@ impl Db {
     ) -> Result<Vec<Fp>, Error> {
         RUNTIME.block_on(async {
             let mut tx = self.pool.begin().await?;
+            let (purged, _) =
+                delete_books_with_disallowed_kinds_on(&mut tx, library_id, allowed_kinds).await?;
+            tx.commit().await?;
+            tracing::debug!(count = purged.len(), "disallowed kind cleanup complete");
+            Ok(purged)
+        })
+    }
 
-            let rows = sqlx::query!(
-                r#"
+    /// Removes books whose kinds are no longer allowed and their thumbnails in
+    /// one transaction.
+    pub fn purge_disallowed_books_and_thumbnails(
+        &self,
+        library_id: i64,
+        allowed_kinds: &FxHashSet<FileExtension>,
+    ) -> Result<Vec<Fp>, Error> {
+        RUNTIME.block_on(async {
+            let mut tx = self.pool.begin().await?;
+            let (purged, orphaned) =
+                delete_books_with_disallowed_kinds_on(&mut tx, library_id, allowed_kinds).await?;
+
+            #[cfg(test)]
+            if purge_fail_point::should_fail() {
+                tx.rollback().await?;
+                return Err(anyhow::anyhow!(
+                    "injected failure after disallowed book purge"
+                ));
+            }
+
+            batch_delete_thumbnails_on(&mut tx, &orphaned).await?;
+            tx.commit().await?;
+            tracing::debug!(
+                count = purged.len(),
+                "disallowed kind and thumbnail cleanup complete"
+            );
+            Ok(purged)
+        })
+    }
+}
+
+async fn delete_books_with_disallowed_kinds_on(
+    conn: &mut sqlx::SqliteConnection,
+    library_id: i64,
+    allowed_kinds: &FxHashSet<FileExtension>,
+) -> Result<(Vec<Fp>, Vec<Fp>), Error> {
+    let rows = sqlx::query!(
+        r#"
                 SELECT
                     lb.book_fingerprint AS "fingerprint!: Fp",
                     b.file_kind AS "file_kind!: OptionalFileExtension"
@@ -2772,55 +2808,93 @@ impl Db {
                 WHERE lb.library_id = ?
                   AND b.status = 'active'
                 "#,
-                library_id,
+        library_id,
+    )
+    .fetch_all(&mut *conn)
+    .await?;
+
+    let mut purged: Vec<Fp> = Vec::new();
+    let mut orphaned: Vec<Fp> = Vec::new();
+
+    for row in rows {
+        let kind = row.file_kind.0;
+        if kind.is_some_and(|k| allowed_kinds.contains(&k)) {
+            continue;
+        }
+
+        sqlx::query!(
+            r#"DELETE FROM library_books WHERE library_id = ? AND book_fingerprint = ?"#,
+            library_id,
+            row.fingerprint,
+        )
+        .execute(&mut *conn)
+        .await?;
+
+        let ref_count: i64 = sqlx::query_scalar!(
+            r#"SELECT COUNT(*) FROM library_books WHERE book_fingerprint = ?"#,
+            row.fingerprint,
+        )
+        .fetch_one(&mut *conn)
+        .await?;
+
+        if ref_count == 0 {
+            sqlx::query!(
+                r#"DELETE FROM books WHERE fingerprint = ?"#,
+                row.fingerprint,
             )
-            .fetch_all(&mut *tx)
+            .execute(&mut *conn)
             .await?;
+            orphaned.push(row.fingerprint);
+        }
 
-            let mut purged: Vec<Fp> = Vec::new();
+        tracing::info!(
+            fp = %row.fingerprint,
+            kind = ?kind,
+            "removed disallowed book from library"
+        );
+        purged.push(row.fingerprint);
+    }
 
-            for row in rows {
-                let kind = row.file_kind.0;
-                if kind.is_some_and(|k| allowed_kinds.contains(&k)) {
-                    continue;
-                }
+    Ok((purged, orphaned))
+}
 
-                sqlx::query!(
-                    r#"DELETE FROM library_books WHERE library_id = ? AND book_fingerprint = ?"#,
-                    library_id,
-                    row.fingerprint,
-                )
-                .execute(&mut *tx)
-                .await?;
+async fn batch_delete_thumbnails_on(
+    conn: &mut sqlx::SqliteConnection,
+    fps: &[Fp],
+) -> Result<(), Error> {
+    for fp in fps {
+        let fp_str = fp.to_string();
+        sqlx::query!("DELETE FROM thumbnails WHERE fingerprint = ?", fp_str)
+            .execute(&mut *conn)
+            .await?;
+    }
 
-                let ref_count: i64 = sqlx::query_scalar!(
-                    r#"SELECT COUNT(*) FROM library_books WHERE book_fingerprint = ?"#,
-                    row.fingerprint,
-                )
-                .fetch_one(&mut *tx)
-                .await?;
+    Ok(())
+}
 
-                if ref_count == 0 {
-                    sqlx::query!(
-                        r#"DELETE FROM books WHERE fingerprint = ?"#,
-                        row.fingerprint,
-                    )
-                    .execute(&mut *tx)
-                    .await?;
-                }
+#[cfg(test)]
+mod purge_fail_point {
+    use std::cell::Cell;
 
-                tracing::info!(
-                    fp = %row.fingerprint,
-                    kind = ?kind,
-                    "removed disallowed book from library"
-                );
-                purged.push(row.fingerprint);
-            }
+    thread_local! {
+        static FAIL_AFTER_BOOKS: Cell<bool> = const { Cell::new(false) };
+    }
 
-            tx.commit().await?;
-            tracing::debug!(count = purged.len(), "disallowed kind cleanup complete");
-            Ok(purged)
-        })
+    pub struct Guard;
+
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            FAIL_AFTER_BOOKS.with(|c| c.set(false));
+        }
+    }
+
+    pub fn arm() -> Guard {
+        FAIL_AFTER_BOOKS.with(|c| c.set(true));
+        Guard
+    }
+
+    pub fn should_fail() -> bool {
+        FAIL_AFTER_BOOKS.with(Cell::get)
     }
 }
 
@@ -4779,6 +4853,133 @@ mod tests {
 
         assert!(fps.contains(&epub_fp), "epub should remain");
         assert!(!fps.contains(&pdf_fp), "pdf should be gone");
+    }
+
+    #[test]
+    fn purge_disallowed_books_and_thumbnails_rolls_back_on_error_after_books() {
+        use crate::document::file_extension::FileExtension;
+
+        let (_db, libdb) = create_test_db();
+        let library_id = register_test_library(
+            &libdb,
+            "/tmp/test_disallowed_kinds_atomic",
+            "Disallowed Kinds Atomic",
+        );
+
+        let epub_fp = Fp::from_u64(9011);
+        let pdf_fp = Fp::from_u64(9012);
+
+        let epub_info = Info {
+            title: "Epub Book".to_string(),
+            file: FileInfo {
+                path: PathBuf::from("book.epub"),
+                kind: Some(FileExtension::Epub),
+                size: 100,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let pdf_info = Info {
+            title: "Pdf Book".to_string(),
+            file: FileInfo {
+                path: PathBuf::from("book.pdf"),
+                kind: Some(FileExtension::Pdf),
+                size: 200,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        libdb
+            .batch_insert_books(library_id, &[(epub_fp, &epub_info), (pdf_fp, &pdf_info)])
+            .expect("insert books");
+        libdb
+            .save_thumbnail(pdf_fp, b"pdf-thumb")
+            .expect("save thumbnail");
+
+        let mut allowed = FxHashSet::default();
+        allowed.insert(FileExtension::Epub);
+
+        let _fail = super::purge_fail_point::arm();
+        let err = libdb
+            .purge_disallowed_books_and_thumbnails(library_id, &allowed)
+            .expect_err("injected failure should abort the transaction");
+        assert!(
+            err.to_string().contains("injected failure"),
+            "unexpected error: {err}"
+        );
+
+        let handles = libdb.list_book_handles(library_id).expect("handles");
+        let fps: Vec<Fp> = handles.iter().map(|h| h.fp).collect();
+        assert!(fps.contains(&epub_fp), "epub should remain");
+        assert!(
+            fps.contains(&pdf_fp),
+            "pdf book should remain after rollback"
+        );
+        assert_eq!(
+            libdb.get_thumbnail(pdf_fp).expect("thumbnail"),
+            Some(b"pdf-thumb".to_vec()),
+            "thumbnail should remain after rollback"
+        );
+    }
+
+    #[test]
+    fn purge_disallowed_books_keeps_thumbnail_when_still_in_another_library() {
+        use crate::document::file_extension::FileExtension;
+
+        let (_db, libdb) = create_test_db();
+        let lib_a = register_test_library(&libdb, "/tmp/purge_shared_a", "Shared A");
+        let lib_b = register_test_library(&libdb, "/tmp/purge_shared_b", "Shared B");
+
+        let pdf_fp = Fp::from_u64(9021);
+        let pdf_info = Info {
+            title: "Pdf Book".to_string(),
+            file: FileInfo {
+                path: PathBuf::from("book.pdf"),
+                kind: Some(FileExtension::Pdf),
+                size: 200,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        libdb
+            .batch_insert_books(lib_a, &[(pdf_fp, &pdf_info)])
+            .expect("insert into A");
+        libdb
+            .link_book_to_library(lib_b, pdf_fp, &pdf_info)
+            .expect("link into B");
+        libdb
+            .save_thumbnail(pdf_fp, b"pdf-thumb")
+            .expect("save thumbnail");
+
+        let mut allowed = FxHashSet::default();
+        allowed.insert(FileExtension::Epub);
+
+        let purged = libdb
+            .purge_disallowed_books_and_thumbnails(lib_a, &allowed)
+            .expect("purge A");
+        assert_eq!(purged, vec![pdf_fp]);
+
+        let a_fps: Vec<Fp> = libdb
+            .list_book_handles(lib_a)
+            .expect("handles A")
+            .iter()
+            .map(|h| h.fp)
+            .collect();
+        let b_fps: Vec<Fp> = libdb
+            .list_book_handles(lib_b)
+            .expect("handles B")
+            .iter()
+            .map(|h| h.fp)
+            .collect();
+        assert!(!a_fps.contains(&pdf_fp), "pdf should leave library A");
+        assert!(b_fps.contains(&pdf_fp), "pdf should remain in library B");
+        assert_eq!(
+            libdb.get_thumbnail(pdf_fp).expect("thumbnail"),
+            Some(b"pdf-thumb".to_vec()),
+            "thumbnail should remain while another library still has the book"
+        );
     }
 
     #[test]

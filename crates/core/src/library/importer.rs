@@ -617,7 +617,7 @@ pub fn run(
         .collect();
 
     let purged_fps = db
-        .delete_books_with_disallowed_kinds(library_id, &settings.allowed_kinds)
+        .purge_disallowed_books_and_thumbnails(library_id, &settings.allowed_kinds)
         .unwrap_or_else(|e| {
             error!(error = %e, "failed to purge disallowed books");
             Vec::new()
@@ -627,12 +627,6 @@ pub fn run(
         pending_fps.remove(fp);
         if let Some((relat, _abs)) = handles_by_fp.remove(fp) {
             handles_by_path.remove(&relat);
-        }
-    }
-
-    if !purged_fps.is_empty() {
-        if let Err(e) = db.batch_delete_thumbnails(&purged_fps) {
-            error!(error = %e, count = purged_fps.len(), "failed to delete thumbnails for purged books");
         }
     }
 
