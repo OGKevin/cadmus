@@ -40,6 +40,7 @@
 - [Event System](contributing/event-system.md)
 - [WiFi Leases](contributing/wifi.md)
 - [Device](contributing/device/index.md)
+  - [Time and RTC](contributing/device/time.md)
   - [Suspend](contributing/device/suspend/index.md)
     - [Suspend orchestrator](contributing/device/suspend/orchestrator.md)
     - [Soft suspend](contributing/device/suspend/soft-suspend.md)

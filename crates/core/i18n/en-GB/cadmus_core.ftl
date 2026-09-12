@@ -27,6 +27,7 @@ notification-network-up = Network is up ({ $ip }, { $essid }).
 notification-not-online = WiFi must be connected for this action.
 notification-refresh-rate-invalid = Refresh rate must be a number between 0 and 255.
 notification-time-sync-failed = Time sync failed
+notification-time-unsynchronised = The clock is unsynchronised.
 notification-timezone-detection-failed = Timezone detection failed
 
 # Common

@@ -34,6 +34,7 @@ pub struct TestRtc {
     state: Arc<Mutex<TestRtcState>>,
     cond: Arc<Condvar>,
     fail_disable: Arc<AtomicBool>,
+    fail_set_time: Arc<AtomicBool>,
     released: Arc<AtomicBool>,
 }
 
@@ -43,6 +44,7 @@ impl Clone for TestRtc {
             state: Arc::clone(&self.state),
             cond: Arc::clone(&self.cond),
             fail_disable: Arc::clone(&self.fail_disable),
+            fail_set_time: Arc::clone(&self.fail_set_time),
             released: Arc::clone(&self.released),
         }
     }
@@ -62,12 +64,17 @@ impl TestRtc {
             })),
             cond: Arc::new(Condvar::new()),
             fail_disable: Arc::new(AtomicBool::new(false)),
+            fail_set_time: Arc::new(AtomicBool::new(false)),
             released: Arc::new(AtomicBool::new(false)),
         }
     }
 
     pub fn set_fail_disable(&self, fail: bool) {
         self.fail_disable.store(fail, Ordering::Relaxed);
+    }
+
+    pub fn set_fail_set_time(&self, fail: bool) {
+        self.fail_set_time.store(fail, Ordering::Relaxed);
     }
 
     pub fn is_released(&self) -> bool {
@@ -154,6 +161,9 @@ impl Rtc for TestRtc {
     }
 
     fn set_time(&self, time: DateTime<Utc>) -> Result<(), Error> {
+        if self.fail_set_time.load(Ordering::Relaxed) {
+            return Err(anyhow::anyhow!("simulated set_time failure"));
+        }
         let mut state = self
             .state
             .lock()

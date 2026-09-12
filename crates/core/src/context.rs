@@ -100,6 +100,11 @@ impl<D: Device> Context<D> {
                 None
             }
         };
+        if let (Ok(time_manager), Some(alarms)) = (device.time_manager(), alarm_manager.as_ref())
+            && let Err(error) = time_manager.reconcile_at_startup(alarms)
+        {
+            tracing::warn!(error = %error, "startup clock reconciliation failed");
+        }
         let wifi_mode = settings.wifi;
         let wifi_session = match device.wifi_manager() {
             Ok(wifi) => WifiSession::new(wifi, wifi_mode),

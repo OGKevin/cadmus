@@ -40,7 +40,11 @@ impl<R: Rtc + Send + 'static> BackgroundTask for TimeSyncTask<R> {
         TaskId::TimeSync
     }
 
-    fn run(&mut self, hub: &crate::view::Hub, _shutdown: &ShutdownSignal) {
+    fn run(&mut self, hub: &crate::view::Hub, shutdown: &ShutdownSignal) {
+        if shutdown.should_stop() {
+            return;
+        }
+
         let _wifi = match self.wifi_session.acquire("time-sync") {
             Ok(lease) => lease,
             Err(e) => {
@@ -58,6 +62,10 @@ impl<R: Rtc + Send + 'static> BackgroundTask for TimeSyncTask<R> {
             }
         };
 
+        if shutdown.should_stop() {
+            return;
+        }
+
         let geo = match Client::new() {
             Ok(client) => match fetch_geolocation(&client) {
                 Ok(geo) => Some(geo),
@@ -74,11 +82,23 @@ impl<R: Rtc + Send + 'static> BackgroundTask for TimeSyncTask<R> {
 
         let coordinates = geo.as_ref().map(|geo| geo.coordinates);
 
-        if let Err(e) =
-            self.time_manager
-                .sync(&self.ntp_server, self.manual, geo, hub, &self.alarm_manager)
-        {
+        if shutdown.should_stop() {
+            return;
+        }
+
+        if let Err(e) = self.time_manager.sync(
+            &self.ntp_server,
+            self.manual,
+            geo,
+            hub,
+            &self.alarm_manager,
+            shutdown,
+        ) {
             tracing::error!(error = %e, "time sync failed");
+        }
+
+        if shutdown.should_stop() {
+            return;
         }
 
         if let Some(coordinates) = coordinates {
