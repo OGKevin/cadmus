@@ -14,6 +14,36 @@ use std::time::{Duration, Instant, UNIX_EPOCH};
 use tracing::{debug, error, info};
 use walkdir::{DirEntry, WalkDir};
 
+/// Result of one library import attempt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ImportOutcome {
+    /// The scan finished and its results were recorded.
+    Completed,
+    /// Shutdown stopped the scan before results were recorded.
+    Interrupted,
+    /// The library could not be opened or the scan could not start.
+    Failed,
+}
+
+struct PinnedProgress<'a> {
+    hub: &'a crate::view::Hub,
+    notif_id: ViewId,
+}
+
+impl<'a> PinnedProgress<'a> {
+    fn show(hub: &'a crate::view::Hub, notif_id: ViewId, message: String) -> Self {
+        hub.send((Event::Notification(NotificationEvent::ShowPinned(notif_id, message))).into())
+            .ok();
+        Self { hub, notif_id }
+    }
+}
+
+impl Drop for PinnedProgress<'_> {
+    fn drop(&mut self) {
+        self.hub.send((Event::Close(self.notif_id)).into()).ok();
+    }
+}
+
 enum PendingRelocation {
     FingerprintChanged {
         new_fp: Fp,
@@ -537,7 +567,7 @@ fn flush_to_db(db: &LibraryDb, library_id: i64, result: ScanResult, purged_fps: 
 ///
 /// Sends pinned progress notifications to `hub` via `notif_id` while running.
 /// Checks `shutdown` between entries and exits early if shutdown is requested.
-/// On completion or early exit, closes the notification and returns.
+/// Dismisses the pinned notification on every return path.
 #[cfg_attr(
     feature = "tracing",
     tracing::instrument(skip(db, settings, hub, notif_id, shutdown))
@@ -552,7 +582,7 @@ pub fn run(
     hub: &crate::view::Hub,
     notif_id: ViewId,
     shutdown: &ShutdownSignal,
-) {
+) -> ImportOutcome {
     info!(
         library_id,
         home = %home.display(),
@@ -560,30 +590,45 @@ pub fn run(
         "import starting"
     );
     let started = Instant::now();
-    let log_finished = || {
-        info!(
-            library_id,
-            elapsed_ms = started.elapsed().as_millis() as u64,
-            "import finished"
-        );
+    let ctx = ScanContext {
+        hub,
+        notif_id,
+        shutdown,
     };
+    let outcome = {
+        let _progress = PinnedProgress::show(hub, notif_id, fl!("importer-importing-library"));
+        run_scan(db, library_id, home, install_dir, settings, force, &ctx)
+    };
+    if outcome == ImportOutcome::Interrupted {
+        hub.send(
+            (Event::Notification(NotificationEvent::Show(fl!("importer-import-interrupted"))))
+                .into(),
+        )
+        .ok();
+    }
+    info!(
+        library_id,
+        elapsed_ms = started.elapsed().as_millis() as u64,
+        outcome = ?outcome,
+        "import finished"
+    );
+    outcome
+}
 
-    hub.send(
-        (Event::Notification(NotificationEvent::ShowPinned(
-            notif_id,
-            fl!("importer-importing-library"),
-        )))
-        .into(),
-    )
-    .ok();
-
+fn run_scan(
+    db: &LibraryDb,
+    library_id: i64,
+    home: &Path,
+    install_dir: &Path,
+    settings: &ImportSettings,
+    force: bool,
+    ctx: &ScanContext<'_>,
+) -> ImportOutcome {
     let handles = match db.list_book_handles(library_id) {
         Ok(h) => h,
         Err(e) => {
             error!(error = %e, "failed to load book handles for import");
-            hub.send((Event::Close(notif_id)).into()).ok();
-            log_finished();
-            return;
+            return ImportOutcome::Failed;
         }
     };
 
@@ -623,12 +668,6 @@ pub fn run(
 
     let entries = walk_files(home);
 
-    let ctx = ScanContext {
-        hub,
-        notif_id,
-        shutdown,
-    };
-
     let mut tracker = ProgressTracker::new();
 
     let book_statuses = db.all_book_statuses().unwrap_or_default();
@@ -647,9 +686,7 @@ pub fn run(
         &pending_fps,
         &book_statuses,
     ) else {
-        hub.send((Event::Close(notif_id)).into()).ok();
-        log_finished();
-        return;
+        return ImportOutcome::Interrupted;
     };
 
     let mut deleted = find_deleted_books(&handles_by_fp, home);
@@ -669,9 +706,7 @@ pub fn run(
     }
 
     flush_to_db(db, library_id, result, &purged_fps);
-
-    hub.send((Event::Close(notif_id)).into()).ok();
-    log_finished();
+    ImportOutcome::Completed
 }
 
 #[cfg(test)]
@@ -752,7 +787,7 @@ mod tests {
         let lib = Library::new(dir.path(), &db, "test").expect("library");
         let (tx, rx) = mpsc::channel();
         let notif_id = ViewId::MessageNotif(0);
-        run(
+        let outcome = run(
             &lib.db,
             lib.library_id,
             dir.path(),
@@ -766,9 +801,18 @@ mod tests {
         drop(tx);
         let events: Vec<Event> = rx.try_iter().map(|message| message.event).collect();
 
+        assert_eq!(outcome, ImportOutcome::Interrupted);
         assert!(
             events.iter().any(|e| matches!(e, Event::Close(_))),
             "notif must be closed even on early exit"
+        );
+        assert!(
+            events.iter().any(|e| matches!(
+                e,
+                Event::Notification(crate::view::NotificationEvent::Show(msg))
+                    if msg == &fl!("importer-import-interrupted")
+            )),
+            "interrupted import should tell the user"
         );
 
         let progress_events: Vec<_> = events

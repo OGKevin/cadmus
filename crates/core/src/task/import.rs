@@ -6,7 +6,7 @@ use std::sync::Arc;
 use crate::db::Database;
 use crate::device::inhibitor::{Inhibitor, Kind, SoftSuspendName};
 use crate::library::Library;
-use crate::library::importer;
+use crate::library::importer::{self, ImportOutcome};
 use crate::settings::Settings;
 use crate::task::{BackgroundTask, ShutdownSignal, TaskId};
 use crate::view::{Event, ID_FEEDER, ViewId};
@@ -25,6 +25,7 @@ pub struct ImportTask {
     force: bool,
     install_dir: PathBuf,
     inhibitor: Arc<Inhibitor>,
+    outcome: ImportOutcome,
 }
 
 impl ImportTask {
@@ -43,11 +44,17 @@ impl ImportTask {
             force,
             install_dir: install_dir.into(),
             inhibitor,
+            outcome: ImportOutcome::Failed,
         }
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(hub, shutdown, self)))]
-    fn run_for_index(&self, index: usize, hub: &crate::view::Hub, shutdown: &ShutdownSignal) {
+    fn run_for_index(
+        &self,
+        index: usize,
+        hub: &crate::view::Hub,
+        shutdown: &ShutdownSignal,
+    ) -> ImportOutcome {
         let lib_settings = match self.settings.libraries.get(index) {
             Some(s) => s,
             None => {
@@ -55,7 +62,7 @@ impl ImportTask {
                     library_index = index,
                     "library index out of range, skipping"
                 );
-                return;
+                return ImportOutcome::Failed;
             }
         };
 
@@ -63,7 +70,7 @@ impl ImportTask {
             Ok(lib) => lib,
             Err(e) => {
                 tracing::error!(error = %e, library_index = index, "failed to open library for import");
-                return;
+                return ImportOutcome::Failed;
             }
         };
 
@@ -78,7 +85,7 @@ impl ImportTask {
             hub,
             notif_id,
             shutdown,
-        );
+        )
     }
 }
 
@@ -105,22 +112,36 @@ impl BackgroundTask for ImportTask {
         };
         match self.library_index {
             Some(index) => {
-                self.run_for_index(index, hub, shutdown);
+                self.outcome = self.run_for_index(index, hub, shutdown);
             }
             None => {
                 for index in 0..self.settings.libraries.len() {
                     if shutdown.should_stop() {
+                        self.outcome = ImportOutcome::Interrupted;
                         return;
                     }
-                    self.run_for_index(index, hub, shutdown);
+                    match self.run_for_index(index, hub, shutdown) {
+                        ImportOutcome::Completed => {}
+                        failed_or_interrupted => {
+                            self.outcome = failed_or_interrupted;
+                            return;
+                        }
+                    }
                 }
+                self.outcome = ImportOutcome::Completed;
             }
         }
     }
 
     fn finished_event(&self) -> Option<Event> {
-        Some(Event::ImportFinished {
-            library_index: self.library_index,
-        })
+        match self.outcome {
+            ImportOutcome::Completed => Some(Event::ImportFinished {
+                library_index: self.library_index,
+            }),
+            ImportOutcome::Failed => Some(Event::ImportFailed {
+                library_index: self.library_index,
+            }),
+            ImportOutcome::Interrupted => None,
+        }
     }
 }

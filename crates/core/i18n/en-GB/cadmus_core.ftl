@@ -180,6 +180,7 @@ settings-import-force-full-import-confirm-button = Re-import All
 settings-import-sync-metadata = Sync Metadata
 
 # Importer
+importer-import-interrupted = Library import was interrupted.
 importer-importing-library = Importing Library…
 
 # Settings - Log Level

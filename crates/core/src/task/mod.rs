@@ -244,18 +244,17 @@ pub trait BackgroundTask: Send {
 
     /// Returns a "finished" event to send after the task thread exits.
     ///
-    /// The [`TaskManager`] sends this event after
-    /// observing the task's thread as finished. The default returns `None`.
+    /// The [`TaskManager`] calls this after [`run`](Self::run) and
+    /// [`stop`](Self::stop) return, so the event can depend on the work's
+    /// outcome. The default returns `None`.
     fn finished_event(&self) -> Option<Event> {
         None
     }
 }
 
 struct RunningTask {
-    handle: JoinHandle<()>,
+    handle: JoinHandle<Option<Event>>,
     shutdown: Sender<()>,
-    /// Event to emit when the task is observed as naturally finished.
-    finished_event: Option<Event>,
 }
 
 /// Manages the lifecycle of background tasks.
@@ -308,14 +307,13 @@ impl TaskManager {
         let (shutdown_tx, shutdown_rx) = mpsc::channel();
         let shutdown_signal = ShutdownSignal::new(shutdown_rx);
 
-        let finished_event = task.finished_event();
-
         let handle = thread::spawn(move || {
             let mut task = task;
             tracing::info!("task started");
             task.run(&hub, &shutdown_signal);
             task.stop();
             tracing::info!("task stopped");
+            task.finished_event()
         });
 
         self.tasks.insert(
@@ -323,7 +321,6 @@ impl TaskManager {
             RunningTask {
                 handle,
                 shutdown: shutdown_tx,
-                finished_event,
             },
         );
 
@@ -390,12 +387,10 @@ impl TaskManager {
 
         for id in finished {
             if let Some(task) = self.tasks.remove(&id) {
-                if task.handle.join().is_ok() {
-                    if let Some(evt) = task.finished_event {
-                        self.buffered_events.push(evt);
-                    }
-                } else {
-                    tracing::error!(task_id = %id, "task thread panicked");
+                match task.handle.join() {
+                    Ok(Some(evt)) => self.buffered_events.push(evt),
+                    Ok(None) => {}
+                    Err(_) => tracing::error!(task_id = %id, "task thread panicked"),
                 }
             }
         }
@@ -452,6 +447,15 @@ impl TaskManager {
                     &context.settings,
                     context.device.dpi(),
                     context.device.color_samples(),
+                    &context.device.install_dir(),
+                    &context.inhibitor,
+                );
+            }
+            Event::ImportFailed { .. } => {
+                self.drain_pending_imports(
+                    hub,
+                    &context.database,
+                    &context.settings,
                     &context.device.install_dir(),
                     &context.inhibitor,
                 );
@@ -970,13 +974,13 @@ mod tests {
         let (shutdown_tx, shutdown_rx) = mpsc::channel();
         let blocking_handle = thread::spawn(move || {
             let _ = shutdown_rx.recv();
+            None
         });
         manager.tasks.insert(
             TaskId::ThumbnailExtraction,
             RunningTask {
                 handle: blocking_handle,
                 shutdown: shutdown_tx,
-                finished_event: None,
             },
         );
 
@@ -1047,13 +1051,13 @@ mod tests {
         let (shutdown_tx, shutdown_rx) = mpsc::channel();
         let blocking_handle = thread::spawn(move || {
             let _ = shutdown_rx.recv();
+            None
         });
         manager.tasks.insert(
             TaskId::Import,
             RunningTask {
                 handle: blocking_handle,
                 shutdown: shutdown_tx,
-                finished_event: None,
             },
         );
 
@@ -1083,13 +1087,13 @@ mod tests {
         let (shutdown_tx, shutdown_rx) = mpsc::channel();
         let blocking_handle = thread::spawn(move || {
             let _ = shutdown_rx.recv();
+            None
         });
         manager.tasks.insert(
             TaskId::Import,
             RunningTask {
                 handle: blocking_handle,
                 shutdown: shutdown_tx,
-                finished_event: None,
             },
         );
 
@@ -1105,5 +1109,261 @@ mod tests {
         assert_eq!(manager.pending_import_indices.front(), Some(&(None, false)));
 
         manager.stop(&TaskId::Import).unwrap();
+    }
+
+    fn library_settings(path: &Path) -> crate::settings::LibrarySettings {
+        crate::settings::LibrarySettings {
+            name: "test".to_string(),
+            path: path.to_path_buf(),
+            ..Default::default()
+        }
+    }
+
+    fn import_context(dir: &Path) -> AppContext {
+        let mut context = create_test_context();
+        context.settings.libraries = vec![library_settings(dir)];
+        context
+    }
+
+    fn pump(manager: &mut TaskManager, hub: &crate::view::Hub, context: &AppContext) {
+        manager.handle_event(&Event::StartStableReleaseDownload, hub, context);
+    }
+
+    fn thumbnail_was_scheduled(
+        manager: &mut TaskManager,
+        hub: &crate::view::Hub,
+        rx: &mpsc::Receiver<crate::view::HubMessage>,
+        context: &AppContext,
+    ) -> bool {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline {
+            if manager.is_running(&TaskId::ThumbnailExtraction) {
+                return true;
+            }
+            pump(manager, hub, context);
+            if rx
+                .try_iter()
+                .any(|message| matches!(message.event, Event::ThumbnailExtractionFinished { .. }))
+            {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        false
+    }
+
+    #[test]
+    fn interrupted_import_emits_no_completion_and_does_not_schedule_thumbnails() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("book.epub"), b"epub content").expect("write");
+        let context = import_context(dir.path());
+        let (hub, rx) = mpsc::channel();
+        let mut task = import::ImportTask::new(
+            context.database.clone(),
+            context.settings.clone(),
+            Some(0),
+            false,
+            context.device.install_dir(),
+            context.inhibitor.clone(),
+        );
+        let (shutdown_tx, shutdown_rx) = mpsc::channel();
+        shutdown_tx.send(()).expect("signal shutdown");
+        let shutdown = ShutdownSignal::new_for_test(shutdown_rx);
+        task.run(&hub, &shutdown);
+
+        assert!(
+            task.finished_event().is_none(),
+            "interrupted import must not announce completion"
+        );
+        assert!(
+            !rx.try_iter()
+                .any(|message| matches!(message.event, Event::ImportFinished { .. })),
+            "interrupted import must not emit ImportFinished"
+        );
+
+        let mut manager = TaskManager::new();
+        if let Some(evt) = task.finished_event() {
+            manager.handle_event(&evt, &hub, &context);
+        }
+
+        assert!(!manager.is_running(&TaskId::ThumbnailExtraction));
+        assert!(manager.pending_thumbnail_indices.is_empty());
+        assert!(
+            !rx.try_iter()
+                .any(|message| matches!(message.event, Event::ThumbnailExtractionFinished { .. })),
+            "thumbnail extraction must not be scheduled after an interrupted import"
+        );
+    }
+
+    #[test]
+    fn failed_import_emits_no_completion_and_does_not_schedule_thumbnails() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let good = dir.path().join("good");
+        std::fs::create_dir(&good).expect("mkdir");
+        std::fs::write(good.join("book.epub"), b"epub content").expect("write");
+        let blocker = dir.path().join("not-a-directory");
+        std::fs::write(&blocker, b"x").expect("write");
+        let mut context = create_test_context();
+        context.settings.libraries = vec![
+            library_settings(&good),
+            library_settings(&blocker.join("library")),
+        ];
+        let (hub, rx) = mpsc::channel();
+        let mut task = import::ImportTask::new(
+            context.database.clone(),
+            context.settings.clone(),
+            None,
+            false,
+            context.device.install_dir(),
+            context.inhibitor.clone(),
+        );
+        let (_shutdown_tx, shutdown_rx) = mpsc::channel();
+        let shutdown = ShutdownSignal::new_for_test(shutdown_rx);
+        task.run(&hub, &shutdown);
+
+        assert!(
+            matches!(
+                task.finished_event(),
+                Some(Event::ImportFailed {
+                    library_index: None
+                })
+            ),
+            "failed import must emit a terminal ImportFailed event"
+        );
+        assert!(
+            !rx.try_iter()
+                .any(|message| matches!(message.event, Event::ImportFinished { .. })),
+            "failed import must not emit ImportFinished"
+        );
+
+        let mut manager = TaskManager::new();
+        if let Some(evt) = task.finished_event() {
+            manager.handle_event(&evt, &hub, &context);
+        }
+
+        assert!(!manager.is_running(&TaskId::ThumbnailExtraction));
+        assert!(manager.pending_thumbnail_indices.is_empty());
+        assert!(
+            !rx.try_iter()
+                .any(|message| matches!(message.event, Event::ThumbnailExtractionFinished { .. })),
+            "thumbnail extraction must not be scheduled after a failed import"
+        );
+    }
+
+    #[test]
+    fn failed_import_advances_queued_import_without_scheduling_thumbnails() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let good = dir.path().join("good");
+        std::fs::create_dir(&good).expect("mkdir");
+        std::fs::write(good.join("book.epub"), b"epub content").expect("write");
+        let mut context = create_test_context();
+        context.settings.libraries = vec![library_settings(&good)];
+        let (hub, rx) = mpsc::channel();
+        let mut manager = TaskManager::new();
+
+        let (shutdown_tx, shutdown_rx) = mpsc::channel();
+        let blocking_handle = thread::spawn(move || {
+            let _ = shutdown_rx.recv();
+            Some(Event::ImportFailed {
+                library_index: Some(0),
+            })
+        });
+        manager.tasks.insert(
+            TaskId::Import,
+            RunningTask {
+                handle: blocking_handle,
+                shutdown: shutdown_tx,
+            },
+        );
+
+        manager.handle_event(
+            &Event::ImportLibrary {
+                library_index: Some(0),
+                force: false,
+            },
+            &hub,
+            &context,
+        );
+        assert_eq!(
+            manager.pending_import_indices.front(),
+            Some(&(Some(0), false))
+        );
+
+        manager.stop(&TaskId::Import).unwrap();
+        manager.handle_event(
+            &Event::ImportFailed {
+                library_index: Some(0),
+            },
+            &hub,
+            &context,
+        );
+
+        assert!(manager.pending_import_indices.is_empty());
+        assert!(!manager.is_running(&TaskId::ThumbnailExtraction));
+        assert!(manager.pending_thumbnail_indices.is_empty());
+        assert!(
+            !rx.try_iter()
+                .any(|message| matches!(message.event, Event::ThumbnailExtractionFinished { .. })),
+            "failed import must not schedule thumbnail extraction"
+        );
+
+        wait_until_not_running(&mut manager, &TaskId::Import);
+        pump(&mut manager, &hub, &context);
+
+        let events: Vec<Event> = rx.try_iter().map(|message| message.event).collect();
+        assert!(
+            events.iter().any(|event| matches!(
+                event,
+                Event::ImportFinished {
+                    library_index: Some(0)
+                }
+            )),
+            "queued import must run after the preceding import fails"
+        );
+        assert!(
+            !events
+                .iter()
+                .any(|event| matches!(event, Event::ImportFailed { .. })),
+            "the queued import must not fail"
+        );
+    }
+
+    #[test]
+    fn completed_import_emits_completion_and_schedules_thumbnails() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("book.epub"), b"epub content").expect("write");
+        let context = import_context(dir.path());
+        let (hub, rx) = mpsc::channel();
+        let mut manager = TaskManager::new();
+        let task = import::ImportTask::new(
+            context.database.clone(),
+            context.settings.clone(),
+            Some(0),
+            false,
+            context.device.install_dir(),
+            context.inhibitor.clone(),
+        );
+        manager.start(Box::new(task), hub.clone()).unwrap();
+        wait_until_not_running(&mut manager, &TaskId::Import);
+        pump(&mut manager, &hub, &context);
+
+        let events: Vec<Event> = rx.try_iter().map(|message| message.event).collect();
+        let finished = events
+            .into_iter()
+            .find(|event| {
+                matches!(
+                    event,
+                    Event::ImportFinished {
+                        library_index: Some(0)
+                    }
+                )
+            })
+            .expect("completed import must emit ImportFinished");
+
+        manager.handle_event(&finished, &hub, &context);
+        assert!(
+            thumbnail_was_scheduled(&mut manager, &hub, &rx, &context),
+            "completed import must schedule thumbnail extraction"
+        );
     }
 }

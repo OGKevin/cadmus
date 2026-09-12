@@ -600,8 +600,18 @@ pub enum Event {
         library_index: Option<usize>,
         force: bool,
     },
-    /// Signals that a background import has finished.
+    /// Signals that a background import completed and recorded its results.
+    ///
+    /// The [`TaskManager`](crate::task::TaskManager) intercepts this event to
+    /// drain any queued imports and to start thumbnail extraction.
     ImportFinished {
+        library_index: Option<usize>,
+    },
+    /// Signals that a background import failed before recording results.
+    ///
+    /// The [`TaskManager`](crate::task::TaskManager) intercepts this event to
+    /// drain any queued imports without starting thumbnail extraction.
+    ImportFailed {
         library_index: Option<usize>,
     },
     /// Signals that a background thumbnail extraction has finished.
