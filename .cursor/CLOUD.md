@@ -57,3 +57,12 @@ If a fresh snapshot fails to compile, see the relevant skill:
 X server on `DISPLAY=:1`. `cargo xtask run-emulator` builds the EPUB if missing,
 then launches the emulator — prefix with `DISPLAY=:1` from the workspace root.
 See the `build-cadmus-native` skill for details.
+
+### Visual smoke evidence
+
+When sharing emulator screenshots or other ephemeral visual proof:
+
+- **Do not** create GitHub Releases, tags, or release assets to host temporary images.
+- **Do not** invent other temporary public hosting hacks for the same purpose.
+- **Preferred delivery:** Cursor Cloud run artifacts, or attach images in chat to the operator. A normal PR comment with images is an acceptable last resort for in-repo sharing — still never a Release.
+- **If evidence cannot be delivered cleanly:** stop, report the struggle clearly, and let the operator decide. Do not work around with Releases or similar.
