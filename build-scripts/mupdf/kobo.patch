@@ -21,7 +21,7 @@ diff -ru a/Makerules b/Makerules
 +  SYS_FREETYPE_CFLAGS := -I../freetype2/include
 +  SYS_FREETYPE_LIBS := -L../freetype2/objs/.libs -lfreetype
 +  SYS_GUMBO_CFLAGS := -I../gumbo/src
-+  SYS_GUMBO_LIBS := -L../gumbo/.libs -lgumbo
++  SYS_GUMBO_LIBS := -L../gumbo/build -lgumbo
 +  SYS_HARFBUZZ_CFLAGS := -I../harfbuzz/src
 +  SYS_HARFBUZZ_LIBS := -L../harfbuzz/build/src -lharfbuzz
 +  SYS_OPENJPEG_CFLAGS := -I../openjpeg/src/lib/openjp2
@@ -37,3 +37,14 @@ diff -ru a/Makerules b/Makerules
  ifeq "$(OS)" "wasm"
    build_prefix += wasm/
    CC = emcc
+diff -ru a/source/fitz/xml.c b/source/fitz/xml.c
+--- a/source/fitz/xml.c
++++ b/source/fitz/xml.c
+@@ -1202,6 +1202,7 @@
+ 	case GUMBO_NODE_DOCUMENT:
+ 	case GUMBO_NODE_COMMENT:
+ 	case GUMBO_NODE_TEMPLATE:
++	default:
+ 		break;
+ 	}
+ }

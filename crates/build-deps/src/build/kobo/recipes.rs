@@ -45,7 +45,7 @@ pub fn build_library(name: &str, build_dir: &Path) -> Result<()> {
         "libwebp" => build_libwebp(build_dir, &env),
         "freetype2" => build_freetype2(build_dir),
         "harfbuzz" => build_harfbuzz(build_dir),
-        "gumbo" => build_gumbo(build_dir, &env),
+        "gumbo" => build_gumbo(build_dir),
         "djvulibre" => build_djvulibre(build_dir),
         "mupdf" => super::mupdf::build_mupdf(build_dir),
         _ => anyhow::bail!("unknown library: {name}"),
@@ -314,19 +314,26 @@ fn build_harfbuzz(build_dir: &Path) -> Result<()> {
         .context("failed to build harfbuzz")
 }
 
-fn build_gumbo(build_dir: &Path, env: &[(&str, &str)]) -> Result<()> {
-    if !build_dir.join("configure").exists() {
-        cmd::run("./autogen.sh", &[], build_dir, env)
-            .context("failed to run autogen.sh for gumbo")?;
-    }
+fn build_gumbo(build_dir: &Path) -> Result<()> {
     cmd::run(
-        "./configure",
-        &["--host=arm-linux-gnueabihf"],
+        "meson",
+        &[
+            "setup",
+            "--buildtype=release",
+            "-Ddefault_library=shared",
+            "-Dtests=false",
+            "-Dexamples=false",
+            "-Dfuzz=false",
+            "-Dpython=false",
+            "--cross-file",
+            "kobo-options.txt",
+            "build",
+        ],
         build_dir,
-        env,
+        &[],
     )
     .context("failed to configure gumbo")?;
-    cmd::run("make", &["-j4"], build_dir, env).context("failed to build gumbo")
+    cmd::run("meson", &["compile", "-C", "build"], build_dir, &[]).context("failed to build gumbo")
 }
 
 fn build_djvulibre(build_dir: &Path) -> Result<()> {

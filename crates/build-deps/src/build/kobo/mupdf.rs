@@ -43,7 +43,7 @@ pub fn build_mupdf(build_dir: &Path) -> Result<()> {
         "-lfreetype",
         "-L../harfbuzz/build/src",
         "-lharfbuzz",
-        "-L../gumbo/.libs",
+        "-L../gumbo/build",
         "-lgumbo",
         "-L../jbig2dec/.libs",
         "-ljbig2dec",

@@ -117,7 +117,7 @@ pub const BUILT_LIBRARY_COPIES: &[(&str, &str)] = &[
         "thirdparty/harfbuzz/build/src/libharfbuzz.so",
         "libharfbuzz.so",
     ),
-    ("thirdparty/gumbo/.libs/libgumbo.so", "libgumbo.so"),
+    ("thirdparty/gumbo/build/libgumbo.so", "libgumbo.so"),
     (
         "thirdparty/djvulibre/libdjvu/.libs/libdjvulibre.so",
         "libdjvulibre.so",
