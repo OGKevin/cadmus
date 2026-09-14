@@ -70,8 +70,7 @@ fn build_libraries(thirdparty_dir: &Path) -> Result<()> {
         }
 
         let build_dir = build_root.join(name);
-        let submodule_path = format!("thirdparty/{name}");
-        if markers::is_built(root, &build_dir, &submodule_path) {
+        if markers::kobo_is_built(root, &build_dir, name) {
             println!("Skipping {name} (already built)...");
             continue;
         }
@@ -85,7 +84,7 @@ fn build_libraries(thirdparty_dir: &Path) -> Result<()> {
         source::apply_patches(&build_dir, name, root)?;
         recipes::build_library(name, &build_dir)?;
 
-        markers::mark_built(root, &build_dir, name, &submodule_path)?;
+        markers::kobo_mark_built(root, &build_dir, name)?;
     }
 
     Ok(())
@@ -120,20 +119,27 @@ pub(crate) fn copy_built_libs(root: &Path, libs_dir: &Path) -> Result<()> {
 /// `target/mupdf_wrapper/Kobo/libmupdf_wrapper.a` C glue archive — if
 /// it's not already cached.
 ///
-/// On a warm cache (every [`SONAMES`] entry present and the wrapper
-/// archive on disk) this returns `Ok(())` without touching git or the
-/// cross toolchain. Otherwise it initialises submodules, builds the
-/// libraries, copies/symlinks them, and finally compiles the
-/// `mupdf_wrapper` archive against the Kobo MuPDF headers.
+/// On a warm cache (every [`SONAMES`] entry present, the wrapper
+/// archive on disk, and per-library fingerprints current) this returns
+/// `Ok(())` after confirming staged `.so` `DT_NEEDED` names match the
+/// SONAMEs we ship. A fingerprint miss or a SONAME mismatch rebuilds.
 ///
 /// # Errors
 ///
 /// Returns an error if submodules cannot be initialised, `thirdparty/`
-/// is missing, any of the library build steps fail, or the wrapper
+/// is missing, any of the library build steps fail, the staged `.so`
+/// files still `DT_NEEDED` a SONAME we no longer ship, or the wrapper
 /// compile fails.
 pub fn ensure_kobo_artifacts(root: &Path) -> Result<()> {
+    let libs_dir = root.join("libs");
+
     if kobo_artifacts_present(root) {
-        return Ok(());
+        match verify_shared_library_links(&libs_dir) {
+            Ok(()) => return Ok(()),
+            Err(err) => {
+                println!("Kobo libs/ ABI check failed ({err:#}); rebuilding thirdparty libraries");
+            }
+        }
     }
 
     crate::ensure_submodules(root).context("failed to initialize git submodules")?;
@@ -143,11 +149,12 @@ pub fn ensure_kobo_artifacts(root: &Path) -> Result<()> {
         bail!("thirdparty/ directory not found. Run: git submodule update --init --recursive");
     }
 
-    let libs_dir = root.join("libs");
     build_libraries(&thirdparty_dir).context("failed to build thirdparty libraries")?;
     std::fs::create_dir_all(&libs_dir).context("failed to create libs/ directory")?;
     copy_built_libs(root, &libs_dir).context("failed to copy built libraries")?;
     create_symlinks(&libs_dir).context("failed to create symlinks")?;
+    verify_shared_library_links(&libs_dir)
+        .context("built Kobo libs/ failed the shared-library ABI check")?;
 
     let include = build_root(root).join("mupdf/include");
     crate::build::mupdf_wrapper::build_kobo(root, &include)
@@ -161,8 +168,7 @@ pub fn ensure_kobo_artifacts(root: &Path) -> Result<()> {
 /// * every [`SONAMES`] entry is present in `libs/`,
 /// * the `mupdf_wrapper` archive has been built for the Kobo target, and
 /// * every per-library `.built` marker under
-///   `target/cadmus-build-deps/<TARGET>/` matches the current submodule
-///   gitlink SHA.
+///   `target/cadmus-build-deps/<TARGET>/` matches [`markers::kobo_fingerprint`].
 pub(crate) fn kobo_artifacts_present(root: &Path) -> bool {
     kobo_artifacts_present_at(root, root)
 }
@@ -185,8 +191,7 @@ pub(crate) fn kobo_artifacts_present_at(git_root: &Path, artifact_root: &Path) -
     let kobo_build_root = build_root(artifact_root);
     versions::LIBRARY_NAMES.iter().all(|name| {
         let build_dir = kobo_build_root.join(name);
-        let submodule_path = format!("thirdparty/{name}");
-        markers::is_built(git_root, &build_dir, &submodule_path)
+        markers::kobo_is_built(git_root, &build_dir, name)
     })
 }
 
@@ -224,6 +229,17 @@ pub fn soname(libs_dir: &Path, lib: &str) -> Result<String> {
 /// `arm-linux-gnueabihf-readelf`. The SONAME is the last
 /// bracketed token on the `SONAME` line of the dynamic section.
 fn read_elf_soname(libs_dir: &Path, lib: &str) -> Result<String> {
+    read_elf_dynamic_tags(libs_dir, lib, "SONAME")?
+        .into_iter()
+        .next()
+        .with_context(|| format!("failed to find SONAME in readelf output for {lib}"))
+}
+
+fn read_elf_needed(libs_dir: &Path, lib: &str) -> Result<Vec<String>> {
+    read_elf_dynamic_tags(libs_dir, lib, "NEEDED")
+}
+
+fn read_elf_dynamic_tags(libs_dir: &Path, lib: &str, tag: &str) -> Result<Vec<String>> {
     let so_path = libs_dir.join(lib);
     let so_path_str = so_path
         .to_str()
@@ -234,17 +250,61 @@ fn read_elf_soname(libs_dir: &Path, lib: &str) -> Result<String> {
         libs_dir,
         &[],
     )?;
+    Ok(parse_elf_dynamic_tags(&output, tag))
+}
+
+fn parse_elf_dynamic_tags(output: &str, tag: &str) -> Vec<String> {
+    let needle = format!("({tag})");
     output
         .lines()
-        .find(|line| line.contains("SONAME"))
-        .and_then(|line| line.split_whitespace().last())
+        .filter(|line| line.contains(&needle))
+        .filter_map(|line| line.split_whitespace().last())
         .map(|token| {
             token
                 .trim_start_matches('[')
                 .trim_end_matches(']')
                 .to_string()
         })
-        .with_context(|| format!("failed to find SONAME in readelf output for {lib}"))
+        .collect()
+}
+
+/// Returns the shipped `(base, soname)` pair when `needed` refers to that
+/// library but does not match the current SONAME.
+fn shipped_soname_mismatch<'a>(
+    needed: &str,
+    shipped: impl IntoIterator<Item = (&'a str, &'a str)>,
+) -> Option<(&'a str, &'a str)> {
+    shipped.into_iter().find(|(base, current)| {
+        let related =
+            needed == *base || needed == *current || needed.starts_with(&format!("{base}."));
+        related && needed != *current
+    })
+}
+
+/// Fail if any staged Kobo `.so` `DT_NEEDED` entry still names an older
+/// SONAME of a library we ship (for example `libmupdf.so` needing
+/// `libgumbo.so.1` after Gumbo 0.14.0 started shipping `libgumbo.so.4`).
+fn verify_shared_library_links(libs_dir: &Path) -> Result<()> {
+    let shipped: Vec<(&str, String)> = SONAMES
+        .iter()
+        .map(|&lib| read_elf_soname(libs_dir, lib).map(|soname| (lib, soname)))
+        .collect::<Result<Vec<_>>>()?;
+
+    for &lib in SONAMES {
+        for needed in read_elf_needed(libs_dir, lib)? {
+            if let Some((base, current)) =
+                shipped_soname_mismatch(&needed, shipped.iter().map(|(b, s)| (*b, s.as_str())))
+            {
+                bail!(
+                    "{lib} DT_NEEDED {needed} does not match shipped {base} SONAME {current}; \
+                     the Kobo library cache is stale. Remove target/cadmus-build-deps and libs/ \
+                     then rebuild."
+                );
+            }
+        }
+    }
+
+    Ok(())
 }
 
 /// Locate the SONAME of `lib` by scanning `libs_dir` for a single
@@ -302,8 +362,7 @@ mod tests {
             for name in versions::LIBRARY_NAMES {
                 let build_dir = kobo_build_root.join(name);
                 std::fs::create_dir_all(&build_dir).unwrap();
-                markers::mark_built(git_root, &build_dir, name, &format!("thirdparty/{name}"))
-                    .unwrap();
+                markers::kobo_mark_built(git_root, &build_dir, name).unwrap();
             }
 
             let libs_dir = artifact_root.join("libs");
@@ -392,5 +451,30 @@ mod tests {
             msg.contains("multiple versioned files found for libfoo.so"),
             "unexpected error: {msg}"
         );
+    }
+
+    #[test]
+    fn parse_elf_dynamic_tags_reads_needed_and_soname() {
+        let output = "\
+ 0x00000001 (NEEDED)                     Shared library: [libgumbo.so.1]
+ 0x00000001 (NEEDED)                     Shared library: [libc.so.6]
+ 0x0000000e (SONAME)                     Library soname: [libmupdf.so.1]
+";
+        assert_eq!(
+            parse_elf_dynamic_tags(output, "NEEDED"),
+            ["libgumbo.so.1", "libc.so.6"]
+        );
+        assert_eq!(parse_elf_dynamic_tags(output, "SONAME"), ["libmupdf.so.1"]);
+    }
+
+    #[test]
+    fn shipped_soname_mismatch_detects_stale_gumbo_needed() {
+        let shipped = [("libgumbo.so", "libgumbo.so.4")];
+        assert_eq!(
+            shipped_soname_mismatch("libgumbo.so.1", shipped),
+            Some(("libgumbo.so", "libgumbo.so.4"))
+        );
+        assert_eq!(shipped_soname_mismatch("libgumbo.so.4", shipped), None);
+        assert_eq!(shipped_soname_mismatch("libc.so.6", shipped), None);
     }
 }

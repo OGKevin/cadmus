@@ -5,6 +5,9 @@ description: >
   mupdf_wrapper C glue, and the gitlink SHAs of every thirdparty
   submodule so that the key changes when any submodule pointer moves. The
   workflow file is hashed so CI build-step changes invalidate stale target/ caches.
+  Prefix restore-keys may still warm target/ and libs/ from an older commit;
+  Kobo `.built` markers include dependency SHAs so a Gumbo bump rebuilds
+  MuPDF instead of shipping a stale libmupdf.so.
 
   Defaults to restore-only. Pass `mode: save` in the cache-warmup job to
   write a fresh cache.
