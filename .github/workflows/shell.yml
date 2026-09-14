@@ -1,7 +1,7 @@
 name: Shell
 
 env:
-  SHFMT_VERSION: "3.13.1"
+  SHFMT_VERSION: "3.14.1"
 
 on:
   pull_request:
