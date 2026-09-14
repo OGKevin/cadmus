@@ -3,4 +3,6 @@ xtask = "run --package xtask --"
 
 [target.arm-unknown-linux-gnueabihf]
 linker = "arm-linux-gnueabihf-gcc"
-rustflags = ["-C", "target-feature=+v7,+vfp3,+neon"]
+# Cortex-A9 is the Kobo SoC baseline (same as thirdparty `-mcpu=cortex-a9 -mfpu=neon`).
+# Do not use `-C target-feature=+v7,+vfp3,+neon` — rustc treats those as unstable.
+rustflags = ["-C", "target-cpu=cortex-a9"]
