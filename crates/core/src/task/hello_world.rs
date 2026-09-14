@@ -3,11 +3,9 @@
 //! This task prints "Hello world!" every minute. It is only compiled
 //! when the `test` feature is enabled.
 
-use std::sync::mpsc::Sender;
 use std::time::Duration;
 
 use crate::task::{BackgroundTask, ShutdownSignal, TaskId};
-use crate::view::Event;
 
 const PRINT_INTERVAL: Duration = Duration::from_secs(60);
 

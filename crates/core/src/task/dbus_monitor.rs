@@ -4,13 +4,11 @@
 //! This is a diagnostic tool for investigating dhcpcd-dbus and
 //! wpa_supplicant interactions on Kobo devices (CAD-18).
 
-use std::sync::mpsc::Sender;
 use std::time::Duration;
 
 use futures_util::stream::StreamExt;
 
 use crate::task::{BackgroundTask, ShutdownSignal, TaskId};
-use crate::view::Event;
 
 const SHUTDOWN_POLL_INTERVAL: Duration = Duration::from_millis(200);
 
