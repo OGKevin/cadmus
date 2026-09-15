@@ -122,12 +122,11 @@
       "groupSlug": "bundled-fonts"
     },
     {
-      "description": "Limit google-fonts main-branch digest churn to weekly",
+      "description": "Limit google-fonts main-branch digest churn to weekly (same window as :maintainLockFilesWeekly)",
       "matchManagers": ["git-submodules"],
       "matchPackageNames": ["thirdparty/google-fonts"],
       "matchUpdateTypes": ["digest"],
-      "schedule": ["before 6am on monday"],
-      "timezone": "Europe/Amsterdam",
+      "schedule": ["* 0-3 * * 1"],
       "updateNotScheduled": false
     }
   ],
