@@ -161,6 +161,7 @@
       "matchStrings": [
         "CONTAINER_STRUCTURE_TEST_VERSION:\\s+(?<currentValue>v[^\\s]+)"
       ],
+      "autoReplaceStringTemplate": "CONTAINER_STRUCTURE_TEST_VERSION: v{{newValue}}",
       "datasourceTemplate": "github-releases",
       "depNameTemplate": "GoogleContainerTools/container-structure-test",
       "extractVersionTemplate": "^v?(?<version>.+)$",
