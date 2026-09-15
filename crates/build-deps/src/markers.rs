@@ -15,9 +15,9 @@
 //!
 //! Kobo cross-builds use [`kobo_mark_built`] / [`kobo_is_built`] instead.
 //! Those markers also cover earlier libraries in
-//! [`LIBRARY_NAMES`](crate::versions::LIBRARY_NAMES) and the contents of
-//! `build-scripts/<name>/`, so a Gumbo bump (or a MuPDF patch change)
-//! rebuilds MuPDF instead of relinking against a stale `libmupdf.so`.
+//! [`LIBRARY_NAMES`](crate::versions::LIBRARY_NAMES) and the git tree SHA of
+//! `build-scripts/<name>/`, so a Gumbo bump (or a committed MuPDF patch
+//! change) rebuilds MuPDF instead of relinking against a stale `libmupdf.so`.
 
 use std::path::{Path, PathBuf};
 
@@ -40,15 +40,15 @@ pub fn built_marker_path(dir: &Path) -> PathBuf {
     dir.join(BUILT_MARKER)
 }
 
-/// Returns the current gitlink (tree-entry) SHA for the submodule at
-/// `submodule_path` relative to `root`. Returns `None` when git is
-/// unavailable or the path does not track a submodule.
+/// Returns the object SHA at HEAD for `path` (`git ls-tree`).
 ///
-/// The output for ls-tree is:
-/// `160000 commit <sha>\t<path>`
-pub fn submodule_commit(root: &Path, submodule_path: &str) -> Option<String> {
+/// Submodules print `160000 commit <sha>`; directories print
+/// `040000 tree <sha>`. The SHA is the third whitespace field in both
+/// cases. Returns `None` when git is unavailable or `path` is not in
+/// the tree.
+pub fn git_ls_tree_sha(root: &Path, path: &str) -> Option<String> {
     let output = std::process::Command::new("git")
-        .args(["ls-tree", "HEAD", submodule_path])
+        .args(["ls-tree", "HEAD", path])
         .current_dir(root)
         .output()
         .ok()?;
@@ -59,6 +59,11 @@ pub fn submodule_commit(root: &Path, submodule_path: &str) -> Option<String> {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     stdout.split_whitespace().nth(2).map(|s| s.to_owned())
+}
+
+/// Returns the current gitlink SHA for the submodule at `submodule_path`.
+pub fn submodule_commit(root: &Path, submodule_path: &str) -> Option<String> {
+    git_ls_tree_sha(root, submodule_path)
 }
 
 /// Returns `true` when `stored` is non-empty and equals `current`.
@@ -105,9 +110,9 @@ pub fn mark_built(root: &Path, dir: &Path, name: &str, submodule_path: &str) -> 
 ///
 /// Line 1 is `kobo-v1`. Each following line is `name=sha` for this
 /// library and every earlier entry in [`versions::LIBRARY_NAMES`].
-/// When `build-scripts/<name>/` exists, a final `scripts=<hex>` line
-/// hashes that directory so patch and Meson cross-file edits invalidate
-/// the cache.
+/// When `build-scripts/<name>/` is in the git tree, a final
+/// `scripts=<sha>` line records that directory's tree object so a
+/// committed patch or Meson cross-file change invalidates the cache.
 pub(crate) fn kobo_fingerprint(root: &Path, name: &str) -> Result<String> {
     let idx = versions::LIBRARY_NAMES
         .iter()
@@ -117,14 +122,14 @@ pub(crate) fn kobo_fingerprint(root: &Path, name: &str) -> Result<String> {
     let mut lines = vec!["kobo-v1".to_owned()];
     for dep in &versions::LIBRARY_NAMES[..=idx] {
         let submodule_path = format!("thirdparty/{dep}");
-        let sha = submodule_commit(root, &submodule_path)
-            .with_context(|| format!("failed to resolve submodule commit for {submodule_path}"))?;
+        let sha = git_ls_tree_sha(root, &submodule_path)
+            .with_context(|| format!("failed to resolve git object for {submodule_path}"))?;
         lines.push(format!("{dep}={sha}"));
     }
 
-    let scripts_dir = root.join("build-scripts").join(name);
-    if scripts_dir.is_dir() {
-        lines.push(format!("scripts={}", digest_dir(&scripts_dir)?));
+    let scripts_path = format!("build-scripts/{name}");
+    if let Some(sha) = git_ls_tree_sha(root, &scripts_path) {
+        lines.push(format!("scripts={sha}"));
     }
 
     Ok(lines.join("\n"))
@@ -156,63 +161,6 @@ pub(crate) fn kobo_is_built(root: &Path, dir: &Path, name: &str) -> bool {
 pub(crate) fn kobo_mark_built(root: &Path, dir: &Path, name: &str) -> Result<()> {
     let fingerprint = kobo_fingerprint(root, name)?;
     mark_version(dir, name, &fingerprint)
-}
-
-fn digest_dir(dir: &Path) -> Result<String> {
-    let mut files = Vec::new();
-    collect_files(dir, dir, &mut files)?;
-    files.sort_unstable_by(|a, b| a.0.cmp(&b.0));
-
-    let mut hash = 0xcbf2_9ce4_8422_2325;
-    for (rel, bytes) in files {
-        hash = fnv1a64(hash, rel.as_bytes());
-        hash = fnv1a64(hash, &[0]);
-        hash = fnv1a64(hash, &bytes);
-        hash = fnv1a64(hash, &[0xff]);
-    }
-
-    Ok(format!("{hash:016x}"))
-}
-
-fn fnv1a64(mut hash: u64, bytes: &[u8]) -> u64 {
-    for &byte in bytes {
-        hash ^= u64::from(byte);
-        hash = hash.wrapping_mul(0x0100_0000_01b3);
-    }
-    hash
-}
-
-fn collect_files(root: &Path, dir: &Path, files: &mut Vec<(String, Vec<u8>)>) -> Result<()> {
-    let mut entries: Vec<_> = std::fs::read_dir(dir)
-        .with_context(|| format!("failed to read {}", dir.display()))?
-        .collect::<Result<_, _>>()
-        .with_context(|| format!("failed to read {}", dir.display()))?;
-    entries.sort_by_key(|e| e.file_name());
-
-    for entry in entries {
-        let path = entry.path();
-        let file_type = entry
-            .file_type()
-            .with_context(|| format!("failed to stat {}", path.display()))?;
-        if file_type.is_dir() {
-            collect_files(root, &path, files)?;
-            continue;
-        }
-        if !file_type.is_file() {
-            continue;
-        }
-
-        let rel = path
-            .strip_prefix(root)
-            .unwrap_or(&path)
-            .to_string_lossy()
-            .replace('\\', "/");
-        let bytes =
-            std::fs::read(&path).with_context(|| format!("failed to read {}", path.display()))?;
-        files.push((rel, bytes));
-    }
-
-    Ok(())
 }
 
 /// Returns `true` when `dir` has a `.built` marker whose content matches
@@ -318,13 +266,14 @@ mod tests {
     fn kobo_fingerprint_includes_earlier_library_shas() {
         let root = workspace_root();
         let fingerprint = kobo_fingerprint(root, "mupdf").unwrap();
-        let gumbo = submodule_commit(root, "thirdparty/gumbo").unwrap();
-        let mupdf = submodule_commit(root, "thirdparty/mupdf").unwrap();
+        let gumbo = git_ls_tree_sha(root, "thirdparty/gumbo").unwrap();
+        let mupdf = git_ls_tree_sha(root, "thirdparty/mupdf").unwrap();
+        let scripts = git_ls_tree_sha(root, "build-scripts/mupdf").unwrap();
 
         assert!(fingerprint.starts_with("kobo-v1\n"));
         assert!(fingerprint.contains(&format!("gumbo={gumbo}")));
         assert!(fingerprint.contains(&format!("mupdf={mupdf}")));
-        assert!(fingerprint.contains("scripts="));
+        assert!(fingerprint.contains(&format!("scripts={scripts}")));
     }
 
     #[test]
@@ -362,12 +311,12 @@ mod tests {
     }
 
     #[test]
-    fn digest_dir_changes_when_file_contents_change() {
-        let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("kobo.patch"), b"one").unwrap();
-        let before = digest_dir(tmp.path()).unwrap();
-        std::fs::write(tmp.path().join("kobo.patch"), b"two").unwrap();
-        let after = digest_dir(tmp.path()).unwrap();
-        assert_ne!(before, after);
+    fn git_ls_tree_sha_resolves_build_scripts_directory() {
+        let root = workspace_root();
+        let sha = git_ls_tree_sha(root, "build-scripts/mupdf");
+        assert!(sha.is_some(), "build-scripts/mupdf should resolve");
+        let sha = sha.unwrap();
+        assert_eq!(sha.len(), 40);
+        assert!(sha.chars().all(|c| c.is_ascii_hexdigit()));
     }
 }
