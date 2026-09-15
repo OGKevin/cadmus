@@ -122,7 +122,7 @@
       "groupSlug": "bundled-fonts"
     },
     {
-      "description": "Limit google-fonts main-branch digest churn to weekly (same window as :maintainLockFilesWeekly)",
+      "description": "Limit google-fonts main-branch digest churn to weekly",
       "matchManagers": ["git-submodules"],
       "matchPackageNames": ["thirdparty/google-fonts"],
       "matchUpdateTypes": ["digest"],
