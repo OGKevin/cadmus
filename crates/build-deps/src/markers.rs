@@ -16,8 +16,9 @@
 //! Kobo cross-builds use [`kobo_mark_built`] / [`kobo_is_built`] instead.
 //! Those markers also cover earlier libraries in
 //! [`LIBRARY_NAMES`](crate::versions::LIBRARY_NAMES) and a BLAKE3 digest of
-//! `build-scripts/<name>/`, so a Gumbo bump or an on-disk patch edit rebuilds
-//! MuPDF instead of relinking against a stale `libmupdf.so`.
+//! each of those libraries' `build-scripts/<dep>/` directories, so a
+//! Gumbo bump or an on-disk Gumbo recipe edit rebuilds MuPDF instead of
+//! relinking against a stale `libmupdf.so`.
 //!
 //! # Marker file contents
 //!
@@ -31,11 +32,11 @@
 //! [`kobo_fingerprint`]. Line 1 is the format version. Each following
 //! `name=sha` line is the gitlink of that library and every earlier
 //! entry in [`LIBRARY_NAMES`](crate::versions::LIBRARY_NAMES). When
-//! `build-scripts/<name>/` exists, a final `scripts=` line is the
+//! `build-scripts/<dep>/` exists, a `{dep}.scripts=` line is the
 //! 64-character BLAKE3 digest from [`digest_dir`]:
 //!
 //! ```text
-//! kobo-v1
+//! kobo-v2
 //! zlib=1111111111111111111111111111111111111111
 //! bzip2=2222222222222222222222222222222222222222
 //! libpng=3333333333333333333333333333333333333333
@@ -45,15 +46,19 @@
 //! libwebp=7777777777777777777777777777777777777777
 //! freetype2=8888888888888888888888888888888888888888
 //! harfbuzz=9999999999999999999999999999999999999999
-//! gumbo=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-//! djvulibre=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
-//! mupdf=cccccccccccccccccccccccccccccccccccccccc
-//! scripts=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+//! harfbuzz.scripts=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+//! gumbo=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+//! gumbo.scripts=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+//! djvulibre=dddddddddddddddddddddddddddddddddddddddd
+//! djvulibre.scripts=eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+//! mupdf=ffffffffffffffffffffffffffffffffffffffff
+//! mupdf.scripts=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 //! ```
 //!
-//! The SHAs above are placeholders. A SHA-only marker from an older
-//! Cadmus version never matches this format, so a warm cache still
-//! rebuilds after a Gumbo bump.
+//! The SHAs above are placeholders. Libraries without a `build-scripts/`
+//! directory omit the `.scripts` line. A SHA-only or `kobo-v1` marker
+//! from an older Cadmus version never matches this format, so a warm
+//! cache still rebuilds after a Gumbo bump.
 
 use std::path::{Path, PathBuf};
 
@@ -155,11 +160,12 @@ pub fn mark_built(root: &Path, dir: &Path, name: &str, submodule_path: &str) -> 
 
 /// Fingerprint stored in a Kobo library [`.built`](BUILT_MARKER) marker.
 ///
-/// Line 1 is `kobo-v1`. Each following line is `name=sha` for this
+/// Line 1 is `kobo-v2`. Each following line is `name=sha` for this
 /// library and every earlier entry in [`versions::LIBRARY_NAMES`].
-/// When `build-scripts/<name>/` exists on disk, a final `scripts=<hex>`
+/// When `build-scripts/<dep>/` exists on disk, a `{dep}.scripts=<hex>`
 /// line is a BLAKE3 digest from [`digest_dir`] so a patch or Meson
-/// cross-file edit — committed or not — invalidates the cache.
+/// cross-file edit — committed or not — invalidates this library and
+/// every later library that fingerprints it.
 ///
 /// See the [marker file contents](crate::markers#marker-file-contents) example for
 /// the on-disk layout of a MuPDF marker.
@@ -175,17 +181,17 @@ pub(crate) fn kobo_fingerprint(root: &Path, name: &str) -> Result<String> {
         .position(|&n| n == name)
         .with_context(|| format!("{name} is not a Kobo thirdparty library"))?;
 
-    let mut lines = vec!["kobo-v1".to_owned()];
+    let mut lines = vec!["kobo-v2".to_owned()];
     for dep in &versions::LIBRARY_NAMES[..=idx] {
         let submodule_path = format!("thirdparty/{dep}");
         let sha = git_ls_tree_sha(root, &submodule_path)
             .with_context(|| format!("failed to resolve git object for {submodule_path}"))?;
         lines.push(format!("{dep}={sha}"));
-    }
 
-    let scripts_dir = root.join("build-scripts").join(name);
-    if scripts_dir.is_dir() {
-        lines.push(format!("scripts={}", digest_dir(&scripts_dir)?));
+        let scripts_dir = root.join("build-scripts").join(dep);
+        if scripts_dir.is_dir() {
+            lines.push(format!("{dep}.scripts={}", digest_dir(&scripts_dir)?));
+        }
     }
 
     Ok(lines.join("\n"))
@@ -227,7 +233,7 @@ pub(crate) fn kobo_mark_built(root: &Path, dir: &Path, name: &str) -> Result<()>
 /// Paths are collected with [`collect_file_paths`], sorted, then fed to
 /// the hasher as `relative-path`, a NUL byte, the file bytes, and `0xff`.
 /// The separators keep `a`/`bc` distinct from `ab`/`c`. The result is
-/// the 64-character `scripts=` value in a Kobo marker.
+/// the 64-character `{name}.scripts=` value in a Kobo marker.
 ///
 /// # Errors
 ///
@@ -398,12 +404,15 @@ mod tests {
         let fingerprint = kobo_fingerprint(root, "mupdf").unwrap();
         let gumbo = git_ls_tree_sha(root, "thirdparty/gumbo").unwrap();
         let mupdf = git_ls_tree_sha(root, "thirdparty/mupdf").unwrap();
-        let scripts = digest_dir(&root.join("build-scripts/mupdf")).unwrap();
+        let gumbo_scripts = digest_dir(&root.join("build-scripts/gumbo")).unwrap();
+        let mupdf_scripts = digest_dir(&root.join("build-scripts/mupdf")).unwrap();
 
-        assert!(fingerprint.starts_with("kobo-v1\n"));
+        assert!(fingerprint.starts_with("kobo-v2\n"));
         assert!(fingerprint.contains(&format!("gumbo={gumbo}")));
+        assert!(fingerprint.contains(&format!("gumbo.scripts={gumbo_scripts}")));
         assert!(fingerprint.contains(&format!("mupdf={mupdf}")));
-        assert!(fingerprint.contains(&format!("scripts={scripts}")));
+        assert!(fingerprint.contains(&format!("mupdf.scripts={mupdf_scripts}")));
+        assert!(!fingerprint.contains("zlib.scripts="));
     }
 
     #[test]
@@ -433,6 +442,22 @@ mod tests {
         let stale = fingerprint.replace(
             &format!("gumbo={gumbo}"),
             "gumbo=0000000000000000000000000000000000000000",
+        );
+        assert_ne!(stale, fingerprint);
+        std::fs::write(built_marker_path(tmp.path()), stale).unwrap();
+
+        assert!(!kobo_is_built(root, tmp.path(), "mupdf"));
+    }
+
+    #[test]
+    fn kobo_is_built_false_when_dependency_scripts_digest_in_marker_differs() {
+        let root = workspace_root();
+        let tmp = tempfile::tempdir().unwrap();
+        let fingerprint = kobo_fingerprint(root, "mupdf").unwrap();
+        let gumbo_scripts = digest_dir(&root.join("build-scripts/gumbo")).unwrap();
+        let stale = fingerprint.replace(
+            &format!("gumbo.scripts={gumbo_scripts}"),
+            "gumbo.scripts=0000000000000000000000000000000000000000000000000000000000000000",
         );
         assert_ne!(stale, fingerprint);
         std::fs::write(built_marker_path(tmp.path()), stale).unwrap();
