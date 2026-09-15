@@ -10,6 +10,7 @@ path = "src/lib.rs"
 
 [dependencies]
 anyhow = "1"
+blake3 = { workspace = true }
 cc = { workspace = true }
 rust-embed = { workspace = true }
 tempfile = "3"

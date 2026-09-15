@@ -12,6 +12,7 @@ members = [
 
 [workspace.dependencies]
 backon = { version = "1.6", default-features = false, features = ["std"] }
+blake3 = "1"
 cc = "1"
 io_tee = "0.1"
 rust-embed = "8"

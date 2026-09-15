@@ -366,6 +366,7 @@ name = "build-deps"
 version = "0.10.1"
 dependencies = [
  "anyhow",
+ "blake3",
  "cc",
  "rust-embed",
  "tempfile",
