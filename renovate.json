@@ -127,7 +127,7 @@
       "matchPackageNames": ["thirdparty/google-fonts"],
       "matchUpdateTypes": ["digest"],
       "schedule": ["* 0-3 * * 1"],
-      "updateNotScheduled": false
+      "updateNotScheduled": true
     }
   ],
   "customManagers": [
