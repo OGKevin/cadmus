@@ -1,9 +1,9 @@
 {
-  ".": "0.11.0",
-  "crates/core": "0.11.0",
-  "crates/cadmus": "0.11.0",
-  "crates/importer": "0.11.0",
-  "crates/fetcher": "0.11.0",
-  "crates/macros": "0.11.0",
-  "xtask": "0.11.0"
+  ".": "0.12.0",
+  "crates/core": "0.12.0",
+  "crates/cadmus": "0.12.0",
+  "crates/importer": "0.12.0",
+  "crates/fetcher": "0.12.0",
+  "crates/macros": "0.12.0",
+  "xtask": "0.12.0"
 }
