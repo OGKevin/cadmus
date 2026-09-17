@@ -1,3 +1,8 @@
+// Renovate config (JSONC). Tips for editing this file:
+// - git-submodules sets depName to the submodule path and packageName to the clone URL.
+//   Use matchDepNames for path-based rules (e.g. google-fonts schedule); matchPackageNames alone won't match the path.
+// - custom.regex pins match on matchDepNames (depNameTemplate); use matchPackageNames when packageNameTemplate is set.
+// - Schedules use UTC cron syntax.
 {
   "extends": [
     "config:recommended",
@@ -114,17 +119,16 @@
       "matchPackageNames": [
         "nicoverbruggen/ebook-fonts",
         "alerque/libertinus",
-        "adobe-fonts/source-code-pro",
-        "thirdparty/noto-fonts",
-        "thirdparty/google-fonts"
+        "adobe-fonts/source-code-pro"
       ],
+      "matchDepNames": ["thirdparty/noto-fonts", "thirdparty/google-fonts"],
       "groupName": "bundled fonts",
       "groupSlug": "bundled-fonts"
     },
     {
       "description": "Limit google-fonts main-branch digest churn to weekly",
       "matchManagers": ["git-submodules"],
-      "matchPackageNames": ["thirdparty/google-fonts"],
+      "matchDepNames": ["thirdparty/google-fonts"],
       "matchUpdateTypes": ["digest"],
       "schedule": ["* 0-3 * * 1"],
       "updateNotScheduled": true

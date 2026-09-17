@@ -19,7 +19,7 @@ jobs:
         with:
           filters: |
             config:
-              - 'renovate.json'
+              - 'renovate.jsonc'
               - '.github/workflows/renovate-config.yml'
 
       - name: Setup Node
@@ -39,7 +39,7 @@ jobs:
         if: steps.filter.outputs.config == 'true'
         uses: suzuki-shunsuke/github-action-renovate-config-validator@ee9f69e1f683ed0d08225086482b34fc9abe9300 # v2.1.0
         with:
-          config_file_path: renovate.json
+          config_file_path: renovate.jsonc
 
       - name: No relevant changes
         if: steps.filter.outputs.config != 'true'
