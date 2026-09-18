@@ -1,3 +1,14 @@
 name = "cadmus"
-pages_build_output_dir = "website/out"
 compatibility_date = "2026-02-14"
+
+# Static documentation site (Next.js export). No Worker script yet; version
+# routing lands in the follow-up docs-version-routing change.
+[assets]
+directory = "website/out"
+not_found_handling = "404-page"
+
+[observability]
+enabled = true
+
+[observability.traces]
+enabled = true

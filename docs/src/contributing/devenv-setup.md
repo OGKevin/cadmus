@@ -89,6 +89,7 @@ Once inside the devenv shell, these commands are available:
 | `devenv up`                   | Start observability stack (Grafana, Tempo, Loki)            |
 | `cargo xtask docs`            | Build docs site (mdBook, API docs, website)                 |
 | `cadmus-docs-serve`           | Serve website locally on port 3000                          |
+| `cadmus-docs-preview`         | `wrangler dev` for `website/out` (Workers, matches CI)      |
 | `cadmus-translate`            | Generate the docs translation template (.pot)               |
 | `cadmus-test-coverage`        | Run tests with coverage instrumentation                     |
 | `cadmus-coverage-show`        | Open project-wide HTML coverage report                      |

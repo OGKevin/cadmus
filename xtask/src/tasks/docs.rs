@@ -16,18 +16,13 @@
 //!
 //! ## Redirects for legacy paths (`/guide/`, `/api/`, …)
 //!
-//! Two mechanisms cover the two deployment targets:
-//!
-//! - `website/public/_redirects` — server-side 302 rules for Cloudflare Pages
-//!   (and `wrangler pages dev`).  Committed to git.
-//! - [`write_redirect_html`] — static HTML meta-refresh/JS redirects written to
-//!   `public/guide/index.html`, etc.  Required for GitHub Pages, which ignores
-//!   `_redirects`.  Generated at build time alongside the symlinks.
+//! `website/public/_redirects` holds server-side 302 rules for Cloudflare
+//! Workers Static Assets (and `wrangler dev`).  Committed to git.
 //!
 //! ## Output
 //!
-//! The final website is written to `website/out/` and is ready to be deployed to
-//! Cloudflare Pages or GitHub Pages.
+//! The final website is written to `website/out/` and is ready to be deployed
+//! with `wrangler deploy`.
 
 use std::path::Path;
 
@@ -447,51 +442,6 @@ fn create_website_symlinks(root: &Path) -> Result<()> {
 
     symlink_relative("_shared/api", &public_dir.join("api"))?;
 
-    create_back_compat_redirects(root, &website_locales)?;
-    Ok(())
-}
-
-/// Writes static HTML redirects for hosts that do not support `_redirects`
-/// (e.g. GitHub Pages).
-fn create_back_compat_redirects(root: &Path, website_locales: &[String]) -> Result<()> {
-    let public_dir = root.join("website/public");
-    write_redirect_html(&public_dir.join("guide/index.html"), "../en/guide/")?;
-
-    for locale in website_locales {
-        if locale == "en" {
-            continue;
-        }
-        write_redirect_html(
-            &public_dir.join("guide").join(locale).join("index.html"),
-            &format!("../../{locale}/guide/"),
-        )?;
-    }
-
-    write_redirect_html(&public_dir.join("storybook/index.html"), "../en/storybook/")?;
-    Ok(())
-}
-
-/// Writes a static HTML page that redirects to `target` via meta refresh and
-/// JavaScript. Used for hosts that do not support `website/public/_redirects`.
-fn write_redirect_html(path: &Path, target: &str) -> Result<()> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-
-    let html = format!(
-        r#"<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta http-equiv="refresh" content="0; url={target}">
-    <link rel="canonical" href="{target}">
-    <script>location.replace("{target}");</script>
-  </head>
-  <body><p><a href="{target}">Redirecting…</a></p></body>
-</html>
-"#
-    );
-    std::fs::write(path, html).with_context(|| format!("failed to write {}", path.display()))?;
     Ok(())
 }
 
@@ -677,21 +627,6 @@ mod tests {
 
         symlink_relative("../_shared/second", &link).unwrap();
         assert_symlink_to(&link, "../_shared/second");
-    }
-
-    #[test]
-    fn write_redirect_html_uses_relative_target_verbatim() {
-        let temp_dir = TempDir::new().unwrap();
-        let path = temp_dir.path().join("guide/index.html");
-        let target = "../en/guide/";
-
-        write_redirect_html(&path, target).unwrap();
-
-        let html = fs::read_to_string(&path).unwrap();
-        assert!(html.contains(r#"content="0; url=../en/guide/""#));
-        assert!(html.contains(r#"href="../en/guide/""#));
-        assert!(html.contains(r#"location.replace("../en/guide/")"#));
-        assert!(!html.contains("/cadmus"));
     }
 
     #[test]

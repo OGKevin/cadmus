@@ -32,7 +32,7 @@ Cadmus is a document reader for Kobo e-readers.
 </div>
 
 Documentation is available at:
-<https://ogkevin.github.io/cadmus/>
+<https://cadmus.ogkevin.nl/>
 
 ## Acknowledgments
 

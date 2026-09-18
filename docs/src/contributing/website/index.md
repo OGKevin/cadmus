@@ -20,17 +20,17 @@ and [`website/lib/doc-hrefs.ts`](https://github.com/ogkevin/cadmus/blob/master/w
 
 ### Deployed URLs
 
-- **Cloudflare Pages**: <https://cadmus-dt6.pages.dev/>
-- **PR previews**: `https://pr-{NUMBER}.cadmus-dt6.pages.dev/` (branch `pr-{NUMBER}` in CI)
-- **GitHub Pages (mirror)**: <https://ogkevin.github.io/cadmus/> (built with
-  `NEXT_PUBLIC_BASE_PATH=/cadmus`)
+- **Production (Cloudflare Workers)**: <https://cadmus.ogkevin.nl/>
+  (`cadmus.5f27h4ytfw.workers.dev` is the same Worker)
+- **PR previews**: `wrangler versions upload --preview-alias pr-{NUMBER}`
+  (non-fork PRs; fork PRs still build with no preview deploy)
+- **GitHub Pages**: <https://ogkevin.github.io/cadmus/> redirects to
+  `https://cadmus.ogkevin.nl/` (path after `/cadmus` is preserved)
 
 Legacy paths `/guide/`, `/api/`, and `/storybook/` redirect to `/en/...` via
 [`website/public/_redirects`](https://github.com/ogkevin/cadmus/blob/master/website/public/_redirects)
-on Cloudflare Pages (including splat rules for deep `/api/*` and `/storybook/*`
-paths) and generated HTML redirects on GitHub Pages. The docs build also
-symlinks cargo-doc to `website/public/api/` so GitHub Pages can serve deep API
-paths as static files. In-guide API links are rewritten client-side by
+(including splat rules for deep `/api/*` and `/storybook/*` paths). In-guide API
+links are rewritten client-side by
 [`docs/lang-picker.js`](https://github.com/ogkevin/cadmus/blob/master/docs/lang-picker.js)
 to preserve the reader's locale.
 
@@ -46,7 +46,8 @@ cadmus-docs-serve       # Next.js dev server → http://localhost:3000
 
 ```bash
 cargo xtask docs
-npx wrangler pages dev website/out
+wrangler dev              # Workers Static Assets, same as production
+# or: cadmus-docs-preview
 ```
 
 **Fast iteration**:
@@ -124,16 +125,25 @@ runs:
 [`.github/workflows/cadmus-docs.yml`](https://github.com/ogkevin/cadmus/blob/master/.github/workflows/cadmus-docs.yml)
 builds and deploys the site:
 
-- Triggers on changes to `docs/**`, `website/**`, `crates/**/*.rs`, the doc-tools action, and
-  the workflow file
+- Triggers on changes to `docs/**`, `website/**`, `crates/**/*.rs`, the doc-tools action,
+  `wrangler.toml`, and the workflow file
 - `cargo xtask docs` → artifact `website/out`
-- Separate GitHub Pages rebuild with `NEXT_PUBLIC_BASE_PATH=/cadmus`
-- PR previews on Cloudflare Pages for non-fork PRs (fork PRs still build; no preview deploy)
+- Production: `wrangler deploy` (Workers Static Assets from `wrangler.toml`,
+  with Workers Logs and traces enabled)
+- PR previews: `wrangler versions upload --preview-alias pr-{NUMBER}` for non-fork PRs
+  (fork PRs still build; no preview deploy)
+- GitHub Pages: [`.github/workflows/cadmus-docs-gh-pages-redirect.yml`](https://github.com/ogkevin/cadmus/blob/master/.github/workflows/cadmus-docs-gh-pages-redirect.yml)
+  deploys `.github/gh-pages-redirect/` so `ogkevin.github.io/cadmus` bookmarks
+  reach `https://cadmus.ogkevin.nl/`
+
+`CLOUDFLARE_API_TOKEN` must allow **Workers Scripts:Edit** (Cloudflare token template
+**Edit Cloudflare Workers**). A Pages-only token will fail `wrangler deploy`.
+`CLOUDFLARE_ACCOUNT_ID` is unchanged.
 
 ## Reviewing changes
 
-When you open a pull request that modifies website or documentation files, a preview deployment
-is created automatically for non-fork PRs. The PR checks panel shows a link to the preview URL
-(`https://pr-{NUMBER}.cadmus-dt6.pages.dev/`).
+When you open a pull request that modifies website or documentation files, a preview
+deployment is created automatically for non-fork PRs. The PR environment
+`cloudflare-workers-preview` shows the preview URL from `wrangler versions upload`.
 
 <!-- i18n:skip-end -->

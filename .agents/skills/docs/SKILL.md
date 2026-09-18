@@ -19,6 +19,15 @@ cargo xtask docs --mdbook-only
 
 The final website is written to `website/out/`.
 
+Preview the static export the same way CI deploys it:
+
+```sh
+wrangler dev
+```
+
+(`wrangler.toml` serves `website/out` as Workers Static Assets. Do not use
+`wrangler pages dev`.)
+
 ## Prerequisites
 
 The following tools must be on `PATH` (all provided by the devenv shell):
@@ -28,3 +37,4 @@ The following tools must be on `PATH` (all provided by the devenv shell):
 - `npm` / `node`
 - `cargo`
 - `git`
+- `wrangler`

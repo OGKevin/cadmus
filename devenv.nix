@@ -793,6 +793,14 @@ in
       npm run dev
     '';
 
+    # Full static export via Workers (matches CI). Run cargo xtask docs first.
+    cadmus-docs-preview.exec = ''
+      echo "Starting wrangler dev for website/out (Workers Static Assets)..."
+      echo "Note: run 'cargo xtask docs' first so website/out exists."
+      echo ""
+      wrangler dev
+    '';
+
     # Build for Kobo device
     cadmus-build-kobo.exec = ''
       cargo xtask build-kobo "$@"
@@ -892,6 +900,7 @@ in
     echo "Available commands:"
     echo "  cadmus-docs-build     - Build complete documentation portal"
     echo "  cadmus-docs-serve     - Serve website locally (http://localhost:3000)"
+    echo "  cadmus-docs-preview   - wrangler dev for website/out (Workers, matches CI)"
     echo "  cargo test            - Run tests (after setup)"
     echo "  cargo xtask run-emulator - Run the emulator (after setup)"
     echo "  cadmus-translate      - Regenerate docs/po/messages.pot (translations on Crowdin)"

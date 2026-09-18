@@ -86,12 +86,12 @@ HTML is allowed — MD033 is disabled globally in `.rumdl.toml`.
 Do **not** embed a locale prefix (e.g. `en/`) in markdown links. Two mechanisms
 route them at deploy/runtime:
 
-1. **Direct URL access** — `cargo xtask docs` symlinks cargo-doc to
-   `website/public/api/` (GitHub Pages) and `_redirects` splat rules redirect
-   deep unprefixed paths to `/en/api/...` (Cloudflare Pages).
+1. **Direct URL access** — `website/public/_redirects` splat rules redirect
+   deep unprefixed paths to `/en/api/...` on Cloudflare Workers. The docs build
+   also symlinks cargo-doc to `website/public/api/` so those paths exist as
+   static files as well.
 2. **In-guide clicks** — [`docs/lang-picker.js`](lang-picker.js) rewrites
-   `a[href^="/api/"]` to `/{locale}/api/...` (and `/{basePath}/{locale}/api/...`
-   on GitHub Pages) based on the current guide URL.
+   `a[href^="/api/"]` to `/{locale}/api/...` based on the current guide URL.
 
 Examples in contributor docs:
 
