@@ -15,7 +15,7 @@ const withPageChrome: Decorator = (Story, context) => {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-kumo-surface text-kumo-default antialiased">
+    <div className="flex min-h-screen flex-col bg-kumo-base text-kumo-default antialiased">
       <SiteHeader />
       <Story />
     </div>
@@ -28,7 +28,7 @@ const withPageBackground: Decorator = (Story, context) => {
   }
 
   return (
-    <div className="bg-kumo-surface min-h-screen p-8">
+    <div className="bg-kumo-base min-h-screen p-8">
       <Story />
     </div>
   );

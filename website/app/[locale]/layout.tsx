@@ -54,7 +54,7 @@ export default async function LocaleLayout({
         <link rel="prefetch" href={guideHref(locale)} />
         <link rel="prefetch" href={apiHref(locale)} />
       </head>
-      <body className="flex min-h-screen flex-col bg-kumo-surface text-kumo-default antialiased">
+      <body className="flex min-h-screen flex-col bg-kumo-base text-kumo-default antialiased">
         <NextIntlClientProvider messages={messages}>
           <SiteHeader />
           {children}
