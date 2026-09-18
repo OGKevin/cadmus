@@ -27,7 +27,8 @@ and [`website/lib/doc-hrefs.ts`](https://github.com/ogkevin/cadmus/blob/master/w
 - **GitHub Pages**: <https://ogkevin.github.io/cadmus/> redirects to
   `https://cadmus.ogkevin.nl/` (path after `/cadmus` is preserved)
 
-Legacy paths `/guide/`, `/api/`, and `/storybook/` redirect to `/en/...` via
+Legacy paths `/guide`, `/guide/`, `/api/`, and `/storybook` (with or without a
+trailing slash) redirect to `/en/...` via
 [`website/public/_redirects`](https://github.com/ogkevin/cadmus/blob/master/website/public/_redirects)
 (including splat rules for deep `/api/*` and `/storybook/*` paths). In-guide API
 links are rewritten client-side by
