@@ -1,9 +1,10 @@
 name: Post reviewdog diagnostics from artifact
 description: >
   Download a reviewdog-input artifact from a completed workflow run and post
-  inline PR review comments (including an empty file to clear stale comments).
-  Treats the artifact as untrusted text only. Skips when the artifact is missing
-  so path-filtered collect jobs do not wipe unrelated comments.
+  inline PR review comments. When diagnostics are empty, deletes stale reviewdog
+  comments for this tool via the GitHub API (reviewdog returns before Flush on
+  zero results). Treats the artifact as untrusted text only. Skips when the
+  artifact is missing so path-filtered collect jobs do not wipe unrelated comments.
 
 inputs:
   pr_number:
@@ -70,15 +71,54 @@ runs:
         github-token: ${{ inputs.github_token }}
         run-id: ${{ inputs.run_id }}
 
-    - name: Install reviewdog
+    - name: Inspect diagnostics
+      id: inspect
       if: steps.download.outcome == 'success'
+      shell: bash
+      env:
+        DIAGNOSTICS_PATH: ${{ github.workspace }}/${{ inputs.diagnostics_path }}
+        RD_FORMAT: ${{ inputs.format }}
+      run: |
+        set -euo pipefail
+        if [ ! -f "$DIAGNOSTICS_PATH" ]; then
+          mkdir -p "$(dirname "$DIAGNOSTICS_PATH")"
+          : > "$DIAGNOSTICS_PATH"
+        fi
+        if [ ! -s "$DIAGNOSTICS_PATH" ] && [ "$RD_FORMAT" = "sarif" ]; then
+          printf '%s\n' '{"version":"2.1.0","runs":[]}' > "$DIAGNOSTICS_PATH"
+        fi
+
+        empty=true
+        if [ "$RD_FORMAT" = "sarif" ]; then
+          if jq -e '[.runs[]?.results[]?] | length > 0' "$DIAGNOSTICS_PATH" >/dev/null 2>&1; then
+            empty=false
+          fi
+        elif [ -s "$DIAGNOSTICS_PATH" ]; then
+          empty=false
+        fi
+        echo "empty=${empty}" >> "$GITHUB_OUTPUT"
+
+    - name: Clear stale reviewdog comments
+      if: steps.download.outcome == 'success' && steps.inspect.outputs.empty == 'true'
+      shell: bash
+      env:
+        REVIEWDOG_GITHUB_API_TOKEN: ${{ inputs.github_token }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+      run: |
+        set -euo pipefail
+        "${{ github.action_path }}/clear-stale-comments.sh" \
+          "${{ inputs.pr_number }}" \
+          "${{ inputs.name }}"
+
+    - name: Install reviewdog
+      if: steps.download.outcome == 'success' && steps.inspect.outputs.empty != 'true'
       uses: reviewdog/action-setup@d8a7baabd7f3e8544ee4dbde3ee41d0011c3a93f # v1
 
     # CI_* vars are reviewdog's manual PR context (for non-pull_request jobs).
     # Unset GITHUB_ACTIONS so reviewdog uses them instead of workflow_run event
     # metadata. See: https://github.com/reviewdog/reviewdog#common-jenkins-local-etc
     - name: Post review comments
-      if: steps.download.outcome == 'success'
+      if: steps.download.outcome == 'success' && steps.inspect.outputs.empty != 'true'
       shell: bash
       working-directory: ${{ inputs.workdir }}
       env:
@@ -96,13 +136,6 @@ runs:
         RD_FLAGS: ${{ inputs.reviewdog_flags }}
       run: |
         set -euo pipefail
-        if [ ! -f "$DIAGNOSTICS_PATH" ]; then
-          mkdir -p "$(dirname "$DIAGNOSTICS_PATH")"
-          : > "$DIAGNOSTICS_PATH"
-        fi
-        if [ ! -s "$DIAGNOSTICS_PATH" ] && [ "$RD_FORMAT" = "sarif" ]; then
-          printf '%s\n' '{"version":"2.1.0","runs":[]}' > "$DIAGNOSTICS_PATH"
-        fi
 
         args=(-name="$RD_NAME" -filter-mode="$RD_FILTER_MODE" -fail-on-error=false -reporter=github-pr-review)
         if [ -n "$RD_FORMAT" ]; then

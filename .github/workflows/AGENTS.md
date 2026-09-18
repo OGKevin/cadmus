@@ -93,7 +93,10 @@ Report job order:
    `checkout-workflow-run-pr-head` — pass `repository`, `ref`, `base_ref`, and
    `path` from the workflow
 4. Download artifacts and pipe diagnostics into reviewdog — pass `workdir`
-   matching the PR-head path, plus `commit`, `branch`, and `run_id`
+   matching the PR-head path, plus `commit`, `branch`, and `run_id`. When the
+   artifact has no diagnostics, `reviewdog-post` deletes stale inline comments
+   for that tool via the GitHub API (reviewdog itself skips `Flush()` on zero
+   parsed results).
 
 The PR-head checkout exists solely so reviewdog can resolve `.git` and compute
 the PR diff for `-filter-mode=added`. That is safe for this use case: the
