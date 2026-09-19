@@ -50,6 +50,13 @@
       "groupSlug": "github-actions-non-major"
     },
     {
+      "matchManagers": ["custom.regex"],
+      "matchDepNames": ["reviewdog/reviewdog"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "GitHub Actions non-major dependencies",
+      "groupSlug": "github-actions-non-major"
+    },
+    {
       "matchManagers": ["npm"],
       "matchPackageNames": ["@mermaid-js/mermaid-cli", "prettier"],
       "matchUpdateTypes": ["minor", "patch"],
@@ -145,6 +152,20 @@
       ],
       "datasourceTemplate": "crate",
       "depNameTemplate": "rumdl",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^\\.github\\/actions\\/reviewdog-post\\/action\\.yml$/",
+        "/^\\.github\\/actions\\/rumdl-lint\\/action\\.yml$/"
+      ],
+      "matchStrings": [
+        "reviewdog_version:[\\s\\S]*?default: \"(?<currentValue>[^\"]+)\""
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "reviewdog/reviewdog",
+      "extractVersionTemplate": "^v?(?<version>.+)$",
       "versioningTemplate": "semver"
     },
     {

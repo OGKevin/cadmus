@@ -56,6 +56,10 @@ inputs:
     description: Token with pull-requests write for the Review API.
     required: false
     default: ${{ github.token }}
+  reviewdog_version:
+    description: reviewdog binary version for reviewdog/action-setup.
+    required: false
+    default: "0.21.2"
 
 runs:
   using: composite
@@ -73,6 +77,8 @@ runs:
     - name: Install reviewdog
       if: steps.download.outcome == 'success'
       uses: reviewdog/action-setup@d8a7baabd7f3e8544ee4dbde3ee41d0011c3a93f # v1
+      with:
+        reviewdog_version: v${{ inputs.reviewdog_version }}
 
     # CI_* vars are reviewdog's manual PR context (for non-pull_request jobs).
     # Unset GITHUB_ACTIONS so reviewdog uses them instead of workflow_run event
