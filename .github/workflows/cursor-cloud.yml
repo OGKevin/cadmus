@@ -13,7 +13,7 @@ permissions:
 
 env:
   CURSOR_CLOUD_IMAGE: cadmus-cursor-cloud:ci
-  CONTAINER_STRUCTURE_TEST_VERSION: v1.19.3
+  CONTAINER_STRUCTURE_TEST_VERSION: v1.22.1
 
 jobs:
   changes:
