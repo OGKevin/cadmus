@@ -41,18 +41,21 @@ fi
 
 cargo fetch
 
-BASHRC="${HOME}/.bashrc"
 MARKER_START="# >>> cadmus-cloud-env >>>"
 MARKER_END="# <<< cadmus-cloud-env <<<"
+PROFILE_D="/etc/profile.d/cadmus-cloud-env.sh"
+BASHRCS=("${HOME}/.bashrc" "/root/.bashrc")
 
-python3 - "$BASHRC" "$MARKER_START" "$MARKER_END" "$ROOT" "$HOST_TRIPLE" "$LIBCLANG_PATH" <<'PY'
+python3 - "$PROFILE_D" "$MARKER_START" "$MARKER_END" "$ROOT" "$HOST_TRIPLE" "$LIBCLANG_PATH" "${BASHRCS[@]}" <<'PY'
+import os
 import pathlib
+import subprocess
 import sys
 
-bashrc, start, end, root, host_triple, libclang_path = sys.argv[1:7]
-path = pathlib.Path(bashrc)
-block = f"""{start}
-# Managed by .cursor/cloud-install.sh — do not edit manually.
+profile_d, start, end, root, host_triple, libclang_path = sys.argv[1:7]
+bashrcs = sys.argv[7:]
+
+profile_content = f"""# Managed by .cursor/cloud-install.sh — do not edit manually.
 export CADMUS_ROOT="{root}"
 export SQLITE3_STATIC=1
 export SQLITE3_LIB_DIR="{root}/target/cadmus-build-deps/{host_triple}/sqlite/lib"
@@ -68,16 +71,49 @@ export CADMUS_HOME="/home/ubuntu"
 export PATH="$CADMUS_HOME/.local/bin:$CADMUS_HOME/linaro-toolchain/bin:/usr/local/cargo/bin:$HOME/.local/bin:$PATH"
 export NVM_DIR="$CADMUS_HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+"""
+
+bashrc_block = f"""{start}
+# Managed by .cursor/cloud-install.sh — do not edit manually.
+[ -f {profile_d} ] && . {profile_d}
 {end}
 """
 
-text = path.read_text() if path.exists() else ""
-if start in text and end in text:
-    before, rest = text.split(start, 1)
-    _, after = rest.split(end, 1)
-    text = before + block + after
-else:
-    text = text.rstrip() + "\n\n" + block + "\n"
 
-path.write_text(text)
+def write_path(path: pathlib.Path, content: str) -> None:
+    if os.geteuid() == 0:
+        path.write_text(content)
+        return
+    subprocess.run(
+        ["sudo", "tee", str(path)],
+        input=content.encode(),
+        check=True,
+        stdout=subprocess.DEVNULL,
+    )
+
+
+def read_path(path: pathlib.Path) -> str:
+    try:
+        return path.read_text()
+    except (FileNotFoundError, PermissionError, OSError):
+        if os.geteuid() == 0:
+            return ""
+        result = subprocess.run(["sudo", "cat", str(path)], capture_output=True)
+        if result.returncode != 0:
+            return ""
+        return result.stdout.decode()
+
+
+write_path(pathlib.Path(profile_d), profile_content)
+
+for bashrc in bashrcs:
+    path = pathlib.Path(bashrc)
+    text = read_path(path)
+    if start in text and end in text:
+        before, rest = text.split(start, 1)
+        _, after = rest.split(end, 1)
+        text = before + bashrc_block + after
+    else:
+        text = text.rstrip() + "\n\n" + bashrc_block + "\n"
+    write_path(path, text)
 PY
