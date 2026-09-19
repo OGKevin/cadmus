@@ -23,7 +23,7 @@ use crate::github::GithubClient;
 use crate::github::device_flow;
 use crate::ota::{
     CancelFlag, CancelFunc, DeployOutcome, OtaClient, OtaError, OtaProgress, clean_bundled_files,
-    cleanup_ota_cancel,
+    cleanup_ota_cancel, record_restart_attempt, write_restart_marker,
 };
 use crate::unit::scale_by_dpi;
 use crate::version::{VersionComparison, get_current_version};
@@ -581,6 +581,9 @@ impl OtaView {
             ota_view_id: self.view_id,
             tmp_dir: context.device.tmp_dir(),
             install_dir: context.device.install_dir(),
+            data_dir: context.device.data_dir(),
+            deploy_path: ota_write_deploy_path(context),
+            track_restart: context.device.update_bundle_deploy_path().is_some(),
             github_token: Some(github_token),
             cancelled: Arc::clone(&self.cancelled),
             wifi_session: context.wifi_session.clone(),
@@ -608,6 +611,9 @@ impl OtaView {
             ota_view_id: self.view_id,
             tmp_dir: context.device.tmp_dir(),
             install_dir: context.device.install_dir(),
+            data_dir: context.device.data_dir(),
+            deploy_path: ota_write_deploy_path(context),
+            track_restart: context.device.update_bundle_deploy_path().is_some(),
             github_token: Some(github_token),
             cancelled: Arc::clone(&self.cancelled),
             wifi_session: context.wifi_session.clone(),
@@ -627,6 +633,9 @@ impl OtaView {
             ota_view_id: self.view_id,
             tmp_dir: context.device.tmp_dir(),
             install_dir: context.device.install_dir(),
+            data_dir: context.device.data_dir(),
+            deploy_path: ota_write_deploy_path(context),
+            track_restart: context.device.update_bundle_deploy_path().is_some(),
             github_token: self.effective_github_token(),
             cancelled: Arc::clone(&self.cancelled),
             wifi_session: context.wifi_session.clone(),
@@ -642,10 +651,20 @@ struct OtaDownloadContext {
     ota_view_id: ViewId,
     tmp_dir: PathBuf,
     install_dir: PathBuf,
+    data_dir: PathBuf,
+    deploy_path: PathBuf,
+    track_restart: bool,
     github_token: Option<SecretString>,
     cancelled: Arc<CancelFlag>,
     wifi_session: Arc<WifiSession>,
     inhibitor: Arc<Inhibitor>,
+}
+
+fn ota_write_deploy_path(context: &AppContext) -> PathBuf {
+    context
+        .device
+        .update_bundle_deploy_path()
+        .unwrap_or_else(|| context.device.tmp_dir().join(".kobo").join("KoboRoot.tgz"))
 }
 
 /// Cleans up partial OTA files and closes the view after user cancellation.
@@ -656,7 +675,17 @@ fn finish_ota_cancelled(hub: &Hub, ota_view_id: ViewId, tmp_dir: &Path, deploy_p
 
 /// Completes a published OTA install, including the committed-but-not-durable
 /// case where parent-directory sync failed after rename.
-fn finish_successful_deploy(hub: &Hub, install_dir: &Path, outcome: DeployOutcome) {
+///
+/// Returns `false` when restart tracking is required and the marker or the
+/// attempt count could not be recorded. Bundled files stay in place and no
+/// reboot is scheduled, so the update is not treated as finished.
+fn finish_successful_deploy(
+    hub: &Hub,
+    install_dir: &Path,
+    data_dir: &Path,
+    track_restart: bool,
+    outcome: DeployOutcome,
+) -> bool {
     if let DeployOutcome::CommittedNotDurable { path, error } = &outcome {
         tracing::warn!(
             path = ?path,
@@ -665,14 +694,29 @@ fn finish_successful_deploy(hub: &Hub, install_dir: &Path, outcome: DeployOutcom
         );
     }
 
+    if track_restart && let Err(error) = write_restart_marker(data_dir) {
+        tracing::error!(
+            error = %error,
+            "failed to write OTA restart marker; skipping bundled-file cleanup and reboot"
+        );
+        return false;
+    }
+    if track_restart && let Err(error) = record_restart_attempt(data_dir) {
+        tracing::error!(
+            error = %error,
+            "failed to increment OTA restart attempts; skipping bundled-file cleanup and reboot"
+        );
+        return false;
+    }
+
     if let Err(e) = clean_bundled_files(install_dir) {
         tracing::warn!(path = ?install_dir, error = %e, "Failed to clean bundled OTA files");
     }
     send_ota_progress(hub, fl!("ota-installing-and-rebooting"), 100, false);
     send_reboot_after_delay(hub.clone());
+    true
 }
 
-/// Sends an [`Event::OtaDownloadProgress`] update to the UI thread.
 fn send_ota_progress(hub: &Hub, label: String, percent: u8, cancelable: bool) {
     hub.send(
         (Event::OtaDownloadProgress {
@@ -718,6 +762,9 @@ fn run_ota_download(ctx: OtaDownloadContext) {
         ota_view_id,
         tmp_dir,
         install_dir,
+        data_dir,
+        deploy_path,
+        track_restart,
         github_token,
         cancelled,
         wifi_session,
@@ -788,7 +835,7 @@ fn run_ota_download(ctx: OtaDownloadContext) {
             }
         };
 
-        let client = OtaClient::new(github, tmp_dir.clone());
+        let client = OtaClient::new(github, tmp_dir.clone(), deploy_path.clone());
         let deploy_path = client.deploy_path();
 
         let initial_label = kind.progress_label(0);
@@ -861,7 +908,22 @@ fn run_ota_download(ctx: OtaDownloadContext) {
                 match deploy_result {
                     Ok(outcome) => {
                         hub2.send((Event::ClearDeferredSuspend).into()).ok();
-                        finish_successful_deploy(&hub2, &install_dir, outcome);
+                        if !finish_successful_deploy(
+                            &hub2,
+                            &install_dir,
+                            &data_dir,
+                            track_restart,
+                            outcome,
+                        ) {
+                            hub2.send((Event::Close(ota_view_id)).into()).ok();
+                            hub2.send(
+                                (Event::Notification(NotificationEvent::Show(fl!(
+                                    "ota-deployment-failed"
+                                ))))
+                                .into(),
+                            )
+                            .ok();
+                        }
                     }
                     Err(e) => {
                         error!(error = %e, "Deployment failed");
@@ -945,7 +1007,8 @@ impl OtaView {
             }
         };
 
-        let client = OtaClient::new(github, context.device.tmp_dir());
+        let deploy_path = ota_write_deploy_path(context);
+        let client = OtaClient::new(github, context.device.tmp_dir(), deploy_path);
         let remote_version = match client.fetch_latest_release_version() {
             Ok(version) => version,
             Err(e) => {
@@ -1553,6 +1616,57 @@ mod tests {
     }
 
     #[test]
+    fn test_marker_write_failure_does_not_report_success_or_reboot() {
+        let (hub, rx) = channel();
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        let install_dir = tmp.path().join("install");
+        let font = install_dir.join("fonts").join("Libron-Regular.ttf");
+        std::fs::create_dir_all(font.parent().unwrap()).unwrap();
+        std::fs::write(&font, b"owned").unwrap();
+        let data_dir = tmp.path().join("not-a-directory");
+        std::fs::write(&data_dir, b"x").unwrap();
+
+        let finished = finish_successful_deploy(
+            &hub,
+            &install_dir,
+            &data_dir,
+            true,
+            DeployOutcome::Durable(tmp.path().join(".kobo").join("KoboRoot.tgz")),
+        );
+
+        assert!(!finished);
+        assert!(font.is_file());
+        std::thread::sleep(std::time::Duration::from_millis(1200));
+        assert!(rx.try_iter().next().is_none());
+    }
+
+    #[test]
+    fn test_successful_deploy_records_attempt_and_cleans_bundled_files() {
+        let (hub, _rx) = channel();
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        let install_dir = tmp.path().join("install");
+        let font = install_dir.join("fonts").join("Libron-Regular.ttf");
+        std::fs::create_dir_all(font.parent().unwrap()).unwrap();
+        std::fs::write(&font, b"owned").unwrap();
+        let data_dir = tmp.path().join("data");
+
+        let finished = finish_successful_deploy(
+            &hub,
+            &install_dir,
+            &data_dir,
+            true,
+            DeployOutcome::Durable(tmp.path().join(".kobo").join("KoboRoot.tgz")),
+        );
+
+        assert!(finished);
+        assert!(!font.is_file());
+        assert_eq!(
+            std::fs::read_to_string(crate::ota::marker_path(&data_dir)).unwrap(),
+            "1"
+        );
+    }
+
+    #[test]
     fn test_progress_100_then_hide_cancel_does_not_panic() {
         let mut context = create_test_context();
         let mut ota = create_ota_view(&mut context);
@@ -1576,6 +1690,9 @@ mod tests {
         let mut ota = create_ota_view(&mut context);
         ota.auth
             .set_saved(SecretString::from("stored-token".to_owned()));
+        if ota.auth.origin() == Some(device_flow::AuthOrigin::Environment) {
+            ota.auth.reject_effective();
+        }
 
         let token = ota.effective_github_token().expect("token");
         assert_eq!(token.expose_secret(), "stored-token");

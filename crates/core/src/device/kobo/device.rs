@@ -155,6 +155,13 @@ impl crate::device::DevicePaths for Device {
         };
         discover_peer_installs(&root, &self.install_dir())
     }
+
+    fn update_bundle_deploy_path(&self) -> Option<PathBuf> {
+        Some(PathBuf::from(format!(
+            "{}/.kobo/KoboRoot.tgz",
+            crate::settings::INTERNAL_CARD_ROOT
+        )))
+    }
 }
 
 crate::impl_device_hardware!(

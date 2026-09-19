@@ -63,6 +63,7 @@ ota-downloading-stable-release = Downloading stable release… { $percent }%
 ota-installing-and-rebooting = Installing and rebooting…
 ota-invalid-pr-number = Invalid PR number
 ota-pr-input-title = Download Build from PR
+ota-update-not-applied = The update could not be applied
 ota-version-comparison-error = Version comparison failed
 ota-version-newer = Your version is newer than the latest release
 

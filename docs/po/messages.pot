@@ -1,7 +1,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Cadmus Documentation\n"
-"POT-Creation-Date: 2026-09-20T19:00:13+02:00\n"
+"POT-Creation-Date: 2026-09-21T17:33:32+02:00\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
@@ -114,7 +114,7 @@ msgstr ""
 msgid "Database Backup"
 msgstr ""
 
-#: src/SUMMARY.md:30 src/installation/ota.md:96 src/troubleshooting/index.md:1
+#: src/SUMMARY.md:30 src/installation/ota.md:103 src/troubleshooting/index.md:1
 msgid "Troubleshooting"
 msgstr ""
 
@@ -359,7 +359,7 @@ msgid ""
 "out changes that haven't been released yet"
 msgstr ""
 
-#: src/installation/index.md:25 src/installation/ota.md:90
+#: src/installation/index.md:25 src/installation/ota.md:97
 msgid "First-time setup"
 msgstr ""
 
@@ -575,127 +575,137 @@ msgid ""
 msgstr ""
 
 #: src/installation/ota.md:20
+msgid ""
+"The device reboots so the Kobo firmware can install the new update. If "
+"Cadmus starts again and that update is still waiting, Cadmus reboots on its "
+"own so the install can finish. That can happen if power was lost, or if the "
+"first reboot did not complete. Cadmus tries a few times. If the update is "
+"still waiting after that, Cadmus starts normally and tells you the update "
+"could not be applied."
+msgstr ""
+
+#: src/installation/ota.md:27
 msgid "Authentication"
 msgstr ""
 
-#: src/installation/ota.md:22
+#: src/installation/ota.md:29
 msgid ""
 "Main branch and PR builds require a GitHub account. Stable releases are "
 "public and need no authentication."
 msgstr ""
 
-#: src/installation/ota.md:25
+#: src/installation/ota.md:32
 msgid ""
 "The first time you request a main branch or PR build, Cadmus will show a "
 "screen with a URL and a short code:"
 msgstr ""
 
-#: src/installation/ota.md:28
+#: src/installation/ota.md:35
 msgid "Go to the URL shown on screen"
 msgstr ""
 
-#: src/installation/ota.md:29
+#: src/installation/ota.md:36
 msgid "Enter the code shown on your device"
 msgstr ""
 
-#: src/installation/ota.md:30
+#: src/installation/ota.md:37
 msgid "Sign in to GitHub and approve the request"
 msgstr ""
 
-#: src/installation/ota.md:32
+#: src/installation/ota.md:39
 msgid ""
 "Cadmus detects the approval automatically and starts the download. The token "
 "is saved to disk so you won't need to sign in again."
 msgstr ""
 
-#: src/installation/ota.md:37
+#: src/installation/ota.md:44
 msgid "![ota-pick](./screenshots/ota-pick.png)"
 msgstr ""
 
-#: src/installation/ota.md:37
+#: src/installation/ota.md:44
 msgid "![auth](./screenshots/device-auth.png)"
 msgstr ""
 
-#: src/installation/ota.md:39
+#: src/installation/ota.md:46
 msgid "How to update"
 msgstr ""
 
-#: src/installation/ota.md:41
+#: src/installation/ota.md:48
 msgid ""
 "Open **Main Menu → Check for Updates**. You'll see options for where to get "
 "the update from:"
 msgstr ""
 
-#: src/installation/ota.md:44 src/installation/migration.md:51
+#: src/installation/ota.md:51 src/installation/migration.md:51
 msgid "Source"
 msgstr ""
 
-#: src/installation/ota.md:44
+#: src/installation/ota.md:51
 msgid "Description"
 msgstr ""
 
-#: src/installation/ota.md:46
+#: src/installation/ota.md:53
 msgid "**Stable Release**"
 msgstr ""
 
-#: src/installation/ota.md:46
+#: src/installation/ota.md:53
 msgid "Latest official release from GitHub"
 msgstr ""
 
-#: src/installation/ota.md:47
+#: src/installation/ota.md:54
 msgid "**Main Branch**"
 msgstr ""
 
-#: src/installation/ota.md:47
+#: src/installation/ota.md:54
 msgid "Latest development build (most recent changes)"
 msgstr ""
 
-#: src/installation/ota.md:48
+#: src/installation/ota.md:55
 msgid "**PR Build**"
 msgstr ""
 
-#: src/installation/ota.md:48
+#: src/installation/ota.md:55
 msgid "Test a specific pull request"
 msgstr ""
 
-#: src/installation/ota.md:51
+#: src/installation/ota.md:58
 msgid "The _Stable Release_ option is not shown in test builds."
 msgstr ""
 
-#: src/installation/ota.md:53
+#: src/installation/ota.md:60
 msgid "Updating from the main branch"
 msgstr ""
 
-#: src/installation/ota.md:55
+#: src/installation/ota.md:62
 msgid ""
 "Select **Main Branch** to get the most recent development build. This "
 "includes changes that have been merged but not yet released officially."
 msgstr ""
 
-#: src/installation/ota.md:58
+#: src/installation/ota.md:65
 msgid ""
 "If you haven't authenticated before, Cadmus will guide you through the "
 "GitHub sign-in process. See [Authentication](#authentication) for details."
 msgstr ""
 
-#: src/installation/ota.md:61
+#: src/installation/ota.md:68
 msgid ""
 "The update downloads from GitHub, installs automatically, and reboots the "
 "device to finish."
 msgstr ""
 
-#: src/installation/ota.md:64
+#: src/installation/ota.md:71
 msgid ""
 "Before that reboot, Cadmus removes the files it previously installed so the "
 "new package can replace them cleanly. Your custom fonts, icons, and other "
 "user-added files will be preserved."
 msgstr ""
 
-#: src/installation/ota.md:68
+#: src/installation/ota.md:75
 msgid "Testing a pull request"
 msgstr ""
 
-#: src/installation/ota.md:70
+#: src/installation/ota.md:77
 msgid ""
 "Select **PR Build** to try out a specific change before it's released. Enter "
 "the PR number when prompted. If you haven't authenticated before, Cadmus "
@@ -703,73 +713,73 @@ msgid ""
 "[Authentication](#authentication) for details."
 msgstr ""
 
-#: src/installation/ota.md:76
+#: src/installation/ota.md:83
 msgid ""
 "Find the PR number in the GitHub URL. For example, in "
 "`github.com/OGKevin/cadmus/pull/42` the PR number is **42**."
 msgstr ""
 
-#: src/installation/ota.md:79
+#: src/installation/ota.md:86
 msgid "Normal vs test builds"
 msgstr ""
 
-#: src/installation/ota.md:81
+#: src/installation/ota.md:88
 msgid ""
 "OTA works for both types of builds. The type you're currently using "
 "determines what gets downloaded:"
 msgstr ""
 
-#: src/installation/ota.md:84
+#: src/installation/ota.md:91
 msgid "**Normal builds** update to `KoboRoot.tgz` in `/mnt/onboard/.adds/cadmus`"
 msgstr ""
 
-#: src/installation/ota.md:85
+#: src/installation/ota.md:92
 msgid ""
 "**Test builds** update to `KoboRoot-test.tgz` in "
 "`/mnt/onboard/.adds/cadmus-tst`"
 msgstr ""
 
-#: src/installation/ota.md:87
+#: src/installation/ota.md:94
 msgid ""
 "See the [available packages](./index.md#available-packages) table for all "
 "options."
 msgstr ""
 
-#: src/installation/ota.md:92
+#: src/installation/ota.md:99
 msgid ""
 "OTA only works for updating an existing installation. To install Cadmus for "
 "the first time, follow the [installation guide](./index.md) or the [test "
 "builds guide](./test-builds.md) to copy a KoboRoot file via USB."
 msgstr ""
 
-#: src/installation/ota.md:98
+#: src/installation/ota.md:105
 msgid "\"Insufficient disk space\" error"
 msgstr ""
 
-#: src/installation/ota.md:100
+#: src/installation/ota.md:107
 msgid ""
 "If Cadmus shows an error like _\"Insufficient disk space: need 100MB, have "
 "XMB\"_ while downloading an update:"
 msgstr ""
 
-#: src/installation/ota.md:103
+#: src/installation/ota.md:110
 msgid "Cadmus downloads update files into a `tmp` folder:"
 msgstr ""
 
-#: src/installation/ota.md:104
+#: src/installation/ota.md:111
 msgid "**With SD card**: `/mnt/sd/.cadmus/tmp` (uses SD card space)"
 msgstr ""
 
-#: src/installation/ota.md:105
+#: src/installation/ota.md:112
 msgid ""
 "**Without SD card**: `/mnt/onboard/.adds/cadmus/tmp` (uses internal storage)"
 msgstr ""
 
-#: src/installation/ota.md:106
+#: src/installation/ota.md:113
 msgid "If you see this error and have an SD card inserted, the card may be full"
 msgstr ""
 
-#: src/installation/ota.md:107
+#: src/installation/ota.md:114
 msgid ""
 "If you do not have an SD card, free up space on internal storage by deleting "
 "books or other files you do not need"

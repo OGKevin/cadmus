@@ -28,6 +28,8 @@ pub mod soft_suspend;
 pub use linux::LinuxRtc;
 #[cfg(any(feature = "kobo", docsrs))]
 pub(crate) mod suspend;
+#[cfg(any(feature = "kobo", test))]
+mod update_bundle;
 pub mod usb;
 pub mod wifi;
 
@@ -58,6 +60,8 @@ pub use model::Model;
 #[cfg(any(feature = "kobo", docsrs))]
 pub(crate) use tasks::schedule_device_task;
 pub use types::{FrontlightKind, Orientation};
+#[cfg(feature = "kobo")]
+pub(crate) use update_bundle::handle_startup_restart_marker;
 
 #[cfg(any(feature = "emulator", docsrs))]
 pub use emulator::{EmulatorDevice, code_from_key, device_event};
@@ -521,6 +525,15 @@ pub trait DevicePaths: Send {
     /// Default: `data_dir/tmp`.
     fn tmp_dir(&self) -> PathBuf {
         self.data_path(Path::new("tmp"))
+    }
+
+    /// Path where a committed update bundle is placed for the platform applicator.
+    ///
+    /// `None` when this platform has no firmware update applicator (for example
+    /// the emulator). Callers that only need a write destination for testing
+    /// should fall back under [`Self::tmp_dir`].
+    fn update_bundle_deploy_path(&self) -> Option<PathBuf> {
+        None
     }
 
     /// Removes stale tmp contents and recreates the directory.

@@ -17,6 +17,13 @@ finishes, fails, or you cancel the download. See
 [Soft Suspend](../soft-suspend.md#status-led-indicator) for how this relates to
 the steady LED used for soft suspend.
 
+The device reboots so the Kobo firmware can install the new update. If Cadmus
+starts again and that update is still waiting, Cadmus reboots on its own so
+the install can finish. That can happen if power was lost, or if the first
+reboot did not complete. Cadmus tries a few times. If the update is still
+waiting after that, Cadmus starts normally and tells you the update could not
+be applied.
+
 ## Authentication
 
 Main branch and PR builds require a GitHub account. Stable releases are public

@@ -14,9 +14,6 @@ use std::path::{Path, PathBuf};
 use std::cell::Cell;
 use zip::ZipArchive;
 
-#[cfg(all(not(test), not(feature = "emulator")))]
-use crate::settings::INTERNAL_CARD_ROOT;
-
 /// Downloads and deploys OTA updates from GitHub.
 ///
 /// Delegates all HTTP communication to [`GithubClient`] and focuses solely on
@@ -25,6 +22,7 @@ use crate::settings::INTERNAL_CARD_ROOT;
 pub struct OtaClient {
     github: GithubClient,
     tmp_dir: PathBuf,
+    deploy_path: PathBuf,
 }
 
 /// Indicates where artifacts were expected but not found.
@@ -180,8 +178,12 @@ impl OtaClient {
     /// # Errors
     ///
     /// Returns `OtaError::TlsConfig` if the underlying HTTP client fails to build.
-    pub fn new(github: GithubClient, tmp_dir: PathBuf) -> Self {
-        Self { github, tmp_dir }
+    pub fn new(github: GithubClient, tmp_dir: PathBuf, deploy_path: PathBuf) -> Self {
+        Self {
+            github,
+            tmp_dir,
+            deploy_path,
+        }
     }
 
     /// Downloads the build artifact from a GitHub pull request.
@@ -607,7 +609,8 @@ impl OtaClient {
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// # rustls::crypto::ring::default_provider().install_default().ok();
     /// # let github = GithubClient::new(None)?;
-    /// # let client = OtaClient::new(github, std::path::PathBuf::from("/tmp"));
+    /// # let deploy = std::path::PathBuf::from("/tmp/.kobo/KoboRoot.tgz");
+    /// # let client = OtaClient::new(github, std::path::PathBuf::from("/tmp"), deploy);
     /// let version = client.fetch_latest_release_version()?;
     /// println!("Latest version: {}", version);
     /// # Ok(())
@@ -682,24 +685,13 @@ impl OtaClient {
         Ok(outcome)
     }
 
-    /// Returns the platform-specific deployment path for KoboRoot.tgz.
+    /// Returns the deployment path for the update bundle.
     ///
-    /// | Build context        | Path                                              |
-    /// |----------------------|---------------------------------------------------|
-    /// | During `cargo test`  | `{tmp_dir}/.kobo/KoboRoot.tgz`                    |
-    /// | Emulator builds      | `/tmp/.kobo/KoboRoot.tgz`                         |
-    /// | Kobo builds          | `{INTERNAL_CARD_ROOT}/.kobo/KoboRoot.tgz`         |
+    /// Set at construction from [`crate::device::DevicePaths::update_bundle_deploy_path`]
+    /// (or a tmp fallback when the platform has no firmware applicator).
     pub(crate) fn deploy_path(&self) -> PathBuf {
-        let path = cfg_select! {
-            test => {
-                self.tmp_dir.join(".kobo").join("KoboRoot.tgz")
-            }
-            feature = "emulator" => { PathBuf::from("/tmp/.kobo/KoboRoot.tgz") }
-            _ => { PathBuf::from(format!("{}/.kobo/KoboRoot.tgz", INTERNAL_CARD_ROOT)) }
-        };
-
-        tracing::debug!(path = ?path, "Deploy destination");
-        path
+        tracing::debug!(path = ?self.deploy_path, "Deploy destination");
+        self.deploy_path.clone()
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
@@ -1176,7 +1168,8 @@ mod tests {
         crate::crypto::init_crypto_provider();
         let github =
             GithubClient::new(Some(SecretString::from("test_token"))).expect("client build");
-        OtaClient::new(github, tmp_dir)
+        let deploy_path = tmp_dir.join(".kobo").join("KoboRoot.tgz");
+        OtaClient::new(github, tmp_dir, deploy_path)
     }
 
     fn ota_test_tempdir() -> tempfile::TempDir {
@@ -1690,7 +1683,8 @@ mod tests {
         crate::crypto::init_crypto_provider();
         let token = std::env::var("GH_TOKEN").expect("GH_TOKEN must be set");
         let github = GithubClient::new(Some(SecretString::from(token))).expect("client build");
-        OtaClient::new(github, tmp_dir)
+        let deploy_path = tmp_dir.join(".kobo").join("KoboRoot.tgz");
+        OtaClient::new(github, tmp_dir, deploy_path)
     }
 
     #[test]

@@ -71,6 +71,10 @@ impl DeviceLifecycle for Device {
         hub: &crate::view::Hub,
         runtime: &mut DeviceRuntime<'_>,
     ) -> Result<(), anyhow::Error> {
+        if crate::device::handle_startup_restart_marker(context, hub) {
+            return Ok(());
+        }
+
         if let Ok(power) = context.device.power_manager()
             && let Err(error) = power.init_cores()
         {

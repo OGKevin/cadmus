@@ -481,6 +481,10 @@ impl DevicePaths for TestDevice {
         self.install_dir()
     }
 
+    fn update_bundle_deploy_path(&self) -> Option<PathBuf> {
+        Some(self.tmp_dir().join(".kobo").join("KoboRoot.tgz"))
+    }
+
     fn peer_installs(&self) -> Vec<crate::device::PeerInstall> {
         let root = std::env::temp_dir().join("test-kobo-installation");
         let current = self.install_dir();

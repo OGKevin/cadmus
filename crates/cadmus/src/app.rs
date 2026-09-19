@@ -913,6 +913,15 @@ pub fn run() -> Result<(), Error> {
 
     shutdown_rtc(&context);
 
+    exit_status = match context.device.update_bundle_deploy_path() {
+        Some(deploy_path) => cadmus_core::ota::exit_status_for_shutdown(
+            exit_status,
+            &context.device.data_dir(),
+            &deploy_path,
+        ),
+        None => exit_status,
+    };
+
     let save_settings = match &exit_status {
         ExitStatus::Restart | ExitStatus::Reboot => !context.shared,
         _ => true,
