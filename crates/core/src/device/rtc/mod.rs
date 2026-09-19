@@ -615,7 +615,7 @@ impl<R: Rtc + 'static> AlarmManager<R> {
                         }
                     }
                     Ok(None) => {
-                        tracing::warn!("RTC alarm wait returned with no IRQ data");
+                        tracing::trace!("RTC alarm wait returned with no IRQ data");
                     }
                     Err(error) => {
                         tracing::error!(error = %error, "wait_for_alarm_irq failed");
