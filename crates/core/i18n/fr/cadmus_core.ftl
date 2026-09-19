@@ -38,6 +38,9 @@ top-menu-power-off = Éteindre
 top-menu-switch-to = Changer pour la version { $build }
 top-menu-sync-time = Synchroniser l'horloge
 top-menu-wifi = Wifi
+
+# OTA
+
 # Settings - Button Scheme
 settings-button-scheme-natural = Naturel
 settings-button-scheme-inverted = Inversé
@@ -118,7 +121,6 @@ settings-import-force-full-import-cancel = { cancel }
 settings-import-force-full-import-confirm = Réimporte tous les fichiers de toutes vos bibliothèques. Cela peut prendre du temps et vider la batterie, il est conseillé de laisser votre appareil branché le temps de l'opération.
 settings-import-force-full-import-confirm-button = Tout réimporter
 settings-import-sync-metadata = Synchroniser Metadata
-# Importer
 importer-importing-library = Importation de la bibliothèque en cours…
 # Settings - Log Level
 settings-log-level-trace = TRACE
