@@ -16,4 +16,4 @@ mod errors;
 mod metadata;
 mod service;
 
-pub(crate) use service::MonolingualDictionaryService;
+pub(crate) use service::{MonolingualDictionaryService, reconcile_installed_dictionaries};

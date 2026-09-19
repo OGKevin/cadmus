@@ -15,7 +15,7 @@ cfg_select! {
 pub(crate) mod db_index;
 mod monolingual;
 
-pub(crate) use monolingual::MonolingualDictionaryService;
+pub(crate) use monolingual::{MonolingualDictionaryService, reconcile_installed_dictionaries};
 
 use std::path::Path;
 

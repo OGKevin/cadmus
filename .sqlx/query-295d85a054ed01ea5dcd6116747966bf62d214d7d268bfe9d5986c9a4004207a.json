@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT lang FROM reader_dict_monolingual_installed ORDER BY lang",
+  "describe": {
+    "columns": [
+      {
+        "name": "lang",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "reader_dict_monolingual_installed",
+            "name": "lang"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "295d85a054ed01ea5dcd6116747966bf62d214d7d268bfe9d5986c9a4004207a"
+}
