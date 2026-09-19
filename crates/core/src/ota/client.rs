@@ -702,6 +702,7 @@ impl OtaClient {
         path
     }
 
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     pub(crate) fn staging_path(&self) -> PathBuf {
         let deploy_path = self.deploy_path();
         let deploy_name = deploy_path
@@ -709,9 +710,15 @@ impl OtaClient {
             .map(|name| name.to_string_lossy().into_owned())
             .unwrap_or_else(|| "KoboRoot.tgz".to_owned());
         let staging_name = format!("{deploy_name}.{}.partial", uuid::Uuid::now_v7());
-        deploy_path.with_file_name(staging_name)
+        let path = deploy_path.with_file_name(staging_name);
+        tracing::debug!(path = ?path, "Staging destination");
+        path
     }
 
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(skip(self, write, should_cancel))
+    )]
     fn write_staging_then_rename<F>(
         &self,
         should_cancel: CancelFunc<'_>,
@@ -723,6 +730,7 @@ impl OtaClient {
         let deploy_path = self.deploy_path();
         let staging_path = self.staging_path();
         self.ensure_deploy_dir(&deploy_path)?;
+        let mut unpublished = crate::fs::RemovePathOnDrop::file(staging_path.clone());
 
         let result = (|| {
             let mut staging = File::create(&staging_path)?;
@@ -751,11 +759,8 @@ impl OtaClient {
             }
         })();
 
-        if result.is_err()
-            && let Err(e) = std::fs::remove_file(&staging_path)
-            && staging_path.exists()
-        {
-            tracing::warn!(path = ?staging_path, error = %e, "Failed to remove staging file");
+        if result.is_ok() {
+            unpublished.disarm();
         }
 
         result
