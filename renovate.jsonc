@@ -192,7 +192,7 @@
       "customType": "regex",
       "managerFilePatterns": ["/^\\.github\\/workflows\\/cursor-cloud\\.yml$/"],
       "matchStrings": [
-        "CONTAINER_STRUCTURE_TEST_VERSION:\\s+(?<currentValue>v[^\\s]+)"
+        "CONTAINER_STRUCTURE_TEST_VERSION:\\s+v(?<currentValue>[^\\s]+)"
       ],
       "autoReplaceStringTemplate": "CONTAINER_STRUCTURE_TEST_VERSION: v{{newValue}}",
       "datasourceTemplate": "github-releases",
