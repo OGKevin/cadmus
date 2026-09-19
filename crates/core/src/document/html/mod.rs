@@ -721,12 +721,23 @@ mod tests {
     use std::path::PathBuf;
 
     fn setup_doc(html: &str) -> HtmlDocument {
+        setup_doc_with_layout(html, 600, 800, 12.0, 265, 3)
+    }
+
+    fn setup_doc_with_layout(
+        html: &str,
+        width: u32,
+        height: u32,
+        font_size: f32,
+        dpi: u16,
+        margin_width: i32,
+    ) -> HtmlDocument {
         let root_dir = PathBuf::from(
             std::env::var("TEST_ROOT_DIR").expect("TEST_ROOT_DIR must be set for html tests"),
         );
         let mut doc = HtmlDocument::new_from_memory(html, &root_dir);
-        doc.base.engine.layout(600, 800, 12.0, 265);
-        doc.base.engine.set_margin_width(3);
+        doc.base.engine.layout(width, height, font_size, dpi);
+        doc.base.engine.set_margin_width(margin_width);
         doc.base.engine.load_fonts_from(root_dir);
         doc
     }
@@ -763,5 +774,34 @@ mod tests {
             max_x,
             min_x
         );
+    }
+
+    /// Inline images that share a line can force a mid-line page break by
+    /// draining `page[start_command_index..]` and replacing `page` with that
+    /// suffix. `start_command_index` must then index the new vec, or a later
+    /// image on the same line panics with an out-of-range slice.
+    #[test]
+    fn inline_images_across_page_break_do_not_panic_on_start_command_index() {
+        let img = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("src/document/tests/fixtures/test.webp")
+            .to_string_lossy()
+            .into_owned();
+
+        let html = format!(
+            r#"<p>alpha bravo charlie delta echo foxtrot golf hotel india juliet<img style="width: 40px" src="{img}"/>x<img style="width: 40px" src="{img}"/></p>"#
+        );
+
+        let mut doc = setup_doc_with_layout(&html, 800, 100, 14.0, 265, 1);
+        let pages = doc.base.build_pages();
+        let image_cmds = pages
+            .iter()
+            .flatten()
+            .filter(|cmd| matches!(cmd, DrawCommand::Image(_)))
+            .count();
+        assert!(
+            image_cmds >= 2,
+            "expected at least two inline images, got {image_cmds}"
+        );
+        assert!(!pages.is_empty());
     }
 }

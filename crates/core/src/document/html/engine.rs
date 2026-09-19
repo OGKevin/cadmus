@@ -1794,7 +1794,7 @@ impl Engine {
                 last_index += 1;
             }
 
-            let start_command_index = page.len();
+            let mut start_command_index = page.len();
 
             for i in last_index..index {
                 match items[i] {
@@ -1872,6 +1872,7 @@ impl Engine {
                                             display_list.push(page);
                                             position.y = root_data.rect.min.y;
                                             page = Vec::new();
+                                            start_command_index = 0;
                                             ratio =
                                                 ((root_data.rect.max.y - position.y - space_bottom)
                                                     as f32
@@ -1942,6 +1943,7 @@ impl Engine {
                                                 - element.vertical_align;
                                             position.y = next_baseline;
                                             page = start_commands;
+                                            start_command_index = 0;
                                         } else {
                                             for dc in &mut page[start_command_index..] {
                                                 if let Some(pt) = dc.position_mut() {
