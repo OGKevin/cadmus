@@ -96,8 +96,9 @@ Cadmus automatically re-indexes a dictionary when you:
 - **Re-download** it
 - **Delete** it (the old index is removed)
 
-You do not need to trigger indexing yourself — it happens automatically
-whenever the dictionary files change.
+You do not need to trigger indexing yourself. Cadmus handles indexing
+automatically when you **download**, **update**, **re-download**, or **delete**
+a dictionary from **Settings → Dictionaries**.
 
 ## Where Dictionaries are Stored
 

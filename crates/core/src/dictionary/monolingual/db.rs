@@ -147,6 +147,25 @@ impl Db {
         })
     }
 
+    /// Language codes recorded as installed, in stable order.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database query fails.
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
+    pub(super) fn list_installed_langs(&self) -> Result<Vec<String>, Error> {
+        RUNTIME.block_on(async {
+            let rows =
+                sqlx::query!(r#"SELECT lang FROM reader_dict_monolingual_installed ORDER BY lang"#)
+                    .fetch_all(&self.pool)
+                    .await?;
+
+            let langs: Vec<String> = rows.into_iter().map(|row| row.lang).collect();
+            tracing::debug!(count = langs.len(), "listed installed dictionary langs");
+            Ok(langs)
+        })
+    }
+
     /// Records that a dictionary was installed with the given version.
     ///
     /// If a record already exists for `lang`, it is updated in place.

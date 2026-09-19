@@ -27,4 +27,12 @@ pub enum MonolingualError {
 
     #[error("Installation already in progress for language: {0}")]
     InstallationInProgress(String),
+
+    #[error("dictionary reconciliation failed for {count} language(s): {summary}")]
+    ReconcileIncomplete { count: usize, summary: String },
+
+    #[error(
+        "failed to record dictionary install: {registry}; also failed to restore previous dictionary: {restore}"
+    )]
+    InstallRecordAndRestore { registry: String, restore: String },
 }

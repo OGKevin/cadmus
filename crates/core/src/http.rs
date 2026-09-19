@@ -23,7 +23,7 @@ use backon::{BackoffBuilder, ExponentialBuilder};
 use reqwest::blocking::{Client as ReqwestClient, RequestBuilder};
 use rustls::RootCertStore;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::Duration;
 use thiserror::Error;
@@ -245,10 +245,18 @@ impl Client {
     ///
     /// # Errors
     ///
-    /// Returns `ChunkedDownloadError::Io` if the destination file cannot be created
-    /// or written. Returns `ChunkedDownloadError::Request` if all retry attempts for
-    /// any chunk fail. Returns `ChunkedDownloadError::Cancelled` when `should_cancel`
-    /// reports cancellation, including between retry attempts and during backoff.
+    /// Writes into a sibling staging file and atomically renames onto `dest` only
+    /// after every chunk succeeds, so an existing artifact is preserved until the
+    /// download completes. Cancellation, chunk failures, and write errors remove
+    /// only the staging file. Publishing `dest` does not commit a [`CancelFlag`];
+    /// callers with a later point of no return must call
+    /// [`CancelFunc::try_commit`] themselves.
+    ///
+    /// Returns `ChunkedDownloadError::Io` if the staging file cannot be created,
+    /// written, or renamed onto `dest`. Returns `ChunkedDownloadError::Request` if
+    /// all retry attempts for any chunk fail. Returns
+    /// `ChunkedDownloadError::Cancelled` when `should_cancel` reports cancellation,
+    /// including between retry attempts and during backoff.
     ///
     /// # Example
     ///
@@ -293,7 +301,10 @@ impl Client {
         tracing::debug!(url = %url, "Downloading file");
         tracing::debug!(path = ?dest, "Download destination");
 
-        let mut file = std::fs::File::create(dest)?;
+        let staging = download_staging_path(dest);
+        tracing::debug!(path = ?staging, "Download staging");
+        let mut unpublished = crate::fs::RemovePathOnDrop::file(staging.clone());
+        let mut file = std::fs::File::create(&staging)?;
 
         let mut downloaded = 0u64;
         let mut chunk_size = INITIAL_CHUNK_SIZE;
@@ -305,8 +316,6 @@ impl Client {
 
         while downloaded < total_size {
             if should_cancel.is_some_and(CancelFunc::is_cancelled) {
-                drop(file);
-                let _ = std::fs::remove_file(dest);
                 return Err(ChunkedDownloadError::Cancelled);
             }
 
@@ -330,11 +339,6 @@ impl Client {
                 should_cancel,
             ) {
                 Ok(data) => data,
-                Err(ChunkedDownloadError::Cancelled) => {
-                    drop(file);
-                    let _ = std::fs::remove_file(dest);
-                    return Err(ChunkedDownloadError::Cancelled);
-                }
                 Err(e) => return Err(e),
             };
             let elapsed_secs = start.elapsed().as_secs_f64();
@@ -363,6 +367,13 @@ impl Client {
                 "Download progress"
             );
         }
+
+        file.sync_all()?;
+        if should_cancel.is_some_and(CancelFunc::is_cancelled) {
+            return Err(ChunkedDownloadError::Cancelled);
+        }
+        std::fs::rename(&staging, dest)?;
+        unpublished.disarm();
 
         tracing::debug!(bytes = downloaded, "Download complete");
         tracing::debug!(path = ?dest, "Saved file");
@@ -472,6 +483,14 @@ fn build_root_store() -> RootCertStore {
     store
 }
 
+fn download_staging_path(dest: &Path) -> PathBuf {
+    let name = dest
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "download".to_owned());
+    dest.with_file_name(format!("{name}.{}.partial", uuid::Uuid::now_v7()))
+}
+
 fn sleep_interruptible(
     duration: Duration,
     should_cancel: Option<CancelFunc<'_>>,
@@ -527,6 +546,7 @@ mod tests {
             .tempdir()
             .expect("tempdir");
         let dest = temp_dir.path().join("partial.bin");
+        std::fs::write(&dest, b"existing").expect("seed dest");
 
         let cancel_check = || true;
         let result = client.download(
@@ -539,7 +559,15 @@ mod tests {
         );
 
         assert!(matches!(result, Err(ChunkedDownloadError::Cancelled)));
-        assert!(!dest.exists(), "partial download file should be removed");
+        assert_eq!(
+            std::fs::read(&dest).expect("dest preserved"),
+            b"existing",
+            "failed download must not truncate an existing destination"
+        );
+        assert!(
+            leftover_partials(temp_dir.path()).is_empty(),
+            "staging partial must be cleaned up"
+        );
     }
 
     #[test]
@@ -553,6 +581,7 @@ mod tests {
             .tempdir()
             .expect("tempdir");
         let dest = temp_dir.path().join("partial.bin");
+        std::fs::write(&dest, b"existing").expect("seed dest");
         let checks = AtomicUsize::new(0);
         let cancel_check = || checks.fetch_add(1, Ordering::Relaxed) >= 2;
 
@@ -566,6 +595,88 @@ mod tests {
         );
 
         assert!(matches!(result, Err(ChunkedDownloadError::Cancelled)));
-        assert!(!dest.exists(), "partial download file should be removed");
+        assert_eq!(
+            std::fs::read(&dest).expect("dest preserved"),
+            b"existing",
+            "failed download must not truncate an existing destination"
+        );
+        assert!(
+            leftover_partials(temp_dir.path()).is_empty(),
+            "staging partial must be cleaned up"
+        );
+    }
+
+    #[test]
+    fn download_returns_cancelled_before_publish() {
+        crate::crypto::init_crypto_provider();
+        let client = Client::new().expect("client");
+        let temp_dir = tempfile::Builder::new()
+            .prefix("cadmus-http-cancel-publish-")
+            .tempdir()
+            .expect("tempdir");
+        let dest = temp_dir.path().join("artifact.bin");
+        std::fs::write(&dest, b"existing").expect("seed dest");
+        let flag = CancelFlag::new();
+        flag.request_cancel();
+
+        let result = client.download(
+            "https://example.invalid/unused",
+            0,
+            &dest,
+            |url| client.get(url),
+            &mut |_, _| {},
+            Some(CancelFunc::from_flag(&flag)),
+        );
+
+        assert!(matches!(result, Err(ChunkedDownloadError::Cancelled)));
+        assert_eq!(
+            std::fs::read(&dest).expect("dest preserved"),
+            b"existing",
+            "cancel before publish must not replace an existing destination"
+        );
+        assert!(
+            leftover_partials(temp_dir.path()).is_empty(),
+            "staging partial must be cleaned up"
+        );
+    }
+
+    #[test]
+    fn download_publish_leaves_cancel_flag_uncommitted() {
+        crate::crypto::init_crypto_provider();
+        let client = Client::new().expect("client");
+        let temp_dir = tempfile::Builder::new()
+            .prefix("cadmus-http-no-commit-")
+            .tempdir()
+            .expect("tempdir");
+        let dest = temp_dir.path().join("artifact.bin");
+        let flag = CancelFlag::new();
+
+        let result = client.download(
+            "https://example.invalid/unused",
+            0,
+            &dest,
+            |url| client.get(url),
+            &mut |_, _| {},
+            Some(CancelFunc::from_flag(&flag)),
+        );
+
+        assert!(result.is_ok(), "empty download should publish dest");
+        assert!(dest.exists(), "dest should be published");
+        flag.request_cancel();
+        assert!(
+            flag.is_cancelled(),
+            "zip publish must not lock out later cancel"
+        );
+    }
+
+    fn leftover_partials(dir: &Path) -> Vec<String> {
+        std::fs::read_dir(dir)
+            .expect("read_dir")
+            .flatten()
+            .filter_map(|entry| {
+                let name = entry.file_name().into_string().ok()?;
+                name.ends_with(".partial").then_some(name)
+            })
+            .collect()
     }
 }

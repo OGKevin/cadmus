@@ -151,86 +151,90 @@ msgid "Device"
 msgstr ""
 
 #: src/SUMMARY.md:43
-msgid "Suspend"
+msgid "Time and RTC"
 msgstr ""
 
 #: src/SUMMARY.md:44
-msgid "Suspend orchestrator"
+msgid "Suspend"
 msgstr ""
 
 #: src/SUMMARY.md:45
-msgid "Soft suspend"
+msgid "Suspend orchestrator"
 msgstr ""
 
 #: src/SUMMARY.md:46
-msgid "Inhibitor"
+msgid "Soft suspend"
 msgstr ""
 
 #: src/SUMMARY.md:47
+msgid "Inhibitor"
+msgstr ""
+
+#: src/SUMMARY.md:48
 msgid "Kobo suspend"
 msgstr ""
 
-#: src/SUMMARY.md:48 src/settings/index.md:1168
+#: src/SUMMARY.md:49 src/settings/index.md:1168
 msgid "Telemetry"
 msgstr ""
 
-#: src/SUMMARY.md:49
+#: src/SUMMARY.md:50
 msgid "Logging"
 msgstr ""
 
-#: src/SUMMARY.md:50
+#: src/SUMMARY.md:51
 msgid "Tracing"
 msgstr ""
 
-#: src/SUMMARY.md:51
+#: src/SUMMARY.md:52
 msgid "Profiling"
 msgstr ""
 
-#: src/SUMMARY.md:52
+#: src/SUMMARY.md:53
 msgid "Website"
 msgstr ""
 
-#: src/SUMMARY.md:53
+#: src/SUMMARY.md:54
 msgid "User guide"
 msgstr ""
 
-#: src/SUMMARY.md:54
+#: src/SUMMARY.md:55
 msgid "Translations"
 msgstr ""
 
-#: src/SUMMARY.md:55
+#: src/SUMMARY.md:56
 msgid "For developers"
 msgstr ""
 
-#: src/SUMMARY.md:56
+#: src/SUMMARY.md:57
 msgid "SQLite & SQLx"
 msgstr ""
 
-#: src/SUMMARY.md:57
+#: src/SUMMARY.md:58
 msgid "Library Database"
 msgstr ""
 
-#: src/SUMMARY.md:58
+#: src/SUMMARY.md:59
 msgid "Runtime Migrations"
 msgstr ""
 
-#: src/SUMMARY.md:62
+#: src/SUMMARY.md:63
 msgid "Investigations"
 msgstr ""
 
-#: src/SUMMARY.md:64
+#: src/SUMMARY.md:65
 msgid "Intro"
 msgstr ""
 
-#: src/SUMMARY.md:65
+#: src/SUMMARY.md:66
 msgid "DHCP IP Address Changes on WiFi Toggle"
 msgstr ""
 
-#: src/SUMMARY.md:66
+#: src/SUMMARY.md:67
 msgid "Reading IP and ESSID via dhcpcd-dbus"
 msgstr ""
 
-#: src/SUMMARY.md:67
+#: src/SUMMARY.md:68
 msgid "Soft suspend via autosleep and wake_lock"
 msgstr ""
 
@@ -3144,27 +3148,28 @@ msgstr ""
 
 #: src/ui/settings/dictionaries.md:99
 msgid ""
-"You do not need to trigger indexing yourself — it happens automatically "
-"whenever the dictionary files change."
+"You do not need to trigger indexing yourself. Cadmus handles indexing "
+"automatically when you **download**, **update**, **re-download**, or "
+"**delete** a dictionary from **Settings → Dictionaries**."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:102
+#: src/ui/settings/dictionaries.md:103
 msgid "Where Dictionaries are Stored"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:104
+#: src/ui/settings/dictionaries.md:105
 msgid ""
 "Cadmus stores dictionaries in different locations depending on whether your "
 "device has an SD card and whether you are using a test build:"
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:118
+#: src/ui/settings/dictionaries.md:119
 msgid ""
 "Each language gets its own subfolder containing a `.dict.dz` (or `.dict`) "
 "and a `.index` file."
 msgstr ""
 
-#: src/ui/settings/dictionaries.md:121
+#: src/ui/settings/dictionaries.md:122
 msgid ""
 "If your SD card is already inserted when you upgrade Cadmus, your "
 "dictionaries are moved to the SD card automatically on the next boot. If you "

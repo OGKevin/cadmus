@@ -787,10 +787,11 @@ impl CategoryEditor {
         self.handle_download_dictionary(lang, hub, rq, context)
     }
 
-    /// Removes the installed dictionary directory for the given language code, then rebuilds the rows.
+    /// Removes the installed dictionary for `lang`, then rebuilds the rows.
     ///
-    /// The directory `<DICTIONARIES_DIRNAME>/reader-dict/<lang>/` is removed. Any open
-    /// `SettingsValueMenu` is closed before rebuilding. Logs a warning on failure.
+    /// Dest, staging, replaced, and the registry row are owned by
+    /// [`MonolingualDictionaryService::remove_installed`]. Any open
+    /// `SettingsValueMenu` is closed before rebuilding.
     #[inline]
     fn handle_delete_dictionary(
         &mut self,
@@ -799,20 +800,13 @@ impl CategoryEditor {
         rq: &mut RenderQueue,
         context: &mut AppContext,
     ) -> bool {
-        let lang_dir = context
-            .device
-            .data_path(DICTIONARIES_DIRNAME)
-            .join("reader-dict")
-            .join(lang);
-
-        if lang_dir.exists() {
-            if let Err(e) = std::fs::remove_dir_all(&lang_dir) {
-                tracing::warn!(lang, error = %e, "Failed to delete dictionary directory");
-            }
-        }
-
         if let Some(service) = &self.dict_service {
             service.remove_installed(lang);
+        } else {
+            tracing::warn!(
+                lang,
+                "No MonolingualDictionaryService available to delete dictionary"
+            );
         }
 
         if let Some(menu_index) = locate_by_id(self, ViewId::SettingsValueMenu) {
