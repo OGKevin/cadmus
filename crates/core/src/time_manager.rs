@@ -20,8 +20,31 @@ const NTP_TIMEOUT: StdDuration = StdDuration::from_secs(5);
 /// Clocks within this skew are treated as already in agreement.
 pub(crate) const CLOCK_AGREEMENT_THRESHOLD: Duration = Duration::seconds(2);
 
+/// Operating-system wall clock used by [`TimeManager`].
+///
+/// Distinct from the battery-backed [`Rtc`]: this is the kernel clock that
+/// userspace and NTP see. Production uses `settimeofday`; tests inject a
+/// mock so reconciliation can be exercised without changing the host clock.
+///
+/// Setting the clock is not atomic with a later RTC write. A failed hardware
+/// update after a successful [`Self::set`] leaves the clocks on different
+/// timelines and is recorded as [`ClockDivergence`].
 trait SystemClock: Send + Sync {
+    /// Returns the current system time in UTC.
+    ///
+    /// [`TimeManager::reconcile_at_startup`] compares this against the
+    /// hardware clock to decide which timeline to trust after boot.
     fn now(&self) -> DateTime<Utc>;
+
+    /// Sets the system clock to `time`.
+    ///
+    /// Applied before the matching RTC write so a failed hardware update can
+    /// still be detected as divergence. May require elevated privileges.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the kernel clock cannot be updated. In that
+    /// case the hardware clock is left untouched.
     fn set(&self, time: DateTime<Utc>) -> Result<(), Error>;
 }
 
