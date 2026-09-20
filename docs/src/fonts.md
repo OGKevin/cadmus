@@ -9,8 +9,8 @@ fonts while reading or install your own.
 Cadmus's reading fonts come from two open-source projects:
 
 - [ebook-fonts](https://github.com/nicoverbruggen/ebook-fonts) by Nico Verbruggen —
-  reading fonts tuned for e-ink displays. See the [interactive showcase](https://ebook-fonts.nicoverbruggen.be/)
-  to preview them.
+  reading fonts tuned for e-ink displays, including dyslexia-friendly **NV Disleksio**.
+  See the [interactive showcase](https://ebook-fonts.nicoverbruggen.be/) to preview them.
 - [Libertinus](https://github.com/alerque/libertinus) — classic serif, sans, and mono families,
   plus Nico's metric-tweaked **NV Libertinus** from the ebook-fonts extra collection.
 
@@ -27,6 +27,12 @@ Cadmus's reading fonts come from two open-source projects:
 | NV Palatium     | Serif                |
 | NV Jost         | Sans                 |
 | NV Legible Next | Sans (accessibility) |
+
+### ebook-fonts (Extra Collection)
+
+| Font         | Style           |
+| ------------ | --------------- |
+| NV Disleksio | Sans (dyslexia) |
 
 ### Libertinus
 

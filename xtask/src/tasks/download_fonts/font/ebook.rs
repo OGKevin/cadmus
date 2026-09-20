@@ -52,11 +52,17 @@ const CORE_FILES: &[&str] = &[
 ];
 
 const EXTRA_FILES: &[&str] = &[
+    "NV_Disleksio-Bold.ttf",
+    "NV_Disleksio-BoldItalic.ttf",
+    "NV_Disleksio-Italic.ttf",
+    "NV_Disleksio-Regular.ttf",
     "NV_Libertinus-Bold.ttf",
     "NV_Libertinus-BoldItalic.ttf",
     "NV_Libertinus-Italic.ttf",
     "NV_Libertinus-Regular.ttf",
 ];
+
+const EXTRA_FAMILY_PREFIXES: &[&str] = &["NV_Disleksio", "NV_Libertinus"];
 
 pub fn install(root: &Path, fonts_dir: &Path) -> Result<()> {
     if is_complete(fonts_dir) {
@@ -83,10 +89,7 @@ pub fn install(root: &Path, fonts_dir: &Path) -> Result<()> {
     util::extract_cached_archive(
         &extra_archive,
         || download_release_asset(&cache_dir, EXTRA_ASSET).map(|_| ()),
-        |archive| {
-            fs::extract_zip_matching_flat(archive, fonts_dir, "NV_Libertinus", ".ttf")
-                .context("failed to extract extra fonts from ebook-fonts extra archive")
-        },
+        |archive| extract_extra_fonts(archive, fonts_dir),
     )?;
 
     markers::mark_version(fonts_dir, "ebook-fonts", EBOOK_FONTS_VERSION)?;
@@ -96,6 +99,15 @@ pub fn install(root: &Path, fonts_dir: &Path) -> Result<()> {
 pub fn is_complete(fonts_dir: &Path) -> bool {
     managed_files().all(|name| fonts_dir.join(name).exists())
         && markers::is_version_current(fonts_dir, EBOOK_FONTS_VERSION)
+}
+
+fn extract_extra_fonts(archive: &Path, fonts_dir: &Path) -> Result<()> {
+    for prefix in EXTRA_FAMILY_PREFIXES {
+        fs::extract_zip_matching_flat(archive, fonts_dir, prefix, ".ttf").with_context(|| {
+            format!("failed to extract {prefix} fonts from ebook-fonts extra archive")
+        })?;
+    }
+    Ok(())
 }
 
 fn managed_files() -> impl Iterator<Item = &'static str> {
@@ -203,6 +215,10 @@ mod tests {
         assert_eq!(
             fs::read(fonts_dir.path().join("Libron-Regular.ttf")).unwrap(),
             b"fresh"
+        );
+        assert_eq!(
+            fs::read(fonts_dir.path().join("NV_Disleksio-Regular.ttf")).unwrap(),
+            b"extra"
         );
         assert!(markers::is_version_current(
             fonts_dir.path(),

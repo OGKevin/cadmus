@@ -1,7 +1,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Cadmus Documentation\n"
-"POT-Creation-Date: 2026-09-17T16:28:15+02:00\n"
+"POT-Creation-Date: 2026-09-20T19:00:13+02:00\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
@@ -24,7 +24,7 @@ msgstr ""
 msgid "Test builds"
 msgstr ""
 
-#: src/SUMMARY.md:7 src/installation/ota.md:1 src/fonts.md:108
+#: src/SUMMARY.md:7 src/installation/ota.md:1 src/fonts.md:114
 msgid "OTA updates"
 msgstr ""
 
@@ -44,7 +44,7 @@ msgstr ""
 msgid "Uninstalling Cadmus"
 msgstr ""
 
-#: src/SUMMARY.md:12 src/SUMMARY.md:18 src/settings/index.md:1 src/fonts.md:102
+#: src/SUMMARY.md:12 src/SUMMARY.md:18 src/settings/index.md:1 src/fonts.md:108
 #: src/ui/settings/index.md:1
 msgid "Settings"
 msgstr ""
@@ -2208,7 +2208,8 @@ msgstr ""
 #: src/fonts.md:11
 msgid ""
 "[ebook-fonts](https://github.com/nicoverbruggen/ebook-fonts) by Nico "
-"Verbruggen — reading fonts tuned for e-ink displays. See the [interactive "
+"Verbruggen — reading fonts tuned for e-ink displays, including "
+"dyslexia-friendly **NV Disleksio**. See the [interactive "
 "showcase](https://ebook-fonts.nicoverbruggen.be/) to preview them."
 msgstr ""
 
@@ -2223,11 +2224,11 @@ msgstr ""
 msgid "ebook-fonts (Core Collection)"
 msgstr ""
 
-#: src/fonts.md:19 src/fonts.md:33 src/fonts.md:47
+#: src/fonts.md:19 src/fonts.md:33 src/fonts.md:39 src/fonts.md:53
 msgid "Font"
 msgstr ""
 
-#: src/fonts.md:19 src/fonts.md:33
+#: src/fonts.md:19 src/fonts.md:33 src/fonts.md:39
 msgid "Style"
 msgstr ""
 
@@ -2244,7 +2245,7 @@ msgid "Sourcerer"
 msgstr ""
 
 #: src/fonts.md:22 src/fonts.md:23 src/fonts.md:24 src/fonts.md:25
-#: src/fonts.md:27 src/fonts.md:35 src/fonts.md:36
+#: src/fonts.md:27 src/fonts.md:41 src/fonts.md:42
 msgid "Serif"
 msgstr ""
 
@@ -2276,7 +2277,7 @@ msgstr ""
 msgid "NV Jost"
 msgstr ""
 
-#: src/fonts.md:28 src/fonts.md:37
+#: src/fonts.md:28 src/fonts.md:43
 msgid "Sans"
 msgstr ""
 
@@ -2289,34 +2290,46 @@ msgid "Sans (accessibility)"
 msgstr ""
 
 #: src/fonts.md:31
-msgid "Libertinus"
+msgid "ebook-fonts (Extra Collection)"
 msgstr ""
 
 #: src/fonts.md:35
-msgid "NV Libertinus"
+msgid "NV Disleksio"
 msgstr ""
 
-#: src/fonts.md:36
-msgid "Libertinus Serif"
+#: src/fonts.md:35
+msgid "Sans (dyslexia)"
 msgstr ""
 
 #: src/fonts.md:37
-msgid "Libertinus Sans"
+msgid "Libertinus"
 msgstr ""
 
-#: src/fonts.md:38
-msgid "Libertinus Mono"
-msgstr ""
-
-#: src/fonts.md:38
-msgid "Monospace"
-msgstr ""
-
-#: src/fonts.md:40
-msgid "Other packaged fonts"
+#: src/fonts.md:41
+msgid "NV Libertinus"
 msgstr ""
 
 #: src/fonts.md:42
+msgid "Libertinus Serif"
+msgstr ""
+
+#: src/fonts.md:43
+msgid "Libertinus Sans"
+msgstr ""
+
+#: src/fonts.md:44
+msgid "Libertinus Mono"
+msgstr ""
+
+#: src/fonts.md:44
+msgid "Monospace"
+msgstr ""
+
+#: src/fonts.md:46
+msgid "Other packaged fonts"
+msgstr ""
+
+#: src/fonts.md:48
 msgid ""
 "Cadmus also ships fonts from "
 "[Noto](https://github.com/notofonts/noto-fonts), [Source Code "
@@ -2325,83 +2338,83 @@ msgid ""
 "and HTML rendering fallbacks:"
 msgstr ""
 
-#: src/fonts.md:47
+#: src/fonts.md:53
 msgid "Used for"
 msgstr ""
 
-#: src/fonts.md:49
+#: src/fonts.md:55
 msgid "Noto Sans"
 msgstr ""
 
-#: src/fonts.md:49
+#: src/fonts.md:55
 msgid "Menus, settings, and other app text"
 msgstr ""
 
-#: src/fonts.md:50
+#: src/fonts.md:56
 msgid "Noto Serif"
 msgstr ""
 
-#: src/fonts.md:50
+#: src/fonts.md:56
 msgid "Serif text in the app interface"
 msgstr ""
 
-#: src/fonts.md:51
+#: src/fonts.md:57
 msgid "Source Code Pro"
 msgstr ""
 
-#: src/fonts.md:51
+#: src/fonts.md:57
 msgid "Monospace in the app and code blocks in books"
 msgstr ""
 
-#: src/fonts.md:52
+#: src/fonts.md:58
 msgid "Varela Round"
 msgstr ""
 
-#: src/fonts.md:52
+#: src/fonts.md:58
 msgid "On-screen keyboard"
 msgstr ""
 
-#: src/fonts.md:53
+#: src/fonts.md:59
 msgid "Cormorant"
 msgstr ""
 
-#: src/fonts.md:53
+#: src/fonts.md:59
 msgid "Startup and intermission screens"
 msgstr ""
 
-#: src/fonts.md:54
+#: src/fonts.md:60
 msgid "Parisienne"
 msgstr ""
 
-#: src/fonts.md:54
+#: src/fonts.md:60
 msgid "Decorative cursive text in EPUB/HTML content"
 msgstr ""
 
-#: src/fonts.md:55
+#: src/fonts.md:61
 msgid "Delius"
 msgstr ""
 
-#: src/fonts.md:55
+#: src/fonts.md:61
 msgid "Decorative fantasy text in EPUB/HTML content"
 msgstr ""
 
-#: src/fonts.md:57
+#: src/fonts.md:63
 msgid "Changing the font while reading"
 msgstr ""
 
-#: src/fonts.md:59
+#: src/fonts.md:65
 msgid "Open a book in the reader."
 msgstr ""
 
-#: src/fonts.md:60
+#: src/fonts.md:66
 msgid "Tap the **font family** button in the reader toolbar."
 msgstr ""
 
-#: src/fonts.md:61
+#: src/fonts.md:67
 msgid "Select a font from the list."
 msgstr ""
 
-#: src/fonts.md:63
+#: src/fonts.md:69
 msgid ""
 "The menu shows fonts from Cadmus's packaged collection and any fonts in your "
 "custom font directory (see below). When you select a font, Cadmus resolves "
@@ -2409,36 +2422,36 @@ msgid ""
 "fonts](#how-cadmus-resolves-fonts)."
 msgstr ""
 
-#: src/fonts.md:67
+#: src/fonts.md:73
 msgid "How Cadmus resolves fonts"
 msgstr ""
 
-#: src/fonts.md:69
+#: src/fonts.md:75
 msgid ""
 "When you pick a font in the reader or reopen a book with a saved "
 "[`font-family`](settings/index.md#readerfont-family), Cadmus looks for that "
 "family name in two places, **in this order**:"
 msgstr ""
 
-#: src/fonts.md:73
+#: src/fonts.md:79
 msgid ""
 "**Packaged fonts** — shipped with Cadmus and updated via "
 "[OTA](installation/ota.md)"
 msgstr ""
 
-#: src/fonts.md:74
+#: src/fonts.md:80
 msgid ""
 "**Your custom font directory** — "
 "[`reader.font-path`](settings/index.md#readerfont-path) (default "
 "`/mnt/onboard/fonts/`)"
 msgstr ""
 
-#: src/fonts.md:77
+#: src/fonts.md:83
 msgid ""
 "If the same family name exists in both places, the **packaged** copy is used."
 msgstr ""
 
-#: src/fonts.md:79
+#: src/fonts.md:85
 msgid ""
 "Your chosen family replaces Cadmus's default **serif** stack for reflowable "
 "books. Paragraphs the book styles as sans-serif, monospace, cursive, or "
@@ -2446,35 +2459,35 @@ msgid ""
 "family name, the previous font is kept."
 msgstr ""
 
-#: src/fonts.md:84
+#: src/fonts.md:90
 msgid "Installing additional fonts"
 msgstr ""
 
-#: src/fonts.md:86
+#: src/fonts.md:92
 msgid ""
 "To add your own fonts, copy `.ttf` or `.otf` files into your custom font "
 "directory (by default at the root of your Kobo device):"
 msgstr ""
 
-#: src/fonts.md:97
+#: src/fonts.md:103
 msgid "Cadmus scans that directory recursively, so fonts can live in subfolders."
 msgstr ""
 
-#: src/fonts.md:99
+#: src/fonts.md:105
 msgid ""
 "Point Cadmus at your custom directory with "
 "[`reader.font-path`](settings/index.md#readerfont-path) if you use a "
 "different location."
 msgstr ""
 
-#: src/fonts.md:104
+#: src/fonts.md:110
 msgid ""
 "Font options can also be set in your settings file. See the [Reader "
 "settings](settings/index.md#reader) section for `font-family`, `font-path`, "
 "`font-size`, and related entries."
 msgstr ""
 
-#: src/fonts.md:110
+#: src/fonts.md:116
 msgid ""
 "[OTA updates](installation/ota.md) replace Cadmus-packaged fonts before "
 "installing the new release. Cadmus removes **each shipped font file "
@@ -2483,7 +2496,7 @@ msgid ""
 "update if they are not part of the release."
 msgstr ""
 
-#: src/fonts.md:116
+#: src/fonts.md:122
 msgid ""
 "Under normal use, your custom fonts live in a **separate directory** "
 "([`reader.font-path`](settings/index.md#readerfont-path), default "
