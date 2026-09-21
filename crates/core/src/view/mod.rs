@@ -85,7 +85,6 @@ use std::fmt::{self, Debug};
 use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::mpsc::Sender;
 use std::time::{Duration, Instant};
 use tracing::error;
 use unic_langid::LanguageIdentifier;
@@ -108,12 +107,93 @@ pub const BIG_BAR_HEIGHT: f32 = 163.0;
 pub const CLOSE_IGNITION_DELAY: Duration = Duration::from_millis(150);
 
 pub type Bus = VecDeque<Event>;
-pub type Hub = Sender<hub_message::HubMessage>;
+pub type Hub = tokio::sync::mpsc::UnboundedSender<hub_message::HubMessage>;
+pub type HubReceiver = tokio::sync::mpsc::UnboundedReceiver<hub_message::HubMessage>;
+
+/// Hub channel: synchronous send from OS threads, asynchronous receive in the app loop.
+///
+/// The channel is **unbounded**. It was unbounded before the async migration
+/// (plain `std::sync::mpsc`) and stays that way on purpose so device and
+/// background threads never block on a full queue.
+pub fn hub_channel() -> (Hub, HubReceiver) {
+    tokio::sync::mpsc::unbounded_channel()
+}
+
+/// Sync drain of a [`HubReceiver`] for tests that used `std::sync::mpsc::Receiver::try_iter`.
+#[cfg(test)]
+pub struct HubTryIter<'a> {
+    rx: &'a mut HubReceiver,
+}
+
+#[cfg(test)]
+impl Iterator for HubTryIter<'_> {
+    type Item = hub_message::HubMessage;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.rx.try_recv().ok()
+    }
+}
+
+/// Adds [`Self::try_iter`] to the async hub receiver.
+#[cfg(test)]
+pub trait HubReceiverExt {
+    fn try_iter(&mut self) -> HubTryIter<'_>;
+}
+
+#[cfg(test)]
+impl HubReceiverExt for HubReceiver {
+    fn try_iter(&mut self) -> HubTryIter<'_> {
+        HubTryIter { rx: self }
+    }
+}
 
 pub use hub_message::{HubLease, HubMessage};
 
+/// Asks every view in the tree rooted at `view` to stop its background work.
+///
+/// See [`View::stop_jobs`].
+pub fn cancel_view_jobs(view: &dyn View) {
+    view.stop_jobs();
+    for child in view.children() {
+        cancel_view_jobs(child.as_ref());
+    }
+}
+
+/// Moves every [`crate::runtime::Job`] owned by views in the tree into `jobs`.
+///
+/// Call this before [`cancel_view_jobs`] during shutdown so producer jobs can be
+/// joined instead of only cancelled in place.
+pub fn take_view_jobs(view: &mut dyn View, jobs: &mut Vec<crate::runtime::Job>) {
+    view.take_background_jobs(jobs);
+    for child in view.children_mut() {
+        take_view_jobs(child.as_mut(), jobs);
+    }
+}
+
+/// A drawable, event-receiving piece of the UI tree.
+///
+/// `#[async_trait(?Send)]` rather than `async fn`: `handle_event` holds
+/// `&mut AppContext` and `&mut dyn View` across its awaits, so the future is
+/// not `Send` — view dispatch is single-threaded by design. `#[async_trait]` is
+/// also the only form that keeps the trait dyn-compatible, which the tree
+/// requires.
+#[async_trait::async_trait(?Send)]
 pub trait View: Downcast {
-    fn handle_event(
+    /// Asks any background work this view owns to stop.
+    ///
+    /// Called on the whole tree during shutdown, before the hub is drained, so
+    /// no view-owned job can enqueue an event after the main loop has broken.
+    /// The default is a no-op for views that own no work.
+    fn stop_jobs(&self) {}
+
+    /// Transfers owned background jobs into `jobs` for shutdown joining.
+    ///
+    /// The default is a no-op for views that own no work.
+    fn take_background_jobs(&mut self, jobs: &mut Vec<crate::runtime::Job>) {
+        let _ = jobs;
+    }
+
+    async fn handle_event(
         &mut self,
         evt: &Event,
         hub: &Hub,
@@ -186,42 +266,54 @@ impl Debug for Box<dyn View> {
 // A child can send events to the main channel through the *hub* or communicate with its parent through the *bus*.
 // A view that wants to render can write to the rendering queue.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(view, hub, parent_bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
-pub fn handle_event(
-    view: &mut dyn View,
-    evt: &Event,
-    hub: &Hub,
-    parent_bus: &mut Bus,
-    rq: &mut RenderQueue,
-    context: &mut AppContext,
-) -> bool {
-    if view.len() > 0 {
-        let mut captured = false;
+pub fn handle_event<'a>(
+    view: &'a mut dyn View,
+    evt: &'a Event,
+    hub: &'a Hub,
+    parent_bus: &'a mut Bus,
+    rq: &'a mut RenderQueue,
+    context: &'a mut AppContext,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = bool> + 'a>> {
+    Box::pin(async move {
+        if view.len() > 0 {
+            let mut captured = false;
 
-        if view.might_skip(evt) {
-            return captured;
-        }
-
-        let mut child_bus: Bus = VecDeque::with_capacity(1);
-
-        for i in (0..view.len()).rev() {
-            if handle_event(view.child_mut(i), evt, hub, &mut child_bus, rq, context) {
-                captured = true;
-                break;
+            if view.might_skip(evt) {
+                return captured;
             }
+
+            let mut child_bus: Bus = VecDeque::with_capacity(1);
+
+            for i in (0..view.len()).rev() {
+                if handle_event(view.child_mut(i), evt, hub, &mut child_bus, rq, context).await {
+                    captured = true;
+                    break;
+                }
+            }
+
+            let mut temp_bus: Bus = VecDeque::with_capacity(1);
+
+            // Each pending event is offered exactly once. Draining into a
+            // local is what enforces that: an unhandled event goes back on
+            // `child_bus`, which must not be re-read while the pass runs.
+            let mut pending = std::mem::take(&mut child_bus);
+            while let Some(child_evt) = pending.pop_front() {
+                if !view
+                    .handle_event(&child_evt, hub, &mut temp_bus, rq, context)
+                    .await
+                {
+                    child_bus.push_back(child_evt);
+                }
+            }
+
+            parent_bus.append(&mut child_bus);
+            parent_bus.append(&mut temp_bus);
+
+            captured || view.handle_event(evt, hub, parent_bus, rq, context).await
+        } else {
+            view.handle_event(evt, hub, parent_bus, rq, context).await
         }
-
-        let mut temp_bus: Bus = VecDeque::with_capacity(1);
-
-        child_bus
-            .retain(|child_evt| !view.handle_event(child_evt, hub, &mut temp_bus, rq, context));
-
-        parent_bus.append(&mut child_bus);
-        parent_bus.append(&mut temp_bus);
-
-        captured || view.handle_event(evt, hub, parent_bus, rq, context)
-    } else {
-        view.handle_event(evt, hub, parent_bus, rq, context)
-    }
+    })
 }
 
 // We render from bottom to top. For a view to render it has to either appear in `ids` or intersect
@@ -436,7 +528,7 @@ pub enum Event {
     ///
     /// // Focus the PR input field (e.g. after building the PR input screen).
     /// // Note: `hub` is provided by the application's event loop.
-    /// # let (hub, _): (Hub, _) = std::sync::mpsc::channel();
+    /// # let (hub, _) = cadmus_core::view::hub_channel();
     /// hub.send(Event::Focus(Some(ViewId::Ota(OtaViewId::PrInput))).into()).ok();
     ///
     /// // Clear focus from all views.

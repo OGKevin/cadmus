@@ -29,6 +29,7 @@ use cadmus_core::settings::versioned::SettingsManager;
 use cadmus_core::settings::{ButtonScheme, Settings, StartupMode};
 use cadmus_core::task::TaskManager;
 use cadmus_core::version::{get_current_version, get_version};
+use cadmus_core::view::HubReceiver;
 use cadmus_core::view::calculator::Calculator;
 use cadmus_core::view::common::{
     find_notification_mut, locate, locate_by_id, overlapping_rectangle, transfer_notifications,
@@ -54,11 +55,102 @@ use cadmus_core::view::{
 use cadmus_core::view::{handle_event, process_render_queue, wait_for_all};
 use std::collections::VecDeque;
 use std::env;
-use std::sync::mpsc;
+use std::path::PathBuf;
 use std::time::Instant;
 use tracing::{error, info, warn};
 
 pub const APP_NAME: &str = "Cadmus";
+
+/// Stops every remaining event producer, then drains what they already queued.
+///
+/// Draining has to come after the producers stop, and the main loop has usually
+/// already broken by the time a committed OTA install queues its reboot: the
+/// download job sends `Event::Select(EntryId::Reboot)` from the background, and
+/// only `handle_event` turns that into an exit. Without this, a device that
+/// finished a deploy while shutting down would exit without rebooting into the
+/// new release.
+///
+/// View-owned [`Job`](cadmus_core::runtime::Job)s are cancelled while each view still holds its handle,
+/// then moved out and joined. Reversing that order clears the handle before
+/// cancellation runs, so the job never receives stop.
+///
+/// Queued exit intents are merged with `exit_status` using fixed precedence
+/// (`Reboot` > `Restart` > `PowerOff` / `RunCommand` > `Quit`); non-exit events
+/// are ignored so teardown cannot start a suspend cycle.
+#[allow(clippy::too_many_arguments)]
+async fn stop_producers_and_drain(
+    _tx: &Hub,
+    rx: &mut HubReceiver,
+    view: &mut Box<dyn View>,
+    history: &mut Vec<HistoryItem>,
+    tasks: &mut Vec<DeviceTask>,
+    _updating: &mut Vec<UpdateData>,
+    _bus: &mut Bus,
+    _rq: &mut RenderQueue,
+    _context: &mut AppContext,
+    _manager: &SettingsManager,
+    _startup_cwd: &Option<PathBuf>,
+    _background_tasks: &mut TaskManager,
+    exit_status: ExitStatus,
+) -> ExitStatus {
+    tasks.clear();
+    for item in history.iter() {
+        cadmus_core::view::cancel_view_jobs(item.view.as_ref());
+    }
+    cadmus_core::view::cancel_view_jobs(view.as_ref());
+
+    let mut view_jobs = Vec::new();
+    for item in history.iter_mut() {
+        cadmus_core::view::take_view_jobs(item.view.as_mut(), &mut view_jobs);
+    }
+    cadmus_core::view::take_view_jobs(view.as_mut(), &mut view_jobs);
+    let _ = cadmus_core::runtime::finish_within_deadline(
+        view_jobs,
+        cadmus_core::runtime::SHUTDOWN_DEADLINE,
+    )
+    .await;
+
+    let mut drained_exit = exit_status;
+    while let Ok(message) = rx.try_recv() {
+        let (evt, _input_wake) = message.into_parts();
+        if let Some(candidate) = exit_status_from_drain_event(&evt) {
+            drained_exit = merge_shutdown_exit_status(drained_exit, candidate);
+            continue;
+        }
+    }
+    drained_exit
+}
+
+/// Exit intents queued during shutdown. Higher precedence wins when several are
+/// drained together (for example OTA `Reboot` must not be downgraded by `Quit`).
+fn merge_shutdown_exit_status(current: ExitStatus, candidate: ExitStatus) -> ExitStatus {
+    if shutdown_exit_precedence(&candidate) > shutdown_exit_precedence(&current) {
+        candidate
+    } else {
+        current
+    }
+}
+
+fn shutdown_exit_precedence(status: &ExitStatus) -> u8 {
+    match status {
+        ExitStatus::Reboot => 5,
+        ExitStatus::Restart => 4,
+        ExitStatus::PowerOff => 3,
+        ExitStatus::RunCommand(_) => 3,
+        ExitStatus::Quit => 1,
+    }
+}
+
+fn exit_status_from_drain_event(evt: &Event) -> Option<ExitStatus> {
+    match evt {
+        Event::Select(EntryId::Reboot) => Some(ExitStatus::Reboot),
+        Event::Select(EntryId::Restart) => Some(ExitStatus::Restart),
+        Event::Select(EntryId::PowerOff) => Some(ExitStatus::PowerOff),
+        Event::Select(EntryId::Quit) => Some(ExitStatus::Quit),
+        Event::Quit => Some(ExitStatus::Quit),
+        _ => None,
+    }
+}
 
 fn drain_bus(bus: &mut Bus, tx: &Hub) {
     while let Some(ce) = bus.pop_front() {
@@ -149,7 +241,7 @@ fn set_rotation(rotation: i8, updating: &mut Vec<UpdateData>, context: &mut AppC
 #[allow(clippy::too_many_arguments)]
 // TODO(OGKevin): This shall be moved to the readerm module
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(info, view, history, updating, tx, bus, rq, context), level = tracing::Level::TRACE))]
-fn open_document(
+async fn open_document(
     info: Box<Info>,
     view: &mut Box<dyn View>,
     history: &mut Vec<HistoryItem>,
@@ -181,7 +273,7 @@ fn open_document(
     }
 
     let path = info.file.path.clone();
-    if let Some(r) = Reader::new(context.device.framebuffer().rect(), *info, tx, context) {
+    if let Some(r) = Reader::new(context.device.framebuffer().rect(), *info, tx, context).await {
         let mut next_view = Box::new(r) as Box<dyn View>;
         transfer_notifications(view.as_mut(), next_view.as_mut(), rq, context);
         if view.is::<Reader>() {
@@ -206,13 +298,13 @@ fn open_document(
             library_home = %context.library.home.display(),
             "Reader::new returned None, dispatching Event::Invalid"
         );
-        handle_event(view.as_mut(), &Event::Invalid(path), tx, bus, rq, context);
+        handle_event(view.as_mut(), &Event::Invalid(path), tx, bus, rq, context).await;
         false
     }
 }
 
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(device, settings, fonts, database), level = tracing::Level::TRACE))]
-fn build_context(
+async fn build_context(
     device: AppDevice,
     settings: Settings,
     fonts: Fonts,
@@ -229,12 +321,18 @@ fn build_context(
     }
 
     let library_settings = &settings.libraries[settings.selected_library];
-    let library = Library::new(&library_settings.path, &database, &library_settings.name)?;
+    let library = Library::new(&library_settings.path, &database, &library_settings.name).await?;
 
-    Ok(AppContext::new(device, library, database, settings, fonts))
+    Ok(AppContext::new(device, library, database, settings, fonts).await)
 }
 
-pub fn run() -> Result<(), Error> {
+/// Application entry after the process runtime is running.
+///
+/// When the `tracing` feature is enabled, startup uses a parent `info_span!`
+/// passed to child work via [`.instrument(...)`](tracing::Instrument), not
+/// [`Span::enter()`](tracing::Span::enter), because entered guards are not
+/// `Send` and would leak the span across awaits on a Tokio worker.
+pub async fn run() -> Result<(), Error> {
     let start_time = Instant::now();
 
     let mut exit_status = ExitStatus::Quit;
@@ -249,15 +347,16 @@ pub fn run() -> Result<(), Error> {
     if let Err(e) = cadmus_core::logging::init_logging(
         &settings.logging,
         device.data_path(&settings.logging.directory),
-    ) {
+    )
+    .await
+    {
         eprintln!("Warning: Failed to initialize logging: {:#}", e);
         eprintln!("Continuing without logging...");
     }
 
     #[cfg(feature = "tracing")]
     let start_span =
-        tracing::info_span!("app-start", version = ?get_version(), start_time = ?start_time)
-            .entered();
+        tracing::info_span!("app-start", version = ?get_version(), start_time = ?start_time);
 
     cadmus_core::document::log_mupdf_features();
 
@@ -284,13 +383,17 @@ pub fn run() -> Result<(), Error> {
     }
 
     let mut database = Database::new(device.resolve_db_path())
+        .await
         .map_err(|e| {
             error!(error = %e, "can't open database");
             e
         })
         .context("can't open database")?;
 
-    if let Err(e) = database.init(&device, settings.db_backup_retention, &mut settings) {
+    if let Err(e) = database
+        .init(&device, settings.db_backup_retention, &mut settings)
+        .await
+    {
         error!(error = %e, "migrations failed");
         return Err(e);
     }
@@ -302,13 +405,14 @@ pub fn run() -> Result<(), Error> {
 
     let database = database;
 
-    let mut context =
-        build_context(device, settings, fonts, database).context("can't build context")?;
+    let mut context = build_context(device, settings, fonts, database)
+        .await
+        .context("can't build context")?;
 
-    context.load_dictionaries();
+    context.load_dictionaries().await;
     context.load_keyboard_layouts();
 
-    let (tx, rx) = context.device.input_mut().start(
+    let (tx, mut rx) = context.device.input_mut().start(
         context.display,
         context.settings.button_scheme,
         std::sync::Arc::clone(&context.inhibitor),
@@ -329,11 +433,8 @@ pub fn run() -> Result<(), Error> {
 
     let mut history: Vec<HistoryItem> = Vec::new();
     let mut rq = RenderQueue::new();
-    let mut view: Box<dyn View> = Box::new(Home::new(
-        context.device.framebuffer().rect(),
-        &mut rq,
-        &mut context,
-    )?);
+    let mut view: Box<dyn View> =
+        Box::new(Home::new(context.device.framebuffer().rect(), &mut rq, &mut context).await?);
 
     let mut updating = Vec::new();
 
@@ -357,7 +458,7 @@ pub fn run() -> Result<(), Error> {
     let mut bus = VecDeque::with_capacity(4);
 
     if context.settings.startup_mode == StartupMode::LastFile
-        && let Some(info) = context.library.most_recently_opened_reading_book()
+        && let Some(info) = context.library.most_recently_opened_reading_book().await
     {
         open_document(
             Box::new(info),
@@ -368,7 +469,8 @@ pub fn run() -> Result<(), Error> {
             &mut bus,
             &mut rq,
             &mut context,
-        );
+        )
+        .await;
     }
 
     context.wifi_session.set_hub(tx.clone());
@@ -385,14 +487,12 @@ pub fn run() -> Result<(), Error> {
             startup_cwd: Some(&startup_cwd),
             background_tasks: Some(&mut background_tasks),
         },
-    )?;
-
-    #[cfg(feature = "tracing")]
-    drop(start_span);
+    )
+    .await?;
 
     tracing::info!(duration = ?start_time.elapsed(), "App started");
 
-    while let Ok(message) = rx.recv() {
+    while let Some(message) = rx.recv().await {
         let (evt, _input_wake) = message.into_parts();
         let skip_main_loop_lease =
             AppDevice::should_skip_main_loop_soft_suspend_lease(&context, &evt);
@@ -429,16 +529,25 @@ pub fn run() -> Result<(), Error> {
 
         #[cfg(feature = "tracing")]
         let span = tracing::trace_span!("main-event-loop", event = ?evt);
-        #[cfg(feature = "tracing")]
-        let _enter = span.enter();
+
         #[cfg(feature = "tracing")]
         tracing::trace!(
             soft_suspend_lease = "main-loop",
             event = ?evt,
             "handling event"
         );
-
-        background_tasks.handle_event(&evt, &tx, &context);
+        #[cfg(feature = "tracing")]
+        {
+            use tracing::Instrument as _;
+            background_tasks
+                .handle_event(&evt, &tx, &context)
+                .instrument(span.clone())
+                .await;
+        }
+        #[cfg(not(feature = "tracing"))]
+        {
+            background_tasks.handle_event(&evt, &tx, &context).await;
+        }
 
         let mut runtime = DeviceRuntime {
             view: &mut view,
@@ -450,7 +559,17 @@ pub fn run() -> Result<(), Error> {
             background_tasks: Some(&mut background_tasks),
         };
 
-        match AppDevice::handle_event(&evt, &tx, &mut bus, &mut rq, &mut context, &mut runtime) {
+        #[cfg(feature = "tracing")]
+        let device_outcome = {
+            use tracing::Instrument as _;
+            AppDevice::handle_event(&evt, &tx, &mut bus, &mut rq, &mut context, &mut runtime)
+                .instrument(span.clone())
+                .await
+        };
+        #[cfg(not(feature = "tracing"))]
+        let device_outcome =
+            AppDevice::handle_event(&evt, &tx, &mut bus, &mut rq, &mut context, &mut runtime).await;
+        match device_outcome {
             cadmus_core::device::EventOutcome::Handled => {
                 process_render_queue(view.as_mut(), &mut rq, &mut context, &mut updating);
                 drain_bus(&mut bus, &tx);
@@ -509,7 +628,7 @@ pub fn run() -> Result<(), Error> {
                     }
                 }
                 _ => {
-                    handle_event(view.as_mut(), &evt, &tx, &mut bus, &mut rq, &mut context);
+                    handle_event(view.as_mut(), &evt, &tx, &mut bus, &mut rq, &mut context).await;
                 }
             },
             Event::Open(info) => {
@@ -522,7 +641,8 @@ pub fn run() -> Result<(), Error> {
                     &mut bus,
                     &mut rq,
                     &mut context,
-                );
+                )
+                .await;
             }
             Event::Select(EntryId::About) => {
                 let version_text = format!("{} {}", APP_NAME, get_version());
@@ -540,15 +660,20 @@ pub fn run() -> Result<(), Error> {
             }
             Event::Select(EntryId::SystemInfo) => {
                 view.children_mut().retain(|child| !child.is::<Menu>());
-                let network = context
-                    .device
-                    .wifi_manager()
-                    .and_then(|wifi| wifi.network_info())
-                    .inspect_err(|e| {
+                let network = match context.device.wifi_manager() {
+                    Ok(wifi) => wifi
+                        .network_info()
+                        .await
+                        .inspect_err(|e| {
+                            tracing::warn!(error = %e, "no network info for system info");
+                        })
+                        .ok()
+                        .flatten(),
+                    Err(e) => {
                         tracing::warn!(error = %e, "no network info for system info");
-                    })
-                    .ok()
-                    .flatten();
+                        None
+                    }
+                };
                 let html = sys_info_as_html(
                     context.device.model(),
                     context.device.mark(),
@@ -634,12 +759,15 @@ pub fn run() -> Result<(), Error> {
                             &mut context,
                         ))
                     }
-                    AppCmd::Calculator => Box::new(Calculator::new(
-                        context.device.framebuffer().rect(),
-                        &tx,
-                        &mut rq,
-                        &mut context,
-                    )?),
+                    AppCmd::Calculator => Box::new(
+                        Calculator::new(
+                            context.device.framebuffer().rect(),
+                            &tx,
+                            &mut rq,
+                            &mut context,
+                        )
+                        .await?,
+                    ),
                     AppCmd::Dictionary {
                         ref query,
                         ref language,
@@ -661,11 +789,14 @@ pub fn run() -> Result<(), Error> {
                         &mut rq,
                         &mut context,
                     )),
-                    AppCmd::SettingsEditor => Box::new(SettingsEditor::new(
-                        context.device.framebuffer().rect(),
-                        &mut rq,
-                        &mut context,
-                    )),
+                    AppCmd::SettingsEditor => Box::new(
+                        SettingsEditor::new(
+                            context.device.framebuffer().rect(),
+                            &mut rq,
+                            &mut context,
+                        )
+                        .await,
+                    ),
                 };
                 transfer_notifications(view.as_mut(), next_view.as_mut(), &mut rq, &mut context);
                 history.push(HistoryItem {
@@ -706,7 +837,8 @@ pub fn run() -> Result<(), Error> {
                             &mut context,
                         );
                     }
-                    view.handle_event(&Event::Reseed, &tx, &mut bus, &mut rq, &mut context);
+                    view.handle_event(&Event::Reseed, &tx, &mut bus, &mut rq, &mut context)
+                        .await;
                 } else if !view.is::<Home>() {
                     break;
                 }
@@ -745,7 +877,8 @@ pub fn run() -> Result<(), Error> {
                         &mut bus,
                         &mut rq,
                         &mut context,
-                    );
+                    )
+                    .await;
                 }
                 let flw = FrontlightWindow::new(&mut context);
                 rq.add(RenderData::new(flw.id(), *flw.rect(), UpdateMode::Gui));
@@ -816,10 +949,10 @@ pub fn run() -> Result<(), Error> {
                 }
 
                 // Re-dispatch event to view hierarchy so UI can update
-                handle_event(view.as_mut(), &evt, &tx, &mut bus, &mut rq, &mut context);
+                handle_event(view.as_mut(), &evt, &tx, &mut bus, &mut rq, &mut context).await;
             }
             Event::ReloadDictionaries => {
-                context.load_dictionaries();
+                context.load_dictionaries().await;
             }
             Event::Select(EntryId::CheckForUpdates) => {
                 show_ota_view(view.as_mut(), &tx, &mut rq, &mut context);
@@ -846,14 +979,17 @@ pub fn run() -> Result<(), Error> {
                 if !view.is::<Home>() =>
             {
                 if let Some(entry) = history.get_mut(0).filter(|entry| entry.view.is::<Home>()) {
-                    let (tx, _rx) = mpsc::channel();
-                    entry.view.handle_event(
-                        &evt,
-                        &tx,
-                        &mut VecDeque::new(),
-                        &mut RenderQueue::new(),
-                        &mut context,
-                    );
+                    let (tx, _rx) = cadmus_core::view::hub_channel();
+                    entry
+                        .view
+                        .handle_event(
+                            &evt,
+                            &tx,
+                            &mut VecDeque::new(),
+                            &mut RenderQueue::new(),
+                            &mut context,
+                        )
+                        .await;
                 }
             }
             Event::Notification(notif_event) => match notif_event {
@@ -886,7 +1022,7 @@ pub fn run() -> Result<(), Error> {
                 }
             },
             _ => {
-                handle_event(view.as_mut(), &evt, &tx, &mut bus, &mut rq, &mut context);
+                handle_event(view.as_mut(), &evt, &tx, &mut bus, &mut rq, &mut context).await;
             }
         }
 
@@ -909,28 +1045,33 @@ pub fn run() -> Result<(), Error> {
         }
     };
 
-    background_tasks.stop_all();
+    background_tasks.stop_all().await;
 
-    shutdown_rtc(&context);
+    exit_status = stop_producers_and_drain(
+        &tx,
+        &mut rx,
+        &mut view,
+        &mut history,
+        &mut tasks,
+        &mut updating,
+        &mut bus,
+        &mut rq,
+        &mut context,
+        &manager,
+        &startup_cwd,
+        &mut background_tasks,
+        exit_status,
+    )
+    .await;
+
+    shutdown_rtc(&context).await;
 
     let save_settings = match &exit_status {
         ExitStatus::Restart | ExitStatus::Reboot => !context.shared,
         _ => true,
     };
 
-    if let Err(e) = AppDevice::on_shutdown(
-        &mut context,
-        exit_status,
-        &mut DeviceRuntime {
-            view: &mut view,
-            history: &mut history,
-            tasks: &mut tasks,
-            updating: &mut updating,
-            settings_manager: Some(&manager),
-            startup_cwd: Some(&startup_cwd),
-            background_tasks: Some(&mut background_tasks),
-        },
-    ) {
+    if let Err(e) = AppDevice::on_shutdown(&mut context.shutdown(), exit_status, &tasks).await {
         tracing::error!(error = %e, "Failed to run on_shutdown");
     }
 
@@ -942,8 +1083,6 @@ pub fn run() -> Result<(), Error> {
 
     #[cfg(feature = "profiling")]
     cadmus_core::telemetry::profiling::shutdown_profiling();
-
-    cadmus_core::logging::shutdown_logging();
 
     Ok(())
 }

@@ -65,13 +65,16 @@ fn format_body(body: &str) -> String {
 }
 
 #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-fn query_to_content(
+async fn query_to_content(
     query: &str,
     language: &String,
     fuzzy: bool,
     target: Option<&String>,
     context: &mut AppContext,
 ) -> String {
+    #[cfg(feature = "tracing")]
+    use tracing::Instrument as _;
+
     let mut content = String::new();
 
     for (name, dict) in context.dictionaries.iter_mut() {
@@ -88,15 +91,19 @@ fn query_to_content(
         }
 
         #[cfg(feature = "tracing")]
-        let _dict_span =
-            tracing::info_span!("dictionary_lookup", dictionary_name = %name).entered();
-
-        if let Some(results) = dict
+        let lookup = dict
             .lookup(query, fuzzy)
+            .instrument(tracing::info_span!("dictionary_lookup", dictionary_name = %name));
+        #[cfg(not(feature = "tracing"))]
+        let lookup = dict.lookup(query, fuzzy);
+
+        let results = lookup
+            .await
             .map_err(|e| error!("Can't search dictionary: {:#}.", e))
             .ok()
-            .filter(|r| !r.is_empty())
-        {
+            .filter(|r| !r.is_empty());
+
+        if let Some(results) = results {
             if target.is_none() {
                 content.push_str(&format!(
                     "<h1 class=\"dictname\">{}</h1>\n",
@@ -591,7 +598,7 @@ impl Dictionary {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-    fn define(&mut self, text: Option<&str>, rq: &mut RenderQueue, context: &mut AppContext) {
+    async fn define(&mut self, text: Option<&str>, rq: &mut RenderQueue, context: &mut AppContext) {
         if let Some(query) = text {
             self.query = query.to_string();
             if let Some(search_bar) = self.children[2].downcast_mut::<SearchBar>() {
@@ -604,7 +611,8 @@ impl Dictionary {
             self.fuzzy,
             self.target.as_ref(),
             context,
-        );
+        )
+        .await;
         self.doc.update(&content);
         if let Some(image) = self.children[4].downcast_mut::<Image>() {
             if let Some((pixmap, loc)) =
@@ -649,7 +657,7 @@ impl Dictionary {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, rq, context), fields(pt = ?pt)))]
-    fn follow_link(&mut self, pt: Point, rq: &mut RenderQueue, context: &mut AppContext) {
+    async fn follow_link(&mut self, pt: Point, rq: &mut RenderQueue, context: &mut AppContext) {
         let dpi = context.device.dpi();
         let small_height = scale_by_dpi(SMALL_BAR_HEIGHT, dpi) as i32;
         let thickness = scale_by_dpi(THICKNESS_MEDIUM, dpi) as i32;
@@ -663,7 +671,7 @@ impl Dictionary {
             for link in links {
                 let rect = link.rect.to_rect() + offset;
                 if rect.includes(pt) && link.text.starts_with('?') {
-                    self.define(Some(&link.text[1..]), rq, context);
+                    self.define(Some(&link.text[1..]), rq, context).await;
                     return;
                 }
             }
@@ -678,10 +686,11 @@ impl Dictionary {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl View for Dictionary {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, _bus, rq, context), fields(event = ?evt
     ), ret(level=tracing::Level::TRACE)))]
-    fn handle_event(
+    async fn handle_event(
         &mut self,
         evt: &Event,
         hub: &Hub,
@@ -691,13 +700,13 @@ impl View for Dictionary {
     ) -> bool {
         match *evt {
             Event::Define(ref query) => {
-                self.define(Some(query), rq, context);
+                self.define(Some(query), rq, context).await;
                 true
             }
             Event::Submit(ViewId::DictionarySearchInput, ref text) => {
                 if !text.is_empty() {
                     self.toggle_keyboard(false, None, hub, rq, context);
-                    self.define(Some(text), rq, context);
+                    self.define(Some(text), rq, context).await;
                 }
                 true
             }
@@ -733,7 +742,7 @@ impl View for Dictionary {
                 true
             }
             Event::Gesture(GestureEvent::Tap(center)) if self.rect.includes(center) => {
-                self.follow_link(center, rq, context);
+                self.follow_link(center, rq, context).await;
                 true
             }
             Event::Gesture(GestureEvent::HoldFingerLong(pt, _)) => {
@@ -741,7 +750,7 @@ impl View for Dictionary {
                     let query = text
                         .trim_matches(|c: char| !c.is_alphanumeric())
                         .to_string();
-                    self.define(Some(&query), rq, context);
+                    self.define(Some(&query), rq, context).await;
                 }
                 true
             }
@@ -753,7 +762,7 @@ impl View for Dictionary {
                         bottom_bar.update_name(name, rq);
                     }
                     if !self.query.is_empty() {
-                        self.define(None, rq, context);
+                        self.define(None, rq, context).await;
                     }
                 }
                 true
@@ -761,13 +770,13 @@ impl View for Dictionary {
             Event::Select(EntryId::ToggleFuzzy) => {
                 self.fuzzy = !self.fuzzy;
                 if !self.query.is_empty() {
-                    self.define(None, rq, context);
+                    self.define(None, rq, context).await;
                 }
                 true
             }
             Event::Select(EntryId::ReloadDictionaries) => {
                 context.dictionaries.clear();
-                context.load_dictionaries();
+                context.load_dictionaries().await;
                 if let Some(name) = self.target.as_ref() {
                     if !context.dictionaries.contains_key(name) {
                         self.target = None;
@@ -793,7 +802,7 @@ impl View for Dictionary {
                         .languages
                         .insert(name.clone(), re.split(text).map(String::from).collect());
                     if self.target.is_none() && !self.query.is_empty() {
-                        self.define(None, rq, context);
+                        self.define(None, rq, context).await;
                     }
                 }
                 true

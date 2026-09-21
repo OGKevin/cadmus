@@ -46,10 +46,32 @@ use crate::geom::{BorderSpec, CornerSpec, Rectangle};
 use crate::gesture::GestureEvent;
 use crate::input::DeviceEvent;
 use crate::unit::scale_by_dpi;
-use std::thread;
 use std::time::Duration;
 
 const NOTIFICATION_CLOSE_DELAY: Duration = Duration::from_secs(4);
+
+/// Shows a pinned notification and sends [`Event::Close`] for that id on drop.
+///
+/// Use for long-running work so task abort (for example [`TaskManager::stop`](crate::task::TaskManager::stop))
+/// cannot leave a pinned UI behind when the async future is dropped mid-scan.
+pub(crate) struct PinnedProgress<'a> {
+    hub: &'a Hub,
+    notif_id: ViewId,
+}
+
+impl<'a> PinnedProgress<'a> {
+    pub(crate) fn show(hub: &'a Hub, notif_id: ViewId, message: String) -> Self {
+        hub.send((Event::Notification(NotificationEvent::ShowPinned(notif_id, message))).into())
+            .ok();
+        Self { hub, notif_id }
+    }
+}
+
+impl Drop for PinnedProgress<'_> {
+    fn drop(&mut self) {
+        self.hub.send((Event::Close(self.notif_id)).into()).ok();
+    }
+}
 
 /// Events related to notifications.
 #[derive(Debug, Clone)]
@@ -112,8 +134,8 @@ impl Notification {
 
         if !pinned {
             let hub2 = hub.clone();
-            thread::spawn(move || {
-                thread::sleep(NOTIFICATION_CLOSE_DELAY);
+            crate::runtime::current_handle().spawn(async move {
+                tokio::time::sleep(NOTIFICATION_CLOSE_DELAY).await;
                 hub2.send((Event::Close(view_id)).into()).ok();
             });
         }
@@ -190,13 +212,14 @@ impl Notification {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl View for Notification {
     #[cfg_attr(feature = "tracing", tracing::instrument(
         skip(self, _hub, _bus, _rq, _context),
         fields(event = ?evt),
         ret(level=tracing::Level::TRACE)
     ))]
-    fn handle_event(
+    async fn handle_event(
         &mut self,
         evt: &Event,
         _hub: &Hub,
@@ -320,5 +343,33 @@ impl View for Notification {
 
     fn view_id(&self) -> Option<ViewId> {
         Some(self.view_id)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::view::{Event, HubReceiverExt, ViewId};
+
+    #[test]
+    fn pinned_progress_show_and_drop_emits_close() {
+        let (hub, mut rx) = crate::view::hub_channel();
+        let notif_id = ViewId::MessageNotif(42);
+
+        {
+            let _pinned = PinnedProgress::show(&hub, notif_id, "working".to_string());
+            let events: Vec<Event> = rx.try_iter().map(|m| m.event).collect();
+            assert_eq!(events.len(), 1);
+            assert!(matches!(
+                events[0],
+                Event::Notification(NotificationEvent::ShowPinned(id, _))
+                    if id == notif_id
+            ));
+        }
+
+        drop(hub);
+        let events: Vec<Event> = rx.try_iter().map(|m| m.event).collect();
+        assert_eq!(events.len(), 1);
+        assert!(matches!(events[0], Event::Close(id) if id == notif_id));
     }
 }

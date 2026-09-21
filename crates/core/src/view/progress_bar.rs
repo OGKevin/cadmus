@@ -43,13 +43,14 @@ impl ProgressBar {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl View for ProgressBar {
     #[cfg_attr(feature = "tracing", tracing::instrument(
         skip(self, _hub, _bus, _rq, _context),
         fields(event = ?_evt),
         ret(level = tracing::Level::TRACE)
     ))]
-    fn handle_event(
+    async fn handle_event(
         &mut self,
         _evt: &Event,
         _hub: &Hub,

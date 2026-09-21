@@ -193,7 +193,7 @@ pub struct SettingsEditor {
 
 impl SettingsEditor {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(rq, context)))]
-    pub fn new(rect: Rectangle, rq: &mut RenderQueue, context: &mut AppContext) -> Self {
+    pub async fn new(rect: Rectangle, rq: &mut RenderQueue, context: &mut AppContext) -> Self {
         let id = ID_FEEDER.next();
         let mut children = Vec::new();
 
@@ -226,7 +226,9 @@ impl SettingsEditor {
             StackNavigationBar::new(nav_bar_rect, rect.max.y, 2, provider, Category::General)
                 .disable_resize();
 
-        navigation_bar.set_selected(Category::General, rq, context);
+        navigation_bar
+            .set_selected(Category::General, rq, context)
+            .await;
         let nav_bar_index = children.len();
         children.push(Box::new(navigation_bar));
 
@@ -246,7 +248,8 @@ impl SettingsEditor {
             rect.max.y
         ];
 
-        let category_editor = CategoryEditor::new(content_rect, Category::General, rq, context);
+        let category_editor =
+            CategoryEditor::new(content_rect, Category::General, rq, context).await;
 
         let editor_index = children.len();
         children.push(Box::new(category_editor));
@@ -258,7 +261,7 @@ impl SettingsEditor {
                 continue;
             }
 
-            let editor = CategoryEditor::new(content_rect, category, rq, context);
+            let editor = CategoryEditor::new(content_rect, category, rq, context).await;
             editors.insert(category, Box::new(editor));
         }
 
@@ -345,9 +348,10 @@ impl SettingsEditor {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl View for SettingsEditor {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, _bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
-    fn handle_event(
+    async fn handle_event(
         &mut self,
         evt: &Event,
         _hub: &Hub,
@@ -365,7 +369,7 @@ impl View for SettingsEditor {
                     let nav_bar = self.children[self.nav_bar_index]
                         .downcast_mut::<StackNavigationBar<SettingsCategoryProvider>>()
                         .unwrap();
-                    nav_bar.set_selected(*category, rq, context);
+                    nav_bar.set_selected(*category, rq, context).await;
                     nav_bar.rect.max.y
                 };
 
@@ -397,10 +401,13 @@ impl View for SettingsEditor {
                     self.rect.max.y
                 ];
 
-                let incoming = self.editors.remove(category).unwrap_or_else(|| {
-                    Box::new(CategoryEditor::new(content_rect, *category, rq, context))
-                        as Box<dyn View>
-                });
+                let incoming = match self.editors.remove(category) {
+                    Some(editor) => editor,
+                    None => {
+                        Box::new(CategoryEditor::new(content_rect, *category, rq, context).await)
+                            as Box<dyn View>
+                    }
+                };
 
                 self.children.insert(self.editor_index, incoming);
 
