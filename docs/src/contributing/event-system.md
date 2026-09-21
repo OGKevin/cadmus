@@ -64,9 +64,12 @@ flowchart TB
     end
 ```
 
-### Hub (`Sender<Event>`)
+### Hub (`Hub` / `UnboundedSender<HubMessage>`)
 
-The hub is an `mpsc::Sender<Event>` — a global channel that sends events to the **main loop**.
+The hub is a Tokio `UnboundedSender<HubMessage>` — a global channel that sends
+events to the **main loop**. It was unbounded before the async migration and
+remains unbounded on purpose so device and background threads never block on a
+full queue.
 Events sent to the hub are processed in the **next iteration** of the main loop, not immediately.
 
 **Use the hub when:**
@@ -333,7 +336,7 @@ sequenceDiagram
 
 ```rust
 impl View for Dialog {
-    fn handle_event(&mut self, evt: &Event, hub: &Sender<Event>, bus: &mut Bus, ...) -> bool {
+    fn handle_event(&mut self, evt: &Event, hub: &Hub, bus: &mut Bus, ...) -> ViewHandleFuture<'_> {
         match *evt {
             // Return false to bubble up so grandparent removes us
             Event::Close(ViewId::Dialog) => false,
@@ -345,13 +348,13 @@ impl View for Dialog {
 
 ## Summary
 
-| Aspect           | Hub                            | Bus                             |
-| ---------------- | ------------------------------ | ------------------------------- |
-| Type             | `mpsc::Sender<Event>`          | `VecDeque<Event>`               |
-| Scope            | Global (main loop)             | Local (parent-child)            |
-| Timing           | Next loop iteration            | Current dispatch cycle          |
-| Direction        | View → Main loop               | Child → Parent                  |
-| Unhandled events | Processed by main loop `match` | Forwarded to hub                |
-| Use for          | Close, Focus, Notifications    | Submit, child-to-parent signals |
+| Aspect           | Hub                                   | Bus                             |
+| ---------------- | ------------------------------------- | ------------------------------- |
+| Type             | `Hub` (`UnboundedSender<HubMessage>`) | `VecDeque<Event>`               |
+| Scope            | Global (main loop)                    | Local (parent-child)            |
+| Timing           | Next loop iteration                   | Current dispatch cycle          |
+| Direction        | View → Main loop                      | Child → Parent                  |
+| Unhandled events | Processed by main loop `match`        | Forwarded to hub                |
+| Use for          | Close, Focus, Notifications           | Submit, child-to-parent signals |
 
 <!-- i18n:skip-end -->

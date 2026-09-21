@@ -1,0 +1,15 @@
+# Lint configuration for the `clippy` crate. See
+# <https://rust-lang.github.io/rust-clippy/master/index.html#configuration>.
+#
+# Every entry here is a guardrail for an async correctness rule that review
+# would otherwise have to catch by hand.
+
+# An `Entered`/`EnteredSpan` guard that is still alive across an `.await`
+# leaks the span into whatever else the worker runs while this task is
+# suspended, and it is not `Send`. The views here are `#[async_trait(?Send)]`,
+# so the compiler cannot catch this for us.
+await-holding-invalid-types = [
+    { path = "tracing::span::Entered", reason = "an Entered guard held across await leaks the span into the rest of the worker" },
+    { path = "tracing::span::EnteredSpan", reason = "an EnteredSpan guard held across await leaks the span into the rest of the worker" },
+    { path = "tracing::subscriber::DefaultGuard", reason = "a subscriber guard held across await sends events to the wrong subscriber" },
+]

@@ -27,6 +27,15 @@ const LOCAL_LCOV_PATH: &str = "target/coverage/lcov.info";
 /// JUnit report path when nextest runs with `--profile ci`.
 const NEXTEST_JUNIT_PATH: &str = "target/nextest/ci/junit.xml";
 
+/// Default stack size for libtest / `#[tokio::test]` threads (bytes).
+///
+/// `tracing::instrument` on deep async view `handle_event` paths can exceed the
+/// platform default. Measured minimum for OTA focus tests is ~2.5 MiB; three
+/// mebibytes (`3 * 1024 * 1024`) leaves headroom across debug builds and feature
+/// matrices. `RUST_MIN_STACK` is a byte count, not a “megabyte” label (`3000` would
+/// be ~3 KiB).
+const RUST_MIN_STACK_BYTES: u32 = 3 * 1024 * 1024;
+
 /// Arguments for `cargo xtask test`.
 #[derive(Debug, Args)]
 pub struct TestArgs {
@@ -73,7 +82,11 @@ pub fn run(args: TestArgs) -> Result<()> {
     let root = workspace::root()?;
     sqlite_preflight::ensure_host(&root)?;
     let root_str = root.to_string_lossy().into_owned();
-    let env = [("TEST_ROOT_DIR", root_str.as_str())];
+    let rust_min_stack = RUST_MIN_STACK_BYTES.to_string();
+    let env = [
+        ("TEST_ROOT_DIR", root_str.as_str()),
+        ("RUST_MIN_STACK", rust_min_stack.as_str()),
+    ];
 
     let entries = matrix::scan(&root, &["local"])?;
     let entries = filter(&entries, args.features.as_deref())?;
