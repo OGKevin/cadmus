@@ -11,7 +11,7 @@
 use crate::device::inhibitor::{Inhibitor, InhibitorGuard, Kind, SoftSuspendName};
 use crate::view::Event;
 #[cfg(any(feature = "kobo", feature = "emulator", docsrs))]
-use std::sync::mpsc::Sender;
+use crate::view::Hub;
 
 /// RAII lease attached to a [`HubMessage`] while it is in flight on the hub.
 ///
@@ -90,7 +90,7 @@ impl From<Event> for HubMessage {
 /// A short-lived overlap lease keeps the wake lock held until the message lease
 /// is attached; on acquire failure the event is sent without a lease.
 #[cfg(any(feature = "kobo", feature = "emulator", docsrs))]
-pub(crate) fn send_input_hub_message(tx: &Sender<HubMessage>, inhibitor: &Inhibitor, event: Event) {
+pub(crate) fn send_input_hub_message(tx: &Hub, inhibitor: &Inhibitor, event: Event) {
     let overlap = match inhibitor.acquire(Kind::SoftSuspend, SoftSuspendName::Input) {
         Ok(guard) => guard,
         Err(error) => {

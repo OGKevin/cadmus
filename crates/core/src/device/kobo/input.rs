@@ -5,7 +5,7 @@ use crate::settings::ButtonScheme;
 use crate::view::Event;
 use std::path::Path;
 use std::sync::Arc;
-use std::sync::mpsc::{self, Sender};
+use std::sync::mpsc::Sender;
 use std::thread;
 use std::time::Duration;
 
@@ -69,10 +69,7 @@ impl crate::device::InputSource for InputSource {
         display: Display,
         button_scheme: ButtonScheme,
         inhibitor: Arc<Inhibitor>,
-    ) -> (
-        crate::view::Hub,
-        std::sync::mpsc::Receiver<crate::view::HubMessage>,
-    ) {
+    ) -> (crate::view::Hub, crate::view::HubReceiver) {
         let mut paths = Vec::new();
         let touch_path = touch_input_path();
         if let Some(path) = touch_path.as_ref() {
@@ -121,7 +118,7 @@ impl crate::device::InputSource for InputSource {
             self.dpi,
         );
         let usb_port = usb_events();
-        let (tx, rx) = mpsc::channel();
+        let (tx, rx) = crate::view::hub_channel();
 
         let tx2 = tx.clone();
         let inhibitor2 = Arc::clone(&inhibitor);

@@ -367,7 +367,7 @@ mod tests {
 
     #[test]
     fn handle_light_button_forwards_toggle() {
-        let harness = DeviceRuntimeHarness::new();
+        let mut harness = DeviceRuntimeHarness::new();
         let outcome = handle_light_button_pressed(&harness.hub_tx);
         assert_eq!(outcome, EventOutcome::Handled);
         assert!(

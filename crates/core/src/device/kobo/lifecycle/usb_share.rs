@@ -350,7 +350,7 @@ mod tests {
 
     #[test]
     fn disable_usb_share_disables_mass_storage() {
-        let harness = DeviceRuntimeHarness::new();
+        let mut harness = DeviceRuntimeHarness::new();
         disable_usb_share(
             &harness.context,
             None,

@@ -1019,7 +1019,6 @@ mod tests {
     use crate::document::{SimpleTocEntry, TocLocation};
     use crate::library::db::Db;
     use crate::metadata::{FileInfo, ReaderInfo};
-    use crate::runtime::RUNTIME;
     use chrono::Local;
     use std::collections::BTreeSet;
     use std::path::PathBuf;
@@ -1072,8 +1071,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn rekey_book_merges_duplicate_content_data() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn rekey_book_merges_duplicate_content_data() {
         let (db, libdb) = create_test_db();
         let library_a = libdb
             .register_library("/tmp/library-a", "Library A")
@@ -1116,7 +1115,7 @@ mod tests {
             .save_thumbnail(old_fp, b"old-thumbnail")
             .expect("failed to save old thumbnail");
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             rekey_book(db.pool(), &old_fp.to_string(), &new_fp.to_string())
                 .await
                 .expect("failed to rekey duplicate book");
@@ -1162,8 +1161,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn rekey_book_keeps_existing_duplicate_data() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn rekey_book_keeps_existing_duplicate_data() {
         let (db, libdb) = create_test_db();
         let library_a = libdb
             .register_library("/tmp/library-c", "Library C")
@@ -1225,7 +1224,7 @@ mod tests {
             .save_thumbnail(new_fp, b"new-thumbnail")
             .expect("failed to save new thumbnail");
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             rekey_book(db.pool(), &old_fp.to_string(), &new_fp.to_string())
                 .await
                 .expect("failed to rekey duplicate book");
@@ -1255,8 +1254,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn rehash_fingerprints_canonicalizes_unrekeyed_legacy_fingerprints() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn rehash_fingerprints_canonicalizes_unrekeyed_legacy_fingerprints() {
         let (db, libdb) = create_test_db();
         let library_id = libdb
             .register_library("/tmp/library-legacy", "Legacy Library")
@@ -1266,7 +1265,7 @@ mod tests {
             Fp::from_legacy_str(legacy_fp).expect("legacy fingerprint should parse");
         let canonical_fp = legacy_fp_value.to_string();
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let mut tx = db
                 .pool()
                 .begin()
@@ -1291,7 +1290,7 @@ mod tests {
         assert_eq!(handles.len(), 1);
         assert_eq!(handles[0].fp.to_string(), canonical_fp);
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let old_row = sqlx::query_scalar!(
                 "SELECT fingerprint FROM books WHERE fingerprint = ?",
                 legacy_fp
@@ -1312,8 +1311,8 @@ mod tests {
         });
     }
 
-    #[test]
-    fn rehash_fingerprints_reads_absolute_path_from_library_books() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn rehash_fingerprints_reads_absolute_path_from_library_books() {
         let temp = tempdir().expect("failed to create temp dir");
         let library_root = temp.path().join("library");
         std::fs::create_dir(&library_root).expect("failed to create library root");
@@ -1328,7 +1327,7 @@ mod tests {
         let expected_fp = book_path.fingerprint().expect("failed to fingerprint file");
         let now = UnixTimestamp::now();
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             sqlx::query(
                 r#"
                 INSERT INTO books (
@@ -1375,7 +1374,7 @@ mod tests {
         assert_eq!(books[0].fp, Some(expected_fp));
         assert_eq!(books[0].file.absolute_path, book_path);
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let expected_fp_str = expected_fp.to_string();
             let old_row = sqlx::query_scalar!(
                 "SELECT fingerprint FROM books WHERE fingerprint = ?",

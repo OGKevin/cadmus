@@ -238,15 +238,14 @@ mod tests {
     use crate::geom::Point;
     use crate::gesture::GestureEvent;
     use std::collections::VecDeque;
-    use std::sync::mpsc::channel;
 
-    #[test]
-    fn test_tap_with_event_emits_and_consumes() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_tap_with_event_emits_and_consumes() {
         let rect = rect![0, 0, 200, 50];
         let mut label =
             Label::new(rect, "Test".to_string(), Align::Center).event(Some(Event::Back));
 
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
         let mut context = create_test_context();
@@ -260,12 +259,12 @@ mod tests {
         assert!(matches!(bus.pop_front(), Some(Event::Back)));
     }
 
-    #[test]
-    fn test_tap_without_event_does_consume() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_tap_without_event_does_consume() {
         let rect = rect![0, 0, 200, 50];
         let mut label = Label::new(rect, "Test".to_string(), Align::Center);
 
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
         let mut context = create_test_context();
@@ -278,13 +277,13 @@ mod tests {
         assert_eq!(bus.len(), 0);
     }
 
-    #[test]
-    fn test_tap_outside_rect_ignored() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_tap_outside_rect_ignored() {
         let rect = rect![0, 0, 200, 50];
         let mut label =
             Label::new(rect, "Test".to_string(), Align::Center).event(Some(Event::Back));
 
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
         let mut context = create_test_context();

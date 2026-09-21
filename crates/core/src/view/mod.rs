@@ -85,7 +85,6 @@ use std::fmt::{self, Debug};
 use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::mpsc::Sender;
 use std::time::{Duration, Instant};
 use tracing::error;
 use unic_langid::LanguageIdentifier;
@@ -108,7 +107,37 @@ pub const BIG_BAR_HEIGHT: f32 = 163.0;
 pub const CLOSE_IGNITION_DELAY: Duration = Duration::from_millis(150);
 
 pub type Bus = VecDeque<Event>;
-pub type Hub = Sender<hub_message::HubMessage>;
+pub type Hub = tokio::sync::mpsc::UnboundedSender<hub_message::HubMessage>;
+pub type HubReceiver = tokio::sync::mpsc::UnboundedReceiver<hub_message::HubMessage>;
+
+/// Hub channel: synchronous send from OS threads, asynchronous receive in the app loop.
+pub fn hub_channel() -> (Hub, HubReceiver) {
+    tokio::sync::mpsc::unbounded_channel()
+}
+
+/// Sync drain of a [`HubReceiver`] for tests that used `std::sync::mpsc::Receiver::try_iter`.
+pub struct HubTryIter<'a> {
+    rx: &'a mut HubReceiver,
+}
+
+impl Iterator for HubTryIter<'_> {
+    type Item = hub_message::HubMessage;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.rx.try_recv().ok()
+    }
+}
+
+/// Adds [`Self::try_iter`] to the async hub receiver.
+pub trait HubReceiverExt {
+    fn try_iter(&mut self) -> HubTryIter<'_>;
+}
+
+impl HubReceiverExt for HubReceiver {
+    fn try_iter(&mut self) -> HubTryIter<'_> {
+        HubTryIter { rx: self }
+    }
+}
 
 pub use hub_message::{HubLease, HubMessage};
 
@@ -436,7 +465,7 @@ pub enum Event {
     ///
     /// // Focus the PR input field (e.g. after building the PR input screen).
     /// // Note: `hub` is provided by the application's event loop.
-    /// # let (hub, _): (Hub, _) = std::sync::mpsc::channel();
+    /// # let (hub, _) = cadmus_core::view::hub_channel();
     /// hub.send(Event::Focus(Some(ViewId::Ota(OtaViewId::PrInput))).into()).ok();
     ///
     /// // Clear focus from all views.

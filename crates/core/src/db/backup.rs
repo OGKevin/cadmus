@@ -510,12 +510,11 @@ fn add_suffix(path: &Path, suffix: &str) -> PathBuf {
 mod tests {
     use super::*;
     use crate::db::Database;
-    use crate::runtime::RUNTIME;
     use sqlx::sqlite::SqlitePool;
     use std::str::FromStr;
 
-    #[test]
-    fn test_add_suffix() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_add_suffix() {
         let path = PathBuf::from("/tmp/cadmus.sqlite");
         assert_eq!(
             add_suffix(&path, "-wal"),
@@ -523,8 +522,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_create_backup_writes_file_and_manifest() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_create_backup_writes_file_and_manifest() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
         let db_path = dir.path().join("cadmus.sqlite");
         let mut db = Database::new(&db_path).expect("failed to create database");
@@ -533,8 +532,9 @@ mod tests {
         let version = GitVersion::from_str("v0.10.0").unwrap();
         let manager = DbBackupManager::new(dir.path().to_path_buf(), version.clone());
 
-        let backup_path = RUNTIME
-            .block_on(async { manager.create_backup(db.pool(), &db_path, 2).await.unwrap() });
+        let backup_path = crate::runtime::block_on(async {
+            manager.create_backup(db.pool(), &db_path, 2).await.unwrap()
+        });
 
         assert!(backup_path.exists(), "backup file should exist");
 
@@ -545,8 +545,8 @@ mod tests {
         assert!(manifest.entries[0].file.contains("v0.10.0"));
     }
 
-    #[test]
-    fn test_backup_retention_removes_oldest_backups() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_backup_retention_removes_oldest_backups() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
         let db_path = dir.path().join("cadmus.sqlite");
         let mut db = Database::new(&db_path).expect("failed to create database");
@@ -556,7 +556,7 @@ mod tests {
         let v2 = GitVersion::from_str("v0.10.0").unwrap();
         let v3 = GitVersion::from_str("v0.11.0").unwrap();
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let manager = DbBackupManager::new(dir.path().to_path_buf(), v1.clone());
             manager.create_backup(db.pool(), &db_path, 2).await.unwrap();
 
@@ -580,8 +580,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_restore_best_backup_replaces_active_database() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_restore_best_backup_replaces_active_database() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
         let db_path = dir.path().join("cadmus.sqlite");
         let mut db = Database::new(&db_path).expect("failed to create database");
@@ -590,21 +590,21 @@ mod tests {
         let older_version = GitVersion::from_str("v0.9.0").unwrap();
         let newer_version = GitVersion::from_str("v0.10.0").unwrap();
 
-        let backup_path = RUNTIME.block_on(async {
+        let backup_path = crate::runtime::block_on(async {
             let manager = DbBackupManager::new(dir.path().to_path_buf(), older_version.clone());
             manager.create_backup(db.pool(), &db_path, 2).await.unwrap()
         });
 
         // Simulate a newer database by stamping it and closing it.
         let migration_hash = crate::db::version::current_migration_hash();
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             crate::db::version::stamp_db_version(db.pool(), &newer_version, &migration_hash)
                 .await
                 .unwrap();
         });
         db.close();
 
-        let restored = RUNTIME.block_on(async {
+        let restored = crate::runtime::block_on(async {
             let manager = DbBackupManager::new(dir.path().to_path_buf(), older_version.clone());
             manager
                 .restore_best_backup(&db_path, &newer_version)
@@ -615,7 +615,7 @@ mod tests {
 
         // Reopen and verify the restored database does not have the newer version stamp.
         let db = Database::new(&db_path).expect("failed to reopen database");
-        let stored_version = RUNTIME.block_on(async {
+        let stored_version = crate::runtime::block_on(async {
             crate::db::version::read_db_version(db.pool())
                 .await
                 .unwrap()
@@ -627,8 +627,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_fs_copy_backup_preserves_data() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_fs_copy_backup_preserves_data() {
         let dir = tempfile::Builder::new()
             .prefix("cadmus-backup-fs-")
             .tempdir()
@@ -641,7 +641,7 @@ mod tests {
         let test_version = GitVersion::from_str("v1.2.3").unwrap();
         let migration_hash = crate::db::version::current_migration_hash();
 
-        let backup_path = RUNTIME.block_on(async {
+        let backup_path = crate::runtime::block_on(async {
             crate::db::version::stamp_db_version(db.pool(), &test_version, &migration_hash)
                 .await
                 .expect("failed to stamp test version");
@@ -653,7 +653,7 @@ mod tests {
                 .expect("fs copy backup failed")
         });
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let backup_url = format!("sqlite://{}", backup_path.display());
             let backup_pool = SqlitePool::connect(&backup_url)
                 .await
@@ -673,8 +673,8 @@ mod tests {
         });
     }
 
-    #[test]
-    fn test_find_best_backup_skips_missing_files() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_find_best_backup_skips_missing_files() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
         let db_path = dir.path().join("cadmus.sqlite");
         let mut db = Database::new(&db_path).expect("failed to create database");
@@ -684,7 +684,7 @@ mod tests {
         let v095 = GitVersion::from_str("v0.9.5").unwrap();
         let v100 = GitVersion::from_str("v0.10.0").unwrap();
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let manager = DbBackupManager::new(dir.path().to_path_buf(), v090.clone());
             manager
                 .create_backup(db.pool(), &db_path, 10)
@@ -719,8 +719,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_find_best_backup_selects_closest_older_version() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_find_best_backup_selects_closest_older_version() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
         let db_path = dir.path().join("cadmus.sqlite");
         let mut db = Database::new(&db_path).expect("failed to create database");
@@ -730,7 +730,7 @@ mod tests {
         let v095 = GitVersion::from_str("v0.9.5").unwrap();
         let v100 = GitVersion::from_str("v0.10.0").unwrap();
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let manager = DbBackupManager::new(dir.path().to_path_buf(), v090.clone());
             manager.create_backup(db.pool(), &db_path, 2).await.unwrap();
 

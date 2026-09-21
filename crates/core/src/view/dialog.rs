@@ -430,8 +430,8 @@ mod tests {
     use super::*;
     use crate::context::test_helpers::create_test_context;
 
-    #[test]
-    fn dialog_width_should_not_be_static() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn dialog_width_should_not_be_static() {
         let mut context = create_test_context();
 
         let dialog = Dialog::builder(ViewId::BookMenu, "Where to check for updates?".to_string())
@@ -456,8 +456,8 @@ mod tests {
             dialog2_width
         );
     }
-    #[test]
-    fn dialog_width_with_three_buttons_should_expand() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn dialog_width_with_three_buttons_should_expand() {
         let mut context = create_test_context();
 
         let dialog = Dialog::builder(ViewId::BookMenu, "Where to check for updates?".to_string())
@@ -482,8 +482,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn dialog_width_single_button_should_be_valid() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn dialog_width_single_button_should_be_valid() {
         let mut context = create_test_context();
 
         let dialog = Dialog::builder(ViewId::BookMenu, "Confirm deletion?".to_string())
@@ -506,8 +506,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn dialog_should_center_on_display() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn dialog_should_center_on_display() {
         if std::env::var("TEST_ROOT_DIR").is_err() {
             return;
         }

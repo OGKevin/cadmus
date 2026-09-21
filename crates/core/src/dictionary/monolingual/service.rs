@@ -904,6 +904,12 @@ mod tests {
         (service, dir, database)
     }
 
+    async fn create_test_service_async() -> (MonolingualDictionaryService, TempDir, Database) {
+        tokio::task::spawn_blocking(create_test_service)
+            .await
+            .expect("create_test_service join")
+    }
+
     fn make_entry(year: i32, month: u32, day: u32) -> DictionaryEntry {
         DictionaryEntry {
             formats: "df,dic,dictorg,kobo,mobi,stardict".to_string(),
@@ -912,24 +918,24 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_get_installed_empty_when_no_dir() {
-        let (service, _dir, _db) = create_test_service();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_get_installed_empty_when_no_dir() {
+        let (service, _dir, _db) = create_test_service_async().await;
         let installed = service.get_installed_dictionaries().unwrap();
         assert!(installed.is_empty());
     }
 
-    #[test]
-    fn test_get_installed_empty_when_dir_exists_but_empty() {
-        let (service, dir, _db) = create_test_service();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_get_installed_empty_when_dir_exists_but_empty() {
+        let (service, dir, _db) = create_test_service_async().await;
         fs::create_dir_all(dir.path().join(READER_DICT_SUBDIR)).unwrap();
         let installed = service.get_installed_dictionaries().unwrap();
         assert!(installed.is_empty());
     }
 
-    #[test]
-    fn test_get_installed_detects_dict_pair() {
-        let (service, dir, _db) = create_test_service();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_get_installed_detects_dict_pair() {
+        let (service, dir, _db) = create_test_service_async().await;
         let lang_dir = dir.path().join(READER_DICT_SUBDIR).join("en");
         fs::create_dir_all(&lang_dir).unwrap();
         fs::File::create(lang_dir.join("dict.index")).unwrap();
@@ -943,9 +949,9 @@ mod tests {
         assert_eq!(installed, vec!["en".to_string()]);
     }
 
-    #[test]
-    fn test_get_installed_detects_dict_dz_pair() {
-        let (service, dir, _db) = create_test_service();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_get_installed_detects_dict_dz_pair() {
+        let (service, dir, _db) = create_test_service_async().await;
         let lang_dir = dir.path().join(READER_DICT_SUBDIR).join("fr");
         fs::create_dir_all(&lang_dir).unwrap();
         fs::File::create(lang_dir.join("dict.index")).unwrap();
@@ -959,9 +965,9 @@ mod tests {
         assert_eq!(installed, vec!["fr".to_string()]);
     }
 
-    #[test]
-    fn test_get_installed_ignores_complete_files_without_registry() {
-        let (service, dir, _db) = create_test_service();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_get_installed_ignores_complete_files_without_registry() {
+        let (service, dir, _db) = create_test_service_async().await;
         let lang_dir = dir.path().join(READER_DICT_SUBDIR).join("en");
         fs::create_dir_all(&lang_dir).unwrap();
         fs::File::create(lang_dir.join("dict.index")).unwrap();
@@ -971,9 +977,9 @@ mod tests {
         assert!(installed.is_empty());
     }
 
-    #[test]
-    fn test_partial_extract_is_not_installed_and_does_not_block_dest() {
-        let (service, dir, _db) = create_test_service();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_partial_extract_is_not_installed_and_does_not_block_dest() {
+        let (service, dir, _db) = create_test_service_async().await;
         let staging = staging_dir(&dir.path().join(READER_DICT_SUBDIR), "en");
         fs::create_dir_all(&staging).unwrap();
         fs::File::create(staging.join("dict.index")).unwrap();
@@ -1006,9 +1012,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_reconcile_promotes_complete_staging_over_incomplete_dest() {
-        let (service, dir, _db) = create_test_service();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_reconcile_promotes_complete_staging_over_incomplete_dest() {
+        let (service, dir, _db) = create_test_service_async().await;
         let root = dir.path().join(READER_DICT_SUBDIR);
         let dest = root.join("en");
         let staging = staging_dir(&root, "en");
@@ -1029,9 +1035,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_reconcile_keeps_complete_dest_and_drops_complete_staging() {
-        let (service, dir, _db) = create_test_service();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_reconcile_keeps_complete_dest_and_drops_complete_staging() {
+        let (service, dir, _db) = create_test_service_async().await;
         let root = dir.path().join(READER_DICT_SUBDIR);
         let dest = root.join("en");
         let staging = staging_dir(&root, "en");
@@ -1056,9 +1062,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_reconcile_promotes_complete_staging_when_dest_missing() {
-        let (service, dir, _db) = create_test_service();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_reconcile_promotes_complete_staging_when_dest_missing() {
+        let (service, dir, _db) = create_test_service_async().await;
         let staging = staging_dir(&dir.path().join(READER_DICT_SUBDIR), "en");
         fs::create_dir_all(&staging).unwrap();
         fs::File::create(staging.join("dict.index")).unwrap();
@@ -1076,9 +1082,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_reconcile_registers_complete_unrecorded_install() {
-        let (service, dir, _db) = create_test_service();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_reconcile_registers_complete_unrecorded_install() {
+        let (service, dir, _db) = create_test_service_async().await;
         let lang_dir = dir.path().join(READER_DICT_SUBDIR).join("en");
         fs::create_dir_all(&lang_dir).unwrap();
         fs::File::create(lang_dir.join("dict.index")).unwrap();
@@ -1092,9 +1098,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_reconcile_removes_abandoned_temps_without_accumulating() {
-        let (service, dir, _db) = create_test_service();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_reconcile_removes_abandoned_temps_without_accumulating() {
+        let (service, dir, _db) = create_test_service_async().await;
         let root = dir.path().join(READER_DICT_SUBDIR);
 
         for _ in 0..2 {
@@ -1117,9 +1123,9 @@ mod tests {
         assert!(service.get_installed_dictionaries().unwrap().is_empty());
     }
 
-    #[test]
-    fn test_incomplete_extract_does_not_replace_installed_dest() {
-        let (service, dir, _db) = create_test_service();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_incomplete_extract_does_not_replace_installed_dest() {
+        let (service, dir, _db) = create_test_service_async().await;
         let root = dir.path().join(READER_DICT_SUBDIR);
         let dest = root.join("en");
         let staging = staging_dir(&root, "en");
@@ -1149,9 +1155,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_publish_replaces_existing_dest_and_keeps_aside() {
-        let (_service, dir, _db) = create_test_service();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_publish_replaces_existing_dest_and_keeps_aside() {
+        let (_service, dir, _db) = create_test_service_async().await;
         let root = dir.path().join(READER_DICT_SUBDIR);
         let dest = root.join("en");
         let staging = staging_dir(&root, "en");
@@ -1176,9 +1182,9 @@ mod tests {
         assert!(!aside.exists());
     }
 
-    #[test]
-    fn test_restore_previous_dest_after_failed_registry_write() {
-        let (_service, dir, _db) = create_test_service();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_restore_previous_dest_after_failed_registry_write() {
+        let (_service, dir, _db) = create_test_service_async().await;
         let root = dir.path().join(READER_DICT_SUBDIR);
         let dest = root.join("en");
         let staging = staging_dir(&root, "en");
@@ -1200,9 +1206,9 @@ mod tests {
         assert!(!staging.exists());
     }
 
-    #[test]
-    fn test_reconcile_prefers_complete_staging_over_replaced_aside() {
-        let (service, dir, _db) = create_test_service();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_reconcile_prefers_complete_staging_over_replaced_aside() {
+        let (service, dir, _db) = create_test_service_async().await;
         let root = dir.path().join(READER_DICT_SUBDIR);
         let staging = staging_dir(&root, "en");
         let aside = replaced_dir(&root, "en");
@@ -1225,9 +1231,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_reconcile_discards_replaced_aside_when_not_registered() {
-        let (service, dir, _db) = create_test_service();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_reconcile_discards_replaced_aside_when_not_registered() {
+        let (service, dir, _db) = create_test_service_async().await;
         let root = dir.path().join(READER_DICT_SUBDIR);
         let dest = root.join("en");
         let aside = replaced_dir(&root, "en");
@@ -1242,9 +1248,9 @@ mod tests {
         assert!(service.get_installed_dictionaries().unwrap().is_empty());
     }
 
-    #[test]
-    fn test_reconcile_restores_replaced_aside_when_registered_and_dest_missing() {
-        let (service, dir, _db) = create_test_service();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_reconcile_restores_replaced_aside_when_registered_and_dest_missing() {
+        let (service, dir, _db) = create_test_service_async().await;
         let root = dir.path().join(READER_DICT_SUBDIR);
         let aside = replaced_dir(&root, "en");
         fs::create_dir_all(&aside).unwrap();
@@ -1265,9 +1271,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_reconcile_restores_replaced_aside_over_incomplete_dest() {
-        let (service, dir, _db) = create_test_service();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_reconcile_restores_replaced_aside_over_incomplete_dest() {
+        let (service, dir, _db) = create_test_service_async().await;
         let root = dir.path().join(READER_DICT_SUBDIR);
         let dest = root.join("en");
         let aside = replaced_dir(&root, "en");
@@ -1292,9 +1298,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_reconcile_keeps_complete_dest_when_aside_leftover_and_update_pending() {
-        let (service, dir, _db) = create_test_service();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_reconcile_keeps_complete_dest_when_aside_leftover_and_update_pending() {
+        let (service, dir, _db) = create_test_service_async().await;
         let root = dir.path().join(READER_DICT_SUBDIR);
         let dest = root.join("en");
         let aside = replaced_dir(&root, "en");
@@ -1326,9 +1332,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_reconcile_promotes_staging_without_restamping_existing_install() {
-        let (service, dir, _db) = create_test_service();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_reconcile_promotes_staging_without_restamping_existing_install() {
+        let (service, dir, _db) = create_test_service_async().await;
         let root = dir.path().join(READER_DICT_SUBDIR);
         let dest = root.join("en");
         let staging = staging_dir(&root, "en");
@@ -1359,9 +1365,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_reconcile_discards_aside_when_install_already_recorded() {
-        let (service, dir, _db) = create_test_service();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_reconcile_discards_aside_when_install_already_recorded() {
+        let (service, dir, _db) = create_test_service_async().await;
         let root = dir.path().join(READER_DICT_SUBDIR);
         let dest = root.join("en");
         let aside = replaced_dir(&root, "en");
@@ -1389,8 +1395,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_staging_and_replaced_lang_reject_empty_names() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_staging_and_replaced_lang_reject_empty_names() {
         assert_eq!(staging_lang(".en.partial"), Some("en"));
         assert_eq!(replaced_lang(".en.replaced"), Some("en"));
         assert_eq!(staging_lang("..partial"), None);
@@ -1399,9 +1405,9 @@ mod tests {
         assert_eq!(replaced_lang(".replaced"), None);
     }
 
-    #[test]
-    fn test_reconcile_ignores_empty_lang_staging_dir() {
-        let (service, dir, _db) = create_test_service();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_reconcile_ignores_empty_lang_staging_dir() {
+        let (service, dir, _db) = create_test_service_async().await;
         let root = dir.path().join(READER_DICT_SUBDIR);
         let empty_lang_staging = root.join("..partial");
         let keep = root.join("en");
@@ -1429,9 +1435,9 @@ mod tests {
         assert!(root.exists());
     }
 
-    #[test]
-    fn test_reconcile_ignores_dot_prefixed_dest_dir() {
-        let (service, dir, _db) = create_test_service();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_reconcile_ignores_dot_prefixed_dest_dir() {
+        let (service, dir, _db) = create_test_service_async().await;
         let hidden = dir.path().join(READER_DICT_SUBDIR).join(".hidden");
         fs::create_dir_all(&hidden).unwrap();
         fs::write(hidden.join("dict.index"), b"x").unwrap();
@@ -1443,9 +1449,9 @@ mod tests {
         assert!(service.get_installed_dictionaries().unwrap().is_empty());
     }
 
-    #[test]
-    fn test_reconcile_restored_aside_keeps_existing_install_version() {
-        let (service, dir, _db) = create_test_service();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_reconcile_restored_aside_keeps_existing_install_version() {
+        let (service, dir, _db) = create_test_service_async().await;
         let root = dir.path().join(READER_DICT_SUBDIR);
         let dest = root.join("en");
         let aside = replaced_dir(&root, "en");
@@ -1476,8 +1482,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_install_record_and_restore_error_includes_both_failures() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_install_record_and_restore_error_includes_both_failures() {
         let err = MonolingualError::InstallRecordAndRestore {
             registry: "db locked".to_string(),
             restore: "permission denied".to_string(),
@@ -1489,9 +1495,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_restore_previous_fails_when_dest_cannot_be_removed() {
-        let (_service, dir, _db) = create_test_service();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_restore_previous_fails_when_dest_cannot_be_removed() {
+        let (_service, dir, _db) = create_test_service_async().await;
         let root = dir.path().join(READER_DICT_SUBDIR);
         let dest = root.join("en");
         let aside = replaced_dir(&root, "en");
@@ -1507,9 +1513,9 @@ mod tests {
         assert!(aside.exists());
     }
 
-    #[test]
-    fn test_reconcile_continues_after_staging_failure() {
-        let (service, dir, _db) = create_test_service();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_reconcile_continues_after_staging_failure() {
+        let (service, dir, _db) = create_test_service_async().await;
         let root = dir.path().join(READER_DICT_SUBDIR);
         fs::create_dir_all(&root).unwrap();
 
@@ -1548,9 +1554,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_remove_installed_clears_dest_and_aside_so_reconcile_cannot_restore() {
-        let (service, dir, _db) = create_test_service();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_remove_installed_clears_dest_and_aside_so_reconcile_cannot_restore() {
+        let (service, dir, _db) = create_test_service_async().await;
         let root = dir.path().join(READER_DICT_SUBDIR);
         let dest = root.join("en");
         let staging = staging_dir(&root, "en");
@@ -1578,9 +1584,9 @@ mod tests {
         assert!(service.get_installed_dictionaries().unwrap().is_empty());
     }
 
-    #[test]
-    fn test_get_installed_ignores_index_without_dict() {
-        let (service, dir, _db) = create_test_service();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_get_installed_ignores_index_without_dict() {
+        let (service, dir, _db) = create_test_service_async().await;
         let lang_dir = dir.path().join(READER_DICT_SUBDIR).join("de");
         fs::create_dir_all(&lang_dir).unwrap();
         fs::File::create(lang_dir.join("dict.index")).unwrap();
@@ -1589,9 +1595,9 @@ mod tests {
         assert!(installed.is_empty());
     }
 
-    #[test]
-    fn test_install_dictionary_extracts_zip_renamed() {
-        let (_service, dir, _db) = create_test_service();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_install_dictionary_extracts_zip_renamed() {
+        let (_service, dir, _db) = create_test_service_async().await;
 
         let zip_bytes = make_test_zip(&[
             ("dictorg-en-en.index", b"index content"),
@@ -1621,15 +1627,15 @@ mod tests {
         buf
     }
 
-    #[test]
-    fn test_is_installing_false_initially() {
-        let (service, _dir, _db) = create_test_service();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_is_installing_false_initially() {
+        let (service, _dir, _db) = create_test_service_async().await;
         assert!(!service.is_installing("en"));
     }
 
-    #[test]
-    fn test_is_installing_true_while_pending() {
-        let (service, _dir, _db) = create_test_service();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_is_installing_true_while_pending() {
+        let (service, _dir, _db) = create_test_service_async().await;
         service
             .pending_installs
             .lock()
@@ -1639,18 +1645,18 @@ mod tests {
         assert!(!service.is_installing("en"));
     }
 
-    #[test]
-    fn test_try_begin_install_marks_pending_and_blocks_duplicate() {
-        let (service, _dir, _db) = create_test_service();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_try_begin_install_marks_pending_and_blocks_duplicate() {
+        let (service, _dir, _db) = create_test_service_async().await;
 
         assert!(service.try_begin_install("en"));
         assert!(service.is_installing("en"));
         assert!(!service.try_begin_install("en"));
     }
 
-    #[test]
-    fn test_pending_installs_recovers_from_poisoned_lock() {
-        let (service, _dir, _db) = create_test_service();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_pending_installs_recovers_from_poisoned_lock() {
+        let (service, _dir, _db) = create_test_service_async().await;
         let service_clone = service.clone();
 
         let result = std::thread::spawn(move || {
@@ -1666,9 +1672,9 @@ mod tests {
         assert!(!service.is_installing("en"));
     }
 
-    #[test]
-    fn test_is_installing_false_after_removal() {
-        let (service, _dir, _db) = create_test_service();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_is_installing_false_after_removal() {
+        let (service, _dir, _db) = create_test_service_async().await;
         service
             .pending_installs
             .lock()
@@ -1678,9 +1684,9 @@ mod tests {
         assert!(!service.is_installing("en"));
     }
 
-    #[test]
-    fn test_concurrent_install_same_lang_returns_error() {
-        let (service, _dir, _db) = create_test_service();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_concurrent_install_same_lang_returns_error() {
+        let (service, _dir, _db) = create_test_service_async().await;
         service
             .pending_installs
             .lock()
@@ -1698,30 +1704,38 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_pending_cleared_after_failed_install() {
-        let (service, _dir, _db) = create_test_service();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_pending_cleared_after_failed_install() {
+        tokio::task::spawn_blocking(|| {
+            let (service, _dir, _db) = create_test_service();
 
-        let entry = make_entry(2026, 4, 1);
-        let _ = service.install_dictionary("zz", &entry, false, &mut |_, _| {});
-        assert!(!service.is_installing("zz"));
+            let entry = make_entry(2026, 4, 1);
+            let _ = service.install_dictionary("zz", &entry, false, &mut |_, _| {});
+            assert!(!service.is_installing("zz"));
+        })
+        .await
+        .expect("pending cleared test");
     }
 
-    #[test]
-    fn test_reserved_install_clears_after_failed_install() {
-        let (service, _dir, _db) = create_test_service();
-        let entry = make_entry(2026, 4, 1);
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_reserved_install_clears_after_failed_install() {
+        tokio::task::spawn_blocking(|| {
+            let (service, _dir, _db) = create_test_service();
+            let entry = make_entry(2026, 4, 1);
 
-        assert!(service.try_begin_install("zz"));
+            assert!(service.try_begin_install("zz"));
 
-        let _ = service.install_reserved_dictionary("zz", &entry, false, &mut |_, _| {});
+            let _ = service.install_reserved_dictionary("zz", &entry, false, &mut |_, _| {});
 
-        assert!(!service.is_installing("zz"));
+            assert!(!service.is_installing("zz"));
+        })
+        .await
+        .expect("reserved install test");
     }
 
-    #[test]
-    fn test_is_installing_shared_across_clones() {
-        let (service, _dir, _db) = create_test_service();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_is_installing_shared_across_clones() {
+        let (service, _dir, _db) = create_test_service_async().await;
         let clone = service.clone();
 
         service
@@ -1733,16 +1747,16 @@ mod tests {
         assert!(clone.is_installing("ja"));
     }
 
-    #[test]
-    fn test_get_entry_for_lang_returns_none_when_not_cached() {
-        let (service, _dir, _db) = create_test_service();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_get_entry_for_lang_returns_none_when_not_cached() {
+        let (service, _dir, _db) = create_test_service_async().await;
         let result = service.get_entry_for_lang("en").unwrap();
         assert!(result.is_none());
     }
 
-    #[test]
-    fn test_get_entry_for_lang_returns_entry_after_cache() {
-        let (service, _dir, _db) = create_test_service();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_get_entry_for_lang_returns_entry_after_cache() {
+        let (service, _dir, _db) = create_test_service_async().await;
 
         let entry = make_entry(2026, 4, 1);
         service.db.upsert_entry("en", &entry).unwrap();
@@ -1761,10 +1775,10 @@ mod tests {
     /// verifies that at least one `.index` + `.dict`/`.dict.dz` pair is present.
     ///
     /// Run with: `cargo test -- --ignored`
-    #[test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     #[ignore = "requires network access to www.reader-dict.com"]
-    fn test_install_dictionary_live() {
-        let (service, dir, _db) = create_test_service();
+    async fn test_install_dictionary_live() {
+        let (service, dir, _db) = create_test_service_async().await;
 
         let entry = service
             .get_available_dictionaries()

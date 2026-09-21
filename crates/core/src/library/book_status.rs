@@ -77,8 +77,8 @@ impl<'r> sqlx::Decode<'r, Sqlite> for BookStatus {
 mod tests {
     use super::*;
 
-    #[test]
-    fn wire_round_trip() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn wire_round_trip() {
         assert_eq!(BookStatus::PendingDiscovery.as_str(), "pending_discovery");
         assert_eq!(BookStatus::Active.as_str(), "active");
         assert_eq!(
@@ -88,8 +88,8 @@ mod tests {
         assert_eq!("active".parse::<BookStatus>().unwrap(), BookStatus::Active);
     }
 
-    #[test]
-    fn rejects_unknown_status() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn rejects_unknown_status() {
         assert!("retained".parse::<BookStatus>().is_err());
         assert!("".parse::<BookStatus>().is_err());
         assert!("Active".parse::<BookStatus>().is_err());

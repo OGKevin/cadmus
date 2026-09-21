@@ -145,8 +145,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn handle_event_reschedules_task() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_event_reschedules_task() {
         let mut harness = DeviceRuntimeHarness::new();
         let outcome = harness
             .with_parts(|hub, _bus, rq, context, runtime| handle_event(hub, rq, context, runtime));
@@ -154,8 +154,8 @@ mod tests {
         assert!(has_task(&harness.tasks, DeviceTaskId::CheckBattery));
     }
 
-    #[test]
-    fn handle_event_skips_during_suspend() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_event_skips_during_suspend() {
         let mut harness = DeviceRuntimeHarness::new();
         harness.push_task(DeviceTaskId::PrepareSuspend);
         harness.context.device.battery().set_capacity(1.0);
@@ -165,8 +165,8 @@ mod tests {
         assert!(has_task(&harness.tasks, DeviceTaskId::CheckBattery));
     }
 
-    #[test]
-    fn handle_event_warn_pushes_notification() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_event_warn_pushes_notification() {
         let mut harness = DeviceRuntimeHarness::new();
         harness.context.device.battery().set_capacity(5.0);
         let outcome = harness
@@ -181,8 +181,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn handle_event_power_off_exits() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_event_power_off_exits() {
         let mut harness = DeviceRuntimeHarness::new();
         harness.context.device.battery().set_capacity(2.0);
         let outcome = harness

@@ -158,7 +158,7 @@ mod tests {
 
     #[test]
     fn check_interfaces_sends_netup_when_wpa_completed() {
-        let (tx, rx) = mpsc::channel();
+        let (tx, mut rx) = crate::view::hub_channel();
 
         let mut interfaces = HashMap::new();
         let mut properties = HashMap::new();
@@ -174,7 +174,7 @@ mod tests {
 
     #[test]
     fn check_interfaces_handles_multiple_interfaces() {
-        let (tx, _rx) = mpsc::channel();
+        let (tx, _rx) = crate::view::hub_channel();
 
         let mut wlan0_props = HashMap::new();
         wlan0_props.insert("wpa_state".to_string(), "COMPLETED".to_string());
@@ -193,7 +193,7 @@ mod tests {
 
     #[test]
     fn check_interfaces_does_not_send_netup_without_ip_address() {
-        let (tx, rx) = mpsc::channel();
+        let (tx, mut rx) = crate::view::hub_channel();
 
         // WPA association complete but DHCP not yet negotiated — no ip_address
         let mut interfaces = HashMap::new();
@@ -211,7 +211,7 @@ mod tests {
 
     #[test]
     fn check_interfaces_does_not_send_netup_with_empty_ip_address() {
-        let (tx, rx) = mpsc::channel();
+        let (tx, mut rx) = crate::view::hub_channel();
 
         let mut interfaces = HashMap::new();
         let mut properties = HashMap::new();

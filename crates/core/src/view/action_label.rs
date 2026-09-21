@@ -162,7 +162,6 @@ mod tests {
     use crate::context::test_helpers::create_test_context;
     use crate::geom::Point;
     use std::collections::VecDeque;
-    use std::sync::mpsc::channel;
 
     #[test]
     fn test_new_creates_with_label_child() {
@@ -173,11 +172,11 @@ mod tests {
         assert!(!action_label.active);
     }
 
-    #[test]
-    fn test_finger_down_activates() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_finger_down_activates() {
         let rect = rect![0, 0, 200, 50];
         let mut action_label = ActionLabel::new(rect, "Test".to_string(), Align::Right(10));
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
         let mut context = create_test_context();
@@ -198,12 +197,12 @@ mod tests {
         assert!(!rq.is_empty());
     }
 
-    #[test]
-    fn test_finger_up_deactivates() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_finger_up_deactivates() {
         let rect = rect![0, 0, 200, 50];
         let mut action_label = ActionLabel::new(rect, "Test".to_string(), Align::Right(10));
 
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
 
@@ -229,11 +228,11 @@ mod tests {
         assert!(!rq.is_empty());
     }
 
-    #[test]
-    fn test_finger_down_outside_rect_ignored() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_finger_down_outside_rect_ignored() {
         let rect = rect![0, 0, 200, 50];
         let mut action_label = ActionLabel::new(rect, "Test".to_string(), Align::Right(10));
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
         let mut context = create_test_context();
@@ -265,13 +264,13 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_event_is_emitted_on_tap() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_event_is_emitted_on_tap() {
         let rect = rect![0, 0, 200, 50];
         let action_label =
             ActionLabel::new(rect, "Test".to_string(), Align::Right(10)).event(Some(Event::Back));
 
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
         let mut context = create_test_context();
@@ -293,14 +292,14 @@ mod tests {
         assert!(matches!(bus.pop_front(), Some(Event::Back)));
     }
 
-    #[test]
-    fn test_set_event_updates_label() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_set_event_updates_label() {
         let rect = rect![0, 0, 200, 50];
         let mut action_label = ActionLabel::new(rect, "Test".to_string(), Align::Right(10));
 
         action_label.set_event(Some(Event::Back));
 
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
         let mut context = create_test_context();

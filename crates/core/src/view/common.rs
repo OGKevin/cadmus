@@ -11,7 +11,6 @@ use crate::framebuffer::UpdateMode;
 use crate::geom::{Point, Rectangle};
 use crate::settings::{ButtonScheme, RotationLock};
 use chrono::Local;
-use std::sync::mpsc;
 
 pub fn shift(view: &mut dyn View, delta: Point) {
     *view.rect_mut() += delta;
@@ -63,7 +62,7 @@ pub fn transfer_notifications(
         if view1.child(index).is::<Notification>() {
             let mut child = view1.children_mut().remove(index);
             if view2.rect() != view1.rect() {
-                let (tx, _rx) = mpsc::channel();
+                let (tx, _rx) = crate::view::hub_channel();
                 child.resize(*view2.rect(), &tx, rq, context);
             }
             view2.children_mut().push(child);

@@ -10,7 +10,6 @@
 use super::metadata::DictionaryEntry;
 use crate::db::Database;
 use crate::db::types::UnixTimestamp;
-use crate::runtime::RUNTIME;
 use anyhow::Error;
 use sqlx::SqlitePool;
 
@@ -41,7 +40,7 @@ impl Db {
         let formats = &entry.formats;
         let words = entry.words as i64;
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             sqlx::query!(
                 r#"INSERT INTO reader_dict_monolingual_metadata
                        (lang, formats, updated, words, cached_at)
@@ -74,7 +73,7 @@ impl Db {
     /// Returns an error if the database query fails.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(lang = %lang)))]
     pub(super) fn get_entry(&self, lang: &str) -> Result<Option<DictionaryEntry>, Error> {
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let row = sqlx::query!(
                 r#"SELECT formats, updated as "updated: UnixTimestamp", words
                    FROM reader_dict_monolingual_metadata
@@ -102,7 +101,7 @@ impl Db {
     /// timestamp cannot be converted to a `NaiveDate`.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     pub(super) fn get_all_entries(&self) -> Result<Vec<(String, DictionaryEntry)>, Error> {
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let rows = sqlx::query!(
                 r#"SELECT lang, formats, updated as "updated: UnixTimestamp", words
                    FROM reader_dict_monolingual_metadata"#,
@@ -135,7 +134,7 @@ impl Db {
     /// Returns an error if the database query fails.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     pub(super) fn get_most_recent_cached_at(&self) -> Result<Option<UnixTimestamp>, Error> {
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let result = sqlx::query_scalar!(
                 r#"SELECT MAX(cached_at) as "cached_at: UnixTimestamp"
                    FROM reader_dict_monolingual_metadata"#
@@ -154,7 +153,7 @@ impl Db {
     /// Returns an error if the database query fails.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     pub(super) fn list_installed_langs(&self) -> Result<Vec<String>, Error> {
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let rows =
                 sqlx::query!(r#"SELECT lang FROM reader_dict_monolingual_installed ORDER BY lang"#)
                     .fetch_all(&self.pool)
@@ -181,7 +180,7 @@ impl Db {
     ) -> Result<(), Error> {
         let installed_at = UnixTimestamp::now();
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             sqlx::query!(
                 r#"INSERT INTO reader_dict_monolingual_installed (lang, installed_at, installed_version)
                    VALUES (?, ?, ?)
@@ -209,7 +208,7 @@ impl Db {
     /// Returns an error if the database write fails.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(lang = %lang)))]
     pub(super) fn remove_installed(&self, lang: &str) -> Result<(), Error> {
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             sqlx::query!(
                 r#"DELETE FROM reader_dict_monolingual_installed WHERE lang = ?"#,
                 lang
@@ -233,7 +232,7 @@ impl Db {
     /// Returns an error if the database query fails.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(lang = %lang), ret(level=tracing::Level::TRACE)))]
     pub(super) fn is_update_available(&self, lang: &str) -> Result<bool, Error> {
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let result = sqlx::query_scalar!(
                 r#"SELECT EXISTS(
                     SELECT 1
@@ -272,8 +271,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_upsert_and_get_roundtrip() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_upsert_and_get_roundtrip() {
         let (_database, db) = create_test_db();
         let entry = make_entry(2026, 4, 1, 1_381_375);
 
@@ -292,8 +291,8 @@ mod tests {
         assert_eq!(fetched.words, 1_381_375);
     }
 
-    #[test]
-    fn test_upsert_overwrites_existing_entry() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_upsert_overwrites_existing_entry() {
         let (_database, db) = create_test_db();
 
         db.upsert_entry("en", &make_entry(2026, 1, 1, 100))
@@ -311,8 +310,8 @@ mod tests {
         assert_eq!(fetched.words, 1_381_375);
     }
 
-    #[test]
-    fn test_get_all_entries_returns_all() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_get_all_entries_returns_all() {
         let (_database, db) = create_test_db();
 
         db.upsert_entry("en", &make_entry(2026, 4, 1, 1_381_375))
@@ -328,15 +327,15 @@ mod tests {
         assert!(langs.contains(&"fr"));
     }
 
-    #[test]
-    fn test_get_all_entries_empty() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_get_all_entries_empty() {
         let (_database, db) = create_test_db();
         let all = db.get_all_entries().expect("get_all should not fail");
         assert!(all.is_empty());
     }
 
-    #[test]
-    fn test_get_most_recent_cached_at_empty() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_get_most_recent_cached_at_empty() {
         let (_database, db) = create_test_db();
         let result = db
             .get_most_recent_cached_at()
@@ -344,8 +343,8 @@ mod tests {
         assert!(result.is_none());
     }
 
-    #[test]
-    fn test_get_most_recent_cached_at_returns_max() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_get_most_recent_cached_at_returns_max() {
         let (_database, db) = create_test_db();
 
         db.upsert_entry("en", &make_entry(2026, 4, 1, 1_381_375))
@@ -357,8 +356,8 @@ mod tests {
         assert!(result.is_some());
     }
 
-    #[test]
-    fn test_remove_installed() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_remove_installed() {
         let (_database, db) = create_test_db();
         let version = UnixTimestamp::now();
 
@@ -371,8 +370,8 @@ mod tests {
         assert!(!result);
     }
 
-    #[test]
-    fn test_is_update_available_no_update() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_is_update_available_no_update() {
         let (_database, db) = create_test_db();
 
         let date = NaiveDate::from_ymd_opt(2026, 4, 1).unwrap();
@@ -387,8 +386,8 @@ mod tests {
         assert!(!result);
     }
 
-    #[test]
-    fn test_is_update_available_with_update() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_is_update_available_with_update() {
         let (_database, db) = create_test_db();
 
         let old_version: UnixTimestamp = NaiveDate::from_ymd_opt(2026, 1, 1).unwrap().into();
@@ -402,8 +401,8 @@ mod tests {
         assert!(result);
     }
 
-    #[test]
-    fn test_is_update_available_not_installed() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_is_update_available_not_installed() {
         let (_database, db) = create_test_db();
 
         db.upsert_entry("en", &make_entry(2026, 4, 1, 1_381_375))

@@ -1023,7 +1023,6 @@ mod tests {
     use crate::gesture::GestureEvent;
     use crate::settings::Settings;
     use std::collections::VecDeque;
-    use std::sync::mpsc::channel;
 
     fn create_test_settings_with_libraries(count: usize) -> Settings {
         let mut settings = Settings::default();
@@ -1067,13 +1066,13 @@ mod tests {
         CategoryEditor::new(rect, Category::General, &mut rq, context)
     }
 
-    #[test]
-    fn test_add_library_event() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_add_library_event() {
         let mut context = create_test_context();
         context.settings = Settings::default();
         context.settings.libraries.clear();
         let mut editor = create_test_category_editor_with_context(&mut context);
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
 
@@ -1094,12 +1093,12 @@ mod tests {
         assert!(!rq.is_empty());
     }
 
-    #[test]
-    fn test_add_library_preserves_structural_children() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_add_library_preserves_structural_children() {
         let mut context = create_test_context();
         context.settings = create_test_settings_with_libraries(2);
         let mut editor = create_test_category_editor_with_context(&mut context);
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
 
@@ -1141,12 +1140,12 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_delete_library_event() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_delete_library_event() {
         let mut context = create_test_context();
         context.settings = create_test_settings_with_libraries(2);
         let mut editor = create_test_category_editor_with_context(&mut context);
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
 
@@ -1182,12 +1181,12 @@ mod tests {
         assert!(!rq.is_empty());
     }
 
-    #[test]
-    fn test_update_library_event() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_update_library_event() {
         let mut context = create_test_context();
         context.settings = create_test_settings_with_libraries(1);
         let mut editor = create_test_category_editor_with_context(&mut context);
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
 
@@ -1218,12 +1217,12 @@ mod tests {
         assert!(!rq.is_empty());
     }
 
-    #[test]
-    fn test_edit_library_event() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_edit_library_event() {
         let mut context = create_test_context();
         context.settings = create_test_settings_with_libraries(1);
         let mut editor = create_test_category_editor_with_context(&mut context);
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
 
@@ -1249,13 +1248,13 @@ mod tests {
         CategoryEditor::new(rect, Category::Intermissions, &mut rq, context)
     }
 
-    #[test]
-    fn test_set_intermission_logo() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_set_intermission_logo() {
         use crate::settings::{IntermKind, IntermissionDisplay};
 
         let mut context = create_test_context();
         let mut editor = create_test_intermissions_category_editor(&mut context);
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
 
@@ -1278,13 +1277,13 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn test_set_intermission_cover() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_set_intermission_cover() {
         use crate::settings::{IntermKind, IntermissionDisplay};
 
         let mut context = create_test_context();
         let mut editor = create_test_intermissions_category_editor(&mut context);
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
 
@@ -1307,13 +1306,13 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn test_set_intermission_blank_inverted() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_set_intermission_blank_inverted() {
         use crate::settings::{IntermKind, IntermissionDisplay};
 
         let mut context = create_test_context();
         let mut editor = create_test_intermissions_category_editor(&mut context);
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
 
@@ -1336,8 +1335,8 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn test_pagination_children_structure() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_pagination_children_structure() {
         let mut context = create_test_context();
         context.settings = Settings::default();
         context.settings.libraries.clear();
@@ -1358,8 +1357,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_page_navigation_event() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_page_navigation_event() {
         let mut context = create_test_context();
         context.settings = Settings::default();
         context.settings.libraries.clear();
@@ -1372,7 +1371,7 @@ mod tests {
         }
 
         let mut editor = create_test_category_editor_with_context(&mut context);
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
 
@@ -1413,147 +1412,163 @@ mod tests {
         assert_eq!(editor.current_page, 0, "Should not go below page 0");
     }
 
-    #[test]
-    fn test_download_dictionary_opens_confirmation_dialog() {
-        let mut context = create_test_context();
-        context.online = true;
-        let mut editor = create_test_dictionary_category_editor(&mut context);
-        let (hub, _receiver) = channel();
-        let mut bus = VecDeque::new();
-        let mut rq = RenderQueue::new();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_download_dictionary_opens_confirmation_dialog() {
+        tokio::task::spawn_blocking(|| {
+            let mut context = create_test_context();
+            context.online = true;
+            let mut editor = create_test_dictionary_category_editor(&mut context);
+            let (hub, _receiver) = crate::view::hub_channel();
+            let mut bus = VecDeque::new();
+            let mut rq = RenderQueue::new();
 
-        let initial_children_count = editor.children.len();
+            let initial_children_count = editor.children.len();
 
-        let handled = editor.handle_event(
-            &Event::Select(EntryId::RequestDictionaryDownload("xy".to_string())),
-            &hub,
-            &mut bus,
-            &mut rq,
-            &mut context,
-        );
+            let handled = editor.handle_event(
+                &Event::Select(EntryId::RequestDictionaryDownload("xy".to_string())),
+                &hub,
+                &mut bus,
+                &mut rq,
+                &mut context,
+            );
 
-        assert!(handled, "Download event should be handled");
-        assert_eq!(editor.children.len(), initial_children_count + 1);
-        assert!(
-            locate_by_id(&editor, ViewId::DictionaryDownloadConfirm).is_some(),
-            "Dictionary download confirmation dialog should be present"
-        );
-        assert!(!rq.is_empty());
+            assert!(handled, "Download event should be handled");
+            assert_eq!(editor.children.len(), initial_children_count + 1);
+            assert!(
+                locate_by_id(&editor, ViewId::DictionaryDownloadConfirm).is_some(),
+                "Dictionary download confirmation dialog should be present"
+            );
+            assert!(!rq.is_empty());
+        })
+        .await
+        .expect("dictionary category editor test");
     }
 
-    #[test]
-    fn test_redownload_dictionary_opens_confirmation_dialog() {
-        let mut context = create_test_context();
-        context.online = true;
-        let mut editor = create_test_dictionary_category_editor(&mut context);
-        let (hub, _receiver) = channel();
-        let mut bus = VecDeque::new();
-        let mut rq = RenderQueue::new();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_redownload_dictionary_opens_confirmation_dialog() {
+        tokio::task::spawn_blocking(|| {
+            let mut context = create_test_context();
+            context.online = true;
+            let mut editor = create_test_dictionary_category_editor(&mut context);
+            let (hub, _receiver) = crate::view::hub_channel();
+            let mut bus = VecDeque::new();
+            let mut rq = RenderQueue::new();
 
-        let handled = editor.handle_event(
-            &Event::Select(EntryId::RequestDictionaryDownload("xy".to_string())),
-            &hub,
-            &mut bus,
-            &mut rq,
-            &mut context,
-        );
+            let handled = editor.handle_event(
+                &Event::Select(EntryId::RequestDictionaryDownload("xy".to_string())),
+                &hub,
+                &mut bus,
+                &mut rq,
+                &mut context,
+            );
 
-        assert!(handled, "Re-download event should be handled");
-        assert!(
-            locate_by_id(&editor, ViewId::DictionaryDownloadConfirm).is_some(),
-            "Dictionary download confirmation dialog should be present"
-        );
-        assert!(!rq.is_empty());
+            assert!(handled, "Re-download event should be handled");
+            assert!(
+                locate_by_id(&editor, ViewId::DictionaryDownloadConfirm).is_some(),
+                "Dictionary download confirmation dialog should be present"
+            );
+            assert!(!rq.is_empty());
+        })
+        .await
+        .expect("dictionary category editor test");
     }
 
-    #[test]
-    fn test_close_dictionary_download_confirmation_removes_dialog() {
-        let mut context = create_test_context();
-        context.online = true;
-        let mut editor = create_test_dictionary_category_editor(&mut context);
-        let (hub, _receiver) = channel();
-        let mut bus = VecDeque::new();
-        let mut rq = RenderQueue::new();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_close_dictionary_download_confirmation_removes_dialog() {
+        tokio::task::spawn_blocking(|| {
+            let mut context = create_test_context();
+            context.online = true;
+            let mut editor = create_test_dictionary_category_editor(&mut context);
+            let (hub, _receiver) = crate::view::hub_channel();
+            let mut bus = VecDeque::new();
+            let mut rq = RenderQueue::new();
 
-        editor.handle_event(
-            &Event::Select(EntryId::RequestDictionaryDownload("xy".to_string())),
-            &hub,
-            &mut bus,
-            &mut rq,
-            &mut context,
-        );
+            editor.handle_event(
+                &Event::Select(EntryId::RequestDictionaryDownload("xy".to_string())),
+                &hub,
+                &mut bus,
+                &mut rq,
+                &mut context,
+            );
 
-        let handled = editor.handle_event(
-            &Event::Close(ViewId::DictionaryDownloadConfirm),
-            &hub,
-            &mut bus,
-            &mut rq,
-            &mut context,
-        );
+            let handled = editor.handle_event(
+                &Event::Close(ViewId::DictionaryDownloadConfirm),
+                &hub,
+                &mut bus,
+                &mut rq,
+                &mut context,
+            );
 
-        assert!(handled, "Close event should be handled");
-        assert!(
-            locate_by_id(&editor, ViewId::DictionaryDownloadConfirm).is_none(),
-            "Dictionary download confirmation dialog should be removed"
-        );
-        assert!(!rq.is_empty());
+            assert!(handled, "Close event should be handled");
+            assert!(
+                locate_by_id(&editor, ViewId::DictionaryDownloadConfirm).is_none(),
+                "Dictionary download confirmation dialog should be removed"
+            );
+            assert!(!rq.is_empty());
+        })
+        .await
+        .expect("dictionary category editor test");
     }
 
-    #[test]
-    fn test_download_dictionary_invalid_language_rebuilds_rows() {
-        let mut context = create_test_context();
-        context.online = true;
-        let mut editor = create_test_dictionary_category_editor(&mut context);
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_download_dictionary_invalid_language_rebuilds_rows() {
+        tokio::task::spawn_blocking(|| {
+            let mut context = create_test_context();
+            context.online = true;
+            let mut editor = create_test_dictionary_category_editor(&mut context);
 
-        let (hub, _receiver) = channel();
-        let mut bus = VecDeque::new();
-        let mut rq2 = RenderQueue::new();
+            let (hub, _receiver) = crate::view::hub_channel();
+            let mut bus = VecDeque::new();
+            let mut rq2 = RenderQueue::new();
 
-        let initial_rows_count = editor
-            .separator_index
-            .saturating_sub(editor.first_row_index);
+            let initial_rows_count = editor
+                .separator_index
+                .saturating_sub(editor.first_row_index);
 
-        editor.handle_event(
-            &Event::Select(EntryId::RequestDictionaryDownload("xy".to_string())),
-            &hub,
-            &mut bus,
-            &mut rq2,
-            &mut context,
-        );
+            editor.handle_event(
+                &Event::Select(EntryId::RequestDictionaryDownload("xy".to_string())),
+                &hub,
+                &mut bus,
+                &mut rq2,
+                &mut context,
+            );
 
-        let handled = editor.handle_event(
-            &Event::Select(EntryId::DownloadDictionary("xy".to_string())),
-            &hub,
-            &mut bus,
-            &mut rq2,
-            &mut context,
-        );
+            let handled = editor.handle_event(
+                &Event::Select(EntryId::DownloadDictionary("xy".to_string())),
+                &hub,
+                &mut bus,
+                &mut rq2,
+                &mut context,
+            );
 
-        assert!(handled, "Download event should be handled");
-        assert!(
-            locate_by_id(&editor, ViewId::DictionaryDownloadConfirm).is_none(),
-            "Dictionary download confirmation dialog should be removed"
-        );
+            assert!(handled, "Download event should be handled");
+            assert!(
+                locate_by_id(&editor, ViewId::DictionaryDownloadConfirm).is_none(),
+                "Dictionary download confirmation dialog should be removed"
+            );
 
-        let rows_count_after = editor
-            .separator_index
-            .saturating_sub(editor.first_row_index);
+            let rows_count_after = editor
+                .separator_index
+                .saturating_sub(editor.first_row_index);
 
-        assert_eq!(
-            initial_rows_count, rows_count_after,
-            "Row count unchanged after download attempt (early return triggers rebuild)"
-        );
-        assert!(
-            !rq2.is_empty(),
-            "RenderQueue should have render requests from update_rows_list()"
-        );
+            assert_eq!(
+                initial_rows_count, rows_count_after,
+                "Row count unchanged after download attempt (early return triggers rebuild)"
+            );
+            assert!(
+                !rq2.is_empty(),
+                "RenderQueue should have render requests from update_rows_list()"
+            );
+        })
+        .await
+        .expect("dictionary category editor test");
     }
 
-    #[test]
-    fn test_force_import_opens_confirmation_dialog() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_force_import_opens_confirmation_dialog() {
         let mut context = create_test_context();
         let mut editor = create_test_import_category_editor(&mut context);
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
 
@@ -1578,11 +1593,11 @@ mod tests {
         assert!(!rq.is_empty());
     }
 
-    #[test]
-    fn test_close_force_import_confirmation_removes_dialog() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_close_force_import_confirmation_removes_dialog() {
         let mut context = create_test_context();
         let mut editor = create_test_import_category_editor(&mut context);
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
 
@@ -1610,8 +1625,8 @@ mod tests {
         assert!(!rq.is_empty());
     }
 
-    #[test]
-    fn test_close_general_named_inputs_removes_overlay_and_clears_focus() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_close_general_named_inputs_removes_overlay_and_clears_focus() {
         let mut context = create_test_context();
         let mut editor = create_test_general_category_editor(&mut context);
 
@@ -1620,7 +1635,7 @@ mod tests {
             ViewId::AutoFrontlightManualCoordinatesInput,
             ViewId::WifiIdleTimeoutInput,
         ] {
-            let (hub, receiver) = channel();
+            let (hub, mut receiver) = crate::view::hub_channel();
             let mut bus = VecDeque::new();
             let mut rq = RenderQueue::new();
 
@@ -1640,7 +1655,7 @@ mod tests {
             assert!(handled, "OpenNamedInput event should be handled");
             assert!(locate_by_id(&editor, view_id).is_some());
 
-            let focus_event = receiver.recv().unwrap();
+            let focus_event = receiver.recv().await.unwrap();
             assert!(matches!(focus_event.event, Event::Focus(Some(id)) if id == view_id));
             editor.focus = Some(view_id);
 
@@ -1655,18 +1670,18 @@ mod tests {
             assert!(handled, "Close event should be handled");
             assert!(locate_by_id(&editor, view_id).is_none());
 
-            let focus_event = receiver.recv().unwrap();
+            let focus_event = receiver.recv().await.unwrap();
             assert!(matches!(focus_event.event, Event::Focus(None)));
             editor.handle_event(&focus_event.event, &hub, &mut bus, &mut rq, &mut context);
             assert_eq!(editor.focus, None);
         }
     }
 
-    #[test]
-    fn test_import_library_force_true_closes_confirmation_dialog() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_import_library_force_true_closes_confirmation_dialog() {
         let mut context = create_test_context();
         let mut editor = create_test_import_category_editor(&mut context);
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
 

@@ -403,6 +403,7 @@ pub mod test_helpers {
     }
 
     pub fn create_test_context_from_device(device: TestDevice) -> AppContext {
+        crate::runtime::ensure_published_for_test();
         let mut database = Database::new(":memory:").expect("failed to create in-memory database");
         let mut settings = Settings::default();
         database
@@ -423,8 +424,8 @@ pub mod test_helpers {
         )
     }
 
-    #[test]
-    fn test_create_test_context_defaults() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_create_test_context_defaults() {
         let context = create_test_context();
         assert_eq!(context.display.dims, (600, 800));
         assert!(!context.plugged);
@@ -452,8 +453,8 @@ pub mod test_helpers {
         assert!(context.inhibitor.holders().is_empty());
     }
 
-    #[test]
-    fn test_create_test_context_frontlight() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_create_test_context_frontlight() {
         let mut context = create_test_context();
         let levels = context.device.frontlight().levels();
         assert_eq!(levels.intensity, LightLevels::default().intensity);
@@ -466,8 +467,8 @@ pub mod test_helpers {
         assert!(context.settings.frontlight);
     }
 
-    #[test]
-    fn test_create_test_context_battery() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_create_test_context_battery() {
         let context = create_test_context();
         let capacity = context
             .device
@@ -477,8 +478,8 @@ pub mod test_helpers {
         assert_eq!(capacity, vec![50.0]);
     }
 
-    #[test]
-    fn test_create_test_context_record_input() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_create_test_context_record_input() {
         let mut context = create_test_context();
         context.record_input("hello", ViewId::SearchBar);
         context.record_input("world", ViewId::SearchBar);
@@ -488,8 +489,8 @@ pub mod test_helpers {
         assert_eq!(history.front(), Some(&"world".to_string()));
     }
 
-    #[test]
-    fn set_rotation_updates_display_rotation() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn set_rotation_updates_display_rotation() {
         let mut context = create_test_context();
         context.set_rotation(1).expect("rotation should succeed");
         assert_eq!(context.display.rotation, 1);

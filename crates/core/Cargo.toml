@@ -79,7 +79,7 @@ sqlx = { version = "0.9", features = [
     "chrono",
     "macros",
 ], default-features = false }
-tokio = { version = "1.40", features = ["fs", "macros", "rt", "rt-multi-thread", "sync"] }
+tokio = { version = "1.40", features = ["fs", "macros", "rt", "rt-multi-thread", "sync", "time"] }
 sdl3 = { workspace = true, optional = true }
 
 tracing = "0.1"

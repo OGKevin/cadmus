@@ -1047,8 +1047,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn shutdown_rtc_clears_logical_alarms_when_disable_fails() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn shutdown_rtc_clears_logical_alarms_when_disable_fails() {
         use crate::context::test_helpers::create_test_context;
         use crate::device::DeviceHardware as _;
 

@@ -2638,11 +2638,10 @@ mod tests {
     use super::*;
     use crate::context::test_helpers::create_test_context;
 
-    #[test]
-    fn test_toggle_address_bar_with_navigation_bar_maintains_separator_alignment() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_toggle_address_bar_with_navigation_bar_maintains_separator_alignment() {
         let mut context = create_test_context();
-        let (tx, _rx) = std::sync::mpsc::channel();
-        let hub = tx;
+        let (hub, _rx) = crate::view::hub_channel();
         let mut rq = RenderQueue::new();
 
         context.settings.home.navigation_bar = false;

@@ -36,7 +36,6 @@ use crate::settings::IntermKind;
 use crate::view::common::locate;
 use crate::view::intermission::Intermission;
 use crate::view::{Event, Hub, RenderData, RenderQueue, View, wait_for_all};
-use std::sync::mpsc;
 use std::time::Duration;
 
 const DEEP_IDLE_POLL_INTERVAL: Duration = Duration::from_millis(100);
@@ -1024,7 +1023,7 @@ pub(crate) fn show_power_off_intermission(
     history: &mut Vec<HistoryItem>,
     updating: &mut Vec<crate::view::UpdateData>,
 ) {
-    let (tx, _rx) = mpsc::channel();
+    let (tx, _rx) = crate::view::hub_channel();
     view.handle_event(
         &Event::Back,
         &tx,

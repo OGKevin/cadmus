@@ -718,7 +718,7 @@ mod tests {
     use crate::metadata::{FileInfo, Info};
     use crate::settings::ImportSettings;
     use crate::task::ShutdownSignal;
-    use crate::view::ViewId;
+    use crate::view::{HubReceiverExt, ViewId};
     use std::sync::mpsc;
 
     fn create_migrated_db() -> Database {
@@ -729,7 +729,7 @@ mod tests {
 
     fn run_import(dir: &Path, db: &Database, shutdown: &ShutdownSignal) -> Vec<Event> {
         let lib = Library::new(dir, db, "test").expect("failed to create library");
-        let (tx, rx) = mpsc::channel();
+        let (tx, mut rx) = crate::view::hub_channel();
         let notif_id = ViewId::MessageNotif(0);
         run(
             &lib.db,
@@ -746,8 +746,8 @@ mod tests {
         rx.try_iter().map(|message| message.event).collect()
     }
 
-    #[test]
-    fn imports_files_when_not_shutdown() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn imports_files_when_not_shutdown() {
         let dir = tempfile::tempdir().expect("tempdir");
         let db = create_migrated_db();
         std::fs::write(dir.path().join("book.epub"), b"epub content").expect("write");
@@ -768,8 +768,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn stops_early_when_shutdown_requested() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn stops_early_when_shutdown_requested() {
         let dir = tempfile::tempdir().expect("tempdir");
         let db = create_migrated_db();
 
@@ -785,7 +785,7 @@ mod tests {
         shutdown_tx.send(()).expect("send shutdown");
 
         let lib = Library::new(dir.path(), &db, "test").expect("library");
-        let (tx, rx) = mpsc::channel();
+        let (tx, mut rx) = crate::view::hub_channel();
         let notif_id = ViewId::MessageNotif(0);
         let outcome = run(
             &lib.db,
@@ -831,8 +831,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn progress_sends_at_100_percent_immediately() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn progress_sends_at_100_percent_immediately() {
         let mut tracker = ProgressTracker::new();
         let base = Instant::now();
 
@@ -848,8 +848,8 @@ mod tests {
         assert_eq!(tracker.should_send(99, 100, base), Some(100));
     }
 
-    #[test]
-    fn progress_throttled_within_two_seconds() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn progress_throttled_within_two_seconds() {
         let mut tracker = ProgressTracker::new();
         let base = Instant::now();
 
@@ -865,8 +865,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn progress_sends_after_two_second_gap() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn progress_sends_after_two_second_gap() {
         let mut tracker = ProgressTracker::new();
         let base = Instant::now();
 
@@ -888,8 +888,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn sort_keys_are_dirty_when_purged_or_book_batches_change() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn sort_keys_are_dirty_when_purged_or_book_batches_change() {
         assert!(!sort_keys_are_dirty(&[], &ScanResult::empty()));
         assert!(sort_keys_are_dirty(
             &[Fp::from_u64(1)],
@@ -904,8 +904,8 @@ mod tests {
         assert!(sort_keys_are_dirty(&[], &insert_only));
     }
 
-    #[test]
-    fn finds_deleted_books_when_file_path_is_empty() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn finds_deleted_books_when_file_path_is_empty() {
         let dir = tempfile::tempdir().expect("tempdir");
         let db = create_migrated_db();
         let lib = Library::new(dir.path(), &db, "test").expect("library");
@@ -935,8 +935,8 @@ mod tests {
         assert_eq!(find_deleted_books(&handles_by_fp, dir.path()), vec![fp]);
     }
 
-    #[test]
-    fn skips_fingerprinting_disallowed_new_files() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn skips_fingerprinting_disallowed_new_files() {
         use crate::document::file_extension::FileExtension;
         use rustc_hash::FxHashSet;
 
@@ -954,7 +954,7 @@ mod tests {
         };
 
         let lib = Library::new(dir.path(), &db, "test").expect("library");
-        let (tx, rx) = std::sync::mpsc::channel();
+        let (tx, mut rx) = crate::view::hub_channel();
         let notif_id = ViewId::MessageNotif(0);
         let shutdown = ShutdownSignal::never();
 
@@ -985,8 +985,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn purges_disallowed_books_on_import() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn purges_disallowed_books_on_import() {
         use crate::document::file_extension::FileExtension;
         use rustc_hash::FxHashSet;
 
@@ -997,7 +997,7 @@ mod tests {
         std::fs::write(dir.path().join("doc.pdf"), b"pdf content").expect("write pdf");
 
         let lib = Library::new(dir.path(), &db, "test").expect("library");
-        let (tx, rx) = std::sync::mpsc::channel();
+        let (tx, mut rx) = crate::view::hub_channel();
         let notif_id = ViewId::MessageNotif(0);
         let shutdown = ShutdownSignal::never();
 
@@ -1026,7 +1026,7 @@ mod tests {
             ..ImportSettings::default()
         };
 
-        let (tx2, rx2) = std::sync::mpsc::channel();
+        let (tx2, mut rx2) = crate::view::hub_channel();
         run(
             &lib.db,
             lib.library_id,
@@ -1054,8 +1054,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn pending_discovery_fills_and_promotes_on_import() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn pending_discovery_fills_and_promotes_on_import() {
         use crate::document::file_extension::FileExtension;
         use crate::helpers::Fingerprint;
         use crate::library::book_status::BookStatus;
@@ -1079,7 +1079,7 @@ mod tests {
 
         let lib = Library::new(dir.path(), &db, "test").expect("library");
 
-        crate::runtime::RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             sqlx::query!(
                 r#"
                 INSERT INTO books (fingerprint, file_kind, file_size, added_at, status)
@@ -1121,7 +1121,7 @@ mod tests {
             ..ImportSettings::default()
         };
 
-        let (tx, rx) = std::sync::mpsc::channel();
+        let (tx, mut rx) = crate::view::hub_channel();
         let notif_id = ViewId::MessageNotif(0);
         let shutdown = ShutdownSignal::never();
 

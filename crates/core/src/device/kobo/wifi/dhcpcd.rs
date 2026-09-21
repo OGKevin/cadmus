@@ -96,7 +96,7 @@ fn block_on_with_timeout<F, T>(fut: F) -> Result<T, WifiError>
 where
     F: std::future::Future<Output = Result<T, WifiError>>,
 {
-    crate::runtime::RUNTIME.block_on(async {
+    crate::runtime::block_on(async {
         tokio::time::timeout(DHCPCD_METHOD_TIMEOUT, fut)
             .await
             .map_err(|_| {
@@ -201,16 +201,16 @@ mod tests {
         }
     }
 
-    #[test]
-    fn ipv4_from_host_u32_decodes_device_sample() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn ipv4_from_host_u32_decodes_device_sample() {
         assert_eq!(
             ipv4_from_host_u32(2147592384),
             Ipv4Addr::new(192, 168, 1, 128)
         );
     }
 
-    #[test]
-    fn current_essid_finds_current_flag() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn current_essid_finds_current_flag() {
         let networks = vec![
             network(0, "Guest", "[DISABLED]"),
             network(1, "Home", NETWORK_FLAG_CURRENT),
@@ -222,24 +222,24 @@ mod tests {
         );
     }
 
-    #[test]
-    fn current_essid_none_when_no_current() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn current_essid_none_when_no_current() {
         let networks = vec![network(0, "Guest", "[DISABLED]")];
         assert!(current_essid(&networks).is_none());
     }
 
-    #[test]
-    fn current_essid_none_on_empty_list() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn current_essid_none_on_empty_list() {
         assert!(current_essid(&[]).is_none());
     }
 
-    #[test]
-    fn essid_display() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn essid_display() {
         assert_eq!(Essid::new("Cafe").to_string(), "Cafe");
     }
 
-    #[test]
-    fn assemble_ok_when_ip_present() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn assemble_ok_when_ip_present() {
         let mut ifaces = InterfaceIpMap::new();
         ifaces.insert("wlan0".to_string(), 2147592384);
         let essid = Essid::new("Home");
@@ -248,8 +248,8 @@ mod tests {
         assert_eq!(info.essid.as_str(), "Home");
     }
 
-    #[test]
-    fn assemble_err_when_ip_missing() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn assemble_err_when_ip_missing() {
         let essid = Essid::new("Home");
         assert!(matches!(
             assemble_network_info("wlan0", &essid, &InterfaceIpMap::new()),

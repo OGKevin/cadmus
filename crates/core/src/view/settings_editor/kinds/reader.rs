@@ -534,8 +534,8 @@ mod tests {
             )));
         }
 
-        #[test]
-        fn handle_set_family_updates_settings() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_set_family_updates_settings() {
             let setting = FontFamily;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -549,8 +549,8 @@ mod tests {
             assert_eq!(context.settings.reader.font_family, "Sourcerer");
         }
 
-        #[test]
-        fn handle_ignores_book_scoped_font_family() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_ignores_book_scoped_font_family() {
             let setting = FontFamily;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -568,8 +568,8 @@ mod tests {
             assert_eq!(context.settings.reader.font_family, original);
         }
 
-        #[test]
-        fn handle_returns_none_for_wrong_event() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_returns_none_for_wrong_event() {
             let setting = FontFamily;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -585,8 +585,8 @@ mod tests {
     mod finished_action_setting {
         use super::*;
 
-        #[test]
-        fn handle_set_action_updates_settings() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_set_action_updates_settings() {
             let setting = FinishedActionSetting;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -600,8 +600,8 @@ mod tests {
             assert_eq!(context.settings.reader.finished, FinishedAction::GoToNext);
         }
 
-        #[test]
-        fn handle_can_set_all_actions() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_can_set_all_actions() {
             let setting = FinishedActionSetting;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -648,8 +648,8 @@ mod tests {
                 ));
             }
 
-            #[test]
-            fn handle_toggle_adds_and_removes_extensions() {
+            #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+            async fn handle_toggle_adds_and_removes_extensions() {
                 let setting = DitheredKindsSetting;
                 let mut context = create_test_context();
                 context.settings = Settings::default();
@@ -696,8 +696,8 @@ mod tests {
             }
         }
 
-        #[test]
-        fn handle_returns_none_for_wrong_event() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_returns_none_for_wrong_event() {
             let setting = FinishedActionSetting;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -708,8 +708,8 @@ mod tests {
             assert!(result.0.is_none());
         }
 
-        #[test]
-        fn handle_returns_none_for_per_library_entry_id() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_returns_none_for_per_library_entry_id() {
             let setting = FinishedActionSetting;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -725,8 +725,8 @@ mod tests {
     mod refresh_rate_info {
         use super::*;
 
-        #[test]
-        fn handle_regular_submit_updates_display_without_writing_settings() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_regular_submit_updates_display_without_writing_settings() {
             let setting = RefreshRateInfo;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -752,8 +752,8 @@ mod tests {
             assert_eq!(context.settings.reader.refresh_rate.global.regular, 5);
         }
 
-        #[test]
-        fn handle_inverted_submit_updates_display_without_writing_settings() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_inverted_submit_updates_display_without_writing_settings() {
             let setting = RefreshRateInfo;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -779,8 +779,8 @@ mod tests {
             assert_eq!(context.settings.reader.refresh_rate.global.inverted, 10);
         }
 
-        #[test]
-        fn handle_invalid_text_falls_back_to_current_value() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_invalid_text_falls_back_to_current_value() {
             let setting = RefreshRateInfo;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -804,8 +804,8 @@ mod tests {
             );
         }
 
-        #[test]
-        fn handle_unrelated_event_returns_none() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_unrelated_event_returns_none() {
             let setting = RefreshRateInfo;
             let mut context = create_test_context();
             context.settings = Settings::default();

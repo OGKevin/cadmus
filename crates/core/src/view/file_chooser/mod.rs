@@ -662,12 +662,11 @@ mod tests {
     use crate::context::test_helpers::create_test_context;
     use crate::geom::Point;
     use std::collections::VecDeque;
-    use std::sync::mpsc::channel;
 
     fn create_test_file_chooser(rq: &mut RenderQueue, context: &mut AppContext) -> FileChooser {
         let rect = rect![0, 0, 600, 800];
         let path = PathBuf::from("/tmp");
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         FileChooser::new(rect, path, SelectionMode::File, &hub, rq, context)
     }
 
@@ -678,12 +677,12 @@ mod tests {
         mode: SelectionMode,
     ) -> FileChooser {
         let rect = rect![0, 0, 600, 800];
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         FileChooser::new(rect, path, mode, &hub, rq, context)
     }
 
-    #[test]
-    fn test_bottom_bar_rect_stored_correctly() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_bottom_bar_rect_stored_correctly() {
         let mut rq = RenderQueue::new();
         let mut context = create_test_context();
         let file_chooser = create_test_file_chooser(&mut rq, &mut context);
@@ -708,13 +707,13 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_tap_in_bottom_bar_is_consumed() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_tap_in_bottom_bar_is_consumed() {
         let mut rq = RenderQueue::new();
         let mut context = create_test_context();
         let mut file_chooser = create_test_file_chooser(&mut rq, &mut context);
 
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
 
         let bottom_bar = file_chooser.bottom_bar_rect();
@@ -733,13 +732,13 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_tap_outside_bottom_bar_not_consumed() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_tap_outside_bottom_bar_not_consumed() {
         let mut rq = RenderQueue::new();
         let mut context = create_test_context();
         let mut file_chooser = create_test_file_chooser(&mut rq, &mut context);
 
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
 
         let bottom_bar = file_chooser.bottom_bar_rect();
@@ -757,13 +756,13 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_page_event_still_handled() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_page_event_still_handled() {
         let mut rq = RenderQueue::new();
         let mut context = create_test_context();
         let mut file_chooser = create_test_file_chooser(&mut rq, &mut context);
 
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
 
         let page_event = Event::Page(CycleDir::Next);
@@ -773,13 +772,13 @@ mod tests {
         assert!(consumed, "Page event should still be handled correctly");
     }
 
-    #[test]
-    fn test_tap_on_bottom_bar_edge_is_consumed() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_tap_on_bottom_bar_edge_is_consumed() {
         let mut rq = RenderQueue::new();
         let mut context = create_test_context();
         let mut file_chooser = create_test_file_chooser(&mut rq, &mut context);
 
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
 
         let bottom_bar = file_chooser.bottom_bar_rect();
@@ -796,8 +795,8 @@ mod tests {
 
     // Tests for list_directory returning only files
 
-    #[test]
-    fn test_list_directory_returns_only_files() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_list_directory_returns_only_files() {
         let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
         let temp_path = temp_dir.path();
 
@@ -837,8 +836,8 @@ mod tests {
         assert_eq!(entries[2].name, "gamma.txt");
     }
 
-    #[test]
-    fn test_list_directory_returns_empty_for_empty_directory() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_list_directory_returns_empty_for_empty_directory() {
         let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
         let temp_path = temp_dir.path();
 
@@ -859,8 +858,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_list_directory_returns_error_for_nonexistent_path() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_list_directory_returns_error_for_nonexistent_path() {
         let mut rq = RenderQueue::new();
         let mut context = create_test_context();
         let file_chooser = create_test_file_chooser(&mut rq, &mut context);
@@ -875,8 +874,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_list_directory_returns_error_for_file_path() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_list_directory_returns_error_for_file_path() {
         let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
         let temp_path = temp_dir.path();
         let file_path = temp_path.join("test_file.txt");
@@ -895,8 +894,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_list_directory_sorts_alphabetically_case_insensitive() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_list_directory_sorts_alphabetically_case_insensitive() {
         let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
         let temp_path = temp_dir.path();
 
@@ -921,8 +920,8 @@ mod tests {
         assert_eq!(entries[2].name, "Zebra.txt");
     }
 
-    #[test]
-    fn test_list_directory_returns_no_files_in_directory_mode() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_list_directory_returns_no_files_in_directory_mode() {
         let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
         let temp_path = temp_dir.path();
 
@@ -950,8 +949,8 @@ mod tests {
 
     // Tests for "Select Current Folder" entry
 
-    #[test]
-    fn test_select_current_folder_entry_in_directory_mode() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_select_current_folder_entry_in_directory_mode() {
         let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
         let temp_path = temp_dir.path();
 
@@ -978,8 +977,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_select_current_folder_entry_in_both_mode() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_select_current_folder_entry_in_both_mode() {
         let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
         let temp_path = temp_dir.path();
 
@@ -1002,8 +1001,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_no_select_current_folder_entry_in_file_mode() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_no_select_current_folder_entry_in_file_mode() {
         let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
         let temp_path = temp_dir.path();
 
@@ -1026,8 +1025,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_select_current_folder_entry_path_is_current_directory() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_select_current_folder_entry_path_is_current_directory() {
         let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
         let temp_path = temp_dir.path();
 
@@ -1048,8 +1047,8 @@ mod tests {
 
     // Tests for selecting the current folder
 
-    #[test]
-    fn test_select_current_folder_selects_directory() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_select_current_folder_selects_directory() {
         let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
         let temp_path = temp_dir.path();
 
@@ -1062,7 +1061,7 @@ mod tests {
             SelectionMode::Directory,
         );
 
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
 
         let select_event = Event::Select(EntryId::FileEntry(temp_path.to_path_buf()));
@@ -1103,8 +1102,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_select_current_folder_in_both_mode() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_select_current_folder_in_both_mode() {
         let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
         let temp_path = temp_dir.path();
 
@@ -1117,7 +1116,7 @@ mod tests {
             SelectionMode::Both,
         );
 
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
 
         let select_event = Event::Select(EntryId::FileEntry(temp_path.to_path_buf()));
@@ -1140,8 +1139,8 @@ mod tests {
 
     // Tests for mode-specific selection behavior
 
-    #[test]
-    fn test_file_mode_rejects_directory_selection() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_file_mode_rejects_directory_selection() {
         let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
         let temp_path = temp_dir.path();
 
@@ -1154,7 +1153,7 @@ mod tests {
             SelectionMode::File,
         );
 
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
 
         let subdir_path = temp_path.join("subdir");
@@ -1171,8 +1170,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_directory_mode_accepts_directory_selection() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_directory_mode_accepts_directory_selection() {
         let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
         let temp_path = temp_dir.path();
 
@@ -1185,7 +1184,7 @@ mod tests {
             SelectionMode::Directory,
         );
 
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
 
         let select_event = Event::Select(EntryId::FileEntry(temp_path.to_path_buf()));
@@ -1203,8 +1202,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_directory_mode_rejects_file_selection() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_directory_mode_rejects_file_selection() {
         let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
         let temp_path = temp_dir.path();
 
@@ -1220,7 +1219,7 @@ mod tests {
             SelectionMode::Directory,
         );
 
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
 
         let select_event = Event::Select(EntryId::FileEntry(file_path));
@@ -1235,8 +1234,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_both_mode_accepts_file_selection() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_both_mode_accepts_file_selection() {
         let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
         let temp_path = temp_dir.path();
 
@@ -1252,7 +1251,7 @@ mod tests {
             SelectionMode::Both,
         );
 
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
 
         let select_event = Event::Select(EntryId::FileEntry(file_path.clone()));
@@ -1270,8 +1269,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_both_mode_accepts_directory_selection() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_both_mode_accepts_directory_selection() {
         let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
         let temp_path = temp_dir.path();
 
@@ -1284,7 +1283,7 @@ mod tests {
             SelectionMode::Both,
         );
 
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
 
         let select_event = Event::Select(EntryId::FileEntry(temp_path.to_path_buf()));
@@ -1304,8 +1303,8 @@ mod tests {
 
     // Tests for navigation bar integration
 
-    #[test]
-    fn test_navigation_bar_is_initialized() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_navigation_bar_is_initialized() {
         let mut rq = RenderQueue::new();
         let mut context = create_test_context();
         let file_chooser = create_test_file_chooser(&mut rq, &mut context);
@@ -1327,8 +1326,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_navigate_to_updates_navigation_bar() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_navigate_to_updates_navigation_bar() {
         let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
         let temp_path = temp_dir.path();
 
@@ -1358,8 +1357,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_toggle_select_directory_event_navigates() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_toggle_select_directory_event_navigates() {
         let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
         let temp_path = temp_dir.path();
 
@@ -1375,7 +1374,7 @@ mod tests {
             SelectionMode::File,
         );
 
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
 
         let initial_path = file_chooser.current_path.clone();
@@ -1395,8 +1394,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_navigation_bar_resized_event_consumed() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_navigation_bar_resized_event_consumed() {
         let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
         let temp_path = temp_dir.path();
 
@@ -1411,7 +1410,7 @@ mod tests {
             SelectionMode::File,
         );
 
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
 
         let resized_event = Event::NavigationBarResized(50);

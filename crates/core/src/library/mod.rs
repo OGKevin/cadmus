@@ -712,7 +712,6 @@ mod tests {
     use crate::settings::ImportSettings;
     use crate::task::ShutdownSignal;
     use std::str::FromStr;
-    use std::sync::mpsc;
 
     fn setup_library_with_book(
         dir: &Path,
@@ -722,7 +721,7 @@ mod tests {
     ) -> (Library, PathBuf) {
         let lib = Library::new(dir, db, name).expect("failed to create library");
         fs::write(dir.join(filename), b"dummy book content").expect("failed to write test file");
-        let (tx, _rx) = mpsc::channel();
+        let (tx, _rx) = crate::view::hub_channel();
         let notif_id = crate::view::ViewId::MessageNotif(0);
         let shutdown = ShutdownSignal::never();
         importer::run(
@@ -776,8 +775,8 @@ mod tests {
         info
     }
 
-    #[test]
-    fn copy_to_sets_absolute_path_in_destination() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn copy_to_sets_absolute_path_in_destination() {
         let src_dir = tempfile::tempdir().expect("failed to create src temp dir");
         let dst_dir = tempfile::tempdir().expect("failed to create dst temp dir");
         let mut db = Database::new(":memory:").expect("failed to create in-memory database");
@@ -822,8 +821,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn move_to_sets_absolute_path_in_destination() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn move_to_sets_absolute_path_in_destination() {
         let src_dir = tempfile::tempdir().expect("failed to create src temp dir");
         let dst_dir = tempfile::tempdir().expect("failed to create dst temp dir");
         let mut db = Database::new(":memory:").expect("failed to create in-memory database");
@@ -877,8 +876,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn neighbor_status_change_page_finds_next_and_previous_boundaries() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn neighbor_status_change_page_finds_next_and_previous_boundaries() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
         let mut db = Database::new(":memory:").expect("failed to create in-memory database");
         db.init_for_test(0).expect("failed to run migrations");
@@ -930,8 +929,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn next_book_after_returns_following_book_in_title_order() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn next_book_after_returns_following_book_in_title_order() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
         let mut db = Database::new(":memory:").expect("failed to create in-memory database");
         db.init_for_test(0).expect("failed to run migrations");
@@ -971,8 +970,8 @@ mod tests {
         assert!(missing.is_none(), "missing fingerprint should return none");
     }
 
-    #[test]
-    fn compute_sort_keys_assigns_correct_title_ranks() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn compute_sort_keys_assigns_correct_title_ranks() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
         let mut db = Database::new(":memory:").expect("failed to create in-memory database");
         db.init_for_test(0).expect("failed to run migrations");
@@ -1019,8 +1018,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn page_books_paginates_correctly() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn page_books_paginates_correctly() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
         let mut db = Database::new(":memory:").expect("failed to create in-memory database");
         db.init_for_test(0).expect("failed to run migrations");
@@ -1090,8 +1089,8 @@ mod tests {
         assert_eq!(page2[0].title, "Book 05");
     }
 
-    #[test]
-    fn page_books_reverse_order_reverses_results() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn page_books_reverse_order_reverses_results() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
         let mut db = Database::new(":memory:").expect("failed to create in-memory database");
         db.init_for_test(0).expect("failed to run migrations");
@@ -1132,8 +1131,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn page_method_uses_db_pagination_without_query() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn page_method_uses_db_pagination_without_query() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
         let mut db = Database::new(":memory:").expect("failed to create in-memory database");
         db.init_for_test(0).expect("failed to run migrations");
@@ -1166,8 +1165,8 @@ mod tests {
         assert_eq!(result.books[1].title, "Bob");
     }
 
-    #[test]
-    fn list_subdirectory_returns_correct_absolute_paths() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn list_subdirectory_returns_correct_absolute_paths() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
         let mut db = Database::new(":memory:").expect("failed to create in-memory database");
         db.init_for_test(0).expect("failed to run migrations");
@@ -1217,8 +1216,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn page_books_status_sort_orders_finished_new_reading() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn page_books_status_sort_orders_finished_new_reading() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
         let mut db = Database::new(":memory:").expect("failed to create in-memory database");
         db.init_for_test(0).expect("failed to run migrations");
@@ -1277,8 +1276,8 @@ mod tests {
         assert_eq!(books[2].title, "Reading Book");
     }
 
-    #[test]
-    fn page_books_progress_sort_orders_by_completion() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn page_books_progress_sort_orders_by_completion() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
         let mut db = Database::new(":memory:").expect("failed to create in-memory database");
         db.init_for_test(0).expect("failed to run migrations");
@@ -1343,8 +1342,8 @@ mod tests {
         assert_eq!(books[2].title, "Halfway Book");
     }
 
-    #[test]
-    fn page_books_pages_sort_orders_by_page_count() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn page_books_pages_sort_orders_by_page_count() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
         let mut db = Database::new(":memory:").expect("failed to create in-memory database");
         db.init_for_test(0).expect("failed to run migrations");
@@ -1391,8 +1390,8 @@ mod tests {
         assert_eq!(books[2].title, "Big Book");
     }
 
-    #[test]
-    fn page_books_size_sort_orders_by_file_size() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn page_books_size_sort_orders_by_file_size() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
         let mut db = Database::new(":memory:").expect("failed to create in-memory database");
         db.init_for_test(0).expect("failed to run migrations");
@@ -1435,8 +1434,8 @@ mod tests {
         assert_eq!(books[2].title, "Big Book");
     }
 
-    #[test]
-    fn page_books_kind_sort_orders_alphabetically_by_file_kind() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn page_books_kind_sort_orders_alphabetically_by_file_kind() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
         let mut db = Database::new(":memory:").expect("failed to create in-memory database");
         db.init_for_test(0).expect("failed to run migrations");
@@ -1480,8 +1479,8 @@ mod tests {
         assert_eq!(books[2].title, "PDF Book");
     }
 
-    #[test]
-    fn page_books_added_sort_orders_by_insertion_time() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn page_books_added_sort_orders_by_insertion_time() {
         use chrono::NaiveDateTime;
         let dir = tempfile::tempdir().expect("failed to create temp dir");
         let mut db = Database::new(":memory:").expect("failed to create in-memory database");
@@ -1532,8 +1531,8 @@ mod tests {
         assert_eq!(books[2].title, "Recent Book");
     }
 
-    #[test]
-    fn page_books_opened_sort_orders_by_last_opened_time() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn page_books_opened_sort_orders_by_last_opened_time() {
         use chrono::NaiveDateTime;
         let dir = tempfile::tempdir().expect("failed to create temp dir");
         let mut db = Database::new(":memory:").expect("failed to create in-memory database");
@@ -1589,8 +1588,8 @@ mod tests {
         assert_eq!(books[2].title, "Newest Opened");
     }
 
-    #[test]
-    fn page_books_year_sort_orders_by_publication_year() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn page_books_year_sort_orders_by_publication_year() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
         let mut db = Database::new(":memory:").expect("failed to create in-memory database");
         db.init_for_test(0).expect("failed to run migrations");
@@ -1633,8 +1632,8 @@ mod tests {
         assert_eq!(books[2].title, "Modern Book");
     }
 
-    #[test]
-    fn page_books_count_query_respects_prefix_filter() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn page_books_count_query_respects_prefix_filter() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
         let mut db = Database::new(":memory:").expect("failed to create in-memory database");
         db.init_for_test(0).expect("failed to run migrations");
@@ -1674,8 +1673,8 @@ mod tests {
         assert!(books.iter().all(|b| b.title.starts_with("Fiction")));
     }
 
-    #[test]
-    fn resolve_fingerprint_prefers_db_and_falls_back_to_filesystem() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn resolve_fingerprint_prefers_db_and_falls_back_to_filesystem() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
         let mut db = Database::new(":memory:").expect("failed to create in-memory database");
         db.init_for_test(0).expect("failed to run migrations");

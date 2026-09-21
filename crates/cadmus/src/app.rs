@@ -54,7 +54,6 @@ use cadmus_core::view::{
 use cadmus_core::view::{handle_event, process_render_queue, wait_for_all};
 use std::collections::VecDeque;
 use std::env;
-use std::sync::mpsc;
 use std::time::Instant;
 use tracing::{error, info, warn};
 
@@ -234,7 +233,7 @@ fn build_context(
     Ok(AppContext::new(device, library, database, settings, fonts))
 }
 
-pub fn run() -> Result<(), Error> {
+pub async fn run() -> Result<(), Error> {
     let start_time = Instant::now();
 
     let mut exit_status = ExitStatus::Quit;
@@ -308,7 +307,7 @@ pub fn run() -> Result<(), Error> {
     context.load_dictionaries();
     context.load_keyboard_layouts();
 
-    let (tx, rx) = context.device.input_mut().start(
+    let (tx, mut rx) = context.device.input_mut().start(
         context.display,
         context.settings.button_scheme,
         std::sync::Arc::clone(&context.inhibitor),
@@ -392,7 +391,7 @@ pub fn run() -> Result<(), Error> {
 
     tracing::info!(duration = ?start_time.elapsed(), "App started");
 
-    while let Ok(message) = rx.recv() {
+    while let Some(message) = rx.recv().await {
         let (evt, _input_wake) = message.into_parts();
         let skip_main_loop_lease =
             AppDevice::should_skip_main_loop_soft_suspend_lease(&context, &evt);
@@ -846,7 +845,7 @@ pub fn run() -> Result<(), Error> {
                 if !view.is::<Home>() =>
             {
                 if let Some(entry) = history.get_mut(0).filter(|entry| entry.view.is::<Home>()) {
-                    let (tx, _rx) = mpsc::channel();
+                    let (tx, _rx) = cadmus_core::view::hub_channel();
                     entry.view.handle_event(
                         &evt,
                         &tx,

@@ -15,7 +15,6 @@ use crate::device::inhibitor::{Inhibitor, Kind, SoftSuspendName};
 use crate::dictionary::{Entry, Metadata, normalize};
 use crate::fl;
 use crate::helpers::{Fingerprint, IsHidden};
-use crate::runtime::RUNTIME;
 use crate::task::{BackgroundTask, ShutdownSignal, TaskId};
 use crate::view::notification::NotificationEvent;
 use crate::view::{Event, ID_FEEDER, ViewId};
@@ -148,7 +147,7 @@ impl DictionaryIndexTask {
     ) -> Option<(i64, u64, u64, bool)> {
         let pool = self.database.pool().clone();
 
-        let meta = RUNTIME.block_on(async {
+        let meta = crate::runtime::block_on(async {
             sqlx::query!(
                 r#"SELECT dict_id, total_lines, indexed_lines, completed
                    FROM dictionary_index_meta
@@ -191,7 +190,7 @@ impl DictionaryIndexTask {
 
         let total = BufReader::new(file).lines().count() as i64;
 
-        let result = RUNTIME.block_on(async {
+        let result = crate::runtime::block_on(async {
             sqlx::query!(
                 r#"INSERT INTO dictionary_index_meta (fingerprint, dict_path, total_lines, indexed_lines, completed)
                    VALUES (?, ?, ?, 0, 0)"#,
@@ -208,16 +207,15 @@ impl DictionaryIndexTask {
             return None;
         }
 
-        let dict_id: i64 = RUNTIME
-            .block_on(async {
-                sqlx::query_scalar!(
-                    "SELECT dict_id FROM dictionary_index_meta WHERE fingerprint = ?",
-                    fp_str
-                )
-                .fetch_one(&pool)
-                .await
-            })
-            .ok()?;
+        let dict_id: i64 = crate::runtime::block_on(async {
+            sqlx::query_scalar!(
+                "SELECT dict_id FROM dictionary_index_meta WHERE fingerprint = ?",
+                fp_str
+            )
+            .fetch_one(&pool)
+            .await
+        })
+        .ok()?;
 
         Some((dict_id, 0u64, total as u64, true))
     }
@@ -227,7 +225,7 @@ impl DictionaryIndexTask {
     fn mark_completed(&self, dict_id: i64, path_str: &str, current_line: u64, total_lines: u64) {
         let pool = self.database.pool().clone();
 
-        let result = RUNTIME.block_on(async {
+        let result = crate::runtime::block_on(async {
             sqlx::query!(
                 "UPDATE dictionary_index_meta SET completed = 1 WHERE dict_id = ?",
                 dict_id,
@@ -473,7 +471,7 @@ impl DictionaryIndexTask {
         let pool = self.database.pool().clone();
         let indexed_lines = current_line as i64;
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let mut tx = pool.begin().await?;
 
             for (dict_id, word, offset, size, original) in batch {
@@ -539,15 +537,13 @@ impl DictionaryIndexTask {
     ) {
         let pool = self.database.pool().clone();
 
-        let result = RUNTIME.block_on(async {
+        let result = crate::runtime::block_on(async {
             let on_disk_set: HashSet<&str> =
                 on_disk_fingerprints.iter().map(|s| s.as_str()).collect();
 
-            let db_entries = sqlx::query!(
-                "SELECT fingerprint, dict_id FROM dictionary_index_meta"
-            )
-            .fetch_all(&pool)
-            .await?;
+            let db_entries = sqlx::query!("SELECT fingerprint, dict_id FROM dictionary_index_meta")
+                .fetch_all(&pool)
+                .await?;
 
             let mut deleted_any = false;
 
@@ -569,8 +565,7 @@ impl DictionaryIndexTask {
                 .execute(&pool)
                 .await?;
 
-                let total_deleted =
-                    delete_entries_for_dict(&pool, dict_id, shutdown).await?;
+                let total_deleted = delete_entries_for_dict(&pool, dict_id, shutdown).await?;
 
                 tracing::info!(fingerprint = %fp, total_deleted, "deleted stale dictionary index entries");
 
@@ -770,13 +765,13 @@ mod tests {
         .expect("failed to count entries")
     }
 
-    #[test]
-    fn test_delete_entries_for_dict_removes_all_entries() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_delete_entries_for_dict_removes_all_entries() {
         let db = setup_db();
         let pool = db.pool();
         let shutdown = ShutdownSignal::never();
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let dict_id = insert_meta(pool, "all-entries").await;
             for i in 0..5_i64 {
                 insert_entry(pool, dict_id, "word", i).await;
@@ -791,13 +786,13 @@ mod tests {
         });
     }
 
-    #[test]
-    fn test_delete_entries_for_dict_only_removes_target_dict() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_delete_entries_for_dict_only_removes_target_dict() {
         let db = setup_db();
         let pool = db.pool();
         let shutdown = ShutdownSignal::never();
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let dict_a = insert_meta(pool, "dict-a").await;
             let dict_b = insert_meta(pool, "dict-b").await;
 

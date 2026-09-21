@@ -17,7 +17,6 @@ use crate::frontlight::LightLevels;
 use crate::input::TouchProto;
 use crate::view::{Bus, Event, Hub, RenderQueue};
 use std::path::PathBuf;
-use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
 
 #[derive(Debug)]
@@ -352,8 +351,8 @@ impl InputSource for TestInputSource {
         _display: crate::framebuffer::Display,
         _button_scheme: crate::settings::ButtonScheme,
         _inhibitor: Arc<Inhibitor>,
-    ) -> (Hub, Receiver<crate::view::HubMessage>) {
-        std::sync::mpsc::channel()
+    ) -> (Hub, crate::view::HubReceiver) {
+        crate::view::hub_channel()
     }
 }
 

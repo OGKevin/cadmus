@@ -821,6 +821,7 @@ pub fn register_startup_tasks(
 mod tests {
     use super::*;
     use crate::context::test_helpers::create_test_context;
+    use crate::view::HubReceiverExt;
     use std::path::Path;
     use std::sync::mpsc;
     use std::time::{Duration, Instant};
@@ -861,7 +862,7 @@ mod tests {
     #[test]
     fn start_and_stop() {
         let mut manager = TaskManager::new();
-        let (hub, _rx) = mpsc::channel();
+        let (hub, _rx) = crate::view::hub_channel();
 
         let id = manager.start(Box::new(WaitingTask), hub).unwrap();
         assert!(manager.is_running(&id));
@@ -873,7 +874,7 @@ mod tests {
     #[test]
     fn duplicate_start_returns_error() {
         let mut manager = TaskManager::new();
-        let (hub, _rx) = mpsc::channel();
+        let (hub, _rx) = crate::view::hub_channel();
 
         manager.start(Box::new(WaitingTask), hub.clone()).unwrap();
         let err = manager.start(Box::new(WaitingTask), hub).unwrap_err();
@@ -884,7 +885,7 @@ mod tests {
     #[test]
     fn finished_task_is_cleaned_up() {
         let mut manager = TaskManager::new();
-        let (hub, _rx) = mpsc::channel();
+        let (hub, _rx) = crate::view::hub_channel();
 
         let id = manager.start(Box::new(InstantTask), hub).unwrap();
 
@@ -895,7 +896,7 @@ mod tests {
     #[test]
     fn stop_finished_task_returns_not_running() {
         let mut manager = TaskManager::new();
-        let (hub, _rx) = mpsc::channel();
+        let (hub, _rx) = crate::view::hub_channel();
 
         let id = manager.start(Box::new(InstantTask), hub).unwrap();
 
@@ -908,7 +909,7 @@ mod tests {
     #[test]
     fn running_tasks_excludes_finished() {
         let mut manager = TaskManager::new();
-        let (hub, _rx) = mpsc::channel();
+        let (hub, _rx) = crate::view::hub_channel();
 
         manager.start(Box::new(WaitingTask), hub.clone()).unwrap();
         let instant_id = manager.start(Box::new(InstantTask), hub).unwrap();
@@ -925,7 +926,7 @@ mod tests {
     #[test]
     fn stop_all_stops_everything() {
         let mut manager = TaskManager::new();
-        let (hub, _rx) = mpsc::channel();
+        let (hub, _rx) = crate::view::hub_channel();
 
         manager.start(Box::new(WaitingTask), hub).unwrap();
         manager.stop_all();
@@ -933,10 +934,10 @@ mod tests {
         assert!(!manager.is_running(&TaskId::TestTask));
     }
 
-    #[test]
-    fn test_thumbnail_extraction_task_lifecycle() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_thumbnail_extraction_task_lifecycle() {
         let mut manager = TaskManager::new();
-        let (hub, _rx) = mpsc::channel();
+        let (hub, _rx) = crate::view::hub_channel();
         let mut database = Database::new(":memory:").unwrap();
         database.init_for_test(0).unwrap();
         let settings = Settings::default();
@@ -965,10 +966,10 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn thumbnail_extraction_queues_when_running() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn thumbnail_extraction_queues_when_running() {
         let mut manager = TaskManager::new();
-        let (hub, _rx) = mpsc::channel();
+        let (hub, _rx) = crate::view::hub_channel();
 
         // Simulate a running ThumbnailExtraction task with a blocking thread.
         let (shutdown_tx, shutdown_rx) = mpsc::channel();
@@ -1041,10 +1042,10 @@ mod tests {
         wait_until_not_running(&mut manager, &TaskId::ThumbnailExtraction);
     }
 
-    #[test]
-    fn import_queue_preserves_force_flag() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn import_queue_preserves_force_flag() {
         let mut manager = TaskManager::new();
-        let (hub, _rx) = mpsc::channel();
+        let (hub, _rx) = crate::view::hub_channel();
         let context = create_test_context();
 
         // Simulate a running import task with a blocking thread.
@@ -1078,10 +1079,10 @@ mod tests {
         manager.stop(&TaskId::Import).unwrap();
     }
 
-    #[test]
-    fn import_queue_preserves_force_false_flag() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn import_queue_preserves_force_false_flag() {
         let mut manager = TaskManager::new();
-        let (hub, _rx) = mpsc::channel();
+        let (hub, _rx) = crate::view::hub_channel();
         let context = create_test_context();
 
         let (shutdown_tx, shutdown_rx) = mpsc::channel();
@@ -1132,7 +1133,7 @@ mod tests {
     fn thumbnail_was_scheduled(
         manager: &mut TaskManager,
         hub: &crate::view::Hub,
-        rx: &mpsc::Receiver<crate::view::HubMessage>,
+        rx: &mut crate::view::HubReceiver,
         context: &AppContext,
     ) -> bool {
         let deadline = Instant::now() + Duration::from_secs(5);
@@ -1152,12 +1153,12 @@ mod tests {
         false
     }
 
-    #[test]
-    fn interrupted_import_emits_no_completion_and_does_not_schedule_thumbnails() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn interrupted_import_emits_no_completion_and_does_not_schedule_thumbnails() {
         let dir = tempfile::tempdir().expect("tempdir");
         std::fs::write(dir.path().join("book.epub"), b"epub content").expect("write");
         let context = import_context(dir.path());
-        let (hub, rx) = mpsc::channel();
+        let (hub, mut rx) = crate::view::hub_channel();
         let mut task = import::ImportTask::new(
             context.database.clone(),
             context.settings.clone(),
@@ -1195,8 +1196,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn failed_import_emits_no_completion_and_does_not_schedule_thumbnails() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn failed_import_emits_no_completion_and_does_not_schedule_thumbnails() {
         let dir = tempfile::tempdir().expect("tempdir");
         let good = dir.path().join("good");
         std::fs::create_dir(&good).expect("mkdir");
@@ -1208,7 +1209,7 @@ mod tests {
             library_settings(&good),
             library_settings(&blocker.join("library")),
         ];
-        let (hub, rx) = mpsc::channel();
+        let (hub, mut rx) = crate::view::hub_channel();
         let mut task = import::ImportTask::new(
             context.database.clone(),
             context.settings.clone(),
@@ -1250,15 +1251,15 @@ mod tests {
         );
     }
 
-    #[test]
-    fn failed_import_advances_queued_import_without_scheduling_thumbnails() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn failed_import_advances_queued_import_without_scheduling_thumbnails() {
         let dir = tempfile::tempdir().expect("tempdir");
         let good = dir.path().join("good");
         std::fs::create_dir(&good).expect("mkdir");
         std::fs::write(good.join("book.epub"), b"epub content").expect("write");
         let mut context = create_test_context();
         context.settings.libraries = vec![library_settings(&good)];
-        let (hub, rx) = mpsc::channel();
+        let (hub, mut rx) = crate::view::hub_channel();
         let mut manager = TaskManager::new();
 
         let (shutdown_tx, shutdown_rx) = mpsc::channel();
@@ -1328,12 +1329,12 @@ mod tests {
         );
     }
 
-    #[test]
-    fn completed_import_emits_completion_and_schedules_thumbnails() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn completed_import_emits_completion_and_schedules_thumbnails() {
         let dir = tempfile::tempdir().expect("tempdir");
         std::fs::write(dir.path().join("book.epub"), b"epub content").expect("write");
         let context = import_context(dir.path());
-        let (hub, rx) = mpsc::channel();
+        let (hub, mut rx) = crate::view::hub_channel();
         let mut manager = TaskManager::new();
         let task = import::ImportTask::new(
             context.database.clone(),
@@ -1362,7 +1363,7 @@ mod tests {
 
         manager.handle_event(&finished, &hub, &context);
         assert!(
-            thumbnail_was_scheduled(&mut manager, &hub, &rx, &context),
+            thumbnail_was_scheduled(&mut manager, &hub, &mut rx, &context),
             "completed import must schedule thumbnail extraction"
         );
     }

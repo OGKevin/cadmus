@@ -169,17 +169,19 @@ mod tests {
         MonolingualClient::new().expect("failed to create client")
     }
 
-    #[test]
-    fn test_client_creation() {
-        create_test_client();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_client_creation() {
+        tokio::task::spawn_blocking(create_test_client)
+            .await
+            .expect("create_test_client join");
     }
 
     /// Fetches live metadata from the monolingual API.
     ///
     /// Run with: `cargo test -- --ignored`
-    #[test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     #[ignore = "requires network access to www.reader-dict.com"]
-    fn test_fetch_metadata_live() {
+    async fn test_fetch_metadata_live() {
         let client = create_test_client();
         let result = client.fetch_metadata();
         assert!(result.is_ok(), "fetch_metadata failed: {:?}", result.err());
@@ -194,9 +196,9 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     #[ignore = "requires network access to www.reader-dict.com"]
-    fn test_is_metadata_modified_since() {
+    async fn test_is_metadata_modified_since() {
         let client = create_test_client();
         let old_ts = UnixTimestamp::from(chrono::NaiveDate::from_ymd_opt(2000, 1, 1).unwrap());
         let result = client.is_metadata_modified_since(old_ts);

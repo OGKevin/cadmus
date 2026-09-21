@@ -194,7 +194,7 @@ pub trait InputSource: Send {
         display: crate::framebuffer::Display,
         button_scheme: ButtonScheme,
         inhibitor: Arc<crate::device::inhibitor::Inhibitor>,
-    ) -> (Hub, Receiver<crate::view::HubMessage>);
+    ) -> (Hub, crate::view::HubReceiver);
 
     /// Injects a raw [`InputEvent`] into the input pipeline.
     ///

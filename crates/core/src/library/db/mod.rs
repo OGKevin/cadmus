@@ -12,7 +12,6 @@ use crate::metadata::{
     CroppingMargins, FileInfo, Info, ReaderInfo, ScrollMode, SortMethod, TextAlign, ZoomMode,
     alphabetic_author, alphabetic_title, natural_cmp, sorter,
 };
-use crate::runtime::RUNTIME;
 use anyhow::Error;
 use conversion::{
     extract_authors, info_to_book_row, reader_info_to_reading_state_row, rows_to_toc_entries,
@@ -186,7 +185,7 @@ impl Db {
     pub fn register_library(&self, path: &str, name: &str) -> Result<i64, Error> {
         tracing::debug!(path = %path, name = %name, "registering library");
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let now = UnixTimestamp::now();
 
             let result = sqlx::query!(
@@ -211,7 +210,7 @@ impl Db {
     pub fn get_library_by_path(&self, path: &str) -> Result<Option<i64>, Error> {
         tracing::debug!(path = %path, "looking up library by path");
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let id = sqlx::query_scalar!(r#"SELECT id FROM libraries WHERE path = ?"#, path)
                 .fetch_optional(&self.pool)
                 .await?;
@@ -533,7 +532,7 @@ impl Db {
     pub fn get_all_books(&self, library_id: i64) -> Result<Vec<Info>, Error> {
         tracing::debug!(library_id, "fetching all books from database");
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let mut conn = self.pool.acquire().await?;
             Self::get_all_books_on(&mut conn, library_id).await
         })
@@ -675,7 +674,7 @@ impl Db {
     pub fn get_book_by_path(&self, library_id: i64, path: &Path) -> Result<Option<Info>, Error> {
         let path = path.to_string_lossy().into_owned();
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let row = sqlx::query_as!(
                 StoredBookRow,
                 r#"
@@ -753,7 +752,7 @@ impl Db {
     pub fn get_book_by_fingerprint(&self, library_id: i64, fp: Fp) -> Result<Option<Info>, Error> {
         let fingerprint = fp.to_string();
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let row = sqlx::query_as!(
                 StoredBookRow,
                 r#"
@@ -849,7 +848,7 @@ impl Db {
             "batch fetching books by fingerprints"
         );
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let mut result = FxHashMap::default();
             let mut conn = self.pool.acquire().await?;
 
@@ -939,7 +938,7 @@ impl Db {
         tracing::instrument(skip(self), fields(library_id))
     )]
     pub fn count_books(&self, library_id: i64) -> Result<usize, Error> {
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let count: i64 = sqlx::query_scalar!(
                 r#"
                 SELECT COUNT(*) AS "count!: i64"
@@ -969,7 +968,7 @@ impl Db {
         let prefix =
             (!prefix.as_os_str().is_empty()).then(|| prefix.to_string_lossy().into_owned());
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let rows: Vec<StoredBookRow> = sqlx::query_as!(
                 StoredBookRow,
                 r#"
@@ -1035,7 +1034,7 @@ impl Db {
         &self,
         library_id: i64,
     ) -> Result<Option<Info>, Error> {
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let row: Option<StoredBookRow> = sqlx::query_as!(
                 StoredBookRow,
                 r#"
@@ -1115,7 +1114,7 @@ impl Db {
     /// partially exhausted by many consecutive single-book insertions.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     pub fn compute_sort_keys(&self, library_id: i64) -> Result<(), Error> {
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let mut tx = self.pool.begin().await?;
             Self::compute_sort_keys_on(&mut tx, library_id).await?;
             tx.commit().await?;
@@ -1226,7 +1225,7 @@ impl Db {
             return Ok(true);
         }
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let mut tx = self.pool.begin().await?;
 
             sqlx::query!(
@@ -1393,7 +1392,7 @@ impl Db {
         library_id: i64,
         fp_str: &str,
     ) -> Result<Vec<TitleSortRow>, Error> {
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             sqlx::query_as!(
                 TitleSortRow,
                 r#"
@@ -1417,7 +1416,7 @@ impl Db {
         library_id: i64,
         fp_str: &str,
     ) -> Result<Vec<AuthorSortRow>, Error> {
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             sqlx::query_as!(
                 AuthorSortRow,
                 r#"
@@ -1441,7 +1440,7 @@ impl Db {
         library_id: i64,
         fp_str: &str,
     ) -> Result<Vec<FilePathSortRow>, Error> {
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             sqlx::query_as!(
                 FilePathSortRow,
                 r#"
@@ -1465,7 +1464,7 @@ impl Db {
         library_id: i64,
         fp_str: &str,
     ) -> Result<Vec<FileNameSortRow>, Error> {
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             sqlx::query_as!(
                 FileNameSortRow,
                 r#"
@@ -1489,7 +1488,7 @@ impl Db {
         library_id: i64,
         fp_str: &str,
     ) -> Result<Vec<SeriesSortRow>, Error> {
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             sqlx::query_as!(
                 SeriesSortRow,
                 r#"
@@ -1606,7 +1605,7 @@ impl Db {
             "#
         );
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let total: i64 = sqlx::query_scalar!(
                 r#"
                 SELECT COUNT(*)
@@ -1654,7 +1653,7 @@ impl Db {
         let prefix =
             (!prefix.as_os_str().is_empty()).then(|| prefix.to_string_lossy().into_owned());
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let children: Vec<String> = match prefix.as_deref() {
                 Some(prefix) => {
                     sqlx::query_scalar!(
@@ -1705,7 +1704,7 @@ impl Db {
     /// Returns the lifecycle status for a fingerprint, if a `books` row exists.
     pub(crate) fn book_status(&self, fp: Fp) -> Result<Option<BookStatus>, Error> {
         let fp_str = fp.to_string();
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             sqlx::query_scalar!(
                 r#"
                 SELECT status AS "status: BookStatus"
@@ -1722,7 +1721,7 @@ impl Db {
 
     /// Status of every row in `books`, including those not linked to a given library.
     pub(crate) fn all_book_statuses(&self) -> Result<FxHashMap<Fp, BookStatus>, Error> {
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let rows = sqlx::query!(
                 r#"
                 SELECT fingerprint AS "fingerprint!: Fp",
@@ -1946,7 +1945,7 @@ impl Db {
     pub fn insert_book(&self, library_id: i64, fp: Fp, info: &Info) -> Result<(), Error> {
         tracing::debug!(fp = %fp, library_id, "inserting book into database");
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let mut tx = self.pool.begin().await?;
 
             let book_row = info_to_book_row(fp, info)?;
@@ -1970,7 +1969,7 @@ impl Db {
     ) -> Result<(), Error> {
         tracing::debug!(fp = %fp, library_id, "linking book into library");
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let mut tx = self.pool.begin().await?;
             Self::link_book_to_library_on(&mut tx, library_id, fp, info).await?;
             tx.commit().await?;
@@ -2001,7 +2000,7 @@ impl Db {
         tracing::debug!(fp = %fp, library_id, status = %status, "updating book in database");
         let fp_str = fp.to_string();
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let mut tx = self.pool.begin().await?;
 
             let book_row = info_to_book_row(fp, info)?;
@@ -2115,7 +2114,7 @@ impl Db {
     pub fn delete_reading_state(&self, fp: Fp) -> Result<(), Error> {
         tracing::debug!(fp = %fp, "deleting reading state from database");
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let fp_str = fp.to_string();
 
             sqlx::query!(
@@ -2133,7 +2132,7 @@ impl Db {
     pub fn delete_book(&self, library_id: i64, fp: Fp) -> Result<(), Error> {
         tracing::debug!(fp = %fp, library_id, "deleting book from library");
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let fp_str = fp.to_string();
             let mut tx = self.pool.begin().await?;
 
@@ -2171,7 +2170,7 @@ impl Db {
         tracing::debug!(fp = %fp, "fetching thumbnail from database");
         let fp_str = fp.to_string();
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             sqlx::query_scalar!(
                 "SELECT thumbnail_data FROM thumbnails WHERE fingerprint = ?",
                 fp_str
@@ -2191,7 +2190,7 @@ impl Db {
         let path = path.to_string_lossy().into_owned();
         tracing::debug!(library_id, path, "fetching thumbnail by path from database");
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             sqlx::query_scalar!(
                 "SELECT t.thumbnail_data FROM library_books lb INNER JOIN thumbnails t ON lb.book_fingerprint = t.fingerprint WHERE lb.library_id = ? AND lb.file_path = ?",
                 library_id,
@@ -2208,7 +2207,7 @@ impl Db {
         tracing::debug!(fp = %fp, size = data.len(), "saving thumbnail to database");
         let fp_str = fp.to_string();
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             sqlx::query!(
                 r#"
                 INSERT INTO thumbnails (fingerprint, thumbnail_data)
@@ -2232,7 +2231,7 @@ impl Db {
         tracing::debug!(fp = %fp, "deleting thumbnail from database");
         let fp_str = fp.to_string();
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             sqlx::query!("DELETE FROM thumbnails WHERE fingerprint = ?", fp_str)
                 .execute(&self.pool)
                 .await?;
@@ -2250,7 +2249,7 @@ impl Db {
 
         tracing::debug!(count = fps.len(), "batch deleting thumbnails from database");
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let mut tx = self.pool.begin().await?;
             batch_delete_thumbnails_on(&mut tx, fps).await?;
             tx.commit().await?;
@@ -2264,7 +2263,7 @@ impl Db {
         let from_fp_str = from_fp.to_string();
         let to_fp_str = to_fp.to_string();
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             sqlx::query!(
                 r#"
                 UPDATE thumbnails
@@ -2289,7 +2288,7 @@ impl Db {
 
         tracing::debug!(count = moves.len(), "batch moving thumbnails in database");
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let mut tx = self.pool.begin().await?;
 
             for (from_fp, to_fp) in moves {
@@ -2314,7 +2313,7 @@ impl Db {
     pub fn save_reading_state(&self, fp: Fp, reader_info: &ReaderInfo) -> Result<(), Error> {
         tracing::debug!(fp = %fp, "saving reading state to database");
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let rs_row = reader_info_to_reading_state_row(fp, reader_info);
 
             sqlx::query!(
@@ -2392,7 +2391,7 @@ impl Db {
         tracing::debug!(fp = %fp, entry_count = toc.len(), "saving TOC to database");
         let fp_str = fp.to_string();
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let mut tx = self.pool.begin().await?;
 
             sqlx::query!("DELETE FROM toc_entries WHERE book_fingerprint = ?", fp_str)
@@ -2416,7 +2415,7 @@ impl Db {
 
         tracing::debug!(library_id, count = books.len(), "batch inserting books");
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let mut tx = self.pool.begin().await?;
             Self::batch_insert_books_on(&mut tx, library_id, books).await?;
             tx.commit().await?;
@@ -2460,7 +2459,7 @@ impl Db {
 
         tracing::debug!(library_id, count = books.len(), status = %status, "batch updating books");
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let mut tx = self.pool.begin().await?;
             Self::batch_update_books_on(&mut tx, library_id, books, status).await?;
             tx.commit().await?;
@@ -2604,7 +2603,7 @@ impl Db {
         tracing::instrument(skip(self), fields(library_id))
     )]
     pub fn list_book_handles(&self, library_id: i64) -> Result<Vec<BookHandle>, Error> {
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let rows = sqlx::query!(
                 r#"
                 SELECT lb.book_fingerprint AS "fingerprint!: Fp",
@@ -2642,7 +2641,7 @@ impl Db {
         tracing::instrument(skip(self), fields(library_id))
     )]
     pub fn books_without_thumbnails(&self, library_id: i64) -> Result<Vec<(Fp, PathBuf)>, Error> {
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let rows = sqlx::query!(
                 r#"
                 SELECT lb.book_fingerprint AS "fingerprint!: Fp",
@@ -2676,7 +2675,7 @@ impl Db {
         let rel_str = rel_path.to_string_lossy().into_owned();
         let abs_str = abs_path.to_string_lossy().into_owned();
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let mut tx = self.pool.begin().await?;
 
             sqlx::query!(
@@ -2713,7 +2712,7 @@ impl Db {
             "batch updating book paths in library"
         );
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let mut tx = self.pool.begin().await?;
             Self::batch_update_book_paths_on(&mut tx, library_id, updates).await?;
             tx.commit().await?;
@@ -2760,7 +2759,7 @@ impl Db {
             "batch deleting books from library"
         );
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let mut tx = self.pool.begin().await?;
             Self::batch_delete_books_on(&mut tx, library_id, fps).await?;
             tx.commit().await?;
@@ -2820,7 +2819,7 @@ impl Db {
         library_id: i64,
         allowed_kinds: &FxHashSet<FileExtension>,
     ) -> Result<Vec<Fp>, Error> {
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let mut tx = self.pool.begin().await?;
             let (purged, _) =
                 delete_books_with_disallowed_kinds_on(&mut tx, library_id, allowed_kinds).await?;
@@ -2837,7 +2836,7 @@ impl Db {
         library_id: i64,
         allowed_kinds: &FxHashSet<FileExtension>,
     ) -> Result<Vec<Fp>, Error> {
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let mut tx = self.pool.begin().await?;
             let (purged, orphaned) =
                 delete_books_with_disallowed_kinds_on(&mut tx, library_id, allowed_kinds).await?;
@@ -2865,7 +2864,7 @@ impl Db {
         library_id: i64,
         flush: ImportFlush<'_>,
     ) -> Result<(), Error> {
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let mut tx = self.pool.begin().await?;
             batch_delete_thumbnails_on(&mut tx, flush.thumbnails_to_delete).await?;
 
@@ -3083,71 +3082,71 @@ mod tests {
         }
     }
 
-    #[test]
-    fn midpoint_rank_both_none_returns_stride() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn midpoint_rank_both_none_returns_stride() {
         assert_eq!(midpoint_rank(&[None, None], 0), Some(SORT_RANK_STRIDE));
     }
 
-    #[test]
-    fn midpoint_rank_empty_slice_returns_stride() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn midpoint_rank_empty_slice_returns_stride() {
         assert_eq!(midpoint_rank(&[], 0), Some(SORT_RANK_STRIDE));
     }
 
-    #[test]
-    fn midpoint_rank_left_none_right_some_bisects() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn midpoint_rank_left_none_right_some_bisects() {
         // pos=0 → left=None, right=Some(10) → 10/2 = 5
         assert_eq!(midpoint_rank(&[Some(10)], 0), Some(5));
     }
 
-    #[test]
-    fn midpoint_rank_left_none_right_some_exactly_one_returns_none() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn midpoint_rank_left_none_right_some_exactly_one_returns_none() {
         assert_eq!(midpoint_rank(&[Some(1)], 0), None);
     }
 
-    #[test]
-    fn midpoint_rank_left_none_right_some_zero_returns_none() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn midpoint_rank_left_none_right_some_zero_returns_none() {
         assert_eq!(midpoint_rank(&[Some(0)], 0), None);
     }
 
-    #[test]
-    fn midpoint_rank_left_some_right_none_adds_stride() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn midpoint_rank_left_some_right_none_adds_stride() {
         // pos=1 → left=Some(5), right=None → 5 + 1000
         assert_eq!(midpoint_rank(&[Some(5)], 1), Some(5 + SORT_RANK_STRIDE));
     }
 
-    #[test]
-    fn midpoint_rank_left_some_right_some_bisects() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn midpoint_rank_left_some_right_some_bisects() {
         // pos=1 → left=Some(2), right=Some(10) → (2+10)/2 = 6
         assert_eq!(midpoint_rank(&[Some(2), Some(10)], 1), Some(6));
     }
 
-    #[test]
-    fn midpoint_rank_adjacent_values_returns_none() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn midpoint_rank_adjacent_values_returns_none() {
         // pos=1 → left=Some(5), right=Some(6) → mid=5 which is not > l
         assert_eq!(midpoint_rank(&[Some(5), Some(6)], 1), None);
     }
 
-    #[test]
-    fn midpoint_rank_equal_values_returns_none() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn midpoint_rank_equal_values_returns_none() {
         // pos=1 → left=Some(5), right=Some(5) → mid=5 which is not > l
         assert_eq!(midpoint_rank(&[Some(5), Some(5)], 1), None);
     }
 
-    #[test]
-    fn midpoint_rank_none_slots_ignored_on_left_side() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn midpoint_rank_none_slots_ignored_on_left_side() {
         // Slot at pos-1 is None → flattens to left=None, right=Some(20) → 20/2=10
         assert_eq!(midpoint_rank(&[None, Some(20)], 1), Some(10));
     }
 
-    #[test]
-    fn midpoint_rank_pos_beyond_slice_uses_last_as_left() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn midpoint_rank_pos_beyond_slice_uses_last_as_left() {
         // pos beyond length → right is None; left is the last element
         let ranks = vec![Some(500i64)];
         assert_eq!(midpoint_rank(&ranks, 1), Some(500 + SORT_RANK_STRIDE));
     }
 
-    #[test]
-    fn test_insert_and_get_book() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_insert_and_get_book() {
         let (_db, libdb) = create_test_db();
         let fp = Fp::from_u64(1);
 
@@ -3198,8 +3197,8 @@ mod tests {
         assert_eq!(retrieved_info.file.size, 1024);
     }
 
-    #[test]
-    fn test_insert_book_with_reading_state() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_insert_book_with_reading_state() {
         let (_db, libdb) = create_test_db();
         let fp = Fp::from_u64(2);
 
@@ -3246,8 +3245,8 @@ mod tests {
         assert!(!retrieved_reader.finished);
     }
 
-    #[test]
-    fn test_delete_book() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_delete_book() {
         let (_db, libdb) = create_test_db();
         let fp = Fp::from_u64(3);
 
@@ -3289,8 +3288,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_multiple_books() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_multiple_books() {
         let (_db, libdb) = create_test_db();
         let library_id = register_test_library(&libdb, "/tmp/test_library4", "Test Library 4");
 
@@ -3328,8 +3327,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_update_book() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_update_book() {
         let (_db, libdb) = create_test_db();
         let fp = Fp::from_u64(4);
 
@@ -3371,8 +3370,8 @@ mod tests {
         assert_eq!(updated.year, "2025");
     }
 
-    #[test]
-    fn test_get_all_books() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_get_all_books() {
         let (_db, libdb) = create_test_db();
         let library_id = register_test_library(&libdb, "/tmp/test_library6", "Test Library 6");
 
@@ -3406,8 +3405,8 @@ mod tests {
         assert!(titles.contains(&"Book 3".to_string()));
     }
 
-    #[test]
-    fn test_get_book_by_path_and_fingerprint() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_get_book_by_path_and_fingerprint() {
         let (_db, libdb) = create_test_db();
         let library_id =
             register_test_library(&libdb, "/tmp/test_library_lookup", "Lookup Library");
@@ -3455,8 +3454,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_batch_get_books_by_fingerprints() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_batch_get_books_by_fingerprints() {
         let (_db, libdb) = create_test_db();
         let library_id =
             register_test_library(&libdb, "/tmp/test_library_batch_lookup", "Batch Lookup");
@@ -3495,8 +3494,8 @@ mod tests {
         assert!(empty.is_empty());
     }
 
-    #[test]
-    fn test_count_books() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_count_books() {
         let (_db, libdb) = create_test_db();
         let library_id = register_test_library(&libdb, "/tmp/test_library_count", "Count Library");
 
@@ -3523,8 +3522,8 @@ mod tests {
         assert_eq!(libdb.count_books(library_id).expect("count failed"), 2);
     }
 
-    #[test]
-    fn test_list_books_under_prefix() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_list_books_under_prefix() {
         let (_db, libdb) = create_test_db();
         let library_id =
             register_test_library(&libdb, "/tmp/test_library_prefix_books", "Prefix Books");
@@ -3580,8 +3579,8 @@ mod tests {
         assert_eq!(exact_book[0].fp, Some(fp3));
     }
 
-    #[test]
-    fn test_list_directories_under_prefix() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_list_directories_under_prefix() {
         let (_db, libdb) = create_test_db();
         let library_id =
             register_test_library(&libdb, "/tmp/test_library_prefix_dirs", "Prefix Dirs");
@@ -3627,8 +3626,8 @@ mod tests {
         assert!(leaf_dirs.is_empty());
     }
 
-    #[test]
-    fn test_reading_state_crud() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_reading_state_crud() {
         let (_db, libdb) = create_test_db();
         let fp = Fp::from_u64(5);
 
@@ -3693,8 +3692,8 @@ mod tests {
         assert!(updated_reader.finished);
     }
 
-    #[test]
-    fn test_batch_insert_books() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_batch_insert_books() {
         let (_db, libdb) = create_test_db();
         let library_id = register_test_library(&libdb, "/tmp/test_library8", "Test Library 8");
 
@@ -3742,8 +3741,8 @@ mod tests {
         assert_eq!(all_books.len(), 5);
     }
 
-    #[test]
-    fn test_batch_update_books() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_batch_update_books() {
         let (_db, libdb) = create_test_db();
         let library_id = register_test_library(&libdb, "/tmp/test_library9", "Test Library 9");
 
@@ -3790,8 +3789,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_delete_reading_state() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_delete_reading_state() {
         let (_db, libdb) = create_test_db();
         let fp = Fp::from_str("0000000000000006").unwrap();
 
@@ -3842,8 +3841,8 @@ mod tests {
         assert!(retrieved.reader_info.is_none());
     }
 
-    #[test]
-    fn test_thumbnail_crud() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_thumbnail_crud() {
         let (_db, libdb) = create_test_db();
         let library_id =
             register_test_library(&libdb, "/tmp/test_library_thumbnails", "Thumbnail Library");
@@ -3876,8 +3875,8 @@ mod tests {
         assert!(thumbnail.is_none());
     }
 
-    #[test]
-    fn test_books_without_thumbnails() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_books_without_thumbnails() {
         let (_db, libdb) = create_test_db();
         let library_id = register_test_library(
             &libdb,
@@ -3920,8 +3919,8 @@ mod tests {
         assert!(missing.is_empty());
     }
 
-    #[test]
-    fn test_batch_delete_thumbnails() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_batch_delete_thumbnails() {
         let (_db, libdb) = create_test_db();
         let library_id = register_test_library(
             &libdb,
@@ -3970,8 +3969,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_move_thumbnail() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_move_thumbnail() {
         let (_db, libdb) = create_test_db();
         let library_id =
             register_test_library(&libdb, "/tmp/test_library_move_thumbnail", "Move Thumbnail");
@@ -4013,8 +4012,8 @@ mod tests {
         assert_eq!(new_thumbnail, Some(data));
     }
 
-    #[test]
-    fn test_batch_move_thumbnails() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_batch_move_thumbnails() {
         let (_db, libdb) = create_test_db();
         let library_id = register_test_library(
             &libdb,
@@ -4092,8 +4091,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_list_book_handles_and_update_book_path() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_list_book_handles_and_update_book_path() {
         let (_db, libdb) = create_test_db();
         let library_id = register_test_library(&libdb, "/tmp/test_library_handles", "Handles");
 
@@ -4138,8 +4137,8 @@ mod tests {
         assert_eq!(handles[0].abs, PathBuf::from("/abs/new/path.pdf"));
     }
 
-    #[test]
-    fn test_batch_update_book_paths() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_batch_update_book_paths() {
         let (_db, libdb) = create_test_db();
         let library_id =
             register_test_library(&libdb, "/tmp/test_library_batch_paths", "Batch Paths");
@@ -4212,8 +4211,8 @@ mod tests {
         assert_eq!(h2.file_size, Some(fp2_size));
     }
 
-    #[test]
-    fn test_batch_delete_books() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_batch_delete_books() {
         let (_db, libdb) = create_test_db();
         let library_id = register_test_library(&libdb, "/tmp/test_library11", "Test Library 11");
 
@@ -4256,8 +4255,8 @@ mod tests {
         }));
     }
 
-    #[test]
-    fn test_batch_operations_with_empty_input() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_batch_operations_with_empty_input() {
         let (_db, libdb) = create_test_db();
         let library_id = register_test_library(&libdb, "/tmp/test_library12", "Test Library 12");
 
@@ -4275,8 +4274,8 @@ mod tests {
             .expect("empty batch delete should succeed");
     }
 
-    #[test]
-    fn test_categories_round_trip() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_categories_round_trip() {
         let (_db, libdb) = create_test_db();
         let fp = Fp::from_u64(0x99);
 
@@ -4315,8 +4314,8 @@ mod tests {
         assert_eq!(retrieved.categories, info.categories);
     }
 
-    #[test]
-    fn test_categories_updated_on_update_book() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_categories_updated_on_update_book() {
         let (_db, libdb) = create_test_db();
         let fp = Fp::from_u64(0x9A);
 
@@ -4359,8 +4358,8 @@ mod tests {
         assert_eq!(retrieved.categories, info.categories);
     }
 
-    #[test]
-    fn most_recently_opened_reading_book_none_when_empty() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn most_recently_opened_reading_book_none_when_empty() {
         let (_db, libdb) = create_test_db();
         let library_id = register_test_library(&libdb, "/tmp/mro_empty", "MRO Empty");
         assert!(
@@ -4371,8 +4370,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn most_recently_opened_reading_book_none_when_only_finished() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn most_recently_opened_reading_book_none_when_only_finished() {
         let (_db, libdb) = create_test_db();
         let library_id = register_test_library(&libdb, "/tmp/mro_finished", "MRO Finished");
         let fp = Fp::from_str("AA00000000000001").unwrap();
@@ -4393,8 +4392,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn most_recently_opened_reading_book_returns_unfinished() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn most_recently_opened_reading_book_returns_unfinished() {
         let (_db, libdb) = create_test_db();
         let library_id = register_test_library(&libdb, "/tmp/mro_unfinished", "MRO Unfinished");
 
@@ -4428,8 +4427,8 @@ mod tests {
         assert!(!result.unwrap().reader_info.unwrap().finished);
     }
 
-    #[test]
-    fn most_recently_opened_reading_book_skips_never_opened() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn most_recently_opened_reading_book_skips_never_opened() {
         let (_db, libdb) = create_test_db();
         let library_id = register_test_library(&libdb, "/tmp/mro_new", "MRO New");
 
@@ -4451,15 +4450,15 @@ mod tests {
         );
     }
 
-    #[test]
-    fn compute_sort_keys_empty_library_is_noop() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn compute_sort_keys_empty_library_is_noop() {
         let (_db, libdb) = create_test_db();
         let library_id = register_test_library(&libdb, "/tmp/sort_empty", "Sort Empty");
         libdb.compute_sort_keys(library_id).expect("compute failed");
     }
 
-    #[test]
-    fn compute_sort_keys_assigns_ranks_to_all_books() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn compute_sort_keys_assigns_ranks_to_all_books() {
         let (_db, libdb) = create_test_db();
         let library_id = register_test_library(&libdb, "/tmp/sort_assign", "Sort Assign");
 
@@ -4484,8 +4483,8 @@ mod tests {
         assert_eq!(books.len(), 3);
     }
 
-    #[test]
-    fn insert_sort_rank_places_new_book_between_neighbours() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn insert_sort_rank_places_new_book_between_neighbours() {
         let (_db, libdb) = create_test_db();
         let library_id = register_test_library(&libdb, "/tmp/sort_insert", "Sort Insert");
 
@@ -4513,8 +4512,8 @@ mod tests {
         assert_eq!(titles, vec!["Aardvark", "Mango", "Zebra"]);
     }
 
-    #[test]
-    fn insert_sort_rank_falls_back_to_full_recompute_when_gaps_exhausted() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn insert_sort_rank_falls_back_to_full_recompute_when_gaps_exhausted() {
         let (_db, libdb) = create_test_db();
         let library_id = register_test_library(&libdb, "/tmp/sort_exhaust", "Sort Exhaust");
 
@@ -4571,8 +4570,8 @@ mod tests {
         libdb.compute_sort_keys(library_id).unwrap();
     }
 
-    #[test]
-    fn page_books_sort_by_author() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn page_books_sort_by_author() {
         let (_db, libdb) = create_test_db();
         let library_id = register_test_library(&libdb, "/tmp/pb_author", "PB Author");
         insert_books_for_paging(&libdb, library_id);
@@ -4584,8 +4583,8 @@ mod tests {
         assert_eq!(books[0].author, "Alpha");
     }
 
-    #[test]
-    fn page_books_sort_by_year() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn page_books_sort_by_year() {
         let (_db, libdb) = create_test_db();
         let library_id = register_test_library(&libdb, "/tmp/pb_year", "PB Year");
         insert_books_for_paging(&libdb, library_id);
@@ -4596,8 +4595,8 @@ mod tests {
         assert_eq!(books[0].year, "2019");
     }
 
-    #[test]
-    fn page_books_sort_by_size() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn page_books_sort_by_size() {
         let (_db, libdb) = create_test_db();
         let library_id = register_test_library(&libdb, "/tmp/pb_size", "PB Size");
         insert_books_for_paging(&libdb, library_id);
@@ -4608,8 +4607,8 @@ mod tests {
         assert_eq!(books[0].file.size, 300);
     }
 
-    #[test]
-    fn page_books_sort_by_kind() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn page_books_sort_by_kind() {
         let (_db, libdb) = create_test_db();
         let library_id = register_test_library(&libdb, "/tmp/pb_kind", "PB Kind");
         insert_books_for_paging(&libdb, library_id);
@@ -4621,8 +4620,8 @@ mod tests {
         assert_eq!(books[0].file.kind, Some(FileExtension::Epub));
     }
 
-    #[test]
-    fn page_books_sort_by_pages() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn page_books_sort_by_pages() {
         let (_db, libdb) = create_test_db();
         let library_id = register_test_library(&libdb, "/tmp/pb_pages", "PB Pages");
         insert_books_for_paging(&libdb, library_id);
@@ -4633,8 +4632,8 @@ mod tests {
         assert_eq!(books[0].reader_info.as_ref().unwrap().pages_count, 50);
     }
 
-    #[test]
-    fn page_books_sort_by_opened() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn page_books_sort_by_opened() {
         let (_db, libdb) = create_test_db();
         let library_id = register_test_library(&libdb, "/tmp/pb_opened", "PB Opened");
         insert_books_for_paging(&libdb, library_id);
@@ -4647,8 +4646,8 @@ mod tests {
         assert_eq!(books.len(), 3);
     }
 
-    #[test]
-    fn page_books_sort_by_added() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn page_books_sort_by_added() {
         let (_db, libdb) = create_test_db();
         let library_id = register_test_library(&libdb, "/tmp/pb_added", "PB Added");
         insert_books_for_paging(&libdb, library_id);
@@ -4659,8 +4658,8 @@ mod tests {
         assert_eq!(books.len(), 3);
     }
 
-    #[test]
-    fn page_books_sort_by_status() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn page_books_sort_by_status() {
         let (_db, libdb) = create_test_db();
         let library_id = register_test_library(&libdb, "/tmp/pb_status", "PB Status");
 
@@ -4700,8 +4699,8 @@ mod tests {
         assert_eq!(books[0].title, "Finished");
     }
 
-    #[test]
-    fn page_books_sort_by_progress() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn page_books_sort_by_progress() {
         let (_db, libdb) = create_test_db();
         let library_id = register_test_library(&libdb, "/tmp/pb_progress", "PB Progress");
 
@@ -4742,8 +4741,8 @@ mod tests {
         assert_eq!(books[0].title, "Finished");
     }
 
-    #[test]
-    fn page_books_reverse_order() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn page_books_reverse_order() {
         let (_db, libdb) = create_test_db();
         let library_id = register_test_library(&libdb, "/tmp/pb_reverse", "PB Reverse");
         insert_books_for_paging(&libdb, library_id);
@@ -4759,8 +4758,8 @@ mod tests {
         assert_eq!(asc[asc.len() - 1].title, desc[0].title);
     }
 
-    #[test]
-    fn page_books_pagination_offset() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn page_books_pagination_offset() {
         let (_db, libdb) = create_test_db();
         let library_id = register_test_library(&libdb, "/tmp/pb_pagination", "PB Pagination");
         insert_books_for_paging(&libdb, library_id);
@@ -4779,78 +4778,78 @@ mod tests {
         assert_ne!(page1[0].title, page2[0].title);
     }
 
-    #[test]
-    fn parse_zoom_mode_none_returns_none() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn parse_zoom_mode_none_returns_none() {
         assert!(Db::parse_zoom_mode(None).is_none());
     }
 
-    #[test]
-    fn parse_zoom_mode_invalid_json_returns_none() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn parse_zoom_mode_invalid_json_returns_none() {
         assert!(Db::parse_zoom_mode(Some(&"not-valid-json".to_string())).is_none());
     }
 
-    #[test]
-    fn parse_scroll_mode_none_returns_none() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn parse_scroll_mode_none_returns_none() {
         assert!(Db::parse_scroll_mode(None).is_none());
     }
 
-    #[test]
-    fn parse_scroll_mode_invalid_json_returns_none() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn parse_scroll_mode_invalid_json_returns_none() {
         assert!(Db::parse_scroll_mode(Some(&"{{bad}}".to_string())).is_none());
     }
 
-    #[test]
-    fn parse_text_align_none_returns_none() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn parse_text_align_none_returns_none() {
         assert!(Db::parse_text_align(None).is_none());
     }
 
-    #[test]
-    fn parse_text_align_invalid_json_returns_none() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn parse_text_align_invalid_json_returns_none() {
         assert!(Db::parse_text_align(Some(&"???".to_string())).is_none());
     }
 
-    #[test]
-    fn parse_cropping_margins_none_returns_none() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn parse_cropping_margins_none_returns_none() {
         assert!(Db::parse_cropping_margins(None).is_none());
     }
 
-    #[test]
-    fn parse_cropping_margins_invalid_json_returns_none() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn parse_cropping_margins_invalid_json_returns_none() {
         assert!(Db::parse_cropping_margins(Some(&"bad".to_string())).is_none());
     }
 
-    #[test]
-    fn parse_page_names_none_returns_empty_map() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn parse_page_names_none_returns_empty_map() {
         assert!(Db::parse_page_names(None).is_empty());
     }
 
-    #[test]
-    fn parse_page_names_invalid_json_returns_empty_map() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn parse_page_names_invalid_json_returns_empty_map() {
         assert!(Db::parse_page_names(Some(&"!".to_string())).is_empty());
     }
 
-    #[test]
-    fn parse_bookmarks_none_returns_empty_set() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn parse_bookmarks_none_returns_empty_set() {
         assert!(Db::parse_bookmarks(None).is_empty());
     }
 
-    #[test]
-    fn parse_bookmarks_invalid_json_returns_empty_set() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn parse_bookmarks_invalid_json_returns_empty_set() {
         assert!(Db::parse_bookmarks(Some(&"!".to_string())).is_empty());
     }
 
-    #[test]
-    fn parse_annotations_none_returns_empty_vec() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn parse_annotations_none_returns_empty_vec() {
         assert!(Db::parse_annotations(None).is_empty());
     }
 
-    #[test]
-    fn parse_annotations_invalid_json_returns_empty_vec() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn parse_annotations_invalid_json_returns_empty_vec() {
         assert!(Db::parse_annotations(Some(&"!".to_string())).is_empty());
     }
 
-    #[test]
-    fn parse_page_offset_both_some_returns_point() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn parse_page_offset_both_some_returns_point() {
         let p = Db::parse_page_offset(Some(3), Some(7));
         assert!(p.is_some());
         let p = p.unwrap();
@@ -4858,41 +4857,41 @@ mod tests {
         assert_eq!(p.y, 7);
     }
 
-    #[test]
-    fn parse_page_offset_one_none_returns_none() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn parse_page_offset_one_none_returns_none() {
         assert!(Db::parse_page_offset(Some(1), None).is_none());
         assert!(Db::parse_page_offset(None, Some(1)).is_none());
         assert!(Db::parse_page_offset(None, None).is_none());
     }
 
-    #[test]
-    fn extract_authors_none_returns_empty_string() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn extract_authors_none_returns_empty_string() {
         assert_eq!(Db::extract_authors(None), "");
     }
 
-    #[test]
-    fn extract_authors_comma_separated_joins_with_space() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn extract_authors_comma_separated_joins_with_space() {
         assert_eq!(
             Db::extract_authors(Some("Alice,Bob,Carol".to_string())),
             "Alice, Bob, Carol"
         );
     }
 
-    #[test]
-    fn extract_categories_none_returns_empty_set() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn extract_categories_none_returns_empty_set() {
         assert!(Db::extract_categories(None).is_empty());
     }
 
-    #[test]
-    fn extract_categories_filters_empty_strings() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn extract_categories_filters_empty_strings() {
         let cats = Db::extract_categories(Some(",Fiction,,Science,".to_string()));
         assert_eq!(cats.len(), 2);
         assert!(cats.contains("Fiction"));
         assert!(cats.contains("Science"));
     }
 
-    #[test]
-    fn test_batch_insert_with_reading_state() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_batch_insert_with_reading_state() {
         let (_db, libdb) = create_test_db();
         let library_id = register_test_library(&libdb, "/tmp/test_library13", "Test Library 13");
 
@@ -4950,8 +4949,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn delete_books_with_disallowed_kinds_removes_wrong_kind() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn delete_books_with_disallowed_kinds_removes_wrong_kind() {
         use crate::document::file_extension::FileExtension;
 
         let (_db, libdb) = create_test_db();
@@ -5002,8 +5001,8 @@ mod tests {
         assert!(!fps.contains(&pdf_fp), "pdf should be gone");
     }
 
-    #[test]
-    fn purge_disallowed_books_and_thumbnails_rolls_back_on_error_after_books() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn purge_disallowed_books_and_thumbnails_rolls_back_on_error_after_books() {
         use crate::document::file_extension::FileExtension;
 
         let (_db, libdb) = create_test_db();
@@ -5102,8 +5101,8 @@ mod tests {
         )
     }
 
-    #[test]
-    fn flush_import_scan_keeps_relocated_book_and_thumbnail_on_error_after_delete() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn flush_import_scan_keeps_relocated_book_and_thumbnail_on_error_after_delete() {
         let (_db, libdb) = create_test_db();
         let library_id = register_test_library(&libdb, "/tmp/flush_reloc", "Flush Reloc");
 
@@ -5135,8 +5134,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn flush_import_scan_keeps_sort_keys_on_error_before_recompute() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn flush_import_scan_keeps_sort_keys_on_error_before_recompute() {
         let (_db, libdb) = create_test_db();
         let library_id = register_test_library(&libdb, "/tmp/flush_sort", "Flush Sort");
 
@@ -5185,8 +5184,8 @@ mod tests {
         assert_eq!(titles_after, titles_before);
     }
 
-    #[test]
-    fn flush_import_scan_converges_after_interrupted_then_complete_run() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn flush_import_scan_converges_after_interrupted_then_complete_run() {
         let (_db, libdb) = create_test_db();
         let library_id = register_test_library(&libdb, "/tmp/flush_conv", "Flush Conv");
 
@@ -5227,8 +5226,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn flush_import_scan_skips_sort_keys_when_not_dirty() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn flush_import_scan_skips_sort_keys_when_not_dirty() {
         let (_db, libdb) = create_test_db();
         let library_id = register_test_library(&libdb, "/tmp/flush_skip_sort", "Flush Skip Sort");
 
@@ -5294,8 +5293,8 @@ mod tests {
         assert_eq!(titles, ["Mike", "Zeta", "Zulu"]);
     }
 
-    #[test]
-    fn purge_disallowed_books_keeps_thumbnail_when_still_in_another_library() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn purge_disallowed_books_keeps_thumbnail_when_still_in_another_library() {
         use crate::document::file_extension::FileExtension;
 
         let (_db, libdb) = create_test_db();
@@ -5353,8 +5352,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn pending_stub_survives_disallowed_kind_purge_with_reading_state() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn pending_stub_survives_disallowed_kind_purge_with_reading_state() {
         let (db, libdb) = create_test_db();
         let library_id = register_test_library(&libdb, "/tmp/test_pending_purge", "Pending Purge");
 
@@ -5362,7 +5361,7 @@ mod tests {
         let fp_str = stub_fp.to_string();
         let now = crate::db::types::UnixTimestamp::now();
 
-        crate::runtime::RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             sqlx::query!(
                 r#"
                 INSERT INTO books (fingerprint, file_kind, file_size, added_at, status)
@@ -5422,7 +5421,7 @@ mod tests {
             BookStatus::PendingDiscovery
         );
 
-        let page = crate::runtime::RUNTIME.block_on(async {
+        let page = crate::runtime::block_on(async {
             sqlx::query_scalar!(
                 r#"SELECT current_page AS "current_page!" FROM reading_states WHERE fingerprint = ?"#,
                 fp_str,
@@ -5434,8 +5433,8 @@ mod tests {
         assert_eq!(page, 3);
     }
 
-    #[test]
-    fn shelf_view_omits_pending_includes_active() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn shelf_view_omits_pending_includes_active() {
         let (db, libdb) = create_test_db();
         let library_id = register_test_library(&libdb, "/tmp/test_shelf_status", "Shelf Status");
 
@@ -5458,7 +5457,7 @@ mod tests {
 
         let pending_str = pending_fp.to_string();
         let now = crate::db::types::UnixTimestamp::now();
-        crate::runtime::RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             sqlx::query!(
                 r#"
                 INSERT INTO books (fingerprint, file_kind, file_size, added_at, status)
@@ -5495,8 +5494,8 @@ mod tests {
         assert_eq!(handles.len(), 2, "import handles include pending");
     }
 
-    #[test]
-    fn update_activates_existing_pending_stub_onto_shelf() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn update_activates_existing_pending_stub_onto_shelf() {
         let (db, libdb) = create_test_db();
         let library_a = register_test_library(&libdb, "/tmp/test_promote_a", "Lib A");
         let library_b = register_test_library(&libdb, "/tmp/test_promote_b", "Lib B");
@@ -5505,7 +5504,7 @@ mod tests {
         let fp_str = fp.to_string();
         let now = crate::db::types::UnixTimestamp::now();
 
-        crate::runtime::RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             sqlx::query!(
                 r#"
                 INSERT INTO books (fingerprint, file_kind, file_size, added_at, status)
@@ -5560,7 +5559,7 @@ mod tests {
             "library B should see the book after update+link"
         );
 
-        let status = crate::runtime::RUNTIME.block_on(async {
+        let status = crate::runtime::block_on(async {
             sqlx::query_scalar!(
                 r#"SELECT status AS "status!: BookStatus" FROM books WHERE fingerprint = ?"#,
                 fp_str,
@@ -5572,8 +5571,8 @@ mod tests {
         assert_eq!(status, BookStatus::Active);
     }
 
-    #[test]
-    fn update_and_batch_update_write_mtime_and_file_size_on_existing_membership() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn update_and_batch_update_write_mtime_and_file_size_on_existing_membership() {
         let (db, libdb) = create_test_db();
         let library_id =
             register_test_library(&libdb, "/tmp/test_update_mtime_size", "Update Mtime Size");
@@ -5582,7 +5581,7 @@ mod tests {
         let batch_fp = Fp::from_u64(9602);
         let now = crate::db::types::UnixTimestamp::now();
 
-        crate::runtime::RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             for fp in [update_fp, batch_fp] {
                 let fp_str = fp.to_string();
                 sqlx::query!(
@@ -5657,8 +5656,8 @@ mod tests {
         assert_eq!(batched.relat, PathBuf::from("batched.epub"));
     }
 
-    #[test]
-    fn batch_get_books_includes_pending_discovery_rows() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn batch_get_books_includes_pending_discovery_rows() {
         let (db, libdb) = create_test_db();
         let library_id =
             register_test_library(&libdb, "/tmp/test_batch_get_pending", "Pending Fetch");
@@ -5667,7 +5666,7 @@ mod tests {
         let fp_str = fp.to_string();
         let now = crate::db::types::UnixTimestamp::now();
 
-        crate::runtime::RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             sqlx::query!(
                 r#"
                 INSERT INTO books (fingerprint, title, file_kind, file_size, added_at, status)
@@ -5708,8 +5707,8 @@ mod tests {
         assert_eq!(info.title, "Stub Title");
     }
 
-    #[test]
-    fn count_and_directories_exclude_pending_discovery() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn count_and_directories_exclude_pending_discovery() {
         let (db, libdb) = create_test_db();
         let library_id =
             register_test_library(&libdb, "/tmp/test_count_dirs_pending", "Pending Count Dirs");
@@ -5718,7 +5717,7 @@ mod tests {
         let pending_fp_str = pending_fp.to_string();
         let now = crate::db::types::UnixTimestamp::now();
 
-        crate::runtime::RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             sqlx::query!(
                 r#"
                 INSERT INTO books (fingerprint, file_kind, file_size, added_at, status)

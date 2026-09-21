@@ -54,8 +54,8 @@ mod tests {
     use super::*;
     use crate::settings::Pen;
 
-    #[test]
-    fn test_migrate_custom_legacy_max_speed_below_old_threshold() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_migrate_custom_legacy_max_speed_below_old_threshold() {
         let mut pen = Pen {
             max_speed: 400.0,
             ..Pen::default()
@@ -65,8 +65,8 @@ mod tests {
         assert!((pen.max_speed - expected).abs() < f32::EPSILON);
     }
 
-    #[test]
-    fn test_migrate_invalid_mm_max_speed() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_migrate_invalid_mm_max_speed() {
         let mut pen = Pen {
             max_speed: 300.0,
             ..Pen::default()
@@ -75,8 +75,8 @@ mod tests {
         assert_eq!(pen.max_speed, MILLIMETERS_PER_INCH);
     }
 
-    #[test]
-    fn test_migrate_legacy_max_speed_300_dpi() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_migrate_legacy_max_speed_300_dpi() {
         let mut pen = Pen {
             max_speed: 3000.0,
             ..Pen::default()
@@ -85,8 +85,8 @@ mod tests {
         assert_eq!(pen.max_speed, 254.0);
     }
 
-    #[test]
-    fn test_migrate_legacy_max_speed_200_dpi() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_migrate_legacy_max_speed_200_dpi() {
         let mut pen = Pen {
             max_speed: 2000.0,
             ..Pen::default()
@@ -95,8 +95,8 @@ mod tests {
         assert_eq!(pen.max_speed, 254.0);
     }
 
-    #[test]
-    fn test_migrate_legacy_max_speed_167_dpi() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_migrate_legacy_max_speed_167_dpi() {
         let mut pen = Pen {
             max_speed: 1670.0,
             ..Pen::default()
@@ -105,8 +105,8 @@ mod tests {
         assert_eq!(pen.max_speed, 254.0);
     }
 
-    #[test]
-    fn test_migrate_skips_mm_values() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_migrate_skips_mm_values() {
         let mut pen = Pen {
             max_speed: 254.0,
             ..Pen::default()
@@ -116,8 +116,8 @@ mod tests {
         assert_eq!(pen.min_speed, 0.0);
     }
 
-    #[test]
-    fn test_migrate_skips_default_min_speed() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_migrate_skips_default_min_speed() {
         let mut pen = Pen {
             max_speed: 3000.0,
             ..Pen::default()
@@ -127,8 +127,8 @@ mod tests {
         assert_eq!(pen.max_speed, 254.0);
     }
 
-    #[test]
-    fn test_migrate_skips_mm_min_speed() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_migrate_skips_mm_min_speed() {
         let mut pen = Pen {
             min_speed: 50.0,
             max_speed: 254.0,
@@ -138,8 +138,8 @@ mod tests {
         assert_eq!(pen.min_speed, 50.0);
     }
 
-    #[test]
-    fn test_migrate_idempotent() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_migrate_idempotent() {
         let mut pen = Pen {
             min_speed: 1000.0,
             max_speed: 3000.0,
@@ -153,8 +153,8 @@ mod tests {
         assert_eq!(pen.max_speed, 254.0);
     }
 
-    #[test]
-    fn test_migrate_legacy_min_speed() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_migrate_legacy_min_speed() {
         let mut pen = Pen {
             min_speed: 1000.0,
             max_speed: 254.0,
@@ -165,8 +165,8 @@ mod tests {
         assert_eq!(pen.max_speed, 254.0);
     }
 
-    #[test]
-    fn test_migrate_legacy_min_speed_200_dpi() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_migrate_legacy_min_speed_200_dpi() {
         let mut pen = Pen {
             min_speed: 1000.0,
             ..Pen::default()
@@ -175,8 +175,8 @@ mod tests {
         assert_eq!(pen.min_speed, 127.0);
     }
 
-    #[test]
-    fn test_migrate_sketch_pen_speed_mm_updates_context_settings() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_migrate_sketch_pen_speed_mm_updates_context_settings() {
         use crate::db::Database;
         use crate::db::migrations::{MigrationContext, MigrationDevice};
         use crate::device::test_device::TestDevice;
@@ -193,7 +193,7 @@ mod tests {
             settings: &mut settings,
         };
 
-        crate::runtime::RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             migrate_sketch_pen_speed_mm(&mut ctx)
                 .await
                 .expect("pen speed migration should succeed");
@@ -202,8 +202,8 @@ mod tests {
         assert_eq!(settings.sketch.pen.max_speed, 254.0);
     }
 
-    #[test]
-    fn test_migrate_legacy_min_speed_167_dpi() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_migrate_legacy_min_speed_167_dpi() {
         let mut pen = Pen {
             min_speed: 835.0,
             ..Pen::default()

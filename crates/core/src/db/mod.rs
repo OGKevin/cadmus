@@ -3,7 +3,6 @@ pub mod migrations;
 pub mod types;
 pub mod version;
 
-use crate::runtime::RUNTIME;
 use anyhow::{Context, Error};
 use log::LevelFilter;
 use sqlx::ConnectOptions;
@@ -20,7 +19,7 @@ use crate::version::get_current_version;
 pub const DB_FILENAME: &str = "cadmus.sqlite";
 
 /// Database handle providing synchronous API over async SQLx operations.
-/// Uses a bridge pattern with `RUNTIME.block_on()` to maintain synchronous interface
+/// Uses a bridge pattern with `crate::runtime::block_on()` to maintain synchronous interface
 /// for compatibility with existing single-threaded event loop.
 #[derive(Clone)]
 pub struct Database {
@@ -66,7 +65,7 @@ impl Database {
 
         tracing::info!(db_path = %path_str, "connecting to database");
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let pool = open_pool(path).await?;
             tracing::info!(db_path = %path_str, "database connected");
             Ok(Database {
@@ -84,7 +83,7 @@ impl Database {
     /// to ensure SQLite releases all file descriptors and flushes any pending WAL data.
     pub fn close(&self) {
         tracing::info!("closing database connection pool");
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             self.pool.close().await;
         });
         tracing::info!("database connection pool closed");
@@ -124,7 +123,7 @@ impl Database {
     ) -> Result<(), Error> {
         let app_version = get_current_version();
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             self.restore_if_needed(&app_version).await?;
             self.migrate(device, settings).await?;
             version::stamp_db_version(&self.pool, &app_version, &version::current_migration_hash())
@@ -369,12 +368,12 @@ async fn open_pool(path: &Path) -> Result<SqlitePool, Error> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_database_creation() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_database_creation() {
         let mut db = Database::new(":memory:").expect("failed to create in-memory database");
         db.init_for_test(0).expect("failed to run migrations");
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let result: (i64,) = sqlx::query_as(
                 "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='books'",
             )
@@ -386,12 +385,13 @@ mod tests {
         });
     }
 
-    #[test]
-    fn test_migrate_stamps_version_on_first_run() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_migrate_stamps_version_on_first_run() {
         let mut db = Database::new(":memory:").expect("failed to create in-memory database");
         db.init_for_test(0).expect("failed to run migrations");
 
-        let version = RUNTIME.block_on(async { version::read_db_version(&db.pool).await.unwrap() });
+        let version =
+            crate::runtime::block_on(async { version::read_db_version(&db.pool).await.unwrap() });
         assert_eq!(
             version,
             Some(get_current_version()),
@@ -399,25 +399,26 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_migrate_current_version_is_idempotent() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_migrate_current_version_is_idempotent() {
         let mut db = Database::new(":memory:").expect("failed to create in-memory database");
         db.init_for_test(0).expect("first migrate");
         db.init_for_test(0)
             .expect("second migrate should succeed (Current path)");
 
-        let version = RUNTIME.block_on(async { version::read_db_version(&db.pool).await.unwrap() });
+        let version =
+            crate::runtime::block_on(async { version::read_db_version(&db.pool).await.unwrap() });
         assert_eq!(version, Some(get_current_version()));
     }
 
-    #[test]
-    fn test_migrate_upgrade_from_older_version() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_migrate_upgrade_from_older_version() {
         let mut db = Database::new(":memory:").expect("failed to create in-memory database");
         db.init_for_test(0).expect("initial migrate");
 
         let older = crate::version::GitVersion::parse("v0.0.1").unwrap();
         let migration_hash = version::current_migration_hash();
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             version::stamp_db_version(&db.pool, &older, &migration_hash)
                 .await
                 .unwrap();
@@ -426,7 +427,8 @@ mod tests {
         db.init_for_test(0)
             .expect("migrate should succeed (Upgrade path)");
 
-        let version = RUNTIME.block_on(async { version::read_db_version(&db.pool).await.unwrap() });
+        let version =
+            crate::runtime::block_on(async { version::read_db_version(&db.pool).await.unwrap() });
         assert_eq!(
             version,
             Some(get_current_version()),
@@ -434,14 +436,14 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_migrate_downgrade_without_db_dir_errors() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_migrate_downgrade_without_db_dir_errors() {
         let mut db = Database::new(":memory:").expect("failed to create in-memory database");
         db.init_for_test(0).expect("initial migrate");
 
         let newer = crate::version::GitVersion::parse("v99.99.99").unwrap();
         let migration_hash = incompatible_migration_hash();
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             version::stamp_db_version(&db.pool, &newer, &migration_hash)
                 .await
                 .unwrap();
@@ -457,8 +459,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_migrate_downgrade_with_db_dir_errors_without_backup() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_migrate_downgrade_with_db_dir_errors_without_backup() {
         let dir = tempfile::Builder::new()
             .prefix("cadmus-downgrade-no-backup-")
             .tempdir()
@@ -470,7 +472,7 @@ mod tests {
 
         let newer = crate::version::GitVersion::parse("v99.99.99").unwrap();
         let migration_hash = incompatible_migration_hash();
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             version::stamp_db_version(&db.pool, &newer, &migration_hash)
                 .await
                 .unwrap();
@@ -486,8 +488,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_migrate_downgrade_with_db_dir_restores_backup() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_migrate_downgrade_with_db_dir_restores_backup() {
         let dir = tempfile::Builder::new()
             .prefix("cadmus-downgrade-restore-")
             .tempdir()
@@ -498,7 +500,7 @@ mod tests {
         db.init_for_test(0).expect("initial migrate");
 
         let app_version = get_current_version();
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let backup_manager =
                 backup::DbBackupManager::new(dir.path().to_path_buf(), app_version.clone());
             backup_manager
@@ -509,7 +511,7 @@ mod tests {
 
         let newer = crate::version::GitVersion::parse("v99.99.99").unwrap();
         let migration_hash = incompatible_migration_hash();
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             version::stamp_db_version(&db.pool, &newer, &migration_hash)
                 .await
                 .unwrap();
@@ -518,7 +520,8 @@ mod tests {
         db.init_for_test(0)
             .expect("migrate should succeed on downgrade with db_dir (restore path)");
 
-        let version = RUNTIME.block_on(async { version::read_db_version(&db.pool).await.unwrap() });
+        let version =
+            crate::runtime::block_on(async { version::read_db_version(&db.pool).await.unwrap() });
         assert_eq!(
             version,
             Some(get_current_version()),
@@ -536,18 +539,18 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_check_integrity_passes_on_valid_database() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_check_integrity_passes_on_valid_database() {
         let db = Database::new(":memory:").expect("failed to create in-memory database");
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             db.check_integrity()
                 .await
                 .expect("integrity check should pass on a fresh database");
         });
     }
 
-    #[test]
-    fn test_init_restores_backup_on_corruption() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_init_restores_backup_on_corruption() {
         let dir = tempfile::Builder::new()
             .prefix("cadmus-corruption-restore-")
             .tempdir()
@@ -559,7 +562,7 @@ mod tests {
             .expect("failed to run initial migrations");
 
         let app_version = get_current_version();
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             let backup_manager =
                 backup::DbBackupManager::new(dir.path().to_path_buf(), app_version.clone());
             backup_manager
@@ -568,7 +571,7 @@ mod tests {
                 .unwrap();
         });
 
-        RUNTIME.block_on(async { db.pool.close().await });
+        crate::runtime::block_on(async { db.pool.close().await });
 
         {
             let mut bytes = std::fs::read(&db_path).expect("failed to read db file");
@@ -582,7 +585,8 @@ mod tests {
         db.init_for_test(0)
             .expect("init should restore from backup on corruption");
 
-        let version = RUNTIME.block_on(async { version::read_db_version(&db.pool).await.unwrap() });
+        let version =
+            crate::runtime::block_on(async { version::read_db_version(&db.pool).await.unwrap() });
         assert_eq!(
             version,
             Some(get_current_version()),
@@ -590,8 +594,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_check_integrity_fails_on_corrupted_database() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_check_integrity_fails_on_corrupted_database() {
         let dir = tempfile::Builder::new()
             .prefix("cadmus-integrity-test-")
             .tempdir()
@@ -601,7 +605,7 @@ mod tests {
         let mut db = Database::new(db_path.to_str().unwrap()).expect("failed to create database");
         db.init_for_test(0).expect("failed to run migrations");
 
-        RUNTIME.block_on(async { db.pool.close().await });
+        crate::runtime::block_on(async { db.pool.close().await });
 
         {
             let mut bytes = std::fs::read(&db_path).expect("failed to read db file");
@@ -612,7 +616,7 @@ mod tests {
         }
 
         let db = Database::new(db_path.to_str().unwrap()).expect("failed to reopen database");
-        let result = RUNTIME.block_on(async { db.check_integrity().await });
+        let result = crate::runtime::block_on(async { db.check_integrity().await });
         let err = result.expect_err("integrity check should fail on corrupted database");
         let err_msg = err.to_string();
         assert!(

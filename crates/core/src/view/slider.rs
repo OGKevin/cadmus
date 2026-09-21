@@ -344,7 +344,6 @@ mod tests {
     use crate::geom::Point;
     use crate::gesture::GestureEvent;
     use std::collections::VecDeque;
-    use std::sync::mpsc::channel;
 
     #[test]
     fn test_slider_cannot_update_above_max() {
@@ -359,12 +358,12 @@ mod tests {
         assert_eq!(slider.value, slider.min_value);
     }
 
-    #[test]
-    fn test_tap_decrements_value_and_emits_event() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_tap_decrements_value_and_emits_event() {
         let bounds = rect![0, 0, 200, 50];
         let mut slider = SliderWithButtons::new(bounds, SliderId::LightIntensity, 7.0, 5.0, 6.0);
 
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
         let mut context = create_test_context();

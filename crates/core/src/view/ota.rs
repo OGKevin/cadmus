@@ -1304,7 +1304,6 @@ mod tests {
     use crate::view::handle_event;
     use crate::view::keyboard::Keyboard;
     use std::collections::VecDeque;
-    use std::sync::mpsc::channel;
 
     fn create_ota_view(context: &mut AppContext) -> OtaView {
         OtaView::new(context)
@@ -1381,11 +1380,11 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_ota_view_consumes_own_focus_event() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_ota_view_consumes_own_focus_event() {
         let mut context = create_test_context();
         let mut ota = create_ota_view(&mut context);
-        let (hub, _rx) = channel();
+        let (hub, _rx) = crate::view::hub_channel();
         let mut bus: Bus = VecDeque::new();
         let mut rq = RenderQueue::new();
 
@@ -1399,11 +1398,11 @@ mod tests {
         assert!(bus.is_empty(), "Focus event must not leak to parent bus");
     }
 
-    #[test]
-    fn test_ota_view_does_not_consume_foreign_focus_event() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_ota_view_does_not_consume_foreign_focus_event() {
         let mut context = create_test_context();
         let mut ota = create_ota_view(&mut context);
-        let (hub, _rx) = channel();
+        let (hub, _rx) = crate::view::hub_channel();
         let mut bus: Bus = VecDeque::new();
         let mut rq = RenderQueue::new();
 
@@ -1423,8 +1422,8 @@ mod tests {
     /// to the hub. We drain the hub and dispatch each event through the
     /// view tree — just like the main loop does — and assert that the
     /// parent never inserts a keyboard child.
-    #[test]
-    fn test_progress_screen_shows_cancel_button() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_progress_screen_shows_cancel_button() {
         let mut context = create_test_context();
         let mut ota = create_ota_view(&mut context);
 
@@ -1440,8 +1439,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_shift_child_indices_after_remove_updates_cancel_button_index() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_shift_child_indices_after_remove_updates_cancel_button_index() {
         let mut context = create_test_context();
         let mut ota = create_ota_view(&mut context);
 
@@ -1458,11 +1457,11 @@ mod tests {
         assert_eq!(ota.status_label_index, Some(1));
     }
 
-    #[test]
-    fn test_close_during_download_sets_cancel_flag() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_close_during_download_sets_cancel_flag() {
         let mut context = create_test_context();
         let mut ota = create_ota_view(&mut context);
-        let (hub, _rx) = channel();
+        let (hub, _rx) = crate::view::hub_channel();
         let mut bus: Bus = VecDeque::new();
         let mut rq = RenderQueue::new();
 
@@ -1482,11 +1481,11 @@ mod tests {
         assert!(ota.download_in_progress);
     }
 
-    #[test]
-    fn test_close_after_commit_does_not_cancel() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_close_after_commit_does_not_cancel() {
         let mut context = create_test_context();
         let mut ota = create_ota_view(&mut context);
-        let (hub, _rx) = channel();
+        let (hub, _rx) = crate::view::hub_channel();
         let mut bus: Bus = VecDeque::new();
         let mut rq = RenderQueue::new();
 
@@ -1505,8 +1504,8 @@ mod tests {
         assert!(!ota.cancelled.is_cancelled());
     }
 
-    #[test]
-    fn test_progress_non_cancelable_hides_cancel_and_marks_committed() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_progress_non_cancelable_hides_cancel_and_marks_committed() {
         let mut context = create_test_context();
         let mut ota = create_ota_view(&mut context);
         let mut rq = RenderQueue::new();
@@ -1530,8 +1529,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_progress_100_removes_bar_and_shifts_cancel_index() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_progress_100_removes_bar_and_shifts_cancel_index() {
         let mut context = create_test_context();
         let mut ota = create_ota_view(&mut context);
         let mut rq = RenderQueue::new();
@@ -1552,8 +1551,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_progress_100_then_hide_cancel_does_not_panic() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_progress_100_then_hide_cancel_does_not_panic() {
         let mut context = create_test_context();
         let mut ota = create_ota_view(&mut context);
         let mut rq = RenderQueue::new();
@@ -1568,8 +1567,8 @@ mod tests {
         assert!(ota.progress_bar_index.is_none());
     }
 
-    #[test]
-    fn test_effective_github_token_prefers_stored_token() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_effective_github_token_prefers_stored_token() {
         use secrecy::ExposeSecret;
 
         let mut context = create_test_context();
@@ -1581,45 +1580,49 @@ mod tests {
         assert_eq!(token.expose_secret(), "stored-token");
     }
 
-    #[test]
-    fn test_parent_keyboard_not_shown_when_ota_focuses_input() {
-        crate::crypto::init_crypto_provider();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_parent_keyboard_not_shown_when_ota_focuses_input() {
+        tokio::task::spawn_blocking(|| {
+            crate::crypto::init_crypto_provider();
 
-        let mut context = create_test_context();
-        context.load_keyboard_layouts();
-        context.load_dictionaries();
+            let mut context = create_test_context();
+            context.load_keyboard_layouts();
+            context.load_dictionaries();
 
-        let (hub, rx) = channel();
-        let mut bus: Bus = VecDeque::new();
-        let mut rq = RenderQueue::new();
+            let (hub, mut rx) = crate::view::hub_channel();
+            let mut bus: Bus = VecDeque::new();
+            let mut rq = RenderQueue::new();
 
-        let mut parent = FakeParentView::new(rect![0, 0, 600, 800]);
-        let ota = create_ota_view(&mut context);
-        parent.children.push(Box::new(ota) as Box<dyn View>);
+            let mut parent = FakeParentView::new(rect![0, 0, 600, 800]);
+            let ota = create_ota_view(&mut context);
+            parent.children.push(Box::new(ota) as Box<dyn View>);
 
-        assert!(
-            !parent.has_keyboard(),
-            "Parent must not have keyboard before focus"
-        );
+            assert!(
+                !parent.has_keyboard(),
+                "Parent must not have keyboard before focus"
+            );
 
-        let show_evt = Event::Show(ViewId::Ota(OtaViewId::PrInput));
-        handle_event(
-            &mut parent,
-            &show_evt,
-            &hub,
-            &mut bus,
-            &mut rq,
-            &mut context,
-        );
+            let show_evt = Event::Show(ViewId::Ota(OtaViewId::PrInput));
+            handle_event(
+                &mut parent,
+                &show_evt,
+                &hub,
+                &mut bus,
+                &mut rq,
+                &mut context,
+            );
 
-        while let Ok(message) = rx.try_recv() {
-            let (evt, _) = message.into_parts();
-            handle_event(&mut parent, &evt, &hub, &mut bus, &mut rq, &mut context);
-        }
+            while let Ok(message) = rx.try_recv() {
+                let (evt, _) = message.into_parts();
+                handle_event(&mut parent, &evt, &hub, &mut bus, &mut rq, &mut context);
+            }
 
-        assert!(
-            !parent.has_keyboard(),
-            "Parent keyboard must not be shown — OtaView should consume its own focus event"
-        );
+            assert!(
+                !parent.has_keyboard(),
+                "Parent keyboard must not be shown — OtaView should consume its own focus event"
+            );
+        })
+        .await
+        .unwrap();
     }
 }

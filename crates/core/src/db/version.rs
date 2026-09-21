@@ -195,7 +195,6 @@ pub async fn check_version_gate(
 mod tests {
     use super::*;
     use crate::db::Database;
-    use crate::runtime::RUNTIME;
     use crate::version::get_current_version;
 
     fn different_migration_hash() -> MigrationHash {
@@ -212,22 +211,22 @@ mod tests {
         db
     }
 
-    #[test]
-    fn read_db_version_returns_none_before_table_exists() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn read_db_version_returns_none_before_table_exists() {
         // Database::new creates the pool but does not run migrations, so the
         // _cadmus_version table does not exist yet.
         let db = Database::new(":memory:").expect("failed to create in-memory database");
-        let version = RUNTIME.block_on(async { read_db_version(db.pool()).await.unwrap() });
+        let version = crate::runtime::block_on(async { read_db_version(db.pool()).await.unwrap() });
         assert!(version.is_none());
     }
 
-    #[test]
-    fn stamp_and_read_db_version_roundtrip() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn stamp_and_read_db_version_roundtrip() {
         let db = setup_db();
         let version = GitVersion::from_str("v0.10.0").unwrap();
         let migration_hash = current_migration_hash();
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             stamp_db_version(db.pool(), &version, &migration_hash)
                 .await
                 .unwrap();
@@ -238,14 +237,14 @@ mod tests {
         });
     }
 
-    #[test]
-    fn check_version_gate_detects_upgrade() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn check_version_gate_detects_upgrade() {
         let db = setup_db();
         let older = GitVersion::from_str("v0.9.0").unwrap();
         let newer = GitVersion::from_str("v0.10.0").unwrap();
         let migration_hash = current_migration_hash();
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             stamp_db_version(db.pool(), &older, &migration_hash)
                 .await
                 .unwrap();
@@ -254,14 +253,14 @@ mod tests {
         });
     }
 
-    #[test]
-    fn check_version_gate_allows_compatible_downgrade() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn check_version_gate_allows_compatible_downgrade() {
         let db = setup_db();
         let older = GitVersion::from_str("v0.9.0").unwrap();
         let newer = GitVersion::from_str("v0.10.0").unwrap();
         let migration_hash = current_migration_hash();
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             stamp_db_version(db.pool(), &newer, &migration_hash)
                 .await
                 .unwrap();
@@ -270,14 +269,14 @@ mod tests {
         });
     }
 
-    #[test]
-    fn check_version_gate_detects_incompatible_downgrade() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn check_version_gate_detects_incompatible_downgrade() {
         let db = setup_db();
         let older = GitVersion::from_str("v0.9.0").unwrap();
         let newer = GitVersion::from_str("v0.10.0").unwrap();
         let migration_hash = different_migration_hash();
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             stamp_db_version(db.pool(), &newer, &migration_hash)
                 .await
                 .unwrap();
@@ -286,13 +285,13 @@ mod tests {
         });
     }
 
-    #[test]
-    fn check_version_gate_detects_current() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn check_version_gate_detects_current() {
         let db = setup_db();
         let version = GitVersion::from_str("v0.10.0").unwrap();
         let migration_hash = current_migration_hash();
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             stamp_db_version(db.pool(), &version, &migration_hash)
                 .await
                 .unwrap();
@@ -301,13 +300,13 @@ mod tests {
         });
     }
 
-    #[test]
-    fn check_version_gate_detects_downgrade_on_equal_version_different_hash() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn check_version_gate_detects_downgrade_on_equal_version_different_hash() {
         let db = setup_db();
         let version = GitVersion::from_str("v0.10.0").unwrap();
         let migration_hash = different_migration_hash();
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             stamp_db_version(db.pool(), &version, &migration_hash)
                 .await
                 .unwrap();
@@ -316,11 +315,11 @@ mod tests {
         });
     }
 
-    #[test]
-    fn check_version_gate_unknown_when_table_is_empty() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn check_version_gate_unknown_when_table_is_empty() {
         let db = setup_db();
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             sqlx::query!("DELETE FROM _cadmus_version")
                 .execute(db.pool())
                 .await

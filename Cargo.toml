@@ -28,6 +28,10 @@ serde_json = "1.0.149"
 [workspace.lints]
 rustdoc.private_intra_doc_links = "allow"
 
+[workspace.lints.clippy]
+await_holding_lock = "deny"
+await_holding_refcell_ref = "deny"
+
 [profile.release-minsized]
 inherits = "release"
 panic = "abort"

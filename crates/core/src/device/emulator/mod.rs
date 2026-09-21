@@ -42,7 +42,7 @@ use sdl3::render::{BlendMode, WindowCanvas, create_renderer};
 use std::fs::File;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::mpsc::{self, Sender};
 use std::time::Duration;
 
 const CLOCK_REFRESH_INTERVAL: Duration = Duration::from_secs(60);
@@ -106,8 +106,8 @@ impl InputSource for EmulatorInputSource {
         _display: crate::framebuffer::Display,
         _button_scheme: crate::settings::ButtonScheme,
         inhibitor: Arc<Inhibitor>,
-    ) -> (Hub, Receiver<crate::view::HubMessage>) {
-        let (hub, rx) = mpsc::channel();
+    ) -> (Hub, crate::view::HubReceiver) {
+        let (hub, rx) = crate::view::hub_channel();
         let (device_tx, device_rx) = mpsc::channel();
         self.sender = Some(device_tx.clone());
 
@@ -805,7 +805,6 @@ mod wifi_tests {
     use crate::device::wifi::WifiSession;
     use crate::settings::WifiMode;
     use std::sync::Arc;
-    use std::sync::mpsc;
 
     #[test]
     fn ota_download_lease_acquire_succeeds_for_auto_and_always_on() {
@@ -824,10 +823,10 @@ mod wifi_tests {
         }
     }
 
-    #[test]
-    fn handle_set_wifi_enable_does_not_set_online_immediately() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_set_wifi_enable_does_not_set_online_immediately() {
         let mut context = create_test_context();
-        let (hub, _rx) = mpsc::channel();
+        let (hub, _rx) = crate::view::hub_channel();
         assert_eq!(context.settings.wifi, WifiMode::Off);
         assert!(!context.online);
 
@@ -837,10 +836,10 @@ mod wifi_tests {
         assert!(!context.online);
     }
 
-    #[test]
-    fn handle_set_wifi_disable_clears_online() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_set_wifi_disable_clears_online() {
         let mut context = create_test_context();
-        let (hub, _rx) = mpsc::channel();
+        let (hub, _rx) = crate::view::hub_channel();
         context.settings.wifi = WifiMode::AlwaysOn;
         context.online = true;
 
@@ -850,8 +849,8 @@ mod wifi_tests {
         assert!(!context.online);
     }
 
-    #[test]
-    fn handle_net_up_sets_online() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_net_up_sets_online() {
         let mut context = create_test_context();
         assert!(!context.online);
 
@@ -861,10 +860,10 @@ mod wifi_tests {
         assert!(context.wifi_session.is_online());
     }
 
-    #[test]
-    fn toggle_wifi_enables_wifi_without_setting_online() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn toggle_wifi_enables_wifi_without_setting_online() {
         let mut context = create_test_context();
-        let (hub, _rx) = mpsc::channel();
+        let (hub, _rx) = crate::view::hub_channel();
         assert_eq!(context.settings.wifi, WifiMode::Off);
 
         let outcome = handle_set_wifi_mode(WifiMode::AlwaysOn, &mut context, &hub);
@@ -885,7 +884,6 @@ mod lifecycle {
     use crate::framebuffer::Framebuffer as _;
     use crate::view::filler::Filler;
     use crate::view::{Bus, EntryId, Event, RenderQueue, View};
-    use std::sync::mpsc;
 
     fn with_runtime<R>(
         f: impl FnOnce(
@@ -896,7 +894,7 @@ mod lifecycle {
             &mut DeviceRuntime<'_>,
         ) -> R,
     ) -> R {
-        let (hub, _rx) = mpsc::channel();
+        let (hub, _rx) = crate::view::hub_channel();
         let mut context = create_test_context();
         let rect = context.device.framebuffer().rect();
         let mut view: Box<dyn View> = Box::new(Filler::new(rect, WHITE));
@@ -917,16 +915,16 @@ mod lifecycle {
         f(&hub, &mut bus, &mut rq, &mut context, &mut runtime)
     }
 
-    #[test]
-    fn handle_toggle_frontlight_updates_settings() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_toggle_frontlight_updates_settings() {
         let mut context = create_test_context();
         context.settings.frontlight = false;
         handle_toggle_frontlight(&mut context);
         assert!(context.settings.frontlight);
     }
 
-    #[test]
-    fn handle_event_toggle_frontlight_continues() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_event_toggle_frontlight_continues() {
         let outcome = with_runtime(|hub, bus, rq, context, runtime| {
             context.settings.frontlight = false;
             EmulatorDevice::handle_event(&Event::ToggleFrontlight, hub, bus, rq, context, runtime)
@@ -934,8 +932,8 @@ mod lifecycle {
         assert_eq!(outcome, EventOutcome::Continue);
     }
 
-    #[test]
-    fn handle_event_restart_exits() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_event_restart_exits() {
         let outcome = with_runtime(|hub, bus, rq, context, runtime| {
             EmulatorDevice::handle_event(
                 &Event::Select(EntryId::Restart),
@@ -949,8 +947,8 @@ mod lifecycle {
         assert_eq!(outcome, EventOutcome::Exit(ExitStatus::Restart));
     }
 
-    #[test]
-    fn handle_event_power_off_exits() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_event_power_off_exits() {
         let outcome = with_runtime(|hub, bus, rq, context, runtime| {
             EmulatorDevice::handle_event(
                 &Event::Select(EntryId::PowerOff),

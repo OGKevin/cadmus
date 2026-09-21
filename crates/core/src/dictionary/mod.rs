@@ -126,7 +126,7 @@ pub fn resolve_dict_id(database: &Database, fingerprint: &Fp) -> Option<i64> {
     let fp_str = fingerprint.to_string();
     let pool = database.pool().clone();
 
-    crate::runtime::RUNTIME.block_on(async {
+    crate::runtime::block_on(async {
         sqlx::query_scalar!(
             "SELECT dict_id FROM dictionary_index_meta WHERE fingerprint = ?",
             fp_str
@@ -193,7 +193,6 @@ pub fn load_dictionary(content: Box<dyn DictReader>, index: Box<dyn IndexReader>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime::RUNTIME;
 
     const PATH_CASE_SENSITIVE_DICT: &str = "src/dictionary/testdata/case_sensitive_dict.dict";
     const PATH_CASE_INSENSITIVE_DICT: &str = "src/dictionary/testdata/case_insensitive_dict.dict";
@@ -226,7 +225,7 @@ mod tests {
         let fp = Fp::from_u64(1);
         let fp_str = fp.to_string();
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             sqlx::query!(
                 r#"INSERT INTO dictionary_index_meta (fingerprint, dict_path, total_lines, indexed_lines, completed)
                    VALUES (?, ?, ?, 0, 0)"#,
@@ -279,8 +278,8 @@ mod tests {
         dict
     }
 
-    #[test]
-    fn test_load_dictionary_from_db() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_load_dictionary_from_db() {
         let r = load_test_dictionary(
             PATH_CASE_INSENSITIVE_DICT,
             CASE_INSENSITIVE_ENTRIES,
@@ -290,8 +289,8 @@ mod tests {
         assert!(r.is_ok());
     }
 
-    #[test]
-    fn test_dictionary_lookup_case_insensitive() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_dictionary_lookup_case_insensitive() {
         let r = load_test_dictionary(
             PATH_CASE_INSENSITIVE_DICT,
             CASE_INSENSITIVE_ENTRIES,
@@ -305,8 +304,8 @@ mod tests {
         assert_dict_word_exists(dict, "straße", "test for non-latin case-sensitivity");
     }
 
-    #[test]
-    fn test_dictionary_lookup_case_insensitive_fuzzy() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_dictionary_lookup_case_insensitive_fuzzy() {
         let r = load_test_dictionary(
             PATH_CASE_INSENSITIVE_DICT,
             CASE_INSENSITIVE_ENTRIES,
@@ -323,8 +322,8 @@ mod tests {
         assert!(search[0][1].contains("test for case-sensitivity"));
     }
 
-    #[test]
-    fn test_dictionary_lookup_case_sensitive() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_dictionary_lookup_case_sensitive() {
         let r = load_test_dictionary(PATH_CASE_SENSITIVE_DICT, CASE_SENSITIVE_ENTRIES, true, true);
         let mut dict = r.unwrap();
 
@@ -338,8 +337,8 @@ mod tests {
         assert!(r.unwrap().is_empty());
     }
 
-    #[test]
-    fn test_dictionary_lookup_case_sensitive_fuzzy() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_dictionary_lookup_case_sensitive_fuzzy() {
         let r = load_test_dictionary(PATH_CASE_SENSITIVE_DICT, CASE_SENSITIVE_ENTRIES, true, true);
         let mut dict = r.unwrap();
 

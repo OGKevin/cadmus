@@ -231,8 +231,8 @@ mod tests {
     use crate::context::test_helpers::create_test_context;
     use crate::view::settings_editor::kinds::SettingIdentity;
 
-    #[test]
-    fn power_omits_soft_suspend_settings_when_unsupported() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn power_omits_soft_suspend_settings_when_unsupported() {
         let context = create_test_context();
         let identities: Vec<_> = Category::Power
             .settings(&context, None)
@@ -250,9 +250,9 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     #[cfg(target_os = "linux")]
-    fn power_includes_soft_suspend_settings_when_supported() {
+    async fn power_includes_soft_suspend_settings_when_supported() {
         let mut context = create_test_context();
         let _linux = crate::context::test_helpers::install_linux_soft_suspend(&mut context);
         let identities: Vec<_> = Category::Power
@@ -274,8 +274,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn reader_includes_font_family() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn reader_includes_font_family() {
         let context = create_test_context();
         let identities: Vec<_> = Category::Reader
             .settings(&context, None)

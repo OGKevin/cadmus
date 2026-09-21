@@ -427,13 +427,12 @@ mod tests {
     use super::*;
     use crate::context::test_helpers::create_test_context;
     use crate::geom::Dir;
-    use std::sync::mpsc::channel;
 
-    #[test]
-    fn unsupported_keyboard_events_propagate_without_redrawing() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn unsupported_keyboard_events_propagate_without_redrawing() {
         let mut input = InputField::new(Rectangle::default(), ViewId::SearchBar);
         input.focused = true;
-        let (hub, _) = channel();
+        let (hub, _rx) = crate::view::hub_channel();
         let mut bus = Bus::new();
         let mut render_queue = RenderQueue::new();
         let mut context = create_test_context();
@@ -456,11 +455,11 @@ mod tests {
         assert!(render_queue.is_empty());
     }
 
-    #[test]
-    fn supported_keyboard_events_are_handled_and_redrawn() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn supported_keyboard_events_are_handled_and_redrawn() {
         let mut input = InputField::new(Rectangle::default(), ViewId::SearchBar);
         input.focused = true;
-        let (hub, _) = channel();
+        let (hub, _rx) = crate::view::hub_channel();
         let mut bus = Bus::new();
         let mut render_queue = RenderQueue::new();
         let mut context = create_test_context();

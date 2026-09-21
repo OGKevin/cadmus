@@ -7,7 +7,6 @@ use levenshtein::levenshtein;
 use sqlx::SqlitePool;
 
 use crate::db::Database;
-use crate::runtime::RUNTIME;
 
 use super::Metadata;
 use super::indexing::{Entry, IndexReader};
@@ -167,7 +166,7 @@ impl DbIndexReader {
     fn query_exact(&self, headword: &str) -> Vec<Entry> {
         let headword = headword.to_string();
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             if let Some(id) = self.dict_id {
                 self.exact_scoped(&headword, id).await
             } else {
@@ -186,7 +185,7 @@ impl DbIndexReader {
         let prefix = escape_like_prefix(&headword[..prefix_len]);
         let headword = headword.to_string();
 
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             if let Some(id) = self.dict_id {
                 self.fuzzy_scoped(&headword, &prefix, id).await
             } else {
@@ -215,7 +214,6 @@ impl IndexReader for DbIndexReader {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime::RUNTIME;
 
     fn setup_db() -> Database {
         let mut db = Database::new(":memory:").expect("in-memory db");
@@ -224,7 +222,7 @@ mod tests {
     }
 
     fn insert_meta(pool: &SqlitePool, dict_id: i64, fp: &str) {
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             sqlx::query!(
                 "INSERT OR IGNORE INTO dictionary_index_meta (dict_id, fingerprint, dict_path, total_lines, indexed_lines, completed) VALUES (?, ?, ?, 0, 0, 1)",
                 dict_id,
@@ -247,7 +245,7 @@ mod tests {
         original: Option<&str>,
     ) {
         insert_meta(pool, dict_id, fp);
-        RUNTIME.block_on(async {
+        crate::runtime::block_on(async {
             sqlx::query!(
                 "INSERT INTO dictionary_index_entry (dict_id, word, offset, size, original) VALUES (?, ?, ?, ?, ?)",
                 dict_id,
@@ -265,8 +263,8 @@ mod tests {
     const DICT_ID_1: i64 = 1;
     const DICT_ID_2: i64 = 2;
 
-    #[test]
-    fn test_exact_lookup_with_dict_id() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_exact_lookup_with_dict_id() {
         let db = setup_db();
         insert_entry(db.pool(), DICT_ID_1, "fp1", "hello", 0, 10, None);
         insert_entry(db.pool(), DICT_ID_2, "fp2", "world", 10, 5, None);
@@ -279,8 +277,8 @@ mod tests {
         assert_eq!(results[0].size, 10);
     }
 
-    #[test]
-    fn test_exact_lookup_scoped_dict_id_excludes_other() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_exact_lookup_scoped_dict_id_excludes_other() {
         let db = setup_db();
         insert_entry(db.pool(), DICT_ID_1, "fp1", "hello", 0, 10, None);
         insert_entry(db.pool(), DICT_ID_2, "fp2", "hello", 20, 8, None);
@@ -291,8 +289,8 @@ mod tests {
         assert_eq!(results[0].offset, 0);
     }
 
-    #[test]
-    fn test_exact_lookup_no_dict_id_finds_all() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_exact_lookup_no_dict_id_finds_all() {
         let db = setup_db();
         insert_entry(db.pool(), DICT_ID_1, "fp1", "hello", 0, 10, None);
         insert_entry(db.pool(), DICT_ID_2, "fp2", "hello", 20, 8, None);
@@ -302,8 +300,8 @@ mod tests {
         assert_eq!(results.len(), 2);
     }
 
-    #[test]
-    fn test_exact_lookup_no_match() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_exact_lookup_no_match() {
         let db = setup_db();
         insert_entry(db.pool(), DICT_ID_1, "fp1", "hello", 0, 10, None);
 
@@ -312,8 +310,8 @@ mod tests {
         assert!(results.is_empty());
     }
 
-    #[test]
-    fn test_fuzzy_lookup_with_dict_id() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_fuzzy_lookup_with_dict_id() {
         let db = setup_db();
         insert_entry(db.pool(), DICT_ID_1, "fp1", "hello", 0, 10, None);
         insert_entry(db.pool(), DICT_ID_1, "fp1", "helo", 10, 5, None);
@@ -327,8 +325,8 @@ mod tests {
         assert!(words.contains(&"helo"));
     }
 
-    #[test]
-    fn test_fuzzy_lookup_no_dict_id_cross_dict() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_fuzzy_lookup_no_dict_id_cross_dict() {
         let db = setup_db();
         insert_entry(db.pool(), DICT_ID_1, "fp1", "hello", 0, 10, None);
         insert_entry(db.pool(), DICT_ID_2, "fp2", "helo", 10, 5, None);
@@ -338,8 +336,8 @@ mod tests {
         assert_eq!(results.len(), 2);
     }
 
-    #[test]
-    fn test_load_and_find_delegates_to_find() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_load_and_find_delegates_to_find() {
         let db = setup_db();
         insert_entry(db.pool(), DICT_ID_1, "fp1", "hello", 0, 10, None);
 
@@ -353,8 +351,8 @@ mod tests {
         assert_eq!(results[0].headword, "hello");
     }
 
-    #[test]
-    fn test_original_field_preserved() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_original_field_preserved() {
         let db = setup_db();
         insert_entry(db.pool(), DICT_ID_1, "fp1", "hello", 0, 10, Some("Hello"));
 
@@ -364,8 +362,8 @@ mod tests {
         assert_eq!(results[0].original.as_deref(), Some("Hello"));
     }
 
-    #[test]
-    fn test_multiple_definitions_same_word_all_returned() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_multiple_definitions_same_word_all_returned() {
         let db = setup_db();
         insert_entry(db.pool(), DICT_ID_1, "fp1", "pain", 100, 20, Some("Pain"));
         insert_entry(db.pool(), DICT_ID_1, "fp1", "pain", 200, 30, Some("PAIN"));
