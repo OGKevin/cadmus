@@ -70,6 +70,7 @@ ota-check-updates-failed = Failed to check for updates
 ota-client-build-failed = Failed to create client
 ota-deployment-failed = Deployment failed
 ota-download-cancel = {cancel}
+ota-download-canceling = Canceling…
 ota-download-failed = Download failed
 ota-downloading-default-branch = Downloading main branch build… { $percent }%
 ota-downloading-pr = Downloading PR #{ $pr_number } build… { $percent }%

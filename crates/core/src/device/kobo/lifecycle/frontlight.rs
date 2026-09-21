@@ -9,7 +9,7 @@ use crate::task::{TaskError, TaskId};
 use crate::view::{Event, Hub, RenderQueue};
 
 /// Dispatches frontlight-related lifecycle events.
-pub(super) fn handle_event(
+pub(super) async fn handle_event(
     event: &Event,
     _hub: &Hub,
     _bus: &mut crate::view::Bus,
@@ -23,7 +23,7 @@ pub(super) fn handle_event(
             EventOutcome::Continue
         }
         Event::SetFrontlightLevels(levels) => {
-            handle_set_frontlight_levels(levels, context, runtime);
+            handle_set_frontlight_levels(levels, context, runtime).await;
             EventOutcome::Handled
         }
         Event::UpdateAutoFrontlight => {
@@ -38,13 +38,13 @@ fn handle_toggle_frontlight(context: &mut AppContext) {
     context.set_frontlight(!context.settings.frontlight);
 }
 
-fn handle_set_frontlight_levels(
+async fn handle_set_frontlight_levels(
     levels: &LightLevels,
     context: &mut AppContext,
     runtime: &mut DeviceRuntime<'_>,
 ) {
     if let Some(background_tasks) = runtime.background_tasks.as_mut()
-        && let Err(error) = background_tasks.stop(&TaskId::AutoFrontlight)
+        && let Err(error) = background_tasks.stop(&TaskId::AutoFrontlight).await
         && !matches!(error, TaskError::NotRunning(TaskId::AutoFrontlight))
     {
         tracing::warn!(error = %error, "failed to stop auto_frontlight task after manual adjustment");
@@ -103,36 +103,45 @@ mod tests {
     use crate::device::DeviceRuntime;
     use crate::device::test_harness::DeviceRuntimeHarness;
     use crate::frontlight::LightLevels;
-    use crate::task::{BackgroundTask, ShutdownSignal, TaskId, TaskManager};
+    use crate::task::{BackgroundTask, TaskId, TaskManager, sleep_unless_cancelled};
     use crate::view::Event;
     use std::time::Duration;
+    use tokio_util::sync::CancellationToken;
 
     struct WaitingTask;
 
+    #[async_trait::async_trait]
     impl BackgroundTask for WaitingTask {
         fn id(&self) -> TaskId {
             TaskId::AutoFrontlight
         }
 
-        fn run(&mut self, _hub: &crate::view::Hub, shutdown: &ShutdownSignal) {
-            shutdown.wait(Duration::from_secs(60));
+        async fn run(&mut self, _hub: &crate::view::Hub, cancel: &CancellationToken) {
+            sleep_unless_cancelled(cancel, Duration::from_secs(60)).await;
         }
     }
 
-    #[test]
-    fn handle_event_toggle_frontlight_updates_settings() {
-        let mut harness = DeviceRuntimeHarness::new();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_event_toggle_frontlight_updates_settings() {
+        let mut harness = DeviceRuntimeHarness::new().await;
         harness.context.settings.frontlight = false;
         let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
-            handle_event(&Event::ToggleFrontlight, hub, bus, rq, context, runtime)
+            crate::runtime::block_on(handle_event(
+                &Event::ToggleFrontlight,
+                hub,
+                bus,
+                rq,
+                context,
+                runtime,
+            ))
         });
         assert_eq!(outcome, EventOutcome::Continue);
         assert!(harness.context.settings.frontlight);
     }
 
-    #[test]
-    fn handle_event_set_frontlight_levels_stops_auto_task() {
-        let mut harness = DeviceRuntimeHarness::new();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_event_set_frontlight_levels_stops_auto_task() {
+        let mut harness = DeviceRuntimeHarness::new().await;
         let mut background_tasks = TaskManager::new();
         background_tasks
             .start(Box::new(WaitingTask), harness.hub_tx.clone())
@@ -152,14 +161,14 @@ mod tests {
                 startup_cwd: None,
                 background_tasks: Some(&mut background_tasks),
             };
-            handle_event(
+            crate::runtime::block_on(handle_event(
                 &Event::SetFrontlightLevels(levels),
                 &harness.hub_tx,
                 &mut harness.bus,
                 &mut harness.rq,
                 &mut harness.context,
                 &mut runtime,
-            )
+            ))
         };
         assert_eq!(outcome, EventOutcome::Handled);
         assert_eq!(

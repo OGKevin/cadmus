@@ -100,6 +100,7 @@ pub use test_device::TestDevice as AppDevice;
 
 /// The active context type for the current build.
 pub type AppContext = crate::context::Context<AppDevice>;
+pub use crate::context::ShutdownContext;
 
 use crate::device::metadata::DeviceMetadata;
 use crate::input::TouchProto;
@@ -112,7 +113,6 @@ use crate::view::{Bus, Event, Hub, RenderQueue, UpdateData, View};
 use std::fmt::Debug;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::mpsc::Receiver;
 
 pub struct HistoryItem {
     pub view: Box<dyn View>,
@@ -121,9 +121,10 @@ pub struct HistoryItem {
     pub dithered: bool,
 }
 
+/// A delayed device task, cancelled when this value is dropped.
 pub struct DeviceTask {
     pub id: DeviceTaskId,
-    pub _chan: Receiver<()>,
+    pub job: crate::runtime::Job,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -194,7 +195,7 @@ pub trait InputSource: Send {
         display: crate::framebuffer::Display,
         button_scheme: ButtonScheme,
         inhibitor: Arc<crate::device::inhibitor::Inhibitor>,
-    ) -> (Hub, Receiver<crate::view::HubMessage>);
+    ) -> (Hub, crate::view::HubReceiver);
 
     /// Injects a raw [`InputEvent`] into the input pipeline.
     ///
@@ -678,6 +679,11 @@ pub trait DeviceInput: Send {
 }
 
 /// Event handling and application lifecycle.
+///
+/// `handle_event` returns a `?Send` future (it holds `&mut dyn View` through
+/// [`DeviceRuntime`]). The trait declares an explicit `-> impl Future` return
+/// type; impls use `async fn` so neither `async_fn_in_trait` nor
+/// `manual_async_fn` fires.
 pub trait DeviceLifecycle:
     DeviceIdentity
     + DeviceCapabilities
@@ -704,7 +710,7 @@ pub trait DeviceLifecycle:
         rq: &mut RenderQueue,
         context: &mut AppContext,
         runtime: &mut DeviceRuntime<'_>,
-    ) -> EventOutcome;
+    ) -> impl std::future::Future<Output = EventOutcome>;
 
     /// Runs once after the UI is initialized and before the main event loop.
     ///
@@ -712,30 +718,40 @@ pub trait DeviceLifecycle:
     /// frontlight), schedule periodic device tasks, and emit startup events.
     ///
     /// Default: no-op success.
+    ///
+    /// Spelled `-> impl Future` rather than `async fn` for the same reason as
+    /// [`Self::handle_event`]: the trait states the bound instead of leaving it
+    /// to each impl. No `+ Send`, because the future holds `&mut dyn View`
+    /// through [`DeviceRuntime`] and so is not `Send`. Impls use `async fn`.
     fn on_startup(
         context: &mut AppContext,
         hub: &Hub,
         runtime: &mut DeviceRuntime<'_>,
-    ) -> Result<(), anyhow::Error> {
+    ) -> impl std::future::Future<Output = Result<(), anyhow::Error>> {
         let _ = (context, hub, runtime);
-        Ok(())
+        std::future::ready(Ok(()))
     }
 
     /// Runs once when the main event loop exits, before settings are persisted.
     ///
     /// `status` reflects how the application is terminating (quit, restart,
     /// reboot, power off, or run a command). Platform implementations tear down
-    /// hardware and may write marker files consumed by the device init system.
+    /// hardware and write their own init-system marker files.
     ///
-    /// Default: no-op success.
+    /// Devices with nothing to tear down may use the default no-op.
+    ///
+    /// Spelled `-> impl Future` rather than `async fn` so the trait states the
+    /// bound (here `Send`) instead of leaving it to each impl. Impls still use
+    /// `async fn`. See the async-trait rule in `AGENTS.md`.
     fn on_shutdown(
-        context: &mut AppContext,
+        context: &mut ShutdownContext<'_, AppDevice>,
         status: ExitStatus,
-        runtime: &mut DeviceRuntime<'_>,
-    ) -> Result<(), anyhow::Error> {
-        let _ = (context, status, runtime);
-        Ok(())
+        tasks: &[DeviceTask],
+    ) -> impl std::future::Future<Output = Result<(), anyhow::Error>> + Send {
+        let _ = (context, status, tasks);
+        std::future::ready(Ok(()))
     }
+
     /// Whether the main loop should skip acquiring a soft-suspend lease for `event`.
     ///
     /// During DeepIdle wait, and for prepare / suspend / poll events while the

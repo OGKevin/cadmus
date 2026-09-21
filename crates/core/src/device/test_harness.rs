@@ -8,7 +8,7 @@
 //! # Example
 //!
 //! ```ignore
-//! let mut harness = DeviceRuntimeHarness::new();
+//! let mut harness = DeviceRuntimeHarness::new().await;
 //! harness.context.settings.wifi = WifiMode::AlwaysOn;
 //! let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
 //!     suspend::handle_event(&Event::PrepareSuspend, hub, bus, rq, context, runtime)
@@ -20,11 +20,12 @@ use crate::color::WHITE;
 use crate::context::test_helpers::create_test_context;
 use crate::device::AppContext;
 use crate::device::DeviceHardware as _;
-use crate::device::{DeviceRuntime, DeviceTask, DeviceTaskId, HistoryItem};
+use crate::device::{
+    DeviceLifecycle, DeviceRuntime, DeviceTask, DeviceTaskId, ExitStatus, HistoryItem,
+};
 use crate::framebuffer::Framebuffer as _;
 use crate::view::filler::Filler;
-use crate::view::{Bus, Event, Hub, HubMessage, RenderQueue, UpdateData, View};
-use std::sync::mpsc::Receiver;
+use crate::view::{Bus, Event, Hub, RenderQueue, UpdateData, View};
 
 /// Minimal runtime shell for device / suspend handler tests.
 ///
@@ -35,7 +36,7 @@ use std::sync::mpsc::Receiver;
 pub(crate) struct DeviceRuntimeHarness {
     pub(crate) context: AppContext,
     pub(crate) hub_tx: Hub,
-    hub_rx: Receiver<HubMessage>,
+    hub_rx: crate::view::HubReceiver,
     pub(crate) bus: Bus,
     pub(crate) rq: RenderQueue,
     pub(crate) view: Box<dyn View>,
@@ -46,9 +47,9 @@ pub(crate) struct DeviceRuntimeHarness {
 
 impl DeviceRuntimeHarness {
     /// Creates a harness with default test context, empty task list, and root filler view.
-    pub(crate) fn new() -> Self {
-        let (hub_tx, hub_rx) = std::sync::mpsc::channel();
-        let context = create_test_context();
+    pub(crate) async fn new() -> Self {
+        let (hub_tx, hub_rx) = crate::view::hub_channel();
+        let context = create_test_context().await;
         let rect = context.device.framebuffer().rect();
         let view: Box<dyn View> = Box::new(Filler::new(rect, WHITE));
         Self {
@@ -65,7 +66,7 @@ impl DeviceRuntimeHarness {
     }
 
     /// Collects all events sent on the hub since the last drain.
-    pub(crate) fn drain_hub(&self) -> Vec<Event> {
+    pub(crate) fn drain_hub(&mut self) -> Vec<Event> {
         let mut events = Vec::new();
         while let Ok(message) = self.hub_rx.try_recv() {
             events.push(message.event);
@@ -75,9 +76,11 @@ impl DeviceRuntimeHarness {
 
     /// Inserts a placeholder [`DeviceTask`] so handlers see a pending device task.
     pub(crate) fn push_task(&mut self, id: DeviceTaskId) {
-        let (_tx, rx) = std::sync::mpsc::channel();
         self.tasks.retain(|task| task.id != id);
-        self.tasks.push(DeviceTask { id, _chan: rx });
+        self.tasks.push(DeviceTask {
+            id,
+            job: crate::runtime::Job::spawn(|_| std::future::pending()),
+        });
     }
 
     /// Runs `f` with hub, bus, render queue, context, and a fresh runtime borrow.
@@ -118,5 +121,20 @@ impl DeviceRuntimeHarness {
             background_tasks: None,
         };
         f(&mut self.context, &mut runtime)
+    }
+
+    /// Runs [`DeviceLifecycle::on_shutdown`] with optional pre-shutdown setup.
+    pub(crate) async fn run_on_shutdown<D: DeviceLifecycle>(
+        &mut self,
+        status: ExitStatus,
+        prep: impl FnOnce(&mut AppContext),
+    ) {
+        prep(&mut self.context);
+        let mut shutdown = self.context.shutdown();
+        let tasks = std::mem::take(&mut self.tasks);
+        D::on_shutdown(&mut shutdown, status, &tasks)
+            .await
+            .expect("on_shutdown in test harness");
+        self.tasks = tasks;
     }
 }

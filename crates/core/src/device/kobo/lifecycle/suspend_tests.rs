@@ -14,18 +14,32 @@ use crate::view::Event;
 use crate::view::common::locate;
 use crate::view::intermission::Intermission;
 
-#[test]
-fn power_release_during_wake_debounce_cancels_and_restores_auto_suspend() {
-    let mut harness = DeviceRuntimeHarness::new();
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn power_release_during_wake_debounce_cancels_and_restores_auto_suspend() {
+    let mut harness = DeviceRuntimeHarness::new().await;
     let (_dir, _paths) = install_armed_soft_suspend(&mut harness);
     harness.context.settings.auto_suspend = 30.0;
     harness.with_parts(|hub, bus, rq, context, runtime| {
-        start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks);
+        crate::runtime::block_on(start_cycle(
+            context,
+            runtime.view.as_mut(),
+            hub,
+            bus,
+            rq,
+            runtime.tasks,
+        ));
     });
     harness.with_parts(|hub, bus, rq, context, runtime| {
-        handle_event(&Event::PrepareSuspend, hub, bus, rq, context, runtime)
+        crate::runtime::block_on(handle_event(
+            &Event::PrepareSuspend,
+            hub,
+            bus,
+            rq,
+            context,
+            runtime,
+        ))
     });
-    pump_deep_idle_wake(&mut harness);
+    pump_deep_idle_wake(&mut harness).await;
     assert!(lock_alarms(&mut harness).is_alarm_scheduled(AlarmType::WakeDebounce));
     assert!(harness.context.suspend.is_some());
     assert_eq!(intermission_count(harness.view.as_ref()), 1);
@@ -36,7 +50,14 @@ fn power_release_during_wake_debounce_cancels_and_restores_auto_suspend() {
         time: 0.0,
     });
     let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
-        super::Device::handle_event(&wake_release, hub, bus, rq, context, runtime)
+        crate::runtime::block_on(super::Device::handle_event(
+            &wake_release,
+            hub,
+            bus,
+            rq,
+            context,
+            runtime,
+        ))
     });
     assert_eq!(outcome, EventOutcome::Handled);
     assert!(!lock_alarms(&mut harness).has_alarm(AlarmType::WakeDebounce));
@@ -51,30 +72,58 @@ fn power_release_during_wake_debounce_cancels_and_restores_auto_suspend() {
         time: 1.0,
     });
     let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
-        super::Device::handle_event(&intentional, hub, bus, rq, context, runtime)
+        crate::runtime::block_on(super::Device::handle_event(
+            &intentional,
+            hub,
+            bus,
+            rq,
+            context,
+            runtime,
+        ))
     });
     assert_eq!(outcome, EventOutcome::Handled);
     assert!(has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
     assert!(harness.context.suspend.is_some());
 }
 
-#[test]
-fn power_release_after_deep_idle_timeout_retry_finishes_and_restores_auto_suspend() {
-    let mut harness = DeviceRuntimeHarness::new();
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn power_release_after_deep_idle_timeout_retry_finishes_and_restores_auto_suspend() {
+    let mut harness = DeviceRuntimeHarness::new().await;
     let (_dir, _paths) = install_armed_soft_suspend(&mut harness);
     harness.context.settings.auto_suspend = 30.0;
     harness.with_parts(|hub, bus, rq, context, runtime| {
-        start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks);
+        crate::runtime::block_on(start_cycle(
+            context,
+            runtime.view.as_mut(),
+            hub,
+            bus,
+            rq,
+            runtime.tasks,
+        ));
     });
     harness.with_parts(|hub, bus, rq, context, runtime| {
-        handle_event(&Event::PrepareSuspend, hub, bus, rq, context, runtime)
+        crate::runtime::block_on(handle_event(
+            &Event::PrepareSuspend,
+            hub,
+            bus,
+            rq,
+            context,
+            runtime,
+        ))
     });
     harness
         .context
         .deep_idle_poll_inject
         .push_back(PollResult::TimedOut);
     harness.with_parts(|hub, bus, rq, context, runtime| {
-        handle_event(&Event::PollDeepIdleWait, hub, bus, rq, context, runtime)
+        crate::runtime::block_on(handle_event(
+            &Event::PollDeepIdleWait,
+            hub,
+            bus,
+            rq,
+            context,
+            runtime,
+        ))
     });
     assert!(harness.context.suspend.is_some());
     assert!(has_task(&harness.tasks, DeviceTaskId::PollDeepIdleWait));
@@ -85,7 +134,14 @@ fn power_release_after_deep_idle_timeout_retry_finishes_and_restores_auto_suspen
         time: 0.0,
     });
     let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
-        super::Device::handle_event(&wake_release, hub, bus, rq, context, runtime)
+        crate::runtime::block_on(super::Device::handle_event(
+            &wake_release,
+            hub,
+            bus,
+            rq,
+            context,
+            runtime,
+        ))
     });
     assert_eq!(outcome, EventOutcome::Handled);
     assert!(harness.context.suspend.is_none());
@@ -94,13 +150,13 @@ fn power_release_after_deep_idle_timeout_retry_finishes_and_restores_auto_suspen
     assert!(lock_alarms(&mut harness).is_alarm_scheduled(AlarmType::AutoSuspend));
 }
 
-#[test]
-fn on_shutdown_preserves_frontlight_levels_during_deep_idle() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn on_shutdown_preserves_frontlight_levels_during_deep_idle() {
     use crate::device::DeviceHardware as _;
     use crate::device::ExitStatus;
     use crate::frontlight::{Frontlight as _, LightLevel, LightLevels};
 
-    let mut harness = DeviceRuntimeHarness::new();
+    let mut harness = DeviceRuntimeHarness::new().await;
     let (_dir, _paths) = install_armed_soft_suspend(&mut harness);
     let expected = LightLevels {
         intensity: LightLevel::from(42.0),
@@ -122,10 +178,24 @@ fn on_shutdown_preserves_frontlight_levels_during_deep_idle() {
         .unwrap();
 
     harness.with_parts(|hub, bus, rq, context, runtime| {
-        start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks);
+        crate::runtime::block_on(start_cycle(
+            context,
+            runtime.view.as_mut(),
+            hub,
+            bus,
+            rq,
+            runtime.tasks,
+        ));
     });
     harness.with_parts(|hub, bus, rq, context, runtime| {
-        handle_event(&Event::PrepareSuspend, hub, bus, rq, context, runtime)
+        crate::runtime::block_on(handle_event(
+            &Event::PrepareSuspend,
+            hub,
+            bus,
+            rq,
+            context,
+            runtime,
+        ))
     });
     assert!(harness.context.suspend.is_some());
     assert_eq!(
@@ -137,9 +207,9 @@ fn on_shutdown_preserves_frontlight_levels_during_deep_idle() {
         expected.intensity
     );
 
-    harness.with_runtime_only(|context, runtime| {
-        super::Device::on_shutdown(context, ExitStatus::PowerOff, runtime).unwrap();
-    });
+    harness
+        .run_on_shutdown::<super::Device>(ExitStatus::PowerOff, |_| {})
+        .await;
     assert_eq!(
         harness.context.settings.frontlight_levels.intensity,
         expected.intensity

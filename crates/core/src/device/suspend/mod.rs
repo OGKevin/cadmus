@@ -78,8 +78,8 @@ pub(crate) use cycle::SuspendCycle;
 pub(crate) use helpers::has_task;
 pub(crate) use helpers::{cancel_suspend_if_pending, is_suspend_active};
 pub(crate) use orchestrator::{
-    clear_deferred_suspend, handle_event, is_suspend_rtc_pending, show_power_off_intermission,
-    start_cycle,
+    clear_deferred_suspend, handle_event, is_suspend_rtc_pending, is_suspend_rtc_pending_in,
+    show_power_off_intermission, start_cycle,
 };
 #[cfg(test)]
 pub(crate) use wake::PollResult;

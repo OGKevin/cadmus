@@ -4,7 +4,7 @@ mod error;
 mod manager;
 mod network_info;
 mod noop;
-mod session;
+pub(crate) mod session;
 
 pub use error::WifiError;
 #[cfg(any(

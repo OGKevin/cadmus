@@ -231,8 +231,8 @@ mod tests {
     use std::path::PathBuf;
     use std::str::FromStr;
 
-    #[test]
-    fn test_extract_authors() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_extract_authors() {
         assert_eq!(
             extract_authors("John Doe, Jane Smith"),
             vec!["John Doe", "Jane Smith"]
@@ -241,8 +241,8 @@ mod tests {
         assert_eq!(extract_authors(""), Vec::<String>::new());
     }
 
-    #[test]
-    fn test_info_to_book_row_roundtrip() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_info_to_book_row_roundtrip() {
         let fp = Fp::from_u64(1);
         let info = Info {
             title: "Test Book".to_string(),
@@ -266,8 +266,8 @@ mod tests {
         assert_eq!(row.file_size, 1024);
     }
 
-    #[test]
-    fn test_encode_decode_exact_location() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_encode_decode_exact_location() {
         let loc = TocLocation::Exact(42);
         let (kind, exact, uri) = encode_location(&loc);
         assert_eq!(kind, "exact");
@@ -278,8 +278,8 @@ mod tests {
         assert!(matches!(decoded, TocLocation::Exact(42)));
     }
 
-    #[test]
-    fn test_encode_decode_uri_location() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_encode_decode_uri_location() {
         let loc = TocLocation::Uri("chapter1.xhtml".to_string());
         let (kind, exact, uri) = encode_location(&loc);
         assert_eq!(kind, "uri");
@@ -290,8 +290,8 @@ mod tests {
         assert!(matches!(decoded, TocLocation::Uri(ref s) if s == "chapter1.xhtml"));
     }
 
-    #[test]
-    fn test_rows_to_toc_entries_flat() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_rows_to_toc_entries_flat() {
         let rows = vec![
             TocEntryRow {
                 book_fingerprint: "fp1".to_string(),
@@ -321,8 +321,8 @@ mod tests {
         assert!(matches!(&entries[1], SimpleTocEntry::Leaf(t, _) if t == "Chapter 2"));
     }
 
-    #[test]
-    fn test_rows_to_toc_entries_nested() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_rows_to_toc_entries_nested() {
         // Parent at id=1, two children at id=2 and id=3
         let rows = vec![
             TocEntryRow {

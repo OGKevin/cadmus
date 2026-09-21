@@ -4,7 +4,7 @@ use std::fs;
 use std::io;
 use std::path::PathBuf;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 enum UnpublishedKind {
     File,
     Dir,
@@ -48,6 +48,62 @@ impl RemovePathOnDrop {
     )]
     pub(crate) fn disarm(&mut self) {
         self.armed = false;
+    }
+
+    /// Removes the guarded path without blocking the async runtime.
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(skip(self), fields(path = %self.path.display()))
+    )]
+    pub(crate) async fn remove_if_armed(mut self) {
+        if !self.armed {
+            return;
+        }
+        self.armed = false;
+        let path = self.path.clone();
+        let result = match self.kind {
+            UnpublishedKind::File => tokio::fs::remove_file(&path).await,
+            UnpublishedKind::Dir => tokio::fs::remove_dir_all(&path).await,
+        };
+        match result {
+            Ok(()) => {
+                tracing::debug!(
+                    path = %path.display(),
+                    "removed unpublished path"
+                );
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => {
+                tracing::warn!(
+                    path = %path.display(),
+                    error = %error,
+                    "failed to remove unpublished path"
+                );
+            }
+        }
+    }
+}
+
+fn remove_unpublished_sync(path: &PathBuf, kind: UnpublishedKind) {
+    let result = match kind {
+        UnpublishedKind::File => fs::remove_file(path),
+        UnpublishedKind::Dir => fs::remove_dir_all(path),
+    };
+    match result {
+        Ok(()) => {
+            tracing::debug!(
+                path = %path.display(),
+                "removed unpublished path"
+            );
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => {
+            tracing::warn!(
+                path = %path.display(),
+                error = %error,
+                "failed to remove unpublished path"
+            );
+        }
     }
 }
 
@@ -122,27 +178,10 @@ impl Drop for RemovePathOnDrop {
             return;
         }
 
-        let result = match self.kind {
-            UnpublishedKind::File => fs::remove_file(&self.path),
-            UnpublishedKind::Dir => fs::remove_dir_all(&self.path),
-        };
-
-        match result {
-            Ok(()) => {
-                tracing::debug!(
-                    path = %self.path.display(),
-                    "removed unpublished path"
-                );
-            }
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-            Err(error) => {
-                tracing::warn!(
-                    path = %self.path.display(),
-                    error = %error,
-                    "failed to remove unpublished path"
-                );
-            }
-        }
+        let path = self.path.clone();
+        let kind = self.kind;
+        self.armed = false;
+        remove_unpublished_sync(&path, kind);
     }
 }
 

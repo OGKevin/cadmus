@@ -61,8 +61,8 @@ mod session {
         panic!("condition not met within timeout");
     }
 
-    #[test]
-    fn first_acquire_writes_wake_lock() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn first_acquire_writes_wake_lock() {
         let (_dir, paths) = temp_paths();
         let inhibitor = Inhibitor::with_paths(
             paths.clone(),
@@ -83,8 +83,8 @@ mod session {
         assert_eq!(unlock_name(&paths), WAKE_LOCK_NAME);
     }
 
-    #[test]
-    fn set_mode_writes_autosleep() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn set_mode_writes_autosleep() {
         let (_dir, paths) = temp_paths();
         let inhibitor = Inhibitor::with_paths(
             paths.clone(),
@@ -101,8 +101,8 @@ mod session {
         assert_eq!(inhibitor.mode(), AutosleepMode::Freeze);
     }
 
-    #[test]
-    fn set_mode_keeps_previous_when_autosleep_write_fails() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn set_mode_keeps_previous_when_autosleep_write_fails() {
         let (_dir, paths) = temp_paths();
         let inhibitor = Inhibitor::with_paths(
             paths.clone(),
@@ -122,8 +122,8 @@ mod session {
         );
     }
 
-    #[test]
-    fn failed_wake_lock_write_does_not_claim_held() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn failed_wake_lock_write_does_not_claim_held() {
         let (_dir, paths) = temp_paths();
         let inhibitor = Inhibitor::with_paths(
             paths.clone(),
@@ -153,8 +153,8 @@ mod session {
         );
     }
 
-    #[test]
-    fn unsupported_mode_falls_back_to_off() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn unsupported_mode_falls_back_to_off() {
         let dir = tempfile::tempdir().expect("tempdir");
         let paths = SoftSuspendPaths {
             state: dir.path().join("state"),
@@ -181,8 +181,8 @@ mod session {
         );
     }
 
-    #[test]
-    fn led_indicator_on_while_armed_when_enabled() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn led_indicator_on_while_armed_when_enabled() {
         let (_dir, paths) = temp_paths();
         let leds = Arc::new(CountingLeds {
             on_calls: AtomicU32::new(0),
@@ -214,8 +214,8 @@ mod session {
         wait_for(|| leds.off_calls.load(Ordering::SeqCst) > off_after_setup);
     }
 
-    #[test]
-    fn nested_leases_keep_single_wake_lock_cycle() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn nested_leases_keep_single_wake_lock_cycle() {
         let (_dir, paths) = temp_paths();
         let inhibitor = Inhibitor::with_paths(
             paths.clone(),
@@ -233,8 +233,8 @@ mod session {
         assert_eq!(unlock_name(&paths), WAKE_LOCK_NAME);
     }
 
-    #[test]
-    fn grace_delays_wake_unlock() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn grace_delays_wake_unlock() {
         let (_dir, paths) = temp_paths();
         let inhibitor = Inhibitor::with_paths(
             paths.clone(),
@@ -250,12 +250,11 @@ mod session {
         drop(lease);
 
         assert_eq!(unlock_name(&paths), "");
-        thread::sleep(Duration::from_millis(120));
-        assert_eq!(unlock_name(&paths), WAKE_LOCK_NAME);
+        wait_for(|| unlock_name(&paths) == WAKE_LOCK_NAME);
     }
 
-    #[test]
-    fn lease_during_grace_cancels_pending_unlock() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn lease_during_grace_cancels_pending_unlock() {
         let (_dir, paths) = temp_paths();
         let inhibitor = Inhibitor::with_paths(
             paths.clone(),
@@ -278,8 +277,8 @@ mod session {
         assert!(inhibitor.has_holders());
     }
 
-    #[test]
-    fn reacquire_from_other_thread_during_grace_keeps_lock() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn reacquire_from_other_thread_during_grace_keeps_lock() {
         let (_dir, paths) = temp_paths();
         let inhibitor = Inhibitor::with_paths(
             paths.clone(),
@@ -310,8 +309,8 @@ mod session {
         drop(lease);
     }
 
-    #[test]
-    fn set_grace_while_empty_reschedules_deadline() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn set_grace_while_empty_reschedules_deadline() {
         let (_dir, paths) = temp_paths();
         let inhibitor = Inhibitor::with_paths(
             paths.clone(),
@@ -333,8 +332,8 @@ mod session {
         assert_eq!(unlock_name(&paths), WAKE_LOCK_NAME);
     }
 
-    #[test]
-    fn repeated_empty_cycles_reuse_worker() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn repeated_empty_cycles_reuse_worker() {
         let (_dir, paths) = temp_paths();
         let inhibitor = Inhibitor::with_paths(
             paths.clone(),
@@ -356,8 +355,8 @@ mod session {
         }
     }
 
-    #[test]
-    fn drop_inhibitor_mid_grace_shuts_down_cleanly() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn drop_inhibitor_mid_grace_shuts_down_cleanly() {
         let (_dir, paths) = temp_paths();
         let inhibitor = Inhibitor::with_paths(
             paths.clone(),

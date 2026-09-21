@@ -1,5 +1,9 @@
 # Core Crate — Agent Coding Conventions
 
+## See also
+
+- [Background task stop/join policy](src/task/AGENTS.md)
+
 ## Return Types
 
 Prefer meaningful enums or `Result<T, E>` over `bool` when a function can

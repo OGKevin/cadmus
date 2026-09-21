@@ -490,29 +490,31 @@ impl GitVersion {
     /// ```
     /// use cadmus_core::version::{GitVersion, VersionComparison};
     ///
+    /// # tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(async {
     /// // Local is newer than remote (higher semver)
     /// let local: GitVersion = "v0.9.46".parse().unwrap();
     /// let remote: GitVersion = "v0.9.45".parse().unwrap();
-    /// let result = local.compare(&remote).unwrap();
+    /// let result = local.compare(&remote).await.unwrap();
     /// assert_eq!(result, VersionComparison::Newer);
     ///
     /// // Local is older than remote (lower semver)
     /// let local: GitVersion = "v0.9.44".parse().unwrap();
     /// let remote: GitVersion = "v0.9.45".parse().unwrap();
-    /// let result = local.compare(&remote).unwrap();
+    /// let result = local.compare(&remote).await.unwrap();
     /// assert_eq!(result, VersionComparison::Older);
     ///
     /// // Local equals remote (same version)
     /// let local: GitVersion = "v0.9.46".parse().unwrap();
     /// let remote: GitVersion = "v0.9.46".parse().unwrap();
-    /// let result = local.compare(&remote).unwrap();
+    /// let result = local.compare(&remote).await.unwrap();
     /// assert_eq!(result, VersionComparison::Equal);
+    /// # });
     /// ```
     #[cfg_attr(
         feature = "tracing",
         tracing::instrument(skip(self, other), fields(local = %self, remote = %other))
     )]
-    pub fn compare(&self, other: &GitVersion) -> Result<VersionComparison, VersionError> {
+    pub async fn compare(&self, other: &GitVersion) -> Result<VersionComparison, VersionError> {
         tracing::debug!(local = %self, remote = %other, "Comparing versions");
 
         let semver_cmp = compare_semver(self, other);
@@ -574,7 +576,7 @@ impl GitVersion {
 
                 let github =
                     GithubClient::new(None).map_err(|e| VersionError::GitHubApi(e.to_string()))?;
-                check_ancestry(&github, local_hash, remote_hash)
+                check_ancestry(&github, local_hash, remote_hash).await
             }
 
             _ => {
@@ -777,7 +779,7 @@ pub fn compare_semver(local: &GitVersion, remote: &GitVersion) -> std::cmp::Orde
 /// - The HTTP request fails
 /// - GitHub returns a non-success status code
 /// - The response cannot be parsed
-fn check_ancestry(
+async fn check_ancestry(
     github: &GithubClient,
     local_hash: &str,
     remote_hash: &str,
@@ -790,9 +792,10 @@ fn check_ancestry(
     tracing::debug!(url = %url, "Checking commit ancestry via GitHub API");
 
     let response = github
-        .get_unauthenticated(&url)
+        .api_get_unauthenticated(&url)
         .header("Accept", "application/vnd.github+json")
         .send()
+        .await
         .map_err(|e| {
             tracing::error!(error = %e, "GitHub API request failed");
             VersionError::GitHubApi(e.to_string())
@@ -1047,63 +1050,87 @@ mod tests {
         assert_eq!(v094.cmp(&v094), std::cmp::Ordering::Equal);
     }
 
-    #[test]
-    fn test_compare_different_semver() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_compare_different_semver() {
         let local1: GitVersion = "v0.9.46".parse().unwrap();
         let remote1: GitVersion = "v0.9.45".parse().unwrap();
-        assert_eq!(local1.compare(&remote1).unwrap(), VersionComparison::Newer);
+        assert_eq!(
+            local1.compare(&remote1).await.unwrap(),
+            VersionComparison::Newer
+        );
 
         let local2: GitVersion = "v0.9.45".parse().unwrap();
         let remote2: GitVersion = "v0.9.46".parse().unwrap();
-        assert_eq!(local2.compare(&remote2).unwrap(), VersionComparison::Older);
+        assert_eq!(
+            local2.compare(&remote2).await.unwrap(),
+            VersionComparison::Older
+        );
 
         let local3: GitVersion = "v0.9.46".parse().unwrap();
         let remote3: GitVersion = "v0.9.46".parse().unwrap();
-        assert_eq!(local3.compare(&remote3).unwrap(), VersionComparison::Equal);
+        assert_eq!(
+            local3.compare(&remote3).await.unwrap(),
+            VersionComparison::Equal
+        );
 
         let local4: GitVersion = "v0.10.0".parse().unwrap();
         let remote4: GitVersion = "v0.9.46".parse().unwrap();
-        assert_eq!(local4.compare(&remote4).unwrap(), VersionComparison::Newer);
+        assert_eq!(
+            local4.compare(&remote4).await.unwrap(),
+            VersionComparison::Newer
+        );
 
         let local5: GitVersion = "v1.0.0".parse().unwrap();
         let remote5: GitVersion = "v0.9.46".parse().unwrap();
-        assert_eq!(local5.compare(&remote5).unwrap(), VersionComparison::Newer);
+        assert_eq!(
+            local5.compare(&remote5).await.unwrap(),
+            VersionComparison::Newer
+        );
     }
 
-    #[test]
-    fn test_compare_tagged_vs_development() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_compare_tagged_vs_development() {
         let local1: GitVersion = "v0.9.46".parse().unwrap();
         let remote1: GitVersion = "v0.9.46-5-gabc123".parse().unwrap();
-        assert_eq!(local1.compare(&remote1).unwrap(), VersionComparison::Older);
+        assert_eq!(
+            local1.compare(&remote1).await.unwrap(),
+            VersionComparison::Older
+        );
 
         let local2: GitVersion = "v0.9.46-5-gabc123".parse().unwrap();
         let remote2: GitVersion = "v0.9.46".parse().unwrap();
-        assert_eq!(local2.compare(&remote2).unwrap(), VersionComparison::Newer);
+        assert_eq!(
+            local2.compare(&remote2).await.unwrap(),
+            VersionComparison::Newer
+        );
     }
 
-    #[test]
-    fn test_compare_same_hash_different_ahead() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_compare_same_hash_different_ahead() {
         let local: GitVersion = "v0.9.46-5-gabc123".parse().unwrap();
         let remote: GitVersion = "v0.9.46-3-gabc123".parse().unwrap();
-        let result = local.compare(&remote);
+        let result = local.compare(&remote).await;
         assert!(matches!(result, Err(VersionError::InconsistentData(_))));
     }
 
-    #[test]
-    fn test_compare_same_hash_same_ahead() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_compare_same_hash_same_ahead() {
         let local: GitVersion = "v0.9.46-5-gabc123".parse().unwrap();
         let remote: GitVersion = "v0.9.46-5-gabc123".parse().unwrap();
-        assert_eq!(local.compare(&remote).unwrap(), VersionComparison::Equal);
+        assert_eq!(
+            local.compare(&remote).await.unwrap(),
+            VersionComparison::Equal
+        );
     }
 
-    #[test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     #[ignore = "requires network access to GitHub API"]
-    fn test_compare_different_hashes_needs_github() {
+    async fn test_compare_different_hashes_needs_github() {
         let local: GitVersion = "v0.9.46-5-gabc123".parse().unwrap();
         let remote: GitVersion = "v0.9.46-3-gdef456".parse().unwrap();
         // This will attempt to create a GitHub client and call the API
         // Since abc123 and def456 are not real commits, it will fail
-        let result = local.compare(&remote);
+        let result = local.compare(&remote).await;
         assert!(result.is_err());
     }
 
@@ -1131,13 +1158,13 @@ mod tests {
         assert_eq!(version.hash(), Some("abc123"));
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires network access to GitHub API"]
-    fn test_check_ancestry_ahead() {
+    async fn test_check_ancestry_ahead() {
         crate::crypto::init_crypto_provider();
         let github = GithubClient::new(None).expect("client build");
 
-        let result = check_ancestry(&github, "HEAD", "v0.9.46");
+        let result = check_ancestry(&github, "HEAD", "v0.9.46").await;
         assert!(
             result.is_ok(),
             "Ancestry check should succeed: {:?}",
@@ -1152,13 +1179,13 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires network access to GitHub API"]
-    fn test_check_ancestry_same_commit() {
+    async fn test_check_ancestry_same_commit() {
         crate::crypto::init_crypto_provider();
         let github = GithubClient::new(None).expect("client build");
 
-        let result = check_ancestry(&github, "HEAD", "HEAD");
+        let result = check_ancestry(&github, "HEAD", "HEAD").await;
         assert!(
             result.is_ok(),
             "Same commit comparison should succeed: {:?}",

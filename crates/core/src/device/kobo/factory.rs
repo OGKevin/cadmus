@@ -128,6 +128,8 @@ impl Model {
                 },
                 dpi: self.dpi(),
                 raw_sender: None,
+                pipeline_cancel: None,
+                gesture_job: None,
             },
         ))
     }

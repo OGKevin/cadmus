@@ -70,17 +70,13 @@ mod dhcpcd;
 mod types;
 
 #[cfg(target_os = "linux")]
-use procfs;
-
 use crate::device::kobo::wifi::dhcpcd::network_info_from_zbus;
 use crate::device::kobo::wifi::types::{PowerToggle, WifiModule, WifiModuleConfig};
 use crate::device::wifi::{NetworkInfo, WifiError, WifiManager};
 use nix::ioctl_write_int_bad;
-use std::fs;
 use std::os::fd::AsRawFd;
-use std::path::Path;
-use std::process::Command;
-use std::sync::Mutex;
+use tokio::process::Command;
+use tokio::sync::Mutex;
 use tracing::{debug, error, info, warn};
 
 const DRIVERS_DIR: &str = "/drivers";
@@ -97,24 +93,43 @@ const WIFI_PRE_DOWN_SCRIPT: &str = "scripts/wifi-pre-down.sh";
 const NTX_IO_WIFI_CTRL: u8 = 208;
 ioctl_write_int_bad!(set_ntx_io_wifi_ctrl, NTX_IO_WIFI_CTRL as libc::c_int);
 
+/// Whether any `/proc/modules` line names `module_name`.
+///
+/// The name is the first whitespace-separated column, so a prefix match on the
+/// line would wrongly report `mt7601e` as loaded when only `mt7601e_sta` is.
+#[cfg(target_os = "linux")]
+fn lists_module(contents: &str, module_name: &str) -> bool {
+    contents
+        .lines()
+        .any(|line| line.split_whitespace().next() == Some(module_name))
+}
+
+/// Returns whether `module_name` appears in `/proc/modules`.
+///
+/// Parses the name column directly rather than going through `procfs`, so the
+/// read can use [`tokio::fs`] instead of blocking the reactor.
 #[cfg(target_os = "linux")]
 #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, ret(level=tracing::Level::TRACE)))]
-fn is_module_loaded(module_name: &str) -> bool {
-    procfs::modules()
-        .map(|modules| modules.iter().any(|(name, _)| name == module_name))
-        .unwrap_or(false)
+async fn is_module_loaded(module_name: &str) -> bool {
+    match tokio::fs::read_to_string("/proc/modules").await {
+        Ok(contents) => lists_module(&contents, module_name),
+        Err(error) => {
+            tracing::warn!(%error, "cannot read /proc/modules; treating radio as not loaded");
+            false
+        }
+    }
 }
 
 #[cfg(not(target_os = "linux"))]
 #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, ret(level=tracing::Level::TRACE)))]
-fn is_module_loaded(_module_name: &str) -> bool {
+async fn is_module_loaded(_module_name: &str) -> bool {
     unreachable!("is_module_loaded is only implemented on Linux")
 }
 
 #[cfg(target_os = "linux")]
-fn is_interface_up(interface: &str) -> bool {
+async fn is_interface_up(interface: &str) -> bool {
     let operstate_path = format!("/sys/class/net/{}/operstate", interface);
-    if let Ok(state) = fs::read_to_string(&operstate_path) {
+    if let Ok(state) = tokio::fs::read_to_string(&operstate_path).await {
         let state = state.trim();
         return state == "up" || state == "unknown";
     }
@@ -122,7 +137,7 @@ fn is_interface_up(interface: &str) -> bool {
 }
 
 #[cfg(not(target_os = "linux"))]
-fn is_interface_up(_interface: &str) -> bool {
+async fn is_interface_up(_interface: &str) -> bool {
     unreachable!("is_interface_up is only implemented on Linux")
 }
 
@@ -140,29 +155,32 @@ impl KoboWifiManager {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
-    fn run_script(&self, script: &str) {
-        if Path::new(script).exists() {
-            let output = Command::new(script).output();
-            if let Ok(output) = output {
-                if !output.status.success() {
+    async fn run_script(&self, script: &str) {
+        if tokio::fs::try_exists(script).await.unwrap_or(false) {
+            match Command::new(script).output().await {
+                Ok(output) if !output.status.success() => {
                     warn!(
                         script,
                         stderr = %String::from_utf8_lossy(&output.stderr),
                         "WiFi script failed"
                     );
-                } else {
-                    debug!(script, "WiFi script succeeded");
                 }
+                Ok(_) => debug!(script, "WiFi script succeeded"),
+                Err(e) => warn!(script, error = %e, "Failed to run WiFi script"),
             }
         }
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(path = %path), ret(level=tracing::Level::TRACE)))]
-    fn insmod(&self, path: &str) -> Result<(), WifiError> {
-        let output = Command::new("insmod").arg(path).output().map_err(|e| {
-            error!(error = %e, path, "Failed to execute insmod");
-            WifiError::KernelModule(format!("insmod execution failed: {}", e))
-        })?;
+    async fn insmod(&self, path: &str) -> Result<(), WifiError> {
+        let output = Command::new("insmod")
+            .arg(path)
+            .output()
+            .await
+            .map_err(|e| {
+                error!(error = %e, path, "Failed to execute insmod");
+                WifiError::KernelModule(format!("insmod execution failed: {}", e))
+            })?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -182,11 +200,11 @@ impl KoboWifiManager {
     /// This function is idempotent: if the module is already loaded, this returns `Ok(())`
     /// without attempting to reload it.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(path = %path, module_name = %module_name), ret(level=tracing::Level::TRACE)))]
-    fn insmod_asneeded(&self, path: &str, module_name: &str) -> Result<(), WifiError> {
-        if !is_module_loaded(module_name) {
-            match self.insmod(path) {
+    async fn insmod_asneeded(&self, path: &str, module_name: &str) -> Result<(), WifiError> {
+        if !is_module_loaded(module_name).await {
+            match self.insmod(path).await {
                 Ok(()) => {
-                    std::thread::sleep(std::time::Duration::from_millis(250));
+                    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
                 }
                 Err(WifiError::KernelModule(ref msg)) if msg.contains("File exists") => {
                     debug!(
@@ -207,17 +225,18 @@ impl KoboWifiManager {
     /// This function is idempotent: if the module is already loaded, this returns `Ok(())`
     /// without attempting to reload it.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(path = %path, module_name = %module_name), ret(level=tracing::Level::TRACE)))]
-    fn insmod_asneeded_with_params(
+    async fn insmod_asneeded_with_params(
         &self,
         path: &str,
         module_name: &str,
         params: &[&str],
     ) -> Result<(), WifiError> {
-        if !is_module_loaded(module_name) {
+        if !is_module_loaded(module_name).await {
             let output = Command::new("insmod")
                 .arg(path)
                 .args(params)
                 .output()
+                .await
                 .map_err(|e| {
                     error!(error = %e, path, "Failed to execute insmod");
                     WifiError::KernelModule(format!("insmod execution failed: {}", e))
@@ -238,7 +257,7 @@ impl KoboWifiManager {
                     )));
                 }
             } else {
-                std::thread::sleep(std::time::Duration::from_millis(250));
+                tokio::time::sleep(std::time::Duration::from_millis(250)).await;
             }
         } else {
             debug!(module_name, "Module already loaded");
@@ -247,8 +266,8 @@ impl KoboWifiManager {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(module_name = %module_name), ret(level=tracing::Level::TRACE)))]
-    fn rmmod(&self, module_name: &str) -> Result<(), WifiError> {
-        if !is_module_loaded(module_name) {
+    async fn rmmod(&self, module_name: &str) -> Result<(), WifiError> {
+        if !is_module_loaded(module_name).await {
             debug!(module_name, "Module not loaded, skipping rmmod");
             return Ok(());
         }
@@ -256,6 +275,7 @@ impl KoboWifiManager {
         let output = Command::new("rmmod")
             .arg(module_name)
             .output()
+            .await
             .map_err(|e| {
                 error!(error = %e, module_name, "Failed to execute rmmod");
                 WifiError::KernelModule(format!("rmmod execution failed: {}", e))
@@ -333,28 +353,39 @@ impl KoboWifiManager {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
-    fn power_up_wmt(&self) -> Result<(), WifiError> {
+    async fn power_up_wmt(&self) -> Result<(), WifiError> {
         let module_path = &self.config.module_path;
 
-        self.insmod_asneeded(&format!("{}/wmt_drv.ko", module_path), "wmt_drv")?;
+        self.insmod_asneeded(&format!("{}/wmt_drv.ko", module_path), "wmt_drv")
+            .await?;
         self.insmod_asneeded(
             &format!("{}/wmt_chrdev_wifi.ko", module_path),
             "wmt_chrdev_wifi",
-        )?;
-        self.insmod_asneeded(&format!("{}/wmt_cdev_bt.ko", module_path), "wmt_cdev_bt")?;
+        )
+        .await?;
+        self.insmod_asneeded(&format!("{}/wmt_cdev_bt.ko", module_path), "wmt_cdev_bt")
+            .await?;
 
         let wifi_module_path = format!("{}/{}.ko", module_path, self.config.module);
-        if Path::new(&wifi_module_path).exists() {
-            self.insmod_asneeded(&wifi_module_path, self.config.module.as_ref())?;
+        if tokio::fs::try_exists(&wifi_module_path)
+            .await
+            .unwrap_or(false)
+        {
+            self.insmod_asneeded(&wifi_module_path, self.config.module.as_ref())
+                .await?;
         }
 
-        fs::write("/proc/driver/wmt_dbg", "0xDB9DB9").ok();
-        fs::write("/proc/driver/wmt_dbg", "7 9 0").ok();
-        std::thread::sleep(std::time::Duration::from_secs(1));
-        fs::write("/proc/driver/wmt_dbg", "0xDB9DB9").ok();
-        fs::write("/proc/driver/wmt_dbg", "7 9 1").ok();
+        tokio::fs::write("/proc/driver/wmt_dbg", "0xDB9DB9")
+            .await
+            .ok();
+        tokio::fs::write("/proc/driver/wmt_dbg", "7 9 0").await.ok();
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        tokio::fs::write("/proc/driver/wmt_dbg", "0xDB9DB9")
+            .await
+            .ok();
+        tokio::fs::write("/proc/driver/wmt_dbg", "7 9 1").await.ok();
 
-        fs::write(WMT_WIFI_PATH, "1").map_err(|e| {
+        tokio::fs::write(WMT_WIFI_PATH, "1").await.map_err(|e| {
             error!(error = %e, "Failed to write to wmtWifi");
             WifiError::Ioctl(format!("Failed to write to {}: {}", WMT_WIFI_PATH, e))
         })?;
@@ -364,12 +395,12 @@ impl KoboWifiManager {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
-    fn power_down_wmt(&self) -> Result<(), WifiError> {
-        if !Path::new(WMT_WIFI_PATH).exists() {
+    async fn power_down_wmt(&self) -> Result<(), WifiError> {
+        if !tokio::fs::try_exists(WMT_WIFI_PATH).await.unwrap_or(false) {
             debug!("wmtWifi not present, skipping power down");
             return Ok(());
         }
-        match fs::write(WMT_WIFI_PATH, "0") {
+        match tokio::fs::write(WMT_WIFI_PATH, "0").await {
             Ok(()) => {
                 info!("WiFi powered down via WMT");
                 Ok(())
@@ -382,26 +413,27 @@ impl KoboWifiManager {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
-    fn power_up_module(&self) -> Result<(), WifiError> {
+    async fn power_up_module(&self) -> Result<(), WifiError> {
         let module_path = &self.config.module_path;
         self.insmod_asneeded(
             &format!("{}/sdio_wifi_pwr.ko", module_path),
             "sdio_wifi_pwr",
-        )?;
+        )
+        .await?;
         info!("WiFi powered up via module");
         Ok(())
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
-    fn power_down_module(&self) -> Result<(), WifiError> {
-        self.rmmod("sdio_wifi_pwr")?;
+    async fn power_down_module(&self) -> Result<(), WifiError> {
+        self.rmmod("sdio_wifi_pwr").await?;
         info!("WiFi powered down via module");
         Ok(())
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, ret(level=tracing::Level::TRACE)))]
-    fn read_country_code(&self) -> Option<String> {
-        let content = fs::read_to_string(CONFIG_PATH).ok()?;
+    async fn read_country_code(&self) -> Option<String> {
+        let content = tokio::fs::read_to_string(CONFIG_PATH).await.ok()?;
         for line in content.lines() {
             if line.starts_with("WifiRegulatoryDomain=") {
                 return Some(line.split('=').nth(1)?.to_string());
@@ -411,10 +443,10 @@ impl KoboWifiManager {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
-    fn build_module_params(&self) -> Vec<String> {
+    async fn build_module_params(&self) -> Vec<String> {
         let mut params = Vec::new();
 
-        if let Some(country_code) = self.read_country_code() {
+        if let Some(country_code) = self.read_country_code().await {
             match &self.config.module {
                 WifiModule::Eight821cs => {
                     params.push(format!("rtw_country_code={}", country_code));
@@ -434,35 +466,36 @@ impl KoboWifiManager {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
-    fn load_wifi_module(&self) -> Result<(), WifiError> {
-        let module_params = self.build_module_params();
+    async fn load_wifi_module(&self) -> Result<(), WifiError> {
+        let module_params = self.build_module_params().await;
         let platform = std::env::var("PLATFORM").unwrap_or_default();
 
         if self.config.module == WifiModule::Moal {
-            let mlan_path = if Path::new(&format!("{}/{}/mlan.ko", DRIVERS_DIR, platform)).exists()
-            {
-                format!("{}/{}/mlan.ko", DRIVERS_DIR, platform)
+            let mlan_standard = format!("{}/{}/mlan.ko", DRIVERS_DIR, platform);
+            let mlan_path = if tokio::fs::try_exists(&mlan_standard).await.unwrap_or(false) {
+                mlan_standard
             } else {
                 format!("{}/mlan.ko", self.config.module_path)
             };
 
-            if Path::new(&mlan_path).exists() && !is_module_loaded("mlan") {
-                self.insmod(&mlan_path)?;
+            if tokio::fs::try_exists(&mlan_path).await.unwrap_or(false)
+                && !is_module_loaded("mlan").await
+            {
+                self.insmod(&mlan_path).await?;
             }
         }
 
-        let wifi_module_path = if Path::new(&format!(
-            "{}/{}/{}.ko",
-            DRIVERS_DIR, platform, self.config.module
-        ))
-        .exists()
-        {
-            format!("{}/{}/{}.ko", DRIVERS_DIR, platform, self.config.module)
+        let wifi_standard = format!("{}/{}/{}.ko", DRIVERS_DIR, platform, self.config.module);
+        let wifi_module_path = if tokio::fs::try_exists(&wifi_standard).await.unwrap_or(false) {
+            wifi_standard
         } else {
             format!("{}/{}.ko", self.config.module_path, self.config.module)
         };
 
-        if !Path::new(&wifi_module_path).exists() {
+        if !tokio::fs::try_exists(&wifi_module_path)
+            .await
+            .unwrap_or(false)
+        {
             return Err(WifiError::KernelModule(format!(
                 "WiFi module not found: {}",
                 wifi_module_path
@@ -470,7 +503,8 @@ impl KoboWifiManager {
         }
 
         let params: Vec<&str> = module_params.iter().map(|s| s.as_str()).collect();
-        self.insmod_asneeded_with_params(&wifi_module_path, self.config.module.as_ref(), &params)?;
+        self.insmod_asneeded_with_params(&wifi_module_path, self.config.module.as_ref(), &params)
+            .await?;
 
         debug!(
             module = %self.config.module,
@@ -480,12 +514,15 @@ impl KoboWifiManager {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(interface = %self.config.interface), ret(level=tracing::Level::TRACE)))]
-    fn wait_for_interface(&self) -> Result<(), WifiError> {
+    async fn wait_for_interface(&self) -> Result<(), WifiError> {
         let interface_path = format!("/sys/class/net/{}", self.config.interface);
         let max_attempts = 20;
 
         for attempt in 0..max_attempts {
-            if Path::new(&interface_path).exists() {
+            if tokio::fs::try_exists(&interface_path)
+                .await
+                .unwrap_or(false)
+            {
                 debug!(
                     interface = %self.config.interface,
                     attempt,
@@ -493,7 +530,7 @@ impl KoboWifiManager {
                 );
                 return Ok(());
             }
-            std::thread::sleep(std::time::Duration::from_millis(200));
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
         }
 
         Err(WifiError::Interface(format!(
@@ -503,10 +540,8 @@ impl KoboWifiManager {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
-    fn start_wpa_supplicant(&self) -> Result<(), WifiError> {
-        use std::process::Command;
-
-        if self.is_wpa_supplicant_running() {
+    async fn start_wpa_supplicant(&self) -> Result<(), WifiError> {
+        if self.is_wpa_supplicant_running().await {
             debug!("wpa_supplicant already running");
             return Ok(());
         }
@@ -524,6 +559,7 @@ impl KoboWifiManager {
             .arg("-B")
             .env("LD_LIBRARY_PATH", "")
             .output()
+            .await
             .map_err(|e| {
                 error!(error = %e, "Failed to execute wpa_supplicant");
                 WifiError::Interface(format!("Failed to start wpa_supplicant: {}", e))
@@ -543,21 +579,23 @@ impl KoboWifiManager {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, ret(level=tracing::Level::TRACE)))]
-    fn is_wpa_supplicant_running(&self) -> bool {
-        std::process::Command::new("pkill")
+    async fn is_wpa_supplicant_running(&self) -> bool {
+        Command::new("pkill")
             .args(["-0", "wpa_supplicant"])
             .output()
+            .await
             .map(|o| o.status.success())
             .unwrap_or(false)
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
-    fn stop_wpa_supplicant(&self) -> Result<(), WifiError> {
-        let output = std::process::Command::new("wpa_cli")
+    async fn stop_wpa_supplicant(&self) -> Result<(), WifiError> {
+        let output = Command::new("wpa_cli")
             .arg("-i")
             .arg(&self.config.interface)
             .arg("terminate")
             .output()
+            .await
             .map_err(|e| {
                 error!(error = %e, "Failed to execute wpa_cli");
                 WifiError::Interface(format!("Failed to stop wpa_supplicant: {}", e))
@@ -574,11 +612,12 @@ impl KoboWifiManager {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(interface = %self.config.interface), ret(level=tracing::Level::TRACE)))]
-    fn ifconfig_up(&self) -> Result<(), WifiError> {
-        let output = std::process::Command::new("ifconfig")
+    async fn ifconfig_up(&self) -> Result<(), WifiError> {
+        let output = Command::new("ifconfig")
             .arg(&self.config.interface)
             .arg("up")
             .output()
+            .await
             .map_err(|e| {
                 error!(error = %e, "Failed to execute ifconfig");
                 WifiError::Interface(format!("Failed to bring up interface: {}", e))
@@ -598,11 +637,12 @@ impl KoboWifiManager {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(interface = %self.config.interface), ret(level=tracing::Level::TRACE)))]
-    fn ifconfig_down(&self) -> Result<(), WifiError> {
-        let output = std::process::Command::new("ifconfig")
+    async fn ifconfig_down(&self) -> Result<(), WifiError> {
+        let output = Command::new("ifconfig")
             .arg(&self.config.interface)
             .arg("down")
             .output()
+            .await
             .map_err(|e| {
                 error!(error = %e, "Failed to execute ifconfig");
                 WifiError::Interface(format!("Failed to bring down interface: {}", e))
@@ -619,16 +659,17 @@ impl KoboWifiManager {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(interface = %self.config.interface), ret(level=tracing::Level::TRACE)))]
-    fn wlarm_le_up(&self) -> Result<(), WifiError> {
+    async fn wlarm_le_up(&self) -> Result<(), WifiError> {
         if self.config.module != WifiModule::Dhd {
             return Ok(());
         }
 
-        if let Err(e) = std::process::Command::new("wlarm_le")
+        if let Err(e) = Command::new("wlarm_le")
             .arg("-i")
             .arg(&self.config.interface)
             .arg("up")
             .output()
+            .await
         {
             warn!(error = %e, "Failed to execute wlarm_le up");
             return Ok(());
@@ -639,16 +680,17 @@ impl KoboWifiManager {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(interface = %self.config.interface), ret(level=tracing::Level::TRACE)))]
-    fn wlarm_le_down(&self) -> Result<(), WifiError> {
+    async fn wlarm_le_down(&self) -> Result<(), WifiError> {
         if self.config.module != WifiModule::Dhd {
             return Ok(());
         }
 
-        if let Err(e) = std::process::Command::new("wlarm_le")
+        if let Err(e) = Command::new("wlarm_le")
             .arg("-i")
             .arg(&self.config.interface)
             .arg("down")
             .output()
+            .await
         {
             warn!(error = %e, "Failed to execute wlarm_le down");
             return Ok(());
@@ -659,35 +701,33 @@ impl KoboWifiManager {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
-    fn power_up(&self) -> Result<(), WifiError> {
+    async fn power_up(&self) -> Result<(), WifiError> {
         match self.config.power_toggle {
-            PowerToggle::Wmt => self.power_up_wmt()?,
+            PowerToggle::Wmt => self.power_up_wmt().await?,
             PowerToggle::NtxIo => self.power_up_ntx_io()?,
-            PowerToggle::Module => self.power_up_module()?,
+            PowerToggle::Module => self.power_up_module().await?,
         }
         Ok(())
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
-    fn power_down(&self) -> Result<(), WifiError> {
+    async fn power_down(&self) -> Result<(), WifiError> {
         match self.config.power_toggle {
-            PowerToggle::Wmt => self.power_down_wmt()?,
+            PowerToggle::Wmt => self.power_down_wmt().await?,
             PowerToggle::NtxIo => self.power_down_ntx_io()?,
-            PowerToggle::Module => self.power_down_module()?,
+            PowerToggle::Module => self.power_down_module().await?,
         }
         Ok(())
     }
 }
 
+#[async_trait::async_trait]
 impl WifiManager for KoboWifiManager {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
-    fn enable(&self) -> Result<(), WifiError> {
-        let _lock = self
-            .lock
-            .lock()
-            .map_err(|e| WifiError::Lock(format!("Failed to acquire lock: {}", e)))?;
+    async fn enable(&self) -> Result<(), WifiError> {
+        let _lock = self.lock.lock().await;
 
-        if self.is_enabled() {
+        if self.is_enabled().await {
             info!("WiFi already enabled, skipping");
             return Ok(());
         }
@@ -698,29 +738,26 @@ impl WifiManager for KoboWifiManager {
             "Enabling WiFi"
         );
 
-        self.run_script(WIFI_PRE_UP_SCRIPT);
+        self.run_script(WIFI_PRE_UP_SCRIPT).await;
 
-        self.power_up()?;
-        self.load_wifi_module()?;
-        self.wait_for_interface()?;
-        self.ifconfig_up()?;
-        self.wlarm_le_up()?;
-        self.start_wpa_supplicant()?;
+        self.power_up().await?;
+        self.load_wifi_module().await?;
+        self.wait_for_interface().await?;
+        self.ifconfig_up().await?;
+        self.wlarm_le_up().await?;
+        self.start_wpa_supplicant().await?;
 
-        self.run_script(WIFI_POST_UP_SCRIPT);
+        self.run_script(WIFI_POST_UP_SCRIPT).await;
 
         info!("WiFi enabled successfully");
         Ok(())
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
-    fn disable(&self) -> Result<(), WifiError> {
-        let _lock = self
-            .lock
-            .lock()
-            .map_err(|e| WifiError::Lock(format!("Failed to acquire lock: {}", e)))?;
+    async fn disable(&self) -> Result<(), WifiError> {
+        let _lock = self.lock.lock().await;
 
-        if !is_module_loaded(self.config.module.as_ref()) {
+        if !is_module_loaded(self.config.module.as_ref()).await {
             info!("WiFi already disabled, skipping");
             return Ok(());
         }
@@ -730,44 +767,45 @@ impl WifiManager for KoboWifiManager {
             "Disabling WiFi"
         );
 
-        self.run_script(WIFI_PRE_DOWN_SCRIPT);
+        self.run_script(WIFI_PRE_DOWN_SCRIPT).await;
 
-        self.stop_wpa_supplicant()?;
-        self.wlarm_le_down()?;
-        self.ifconfig_down()?;
+        self.stop_wpa_supplicant().await?;
+        self.wlarm_le_down().await?;
+        self.ifconfig_down().await?;
 
-        std::thread::sleep(std::time::Duration::from_millis(200));
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
         if self.config.power_toggle != PowerToggle::Wmt {
-            self.rmmod(self.config.module.as_ref())?;
+            self.rmmod(self.config.module.as_ref()).await?;
             if self.config.module == WifiModule::Moal {
-                self.rmmod("mlan")?;
+                self.rmmod("mlan").await?;
             }
         }
 
-        self.power_down()?;
+        self.power_down().await?;
 
-        self.run_script(WIFI_POST_DOWN_SCRIPT);
+        self.run_script(WIFI_POST_DOWN_SCRIPT).await;
 
         info!("WiFi disabled successfully");
         Ok(())
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(interface = %self.config.interface), ret))]
-    fn is_enabled(&self) -> bool {
-        is_module_loaded(self.config.module.as_ref()) && is_interface_up(&self.config.interface)
+    async fn is_enabled(&self) -> bool {
+        is_module_loaded(self.config.module.as_ref()).await
+            && is_interface_up(&self.config.interface).await
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(interface = %self.config.interface), ret))]
-    fn network_info(&self) -> Result<Option<NetworkInfo>, WifiError> {
-        if !self.is_enabled() {
+    async fn network_info(&self) -> Result<Option<NetworkInfo>, WifiError> {
+        if !self.is_enabled().await {
             tracing::debug!(
                 interface = %self.config.interface,
                 "Wi-Fi disabled, refusing network_info"
             );
             return Err(WifiError::Disabled);
         }
-        network_info_from_zbus(&self.config.interface)
+        network_info_from_zbus(&self.config.interface).await
     }
 }
 
@@ -796,5 +834,29 @@ impl KoboWifiManager {
                 Ok(Self::new(config))
             }
         }
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use super::lists_module;
+
+    const MODULES: &str = "wl 16384 0 - Live 0x00000000\nmt7601e_sta 20480 1 wl, Live 0x0\n";
+
+    #[test]
+    fn finds_a_loaded_module() {
+        assert!(lists_module(MODULES, "wl"));
+        assert!(lists_module(MODULES, "mt7601e_sta"));
+    }
+
+    #[test]
+    fn rejects_a_name_that_is_only_a_column_prefix() {
+        assert!(!lists_module(MODULES, "mt7601e"));
+        assert!(!lists_module(MODULES, "w"));
+    }
+
+    #[test]
+    fn reports_nothing_for_an_empty_list() {
+        assert!(!lists_module("", "wl"));
     }
 }

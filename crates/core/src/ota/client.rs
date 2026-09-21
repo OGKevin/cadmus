@@ -3,16 +3,13 @@ use crate::github::types::{
     WorkflowRunsResponse,
 };
 use crate::github::{GithubClient, OtaProgress};
-use crate::http::{CancelFunc, ChunkedDownloadError};
+use crate::http::{CancelFlag, CancelFunc, ChunkedDownloadError};
 use crate::version::GitVersion;
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
-use std::fs::File;
-use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 #[cfg(test)]
 use std::cell::Cell;
-use zip::ZipArchive;
 
 #[cfg(all(not(test), not(feature = "emulator")))]
 use crate::settings::INTERNAL_CARD_ROOT;
@@ -111,7 +108,7 @@ pub enum OtaError {
 
     /// Failed to extract files from ZIP archive
     #[error("ZIP extraction error: {0}")]
-    ZipError(#[from] zip::result::ZipError),
+    ZipError(String),
 
     /// Deployment process failed after successful download
     #[error("Deployment error: {0}")]
@@ -169,8 +166,33 @@ impl From<ChunkedDownloadError> for OtaError {
             ChunkedDownloadError::Cancelled => OtaError::Cancelled,
             ChunkedDownloadError::Request(r) if r.status().is_some() => api_error(r),
             ChunkedDownloadError::Request(r) => OtaError::Request(r),
+            ChunkedDownloadError::Failed(message) => OtaError::Api(message),
             ChunkedDownloadError::Io(e) => OtaError::Io(e),
         }
+    }
+}
+
+impl From<reqwest_middleware::Error> for OtaError {
+    fn from(error: reqwest_middleware::Error) -> Self {
+        match crate::http::reqwest_error(error) {
+            Ok(error) => Self::Request(error),
+            Err(message) => Self::Api(message),
+        }
+    }
+}
+
+impl From<crate::github::GithubRequestError> for OtaError {
+    fn from(error: crate::github::GithubRequestError) -> Self {
+        match error {
+            crate::github::GithubRequestError::Middleware(error) => Self::from(error),
+            crate::github::GithubRequestError::Message(message) => Self::Api(message),
+        }
+    }
+}
+
+impl From<serde_json::Error> for OtaError {
+    fn from(error: serde_json::Error) -> Self {
+        Self::Api(error.to_string())
     }
 }
 
@@ -213,21 +235,21 @@ impl OtaClient {
     /// * `OtaError::Api` - GitHub API request failed
     /// * `OtaError::Request` - Network communication failed
     /// * `OtaError::Io` - Failed to write downloaded file to disk
-    pub fn download_pr_artifact<F>(
+    pub async fn download_pr_artifact<F>(
         &self,
         pr_number: u32,
         mut progress_callback: F,
-        should_cancel: CancelFunc<'_>,
+        should_cancel: Option<&CancelFlag>,
     ) -> Result<PathBuf, OtaError>
     where
         F: FnMut(OtaProgress),
     {
-        if should_cancel.is_cancelled() {
+        if should_cancel.is_some_and(CancelFlag::is_cancelled) {
             return Err(OtaError::Cancelled);
         }
 
         check_disk_space(&self.tmp_dir)?;
-        verify_scopes(&self.github)?;
+        verify_scopes(&self.github).await?;
 
         progress_callback(OtaProgress::CheckingPr);
         tracing::info!(pr_number, "Starting PR build download");
@@ -241,12 +263,13 @@ impl OtaClient {
 
         let response = self
             .github
-            .get(&pr_url)
-            .send()?
+            .api_get(&pr_url)
+            .send()
+            .await?
             .error_for_status()
             .map_err(|e| {
-                tracing::error!(pr_number, status = ?e.status(), error = %e, "PR fetch failed");
-                if e.status() == Some(reqwest::StatusCode::UNAUTHORIZED) {
+                tracing::error!(pr_number, status = ?e.status_code(), error = %e, "PR fetch failed");
+                if e.status_code() == reqwest::StatusCode::UNAUTHORIZED {
                     OtaError::Unauthorized
                 } else {
                     OtaError::PrNotFound(pr_number)
@@ -269,11 +292,11 @@ impl OtaClient {
 
         let runs: WorkflowRunsResponse = self
             .github
-            .get(&runs_url)
-            .send()?
+            .api_get(&runs_url)
+            .send().await?
             .error_for_status()
             .map_err(|e| {
-                tracing::error!(head_sha = %head_sha, status = ?e.status(), error = %e, "Workflow runs fetch failed");
+                tracing::error!(head_sha = %head_sha, status = ?e.status_code(), error = %e, "Workflow runs fetch failed");
                 api_error(e)
             })?
             .json()?;
@@ -311,7 +334,10 @@ impl OtaClient {
                 conclusion = ?run.conclusion,
                 "Checking Cargo workflow run for artifacts"
             );
-            match self.find_artifact_in_run(run.id, &artifact_name_pattern) {
+            match self
+                .find_artifact_in_run(run.id, &artifact_name_pattern)
+                .await
+            {
                 Ok(found) => {
                     tracing::debug!(run_id = run.id, "Selected Cargo workflow run");
                     artifact = Some(found);
@@ -350,7 +376,8 @@ impl OtaClient {
             &download_path,
             &mut progress_callback,
             should_cancel,
-        )?;
+        )
+        .await?;
 
         progress_callback(OtaProgress::Complete {
             path: download_path.clone(),
@@ -386,26 +413,26 @@ impl OtaClient {
     /// * `OtaError::Api` - GitHub API request failed
     /// * `OtaError::Request` - Network communication failed
     /// * `OtaError::Io` - Failed to write downloaded file to disk
-    pub fn download_default_branch_artifact<F>(
+    pub async fn download_default_branch_artifact<F>(
         &self,
         mut progress_callback: F,
-        should_cancel: CancelFunc<'_>,
+        should_cancel: Option<&CancelFlag>,
     ) -> Result<PathBuf, OtaError>
     where
         F: FnMut(OtaProgress),
     {
-        if should_cancel.is_cancelled() {
+        if should_cancel.is_some_and(CancelFlag::is_cancelled) {
             return Err(OtaError::Cancelled);
         }
 
         check_disk_space(&self.tmp_dir)?;
-        verify_scopes(&self.github)?;
+        verify_scopes(&self.github).await?;
 
         progress_callback(OtaProgress::FindingLatestBuild);
         tracing::info!("Starting main branch build download");
         tracing::debug!("Finding latest default branch build");
 
-        let default_branch = self.fetch_default_branch()?;
+        let default_branch = self.fetch_default_branch().await?;
 
         let encoded_branch = utf8_percent_encode(&default_branch, NON_ALPHANUMERIC);
         let runs_url = format!(
@@ -416,11 +443,11 @@ impl OtaClient {
 
         let runs: WorkflowRunsResponse = self
             .github
-            .get(&runs_url)
-            .send()?
+            .api_get(&runs_url)
+            .send().await?
             .error_for_status()
             .map_err(|e| {
-                tracing::error!(status = ?e.status(), error = %e, "Cargo workflow runs fetch failed");
+                tracing::error!(status = ?e.status_code(), error = %e, "Cargo workflow runs fetch failed");
                 api_error(e)
             })?
             .json()?;
@@ -449,6 +476,7 @@ impl OtaClient {
 
         let artifact = self
             .find_artifact_in_run(cargo_run.id, &artifact_name_prefix)
+            .await
             .map_err(|e| match e {
                 OtaError::ArtifactsNotFound(ArtifactSource::WorkflowRun(pattern)) => {
                     tracing::error!(pattern = %pattern, "No matching artifact found on default branch");
@@ -471,7 +499,8 @@ impl OtaClient {
             &download_path,
             &mut progress_callback,
             should_cancel,
-        )?;
+        )
+        .await?;
 
         progress_callback(OtaProgress::Complete {
             path: download_path.clone(),
@@ -508,15 +537,15 @@ impl OtaClient {
     /// * `OtaError::ArtifactsNotFound` - KoboRoot.tgz not found in latest release
     /// * `OtaError::Io` - Failed to write downloaded file to disk
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-    pub fn download_stable_release_artifact<F>(
+    pub async fn download_stable_release_artifact<F>(
         &self,
         mut progress_callback: F,
-        should_cancel: CancelFunc<'_>,
+        should_cancel: Option<&CancelFlag>,
     ) -> Result<PathBuf, OtaError>
     where
         F: FnMut(OtaProgress),
     {
-        if should_cancel.is_cancelled() {
+        if should_cancel.is_some_and(CancelFlag::is_cancelled) {
             return Err(OtaError::Cancelled);
         }
 
@@ -531,11 +560,12 @@ impl OtaClient {
 
         let release: Release = self
             .github
-            .get_unauthenticated(releases_url)
-            .send()?
+            .api_get_unauthenticated(releases_url)
+            .send()
+            .await?
             .error_for_status()
             .map_err(|e| {
-                tracing::error!(status = ?e.status(), error = %e, "Latest release fetch failed");
+                tracing::error!(status = ?e.status_code(), error = %e, "Latest release fetch failed");
                 api_error(e)
             })?
             .json()?;
@@ -575,7 +605,8 @@ impl OtaClient {
 
         let download_path = self.tmp_dir.join("cadmus-ota-stable-release.tgz");
 
-        self.download_release_asset(asset, &download_path, &mut progress_callback, should_cancel)?;
+        self.download_release_asset(asset, &download_path, &mut progress_callback, should_cancel)
+            .await?;
 
         progress_callback(OtaProgress::Complete {
             path: download_path.clone(),
@@ -604,27 +635,28 @@ impl OtaClient {
     /// use cadmus_core::github::GithubClient;
     /// use cadmus_core::ota::OtaClient;
     ///
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// # rustls::crypto::ring::default_provider().install_default().ok();
     /// # let github = GithubClient::new(None)?;
     /// # let client = OtaClient::new(github, std::path::PathBuf::from("/tmp"));
-    /// let version = client.fetch_latest_release_version()?;
+    /// let version = client.fetch_latest_release_version().await?;
     /// println!("Latest version: {}", version);
     /// # Ok(())
     /// # }
     /// ```
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
-    pub fn fetch_latest_release_version(&self) -> Result<GitVersion, OtaError> {
+    pub async fn fetch_latest_release_version(&self) -> Result<GitVersion, OtaError> {
         let releases_url = "https://api.github.com/repos/ogkevin/cadmus/releases/latest";
         tracing::debug!(url = %releases_url, "Fetching latest release version");
 
         let release: Release = self
             .github
-            .get_unauthenticated(releases_url)
-            .send()?
+            .api_get_unauthenticated(releases_url)
+            .send()
+            .await?
             .error_for_status()
             .map_err(|e| {
-                tracing::error!(status = ?e.status(), error = %e, "Latest release fetch failed");
+                tracing::error!(status = ?e.status_code(), error = %e, "Latest release fetch failed");
                 api_error(e)
             })?
             .json()?;
@@ -654,26 +686,31 @@ impl OtaClient {
     ///
     /// * `OtaError::Io` - Failed to read or write files before the bundle was renamed
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
-    pub fn deploy(
+    pub async fn deploy(
         &self,
         kobo_root_path: PathBuf,
         should_cancel: CancelFunc<'_>,
     ) -> Result<DeployOutcome, OtaError> {
         tracing::info!(path = ?kobo_root_path, "Deploying KoboRoot.tgz");
 
-        let mut src = File::open(&kobo_root_path)?;
-        let outcome = self.write_staging_then_rename(should_cancel, |staging, check| {
-            let bytes_copied = copy_with_cancel(&mut src, staging, check)?;
-            tracing::debug!(
-                bytes = bytes_copied,
-                src = ?kobo_root_path,
-                "Streamed KoboRoot.tgz to staging path"
-            );
-            Ok(())
-        })?;
+        let cancel = should_cancel;
+        let src_path = kobo_root_path.clone();
+        let (deploy_path, staging_path, mut unpublished, mut staging) =
+            self.begin_staging().await?;
+        let mut src = tokio::fs::File::open(&src_path).await?;
+        copy_file_to_file(&mut src, &mut staging, cancel).await?;
+        let outcome = self
+            .commit_staging(
+                deploy_path,
+                staging_path,
+                &mut unpublished,
+                &mut staging,
+                cancel,
+            )
+            .await?;
 
         if kobo_root_path != outcome.path()
-            && let Err(e) = std::fs::remove_file(&kobo_root_path)
+            && let Err(e) = tokio::fs::remove_file(&kobo_root_path).await
         {
             tracing::error!(path = ?kobo_root_path, error = %e, "Failed to remove source file");
         }
@@ -715,49 +752,72 @@ impl OtaClient {
         path
     }
 
-    #[cfg_attr(
-        feature = "tracing",
-        tracing::instrument(skip(self, write, should_cancel))
-    )]
-    fn write_staging_then_rename<F>(
+    async fn begin_staging(
         &self,
-        should_cancel: CancelFunc<'_>,
-        write: F,
-    ) -> Result<DeployOutcome, OtaError>
-    where
-        F: FnOnce(&mut File, CancelFunc<'_>) -> Result<(), OtaError>,
-    {
+    ) -> Result<
+        (
+            PathBuf,
+            PathBuf,
+            crate::fs::RemovePathOnDrop,
+            tokio::fs::File,
+        ),
+        OtaError,
+    > {
         let deploy_path = self.deploy_path();
         let staging_path = self.staging_path();
-        self.ensure_deploy_dir(&deploy_path)?;
-        let mut unpublished = crate::fs::RemovePathOnDrop::file(staging_path.clone());
+        self.ensure_deploy_dir(&deploy_path).await?;
+        let unpublished = crate::fs::RemovePathOnDrop::file(staging_path.clone());
+        let staging = tokio::fs::File::create(&staging_path).await?;
+        Ok((deploy_path, staging_path, unpublished, staging))
+    }
 
-        let result = (|| {
-            let mut staging = File::create(&staging_path)?;
-            write(&mut staging, should_cancel)?;
-            if should_cancel.is_cancelled() {
-                return Err(OtaError::Cancelled);
-            }
-            staging.sync_all()?;
-            if !should_cancel.try_commit() {
-                return Err(OtaError::Cancelled);
-            }
-            std::fs::rename(&staging_path, &deploy_path)?;
-            match Self::sync_deploy_parent(&deploy_path) {
-                Ok(()) => Ok(DeployOutcome::Durable(deploy_path.clone())),
-                Err(error) => {
-                    tracing::warn!(
-                        path = ?deploy_path,
-                        error = %error,
-                        "Parent directory sync failed after committing bundle"
-                    );
-                    Ok(DeployOutcome::CommittedNotDurable {
-                        path: deploy_path.clone(),
-                        error,
-                    })
+    async fn commit_staging(
+        &self,
+        deploy_path: PathBuf,
+        staging_path: PathBuf,
+        unpublished: &mut crate::fs::RemovePathOnDrop,
+        staging: &mut tokio::fs::File,
+        should_cancel: CancelFunc<'_>,
+    ) -> Result<DeployOutcome, OtaError> {
+        if should_cancel.is_cancelled() {
+            return Err(OtaError::Cancelled);
+        }
+        staging.sync_all().await?;
+        if !should_cancel.try_commit() {
+            return Err(OtaError::Cancelled);
+        }
+        tokio::fs::rename(&staging_path, &deploy_path).await?;
+        #[cfg(test)]
+        let inject_sync_failure = FAIL_SYNC_DEPLOY_PARENT.with(|flag| flag.replace(false));
+        let sync_result = tokio::task::spawn_blocking({
+            let deploy_path = deploy_path.clone();
+            move || {
+                #[cfg(test)]
+                if inject_sync_failure {
+                    return Err(OtaError::Io(std::io::Error::other(
+                        "injected sync_deploy_parent failure",
+                    )));
                 }
+                Self::sync_deploy_parent(&deploy_path)
             }
-        })();
+        })
+        .await
+        .map_err(|error| OtaError::Io(std::io::Error::other(error)))?;
+
+        let result = match sync_result {
+            Ok(()) => Ok(DeployOutcome::Durable(deploy_path.clone())),
+            Err(error) => {
+                tracing::warn!(
+                    path = ?deploy_path,
+                    error = %error,
+                    "Parent directory sync failed after committing bundle"
+                );
+                Ok(DeployOutcome::CommittedNotDurable {
+                    path: deploy_path.clone(),
+                    error,
+                })
+            }
+        };
 
         if result.is_ok() {
             unpublished.disarm();
@@ -766,14 +826,39 @@ impl OtaClient {
         result
     }
 
-    fn sync_deploy_parent(deploy_path: &Path) -> Result<(), OtaError> {
-        #[cfg(test)]
-        if FAIL_SYNC_DEPLOY_PARENT.with(|flag| flag.replace(false)) {
-            return Err(OtaError::Io(std::io::Error::other(
-                "injected sync_deploy_parent failure",
-            )));
-        }
+    /// Drives the staging sequence for a test that only cares about the
+    /// commit, not how the bytes get there.
+    ///
+    /// Test-only on purpose: the boxed higher-ranked closure would otherwise
+    /// dictate the shape of the production deploy paths, which cannot use it
+    /// because they have to observe cancellation mid-write.
+    #[cfg(test)]
+    async fn write_staging_then_rename<F>(
+        &self,
+        should_cancel: CancelFunc<'_>,
+        write: F,
+    ) -> Result<DeployOutcome, OtaError>
+    where
+        F: for<'a> FnOnce(
+            &'a mut tokio::fs::File,
+        ) -> std::pin::Pin<
+            Box<dyn std::future::Future<Output = Result<(), OtaError>> + Send + 'a>,
+        >,
+    {
+        let (deploy_path, staging_path, mut unpublished, mut staging) =
+            self.begin_staging().await?;
+        write(&mut staging).await?;
+        self.commit_staging(
+            deploy_path,
+            staging_path,
+            &mut unpublished,
+            &mut staging,
+            should_cancel,
+        )
+        .await
+    }
 
+    fn sync_deploy_parent(deploy_path: &Path) -> Result<(), OtaError> {
         let Some(parent) = deploy_path.parent() else {
             return Ok(());
         };
@@ -798,7 +883,7 @@ impl OtaClient {
         Ok(())
     }
 
-    fn ensure_deploy_dir(&self, deploy_path: &Path) -> Result<(), OtaError> {
+    async fn ensure_deploy_dir(&self, deploy_path: &Path) -> Result<(), OtaError> {
         #[cfg(any(
             test,
             feature = "emulator",
@@ -810,7 +895,7 @@ impl OtaClient {
         {
             if let Some(parent) = deploy_path.parent() {
                 tracing::debug!(directory = ?parent, "Creating parent directory");
-                std::fs::create_dir_all(parent)?;
+                tokio::fs::create_dir_all(parent).await?;
             }
         }
 
@@ -818,21 +903,31 @@ impl OtaClient {
         Ok(())
     }
 
-    fn deploy_bytes(
+    async fn deploy_bytes(
         &self,
         data: &[u8],
         should_cancel: CancelFunc<'_>,
     ) -> Result<DeployOutcome, OtaError> {
         let byte_count = data.len();
-        let outcome = self.write_staging_then_rename(should_cancel, |staging, check| {
-            for chunk in data.chunks(64 * 1024) {
-                if check.is_cancelled() {
-                    return Err(OtaError::Cancelled);
-                }
-                staging.write_all(chunk)?;
+        let cancel = should_cancel;
+        let (deploy_path, staging_path, mut unpublished, mut staging) =
+            self.begin_staging().await?;
+        use tokio::io::AsyncWriteExt;
+        for chunk in data.chunks(64 * 1024) {
+            if cancel.is_cancelled() {
+                return Err(OtaError::Cancelled);
             }
-            Ok(())
-        })?;
+            staging.write_all(chunk).await?;
+        }
+        let outcome = self
+            .commit_staging(
+                deploy_path,
+                staging_path,
+                &mut unpublished,
+                &mut staging,
+                cancel,
+            )
+            .await?;
 
         tracing::debug!(bytes = byte_count, path = ?outcome.path(), "Deployment complete");
         tracing::info!(path = ?outcome.path(), "Update deployed successfully");
@@ -861,7 +956,7 @@ impl OtaClient {
     /// * `OtaError::DeploymentError` - KoboRoot.tgz not found in archive
     /// * `OtaError::Io` - Failed to write deployment file before the bundle was renamed
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
-    pub fn extract_and_deploy(
+    pub async fn extract_and_deploy(
         &self,
         zip_path: PathBuf,
         should_cancel: CancelFunc<'_>,
@@ -873,58 +968,111 @@ impl OtaClient {
         tracing::info!(path = ?zip_path, "Extracting and deploying update");
         tracing::debug!(path = ?zip_path, "Starting extraction");
 
-        let file = File::open(&zip_path)?;
-        let mut archive = ZipArchive::new(file)?;
-
-        tracing::debug!(file_count = archive.len(), "Opened ZIP archive");
-
-        let mut kobo_root_data = Vec::new();
-        let mut found = false;
+        let zip_size = tokio::fs::metadata(&zip_path).await?.len();
+        let reader = async_zip::tokio::read::fs::ZipFileReader::new(&zip_path)
+            .await
+            .map_err(|error| OtaError::ZipError(error.to_string()))?;
 
         let kobo_root_name = cfg_select! {
             feature = "test" => { "KoboRoot-test.tgz" }
             _ => { "KoboRoot.tgz" }
         };
 
-        tracing::debug!(target_file = kobo_root_name, "Looking for file");
+        tracing::debug!(
+            file_count = reader.file().entries().len(),
+            target_file = kobo_root_name,
+            "Opened ZIP archive"
+        );
 
-        for i in 0..archive.len() {
+        let mut found_index = None;
+        let mut expected_crc = 0_u32;
+        let mut uncompressed = 0_u64;
+        for (index, stored) in reader.file().entries().iter().enumerate() {
             if should_cancel.is_cancelled() {
                 return Err(OtaError::Cancelled);
             }
-
-            let mut entry = archive.by_index(i)?;
-            let entry_name = entry.name().to_string();
-
-            tracing::debug!(index = i, name = %entry_name, "Checking entry");
-
-            if entry_name.eq(kobo_root_name) {
-                tracing::debug!(name = %entry_name, "Found target file");
-                read_cancellable(&mut entry, &mut kobo_root_data, should_cancel)?;
-                found = true;
+            let entry_name = stored
+                .filename()
+                .as_str()
+                .map_err(|error| OtaError::ZipError(error.to_string()))?;
+            tracing::debug!(index, name = %entry_name, "Checking entry");
+            if entry_name == kobo_root_name
+                || Path::new(entry_name)
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    == Some(kobo_root_name)
+            {
+                found_index = Some(index);
+                expected_crc = stored.crc32();
+                uncompressed = stored.uncompressed_size();
                 break;
             }
         }
 
-        if !found {
+        let Some(index) = found_index else {
             tracing::error!(
                 target_file = kobo_root_name,
                 "Target file not found in artifact"
             );
             return Err(OtaError::DeploymentError(format!(
-                "{} not found in artifact",
-                kobo_root_name
+                "{kobo_root_name} not found in artifact"
             )));
-        }
+        };
 
-        tracing::debug!(
-            bytes = kobo_root_data.len(),
-            file = kobo_root_name,
-            "Extracted file"
-        );
+        let needed = zip_size.saturating_add(uncompressed);
+        let outcome = match crate::memory::choose_buffer_path(needed) {
+            crate::memory::BufferPath::InMemory => {
+                let mut entry = reader
+                    .reader_without_entry(index)
+                    .await
+                    .map_err(|error| OtaError::ZipError(error.to_string()))?;
+                let mut kobo_root_data = Vec::new();
+                copy_cancellable(&mut entry, &mut kobo_root_data, should_cancel).await?;
+                if entry.compute_hash() != expected_crc {
+                    return Err(OtaError::ZipError("CRC32 checksum mismatch".to_owned()));
+                }
+                tracing::debug!(
+                    bytes = kobo_root_data.len(),
+                    file = kobo_root_name,
+                    "Extracted file into memory"
+                );
+                self.deploy_bytes(&kobo_root_data, should_cancel).await?
+            }
+            crate::memory::BufferPath::Stream => {
+                // Extract straight into the staging file. Writing the entry to a
+                // temp path and then deploying it copied the whole bundle to
+                // flash a second time.
+                let (deploy_path, staging_path, mut unpublished, mut staging) =
+                    self.begin_staging().await?;
+                {
+                    let mut entry = reader
+                        .reader_without_entry(index)
+                        .await
+                        .map_err(|error| OtaError::ZipError(error.to_string()))?;
+                    copy_entry_to_file(&mut entry, &mut staging, should_cancel).await?;
+                    if entry.compute_hash() != expected_crc {
+                        return Err(OtaError::ZipError("CRC32 checksum mismatch".to_owned()));
+                    }
+                    use tokio::io::AsyncWriteExt;
+                    staging.flush().await?;
+                }
+                tracing::debug!(
+                    path = %staging_path.display(),
+                    file = kobo_root_name,
+                    "Extracted file into the staging path"
+                );
+                self.commit_staging(
+                    deploy_path,
+                    staging_path,
+                    &mut unpublished,
+                    &mut staging,
+                    should_cancel,
+                )
+                .await?
+            }
+        };
 
-        let outcome = self.deploy_bytes(&kobo_root_data, should_cancel)?;
-        if let Err(e) = std::fs::remove_file(&zip_path) {
+        if let Err(e) = tokio::fs::remove_file(&zip_path).await {
             tracing::error!(path = ?zip_path, error = %e, "Failed to remove source file");
         }
 
@@ -932,17 +1080,17 @@ impl OtaClient {
     }
 
     /// Queries the GitHub API for the repository's default branch name.
-    fn fetch_default_branch(&self) -> Result<String, OtaError> {
+    async fn fetch_default_branch(&self) -> Result<String, OtaError> {
         let repo_url = "https://api.github.com/repos/ogkevin/cadmus";
         tracing::debug!(url = %repo_url, "Fetching repository metadata");
 
         let repo: Repository = self
             .github
-            .get(repo_url)
-            .send()?
+            .api_get(repo_url)
+            .send().await?
             .error_for_status()
             .map_err(|e| {
-                tracing::error!(status = ?e.status(), error = %e, "Repository metadata fetch failed");
+                tracing::error!(status = ?e.status_code(), error = %e, "Repository metadata fetch failed");
                 api_error(e)
             })?
             .json()?;
@@ -952,7 +1100,11 @@ impl OtaClient {
     }
 
     /// Fetches artifacts for a workflow run and finds one matching the given prefix.
-    fn find_artifact_in_run(&self, run_id: u64, name_prefix: &str) -> Result<Artifact, OtaError> {
+    async fn find_artifact_in_run(
+        &self,
+        run_id: u64,
+        name_prefix: &str,
+    ) -> Result<Artifact, OtaError> {
         let artifacts_url = format!(
             "https://api.github.com/repos/ogkevin/cadmus/actions/runs/{}/artifacts?per_page=50",
             run_id
@@ -961,11 +1113,12 @@ impl OtaClient {
 
         let artifacts: ArtifactsResponse = self
             .github
-            .get(&artifacts_url)
-            .send()?
+            .api_get(&artifacts_url)
+            .send()
+            .await?
             .error_for_status()
             .map_err(|e| {
-                tracing::error!(run_id, status = ?e.status(), error = %e, "Artifacts fetch failed");
+                tracing::error!(run_id, status = ?e.status_code(), error = %e, "Artifacts fetch failed");
                 api_error(e)
             })?
             .json()?;
@@ -1000,12 +1153,12 @@ impl OtaClient {
     /// Downloads an artifact ZIP to the specified path with chunked transfer and progress reporting.
     ///
     /// GitHub authentication is required for this operation.
-    fn download_artifact_to_path<F>(
+    async fn download_artifact_to_path<F>(
         &self,
         artifact: &Artifact,
         download_path: &PathBuf,
         progress_callback: &mut F,
-        should_cancel: CancelFunc<'_>,
+        should_cancel: Option<&CancelFlag>,
     ) -> Result<(), OtaError>
     where
         F: FnMut(OtaProgress),
@@ -1015,16 +1168,18 @@ impl OtaClient {
             artifact.id
         );
 
-        self.github.download(
-            &download_url,
-            artifact.size_in_bytes,
-            download_path,
-            |url| self.github.get(url),
-            &mut |downloaded, total| {
-                progress_callback(OtaProgress::DownloadingArtifact { downloaded, total })
-            },
-            Some(should_cancel),
-        )?;
+        self.github
+            .download(
+                &download_url,
+                artifact.size_in_bytes,
+                download_path,
+                |url| self.github.get(url),
+                &mut |downloaded, total| {
+                    progress_callback(OtaProgress::DownloadingArtifact { downloaded, total })
+                },
+                should_cancel,
+            )
+            .await?;
         Ok(())
     }
 
@@ -1037,35 +1192,38 @@ impl OtaClient {
         feature = "tracing",
         tracing::instrument(skip(self, progress_callback))
     )]
-    fn download_release_asset<F>(
+    async fn download_release_asset<F>(
         &self,
         asset: &ReleaseAsset,
         download_path: &PathBuf,
         progress_callback: &mut F,
-        should_cancel: CancelFunc<'_>,
+        should_cancel: Option<&CancelFlag>,
     ) -> Result<(), OtaError>
     where
         F: FnMut(OtaProgress),
     {
-        self.github.download(
-            &asset.browser_download_url,
-            asset.size,
-            download_path,
-            |url| self.github.get_unauthenticated(url),
-            &mut |downloaded, total| {
-                progress_callback(OtaProgress::DownloadingArtifact { downloaded, total })
-            },
-            Some(should_cancel),
-        )?;
+        self.github
+            .download(
+                &asset.browser_download_url,
+                asset.size,
+                download_path,
+                |url| self.github.get_unauthenticated(url),
+                &mut |downloaded, total| {
+                    progress_callback(OtaProgress::DownloadingArtifact { downloaded, total })
+                },
+                should_cancel,
+            )
+            .await?;
         Ok(())
     }
 }
 
-fn copy_with_cancel(
-    src: &mut File,
-    dst: &mut File,
+async fn copy_file_to_file(
+    src: &mut tokio::fs::File,
+    dst: &mut tokio::fs::File,
     should_cancel: CancelFunc<'_>,
-) -> Result<u64, OtaError> {
+) -> Result<(), OtaError> {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let mut buf = [0u8; 64 * 1024];
     let mut total = 0u64;
 
@@ -1074,15 +1232,16 @@ fn copy_with_cancel(
             return Err(OtaError::Cancelled);
         }
 
-        let read = src.read(&mut buf)?;
+        let read = src.read(&mut buf).await?;
         if read == 0 {
             break;
         }
-        dst.write_all(&buf[..read])?;
+        dst.write_all(&buf[..read]).await?;
         total += read as u64;
     }
 
-    Ok(total)
+    tracing::debug!(bytes = total, "Streamed file to staging path");
+    Ok(())
 }
 
 fn is_ota_candidate_run(run: &WorkflowRun) -> bool {
@@ -1103,11 +1262,24 @@ fn is_ota_candidate_run(run: &WorkflowRun) -> bool {
 /// Returns `Ok(())` if all scopes are present, or an `OtaError` that is
 /// either a transport failure or missing scopes, so the caller can trigger
 /// re-authentication.
-fn verify_scopes(github: &crate::github::GithubClient) -> Result<(), OtaError> {
-    github.verify_token_scopes().map_err(|e| match e {
-        crate::github::VerifyScopesError::Request(e) => api_error(e),
-        crate::github::VerifyScopesError::InsufficientScopes(e) => OtaError::InsufficientScopes(e),
-    })
+async fn verify_scopes(github: &crate::github::GithubClient) -> Result<(), OtaError> {
+    github
+        .verify_token_scopes()
+        .await
+        .map_err(scope_check_error)
+}
+
+fn scope_check_error(error: crate::github::VerifyScopesError) -> OtaError {
+    match error {
+        crate::github::VerifyScopesError::Request(error) => api_error(error),
+        crate::github::VerifyScopesError::HttpStatus { status } => {
+            api_error(crate::github::ApiStatusError::from_status(status))
+        }
+        crate::github::VerifyScopesError::Transport(message) => OtaError::Api(message),
+        crate::github::VerifyScopesError::InsufficientScopes(error) => {
+            OtaError::InsufficientScopes(error)
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1115,17 +1287,33 @@ thread_local! {
     static FAIL_SYNC_DEPLOY_PARENT: Cell<bool> = const { Cell::new(false) };
 }
 
-/// Maps a failed `reqwest` response to the appropriate `OtaError`.
+trait HttpFailure {
+    fn http_status(&self) -> Option<http::StatusCode>;
+}
+
+impl HttpFailure for reqwest::Error {
+    fn http_status(&self) -> Option<http::StatusCode> {
+        self.status()
+    }
+}
+
+impl HttpFailure for crate::github::ApiStatusError {
+    fn http_status(&self) -> Option<http::StatusCode> {
+        Some(self.status_code())
+    }
+}
+
+/// Maps a failed HTTP response to the appropriate `OtaError`.
 ///
 /// A 401 Unauthorized response means the saved token has been revoked or
 /// expired — the caller should re-authenticate via device flow rather than
 /// treating this as a generic API error.
-fn api_error(e: reqwest::Error) -> OtaError {
-    if e.status() == Some(reqwest::StatusCode::UNAUTHORIZED) {
+fn api_error(error: impl std::fmt::Display + HttpFailure) -> OtaError {
+    if error.http_status() == Some(http::StatusCode::UNAUTHORIZED) {
         tracing::warn!("GitHub API returned 401 — token invalid or revoked");
         OtaError::Unauthorized
     } else {
-        OtaError::Api(e.to_string())
+        OtaError::Api(error.to_string())
     }
 }
 
@@ -1148,17 +1336,24 @@ fn check_disk_space(path: &Path) -> Result<(), OtaError> {
     Ok(())
 }
 
-fn read_cancellable(
-    reader: &mut impl Read,
+async fn copy_cancellable<R>(
+    reader: &mut R,
     buf: &mut Vec<u8>,
     should_cancel: CancelFunc<'_>,
-) -> Result<(), OtaError> {
+) -> Result<(), OtaError>
+where
+    R: futures_lite::io::AsyncRead + Unpin,
+{
+    use futures_lite::io::AsyncReadExt;
     let mut chunk = [0_u8; 64 * 1024];
     loop {
         if should_cancel.is_cancelled() {
             return Err(OtaError::Cancelled);
         }
-        let n = reader.read(&mut chunk)?;
+        let n = reader
+            .read(&mut chunk)
+            .await
+            .map_err(|error| OtaError::ZipError(error.to_string()))?;
         if n == 0 {
             return Ok(());
         }
@@ -1166,11 +1361,66 @@ fn read_cancellable(
     }
 }
 
+async fn copy_entry_to_file<R>(
+    reader: &mut R,
+    out: &mut tokio::fs::File,
+    should_cancel: CancelFunc<'_>,
+) -> Result<(), OtaError>
+where
+    R: futures_lite::io::AsyncRead + Unpin,
+{
+    use futures_lite::io::AsyncReadExt;
+    use tokio::io::AsyncWriteExt;
+    let mut chunk = [0_u8; 64 * 1024];
+    loop {
+        if should_cancel.is_cancelled() {
+            return Err(OtaError::Cancelled);
+        }
+        let n = reader
+            .read(&mut chunk)
+            .await
+            .map_err(|error| OtaError::ZipError(error.to_string()))?;
+        if n == 0 {
+            return Ok(());
+        }
+        out.write_all(&chunk[..n]).await?;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::github::GithubClient;
+    use crate::github::{ApiStatusError, GithubClient, ScopeError, VerifyScopesError};
+    use http::StatusCode;
     use secrecy::SecretString;
+
+    #[test]
+    fn api_status_401_is_unauthorized() {
+        let error = api_error(ApiStatusError::from_status(StatusCode::UNAUTHORIZED));
+        assert!(matches!(error, OtaError::Unauthorized));
+    }
+
+    #[test]
+    fn api_status_other_is_api_error() {
+        let error = api_error(ApiStatusError::from_status(StatusCode::NOT_FOUND));
+        assert!(matches!(error, OtaError::Api(_)));
+    }
+
+    #[test]
+    fn scope_check_401_is_unauthorized() {
+        let error = scope_check_error(VerifyScopesError::HttpStatus {
+            status: StatusCode::UNAUTHORIZED,
+        });
+        assert!(matches!(error, OtaError::Unauthorized));
+    }
+
+    #[test]
+    fn scope_check_missing_scopes_stay_insufficient() {
+        let error = scope_check_error(VerifyScopesError::InsufficientScopes(ScopeError::new(
+            vec!["public_repo".to_owned()],
+        )));
+        assert!(matches!(error, OtaError::InsufficientScopes(_)));
+    }
 
     fn make_client(tmp_dir: PathBuf) -> OtaClient {
         crate::crypto::init_crypto_provider();
@@ -1224,8 +1474,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_extract_and_deploy_success() {
+    #[tokio::test]
+    async fn test_extract_and_deploy_success() {
         let temp_dir = ota_test_tempdir();
         let client = make_client(temp_dir.path().to_path_buf());
         let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -1233,7 +1483,9 @@ mod tests {
         let artifact_path = temp_dir.path().join("test_artifact.zip");
         std::fs::copy(&fixture_path, &artifact_path).unwrap();
 
-        let result = client.extract_and_deploy(artifact_path.clone(), no_cancel());
+        let result = client
+            .extract_and_deploy(artifact_path.clone(), no_cancel())
+            .await;
 
         assert!(
             result.is_ok(),
@@ -1260,17 +1512,23 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_atomic_deploy_success() {
+    #[tokio::test]
+    async fn test_atomic_deploy_success() {
+        use tokio::io::AsyncWriteExt;
+
         let temp_dir = ota_test_tempdir();
         let client = make_client(temp_dir.path().to_path_buf());
         let deploy_path = client.deploy_path();
         let payload = b"new bundle content";
 
-        let result = client.write_staging_then_rename(no_cancel(), |staging, _| {
-            staging.write_all(payload)?;
-            Ok(())
-        });
+        let result = client
+            .write_staging_then_rename(no_cancel(), |staging| {
+                Box::pin(async {
+                    staging.write_all(payload).await?;
+                    Ok(())
+                })
+            })
+            .await;
 
         assert!(
             result.is_ok(),
@@ -1284,22 +1542,28 @@ mod tests {
         assert_no_partial_staging(&deploy_path);
     }
 
-    #[test]
-    fn test_atomic_deploy_parent_sync_failure_is_committed_not_durable() {
+    #[tokio::test]
+    async fn test_atomic_deploy_parent_sync_failure_is_committed_not_durable() {
+        use tokio::io::AsyncWriteExt;
+
         let temp_dir = ota_test_tempdir();
         let client = make_client(temp_dir.path().to_path_buf());
         let deploy_path = client.deploy_path();
         let existing = b"existing bundle content";
         let payload = b"new bundle content";
 
-        client.ensure_deploy_dir(&deploy_path).unwrap();
+        client.ensure_deploy_dir(&deploy_path).await.unwrap();
         std::fs::write(&deploy_path, existing).unwrap();
 
         let _fail_sync = FailSyncDeployParent::arm();
-        let result = client.write_staging_then_rename(no_cancel(), |staging, _| {
-            staging.write_all(payload)?;
-            Ok(())
-        });
+        let result = client
+            .write_staging_then_rename(no_cancel(), |staging| {
+                Box::pin(async {
+                    staging.write_all(payload).await?;
+                    Ok(())
+                })
+            })
+            .await;
 
         match result {
             Ok(DeployOutcome::CommittedNotDurable { path, error }) => {
@@ -1315,8 +1579,8 @@ mod tests {
         assert_no_partial_staging(&deploy_path);
     }
 
-    #[test]
-    fn test_deploy_parent_sync_failure_still_removes_source() {
+    #[tokio::test]
+    async fn test_deploy_parent_sync_failure_still_removes_source() {
         let temp_dir = ota_test_tempdir();
         let client = make_client(temp_dir.path().to_path_buf());
         let deploy_path = client.deploy_path();
@@ -1328,6 +1592,7 @@ mod tests {
 
         let outcome = client
             .deploy(source_path.clone(), no_cancel())
+            .await
             .expect("published bundle remains a successful deploy");
 
         assert!(matches!(outcome, DeployOutcome::CommittedNotDurable { .. }));
@@ -1340,35 +1605,43 @@ mod tests {
         assert_no_partial_staging(&deploy_path);
     }
 
-    #[test]
-    fn test_atomic_deploy_failed_write_preserves_existing_bundle() {
+    #[tokio::test]
+    async fn test_atomic_deploy_failed_write_preserves_existing_bundle() {
+        use tokio::io::AsyncWriteExt;
+
         let temp_dir = ota_test_tempdir();
         let client = make_client(temp_dir.path().to_path_buf());
         let deploy_path = client.deploy_path();
         let existing = b"existing bundle content";
 
-        client.ensure_deploy_dir(&deploy_path).unwrap();
+        client.ensure_deploy_dir(&deploy_path).await.unwrap();
         std::fs::write(&deploy_path, existing).unwrap();
 
-        let result = client.write_staging_then_rename(no_cancel(), |staging, _| {
-            staging.write_all(b"partial data")?;
-            Err(OtaError::Io(std::io::Error::other("simulated failure")))
-        });
+        let result = client
+            .write_staging_then_rename(no_cancel(), |staging| {
+                Box::pin(async {
+                    staging.write_all(b"partial data").await?;
+                    Err(OtaError::Io(std::io::Error::other("simulated failure")))
+                })
+            })
+            .await;
 
         assert!(result.is_err(), "Deployment should fail");
         assert_eq!(std::fs::read(&deploy_path).unwrap(), existing);
         assert_no_partial_staging(&deploy_path);
     }
 
-    #[test]
-    fn test_atomic_deploy_failed_write_without_existing_bundle() {
+    #[tokio::test]
+    async fn test_atomic_deploy_failed_write_without_existing_bundle() {
         let temp_dir = ota_test_tempdir();
         let client = make_client(temp_dir.path().to_path_buf());
         let deploy_path = client.deploy_path();
 
-        let result = client.write_staging_then_rename(no_cancel(), |_, _| {
-            Err(OtaError::Io(std::io::Error::other("simulated failure")))
-        });
+        let result = client
+            .write_staging_then_rename(no_cancel(), |_| {
+                Box::pin(async { Err(OtaError::Io(std::io::Error::other("simulated failure"))) })
+            })
+            .await;
 
         assert!(result.is_err(), "Deployment should fail");
         assert!(
@@ -1378,9 +1651,10 @@ mod tests {
         assert_no_partial_staging(&deploy_path);
     }
 
-    #[test]
-    fn test_atomic_deploy_cancelled_before_rename() {
+    #[tokio::test]
+    async fn test_atomic_deploy_cancelled_before_rename() {
         use crate::http::CancelFlag;
+        use tokio::io::AsyncWriteExt;
 
         let temp_dir = ota_test_tempdir();
         let client = make_client(temp_dir.path().to_path_buf());
@@ -1388,24 +1662,28 @@ mod tests {
         let existing = b"existing bundle content";
         let cancelled = CancelFlag::new();
 
-        client.ensure_deploy_dir(&deploy_path).unwrap();
+        client.ensure_deploy_dir(&deploy_path).await.unwrap();
         std::fs::write(&deploy_path, existing).unwrap();
         cancelled.request_cancel();
 
-        let result =
-            client.write_staging_then_rename(CancelFunc::from_flag(&cancelled), |staging, _| {
-                staging.write_all(b"partial data")?;
-                Ok(())
-            });
+        let result = client
+            .write_staging_then_rename(CancelFunc::from_flag(&cancelled), |staging| {
+                Box::pin(async {
+                    staging.write_all(b"partial data").await?;
+                    Ok(())
+                })
+            })
+            .await;
 
         assert!(matches!(result, Err(OtaError::Cancelled)));
         assert_eq!(std::fs::read(&deploy_path).unwrap(), existing);
         assert_no_partial_staging(&deploy_path);
     }
 
-    #[test]
-    fn test_atomic_deploy_commit_ignores_late_cancel() {
+    #[tokio::test]
+    async fn test_atomic_deploy_commit_ignores_late_cancel() {
         use crate::http::CancelFlag;
+        use tokio::io::AsyncWriteExt;
 
         let temp_dir = ota_test_tempdir();
         let client = make_client(temp_dir.path().to_path_buf());
@@ -1413,11 +1691,14 @@ mod tests {
         let payload = b"committed bundle content";
         let flag = CancelFlag::new();
 
-        let result =
-            client.write_staging_then_rename(CancelFunc::from_flag(&flag), |staging, _| {
-                staging.write_all(payload)?;
-                Ok(())
-            });
+        let result = client
+            .write_staging_then_rename(CancelFunc::from_flag(&flag), |staging| {
+                Box::pin(async {
+                    staging.write_all(payload).await?;
+                    Ok(())
+                })
+            })
+            .await;
 
         assert!(
             result.is_ok(),
@@ -1432,9 +1713,10 @@ mod tests {
         assert_no_partial_staging(&deploy_path);
     }
 
-    #[test]
-    fn test_atomic_deploy_cancelled_after_staging_sync() {
+    #[tokio::test]
+    async fn test_atomic_deploy_cancelled_after_staging_sync() {
         use std::sync::atomic::{AtomicUsize, Ordering};
+        use tokio::io::AsyncWriteExt;
 
         let temp_dir = ota_test_tempdir();
         let client = make_client(temp_dir.path().to_path_buf());
@@ -1442,23 +1724,26 @@ mod tests {
         let existing = b"existing bundle content";
         let polls = AtomicUsize::new(0);
 
-        client.ensure_deploy_dir(&deploy_path).unwrap();
+        client.ensure_deploy_dir(&deploy_path).await.unwrap();
         std::fs::write(&deploy_path, existing).unwrap();
 
         let cancel_check = || polls.fetch_add(1, Ordering::Relaxed) >= 1;
-        let result =
-            client.write_staging_then_rename(CancelFunc::new(&cancel_check), |staging, _| {
-                staging.write_all(b"partial data")?;
-                Ok(())
-            });
+        let result = client
+            .write_staging_then_rename(CancelFunc::new(&cancel_check), |staging| {
+                Box::pin(async {
+                    staging.write_all(b"partial data").await?;
+                    Ok(())
+                })
+            })
+            .await;
 
         assert!(matches!(result, Err(OtaError::Cancelled)));
         assert_eq!(std::fs::read(&deploy_path).unwrap(), existing);
         assert_no_partial_staging(&deploy_path);
     }
 
-    #[test]
-    fn test_deploy_bytes_cancelled_mid_write() {
+    #[tokio::test]
+    async fn test_deploy_bytes_cancelled_mid_write() {
         use std::sync::atomic::{AtomicBool, Ordering};
 
         let temp_dir = ota_test_tempdir();
@@ -1468,19 +1753,21 @@ mod tests {
         let cancelled = AtomicBool::new(true);
         let payload = vec![0u8; 128 * 1024];
 
-        client.ensure_deploy_dir(&deploy_path).unwrap();
+        client.ensure_deploy_dir(&deploy_path).await.unwrap();
         std::fs::write(&deploy_path, existing).unwrap();
 
         let cancel_check = || cancelled.load(Ordering::Relaxed);
-        let result = client.deploy_bytes(&payload, CancelFunc::new(&cancel_check));
+        let result = client
+            .deploy_bytes(&payload, CancelFunc::new(&cancel_check))
+            .await;
 
         assert!(matches!(result, Err(OtaError::Cancelled)));
         assert_eq!(std::fs::read(&deploy_path).unwrap(), existing);
         assert_no_partial_staging(&deploy_path);
     }
 
-    #[test]
-    fn test_extract_and_deploy_cancelled_before_zip_walk() {
+    #[tokio::test]
+    async fn test_extract_and_deploy_cancelled_before_zip_walk() {
         use std::sync::atomic::{AtomicBool, Ordering};
 
         let temp_dir = ota_test_tempdir();
@@ -1492,8 +1779,9 @@ mod tests {
 
         let cancelled = AtomicBool::new(true);
         let cancel_check = || cancelled.load(Ordering::Relaxed);
-        let result =
-            client.extract_and_deploy(artifact_path.clone(), CancelFunc::new(&cancel_check));
+        let result = client
+            .extract_and_deploy(artifact_path.clone(), CancelFunc::new(&cancel_check))
+            .await;
 
         assert!(matches!(result, Err(OtaError::Cancelled)));
         assert!(
@@ -1503,8 +1791,8 @@ mod tests {
         assert_no_partial_staging(&client.deploy_path());
     }
 
-    #[test]
-    fn test_extract_and_deploy_cancelled_during_zip_walk() {
+    #[tokio::test]
+    async fn test_extract_and_deploy_cancelled_during_zip_walk() {
         use std::sync::atomic::{AtomicUsize, Ordering};
 
         let temp_dir = ota_test_tempdir();
@@ -1516,8 +1804,9 @@ mod tests {
 
         let checks = AtomicUsize::new(0);
         let cancel_check = || checks.fetch_add(1, Ordering::Relaxed) >= 1;
-        let result =
-            client.extract_and_deploy(artifact_path.clone(), CancelFunc::new(&cancel_check));
+        let result = client
+            .extract_and_deploy(artifact_path.clone(), CancelFunc::new(&cancel_check))
+            .await;
 
         assert!(matches!(result, Err(OtaError::Cancelled)));
         assert!(
@@ -1526,32 +1815,31 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_extract_and_deploy_cancelled_during_entry_read() {
-        use std::io::Write;
+    #[tokio::test]
+    async fn test_extract_and_deploy_cancelled_during_entry_read() {
+        use async_zip::tokio::write::ZipFileWriter;
+        use async_zip::{Compression, ZipEntryBuilder};
         use std::sync::atomic::{AtomicUsize, Ordering};
-        use zip::ZipWriter;
-        use zip::write::SimpleFileOptions;
 
         let temp_dir = ota_test_tempdir();
         let client = make_client(temp_dir.path().to_path_buf());
         let artifact_path = temp_dir.path().join("large_artifact.zip");
         let payload = vec![0u8; 128 * 1024];
         {
-            let file = File::create(&artifact_path).unwrap();
-            let mut zip = ZipWriter::new(file);
-            let options = SimpleFileOptions::default();
-            zip.start_file("KoboRoot.tgz", options).unwrap();
-            zip.write_all(&payload).unwrap();
-            zip.start_file("KoboRoot-test.tgz", options).unwrap();
-            zip.write_all(&payload).unwrap();
-            zip.finish().unwrap();
+            let mut file = tokio::fs::File::create(&artifact_path).await.unwrap();
+            let mut writer = ZipFileWriter::with_tokio(&mut file);
+            for name in ["KoboRoot.tgz", "KoboRoot-test.tgz"] {
+                let builder = ZipEntryBuilder::new(name.into(), Compression::Stored);
+                writer.write_entry_whole(builder, &payload).await.unwrap();
+            }
+            writer.close().await.unwrap();
         }
 
         let checks = AtomicUsize::new(0);
         let cancel_check = || checks.fetch_add(1, Ordering::Relaxed) >= 3;
-        let result =
-            client.extract_and_deploy(artifact_path.clone(), CancelFunc::new(&cancel_check));
+        let result = client
+            .extract_and_deploy(artifact_path.clone(), CancelFunc::new(&cancel_check))
+            .await;
 
         assert!(matches!(result, Err(OtaError::Cancelled)));
         assert!(
@@ -1592,8 +1880,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_extract_and_deploy_missing_koboroot() {
+    #[tokio::test]
+    async fn test_extract_and_deploy_missing_koboroot() {
         let temp_dir = ota_test_tempdir();
         let client = make_client(temp_dir.path().to_path_buf());
         let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -1601,7 +1889,9 @@ mod tests {
         let artifact_path = temp_dir.path().join("empty_artifact.zip");
         std::fs::copy(&fixture_path, &artifact_path).unwrap();
 
-        let result = client.extract_and_deploy(artifact_path.clone(), no_cancel());
+        let result = client
+            .extract_and_deploy(artifact_path.clone(), no_cancel())
+            .await;
         assert!(result.is_err(), "Should fail when KoboRoot.tgz is missing");
 
         if let Err(OtaError::DeploymentError(msg)) = result {
@@ -1693,19 +1983,21 @@ mod tests {
         OtaClient::new(github, tmp_dir)
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore]
-    fn test_external_download_default_branch_and_deploy() {
+    async fn test_external_download_default_branch_and_deploy() {
         let temp_dir = ota_test_tempdir();
         let client = create_external_client(temp_dir.path().to_path_buf());
         let mut last_progress = None;
 
-        let download_result = client.download_default_branch_artifact(
-            |progress| {
-                last_progress = Some(format!("{:?}", progress));
-            },
-            no_cancel(),
-        );
+        let download_result = client
+            .download_default_branch_artifact(
+                |progress| {
+                    last_progress = Some(format!("{:?}", progress));
+                },
+                None,
+            )
+            .await;
 
         assert!(
             download_result.is_ok(),
@@ -1724,7 +2016,9 @@ mod tests {
             "Downloaded ZIP should not be empty"
         );
 
-        let deploy_result = client.extract_and_deploy(zip_path.clone(), no_cancel());
+        let deploy_result = client
+            .extract_and_deploy(zip_path.clone(), no_cancel())
+            .await;
 
         assert!(
             deploy_result.is_ok(),
@@ -1742,12 +2036,12 @@ mod tests {
         std::fs::remove_file(&deploy_path).ok();
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore]
-    fn test_external_download_stable_release_and_deploy() {
+    async fn test_external_download_stable_release_and_deploy() {
         let temp_dir = ota_test_tempdir();
         let client = create_external_client(temp_dir.path().to_path_buf());
-        let download_result = client.download_stable_release_artifact(|_| {}, no_cancel());
+        let download_result = client.download_stable_release_artifact(|_| {}, None).await;
 
         assert!(
             download_result.is_ok(),
@@ -1766,7 +2060,7 @@ mod tests {
             "Downloaded asset should not be empty"
         );
 
-        let deploy_result = client.deploy(asset_path.clone(), no_cancel());
+        let deploy_result = client.deploy(asset_path.clone(), no_cancel()).await;
 
         assert!(
             deploy_result.is_ok(),

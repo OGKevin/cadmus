@@ -9,37 +9,37 @@ include!(concat!(env!("OUT_DIR"), "/bundled_assets.rs"));
 /// individually so user-added files in shared asset directories remain intact.
 /// The `libs/` directory is cleaned separately because all shipped shared
 /// libraries are Cadmus-owned.
-pub fn clean_bundled_files(install_dir: &Path) -> io::Result<()> {
+pub async fn clean_bundled_files(install_dir: &Path) -> io::Result<()> {
     for asset in BUNDLED_ASSET_FILES {
-        remove_file_if_exists(&install_dir.join(asset))?;
-        remove_empty_parent_dirs(&install_dir.join(asset), install_dir)?;
+        remove_file_if_exists(&install_dir.join(asset)).await?;
+        remove_empty_parent_dirs(&install_dir.join(asset), install_dir).await?;
     }
 
-    clean_libs_dir(&install_dir.join("libs"))?;
-    remove_empty_parent_dirs(&install_dir.join("libs"), install_dir)?;
+    clean_libs_dir(&install_dir.join("libs")).await?;
+    remove_empty_parent_dirs(&install_dir.join("libs"), install_dir).await?;
 
     Ok(())
 }
 
-fn clean_libs_dir(libs_dir: &Path) -> io::Result<()> {
-    if let Err(e) = std::fs::remove_dir_all(libs_dir) {
-        if e.kind() != io::ErrorKind::NotFound {
-            return Err(e);
-        }
+async fn clean_libs_dir(libs_dir: &Path) -> io::Result<()> {
+    if let Err(e) = tokio::fs::remove_dir_all(libs_dir).await
+        && e.kind() != io::ErrorKind::NotFound
+    {
+        return Err(e);
     }
 
     Ok(())
 }
 
-fn remove_file_if_exists(path: &Path) -> io::Result<()> {
-    match std::fs::remove_file(path) {
+async fn remove_file_if_exists(path: &Path) -> io::Result<()> {
+    match tokio::fs::remove_file(path).await {
         Ok(()) => Ok(()),
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
         Err(e) => Err(e),
     }
 }
 
-fn remove_empty_parent_dirs(path: &Path, install_dir: &Path) -> io::Result<()> {
+async fn remove_empty_parent_dirs(path: &Path, install_dir: &Path) -> io::Result<()> {
     let mut current = path.parent();
 
     while let Some(dir) = current {
@@ -47,7 +47,7 @@ fn remove_empty_parent_dirs(path: &Path, install_dir: &Path) -> io::Result<()> {
             return Ok(());
         }
 
-        if !remove_empty_dir_if_exists(dir)? {
+        if !remove_empty_dir_if_exists(dir).await? {
             return Ok(());
         }
 
@@ -57,8 +57,8 @@ fn remove_empty_parent_dirs(path: &Path, install_dir: &Path) -> io::Result<()> {
     Ok(())
 }
 
-fn remove_empty_dir_if_exists(path: &Path) -> io::Result<bool> {
-    match std::fs::remove_dir(path) {
+async fn remove_empty_dir_if_exists(path: &Path) -> io::Result<bool> {
+    match tokio::fs::remove_dir(path).await {
         Ok(()) => Ok(true),
         Err(e)
             if e.kind() == io::ErrorKind::NotFound
@@ -71,8 +71,8 @@ fn remove_empty_dir_if_exists(path: &Path) -> io::Result<bool> {
 }
 
 /// Removes partial OTA download files from a temp directory.
-pub fn cleanup_ota_artifacts(tmp_dir: &Path) {
-    let entries = match std::fs::read_dir(tmp_dir) {
+pub async fn cleanup_ota_artifacts(tmp_dir: &Path) {
+    let mut read_dir = match tokio::fs::read_dir(tmp_dir).await {
         Ok(entries) => entries,
         Err(e) => {
             tracing::warn!(path = ?tmp_dir, error = %e, "Failed to read OTA temp directory");
@@ -80,22 +80,11 @@ pub fn cleanup_ota_artifacts(tmp_dir: &Path) {
         }
     };
 
-    for entry in entries {
-        let entry = match entry {
-            Ok(entry) => entry,
-            Err(e) => {
-                tracing::warn!(
-                    path = ?tmp_dir,
-                    error = %e,
-                    "Failed to read OTA temp directory entry"
-                );
-                continue;
-            }
-        };
+    while let Ok(Some(entry)) = read_dir.next_entry().await {
         let name = entry.file_name();
         if name.to_string_lossy().starts_with("cadmus-ota-") {
             let path = entry.path();
-            if let Err(e) = std::fs::remove_file(&path) {
+            if let Err(e) = tokio::fs::remove_file(&path).await {
                 tracing::warn!(path = ?path, error = %e, "Failed to remove OTA download artifact");
             }
         }
@@ -103,12 +92,12 @@ pub fn cleanup_ota_artifacts(tmp_dir: &Path) {
 }
 
 /// Removes leftover staging partials next to the deploy path and any partial OTA downloads.
-pub fn cleanup_ota_cancel(tmp_dir: &Path, deploy_path: &Path) {
-    cleanup_ota_artifacts(tmp_dir);
-    cleanup_staging_partials(deploy_path);
+pub async fn cleanup_ota_cancel(tmp_dir: &Path, deploy_path: &Path) {
+    cleanup_ota_artifacts(tmp_dir).await;
+    cleanup_staging_partials(deploy_path).await;
 }
 
-fn cleanup_staging_partials(deploy_path: &Path) {
+async fn cleanup_staging_partials(deploy_path: &Path) {
     let Some(parent) = deploy_path.parent() else {
         return;
     };
@@ -117,7 +106,7 @@ fn cleanup_staging_partials(deploy_path: &Path) {
     };
     let prefix = format!("{}.", deploy_name.to_string_lossy());
 
-    let entries = match std::fs::read_dir(parent) {
+    let mut read_dir = match tokio::fs::read_dir(parent).await {
         Ok(entries) => entries,
         Err(e) => {
             tracing::warn!(
@@ -129,23 +118,12 @@ fn cleanup_staging_partials(deploy_path: &Path) {
         }
     };
 
-    for entry in entries {
-        let entry = match entry {
-            Ok(entry) => entry,
-            Err(e) => {
-                tracing::warn!(
-                    path = ?parent,
-                    error = %e,
-                    "Failed to read OTA deploy directory entry"
-                );
-                continue;
-            }
-        };
+    while let Ok(Some(entry)) = read_dir.next_entry().await {
         let name = entry.file_name();
         let name = name.to_string_lossy();
         if name.starts_with(&prefix) && name.ends_with(".partial") {
             let path = entry.path();
-            if let Err(e) = std::fs::remove_file(&path) {
+            if let Err(e) = tokio::fs::remove_file(&path).await {
                 tracing::warn!(path = ?path, error = %e, "Failed to remove OTA staging partial");
             }
         }
@@ -156,8 +134,8 @@ fn cleanup_staging_partials(deploy_path: &Path) {
 mod tests {
     use super::*;
 
-    #[test]
-    fn cleanup_ota_artifacts_removes_cadmus_ota_prefix_files() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn cleanup_ota_artifacts_removes_cadmus_ota_prefix_files() {
         let tmp = tempfile::Builder::new()
             .prefix("cadmus-ota-cleanup-")
             .tempdir()
@@ -167,14 +145,14 @@ mod tests {
         std::fs::write(&keep, b"keep").unwrap();
         std::fs::write(&partial, b"partial").unwrap();
 
-        cleanup_ota_artifacts(tmp.path());
+        cleanup_ota_artifacts(tmp.path()).await;
 
         assert!(!partial.exists());
         assert!(keep.exists());
     }
 
-    #[test]
-    fn cleanup_ota_cancel_removes_staging_partials_and_artifacts() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn cleanup_ota_cancel_removes_staging_partials_and_artifacts() {
         let tmp = tempfile::Builder::new()
             .prefix("cadmus-ota-cancel-")
             .tempdir()
@@ -189,7 +167,7 @@ mod tests {
         std::fs::write(&staging, b"staging").unwrap();
         std::fs::write(&other_partial, b"other").unwrap();
 
-        cleanup_ota_cancel(tmp.path(), &deploy);
+        cleanup_ota_cancel(tmp.path(), &deploy).await;
 
         assert!(!partial.exists());
         assert!(!staging.exists());
@@ -197,8 +175,8 @@ mod tests {
         assert!(keep.exists());
     }
 
-    #[test]
-    fn cleanup_removes_bundled_files_but_keeps_user_files() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn cleanup_removes_bundled_files_but_keeps_user_files() {
         let tmp = tempfile::tempdir().unwrap();
         let install_dir = tmp.path().join("install");
 
@@ -212,7 +190,7 @@ mod tests {
         std::fs::write(install_dir.join("libs/libfoo.so.1"), b"owned").unwrap();
         std::fs::write(install_dir.join("Settings.toml"), b"user").unwrap();
 
-        clean_bundled_files(&install_dir).unwrap();
+        clean_bundled_files(&install_dir).await.unwrap();
 
         assert!(!install_dir.join("fonts/Libron-Regular.ttf").exists());
         assert!(install_dir.join("fonts/custom.ttf").exists());

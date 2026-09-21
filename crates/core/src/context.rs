@@ -1,8 +1,11 @@
 use crate::db::Database;
 use crate::device::Device;
 use crate::device::DeviceHardware;
+use crate::device::inhibitor::Inhibitor;
 use crate::device::rtc::AlarmManager;
 use crate::device::soft_suspend::SoftSuspendBackend as _;
+#[cfg(any(feature = "kobo", docsrs))]
+use crate::device::suspend::SuspendCycle;
 use crate::device::wifi::WifiSession;
 use crate::dictionary::{Dictionary, load_dictionary_from_db};
 use crate::font::Fonts;
@@ -24,6 +27,7 @@ use std::collections::{BTreeMap, VecDeque};
 use std::env;
 use std::io;
 use std::path::Path;
+use std::sync::Arc;
 use tracing::error;
 
 use walkdir::WalkDir;
@@ -63,7 +67,7 @@ pub struct Context<D: Device> {
     pub(crate) deferred_suspend: bool,
     pub wifi_session: std::sync::Arc<crate::device::wifi::WifiSession>,
     /// Top-level inhibitor: SoftSuspend settings, Full holders, wake locks, LED.
-    pub inhibitor: std::sync::Arc<crate::device::inhibitor::Inhibitor>,
+    pub inhibitor: Arc<Inhibitor>,
     /// Test-only inject queue for deep-idle wait outcomes.
     #[cfg(all(test, feature = "kobo"))]
     pub(crate) deep_idle_poll_inject:
@@ -72,7 +76,7 @@ pub struct Context<D: Device> {
 
 impl<D: Device> Context<D> {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-    pub fn new(
+    pub async fn new(
         mut device: D,
         library: Library,
         database: Database,
@@ -108,7 +112,9 @@ impl<D: Device> Context<D> {
         if let Err(error) = crate::dictionary::reconcile_installed_dictionaries(
             &database,
             &device.data_path(DICTIONARIES_DIRNAME),
-        ) {
+        )
+        .await
+        {
             tracing::warn!(error = %error, "dictionary install reconciliation failed");
         } else {
             tracing::debug!("dictionary install reconciliation finished");
@@ -193,7 +199,7 @@ impl<D: Device> Context<D> {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-    pub fn load_dictionaries(&mut self) {
+    pub async fn load_dictionaries(&mut self) {
         self.dictionaries.clear();
 
         let glob = Glob::new("**/*.index").unwrap().compile_matcher();
@@ -228,9 +234,15 @@ impl<D: Device> Context<D> {
                 content_path.set_extension("");
             }
 
-            let dict_result = match fingerprint_dict_pair(&index_path) {
-                Ok(fp) => load_dictionary_from_db(&content_path, &self.database, fp),
-                Err(e) => {
+            let path_key = index_path.to_string_lossy().into_owned();
+            let fp = if let Some(stored) = meta_by_path.get(&path_key) {
+                let index_path = index_path.clone();
+                move || fingerprint_dict_pair(&index_path)
+            })
+            .await
+            {
+                Ok(Ok(fp)) => fp,
+                Ok(Err(e)) => {
                     tracing::warn!(
                         path = %index_path.display(),
                         error = %e,
@@ -238,15 +250,43 @@ impl<D: Device> Context<D> {
                     );
                     continue;
                 }
+            } else {
+                match tokio::task::spawn_blocking({
+                    let index_path = index_path.clone();
+                    move || fingerprint_dict_pair(&index_path)
+                })
+                .await
+                {
+                    Ok(Ok(fp)) => fp,
+                    Ok(Err(e)) => {
+                        tracing::warn!(
+                            path = %index_path.display(),
+                            error = %e,
+                            "failed to fingerprint index file, skipping dictionary"
+                        );
+                        continue;
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            path = %index_path.display(),
+                            error = %e,
+                            "dictionary fingerprint task failed, skipping dictionary"
+                        );
+                        continue;
+                    }
+                }
             };
 
+            let dict_result = load_dictionary_from_db(&content_path, &self.database, fp).await;
+
             if let Ok(mut dict) = dict_result {
-                let name = dict.short_name().ok().unwrap_or_else(|| {
-                    index_path
+                let name = match dict.short_name().await {
+                    Ok(name) => name,
+                    Err(_) => index_path
                         .file_stem()
                         .map(|s| s.to_string_lossy().into_owned())
-                        .unwrap_or_default()
-                });
+                        .unwrap_or_default(),
+                };
                 self.dictionaries.insert(name, dict);
             }
         }
@@ -331,27 +371,95 @@ impl<D: Device> Context<D> {
     /// reading the boot framebuffer state in [`Self::new`], not on runtime writes.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), level = tracing::Level::TRACE))]
     pub fn set_rotation(&mut self, rotation: i8) -> anyhow::Result<(u32, u32)> {
-        let fb_rotation = self.device.framebuffer().rotation();
-        let fb_dims = self.device.framebuffer().dims();
-        let result = self.device.framebuffer_mut().set_rotation(rotation);
-        if let Ok(new_dims) = result {
-            self.device.refresh_framebuffer_from_kernel();
-            self.display.rotation = rotation;
-            self.display.dims = new_dims;
-            tracing::trace!(
-                rotation,
-                fb_rotation_before = fb_rotation,
-                fb_dims_before = ?fb_dims,
-                context_rotation = self.display.rotation,
-                context_dims = ?self.display.dims,
-                new_fb_dims = ?new_dims,
-                fb_rotation_after = self.device.framebuffer().rotation(),
-                "set_rotation"
-            );
-            Ok(new_dims)
-        } else {
-            result
+        set_rotation(&mut self.device, &mut self.display, rotation)
+    }
+
+    /// Borrows out the slice of the context that platform teardown needs.
+    pub fn shutdown(&mut self) -> ShutdownContext<'_, D> {
+        ShutdownContext {
+            device: &mut self.device,
+            display: &mut self.display,
+            settings: &mut self.settings,
+            inhibitor: &self.inhibitor,
+            wifi_session: &self.wifi_session,
+            alarm_manager: self.alarm_manager.as_ref(),
+            #[cfg(any(feature = "kobo", docsrs))]
+            suspend: self.suspend.as_ref(),
         }
+    }
+}
+
+/// The slice of a [`Context`] that platform teardown reads.
+///
+/// Excludes `fonts`, `library` and `dictionaries`: shutdown does not read them,
+/// and `fonts` is the only field that is not `Send`, because it holds freetype
+/// and harfbuzz pointers. Leaving it out is what lets
+/// [`DeviceLifecycle::on_shutdown`](crate::device::DeviceLifecycle::on_shutdown)
+/// return a `Send` future.
+pub struct ShutdownContext<'a, D: Device> {
+    pub device: &'a mut D,
+    pub display: &'a mut Display,
+    pub settings: &'a mut Settings,
+    pub inhibitor: &'a Arc<Inhibitor>,
+    pub wifi_session: &'a Arc<WifiSession>,
+    pub alarm_manager: Option<&'a Arc<std::sync::Mutex<AlarmManager<D::Rtc>>>>,
+    #[cfg(any(feature = "kobo", docsrs))]
+    pub(crate) suspend: Option<&'a SuspendCycle>,
+}
+
+impl<D: Device> ShutdownContext<'_, D> {
+    /// Writes `rotation` to the framebuffer and to [`Display::rotation`].
+    ///
+    /// Shares its implementation with [`Context::set_rotation`] so the two
+    /// cannot drift.
+    pub fn set_rotation(&mut self, rotation: i8) -> anyhow::Result<(u32, u32)> {
+        set_rotation(self.device, self.display, rotation)
+    }
+
+    /// Whether a suspend cycle is pending, over the same signals as
+    /// [`is_suspend_active`](crate::device::suspend::is_suspend_active).
+    #[cfg(any(feature = "kobo", docsrs))]
+    pub fn is_suspend_active(&self, tasks: &[crate::device::DeviceTask]) -> bool {
+        self.is_prepare_suspend_pending(tasks)
+            || crate::device::suspend::is_suspend_rtc_pending_in(self.alarm_manager)
+            || self.suspend.is_some()
+    }
+
+    /// Whether a `PrepareSuspend` device task is pending.
+    pub fn is_prepare_suspend_pending(&self, tasks: &[crate::device::DeviceTask]) -> bool {
+        tasks
+            .iter()
+            .any(|task| task.id == crate::device::DeviceTaskId::PrepareSuspend)
+    }
+}
+
+/// Applies `rotation` to the device framebuffer and the display.
+fn set_rotation<D: Device>(
+    device: &mut D,
+    display: &mut Display,
+    rotation: i8,
+) -> anyhow::Result<(u32, u32)> {
+    let fb_rotation = device.framebuffer().rotation();
+    let fb_dims = device.framebuffer().dims();
+    let result = device.framebuffer_mut().set_rotation(rotation);
+    if let Ok(new_dims) = result {
+        device.refresh_framebuffer_from_kernel();
+        display.rotation = rotation;
+        display.dims = new_dims;
+        let (context_rotation, context_dims) = (display.rotation, display.dims);
+        tracing::trace!(
+            rotation,
+            fb_rotation_before = fb_rotation,
+            fb_dims_before = ?fb_dims,
+            context_rotation,
+            context_dims = ?context_dims,
+            new_fb_dims = ?new_dims,
+            fb_rotation_after = device.framebuffer().rotation(),
+            "set_rotation"
+        );
+        Ok(new_dims)
+    } else {
+        result
     }
 }
 
@@ -374,8 +482,10 @@ pub mod test_helpers {
     use crate::device::test_device::TestDevice;
     use crate::frontlight::LightLevels;
 
-    pub fn create_test_context() -> AppContext {
-        create_test_context_from_device(TestDevice::new())
+    /// Async because [`Context::new`] is: the in-memory database, its
+    /// migrations, and the library all have to be built on the runtime.
+    pub async fn create_test_context() -> AppContext {
+        create_test_context_from_device(TestDevice::new()).await
     }
 
     /// Installs a Linux soft-suspend inhibitor backed by temporary writable sysfs files.
@@ -402,15 +512,20 @@ pub mod test_helpers {
         dir
     }
 
-    pub fn create_test_context_from_device(device: TestDevice) -> AppContext {
-        let mut database = Database::new(":memory:").expect("failed to create in-memory database");
+    pub async fn create_test_context_from_device(device: TestDevice) -> AppContext {
+        let mut database = Database::new(":memory:")
+            .await
+            .expect("failed to create in-memory database");
         let mut settings = Settings::default();
         database
             .init(&device, 0, &mut settings)
+            .await
             .expect("failed to run migrations");
         Context::new(
             device,
-            Library::new(Path::new("/tmp"), &database, "test").unwrap(),
+            Library::new(Path::new("/tmp"), &database, "test")
+                .await
+                .unwrap(),
             database,
             settings,
             Fonts::load_from(
@@ -421,11 +536,12 @@ pub mod test_helpers {
             )
             .expect("Failed to load fonts"),
         )
+        .await
     }
 
-    #[test]
-    fn test_create_test_context_defaults() {
-        let context = create_test_context();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_create_test_context_defaults() {
+        let context = create_test_context().await;
         assert_eq!(context.display.dims, (600, 800));
         assert!(!context.plugged);
         assert!(!context.covered);
@@ -452,9 +568,9 @@ pub mod test_helpers {
         assert!(context.inhibitor.holders().is_empty());
     }
 
-    #[test]
-    fn test_create_test_context_frontlight() {
-        let mut context = create_test_context();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_create_test_context_frontlight() {
+        let mut context = create_test_context().await;
         let levels = context.device.frontlight().levels();
         assert_eq!(levels.intensity, LightLevels::default().intensity);
         assert_eq!(levels.warmth, LightLevels::default().warmth);
@@ -466,9 +582,9 @@ pub mod test_helpers {
         assert!(context.settings.frontlight);
     }
 
-    #[test]
-    fn test_create_test_context_battery() {
-        let context = create_test_context();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_create_test_context_battery() {
+        let context = create_test_context().await;
         let capacity = context
             .device
             .battery()
@@ -477,9 +593,9 @@ pub mod test_helpers {
         assert_eq!(capacity, vec![50.0]);
     }
 
-    #[test]
-    fn test_create_test_context_record_input() {
-        let mut context = create_test_context();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_create_test_context_record_input() {
+        let mut context = create_test_context().await;
         context.record_input("hello", ViewId::SearchBar);
         context.record_input("world", ViewId::SearchBar);
 
@@ -488,9 +604,9 @@ pub mod test_helpers {
         assert_eq!(history.front(), Some(&"world".to_string()));
     }
 
-    #[test]
-    fn set_rotation_updates_display_rotation() {
-        let mut context = create_test_context();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn set_rotation_updates_display_rotation() {
+        let mut context = create_test_context().await;
         context.set_rotation(1).expect("rotation should succeed");
         assert_eq!(context.display.rotation, 1);
         assert_eq!(context.device.framebuffer().rotation(), 0);
