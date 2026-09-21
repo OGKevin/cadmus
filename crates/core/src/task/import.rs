@@ -8,8 +8,9 @@ use crate::device::inhibitor::{Inhibitor, Kind, SoftSuspendName};
 use crate::library::Library;
 use crate::library::importer::{self, ImportOutcome};
 use crate::settings::Settings;
-use crate::task::{BackgroundTask, ShutdownSignal, TaskId};
+use crate::task::{BackgroundTask, TaskId};
 use crate::view::{Event, ID_FEEDER, ViewId};
+use tokio_util::sync::CancellationToken;
 
 /// Runs an import for one library (or all libraries when `library_index` is `None`).
 ///
@@ -48,12 +49,12 @@ impl ImportTask {
         }
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(hub, shutdown, self)))]
-    fn run_for_index(
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(hub, cancel, self)))]
+    async fn run_for_index(
         &self,
         index: usize,
         hub: &crate::view::Hub,
-        shutdown: &ShutdownSignal,
+        cancel: &CancellationToken,
     ) -> ImportOutcome {
         let lib_settings = match self.settings.libraries.get(index) {
             Some(s) => s,
@@ -66,7 +67,9 @@ impl ImportTask {
             }
         };
 
-        let library = match Library::new(&lib_settings.path, &self.database, &lib_settings.name) {
+        let library = match Library::new(&lib_settings.path, &self.database, &lib_settings.name)
+            .await
+        {
             Ok(lib) => lib,
             Err(e) => {
                 tracing::error!(error = %e, library_index = index, "failed to open library for import");
@@ -84,18 +87,20 @@ impl ImportTask {
             self.force,
             hub,
             notif_id,
-            shutdown,
+            cancel,
         )
+        .await
     }
 }
 
+#[async_trait::async_trait]
 impl BackgroundTask for ImportTask {
     fn id(&self) -> TaskId {
         TaskId::Import
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-    fn run(&mut self, hub: &crate::view::Hub, shutdown: &ShutdownSignal) {
+    async fn run(&mut self, hub: &crate::view::Hub, cancel: &CancellationToken) {
         let _soft_suspend = match self
             .inhibitor
             .acquire(Kind::SoftSuspend, SoftSuspendName::LibraryImport)
@@ -112,15 +117,15 @@ impl BackgroundTask for ImportTask {
         };
         match self.library_index {
             Some(index) => {
-                self.outcome = self.run_for_index(index, hub, shutdown);
+                self.outcome = self.run_for_index(index, hub, cancel).await;
             }
             None => {
                 for index in 0..self.settings.libraries.len() {
-                    if shutdown.should_stop() {
+                    if cancel.is_cancelled() {
                         self.outcome = ImportOutcome::Interrupted;
                         return;
                     }
-                    match self.run_for_index(index, hub, shutdown) {
+                    match self.run_for_index(index, hub, cancel).await {
                         ImportOutcome::Completed => {}
                         failed_or_interrupted => {
                             self.outcome = failed_or_interrupted;

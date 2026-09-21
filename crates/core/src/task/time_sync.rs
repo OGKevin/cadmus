@@ -5,9 +5,10 @@ use crate::device::wifi::WifiSession;
 use crate::geolocation::fetch_geolocation;
 use crate::http::Client;
 use crate::network_address::NetworkAddress;
-use crate::task::{BackgroundTask, ShutdownSignal, TaskId};
+use crate::task::{BackgroundTask, TaskId};
 use crate::time_manager::TimeManager;
 use crate::view::Event;
+use tokio_util::sync::CancellationToken;
 
 pub struct TimeSyncTask<R: Rtc> {
     time_manager: TimeManager<R>,
@@ -35,17 +36,31 @@ impl<R: Rtc> TimeSyncTask<R> {
     }
 }
 
+#[async_trait::async_trait]
 impl<R: Rtc + Send + 'static> BackgroundTask for TimeSyncTask<R> {
     fn id(&self) -> TaskId {
         TaskId::TimeSync
     }
 
-    fn run(&mut self, hub: &crate::view::Hub, shutdown: &ShutdownSignal) {
-        if shutdown.should_stop() {
+    /// Synchronises the clock.
+    ///
+    /// Cancellation is observed before the Wi-Fi lease, after the lease, and
+    /// after geolocation. Once [`TimeManager::sync`] starts, this task runs it
+    /// to completion: NTP and applying the clock are not cancelled or
+    /// reconciled mid-flight.
+    ///
+    /// Shutdown after that still skips [`Event::AutoFrontlightCoordinates`].
+    /// The home view uses that event only to store
+    /// `auto_frontlight_last_coordinates` when the user has no manual
+    /// override, then refreshes the running frontlight UI. The main loop is
+    /// already stopping, so the publish would not be applied. The clock write
+    /// is unaffected.
+    async fn run(&mut self, hub: &crate::view::Hub, cancel: &CancellationToken) {
+        if cancel.is_cancelled() {
             return;
         }
 
-        let _wifi = match self.wifi_session.acquire("time-sync") {
+        let _wifi = match self.wifi_session.acquire("time-sync").await {
             Ok(lease) => lease,
             Err(e) => {
                 tracing::error!(error = %e, "failed to acquire WiFi lease for time sync");
@@ -62,12 +77,12 @@ impl<R: Rtc + Send + 'static> BackgroundTask for TimeSyncTask<R> {
             }
         };
 
-        if shutdown.should_stop() {
+        if cancel.is_cancelled() {
             return;
         }
 
         let geo = match Client::new() {
-            Ok(client) => match fetch_geolocation(&client) {
+            Ok(client) => match fetch_geolocation(&client).await {
                 Ok(geo) => Some(geo),
                 Err(e) => {
                     tracing::error!(error = %e, "failed to fetch geolocation");
@@ -80,24 +95,21 @@ impl<R: Rtc + Send + 'static> BackgroundTask for TimeSyncTask<R> {
             }
         };
 
-        let coordinates = geo.as_ref().map(|geo| geo.coordinates);
-
-        if shutdown.should_stop() {
+        if cancel.is_cancelled() {
             return;
         }
 
-        if let Err(e) = self.time_manager.sync(
-            &self.ntp_server,
-            self.manual,
-            geo,
-            hub,
-            &self.alarm_manager,
-            shutdown,
-        ) {
+        let coordinates = geo.as_ref().map(|geo| geo.coordinates);
+
+        if let Err(e) = self
+            .time_manager
+            .sync(&self.ntp_server, self.manual, geo, hub, &self.alarm_manager)
+            .await
+        {
             tracing::error!(error = %e, "time sync failed");
         }
 
-        if shutdown.should_stop() {
+        if cancel.is_cancelled() {
             return;
         }
 

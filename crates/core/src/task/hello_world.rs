@@ -5,7 +5,8 @@
 
 use std::time::Duration;
 
-use crate::task::{BackgroundTask, ShutdownSignal, TaskId};
+use crate::task::{BackgroundTask, TaskId, sleep_unless_cancelled};
+use tokio_util::sync::CancellationToken;
 
 const PRINT_INTERVAL: Duration = Duration::from_secs(60);
 
@@ -15,12 +16,13 @@ const PRINT_INTERVAL: Duration = Duration::from_secs(60);
 /// and validates that the task infrastructure works correctly.
 pub struct HelloWorldTask;
 
+#[async_trait::async_trait]
 impl BackgroundTask for HelloWorldTask {
     fn id(&self) -> TaskId {
         TaskId::HelloWorld
     }
 
-    fn run(&mut self, _hub: &crate::view::Hub, shutdown: &ShutdownSignal) {
+    async fn run(&mut self, _hub: &crate::view::Hub, cancel: &CancellationToken) {
         tracing::info!("hello_world task started");
 
         loop {
@@ -30,7 +32,7 @@ impl BackgroundTask for HelloWorldTask {
                 tracing::info!("Hello world!");
             }
 
-            if shutdown.wait(PRINT_INTERVAL) {
+            if sleep_unless_cancelled(cancel, PRINT_INTERVAL).await {
                 break;
             }
         }

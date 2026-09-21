@@ -1,7 +1,8 @@
 use std::time::Duration;
 
-use crate::task::{BackgroundTask, ShutdownSignal, TaskId};
+use crate::task::{BackgroundTask, TaskId, sleep_unless_cancelled};
 use crate::view::Event;
+use tokio_util::sync::CancellationToken;
 
 const CHECK_INTERVAL: Duration = Duration::from_secs(5 * 60);
 
@@ -10,19 +11,20 @@ const CHECK_INTERVAL: Duration = Duration::from_secs(5 * 60);
 #[derive(Default)]
 pub struct AutoFrontlightTask;
 
+#[async_trait::async_trait]
 impl BackgroundTask for AutoFrontlightTask {
     fn id(&self) -> TaskId {
         TaskId::AutoFrontlight
     }
 
-    fn run(&mut self, hub: &crate::view::Hub, shutdown: &ShutdownSignal) {
-        while !shutdown.should_stop() {
+    async fn run(&mut self, hub: &crate::view::Hub, cancel: &CancellationToken) {
+        while !cancel.is_cancelled() {
             if let Err(e) = hub.send((Event::UpdateAutoFrontlight).into()) {
                 tracing::error!(error = %e, "failed to send auto-frontlight update event");
                 break;
             }
 
-            if shutdown.wait(CHECK_INTERVAL) {
+            if sleep_unless_cancelled(cancel, CHECK_INTERVAL).await {
                 break;
             }
         }

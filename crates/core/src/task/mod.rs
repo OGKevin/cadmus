@@ -6,28 +6,29 @@
 //! # Architecture
 //!
 //! - [`BackgroundTask`] trait defines the interface for long-running tasks
-//! - [`TaskManager`] spawns and manages task lifecycles
-//! - [`ShutdownSignal`] provides graceful shutdown coordination
+//! - [`TaskManager`] spawns tasks on the process runtime and joins them on stop
+//! - [`CancellationToken`] requests shutdown
 //!
 //! # Example
 //!
 //! ```no_run
 //! use std::time::Duration;
 //!
-//! use cadmus_core::task::{BackgroundTask, ShutdownSignal, TaskId};
+//! use cadmus_core::task::{sleep_unless_cancelled, BackgroundTask, TaskId};
 //! use cadmus_core::view::Hub;
+//! use tokio_util::sync::CancellationToken;
 //!
 //! struct MyTask;
 //!
+//! #[async_trait::async_trait]
 //! impl BackgroundTask for MyTask {
 //!     fn id(&self) -> TaskId {
 //!         TaskId::Placeholder
 //!     }
 //!
-//!     fn run(&mut self, _hub: &Hub, shutdown: &ShutdownSignal) {
-//!         while !shutdown.should_stop() {
-//!             // Do work...
-//!             if shutdown.wait(Duration::from_secs(60)) {
+//!     async fn run(&mut self, _hub: &Hub, cancel: &CancellationToken) {
+//!         while !cancel.is_cancelled() {
+//!             if sleep_unless_cancelled(cancel, Duration::from_secs(60)).await {
 //!                 break;
 //!             }
 //!         }
@@ -51,10 +52,9 @@ mod wifi_status_monitor;
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{self, Receiver, Sender};
-use std::thread::{self, JoinHandle};
 use std::time::Duration;
+
+use tokio_util::sync::CancellationToken;
 
 use thiserror::Error;
 
@@ -67,10 +67,14 @@ use crate::device::{AppContext, DeviceIdentity as _, DevicePaths as _};
 #[cfg(feature = "kobo")]
 use crate::fl;
 use crate::input::DeviceEvent;
+use crate::runtime::JobOutcome;
 use crate::settings::Settings;
 #[cfg(feature = "kobo")]
 use crate::view::NotificationEvent;
 use crate::view::{EntryId, Event};
+
+/// Per-task join budget for [`TaskManager::stop`] and [`TaskManager::stop_all`].
+const TASK_STOP_DEADLINE: Duration = Duration::from_secs(5);
 
 /// Errors that can occur during task management operations.
 #[derive(Error, Debug)]
@@ -116,6 +120,9 @@ pub enum TaskId {
     /// Second test-only task for unit tests.
     #[cfg(test)]
     TestTask2,
+    /// Third test-only task for unit tests.
+    #[cfg(test)]
+    TestTask3,
 }
 
 impl std::fmt::Display for TaskId {
@@ -139,110 +146,54 @@ impl std::fmt::Display for TaskId {
             TaskId::TestTask => write!(f, "test_task"),
             #[cfg(test)]
             TaskId::TestTask2 => write!(f, "test_task_2"),
+            #[cfg(test)]
+            TaskId::TestTask3 => write!(f, "test_task_3"),
         }
     }
 }
 
-/// Signal for coordinating graceful shutdown of background tasks.
+/// Sleeps until `duration` elapses or `cancel` is signalled.
 ///
-/// Tasks should periodically check [`should_stop`](Self::should_stop) or use
-/// [`wait`](Self::wait) to interrupt sleep when shutdown is requested.
-pub struct ShutdownSignal {
-    receiver: Receiver<()>,
-    /// Keeps the sender alive when no external owner exists, preventing
-    /// spurious `Disconnected` errors in `wait()`.
-    _sender_anchor: Option<Sender<()>>,
-    stopped: AtomicBool,
-}
-
-impl ShutdownSignal {
-    fn new(receiver: Receiver<()>) -> Self {
-        Self {
-            receiver,
-            _sender_anchor: None,
-            stopped: AtomicBool::new(false),
-        }
-    }
-
-    /// Creates a shutdown signal that never fires.
-    ///
-    /// Intended for use in tests and one-shot contexts where graceful shutdown
-    /// is not needed.
-    pub fn never() -> Self {
-        let (tx, rx) = mpsc::channel();
-        Self {
-            receiver: rx,
-            _sender_anchor: Some(tx),
-            stopped: AtomicBool::new(false),
-        }
-    }
-
-    /// Creates a shutdown signal from a raw receiver, for use in tests.
-    ///
-    /// Prefer [`never`](Self::never) when no shutdown is needed. Use this
-    /// when the test needs to trigger shutdown explicitly by sending `()` on
-    /// the corresponding `Sender`.
-    #[cfg(test)]
-    pub fn new_for_test(receiver: Receiver<()>) -> Self {
-        Self::new(receiver)
-    }
-
-    /// Returns `true` if shutdown has been requested.
-    ///
-    /// Once `true` is returned, all subsequent calls also return `true`
-    /// (the shutdown state is latched). This is non-blocking and suitable
-    /// for polling in tight loops.
-    pub fn should_stop(&self) -> bool {
-        if self.stopped.load(Ordering::Acquire) {
-            return true;
-        }
-        if self.receiver.try_recv().is_ok() {
-            self.stopped.store(true, Ordering::Release);
-            return true;
-        }
-        false
-    }
-
-    /// Waits for the given duration or until shutdown is requested.
-    ///
-    /// Returns `true` if shutdown was requested, `false` if the duration elapsed.
-    ///
-    /// This is the preferred method for tasks that sleep between work cycles.
-    pub fn wait(&self, duration: Duration) -> bool {
-        if self.stopped.load(Ordering::Acquire) {
-            return true;
-        }
-        match self.receiver.recv_timeout(duration) {
-            Ok(()) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-                self.stopped.store(true, Ordering::Release);
-                true
-            }
-            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => false,
-        }
+/// Returns `true` when cancellation won. Periodic tasks use this so a stop
+/// request interrupts the wait.
+pub async fn sleep_unless_cancelled(cancel: &CancellationToken, duration: Duration) -> bool {
+    tokio::select! {
+        biased;
+        () = cancel.cancelled() => true,
+        () = tokio::time::sleep(duration) => false,
     }
 }
 
 /// A long-running background task.
 ///
-/// Implement this trait to define tasks that run in dedicated threads
-/// alongside the main application loop. Tasks receive the event hub
-/// to dispatch events and a shutdown signal for graceful termination.
+/// Implement this trait to define tasks that run on the process runtime
+/// alongside the main application loop. Tasks receive the event hub to
+/// dispatch events and a [`CancellationToken`] to observe shutdown.
+///
+/// Polled tasks check [`CancellationToken::is_cancelled`] at the same
+/// checkpoints they used to check for shutdown. Tasks that block on an
+/// external wait race [`CancellationToken::cancelled`].
+/// `TaskManager::start` takes a `Box<dyn BackgroundTask>`, so this trait has to
+/// stay object-safe. `#[async_trait]` is the one form that does: neither
+/// `trait_variant` nor a bare `async fn` are object-safe, and this trait's
+/// future must be `Send` because the manager spawns it on the process runtime.
+#[async_trait::async_trait]
 pub trait BackgroundTask: Send {
     /// Returns the unique identifier for this task.
     fn id(&self) -> TaskId;
 
-    /// Runs the task until shutdown is requested.
+    /// Runs the task until it finishes or observes cancellation.
     ///
-    /// This method is called in a dedicated thread. Use `hub` to send
-    /// events to the main loop and `shutdown` to check for termination.
-    fn run(&mut self, hub: &crate::view::Hub, shutdown: &ShutdownSignal);
+    /// Use `hub` to send events to the main loop and `cancel` to observe
+    /// termination. The returned future runs on the process runtime.
+    async fn run(&mut self, hub: &crate::view::Hub, cancel: &CancellationToken);
 
     /// Called when the task is being stopped.
     ///
     /// Override this to perform cleanup. The default implementation does nothing.
     fn stop(&mut self) {}
 
-    /// Returns a "finished" event to send after the task thread exits.
+    /// Returns a "finished" event to send after the task exits.
     ///
     /// The [`TaskManager`] calls this after [`run`](Self::run) and
     /// [`stop`](Self::stop) return, so the event can depend on the work's
@@ -253,13 +204,12 @@ pub trait BackgroundTask: Send {
 }
 
 struct RunningTask {
-    handle: JoinHandle<Option<Event>>,
-    shutdown: Sender<()>,
+    job: crate::runtime::Job<Option<Event>>,
 }
 
 /// Manages the lifecycle of background tasks.
 ///
-/// The task manager spawns tasks in dedicated threads and provides
+/// The task manager spawns tasks on the process runtime and provides
 /// methods to stop individual tasks or all tasks at once.
 pub struct TaskManager {
     tasks: HashMap<TaskId, RunningTask>,
@@ -282,10 +232,10 @@ impl TaskManager {
         }
     }
 
-    /// Starts a background task in a new thread.
+    /// Starts a background task on the process runtime.
     ///
     /// The task receives a clone of `hub` for sending events and a
-    /// [`ShutdownSignal`] for graceful termination.
+    /// [`CancellationToken`] for graceful termination.
     ///
     /// Returns an error if a task with the same ID is already running.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, task, hub), fields(task_id = tracing::field::Empty
@@ -304,25 +254,18 @@ impl TaskManager {
             return Err(TaskError::AlreadyRunning(id));
         }
 
-        let (shutdown_tx, shutdown_rx) = mpsc::channel();
-        let shutdown_signal = ShutdownSignal::new(shutdown_rx);
+        let cancel = CancellationToken::new();
 
-        let handle = thread::spawn(move || {
+        let job = crate::runtime::Job::with_token(cancel, move |task_cancel| async move {
             let mut task = task;
             tracing::info!("task started");
-            task.run(&hub, &shutdown_signal);
+            task.run(&hub, &task_cancel).await;
             task.stop();
             tracing::info!("task stopped");
             task.finished_event()
         });
 
-        self.tasks.insert(
-            id.clone(),
-            RunningTask {
-                handle,
-                shutdown: shutdown_tx,
-            },
-        );
+        self.tasks.insert(id.clone(), RunningTask { job });
 
         tracing::info!("task registered");
         Ok(id)
@@ -330,67 +273,95 @@ impl TaskManager {
 
     /// Stops a running task by ID.
     ///
-    /// Sends the shutdown signal and waits for the task thread to finish.
+    /// Cancels the task and joins it with the same per-task deadline as
+    /// [`stop_all`](Self::stop_all). On timeout the task is aborted.
     /// Returns an error if the task is not running.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(task_id = %id), ret))]
-    pub fn stop(&mut self, id: &TaskId) -> Result<(), TaskError> {
-        self.cleanup_finished();
+    pub async fn stop(&mut self, id: &TaskId) -> Result<(), TaskError> {
+        self.cleanup_finished().await;
         if let Some(task) = self.tasks.remove(id) {
-            tracing::info!("sending shutdown signal");
-            if let Err(e) = task.shutdown.send(()) {
-                tracing::error!(error = %e, "failed to send shutdown signal");
-            }
-            if task.handle.join().is_err() {
-                tracing::error!("task thread panicked");
-            }
+            tracing::info!("cancelling task");
+            task.job.cancel();
+            let _ = task.job.join(TASK_STOP_DEADLINE).await;
             Ok(())
         } else {
             Err(TaskError::NotRunning(id.clone()))
         }
     }
 
-    /// Stops all running tasks.
+    /// Cancels every running task and waits for each join.
     ///
-    /// Sends shutdown signals to all tasks and waits for them to finish.
+    /// Each task gets its own five-second deadline, so several stuck tasks
+    /// can delay quit by about 5s times the task count. That is an accepted
+    /// product bound: every task gets a full chance to finish cleanly. When a
+    /// join hits the deadline the task is aborted and the abort is awaited so
+    /// the join handle is not detached while shutdown continues.
+    ///
+    /// Abort stops the async task only; an in-flight `spawn_blocking` closure
+    /// may still run until it returns. Cooperative cancellation inside those
+    /// closures is task-specific.
+    ///
+    /// The process runtime then applies its own separate shutdown deadline.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(task_count = tracing::field::Empty
     )))]
-    pub fn stop_all(&mut self) {
+    pub async fn stop_all(&mut self) {
         let tasks: Vec<_> = self.tasks.drain().collect();
 
         #[cfg(feature = "tracing")]
         tracing::Span::current().record("task_count", tasks.len());
 
-        if !tasks.is_empty() {
-            tracing::info!("stopping all tasks");
+        if tasks.is_empty() {
+            return;
         }
+
+        tracing::info!(task_count = tasks.len(), "stopping all tasks");
+        let started = std::time::Instant::now();
         for (_, task) in &tasks {
-            if let Err(e) = task.shutdown.send(()) {
-                tracing::error!(error = %e, "failed to send shutdown signal");
+            task.job.cancel();
+        }
+        let mut timed_out = 0u32;
+        for (_, task) in tasks {
+            if matches!(
+                task.job.join(TASK_STOP_DEADLINE).await,
+                crate::runtime::JobOutcome::Aborted
+            ) {
+                timed_out += 1;
             }
         }
-        for (_, task) in tasks {
-            if task.handle.join().is_err() {
-                tracing::error!("task thread panicked");
-            }
+        let elapsed = started.elapsed();
+        if timed_out > 0 || elapsed > TASK_STOP_DEADLINE {
+            tracing::warn!(
+                timed_out_tasks = timed_out,
+                elapsed_ms = elapsed.as_millis(),
+                per_task_deadline_secs = TASK_STOP_DEADLINE.as_secs(),
+                "background task shutdown was slow"
+            );
         }
     }
 
-    /// Removes entries for tasks whose threads have finished, buffering
-    /// their completion events only if the thread exited successfully.
-    fn cleanup_finished(&mut self) {
+    /// Removes entries for tasks whose futures have finished, buffering
+    /// their completion events only if the task exited successfully.
+    ///
+    /// Joins through [`Self::stop`]'s deadline so there is one path for every
+    /// task stop. The deadline is a formality here, since only finished tasks
+    /// are selected.
+    async fn cleanup_finished(&mut self) {
         let finished: Vec<TaskId> = self
             .tasks
             .iter()
-            .filter(|(_, task)| task.handle.is_finished())
+            .filter(|(_, task)| task.job.is_finished())
             .map(|(id, _)| id.clone())
             .collect();
 
         for id in finished {
             if let Some(task) = self.tasks.remove(&id) {
-                match task.handle.join() {
-                    Ok(Some(evt)) => self.buffered_events.push(evt),
-                    Ok(None) => {}
-                    Err(_) => tracing::error!(task_id = %id, "task thread panicked"),
+                match task.job.join(TASK_STOP_DEADLINE).await {
+                    JobOutcome::Finished(Some(evt)) => self.buffered_events.push(evt),
+                    JobOutcome::Finished(None) => {}
+                    JobOutcome::Aborted => {
+                        tracing::warn!(task_id = %id, "finished task join hit the deadline");
+                    }
+                    JobOutcome::Panicked => tracing::error!(task_id = %id, "task panicked"),
                 }
             }
         }
@@ -407,14 +378,17 @@ impl TaskManager {
     ///
     /// Must be called for every event before passing it to the view tree.
     /// Always returns `false` — it never consumes events.
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, context)))]
-    pub fn handle_event(
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(skip(self, hub, context), ret)
+    )]
+    pub async fn handle_event(
         &mut self,
         evt: &Event,
         hub: &crate::view::Hub,
         context: &AppContext,
     ) -> bool {
-        self.cleanup_finished();
+        self.cleanup_finished().await;
         self.flush_buffered_events(hub);
 
         match evt {
@@ -477,7 +451,8 @@ impl TaskManager {
                     &context.database,
                     context.device.data_dir(),
                     &context.inhibitor,
-                );
+                )
+                .await;
             }
             Event::Device(DeviceEvent::NetUp) => {
                 #[cfg(feature = "kobo")]
@@ -489,7 +464,7 @@ impl TaskManager {
             }
             #[cfg(feature = "kobo")]
             Event::AutoFrontlightConfigChanged => {
-                self.sync_auto_frontlight(hub, &context.settings);
+                self.sync_auto_frontlight(hub, &context.settings).await;
             }
             Event::Select(EntryId::SyncTime) => {
                 #[cfg(feature = "kobo")]
@@ -569,53 +544,61 @@ impl TaskManager {
 
     /// Schedules a dictionary index scan, stopping any running instance first.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-    fn schedule_dictionary_index(
-        &mut self,
-        hub: &crate::view::Hub,
-        database: &Database,
+    fn schedule_dictionary_index<'a>(
+        &'a mut self,
+        hub: &'a crate::view::Hub,
+        database: &'a Database,
         data_path: std::path::PathBuf,
-        inhibitor: &Arc<Inhibitor>,
-    ) {
-        if self.is_running(&TaskId::DictionaryIndex) {
-            tracing::debug!("stopping running dictionary index task for restart");
-            if let Err(e) = self.stop(&TaskId::DictionaryIndex) {
-                tracing::warn!(error = %e, "failed to stop dictionary_index task for restart");
+        inhibitor: &'a Arc<Inhibitor>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + 'a>> {
+        Box::pin(async move {
+            if self.is_running(&TaskId::DictionaryIndex) {
+                tracing::debug!("stopping running dictionary index task for restart");
+                if let Err(e) = self.stop(&TaskId::DictionaryIndex).await {
+                    tracing::warn!(error = %e, "failed to stop dictionary_index task for restart");
+                }
             }
-        }
 
-        self.flush_buffered_events(hub);
+            self.flush_buffered_events(hub);
 
-        let task = Box::new(dictionary_index::DictionaryIndexTask::new(
-            database.clone(),
-            data_path,
-            inhibitor.clone(),
-        ));
+            let task = Box::new(dictionary_index::DictionaryIndexTask::new(
+                database.clone(),
+                data_path,
+                inhibitor.clone(),
+            ));
 
-        if let Err(e) = self.start(task, hub.clone()) {
-            tracing::warn!(error = %e, "failed to start dictionary_index task");
-        }
+            if let Err(e) = self.start(task, hub.clone()) {
+                tracing::warn!(error = %e, "failed to start dictionary_index task");
+            }
+        })
     }
 
     #[cfg(feature = "kobo")]
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-    fn sync_auto_frontlight(&mut self, hub: &crate::view::Hub, settings: &Settings) {
-        if self.is_running(&TaskId::AutoFrontlight) {
-            tracing::debug!("stopping running auto_frontlight task for restart");
-            if let Err(e) = self.stop(&TaskId::AutoFrontlight) {
-                tracing::warn!(error = %e, "failed to stop auto_frontlight task for restart");
+    fn sync_auto_frontlight<'a>(
+        &'a mut self,
+        hub: &'a crate::view::Hub,
+        settings: &'a Settings,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + 'a>> {
+        Box::pin(async move {
+            if self.is_running(&TaskId::AutoFrontlight) {
+                tracing::debug!("stopping running auto_frontlight task for restart");
+                if let Err(e) = self.stop(&TaskId::AutoFrontlight).await {
+                    tracing::warn!(error = %e, "failed to stop auto_frontlight task for restart");
+                }
             }
-        }
 
-        if !settings.auto_frontlight {
-            return;
-        }
+            if !settings.auto_frontlight {
+                return;
+            }
 
-        self.flush_buffered_events(hub);
+            self.flush_buffered_events(hub);
 
-        let task = Box::new(auto_frontlight::AutoFrontlightTask);
-        if let Err(e) = self.start(task, hub.clone()) {
-            tracing::warn!(error = %e, "failed to start auto_frontlight task");
-        }
+            let task = Box::new(auto_frontlight::AutoFrontlightTask);
+            if let Err(e) = self.start(task, hub.clone()) {
+                tracing::warn!(error = %e, "failed to start auto_frontlight task");
+            }
+        })
     }
 
     #[cfg(feature = "kobo")]
@@ -722,15 +705,23 @@ impl TaskManager {
     }
 
     /// Returns `true` if a task with the given ID is running.
-    pub fn is_running(&mut self, id: &TaskId) -> bool {
-        self.cleanup_finished();
-        self.tasks.contains_key(id)
+    ///
+    /// A finished-but-not-yet-reaped task does not count as running. Reaping
+    /// (joining to buffer its completion event) is `cleanup_finished`'s job and
+    /// needs to await, so it is not done here.
+    pub fn is_running(&self, id: &TaskId) -> bool {
+        self.tasks
+            .get(id)
+            .is_some_and(|task| !task.job.is_finished())
     }
 
     /// Returns the IDs of all running tasks.
-    pub fn running_tasks(&mut self) -> Vec<TaskId> {
-        self.cleanup_finished();
-        self.tasks.keys().cloned().collect()
+    pub fn running_tasks(&self) -> Vec<TaskId> {
+        self.tasks
+            .iter()
+            .filter(|(_, task)| !task.job.is_finished())
+            .map(|(id, _)| id.clone())
+            .collect()
     }
 }
 
@@ -741,8 +732,29 @@ impl Default for TaskManager {
 }
 
 impl Drop for TaskManager {
+    /// Cancels every task without joining.
+    ///
+    /// Joining in `Drop` can block while unwinding. Shutdown calls
+    /// [`Self::stop_all`] explicitly before dropping the manager.
     fn drop(&mut self) {
-        self.stop_all();
+        if self.tasks.is_empty() {
+            return;
+        }
+        if tokio::runtime::Handle::try_current().is_err() {
+            tracing::warn!(
+                task_count = self.tasks.len(),
+                "dropping TaskManager off a runtime; background tasks were not stopped"
+            );
+            return;
+        }
+        tracing::warn!(
+            task_count = self.tasks.len(),
+            "dropping TaskManager without stop_all; cancelling tasks"
+        );
+        for task in self.tasks.values() {
+            task.job.cancel();
+        }
+        self.tasks.clear();
     }
 }
 
@@ -821,9 +833,72 @@ pub fn register_startup_tasks(
 mod tests {
     use super::*;
     use crate::context::test_helpers::create_test_context;
+    use crate::view::HubReceiverExt;
     use std::path::Path;
-    use std::sync::mpsc;
     use std::time::{Duration, Instant};
+
+    fn running_until_cancelled() -> RunningTask {
+        let cancel = CancellationToken::new();
+        let job = crate::runtime::Job::with_token(cancel, move |child| async move {
+            child.cancelled().await;
+            None
+        });
+        RunningTask { job }
+    }
+
+    #[tokio::test]
+    async fn idle_wait_stops_without_sleeping_the_full_interval() {
+        let cancel = CancellationToken::new();
+        let child = cancel.clone();
+        let started = Instant::now();
+        let handle =
+            tokio::spawn(
+                async move { sleep_unless_cancelled(&child, Duration::from_secs(60)).await },
+            );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        cancel.cancel();
+        assert!(handle.await.expect("sleep task panicked"));
+        assert!(started.elapsed() < Duration::from_secs(5));
+    }
+
+    #[tokio::test]
+    async fn polled_wifi_lease_drops_at_the_next_checkpoint() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        let wifi = std::sync::Arc::new(crate::device::wifi::NoopWifiManager::default());
+        let session = crate::device::wifi::WifiSession::new(wifi, crate::settings::WifiMode::Auto);
+        let cancel = CancellationToken::new();
+        let child = cancel.clone();
+        let entered = std::sync::Arc::new(tokio::sync::Notify::new());
+        let release = std::sync::Arc::new(tokio::sync::Notify::new());
+        let continued = std::sync::Arc::new(AtomicBool::new(false));
+        let entered_task = std::sync::Arc::clone(&entered);
+        let release_task = std::sync::Arc::clone(&release);
+        let continued_task = std::sync::Arc::clone(&continued);
+        let session_task = std::sync::Arc::clone(&session);
+
+        let handle = tokio::spawn(async move {
+            let _lease = session_task.acquire("time-sync").await.expect("wifi lease");
+            entered_task.notify_one();
+            release_task.notified().await;
+            if child.is_cancelled() {
+                return;
+            }
+            continued_task.store(true, Ordering::SeqCst);
+        });
+
+        entered.notified().await;
+        assert!(session.has_holders());
+        cancel.cancel();
+        assert!(
+            session.has_holders(),
+            "a polled holder keeps the lease until the next checkpoint"
+        );
+        release.notify_one();
+        handle.await.expect("lease task panicked");
+        assert!(!continued.load(Ordering::SeqCst));
+        assert!(!session.has_holders());
+    }
 
     fn wait_until_not_running(manager: &mut TaskManager, id: &TaskId) {
         let deadline = Instant::now() + Duration::from_secs(5);
@@ -838,42 +913,67 @@ mod tests {
 
     struct InstantTask;
 
+    #[async_trait::async_trait]
     impl BackgroundTask for InstantTask {
         fn id(&self) -> TaskId {
             TaskId::TestTask2
         }
 
-        fn run(&mut self, _hub: &crate::view::Hub, _shutdown: &ShutdownSignal) {}
+        async fn run(&mut self, _hub: &crate::view::Hub, _cancel: &CancellationToken) {}
     }
 
     struct WaitingTask;
 
+    #[async_trait::async_trait]
     impl BackgroundTask for WaitingTask {
         fn id(&self) -> TaskId {
             TaskId::TestTask
         }
 
-        fn run(&mut self, _hub: &crate::view::Hub, shutdown: &ShutdownSignal) {
-            shutdown.wait(Duration::from_secs(60));
+        async fn run(&mut self, _hub: &crate::view::Hub, cancel: &CancellationToken) {
+            sleep_unless_cancelled(cancel, Duration::from_secs(60)).await;
         }
     }
 
-    #[test]
-    fn start_and_stop() {
+    struct IgnoresCancelTask {
+        finished: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    }
+
+    impl IgnoresCancelTask {
+        fn new(finished: std::sync::Arc<std::sync::atomic::AtomicBool>) -> Self {
+            Self { finished }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl BackgroundTask for IgnoresCancelTask {
+        fn id(&self) -> TaskId {
+            TaskId::TestTask3
+        }
+
+        async fn run(&mut self, _hub: &crate::view::Hub, _cancel: &CancellationToken) {
+            let finished = std::sync::Arc::clone(&self.finished);
+            tokio::time::sleep(Duration::from_secs(60)).await;
+            finished.store(true, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn start_and_stop() {
         let mut manager = TaskManager::new();
-        let (hub, _rx) = mpsc::channel();
+        let (hub, _rx) = crate::view::hub_channel();
 
         let id = manager.start(Box::new(WaitingTask), hub).unwrap();
         assert!(manager.is_running(&id));
 
-        manager.stop(&id).unwrap();
+        manager.stop(&id).await.unwrap();
         assert!(!manager.is_running(&id));
     }
 
-    #[test]
-    fn duplicate_start_returns_error() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn duplicate_start_returns_error() {
         let mut manager = TaskManager::new();
-        let (hub, _rx) = mpsc::channel();
+        let (hub, _rx) = crate::view::hub_channel();
 
         manager.start(Box::new(WaitingTask), hub.clone()).unwrap();
         let err = manager.start(Box::new(WaitingTask), hub).unwrap_err();
@@ -881,10 +981,10 @@ mod tests {
         assert!(matches!(err, TaskError::AlreadyRunning(TaskId::TestTask)));
     }
 
-    #[test]
-    fn finished_task_is_cleaned_up() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn finished_task_is_cleaned_up() {
         let mut manager = TaskManager::new();
-        let (hub, _rx) = mpsc::channel();
+        let (hub, _rx) = crate::view::hub_channel();
 
         let id = manager.start(Box::new(InstantTask), hub).unwrap();
 
@@ -892,23 +992,23 @@ mod tests {
         assert!(!manager.is_running(&id));
     }
 
-    #[test]
-    fn stop_finished_task_returns_not_running() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn stop_finished_task_returns_not_running() {
         let mut manager = TaskManager::new();
-        let (hub, _rx) = mpsc::channel();
+        let (hub, _rx) = crate::view::hub_channel();
 
         let id = manager.start(Box::new(InstantTask), hub).unwrap();
 
         wait_until_not_running(&mut manager, &id);
-        let err = manager.stop(&id).unwrap_err();
+        let err = manager.stop(&id).await.unwrap_err();
 
         assert!(matches!(err, TaskError::NotRunning(TaskId::TestTask2)));
     }
 
-    #[test]
-    fn running_tasks_excludes_finished() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn running_tasks_excludes_finished() {
         let mut manager = TaskManager::new();
-        let (hub, _rx) = mpsc::channel();
+        let (hub, _rx) = crate::view::hub_channel();
 
         manager.start(Box::new(WaitingTask), hub.clone()).unwrap();
         let instant_id = manager.start(Box::new(InstantTask), hub).unwrap();
@@ -919,28 +1019,78 @@ mod tests {
         assert_eq!(running.len(), 1);
         assert_eq!(running[0], TaskId::TestTask);
 
-        manager.stop_all();
+        manager.stop_all().await;
     }
 
-    #[test]
-    fn stop_all_stops_everything() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn stop_all_stops_everything() {
         let mut manager = TaskManager::new();
-        let (hub, _rx) = mpsc::channel();
+        let (hub, _rx) = crate::view::hub_channel();
 
         manager.start(Box::new(WaitingTask), hub).unwrap();
-        manager.stop_all();
+        manager.stop_all().await;
 
         assert!(!manager.is_running(&TaskId::TestTask));
     }
 
-    #[test]
-    fn test_thumbnail_extraction_task_lifecycle() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn stop_all_aborts_and_joins_tasks_that_ignore_cancellation() {
         let mut manager = TaskManager::new();
-        let (hub, _rx) = mpsc::channel();
-        let mut database = Database::new(":memory:").unwrap();
-        database.init_for_test(0).unwrap();
+        let (hub, _rx) = crate::view::hub_channel();
+        let finished = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+
+        manager
+            .start(Box::new(IgnoresCancelTask::new(finished.clone())), hub)
+            .unwrap();
+
+        let started = Instant::now();
+        manager.stop_all().await;
+        let elapsed = started.elapsed();
+
+        assert!(
+            elapsed < Duration::from_secs(8),
+            "stop_all should not wait the full task sleep: {elapsed:?}"
+        );
+        assert!(
+            !finished.load(std::sync::atomic::Ordering::SeqCst),
+            "task should be aborted before its sleep completes"
+        );
+        assert!(!manager.is_running(&TaskId::TestTask3));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn stop_aborts_tasks_that_ignore_cancellation() {
+        let mut manager = TaskManager::new();
+        let (hub, _rx) = crate::view::hub_channel();
+        let finished = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+
+        manager
+            .start(Box::new(IgnoresCancelTask::new(finished.clone())), hub)
+            .unwrap();
+
+        let started = Instant::now();
+        manager.stop(&TaskId::TestTask3).await.unwrap();
+        let elapsed = started.elapsed();
+
+        assert!(
+            elapsed < Duration::from_secs(8),
+            "stop should not wait the full task sleep: {elapsed:?}"
+        );
+        assert!(
+            !finished.load(std::sync::atomic::Ordering::SeqCst),
+            "task should be aborted before its sleep completes"
+        );
+        assert!(!manager.is_running(&TaskId::TestTask3));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_thumbnail_extraction_task_lifecycle() {
+        let mut manager = TaskManager::new();
+        let (hub, _rx) = crate::view::hub_channel();
+        let mut database = Database::new(":memory:").await.unwrap();
+        database.init_for_test(0).await.unwrap();
         let settings = Settings::default();
-        let context = create_test_context();
+        let context = create_test_context().await;
 
         manager.schedule_thumbnail_extraction(
             None,
@@ -958,36 +1108,29 @@ mod tests {
         wait_until_not_running(&mut manager, &TaskId::ThumbnailExtraction);
         assert!(!manager.is_running(&TaskId::ThumbnailExtraction));
 
-        let err = manager.stop(&TaskId::ThumbnailExtraction).unwrap_err();
+        let err = manager
+            .stop(&TaskId::ThumbnailExtraction)
+            .await
+            .unwrap_err();
         assert!(matches!(
             err,
             TaskError::NotRunning(TaskId::ThumbnailExtraction)
         ));
     }
 
-    #[test]
-    fn thumbnail_extraction_queues_when_running() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn thumbnail_extraction_queues_when_running() {
         let mut manager = TaskManager::new();
-        let (hub, _rx) = mpsc::channel();
+        let (hub, _rx) = crate::view::hub_channel();
 
-        // Simulate a running ThumbnailExtraction task with a blocking thread.
-        let (shutdown_tx, shutdown_rx) = mpsc::channel();
-        let blocking_handle = thread::spawn(move || {
-            let _ = shutdown_rx.recv();
-            None
-        });
-        manager.tasks.insert(
-            TaskId::ThumbnailExtraction,
-            RunningTask {
-                handle: blocking_handle,
-                shutdown: shutdown_tx,
-            },
-        );
+        manager
+            .tasks
+            .insert(TaskId::ThumbnailExtraction, running_until_cancelled());
 
-        let mut database = Database::new(":memory:").unwrap();
-        database.init_for_test(0).unwrap();
+        let mut database = Database::new(":memory:").await.unwrap();
+        database.init_for_test(0).await.unwrap();
         let settings = Settings::default();
-        let context = create_test_context();
+        let context = create_test_context().await;
 
         manager.schedule_thumbnail_extraction(
             Some(0),
@@ -1012,7 +1155,7 @@ mod tests {
 
         assert_eq!(manager.pending_thumbnail_indices.len(), 2);
 
-        manager.stop(&TaskId::ThumbnailExtraction).unwrap();
+        manager.stop(&TaskId::ThumbnailExtraction).await.unwrap();
 
         manager.drain_pending_thumbnails(
             &hub,
@@ -1041,74 +1184,59 @@ mod tests {
         wait_until_not_running(&mut manager, &TaskId::ThumbnailExtraction);
     }
 
-    #[test]
-    fn import_queue_preserves_force_flag() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn import_queue_preserves_force_flag() {
         let mut manager = TaskManager::new();
-        let (hub, _rx) = mpsc::channel();
-        let context = create_test_context();
+        let (hub, _rx) = crate::view::hub_channel();
+        let context = create_test_context().await;
 
-        // Simulate a running import task with a blocking thread.
-        let (shutdown_tx, shutdown_rx) = mpsc::channel();
-        let blocking_handle = thread::spawn(move || {
-            let _ = shutdown_rx.recv();
-            None
-        });
-        manager.tasks.insert(
-            TaskId::Import,
-            RunningTask {
-                handle: blocking_handle,
-                shutdown: shutdown_tx,
-            },
-        );
+        manager
+            .tasks
+            .insert(TaskId::Import, running_until_cancelled());
 
-        manager.handle_event(
-            &Event::ImportLibrary {
-                library_index: Some(0),
-                force: true,
-            },
-            &hub,
-            &context,
-        );
+        manager
+            .handle_event(
+                &Event::ImportLibrary {
+                    library_index: Some(0),
+                    force: true,
+                },
+                &hub,
+                &context,
+            )
+            .await;
 
         assert_eq!(
             manager.pending_import_indices.front(),
             Some(&(Some(0), true))
         );
 
-        manager.stop(&TaskId::Import).unwrap();
+        manager.stop(&TaskId::Import).await.unwrap();
     }
 
-    #[test]
-    fn import_queue_preserves_force_false_flag() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn import_queue_preserves_force_false_flag() {
         let mut manager = TaskManager::new();
-        let (hub, _rx) = mpsc::channel();
-        let context = create_test_context();
+        let (hub, _rx) = crate::view::hub_channel();
+        let context = create_test_context().await;
 
-        let (shutdown_tx, shutdown_rx) = mpsc::channel();
-        let blocking_handle = thread::spawn(move || {
-            let _ = shutdown_rx.recv();
-            None
-        });
-        manager.tasks.insert(
-            TaskId::Import,
-            RunningTask {
-                handle: blocking_handle,
-                shutdown: shutdown_tx,
-            },
-        );
+        manager
+            .tasks
+            .insert(TaskId::Import, running_until_cancelled());
 
-        manager.handle_event(
-            &Event::ImportLibrary {
-                library_index: None,
-                force: false,
-            },
-            &hub,
-            &context,
-        );
+        manager
+            .handle_event(
+                &Event::ImportLibrary {
+                    library_index: None,
+                    force: false,
+                },
+                &hub,
+                &context,
+            )
+            .await;
 
         assert_eq!(manager.pending_import_indices.front(), Some(&(None, false)));
 
-        manager.stop(&TaskId::Import).unwrap();
+        manager.stop(&TaskId::Import).await.unwrap();
     }
 
     fn library_settings(path: &Path) -> crate::settings::LibrarySettings {
@@ -1119,20 +1247,22 @@ mod tests {
         }
     }
 
-    fn import_context(dir: &Path) -> AppContext {
-        let mut context = create_test_context();
+    async fn import_context(dir: &Path) -> AppContext {
+        let mut context = create_test_context().await;
         context.settings.libraries = vec![library_settings(dir)];
         context
     }
 
-    fn pump(manager: &mut TaskManager, hub: &crate::view::Hub, context: &AppContext) {
-        manager.handle_event(&Event::StartStableReleaseDownload, hub, context);
+    async fn pump(manager: &mut TaskManager, hub: &crate::view::Hub, context: &AppContext) {
+        manager
+            .handle_event(&Event::StartStableReleaseDownload, hub, context)
+            .await;
     }
 
-    fn thumbnail_was_scheduled(
+    async fn thumbnail_was_scheduled(
         manager: &mut TaskManager,
         hub: &crate::view::Hub,
-        rx: &mpsc::Receiver<crate::view::HubMessage>,
+        rx: &mut crate::view::HubReceiver,
         context: &AppContext,
     ) -> bool {
         let deadline = Instant::now() + Duration::from_secs(5);
@@ -1140,7 +1270,7 @@ mod tests {
             if manager.is_running(&TaskId::ThumbnailExtraction) {
                 return true;
             }
-            pump(manager, hub, context);
+            pump(manager, hub, context).await;
             if rx
                 .try_iter()
                 .any(|message| matches!(message.event, Event::ThumbnailExtractionFinished { .. }))
@@ -1152,12 +1282,12 @@ mod tests {
         false
     }
 
-    #[test]
-    fn interrupted_import_emits_no_completion_and_does_not_schedule_thumbnails() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn interrupted_import_emits_no_completion_and_does_not_schedule_thumbnails() {
         let dir = tempfile::tempdir().expect("tempdir");
         std::fs::write(dir.path().join("book.epub"), b"epub content").expect("write");
-        let context = import_context(dir.path());
-        let (hub, rx) = mpsc::channel();
+        let context = import_context(dir.path()).await;
+        let (hub, mut rx) = crate::view::hub_channel();
         let mut task = import::ImportTask::new(
             context.database.clone(),
             context.settings.clone(),
@@ -1166,10 +1296,9 @@ mod tests {
             context.device.install_dir(),
             context.inhibitor.clone(),
         );
-        let (shutdown_tx, shutdown_rx) = mpsc::channel();
-        shutdown_tx.send(()).expect("signal shutdown");
-        let shutdown = ShutdownSignal::new_for_test(shutdown_rx);
-        task.run(&hub, &shutdown);
+        let cancel = CancellationToken::new();
+        cancel.cancel();
+        task.run(&hub, &cancel).await;
 
         assert!(
             task.finished_event().is_none(),
@@ -1183,7 +1312,7 @@ mod tests {
 
         let mut manager = TaskManager::new();
         if let Some(evt) = task.finished_event() {
-            manager.handle_event(&evt, &hub, &context);
+            manager.handle_event(&evt, &hub, &context).await;
         }
 
         assert!(!manager.is_running(&TaskId::ThumbnailExtraction));
@@ -1195,20 +1324,20 @@ mod tests {
         );
     }
 
-    #[test]
-    fn failed_import_emits_no_completion_and_does_not_schedule_thumbnails() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn failed_import_emits_no_completion_and_does_not_schedule_thumbnails() {
         let dir = tempfile::tempdir().expect("tempdir");
         let good = dir.path().join("good");
         std::fs::create_dir(&good).expect("mkdir");
         std::fs::write(good.join("book.epub"), b"epub content").expect("write");
         let blocker = dir.path().join("not-a-directory");
         std::fs::write(&blocker, b"x").expect("write");
-        let mut context = create_test_context();
+        let mut context = create_test_context().await;
         context.settings.libraries = vec![
             library_settings(&good),
             library_settings(&blocker.join("library")),
         ];
-        let (hub, rx) = mpsc::channel();
+        let (hub, mut rx) = crate::view::hub_channel();
         let mut task = import::ImportTask::new(
             context.database.clone(),
             context.settings.clone(),
@@ -1217,9 +1346,8 @@ mod tests {
             context.device.install_dir(),
             context.inhibitor.clone(),
         );
-        let (_shutdown_tx, shutdown_rx) = mpsc::channel();
-        let shutdown = ShutdownSignal::new_for_test(shutdown_rx);
-        task.run(&hub, &shutdown);
+        let cancel = CancellationToken::new();
+        task.run(&hub, &cancel).await;
 
         assert!(
             matches!(
@@ -1238,7 +1366,7 @@ mod tests {
 
         let mut manager = TaskManager::new();
         if let Some(evt) = task.finished_event() {
-            manager.handle_event(&evt, &hub, &context);
+            manager.handle_event(&evt, &hub, &context).await;
         }
 
         assert!(!manager.is_running(&TaskId::ThumbnailExtraction));
@@ -1250,53 +1378,46 @@ mod tests {
         );
     }
 
-    #[test]
-    fn failed_import_advances_queued_import_without_scheduling_thumbnails() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn failed_import_advances_queued_import_without_scheduling_thumbnails() {
         let dir = tempfile::tempdir().expect("tempdir");
         let good = dir.path().join("good");
         std::fs::create_dir(&good).expect("mkdir");
         std::fs::write(good.join("book.epub"), b"epub content").expect("write");
-        let mut context = create_test_context();
+        let mut context = create_test_context().await;
         context.settings.libraries = vec![library_settings(&good)];
-        let (hub, rx) = mpsc::channel();
+        let (hub, mut rx) = crate::view::hub_channel();
         let mut manager = TaskManager::new();
 
-        let (shutdown_tx, shutdown_rx) = mpsc::channel();
-        let blocking_handle = thread::spawn(move || {
-            let _ = shutdown_rx.recv();
-            Some(Event::ImportFailed {
-                library_index: Some(0),
-            })
-        });
-        manager.tasks.insert(
-            TaskId::Import,
-            RunningTask {
-                handle: blocking_handle,
-                shutdown: shutdown_tx,
-            },
-        );
+        manager
+            .tasks
+            .insert(TaskId::Import, running_until_cancelled());
 
-        manager.handle_event(
-            &Event::ImportLibrary {
-                library_index: Some(0),
-                force: false,
-            },
-            &hub,
-            &context,
-        );
+        manager
+            .handle_event(
+                &Event::ImportLibrary {
+                    library_index: Some(0),
+                    force: false,
+                },
+                &hub,
+                &context,
+            )
+            .await;
         assert_eq!(
             manager.pending_import_indices.front(),
             Some(&(Some(0), false))
         );
 
-        manager.stop(&TaskId::Import).unwrap();
-        manager.handle_event(
-            &Event::ImportFailed {
-                library_index: Some(0),
-            },
-            &hub,
-            &context,
-        );
+        manager.stop(&TaskId::Import).await.unwrap();
+        manager
+            .handle_event(
+                &Event::ImportFailed {
+                    library_index: Some(0),
+                },
+                &hub,
+                &context,
+            )
+            .await;
 
         assert!(manager.pending_import_indices.is_empty());
         assert!(!manager.is_running(&TaskId::ThumbnailExtraction));
@@ -1308,7 +1429,7 @@ mod tests {
         );
 
         wait_until_not_running(&mut manager, &TaskId::Import);
-        pump(&mut manager, &hub, &context);
+        pump(&mut manager, &hub, &context).await;
 
         let events: Vec<Event> = rx.try_iter().map(|message| message.event).collect();
         assert!(
@@ -1328,12 +1449,12 @@ mod tests {
         );
     }
 
-    #[test]
-    fn completed_import_emits_completion_and_schedules_thumbnails() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn completed_import_emits_completion_and_schedules_thumbnails() {
         let dir = tempfile::tempdir().expect("tempdir");
         std::fs::write(dir.path().join("book.epub"), b"epub content").expect("write");
-        let context = import_context(dir.path());
-        let (hub, rx) = mpsc::channel();
+        let context = import_context(dir.path()).await;
+        let (hub, mut rx) = crate::view::hub_channel();
         let mut manager = TaskManager::new();
         let task = import::ImportTask::new(
             context.database.clone(),
@@ -1345,7 +1466,7 @@ mod tests {
         );
         manager.start(Box::new(task), hub.clone()).unwrap();
         wait_until_not_running(&mut manager, &TaskId::Import);
-        pump(&mut manager, &hub, &context);
+        pump(&mut manager, &hub, &context).await;
 
         let events: Vec<Event> = rx.try_iter().map(|message| message.event).collect();
         let finished = events
@@ -1360,9 +1481,9 @@ mod tests {
             })
             .expect("completed import must emit ImportFinished");
 
-        manager.handle_event(&finished, &hub, &context);
+        manager.handle_event(&finished, &hub, &context).await;
         assert!(
-            thumbnail_was_scheduled(&mut manager, &hub, &rx, &context),
+            thumbnail_was_scheduled(&mut manager, &hub, &mut rx, &context).await,
             "completed import must schedule thumbnail extraction"
         );
     }
