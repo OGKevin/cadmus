@@ -300,6 +300,19 @@ mod tests {
         assert!(started.elapsed() < Duration::from_millis(500));
     }
 
+    #[test]
+    fn enter_bounds_shutdown_when_a_blocking_task_is_stuck() {
+        let started = Instant::now();
+        enter(async {
+            let _detached = spawn_blocking(|| std::thread::sleep(Duration::from_secs(30)));
+        });
+        let elapsed = started.elapsed();
+        assert!(
+            elapsed < SHUTDOWN_DEADLINE + Duration::from_secs(2),
+            "exit took {elapsed:?}"
+        );
+    }
+
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn hub_accepts_sync_send_from_a_non_runtime_thread() {
         let (tx, mut rx) = crate::view::hub_channel();
