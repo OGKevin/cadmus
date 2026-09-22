@@ -60,7 +60,6 @@ chrono = { version = "0.4.42", features = [
 chrono-tz = "0.10"
 sunrise = "3.0"
 reqwest = { version = "0.13.1", default-features = false, features = [
-    "blocking",
     "form",
     "json",
     "rustls-no-provider",
@@ -90,8 +89,8 @@ tracing-appender = "0.2"
 tracing-opentelemetry = { version = "0.33", optional = true }
 opentelemetry-appender-tracing = { version = "0.32", optional = true }
 opentelemetry = { version = "0.32", features = ["trace", "logs"], optional = true }
-opentelemetry-otlp = { version = "0.32", features = ["trace", "logs", "http-proto", "reqwest-blocking-client"], optional = true }
-opentelemetry_sdk = { version = "0.32", features = ["trace", "logs", "rt-tokio-current-thread"], optional = true }
+opentelemetry-otlp = { version = "0.32", features = ["trace", "logs", "http-proto", "reqwest-client"], optional = true }
+opentelemetry_sdk = { version = "0.32", features = ["trace", "logs", "rt-tokio"], optional = true }
 opentelemetry-semantic-conventions = { version = "0.32", optional = true }
 pyroscope = { version = "2.0", default-features = false, features = ["backend-jemalloc", "backend-pprof-rs", "rustls-no-provider"], optional = true }
 tikv-jemallocator = { version = "0.7", features = ["profiling"], optional = true }

@@ -574,7 +574,7 @@ impl GitVersion {
 
                 let github =
                     GithubClient::new(None).map_err(|e| VersionError::GitHubApi(e.to_string()))?;
-                check_ancestry(&github, local_hash, remote_hash)
+                crate::runtime::block_on(check_ancestry(&github, local_hash, remote_hash))
             }
 
             _ => {
@@ -777,7 +777,7 @@ pub fn compare_semver(local: &GitVersion, remote: &GitVersion) -> std::cmp::Orde
 /// - The HTTP request fails
 /// - GitHub returns a non-success status code
 /// - The response cannot be parsed
-fn check_ancestry(
+async fn check_ancestry(
     github: &GithubClient,
     local_hash: &str,
     remote_hash: &str,
@@ -793,6 +793,7 @@ fn check_ancestry(
         .get_unauthenticated(&url)
         .header("Accept", "application/vnd.github+json")
         .send()
+        .await
         .map_err(|e| {
             tracing::error!(error = %e, "GitHub API request failed");
             VersionError::GitHubApi(e.to_string())
@@ -807,7 +808,7 @@ fn check_ancestry(
         )));
     }
 
-    let compare: CompareResponse = response.json().map_err(|e| {
+    let compare: CompareResponse = response.json().await.map_err(|e| {
         tracing::error!(error = %e, "Failed to parse GitHub response");
         VersionError::GitHubApi(e.to_string())
     })?;
@@ -1131,13 +1132,13 @@ mod tests {
         assert_eq!(version.hash(), Some("abc123"));
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires network access to GitHub API"]
-    fn test_check_ancestry_ahead() {
+    async fn test_check_ancestry_ahead() {
         crate::crypto::init_crypto_provider();
         let github = GithubClient::new(None).expect("client build");
 
-        let result = check_ancestry(&github, "HEAD", "v0.9.46");
+        let result = check_ancestry(&github, "HEAD", "v0.9.46").await;
         assert!(
             result.is_ok(),
             "Ancestry check should succeed: {:?}",
@@ -1152,13 +1153,13 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires network access to GitHub API"]
-    fn test_check_ancestry_same_commit() {
+    async fn test_check_ancestry_same_commit() {
         crate::crypto::init_crypto_provider();
         let github = GithubClient::new(None).expect("client build");
 
-        let result = check_ancestry(&github, "HEAD", "HEAD");
+        let result = check_ancestry(&github, "HEAD", "HEAD").await;
         assert!(
             result.is_ok(),
             "Same commit comparison should succeed: {:?}",

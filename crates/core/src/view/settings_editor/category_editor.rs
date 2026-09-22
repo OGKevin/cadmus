@@ -555,7 +555,7 @@ impl CategoryEditor {
             return true;
         };
 
-        let entry = match service.get_entry_for_lang(lang) {
+        let entry = match crate::runtime::block_on(service.get_entry_for_lang(lang)) {
             Ok(Some(e)) => e,
             Ok(None) => {
                 tracing::warn!(lang, "No metadata entry found for language; cannot install");
@@ -591,6 +591,7 @@ impl CategoryEditor {
         )
         .ok();
 
+        let runtime = crate::runtime::current_handle();
         thread::spawn(move || {
             let _span =
                 tracing::info_span!(parent: &parent_span, "dictionary_install_async").entered();
@@ -613,8 +614,8 @@ impl CategoryEditor {
                 }
             };
 
-            let result = service
-                .install_reserved_dictionary(
+            let result = runtime
+                .block_on(service.install_reserved_dictionary(
                     &lang_owned,
                     &entry,
                     false,
@@ -645,7 +646,7 @@ impl CategoryEditor {
                         )
                         .ok();
                     },
-                )
+                ))
                 .map_err(|e| e.to_string());
 
             hub2.send((Event::Close(download_id)).into()).ok();
@@ -801,7 +802,7 @@ impl CategoryEditor {
         context: &mut AppContext,
     ) -> bool {
         if let Some(service) = &self.dict_service {
-            service.remove_installed(lang);
+            crate::runtime::block_on(service.remove_installed(lang));
         } else {
             tracing::warn!(
                 lang,

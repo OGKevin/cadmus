@@ -726,6 +726,7 @@ fn run_ota_download(ctx: OtaDownloadContext) {
 
     let hub2 = hub.clone();
     let parent_span = tracing::Span::current();
+    let runtime = crate::runtime::current_handle();
     thread::spawn(move || {
         let _span = match kind {
             OtaDownloadKind::Pr(pr_number) => tracing::info_span!(
@@ -794,51 +795,71 @@ fn run_ota_download(ctx: OtaDownloadContext) {
         let initial_label = kind.progress_label(0);
         send_ota_progress(&hub2, initial_label, 0, true);
 
-        let download_result = match kind {
-            OtaDownloadKind::Pr(pr_number) => client.download_pr_artifact(
-                pr_number,
-                |ota_progress| {
-                    if let OtaProgress::DownloadingArtifact { downloaded, total } = ota_progress {
-                        let percent = (downloaded as f32 / total as f32 * 100.0) as u8;
-                        send_ota_progress(
-                            &hub2,
-                            OtaDownloadKind::Pr(pr_number).progress_label(percent),
-                            percent,
-                            true,
-                        );
-                    }
-                },
-                should_cancel,
-            ),
-            OtaDownloadKind::DefaultBranch => client.download_default_branch_artifact(
-                |ota_progress| {
-                    if let OtaProgress::DownloadingArtifact { downloaded, total } = ota_progress {
-                        let percent = (downloaded as f32 / total as f32 * 100.0) as u8;
-                        send_ota_progress(
-                            &hub2,
-                            OtaDownloadKind::DefaultBranch.progress_label(percent),
-                            percent,
-                            true,
-                        );
-                    }
-                },
-                should_cancel,
-            ),
-            OtaDownloadKind::StableRelease => client.download_stable_release_artifact(
-                |ota_progress| {
-                    if let OtaProgress::DownloadingArtifact { downloaded, total } = ota_progress {
-                        let percent = (downloaded as f32 / total as f32 * 100.0) as u8;
-                        send_ota_progress(
-                            &hub2,
-                            OtaDownloadKind::StableRelease.progress_label(percent),
-                            percent,
-                            true,
-                        );
-                    }
-                },
-                should_cancel,
-            ),
-        };
+        let download_result = runtime.block_on(async {
+            match kind {
+                OtaDownloadKind::Pr(pr_number) => {
+                    client
+                        .download_pr_artifact(
+                            pr_number,
+                            |ota_progress| {
+                                if let OtaProgress::DownloadingArtifact { downloaded, total } =
+                                    ota_progress
+                                {
+                                    let percent = (downloaded as f32 / total as f32 * 100.0) as u8;
+                                    send_ota_progress(
+                                        &hub2,
+                                        OtaDownloadKind::Pr(pr_number).progress_label(percent),
+                                        percent,
+                                        true,
+                                    );
+                                }
+                            },
+                            should_cancel,
+                        )
+                        .await
+                }
+                OtaDownloadKind::DefaultBranch => {
+                    client
+                        .download_default_branch_artifact(
+                            |ota_progress| {
+                                if let OtaProgress::DownloadingArtifact { downloaded, total } =
+                                    ota_progress
+                                {
+                                    let percent = (downloaded as f32 / total as f32 * 100.0) as u8;
+                                    send_ota_progress(
+                                        &hub2,
+                                        OtaDownloadKind::DefaultBranch.progress_label(percent),
+                                        percent,
+                                        true,
+                                    );
+                                }
+                            },
+                            should_cancel,
+                        )
+                        .await
+                }
+                OtaDownloadKind::StableRelease => {
+                    client
+                        .download_stable_release_artifact(
+                            |ota_progress| {
+                                if let OtaProgress::DownloadingArtifact { downloaded, total } =
+                                    ota_progress
+                                {
+                                    let percent = (downloaded as f32 / total as f32 * 100.0) as u8;
+                                    send_ota_progress(
+                                        &hub2,
+                                        OtaDownloadKind::StableRelease.progress_label(percent),
+                                        percent,
+                                        true,
+                                    );
+                                }
+                            },
+                            should_cancel,
+                        )
+                        .await
+                }
+            }
+        });
 
         if matches!(download_result, Err(OtaError::Cancelled)) {
             finish_ota_cancelled(&hub2, ota_view_id, &tmp_dir, &deploy_path);
@@ -946,7 +967,7 @@ impl OtaView {
         };
 
         let client = OtaClient::new(github, context.device.tmp_dir());
-        let remote_version = match client.fetch_latest_release_version() {
+        let remote_version = match crate::runtime::block_on(client.fetch_latest_release_version()) {
             Ok(version) => version,
             Err(e) => {
                 self.pending_download = None;

@@ -105,10 +105,12 @@ impl<D: Device> Context<D> {
         {
             tracing::warn!(error = %error, "startup clock reconciliation failed");
         }
-        if let Err(error) = crate::dictionary::reconcile_installed_dictionaries(
-            &database,
-            &device.data_path(DICTIONARIES_DIRNAME),
-        ) {
+        if let Err(error) =
+            crate::runtime::block_on(crate::dictionary::reconcile_installed_dictionaries(
+                &database,
+                &device.data_path(DICTIONARIES_DIRNAME),
+            ))
+        {
             tracing::warn!(error = %error, "dictionary install reconciliation failed");
         } else {
             tracing::debug!("dictionary install reconciliation finished");

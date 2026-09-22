@@ -3,7 +3,7 @@ use super::types::{
 };
 use crate::github::GithubError;
 use crate::http::{ChunkedDownloadError, Client};
-use reqwest::blocking::RequestBuilder;
+use reqwest::RequestBuilder;
 use secrecy::{ExposeSecret, SecretString};
 use std::path::PathBuf;
 
@@ -128,7 +128,7 @@ impl GithubClient {
         feature = "tracing",
         tracing::instrument(skip(self, request_builder, progress_callback))
     )]
-    pub fn download<B, F>(
+    pub async fn download<B, F>(
         &self,
         url: &str,
         total_size: u64,
@@ -141,14 +141,16 @@ impl GithubClient {
         B: Fn(&str) -> RequestBuilder,
         F: FnMut(u64, u64),
     {
-        self.http.download(
-            url,
-            total_size,
-            dest,
-            request_builder,
-            progress_callback,
-            should_cancel,
-        )
+        self.http
+            .download(
+                url,
+                total_size,
+                dest,
+                request_builder,
+                progress_callback,
+                should_cancel,
+            )
+            .await
     }
 
     fn with_auth(&self, builder: RequestBuilder) -> RequestBuilder {
@@ -184,12 +186,14 @@ impl GithubClient {
     /// ```no_run
     /// use cadmus_core::github::GithubClient;
     ///
+    /// # async fn example() {
     /// let client = GithubClient::new(None).expect("failed to build client");
-    /// let response = client.initiate_device_flow().expect("device flow failed");
+    /// let response = client.initiate_device_flow().await.expect("device flow failed");
     /// println!("Go to {} and enter {}", response.verification_uri, response.user_code);
+    /// # }
     /// ```
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
-    pub fn initiate_device_flow(&self) -> Result<DeviceCodeResponse, String> {
+    pub async fn initiate_device_flow(&self) -> Result<DeviceCodeResponse, String> {
         tracing::info!(
             client_id = GITHUB_OAUTH_CLIENT_ID,
             "Initiating GitHub device auth flow"
@@ -204,12 +208,14 @@ impl GithubClient {
             .header("Accept", "application/json")
             .form(&[("client_id", GITHUB_OAUTH_CLIENT_ID), ("scope", &scope)])
             .send()
+            .await
             .map_err(|e| format!("Device code request failed: {}", e))?
             .error_for_status()
             .map_err(|e| format!("Device code request error: {}", e))?;
 
         let device_code_response = response
             .json::<DeviceCodeResponse>()
+            .await
             .map_err(|e| format!("Failed to parse device code response: {}", e))?;
 
         tracing::debug!(
@@ -244,22 +250,25 @@ impl GithubClient {
     /// use cadmus_core::github::GithubClient;
     /// use secrecy::SecretString;
     ///
+    /// # async fn example() {
     /// let token = SecretString::from("ghp_…".to_owned());
     /// let client = GithubClient::new(Some(token)).expect("failed to build client");
     ///
-    /// match client.verify_token_scopes() {
+    /// match client.verify_token_scopes().await {
     ///     Ok(()) => println!("Token has all required scopes"),
     ///     Err(e) => println!("Error: {}", e),
     /// }
+    /// # }
     /// ```
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
-    pub fn verify_token_scopes(&self) -> Result<(), VerifyScopesError> {
+    pub async fn verify_token_scopes(&self) -> Result<(), VerifyScopesError> {
         tracing::debug!("Verifying token scopes");
 
         let response = self
             .get("https://api.github.com/user")
             .header("Accept", "application/json")
-            .send()?
+            .send()
+            .await?
             .error_for_status()?;
 
         let granted: Vec<&str> = response
@@ -308,20 +317,22 @@ impl GithubClient {
     /// use cadmus_core::github::TokenPollResult;
     /// use std::time::Duration;
     ///
+    /// # async fn example() {
     /// let client = GithubClient::new(None).expect("failed to build client");
-    /// let flow = client.initiate_device_flow().expect("device flow failed");
+    /// let flow = client.initiate_device_flow().await.expect("device flow failed");
     ///
     /// loop {
-    ///     std::thread::sleep(Duration::from_secs(flow.interval));
-    ///     match client.poll_device_token(&flow.device_code).expect("poll failed") {
+    ///     tokio::time::sleep(Duration::from_secs(flow.interval)).await;
+    ///     match client.poll_device_token(&flow.device_code).await.expect("poll failed") {
     ///         TokenPollResult::Complete(token) => break,
     ///         TokenPollResult::Pending => continue,
     ///         _ => break,
     ///     }
     /// }
+    /// # }
     /// ```
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
-    pub fn poll_device_token(&self, device_code: &str) -> Result<TokenPollResult, String> {
+    pub async fn poll_device_token(&self, device_code: &str) -> Result<TokenPollResult, String> {
         tracing::debug!("Polling GitHub for device token");
 
         let response = self
@@ -334,12 +345,14 @@ impl GithubClient {
                 ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
             ])
             .send()
+            .await
             .map_err(|e| format!("Token poll request failed: {}", e))?
             .error_for_status()
             .map_err(|e| format!("Token poll error response: {}", e))?;
 
         let body: AccessTokenResponse = response
             .json()
+            .await
             .map_err(|e| format!("Failed to parse token response: {}", e))?;
 
         if let Some(token) = body.access_token {

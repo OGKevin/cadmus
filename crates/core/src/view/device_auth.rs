@@ -143,7 +143,9 @@ impl DeviceAuthView {
         cancelled: Arc<AtomicBool>,
     ) -> Result<(String, String), crate::github::GithubError> {
         let client = GithubClient::new(None)?;
-        let device_code_response = client.initiate_device_flow().map_err(GithubError::Api)?;
+        let runtime = crate::runtime::current_handle();
+        let device_code_response =
+            crate::runtime::block_on(client.initiate_device_flow()).map_err(GithubError::Api)?;
 
         let verification_uri = device_code_response.verification_uri.clone();
         let user_code = device_code_response.user_code.clone();
@@ -182,7 +184,7 @@ impl DeviceAuthView {
                     return;
                 }
 
-                match poll_client.poll_device_token(&device_code) {
+                match runtime.block_on(poll_client.poll_device_token(&device_code)) {
                     Ok(TokenPollResult::Pending) => {
                         tracing::debug!("Authorization pending, continuing to poll");
                     }

@@ -88,6 +88,10 @@ const DEBUG_SPAN_QUEUE_SIZE: usize = 100_000;
 /// - The OTLP exporter cannot be built
 /// - The tracer or logger provider initialization fails
 ///
+/// The batch exporter starts its upload task on the current Tokio runtime.
+/// Call this from inside [`crate::runtime::enter`], which is where application
+/// startup already initialises logging.
+///
 /// # Example
 ///
 /// ```

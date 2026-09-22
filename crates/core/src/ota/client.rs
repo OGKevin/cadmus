@@ -213,7 +213,7 @@ impl OtaClient {
     /// * `OtaError::Api` - GitHub API request failed
     /// * `OtaError::Request` - Network communication failed
     /// * `OtaError::Io` - Failed to write downloaded file to disk
-    pub fn download_pr_artifact<F>(
+    pub async fn download_pr_artifact<F>(
         &self,
         pr_number: u32,
         mut progress_callback: F,
@@ -227,7 +227,7 @@ impl OtaClient {
         }
 
         check_disk_space(&self.tmp_dir)?;
-        verify_scopes(&self.github)?;
+        verify_scopes(&self.github).await?;
 
         progress_callback(OtaProgress::CheckingPr);
         tracing::info!(pr_number, "Starting PR build download");
@@ -242,7 +242,8 @@ impl OtaClient {
         let response = self
             .github
             .get(&pr_url)
-            .send()?
+            .send()
+            .await?
             .error_for_status()
             .map_err(|e| {
                 tracing::error!(pr_number, status = ?e.status(), error = %e, "PR fetch failed");
@@ -253,7 +254,7 @@ impl OtaClient {
                 }
             })?;
 
-        let pr: crate::github::types::PullRequest = response.json()?;
+        let pr: crate::github::types::PullRequest = response.json().await?;
         tracing::debug!("Successfully parsed PR response");
         let head_sha = pr.head.sha;
         tracing::debug!(pr_number, head_sha = %head_sha, "Retrieved PR head SHA");
@@ -270,13 +271,13 @@ impl OtaClient {
         let runs: WorkflowRunsResponse = self
             .github
             .get(&runs_url)
-            .send()?
+            .send().await?
             .error_for_status()
             .map_err(|e| {
                 tracing::error!(head_sha = %head_sha, status = ?e.status(), error = %e, "Workflow runs fetch failed");
                 api_error(e)
             })?
-            .json()?;
+            .json().await?;
 
         tracing::debug!(count = runs.workflow_runs.len(), "Found workflow runs");
 
@@ -311,7 +312,10 @@ impl OtaClient {
                 conclusion = ?run.conclusion,
                 "Checking Cargo workflow run for artifacts"
             );
-            match self.find_artifact_in_run(run.id, &artifact_name_pattern) {
+            match self
+                .find_artifact_in_run(run.id, &artifact_name_pattern)
+                .await
+            {
                 Ok(found) => {
                     tracing::debug!(run_id = run.id, "Selected Cargo workflow run");
                     artifact = Some(found);
@@ -350,7 +354,8 @@ impl OtaClient {
             &download_path,
             &mut progress_callback,
             should_cancel,
-        )?;
+        )
+        .await?;
 
         progress_callback(OtaProgress::Complete {
             path: download_path.clone(),
@@ -386,7 +391,7 @@ impl OtaClient {
     /// * `OtaError::Api` - GitHub API request failed
     /// * `OtaError::Request` - Network communication failed
     /// * `OtaError::Io` - Failed to write downloaded file to disk
-    pub fn download_default_branch_artifact<F>(
+    pub async fn download_default_branch_artifact<F>(
         &self,
         mut progress_callback: F,
         should_cancel: CancelFunc<'_>,
@@ -399,13 +404,13 @@ impl OtaClient {
         }
 
         check_disk_space(&self.tmp_dir)?;
-        verify_scopes(&self.github)?;
+        verify_scopes(&self.github).await?;
 
         progress_callback(OtaProgress::FindingLatestBuild);
         tracing::info!("Starting main branch build download");
         tracing::debug!("Finding latest default branch build");
 
-        let default_branch = self.fetch_default_branch()?;
+        let default_branch = self.fetch_default_branch().await?;
 
         let encoded_branch = utf8_percent_encode(&default_branch, NON_ALPHANUMERIC);
         let runs_url = format!(
@@ -417,13 +422,13 @@ impl OtaClient {
         let runs: WorkflowRunsResponse = self
             .github
             .get(&runs_url)
-            .send()?
+            .send().await?
             .error_for_status()
             .map_err(|e| {
                 tracing::error!(status = ?e.status(), error = %e, "Cargo workflow runs fetch failed");
                 api_error(e)
             })?
-            .json()?;
+            .json().await?;
 
         let cargo_run = runs.workflow_runs.first().ok_or_else(|| {
             tracing::error!("No successful Cargo workflow run found on default branch");
@@ -449,6 +454,7 @@ impl OtaClient {
 
         let artifact = self
             .find_artifact_in_run(cargo_run.id, &artifact_name_prefix)
+            .await
             .map_err(|e| match e {
                 OtaError::ArtifactsNotFound(ArtifactSource::WorkflowRun(pattern)) => {
                     tracing::error!(pattern = %pattern, "No matching artifact found on default branch");
@@ -471,7 +477,8 @@ impl OtaClient {
             &download_path,
             &mut progress_callback,
             should_cancel,
-        )?;
+        )
+        .await?;
 
         progress_callback(OtaProgress::Complete {
             path: download_path.clone(),
@@ -508,7 +515,7 @@ impl OtaClient {
     /// * `OtaError::ArtifactsNotFound` - KoboRoot.tgz not found in latest release
     /// * `OtaError::Io` - Failed to write downloaded file to disk
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-    pub fn download_stable_release_artifact<F>(
+    pub async fn download_stable_release_artifact<F>(
         &self,
         mut progress_callback: F,
         should_cancel: CancelFunc<'_>,
@@ -532,13 +539,15 @@ impl OtaClient {
         let release: Release = self
             .github
             .get_unauthenticated(releases_url)
-            .send()?
+            .send()
+            .await?
             .error_for_status()
             .map_err(|e| {
                 tracing::error!(status = ?e.status(), error = %e, "Latest release fetch failed");
                 api_error(e)
             })?
-            .json()?;
+            .json()
+            .await?;
 
         tracing::debug!(asset_count = release.assets.len(), "Found release assets");
 
@@ -575,7 +584,8 @@ impl OtaClient {
 
         let download_path = self.tmp_dir.join("cadmus-ota-stable-release.tgz");
 
-        self.download_release_asset(asset, &download_path, &mut progress_callback, should_cancel)?;
+        self.download_release_asset(asset, &download_path, &mut progress_callback, should_cancel)
+            .await?;
 
         progress_callback(OtaProgress::Complete {
             path: download_path.clone(),
@@ -604,30 +614,32 @@ impl OtaClient {
     /// use cadmus_core::github::GithubClient;
     /// use cadmus_core::ota::OtaClient;
     ///
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// # rustls::crypto::ring::default_provider().install_default().ok();
     /// # let github = GithubClient::new(None)?;
     /// # let client = OtaClient::new(github, std::path::PathBuf::from("/tmp"));
-    /// let version = client.fetch_latest_release_version()?;
+    /// let version = client.fetch_latest_release_version().await?;
     /// println!("Latest version: {}", version);
     /// # Ok(())
     /// # }
     /// ```
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
-    pub fn fetch_latest_release_version(&self) -> Result<GitVersion, OtaError> {
+    pub async fn fetch_latest_release_version(&self) -> Result<GitVersion, OtaError> {
         let releases_url = "https://api.github.com/repos/ogkevin/cadmus/releases/latest";
         tracing::debug!(url = %releases_url, "Fetching latest release version");
 
         let release: Release = self
             .github
             .get_unauthenticated(releases_url)
-            .send()?
+            .send()
+            .await?
             .error_for_status()
             .map_err(|e| {
                 tracing::error!(status = ?e.status(), error = %e, "Latest release fetch failed");
                 api_error(e)
             })?
-            .json()?;
+            .json()
+            .await?;
 
         tracing::info!(version = %release.tag_name, "Fetched latest release version");
 
@@ -932,27 +944,31 @@ impl OtaClient {
     }
 
     /// Queries the GitHub API for the repository's default branch name.
-    fn fetch_default_branch(&self) -> Result<String, OtaError> {
+    async fn fetch_default_branch(&self) -> Result<String, OtaError> {
         let repo_url = "https://api.github.com/repos/ogkevin/cadmus";
         tracing::debug!(url = %repo_url, "Fetching repository metadata");
 
         let repo: Repository = self
             .github
             .get(repo_url)
-            .send()?
+            .send().await?
             .error_for_status()
             .map_err(|e| {
                 tracing::error!(status = ?e.status(), error = %e, "Repository metadata fetch failed");
                 api_error(e)
             })?
-            .json()?;
+            .json().await?;
 
         tracing::debug!(default_branch = %repo.default_branch, "Resolved default branch");
         Ok(repo.default_branch)
     }
 
     /// Fetches artifacts for a workflow run and finds one matching the given prefix.
-    fn find_artifact_in_run(&self, run_id: u64, name_prefix: &str) -> Result<Artifact, OtaError> {
+    async fn find_artifact_in_run(
+        &self,
+        run_id: u64,
+        name_prefix: &str,
+    ) -> Result<Artifact, OtaError> {
         let artifacts_url = format!(
             "https://api.github.com/repos/ogkevin/cadmus/actions/runs/{}/artifacts?per_page=50",
             run_id
@@ -962,13 +978,15 @@ impl OtaClient {
         let artifacts: ArtifactsResponse = self
             .github
             .get(&artifacts_url)
-            .send()?
+            .send()
+            .await?
             .error_for_status()
             .map_err(|e| {
                 tracing::error!(run_id, status = ?e.status(), error = %e, "Artifacts fetch failed");
                 api_error(e)
             })?
-            .json()?;
+            .json()
+            .await?;
 
         tracing::debug!(count = artifacts.artifacts.len(), "Found artifacts");
 
@@ -1000,7 +1018,7 @@ impl OtaClient {
     /// Downloads an artifact ZIP to the specified path with chunked transfer and progress reporting.
     ///
     /// GitHub authentication is required for this operation.
-    fn download_artifact_to_path<F>(
+    async fn download_artifact_to_path<F>(
         &self,
         artifact: &Artifact,
         download_path: &PathBuf,
@@ -1015,16 +1033,18 @@ impl OtaClient {
             artifact.id
         );
 
-        self.github.download(
-            &download_url,
-            artifact.size_in_bytes,
-            download_path,
-            |url| self.github.get(url),
-            &mut |downloaded, total| {
-                progress_callback(OtaProgress::DownloadingArtifact { downloaded, total })
-            },
-            Some(should_cancel),
-        )?;
+        self.github
+            .download(
+                &download_url,
+                artifact.size_in_bytes,
+                download_path,
+                |url| self.github.get(url),
+                &mut |downloaded, total| {
+                    progress_callback(OtaProgress::DownloadingArtifact { downloaded, total })
+                },
+                Some(should_cancel),
+            )
+            .await?;
         Ok(())
     }
 
@@ -1037,7 +1057,7 @@ impl OtaClient {
         feature = "tracing",
         tracing::instrument(skip(self, progress_callback))
     )]
-    fn download_release_asset<F>(
+    async fn download_release_asset<F>(
         &self,
         asset: &ReleaseAsset,
         download_path: &PathBuf,
@@ -1047,16 +1067,18 @@ impl OtaClient {
     where
         F: FnMut(OtaProgress),
     {
-        self.github.download(
-            &asset.browser_download_url,
-            asset.size,
-            download_path,
-            |url| self.github.get_unauthenticated(url),
-            &mut |downloaded, total| {
-                progress_callback(OtaProgress::DownloadingArtifact { downloaded, total })
-            },
-            Some(should_cancel),
-        )?;
+        self.github
+            .download(
+                &asset.browser_download_url,
+                asset.size,
+                download_path,
+                |url| self.github.get_unauthenticated(url),
+                &mut |downloaded, total| {
+                    progress_callback(OtaProgress::DownloadingArtifact { downloaded, total })
+                },
+                Some(should_cancel),
+            )
+            .await?;
         Ok(())
     }
 }
@@ -1103,8 +1125,8 @@ fn is_ota_candidate_run(run: &WorkflowRun) -> bool {
 /// Returns `Ok(())` if all scopes are present, or an `OtaError` that is
 /// either a transport failure or missing scopes, so the caller can trigger
 /// re-authentication.
-fn verify_scopes(github: &crate::github::GithubClient) -> Result<(), OtaError> {
-    github.verify_token_scopes().map_err(|e| match e {
+async fn verify_scopes(github: &crate::github::GithubClient) -> Result<(), OtaError> {
+    github.verify_token_scopes().await.map_err(|e| match e {
         crate::github::VerifyScopesError::Request(e) => api_error(e),
         crate::github::VerifyScopesError::InsufficientScopes(e) => OtaError::InsufficientScopes(e),
     })
@@ -1693,19 +1715,21 @@ mod tests {
         OtaClient::new(github, tmp_dir)
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore]
-    fn test_external_download_default_branch_and_deploy() {
+    async fn test_external_download_default_branch_and_deploy() {
         let temp_dir = ota_test_tempdir();
         let client = create_external_client(temp_dir.path().to_path_buf());
         let mut last_progress = None;
 
-        let download_result = client.download_default_branch_artifact(
-            |progress| {
-                last_progress = Some(format!("{:?}", progress));
-            },
-            no_cancel(),
-        );
+        let download_result = client
+            .download_default_branch_artifact(
+                |progress| {
+                    last_progress = Some(format!("{:?}", progress));
+                },
+                no_cancel(),
+            )
+            .await;
 
         assert!(
             download_result.is_ok(),
@@ -1742,12 +1766,14 @@ mod tests {
         std::fs::remove_file(&deploy_path).ok();
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore]
-    fn test_external_download_stable_release_and_deploy() {
+    async fn test_external_download_stable_release_and_deploy() {
         let temp_dir = ota_test_tempdir();
         let client = create_external_client(temp_dir.path().to_path_buf());
-        let download_result = client.download_stable_release_artifact(|_| {}, no_cancel());
+        let download_result = client
+            .download_stable_release_artifact(|_| {}, no_cancel())
+            .await;
 
         assert!(
             download_result.is_ok(),

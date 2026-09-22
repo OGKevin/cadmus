@@ -12,21 +12,21 @@
 //! ```no_run
 //! use cadmus_core::http::Client;
 //!
-//! fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //!     let client = Client::new()?;
-//!     client.get("https://example.com").send()?;
+//!     client.get("https://example.com").send().await?;
 //!     Ok(())
 //! }
 //! ```
 
 use backon::{BackoffBuilder, ExponentialBuilder};
-use reqwest::blocking::{Client as ReqwestClient, RequestBuilder};
+use reqwest::{Client as ReqwestClient, RequestBuilder};
 use rustls::RootCertStore;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::Duration;
 use thiserror::Error;
+use tokio::io::AsyncWriteExt;
 
 pub const CLIENT_TIMEOUT_SECS: u64 = 30;
 
@@ -187,9 +187,9 @@ pub enum ChunkedDownloadError {
 /// ```no_run
 /// use cadmus_core::http::Client;
 ///
-/// fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// async fn example() -> Result<(), Box<dyn std::error::Error>> {
 ///     let client = Client::new()?;
-///     client.get("https://api.github.com").send()?;
+///     client.get("https://api.github.com").send().await?;
 ///     Ok(())
 /// }
 /// ```
@@ -228,8 +228,8 @@ impl Client {
         self.client.post(url)
     }
 
-    /// Returns the inner `reqwest::blocking::Client` for use with third-party
-    /// libraries that require a raw client (e.g. pyroscope-rs).
+    /// Returns the inner [`reqwest::Client`] for libraries that take one directly,
+    /// such as the OpenTelemetry exporter.
     pub fn into_reqwest(self) -> ReqwestClient {
         self.client
     }
@@ -264,7 +264,7 @@ impl Client {
     /// use cadmus_core::http::Client;
     /// use std::path::PathBuf;
     ///
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let client = Client::new()?;
     /// let dest = PathBuf::from("/tmp/downloaded_file");
     ///
@@ -275,7 +275,7 @@ impl Client {
     ///     |url| client.get(url),
     ///     &mut |downloaded, total| println!("{}/{}", downloaded, total),
     ///     None,
-    /// )?;
+    /// ).await?;
     /// # Ok(())
     /// # }
     /// ```
@@ -283,7 +283,7 @@ impl Client {
         feature = "tracing",
         tracing::instrument(skip(self, request_builder, progress_callback))
     )]
-    pub fn download<B, F>(
+    pub async fn download<B, F>(
         &self,
         url: &str,
         total_size: u64,
@@ -304,7 +304,7 @@ impl Client {
         let staging = download_staging_path(dest);
         tracing::debug!(path = ?staging, "Download staging");
         let mut unpublished = crate::fs::RemovePathOnDrop::file(staging.clone());
-        let mut file = std::fs::File::create(&staging)?;
+        let mut file = tokio::fs::File::create(&staging).await?;
 
         let mut downloaded = 0u64;
         let mut chunk_size = INITIAL_CHUNK_SIZE;
@@ -337,13 +337,15 @@ impl Client {
                 chunk_end,
                 &request_builder,
                 should_cancel,
-            ) {
+            )
+            .await
+            {
                 Ok(data) => data,
                 Err(e) => return Err(e),
             };
             let elapsed_secs = start.elapsed().as_secs_f64();
 
-            file.write_all(&chunk_data)?;
+            file.write_all(&chunk_data).await?;
             downloaded += chunk_data.len() as u64;
 
             if elapsed_secs > 0.0 {
@@ -368,11 +370,11 @@ impl Client {
             );
         }
 
-        file.sync_all()?;
+        file.sync_all().await?;
         if should_cancel.is_some_and(CancelFunc::is_cancelled) {
             return Err(ChunkedDownloadError::Cancelled);
         }
-        std::fs::rename(&staging, dest)?;
+        tokio::fs::rename(&staging, dest).await?;
         unpublished.disarm();
 
         tracing::debug!(bytes = downloaded, "Download complete");
@@ -392,7 +394,7 @@ impl Client {
         feature = "tracing",
         tracing::instrument(skip(request_builder, should_cancel))
     )]
-    fn download_chunk_with_retries<B>(
+    async fn download_chunk_with_retries<B>(
         url: &str,
         start: u64,
         end: u64,
@@ -415,7 +417,7 @@ impl Client {
             }
 
             attempt += 1;
-            match Self::download_chunk(url, start, end, request_builder) {
+            match Self::download_chunk(url, start, end, request_builder).await {
                 Ok(data) => {
                     if attempt > 1 {
                         tracing::debug!(attempt, "Chunk download succeeded after retry");
@@ -433,7 +435,7 @@ impl Client {
                                 backoff_ms = delay.as_millis(),
                                 "Retrying after backoff"
                             );
-                            sleep_interruptible(delay, should_cancel)?;
+                            sleep_interruptible(delay, should_cancel).await?;
                         }
                         None => return Err(e),
                     }
@@ -448,7 +450,7 @@ impl Client {
     ///
     /// Returns an error if the request fails or the server returns a non-2xx status.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(request_builder)))]
-    fn download_chunk<B>(
+    async fn download_chunk<B>(
         url: &str,
         start: u64,
         end: u64,
@@ -461,9 +463,11 @@ impl Client {
 
         let bytes = request_builder(url)
             .header("Range", range_header)
-            .send()?
+            .send()
+            .await?
             .error_for_status()?
-            .bytes()?;
+            .bytes()
+            .await?;
 
         Ok(bytes.to_vec())
     }
@@ -491,22 +495,25 @@ fn download_staging_path(dest: &Path) -> PathBuf {
     dest.with_file_name(format!("{name}.{}.partial", uuid::Uuid::now_v7()))
 }
 
-fn sleep_interruptible(
+async fn sleep_interruptible(
     duration: Duration,
     should_cancel: Option<CancelFunc<'_>>,
 ) -> Result<(), ChunkedDownloadError> {
     let Some(should_cancel) = should_cancel else {
-        std::thread::sleep(duration);
+        tokio::time::sleep(duration).await;
         return Ok(());
     };
 
-    let deadline = std::time::Instant::now() + duration;
-    while std::time::Instant::now() < deadline {
+    let deadline = tokio::time::Instant::now() + duration;
+    loop {
         if should_cancel.is_cancelled() {
             return Err(ChunkedDownloadError::Cancelled);
         }
-        let remaining = deadline.saturating_duration_since(std::time::Instant::now());
-        std::thread::sleep(remaining.min(CANCEL_POLL_INTERVAL));
+        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if remaining.is_zero() {
+            break;
+        }
+        tokio::time::sleep(remaining.min(CANCEL_POLL_INTERVAL)).await;
     }
 
     if should_cancel.is_cancelled() {
@@ -537,8 +544,8 @@ mod tests {
         assert!(!flag.try_commit());
     }
 
-    #[test]
-    fn download_returns_cancelled_before_first_chunk() {
+    #[tokio::test]
+    async fn download_returns_cancelled_before_first_chunk() {
         crate::crypto::init_crypto_provider();
         let client = Client::new().expect("client");
         let temp_dir = tempfile::Builder::new()
@@ -549,14 +556,16 @@ mod tests {
         std::fs::write(&dest, b"existing").expect("seed dest");
 
         let cancel_check = || true;
-        let result = client.download(
-            "https://example.invalid/unused",
-            1024,
-            &dest,
-            |url| client.get(url),
-            &mut |_, _| {},
-            Some(CancelFunc::new(&cancel_check)),
-        );
+        let result = client
+            .download(
+                "https://example.invalid/unused",
+                1024,
+                &dest,
+                |url| client.get(url),
+                &mut |_, _| {},
+                Some(CancelFunc::new(&cancel_check)),
+            )
+            .await;
 
         assert!(matches!(result, Err(ChunkedDownloadError::Cancelled)));
         assert_eq!(
@@ -570,8 +579,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn download_returns_cancelled_during_chunk_retries() {
+    #[tokio::test]
+    async fn download_returns_cancelled_during_chunk_retries() {
         use std::sync::atomic::{AtomicUsize, Ordering};
 
         crate::crypto::init_crypto_provider();
@@ -585,14 +594,16 @@ mod tests {
         let checks = AtomicUsize::new(0);
         let cancel_check = || checks.fetch_add(1, Ordering::Relaxed) >= 2;
 
-        let result = client.download(
-            "http://127.0.0.1:1/unused",
-            1024,
-            &dest,
-            |url| client.get(url),
-            &mut |_, _| {},
-            Some(CancelFunc::new(&cancel_check)),
-        );
+        let result = client
+            .download(
+                "http://127.0.0.1:1/unused",
+                1024,
+                &dest,
+                |url| client.get(url),
+                &mut |_, _| {},
+                Some(CancelFunc::new(&cancel_check)),
+            )
+            .await;
 
         assert!(matches!(result, Err(ChunkedDownloadError::Cancelled)));
         assert_eq!(
@@ -606,8 +617,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn download_returns_cancelled_before_publish() {
+    #[tokio::test]
+    async fn download_returns_cancelled_before_publish() {
         crate::crypto::init_crypto_provider();
         let client = Client::new().expect("client");
         let temp_dir = tempfile::Builder::new()
@@ -619,14 +630,16 @@ mod tests {
         let flag = CancelFlag::new();
         flag.request_cancel();
 
-        let result = client.download(
-            "https://example.invalid/unused",
-            0,
-            &dest,
-            |url| client.get(url),
-            &mut |_, _| {},
-            Some(CancelFunc::from_flag(&flag)),
-        );
+        let result = client
+            .download(
+                "https://example.invalid/unused",
+                0,
+                &dest,
+                |url| client.get(url),
+                &mut |_, _| {},
+                Some(CancelFunc::from_flag(&flag)),
+            )
+            .await;
 
         assert!(matches!(result, Err(ChunkedDownloadError::Cancelled)));
         assert_eq!(
@@ -640,8 +653,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn download_publish_leaves_cancel_flag_uncommitted() {
+    #[tokio::test]
+    async fn download_publish_leaves_cancel_flag_uncommitted() {
         crate::crypto::init_crypto_provider();
         let client = Client::new().expect("client");
         let temp_dir = tempfile::Builder::new()
@@ -651,14 +664,16 @@ mod tests {
         let dest = temp_dir.path().join("artifact.bin");
         let flag = CancelFlag::new();
 
-        let result = client.download(
-            "https://example.invalid/unused",
-            0,
-            &dest,
-            |url| client.get(url),
-            &mut |_, _| {},
-            Some(CancelFunc::from_flag(&flag)),
-        );
+        let result = client
+            .download(
+                "https://example.invalid/unused",
+                0,
+                &dest,
+                |url| client.get(url),
+                &mut |_, _| {},
+                Some(CancelFunc::from_flag(&flag)),
+            )
+            .await;
 
         assert!(result.is_ok(), "empty download should publish dest");
         assert!(dest.exists(), "dest should be published");

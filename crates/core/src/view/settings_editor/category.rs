@@ -165,7 +165,7 @@ impl Category {
                 };
 
                 let available: BTreeSet<String> = if context.online {
-                    match service.get_available_dictionaries() {
+                    match crate::runtime::block_on(service.get_available_dictionaries()) {
                         Ok(dicts) => dicts.into_iter().map(|(lang, _)| lang).collect(),
                         Err(e) => {
                             tracing::warn!(error = %e, "Failed to load available dictionaries");
@@ -176,13 +176,14 @@ impl Category {
                     BTreeSet::new()
                 };
 
-                let installed: BTreeSet<String> = match service.get_installed_dictionaries() {
-                    Ok(dicts) => dicts.into_iter().collect(),
-                    Err(e) => {
-                        tracing::warn!(error = %e, "Failed to load installed dictionaries");
-                        BTreeSet::new()
-                    }
-                };
+                let installed: BTreeSet<String> =
+                    match crate::runtime::block_on(service.get_installed_dictionaries()) {
+                        Ok(dicts) => dicts.into_iter().collect(),
+                        Err(e) => {
+                            tracing::warn!(error = %e, "Failed to load installed dictionaries");
+                            BTreeSet::new()
+                        }
+                    };
 
                 let mut all_langs: Vec<String> = available.union(&installed).cloned().collect();
                 all_langs.sort();
@@ -191,7 +192,8 @@ impl Category {
                     .into_iter()
                     .map(|lang| {
                         let is_installed = installed.contains(&lang);
-                        let update_available = is_installed && service.is_update_available(&lang);
+                        let update_available = is_installed
+                            && crate::runtime::block_on(service.is_update_available(&lang));
                         let is_installing = service.is_installing(&lang);
                         Box::new(DictionaryInfo {
                             lang,

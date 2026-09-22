@@ -189,7 +189,7 @@ impl<R: Rtc> TimeManager<R> {
             None => {
                 let client = HttpClient::new()?;
 
-                geolocation::fetch_geolocation(&client)?
+                geolocation::fetch_geolocation(&client).await?
             }
         };
 
