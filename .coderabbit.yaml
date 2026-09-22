@@ -66,6 +66,8 @@ reviews:
       requirements: It should follow https://www.conventionalcommits.org/en/v1.0.0/
     description:
       mode: "off"
+    docstrings:
+      mode: "off"
     custom_checks:
       - name: Docs freshness
         mode: warning
