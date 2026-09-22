@@ -668,7 +668,6 @@ fn finish_successful_deploy(hub: &Hub, install_dir: &Path, outcome: DeployOutcom
         tracing::warn!(path = ?install_dir, error = %e, "Failed to clean bundled OTA files");
     }
     send_ota_progress(hub, fl!("ota-installing-and-rebooting"), 100, false);
-    send_reboot_after_delay(hub.clone());
 }
 
 /// Sends an [`Event::OtaDownloadProgress`] update to the UI thread.
@@ -690,8 +689,10 @@ fn send_ota_progress(hub: &Hub, label: String, percent: u8, cancelable: bool) {
 /// Progress events set `cancelable: true` until `KoboRoot.tgz` is committed;
 /// the UI hides the Cancel button when `cancelable` becomes `false`.
 ///
-/// On success, sends a final progress update ("Installing and rebooting…") and
-/// schedules an automatic reboot via [`send_reboot_after_delay`].
+/// On success, sends a final progress update ("Installing and rebooting…").
+/// The task is in the runtime shutdown set. After the WiFi lease and suspend
+/// inhibitor drop, it waits one second and requests reboot. Shutdown waits
+/// for that request instead of abandoning a committed install.
 ///
 /// On user cancellation, deletes partial download and staging files via
 /// [`finish_ota_cancelled`] and closes the view without rebooting.
@@ -703,9 +704,9 @@ fn send_ota_progress(hub: &Hub, label: String, percent: u8, cancelable: bool) {
 /// Acquires a Full `"ota"`
 /// [`InhibitorGuard`](crate::device::inhibitor::InhibitorGuard) before the
 /// WiFi lease `"ota-download"`, so Auto Suspend and user exits stay blocked
-/// while the radio comes up (up to 60s). Both drop when the task exits
-/// (success, cancel, failure, re-auth, panic). Success sends
-/// [`Event::ClearDeferredSuspend`] **before** the Full guard drops, then
+/// while the radio comes up (up to 60s). Both drop before the reboot delay
+/// (and when the task exits on cancel, failure, re-auth, or panic). Success
+/// sends [`Event::ClearDeferredSuspend`] **before** the Full guard drops, then
 /// delays reboot, so a deferred Auto Suspend does not race the reboot.
 ///
 /// Failure `Close` events go on the hub, so the main loop removes the overlay.
@@ -740,20 +741,19 @@ fn run_ota_download(ctx: OtaDownloadContext) {
             tracing::info_span!(parent: &parent_span, "stable_release_download_async")
         }
     };
-    crate::runtime::current_handle().spawn(
-        async move {
-            let mut unwind_guard = crate::runtime::UnwindGuard::arm({
-                let hub = hub.clone();
-                move || close_ota_view_after_panic(&hub, ota_view_id)
-            });
-            async move {
-                let hub2 = hub.clone();
-                let should_cancel = CancelFunc::from_flag(&cancelled);
+    let reboot_hub = hub.clone();
+    crate::runtime::block_on(crate::runtime::spawn_in_flight(async move {
+        let mut unwind_guard = crate::runtime::UnwindGuard::arm({
+            let hub = hub.clone();
+            move || close_ota_view_after_panic(&hub, ota_view_id)
+        });
+        let committed = async move {
+            let hub2 = hub.clone();
+            let should_cancel = CancelFunc::from_flag(&cancelled);
 
-                let _full_hold = match crate::runtime::spawn_blocking(move || {
-                    inhibitor.acquire(Kind::Full, "ota")
-                })
-                .await
+            let _full_hold =
+                match crate::runtime::spawn_blocking(move || inhibitor.acquire(Kind::Full, "ota"))
+                    .await
                 {
                     Ok(Ok(guard)) => guard,
                     Ok(Err(InhibitorError::BatteryTooLow)) => {
@@ -765,19 +765,18 @@ fn run_ota_download(ctx: OtaDownloadContext) {
                             .into(),
                         )
                         .ok();
-                        return;
+                        return false;
                     }
                     Err(error) => {
                         error!(error = %error, "OTA inhibit task failed");
                         hub2.send((Event::Close(ota_view_id)).into()).ok();
-                        return;
+                        return false;
                     }
                 };
 
-                let _wifi = match crate::runtime::spawn_blocking(move || {
-                    wifi_session.acquire("ota-download")
-                })
-                .await
+            let _wifi =
+                match crate::runtime::spawn_blocking(move || wifi_session.acquire("ota-download"))
+                    .await
                 {
                     Ok(Ok(lease)) => lease,
                     Ok(Err(e)) => {
@@ -790,164 +789,163 @@ fn run_ota_download(ctx: OtaDownloadContext) {
                             .into(),
                         )
                         .ok();
-                        return;
+                        return false;
                     }
                     Err(error) => {
                         error!(error = %error, "OTA WiFi task failed");
                         hub2.send((Event::Close(ota_view_id)).into()).ok();
-                        return;
+                        return false;
                     }
                 };
 
-                let github = match GithubClient::new(github_token) {
-                    Ok(c) => c,
-                    Err(e) => {
-                        error!(error = %e, "Failed to create GitHub client");
-                        hub2.send((Event::Close(ota_view_id)).into()).ok();
-                        hub2.send(
-                            (Event::Notification(NotificationEvent::Show(fl!(
-                                "ota-client-build-failed"
-                            ))))
-                            .into(),
-                        )
-                        .ok();
-                        return;
-                    }
-                };
-
-                let client = OtaClient::new(github, tmp_dir.clone());
-                let deploy_path = client.deploy_path();
-
-                let initial_label = kind.progress_label(0);
-                send_ota_progress(&hub2, initial_label, 0, true);
-
-                let download_result = match kind {
-                    OtaDownloadKind::Pr(pr_number) => {
-                        client
-                            .download_pr_artifact(
-                                pr_number,
-                                |ota_progress| {
-                                    if let OtaProgress::DownloadingArtifact { downloaded, total } =
-                                        ota_progress
-                                    {
-                                        let percent =
-                                            (downloaded as f32 / total as f32 * 100.0) as u8;
-                                        send_ota_progress(
-                                            &hub2,
-                                            OtaDownloadKind::Pr(pr_number).progress_label(percent),
-                                            percent,
-                                            true,
-                                        );
-                                    }
-                                },
-                                should_cancel,
-                            )
-                            .await
-                    }
-                    OtaDownloadKind::DefaultBranch => {
-                        client
-                            .download_default_branch_artifact(
-                                |ota_progress| {
-                                    if let OtaProgress::DownloadingArtifact { downloaded, total } =
-                                        ota_progress
-                                    {
-                                        let percent =
-                                            (downloaded as f32 / total as f32 * 100.0) as u8;
-                                        send_ota_progress(
-                                            &hub2,
-                                            OtaDownloadKind::DefaultBranch.progress_label(percent),
-                                            percent,
-                                            true,
-                                        );
-                                    }
-                                },
-                                should_cancel,
-                            )
-                            .await
-                    }
-                    OtaDownloadKind::StableRelease => {
-                        client
-                            .download_stable_release_artifact(
-                                |ota_progress| {
-                                    if let OtaProgress::DownloadingArtifact { downloaded, total } =
-                                        ota_progress
-                                    {
-                                        let percent =
-                                            (downloaded as f32 / total as f32 * 100.0) as u8;
-                                        send_ota_progress(
-                                            &hub2,
-                                            OtaDownloadKind::StableRelease.progress_label(percent),
-                                            percent,
-                                            true,
-                                        );
-                                    }
-                                },
-                                should_cancel,
-                            )
-                            .await
-                    }
-                };
-
-                if matches!(download_result, Err(OtaError::Cancelled)) {
-                    finish_ota_cancelled(&hub2, ota_view_id, &tmp_dir, &deploy_path);
-                    return;
+            let github = match GithubClient::new(github_token) {
+                Ok(c) => c,
+                Err(e) => {
+                    error!(error = %e, "Failed to create GitHub client");
+                    hub2.send((Event::Close(ota_view_id)).into()).ok();
+                    hub2.send(
+                        (Event::Notification(NotificationEvent::Show(fl!(
+                            "ota-client-build-failed"
+                        ))))
+                        .into(),
+                    )
+                    .ok();
+                    return false;
                 }
-                match download_result {
-                    Ok(artifact_path) => {
-                        info!("Download completed, starting deployment");
-                        let deploy_result = tokio::task::block_in_place(|| match kind {
-                            OtaDownloadKind::StableRelease => {
-                                client.deploy(artifact_path, should_cancel)
-                            }
-                            _ => client.extract_and_deploy(artifact_path, should_cancel),
-                        });
+            };
 
-                        if matches!(deploy_result, Err(OtaError::Cancelled)) {
-                            finish_ota_cancelled(&hub2, ota_view_id, &tmp_dir, &deploy_path);
-                            return;
-                        }
+            let client = OtaClient::new(github, tmp_dir.clone());
+            let deploy_path = client.deploy_path();
 
-                        match deploy_result {
-                            Ok(outcome) => {
-                                hub2.send((Event::ClearDeferredSuspend).into()).ok();
-                                finish_successful_deploy(&hub2, &install_dir, outcome);
-                            }
-                            Err(e) => {
-                                error!(error = %e, "Deployment failed");
-                                hub2.send((Event::Close(ota_view_id)).into()).ok();
-                                hub2.send(
-                                    (Event::Notification(NotificationEvent::Show(fl!(
-                                        "ota-deployment-failed"
-                                    ))))
-                                    .into(),
-                                )
-                                .ok();
-                            }
-                        }
-                    }
-                    Err(OtaError::Unauthorized) | Err(OtaError::InsufficientScopes(_)) => {
-                        tracing::warn!("GitHub token rejected — triggering re-auth");
-                        hub2.send((Event::Github(GithubEvent::TokenInvalid)).into())
-                            .ok();
-                    }
-                    Err(e) => {
-                        error!(error = %e, "OTA download failed");
-                        hub2.send((Event::Close(ota_view_id)).into()).ok();
-                        hub2.send(
-                            (Event::Notification(NotificationEvent::Show(fl!(
-                                "ota-download-failed"
-                            ))))
-                            .into(),
+            let initial_label = kind.progress_label(0);
+            send_ota_progress(&hub2, initial_label, 0, true);
+
+            let download_result = match kind {
+                OtaDownloadKind::Pr(pr_number) => {
+                    client
+                        .download_pr_artifact(
+                            pr_number,
+                            |ota_progress| {
+                                if let OtaProgress::DownloadingArtifact { downloaded, total } =
+                                    ota_progress
+                                {
+                                    let percent = (downloaded as f32 / total as f32 * 100.0) as u8;
+                                    send_ota_progress(
+                                        &hub2,
+                                        OtaDownloadKind::Pr(pr_number).progress_label(percent),
+                                        percent,
+                                        true,
+                                    );
+                                }
+                            },
+                            should_cancel,
                         )
-                        .ok();
+                        .await
+                }
+                OtaDownloadKind::DefaultBranch => {
+                    client
+                        .download_default_branch_artifact(
+                            |ota_progress| {
+                                if let OtaProgress::DownloadingArtifact { downloaded, total } =
+                                    ota_progress
+                                {
+                                    let percent = (downloaded as f32 / total as f32 * 100.0) as u8;
+                                    send_ota_progress(
+                                        &hub2,
+                                        OtaDownloadKind::DefaultBranch.progress_label(percent),
+                                        percent,
+                                        true,
+                                    );
+                                }
+                            },
+                            should_cancel,
+                        )
+                        .await
+                }
+                OtaDownloadKind::StableRelease => {
+                    client
+                        .download_stable_release_artifact(
+                            |ota_progress| {
+                                if let OtaProgress::DownloadingArtifact { downloaded, total } =
+                                    ota_progress
+                                {
+                                    let percent = (downloaded as f32 / total as f32 * 100.0) as u8;
+                                    send_ota_progress(
+                                        &hub2,
+                                        OtaDownloadKind::StableRelease.progress_label(percent),
+                                        percent,
+                                        true,
+                                    );
+                                }
+                            },
+                            should_cancel,
+                        )
+                        .await
+                }
+            };
+
+            if matches!(download_result, Err(OtaError::Cancelled)) {
+                finish_ota_cancelled(&hub2, ota_view_id, &tmp_dir, &deploy_path);
+                return false;
+            }
+            match download_result {
+                Ok(artifact_path) => {
+                    info!("Download completed, starting deployment");
+                    let deploy_result = tokio::task::block_in_place(|| match kind {
+                        OtaDownloadKind::StableRelease => {
+                            client.deploy(artifact_path, should_cancel)
+                        }
+                        _ => client.extract_and_deploy(artifact_path, should_cancel),
+                    });
+
+                    if matches!(deploy_result, Err(OtaError::Cancelled)) {
+                        finish_ota_cancelled(&hub2, ota_view_id, &tmp_dir, &deploy_path);
+                        return false;
                     }
+
+                    match deploy_result {
+                        Ok(outcome) => {
+                            hub2.send((Event::ClearDeferredSuspend).into()).ok();
+                            finish_successful_deploy(&hub2, &install_dir, outcome);
+                            return true;
+                        }
+                        Err(e) => {
+                            error!(error = %e, "Deployment failed");
+                            hub2.send((Event::Close(ota_view_id)).into()).ok();
+                            hub2.send(
+                                (Event::Notification(NotificationEvent::Show(fl!(
+                                    "ota-deployment-failed"
+                                ))))
+                                .into(),
+                            )
+                            .ok();
+                        }
+                    }
+                }
+                Err(OtaError::Unauthorized) | Err(OtaError::InsufficientScopes(_)) => {
+                    tracing::warn!("GitHub token rejected — triggering re-auth");
+                    hub2.send((Event::Github(GithubEvent::TokenInvalid)).into())
+                        .ok();
+                }
+                Err(e) => {
+                    error!(error = %e, "OTA download failed");
+                    hub2.send((Event::Close(ota_view_id)).into()).ok();
+                    hub2.send(
+                        (Event::Notification(NotificationEvent::Show(fl!("ota-download-failed"))))
+                            .into(),
+                    )
+                    .ok();
                 }
             }
-            .await;
-            unwind_guard.disarm();
+            false
         }
-        .instrument(span),
-    );
+        .instrument(span)
+        .await;
+        if committed {
+            RebootTimer::start(reboot_hub).wait().await;
+        }
+        unwind_guard.disarm();
+    }));
 }
 
 /// Closes the OTA overlay after the download task unwinds.
@@ -958,17 +956,30 @@ fn close_ota_view_after_panic(hub: &Hub, ota_view_id: ViewId) {
         .ok();
 }
 
-/// Waits 1 second, then sends `Event::Select(EntryId::Reboot)`.
+/// One-second delay before [`Event::Select`] with [`EntryId::Reboot`].
 ///
-/// The delay gives the render loop time to process the final
-/// `OtaDownloadProgress` label update before the event loop exits. The wait
-/// is detached from runtime shutdown so a committed install still requests
-/// the reboot.
-fn send_reboot_after_delay(hub: Hub) {
-    crate::runtime::current_handle().spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-        hub.send((Event::Select(EntryId::Reboot)).into()).ok();
-    });
+/// The delay is a runtime sleep, so dropping the timer cancels the reboot
+/// request. A committed install awaits [`Self::wait`] and does not drop the
+/// timer first. The wait gives the render loop time to show the final
+/// progress label.
+#[must_use = "dropping the timer cancels the reboot request"]
+struct RebootTimer {
+    hub: Hub,
+    delay: std::pin::Pin<Box<tokio::time::Sleep>>,
+}
+
+impl RebootTimer {
+    fn start(hub: Hub) -> Self {
+        Self {
+            hub,
+            delay: Box::pin(tokio::time::sleep(std::time::Duration::from_secs(1))),
+        }
+    }
+
+    async fn wait(self) {
+        self.delay.await;
+        self.hub.send((Event::Select(EntryId::Reboot)).into()).ok();
+    }
 }
 
 impl OtaView {
@@ -1712,5 +1723,47 @@ mod tests {
             Event::Notification(NotificationEvent::Show(text))
                 if text == fl!("ota-download-failed")
         ));
+    }
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn cancel_after_commit_still_requests_reboot() {
+        use crate::http::CancelFlag;
+        use std::time::Duration;
+        use tokio::task::JoinSet;
+
+        let flag = CancelFlag::new();
+        assert!(flag.try_commit());
+        flag.request_cancel();
+        assert!(!flag.is_cancelled());
+
+        let (hub, mut rx) = crate::view::hub_channel();
+        let mut in_flight = JoinSet::new();
+        in_flight.spawn(RebootTimer::start(hub).wait());
+        crate::runtime::finish_within_deadline(&mut in_flight, Duration::from_secs(5)).await;
+
+        let message = rx.try_recv().expect("reboot request");
+        assert!(matches!(message.event, Event::Select(EntryId::Reboot)));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn shutdown_waits_for_committed_reboot_request() {
+        use std::time::{Duration, Instant};
+        use tokio::task::JoinSet;
+
+        let (hub, mut rx) = crate::view::hub_channel();
+        let mut in_flight = JoinSet::new();
+        in_flight.spawn(RebootTimer::start(hub).wait());
+        let started = Instant::now();
+        crate::runtime::finish_within_deadline(&mut in_flight, Duration::from_secs(5)).await;
+
+        assert!(started.elapsed() >= Duration::from_secs(1));
+        let message = rx.try_recv().expect("reboot request");
+        assert!(matches!(message.event, Event::Select(EntryId::Reboot)));
+    }
+
+    #[tokio::test]
+    async fn dropping_reboot_timer_cancels_the_restart_request() {
+        let (hub, mut rx) = crate::view::hub_channel();
+        drop(RebootTimer::start(hub));
+        assert!(rx.try_recv().is_err());
     }
 }
