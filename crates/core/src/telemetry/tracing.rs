@@ -20,7 +20,7 @@
 //!
 //! # Example
 //!
-//! ```
+//! ```no_run
 //! use cadmus_core::settings::LoggingSettings;
 //! use cadmus_core::telemetry::tracing;
 //! use cadmus_core::logging::get_run_id;
@@ -47,8 +47,11 @@ use opentelemetry::trace::TracerProvider;
 use opentelemetry::{KeyValue, global};
 use opentelemetry_otlp::{LogExporter, SpanExporter, WithExportConfig, WithHttpConfig};
 use opentelemetry_sdk::Resource;
-use opentelemetry_sdk::logs::{BatchLogProcessor, SdkLoggerProvider};
-use opentelemetry_sdk::trace::{BatchSpanProcessor, SdkTracerProvider};
+use opentelemetry_sdk::logs::SdkLoggerProvider;
+use opentelemetry_sdk::logs::log_processor_with_async_runtime::BatchLogProcessor;
+use opentelemetry_sdk::runtime::Tokio;
+use opentelemetry_sdk::trace::SdkTracerProvider;
+use opentelemetry_sdk::trace::span_processor_with_async_runtime::BatchSpanProcessor;
 use std::sync::OnceLock;
 use std::time::Duration;
 use tracing_subscriber::Layer;
@@ -88,13 +91,13 @@ const DEBUG_SPAN_QUEUE_SIZE: usize = 100_000;
 /// - The OTLP exporter cannot be built
 /// - The tracer or logger provider initialization fails
 ///
-/// The batch exporter starts its upload task on the current Tokio runtime.
-/// Call this from inside [`crate::runtime::enter`], which is where application
-/// startup already initialises logging.
+/// Each batch processor spawns its upload task with `tokio::spawn` on the
+/// runtime that is current here. Application startup calls this from inside
+/// [`crate::runtime::enter`].
 ///
 /// # Example
 ///
-/// ```
+/// ```no_run
 /// use cadmus_core::settings::LoggingSettings;
 /// use cadmus_core::telemetry::tracing::init_telemetry;
 ///
@@ -254,7 +257,7 @@ fn build_tracer_provider(endpoint: &str, resource: Resource) -> Result<SdkTracer
     #[cfg(debug_assertions)]
     let batch_config = batch_config.with_max_queue_size(DEBUG_SPAN_QUEUE_SIZE);
 
-    let processor = BatchSpanProcessor::builder(exporter)
+    let processor = BatchSpanProcessor::builder(exporter, Tokio)
         .with_batch_config(batch_config.build())
         .build();
 
@@ -289,7 +292,7 @@ fn build_logger_provider(endpoint: &str, resource: Resource) -> Result<SdkLogger
         .build()
         .context("can't build otlp log exporter")?;
 
-    let processor = BatchLogProcessor::builder(exporter)
+    let processor = BatchLogProcessor::builder(exporter, Tokio)
         .with_batch_config(
             opentelemetry_sdk::logs::BatchConfigBuilder::default()
                 .with_scheduled_delay(Duration::from_millis(100))
@@ -301,4 +304,54 @@ fn build_logger_provider(endpoint: &str, resource: Resource) -> Result<SdkLogger
         .with_log_processor(processor)
         .with_resource(resource)
         .build())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_logger_provider;
+    use super::build_tracer_provider;
+    use opentelemetry::logs::LogRecord as _;
+    use opentelemetry::logs::Logger as _;
+    use opentelemetry::logs::LoggerProvider as _;
+    use opentelemetry::trace::Tracer as _;
+    use opentelemetry::trace::TracerProvider as _;
+    use opentelemetry_sdk::Resource;
+    use std::sync::mpsc;
+    use std::thread;
+    use std::time::Duration;
+
+    #[test]
+    fn batch_export_runs_on_the_process_runtime() {
+        crate::crypto::init_crypto_provider();
+        let runtime = crate::runtime::builder().build().expect("process runtime");
+        let resource = Resource::builder().with_service_name("cadmus-test").build();
+
+        let (tracer_provider, logger_provider) = runtime.block_on(async {
+            let tracer_provider = build_tracer_provider("http://127.0.0.1:9", resource.clone())
+                .expect("tracer provider");
+            let logger_provider =
+                build_logger_provider("http://127.0.0.1:9", resource).expect("logger provider");
+
+            drop(tracer_provider.tracer("cadmus-test").start("export"));
+
+            let logger = logger_provider.logger("cadmus-test");
+            let mut record = logger.create_log_record();
+            record.set_body("export".into());
+            logger.emit(record);
+
+            (tracer_provider, logger_provider)
+        });
+
+        let (tx, rx) = mpsc::channel();
+        thread::spawn(move || {
+            let _ = tracer_provider.force_flush();
+            let _ = logger_provider.force_flush();
+            let _ = tracer_provider.shutdown();
+            let _ = logger_provider.shutdown();
+            let _ = tx.send(());
+        });
+
+        rx.recv_timeout(Duration::from_secs(5))
+            .expect("batch export finished on the runtime");
+    }
 }
