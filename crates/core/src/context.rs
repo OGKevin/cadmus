@@ -404,14 +404,14 @@ pub mod test_helpers {
 
     pub fn create_test_context_from_device(device: TestDevice) -> AppContext {
         crate::runtime::ensure_published_for_test();
-        let mut database = Database::new(":memory:").expect("failed to create in-memory database");
+        let mut database = crate::runtime::block_on(Database::new(":memory:"))
+            .expect("failed to create in-memory database");
         let mut settings = Settings::default();
-        database
-            .init(&device, 0, &mut settings)
+        crate::runtime::block_on(database.init(&device, 0, &mut settings))
             .expect("failed to run migrations");
         Context::new(
             device,
-            Library::new(Path::new("/tmp"), &database, "test").unwrap(),
+            crate::runtime::block_on(Library::new(Path::new("/tmp"), &database, "test")).unwrap(),
             database,
             settings,
             Fonts::load_from(

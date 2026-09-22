@@ -41,12 +41,13 @@ impl Intermission {
             match &context.settings.intermissions[kind] {
                 IntermissionDisplay::Logo => (Message::Text(kind.text().to_string()), Vec::new()),
                 IntermissionDisplay::Cover => {
-                    let msg =
-                        if let Some(info) = context.library.most_recently_opened_reading_book() {
-                            Message::Cover(context.library.home.join(&info.file.path))
-                        } else {
-                            Message::Text(kind.text().to_string())
-                        };
+                    let msg = if let Some(info) = crate::runtime::block_on(
+                        context.library.most_recently_opened_reading_book(),
+                    ) {
+                        Message::Cover(context.library.home.join(&info.file.path))
+                    } else {
+                        Message::Text(kind.text().to_string())
+                    };
                     (msg, Vec::new())
                 }
                 IntermissionDisplay::Blank => (Message::Fill(WHITE), Vec::new()),

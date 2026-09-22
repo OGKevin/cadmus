@@ -211,7 +211,7 @@ fn open_document(
 }
 
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(device, settings, fonts, database), level = tracing::Level::TRACE))]
-fn build_context(
+async fn build_context(
     device: AppDevice,
     settings: Settings,
     fonts: Fonts,
@@ -228,7 +228,7 @@ fn build_context(
     }
 
     let library_settings = &settings.libraries[settings.selected_library];
-    let library = Library::new(&library_settings.path, &database, &library_settings.name)?;
+    let library = Library::new(&library_settings.path, &database, &library_settings.name).await?;
 
     Ok(AppContext::new(device, library, database, settings, fonts))
 }
@@ -283,13 +283,17 @@ pub async fn run() -> Result<(), Error> {
     }
 
     let mut database = Database::new(device.resolve_db_path())
+        .await
         .map_err(|e| {
             error!(error = %e, "can't open database");
             e
         })
         .context("can't open database")?;
 
-    if let Err(e) = database.init(&device, settings.db_backup_retention, &mut settings) {
+    if let Err(e) = database
+        .init(&device, settings.db_backup_retention, &mut settings)
+        .await
+    {
         error!(error = %e, "migrations failed");
         return Err(e);
     }
@@ -301,8 +305,9 @@ pub async fn run() -> Result<(), Error> {
 
     let database = database;
 
-    let mut context =
-        build_context(device, settings, fonts, database).context("can't build context")?;
+    let mut context = build_context(device, settings, fonts, database)
+        .await
+        .context("can't build context")?;
 
     context.load_dictionaries();
     context.load_keyboard_layouts();
@@ -356,7 +361,7 @@ pub async fn run() -> Result<(), Error> {
     let mut bus = VecDeque::with_capacity(4);
 
     if context.settings.startup_mode == StartupMode::LastFile
-        && let Some(info) = context.library.most_recently_opened_reading_book()
+        && let Some(info) = context.library.most_recently_opened_reading_book().await
     {
         open_document(
             Box::new(info),

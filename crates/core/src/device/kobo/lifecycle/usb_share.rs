@@ -57,7 +57,7 @@ fn prepare_usb_share(
         .save(&context.settings)
         .map_err(|error| tracing::error!(error = %error, "Can't save settings"))
         .ok();
-    context.database.close();
+    crate::runtime::block_on(context.database.close());
 
     if context.settings.frontlight {
         context.set_frontlight(false);

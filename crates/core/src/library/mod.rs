@@ -12,7 +12,6 @@ use crate::metadata::{BookQuery, Info, ReaderInfo, SimpleStatus, SortMethod};
 use anyhow::{Error, bail, format_err};
 use chrono::Local;
 use std::collections::BTreeSet;
-use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use tracing::{debug, error, info};
@@ -39,27 +38,27 @@ pub struct Library {
 
 impl Library {
     #[cfg_attr(feature = "tracing", tracing::instrument())]
-    pub fn new<P: AsRef<Path> + std::fmt::Debug>(
+    pub async fn new<P: AsRef<Path> + std::fmt::Debug>(
         home: P,
         database: &Database,
         name: &str,
     ) -> Result<Self, Error> {
         let db = LibraryDb::new(database);
 
-        if let Err(e) = fs::create_dir(&home) {
-            if e.kind() != ErrorKind::AlreadyExists {
-                bail!(e);
-            }
+        if let Err(e) = tokio::fs::create_dir(&home).await
+            && e.kind() != ErrorKind::AlreadyExists
+        {
+            bail!(e);
         }
 
         let home_path = home.as_ref().to_path_buf();
         let home_path_str = home_path.to_string_lossy();
 
-        let library_id = if let Some(id) = db.get_library_by_path(&home_path_str)? {
+        let library_id = if let Some(id) = db.get_library_by_path(&home_path_str).await? {
             info!(library_id = id, path = ?home_path, "found existing library");
             id
         } else {
-            let id = db.register_library(&home_path_str, name)?;
+            let id = db.register_library(&home_path_str, name).await?;
             info!(library_id = id, path = ?home_path, name = %name, "registered new library");
             id
         };
@@ -77,7 +76,7 @@ impl Library {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, query, prefix)))]
-    pub fn list<P: AsRef<Path>>(
+    pub async fn list<P: AsRef<Path>>(
         &self,
         prefix: P,
         query: Option<&BookQuery>,
@@ -90,6 +89,7 @@ impl Library {
             self.reverse_order,
             skip_files,
         )
+        .await
     }
 
     /// Lists books and direct subdirectories under `prefix` using explicit sort parameters.
@@ -97,7 +97,7 @@ impl Library {
     /// When no query is active, sorting is delegated to SQLite. When a query is active it
     /// cannot be expressed in SQL, so books are loaded in full and sorted in Rust.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, query, prefix)))]
-    pub fn list_by<P: AsRef<Path>>(
+    pub async fn list_by<P: AsRef<Path>>(
         &self,
         prefix: P,
         query: Option<&BookQuery>,
@@ -113,6 +113,7 @@ impl Library {
         let dirs = self
             .db
             .list_directories_under_prefix(self.library_id, relat_prefix)
+            .await
             .map_err(|e| {
                 error!(error = %e, library_id = self.library_id, "failed to list directories");
             })
@@ -135,6 +136,7 @@ impl Library {
                     i64::MAX,
                     0,
                 )
+                .await
                 .map_err(|e| {
                     error!(error = %e, library_id = self.library_id, "failed to list books");
                 })
@@ -145,6 +147,7 @@ impl Library {
             let mut books: Vec<Info> = self
                 .db
                 .list_books_under_prefix(self.library_id, relat_prefix)
+                .await
                 .map_err(|e| {
                     error!(error = %e, library_id = self.library_id, "failed to list books");
                 })
@@ -164,7 +167,7 @@ impl Library {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, prefix, query)))]
-    pub fn page<P: AsRef<Path>>(
+    pub async fn page<P: AsRef<Path>>(
         &self,
         prefix: P,
         query: Option<&BookQuery>,
@@ -176,7 +179,7 @@ impl Library {
         }
 
         if query.is_some() {
-            let (files, _) = self.list(prefix, query, false);
+            let (files, _) = self.list(prefix, query, false).await;
             let total_count = files.len();
             let start = page.saturating_mul(page_size);
             let books = files.into_iter().skip(start).take(page_size).collect();
@@ -190,14 +193,17 @@ impl Library {
         let offset = (page.saturating_mul(page_size)) as i64;
         let limit = page_size as i64;
 
-        let (books, total_count) = self.db.page_books(
-            self.library_id,
-            relat_prefix,
-            self.sort_method,
-            self.reverse_order,
-            limit,
-            offset,
-        )?;
+        let (books, total_count) = self
+            .db
+            .page_books(
+                self.library_id,
+                relat_prefix,
+                self.sort_method,
+                self.reverse_order,
+                limit,
+                offset,
+            )
+            .await?;
 
         Ok(PageResult {
             books,
@@ -244,7 +250,7 @@ impl Library {
     ///
     /// Returns `Ok(None)` if there is no status change in the requested direction
     /// (e.g., searching forward from the last page of uniform status).
-    pub fn neighbor_status_change_page<P: AsRef<Path>>(
+    pub async fn neighbor_status_change_page<P: AsRef<Path>>(
         &self,
         prefix: P,
         query: Option<&BookQuery>,
@@ -256,7 +262,7 @@ impl Library {
             return Ok(None);
         }
 
-        let (files, _) = self.list(prefix, query, false);
+        let (files, _) = self.list(prefix, query, false).await;
 
         if files.is_empty() || current_page >= files.len().div_ceil(page_size) {
             return Ok(None);
@@ -293,7 +299,7 @@ impl Library {
         (self.library_id, &self.home)
     }
 
-    pub fn add_document(&mut self, info: Info) {
+    pub async fn add_document(&mut self, info: Info) {
         let path = self.home.join(&info.file.path);
         let fp = match path.fingerprint() {
             Ok(fp) => fp,
@@ -306,6 +312,7 @@ impl Library {
         if let Err(e) = self
             .db
             .ensure_active_book_in_library(self.library_id, fp, &info)
+            .await
         {
             error!(fp = %fp, error = %e, "failed to insert book into database");
             return;
@@ -313,39 +320,44 @@ impl Library {
 
         debug!(fp = %fp, title = %info.title, "book inserted into database");
 
-        if let Err(e) = self.db.insert_sort_rank(self.library_id, fp, &info) {
+        if let Err(e) = self.db.insert_sort_rank(self.library_id, fp, &info).await {
             error!(fp = %fp, error = %e, "failed to insert sort rank for new book");
         }
     }
 
-    pub fn rename<P: AsRef<Path>>(&mut self, path: P, file_name: &str) -> Result<(), Error> {
+    pub async fn rename<P: AsRef<Path>>(&mut self, path: P, file_name: &str) -> Result<(), Error> {
         let src = self.home.join(path.as_ref());
 
         let fp = self
             .resolve_fingerprint(path.as_ref())
+            .await
             .ok_or_else(|| format_err!("can't get fingerprint of {}", path.as_ref().display()))?;
 
         let mut dest = src.clone();
         dest.set_file_name(file_name);
-        fs::rename(&src, &dest)?;
+        tokio::fs::rename(&src, &dest).await?;
 
         let new_path = dest.strip_prefix(&self.home)?;
 
-        if let Some(mut info) = self.db.get_book_by_fingerprint(self.library_id, fp)? {
+        if let Some(mut info) = self.db.get_book_by_fingerprint(self.library_id, fp).await? {
             info.file.path = new_path.to_path_buf();
             info.file.absolute_path = dest.clone();
 
-            if let Err(e) = self.db.update_book(
-                self.library_id,
-                fp,
-                &info,
-                crate::library::book_status::BookStatus::Active,
-            ) {
+            if let Err(e) = self
+                .db
+                .update_book(
+                    self.library_id,
+                    fp,
+                    &info,
+                    crate::library::book_status::BookStatus::Active,
+                )
+                .await
+            {
                 error!(fp = %fp, error = %e, "failed to update book path in database");
             } else {
                 debug!(fp = %fp, new_path = %new_path.display(), "book path updated in database");
 
-                if let Err(e) = self.db.insert_sort_rank(self.library_id, fp, &info) {
+                if let Err(e) = self.db.insert_sort_rank(self.library_id, fp, &info).await {
                     error!(fp = %fp, error = %e, "failed to update sort rank after rename");
                 }
             }
@@ -354,26 +366,27 @@ impl Library {
         Ok(())
     }
 
-    pub fn remove<P: AsRef<Path>>(&mut self, path: P) -> Result<(), Error> {
+    pub async fn remove<P: AsRef<Path>>(&mut self, path: P) -> Result<(), Error> {
         let full_path = self.home.join(path.as_ref());
 
         let fp = self
             .resolve_fingerprint(path.as_ref())
+            .await
             .ok_or_else(|| format_err!("can't get fingerprint of {}", path.as_ref().display()))?;
 
-        if full_path.exists() {
-            fs::remove_file(&full_path)?;
+        if tokio::fs::try_exists(&full_path).await.unwrap_or(false) {
+            tokio::fs::remove_file(&full_path).await?;
         }
 
         if let Some(parent) = full_path.parent() {
             if parent != self.home {
-                fs::remove_dir(parent).ok();
+                tokio::fs::remove_dir(parent).await.ok();
             }
         }
 
-        self.db.delete_thumbnail(fp).ok();
+        self.db.delete_thumbnail(fp).await.ok();
 
-        if let Err(e) = self.db.delete_book(self.library_id, fp) {
+        if let Err(e) = self.db.delete_book(self.library_id, fp).await {
             error!(fp = %fp, error = %e, "failed to delete book from database");
         } else {
             debug!(fp = %fp, "book deleted from database");
@@ -382,10 +395,14 @@ impl Library {
         Ok(())
     }
 
-    pub fn copy_to<P: AsRef<Path>>(&mut self, path: P, other: &mut Library) -> Result<(), Error> {
+    pub async fn copy_to<P: AsRef<Path>>(
+        &mut self,
+        path: P,
+        other: &mut Library,
+    ) -> Result<(), Error> {
         let src = self.home.join(path.as_ref());
 
-        if !src.exists() {
+        if !tokio::fs::try_exists(&src).await? {
             return Err(format_err!(
                 "can't copy non-existing file {}",
                 path.as_ref().display()
@@ -394,14 +411,15 @@ impl Library {
 
         let fp = self
             .resolve_fingerprint(path.as_ref())
+            .await
             .ok_or_else(|| format_err!("can't get fingerprint of {}", path.as_ref().display()))?;
 
         let mut dest = other.home.join(path.as_ref());
         if let Some(parent) = dest.parent() {
-            fs::create_dir_all(parent)?;
+            tokio::fs::create_dir_all(parent).await?;
         }
 
-        if dest.exists() {
+        if tokio::fs::try_exists(&dest).await? {
             let prefix = Local::now().format("%Y%m%d_%H%M%S ");
             let name = dest
                 .file_name()
@@ -411,13 +429,13 @@ impl Library {
             dest.set_file_name(name);
         }
 
-        fs::copy(&src, &dest)?;
+        tokio::fs::copy(&src, &dest).await?;
 
-        if let Ok(Some(thumbnail_data)) = self.db.get_thumbnail(fp) {
-            other.db.save_thumbnail(fp, &thumbnail_data).ok();
+        if let Ok(Some(thumbnail_data)) = self.db.get_thumbnail(fp).await {
+            other.db.save_thumbnail(fp, &thumbnail_data).await.ok();
         }
 
-        if let Some(mut info) = self.db.get_book_by_fingerprint(self.library_id, fp)? {
+        if let Some(mut info) = self.db.get_book_by_fingerprint(self.library_id, fp).await? {
             let dest_path = dest.strip_prefix(&other.home)?;
             info.file.path = dest_path.to_path_buf();
             info.file.absolute_path = dest.clone();
@@ -425,12 +443,13 @@ impl Library {
             if let Err(e) = other
                 .db
                 .ensure_active_book_in_library(other.library_id, fp, &info)
+                .await
             {
                 error!(fp = %fp, error = %e, "failed to insert copied book into target database");
             } else {
                 debug!(fp = %fp, "book copied to target database");
 
-                if let Err(e) = other.db.insert_sort_rank(other.library_id, fp, &info) {
+                if let Err(e) = other.db.insert_sort_rank(other.library_id, fp, &info).await {
                     error!(fp = %fp, error = %e, "failed to insert sort rank for copied book");
                 }
             }
@@ -439,10 +458,14 @@ impl Library {
         Ok(())
     }
 
-    pub fn move_to<P: AsRef<Path>>(&mut self, path: P, other: &mut Library) -> Result<(), Error> {
+    pub async fn move_to<P: AsRef<Path>>(
+        &mut self,
+        path: P,
+        other: &mut Library,
+    ) -> Result<(), Error> {
         let src = self.home.join(path.as_ref());
 
-        if !src.exists() {
+        if !tokio::fs::try_exists(&src).await? {
             return Err(format_err!(
                 "can't move non-existing file {}",
                 path.as_ref().display()
@@ -451,15 +474,16 @@ impl Library {
 
         let fp = self
             .resolve_fingerprint(path.as_ref())
+            .await
             .ok_or_else(|| format_err!("can't get fingerprint of {}", path.as_ref().display()))?;
 
         let src = self.home.join(path.as_ref());
         let mut dest = other.home.join(path.as_ref());
         if let Some(parent) = dest.parent() {
-            fs::create_dir_all(parent)?;
+            tokio::fs::create_dir_all(parent).await?;
         }
 
-        if dest.exists() {
+        if tokio::fs::try_exists(&dest).await? {
             let prefix = Local::now().format("%Y%m%d_%H%M%S ");
             let name = dest
                 .file_name()
@@ -469,11 +493,11 @@ impl Library {
             dest.set_file_name(name);
         }
 
-        fs::rename(&src, &dest)?;
+        tokio::fs::rename(&src, &dest).await?;
 
-        let thumbnail_data = self.db.get_thumbnail(fp).ok().flatten();
+        let thumbnail_data = self.db.get_thumbnail(fp).await.ok().flatten();
 
-        if let Some(mut info) = self.db.get_book_by_fingerprint(self.library_id, fp)? {
+        if let Some(mut info) = self.db.get_book_by_fingerprint(self.library_id, fp).await? {
             let dest_path = dest.strip_prefix(&other.home)?;
             info.file.path = dest_path.to_path_buf();
             info.file.absolute_path = dest.clone();
@@ -481,21 +505,22 @@ impl Library {
             if let Err(e) = other
                 .db
                 .ensure_active_book_in_library(other.library_id, fp, &info)
+                .await
             {
                 error!(fp = %fp, error = %e, "failed to insert moved book into target database");
             } else {
                 debug!(fp = %fp, "book moved to target database");
 
-                if let Err(e) = other.db.insert_sort_rank(other.library_id, fp, &info) {
+                if let Err(e) = other.db.insert_sort_rank(other.library_id, fp, &info).await {
                     error!(fp = %fp, error = %e, "failed to insert sort rank for moved book");
                 }
             }
 
             if let Some(thumbnail_data) = thumbnail_data {
-                other.db.save_thumbnail(fp, &thumbnail_data).ok();
+                other.db.save_thumbnail(fp, &thumbnail_data).await.ok();
             }
 
-            if let Err(e) = self.db.delete_book(self.library_id, fp) {
+            if let Err(e) = self.db.delete_book(self.library_id, fp).await {
                 error!(fp = %fp, error = %e, "failed to delete moved book from source database");
             }
         }
@@ -512,11 +537,11 @@ impl Library {
         self.reverse_order = reverse_order;
     }
 
-    pub fn apply<F>(&mut self, f: F)
+    pub async fn apply<F>(&mut self, f: F)
     where
         F: Fn(&Path, &mut Info),
     {
-        let books = match self.db.get_all_books(self.library_id) {
+        let books = match self.db.get_all_books(self.library_id).await {
             Ok(b) => b,
             Err(e) => {
                 error!(error = %e, "failed to load books for apply");
@@ -537,22 +562,26 @@ impl Library {
             .filter_map(|info| info.fp.map(|fp| (fp, info)))
             .collect();
 
-        if let Err(e) = self.db.batch_update_books(
-            self.library_id,
-            &refs,
-            crate::library::book_status::BookStatus::Active,
-        ) {
+        if let Err(e) = self
+            .db
+            .batch_update_books(
+                self.library_id,
+                &refs,
+                crate::library::book_status::BookStatus::Active,
+            )
+            .await
+        {
             error!(error = %e, "failed to persist apply changes to database");
         }
     }
 
-    pub fn sync_reader_info<P: AsRef<Path>>(&mut self, path: P, reader: &ReaderInfo) {
+    pub async fn sync_reader_info<P: AsRef<Path>>(&mut self, path: P, reader: &ReaderInfo) {
         let path = path.as_ref();
-        let Some(fp) = self.resolve_fingerprint(path) else {
+        let Some(fp) = self.resolve_fingerprint(path).await else {
             return;
         };
 
-        if let Err(e) = self.db.save_reading_state(fp, reader) {
+        if let Err(e) = self.db.save_reading_state(fp, reader).await {
             error!(fp = %fp, error = %e, "failed to save reading state to database");
         } else {
             debug!(fp = %fp, "reading state saved to database");
@@ -563,13 +592,13 @@ impl Library {
     ///
     /// Call this when a TOC has been parsed from a document for the first time
     /// so subsequent opens can serve it from the database without re-parsing.
-    pub fn sync_toc<P: AsRef<Path>>(&mut self, path: P, toc: Vec<SimpleTocEntry>) {
+    pub async fn sync_toc<P: AsRef<Path>>(&mut self, path: P, toc: Vec<SimpleTocEntry>) {
         let path = path.as_ref();
-        let Some(fp) = self.resolve_fingerprint(path) else {
+        let Some(fp) = self.resolve_fingerprint(path).await else {
             return;
         };
 
-        if let Err(e) = self.db.save_toc(fp, &toc) {
+        if let Err(e) = self.db.save_toc(fp, &toc).await {
             error!(fp = %fp, error = %e, "failed to save TOC to database");
         } else {
             debug!(fp = %fp, entry_count = toc.len(), "TOC saved to database");
@@ -577,13 +606,14 @@ impl Library {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
-    pub fn thumbnail_preview<P: AsRef<Path> + std::fmt::Debug>(
+    pub async fn thumbnail_preview<P: AsRef<Path> + std::fmt::Debug>(
         &self,
         path: P,
     ) -> Option<crate::framebuffer::Pixmap> {
         match self
             .db
             .get_thumbnail_by_path(self.library_id, path.as_ref())
+            .await
         {
             Ok(Some(data)) => crate::framebuffer::Pixmap::from_png_bytes(&data).ok(),
             Ok(None) => None,
@@ -594,15 +624,15 @@ impl Library {
         }
     }
 
-    pub fn set_status<P: AsRef<Path>>(&mut self, path: P, status: SimpleStatus) {
+    pub async fn set_status<P: AsRef<Path>>(&mut self, path: P, status: SimpleStatus) {
         let path = path.as_ref();
-        let Some(fp) = self.resolve_fingerprint(path) else {
+        let Some(fp) = self.resolve_fingerprint(path).await else {
             return;
         };
 
         match status {
             SimpleStatus::New => {
-                if let Err(e) = self.db.delete_reading_state(fp) {
+                if let Err(e) = self.db.delete_reading_state(fp).await {
                     error!(fp = %fp, error = %e, "failed to delete reading state from database");
                 }
             }
@@ -610,6 +640,7 @@ impl Library {
                 let current_info = self
                     .db
                     .get_book_by_fingerprint(self.library_id, fp)
+                    .await
                     .ok()
                     .flatten();
 
@@ -619,7 +650,7 @@ impl Library {
 
                 reader_info.finished = status == SimpleStatus::Finished;
 
-                if let Err(e) = self.db.save_reading_state(fp, &reader_info) {
+                if let Err(e) = self.db.save_reading_state(fp, &reader_info).await {
                     error!(fp = %fp, error = %e, "failed to save reading state to database");
                 } else {
                     debug!(fp = %fp, finished = reader_info.finished, "reading state updated in database");
@@ -631,17 +662,19 @@ impl Library {
     /// No-op: the database is the source of truth and requires no explicit cache reload.
     pub fn reload(&mut self) {}
 
-    pub fn is_empty(&self) -> Option<bool> {
+    pub async fn is_empty(&self) -> Option<bool> {
         self.db
             .count_books(self.library_id)
+            .await
             .ok()
             .map(|count| count == 0)
     }
 
-    pub fn next_book_after(&self, fp: Fp) -> Option<Info> {
+    pub async fn next_book_after(&self, fp: Fp) -> Option<Info> {
         let mut books: Vec<Info> = self
             .db
             .list_books_under_prefix(self.library_id, Path::new(""))
+            .await
             .ok()?;
 
         if books.is_empty() {
@@ -663,9 +696,9 @@ impl Library {
         books.into_iter().nth(current_index + 1)
     }
 
-    pub fn most_recently_opened_reading_book(&self) -> Option<Info> {
+    pub async fn most_recently_opened_reading_book(&self) -> Option<Info> {
         self.db
-            .most_recently_opened_reading_book(self.library_id)
+            .most_recently_opened_reading_book(self.library_id).await
             .map_err(|e| {
                 error!(error = %e, library_id = self.library_id, "failed to get most recently opened reading book");
             })
@@ -673,8 +706,8 @@ impl Library {
             .flatten()
     }
 
-    fn resolve_fingerprint(&self, path: &Path) -> Option<Fp> {
-        match self.db.get_book_by_path(self.library_id, path) {
+    async fn resolve_fingerprint(&self, path: &Path) -> Option<Fp> {
+        match self.db.get_book_by_path(self.library_id, path).await {
             Ok(Some(info)) => {
                 if let Some(fp) = info.fp {
                     return Some(fp);
@@ -711,15 +744,18 @@ mod tests {
     use crate::metadata::FileInfo;
     use crate::settings::ImportSettings;
     use crate::task::ShutdownSignal;
+    use std::fs;
     use std::str::FromStr;
 
-    fn setup_library_with_book(
+    async fn setup_library_with_book(
         dir: &Path,
         db: &Database,
         name: &str,
         filename: &str,
     ) -> (Library, PathBuf) {
-        let lib = Library::new(dir, db, name).expect("failed to create library");
+        let lib = Library::new(dir, db, name)
+            .await
+            .expect("failed to create library");
         fs::write(dir.join(filename), b"dummy book content").expect("failed to write test file");
         let (tx, _rx) = crate::view::hub_channel();
         let notif_id = crate::view::ViewId::MessageNotif(0);
@@ -775,21 +811,25 @@ mod tests {
         info
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[tokio::test]
     async fn copy_to_sets_absolute_path_in_destination() {
         let src_dir = tempfile::tempdir().expect("failed to create src temp dir");
         let dst_dir = tempfile::tempdir().expect("failed to create dst temp dir");
-        let mut db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.init_for_test(0).expect("failed to run migrations");
+        let mut db = Database::new(":memory:")
+            .await
+            .expect("failed to create in-memory database");
+        db.init_for_test(0).await.expect("failed to run migrations");
 
         let (mut src_lib, rel_path) =
-            setup_library_with_book(src_dir.path(), &db, "Source", "book.epub");
-        let mut dst_lib =
-            Library::new(dst_dir.path(), &db, "Destination").expect("failed to create dst lib");
+            setup_library_with_book(src_dir.path(), &db, "Source", "book.epub").await;
+        let mut dst_lib = Library::new(dst_dir.path(), &db, "Destination")
+            .await
+            .expect("failed to create dst lib");
 
         let src_books = src_lib
             .db
             .get_all_books(src_lib.library_id)
+            .await
             .expect("failed to get src books");
         assert!(
             !src_books.is_empty(),
@@ -798,11 +838,13 @@ mod tests {
 
         src_lib
             .copy_to(&rel_path, &mut dst_lib)
+            .await
             .expect("copy_to failed");
 
         let dst_books = dst_lib
             .db
             .get_all_books(dst_lib.library_id)
+            .await
             .expect("failed to get dst books");
 
         let dst_info = dst_books
@@ -821,21 +863,25 @@ mod tests {
         );
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[tokio::test]
     async fn move_to_sets_absolute_path_in_destination() {
         let src_dir = tempfile::tempdir().expect("failed to create src temp dir");
         let dst_dir = tempfile::tempdir().expect("failed to create dst temp dir");
-        let mut db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.init_for_test(0).expect("failed to run migrations");
+        let mut db = Database::new(":memory:")
+            .await
+            .expect("failed to create in-memory database");
+        db.init_for_test(0).await.expect("failed to run migrations");
 
         let (mut src_lib, rel_path) =
-            setup_library_with_book(src_dir.path(), &db, "Source", "book.epub");
-        let mut dst_lib =
-            Library::new(dst_dir.path(), &db, "Destination").expect("failed to create dst lib");
+            setup_library_with_book(src_dir.path(), &db, "Source", "book.epub").await;
+        let mut dst_lib = Library::new(dst_dir.path(), &db, "Destination")
+            .await
+            .expect("failed to create dst lib");
 
         let src_books = src_lib
             .db
             .get_all_books(src_lib.library_id)
+            .await
             .expect("failed to get src books");
         assert!(
             !src_books.is_empty(),
@@ -844,11 +890,13 @@ mod tests {
 
         src_lib
             .move_to(&rel_path, &mut dst_lib)
+            .await
             .expect("move_to failed");
 
         let src_books_after = src_lib
             .db
             .get_all_books(src_lib.library_id)
+            .await
             .expect("failed to get src books after move");
         assert!(
             src_books_after.is_empty(),
@@ -858,6 +906,7 @@ mod tests {
         let dst_books = dst_lib
             .db
             .get_all_books(dst_lib.library_id)
+            .await
             .expect("failed to get dst books");
 
         let dst_info = dst_books
@@ -876,14 +925,17 @@ mod tests {
         );
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[tokio::test]
     async fn neighbor_status_change_page_finds_next_and_previous_boundaries() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
-        let mut db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.init_for_test(0).expect("failed to run migrations");
+        let mut db = Database::new(":memory:")
+            .await
+            .expect("failed to create in-memory database");
+        db.init_for_test(0).await.expect("failed to run migrations");
 
-        let lib =
-            Library::new(dir.path(), &db, "Status Library").expect("failed to create library");
+        let lib = Library::new(dir.path(), &db, "Status Library")
+            .await
+            .expect("failed to create library");
 
         let statuses = [
             SimpleStatus::New,
@@ -904,39 +956,47 @@ mod tests {
             );
             lib.db
                 .insert_book(lib.library_id, fp, &info)
+                .await
                 .expect("failed to insert book");
         }
 
         assert_eq!(
             lib.neighbor_status_change_page(dir.path(), None, 0, 2, CycleDir::Next)
+                .await
                 .expect("next boundary lookup failed"),
             Some(1)
         );
         assert_eq!(
             lib.neighbor_status_change_page(dir.path(), None, 2, 2, CycleDir::Previous)
+                .await
                 .expect("previous boundary lookup failed"),
             Some(1)
         );
         assert_eq!(
             lib.neighbor_status_change_page(dir.path(), None, 2, 2, CycleDir::Next)
+                .await
                 .expect("terminal next lookup failed"),
             None
         );
         assert_eq!(
             lib.neighbor_status_change_page(dir.path(), None, 0, 0, CycleDir::Next)
+                .await
                 .expect("zero page size lookup failed"),
             None
         );
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[tokio::test]
     async fn next_book_after_returns_following_book_in_title_order() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
-        let mut db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.init_for_test(0).expect("failed to run migrations");
+        let mut db = Database::new(":memory:")
+            .await
+            .expect("failed to create in-memory database");
+        db.init_for_test(0).await.expect("failed to run migrations");
 
-        let mut lib =
-            Library::new(dir.path(), &db, "Next Book Library").expect("failed to create library");
+        let mut lib = Library::new(dir.path(), &db, "Next Book Library")
+            .await
+            .expect("failed to create library");
         lib.sort_method = SortMethod::Title;
         lib.reverse_order = false;
 
@@ -952,32 +1012,37 @@ mod tests {
             let info = make_info(path, title, fp);
             lib.db
                 .insert_book(lib.library_id, fp, &info)
+                .await
                 .expect("failed to insert book");
         }
 
         let next = lib
             .next_book_after(alpha_fp)
+            .await
             .expect("alpha should have a next book");
         assert_eq!(next.fp, Some(beta_fp));
         assert_eq!(next.title, "Beta");
 
-        let last = lib.next_book_after(gamma_fp);
+        let last = lib.next_book_after(gamma_fp).await;
         assert!(last.is_none(), "last book should not have a successor");
 
-        let missing = lib.next_book_after(
-            Fp::from_str("00000000000001FF").expect("invalid missing fingerprint"),
-        );
+        let missing = lib
+            .next_book_after(Fp::from_str("00000000000001FF").expect("invalid missing fingerprint"))
+            .await;
         assert!(missing.is_none(), "missing fingerprint should return none");
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[tokio::test]
     async fn compute_sort_keys_assigns_correct_title_ranks() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
-        let mut db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.init_for_test(0).expect("failed to run migrations");
+        let mut db = Database::new(":memory:")
+            .await
+            .expect("failed to create in-memory database");
+        db.init_for_test(0).await.expect("failed to run migrations");
 
-        let lib =
-            Library::new(dir.path(), &db, "Sort Keys Library").expect("failed to create library");
+        let lib = Library::new(dir.path(), &db, "Sort Keys Library")
+            .await
+            .expect("failed to create library");
 
         let fp_a = Fp::from_str("0000000000000301").expect("invalid fp");
         let fp_b = Fp::from_str("0000000000000302").expect("invalid fp");
@@ -991,11 +1056,13 @@ mod tests {
         ] {
             lib.db
                 .insert_book(lib.library_id, fp, &make_info(path, title, fp))
+                .await
                 .expect("failed to insert book");
         }
 
         lib.db
             .compute_sort_keys(lib.library_id)
+            .await
             .expect("compute_sort_keys failed");
 
         // Verify title sort order via page_books (ascending = alphabetical).
@@ -1009,6 +1076,7 @@ mod tests {
                 10,
                 0,
             )
+            .await
             .expect("page_books failed");
 
         assert_eq!(total, 3);
@@ -1018,14 +1086,17 @@ mod tests {
         );
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[tokio::test]
     async fn page_books_paginates_correctly() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
-        let mut db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.init_for_test(0).expect("failed to run migrations");
+        let mut db = Database::new(":memory:")
+            .await
+            .expect("failed to create in-memory database");
+        db.init_for_test(0).await.expect("failed to run migrations");
 
-        let lib =
-            Library::new(dir.path(), &db, "Pagination Library").expect("failed to create library");
+        let lib = Library::new(dir.path(), &db, "Pagination Library")
+            .await
+            .expect("failed to create library");
 
         for i in 1u8..=5 {
             let fp = Fp::from_str(&format!("{:016X}", i)).expect("invalid fingerprint");
@@ -1033,11 +1104,13 @@ mod tests {
             let path = format!("book{i}.pdf");
             lib.db
                 .insert_book(lib.library_id, fp, &make_info(&path, &title, fp))
+                .await
                 .expect("failed to insert book");
         }
 
         lib.db
             .compute_sort_keys(lib.library_id)
+            .await
             .expect("compute_sort_keys failed");
 
         // Page 0 with size 2 should return the first 2 books (title order).
@@ -1051,6 +1124,7 @@ mod tests {
                 2,
                 0,
             )
+            .await
             .expect("page_books page 0 failed");
         assert_eq!(total, 5);
         assert_eq!(page0.len(), 2);
@@ -1068,6 +1142,7 @@ mod tests {
                 2,
                 2,
             )
+            .await
             .expect("page_books page 1 failed");
         assert_eq!(page1.len(), 2);
         assert_eq!(page1[0].title, "Book 03");
@@ -1084,19 +1159,23 @@ mod tests {
                 2,
                 4,
             )
+            .await
             .expect("page_books page 2 failed");
         assert_eq!(page2.len(), 1);
         assert_eq!(page2[0].title, "Book 05");
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[tokio::test]
     async fn page_books_reverse_order_reverses_results() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
-        let mut db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.init_for_test(0).expect("failed to run migrations");
+        let mut db = Database::new(":memory:")
+            .await
+            .expect("failed to create in-memory database");
+        db.init_for_test(0).await.expect("failed to run migrations");
 
-        let lib =
-            Library::new(dir.path(), &db, "Reverse Library").expect("failed to create library");
+        let lib = Library::new(dir.path(), &db, "Reverse Library")
+            .await
+            .expect("failed to create library");
 
         for (fp_hex, title, path) in [
             ("0000000000000401", "Alpha", "alpha.pdf"),
@@ -1106,11 +1185,13 @@ mod tests {
             let fp = Fp::from_str(fp_hex).expect("invalid fp");
             lib.db
                 .insert_book(lib.library_id, fp, &make_info(path, title, fp))
+                .await
                 .expect("failed to insert book");
         }
 
         lib.db
             .compute_sort_keys(lib.library_id)
+            .await
             .expect("compute_sort_keys failed");
 
         let (books, _) = lib
@@ -1123,6 +1204,7 @@ mod tests {
                 10,
                 0,
             )
+            .await
             .expect("page_books failed");
 
         assert_eq!(
@@ -1131,14 +1213,17 @@ mod tests {
         );
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[tokio::test]
     async fn page_method_uses_db_pagination_without_query() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
-        let mut db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.init_for_test(0).expect("failed to run migrations");
+        let mut db = Database::new(":memory:")
+            .await
+            .expect("failed to create in-memory database");
+        db.init_for_test(0).await.expect("failed to run migrations");
 
-        let mut lib =
-            Library::new(dir.path(), &db, "Page Method Library").expect("failed to create library");
+        let mut lib = Library::new(dir.path(), &db, "Page Method Library")
+            .await
+            .expect("failed to create library");
         lib.sort_method = SortMethod::Title;
         lib.reverse_order = false;
 
@@ -1150,14 +1235,16 @@ mod tests {
             let fp = Fp::from_str(fp_hex).expect("invalid fp");
             lib.db
                 .insert_book(lib.library_id, fp, &make_info(path, title, fp))
+                .await
                 .expect("failed to insert book");
         }
 
         lib.db
             .compute_sort_keys(lib.library_id)
+            .await
             .expect("compute_sort_keys failed");
 
-        let result = lib.page(dir.path(), None, 0, 2).expect("page failed");
+        let result = lib.page(dir.path(), None, 0, 2).await.expect("page failed");
 
         assert_eq!(result.total_count, 3);
         assert_eq!(result.books.len(), 2);
@@ -1165,14 +1252,17 @@ mod tests {
         assert_eq!(result.books[1].title, "Bob");
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[tokio::test]
     async fn list_subdirectory_returns_correct_absolute_paths() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
-        let mut db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.init_for_test(0).expect("failed to run migrations");
+        let mut db = Database::new(":memory:")
+            .await
+            .expect("failed to create in-memory database");
+        db.init_for_test(0).await.expect("failed to run migrations");
 
-        let lib =
-            Library::new(dir.path(), &db, "Dir Nav Library").expect("failed to create library");
+        let lib = Library::new(dir.path(), &db, "Dir Nav Library")
+            .await
+            .expect("failed to create library");
 
         // Simulate a library with books nested two levels deep.
         for (fp_hex, path, title) in [
@@ -1187,11 +1277,12 @@ mod tests {
             let fp = Fp::from_str(fp_hex).expect("invalid fp");
             lib.db
                 .insert_book(lib.library_id, fp, &make_info(path, title, fp))
+                .await
                 .expect("failed to insert book");
         }
 
         // Listing at root should return top-level dirs as absolute paths.
-        let (_, root_dirs) = lib.list(dir.path(), None, true);
+        let (_, root_dirs) = lib.list(dir.path(), None, true).await;
         let root_dir_paths: Vec<_> = root_dirs.iter().collect();
         assert_eq!(root_dir_paths.len(), 2);
         assert!(root_dirs.contains(&dir.path().join("fiction")));
@@ -1200,7 +1291,7 @@ mod tests {
         // Listing under "fiction" should return only the immediate subdirs,
         // not double-prefixed paths like /tmp/.../fiction/fiction/fantasy.
         let fiction_prefix = dir.path().join("fiction");
-        let (_, fiction_dirs) = lib.list(&fiction_prefix, None, true);
+        let (_, fiction_dirs) = lib.list(&fiction_prefix, None, true).await;
         assert_eq!(
             fiction_dirs.len(),
             2,
@@ -1216,14 +1307,17 @@ mod tests {
         );
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[tokio::test]
     async fn page_books_status_sort_orders_finished_new_reading() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
-        let mut db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.init_for_test(0).expect("failed to run migrations");
+        let mut db = Database::new(":memory:")
+            .await
+            .expect("failed to create in-memory database");
+        db.init_for_test(0).await.expect("failed to run migrations");
 
-        let lib =
-            Library::new(dir.path(), &db, "Status Sort Library").expect("failed to create library");
+        let lib = Library::new(dir.path(), &db, "Status Sort Library")
+            .await
+            .expect("failed to create library");
 
         let fp_new = Fp::from_str("0000000000000601").expect("invalid fp");
         let fp_reading = Fp::from_str("0000000000000602").expect("invalid fp");
@@ -1250,11 +1344,13 @@ mod tests {
                     fp,
                     &make_status_info(path, title, fp, status),
                 )
+                .await
                 .expect("failed to insert book");
         }
 
         lib.db
             .compute_sort_keys(lib.library_id)
+            .await
             .expect("compute_sort_keys failed");
 
         let (books, total) = lib
@@ -1267,6 +1363,7 @@ mod tests {
                 10,
                 0,
             )
+            .await
             .expect("page_books with Status sort failed");
 
         assert_eq!(total, 3);
@@ -1276,13 +1373,16 @@ mod tests {
         assert_eq!(books[2].title, "Reading Book");
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[tokio::test]
     async fn page_books_progress_sort_orders_by_completion() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
-        let mut db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.init_for_test(0).expect("failed to run migrations");
+        let mut db = Database::new(":memory:")
+            .await
+            .expect("failed to create in-memory database");
+        db.init_for_test(0).await.expect("failed to run migrations");
 
         let lib = Library::new(dir.path(), &db, "Progress Sort Library")
+            .await
             .expect("failed to create library");
 
         let fp_new = Fp::from_str("0000000000000701").expect("invalid fp");
@@ -1316,11 +1416,13 @@ mod tests {
         ] {
             lib.db
                 .insert_book(lib.library_id, fp, &info)
+                .await
                 .expect("failed to insert book");
         }
 
         lib.db
             .compute_sort_keys(lib.library_id)
+            .await
             .expect("compute_sort_keys failed");
 
         let (books, total) = lib
@@ -1333,6 +1435,7 @@ mod tests {
                 10,
                 0,
             )
+            .await
             .expect("page_books with Progress sort failed");
 
         assert_eq!(total, 3);
@@ -1342,14 +1445,17 @@ mod tests {
         assert_eq!(books[2].title, "Halfway Book");
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[tokio::test]
     async fn page_books_pages_sort_orders_by_page_count() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
-        let mut db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.init_for_test(0).expect("failed to run migrations");
+        let mut db = Database::new(":memory:")
+            .await
+            .expect("failed to create in-memory database");
+        db.init_for_test(0).await.expect("failed to run migrations");
 
-        let lib =
-            Library::new(dir.path(), &db, "Pages Sort Library").expect("failed to create library");
+        let lib = Library::new(dir.path(), &db, "Pages Sort Library")
+            .await
+            .expect("failed to create library");
 
         for (fp_hex, path, title, pages) in [
             ("0000000000000801", "big.pdf", "Big Book", 500usize),
@@ -1365,11 +1471,13 @@ mod tests {
             info.reader = info.reader_info.clone();
             lib.db
                 .insert_book(lib.library_id, fp, &info)
+                .await
                 .expect("failed to insert book");
         }
 
         lib.db
             .compute_sort_keys(lib.library_id)
+            .await
             .expect("compute_sort_keys failed");
 
         let (books, total) = lib
@@ -1382,6 +1490,7 @@ mod tests {
                 10,
                 0,
             )
+            .await
             .expect("page_books with Pages sort failed");
 
         assert_eq!(total, 3);
@@ -1390,14 +1499,17 @@ mod tests {
         assert_eq!(books[2].title, "Big Book");
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[tokio::test]
     async fn page_books_size_sort_orders_by_file_size() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
-        let mut db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.init_for_test(0).expect("failed to run migrations");
+        let mut db = Database::new(":memory:")
+            .await
+            .expect("failed to create in-memory database");
+        db.init_for_test(0).await.expect("failed to run migrations");
 
-        let lib =
-            Library::new(dir.path(), &db, "Size Sort Library").expect("failed to create library");
+        let lib = Library::new(dir.path(), &db, "Size Sort Library")
+            .await
+            .expect("failed to create library");
 
         for (fp_hex, path, title, size) in [
             ("0000000000000901", "big.pdf", "Big Book", 9000u64),
@@ -1409,11 +1521,13 @@ mod tests {
             info.file.size = size;
             lib.db
                 .insert_book(lib.library_id, fp, &info)
+                .await
                 .expect("failed to insert book");
         }
 
         lib.db
             .compute_sort_keys(lib.library_id)
+            .await
             .expect("compute_sort_keys failed");
 
         let (books, total) = lib
@@ -1426,6 +1540,7 @@ mod tests {
                 10,
                 0,
             )
+            .await
             .expect("page_books with Size sort failed");
 
         assert_eq!(total, 3);
@@ -1434,14 +1549,17 @@ mod tests {
         assert_eq!(books[2].title, "Big Book");
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[tokio::test]
     async fn page_books_kind_sort_orders_alphabetically_by_file_kind() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
-        let mut db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.init_for_test(0).expect("failed to run migrations");
+        let mut db = Database::new(":memory:")
+            .await
+            .expect("failed to create in-memory database");
+        db.init_for_test(0).await.expect("failed to run migrations");
 
-        let lib =
-            Library::new(dir.path(), &db, "Kind Sort Library").expect("failed to create library");
+        let lib = Library::new(dir.path(), &db, "Kind Sort Library")
+            .await
+            .expect("failed to create library");
 
         for (fp_hex, path, title, kind) in [
             ("0000000000000A01", "book.pdf", "PDF Book", "pdf"),
@@ -1453,11 +1571,13 @@ mod tests {
             info.file.kind = Some(kind.parse().unwrap());
             lib.db
                 .insert_book(lib.library_id, fp, &info)
+                .await
                 .expect("failed to insert book");
         }
 
         lib.db
             .compute_sort_keys(lib.library_id)
+            .await
             .expect("compute_sort_keys failed");
 
         let (books, total) = lib
@@ -1470,6 +1590,7 @@ mod tests {
                 10,
                 0,
             )
+            .await
             .expect("page_books with Kind sort failed");
 
         assert_eq!(total, 3);
@@ -1479,15 +1600,18 @@ mod tests {
         assert_eq!(books[2].title, "PDF Book");
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[tokio::test]
     async fn page_books_added_sort_orders_by_insertion_time() {
         use chrono::NaiveDateTime;
         let dir = tempfile::tempdir().expect("failed to create temp dir");
-        let mut db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.init_for_test(0).expect("failed to run migrations");
+        let mut db = Database::new(":memory:")
+            .await
+            .expect("failed to create in-memory database");
+        db.init_for_test(0).await.expect("failed to run migrations");
 
-        let lib =
-            Library::new(dir.path(), &db, "Added Sort Library").expect("failed to create library");
+        let lib = Library::new(dir.path(), &db, "Added Sort Library")
+            .await
+            .expect("failed to create library");
 
         let t0 = NaiveDateTime::parse_from_str("2020-01-01 00:00:00", "%Y-%m-%d %H:%M:%S")
             .expect("invalid datetime");
@@ -1506,11 +1630,13 @@ mod tests {
             info.added = added;
             lib.db
                 .insert_book(lib.library_id, fp, &info)
+                .await
                 .expect("failed to insert book");
         }
 
         lib.db
             .compute_sort_keys(lib.library_id)
+            .await
             .expect("compute_sort_keys failed");
 
         let (books, total) = lib
@@ -1523,6 +1649,7 @@ mod tests {
                 10,
                 0,
             )
+            .await
             .expect("page_books with Added sort failed");
 
         assert_eq!(total, 3);
@@ -1531,15 +1658,18 @@ mod tests {
         assert_eq!(books[2].title, "Recent Book");
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[tokio::test]
     async fn page_books_opened_sort_orders_by_last_opened_time() {
         use chrono::NaiveDateTime;
         let dir = tempfile::tempdir().expect("failed to create temp dir");
-        let mut db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.init_for_test(0).expect("failed to run migrations");
+        let mut db = Database::new(":memory:")
+            .await
+            .expect("failed to create in-memory database");
+        db.init_for_test(0).await.expect("failed to run migrations");
 
-        let lib =
-            Library::new(dir.path(), &db, "Opened Sort Library").expect("failed to create library");
+        let lib = Library::new(dir.path(), &db, "Opened Sort Library")
+            .await
+            .expect("failed to create library");
 
         let t0 = NaiveDateTime::parse_from_str("2020-01-01 00:00:00", "%Y-%m-%d %H:%M:%S")
             .expect("invalid datetime");
@@ -1563,11 +1693,13 @@ mod tests {
             info.reader = info.reader_info.clone();
             lib.db
                 .insert_book(lib.library_id, fp, &info)
+                .await
                 .expect("failed to insert book");
         }
 
         lib.db
             .compute_sort_keys(lib.library_id)
+            .await
             .expect("compute_sort_keys failed");
 
         let (books, total) = lib
@@ -1580,6 +1712,7 @@ mod tests {
                 10,
                 0,
             )
+            .await
             .expect("page_books with Opened sort failed");
 
         assert_eq!(total, 3);
@@ -1588,14 +1721,17 @@ mod tests {
         assert_eq!(books[2].title, "Newest Opened");
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[tokio::test]
     async fn page_books_year_sort_orders_by_publication_year() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
-        let mut db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.init_for_test(0).expect("failed to run migrations");
+        let mut db = Database::new(":memory:")
+            .await
+            .expect("failed to create in-memory database");
+        db.init_for_test(0).await.expect("failed to run migrations");
 
-        let lib =
-            Library::new(dir.path(), &db, "Year Sort Library").expect("failed to create library");
+        let lib = Library::new(dir.path(), &db, "Year Sort Library")
+            .await
+            .expect("failed to create library");
 
         for (fp_hex, path, title, year) in [
             ("0000000000000D01", "modern.pdf", "Modern Book", "2020"),
@@ -1607,11 +1743,13 @@ mod tests {
             info.year = year.to_string();
             lib.db
                 .insert_book(lib.library_id, fp, &info)
+                .await
                 .expect("failed to insert book");
         }
 
         lib.db
             .compute_sort_keys(lib.library_id)
+            .await
             .expect("compute_sort_keys failed");
 
         let (books, total) = lib
@@ -1624,6 +1762,7 @@ mod tests {
                 10,
                 0,
             )
+            .await
             .expect("page_books with Year sort failed");
 
         assert_eq!(total, 3);
@@ -1632,13 +1771,16 @@ mod tests {
         assert_eq!(books[2].title, "Modern Book");
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[tokio::test]
     async fn page_books_count_query_respects_prefix_filter() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
-        let mut db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.init_for_test(0).expect("failed to run migrations");
+        let mut db = Database::new(":memory:")
+            .await
+            .expect("failed to create in-memory database");
+        db.init_for_test(0).await.expect("failed to run migrations");
 
         let lib = Library::new(dir.path(), &db, "Prefix Count Library")
+            .await
             .expect("failed to create library");
 
         for (fp_hex, path, title) in [
@@ -1649,11 +1791,13 @@ mod tests {
             let fp = Fp::from_str(fp_hex).expect("invalid fp");
             lib.db
                 .insert_book(lib.library_id, fp, &make_info(path, title, fp))
+                .await
                 .expect("failed to insert book");
         }
 
         lib.db
             .compute_sort_keys(lib.library_id)
+            .await
             .expect("compute_sort_keys failed");
 
         let (books, total) = lib
@@ -1666,6 +1810,7 @@ mod tests {
                 10,
                 0,
             )
+            .await
             .expect("page_books with prefix filter failed");
 
         assert_eq!(total, 2, "count query should reflect the prefix filter");
@@ -1673,23 +1818,27 @@ mod tests {
         assert!(books.iter().all(|b| b.title.starts_with("Fiction")));
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[tokio::test]
     async fn resolve_fingerprint_prefers_db_and_falls_back_to_filesystem() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
-        let mut db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.init_for_test(0).expect("failed to run migrations");
+        let mut db = Database::new(":memory:")
+            .await
+            .expect("failed to create in-memory database");
+        db.init_for_test(0).await.expect("failed to run migrations");
 
-        let lib =
-            Library::new(dir.path(), &db, "Fingerprint Library").expect("failed to create library");
+        let lib = Library::new(dir.path(), &db, "Fingerprint Library")
+            .await
+            .expect("failed to create library");
 
         let stored_fp = Fp::from_str("0000000000000201").expect("invalid stored fingerprint");
         let stored_info = make_info("stored.pdf", "Stored", stored_fp);
         lib.db
             .insert_book(lib.library_id, stored_fp, &stored_info)
+            .await
             .expect("failed to insert stored book");
 
         assert_eq!(
-            lib.resolve_fingerprint(Path::new("stored.pdf")),
+            lib.resolve_fingerprint(Path::new("stored.pdf")).await,
             Some(stored_fp)
         );
 
@@ -1700,9 +1849,12 @@ mod tests {
             .expect("failed to fingerprint fallback file");
 
         assert_eq!(
-            lib.resolve_fingerprint(Path::new("fallback.pdf")),
+            lib.resolve_fingerprint(Path::new("fallback.pdf")).await,
             Some(expected_fallback_fp)
         );
-        assert_eq!(lib.resolve_fingerprint(Path::new("missing.pdf")), None);
+        assert_eq!(
+            lib.resolve_fingerprint(Path::new("missing.pdf")).await,
+            None
+        );
     }
 }

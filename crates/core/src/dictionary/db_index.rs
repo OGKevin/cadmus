@@ -163,20 +163,18 @@ impl DbIndexReader {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(headword = %headword )))]
-    fn query_exact(&self, headword: &str) -> Vec<Entry> {
+    async fn query_exact(&self, headword: &str) -> Vec<Entry> {
         let headword = headword.to_string();
 
-        crate::runtime::block_on(async {
-            if let Some(id) = self.dict_id {
-                self.exact_scoped(&headword, id).await
-            } else {
-                self.exact_global(&headword).await
-            }
-        })
+        if let Some(id) = self.dict_id {
+            self.exact_scoped(&headword, id).await
+        } else {
+            self.exact_global(&headword).await
+        }
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(headword = %headword )))]
-    fn query_fuzzy(&self, headword: &str) -> Vec<Entry> {
+    async fn query_fuzzy(&self, headword: &str) -> Vec<Entry> {
         let prefix_len = headword
             .char_indices()
             .nth(3)
@@ -185,13 +183,11 @@ impl DbIndexReader {
         let prefix = escape_like_prefix(&headword[..prefix_len]);
         let headword = headword.to_string();
 
-        crate::runtime::block_on(async {
-            if let Some(id) = self.dict_id {
-                self.fuzzy_scoped(&headword, &prefix, id).await
-            } else {
-                self.fuzzy_global(&headword, &prefix).await
-            }
-        })
+        if let Some(id) = self.dict_id {
+            self.fuzzy_scoped(&headword, &prefix, id).await
+        } else {
+            self.fuzzy_global(&headword, &prefix).await
+        }
     }
 }
 
@@ -204,9 +200,9 @@ impl IndexReader for DbIndexReader {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(headword = %headword, fuzzy)))]
     fn find(&self, headword: &str, fuzzy: bool) -> Vec<Entry> {
         if fuzzy {
-            self.query_fuzzy(headword)
+            crate::runtime::block_on(self.query_fuzzy(headword))
         } else {
-            self.query_exact(headword)
+            crate::runtime::block_on(self.query_exact(headword))
         }
     }
 }
@@ -215,15 +211,14 @@ impl IndexReader for DbIndexReader {
 mod tests {
     use super::*;
 
-    fn setup_db() -> Database {
-        let mut db = Database::new(":memory:").expect("in-memory db");
-        db.init_for_test(0).expect("migrations");
+    async fn setup_db() -> Database {
+        let mut db = Database::new(":memory:").await.expect("in-memory db");
+        db.init_for_test(0).await.expect("migrations");
         db
     }
 
-    fn insert_meta(pool: &SqlitePool, dict_id: i64, fp: &str) {
-        crate::runtime::block_on(async {
-            sqlx::query!(
+    async fn insert_meta(pool: &SqlitePool, dict_id: i64, fp: &str) {
+        sqlx::query!(
                 "INSERT OR IGNORE INTO dictionary_index_meta (dict_id, fingerprint, dict_path, total_lines, indexed_lines, completed) VALUES (?, ?, ?, 0, 0, 1)",
                 dict_id,
                 fp,
@@ -232,10 +227,9 @@ mod tests {
             .execute(pool)
             .await
             .expect("insert meta");
-        });
     }
 
-    fn insert_entry(
+    async fn insert_entry(
         pool: &SqlitePool,
         dict_id: i64,
         fp: &str,
@@ -244,9 +238,8 @@ mod tests {
         size: i64,
         original: Option<&str>,
     ) {
-        insert_meta(pool, dict_id, fp);
-        crate::runtime::block_on(async {
-            sqlx::query!(
+        insert_meta(pool, dict_id, fp).await;
+        sqlx::query!(
                 "INSERT INTO dictionary_index_entry (dict_id, word, offset, size, original) VALUES (?, ?, ?, ?, ?)",
                 dict_id,
                 word,
@@ -257,17 +250,16 @@ mod tests {
             .execute(pool)
             .await
             .expect("insert entry");
-        });
     }
 
     const DICT_ID_1: i64 = 1;
     const DICT_ID_2: i64 = 2;
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[tokio::test(flavor = "multi_thread")]
     async fn test_exact_lookup_with_dict_id() {
-        let db = setup_db();
-        insert_entry(db.pool(), DICT_ID_1, "fp1", "hello", 0, 10, None);
-        insert_entry(db.pool(), DICT_ID_2, "fp2", "world", 10, 5, None);
+        let db = setup_db().await;
+        insert_entry(db.pool(), DICT_ID_1, "fp1", "hello", 0, 10, None).await;
+        insert_entry(db.pool(), DICT_ID_2, "fp2", "world", 10, 5, None).await;
 
         let reader = DbIndexReader::new(&db, Some(DICT_ID_1));
         let results = reader.find("hello", false);
@@ -277,11 +269,11 @@ mod tests {
         assert_eq!(results[0].size, 10);
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[tokio::test(flavor = "multi_thread")]
     async fn test_exact_lookup_scoped_dict_id_excludes_other() {
-        let db = setup_db();
-        insert_entry(db.pool(), DICT_ID_1, "fp1", "hello", 0, 10, None);
-        insert_entry(db.pool(), DICT_ID_2, "fp2", "hello", 20, 8, None);
+        let db = setup_db().await;
+        insert_entry(db.pool(), DICT_ID_1, "fp1", "hello", 0, 10, None).await;
+        insert_entry(db.pool(), DICT_ID_2, "fp2", "hello", 20, 8, None).await;
 
         let reader = DbIndexReader::new(&db, Some(DICT_ID_1));
         let results = reader.find("hello", false);
@@ -289,33 +281,33 @@ mod tests {
         assert_eq!(results[0].offset, 0);
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[tokio::test(flavor = "multi_thread")]
     async fn test_exact_lookup_no_dict_id_finds_all() {
-        let db = setup_db();
-        insert_entry(db.pool(), DICT_ID_1, "fp1", "hello", 0, 10, None);
-        insert_entry(db.pool(), DICT_ID_2, "fp2", "hello", 20, 8, None);
+        let db = setup_db().await;
+        insert_entry(db.pool(), DICT_ID_1, "fp1", "hello", 0, 10, None).await;
+        insert_entry(db.pool(), DICT_ID_2, "fp2", "hello", 20, 8, None).await;
 
         let reader = DbIndexReader::new(&db, None);
         let results = reader.find("hello", false);
         assert_eq!(results.len(), 2);
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[tokio::test(flavor = "multi_thread")]
     async fn test_exact_lookup_no_match() {
-        let db = setup_db();
-        insert_entry(db.pool(), DICT_ID_1, "fp1", "hello", 0, 10, None);
+        let db = setup_db().await;
+        insert_entry(db.pool(), DICT_ID_1, "fp1", "hello", 0, 10, None).await;
 
         let reader = DbIndexReader::new(&db, Some(DICT_ID_1));
         let results = reader.find("world", false);
         assert!(results.is_empty());
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[tokio::test(flavor = "multi_thread")]
     async fn test_fuzzy_lookup_with_dict_id() {
-        let db = setup_db();
-        insert_entry(db.pool(), DICT_ID_1, "fp1", "hello", 0, 10, None);
-        insert_entry(db.pool(), DICT_ID_1, "fp1", "helo", 10, 5, None);
-        insert_entry(db.pool(), DICT_ID_1, "fp1", "world", 15, 5, None);
+        let db = setup_db().await;
+        insert_entry(db.pool(), DICT_ID_1, "fp1", "hello", 0, 10, None).await;
+        insert_entry(db.pool(), DICT_ID_1, "fp1", "helo", 10, 5, None).await;
+        insert_entry(db.pool(), DICT_ID_1, "fp1", "world", 15, 5, None).await;
 
         let reader = DbIndexReader::new(&db, Some(DICT_ID_1));
         let results = reader.find("hello", true);
@@ -325,21 +317,21 @@ mod tests {
         assert!(words.contains(&"helo"));
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[tokio::test(flavor = "multi_thread")]
     async fn test_fuzzy_lookup_no_dict_id_cross_dict() {
-        let db = setup_db();
-        insert_entry(db.pool(), DICT_ID_1, "fp1", "hello", 0, 10, None);
-        insert_entry(db.pool(), DICT_ID_2, "fp2", "helo", 10, 5, None);
+        let db = setup_db().await;
+        insert_entry(db.pool(), DICT_ID_1, "fp1", "hello", 0, 10, None).await;
+        insert_entry(db.pool(), DICT_ID_2, "fp2", "helo", 10, 5, None).await;
 
         let reader = DbIndexReader::new(&db, None);
         let results = reader.find("hello", true);
         assert_eq!(results.len(), 2);
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[tokio::test(flavor = "multi_thread")]
     async fn test_load_and_find_delegates_to_find() {
-        let db = setup_db();
-        insert_entry(db.pool(), DICT_ID_1, "fp1", "hello", 0, 10, None);
+        let db = setup_db().await;
+        insert_entry(db.pool(), DICT_ID_1, "fp1", "hello", 0, 10, None).await;
 
         let mut reader = DbIndexReader::new(&db, Some(DICT_ID_1));
         let metadata = Metadata {
@@ -351,10 +343,10 @@ mod tests {
         assert_eq!(results[0].headword, "hello");
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[tokio::test(flavor = "multi_thread")]
     async fn test_original_field_preserved() {
-        let db = setup_db();
-        insert_entry(db.pool(), DICT_ID_1, "fp1", "hello", 0, 10, Some("Hello"));
+        let db = setup_db().await;
+        insert_entry(db.pool(), DICT_ID_1, "fp1", "hello", 0, 10, Some("Hello")).await;
 
         let reader = DbIndexReader::new(&db, Some(DICT_ID_1));
         let results = reader.find("hello", false);
@@ -362,12 +354,12 @@ mod tests {
         assert_eq!(results[0].original.as_deref(), Some("Hello"));
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[tokio::test(flavor = "multi_thread")]
     async fn test_multiple_definitions_same_word_all_returned() {
-        let db = setup_db();
-        insert_entry(db.pool(), DICT_ID_1, "fp1", "pain", 100, 20, Some("Pain"));
-        insert_entry(db.pool(), DICT_ID_1, "fp1", "pain", 200, 30, Some("PAIN"));
-        insert_entry(db.pool(), DICT_ID_1, "fp1", "pain", 300, 40, None);
+        let db = setup_db().await;
+        insert_entry(db.pool(), DICT_ID_1, "fp1", "pain", 100, 20, Some("Pain")).await;
+        insert_entry(db.pool(), DICT_ID_1, "fp1", "pain", 200, 30, Some("PAIN")).await;
+        insert_entry(db.pool(), DICT_ID_1, "fp1", "pain", 300, 40, None).await;
 
         let reader = DbIndexReader::new(&db, Some(DICT_ID_1));
         let results = reader.find("pain", false);

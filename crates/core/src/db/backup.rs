@@ -522,19 +522,19 @@ mod tests {
         );
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[tokio::test]
     async fn test_create_backup_writes_file_and_manifest() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
         let db_path = dir.path().join("cadmus.sqlite");
-        let mut db = Database::new(&db_path).expect("failed to create database");
-        db.init_for_test(0).expect("failed to run migrations");
+        let mut db = Database::new(&db_path)
+            .await
+            .expect("failed to create database");
+        db.init_for_test(0).await.expect("failed to run migrations");
 
         let version = GitVersion::from_str("v0.10.0").unwrap();
         let manager = DbBackupManager::new(dir.path().to_path_buf(), version.clone());
 
-        let backup_path = crate::runtime::block_on(async {
-            manager.create_backup(db.pool(), &db_path, 2).await.unwrap()
-        });
+        let backup_path = manager.create_backup(db.pool(), &db_path, 2).await.unwrap();
 
         assert!(backup_path.exists(), "backup file should exist");
 
@@ -545,27 +545,25 @@ mod tests {
         assert!(manifest.entries[0].file.contains("v0.10.0"));
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[tokio::test]
     async fn test_backup_retention_removes_oldest_backups() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
         let db_path = dir.path().join("cadmus.sqlite");
-        let mut db = Database::new(&db_path).expect("failed to create database");
-        db.init_for_test(0).expect("failed to run migrations");
+        let mut db = Database::new(&db_path)
+            .await
+            .expect("failed to create database");
+        db.init_for_test(0).await.expect("failed to run migrations");
 
         let v1 = GitVersion::from_str("v0.9.0").unwrap();
         let v2 = GitVersion::from_str("v0.10.0").unwrap();
         let v3 = GitVersion::from_str("v0.11.0").unwrap();
 
-        crate::runtime::block_on(async {
-            let manager = DbBackupManager::new(dir.path().to_path_buf(), v1.clone());
-            manager.create_backup(db.pool(), &db_path, 2).await.unwrap();
-
-            let manager = DbBackupManager::new(dir.path().to_path_buf(), v2.clone());
-            manager.create_backup(db.pool(), &db_path, 2).await.unwrap();
-
-            let manager = DbBackupManager::new(dir.path().to_path_buf(), v3.clone());
-            manager.create_backup(db.pool(), &db_path, 2).await.unwrap();
-        });
+        let manager = DbBackupManager::new(dir.path().to_path_buf(), v1.clone());
+        manager.create_backup(db.pool(), &db_path, 2).await.unwrap();
+        let manager = DbBackupManager::new(dir.path().to_path_buf(), v2.clone());
+        manager.create_backup(db.pool(), &db_path, 2).await.unwrap();
+        let manager = DbBackupManager::new(dir.path().to_path_buf(), v3.clone());
+        manager.create_backup(db.pool(), &db_path, 2).await.unwrap();
 
         let manager = DbBackupManager::new(dir.path().to_path_buf(), v3.clone());
         let manifest = manager.read_manifest().expect("failed to read manifest");
@@ -580,46 +578,42 @@ mod tests {
         );
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[tokio::test]
     async fn test_restore_best_backup_replaces_active_database() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
         let db_path = dir.path().join("cadmus.sqlite");
-        let mut db = Database::new(&db_path).expect("failed to create database");
-        db.init_for_test(0).expect("failed to run migrations");
+        let mut db = Database::new(&db_path)
+            .await
+            .expect("failed to create database");
+        db.init_for_test(0).await.expect("failed to run migrations");
 
         let older_version = GitVersion::from_str("v0.9.0").unwrap();
         let newer_version = GitVersion::from_str("v0.10.0").unwrap();
 
-        let backup_path = crate::runtime::block_on(async {
-            let manager = DbBackupManager::new(dir.path().to_path_buf(), older_version.clone());
-            manager.create_backup(db.pool(), &db_path, 2).await.unwrap()
-        });
+        let manager = DbBackupManager::new(dir.path().to_path_buf(), older_version.clone());
+        let backup_path = manager.create_backup(db.pool(), &db_path, 2).await.unwrap();
 
         // Simulate a newer database by stamping it and closing it.
         let migration_hash = crate::db::version::current_migration_hash();
-        crate::runtime::block_on(async {
-            crate::db::version::stamp_db_version(db.pool(), &newer_version, &migration_hash)
-                .await
-                .unwrap();
-        });
-        db.close();
+        crate::db::version::stamp_db_version(db.pool(), &newer_version, &migration_hash)
+            .await
+            .unwrap();
+        db.close().await;
 
-        let restored = crate::runtime::block_on(async {
-            let manager = DbBackupManager::new(dir.path().to_path_buf(), older_version.clone());
-            manager
-                .restore_best_backup(&db_path, &newer_version)
-                .await
-                .expect("restore failed")
-        });
+        let manager = DbBackupManager::new(dir.path().to_path_buf(), older_version.clone());
+        let restored = manager
+            .restore_best_backup(&db_path, &newer_version)
+            .await
+            .expect("restore failed");
         assert_eq!(restored, backup_path, "should restore the older backup");
 
         // Reopen and verify the restored database does not have the newer version stamp.
-        let db = Database::new(&db_path).expect("failed to reopen database");
-        let stored_version = crate::runtime::block_on(async {
-            crate::db::version::read_db_version(db.pool())
-                .await
-                .unwrap()
-        });
+        let db = Database::new(&db_path)
+            .await
+            .expect("failed to reopen database");
+        let stored_version = crate::db::version::read_db_version(db.pool())
+            .await
+            .unwrap();
         assert_ne!(
             stored_version.as_ref(),
             Some(&newer_version),
@@ -627,7 +621,7 @@ mod tests {
         );
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[tokio::test]
     async fn test_fs_copy_backup_preserves_data() {
         let dir = tempfile::Builder::new()
             .prefix("cadmus-backup-fs-")
@@ -635,68 +629,61 @@ mod tests {
             .expect("failed to create temp dir");
 
         let db_path = dir.path().join("cadmus.sqlite");
-        let mut db = Database::new(&db_path).expect("failed to create database");
-        db.init_for_test(0).expect("failed to run migrations");
+        let mut db = Database::new(&db_path)
+            .await
+            .expect("failed to create database");
+        db.init_for_test(0).await.expect("failed to run migrations");
 
         let test_version = GitVersion::from_str("v1.2.3").unwrap();
         let migration_hash = crate::db::version::current_migration_hash();
 
-        let backup_path = crate::runtime::block_on(async {
-            crate::db::version::stamp_db_version(db.pool(), &test_version, &migration_hash)
-                .await
-                .expect("failed to stamp test version");
+        crate::db::version::stamp_db_version(db.pool(), &test_version, &migration_hash)
+            .await
+            .expect("failed to stamp test version");
+        let manager = DbBackupManager::new(dir.path().to_path_buf(), test_version.clone());
+        let backup_path = manager
+            .create_backup(db.pool(), &db_path, 2)
+            .await
+            .expect("fs copy backup failed");
 
-            let manager = DbBackupManager::new(dir.path().to_path_buf(), test_version.clone());
-            manager
-                .create_backup(db.pool(), &db_path, 2)
-                .await
-                .expect("fs copy backup failed")
-        });
-
-        crate::runtime::block_on(async {
-            let backup_url = format!("sqlite://{}", backup_path.display());
-            let backup_pool = SqlitePool::connect(&backup_url)
-                .await
-                .expect("failed to open backup database");
-
-            let version = crate::db::version::read_db_version(&backup_pool)
-                .await
-                .expect("failed to query backup")
-                .expect("backup should have a version stamp");
-
-            assert_eq!(
-                version, test_version,
-                "backup should contain the stamped version"
-            );
-
-            backup_pool.close().await;
-        });
+        let backup_url = format!("sqlite://{}", backup_path.display());
+        let backup_pool = SqlitePool::connect(&backup_url)
+            .await
+            .expect("failed to open backup database");
+        let version = crate::db::version::read_db_version(&backup_pool)
+            .await
+            .expect("failed to query backup")
+            .expect("backup should have a version stamp");
+        assert_eq!(
+            version, test_version,
+            "backup should contain the stamped version"
+        );
+        backup_pool.close().await;
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[tokio::test]
     async fn test_find_best_backup_skips_missing_files() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
         let db_path = dir.path().join("cadmus.sqlite");
-        let mut db = Database::new(&db_path).expect("failed to create database");
-        db.init_for_test(0).expect("failed to run migrations");
+        let mut db = Database::new(&db_path)
+            .await
+            .expect("failed to create database");
+        db.init_for_test(0).await.expect("failed to run migrations");
 
         let v090 = GitVersion::from_str("v0.9.0").unwrap();
         let v095 = GitVersion::from_str("v0.9.5").unwrap();
         let v100 = GitVersion::from_str("v0.10.0").unwrap();
 
-        crate::runtime::block_on(async {
-            let manager = DbBackupManager::new(dir.path().to_path_buf(), v090.clone());
-            manager
-                .create_backup(db.pool(), &db_path, 10)
-                .await
-                .unwrap();
-
-            let manager = DbBackupManager::new(dir.path().to_path_buf(), v095.clone());
-            manager
-                .create_backup(db.pool(), &db_path, 10)
-                .await
-                .unwrap();
-        });
+        let manager = DbBackupManager::new(dir.path().to_path_buf(), v090.clone());
+        manager
+            .create_backup(db.pool(), &db_path, 10)
+            .await
+            .unwrap();
+        let manager = DbBackupManager::new(dir.path().to_path_buf(), v095.clone());
+        manager
+            .create_backup(db.pool(), &db_path, 10)
+            .await
+            .unwrap();
 
         // Manually delete the v0.9.5 backup file, leaving its manifest entry
         // intact — this simulates a previously failed cleanup.
@@ -719,24 +706,23 @@ mod tests {
         );
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[tokio::test]
     async fn test_find_best_backup_selects_closest_older_version() {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
         let db_path = dir.path().join("cadmus.sqlite");
-        let mut db = Database::new(&db_path).expect("failed to create database");
-        db.init_for_test(0).expect("failed to run migrations");
+        let mut db = Database::new(&db_path)
+            .await
+            .expect("failed to create database");
+        db.init_for_test(0).await.expect("failed to run migrations");
 
         let v090 = GitVersion::from_str("v0.9.0").unwrap();
         let v095 = GitVersion::from_str("v0.9.5").unwrap();
         let v100 = GitVersion::from_str("v0.10.0").unwrap();
 
-        crate::runtime::block_on(async {
-            let manager = DbBackupManager::new(dir.path().to_path_buf(), v090.clone());
-            manager.create_backup(db.pool(), &db_path, 2).await.unwrap();
-
-            let manager = DbBackupManager::new(dir.path().to_path_buf(), v100.clone());
-            manager.create_backup(db.pool(), &db_path, 2).await.unwrap();
-        });
+        let manager = DbBackupManager::new(dir.path().to_path_buf(), v090.clone());
+        manager.create_backup(db.pool(), &db_path, 2).await.unwrap();
+        let manager = DbBackupManager::new(dir.path().to_path_buf(), v100.clone());
+        manager.create_backup(db.pool(), &db_path, 2).await.unwrap();
 
         let manager = DbBackupManager::new(dir.path().to_path_buf(), v095.clone());
         let best = manager

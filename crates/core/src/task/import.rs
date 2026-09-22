@@ -66,7 +66,11 @@ impl ImportTask {
             }
         };
 
-        let library = match Library::new(&lib_settings.path, &self.database, &lib_settings.name) {
+        let library = match crate::runtime::block_on(Library::new(
+            &lib_settings.path,
+            &self.database,
+            &lib_settings.name,
+        )) {
             Ok(lib) => lib,
             Err(e) => {
                 tracing::error!(error = %e, library_index = index, "failed to open library for import");

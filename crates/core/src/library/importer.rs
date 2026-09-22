@@ -467,9 +467,9 @@ fn resolve_relocations(
         .map(PendingRelocation::old_fp)
         .collect();
 
-    let mut fetched = db
-        .batch_get_books_by_fingerprints(library_id, &old_fps)
-        .unwrap_or_default();
+    let mut fetched =
+        crate::runtime::block_on(db.batch_get_books_by_fingerprints(library_id, &old_fps))
+            .unwrap_or_default();
 
     for relocation in pending_relocations {
         match relocation {
@@ -542,7 +542,7 @@ fn flush_to_db(db: &LibraryDb, library_id: i64, result: ScanResult, purged_fps: 
         .map(|book| (book.fp, &book.info))
         .collect();
 
-    if let Err(e) = db.flush_import_scan(
+    if let Err(e) = crate::runtime::block_on(db.flush_import_scan(
         library_id,
         ImportFlush {
             thumbnails_to_delete: &result.thumbnails_to_delete,
@@ -553,7 +553,7 @@ fn flush_to_db(db: &LibraryDb, library_id: i64, result: ScanResult, purged_fps: 
             books_to_delete: &result.books_to_delete,
             sort_keys_dirty,
         },
-    ) {
+    )) {
         error!(error = %e, library_id, "import flush failed");
     }
 }
@@ -624,7 +624,7 @@ fn run_scan(
     force: bool,
     ctx: &ScanContext<'_>,
 ) -> ImportOutcome {
-    let handles = match db.list_book_handles(library_id) {
+    let handles = match crate::runtime::block_on(db.list_book_handles(library_id)) {
         Ok(h) => h,
         Err(e) => {
             error!(error = %e, "failed to load book handles for import");
@@ -652,12 +652,13 @@ fn run_scan(
         .map(|h| h.fp)
         .collect();
 
-    let purged_fps = db
-        .purge_disallowed_books_and_thumbnails(library_id, &settings.allowed_kinds)
-        .unwrap_or_else(|e| {
-            error!(error = %e, "failed to purge disallowed books");
-            Vec::new()
-        });
+    let purged_fps = crate::runtime::block_on(
+        db.purge_disallowed_books_and_thumbnails(library_id, &settings.allowed_kinds),
+    )
+    .unwrap_or_else(|e| {
+        error!(error = %e, "failed to purge disallowed books");
+        Vec::new()
+    });
 
     for fp in &purged_fps {
         pending_fps.remove(fp);
@@ -670,7 +671,7 @@ fn run_scan(
 
     let mut tracker = ProgressTracker::new();
 
-    let book_statuses = db.all_book_statuses().unwrap_or_default();
+    let book_statuses = crate::runtime::block_on(db.all_book_statuses()).unwrap_or_default();
 
     let Some(mut result) = scan_entries(
         home,
@@ -722,13 +723,14 @@ mod tests {
     use std::sync::mpsc;
 
     fn create_migrated_db() -> Database {
-        let mut db = Database::new(":memory:").expect("in-memory db");
-        db.init_for_test(0).expect("migrations");
+        let mut db = crate::runtime::block_on(Database::new(":memory:")).expect("in-memory db");
+        crate::runtime::block_on(db.init_for_test(0)).expect("migrations");
         db
     }
 
     fn run_import(dir: &Path, db: &Database, shutdown: &ShutdownSignal) -> Vec<Event> {
-        let lib = Library::new(dir, db, "test").expect("failed to create library");
+        let lib = crate::runtime::block_on(Library::new(dir, db, "test"))
+            .expect("failed to create library");
         let (tx, mut rx) = crate::view::hub_channel();
         let notif_id = ViewId::MessageNotif(0);
         run(
@@ -784,7 +786,7 @@ mod tests {
         // Signal shutdown before the import starts so scan_entries exits immediately.
         shutdown_tx.send(()).expect("send shutdown");
 
-        let lib = Library::new(dir.path(), &db, "test").expect("library");
+        let lib = crate::runtime::block_on(Library::new(dir.path(), &db, "test")).expect("library");
         let (tx, mut rx) = crate::view::hub_channel();
         let notif_id = ViewId::MessageNotif(0);
         let outcome = run(
@@ -908,7 +910,7 @@ mod tests {
     async fn finds_deleted_books_when_file_path_is_empty() {
         let dir = tempfile::tempdir().expect("tempdir");
         let db = create_migrated_db();
-        let lib = Library::new(dir.path(), &db, "test").expect("library");
+        let lib = crate::runtime::block_on(Library::new(dir.path(), &db, "test")).expect("library");
         let fp = Fp::from_u64(1);
         let info = Info {
             title: "test".to_string(),
@@ -922,11 +924,11 @@ mod tests {
             ..Default::default()
         };
 
-        lib.db
-            .batch_insert_books(lib.library_id, &[(fp, &info)])
+        crate::runtime::block_on(lib.db.batch_insert_books(lib.library_id, &[(fp, &info)]))
             .expect("insert library book");
 
-        let handles = lib.db.list_book_handles(lib.library_id).expect("handles");
+        let handles =
+            crate::runtime::block_on(lib.db.list_book_handles(lib.library_id)).expect("handles");
         let handles_by_fp: FxHashMap<Fp, (PathBuf, PathBuf)> = handles
             .into_iter()
             .map(|h| (h.fp, (h.relat, h.abs)))
@@ -953,7 +955,7 @@ mod tests {
             ..ImportSettings::default()
         };
 
-        let lib = Library::new(dir.path(), &db, "test").expect("library");
+        let lib = crate::runtime::block_on(Library::new(dir.path(), &db, "test")).expect("library");
         let (tx, mut rx) = crate::view::hub_channel();
         let notif_id = ViewId::MessageNotif(0);
         let shutdown = ShutdownSignal::never();
@@ -972,7 +974,8 @@ mod tests {
         drop(tx);
         let _events: Vec<Event> = rx.try_iter().map(|message| message.event).collect();
 
-        let handles = lib.db.list_book_handles(lib.library_id).expect("handles");
+        let handles =
+            crate::runtime::block_on(lib.db.list_book_handles(lib.library_id)).expect("handles");
         let paths: Vec<_> = handles.iter().map(|h| h.relat.clone()).collect();
 
         assert!(
@@ -996,7 +999,7 @@ mod tests {
         std::fs::write(dir.path().join("book.epub"), b"epub content").expect("write epub");
         std::fs::write(dir.path().join("doc.pdf"), b"pdf content").expect("write pdf");
 
-        let lib = Library::new(dir.path(), &db, "test").expect("library");
+        let lib = crate::runtime::block_on(Library::new(dir.path(), &db, "test")).expect("library");
         let (tx, mut rx) = crate::view::hub_channel();
         let notif_id = ViewId::MessageNotif(0);
         let shutdown = ShutdownSignal::never();
@@ -1015,7 +1018,8 @@ mod tests {
         drop(tx);
         let _: Vec<Event> = rx.try_iter().map(|message| message.event).collect();
 
-        let handles = lib.db.list_book_handles(lib.library_id).expect("handles");
+        let handles =
+            crate::runtime::block_on(lib.db.list_book_handles(lib.library_id)).expect("handles");
         assert_eq!(handles.len(), 2, "both files should be imported initially");
 
         let mut epub_only: FxHashSet<FileExtension> = FxHashSet::default();
@@ -1041,9 +1045,7 @@ mod tests {
         drop(tx2);
         let _: Vec<Event> = rx2.try_iter().map(|message| message.event).collect();
 
-        let handles = lib
-            .db
-            .list_book_handles(lib.library_id)
+        let handles = crate::runtime::block_on(lib.db.list_book_handles(lib.library_id))
             .expect("handles after purge");
         let paths: Vec<_> = handles.iter().map(|h| h.relat.clone()).collect();
 
@@ -1077,7 +1079,7 @@ mod tests {
             .expect("mtime");
         let now = UnixTimestamp::now();
 
-        let lib = Library::new(dir.path(), &db, "test").expect("library");
+        let lib = crate::runtime::block_on(Library::new(dir.path(), &db, "test")).expect("library");
 
         crate::runtime::block_on(async {
             sqlx::query!(
@@ -1139,14 +1141,15 @@ mod tests {
         drop(tx);
         let _: Vec<Event> = rx.try_iter().map(|message| message.event).collect();
 
-        let handles = lib.db.list_book_handles(lib.library_id).expect("handles");
+        let handles =
+            crate::runtime::block_on(lib.db.list_book_handles(lib.library_id)).expect("handles");
         let handle = handles
             .iter()
             .find(|h| h.fp == fp)
             .expect("pending book handle");
         assert_eq!(handle.status, BookStatus::Active);
 
-        let books = lib.db.get_all_books(lib.library_id).expect("shelf");
+        let books = crate::runtime::block_on(lib.db.get_all_books(lib.library_id)).expect("shelf");
         assert!(
             books
                 .iter()

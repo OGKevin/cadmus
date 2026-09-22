@@ -78,7 +78,8 @@ impl View for Book {
             }
             Event::RefreshBookPreview(ref path) => {
                 if self.info.file.path == *path {
-                    self.preview = context.library.thumbnail_preview(path);
+                    self.preview =
+                        crate::runtime::block_on(context.library.thumbnail_preview(path));
                     rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
                     true
                 } else {

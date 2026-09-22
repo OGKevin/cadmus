@@ -938,8 +938,8 @@ mod tests {
     async fn test_thumbnail_extraction_task_lifecycle() {
         let mut manager = TaskManager::new();
         let (hub, _rx) = crate::view::hub_channel();
-        let mut database = Database::new(":memory:").unwrap();
-        database.init_for_test(0).unwrap();
+        let mut database = crate::runtime::block_on(Database::new(":memory:")).unwrap();
+        crate::runtime::block_on(database.init_for_test(0)).unwrap();
         let settings = Settings::default();
         let context = create_test_context();
 
@@ -985,8 +985,8 @@ mod tests {
             },
         );
 
-        let mut database = Database::new(":memory:").unwrap();
-        database.init_for_test(0).unwrap();
+        let mut database = crate::runtime::block_on(Database::new(":memory:")).unwrap();
+        crate::runtime::block_on(database.init_for_test(0)).unwrap();
         let settings = Settings::default();
         let context = create_test_context();
 

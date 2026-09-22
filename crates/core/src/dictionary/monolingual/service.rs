@@ -101,7 +101,7 @@ impl MonolingualDictionaryService {
         &self,
         lang: &str,
     ) -> Result<Option<DictionaryEntry>, MonolingualError> {
-        Ok(self.db.get_entry(lang)?)
+        Ok(crate::runtime::block_on(self.db.get_entry(lang))?)
     }
 
     /// Returns the language codes of all locally installed dictionaries.
@@ -114,7 +114,7 @@ impl MonolingualDictionaryService {
     /// Returns an error if the registry cannot be read.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     pub fn get_installed_dictionaries(&self) -> Result<Vec<String>, MonolingualError> {
-        let registered = self.db.list_installed_langs()?;
+        let registered = crate::runtime::block_on(self.db.list_installed_langs())?;
         Ok(registered
             .into_iter()
             .filter(|lang| has_dict_pair(&self.lang_dir(lang)))
@@ -279,7 +279,9 @@ impl MonolingualDictionaryService {
         }
 
         let previous = commit_extracted_dictionary(&dest, &staging, lang, &mut staging_guard)?;
-        if let Err(registry) = self.db.record_install(lang, entry.updated.into()) {
+        if let Err(registry) =
+            crate::runtime::block_on(self.db.record_install(lang, entry.updated.into()))
+        {
             if let Err(restore) =
                 restore_previous_dictionary_after_registry_failure(&dest, previous.as_ref())
             {
@@ -323,7 +325,7 @@ impl MonolingualDictionaryService {
                 );
             }
         }
-        if let Err(e) = self.db.remove_installed(lang) {
+        if let Err(e) = crate::runtime::block_on(self.db.remove_installed(lang)) {
             tracing::warn!(lang, error = %e, "Failed to remove installed dictionary record");
         }
     }
@@ -334,12 +336,12 @@ impl MonolingualDictionaryService {
     /// Returns `false` on any error to avoid surfacing spurious update badges.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     pub fn is_update_available(&self, lang: &str) -> bool {
-        self.db.is_update_available(lang).unwrap_or(false)
+        crate::runtime::block_on(self.db.is_update_available(lang)).unwrap_or(false)
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     fn load_metadata(&self) -> Result<DictionariesResponse, MonolingualError> {
-        if let Some(cached_at) = self.db.get_most_recent_cached_at()? {
+        if let Some(cached_at) = crate::runtime::block_on(self.db.get_most_recent_cached_at())? {
             match self.client.is_metadata_modified_since(cached_at) {
                 Ok(false) => {
                     tracing::debug!("Cache is fresh (304), using cached metadata");
@@ -371,7 +373,7 @@ impl MonolingualDictionaryService {
 
         for (source_lang, targets) in &metadata {
             if let Some(entry) = targets.get(source_lang.as_str()) {
-                self.db.upsert_entry(source_lang, entry)?;
+                crate::runtime::block_on(self.db.upsert_entry(source_lang, entry))?;
             }
         }
 
@@ -381,7 +383,7 @@ impl MonolingualDictionaryService {
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     fn get_cached_metadata(&self) -> Result<Option<DictionariesResponse>, MonolingualError> {
-        let entries = self.db.get_all_entries()?;
+        let entries = crate::runtime::block_on(self.db.get_all_entries())?;
 
         if entries.is_empty() {
             tracing::debug!("No cached metadata found in database");
@@ -443,7 +445,9 @@ fn reconcile_reader_dict_tree(db: &Db, root: &Path) -> Result<(), MonolingualErr
         return Ok(());
     }
 
-    let mut registered: HashSet<String> = db.list_installed_langs()?.into_iter().collect();
+    let mut registered: HashSet<String> = crate::runtime::block_on(db.list_installed_langs())?
+        .into_iter()
+        .collect();
     tracing::debug!(
         registered = registered.len(),
         "reconciling dictionary installs"
@@ -650,7 +654,7 @@ fn discard_replaced_tree(replaced: &Path, lang: &str) {
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(db), fields(lang = %lang)))]
 fn register_complete_install(db: &Db, lang: &str) -> Result<(), MonolingualError> {
     let version = install_version_for_registration(db, lang)?;
-    db.record_install(lang, version)?;
+    crate::runtime::block_on(db.record_install(lang, version))?;
     tracing::info!(lang, "registered complete dictionary install");
     Ok(())
 }
@@ -663,7 +667,7 @@ fn install_version_for_registration(
     db: &Db,
     lang: &str,
 ) -> Result<UnixTimestamp, MonolingualError> {
-    Ok(match db.get_entry(lang)? {
+    Ok(match crate::runtime::block_on(db.get_entry(lang))? {
         Some(entry) => entry.updated.into(),
         None => UnixTimestamp::from(0),
     })
@@ -897,8 +901,9 @@ mod tests {
     fn create_test_service() -> (MonolingualDictionaryService, TempDir, Database) {
         crate::crypto::init_crypto_provider();
         let dir = TempDir::new().expect("failed to create temp dir");
-        let mut database = Database::new(":memory:").expect("failed to create in-memory database");
-        database.init_for_test(0).expect("failed to run migrations");
+        let mut database = crate::runtime::block_on(Database::new(":memory:"))
+            .expect("failed to create in-memory database");
+        crate::runtime::block_on(database.init_for_test(0)).expect("failed to run migrations");
         let service = MonolingualDictionaryService::new(&database, dir.path())
             .expect("failed to create service");
         (service, dir, database)
@@ -940,10 +945,7 @@ mod tests {
         fs::create_dir_all(&lang_dir).unwrap();
         fs::File::create(lang_dir.join("dict.index")).unwrap();
         fs::File::create(lang_dir.join("dict.dict")).unwrap();
-        service
-            .db
-            .record_install("en", UnixTimestamp::now())
-            .unwrap();
+        crate::runtime::block_on(service.db.record_install("en", UnixTimestamp::now())).unwrap();
 
         let installed = service.get_installed_dictionaries().unwrap();
         assert_eq!(installed, vec!["en".to_string()]);
@@ -956,10 +958,7 @@ mod tests {
         fs::create_dir_all(&lang_dir).unwrap();
         fs::File::create(lang_dir.join("dict.index")).unwrap();
         fs::File::create(lang_dir.join("dict.dict.dz")).unwrap();
-        service
-            .db
-            .record_install("fr", UnixTimestamp::now())
-            .unwrap();
+        crate::runtime::block_on(service.db.record_install("fr", UnixTimestamp::now())).unwrap();
 
         let installed = service.get_installed_dictionaries().unwrap();
         assert_eq!(installed, vec!["fr".to_string()]);
@@ -990,10 +989,7 @@ mod tests {
         fs::create_dir_all(&lang_dir).unwrap();
         fs::File::create(lang_dir.join("dict.index")).unwrap();
         fs::File::create(lang_dir.join("dict.dict")).unwrap();
-        service
-            .db
-            .record_install("en", UnixTimestamp::now())
-            .unwrap();
+        crate::runtime::block_on(service.db.record_install("en", UnixTimestamp::now())).unwrap();
 
         assert_eq!(
             service.get_installed_dictionaries().unwrap(),
@@ -1047,10 +1043,7 @@ mod tests {
         fs::create_dir_all(&staging).unwrap();
         fs::write(staging.join("dict.index"), b"new").unwrap();
         fs::write(staging.join("dict.dict"), b"new").unwrap();
-        service
-            .db
-            .record_install("en", UnixTimestamp::now())
-            .unwrap();
+        crate::runtime::block_on(service.db.record_install("en", UnixTimestamp::now())).unwrap();
 
         service.reconcile().unwrap();
 
@@ -1132,10 +1125,7 @@ mod tests {
         fs::create_dir_all(&dest).unwrap();
         fs::write(dest.join("dict.index"), b"old").unwrap();
         fs::write(dest.join("dict.dict"), b"old").unwrap();
-        service
-            .db
-            .record_install("en", UnixTimestamp::now())
-            .unwrap();
+        crate::runtime::block_on(service.db.record_install("en", UnixTimestamp::now())).unwrap();
         fs::create_dir_all(&staging).unwrap();
         fs::write(staging.join("dict.index"), b"new").unwrap();
 
@@ -1256,10 +1246,7 @@ mod tests {
         fs::create_dir_all(&aside).unwrap();
         fs::File::create(aside.join("dict.index")).unwrap();
         fs::File::create(aside.join("dict.dict")).unwrap();
-        service
-            .db
-            .record_install("en", UnixTimestamp::now())
-            .unwrap();
+        crate::runtime::block_on(service.db.record_install("en", UnixTimestamp::now())).unwrap();
 
         service.reconcile().unwrap();
 
@@ -1282,10 +1269,7 @@ mod tests {
         fs::create_dir_all(&aside).unwrap();
         fs::write(aside.join("dict.index"), b"complete").unwrap();
         fs::write(aside.join("dict.dict"), b"complete").unwrap();
-        service
-            .db
-            .record_install("en", UnixTimestamp::now())
-            .unwrap();
+        crate::runtime::block_on(service.db.record_install("en", UnixTimestamp::now())).unwrap();
 
         service.reconcile().unwrap();
 
@@ -1305,11 +1289,8 @@ mod tests {
         let dest = root.join("en");
         let aside = replaced_dir(&root, "en");
         let old_version: UnixTimestamp = NaiveDate::from_ymd_opt(2026, 1, 1).unwrap().into();
-        service
-            .db
-            .upsert_entry("en", &make_entry(2026, 4, 1))
-            .unwrap();
-        service.db.record_install("en", old_version).unwrap();
+        crate::runtime::block_on(service.db.upsert_entry("en", &make_entry(2026, 4, 1))).unwrap();
+        crate::runtime::block_on(service.db.record_install("en", old_version)).unwrap();
         fs::create_dir_all(&dest).unwrap();
         fs::write(dest.join("dict.index"), b"new").unwrap();
         fs::write(dest.join("dict.dict"), b"new").unwrap();
@@ -1339,11 +1320,8 @@ mod tests {
         let dest = root.join("en");
         let staging = staging_dir(&root, "en");
         let old_version: UnixTimestamp = NaiveDate::from_ymd_opt(2026, 1, 1).unwrap().into();
-        service
-            .db
-            .upsert_entry("en", &make_entry(2026, 4, 1))
-            .unwrap();
-        service.db.record_install("en", old_version).unwrap();
+        crate::runtime::block_on(service.db.upsert_entry("en", &make_entry(2026, 4, 1))).unwrap();
+        crate::runtime::block_on(service.db.record_install("en", old_version)).unwrap();
         fs::create_dir_all(&dest).unwrap();
         fs::write(dest.join("dict.index"), b"incomplete").unwrap();
         fs::create_dir_all(&staging).unwrap();
@@ -1372,11 +1350,8 @@ mod tests {
         let dest = root.join("en");
         let aside = replaced_dir(&root, "en");
         let version: UnixTimestamp = NaiveDate::from_ymd_opt(2026, 4, 1).unwrap().into();
-        service
-            .db
-            .upsert_entry("en", &make_entry(2026, 4, 1))
-            .unwrap();
-        service.db.record_install("en", version).unwrap();
+        crate::runtime::block_on(service.db.upsert_entry("en", &make_entry(2026, 4, 1))).unwrap();
+        crate::runtime::block_on(service.db.record_install("en", version)).unwrap();
         fs::create_dir_all(&dest).unwrap();
         fs::write(dest.join("dict.index"), b"new").unwrap();
         fs::write(dest.join("dict.dict"), b"new").unwrap();
@@ -1456,11 +1431,8 @@ mod tests {
         let dest = root.join("en");
         let aside = replaced_dir(&root, "en");
         let old_version: UnixTimestamp = NaiveDate::from_ymd_opt(2026, 1, 1).unwrap().into();
-        service
-            .db
-            .upsert_entry("en", &make_entry(2026, 4, 1))
-            .unwrap();
-        service.db.record_install("en", old_version).unwrap();
+        crate::runtime::block_on(service.db.upsert_entry("en", &make_entry(2026, 4, 1))).unwrap();
+        crate::runtime::block_on(service.db.record_install("en", old_version)).unwrap();
         fs::create_dir_all(&dest).unwrap();
         fs::write(dest.join("dict.index"), b"incomplete").unwrap();
         fs::create_dir_all(&aside).unwrap();
@@ -1570,10 +1542,7 @@ mod tests {
         fs::create_dir_all(&aside).unwrap();
         fs::File::create(aside.join("dict.index")).unwrap();
         fs::File::create(aside.join("dict.dict")).unwrap();
-        service
-            .db
-            .record_install("en", UnixTimestamp::now())
-            .unwrap();
+        crate::runtime::block_on(service.db.record_install("en", UnixTimestamp::now())).unwrap();
 
         service.remove_installed("en");
         service.reconcile().unwrap();
@@ -1759,7 +1728,7 @@ mod tests {
         let (service, _dir, _db) = create_test_service_async().await;
 
         let entry = make_entry(2026, 4, 1);
-        service.db.upsert_entry("en", &entry).unwrap();
+        crate::runtime::block_on(service.db.upsert_entry("en", &entry)).unwrap();
 
         let result = service.get_entry_for_lang("en").unwrap();
         assert!(result.is_some());

@@ -450,9 +450,11 @@ impl Reader {
                 if let Some(toc) = doc.toc() {
                     let simple_toc: Vec<SimpleTocEntry> =
                         toc.iter().map(SimpleTocEntry::from).collect();
-                    context
-                        .library
-                        .sync_toc(&info.file.path, simple_toc.clone());
+                    crate::runtime::block_on(
+                        context
+                            .library
+                            .sync_toc(&info.file.path, simple_toc.clone()),
+                    );
                     info.toc = Some(simple_toc);
                 }
             }
@@ -1156,10 +1158,9 @@ impl Reader {
                             hub.send((Event::Back).into()).ok();
                         }
                         FinishedAction::GoToNext => {
-                            let next = self
-                                .info
-                                .fp
-                                .and_then(|fp| context.library.next_book_after(fp));
+                            let next = self.info.fp.and_then(|fp| {
+                                crate::runtime::block_on(context.library.next_book_after(fp))
+                            });
 
                             self.quit(context);
 
@@ -3855,7 +3856,7 @@ impl Reader {
                 r.contrast_gray = None;
             }
 
-            context.library.sync_reader_info(&self.info.file.path, r);
+            crate::runtime::block_on(context.library.sync_reader_info(&self.info.file.path, r));
         }
     }
 

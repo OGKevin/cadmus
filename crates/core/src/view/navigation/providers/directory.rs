@@ -133,7 +133,7 @@ impl DirectoryNavigationProvider {
     /// Lists directories using the library's filtering rules.
     #[inline]
     fn list_library_dirs(&self, path: &Path, context: &AppContext) -> BTreeSet<PathBuf> {
-        context.library.list(path, None, true).1
+        crate::runtime::block_on(context.library.list(path, None, true)).1
     }
 
     #[inline]

@@ -175,14 +175,14 @@ mod tests {
         assert_eq!(pen.min_speed, 127.0);
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[tokio::test]
     async fn test_migrate_sketch_pen_speed_mm_updates_context_settings() {
         use crate::db::Database;
         use crate::db::migrations::{MigrationContext, MigrationDevice};
         use crate::device::test_device::TestDevice;
         use crate::settings::Settings;
 
-        let db = Database::new(":memory:").expect("database");
+        let db = Database::new(":memory:").await.expect("database");
         let mut settings = Settings::default();
         settings.sketch.pen.max_speed = 3000.0;
 
@@ -193,11 +193,9 @@ mod tests {
             settings: &mut settings,
         };
 
-        crate::runtime::block_on(async {
-            migrate_sketch_pen_speed_mm(&mut ctx)
-                .await
-                .expect("pen speed migration should succeed");
-        });
+        migrate_sketch_pen_speed_mm(&mut ctx)
+            .await
+            .expect("pen speed migration should succeed");
 
         assert_eq!(settings.sketch.pen.max_speed, 254.0);
     }

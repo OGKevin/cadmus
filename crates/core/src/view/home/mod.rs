@@ -203,10 +203,12 @@ impl Home {
         );
 
         let max_lines = shelf.max_lines;
-        let page_result =
-            context
-                .library
-                .page(&current_directory, None, current_page, max_lines)?;
+        let page_result = crate::runtime::block_on(context.library.page(
+            &current_directory,
+            None,
+            current_page,
+            max_lines,
+        ))?;
         let count = page_result.total_count;
         let pages_count = count.div_ceil(max_lines);
 
@@ -391,13 +393,13 @@ impl Home {
             .downcast_ref::<Shelf>()
             .unwrap()
             .max_lines;
-        match context.library.neighbor_status_change_page(
+        match crate::runtime::block_on(context.library.neighbor_status_change_page(
             &self.current_directory,
             self.query.as_ref(),
             self.current_page,
             max_lines,
             dir,
-        ) {
+        )) {
             Ok(Some(page)) => {
                 self.current_page = page;
                 self.update_shelf(false, rq, context);
@@ -430,16 +432,14 @@ impl Home {
             self.current_page = 0;
         }
 
-        let page_result = context
-            .library
-            .page(
-                &self.current_directory,
-                self.query.as_ref(),
-                self.current_page,
-                max_lines,
-            )
-            .map_err(|e| error!(error = %e, "failed to refresh visibles"))
-            .ok();
+        let page_result = crate::runtime::block_on(context.library.page(
+            &self.current_directory,
+            self.query.as_ref(),
+            self.current_page,
+            max_lines,
+        ))
+        .map_err(|e| error!(error = %e, "failed to refresh visibles"))
+        .ok();
 
         if let Some(page_result) = page_result {
             self.total_count = page_result.total_count;
@@ -451,16 +451,14 @@ impl Home {
             }
 
             self.current_page_books = if self.current_page != previous_page {
-                context
-                    .library
-                    .page(
-                        &self.current_directory,
-                        self.query.as_ref(),
-                        self.current_page,
-                        max_lines,
-                    )
-                    .map(|result| result.books)
-                    .unwrap_or_default()
+                crate::runtime::block_on(context.library.page(
+                    &self.current_directory,
+                    self.query.as_ref(),
+                    self.current_page,
+                    max_lines,
+                ))
+                .map(|result| result.books)
+                .unwrap_or_default()
             } else {
                 page_result.books
             };
@@ -532,12 +530,12 @@ impl Home {
             self.current_page = (page_guess as usize).min(self.pages_count.saturating_sub(1));
         }
 
-        match context.library.page(
+        match crate::runtime::block_on(context.library.page(
             &self.current_directory,
             self.query.as_ref(),
             self.current_page,
             max_lines,
-        ) {
+        )) {
             Ok(page_result) => {
                 self.total_count = page_result.total_count;
                 self.pages_count = self.total_count.div_ceil(max_lines);
@@ -1482,16 +1480,16 @@ impl Home {
             ));
 
             let trash_path = context.library.home.join(TRASH_DIRNAME);
-            if let Ok(trash) = Library::new(trash_path, &context.database, "Trash")
-                .map_err(|e| error!("Can't inspect trash: {:#?}.", e))
+            if let Ok(trash) =
+                crate::runtime::block_on(Library::new(trash_path, &context.database, "Trash"))
+                    .map_err(|e| error!("Can't inspect trash: {:#?}.", e))
+                && crate::runtime::block_on(trash.is_empty()) == Some(false)
             {
-                if trash.is_empty() == Some(false) {
-                    entries.push(EntryKind::Separator);
-                    entries.push(EntryKind::Command(
-                        "Empty Trash".to_string(),
-                        EntryId::EmptyTrash,
-                    ));
-                }
+                entries.push(EntryKind::Separator);
+                entries.push(EntryKind::Command(
+                    "Empty Trash".to_string(),
+                    EntryId::EmptyTrash,
+                ));
             }
 
             let library_menu = Menu::new(
@@ -1511,7 +1509,7 @@ impl Home {
     }
 
     fn add_document(&mut self, info: Info, rq: &mut RenderQueue, context: &mut AppContext) {
-        context.library.add_document(info);
+        crate::runtime::block_on(context.library.add_document(info));
         self.sort(false, rq, context);
         self.refresh_visibles(true, false, rq, context);
     }
@@ -1523,7 +1521,7 @@ impl Home {
         rq: &mut RenderQueue,
         context: &mut AppContext,
     ) {
-        context.library.set_status(path, status);
+        crate::runtime::block_on(context.library.set_status(path, status));
 
         // Is the current sort method affected by this change?
         if self.sort_method.is_status_related() {
@@ -1536,7 +1534,7 @@ impl Home {
     fn empty_trash(&mut self, hub: &Hub, rq: &mut RenderQueue, context: &mut AppContext) {
         let trash_path = context.library.home.join(TRASH_DIRNAME);
 
-        let trash = Library::new(trash_path, &context.database, "Trash")
+        let trash = crate::runtime::block_on(Library::new(trash_path, &context.database, "Trash"))
             .map_err(|e| error!("Can't load trash: {:#}.", e));
         if trash.is_err() {
             return;
@@ -1544,14 +1542,14 @@ impl Home {
 
         let mut trash = trash.unwrap();
 
-        let (files, _) = trash.list(&trash.home, None, false);
+        let (files, _) = crate::runtime::block_on(trash.list(&trash.home, None, false));
         if files.is_empty() {
             return;
         }
 
         let mut count = 0;
         for info in files {
-            match trash.remove(&info.file.path) {
+            match crate::runtime::block_on(trash.remove(&info.file.path)) {
                 Err(e) => error!("Can't erase {}: {:#}.", info.file.path.display(), e),
                 Ok(()) => count += 1,
             }
@@ -1572,7 +1570,7 @@ impl Home {
         rq: &mut RenderQueue,
         context: &mut AppContext,
     ) -> Result<(), Error> {
-        context.library.rename(path, file_name)?;
+        crate::runtime::block_on(context.library.rename(path, file_name))?;
         self.refresh_visibles(true, false, rq, context);
         Ok(())
     }
@@ -1589,22 +1587,23 @@ impl Home {
             if !trash_path.is_dir() {
                 fs::create_dir(&trash_path)?;
             }
-            let mut trash = Library::new(trash_path, &context.database, "Trash")?;
+            let mut trash =
+                crate::runtime::block_on(Library::new(trash_path, &context.database, "Trash"))?;
             trash.sort_method = SortMethod::Added;
             trash.reverse_order = true;
-            context.library.move_to(path, &mut trash)?;
-            let (mut files, _) = trash.list(&trash.home, None, false);
+            crate::runtime::block_on(context.library.move_to(path, &mut trash))?;
+            let (mut files, _) = crate::runtime::block_on(trash.list(&trash.home, None, false));
             let mut size = files.iter().map(|info| info.file.size).sum::<u64>();
             while size > context.settings.home.max_trash_size {
                 let Some(info) = files.pop() else { break };
-                if let Err(e) = trash.remove(&info.file.path) {
+                if let Err(e) = crate::runtime::block_on(trash.remove(&info.file.path)) {
                     error!("Can't erase {}: {:#}", info.file.path.display(), e);
                     break;
                 }
                 size -= info.file.size;
             }
         } else {
-            context.library.remove(path)?;
+            crate::runtime::block_on(context.library.remove(path))?;
         }
         self.refresh_visibles(true, false, rq, context);
         Ok(())
@@ -1617,12 +1616,12 @@ impl Home {
         context: &mut AppContext,
     ) -> Result<(), Error> {
         let library_settings = &context.settings.libraries[index];
-        let mut library = Library::new(
+        let mut library = crate::runtime::block_on(Library::new(
             &library_settings.path,
             &context.database,
             &library_settings.name,
-        )?;
-        context.library.copy_to(path, &mut library)?;
+        ))?;
+        crate::runtime::block_on(context.library.copy_to(path, &mut library))?;
         Ok(())
     }
 
@@ -1634,12 +1633,12 @@ impl Home {
         context: &mut AppContext,
     ) -> Result<(), Error> {
         let library_settings = &context.settings.libraries[index];
-        let mut library = Library::new(
+        let mut library = crate::runtime::block_on(Library::new(
             &library_settings.path,
             &context.database,
             &library_settings.name,
-        )?;
-        context.library.move_to(path, &mut library)?;
+        ))?;
+        crate::runtime::block_on(context.library.move_to(path, &mut library))?;
         self.refresh_visibles(true, false, rq, context);
         Ok(())
     }
@@ -1698,11 +1697,11 @@ impl Home {
         }
 
         let library_settings = context.settings.libraries[index].clone();
-        let library = Library::new(
+        let library = crate::runtime::block_on(Library::new(
             &library_settings.path,
             &context.database,
             &library_settings.name,
-        )
+        ))
         .map_err(|e| error!("Can't load library: {:#}.", e));
 
         if library.is_err() {
@@ -2347,13 +2346,13 @@ impl View for Home {
                 let query = query.as_ref().and_then(|text| BookQuery::new(text));
                 let (sort_method, reverse_order) =
                     sort_by.unwrap_or((context.library.sort_method, context.library.reverse_order));
-                let (mut files, _) = context.library.list_by(
+                let (mut files, _) = crate::runtime::block_on(context.library.list_by(
                     path,
                     query.as_ref(),
                     sort_method,
                     reverse_order,
                     false,
-                );
+                ));
                 for entry in &mut files {
                     // Let the *reader* field pass through.
                     mem::swap(&mut entry.reader, &mut entry.reader_info);

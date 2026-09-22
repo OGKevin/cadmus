@@ -83,7 +83,8 @@ impl Shelf {
                 };
 
             let preview = if self.thumbnail_previews {
-                let existing = context.library.thumbnail_preview(&info.file.path);
+                let existing =
+                    crate::runtime::block_on(context.library.thumbnail_preview(&info.file.path));
                 if existing.is_none() {
                     tracing::debug!(path = %info.file.path.display(), "no preview");
                 }

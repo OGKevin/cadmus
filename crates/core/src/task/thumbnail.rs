@@ -59,7 +59,11 @@ impl ThumbnailExtractionTask {
             }
         };
 
-        let library = match Library::new(&lib_settings.path, &self.database, &lib_settings.name) {
+        let library = match crate::runtime::block_on(Library::new(
+            &lib_settings.path,
+            &self.database,
+            &lib_settings.name,
+        )) {
             Ok(lib) => lib,
             Err(e) => {
                 tracing::error!(error = %e, library_index = index, "failed to open library for thumbnail extraction");
@@ -67,7 +71,9 @@ impl ThumbnailExtractionTask {
             }
         };
 
-        let books = match library.db.books_without_thumbnails(library.library_id) {
+        let books = match crate::runtime::block_on(
+            library.db.books_without_thumbnails(library.library_id),
+        ) {
             Ok(books) => books,
             Err(e) => {
                 tracing::error!(error = %e, library_id = library.library_id, "failed to query books without thumbnails");
@@ -108,7 +114,8 @@ impl ThumbnailExtractionTask {
                 .and_then(|pixmap| pixmap.to_png_bytes().ok())
             {
                 Some(bytes) => {
-                    if let Err(e) = library.db.save_thumbnail(fp, &bytes) {
+                    if let Err(e) = crate::runtime::block_on(library.db.save_thumbnail(fp, &bytes))
+                    {
                         tracing::error!(error = %e, path = %path.display(), "failed to save thumbnail to database");
                     } else {
                         hub.send((Event::RefreshBookPreview(path)).into()).ok();
