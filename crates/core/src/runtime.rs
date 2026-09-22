@@ -58,6 +58,16 @@ where
     result
 }
 
+
+/// Runs `f` on the blocking pool of the current process runtime.
+pub fn spawn_blocking<F, R>(f: F) -> tokio::task::JoinHandle<R>
+where
+    F: FnOnce() -> R + Send + 'static,
+    R: Send + 'static,
+{
+    current_handle().spawn_blocking(f)
+}
+
 /// Handle for the process runtime.
 ///
 /// Prefers the caller's current runtime, then the handle published by

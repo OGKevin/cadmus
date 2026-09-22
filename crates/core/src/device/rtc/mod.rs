@@ -28,7 +28,7 @@ use std::collections::BTreeMap;
 use std::mem;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::thread::{self, JoinHandle};
+use std::thread;
 use std::time::Duration as StdDuration;
 
 #[repr(C)]
@@ -260,7 +260,7 @@ pub struct ScheduledAlarm {
 pub struct AlarmManager<R: Rtc> {
     rtc: Arc<R>,
     scheduled_alarms: BTreeMap<AlarmType, ScheduledAlarm>,
-    irq_thread: Option<JoinHandle<()>>,
+    irq_thread: Option<tokio::task::JoinHandle<()>>,
     stop: Arc<AtomicBool>,
 }
 
@@ -303,7 +303,7 @@ impl<R: Rtc> AlarmManager<R> {
     pub fn stop_irq_listener(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
         if let Some(handle) = self.irq_thread.take() {
-            let _ = handle.join();
+            let _ = crate::runtime::block_on(handle);
         }
     }
 
@@ -545,7 +545,7 @@ fn shutdown_alarm_manager<R: Rtc>(alarm_manager: &Option<Arc<Mutex<AlarmManager<
         manager.irq_thread.take()
     };
     if let Some(handle) = join_handle {
-        let _ = handle.join();
+        let _ = crate::runtime::block_on(handle);
     }
     let mut manager = alarm_manager
         .lock()
@@ -595,7 +595,7 @@ impl<R: Rtc + 'static> AlarmManager<R> {
         drop(guard);
 
         let manager_for_thread = Arc::clone(manager);
-        let handle = thread::spawn(move || {
+        let handle = crate::runtime::spawn_blocking(move || {
             while !stop.load(Ordering::Relaxed) {
                 match rtc.wait_for_alarm_irq(Some(StdDuration::from_secs(1))) {
                     Ok(Some(_)) => {

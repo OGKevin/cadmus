@@ -124,7 +124,6 @@ fn parse_kern_log(line: &str) -> Option<ParsedKernelLog> {
 pub fn spawn_kern_log_thread() {
     use std::io::{BufRead, BufReader};
     use std::process::{Command, Stdio};
-    use std::thread;
 
     fn is_process_running(name: &str) -> bool {
         Command::new("pgrep")
@@ -142,7 +141,7 @@ pub fn spawn_kern_log_thread() {
         tracing::info!("klogd already running, reusing existing process");
     }
 
-    thread::spawn(move || {
+    crate::runtime::spawn_blocking(move || {
         tracing::info!("Starting kernel log capture thread");
 
         let klogd = if klogd_running {

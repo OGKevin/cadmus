@@ -14,7 +14,6 @@ use crate::lease::LeaseName;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
-use std::thread;
 use std::time::Duration;
 
 /// Visual pattern driven on the physical status LED.
@@ -94,7 +93,7 @@ struct StatusLedInner {
 /// share the `Arc` across autosleep policy and future Full-inhibit wiring.
 pub struct StatusLed {
     inner: Arc<StatusLedInner>,
-    worker: Option<thread::JoinHandle<()>>,
+    worker: Option<tokio::task::JoinHandle<()>>,
 }
 
 /// RAII guard for an installed status-LED command.
@@ -229,7 +228,7 @@ impl StatusLed {
             sequence: AtomicU64::new(0),
         });
         let worker = Arc::clone(&inner);
-        let handle = thread::spawn(move || worker.run());
+        let handle = crate::runtime::spawn_blocking(move || worker.run());
         Arc::new(Self {
             inner,
             worker: Some(handle),
@@ -297,7 +296,7 @@ impl Drop for StatusLed {
         }
         self.inner.cv.notify_one();
         if let Some(handle) = self.worker.take() {
-            let _ = handle.join();
+            let _ = crate::runtime::block_on(handle);
         }
     }
 }
@@ -313,6 +312,7 @@ mod tests {
     use super::*;
     use crate::device::leds::LedsError;
     use std::sync::atomic::{AtomicU32, Ordering};
+    use std::thread;
 
     struct CountingLeds {
         on_calls: AtomicU32,

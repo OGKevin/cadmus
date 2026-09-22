@@ -74,7 +74,6 @@ use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering as AtomicOrdering;
 use std::sync::{Arc, Mutex};
-use std::thread;
 use tracing::{debug, error, info, warn};
 
 const HISTORY_SIZE: usize = 32;
@@ -1558,7 +1557,7 @@ impl Reader {
         {
             let doc2 = self.doc.clone();
             let hub2 = hub.clone();
-            thread::spawn(move || {
+            crate::runtime::spawn_blocking(move || {
                 let mut doc = doc2.lock().unwrap();
                 if let Some(next_location) = doc.resolve_location(Location::Next(last_location)) {
                     hub2.send((Event::LoadPixmap(next_location)).into()).ok();
@@ -1566,7 +1565,7 @@ impl Reader {
             });
             let doc3 = self.doc.clone();
             let hub3 = hub.clone();
-            thread::spawn(move || {
+            crate::runtime::spawn_blocking(move || {
                 let mut doc = doc3.lock().unwrap();
                 if let Some(previous_location) =
                     doc.resolve_location(Location::Previous(first_location))
@@ -1591,7 +1590,7 @@ impl Reader {
         let search_direction = self.search_direction;
         let ws = word_separator(&self.info.language);
 
-        thread::spawn(move || {
+        crate::runtime::spawn_blocking(move || {
             let mut loc = Location::Exact(current_page);
             let mut started = false;
 

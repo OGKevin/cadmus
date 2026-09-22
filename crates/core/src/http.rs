@@ -97,7 +97,7 @@ pub enum CancelFunc<'a> {
     /// Never cancels and always allows commit.
     Never,
     /// Poll-only cancel predicate without an atomic commit transition.
-    Check(&'a dyn Fn() -> bool),
+    Check(&'a (dyn Fn() -> bool + Send + Sync)),
     /// Shared cancel/commit gate.
     Flag(&'a CancelFlag),
 }
@@ -111,7 +111,7 @@ impl std::fmt::Debug for CancelFunc<'_> {
 impl<'a> CancelFunc<'a> {
     /// Wraps a cancel predicate that returns `true` when work should stop.
     #[must_use]
-    pub const fn new(check: &'a dyn Fn() -> bool) -> Self {
+    pub const fn new(check: &'a (dyn Fn() -> bool + Send + Sync)) -> Self {
         Self::Check(check)
     }
 

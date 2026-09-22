@@ -35,7 +35,6 @@ use crate::lease::{Lease, LeaseName, LeaseObserver, LeaseTracker};
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
-use std::thread;
 use std::time::{Duration, Instant};
 
 fn write_sysfs_applied(path: &Path, value: &str) -> bool {
@@ -81,7 +80,7 @@ impl UnlockInner {
             pins: AtomicUsize::new(0),
         });
         let worker = Arc::clone(&inner);
-        thread::spawn(move || worker.run());
+        crate::runtime::spawn_blocking(move || worker.run());
         inner
     }
 

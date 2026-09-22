@@ -115,7 +115,7 @@ impl InputSource for EmulatorInputSource {
         let hub_clone = hub.clone();
         let gesture_inhibitor = Arc::clone(&inhibitor);
 
-        std::thread::spawn(move || {
+        crate::runtime::spawn_blocking(move || {
             while let Ok(event) = gesture_rx.recv() {
                 crate::view::hub_message::send_input_hub_message(
                     &hub_clone,
@@ -131,7 +131,7 @@ impl InputSource for EmulatorInputSource {
             let sender = device_tx;
             let mut event_pump =
                 SendableEventPump(sendable_sdl.0.event_pump().expect("SDL3 event pump failed"));
-            std::thread::spawn(move || {
+            crate::runtime::spawn_blocking(move || {
                 'outer: loop {
                     while let Some(sdl_evt) = event_pump.poll_event() {
                         #[cfg(feature = "tracing")]
@@ -275,9 +275,9 @@ impl InputSource for EmulatorInputSource {
         }
 
         let hub_clone = hub.clone();
-        std::thread::spawn(move || {
+        crate::runtime::current_handle().spawn(async move {
             loop {
-                std::thread::sleep(CLOCK_REFRESH_INTERVAL);
+                tokio::time::sleep(CLOCK_REFRESH_INTERVAL).await;
                 hub_clone.send(Event::ClockTick.into()).ok();
             }
         });
@@ -564,8 +564,8 @@ fn handle_set_wifi_mode(
     match mode {
         crate::settings::WifiMode::AlwaysOn => {
             let hub = hub.clone();
-            std::thread::spawn(move || {
-                std::thread::sleep(std::time::Duration::from_secs(2));
+            crate::runtime::current_handle().spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
                 hub.send((Event::Device(DeviceEvent::NetUp)).into()).ok();
             });
         }

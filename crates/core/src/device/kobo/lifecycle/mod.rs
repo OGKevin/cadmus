@@ -36,7 +36,6 @@ use crate::view::{EntryId, Event, HubMessage};
 use std::fs::File;
 use std::sync::Arc;
 use std::sync::mpsc;
-use std::thread;
 
 /// Onboard path where a Nickel/OTA `KoboRoot.tgz` appears after USB mass storage.
 ///
@@ -95,7 +94,7 @@ impl DeviceLifecycle for Device {
         }
         let wifi_session = context.wifi_session.clone();
         let hub_wifi = hub.clone();
-        thread::spawn(move || {
+        crate::runtime::spawn_blocking(move || {
             if wants_on {
                 match wifi_session.enable_radio() {
                     Ok(connected) => {

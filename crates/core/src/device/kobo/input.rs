@@ -6,7 +6,6 @@ use crate::view::Event;
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::mpsc::Sender;
-use std::thread;
 use std::time::Duration;
 
 pub(crate) const CLOCK_REFRESH_INTERVAL: Duration = Duration::from_secs(60);
@@ -122,7 +121,7 @@ impl crate::device::InputSource for InputSource {
 
         let tx2 = tx.clone();
         let inhibitor2 = Arc::clone(&inhibitor);
-        thread::spawn(move || {
+        crate::runtime::spawn_blocking(move || {
             while let Ok(evt) = touch_screen.recv() {
                 crate::view::hub_message::send_input_hub_message(&tx2, &inhibitor2, evt);
             }
@@ -130,7 +129,7 @@ impl crate::device::InputSource for InputSource {
 
         let tx3 = tx.clone();
         let inhibitor3 = Arc::clone(&inhibitor);
-        thread::spawn(move || {
+        crate::runtime::spawn_blocking(move || {
             while let Ok(evt) = usb_port.recv() {
                 crate::view::hub_message::send_input_hub_message(
                     &tx3,
@@ -141,17 +140,17 @@ impl crate::device::InputSource for InputSource {
         });
 
         let tx4 = tx.clone();
-        thread::spawn(move || {
+        crate::runtime::current_handle().spawn(async move {
             loop {
-                thread::sleep(CLOCK_REFRESH_INTERVAL);
+                tokio::time::sleep(CLOCK_REFRESH_INTERVAL).await;
                 tx4.send(Event::ClockTick.into()).ok();
             }
         });
 
         let tx5 = tx.clone();
-        thread::spawn(move || {
+        crate::runtime::current_handle().spawn(async move {
             loop {
-                thread::sleep(BATTERY_REFRESH_INTERVAL);
+                tokio::time::sleep(BATTERY_REFRESH_INTERVAL).await;
                 tx5.send(Event::BatteryTick.into()).ok();
             }
         });

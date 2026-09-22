@@ -46,7 +46,6 @@ use std::io::{BufRead, BufReader};
 use std::mem;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::thread;
 use tracing::error;
 
 pub const TRASH_DIRNAME: &str = ".trash";
@@ -1884,7 +1883,7 @@ impl Home {
             .ok_or_else(|| format_err!("can't take stdout"))?;
         let id = process.id();
         let hub2 = hub.clone();
-        thread::spawn(move || {
+        crate::runtime::spawn_blocking(move || {
             let reader = BufReader::new(stdout);
             for line_res in reader.lines() {
                 if let Ok(line) = line_res {

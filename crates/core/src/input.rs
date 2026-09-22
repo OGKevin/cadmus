@@ -11,7 +11,6 @@ use std::os::unix::io::AsRawFd;
 use std::ptr;
 use std::slice;
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::thread;
 
 // Event types
 pub const EV_SYN: u16 = 0x00;
@@ -284,7 +283,7 @@ pub fn seconds(time: libc::timeval) -> f64 {
 pub fn raw_events(paths: Vec<String>) -> (Sender<InputEvent>, Receiver<InputEvent>) {
     let (tx, rx) = mpsc::channel();
     let tx2 = tx.clone();
-    thread::spawn(move || parse_raw_events(&paths, &tx));
+    crate::runtime::spawn_blocking(move || parse_raw_events(&paths, &tx));
     (tx2, rx)
 }
 
@@ -330,7 +329,7 @@ pub fn parse_raw_events(paths: &[String], tx: &Sender<InputEvent>) -> Result<(),
 
 pub fn usb_events() -> Receiver<DeviceEvent> {
     let (tx, rx) = mpsc::channel();
-    thread::spawn(move || parse_usb_events(&tx));
+    crate::runtime::spawn_blocking(move || parse_usb_events(&tx));
     rx
 }
 
@@ -444,7 +443,7 @@ pub fn device_events(
         "starting device event pipeline"
     );
     let (ty, ry) = mpsc::channel();
-    thread::spawn(move || {
+    crate::runtime::spawn_blocking(move || {
         parse_device_events(&rx, &ty, Display { dims, rotation }, button_scheme, info)
     });
     ry

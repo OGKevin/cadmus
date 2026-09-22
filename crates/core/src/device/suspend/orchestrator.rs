@@ -952,7 +952,7 @@ pub(in crate::device::suspend) fn finish_cycle(
     if context.settings.wifi.wants_radio_at_rest() {
         let session = context.wifi_session.clone();
         let hub = hub.clone();
-        std::thread::spawn(move || match session.enable_radio() {
+        crate::runtime::spawn_blocking(move || match session.enable_radio() {
             Ok(true) => {
                 hub.send((Event::Device(crate::input::DeviceEvent::NetUp)).into())
                     .ok();

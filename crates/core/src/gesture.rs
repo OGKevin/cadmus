@@ -7,7 +7,6 @@ use std::f64;
 use std::fmt;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
-use std::thread;
 use std::time::Duration;
 
 pub const TAP_JITTER_MM: f32 = 6.0;
@@ -125,7 +124,7 @@ pub struct TouchState {
 
 pub fn gesture_events(rx: Receiver<DeviceEvent>, dpi: u16) -> Receiver<Event> {
     let (ty, ry) = mpsc::channel();
-    thread::spawn(move || parse_gesture_events(&rx, &ty, dpi));
+    crate::runtime::spawn_blocking(move || parse_gesture_events(&rx, &ty, dpi));
     ry
 }
 
@@ -167,9 +166,9 @@ pub fn parse_gesture_events(rx: &Receiver<DeviceEvent>, ty: &Sender<Event>, dpi:
                 let ty = ty.clone();
                 let contacts = contacts.clone();
                 let segments = segments.clone();
-                thread::spawn(move || {
+                crate::runtime::current_handle().spawn(async move {
                     let mut held = false;
-                    thread::sleep(HOLD_DELAY_SHORT);
+                    tokio::time::sleep(HOLD_DELAY_SHORT).await;
                     {
                         let mut ct = contacts.lock().unwrap();
                         let sg = segments.lock().unwrap();
@@ -223,7 +222,7 @@ pub fn parse_gesture_events(rx: &Receiver<DeviceEvent>, ty: &Sender<Event>, dpi:
                             return;
                         }
                     }
-                    thread::sleep(HOLD_DELAY_LONG - HOLD_DELAY_SHORT);
+                    tokio::time::sleep(HOLD_DELAY_LONG - HOLD_DELAY_SHORT).await;
                     {
                         let mut ct = contacts.lock().unwrap();
                         let sg = segments.lock().unwrap();
@@ -576,8 +575,8 @@ pub fn parse_gesture_events(rx: &Receiver<DeviceEvent>, ty: &Sender<Event>, dpi:
                 );
                 let ty = ty.clone();
                 let buttons = buttons.clone();
-                thread::spawn(move || {
-                    thread::sleep(HOLD_DELAY_SHORT);
+                crate::runtime::current_handle().spawn(async move {
+                    tokio::time::sleep(HOLD_DELAY_SHORT).await;
                     {
                         let bt = buttons.lock().unwrap();
                         match bt.get(&code) {
@@ -607,7 +606,7 @@ pub fn parse_gesture_events(rx: &Receiver<DeviceEvent>, ty: &Sender<Event>, dpi:
                             }
                         }
                     }
-                    thread::sleep(HOLD_DELAY_LONG - HOLD_DELAY_SHORT);
+                    tokio::time::sleep(HOLD_DELAY_LONG - HOLD_DELAY_SHORT).await;
                     {
                         let bt = buttons.lock().unwrap();
                         match bt.get(&code) {
