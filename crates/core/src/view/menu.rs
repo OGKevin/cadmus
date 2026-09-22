@@ -14,7 +14,6 @@ use crate::framebuffer::UpdateMode;
 use crate::geom::{BorderSpec, CornerSpec, Point, Rectangle, big_half, small_half};
 use crate::gesture::GestureEvent;
 use crate::unit::scale_by_dpi;
-use std::thread;
 
 pub struct Menu {
     id: Id,
@@ -294,8 +293,8 @@ impl View for Menu {
             Event::Validate if self.root => {
                 let hub2 = hub.clone();
                 let view_id = self.view_id;
-                thread::spawn(move || {
-                    thread::sleep(CLOSE_IGNITION_DELAY);
+                crate::runtime::current_handle().spawn(async move {
+                    tokio::time::sleep(CLOSE_IGNITION_DELAY).await;
                     hub2.send((Event::Close(view_id)).into()).ok();
                 });
                 true

@@ -915,13 +915,15 @@ fn run_ota_download(ctx: OtaDownloadContext) {
     });
 }
 
-/// Spawns a thread that sleeps for 1 second then sends `Event::Select(EntryId::Reboot)`.
+/// Waits 1 second, then sends `Event::Select(EntryId::Reboot)`.
 ///
 /// The delay gives the render loop time to process the final
-/// `OtaDownloadProgress` label update before the event loop exits.
+/// `OtaDownloadProgress` label update before the event loop exits. The wait
+/// is detached from runtime shutdown so a committed install still requests
+/// the reboot.
 fn send_reboot_after_delay(hub: Hub) {
-    thread::spawn(move || {
-        thread::sleep(std::time::Duration::from_secs(1));
+    crate::runtime::current_handle().spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
         hub.send((Event::Select(EntryId::Reboot)).into()).ok();
     });
 }

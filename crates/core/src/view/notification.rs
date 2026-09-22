@@ -46,7 +46,6 @@ use crate::geom::{BorderSpec, CornerSpec, Rectangle};
 use crate::gesture::GestureEvent;
 use crate::input::DeviceEvent;
 use crate::unit::scale_by_dpi;
-use std::thread;
 use std::time::Duration;
 
 const NOTIFICATION_CLOSE_DELAY: Duration = Duration::from_secs(4);
@@ -112,8 +111,8 @@ impl Notification {
 
         if !pinned {
             let hub2 = hub.clone();
-            thread::spawn(move || {
-                thread::sleep(NOTIFICATION_CLOSE_DELAY);
+            crate::runtime::current_handle().spawn(async move {
+                tokio::time::sleep(NOTIFICATION_CLOSE_DELAY).await;
                 hub2.send((Event::Close(view_id)).into()).ok();
             });
         }
