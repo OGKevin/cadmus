@@ -14,12 +14,19 @@ members = [
 blake3 = "1"
 cc = "1"
 io_tee = "0.1"
+bytes = "1"
+http = "1"
+http-body-util = "0.1"
+octocrab = { version = "0.54.2", default-features = false, features = [
+    "jwt-rust-crypto",
+] }
 reqwest-middleware = { version = "0.5.2", default-features = false, features = [
     "form",
     "json",
 ] }
 reqwest-retry = { version = "0.9.1", default-features = false }
 reqwest-tracing = { version = "0.7.1", default-features = false }
+tower = { version = "0.5", default-features = false }
 rust-embed = "8"
 rustls = { version = "0.23", default-features = false, features = [
   "ring",

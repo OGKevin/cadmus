@@ -67,6 +67,10 @@ pub enum VerifyScopesError {
     #[error("scope check request failed: {0}")]
     Transport(String),
 
+    /// GitHub returned a non-success status for the scope check.
+    #[error("scope check request failed: HTTP {status}")]
+    HttpStatus { status: http::StatusCode },
+
     /// The token was accepted but lacks one or more required OAuth scopes.
     #[error(transparent)]
     InsufficientScopes(#[from] ScopeError),

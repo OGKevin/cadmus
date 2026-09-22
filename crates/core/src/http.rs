@@ -35,7 +35,7 @@ use tokio::io::AsyncWriteExt;
 
 pub const CLIENT_TIMEOUT_SECS: u64 = 30;
 
-const USER_AGENT: &str = concat!("github.com/OGKevin/cadmus/", env!("GIT_VERSION"));
+pub(crate) const USER_AGENT: &str = concat!("github.com/OGKevin/cadmus/", env!("GIT_VERSION"));
 
 const CANCEL_STATE_RUNNING: u8 = 0;
 const CANCEL_STATE_CANCELLED: u8 = 1;
@@ -246,6 +246,14 @@ impl Client {
 
     pub fn post(&self, url: &str) -> RequestBuilder {
         self.client.post(url)
+    }
+
+    /// Returns the middleware client used for application requests.
+    ///
+    /// Includes transient retries and, when the `tracing` feature is enabled,
+    /// a span per attempt. The raw client from [`Self::into_reqwest`] does not.
+    pub(crate) fn middleware(&self) -> ClientWithMiddleware {
+        self.client.clone()
     }
 
     /// Returns the inner [`reqwest::Client`] for libraries that take one directly,

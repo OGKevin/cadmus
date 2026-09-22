@@ -790,7 +790,7 @@ async fn check_ancestry(
     tracing::debug!(url = %url, "Checking commit ancestry via GitHub API");
 
     let response = github
-        .get_unauthenticated(&url)
+        .api_get_unauthenticated(&url)
         .header("Accept", "application/vnd.github+json")
         .send()
         .await

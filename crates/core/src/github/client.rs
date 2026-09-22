@@ -1,16 +1,32 @@
+use super::transport::{CadmusHttpService, TransportError};
 use super::types::{
     AccessTokenResponse, DeviceCodeResponse, ScopeError, TokenPollResult, VerifyScopesError,
 };
 use crate::github::GithubError;
-use crate::http::{ChunkedDownloadError, Client};
+use crate::http::{ChunkedDownloadError, Client, USER_AGENT};
+use bytes::Bytes;
+use http::header::{ACCEPT, HeaderName, HeaderValue, USER_AGENT as USER_AGENT_HEADER};
+use http::{HeaderMap, StatusCode, Uri};
+use http_body_util::BodyExt;
+use octocrab::service::middleware::auth_header::AuthHeaderLayer;
+use octocrab::service::middleware::base_uri::BaseUriLayer;
+use octocrab::service::middleware::extra_headers::ExtraHeadersLayer;
+use octocrab::{AuthState, Octocrab, OctocrabBuilder};
 use reqwest_middleware::RequestBuilder;
 use secrecy::{ExposeSecret, SecretString};
+use serde::Serialize;
+use serde::de::DeserializeOwned;
 use std::path::PathBuf;
+use std::sync::{Arc, OnceLock};
 
 /// GitHub OAuth App client ID, baked in at build time via `GH_OAUTH_CLIENT_ID` env var.
 ///
 /// Kept private so callers never need to know or pass it; [`GithubClient`] uses it internally.
 const GITHUB_OAUTH_CLIENT_ID: &str = env!("GH_OAUTH_CLIENT_ID");
+
+const API_URI: &str = "https://api.github.com";
+const UPLOAD_URI: &str = "https://uploads.github.com";
+const DEVICE_URI: &str = "https://github.com";
 
 /// OAuth scopes that the saved token must have for OTA operations to succeed.
 ///
@@ -40,11 +56,153 @@ fn grants_required_scope(required: &str, granted: &[&str]) -> bool {
     }
 }
 
-/// Thin HTTP wrapper around the GitHub REST API.
+/// Failure from an `octocrab` call on the shared HTTP client.
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum GithubRequestError {
+    #[error(transparent)]
+    Middleware(#[from] reqwest_middleware::Error),
+    #[error("{0}")]
+    Message(String),
+}
+
+/// Non-success HTTP status from a GitHub JSON call.
+#[derive(Debug)]
+pub(crate) struct ApiStatusError {
+    status: StatusCode,
+}
+
+impl ApiStatusError {
+    pub(crate) fn from_status(status: StatusCode) -> Self {
+        Self { status }
+    }
+
+    pub(crate) fn status(&self) -> Option<StatusCode> {
+        Some(self.status)
+    }
+
+    pub(crate) fn status_code(&self) -> StatusCode {
+        self.status
+    }
+}
+
+impl std::fmt::Display for ApiStatusError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "HTTP status error ({})", self.status)
+    }
+}
+
+impl std::error::Error for ApiStatusError {}
+
+/// JSON response from an `octocrab` GitHub call.
+pub(crate) struct ApiResponse {
+    status: StatusCode,
+    headers: HeaderMap,
+    body: Bytes,
+}
+
+impl ApiResponse {
+    pub(crate) fn status(&self) -> StatusCode {
+        self.status
+    }
+
+    pub(crate) fn headers(&self) -> &HeaderMap {
+        &self.headers
+    }
+
+    pub(crate) fn error_for_status(self) -> Result<Self, ApiStatusError> {
+        if self.status.is_success() {
+            Ok(self)
+        } else {
+            Err(ApiStatusError::from_status(self.status))
+        }
+    }
+
+    pub(crate) async fn json<T: DeserializeOwned>(self) -> Result<T, serde_json::Error> {
+        serde_json::from_slice(&self.body)
+    }
+}
+
+enum ApiAuth {
+    Authenticated,
+    Public,
+}
+
+/// Builder for one GitHub JSON request sent through `octocrab`.
+pub(crate) struct ApiRequest<'a> {
+    client: &'a GithubClient,
+    auth: ApiAuth,
+    url: String,
+    headers: HeaderMap,
+    error: Option<GithubRequestError>,
+}
+
+impl ApiRequest<'_> {
+    /// Adds one header.
+    ///
+    /// Canonical names such as `Accept` are stored in lowercase. An invalid
+    /// name or value is recorded and returned from [`Self::send`] instead of
+    /// panicking.
+    pub(crate) fn header(mut self, name: &'static str, value: &str) -> Self {
+        if self.error.is_some() {
+            return self;
+        }
+        let name = match HeaderName::from_bytes(name.as_bytes()) {
+            Ok(name) => name,
+            Err(error) => {
+                self.error = Some(GithubRequestError::Message(error.to_string()));
+                return self;
+            }
+        };
+        match HeaderValue::from_str(value) {
+            Ok(value) => {
+                self.headers.insert(name, value);
+            }
+            Err(error) => {
+                self.error = Some(GithubRequestError::Message(error.to_string()));
+            }
+        }
+        self
+    }
+
+    pub(crate) async fn send(self) -> Result<ApiResponse, GithubRequestError> {
+        if let Some(error) = self.error {
+            return Err(error);
+        }
+        let crab = match self.auth {
+            ApiAuth::Authenticated => self.client.authenticated()?,
+            ApiAuth::Public => self.client.unauthenticated(),
+        };
+        let headers = if self.headers.is_empty() {
+            None
+        } else {
+            Some(self.headers)
+        };
+        let response = crab
+            ._get_with_headers(self.url, headers)
+            .await
+            .map_err(map_octocrab)?;
+        let status = response.status();
+        let headers = response.headers().clone();
+        let body = response
+            .into_body()
+            .collect()
+            .await
+            .map_err(map_octocrab)?
+            .to_bytes();
+        Ok(ApiResponse {
+            status,
+            headers,
+            body,
+        })
+    }
+}
+
+/// GitHub API client.
 ///
-/// Handles TLS setup, authentication headers, and base URL construction.
-/// Consumers (e.g. [`OtaClient`](crate::ota::OtaClient)) call the specific
-/// API methods they need.
+/// REST calls and device flow go through `octocrab`. The leaf service is the
+/// shared [`crate::http::Client`], so retries and request spans match
+/// every other HTTP call. Chunked downloads stay on [`Self::get`] and
+/// [`Self::get_unauthenticated`] so each range request can be built separately.
 ///
 /// # Examples
 ///
@@ -66,6 +224,9 @@ fn grants_required_scope(required: &str, granted: &[&str]) -> bool {
 pub struct GithubClient {
     http: Client,
     token: Option<SecretString>,
+    api: OnceLock<Octocrab>,
+    public_api: OnceLock<Octocrab>,
+    device: OnceLock<Octocrab>,
 }
 
 impl GithubClient {
@@ -73,6 +234,8 @@ impl GithubClient {
     ///
     /// Uses `webpki-roots` certificates for TLS — no system cert store
     /// required, which matters on Kobo devices that ship without a CA bundle.
+    /// The `octocrab` services are built on first use, on the runtime that
+    /// issues the request.
     ///
     /// # Errors
     ///
@@ -92,11 +255,20 @@ impl GithubClient {
         let http = Client::new()?;
 
         tracing::debug!("GitHub client built successfully");
-        Ok(Self { http, token })
+        Ok(Self {
+            http,
+            token,
+            api: OnceLock::new(),
+            public_api: OnceLock::new(),
+            device: OnceLock::new(),
+        })
     }
 
     /// Returns a GET request builder with the `Authorization` header set if a
     /// token is present.
+    ///
+    /// Chunked downloads use this builder once per range. JSON GitHub calls
+    /// go through [`Self::api_get`] so they use `octocrab`.
     pub fn get(&self, url: &str) -> RequestBuilder {
         self.with_auth(self.http.get(url))
     }
@@ -113,6 +285,32 @@ impl GithubClient {
     /// token would cause GitHub to reject the request with a 401.
     pub fn get_unauthenticated(&self, url: &str) -> RequestBuilder {
         self.http.get(url)
+    }
+
+    /// Returns an authenticated JSON GET sent through `octocrab`.
+    pub(crate) fn api_get(&self, url: &str) -> ApiRequest<'_> {
+        if self.token.is_none() {
+            tracing::warn!("Authentication requested but no token configured");
+        }
+        self.api_request(ApiAuth::Authenticated, url)
+    }
+
+    /// Returns an unauthenticated JSON GET sent through `octocrab`.
+    ///
+    /// Release metadata uses this. A token on the request makes GitHub reject
+    /// some public asset URLs with 401.
+    pub(crate) fn api_get_unauthenticated(&self, url: &str) -> ApiRequest<'_> {
+        self.api_request(ApiAuth::Public, url)
+    }
+
+    fn api_request<'a>(&'a self, auth: ApiAuth, url: &str) -> ApiRequest<'a> {
+        ApiRequest {
+            client: self,
+            auth,
+            url: url.to_owned(),
+            headers: HeaderMap::new(),
+            error: None,
+        }
     }
 
     /// Downloads a file to `dest` using HTTP Range requests.
@@ -165,6 +363,49 @@ impl GithubClient {
         }
     }
 
+    fn authenticated(&self) -> Result<Octocrab, GithubRequestError> {
+        if let Some(crab) = self.api.get() {
+            return Ok(crab.clone());
+        }
+        let header = self.token.as_ref().map(bearer).transpose()?;
+        let crab = build_octocrab(
+            self.http.middleware(),
+            Uri::from_static(API_URI),
+            header,
+            standard_headers(),
+        );
+        let _ = self.api.set(crab.clone());
+        Ok(self.api.get().cloned().unwrap_or(crab))
+    }
+
+    fn unauthenticated(&self) -> Octocrab {
+        self.public_api
+            .get_or_init(|| {
+                build_octocrab(
+                    self.http.middleware(),
+                    Uri::from_static(API_URI),
+                    None,
+                    standard_headers(),
+                )
+            })
+            .clone()
+    }
+
+    fn device_flow(&self) -> Octocrab {
+        self.device
+            .get_or_init(|| {
+                let mut headers = standard_headers();
+                headers.push((ACCEPT, HeaderValue::from_static("application/json")));
+                build_octocrab(
+                    self.http.middleware(),
+                    Uri::from_static(DEVICE_URI),
+                    None,
+                    headers,
+                )
+            })
+            .clone()
+    }
+
     /// Initiates GitHub device flow authentication.
     ///
     /// POSTs to `/login/device/code` to obtain a short user code and the
@@ -199,24 +440,23 @@ impl GithubClient {
             "Initiating GitHub device auth flow"
         );
 
-        let scope = REQUIRED_SCOPES.join(" ");
+        let scope = REQUIRED_SCOPES.join(",");
         tracing::debug!(scope = %scope, "Requesting device code with scopes");
 
-        let response = self
-            .http
-            .post("https://github.com/login/device/code")
-            .header("Accept", "application/json")
-            .form(&[("client_id", GITHUB_OAUTH_CLIENT_ID), ("scope", &scope)])
-            .send()
+        let client_id = SecretString::from(GITHUB_OAUTH_CLIENT_ID.to_owned());
+        let codes = self
+            .device_flow()
+            .authenticate_as_device(&client_id, REQUIRED_SCOPES.iter().copied())
             .await
-            .map_err(|e| format!("Device code request failed: {}", e))?
-            .error_for_status()
-            .map_err(|e| format!("Device code request error: {}", e))?;
+            .map_err(|error| format!("Device code request failed: {error}"))?;
 
-        let device_code_response = response
-            .json::<DeviceCodeResponse>()
-            .await
-            .map_err(|e| format!("Failed to parse device code response: {}", e))?;
+        let device_code_response = DeviceCodeResponse {
+            device_code: codes.device_code,
+            user_code: codes.user_code,
+            verification_uri: codes.verification_uri,
+            expires_in: codes.expires_in,
+            interval: codes.interval,
+        };
 
         tracing::debug!(
             verification_uri = %device_code_response.verification_uri,
@@ -265,11 +505,15 @@ impl GithubClient {
         tracing::debug!("Verifying token scopes");
 
         let response = self
-            .get("https://api.github.com/user")
+            .api_get("https://api.github.com/user")
             .header("Accept", "application/json")
             .send()
-            .await?
-            .error_for_status()?;
+            .await
+            .map_err(verify_transport)?
+            .error_for_status()
+            .map_err(|error| VerifyScopesError::HttpStatus {
+                status: error.status_code(),
+            })?;
 
         let granted: Vec<&str> = response
             .headers()
@@ -336,24 +580,30 @@ impl GithubClient {
         tracing::debug!("Polling GitHub for device token");
 
         let response = self
-            .http
-            .post("https://github.com/login/oauth/access_token")
-            .header("Accept", "application/json")
-            .form(&[
-                ("client_id", GITHUB_OAUTH_CLIENT_ID),
-                ("device_code", device_code),
-                ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
-            ])
-            .send()
+            .device_flow()
+            ._post(
+                "https://github.com/login/oauth/access_token",
+                Some(&DeviceTokenPoll {
+                    client_id: GITHUB_OAUTH_CLIENT_ID,
+                    device_code,
+                    grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+                }),
+            )
             .await
-            .map_err(|e| format!("Token poll request failed: {}", e))?
-            .error_for_status()
-            .map_err(|e| format!("Token poll error response: {}", e))?;
+            .map_err(|error| format!("Token poll request failed: {error}"))?;
 
-        let body: AccessTokenResponse = response
-            .json()
+        let status = response.status();
+        if !status.is_success() {
+            return Err(format!("Token poll error response: HTTP {status}"));
+        }
+
+        let body = self
+            .device_flow()
+            .body_to_string(response)
             .await
-            .map_err(|e| format!("Failed to parse token response: {}", e))?;
+            .map_err(|error| format!("Failed to parse token response: {error}"))?;
+        let body: AccessTokenResponse = serde_json::from_str(&body)
+            .map_err(|error| format!("Failed to parse token response: {error}"))?;
 
         if let Some(token) = body.access_token {
             tracing::info!("Device flow authorization complete");
@@ -379,13 +629,74 @@ impl GithubClient {
             }
             Some(other) => {
                 tracing::error!(error = other, "Unexpected device flow error");
-                Err(format!("Unexpected device flow error: {}", other))
+                Err(format!("Unexpected device flow error: {other}"))
             }
             None => {
                 tracing::error!("Empty body from token poll endpoint");
                 Err("Empty response from token endpoint".to_owned())
             }
         }
+    }
+}
+
+#[derive(Serialize)]
+struct DeviceTokenPoll<'a> {
+    client_id: &'a str,
+    device_code: &'a str,
+    grant_type: &'a str,
+}
+
+fn bearer(token: &SecretString) -> Result<HeaderValue, GithubRequestError> {
+    let mut value = HeaderValue::from_str(&format!("Bearer {}", token.expose_secret()))
+        .map_err(|error| GithubRequestError::Message(error.to_string()))?;
+    value.set_sensitive(true);
+    Ok(value)
+}
+
+fn standard_headers() -> Vec<(HeaderName, HeaderValue)> {
+    vec![(USER_AGENT_HEADER, HeaderValue::from_static(USER_AGENT))]
+}
+
+fn build_octocrab(
+    client: reqwest_middleware::ClientWithMiddleware,
+    base_uri: Uri,
+    auth_header: Option<HeaderValue>,
+    extra_headers: Vec<(HeaderName, HeaderValue)>,
+) -> Octocrab {
+    let upload_uri = Uri::from_static(UPLOAD_URI);
+    let base = BaseUriLayer::new(base_uri.clone());
+    let extra = ExtraHeadersLayer::new(Arc::new(extra_headers));
+    let auth = AuthHeaderLayer::new(auth_header, base_uri, upload_uri);
+    match OctocrabBuilder::new_empty()
+        .with_service(CadmusHttpService::new(client))
+        .with_layer(&base)
+        .with_layer(&extra)
+        .with_layer(&auth)
+        .with_auth(AuthState::None)
+        .build()
+    {
+        Ok(crab) => crab,
+        Err(error) => match error {},
+    }
+}
+
+fn map_octocrab(error: octocrab::Error) -> GithubRequestError {
+    match error {
+        octocrab::Error::Service { source, .. } => match source.downcast::<TransportError>() {
+            Ok(error) => match *error {
+                TransportError::Middleware(error) => GithubRequestError::Middleware(error),
+                other => GithubRequestError::Message(other.to_string()),
+            },
+            Err(error) => GithubRequestError::Message(error.to_string()),
+        },
+        other => GithubRequestError::Message(other.to_string()),
+    }
+}
+
+fn verify_transport(error: GithubRequestError) -> VerifyScopesError {
+    match error {
+        GithubRequestError::Middleware(error) => VerifyScopesError::from(error),
+        GithubRequestError::Message(message) => VerifyScopesError::Transport(message),
     }
 }
 
@@ -406,5 +717,36 @@ mod tests {
     #[test]
     fn grants_required_scope_rejects_missing_public_repo() {
         assert!(!grants_required_scope("public_repo", &["gist"]));
+    }
+
+    #[test]
+    fn new_does_not_need_a_runtime() {
+        crate::crypto::init_crypto_provider();
+        GithubClient::new(None).expect("client build");
+    }
+
+    #[test]
+    fn header_accepts_canonical_accept_name() {
+        crate::crypto::init_crypto_provider();
+        let client = GithubClient::new(None).expect("client build");
+        let request = client
+            .api_get_unauthenticated("https://api.github.com/user")
+            .header("Accept", "application/json");
+        assert!(request.error.is_none());
+        let value = request
+            .headers
+            .get(http::header::ACCEPT)
+            .expect("accept header");
+        assert_eq!(value.as_bytes(), b"application/json");
+    }
+
+    #[test]
+    fn header_records_invalid_name() {
+        crate::crypto::init_crypto_provider();
+        let client = GithubClient::new(None).expect("client build");
+        let request = client
+            .api_get_unauthenticated("https://api.github.com/user")
+            .header("Not A Header", "application/json");
+        assert!(request.error.is_some());
     }
 }

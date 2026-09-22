@@ -184,6 +184,21 @@ impl From<reqwest_middleware::Error> for OtaError {
     }
 }
 
+impl From<crate::github::GithubRequestError> for OtaError {
+    fn from(error: crate::github::GithubRequestError) -> Self {
+        match error {
+            crate::github::GithubRequestError::Middleware(error) => Self::from(error),
+            crate::github::GithubRequestError::Message(message) => Self::Api(message),
+        }
+    }
+}
+
+impl From<serde_json::Error> for OtaError {
+    fn from(error: serde_json::Error) -> Self {
+        Self::Api(error.to_string())
+    }
+}
+
 impl OtaClient {
     /// Creates a new OTA client wrapping the provided GitHub client.
     ///
@@ -251,7 +266,7 @@ impl OtaClient {
 
         let response = self
             .github
-            .get(&pr_url)
+            .api_get(&pr_url)
             .send()
             .await?
             .error_for_status()
@@ -280,7 +295,7 @@ impl OtaClient {
 
         let runs: WorkflowRunsResponse = self
             .github
-            .get(&runs_url)
+            .api_get(&runs_url)
             .send().await?
             .error_for_status()
             .map_err(|e| {
@@ -431,7 +446,7 @@ impl OtaClient {
 
         let runs: WorkflowRunsResponse = self
             .github
-            .get(&runs_url)
+            .api_get(&runs_url)
             .send().await?
             .error_for_status()
             .map_err(|e| {
@@ -548,7 +563,7 @@ impl OtaClient {
 
         let release: Release = self
             .github
-            .get_unauthenticated(releases_url)
+            .api_get_unauthenticated(releases_url)
             .send()
             .await?
             .error_for_status()
@@ -640,7 +655,7 @@ impl OtaClient {
 
         let release: Release = self
             .github
-            .get_unauthenticated(releases_url)
+            .api_get_unauthenticated(releases_url)
             .send()
             .await?
             .error_for_status()
@@ -960,7 +975,7 @@ impl OtaClient {
 
         let repo: Repository = self
             .github
-            .get(repo_url)
+            .api_get(repo_url)
             .send().await?
             .error_for_status()
             .map_err(|e| {
@@ -987,7 +1002,7 @@ impl OtaClient {
 
         let artifacts: ArtifactsResponse = self
             .github
-            .get(&artifacts_url)
+            .api_get(&artifacts_url)
             .send()
             .await?
             .error_for_status()
@@ -1136,11 +1151,23 @@ fn is_ota_candidate_run(run: &WorkflowRun) -> bool {
 /// either a transport failure or missing scopes, so the caller can trigger
 /// re-authentication.
 async fn verify_scopes(github: &crate::github::GithubClient) -> Result<(), OtaError> {
-    github.verify_token_scopes().await.map_err(|e| match e {
-        crate::github::VerifyScopesError::Request(e) => api_error(e),
+    github
+        .verify_token_scopes()
+        .await
+        .map_err(scope_check_error)
+}
+
+fn scope_check_error(error: crate::github::VerifyScopesError) -> OtaError {
+    match error {
+        crate::github::VerifyScopesError::Request(error) => api_error(error),
+        crate::github::VerifyScopesError::HttpStatus { status } => {
+            api_error(crate::github::ApiStatusError::from_status(status))
+        }
         crate::github::VerifyScopesError::Transport(message) => OtaError::Api(message),
-        crate::github::VerifyScopesError::InsufficientScopes(e) => OtaError::InsufficientScopes(e),
-    })
+        crate::github::VerifyScopesError::InsufficientScopes(error) => {
+            OtaError::InsufficientScopes(error)
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1148,17 +1175,33 @@ thread_local! {
     static FAIL_SYNC_DEPLOY_PARENT: Cell<bool> = const { Cell::new(false) };
 }
 
-/// Maps a failed `reqwest` response to the appropriate `OtaError`.
+trait HttpFailure {
+    fn http_status(&self) -> Option<http::StatusCode>;
+}
+
+impl HttpFailure for reqwest::Error {
+    fn http_status(&self) -> Option<http::StatusCode> {
+        self.status()
+    }
+}
+
+impl HttpFailure for crate::github::ApiStatusError {
+    fn http_status(&self) -> Option<http::StatusCode> {
+        self.status()
+    }
+}
+
+/// Maps a failed HTTP response to the appropriate `OtaError`.
 ///
 /// A 401 Unauthorized response means the saved token has been revoked or
 /// expired — the caller should re-authenticate via device flow rather than
 /// treating this as a generic API error.
-fn api_error(e: reqwest::Error) -> OtaError {
-    if e.status() == Some(reqwest::StatusCode::UNAUTHORIZED) {
+fn api_error(error: impl std::fmt::Display + HttpFailure) -> OtaError {
+    if error.http_status() == Some(http::StatusCode::UNAUTHORIZED) {
         tracing::warn!("GitHub API returned 401 — token invalid or revoked");
         OtaError::Unauthorized
     } else {
-        OtaError::Api(e.to_string())
+        OtaError::Api(error.to_string())
     }
 }
 
@@ -1202,8 +1245,37 @@ fn read_cancellable(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::github::GithubClient;
+    use crate::github::{ApiStatusError, GithubClient, ScopeError, VerifyScopesError};
+    use http::StatusCode;
     use secrecy::SecretString;
+
+    #[test]
+    fn api_status_401_is_unauthorized() {
+        let error = api_error(ApiStatusError::from_status(StatusCode::UNAUTHORIZED));
+        assert!(matches!(error, OtaError::Unauthorized));
+    }
+
+    #[test]
+    fn api_status_other_is_api_error() {
+        let error = api_error(ApiStatusError::from_status(StatusCode::NOT_FOUND));
+        assert!(matches!(error, OtaError::Api(_)));
+    }
+
+    #[test]
+    fn scope_check_401_is_unauthorized() {
+        let error = scope_check_error(VerifyScopesError::HttpStatus {
+            status: StatusCode::UNAUTHORIZED,
+        });
+        assert!(matches!(error, OtaError::Unauthorized));
+    }
+
+    #[test]
+    fn scope_check_missing_scopes_stay_insufficient() {
+        let error = scope_check_error(VerifyScopesError::InsufficientScopes(ScopeError::new(
+            vec!["public_repo".to_owned()],
+        )));
+        assert!(matches!(error, OtaError::InsufficientScopes(_)));
+    }
 
     fn make_client(tmp_dir: PathBuf) -> OtaClient {
         crate::crypto::init_crypto_provider();
