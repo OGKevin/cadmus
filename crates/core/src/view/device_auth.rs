@@ -1,12 +1,12 @@
 //! Device flow authentication view for GitHub OAuth.
 //!
-//! Displays the user code and verification URL, then polls GitHub in a
-//! background thread until the user authorizes (or the code expires).
+//! Displays the user code and verification URL, then polls GitHub on the
+//! runtime until the user authorizes (or the code expires).
 //!
 //! On success, sends [`Event::Github`] with [`GithubEvent::DeviceAuthComplete`].
 //! On expiry, sends [`Event::Github`] with [`GithubEvent::DeviceAuthExpired`].
 //! On error, sends [`Event::Github`] with [`GithubEvent::DeviceAuthError`].
-//! On cancel, the polling thread is stopped via a shared cancel flag.
+//! On cancel, the polling task is stopped via a shared cancel flag.
 
 use super::button::Button;
 use super::filler::Filler;
@@ -24,8 +24,8 @@ use crate::view::github::GithubEvent;
 use crate::view::ota::OtaViewId;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::thread;
 use std::time::Duration;
+use tracing::Instrument;
 
 /// Displays the GitHub device auth flow user code and polls for authorization.
 ///
@@ -33,8 +33,8 @@ use std::time::Duration;
 /// - The verification URL (`github.com/login/device`)
 /// - The user code to enter (e.g. `WDJB-MJHT`)
 ///
-/// A Cancel button stops the background polling thread and closes the view.
-/// A background thread polls GitHub at the required interval. When the user
+/// A Cancel button stops the background polling task and closes the view.
+/// A runtime task polls GitHub at the required interval. When the user
 /// authorizes, [`Event::Github`] with [`GithubEvent::DeviceAuthComplete`] is sent through the hub.
 pub struct DeviceAuthView {
     id: Id,
@@ -133,17 +133,16 @@ impl DeviceAuthView {
         }
     }
 
-    /// Initiates the device flow and spawns the polling thread.
+    /// Initiates the device flow and spawns the polling task.
     ///
     /// Returns `(verification_uri, user_code)` on success so the caller can
-    /// display them. The polling thread checks `cancelled` before each poll
+    /// display them. The polling task checks `cancelled` before each poll
     /// and exits cleanly when it is set.
     fn initiate_and_spawn(
         hub: &Hub,
         cancelled: Arc<AtomicBool>,
     ) -> Result<(String, String), crate::github::GithubError> {
         let client = GithubClient::new(None)?;
-        let runtime = crate::runtime::current_handle();
         let device_code_response =
             crate::runtime::block_on(client.initiate_device_flow()).map_err(GithubError::Api)?;
 
@@ -160,75 +159,84 @@ impl DeviceAuthView {
 
         let hub2 = hub.clone();
         let parent_span = tracing::Span::current();
+        let span = tracing::info_span!(parent: &parent_span, "device_flow_poll");
 
-        thread::spawn(move || {
-            let _span = tracing::info_span!(parent: &parent_span, "device_flow_poll").entered();
-
-            let poll_client = match GithubClient::new(None) {
-                Ok(c) => c,
-                Err(e) => {
-                    tracing::error!(error = %e, "Failed to create poll client");
-                    hub2.send((Event::Github(GithubEvent::DeviceAuthError(e.to_string()))).into())
-                        .ok();
-                    return;
-                }
-            };
-
-            let mut interval = Duration::from_secs(interval_secs);
-
-            loop {
-                thread::sleep(interval);
-
-                if cancelled.load(Ordering::Relaxed) {
-                    tracing::info!("Device flow polling cancelled");
-                    return;
-                }
-
-                match runtime.block_on(poll_client.poll_device_token(&device_code)) {
-                    Ok(TokenPollResult::Pending) => {
-                        tracing::debug!("Authorization pending, continuing to poll");
-                    }
-                    Ok(TokenPollResult::SlowDown) => {
-                        interval += Duration::from_secs(5);
-                        tracing::debug!(interval_secs = interval.as_secs(), "Slowing down poll");
-                    }
-                    Ok(TokenPollResult::Complete(token)) => {
-                        tracing::info!("Device flow authorization complete");
-                        hub2.send((Event::Github(GithubEvent::DeviceAuthComplete(token))).into())
-                            .ok();
-                        return;
-                    }
-                    Ok(TokenPollResult::Expired) => {
-                        tracing::warn!("Device flow code expired");
-                        hub2.send((Event::Github(GithubEvent::DeviceAuthExpired)).into())
-                            .ok();
-                        return;
-                    }
-                    Ok(TokenPollResult::Cancelled) => {
-                        tracing::info!("Device flow cancelled by user on GitHub");
+        crate::runtime::current_handle().spawn(
+            async move {
+                let poll_client = match GithubClient::new(None) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        tracing::error!(error = %e, "Failed to create poll client");
                         hub2.send(
-                            (Event::Github(GithubEvent::DeviceAuthError(
-                                "Authorization cancelled".to_owned(),
-                            )))
-                            .into(),
+                            (Event::Github(GithubEvent::DeviceAuthError(e.to_string()))).into(),
                         )
                         .ok();
                         return;
                     }
-                    Err(e) => {
-                        tracing::error!(error = %e, "Device flow poll error");
-                        hub2.send((Event::Github(GithubEvent::DeviceAuthError(e))).into())
-                            .ok();
+                };
+
+                let mut interval = Duration::from_secs(interval_secs);
+
+                loop {
+                    tokio::time::sleep(interval).await;
+
+                    if cancelled.load(Ordering::Relaxed) {
+                        tracing::info!("Device flow polling cancelled");
                         return;
+                    }
+
+                    match poll_client.poll_device_token(&device_code).await {
+                        Ok(TokenPollResult::Pending) => {
+                            tracing::debug!("Authorization pending, continuing to poll");
+                        }
+                        Ok(TokenPollResult::SlowDown) => {
+                            interval += Duration::from_secs(5);
+                            tracing::debug!(
+                                interval_secs = interval.as_secs(),
+                                "Slowing down poll"
+                            );
+                        }
+                        Ok(TokenPollResult::Complete(token)) => {
+                            tracing::info!("Device flow authorization complete");
+                            hub2.send(
+                                (Event::Github(GithubEvent::DeviceAuthComplete(token))).into(),
+                            )
+                            .ok();
+                            return;
+                        }
+                        Ok(TokenPollResult::Expired) => {
+                            tracing::warn!("Device flow code expired");
+                            hub2.send((Event::Github(GithubEvent::DeviceAuthExpired)).into())
+                                .ok();
+                            return;
+                        }
+                        Ok(TokenPollResult::Cancelled) => {
+                            tracing::info!("Device flow cancelled by user on GitHub");
+                            hub2.send(
+                                (Event::Github(GithubEvent::DeviceAuthError(
+                                    "Authorization cancelled".to_owned(),
+                                )))
+                                .into(),
+                            )
+                            .ok();
+                            return;
+                        }
+                        Err(e) => {
+                            tracing::error!(error = %e, "Device flow poll error");
+                            hub2.send((Event::Github(GithubEvent::DeviceAuthError(e))).into())
+                                .ok();
+                            return;
+                        }
                     }
                 }
             }
-        });
+            .instrument(span),
+        );
 
         Ok((verification_uri, user_code))
     }
 
-    /// Stops the background polling thread.
+    /// Stops the background polling task.
     fn cancel_polling(&self) {
         self.cancelled.store(true, Ordering::Relaxed);
     }

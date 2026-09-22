@@ -24,7 +24,7 @@ use super::library_editor::LibraryEditor;
 use super::refresh_rate_by_kind_editor::RefreshRateByKindEditor;
 use super::setting_row::SettingRow;
 use std::path::PathBuf;
-use std::thread;
+use tracing::Instrument;
 
 /// A view for editing category-specific settings.
 ///
@@ -591,14 +591,16 @@ impl CategoryEditor {
         )
         .ok();
 
-        let runtime = crate::runtime::current_handle();
-        thread::spawn(move || {
-            let _span =
-                tracing::info_span!(parent: &parent_span, "dictionary_install_async").entered();
-
-            let _wifi = match wifi_session.acquire("dictionary-download") {
-                Ok(lease) => lease,
-                Err(e) => {
+        let span = tracing::info_span!(parent: &parent_span, "dictionary_install_async");
+        crate::runtime::current_handle().spawn(
+            async move {
+            let _wifi = match crate::runtime::spawn_blocking(move || {
+                wifi_session.acquire("dictionary-download")
+            })
+            .await
+            {
+                Ok(Ok(lease)) => lease,
+                Ok(Err(e)) => {
                     tracing::error!(error = %e, "Failed to acquire WiFi lease for dictionary download");
                     service.finish_install(&lang_owned);
                     hub2.send((Event::Close(download_id)).into()).ok();
@@ -612,10 +614,24 @@ impl CategoryEditor {
                     .ok();
                     return;
                 }
+                Err(error) => {
+                    tracing::error!(error = %error, "dictionary install task failed");
+                    service.finish_install(&lang_owned);
+                    hub2.send((Event::Close(download_id)).into()).ok();
+                    hub2.send(
+                        (crate::view::Event::DictionaryInstallComplete {
+                            lang: lang_owned,
+                            result: Err(error.to_string()),
+                        })
+                        .into(),
+                    )
+                    .ok();
+                    return;
+                }
             };
 
-            let result = runtime
-                .block_on(service.install_reserved_dictionary(
+            let result = service
+                .install_reserved_dictionary(
                     &lang_owned,
                     &entry,
                     false,
@@ -646,7 +662,8 @@ impl CategoryEditor {
                         )
                         .ok();
                     },
-                ))
+                )
+                .await
                 .map_err(|e| e.to_string());
 
             hub2.send((Event::Close(download_id)).into()).ok();
@@ -658,7 +675,9 @@ impl CategoryEditor {
                 .into(),
             )
             .ok();
-        });
+            }
+            .instrument(span),
+        );
 
         true
     }

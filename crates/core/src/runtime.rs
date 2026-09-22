@@ -222,9 +222,66 @@ pub(crate) fn ensure_published_for_test() {
     publish_process_handle(runtime.handle().clone());
 }
 
+/// Runs `on_unwind` if this value is dropped while still armed.
+///
+/// A panic in a spawned task does not stop the process. Arm a guard for the
+/// lifetime of a task that owns a view, and send the event that closes the
+/// view from `on_unwind`. Call [`Self::disarm`] when the task returns
+/// normally. The callback must not panic.
+#[must_use = "disarm the guard after a normal return, or the callback runs on drop"]
+pub(crate) struct UnwindGuard<F: FnOnce()> {
+    on_unwind: Option<F>,
+}
+
+impl<F: FnOnce()> UnwindGuard<F> {
+    /// Arms `on_unwind` until [`Self::disarm`] or drop.
+    pub(crate) fn arm(on_unwind: F) -> Self {
+        Self {
+            on_unwind: Some(on_unwind),
+        }
+    }
+
+    /// Drops the callback so a later drop does nothing.
+    pub(crate) fn disarm(&mut self) {
+        self.on_unwind.take();
+    }
+}
+
+impl<F: FnOnce()> Drop for UnwindGuard<F> {
+    fn drop(&mut self) {
+        if let Some(on_unwind) = self.on_unwind.take() {
+            on_unwind();
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unwind_guard_runs_callback_on_unwind() {
+        let hit = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let flag = std::sync::Arc::clone(&hit);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = UnwindGuard::arm(move || {
+                flag.store(true, std::sync::atomic::Ordering::SeqCst);
+            });
+            panic!("task");
+        }));
+        assert!(result.is_err());
+        assert!(hit.load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    #[test]
+    fn unwind_guard_skips_callback_after_disarm() {
+        let hit = std::sync::atomic::AtomicBool::new(false);
+        let mut guard = UnwindGuard::arm(|| hit.store(true, std::sync::atomic::Ordering::SeqCst));
+        guard.disarm();
+        drop(guard);
+        assert!(!hit.load(std::sync::atomic::Ordering::SeqCst));
+    }
+
     use std::time::Instant;
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
