@@ -5,7 +5,8 @@
 
 use std::time::Duration;
 
-use crate::task::{BackgroundTask, ShutdownSignal, TaskId};
+use crate::task::{BackgroundTask, TaskFuture, TaskId, sleep_unless_cancelled};
+use tokio_util::sync::CancellationToken;
 
 const PRINT_INTERVAL: Duration = Duration::from_secs(60);
 
@@ -20,21 +21,27 @@ impl BackgroundTask for HelloWorldTask {
         TaskId::HelloWorld
     }
 
-    fn run(&mut self, _hub: &crate::view::Hub, shutdown: &ShutdownSignal) {
-        tracing::info!("hello_world task started");
+    fn run<'a>(
+        &'a mut self,
+        _hub: &'a crate::view::Hub,
+        cancel: &'a CancellationToken,
+    ) -> TaskFuture<'a> {
+        Box::pin(async move {
+            tracing::info!("hello_world task started");
 
-        loop {
-            {
-                #[cfg(feature = "tracing")]
-                let _span = tracing::info_span!("hello_world_tick").entered();
-                tracing::info!("Hello world!");
+            loop {
+                {
+                    #[cfg(feature = "tracing")]
+                    let _span = tracing::info_span!("hello_world_tick").entered();
+                    tracing::info!("Hello world!");
+                }
+
+                if sleep_unless_cancelled(cancel, PRINT_INTERVAL).await {
+                    break;
+                }
             }
 
-            if shutdown.wait(PRINT_INTERVAL) {
-                break;
-            }
-        }
-
-        tracing::info!("hello_world task stopped");
+            tracing::info!("hello_world task stopped");
+        })
     }
 }

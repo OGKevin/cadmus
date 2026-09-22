@@ -4,13 +4,10 @@
 //! This is a diagnostic tool for investigating dhcpcd-dbus and
 //! wpa_supplicant interactions on Kobo devices (CAD-18).
 
-use std::time::Duration;
-
 use futures_util::stream::StreamExt;
+use tokio_util::sync::CancellationToken;
 
-use crate::task::{BackgroundTask, ShutdownSignal, TaskId};
-
-const SHUTDOWN_POLL_INTERVAL: Duration = Duration::from_millis(200);
+use crate::task::{BackgroundTask, TaskFuture, TaskId};
 
 /// Monitors the system D-Bus and logs all signal events.
 ///
@@ -25,24 +22,28 @@ impl BackgroundTask for DbusMonitorTask {
         TaskId::DbusMonitor
     }
 
-    fn run(&mut self, _hub: &crate::view::Hub, shutdown: &ShutdownSignal) {
-        let rt = match tokio::runtime::Runtime::new() {
-            Ok(rt) => rt,
-            Err(e) => {
-                tracing::error!(error = %e, "failed to create tokio runtime");
-                return;
+    fn run<'a>(
+        &'a mut self,
+        _hub: &'a crate::view::Hub,
+        cancel: &'a CancellationToken,
+    ) -> TaskFuture<'a> {
+        Box::pin(async move {
+            tokio::select! {
+                biased;
+                () = cancel.cancelled() => {
+                    tracing::info!("shutdown requested");
+                }
+                result = monitor() => {
+                    if let Err(e) = result {
+                        tracing::error!(error = %e, "dbus monitor exited with error");
+                    }
+                }
             }
-        };
-
-        rt.block_on(async {
-            if let Err(e) = monitor(shutdown).await {
-                tracing::error!(error = %e, "dbus monitor exited with error");
-            }
-        });
+        })
     }
 }
 
-async fn monitor(shutdown: &ShutdownSignal) -> Result<(), Box<dyn std::error::Error>> {
+async fn monitor() -> Result<(), Box<dyn std::error::Error>> {
     let connection = zbus::Connection::system().await?;
     tracing::info!("connected to system bus");
 
@@ -57,18 +58,6 @@ async fn monitor(shutdown: &ShutdownSignal) -> Result<(), Box<dyn std::error::Er
     loop {
         tokio::select! {
             biased;
-
-            _ = async {
-                loop {
-                    if shutdown.should_stop() {
-                        return;
-                    }
-                    tokio::time::sleep(SHUTDOWN_POLL_INTERVAL).await;
-                }
-            } => {
-                tracing::info!("shutdown requested");
-                break;
-            }
 
             msg = stream.next() => {
                 let Some(msg) = msg else { break };

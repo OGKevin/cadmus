@@ -11,7 +11,6 @@ use crate::geolocation;
 use crate::geolocation::GeoLocation;
 use crate::http::Client as HttpClient;
 use crate::network_address::NetworkAddress;
-use crate::task::ShutdownSignal;
 use crate::view::{Event, NotificationEvent};
 
 const NTP_PORT: u16 = 123;
@@ -113,16 +112,15 @@ impl<R: Rtc> TimeManager<R> {
             .copied()
     }
 
-    pub fn sync(
+    pub async fn sync(
         &self,
         ntp_server: &NetworkAddress,
         manual: bool,
         geolocation: Option<GeoLocation>,
         hub: &crate::view::Hub,
         alarm_manager: &Arc<Mutex<AlarmManager<R>>>,
-        shutdown: &ShutdownSignal,
     ) -> Result<(), Error> {
-        let timezone_ok = match self.detect_and_set_timezone(geolocation) {
+        let timezone_ok = match self.detect_and_set_timezone(geolocation).await {
             Ok(()) => true,
             Err(e) => {
                 if manual {
@@ -139,24 +137,19 @@ impl<R: Rtc> TimeManager<R> {
             }
         };
 
-        if shutdown.should_stop() {
-            return Err(anyhow::anyhow!("time sync cancelled"));
-        }
-
-        let ntp_time = match self.query_ntp(ntp_server) {
-            Ok(t) => t,
-            Err(e) => {
-                if shutdown.should_stop() {
-                    return Err(anyhow::anyhow!("time sync cancelled"));
-                }
+        let server = ntp_server.clone();
+        let ntp_time = match tokio::task::spawn_blocking(move || query_ntp(&server)).await {
+            Ok(Ok(t)) => t,
+            Ok(Err(e)) => {
+                self.report_sync_failure(hub, manual, timezone_ok, &e);
+                return Err(e);
+            }
+            Err(error) => {
+                let e = anyhow::anyhow!("ntp query task failed: {error}");
                 self.report_sync_failure(hub, manual, timezone_ok, &e);
                 return Err(e);
             }
         };
-
-        if shutdown.should_stop() {
-            return Err(anyhow::anyhow!("time sync cancelled"));
-        }
 
         match self.apply_synchronised_time(ntp_time, alarm_manager) {
             Ok(()) => {
@@ -190,7 +183,7 @@ impl<R: Rtc> TimeManager<R> {
         tracing::warn!(error = %error, timezone_ok, "time synchronisation failed");
     }
 
-    fn detect_and_set_timezone(&self, geolocation: Option<GeoLocation>) -> Result<(), Error> {
+    async fn detect_and_set_timezone(&self, geolocation: Option<GeoLocation>) -> Result<(), Error> {
         let geo = match geolocation {
             Some(geo) => geo,
             None => {
@@ -203,10 +196,6 @@ impl<R: Rtc> TimeManager<R> {
         (self.set_timezone_fn)(geo.timezone)?;
 
         Ok(())
-    }
-
-    fn query_ntp(&self, server: &NetworkAddress) -> Result<DateTime<Utc>, Error> {
-        query_ntp(server)
     }
 
     fn apply_synchronised_time(

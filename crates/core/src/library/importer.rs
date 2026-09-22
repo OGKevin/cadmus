@@ -6,11 +6,11 @@ use crate::library::book_status::BookStatus;
 use crate::library::db::{Db as LibraryDb, ImportFlush, PathUpdate};
 use crate::metadata::{FileInfo, Info, extract_metadata_from_document};
 use crate::settings::ImportSettings;
-use crate::task::ShutdownSignal;
 use crate::view::{Event, NotificationEvent, ViewId};
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, UNIX_EPOCH};
+use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info};
 use walkdir::{DirEntry, WalkDir};
 
@@ -99,7 +99,7 @@ impl ProgressTracker {
 struct ScanContext<'a> {
     hub: &'a crate::view::Hub,
     notif_id: ViewId,
-    shutdown: &'a ShutdownSignal,
+    shutdown: &'a CancellationToken,
 }
 
 struct BookWrite {
@@ -141,6 +141,29 @@ impl ScanResult {
 
 #[cfg(feature = "emulator")]
 const IGNORED_TOP_LEVEL_DIRS: &[&str] = &["target", "node_modules", "thirdparty"];
+
+/// Reads document metadata on the blocking pool.
+///
+/// The document handle stays inside the blocking closure so it never crosses
+/// an await. A panic returns the metadata collected before extraction.
+async fn extract_metadata(home: &Path, install_dir: &Path, info: Info) -> Info {
+    let fallback = info.clone();
+    let home = home.to_path_buf();
+    let install_dir = install_dir.to_path_buf();
+    match tokio::task::spawn_blocking(move || {
+        let mut info = info;
+        extract_metadata_from_document(&home, &mut info, &install_dir);
+        info
+    })
+    .await
+    {
+        Ok(info) => info,
+        Err(error) => {
+            error!(error = %error, "metadata extraction task panicked");
+            fallback
+        }
+    }
+}
 
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(home)))]
 fn walk_files(home: &Path) -> Vec<DirEntry> {
@@ -185,7 +208,8 @@ fn walk_files(home: &Path) -> Vec<DirEntry> {
         fields(total)
     )
 )]
-fn scan_entries(
+#[allow(clippy::too_many_arguments)]
+async fn scan_entries(
     home: &Path,
     install_dir: &Path,
     entries: &[DirEntry],
@@ -210,9 +234,11 @@ fn scan_entries(
 
     for (idx, entry) in entries.iter().enumerate() {
         #[cfg(feature = "tracing")]
-        let _span = tracing::info_span!("procssing entry", entry = ?entry).entered();
+        let span = tracing::info_span!("procssing entry", entry = ?entry);
+        #[cfg(feature = "tracing")]
+        let mut entered = Some(span.enter());
 
-        if ctx.shutdown.should_stop() {
+        if ctx.shutdown.is_cancelled() {
             tracing::info!("import scan interrupted by shutdown");
             return None;
         }
@@ -331,7 +357,15 @@ fn scan_entries(
                         ..Default::default()
                     };
                     if settings.metadata_kinds.contains(&kind) {
-                        extract_metadata_from_document(home, &mut book_info, install_dir);
+                        #[cfg(feature = "tracing")]
+                        {
+                            entered.take();
+                        }
+                        book_info = extract_metadata(home, install_dir, book_info).await;
+                        #[cfg(feature = "tracing")]
+                        {
+                            entered = Some(span.enter());
+                        }
                     }
                     result.books_to_update.push(BookWrite {
                         fp,
@@ -347,6 +381,8 @@ fn scan_entries(
             }
 
             send_progress(ctx.hub, ctx.notif_id, tracker, idx, total);
+            #[cfg(feature = "tracing")]
+            drop(entered);
             continue;
         }
 
@@ -398,7 +434,15 @@ fn scan_entries(
                 ..Default::default()
             };
             if settings.metadata_kinds.contains(&kind) {
-                extract_metadata_from_document(home, &mut book_info, install_dir);
+                #[cfg(feature = "tracing")]
+                {
+                    entered.take();
+                }
+                book_info = extract_metadata(home, install_dir, book_info).await;
+                #[cfg(feature = "tracing")]
+                {
+                    entered = Some(span.enter());
+                }
             }
             handles_by_fp.insert(fp, (relat.to_path_buf(), path.to_path_buf()));
             handles_by_path.insert(relat.to_path_buf(), fp);
@@ -412,6 +456,8 @@ fn scan_entries(
         }
 
         send_progress(ctx.hub, ctx.notif_id, tracker, idx, total);
+        #[cfg(feature = "tracing")]
+        drop(entered);
     }
 
     info!(
@@ -452,7 +498,8 @@ fn send_progress(
         book_statuses
     ))
 )]
-fn resolve_relocations(
+#[allow(clippy::too_many_arguments)]
+async fn resolve_relocations(
     db: &LibraryDb,
     library_id: i64,
     home: &Path,
@@ -467,9 +514,10 @@ fn resolve_relocations(
         .map(PendingRelocation::old_fp)
         .collect();
 
-    let mut fetched =
-        crate::runtime::block_on(db.batch_get_books_by_fingerprints(library_id, &old_fps))
-            .unwrap_or_default();
+    let mut fetched = db
+        .batch_get_books_by_fingerprints(library_id, &old_fps)
+        .await
+        .unwrap_or_default();
 
     for relocation in pending_relocations {
         match relocation {
@@ -485,7 +533,7 @@ fn resolve_relocations(
                             .kind
                             .is_some_and(|k| settings.metadata_kinds.contains(&k))
                     {
-                        extract_metadata_from_document(home, &mut info, install_dir);
+                        info = extract_metadata(home, install_dir, info).await;
                     }
                     info.file.size = file_size;
                     result.push_new_book(
@@ -520,7 +568,7 @@ fn sort_keys_are_dirty(purged_fps: &[Fp], result: &ScanResult) -> bool {
 }
 
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(db, result)))]
-fn flush_to_db(db: &LibraryDb, library_id: i64, result: ScanResult, purged_fps: &[Fp]) {
+async fn flush_to_db(db: &LibraryDb, library_id: i64, result: ScanResult, purged_fps: &[Fp]) {
     let sort_keys_dirty = sort_keys_are_dirty(purged_fps, &result);
     if !sort_keys_dirty && result.thumbnails_to_delete.is_empty() {
         return;
@@ -542,18 +590,21 @@ fn flush_to_db(db: &LibraryDb, library_id: i64, result: ScanResult, purged_fps: 
         .map(|book| (book.fp, &book.info))
         .collect();
 
-    if let Err(e) = crate::runtime::block_on(db.flush_import_scan(
-        library_id,
-        ImportFlush {
-            thumbnails_to_delete: &result.thumbnails_to_delete,
-            books_to_insert: &books_to_insert,
-            books_to_update: &books_to_update,
-            books_to_link: &books_to_link,
-            path_updates: &result.path_updates,
-            books_to_delete: &result.books_to_delete,
-            sort_keys_dirty,
-        },
-    )) {
+    if let Err(e) = db
+        .flush_import_scan(
+            library_id,
+            ImportFlush {
+                thumbnails_to_delete: &result.thumbnails_to_delete,
+                books_to_insert: &books_to_insert,
+                books_to_update: &books_to_update,
+                books_to_link: &books_to_link,
+                path_updates: &result.path_updates,
+                books_to_delete: &result.books_to_delete,
+                sort_keys_dirty,
+            },
+        )
+        .await
+    {
         error!(error = %e, library_id, "import flush failed");
     }
 }
@@ -572,7 +623,8 @@ fn flush_to_db(db: &LibraryDb, library_id: i64, result: ScanResult, purged_fps: 
     feature = "tracing",
     tracing::instrument(skip(db, settings, hub, notif_id, shutdown))
 )]
-pub fn run(
+#[allow(clippy::too_many_arguments)]
+pub async fn run(
     db: &LibraryDb,
     library_id: i64,
     home: &Path,
@@ -581,7 +633,7 @@ pub fn run(
     force: bool,
     hub: &crate::view::Hub,
     notif_id: ViewId,
-    shutdown: &ShutdownSignal,
+    shutdown: &CancellationToken,
 ) -> ImportOutcome {
     info!(
         library_id,
@@ -597,7 +649,7 @@ pub fn run(
     };
     let outcome = {
         let _progress = PinnedProgress::show(hub, notif_id, fl!("importer-importing-library"));
-        run_scan(db, library_id, home, install_dir, settings, force, &ctx)
+        run_scan(db, library_id, home, install_dir, settings, force, &ctx).await
     };
     if outcome == ImportOutcome::Interrupted {
         hub.send(
@@ -615,7 +667,7 @@ pub fn run(
     outcome
 }
 
-fn run_scan(
+async fn run_scan(
     db: &LibraryDb,
     library_id: i64,
     home: &Path,
@@ -624,7 +676,7 @@ fn run_scan(
     force: bool,
     ctx: &ScanContext<'_>,
 ) -> ImportOutcome {
-    let handles = match crate::runtime::block_on(db.list_book_handles(library_id)) {
+    let handles = match db.list_book_handles(library_id).await {
         Ok(h) => h,
         Err(e) => {
             error!(error = %e, "failed to load book handles for import");
@@ -652,13 +704,13 @@ fn run_scan(
         .map(|h| h.fp)
         .collect();
 
-    let purged_fps = crate::runtime::block_on(
-        db.purge_disallowed_books_and_thumbnails(library_id, &settings.allowed_kinds),
-    )
-    .unwrap_or_else(|e| {
-        error!(error = %e, "failed to purge disallowed books");
-        Vec::new()
-    });
+    let purged_fps = db
+        .purge_disallowed_books_and_thumbnails(library_id, &settings.allowed_kinds)
+        .await
+        .unwrap_or_else(|e| {
+            error!(error = %e, "failed to purge disallowed books");
+            Vec::new()
+        });
 
     for fp in &purged_fps {
         pending_fps.remove(fp);
@@ -667,11 +719,18 @@ fn run_scan(
         }
     }
 
-    let entries = walk_files(home);
+    let home_buf = home.to_path_buf();
+    let entries = match tokio::task::spawn_blocking(move || walk_files(&home_buf)).await {
+        Ok(entries) => entries,
+        Err(error) => {
+            error!(error = %error, "library walk failed");
+            return ImportOutcome::Failed;
+        }
+    };
 
     let mut tracker = ProgressTracker::new();
 
-    let book_statuses = crate::runtime::block_on(db.all_book_statuses()).unwrap_or_default();
+    let book_statuses = db.all_book_statuses().await.unwrap_or_default();
 
     let Some(mut result) = scan_entries(
         home,
@@ -686,7 +745,9 @@ fn run_scan(
         &mut handles_by_path,
         &pending_fps,
         &book_statuses,
-    ) else {
+    )
+    .await
+    else {
         return ImportOutcome::Interrupted;
     };
 
@@ -703,10 +764,11 @@ fn run_scan(
             std::mem::take(&mut result.pending_relocations),
             &mut result,
             &book_statuses,
-        );
+        )
+        .await;
     }
 
-    flush_to_db(db, library_id, result, &purged_fps);
+    flush_to_db(db, library_id, result, &purged_fps).await;
     ImportOutcome::Completed
 }
 
@@ -718,18 +780,18 @@ mod tests {
     use crate::library::Library;
     use crate::metadata::{FileInfo, Info};
     use crate::settings::ImportSettings;
-    use crate::task::ShutdownSignal;
     use crate::view::{HubReceiverExt, ViewId};
-    use std::sync::mpsc;
+    use tokio_util::sync::CancellationToken;
 
-    fn create_migrated_db() -> Database {
-        let mut db = crate::runtime::block_on(Database::new(":memory:")).expect("in-memory db");
-        crate::runtime::block_on(db.init_for_test(0)).expect("migrations");
+    async fn create_migrated_db() -> Database {
+        let mut db = Database::new(":memory:").await.expect("in-memory db");
+        db.init_for_test(0).await.expect("migrations");
         db
     }
 
-    fn run_import(dir: &Path, db: &Database, shutdown: &ShutdownSignal) -> Vec<Event> {
-        let lib = crate::runtime::block_on(Library::new(dir, db, "test"))
+    async fn run_import(dir: &Path, db: &Database, shutdown: &CancellationToken) -> Vec<Event> {
+        let lib = Library::new(dir, db, "test")
+            .await
             .expect("failed to create library");
         let (tx, mut rx) = crate::view::hub_channel();
         let notif_id = ViewId::MessageNotif(0);
@@ -743,19 +805,20 @@ mod tests {
             &tx,
             notif_id,
             shutdown,
-        );
+        )
+        .await;
         drop(tx);
         rx.try_iter().map(|message| message.event).collect()
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[tokio::test]
     async fn imports_files_when_not_shutdown() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let db = create_migrated_db();
+        let db = create_migrated_db().await;
         std::fs::write(dir.path().join("book.epub"), b"epub content").expect("write");
 
-        let shutdown = ShutdownSignal::never();
-        let events = run_import(dir.path(), &db, &shutdown);
+        let shutdown = CancellationToken::new();
+        let events = run_import(dir.path(), &db, &shutdown).await;
 
         assert!(
             events.iter().any(|e| matches!(e, Event::Close(_))),
@@ -770,23 +833,22 @@ mod tests {
         );
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[tokio::test]
     async fn stops_early_when_shutdown_requested() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let db = create_migrated_db();
+        let db = create_migrated_db().await;
 
         for i in 0..20 {
             std::fs::write(dir.path().join(format!("book{i}.epub")), b"epub content")
                 .expect("write");
         }
 
-        let (shutdown_tx, shutdown_rx) = mpsc::channel();
-        let shutdown = ShutdownSignal::new_for_test(shutdown_rx);
+        let shutdown = CancellationToken::new();
+        shutdown.cancel();
 
-        // Signal shutdown before the import starts so scan_entries exits immediately.
-        shutdown_tx.send(()).expect("send shutdown");
-
-        let lib = crate::runtime::block_on(Library::new(dir.path(), &db, "test")).expect("library");
+        let lib = Library::new(dir.path(), &db, "test")
+            .await
+            .expect("library");
         let (tx, mut rx) = crate::view::hub_channel();
         let notif_id = ViewId::MessageNotif(0);
         let outcome = run(
@@ -799,7 +861,8 @@ mod tests {
             &tx,
             notif_id,
             &shutdown,
-        );
+        )
+        .await;
         drop(tx);
         let events: Vec<Event> = rx.try_iter().map(|message| message.event).collect();
 
@@ -833,8 +896,8 @@ mod tests {
         );
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn progress_sends_at_100_percent_immediately() {
+    #[test]
+    fn progress_sends_at_100_percent_immediately() {
         let mut tracker = ProgressTracker::new();
         let base = Instant::now();
 
@@ -850,8 +913,8 @@ mod tests {
         assert_eq!(tracker.should_send(99, 100, base), Some(100));
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn progress_throttled_within_two_seconds() {
+    #[test]
+    fn progress_throttled_within_two_seconds() {
         let mut tracker = ProgressTracker::new();
         let base = Instant::now();
 
@@ -867,8 +930,8 @@ mod tests {
         );
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn progress_sends_after_two_second_gap() {
+    #[test]
+    fn progress_sends_after_two_second_gap() {
         let mut tracker = ProgressTracker::new();
         let base = Instant::now();
 
@@ -890,8 +953,8 @@ mod tests {
         );
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn sort_keys_are_dirty_when_purged_or_book_batches_change() {
+    #[test]
+    fn sort_keys_are_dirty_when_purged_or_book_batches_change() {
         assert!(!sort_keys_are_dirty(&[], &ScanResult::empty()));
         assert!(sort_keys_are_dirty(
             &[Fp::from_u64(1)],
@@ -906,11 +969,13 @@ mod tests {
         assert!(sort_keys_are_dirty(&[], &insert_only));
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[tokio::test]
     async fn finds_deleted_books_when_file_path_is_empty() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let db = create_migrated_db();
-        let lib = crate::runtime::block_on(Library::new(dir.path(), &db, "test")).expect("library");
+        let db = create_migrated_db().await;
+        let lib = Library::new(dir.path(), &db, "test")
+            .await
+            .expect("library");
         let fp = Fp::from_u64(1);
         let info = Info {
             title: "test".to_string(),
@@ -924,11 +989,16 @@ mod tests {
             ..Default::default()
         };
 
-        crate::runtime::block_on(lib.db.batch_insert_books(lib.library_id, &[(fp, &info)]))
+        lib.db
+            .batch_insert_books(lib.library_id, &[(fp, &info)])
+            .await
             .expect("insert library book");
 
-        let handles =
-            crate::runtime::block_on(lib.db.list_book_handles(lib.library_id)).expect("handles");
+        let handles = lib
+            .db
+            .list_book_handles(lib.library_id)
+            .await
+            .expect("handles");
         let handles_by_fp: FxHashMap<Fp, (PathBuf, PathBuf)> = handles
             .into_iter()
             .map(|h| (h.fp, (h.relat, h.abs)))
@@ -937,13 +1007,13 @@ mod tests {
         assert_eq!(find_deleted_books(&handles_by_fp, dir.path()), vec![fp]);
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[tokio::test]
     async fn skips_fingerprinting_disallowed_new_files() {
         use crate::document::file_extension::FileExtension;
         use rustc_hash::FxHashSet;
 
         let dir = tempfile::tempdir().expect("tempdir");
-        let db = create_migrated_db();
+        let db = create_migrated_db().await;
 
         std::fs::write(dir.path().join("book.epub"), b"epub content").expect("write epub");
         std::fs::write(dir.path().join("ignore.xyz"), b"unsupported content").expect("write xyz");
@@ -955,10 +1025,12 @@ mod tests {
             ..ImportSettings::default()
         };
 
-        let lib = crate::runtime::block_on(Library::new(dir.path(), &db, "test")).expect("library");
+        let lib = Library::new(dir.path(), &db, "test")
+            .await
+            .expect("library");
         let (tx, mut rx) = crate::view::hub_channel();
         let notif_id = ViewId::MessageNotif(0);
-        let shutdown = ShutdownSignal::never();
+        let shutdown = CancellationToken::new();
 
         run(
             &lib.db,
@@ -970,12 +1042,16 @@ mod tests {
             &tx,
             notif_id,
             &shutdown,
-        );
+        )
+        .await;
         drop(tx);
         let _events: Vec<Event> = rx.try_iter().map(|message| message.event).collect();
 
-        let handles =
-            crate::runtime::block_on(lib.db.list_book_handles(lib.library_id)).expect("handles");
+        let handles = lib
+            .db
+            .list_book_handles(lib.library_id)
+            .await
+            .expect("handles");
         let paths: Vec<_> = handles.iter().map(|h| h.relat.clone()).collect();
 
         assert!(
@@ -988,21 +1064,23 @@ mod tests {
         );
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[tokio::test]
     async fn purges_disallowed_books_on_import() {
         use crate::document::file_extension::FileExtension;
         use rustc_hash::FxHashSet;
 
         let dir = tempfile::tempdir().expect("tempdir");
-        let db = create_migrated_db();
+        let db = create_migrated_db().await;
 
         std::fs::write(dir.path().join("book.epub"), b"epub content").expect("write epub");
         std::fs::write(dir.path().join("doc.pdf"), b"pdf content").expect("write pdf");
 
-        let lib = crate::runtime::block_on(Library::new(dir.path(), &db, "test")).expect("library");
+        let lib = Library::new(dir.path(), &db, "test")
+            .await
+            .expect("library");
         let (tx, mut rx) = crate::view::hub_channel();
         let notif_id = ViewId::MessageNotif(0);
-        let shutdown = ShutdownSignal::never();
+        let shutdown = CancellationToken::new();
 
         run(
             &lib.db,
@@ -1014,12 +1092,16 @@ mod tests {
             &tx,
             notif_id,
             &shutdown,
-        );
+        )
+        .await;
         drop(tx);
         let _: Vec<Event> = rx.try_iter().map(|message| message.event).collect();
 
-        let handles =
-            crate::runtime::block_on(lib.db.list_book_handles(lib.library_id)).expect("handles");
+        let handles = lib
+            .db
+            .list_book_handles(lib.library_id)
+            .await
+            .expect("handles");
         assert_eq!(handles.len(), 2, "both files should be imported initially");
 
         let mut epub_only: FxHashSet<FileExtension> = FxHashSet::default();
@@ -1041,11 +1123,15 @@ mod tests {
             &tx2,
             notif_id,
             &shutdown,
-        );
+        )
+        .await;
         drop(tx2);
         let _: Vec<Event> = rx2.try_iter().map(|message| message.event).collect();
 
-        let handles = crate::runtime::block_on(lib.db.list_book_handles(lib.library_id))
+        let handles = lib
+            .db
+            .list_book_handles(lib.library_id)
+            .await
             .expect("handles after purge");
         let paths: Vec<_> = handles.iter().map(|h| h.relat.clone()).collect();
 
@@ -1056,7 +1142,7 @@ mod tests {
         );
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[tokio::test]
     async fn pending_discovery_fills_and_promotes_on_import() {
         use crate::document::file_extension::FileExtension;
         use crate::helpers::Fingerprint;
@@ -1064,7 +1150,7 @@ mod tests {
         use rustc_hash::FxHashSet;
 
         let dir = tempfile::tempdir().expect("tempdir");
-        let db = create_migrated_db();
+        let db = create_migrated_db().await;
         let book_path = dir.path().join("pending.epub");
         std::fs::write(&book_path, b"pending discovery content").expect("write epub");
         let fp = book_path.fingerprint().expect("fingerprint");
@@ -1079,9 +1165,11 @@ mod tests {
             .expect("mtime");
         let now = UnixTimestamp::now();
 
-        let lib = crate::runtime::block_on(Library::new(dir.path(), &db, "test")).expect("library");
+        let lib = Library::new(dir.path(), &db, "test")
+            .await
+            .expect("library");
 
-        crate::runtime::block_on(async {
+        async {
             sqlx::query!(
                 r#"
                 INSERT INTO books (fingerprint, file_kind, file_size, added_at, status)
@@ -1114,7 +1202,8 @@ mod tests {
             .execute(db.pool())
             .await
             .expect("link stub with matching mtime path");
-        });
+        }
+        .await;
 
         let mut allowed: FxHashSet<FileExtension> = FxHashSet::default();
         allowed.insert(FileExtension::Epub);
@@ -1125,7 +1214,7 @@ mod tests {
 
         let (tx, mut rx) = crate::view::hub_channel();
         let notif_id = ViewId::MessageNotif(0);
-        let shutdown = ShutdownSignal::never();
+        let shutdown = CancellationToken::new();
 
         run(
             &lib.db,
@@ -1137,19 +1226,23 @@ mod tests {
             &tx,
             notif_id,
             &shutdown,
-        );
+        )
+        .await;
         drop(tx);
         let _: Vec<Event> = rx.try_iter().map(|message| message.event).collect();
 
-        let handles =
-            crate::runtime::block_on(lib.db.list_book_handles(lib.library_id)).expect("handles");
+        let handles = lib
+            .db
+            .list_book_handles(lib.library_id)
+            .await
+            .expect("handles");
         let handle = handles
             .iter()
             .find(|h| h.fp == fp)
             .expect("pending book handle");
         assert_eq!(handle.status, BookStatus::Active);
 
-        let books = crate::runtime::block_on(lib.db.get_all_books(lib.library_id)).expect("shelf");
+        let books = lib.db.get_all_books(lib.library_id).await.expect("shelf");
         assert!(
             books
                 .iter()

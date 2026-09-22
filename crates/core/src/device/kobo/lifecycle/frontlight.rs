@@ -103,9 +103,10 @@ mod tests {
     use crate::device::DeviceRuntime;
     use crate::device::test_harness::DeviceRuntimeHarness;
     use crate::frontlight::LightLevels;
-    use crate::task::{BackgroundTask, ShutdownSignal, TaskId, TaskManager};
+    use crate::task::{BackgroundTask, TaskFuture, TaskId, TaskManager, sleep_unless_cancelled};
     use crate::view::Event;
     use std::time::Duration;
+    use tokio_util::sync::CancellationToken;
 
     struct WaitingTask;
 
@@ -114,8 +115,14 @@ mod tests {
             TaskId::AutoFrontlight
         }
 
-        fn run(&mut self, _hub: &crate::view::Hub, shutdown: &ShutdownSignal) {
-            shutdown.wait(Duration::from_secs(60));
+        fn run<'a>(
+            &'a mut self,
+            _hub: &'a crate::view::Hub,
+            cancel: &'a CancellationToken,
+        ) -> TaskFuture<'a> {
+            Box::pin(async move {
+                sleep_unless_cancelled(cancel, Duration::from_secs(60)).await;
+            })
         }
     }
 

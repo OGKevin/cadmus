@@ -743,9 +743,9 @@ mod tests {
     use crate::geom::CycleDir;
     use crate::metadata::FileInfo;
     use crate::settings::ImportSettings;
-    use crate::task::ShutdownSignal;
     use std::fs;
     use std::str::FromStr;
+    use tokio_util::sync::CancellationToken;
 
     async fn setup_library_with_book(
         dir: &Path,
@@ -759,7 +759,7 @@ mod tests {
         fs::write(dir.join(filename), b"dummy book content").expect("failed to write test file");
         let (tx, _rx) = crate::view::hub_channel();
         let notif_id = crate::view::ViewId::MessageNotif(0);
-        let shutdown = ShutdownSignal::never();
+        let shutdown = CancellationToken::new();
         importer::run(
             &lib.db,
             lib.library_id,
@@ -770,7 +770,8 @@ mod tests {
             &tx,
             notif_id,
             &shutdown,
-        );
+        )
+        .await;
         (lib, PathBuf::from(filename))
     }
 

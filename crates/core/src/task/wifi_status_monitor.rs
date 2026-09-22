@@ -6,9 +6,9 @@
 //! (enable/disable + `network_info`), not by probing dhcpcd here.
 
 use std::collections::HashMap;
-use std::time::Duration;
 
 use futures_util::stream::StreamExt;
+use tokio_util::sync::CancellationToken;
 
 #[cfg(feature = "tracing")]
 use opentelemetry::trace::Status;
@@ -16,11 +16,10 @@ use opentelemetry::trace::Status;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 use crate::input::DeviceEvent;
-use crate::task::{BackgroundTask, ShutdownSignal, TaskId};
+use crate::task::{BackgroundTask, TaskFuture, TaskId};
 use crate::view::Event;
 
 const DHCPCCD_PATH: &str = "/name/marples/roy/dhcpcd";
-const SHUTDOWN_POLL_INTERVAL: Duration = Duration::from_millis(200);
 
 /// WiFi status monitor that listens for dhcpcd-dbus WpaStatus signals.
 pub struct WifiStatusMonitorTask;
@@ -30,27 +29,28 @@ impl BackgroundTask for WifiStatusMonitorTask {
         TaskId::WifiStatusMonitor
     }
 
-    fn run(&mut self, hub: &crate::view::Hub, shutdown: &ShutdownSignal) {
-        let rt = match tokio::runtime::Runtime::new() {
-            Ok(rt) => rt,
-            Err(e) => {
-                tracing::error!(error = %e, "failed to create tokio runtime");
-                return;
+    fn run<'a>(
+        &'a mut self,
+        hub: &'a crate::view::Hub,
+        cancel: &'a CancellationToken,
+    ) -> TaskFuture<'a> {
+        Box::pin(async move {
+            tokio::select! {
+                biased;
+                () = cancel.cancelled() => {
+                    tracing::info!("shutdown requested");
+                }
+                result = monitor(hub) => {
+                    if let Err(e) = result {
+                        tracing::error!(error = %e, "wifi status monitor exited with error");
+                    }
+                }
             }
-        };
-
-        rt.block_on(async {
-            if let Err(e) = monitor(hub, shutdown).await {
-                tracing::error!(error = %e, "wifi status monitor exited with error");
-            }
-        });
+        })
     }
 }
 
-async fn monitor(
-    hub: &crate::view::Hub,
-    shutdown: &ShutdownSignal,
-) -> Result<(), Box<dyn std::error::Error>> {
+async fn monitor(hub: &crate::view::Hub) -> Result<(), Box<dyn std::error::Error>> {
     let connection = zbus::Connection::system().await?;
     tracing::info!("connected to system bus");
 
@@ -71,18 +71,6 @@ async fn monitor(
     loop {
         tokio::select! {
             biased;
-
-            _ = async {
-                loop {
-                    if shutdown.should_stop() {
-                        return;
-                    }
-                    tokio::time::sleep(SHUTDOWN_POLL_INTERVAL).await;
-                }
-            } => {
-                tracing::info!("shutdown requested");
-                break;
-            }
 
             msg = stream.next() => {
                 #[cfg(feature = "tracing")]
