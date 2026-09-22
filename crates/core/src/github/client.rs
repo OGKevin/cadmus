@@ -3,7 +3,7 @@ use super::types::{
 };
 use crate::github::GithubError;
 use crate::http::{ChunkedDownloadError, Client};
-use reqwest::RequestBuilder;
+use reqwest_middleware::RequestBuilder;
 use secrecy::{ExposeSecret, SecretString};
 use std::path::PathBuf;
 
@@ -118,7 +118,7 @@ impl GithubClient {
     /// Downloads a file to `dest` using HTTP Range requests.
     ///
     /// Delegates to [`Client::download`]. `request_builder` is called once per
-    /// chunk (and per retry) to produce a `RequestBuilder` for the given URL.
+    /// chunk to produce a `RequestBuilder` for the given URL.
     ///
     /// # Errors
     ///

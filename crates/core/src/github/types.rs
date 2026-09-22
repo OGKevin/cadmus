@@ -63,9 +63,22 @@ pub enum VerifyScopesError {
     #[error("scope check request failed: {0}")]
     Request(#[from] reqwest::Error),
 
+    /// The HTTP request failed in middleware that did not carry a reqwest error.
+    #[error("scope check request failed: {0}")]
+    Transport(String),
+
     /// The token was accepted but lacks one or more required OAuth scopes.
     #[error(transparent)]
     InsufficientScopes(#[from] ScopeError),
+}
+
+impl From<reqwest_middleware::Error> for VerifyScopesError {
+    fn from(error: reqwest_middleware::Error) -> Self {
+        match crate::http::reqwest_error(error) {
+            Ok(error) => Self::Request(error),
+            Err(message) => Self::Transport(message),
+        }
+    }
 }
 
 // ── GitHub REST API response types ───────────────────────────────────────────

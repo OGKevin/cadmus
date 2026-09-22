@@ -11,10 +11,15 @@ members = [
 ]
 
 [workspace.dependencies]
-backon = { version = "1.6", default-features = false, features = ["std"] }
 blake3 = "1"
 cc = "1"
 io_tee = "0.1"
+reqwest-middleware = { version = "0.5.2", default-features = false, features = [
+    "form",
+    "json",
+] }
+reqwest-retry = { version = "0.9.1", default-features = false }
+reqwest-tracing = { version = "0.7.1", default-features = false }
 rust-embed = "8"
 rustls = { version = "0.23", default-features = false, features = [
   "ring",

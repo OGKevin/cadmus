@@ -169,7 +169,17 @@ impl From<ChunkedDownloadError> for OtaError {
             ChunkedDownloadError::Cancelled => OtaError::Cancelled,
             ChunkedDownloadError::Request(r) if r.status().is_some() => api_error(r),
             ChunkedDownloadError::Request(r) => OtaError::Request(r),
+            ChunkedDownloadError::Failed(message) => OtaError::Api(message),
             ChunkedDownloadError::Io(e) => OtaError::Io(e),
+        }
+    }
+}
+
+impl From<reqwest_middleware::Error> for OtaError {
+    fn from(error: reqwest_middleware::Error) -> Self {
+        match crate::http::reqwest_error(error) {
+            Ok(error) => Self::Request(error),
+            Err(message) => Self::Api(message),
         }
     }
 }
@@ -1128,6 +1138,7 @@ fn is_ota_candidate_run(run: &WorkflowRun) -> bool {
 async fn verify_scopes(github: &crate::github::GithubClient) -> Result<(), OtaError> {
     github.verify_token_scopes().await.map_err(|e| match e {
         crate::github::VerifyScopesError::Request(e) => api_error(e),
+        crate::github::VerifyScopesError::Transport(message) => OtaError::Api(message),
         crate::github::VerifyScopesError::InsufficientScopes(e) => OtaError::InsufficientScopes(e),
     })
 }

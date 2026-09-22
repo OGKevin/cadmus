@@ -6,6 +6,9 @@
 //! - TLS using `webpki-roots` certificates (no system cert store required)
 //! - 30 second request timeout
 //! - User agent identifying the application
+//! - Retries for transient failures (connection errors, timeouts, HTTP 408,
+//!   429, and 5xx): three attempts, starting at 1s, doubling, no jitter
+//! - A tracing span per request attempt when the `tracing` feature is enabled
 //!
 //! # Example
 //!
@@ -19,8 +22,10 @@
 //! }
 //! ```
 
-use backon::{BackoffBuilder, ExponentialBuilder};
-use reqwest::{Client as ReqwestClient, RequestBuilder};
+use reqwest::Client as ReqwestClient;
+use reqwest_middleware::{ClientBuilder, ClientWithMiddleware, RequestBuilder};
+use reqwest_retry::policies::ExponentialBackoff;
+use reqwest_retry::{Jitter, RetryTransientMiddleware};
 use rustls::RootCertStore;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU8, Ordering};
@@ -160,8 +165,8 @@ const MAX_CHUNK_SIZE: usize = 10 * 1024 * 1024;
 const INITIAL_CHUNK_SIZE: usize = 1024 * 1024;
 /// Target 80% of the HTTP timeout to leave headroom for throughput variance.
 const TARGET_CHUNK_SECS: f64 = CLIENT_TIMEOUT_SECS as f64 * 0.8;
-const MAX_RETRIES: usize = 3;
-const CANCEL_POLL_INTERVAL: Duration = Duration::from_millis(50);
+/// Sleeps after a failed attempt. Two sleeps means three attempts in total.
+const RETRY_BACKOFFS: usize = 2;
 
 /// Error types that can occur during a chunked HTTP download.
 #[derive(Error, Debug)]
@@ -172,6 +177,17 @@ pub enum ChunkedDownloadError {
     Io(#[from] std::io::Error),
     #[error("Download cancelled")]
     Cancelled,
+    #[error("HTTP request error: {0}")]
+    Failed(String),
+}
+
+impl From<reqwest_middleware::Error> for ChunkedDownloadError {
+    fn from(error: reqwest_middleware::Error) -> Self {
+        match reqwest_error(error) {
+            Ok(error) => Self::Request(error),
+            Err(message) => Self::Failed(message),
+        }
+    }
 }
 
 /// Pre-configured HTTP client for making network requests.
@@ -181,6 +197,8 @@ pub enum ChunkedDownloadError {
 /// - TLS using `webpki-roots` certificates (works on Kobo devices without system cert store)
 /// - 30 second request timeout
 /// - User agent header set
+/// - Transient-failure retries on every request, including chunked downloads
+/// - Request spans when the `tracing` feature is enabled
 ///
 /// # Example
 ///
@@ -194,7 +212,8 @@ pub enum ChunkedDownloadError {
 /// }
 /// ```
 pub struct Client {
-    client: ReqwestClient,
+    raw: ReqwestClient,
+    client: ClientWithMiddleware,
 }
 
 impl Client {
@@ -205,15 +224,16 @@ impl Client {
             .with_root_certificates(root_store)
             .with_no_client_auth();
 
-        let client = ReqwestClient::builder()
+        let raw = ReqwestClient::builder()
             .use_preconfigured_tls(tls_config)
             .user_agent(USER_AGENT)
             .timeout(Duration::from_secs(CLIENT_TIMEOUT_SECS))
             .build()
             .map_err(HttpError::Build)?;
+        let client = client_with_retry(raw.clone());
 
         tracing::debug!("HTTP client built successfully");
-        Ok(Self { client })
+        Ok(Self { raw, client })
     }
 
     pub fn head(&self, url: &str) -> RequestBuilder {
@@ -230,15 +250,20 @@ impl Client {
 
     /// Returns the inner [`reqwest::Client`] for libraries that take one directly,
     /// such as the OpenTelemetry exporter.
+    ///
+    /// The returned client has neither retry nor request-span middleware, so
+    /// export traffic does not retry through the application policy or trace
+    /// itself.
     pub fn into_reqwest(self) -> ReqwestClient {
-        self.client
+        self.raw
     }
 
     /// Downloads a file to `dest` using HTTP Range requests.
     ///
-    /// `request_builder` is called once per chunk (and per retry) to produce a
-    /// `RequestBuilder` for the given URL. The caller is responsible for adding
-    /// any required headers (e.g. `Authorization`).
+    /// `request_builder` is called once per chunk to produce a `RequestBuilder`
+    /// for the given URL. The caller is responsible for adding any required
+    /// headers (e.g. `Authorization`). Transient failures are retried by the
+    /// client middleware, which reuses that built request.
     ///
     /// `progress_callback` is called after each successful chunk with
     /// `(bytes_downloaded_so_far, total_bytes)`.
@@ -255,8 +280,9 @@ impl Client {
     /// Returns `ChunkedDownloadError::Io` if the staging file cannot be created,
     /// written, or renamed onto `dest`. Returns `ChunkedDownloadError::Request` if
     /// all retry attempts for any chunk fail. Returns
-    /// `ChunkedDownloadError::Cancelled` when `should_cancel` reports cancellation,
-    /// including between retry attempts and during backoff.
+    /// `ChunkedDownloadError::Cancelled` when `should_cancel` reports cancellation
+    /// between chunks or before the file is published. Cancellation during a
+    /// chunk's retries is noticed at the next chunk boundary.
     ///
     /// # Example
     ///
@@ -331,18 +357,8 @@ impl Client {
             );
 
             let start = std::time::Instant::now();
-            let chunk_data = match Self::download_chunk_with_retries(
-                url,
-                chunk_start,
-                chunk_end,
-                &request_builder,
-                should_cancel,
-            )
-            .await
-            {
-                Ok(data) => data,
-                Err(e) => return Err(e),
-            };
+            let chunk_data =
+                Self::download_chunk(url, chunk_start, chunk_end, &request_builder).await?;
             let elapsed_secs = start.elapsed().as_secs_f64();
 
             file.write_all(&chunk_data).await?;
@@ -383,68 +399,9 @@ impl Client {
         Ok(())
     }
 
-    /// Downloads a specific byte range with automatic exponential-backoff retry.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if all retry attempts fail, or
-    /// [`ChunkedDownloadError::Cancelled`] if cancellation is requested before a
-    /// retry or during backoff.
-    #[cfg_attr(
-        feature = "tracing",
-        tracing::instrument(skip(request_builder, should_cancel))
-    )]
-    async fn download_chunk_with_retries<B>(
-        url: &str,
-        start: u64,
-        end: u64,
-        request_builder: &B,
-        should_cancel: Option<CancelFunc<'_>>,
-    ) -> Result<Vec<u8>, ChunkedDownloadError>
-    where
-        B: Fn(&str) -> RequestBuilder,
-    {
-        let mut backoff = ExponentialBuilder::default()
-            .with_min_delay(Duration::from_secs(1))
-            .with_factor(2.0)
-            .with_max_times(MAX_RETRIES.saturating_sub(1))
-            .build();
-        let mut attempt = 0_u32;
-
-        loop {
-            if should_cancel.is_some_and(CancelFunc::is_cancelled) {
-                return Err(ChunkedDownloadError::Cancelled);
-            }
-
-            attempt += 1;
-            match Self::download_chunk(url, start, end, request_builder).await {
-                Ok(data) => {
-                    if attempt > 1 {
-                        tracing::debug!(attempt, "Chunk download succeeded after retry");
-                    }
-                    return Ok(data);
-                }
-                Err(ChunkedDownloadError::Cancelled) => {
-                    return Err(ChunkedDownloadError::Cancelled);
-                }
-                Err(e) => {
-                    tracing::warn!(attempt, error = %e, "Chunk download failed");
-                    match backoff.next() {
-                        Some(delay) => {
-                            tracing::debug!(
-                                backoff_ms = delay.as_millis(),
-                                "Retrying after backoff"
-                            );
-                            sleep_interruptible(delay, should_cancel).await?;
-                        }
-                        None => return Err(e),
-                    }
-                }
-            }
-        }
-    }
-
     /// Downloads a specific byte range from a URL using the HTTP `Range` header.
+    ///
+    /// Transient failures are retried by the client middleware.
     ///
     /// # Errors
     ///
@@ -459,8 +416,7 @@ impl Client {
     where
         B: Fn(&str) -> RequestBuilder,
     {
-        let range_header = format!("bytes={}-{}", start, end);
-
+        let range_header = format!("bytes={start}-{end}");
         let bytes = request_builder(url)
             .header("Range", range_header)
             .send()
@@ -476,7 +432,49 @@ impl Client {
 impl Clone for Client {
     fn clone(&self) -> Self {
         Self {
+            raw: self.raw.clone(),
             client: self.client.clone(),
+        }
+    }
+}
+
+fn retry_policy() -> ExponentialBackoff {
+    ExponentialBackoff::builder()
+        .retry_bounds(Duration::from_secs(1), Duration::from_secs(60))
+        .jitter(Jitter::None)
+        .base(2)
+        .build_with_max_retries(u32::try_from(RETRY_BACKOFFS).unwrap_or(0))
+}
+
+fn client_with_retry(raw: ReqwestClient) -> ClientWithMiddleware {
+    attach_request_spans(
+        ClientBuilder::new(raw).with(RetryTransientMiddleware::new_with_policy(retry_policy())),
+    )
+    .build()
+}
+
+fn attach_request_spans(builder: ClientBuilder) -> ClientBuilder {
+    #[cfg(feature = "tracing")]
+    {
+        builder.with(reqwest_tracing::TracingMiddleware::default())
+    }
+    #[cfg(not(feature = "tracing"))]
+    {
+        builder
+    }
+}
+
+pub(crate) fn reqwest_error(error: reqwest_middleware::Error) -> Result<reqwest::Error, String> {
+    match error {
+        reqwest_middleware::Error::Reqwest(error) => Ok(error),
+        reqwest_middleware::Error::Middleware(error) => {
+            match error.downcast::<reqwest_retry::RetryError>() {
+                Ok(retry) => match retry {
+                    reqwest_retry::RetryError::Error(error) => reqwest_error(error),
+                    reqwest_retry::RetryError::WithRetries { err, .. } => reqwest_error(err),
+                },
+                Err(error) => Err(error.to_string()),
+            }
         }
     }
 }
@@ -493,34 +491,6 @@ fn download_staging_path(dest: &Path) -> PathBuf {
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_else(|| "download".to_owned());
     dest.with_file_name(format!("{name}.{}.partial", uuid::Uuid::now_v7()))
-}
-
-async fn sleep_interruptible(
-    duration: Duration,
-    should_cancel: Option<CancelFunc<'_>>,
-) -> Result<(), ChunkedDownloadError> {
-    let Some(should_cancel) = should_cancel else {
-        tokio::time::sleep(duration).await;
-        return Ok(());
-    };
-
-    let deadline = tokio::time::Instant::now() + duration;
-    loop {
-        if should_cancel.is_cancelled() {
-            return Err(ChunkedDownloadError::Cancelled);
-        }
-        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
-        if remaining.is_zero() {
-            break;
-        }
-        tokio::time::sleep(remaining.min(CANCEL_POLL_INTERVAL)).await;
-    }
-
-    if should_cancel.is_cancelled() {
-        return Err(ChunkedDownloadError::Cancelled);
-    }
-
-    Ok(())
 }
 
 #[cfg(test)]
@@ -559,44 +529,6 @@ mod tests {
         let result = client
             .download(
                 "https://example.invalid/unused",
-                1024,
-                &dest,
-                |url| client.get(url),
-                &mut |_, _| {},
-                Some(CancelFunc::new(&cancel_check)),
-            )
-            .await;
-
-        assert!(matches!(result, Err(ChunkedDownloadError::Cancelled)));
-        assert_eq!(
-            std::fs::read(&dest).expect("dest preserved"),
-            b"existing",
-            "failed download must not truncate an existing destination"
-        );
-        assert!(
-            leftover_partials(temp_dir.path()).is_empty(),
-            "staging partial must be cleaned up"
-        );
-    }
-
-    #[tokio::test]
-    async fn download_returns_cancelled_during_chunk_retries() {
-        use std::sync::atomic::{AtomicUsize, Ordering};
-
-        crate::crypto::init_crypto_provider();
-        let client = Client::new().expect("client");
-        let temp_dir = tempfile::Builder::new()
-            .prefix("cadmus-http-cancel-retry-")
-            .tempdir()
-            .expect("tempdir");
-        let dest = temp_dir.path().join("partial.bin");
-        std::fs::write(&dest, b"existing").expect("seed dest");
-        let checks = AtomicUsize::new(0);
-        let cancel_check = || checks.fetch_add(1, Ordering::Relaxed) >= 2;
-
-        let result = client
-            .download(
-                "http://127.0.0.1:1/unused",
                 1024,
                 &dest,
                 |url| client.get(url),
