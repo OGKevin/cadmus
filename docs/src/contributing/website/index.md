@@ -23,7 +23,7 @@ and [`website/lib/doc-hrefs.ts`](https://github.com/ogkevin/cadmus/blob/master/w
 - **Production (Cloudflare Workers)**: <https://cadmus.ogkevin.nl/>
   (`cadmus.5f27h4ytfw.workers.dev` is the same Worker)
 - **PR previews**: `wrangler versions upload --preview-alias pr-{NUMBER}`
-  (non-fork PRs; fork PRs still build with no preview deploy)
+  (pull requests whose head is this repository; fork PRs still build with no preview deploy)
 - **GitHub Pages**: <https://ogkevin.github.io/cadmus/> redirects to
   `https://cadmus.ogkevin.nl/` (path after `/cadmus` is preserved)
 
@@ -131,11 +131,11 @@ builds and deploys the site:
 - `cargo xtask docs` → artifact `website/out`
 - Production: `wrangler deploy` (Workers Static Assets from `wrangler.toml`,
   with Workers Logs and traces enabled)
-- PR previews: `wrangler versions upload --preview-alias pr-{NUMBER}` for non-fork PRs
-  (fork PRs still build; no preview deploy)
+- PR previews: `wrangler versions upload --preview-alias pr-{NUMBER}` when the
+  pull request head is this repository (fork PRs still build; no preview deploy)
 - GitHub Pages: [`.github/workflows/cadmus-docs-gh-pages-redirect.yml`](https://github.com/ogkevin/cadmus/blob/master/.github/workflows/cadmus-docs-gh-pages-redirect.yml)
   deploys `.github/gh-pages-redirect/` so `ogkevin.github.io/cadmus` bookmarks
-  reach `https://cadmus.ogkevin.nl/`
+  reach `https://cadmus.ogkevin.nl/`. Fork repositories skip that deploy.
 
 `CLOUDFLARE_API_TOKEN` must allow **Workers Scripts:Edit** (Cloudflare token template
 **Edit Cloudflare Workers**). A Pages-only token will fail `wrangler deploy`.
@@ -144,7 +144,8 @@ builds and deploys the site:
 ## Reviewing changes
 
 When you open a pull request that modifies website or documentation files, a preview
-deployment is created automatically for non-fork PRs. The PR environment
+deployment is created automatically when the pull request head is this repository.
+The PR environment
 `cloudflare-workers-preview` shows the preview URL from `wrangler versions upload`.
 
 <!-- i18n:skip-end -->

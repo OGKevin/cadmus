@@ -46,6 +46,8 @@ flowchart LR
 - [`.github/workflows/crowdin.yml`](https://github.com/ogkevin/cadmus/blob/master/.github/workflows/crowdin.yml)
   runs on pushes to `main` and on pull requests that touch
   `crates/core/i18n/**`, `docs/po/**`, or `website/messages/**`.
+  Pull requests from a fork skip the sync: GitHub does not pass the Crowdin
+  token to those runs. Pushes on a fork repository skip it as well.
 - The action uploads sources and existing translations, downloads updates, and
   opens or updates an `l10n/<branch>` pull request labelled `automated`, `l10n`,
   and `crowdin`.

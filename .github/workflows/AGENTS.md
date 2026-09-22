@@ -58,6 +58,34 @@ Path-filter and validate jobs only need a read-only checkout. Prefer:
 Skip this on unprivileged collect jobs that do not need git credentials.
 Report workflows that fetch the PR base ref need a tokenized remote.
 
+## Fork PRs and secrets
+
+`github.event.repository.fork` is true only when the workflow runs **on a fork
+repository** (a push to that fork, or a pull request opened inside it). A
+`pull_request` into the upstream repository still has `repository.fork == false`,
+and GitHub withholds repository secrets and write scopes on that event.
+
+Jobs that need repository secrets, or a write token those events cannot have,
+must skip unless the head repository is this repository. Keep the fork-repository
+guard for push and `workflow_dispatch` paths. Do not compare `github.repository`
+to a hardcoded owner/name.
+
+```yaml
+if: >-
+  github.event.repository.fork == false &&
+  (
+    github.event_name != 'pull_request' ||
+    github.event.pull_request.head.repo.full_name == github.repository
+  )
+```
+
+Drop the `repository.fork` clause when the job should still run on a fork's own
+same-repository pull requests (for example cache cleanup). Drop the
+`pull_request` clause when the job does not run on `pull_request`.
+
+`workflow_run` report jobs are privileged in the base repository on purpose.
+Do not add this guard there.
+
 ## Fork PR reviewdog
 
 Public fork pull requests receive a read-only `GITHUB_TOKEN` on `pull_request`,
