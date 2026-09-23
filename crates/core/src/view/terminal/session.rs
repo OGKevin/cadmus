@@ -920,6 +920,8 @@ impl View for Terminal {
             }
             Event::Gesture(GestureEvent::Tap(point)) => self.send_mouse_tap(point),
             Event::WakeUp => {
+                // Reader job owns only the emulator; render its pending output
+                // here, but let the event keep bubbling up the view chain.
                 if let Ok(emu) = self.emulator.lock() {
                     let dirty = self.renderer.render_screen(
                         emu.screen(),
@@ -944,7 +946,7 @@ impl View for Terminal {
                         ));
                     }
                 }
-                true
+                false
             }
             _ => false,
         }
@@ -1384,6 +1386,37 @@ mod tests {
         assert!(receiver.try_recv().is_err());
         let state = state.lock().expect("fake PTY state poisoned");
         assert_eq!(state.shutdowns, 0);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn wake_up_publishes_output_without_capturing_the_event() {
+        let (mut terminal, _state, mut context, hub, mut receiver, mut render_queue) =
+            fake_terminal().await;
+        terminal
+            .emulator
+            .lock()
+            .expect("terminal emulator poisoned")
+            .feed(b"hi");
+        render_queue.clear();
+
+        assert!(
+            !handle_terminal_event(
+                &mut terminal,
+                Event::WakeUp,
+                &hub,
+                &mut render_queue,
+                &mut context,
+            )
+            .await
+        );
+
+        let updates = render_queue
+            .get(&(UpdateMode::FastMono, false))
+            .expect("terminal output update was not scheduled");
+        assert_eq!(updates.len(), 1);
+        assert_eq!(updates[0].0, Some(terminal.id));
+        // The fake PTY never produced output, so nothing else wakes the loop.
+        assert!(receiver.try_recv().is_err());
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
