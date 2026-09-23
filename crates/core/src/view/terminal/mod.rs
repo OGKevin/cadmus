@@ -10,3 +10,13 @@ mod render;
 mod session;
 
 pub use session::Terminal;
+
+/// Localized title of the terminal application.
+pub fn title() -> String {
+    crate::fl!("terminal-title")
+}
+
+/// Localized message shown when a terminal session cannot be started.
+pub fn open_failed_message() -> String {
+    crate::fl!("terminal-open-failed")
+}
