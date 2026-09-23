@@ -7,6 +7,7 @@ use crate::color::BLACK;
 use crate::device::AppContext;
 use crate::device::DeviceHardware as _;
 use crate::device::DeviceIdentity as _;
+use crate::fl;
 use crate::framebuffer::{Framebuffer as _, Pixmap, UpdateMode};
 use crate::geom::{Dir, Point, Rectangle, halves};
 use crate::gesture::GestureEvent;
@@ -104,13 +105,13 @@ fn terminal_bar_children(
         Box::new(TopBar::new(
             bar_rects.top_bar,
             TopBarVariant::Back,
-            "Terminal".to_string(),
+            super::title(),
             context,
         )),
         Box::new(Filler::new(bar_rects.top_separator, BLACK)),
         Box::new(Label::new(
             bar_rects.font_size_label,
-            "Font size:".to_string(),
+            fl!("terminal-font-size"),
             Align::Center,
         )),
         Box::new(Slider::new(
@@ -701,8 +702,8 @@ impl Terminal {
             }
 
             let entries = vec![
-                EntryKind::Command("Toggle Keyboard".to_string(), EntryId::ToggleKeyboard),
-                EntryKind::Command("Quit".to_string(), EntryId::Quit),
+                EntryKind::Command(fl!("terminal-toggle-keyboard"), EntryId::ToggleKeyboard),
+                EntryKind::Command(fl!("top-menu-quit"), EntryId::Quit),
             ];
             let menu = Menu::new(
                 rect,
