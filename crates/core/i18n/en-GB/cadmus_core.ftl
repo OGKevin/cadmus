@@ -59,6 +59,12 @@ top-menu-switch-to = Switch to { $build }
 top-menu-sync-time = Sync Time
 top-menu-wifi = WiFi
 
+# Terminal
+terminal-font-size = Font Size
+terminal-open-failed = Failed to open the terminal.
+terminal-title = Terminal
+terminal-toggle-keyboard = Toggle Keyboard
+
 # OTA
 
 ota-already-latest = You already have the latest version
