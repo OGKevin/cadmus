@@ -73,10 +73,11 @@ impl Slider {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl View for Slider {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, bus, rq, _context), fields(event = ?evt
     ), ret(level=tracing::Level::TRACE)))]
-    fn handle_event(
+    async fn handle_event(
         &mut self,
         evt: &Event,
         _hub: &Hub,
@@ -287,10 +288,11 @@ impl SliderWithButtons {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl View for SliderWithButtons {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, bus, rq, _context), fields(event = ?evt
     ), ret(level=tracing::Level::TRACE)))]
-    fn handle_event(
+    async fn handle_event(
         &mut self,
         evt: &Event,
         _hub: &Hub,
@@ -374,25 +376,25 @@ mod tests {
             dec_bounds.min.y + dec_bounds.max.y / 2,
         );
         let tap_event = Event::Gesture(GestureEvent::Tap(point));
-        crate::view::handle_event(
+        crate::runtime::block_on(crate::view::handle_event(
             slider.child_mut(slider.decrement_index),
             &tap_event,
             &hub,
             &mut bus,
             &mut rq,
             &mut context,
-        );
+        ));
         assert_eq!(bus.len(), 1);
         let increment_event = bus.pop_front().unwrap();
 
-        crate::view::handle_event(
+        crate::runtime::block_on(crate::view::handle_event(
             &mut slider,
             &increment_event,
             &hub,
             &mut bus,
             &mut rq,
             &mut context,
-        );
+        ));
         assert_eq!(bus.len(), 1);
         let update_event = bus.pop_front();
         assert!(matches!(

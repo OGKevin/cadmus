@@ -102,6 +102,7 @@ impl Label {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl View for Label {
     /// Handle events for this label.
     ///
@@ -136,7 +137,7 @@ impl View for Label {
         fields(event = ?evt),
         ret(level=tracing::Level::TRACE)
     ))]
-    fn handle_event(
+    async fn handle_event(
         &mut self,
         evt: &Event,
         _hub: &Hub,
@@ -252,7 +253,13 @@ mod tests {
 
         let point = Point::new(100, 25);
         let event = Event::Gesture(GestureEvent::Tap(point));
-        let handled = label.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+        let handled = crate::runtime::block_on(label.handle_event(
+            &event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(handled);
         assert_eq!(bus.len(), 1);
@@ -271,7 +278,13 @@ mod tests {
 
         let point = Point::new(100, 25);
         let event = Event::Gesture(GestureEvent::Tap(point));
-        let handled = label.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+        let handled = crate::runtime::block_on(label.handle_event(
+            &event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(handled);
         assert_eq!(bus.len(), 0);
@@ -290,7 +303,13 @@ mod tests {
 
         let point = Point::new(300, 100);
         let event = Event::Gesture(GestureEvent::Tap(point));
-        let handled = label.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+        let handled = crate::runtime::block_on(label.handle_event(
+            &event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(!handled);
         assert_eq!(bus.len(), 0);

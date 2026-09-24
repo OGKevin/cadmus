@@ -64,8 +64,17 @@ pub(crate) fn current_essid(networks: &[ListedNetwork]) -> Option<Essid> {
 
 /// Queries dhcpcd-dbus on one system-bus connection (list + get interfaces).
 #[cfg_attr(feature = "tracing", tracing::instrument(fields(interface), ret))]
-pub(crate) fn network_info_from_zbus(interface: &str) -> Result<Option<NetworkInfo>, WifiError> {
-    block_on_with_timeout(network_info_zbus_async(interface))
+pub(crate) async fn network_info_from_zbus(
+    interface: &str,
+) -> Result<Option<NetworkInfo>, WifiError> {
+    tokio::time::timeout(DHCPCD_METHOD_TIMEOUT, network_info_zbus_async(interface))
+        .await
+        .map_err(|_| {
+            WifiError::Dbus(format!(
+                "dhcpcd-dbus timed out after {}s",
+                DHCPCD_METHOD_TIMEOUT.as_secs()
+            ))
+        })?
 }
 
 fn assemble_network_info(
@@ -89,22 +98,6 @@ fn assemble_network_info(
     Ok(NetworkInfo {
         ip,
         essid: essid.clone(),
-    })
-}
-
-fn block_on_with_timeout<F, T>(fut: F) -> Result<T, WifiError>
-where
-    F: std::future::Future<Output = Result<T, WifiError>>,
-{
-    crate::runtime::block_on(async {
-        tokio::time::timeout(DHCPCD_METHOD_TIMEOUT, fut)
-            .await
-            .map_err(|_| {
-                WifiError::Dbus(format!(
-                    "dhcpcd-dbus timed out after {}s",
-                    DHCPCD_METHOD_TIMEOUT.as_secs()
-                ))
-            })?
     })
 }
 

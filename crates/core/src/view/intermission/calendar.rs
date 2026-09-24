@@ -128,9 +128,10 @@ fn color_or(is_color: bool, r: u8, g: u8, b: u8, fallback: Color) -> Color {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl View for CalendarView {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, _bus, _rq, _context), fields(event = ?_evt), ret(level=tracing::Level::TRACE)))]
-    fn handle_event(
+    async fn handle_event(
         &mut self,
         _evt: &Event,
         _hub: &Hub,

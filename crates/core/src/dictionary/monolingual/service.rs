@@ -11,6 +11,7 @@ use super::metadata::{DictionariesResponse, DictionaryEntry, download_url, downl
 use crate::db::Database;
 use crate::db::types::UnixTimestamp;
 use std::collections::HashSet;
+#[cfg(test)]
 use std::fs;
 use std::io::{self};
 use std::path::{Path, PathBuf};
@@ -276,15 +277,7 @@ impl MonolingualDictionaryService {
 
         tracing::debug!(lang, dest = %dest.display(), "Extracting dictionary archive");
 
-        let staging_for_extract = staging.clone();
-        let lang_owned = lang.to_owned();
-        let temp_for_extract = temp_path.clone();
-        tokio::task::spawn_blocking(move || {
-            let file = fs::File::open(&temp_for_extract)?;
-            extract_zip_renamed(file, &staging_for_extract, &lang_owned)
-        })
-        .await
-        .map_err(|error| MonolingualError::Extraction(error.to_string()))??;
+        extract_zip_renamed(&temp_path, &staging, lang).await?;
         if let Err(error) = tokio::fs::remove_file(&temp_path).await {
             tracing::warn!(
                 path = %temp_path.display(),
@@ -835,15 +828,37 @@ async fn has_dict_pair(dir: &Path) -> bool {
 /// or `.dict.dz`.
 ///
 /// Files with unrecognised extensions are skipped. Directories inside the ZIP
-/// are ignored because all output files land flat in `dest`.
-#[cfg_attr(feature = "tracing", tracing::instrument(skip(reader)))]
-fn extract_zip_renamed<R: std::io::Read + std::io::Seek>(
-    reader: R,
+/// are ignored because all output files land flat in `dest`. Inflation runs on
+/// the blocking pool; the archive bytes and the renamed files move through
+/// async filesystem calls.
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(zip_path, dest)))]
+async fn extract_zip_renamed(
+    zip_path: &Path,
     dest: &Path,
     lang: &str,
 ) -> Result<(), MonolingualError> {
-    let mut archive = ZipArchive::new(reader)
+    let bytes = tokio::fs::read(zip_path).await?;
+    let lang = lang.to_owned();
+    let files = tokio::task::spawn_blocking(move || inflate_renamed_entries(bytes, &lang))
+        .await
+        .map_err(|error| MonolingualError::Extraction(error.to_string()))??;
+
+    for (name, data) in files {
+        let out_path = dest.join(&name);
+        tokio::fs::write(&out_path, data).await?;
+        tracing::debug!(path = %out_path.display(), "Extracted file");
+    }
+
+    Ok(())
+}
+
+fn inflate_renamed_entries(
+    bytes: Vec<u8>,
+    lang: &str,
+) -> Result<Vec<(String, Vec<u8>)>, MonolingualError> {
+    let mut archive = ZipArchive::new(std::io::Cursor::new(bytes))
         .map_err(|e| MonolingualError::Extraction(format!("failed to open zip archive: {e}")))?;
+    let mut files = Vec::new();
 
     for i in 0..archive.len() {
         let mut file = archive.by_index(i).map_err(|e| {
@@ -866,8 +881,7 @@ fn extract_zip_renamed<R: std::io::Read + std::io::Seek>(
             }
         };
 
-        let target_name = dict_file_target_name(&original_name, lang);
-        let Some(target_name) = target_name else {
+        let Some(target_name) = dict_file_target_name(&original_name, lang) else {
             tracing::debug!(
                 original_name,
                 "Skipping zip entry with unrecognised extension"
@@ -875,13 +889,12 @@ fn extract_zip_renamed<R: std::io::Read + std::io::Seek>(
             continue;
         };
 
-        let out_path = dest.join(&target_name);
-        let mut out_file = fs::File::create(&out_path)?;
-        io::copy(&mut file, &mut out_file)?;
-        tracing::debug!(path = %out_path.display(), "Extracted file");
+        let mut data = Vec::new();
+        io::copy(&mut file, &mut data)?;
+        files.push((target_name, data));
     }
 
-    Ok(())
+    Ok(files)
 }
 
 /// Maps a ZIP entry filename to its renamed output filename `<lang>.<ext>`.
@@ -1683,7 +1696,9 @@ mod tests {
 
         let dest = dir.path().join(READER_DICT_SUBDIR).join("en");
         fs::create_dir_all(&dest).unwrap();
-        extract_zip_renamed(Cursor::new(&zip_bytes), &dest, "en").unwrap();
+        let zip_path = dir.path().join("dict.zip");
+        fs::write(&zip_path, &zip_bytes).unwrap();
+        extract_zip_renamed(&zip_path, &dest, "en").await.unwrap();
 
         assert!(dest.join("Reader-Dict-en.index").exists());
         assert!(dest.join("Reader-Dict-en.dict").exists());

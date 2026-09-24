@@ -580,9 +580,10 @@ impl FileChooser {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl View for FileChooser {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
-    fn handle_event(
+    async fn handle_event(
         &mut self,
         evt: &Event,
         _hub: &Hub,
@@ -723,7 +724,13 @@ mod tests {
         };
 
         let tap_event = Event::Gesture(GestureEvent::Tap(center));
-        let consumed = file_chooser.handle_event(&tap_event, &hub, &mut bus, &mut rq, &mut context);
+        let consumed = crate::runtime::block_on(file_chooser.handle_event(
+            &tap_event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(consumed, "Tap event in bottom bar should be consumed");
         assert!(
@@ -748,7 +755,13 @@ mod tests {
         };
 
         let tap_event = Event::Gesture(GestureEvent::Tap(entry_point));
-        let consumed = file_chooser.handle_event(&tap_event, &hub, &mut bus, &mut rq, &mut context);
+        let consumed = crate::runtime::block_on(file_chooser.handle_event(
+            &tap_event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(
             !consumed,
@@ -766,8 +779,13 @@ mod tests {
         let mut bus = VecDeque::new();
 
         let page_event = Event::Page(CycleDir::Next);
-        let consumed =
-            file_chooser.handle_event(&page_event, &hub, &mut bus, &mut rq, &mut context);
+        let consumed = crate::runtime::block_on(file_chooser.handle_event(
+            &page_event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(consumed, "Page event should still be handled correctly");
     }
@@ -788,7 +806,13 @@ mod tests {
         };
 
         let tap_event = Event::Gesture(GestureEvent::Tap(edge_point));
-        let consumed = file_chooser.handle_event(&tap_event, &hub, &mut bus, &mut rq, &mut context);
+        let consumed = crate::runtime::block_on(file_chooser.handle_event(
+            &tap_event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(consumed, "Tap event on bottom bar edge should be consumed");
     }
@@ -1065,8 +1089,13 @@ mod tests {
         let mut bus = VecDeque::new();
 
         let select_event = Event::Select(EntryId::FileEntry(temp_path.to_path_buf()));
-        let consumed =
-            file_chooser.handle_event(&select_event, &hub, &mut bus, &mut rq, &mut context);
+        let consumed = crate::runtime::block_on(file_chooser.handle_event(
+            &select_event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(
             consumed,
@@ -1120,8 +1149,13 @@ mod tests {
         let mut bus = VecDeque::new();
 
         let select_event = Event::Select(EntryId::FileEntry(temp_path.to_path_buf()));
-        let consumed =
-            file_chooser.handle_event(&select_event, &hub, &mut bus, &mut rq, &mut context);
+        let consumed = crate::runtime::block_on(file_chooser.handle_event(
+            &select_event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(
             consumed,
@@ -1160,8 +1194,13 @@ mod tests {
         fs::create_dir(&subdir_path).unwrap();
         let select_event = Event::Select(EntryId::FileEntry(subdir_path));
 
-        let consumed =
-            file_chooser.handle_event(&select_event, &hub, &mut bus, &mut rq, &mut context);
+        let consumed = crate::runtime::block_on(file_chooser.handle_event(
+            &select_event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(consumed, "Select event should be consumed");
         assert!(
@@ -1188,8 +1227,13 @@ mod tests {
         let mut bus = VecDeque::new();
 
         let select_event = Event::Select(EntryId::FileEntry(temp_path.to_path_buf()));
-        let consumed =
-            file_chooser.handle_event(&select_event, &hub, &mut bus, &mut rq, &mut context);
+        let consumed = crate::runtime::block_on(file_chooser.handle_event(
+            &select_event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(consumed, "Select event should be consumed");
 
@@ -1224,8 +1268,13 @@ mod tests {
 
         let select_event = Event::Select(EntryId::FileEntry(file_path));
 
-        let consumed =
-            file_chooser.handle_event(&select_event, &hub, &mut bus, &mut rq, &mut context);
+        let consumed = crate::runtime::block_on(file_chooser.handle_event(
+            &select_event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(consumed, "Select event should be consumed");
         assert!(
@@ -1255,8 +1304,13 @@ mod tests {
         let mut bus = VecDeque::new();
 
         let select_event = Event::Select(EntryId::FileEntry(file_path.clone()));
-        let consumed =
-            file_chooser.handle_event(&select_event, &hub, &mut bus, &mut rq, &mut context);
+        let consumed = crate::runtime::block_on(file_chooser.handle_event(
+            &select_event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(consumed, "Select event should be consumed");
 
@@ -1287,8 +1341,13 @@ mod tests {
         let mut bus = VecDeque::new();
 
         let select_event = Event::Select(EntryId::FileEntry(temp_path.to_path_buf()));
-        let consumed =
-            file_chooser.handle_event(&select_event, &hub, &mut bus, &mut rq, &mut context);
+        let consumed = crate::runtime::block_on(file_chooser.handle_event(
+            &select_event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(consumed, "Select event should be consumed");
 
@@ -1380,8 +1439,13 @@ mod tests {
         let initial_path = file_chooser.current_path.clone();
 
         let toggle_event = Event::ToggleSelectDirectory(subdir_path.clone());
-        let consumed =
-            file_chooser.handle_event(&toggle_event, &hub, &mut bus, &mut rq, &mut context);
+        let consumed = crate::runtime::block_on(file_chooser.handle_event(
+            &toggle_event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(consumed, "ToggleSelectDirectory event should be consumed");
         assert_eq!(
@@ -1414,8 +1478,13 @@ mod tests {
         let mut bus = VecDeque::new();
 
         let resized_event = Event::NavigationBarResized(50);
-        let consumed =
-            file_chooser.handle_event(&resized_event, &hub, &mut bus, &mut rq, &mut context);
+        let consumed = crate::runtime::block_on(file_chooser.handle_event(
+            &resized_event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(
             consumed,

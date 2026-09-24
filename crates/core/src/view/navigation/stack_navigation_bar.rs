@@ -1030,9 +1030,10 @@ fn find_closest_ancestor_by_provider<P: NavigationProvider>(
     None
 }
 
+#[async_trait::async_trait(?Send)]
 impl<P: NavigationProvider + 'static> View for StackNavigationBar<P> {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, bus, _rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
-    fn handle_event(
+    async fn handle_event(
         &mut self,
         evt: &Event,
         _hub: &Hub,
@@ -1603,7 +1604,13 @@ mod tests {
             end,
         });
 
-        let handled = nav_bar.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+        let handled = crate::runtime::block_on(nav_bar.handle_event(
+            &event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(handled, "North swipe should be handled");
 
@@ -1642,7 +1649,13 @@ mod tests {
             end,
         });
 
-        let handled = nav_bar.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+        let handled = crate::runtime::block_on(nav_bar.handle_event(
+            &event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(handled, "South swipe should be handled");
 
@@ -1681,7 +1694,13 @@ mod tests {
             end,
         });
 
-        let handled = nav_bar.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+        let handled = crate::runtime::block_on(nav_bar.handle_event(
+            &event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(
             !handled,
@@ -1715,7 +1734,13 @@ mod tests {
             end,
         });
 
-        let handled = nav_bar.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+        let handled = crate::runtime::block_on(nav_bar.handle_event(
+            &event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(!handled, "Horizontal swipe should not be handled");
     }

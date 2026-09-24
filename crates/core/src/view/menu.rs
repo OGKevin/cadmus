@@ -260,10 +260,11 @@ impl Menu {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl View for Menu {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, bus, rq, context), fields(event = ?evt
     ), ret(level=tracing::Level::TRACE)))]
-    fn handle_event(
+    async fn handle_event(
         &mut self,
         evt: &Event,
         hub: &Hub,
@@ -279,12 +280,13 @@ impl View for Menu {
                     bus,
                     rq,
                     context,
-                );
+                )
+                .await;
                 false
             }
             Event::PropagateSelect(..) => {
                 for c in &mut self.children {
-                    if c.handle_event(evt, hub, bus, rq, context) {
+                    if c.handle_event(evt, hub, bus, rq, context).await {
                         break;
                     }
                 }

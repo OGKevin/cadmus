@@ -44,9 +44,8 @@ impl<R: Rtc + Send + 'static> BackgroundTask for TimeSyncTask<R> {
     /// Time synchronisation does not abandon an in-flight sync.
     ///
     /// A token that is already cancelled skips the run. Once the sync starts,
-    /// cancellation waits until the WiFi lease is released. Geolocation uses
-    /// the shared HTTP client. NTP stays on the blocking pool because that
-    /// client is synchronous.
+    /// cancellation waits until the WiFi lease is released. Geolocation and
+    /// NTP both run on the runtime.
     fn run<'a>(
         &'a mut self,
         hub: &'a crate::view::Hub,
@@ -57,8 +56,7 @@ impl<R: Rtc + Send + 'static> BackgroundTask for TimeSyncTask<R> {
                 return;
             }
 
-            let _wifi = match tokio::task::block_in_place(|| self.wifi_session.acquire("time-sync"))
-            {
+            let _wifi = match self.wifi_session.acquire("time-sync").await {
                 Ok(lease) => lease,
                 Err(e) => {
                     tracing::error!(error = %e, "failed to acquire WiFi lease for time sync");

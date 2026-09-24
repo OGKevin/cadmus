@@ -319,13 +319,14 @@ impl Dialog {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl View for Dialog {
     #[cfg_attr(feature = "tracing", tracing::instrument(
         skip(self, hub, _bus, _rq, _context),
         fields(event = ?evt),
         ret(level=tracing::Level::TRACE)
     ))]
-    fn handle_event(
+    async fn handle_event(
         &mut self,
         evt: &Event,
         hub: &Hub,

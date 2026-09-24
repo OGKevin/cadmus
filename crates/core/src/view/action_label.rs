@@ -90,6 +90,7 @@ impl ActionLabel {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl View for ActionLabel {
     /// Handles finger down/up events to toggle active state and update label scheme.
     ///
@@ -104,7 +105,7 @@ impl View for ActionLabel {
     ///
     /// Returns true if the event was handled, false otherwise.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, _bus, rq, _context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
-    fn handle_event(
+    async fn handle_event(
         &mut self,
         evt: &Event,
         _hub: &Hub,
@@ -190,7 +191,13 @@ mod tests {
             id: 0,
             time: 0.0,
         });
-        let handled = action_label.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+        let handled = crate::runtime::block_on(action_label.handle_event(
+            &event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(handled);
         assert!(action_label.active);
@@ -221,7 +228,13 @@ mod tests {
             id: 0,
             time: 0.0,
         });
-        let handled = action_label.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+        let handled = crate::runtime::block_on(action_label.handle_event(
+            &event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(handled);
         assert!(!action_label.active);
@@ -244,7 +257,13 @@ mod tests {
             id: 0,
             time: 0.0,
         });
-        let handled = action_label.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+        let handled = crate::runtime::block_on(action_label.handle_event(
+            &event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(!handled);
         assert!(!action_label.active);
@@ -279,14 +298,14 @@ mod tests {
         let tap_event = Event::Gesture(crate::gesture::GestureEvent::Tap(point));
 
         let mut boxed: Box<dyn View> = Box::new(action_label);
-        crate::view::handle_event(
+        crate::runtime::block_on(crate::view::handle_event(
             boxed.as_mut(),
             &tap_event,
             &hub,
             &mut bus,
             &mut rq,
             &mut context,
-        );
+        ));
 
         assert_eq!(bus.len(), 1);
         assert!(matches!(bus.pop_front(), Some(Event::Back)));
@@ -308,14 +327,14 @@ mod tests {
         let tap_event = Event::Gesture(crate::gesture::GestureEvent::Tap(point));
 
         let mut boxed: Box<dyn View> = Box::new(action_label);
-        crate::view::handle_event(
+        crate::runtime::block_on(crate::view::handle_event(
             boxed.as_mut(),
             &tap_event,
             &hub,
             &mut bus,
             &mut rq,
             &mut context,
-        );
+        ));
 
         assert_eq!(bus.len(), 1);
         assert!(matches!(bus.pop_front(), Some(Event::Back)));

@@ -598,14 +598,16 @@ fn show_suspend_intermission(
     context: &mut AppContext,
     runtime: &mut DeviceRuntime<'_>,
 ) {
-    runtime
-        .view
-        .handle_event(&Event::Suspend, hub, bus, rq, context);
-    let interm = Intermission::new(
+    crate::runtime::block_on(
+        runtime
+            .view
+            .handle_event(&Event::Suspend, hub, bus, rq, context),
+    );
+    let interm = crate::runtime::block_on(Intermission::new(
         context.device.framebuffer().rect(),
         IntermKind::Suspend,
         context,
-    );
+    ));
     rq.add(RenderData::new(
         interm.id(),
         *interm.rect(),
@@ -659,11 +661,18 @@ impl DeviceLifecycle for EmulatorDevice {
                     runtime.view.children_mut().remove(index);
                     rq.add(RenderData::expose(rect, UpdateMode::Full));
                 } else {
-                    runtime
-                        .view
-                        .handle_event(&Event::Suspend, hub, bus, rq, context);
-                    let interm =
-                        Intermission::new(context.device.framebuffer().rect(), *kind, context);
+                    crate::runtime::block_on(runtime.view.handle_event(
+                        &Event::Suspend,
+                        hub,
+                        bus,
+                        rq,
+                        context,
+                    ));
+                    let interm = crate::runtime::block_on(Intermission::new(
+                        context.device.framebuffer().rect(),
+                        *kind,
+                        context,
+                    ));
                     rq.add(RenderData::new(
                         interm.id(),
                         *interm.rect(),
@@ -812,14 +821,13 @@ mod wifi_tests {
         for mode in [WifiMode::Auto, WifiMode::AlwaysOn] {
             let wifi = Arc::new(NoopWifiManager::default());
             assert!(!wifi.is_enabled());
-            wifi.enable().expect("startup enable");
+            crate::runtime::block_on(wifi.enable()).expect("startup enable");
             assert!(wifi.is_enabled());
-            wifi.disable().expect("return to idle before acquire");
+            crate::runtime::block_on(wifi.disable()).expect("return to idle before acquire");
             assert!(!wifi.is_enabled());
 
             let session = WifiSession::new(wifi, mode);
-            let _ = session
-                .acquire("ota-download")
+            let _ = crate::runtime::block_on(session.acquire("ota-download"))
                 .expect("acquire should succeed without panic");
         }
     }

@@ -34,16 +34,16 @@ enum Message {
 }
 
 impl Intermission {
-    pub fn new(rect: Rectangle, kind: IntermKind, context: &AppContext) -> Intermission {
+    pub async fn new(rect: Rectangle, kind: IntermKind, context: &AppContext) -> Intermission {
         let halt = kind == IntermKind::PowerOff;
 
         let (message, children): (Message, Vec<Box<dyn View>>) =
             match &context.settings.intermissions[kind] {
                 IntermissionDisplay::Logo => (Message::Text(kind.text().to_string()), Vec::new()),
                 IntermissionDisplay::Cover => {
-                    let msg = if let Some(info) = crate::runtime::block_on(
-                        context.library.most_recently_opened_reading_book(),
-                    ) {
+                    let msg = if let Some(info) =
+                        context.library.most_recently_opened_reading_book().await
+                    {
                         Message::Cover(context.library.home.join(&info.file.path))
                     } else {
                         Message::Text(kind.text().to_string())
@@ -90,13 +90,14 @@ impl I18nDisplay for IntermissionDisplay {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl View for Intermission {
     #[cfg_attr(feature = "tracing", tracing::instrument(
         skip(self, _evt, _hub, _bus, _rq, _context),
         fields(event = ?_evt),
         ret(level=tracing::Level::TRACE)
     ))]
-    fn handle_event(
+    async fn handle_event(
         &mut self,
         _evt: &Event,
         _hub: &Hub,

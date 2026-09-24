@@ -11,6 +11,7 @@ members = [
 ]
 
 [workspace.dependencies]
+async-trait = "0.1"
 blake3 = "1"
 cc = "1"
 io_tee = "0.1"

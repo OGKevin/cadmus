@@ -423,6 +423,7 @@ version = "0.11.0"
 dependencies = [
  "anyhow",
  "arc-swap",
+ "async-trait",
  "bitflags",
  "blake3",
  "build-deps",
@@ -482,7 +483,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sntpc",
- "sntpc-net-std",
  "sqlx",
  "sunrise",
  "tempfile",
@@ -2538,12 +2538,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "miniloop"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ad14b72c9fa5a663d069c582d576e5336995e3fafe7d0965d2bba3db1f98c40c"
-
-[[package]]
 name = "minimal-lexical"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4297,16 +4291,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "294278b134cd7d06d7f22eca970aebe38707864c080f66547f9ad26327534af3"
 dependencies = [
  "cfg-if",
- "miniloop",
-]
-
-[[package]]
-name = "sntpc-net-std"
-version = "1.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "335b2e533977c45a8c909c2297c659942aee18f2319aae29ee6038271d8d0131"
-dependencies = [
- "sntpc",
 ]
 
 [[package]]

@@ -94,9 +94,9 @@ impl DeviceLifecycle for Device {
         }
         let wifi_session = context.wifi_session.clone();
         let hub_wifi = hub.clone();
-        crate::runtime::spawn_blocking(move || {
+        crate::runtime::current_handle().spawn(async move {
             if wants_on {
-                match wifi_session.enable_radio() {
+                match wifi_session.enable_radio().await {
                     Ok(connected) => {
                         let enabled = wifi_session.wifi_manager().is_enabled();
                         tracing::info!(wants_on, enabled, connected, "wifi startup reconcile");
@@ -115,7 +115,7 @@ impl DeviceLifecycle for Device {
                     }
                 }
             } else {
-                let result = wifi_session.disable_radio();
+                let result = wifi_session.disable_radio().await;
                 let enabled = wifi_session.wifi_manager().is_enabled();
                 tracing::info!(wants_on, enabled, "wifi startup reconcile");
                 if let Err(error) = result {
@@ -213,7 +213,7 @@ impl DeviceLifecycle for Device {
                 }
             }
             ExitStatus::Quit => {
-                if let Err(error) = context.wifi_session.disable_radio() {
+                if let Err(error) = crate::runtime::block_on(context.wifi_session.disable_radio()) {
                     tracing::error!(error = %error, "Failed to disable WiFi on exit");
                 }
             }

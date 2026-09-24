@@ -58,7 +58,7 @@ impl Shelf {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, rq, context)))]
-    pub fn update(&mut self, metadata: &[Info], rq: &mut RenderQueue, context: &AppContext) {
+    pub async fn update(&mut self, metadata: &[Info], rq: &mut RenderQueue, context: &AppContext) {
         self.children.clear();
         let dpi = context.device.dpi();
         let big_height = scale_by_dpi(BIG_BAR_HEIGHT, dpi) as i32;
@@ -83,8 +83,7 @@ impl Shelf {
                 };
 
             let preview = if self.thumbnail_previews {
-                let existing =
-                    crate::runtime::block_on(context.library.thumbnail_preview(&info.file.path));
+                let existing = (context.library.thumbnail_preview(&info.file.path)).await;
                 if existing.is_none() {
                     tracing::debug!(path = %info.file.path.display(), "no preview");
                 }
@@ -128,13 +127,14 @@ impl Shelf {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl View for Shelf {
     #[cfg_attr(feature = "tracing", tracing::instrument(
         skip(self, _hub, bus, _rq, _context),
         fields(event = ?evt),
         ret(level=tracing::Level::TRACE)
     ))]
-    fn handle_event(
+    async fn handle_event(
         &mut self,
         evt: &Event,
         _hub: &Hub,

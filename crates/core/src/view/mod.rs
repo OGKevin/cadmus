@@ -141,8 +141,9 @@ impl HubReceiverExt for HubReceiver {
 
 pub use hub_message::{HubLease, HubMessage};
 
+#[async_trait::async_trait(?Send)]
 pub trait View: Downcast {
-    fn handle_event(
+    async fn handle_event(
         &mut self,
         evt: &Event,
         hub: &Hub,
@@ -215,42 +216,51 @@ impl Debug for Box<dyn View> {
 // A child can send events to the main channel through the *hub* or communicate with its parent through the *bus*.
 // A view that wants to render can write to the rendering queue.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(view, hub, parent_bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
-pub fn handle_event(
-    view: &mut dyn View,
-    evt: &Event,
-    hub: &Hub,
-    parent_bus: &mut Bus,
-    rq: &mut RenderQueue,
-    context: &mut AppContext,
-) -> bool {
-    if view.len() > 0 {
-        let mut captured = false;
+pub fn handle_event<'a>(
+    view: &'a mut dyn View,
+    evt: &'a Event,
+    hub: &'a Hub,
+    parent_bus: &'a mut Bus,
+    rq: &'a mut RenderQueue,
+    context: &'a mut AppContext,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = bool> + 'a>> {
+    Box::pin(async move {
+        if view.len() > 0 {
+            let mut captured = false;
 
-        if view.might_skip(evt) {
-            return captured;
-        }
-
-        let mut child_bus: Bus = VecDeque::with_capacity(1);
-
-        for i in (0..view.len()).rev() {
-            if handle_event(view.child_mut(i), evt, hub, &mut child_bus, rq, context) {
-                captured = true;
-                break;
+            if view.might_skip(evt) {
+                return captured;
             }
+
+            let mut child_bus: Bus = VecDeque::with_capacity(1);
+
+            for i in (0..view.len()).rev() {
+                if handle_event(view.child_mut(i), evt, hub, &mut child_bus, rq, context).await {
+                    captured = true;
+                    break;
+                }
+            }
+
+            let mut temp_bus: Bus = VecDeque::with_capacity(1);
+
+            let pending: Vec<_> = child_bus.drain(..).collect();
+            for child_evt in pending {
+                if !view
+                    .handle_event(&child_evt, hub, &mut temp_bus, rq, context)
+                    .await
+                {
+                    child_bus.push_back(child_evt);
+                }
+            }
+
+            parent_bus.append(&mut child_bus);
+            parent_bus.append(&mut temp_bus);
+
+            captured || view.handle_event(evt, hub, parent_bus, rq, context).await
+        } else {
+            view.handle_event(evt, hub, parent_bus, rq, context).await
         }
-
-        let mut temp_bus: Bus = VecDeque::with_capacity(1);
-
-        child_bus
-            .retain(|child_evt| !view.handle_event(child_evt, hub, &mut temp_bus, rq, context));
-
-        parent_bus.append(&mut child_bus);
-        parent_bus.append(&mut temp_bus);
-
-        captured || view.handle_event(evt, hub, parent_bus, rq, context)
-    } else {
-        view.handle_event(evt, hub, parent_bus, rq, context)
-    }
+    })
 }
 
 // We render from bottom to top. For a view to render it has to either appear in `ids` or intersect

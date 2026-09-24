@@ -813,7 +813,7 @@ mod tests {
         let session_task = std::sync::Arc::clone(&session);
 
         let handle = tokio::spawn(async move {
-            let _lease = session_task.acquire("time-sync").expect("wifi lease");
+            let _lease = session_task.acquire("time-sync").await.expect("wifi lease");
             entered_task.notify_one();
             release_task.notified().await;
             if child.is_cancelled() {

@@ -99,8 +99,9 @@ impl Default for TestWifiManager {
     }
 }
 
+#[async_trait::async_trait]
 impl crate::device::wifi::WifiManager for TestWifiManager {
-    fn enable(&self) -> Result<(), crate::device::wifi::WifiError> {
+    async fn enable(&self) -> Result<(), crate::device::wifi::WifiError> {
         if let Ok(mut state) = self.state.lock() {
             state.enabled = Some(true);
             state.enable_calls += 1;
@@ -108,7 +109,7 @@ impl crate::device::wifi::WifiManager for TestWifiManager {
         Ok(())
     }
 
-    fn disable(&self) -> Result<(), crate::device::wifi::WifiError> {
+    async fn disable(&self) -> Result<(), crate::device::wifi::WifiError> {
         if let Ok(mut state) = self.state.lock() {
             state.enabled = Some(false);
             state.disable_calls += 1;
@@ -124,7 +125,7 @@ impl crate::device::wifi::WifiManager for TestWifiManager {
             .unwrap_or(false)
     }
 
-    fn network_info(
+    async fn network_info(
         &self,
     ) -> Result<Option<crate::device::wifi::NetworkInfo>, crate::device::wifi::WifiError> {
         if !self.is_enabled() {

@@ -494,9 +494,10 @@ impl LibraryEditor {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl View for LibraryEditor {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
-    fn handle_event(
+    async fn handle_event(
         &mut self,
         evt: &Event,
         hub: &Hub,
@@ -588,7 +589,13 @@ mod tests {
 
         let mut bus = VecDeque::new();
 
-        let handled = editor.handle_event(&Event::Validate, &hub, &mut bus, &mut rq, &mut context);
+        let handled = crate::runtime::block_on(editor.handle_event(
+            &Event::Validate,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(handled);
         assert_eq!(bus.len(), 0);
@@ -618,7 +625,13 @@ mod tests {
 
         let mut bus = VecDeque::new();
 
-        let handled = editor.handle_event(&Event::Validate, &hub, &mut bus, &mut rq, &mut context);
+        let handled = crate::runtime::block_on(editor.handle_event(
+            &Event::Validate,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(handled);
         assert_eq!(bus.len(), 0);
@@ -655,7 +668,13 @@ mod tests {
 
         let mut bus = VecDeque::new();
 
-        let handled = editor.handle_event(&Event::Validate, &hub, &mut bus, &mut rq, &mut context);
+        let handled = crate::runtime::block_on(editor.handle_event(
+            &Event::Validate,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(handled);
         assert_eq!(bus.len(), 2);
@@ -689,13 +708,13 @@ mod tests {
 
         let mut bus = VecDeque::new();
 
-        let handled = editor.handle_event(
+        let handled = crate::runtime::block_on(editor.handle_event(
             &Event::Select(EntryId::EditLibraryName),
             &hub,
             &mut bus,
             &mut rq,
             &mut context,
-        );
+        ));
 
         assert!(handled);
         assert_eq!(editor.children.len(), initial_children_count + 1);
@@ -726,13 +745,13 @@ mod tests {
 
         let mut bus = VecDeque::new();
 
-        let handled = editor.handle_event(
+        let handled = crate::runtime::block_on(editor.handle_event(
             &Event::Select(EntryId::EditLibraryPath),
             &hub,
             &mut bus,
             &mut rq,
             &mut context,
-        );
+        ));
 
         assert!(handled);
         assert_eq!(editor.children.len(), initial_children_count + 1);
@@ -756,13 +775,13 @@ mod tests {
         let mut bus = VecDeque::new();
         rq = RenderQueue::new();
 
-        let handled = editor.handle_event(
+        let handled = crate::runtime::block_on(editor.handle_event(
             &Event::FileChooserClosed(Some(new_path.clone())),
             &hub,
             &mut bus,
             &mut rq,
             &mut context,
-        );
+        ));
 
         assert!(!handled);
         assert_ne!(editor.library.path, original_path);
@@ -787,13 +806,13 @@ mod tests {
         let mut bus = VecDeque::new();
         rq = RenderQueue::new();
 
-        let handled = editor.handle_event(
+        let handled = crate::runtime::block_on(editor.handle_event(
             &Event::Submit(ViewId::LibraryRenameInput, new_name.clone()),
             &hub,
             &mut bus,
             &mut rq,
             &mut context,
-        );
+        ));
 
         assert!(!handled);
         assert_ne!(editor.library.name, original_name);

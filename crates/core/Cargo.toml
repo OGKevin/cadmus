@@ -37,6 +37,7 @@ nix = { version = "0.31.0", features = ["fs", "ioctl", "mount", "poll", "time"] 
 indexmap = { version = "2.13.0", features = ["serde"] }
 arc-swap = "1"
 anyhow = "1.0.100"
+async-trait = { workspace = true }
 thiserror = "2.0.17"
 secrecy = { version = "0.10", features = ["serde"] }
 walkdir = "2.5.0"
@@ -72,8 +73,7 @@ reqwest-retry = { workspace = true }
 reqwest-tracing = { workspace = true, optional = true }
 tower = { workspace = true }
 rustls = { workspace = true }
-sntpc = { version = "0.11", features = ["std", "sync"] }
-sntpc-net-std = "1.2"
+sntpc = { version = "0.11", features = ["std"] }
 webpki-roots = "1.0.5"
 
 ctor = "1.0"

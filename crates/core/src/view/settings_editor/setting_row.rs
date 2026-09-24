@@ -59,13 +59,14 @@ impl SettingRow {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl View for SettingRow {
     #[cfg_attr(feature = "tracing", tracing::instrument(
         skip(self, _hub, _bus, rq, _context),
         fields(event = ?evt),
         ret(level=tracing::Level::TRACE)
     ))]
-    fn handle_event(
+    async fn handle_event(
         &mut self,
         evt: &Event,
         _hub: &Hub,
@@ -172,7 +173,13 @@ mod tests {
         };
 
         let event = Event::UpdateLibrary(0, Box::new(updated_library));
-        let handled = row.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+        let handled = crate::runtime::block_on(row.handle_event(
+            &event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(handled);
         assert!(!rq.is_empty());
@@ -204,7 +211,13 @@ mod tests {
         };
 
         let event = Event::UpdateLibrary(1, Box::new(updated_library));
-        let handled = row.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+        let handled = crate::runtime::block_on(row.handle_event(
+            &event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(!handled);
         assert!(rq.is_empty());
@@ -233,7 +246,14 @@ mod tests {
         let point = crate::geom::Point::new(500, 100);
         let event = Event::Gesture(GestureEvent::HoldFingerShort(point, 0));
 
-        crate::view::handle_event(row.as_mut(), &event, &hub, &mut bus, &mut rq, &mut context);
+        crate::runtime::block_on(crate::view::handle_event(
+            row.as_mut(),
+            &event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(
             bus.is_empty(),

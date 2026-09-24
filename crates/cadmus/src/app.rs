@@ -148,7 +148,7 @@ fn set_rotation(rotation: i8, updating: &mut Vec<UpdateData>, context: &mut AppC
 #[allow(clippy::too_many_arguments)]
 // TODO(OGKevin): This shall be moved to the readerm module
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(info, view, history, updating, tx, bus, rq, context), level = tracing::Level::TRACE))]
-fn open_document(
+async fn open_document(
     info: Box<Info>,
     view: &mut Box<dyn View>,
     history: &mut Vec<HistoryItem>,
@@ -180,7 +180,7 @@ fn open_document(
     }
 
     let path = info.file.path.clone();
-    if let Some(r) = Reader::new(context.device.framebuffer().rect(), *info, tx, context) {
+    if let Some(r) = Reader::new(context.device.framebuffer().rect(), *info, tx, context).await {
         let mut next_view = Box::new(r) as Box<dyn View>;
         transfer_notifications(view.as_mut(), next_view.as_mut(), rq, context);
         if view.is::<Reader>() {
@@ -205,7 +205,7 @@ fn open_document(
             library_home = %context.library.home.display(),
             "Reader::new returned None, dispatching Event::Invalid"
         );
-        handle_event(view.as_mut(), &Event::Invalid(path), tx, bus, rq, context);
+        handle_event(view.as_mut(), &Event::Invalid(path), tx, bus, rq, context).await;
         false
     }
 }
@@ -333,11 +333,8 @@ pub async fn run() -> Result<(), Error> {
 
     let mut history: Vec<HistoryItem> = Vec::new();
     let mut rq = RenderQueue::new();
-    let mut view: Box<dyn View> = Box::new(Home::new(
-        context.device.framebuffer().rect(),
-        &mut rq,
-        &mut context,
-    )?);
+    let mut view: Box<dyn View> =
+        Box::new(Home::new(context.device.framebuffer().rect(), &mut rq, &mut context).await?);
 
     let mut updating = Vec::new();
 
@@ -372,7 +369,8 @@ pub async fn run() -> Result<(), Error> {
             &mut bus,
             &mut rq,
             &mut context,
-        );
+        )
+        .await;
     }
 
     context.wifi_session.set_hub(tx.clone());
@@ -513,7 +511,7 @@ pub async fn run() -> Result<(), Error> {
                     }
                 }
                 _ => {
-                    handle_event(view.as_mut(), &evt, &tx, &mut bus, &mut rq, &mut context);
+                    handle_event(view.as_mut(), &evt, &tx, &mut bus, &mut rq, &mut context).await;
                 }
             },
             Event::Open(info) => {
@@ -526,7 +524,8 @@ pub async fn run() -> Result<(), Error> {
                     &mut bus,
                     &mut rq,
                     &mut context,
-                );
+                )
+                .await;
             }
             Event::Select(EntryId::About) => {
                 let version_text = format!("{} {}", APP_NAME, get_version());
@@ -544,15 +543,20 @@ pub async fn run() -> Result<(), Error> {
             }
             Event::Select(EntryId::SystemInfo) => {
                 view.children_mut().retain(|child| !child.is::<Menu>());
-                let network = context
-                    .device
-                    .wifi_manager()
-                    .and_then(|wifi| wifi.network_info())
-                    .inspect_err(|e| {
+                let network = match context.device.wifi_manager() {
+                    Ok(wifi) => wifi
+                        .network_info()
+                        .await
+                        .inspect_err(|e| {
+                            tracing::warn!(error = %e, "no network info for system info");
+                        })
+                        .ok()
+                        .flatten(),
+                    Err(e) => {
                         tracing::warn!(error = %e, "no network info for system info");
-                    })
-                    .ok()
-                    .flatten();
+                        None
+                    }
+                };
                 let html = sys_info_as_html(
                     context.device.model(),
                     context.device.mark(),
@@ -710,7 +714,8 @@ pub async fn run() -> Result<(), Error> {
                             &mut context,
                         );
                     }
-                    view.handle_event(&Event::Reseed, &tx, &mut bus, &mut rq, &mut context);
+                    view.handle_event(&Event::Reseed, &tx, &mut bus, &mut rq, &mut context)
+                        .await;
                 } else if !view.is::<Home>() {
                     break;
                 }
@@ -749,7 +754,8 @@ pub async fn run() -> Result<(), Error> {
                         &mut bus,
                         &mut rq,
                         &mut context,
-                    );
+                    )
+                    .await;
                 }
                 let flw = FrontlightWindow::new(&mut context);
                 rq.add(RenderData::new(flw.id(), *flw.rect(), UpdateMode::Gui));
@@ -820,7 +826,7 @@ pub async fn run() -> Result<(), Error> {
                 }
 
                 // Re-dispatch event to view hierarchy so UI can update
-                handle_event(view.as_mut(), &evt, &tx, &mut bus, &mut rq, &mut context);
+                handle_event(view.as_mut(), &evt, &tx, &mut bus, &mut rq, &mut context).await;
             }
             Event::ReloadDictionaries => {
                 context.load_dictionaries();
@@ -851,13 +857,16 @@ pub async fn run() -> Result<(), Error> {
             {
                 if let Some(entry) = history.get_mut(0).filter(|entry| entry.view.is::<Home>()) {
                     let (tx, _rx) = cadmus_core::view::hub_channel();
-                    entry.view.handle_event(
-                        &evt,
-                        &tx,
-                        &mut VecDeque::new(),
-                        &mut RenderQueue::new(),
-                        &mut context,
-                    );
+                    entry
+                        .view
+                        .handle_event(
+                            &evt,
+                            &tx,
+                            &mut VecDeque::new(),
+                            &mut RenderQueue::new(),
+                            &mut context,
+                        )
+                        .await;
                 }
             }
             Event::Notification(notif_event) => match notif_event {
@@ -890,7 +899,7 @@ pub async fn run() -> Result<(), Error> {
                 }
             },
             _ => {
-                handle_event(view.as_mut(), &evt, &tx, &mut bus, &mut rq, &mut context);
+                handle_event(view.as_mut(), &evt, &tx, &mut bus, &mut rq, &mut context).await;
             }
         }
 

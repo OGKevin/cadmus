@@ -39,9 +39,9 @@ fn prepare_usb_share(
     rq: &mut RenderQueue,
 ) {
     tasks.clear();
-    view.handle_event(&Event::Back, hub, bus, rq, context);
+    crate::runtime::block_on(view.handle_event(&Event::Back, hub, bus, rq, context));
     while let Some(mut item) = history.pop() {
-        item.view.handle_event(&Event::Back, hub, bus, rq, context);
+        crate::runtime::block_on(item.view.handle_event(&Event::Back, hub, bus, rq, context));
         if item.rotation != context.display.rotation {
             wait_for_all(updating, context);
             if context.set_rotation(item.rotation).is_ok() {
@@ -64,17 +64,17 @@ fn prepare_usb_share(
     }
     #[cfg(not(feature = "test"))]
     if context.settings.wifi != crate::settings::WifiMode::Off {
-        if let Err(error) = context.wifi_session.disable_radio() {
+        if let Err(error) = crate::runtime::block_on(context.wifi_session.disable_radio()) {
             tracing::error!(error = %error, "Failed to disable WiFi for USB share");
         }
         context.online = false;
     }
 
-    let interm = Intermission::new(
+    let interm = crate::runtime::block_on(Intermission::new(
         context.device.framebuffer().rect(),
         IntermKind::Share,
         context,
-    );
+    ));
     rq.add(RenderData::new(
         interm.id(),
         *interm.rect(),

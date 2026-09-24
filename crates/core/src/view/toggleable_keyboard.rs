@@ -260,9 +260,10 @@ impl ToggleableKeyboard {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl View for ToggleableKeyboard {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
-    fn handle_event(
+    async fn handle_event(
         &mut self,
         evt: &Event,
         hub: &Hub,
@@ -275,7 +276,7 @@ impl View for ToggleableKeyboard {
         }
 
         for child in &mut self.children {
-            if child.handle_event(evt, hub, bus, rq, context) {
+            if child.handle_event(evt, hub, bus, rq, context).await {
                 return true;
             }
         }

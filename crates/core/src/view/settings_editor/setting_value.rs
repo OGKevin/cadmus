@@ -188,6 +188,7 @@ impl SettingValue {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl View for SettingValue {
     /// Handles events in three passes.
     ///
@@ -206,7 +207,7 @@ impl View for SettingValue {
     /// [`NamedInput`]: crate::view::named_input::NamedInput
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, bus, rq, context), fields(event = ?evt
     ), ret(level=tracing::Level::TRACE)))]
-    fn handle_event(
+    async fn handle_event(
         &mut self,
         evt: &Event,
         hub: &Hub,
@@ -415,9 +416,27 @@ mod tests {
 
         let event = Event::FileChooserClosed(None);
 
-        suspend_value.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
-        power_off_value.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
-        share_value.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+        crate::runtime::block_on(suspend_value.handle_event(
+            &event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
+        crate::runtime::block_on(power_off_value.handle_event(
+            &event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
+        crate::runtime::block_on(share_value.handle_event(
+            &event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert_eq!(suspend_value.value(), initial_suspend);
         assert_eq!(power_off_value.value(), initial_power_off);
@@ -459,7 +478,7 @@ mod tests {
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
 
-        let handled_suspend = suspend_value.handle_event(
+        let handled_suspend = crate::runtime::block_on(suspend_value.handle_event(
             &Event::Settings(SettingsEvent::UpdateValue {
                 kind: SettingIdentity::IntermissionSuspend,
                 value: "suspend_image.png".to_string(),
@@ -468,8 +487,8 @@ mod tests {
             &mut bus,
             &mut rq,
             &mut context,
-        );
-        let handled_power_off = power_off_value.handle_event(
+        ));
+        let handled_power_off = crate::runtime::block_on(power_off_value.handle_event(
             &Event::Settings(SettingsEvent::UpdateValue {
                 kind: SettingIdentity::IntermissionPowerOff,
                 value: "poweroff_image.png".to_string(),
@@ -478,8 +497,8 @@ mod tests {
             &mut bus,
             &mut rq,
             &mut context,
-        );
-        let handled_share = share_value.handle_event(
+        ));
+        let handled_share = crate::runtime::block_on(share_value.handle_event(
             &Event::Settings(SettingsEvent::UpdateValue {
                 kind: SettingIdentity::IntermissionShare,
                 value: "share_image.png".to_string(),
@@ -488,7 +507,7 @@ mod tests {
             &mut bus,
             &mut rq,
             &mut context,
-        );
+        ));
 
         assert!(handled_suspend);
         assert!(handled_power_off);
@@ -523,7 +542,13 @@ mod tests {
         });
         let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
-        value.handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context);
+        crate::runtime::block_on(value.handle_event(
+            &update_event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert_eq!(value.value(), "French");
         assert!(!rq.is_empty());
@@ -562,21 +587,21 @@ mod tests {
         let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
 
-        value.handle_event(
+        crate::runtime::block_on(value.handle_event(
             &Event::Select(EntryId::EditAutoSuspend),
             &hub,
             &mut bus,
             &mut rq,
             &mut context,
-        );
+        ));
         std::thread::sleep(Duration::from_millis(20));
-        value.handle_event(
+        crate::runtime::block_on(value.handle_event(
             &Event::Submit(ViewId::AutoSuspendInput, "15.0".to_string()),
             &hub,
             &mut bus,
             &mut rq,
             &mut context,
-        );
+        ));
 
         assert_eq!(context.settings.auto_suspend, 15.0);
         assert_eq!(value.value(), "15.0");
@@ -624,20 +649,20 @@ mod tests {
         let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
 
-        value.handle_event(
+        crate::runtime::block_on(value.handle_event(
             &Event::Select(EntryId::EditAutoSuspend),
             &hub,
             &mut bus,
             &mut rq,
             &mut context,
-        );
-        value.handle_event(
+        ));
+        crate::runtime::block_on(value.handle_event(
             &Event::Submit(ViewId::AutoSuspendInput, "0".to_string()),
             &hub,
             &mut bus,
             &mut rq,
             &mut context,
-        );
+        ));
 
         assert_eq!(context.settings.auto_suspend, 0.0);
         assert!(
@@ -673,7 +698,13 @@ mod tests {
             kind: SettingIdentity::AutoPowerOff,
             value: "7.0".to_string(),
         });
-        value.handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context);
+        crate::runtime::block_on(value.handle_event(
+            &update_event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert_eq!(value.value(), "7.0");
         assert!(!rq.is_empty());
@@ -707,7 +738,13 @@ mod tests {
             kind: SettingIdentity::LibraryName(0),
             value: "New Name".to_string(),
         });
-        value.handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context);
+        crate::runtime::block_on(value.handle_event(
+            &update_event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert_eq!(value.value(), "New Name");
         assert!(!rq.is_empty());
@@ -742,7 +779,13 @@ mod tests {
             kind: SettingIdentity::LibraryPath(0),
             value: new_path.display().to_string(),
         });
-        value.handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context);
+        crate::runtime::block_on(value.handle_event(
+            &update_event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert_eq!(value.value(), new_path.display().to_string());
         assert!(!rq.is_empty());
@@ -776,14 +819,14 @@ mod tests {
         let event = Event::Gesture(GestureEvent::Tap(point));
 
         let mut boxed: Box<dyn View> = Box::new(value);
-        crate::view::handle_event(
+        crate::runtime::block_on(crate::view::handle_event(
             boxed.as_mut(),
             &event,
             &hub,
             &mut bus,
             &mut rq,
             &mut context,
-        );
+        ));
 
         assert_eq!(bus.len(), 1);
         if let Some(Event::EditLibrary(index)) = bus.pop_front() {
@@ -823,7 +866,13 @@ mod tests {
             kind: SettingIdentity::LibraryName(0),
             value: "New Name".to_string(),
         });
-        let handled = value.handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context);
+        let handled = crate::runtime::block_on(value.handle_event(
+            &update_event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(
             handled,
@@ -862,7 +911,13 @@ mod tests {
             kind: SettingIdentity::LibraryPath(0),
             value: "/new/path".to_string(),
         });
-        let handled = value.handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context);
+        let handled = crate::runtime::block_on(value.handle_event(
+            &update_event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(
             handled,
@@ -901,7 +956,13 @@ mod tests {
             kind: SettingIdentity::LibraryPath(0),
             value: "Some Path".to_string(),
         });
-        let handled = value.handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context);
+        let handled = crate::runtime::block_on(value.handle_event(
+            &update_event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(
             !handled,
@@ -949,7 +1010,13 @@ mod tests {
             kind: SettingIdentity::LibraryName(1),
             value: "Updated Library 1".to_string(),
         });
-        let handled = value.handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context);
+        let handled = crate::runtime::block_on(value.handle_event(
+            &update_event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(
             !handled,
@@ -984,7 +1051,13 @@ mod tests {
             kind: SettingIdentity::AutoSuspend,
             value: "60.0".to_string(),
         });
-        let handled = value.handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context);
+        let handled = crate::runtime::block_on(value.handle_event(
+            &update_event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(
             handled,
@@ -1015,7 +1088,13 @@ mod tests {
             kind: SettingIdentity::AutoPowerOff,
             value: "60.0".to_string(),
         });
-        let handled = value.handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context);
+        let handled = crate::runtime::block_on(value.handle_event(
+            &update_event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(
             handled,
@@ -1046,7 +1125,13 @@ mod tests {
             kind: SettingIdentity::SettingsRetention,
             value: "5".to_string(),
         });
-        let handled = value.handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context);
+        let handled = crate::runtime::block_on(value.handle_event(
+            &update_event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(
             handled,
@@ -1093,7 +1178,13 @@ mod tests {
             kind: SettingIdentity::LogLevel,
             value: "DEBUG".to_string(),
         });
-        let handled = value.handle_event(&update_event, &hub, &mut bus, &mut rq, &mut context);
+        let handled = crate::runtime::block_on(value.handle_event(
+            &update_event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(
             handled,
@@ -1120,13 +1211,13 @@ mod tests {
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
 
-        let handled = value.handle_event(
+        let handled = crate::runtime::block_on(value.handle_event(
             &Event::Select(EntryId::ToggleAllowedKind(FileExtension::Cbr)),
             &hub,
             &mut bus,
             &mut rq,
             &mut context,
-        );
+        ));
 
         assert!(handled);
         assert!(

@@ -1,8 +1,8 @@
 use anyhow::Error;
 use chrono::{DateTime, Duration, Utc};
-use sntpc::{NtpContext, StdTimestampGen};
-use sntpc_net_std::UdpSocketWrapper;
-use std::net::{IpAddr, SocketAddr, ToSocketAddrs, UdpSocket};
+use sntpc::{NtpContext, NtpUdpSocket, StdTimestampGen};
+use std::future::Future;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex};
 use std::time::Duration as StdDuration;
 
@@ -137,15 +137,9 @@ impl<R: Rtc> TimeManager<R> {
             }
         };
 
-        let server = ntp_server.clone();
-        let ntp_time = match tokio::task::spawn_blocking(move || query_ntp(&server)).await {
-            Ok(Ok(t)) => t,
-            Ok(Err(e)) => {
-                self.report_sync_failure(hub, manual, timezone_ok, &e);
-                return Err(e);
-            }
-            Err(error) => {
-                let e = anyhow::anyhow!("ntp query task failed: {error}");
+        let ntp_time = match query_ntp(ntp_server).await {
+            Ok(t) => t,
+            Err(e) => {
                 self.report_sync_failure(hub, manual, timezone_ok, &e);
                 return Err(e);
             }
@@ -296,44 +290,71 @@ impl<R: Rtc> TimeManager<R> {
     }
 }
 
-fn query_ntp(server: &NetworkAddress) -> Result<DateTime<Utc>, Error> {
+struct TokioNtpSocket(tokio::net::UdpSocket);
+
+impl NtpUdpSocket for TokioNtpSocket {
+    fn send_to(&self, buf: &[u8], addr: SocketAddr) -> impl Future<Output = sntpc::Result<usize>> {
+        async move {
+            self.0
+                .send_to(buf, addr)
+                .await
+                .map_err(|_| sntpc::Error::Network)
+        }
+    }
+
+    fn recv_from(
+        &self,
+        buf: &mut [u8],
+    ) -> impl Future<Output = sntpc::Result<(usize, SocketAddr)>> {
+        async move {
+            self.0
+                .recv_from(buf)
+                .await
+                .map_err(|_| sntpc::Error::Network)
+        }
+    }
+}
+
+async fn query_ntp(server: &NetworkAddress) -> Result<DateTime<Utc>, Error> {
     let addrs: Vec<SocketAddr> = match server.as_str().parse::<IpAddr>() {
         Ok(ip) => vec![SocketAddr::new(ip, NTP_PORT)],
-        Err(_) => format!("{}:{NTP_PORT}", server.as_str())
-            .to_socket_addrs()?
-            .collect(),
+        Err(_) => match tokio::net::lookup_host((server.as_str(), NTP_PORT)).await {
+            Ok(iter) => iter.collect(),
+            Err(error) => {
+                return Err(anyhow::anyhow!(
+                    "DNS resolution failed for NTP host: {server}: {error}"
+                ));
+            }
+        },
     };
 
     let mut last_err = None;
     for addr in &addrs {
         let bind_addr = match addr {
-            std::net::SocketAddr::V4(_) => "0.0.0.0:0",
-            std::net::SocketAddr::V6(_) => "[::]:0",
+            SocketAddr::V4(_) => "0.0.0.0:0",
+            SocketAddr::V6(_) => "[::]:0",
         };
 
-        let socket = match UdpSocket::bind(bind_addr) {
-            Ok(s) => s,
-            Err(e) => {
-                last_err = Some(anyhow::anyhow!("UDP bind failed for {bind_addr}: {e}"));
+        let socket = match tokio::net::UdpSocket::bind(bind_addr).await {
+            Ok(socket) => TokioNtpSocket(socket),
+            Err(error) => {
+                last_err = Some(anyhow::anyhow!("UDP bind failed for {bind_addr}: {error}"));
                 continue;
             }
         };
 
-        if socket.set_read_timeout(Some(NTP_TIMEOUT)).is_err() {
-            continue;
-        }
-
-        let socket = UdpSocketWrapper::new(socket);
         let context = NtpContext::new(StdTimestampGen::default());
-
-        match sntpc::sync::get_time(*addr, &socket, context) {
-            Ok(result) => {
+        match tokio::time::timeout(NTP_TIMEOUT, sntpc::get_time(*addr, &socket, context)).await {
+            Ok(Ok(result)) => {
                 let now = Utc::now();
                 let offset = chrono::Duration::microseconds(result.offset());
                 return Ok(now + offset);
             }
-            Err(e) => {
-                last_err = Some(anyhow::anyhow!("NTP error: {e:?}"));
+            Ok(Err(error)) => {
+                last_err = Some(anyhow::anyhow!("NTP error: {error:?}"));
+            }
+            Err(_elapsed) => {
+                last_err = Some(anyhow::anyhow!("NTP query timed out"));
             }
         }
     }
@@ -536,7 +557,7 @@ mod tests {
     #[test]
     fn ntp_query_with_hostname() {
         let server = NetworkAddress::ntp_cloudflare();
-        let result = query_ntp(&server);
+        let result = crate::runtime::block_on(query_ntp(&server));
         assert!(result.is_ok(), "NTP query failed: {:?}", result.err());
 
         let ntp_time = result.unwrap();

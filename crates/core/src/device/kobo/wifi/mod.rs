@@ -80,7 +80,7 @@ use std::fs;
 use std::os::fd::AsRawFd;
 use std::path::Path;
 use std::process::Command;
-use std::sync::Mutex;
+use tokio::sync::Mutex;
 use tracing::{debug, error, info, warn};
 
 const DRIVERS_DIR: &str = "/drivers";
@@ -182,11 +182,11 @@ impl KoboWifiManager {
     /// This function is idempotent: if the module is already loaded, this returns `Ok(())`
     /// without attempting to reload it.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(path = %path, module_name = %module_name), ret(level=tracing::Level::TRACE)))]
-    fn insmod_asneeded(&self, path: &str, module_name: &str) -> Result<(), WifiError> {
+    async fn insmod_asneeded(&self, path: &str, module_name: &str) -> Result<(), WifiError> {
         if !is_module_loaded(module_name) {
             match self.insmod(path) {
                 Ok(()) => {
-                    std::thread::sleep(std::time::Duration::from_millis(250));
+                    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
                 }
                 Err(WifiError::KernelModule(ref msg)) if msg.contains("File exists") => {
                     debug!(
@@ -207,7 +207,7 @@ impl KoboWifiManager {
     /// This function is idempotent: if the module is already loaded, this returns `Ok(())`
     /// without attempting to reload it.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(path = %path, module_name = %module_name), ret(level=tracing::Level::TRACE)))]
-    fn insmod_asneeded_with_params(
+    async fn insmod_asneeded_with_params(
         &self,
         path: &str,
         module_name: &str,
@@ -238,7 +238,7 @@ impl KoboWifiManager {
                     )));
                 }
             } else {
-                std::thread::sleep(std::time::Duration::from_millis(250));
+                tokio::time::sleep(std::time::Duration::from_millis(250)).await;
             }
         } else {
             debug!(module_name, "Module already loaded");
@@ -333,24 +333,28 @@ impl KoboWifiManager {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
-    fn power_up_wmt(&self) -> Result<(), WifiError> {
+    async fn power_up_wmt(&self) -> Result<(), WifiError> {
         let module_path = &self.config.module_path;
 
-        self.insmod_asneeded(&format!("{}/wmt_drv.ko", module_path), "wmt_drv")?;
+        self.insmod_asneeded(&format!("{}/wmt_drv.ko", module_path), "wmt_drv")
+            .await?;
         self.insmod_asneeded(
             &format!("{}/wmt_chrdev_wifi.ko", module_path),
             "wmt_chrdev_wifi",
-        )?;
-        self.insmod_asneeded(&format!("{}/wmt_cdev_bt.ko", module_path), "wmt_cdev_bt")?;
+        )
+        .await?;
+        self.insmod_asneeded(&format!("{}/wmt_cdev_bt.ko", module_path), "wmt_cdev_bt")
+            .await?;
 
         let wifi_module_path = format!("{}/{}.ko", module_path, self.config.module);
         if Path::new(&wifi_module_path).exists() {
-            self.insmod_asneeded(&wifi_module_path, self.config.module.as_ref())?;
+            self.insmod_asneeded(&wifi_module_path, self.config.module.as_ref())
+                .await?;
         }
 
         fs::write("/proc/driver/wmt_dbg", "0xDB9DB9").ok();
         fs::write("/proc/driver/wmt_dbg", "7 9 0").ok();
-        std::thread::sleep(std::time::Duration::from_secs(1));
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
         fs::write("/proc/driver/wmt_dbg", "0xDB9DB9").ok();
         fs::write("/proc/driver/wmt_dbg", "7 9 1").ok();
 
@@ -382,12 +386,13 @@ impl KoboWifiManager {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
-    fn power_up_module(&self) -> Result<(), WifiError> {
+    async fn power_up_module(&self) -> Result<(), WifiError> {
         let module_path = &self.config.module_path;
         self.insmod_asneeded(
             &format!("{}/sdio_wifi_pwr.ko", module_path),
             "sdio_wifi_pwr",
-        )?;
+        )
+        .await?;
         info!("WiFi powered up via module");
         Ok(())
     }
@@ -434,7 +439,7 @@ impl KoboWifiManager {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
-    fn load_wifi_module(&self) -> Result<(), WifiError> {
+    async fn load_wifi_module(&self) -> Result<(), WifiError> {
         let module_params = self.build_module_params();
         let platform = std::env::var("PLATFORM").unwrap_or_default();
 
@@ -470,7 +475,8 @@ impl KoboWifiManager {
         }
 
         let params: Vec<&str> = module_params.iter().map(|s| s.as_str()).collect();
-        self.insmod_asneeded_with_params(&wifi_module_path, self.config.module.as_ref(), &params)?;
+        self.insmod_asneeded_with_params(&wifi_module_path, self.config.module.as_ref(), &params)
+            .await?;
 
         debug!(
             module = %self.config.module,
@@ -480,7 +486,7 @@ impl KoboWifiManager {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(interface = %self.config.interface), ret(level=tracing::Level::TRACE)))]
-    fn wait_for_interface(&self) -> Result<(), WifiError> {
+    async fn wait_for_interface(&self) -> Result<(), WifiError> {
         let interface_path = format!("/sys/class/net/{}", self.config.interface);
         let max_attempts = 20;
 
@@ -493,7 +499,7 @@ impl KoboWifiManager {
                 );
                 return Ok(());
             }
-            std::thread::sleep(std::time::Duration::from_millis(200));
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
         }
 
         Err(WifiError::Interface(format!(
@@ -659,11 +665,11 @@ impl KoboWifiManager {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
-    fn power_up(&self) -> Result<(), WifiError> {
+    async fn power_up(&self) -> Result<(), WifiError> {
         match self.config.power_toggle {
-            PowerToggle::Wmt => self.power_up_wmt()?,
+            PowerToggle::Wmt => self.power_up_wmt().await?,
             PowerToggle::NtxIo => self.power_up_ntx_io()?,
-            PowerToggle::Module => self.power_up_module()?,
+            PowerToggle::Module => self.power_up_module().await?,
         }
         Ok(())
     }
@@ -679,13 +685,11 @@ impl KoboWifiManager {
     }
 }
 
+#[async_trait::async_trait]
 impl WifiManager for KoboWifiManager {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
-    fn enable(&self) -> Result<(), WifiError> {
-        let _lock = self
-            .lock
-            .lock()
-            .map_err(|e| WifiError::Lock(format!("Failed to acquire lock: {}", e)))?;
+    async fn enable(&self) -> Result<(), WifiError> {
+        let _lock = self.lock.lock().await;
 
         if self.is_enabled() {
             info!("WiFi already enabled, skipping");
@@ -700,9 +704,9 @@ impl WifiManager for KoboWifiManager {
 
         self.run_script(WIFI_PRE_UP_SCRIPT);
 
-        self.power_up()?;
-        self.load_wifi_module()?;
-        self.wait_for_interface()?;
+        self.power_up().await?;
+        self.load_wifi_module().await?;
+        self.wait_for_interface().await?;
         self.ifconfig_up()?;
         self.wlarm_le_up()?;
         self.start_wpa_supplicant()?;
@@ -714,11 +718,8 @@ impl WifiManager for KoboWifiManager {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), ret(level=tracing::Level::TRACE)))]
-    fn disable(&self) -> Result<(), WifiError> {
-        let _lock = self
-            .lock
-            .lock()
-            .map_err(|e| WifiError::Lock(format!("Failed to acquire lock: {}", e)))?;
+    async fn disable(&self) -> Result<(), WifiError> {
+        let _lock = self.lock.lock().await;
 
         if !is_module_loaded(self.config.module.as_ref()) {
             info!("WiFi already disabled, skipping");
@@ -736,7 +737,7 @@ impl WifiManager for KoboWifiManager {
         self.wlarm_le_down()?;
         self.ifconfig_down()?;
 
-        std::thread::sleep(std::time::Duration::from_millis(200));
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
         if self.config.power_toggle != PowerToggle::Wmt {
             self.rmmod(self.config.module.as_ref())?;
@@ -759,7 +760,7 @@ impl WifiManager for KoboWifiManager {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(interface = %self.config.interface), ret))]
-    fn network_info(&self) -> Result<Option<NetworkInfo>, WifiError> {
+    async fn network_info(&self) -> Result<Option<NetworkInfo>, WifiError> {
         if !self.is_enabled() {
             tracing::debug!(
                 interface = %self.config.interface,
@@ -767,7 +768,7 @@ impl WifiManager for KoboWifiManager {
             );
             return Err(WifiError::Disabled);
         }
-        network_info_from_zbus(&self.config.interface)
+        network_info_from_zbus(&self.config.interface).await
     }
 }
 

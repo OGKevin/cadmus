@@ -49,10 +49,11 @@ impl Book {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl View for Book {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, bus, rq, context), fields(event = ?evt
     ), ret(level=tracing::Level::TRACE)))]
-    fn handle_event(
+    async fn handle_event(
         &mut self,
         evt: &Event,
         hub: &Hub,
@@ -78,8 +79,7 @@ impl View for Book {
             }
             Event::RefreshBookPreview(ref path) => {
                 if self.info.file.path == *path {
-                    self.preview =
-                        crate::runtime::block_on(context.library.thumbnail_preview(path));
+                    self.preview = (context.library.thumbnail_preview(path)).await;
                     rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
                     true
                 } else {

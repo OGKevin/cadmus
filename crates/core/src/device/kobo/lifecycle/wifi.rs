@@ -108,20 +108,22 @@ fn handle_set_wifi_mode(mode: WifiMode, hub: &Hub, context: &mut AppContext) -> 
         WifiMode::AlwaysOn => {
             let session = context.wifi_session.clone();
             let hub = hub.clone();
-            crate::runtime::spawn_blocking(move || match session.enable_radio() {
-                Ok(true) => {
-                    hub.send((Event::Device(DeviceEvent::NetUp)).into()).ok();
-                }
-                Ok(false) => {}
-                Err(error) => {
-                    tracing::error!(error = %error, "Failed to enable WiFi");
+            crate::runtime::current_handle().spawn(async move {
+                match session.enable_radio().await {
+                    Ok(true) => {
+                        hub.send((Event::Device(DeviceEvent::NetUp)).into()).ok();
+                    }
+                    Ok(false) => {}
+                    Err(error) => {
+                        tracing::error!(error = %error, "Failed to enable WiFi");
+                    }
                 }
             });
         }
         WifiMode::Off => {
             let session = context.wifi_session.clone();
-            crate::runtime::spawn_blocking(move || {
-                if let Err(error) = session.disable_radio() {
+            crate::runtime::current_handle().spawn(async move {
+                if let Err(error) = session.disable_radio().await {
                     tracing::error!(error = %error, "Failed to disable WiFi");
                 }
             });
@@ -130,9 +132,12 @@ fn handle_set_wifi_mode(mode: WifiMode, hub: &Hub, context: &mut AppContext) -> 
         WifiMode::Auto => {
             if !context.wifi_session.has_holders() {
                 let session = context.wifi_session.clone();
-                crate::runtime::spawn_blocking(move || {
-                    if let Err(error) = session.disable_radio() {
-                        tracing::error!(error = %error, "Failed to disable WiFi for Auto mode");
+                crate::runtime::current_handle().spawn(async move {
+                    if let Err(error) = session.disable_radio().await {
+                        tracing::error!(
+                            error = %error,
+                            "Failed to disable WiFi for Auto mode"
+                        );
                     }
                 });
                 context.online = false;
@@ -218,8 +223,8 @@ fn handle_might_disable_wifi(context: &mut AppContext) -> EventOutcome {
     context.online = false;
 
     let session = context.wifi_session.clone();
-    crate::runtime::spawn_blocking(move || {
-        if let Err(error) = session.disable_radio() {
+    crate::runtime::current_handle().spawn(async move {
+        if let Err(error) = session.disable_radio().await {
             tracing::error!(error = %error, "Failed to disable WiFi after idle");
         }
     });
@@ -333,7 +338,7 @@ mod tests {
         harness.context.wifi_session.set_mode(WifiMode::Auto);
         harness.context.online = true;
         harness.context.wifi_session.notify_online();
-        let lease = harness.context.wifi_session.acquire("t").unwrap();
+        let lease = crate::runtime::block_on(harness.context.wifi_session.acquire("t")).unwrap();
         drop(lease);
         assert!(harness.context.wifi_session.idle_since().is_some());
 

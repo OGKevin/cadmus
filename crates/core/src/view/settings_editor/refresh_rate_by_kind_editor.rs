@@ -451,9 +451,10 @@ impl RefreshRateByKindEditor {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl View for RefreshRateByKindEditor {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
-    fn handle_event(
+    async fn handle_event(
         &mut self,
         evt: &Event,
         hub: &Hub,
@@ -751,9 +752,10 @@ impl RefreshRateKindPairEditor {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl View for RefreshRateKindPairEditor {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
-    fn handle_event(
+    async fn handle_event(
         &mut self,
         evt: &Event,
         hub: &Hub,

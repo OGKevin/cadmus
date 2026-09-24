@@ -362,11 +362,11 @@ fn refresh_calendar_intermission(
         runtime.view.children_mut().remove(index);
         tracing::debug!("old calendar intermission removed");
     }
-    let interm = Intermission::new(
+    let interm = crate::runtime::block_on(Intermission::new(
         context.device.framebuffer().rect(),
         IntermKind::Suspend,
         context,
-    );
+    ));
     rq.add(RenderData::new(
         interm.id(),
         *interm.rect(),
@@ -482,7 +482,7 @@ fn prepare_for_sleep(
         }
     }
     if context.settings.wifi != crate::settings::WifiMode::Off {
-        if let Err(error) = context.wifi_session.disable_radio() {
+        if let Err(error) = crate::runtime::block_on(context.wifi_session.disable_radio()) {
             tracing::error!(error = %error, "Failed to disable WiFi on suspend");
         }
         context.online = false;
@@ -904,16 +904,16 @@ pub(crate) fn start_cycle(
     }
     context.suspend = Some(cycle);
 
-    view.handle_event(&Event::Suspend, hub, bus, rq, context);
+    crate::runtime::block_on(view.handle_event(&Event::Suspend, hub, bus, rq, context));
     if let Some(index) = locate::<Intermission>(view) {
         let child = view.child(index);
         rq.add(RenderData::new(child.id(), *child.rect(), UpdateMode::Full));
     } else {
-        let interm = Intermission::new(
+        let interm = crate::runtime::block_on(Intermission::new(
             context.device.framebuffer().rect(),
             crate::settings::IntermKind::Suspend,
             context,
-        );
+        ));
         rq.add(RenderData::new(
             interm.id(),
             *interm.rect(),
@@ -952,14 +952,16 @@ pub(in crate::device::suspend) fn finish_cycle(
     if context.settings.wifi.wants_radio_at_rest() {
         let session = context.wifi_session.clone();
         let hub = hub.clone();
-        crate::runtime::spawn_blocking(move || match session.enable_radio() {
-            Ok(true) => {
-                hub.send((Event::Device(crate::input::DeviceEvent::NetUp)).into())
-                    .ok();
-            }
-            Ok(false) => {}
-            Err(error) => {
-                tracing::error!(error = %error, "Failed to enable WiFi on resume");
+        crate::runtime::current_handle().spawn(async move {
+            match session.enable_radio().await {
+                Ok(true) => {
+                    hub.send((Event::Device(crate::input::DeviceEvent::NetUp)).into())
+                        .ok();
+                }
+                Ok(false) => {}
+                Err(error) => {
+                    tracing::error!(error = %error, "Failed to enable WiFi on resume");
+                }
             }
         });
     }
@@ -1024,27 +1026,27 @@ pub(crate) fn show_power_off_intermission(
     updating: &mut Vec<crate::view::UpdateData>,
 ) {
     let (tx, _rx) = crate::view::hub_channel();
-    view.handle_event(
+    crate::runtime::block_on(view.handle_event(
         &Event::Back,
         &tx,
         &mut crate::view::Bus::new(),
         &mut crate::view::RenderQueue::new(),
         context,
-    );
+    ));
     while let Some(mut item) = history.pop() {
-        item.view.handle_event(
+        crate::runtime::block_on(item.view.handle_event(
             &Event::Back,
             &tx,
             &mut crate::view::Bus::new(),
             &mut crate::view::RenderQueue::new(),
             context,
-        );
+        ));
     }
-    let interm = Intermission::new(
+    let interm = crate::runtime::block_on(Intermission::new(
         context.device.framebuffer().rect(),
         crate::settings::IntermKind::PowerOff,
         context,
-    );
+    ));
     wait_for_all(updating, context);
     interm.render(context, *interm.rect());
     context

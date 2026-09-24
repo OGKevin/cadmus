@@ -445,7 +445,7 @@ impl OtaView {
     /// Validates the input, transitions to the progress screen, and initiates
     /// the download. The view stays alive so it can receive progress events and
     /// handle token-invalid errors.
-    fn handle_pr_submission(
+    async fn handle_pr_submission(
         &mut self,
         text: &str,
         hub: &Hub,
@@ -456,7 +456,7 @@ impl OtaView {
             self.pending_download = Some(PendingDownload::Pr(pr_number));
             self.build_progress_screen(&OtaDownloadKind::Pr(pr_number).progress_label(0), context);
             rq.add(RenderData::new(self.id, self.rect, UpdateMode::Full));
-            self.start_pr_download(pr_number, hub, context);
+            self.start_pr_download(pr_number, hub, context).await;
         } else {
             hub.send(
                 (Event::Notification(NotificationEvent::Show(fl!("ota-invalid-pr-number")))).into(),
@@ -499,19 +499,19 @@ impl OtaView {
     }
 
     /// Restarts the in-flight download with the currently effective token.
-    fn resume_pending_download(&mut self, hub: &Hub, context: &mut AppContext) {
+    async fn resume_pending_download(&mut self, hub: &Hub, context: &mut AppContext) {
         match self.pending_download.clone() {
             Some(PendingDownload::DefaultBranch) => {
-                self.start_default_branch_download(hub, context);
+                self.start_default_branch_download(hub, context).await;
             }
             Some(PendingDownload::Pr(pr_number)) => {
-                self.start_pr_download(pr_number, hub, context);
+                self.start_pr_download(pr_number, hub, context).await;
             }
             Some(PendingDownload::StableReleaseCheck) => {
-                self.on_select_stable_release(hub, context);
+                self.on_select_stable_release(hub, context).await;
             }
             Some(PendingDownload::StableReleaseDownload) => {
-                self.start_stable_release_download(hub, context);
+                self.start_stable_release_download(hub, context).await;
             }
             Some(PendingDownload::PrInputPending) | None => {}
         }
@@ -541,7 +541,7 @@ impl OtaView {
     /// Returns `true` if a token is present and the caller may proceed.
     /// If no token is found, pushes a [`DeviceAuthView`] child to guide the
     /// user through device flow authentication and returns `false`.
-    fn require_github_token(
+    async fn require_github_token(
         &mut self,
         pending: PendingDownload,
         hub: &Hub,
@@ -554,7 +554,7 @@ impl OtaView {
 
         tracing::info!("No GitHub token found, starting device flow");
         self.pending_download = Some(pending);
-        let auth_view = DeviceAuthView::new(hub, context);
+        let auth_view = DeviceAuthView::new(hub, context).await;
         self.children.push(Box::new(auth_view) as Box<dyn View>);
         rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
         false
@@ -565,7 +565,7 @@ impl OtaView {
     /// Requires a GitHub token; callers must validate with
     /// [`Self::require_github_token`] first.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, context)))]
-    fn start_pr_download(&mut self, pr_number: u32, hub: &Hub, context: &mut AppContext) {
+    async fn start_pr_download(&mut self, pr_number: u32, hub: &Hub, context: &mut AppContext) {
         let Some(github_token) = self.effective_github_token() else {
             tracing::error!(
                 "GitHub token is missing when starting download, this code path should be unreachable due to prior validation"
@@ -584,7 +584,8 @@ impl OtaView {
             cancelled: Arc::clone(&self.cancelled),
             wifi_session: context.wifi_session.clone(),
             inhibitor: Arc::clone(&context.inhibitor),
-        });
+        })
+        .await;
     }
 
     /// Starts a default-branch artifact download via [`run_ota_download`].
@@ -592,7 +593,7 @@ impl OtaView {
     /// Requires a GitHub token; callers must validate with
     /// [`Self::require_github_token`] first.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, context)))]
-    fn start_default_branch_download(&mut self, hub: &Hub, context: &mut AppContext) {
+    async fn start_default_branch_download(&mut self, hub: &Hub, context: &mut AppContext) {
         let Some(github_token) = self.effective_github_token() else {
             tracing::error!(
                 "GitHub token is missing when starting download, this code path should be unreachable due to prior validation"
@@ -611,14 +612,15 @@ impl OtaView {
             cancelled: Arc::clone(&self.cancelled),
             wifi_session: context.wifi_session.clone(),
             inhibitor: Arc::clone(&context.inhibitor),
-        });
+        })
+        .await;
     }
 
     /// Starts a stable release download via [`run_ota_download`].
     ///
     /// GitHub authentication is optional for this path.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, context)))]
-    fn start_stable_release_download(&mut self, hub: &Hub, context: &mut AppContext) {
+    async fn start_stable_release_download(&mut self, hub: &Hub, context: &mut AppContext) {
         self.begin_download();
         run_ota_download(OtaDownloadContext {
             kind: OtaDownloadKind::StableRelease,
@@ -630,7 +632,8 @@ impl OtaView {
             cancelled: Arc::clone(&self.cancelled),
             wifi_session: context.wifi_session.clone(),
             inhibitor: Arc::clone(&context.inhibitor),
-        });
+        })
+        .await;
     }
 }
 
@@ -714,7 +717,7 @@ fn send_ota_progress(hub: &Hub, label: String, percent: u8, cancelable: bool) {
 /// runtime keeps the process alive, so the overlay would otherwise stay up.
 /// That is not the Cancel-button path
 /// (see [`OtaView::on_close_during_download`]).
-fn run_ota_download(ctx: OtaDownloadContext) {
+async fn run_ota_download(ctx: OtaDownloadContext) {
     let OtaDownloadContext {
         kind,
         hub,
@@ -742,7 +745,7 @@ fn run_ota_download(ctx: OtaDownloadContext) {
         }
     };
     let reboot_hub = hub.clone();
-    crate::runtime::block_on(crate::runtime::spawn_in_flight(async move {
+    (crate::runtime::spawn_in_flight(async move {
         let mut unwind_guard = crate::runtime::UnwindGuard::arm({
             let hub = hub.clone();
             move || close_ota_view_after_panic(&hub, ota_view_id)
@@ -774,29 +777,21 @@ fn run_ota_download(ctx: OtaDownloadContext) {
                     }
                 };
 
-            let _wifi =
-                match crate::runtime::spawn_blocking(move || wifi_session.acquire("ota-download"))
-                    .await
-                {
-                    Ok(Ok(lease)) => lease,
-                    Ok(Err(e)) => {
-                        error!(error = %e, "Failed to acquire WiFi lease for OTA download");
-                        hub2.send((Event::Close(ota_view_id)).into()).ok();
-                        hub2.send(
-                            (Event::Notification(NotificationEvent::Show(fl!(
-                                "notification-not-online"
-                            ))))
-                            .into(),
-                        )
-                        .ok();
-                        return false;
-                    }
-                    Err(error) => {
-                        error!(error = %error, "OTA WiFi task failed");
-                        hub2.send((Event::Close(ota_view_id)).into()).ok();
-                        return false;
-                    }
-                };
+            let _wifi = match wifi_session.acquire("ota-download").await {
+                Ok(lease) => lease,
+                Err(e) => {
+                    error!(error = %e, "Failed to acquire WiFi lease for OTA download");
+                    hub2.send((Event::Close(ota_view_id)).into()).ok();
+                    hub2.send(
+                        (Event::Notification(NotificationEvent::Show(fl!(
+                            "notification-not-online"
+                        ))))
+                        .into(),
+                    )
+                    .ok();
+                    return false;
+                }
+            };
 
             let github = match GithubClient::new(github_token) {
                 Ok(c) => c,
@@ -945,7 +940,8 @@ fn run_ota_download(ctx: OtaDownloadContext) {
             RebootTimer::start(reboot_hub).wait().await;
         }
         unwind_guard.disarm();
-    }));
+    }))
+    .await;
 }
 
 /// Closes the OTA overlay after the download task unwinds.
@@ -984,25 +980,28 @@ impl RebootTimer {
 
 impl OtaView {
     #[inline]
-    fn on_select_default_branch(
+    async fn on_select_default_branch(
         &mut self,
         hub: &Hub,
         rq: &mut RenderQueue,
         context: &mut AppContext,
     ) -> bool {
-        if !self.require_github_token(PendingDownload::DefaultBranch, hub, rq, context) {
+        if !self
+            .require_github_token(PendingDownload::DefaultBranch, hub, rq, context)
+            .await
+        {
             return true;
         }
         self.pending_download = Some(PendingDownload::DefaultBranch);
         self.build_progress_screen(&OtaDownloadKind::DefaultBranch.progress_label(0), context);
         rq.add(RenderData::new(self.id, self.rect, UpdateMode::Full));
-        self.start_default_branch_download(hub, context);
+        self.start_default_branch_download(hub, context).await;
         true
     }
 
     #[inline]
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, context)))]
-    fn on_select_stable_release(&mut self, hub: &Hub, context: &AppContext) -> bool {
+    async fn on_select_stable_release(&mut self, hub: &Hub, context: &AppContext) -> bool {
         self.pending_download = Some(PendingDownload::StableReleaseCheck);
         let github_token = self.effective_github_token();
         let ota_view_id = self.view_id;
@@ -1023,7 +1022,7 @@ impl OtaView {
         };
 
         let client = OtaClient::new(github, context.device.tmp_dir());
-        let remote_version = match crate::runtime::block_on(client.fetch_latest_release_version()) {
+        let remote_version = match (client.fetch_latest_release_version()).await {
             Ok(version) => version,
             Err(e) => {
                 self.pending_download = None;
@@ -1100,13 +1099,16 @@ impl OtaView {
     }
 
     #[inline]
-    fn on_show_pr_input(
+    async fn on_show_pr_input(
         &mut self,
         hub: &Hub,
         rq: &mut RenderQueue,
         context: &mut AppContext,
     ) -> bool {
-        if !self.require_github_token(PendingDownload::PrInputPending, hub, rq, context) {
+        if !self
+            .require_github_token(PendingDownload::PrInputPending, hub, rq, context)
+            .await
+        {
             return true;
         }
         self.build_pr_input_screen(context);
@@ -1163,7 +1165,7 @@ impl OtaView {
     }
 
     #[inline]
-    fn on_device_auth_complete(
+    async fn on_device_auth_complete(
         &mut self,
         token: &secrecy::SecretString,
         hub: &Hub,
@@ -1185,7 +1187,7 @@ impl OtaView {
                     context,
                 );
                 rq.add(RenderData::new(self.id, self.rect, UpdateMode::Full));
-                self.start_default_branch_download(hub, context);
+                self.start_default_branch_download(hub, context).await;
             }
             Some(PendingDownload::PrInputPending) => {
                 self.build_pr_input_screen(context);
@@ -1200,10 +1202,10 @@ impl OtaView {
                     context,
                 );
                 rq.add(RenderData::new(self.id, self.rect, UpdateMode::Full));
-                self.start_pr_download(pr_number, hub, context);
+                self.start_pr_download(pr_number, hub, context).await;
             }
             Some(PendingDownload::StableReleaseCheck) => {
-                self.on_select_stable_release(hub, context);
+                self.on_select_stable_release(hub, context).await;
             }
             Some(PendingDownload::StableReleaseDownload) => {
                 self.build_progress_screen(
@@ -1212,7 +1214,7 @@ impl OtaView {
                 );
                 rq.add(RenderData::new(self.id, self.rect, UpdateMode::Full));
                 self.pending_download = Some(PendingDownload::StableReleaseDownload);
-                self.start_stable_release_download(hub, context);
+                self.start_stable_release_download(hub, context).await;
             }
             None => {}
         }
@@ -1221,7 +1223,7 @@ impl OtaView {
     }
 
     #[inline]
-    fn on_token_invalid(
+    async fn on_token_invalid(
         &mut self,
         hub: &Hub,
         rq: &mut RenderQueue,
@@ -1231,7 +1233,7 @@ impl OtaView {
             Some(device_flow::AuthOrigin::Environment) => {
                 tracing::warn!("GH_TOKEN rejected — ignoring it for this session");
                 if self.auth.effective().is_some() {
-                    self.resume_pending_download(hub, context);
+                    self.resume_pending_download(hub, context).await;
                     return true;
                 }
             }
@@ -1249,7 +1251,7 @@ impl OtaView {
         self.download_in_progress = false;
         self.download_committed = false;
 
-        let auth_view = DeviceAuthView::new(hub, context);
+        let auth_view = DeviceAuthView::new(hub, context).await;
         self.children.push(Box::new(auth_view) as Box<dyn View>);
         rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
         true
@@ -1276,10 +1278,11 @@ impl OtaView {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl View for OtaView {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, _bus, rq, context), fields(event = ?evt
     ), ret(level=tracing::Level::TRACE)))]
-    fn handle_event(
+    async fn handle_event(
         &mut self,
         evt: &Event,
         hub: &Hub,
@@ -1289,12 +1292,14 @@ impl View for OtaView {
     ) -> bool {
         match evt {
             Event::Select(EntryId::Ota(OtaEntryId::DefaultBranch)) => {
-                self.on_select_default_branch(hub, rq, context)
+                self.on_select_default_branch(hub, rq, context).await
             }
             Event::Select(EntryId::Ota(OtaEntryId::StableRelease)) => {
-                self.on_select_stable_release(hub, context)
+                self.on_select_stable_release(hub, context).await
             }
-            Event::Show(ViewId::Ota(OtaViewId::PrInput)) => self.on_show_pr_input(hub, rq, context),
+            Event::Show(ViewId::Ota(OtaViewId::PrInput)) => {
+                self.on_show_pr_input(hub, rq, context).await
+            }
             Event::Focus(None) => {
                 self.toggle_keyboard(false, hub, rq, context);
                 true
@@ -1303,7 +1308,7 @@ impl View for OtaView {
             Event::Submit(ViewId::Ota(OtaViewId::PrInput), text) => {
                 self.toggle_keyboard(false, hub, rq, context);
                 let text = text.clone();
-                self.handle_pr_submission(&text, hub, rq, context);
+                self.handle_pr_submission(&text, hub, rq, context).await;
                 true
             }
             Event::Gesture(GestureEvent::Tap(center)) => {
@@ -1317,9 +1322,11 @@ impl View for OtaView {
                 cancelable,
             } => self.on_download_progress(label, *percent, *cancelable, rq),
             Event::Github(GithubEvent::DeviceAuthComplete(token)) => {
-                self.on_device_auth_complete(token, hub, rq, context)
+                self.on_device_auth_complete(token, hub, rq, context).await
             }
-            Event::Github(GithubEvent::TokenInvalid) => self.on_token_invalid(hub, rq, context),
+            Event::Github(GithubEvent::TokenInvalid) => {
+                self.on_token_invalid(hub, rq, context).await
+            }
             Event::Github(GithubEvent::DeviceAuthExpired) => self.on_device_auth_expired(hub),
             Event::Github(GithubEvent::DeviceAuthError(msg)) => self.on_device_auth_error(msg, hub),
             Event::StartStableReleaseDownload => {
@@ -1329,7 +1336,7 @@ impl View for OtaView {
                     context,
                 );
                 rq.add(RenderData::new(self.id, self.rect, UpdateMode::Full));
-                self.start_stable_release_download(hub, context);
+                self.start_stable_release_download(hub, context).await;
                 true
             }
             _ => false,
@@ -1413,8 +1420,9 @@ mod tests {
         }
     }
 
+    #[async_trait::async_trait(?Send)]
     impl View for FakeParentView {
-        fn handle_event(
+        async fn handle_event(
             &mut self,
             evt: &Event,
             _hub: &Hub,
@@ -1457,8 +1465,8 @@ mod tests {
         }
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn test_ota_view_consumes_own_focus_event() {
+    #[test]
+    fn test_ota_view_consumes_own_focus_event() {
         let mut context = create_test_context();
         let mut ota = create_ota_view(&mut context);
         let (hub, _rx) = crate::view::hub_channel();
@@ -1466,7 +1474,13 @@ mod tests {
         let mut rq = RenderQueue::new();
 
         let focus_evt = Event::Focus(Some(ViewId::Ota(OtaViewId::PrInput)));
-        let handled = ota.handle_event(&focus_evt, &hub, &mut bus, &mut rq, &mut context);
+        let handled = crate::runtime::block_on(ota.handle_event(
+            &focus_evt,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(
             handled,
@@ -1475,8 +1489,8 @@ mod tests {
         assert!(bus.is_empty(), "Focus event must not leak to parent bus");
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn test_ota_view_does_not_consume_foreign_focus_event() {
+    #[test]
+    fn test_ota_view_does_not_consume_foreign_focus_event() {
         let mut context = create_test_context();
         let mut ota = create_ota_view(&mut context);
         let (hub, _rx) = crate::view::hub_channel();
@@ -1484,7 +1498,13 @@ mod tests {
         let mut rq = RenderQueue::new();
 
         let focus_evt = Event::Focus(Some(ViewId::HomeSearchInput));
-        let handled = ota.handle_event(&focus_evt, &hub, &mut bus, &mut rq, &mut context);
+        let handled = crate::runtime::block_on(ota.handle_event(
+            &focus_evt,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(
             !handled,
@@ -1499,8 +1519,8 @@ mod tests {
     /// to the hub. We drain the hub and dispatch each event through the
     /// view tree — just like the main loop does — and assert that the
     /// parent never inserts a keyboard child.
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn test_progress_screen_shows_cancel_button() {
+    #[test]
+    fn test_progress_screen_shows_cancel_button() {
         let mut context = create_test_context();
         let mut ota = create_ota_view(&mut context);
 
@@ -1516,8 +1536,8 @@ mod tests {
         );
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn test_shift_child_indices_after_remove_updates_cancel_button_index() {
+    #[test]
+    fn test_shift_child_indices_after_remove_updates_cancel_button_index() {
         let mut context = create_test_context();
         let mut ota = create_ota_view(&mut context);
 
@@ -1534,8 +1554,8 @@ mod tests {
         assert_eq!(ota.status_label_index, Some(1));
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn test_close_during_download_sets_cancel_flag() {
+    #[test]
+    fn test_close_during_download_sets_cancel_flag() {
         let mut context = create_test_context();
         let mut ota = create_ota_view(&mut context);
         let (hub, _rx) = crate::view::hub_channel();
@@ -1545,21 +1565,21 @@ mod tests {
         ota.begin_download();
         assert!(!ota.cancelled.is_cancelled());
 
-        let handled = ota.handle_event(
+        let handled = crate::runtime::block_on(ota.handle_event(
             &Event::Close(ota.view_id),
             &hub,
             &mut bus,
             &mut rq,
             &mut context,
-        );
+        ));
 
         assert!(handled);
         assert!(ota.cancelled.is_cancelled());
         assert!(ota.download_in_progress);
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn test_close_after_commit_does_not_cancel() {
+    #[test]
+    fn test_close_after_commit_does_not_cancel() {
         let mut context = create_test_context();
         let mut ota = create_ota_view(&mut context);
         let (hub, _rx) = crate::view::hub_channel();
@@ -1569,20 +1589,20 @@ mod tests {
         ota.begin_download();
         ota.download_committed = true;
 
-        let handled = ota.handle_event(
+        let handled = crate::runtime::block_on(ota.handle_event(
             &Event::Close(ota.view_id),
             &hub,
             &mut bus,
             &mut rq,
             &mut context,
-        );
+        ));
 
         assert!(!handled);
         assert!(!ota.cancelled.is_cancelled());
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn test_progress_non_cancelable_hides_cancel_and_marks_committed() {
+    #[test]
+    fn test_progress_non_cancelable_hides_cancel_and_marks_committed() {
         let mut context = create_test_context();
         let mut ota = create_ota_view(&mut context);
         let mut rq = RenderQueue::new();
@@ -1606,8 +1626,8 @@ mod tests {
         );
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn test_progress_100_removes_bar_and_shifts_cancel_index() {
+    #[test]
+    fn test_progress_100_removes_bar_and_shifts_cancel_index() {
         let mut context = create_test_context();
         let mut ota = create_ota_view(&mut context);
         let mut rq = RenderQueue::new();
@@ -1628,8 +1648,8 @@ mod tests {
         );
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn test_progress_100_then_hide_cancel_does_not_panic() {
+    #[test]
+    fn test_progress_100_then_hide_cancel_does_not_panic() {
         let mut context = create_test_context();
         let mut ota = create_ota_view(&mut context);
         let mut rq = RenderQueue::new();
@@ -1644,8 +1664,8 @@ mod tests {
         assert!(ota.progress_bar_index.is_none());
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn test_effective_github_token_prefers_stored_token() {
+    #[test]
+    fn test_effective_github_token_prefers_stored_token() {
         use secrecy::ExposeSecret;
 
         let mut context = create_test_context();
@@ -1657,50 +1677,53 @@ mod tests {
         assert_eq!(token.expose_secret(), "stored-token");
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn test_parent_keyboard_not_shown_when_ota_focuses_input() {
-        tokio::task::spawn_blocking(|| {
-            crate::crypto::init_crypto_provider();
+    #[test]
+    fn test_parent_keyboard_not_shown_when_ota_focuses_input() {
+        crate::crypto::init_crypto_provider();
 
-            let mut context = create_test_context();
-            context.load_keyboard_layouts();
-            context.load_dictionaries();
+        let mut context = create_test_context();
+        context.load_keyboard_layouts();
+        context.load_dictionaries();
 
-            let (hub, mut rx) = crate::view::hub_channel();
-            let mut bus: Bus = VecDeque::new();
-            let mut rq = RenderQueue::new();
+        let (hub, mut rx) = crate::view::hub_channel();
+        let mut bus: Bus = VecDeque::new();
+        let mut rq = RenderQueue::new();
 
-            let mut parent = FakeParentView::new(rect![0, 0, 600, 800]);
-            let ota = create_ota_view(&mut context);
-            parent.children.push(Box::new(ota) as Box<dyn View>);
+        let mut parent = FakeParentView::new(rect![0, 0, 600, 800]);
+        let ota = create_ota_view(&mut context);
+        parent.children.push(Box::new(ota) as Box<dyn View>);
 
-            assert!(
-                !parent.has_keyboard(),
-                "Parent must not have keyboard before focus"
-            );
+        assert!(
+            !parent.has_keyboard(),
+            "Parent must not have keyboard before focus"
+        );
 
-            let show_evt = Event::Show(ViewId::Ota(OtaViewId::PrInput));
-            handle_event(
+        let show_evt = Event::Show(ViewId::Ota(OtaViewId::PrInput));
+        crate::runtime::block_on(handle_event(
+            &mut parent,
+            &show_evt,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
+
+        while let Ok(message) = rx.try_recv() {
+            let (evt, _) = message.into_parts();
+            crate::runtime::block_on(handle_event(
                 &mut parent,
-                &show_evt,
+                &evt,
                 &hub,
                 &mut bus,
                 &mut rq,
                 &mut context,
-            );
+            ));
+        }
 
-            while let Ok(message) = rx.try_recv() {
-                let (evt, _) = message.into_parts();
-                handle_event(&mut parent, &evt, &hub, &mut bus, &mut rq, &mut context);
-            }
-
-            assert!(
-                !parent.has_keyboard(),
-                "Parent keyboard must not be shown — OtaView should consume its own focus event"
-            );
-        })
-        .await
-        .unwrap();
+        assert!(
+            !parent.has_keyboard(),
+            "Parent keyboard must not be shown — OtaView should consume its own focus event"
+        );
     }
 
     #[test]

@@ -941,11 +941,11 @@ fn classic_rtc_calendar_update_rearms_and_reenters() {
     harness.context.settings.intermissions[IntermKind::Suspend] = IntermissionDisplay::Calendar;
     harness.context.suspend = Some(SuspendCycle::new(SuspendKind::Classic));
     harness.with_parts(|hub, bus, rq, context, runtime| {
-        let interm = Intermission::new(
+        let interm = crate::runtime::block_on(Intermission::new(
             context.device.framebuffer().rect(),
             IntermKind::Suspend,
             context,
-        );
+        ));
         runtime.view.children_mut().push(Box::new(interm));
         let _ = (hub, bus, rq);
     });

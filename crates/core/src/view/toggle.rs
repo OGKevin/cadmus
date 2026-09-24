@@ -41,13 +41,14 @@ impl SelectionBox {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl View for SelectionBox {
     #[cfg_attr(feature = "tracing", tracing::instrument(
         skip(self, _hub, _bus, _rq, _context),
         fields(event = ?_evt),
         ret(level=tracing::Level::TRACE)
     ))]
-    fn handle_event(
+    async fn handle_event(
         &mut self,
         _evt: &Event,
         _hub: &Hub,
@@ -341,10 +342,11 @@ impl Toggle {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl View for Toggle {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, bus, rq, _context), fields(event = ?evt
     ), ret(level=tracing::Level::TRACE)))]
-    fn handle_event(
+    async fn handle_event(
         &mut self,
         evt: &Event,
         _hub: &Hub,
@@ -456,7 +458,13 @@ mod tests {
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
 
-        let handled = toggle.handle_event(&toggle_event, &hub, &mut bus, &mut rq, &mut context);
+        let handled = crate::runtime::block_on(toggle.handle_event(
+            &toggle_event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(handled);
         assert!(!toggle.is_enabled());
@@ -555,13 +563,31 @@ mod tests {
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
 
-        toggle.handle_event(&toggle_event, &hub, &mut bus, &mut rq, &mut context);
+        crate::runtime::block_on(toggle.handle_event(
+            &toggle_event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
         assert!(!toggle.is_enabled());
 
-        toggle.handle_event(&toggle_event, &hub, &mut bus, &mut rq, &mut context);
+        crate::runtime::block_on(toggle.handle_event(
+            &toggle_event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
         assert!(toggle.is_enabled());
 
-        toggle.handle_event(&toggle_event, &hub, &mut bus, &mut rq, &mut context);
+        crate::runtime::block_on(toggle.handle_event(
+            &toggle_event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
         assert!(!toggle.is_enabled());
     }
 
@@ -586,7 +612,13 @@ mod tests {
         let mut rq = RenderQueue::new();
 
         let other_event = Event::Back;
-        let handled = toggle.handle_event(&other_event, &hub, &mut bus, &mut rq, &mut context);
+        let handled = crate::runtime::block_on(toggle.handle_event(
+            &other_event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(!handled);
         assert!(toggle.is_enabled());
@@ -613,7 +645,13 @@ mod tests {
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
 
-        toggle.handle_event(&toggle_event, &hub, &mut bus, &mut rq, &mut context);
+        crate::runtime::block_on(toggle.handle_event(
+            &toggle_event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert_eq!(bus.len(), 1);
         let emitted_event = bus.pop_front().unwrap();

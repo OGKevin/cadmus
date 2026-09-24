@@ -278,7 +278,7 @@ fn word_separator(lang: &str) -> &'static str {
 }
 
 impl Reader {
-    pub fn new(
+    pub async fn new(
         rect: Rectangle,
         mut info: Info,
         hub: &Hub,
@@ -306,191 +306,189 @@ impl Reader {
                 "Failed to open document: open() returned None"
             );
         }
-        doc.and_then(|mut doc| {
-            let (width, height) = context.display.dims;
-            let font_size = info
-                .reader
-                .as_ref()
-                .and_then(|r| r.font_size)
-                .unwrap_or(settings.reader.font_size);
+        let mut doc = doc?;
+        let (width, height) = context.display.dims;
+        let font_size = info
+            .reader
+            .as_ref()
+            .and_then(|r| r.font_size)
+            .unwrap_or(settings.reader.font_size);
 
-            doc.layout(width, height, font_size, context.device.dpi());
+        doc.layout(width, height, font_size, context.device.dpi());
 
-            let margin_width = info
-                .reader
-                .as_ref()
-                .and_then(|r| r.margin_width)
-                .unwrap_or(settings.reader.margin_width);
+        let margin_width = info
+            .reader
+            .as_ref()
+            .and_then(|r| r.margin_width)
+            .unwrap_or(settings.reader.margin_width);
 
-            if margin_width != DEFAULT_MARGIN_WIDTH {
-                doc.set_margin_width(margin_width);
+        if margin_width != DEFAULT_MARGIN_WIDTH {
+            doc.set_margin_width(margin_width);
+        }
+
+        let font_family = info
+            .reader
+            .as_ref()
+            .and_then(|r| r.font_family.as_ref())
+            .unwrap_or(&settings.reader.font_family);
+
+        if font_family != DEFAULT_FONT_FAMILY {
+            doc.set_font_family(font_family, &settings.reader.font_path);
+        }
+
+        let line_height = info
+            .reader
+            .as_ref()
+            .and_then(|r| r.line_height)
+            .unwrap_or(settings.reader.line_height);
+
+        if (line_height - DEFAULT_LINE_HEIGHT).abs() > f32::EPSILON {
+            doc.set_line_height(line_height);
+        }
+
+        let text_align = info
+            .reader
+            .as_ref()
+            .and_then(|r| r.text_align)
+            .unwrap_or(settings.reader.text_align);
+
+        if text_align != DEFAULT_TEXT_ALIGN {
+            doc.set_text_align(text_align);
+        }
+
+        let hyphen_penalty = settings.reader.paragraph_breaker.hyphen_penalty;
+
+        if hyphen_penalty != HYPHEN_PENALTY {
+            doc.set_hyphen_penalty(hyphen_penalty);
+        }
+
+        let stretch_tolerance = settings.reader.paragraph_breaker.stretch_tolerance;
+
+        if stretch_tolerance != STRETCH_TOLERANCE {
+            doc.set_stretch_tolerance(stretch_tolerance);
+        }
+
+        if settings.reader.ignore_document_css {
+            doc.set_ignore_document_css(true);
+        }
+
+        let first_location = doc.resolve_location(Location::Exact(0));
+        if first_location.is_none() {
+            warn!(
+                resolved_path = %path.display(),
+                "Document opened but resolve_location(Exact(0)) returned None"
+            );
+        }
+        let first_location = first_location?;
+
+        let mut view_port = ViewPort::default();
+        let mut contrast = Contrast::default();
+        let pages_count = doc.pages_count();
+        let current_page;
+
+        // TODO: use get_or_insert_with?
+        if let Some(ref mut r) = info.reader {
+            r.opened = Local::now().naive_local();
+
+            if r.finished {
+                r.finished = false;
+                r.current_page = first_location;
+                r.page_offset = None;
             }
 
-            let font_family = info
-                .reader
-                .as_ref()
-                .and_then(|r| r.font_family.as_ref())
-                .unwrap_or(&settings.reader.font_family);
+            current_page = doc
+                .resolve_location(Location::Exact(r.current_page))
+                .unwrap_or(first_location);
 
-            if font_family != DEFAULT_FONT_FAMILY {
-                doc.set_font_family(font_family, &settings.reader.font_path);
+            if let Some(zoom_mode) = r.zoom_mode {
+                view_port.zoom_mode = zoom_mode;
             }
 
-            let line_height = info
-                .reader
-                .as_ref()
-                .and_then(|r| r.line_height)
-                .unwrap_or(settings.reader.line_height);
-
-            if (line_height - DEFAULT_LINE_HEIGHT).abs() > f32::EPSILON {
-                doc.set_line_height(line_height);
-            }
-
-            let text_align = info
-                .reader
-                .as_ref()
-                .and_then(|r| r.text_align)
-                .unwrap_or(settings.reader.text_align);
-
-            if text_align != DEFAULT_TEXT_ALIGN {
-                doc.set_text_align(text_align);
-            }
-
-            let hyphen_penalty = settings.reader.paragraph_breaker.hyphen_penalty;
-
-            if hyphen_penalty != HYPHEN_PENALTY {
-                doc.set_hyphen_penalty(hyphen_penalty);
-            }
-
-            let stretch_tolerance = settings.reader.paragraph_breaker.stretch_tolerance;
-
-            if stretch_tolerance != STRETCH_TOLERANCE {
-                doc.set_stretch_tolerance(stretch_tolerance);
-            }
-
-            if settings.reader.ignore_document_css {
-                doc.set_ignore_document_css(true);
-            }
-
-            let first_location = doc.resolve_location(Location::Exact(0));
-            if first_location.is_none() {
-                warn!(
-                    resolved_path = %path.display(),
-                    "Document opened but resolve_location(Exact(0)) returned None"
-                );
-            }
-            let first_location = first_location?;
-
-            let mut view_port = ViewPort::default();
-            let mut contrast = Contrast::default();
-            let pages_count = doc.pages_count();
-            let current_page;
-
-            // TODO: use get_or_insert_with?
-            if let Some(ref mut r) = info.reader {
-                r.opened = Local::now().naive_local();
-
-                if r.finished {
-                    r.finished = false;
-                    r.current_page = first_location;
-                    r.page_offset = None;
-                }
-
-                current_page = doc
-                    .resolve_location(Location::Exact(r.current_page))
-                    .unwrap_or(first_location);
-
-                if let Some(zoom_mode) = r.zoom_mode {
-                    view_port.zoom_mode = zoom_mode;
-                }
-
-                if let Some(scroll_mode) = r.scroll_mode {
-                    view_port.scroll_mode = scroll_mode;
-                } else {
-                    view_port.scroll_mode = if settings.reader.continuous_fit_to_width {
-                        ScrollMode::Screen
-                    } else {
-                        ScrollMode::Page
-                    };
-                }
-
-                if let Some(page_offset) = r.page_offset {
-                    view_port.page_offset = page_offset;
-                }
-
-                if !doc.is_reflowable() {
-                    view_port.margin_width = mm_to_px(
-                        r.screen_margin_width.unwrap_or(0) as f32,
-                        context.device.dpi(),
-                    ) as i32;
-                }
-
-                if let Some(exponent) = r.contrast_exponent {
-                    contrast.exponent = exponent;
-                }
-
-                if let Some(gray) = r.contrast_gray {
-                    contrast.gray = gray;
-                }
+            if let Some(scroll_mode) = r.scroll_mode {
+                view_port.scroll_mode = scroll_mode;
             } else {
-                current_page = first_location;
-
-                info.reader = Some(ReaderInfo {
-                    current_page,
-                    pages_count,
-                    ..Default::default()
-                });
+                view_port.scroll_mode = if settings.reader.continuous_fit_to_width {
+                    ScrollMode::Screen
+                } else {
+                    ScrollMode::Page
+                };
             }
 
-            let synthetic = doc.has_synthetic_page_numbers();
-            let reflowable = doc.is_reflowable();
-
-            if info.toc.is_none() {
-                if let Some(toc) = doc.toc() {
-                    let simple_toc: Vec<SimpleTocEntry> =
-                        toc.iter().map(SimpleTocEntry::from).collect();
-                    crate::runtime::block_on(
-                        context
-                            .library
-                            .sync_toc(&info.file.path, simple_toc.clone()),
-                    );
-                    info.toc = Some(simple_toc);
-                }
+            if let Some(page_offset) = r.page_offset {
+                view_port.page_offset = page_offset;
             }
 
-            info!("{}", info.file.path.display());
+            if !doc.is_reflowable() {
+                view_port.margin_width = mm_to_px(
+                    r.screen_margin_width.unwrap_or(0) as f32,
+                    context.device.dpi(),
+                ) as i32;
+            }
 
-            hub.send((Event::Update(UpdateMode::Partial)).into()).ok();
+            if let Some(exponent) = r.contrast_exponent {
+                contrast.exponent = exponent;
+            }
 
-            Some(Reader {
-                id,
-                rect,
-                children: Vec::new(),
-                doc: Arc::new(Mutex::new(doc)),
-                cache: BTreeMap::new(),
-                chunks: Vec::new(),
-                text: FxHashMap::default(),
-                annotations: FxHashMap::default(),
-                noninverted_regions: FxHashMap::default(),
-                focus: None,
-                search: None,
-                search_direction: LinearDir::Forward,
-                held_buttons: FxHashSet::default(),
-                selection: None,
-                target_annotation: None,
-                history: VecDeque::new(),
-                state: State::Idle,
-                info,
+            if let Some(gray) = r.contrast_gray {
+                contrast.gray = gray;
+            }
+        } else {
+            current_page = first_location;
+
+            info.reader = Some(ReaderInfo {
                 current_page,
                 pages_count,
-                view_port,
-                synthetic,
-                page_turns: 0,
-                contrast,
-                ephemeral: false,
-                reflowable,
-                finished: false,
-            })
+                ..Default::default()
+            });
+        }
+
+        let synthetic = doc.has_synthetic_page_numbers();
+        let reflowable = doc.is_reflowable();
+
+        if info.toc.is_none() {
+            if let Some(toc) = doc.toc() {
+                let simple_toc: Vec<SimpleTocEntry> =
+                    toc.iter().map(SimpleTocEntry::from).collect();
+                context
+                    .library
+                    .sync_toc(&info.file.path, simple_toc.clone())
+                    .await;
+                info.toc = Some(simple_toc);
+            }
+        }
+
+        info!("{}", info.file.path.display());
+
+        hub.send((Event::Update(UpdateMode::Partial)).into()).ok();
+
+        Some(Reader {
+            id,
+            rect,
+            children: Vec::new(),
+            doc: Arc::new(Mutex::new(doc)),
+            cache: BTreeMap::new(),
+            chunks: Vec::new(),
+            text: FxHashMap::default(),
+            annotations: FxHashMap::default(),
+            noninverted_regions: FxHashMap::default(),
+            focus: None,
+            search: None,
+            search_direction: LinearDir::Forward,
+            held_buttons: FxHashSet::default(),
+            selection: None,
+            target_annotation: None,
+            history: VecDeque::new(),
+            state: State::Idle,
+            info,
+            current_page,
+            pages_count,
+            view_port,
+            synthetic,
+            page_turns: 0,
+            contrast,
+            ephemeral: false,
+            reflowable,
+            finished: false,
         })
     }
 
@@ -970,7 +968,7 @@ impl Reader {
         }
     }
 
-    fn go_to_neighbor(
+    async fn go_to_neighbor(
         &mut self,
         dir: CycleDir,
         hub: &Hub,
@@ -1153,15 +1151,16 @@ impl Reader {
                             self.children.push(Box::new(notif) as Box<dyn View>);
                         }
                         FinishedAction::Close => {
-                            self.quit(context);
+                            self.quit(context).await;
                             hub.send((Event::Back).into()).ok();
                         }
                         FinishedAction::GoToNext => {
-                            let next = self.info.fp.and_then(|fp| {
-                                crate::runtime::block_on(context.library.next_book_after(fp))
-                            });
+                            let next = match self.info.fp {
+                                Some(fp) => context.library.next_book_after(fp).await,
+                                None => None,
+                            };
 
-                            self.quit(context);
+                            self.quit(context).await;
 
                             match next {
                                 Some(next_info) => {
@@ -3812,7 +3811,7 @@ impl Reader {
         rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
     }
 
-    fn quit(&mut self, context: &mut AppContext) {
+    async fn quit(&mut self, context: &mut AppContext) {
         if let Some(ref mut s) = self.search {
             s.running.store(false, AtomicOrdering::Relaxed);
         }
@@ -3855,7 +3854,7 @@ impl Reader {
                 r.contrast_gray = None;
             }
 
-            crate::runtime::block_on(context.library.sync_reader_info(&self.info.file.path, r));
+            (context.library.sync_reader_info(&self.info.file.path, r)).await;
         }
     }
 
@@ -3902,10 +3901,11 @@ impl Reader {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl View for Reader {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, _bus, rq, context), fields(event = ?evt
     ), ret(level=tracing::Level::TRACE)))]
-    fn handle_event(
+    async fn handle_event(
         &mut self,
         evt: &Event,
         hub: &Hub,
@@ -3926,8 +3926,13 @@ impl View for Reader {
                 match self.view_port.zoom_mode {
                     ZoomMode::FitToPage | ZoomMode::FitToWidth => {
                         match dir {
-                            Dir::West => self.go_to_neighbor(CycleDir::Next, hub, rq, context),
-                            Dir::East => self.go_to_neighbor(CycleDir::Previous, hub, rq, context),
+                            Dir::West => {
+                                self.go_to_neighbor(CycleDir::Next, hub, rq, context).await
+                            }
+                            Dir::East => {
+                                self.go_to_neighbor(CycleDir::Previous, hub, rq, context)
+                                    .await
+                            }
                             Dir::South | Dir::North => {
                                 self.vertical_scroll(start.y - end.y, hub, rq, context)
                             }
@@ -4090,7 +4095,7 @@ impl View for Reader {
                 true
             }
             Event::Gesture(GestureEvent::Cross(_)) => {
-                self.quit(context);
+                self.quit(context).await;
                 hub.send((Event::Back).into()).ok();
                 true
             }
@@ -4118,14 +4123,15 @@ impl View for Reader {
                     match code {
                         ButtonCode::Backward => {
                             if self.search.is_none() {
-                                self.go_to_neighbor(CycleDir::Previous, hub, rq, context);
+                                self.go_to_neighbor(CycleDir::Previous, hub, rq, context)
+                                    .await;
                             } else {
                                 self.go_to_results_neighbor(CycleDir::Previous, hub, rq, context);
                             }
                         }
                         ButtonCode::Forward => {
                             if self.search.is_none() {
-                                self.go_to_neighbor(CycleDir::Next, hub, rq, context);
+                                self.go_to_neighbor(CycleDir::Next, hub, rq, context).await;
                             } else {
                                 self.go_to_results_neighbor(CycleDir::Next, hub, rq, context);
                             }
@@ -4409,7 +4415,7 @@ impl View for Reader {
                             Some(Location::Uri(caps[1].to_string()))
                         };
                         if let Some(location) = loc_opt {
-                            self.quit(context);
+                            self.quit(context).await;
                             hub.send((Event::Back).into()).ok();
                             hub.send((Event::GoToLocation(location)).into()).ok();
                         }
@@ -4512,11 +4518,11 @@ impl View for Reader {
                                         .ok();
                                     }
                                     SouthEastCornerAction::NextPage => {
-                                        self.go_to_neighbor(CycleDir::Next, hub, rq, context);
+                                        self.go_to_neighbor(CycleDir::Next, hub, rq, context).await;
                                     }
                                 }
                             } else {
-                                self.go_to_neighbor(CycleDir::Next, hub, rq, context);
+                                self.go_to_neighbor(CycleDir::Next, hub, rq, context).await;
                             }
                         }
                         DiagDir::SouthWest => {
@@ -4524,13 +4530,14 @@ impl View for Reader {
                                 if self.ephemeral
                                     && self.info.file.path == PathBuf::from(MEM_SCHEME)
                                 {
-                                    self.quit(context);
+                                    self.quit(context).await;
                                     hub.send((Event::Back).into()).ok();
                                 } else {
                                     hub.send((Event::Show(ViewId::TableOfContents)).into()).ok();
                                 }
                             } else {
-                                self.go_to_neighbor(CycleDir::Previous, hub, rq, context);
+                                self.go_to_neighbor(CycleDir::Previous, hub, rq, context)
+                                    .await;
                             }
                         }
                     },
@@ -4539,10 +4546,11 @@ impl View for Reader {
                             if self.search.is_none() {
                                 match context.settings.reader.west_strip {
                                     WestStripAction::PreviousPage => {
-                                        self.go_to_neighbor(CycleDir::Previous, hub, rq, context);
+                                        self.go_to_neighbor(CycleDir::Previous, hub, rq, context)
+                                            .await;
                                     }
                                     WestStripAction::NextPage => {
-                                        self.go_to_neighbor(CycleDir::Next, hub, rq, context);
+                                        self.go_to_neighbor(CycleDir::Next, hub, rq, context).await;
                                     }
                                     WestStripAction::None => (),
                                 }
@@ -4554,10 +4562,11 @@ impl View for Reader {
                             if self.search.is_none() {
                                 match context.settings.reader.east_strip {
                                     EastStripAction::PreviousPage => {
-                                        self.go_to_neighbor(CycleDir::Previous, hub, rq, context);
+                                        self.go_to_neighbor(CycleDir::Previous, hub, rq, context)
+                                            .await;
                                     }
                                     EastStripAction::NextPage => {
-                                        self.go_to_neighbor(CycleDir::Next, hub, rq, context);
+                                        self.go_to_neighbor(CycleDir::Next, hub, rq, context).await;
                                     }
                                     EastStripAction::None => (),
                                 }
@@ -4570,7 +4579,7 @@ impl View for Reader {
                                 self.toggle_bars(None, hub, rq, context);
                             }
                             SouthStripAction::NextPage => {
-                                self.go_to_neighbor(CycleDir::Next, hub, rq, context);
+                                self.go_to_neighbor(CycleDir::Next, hub, rq, context).await;
                             }
                         },
                         Dir::North => self.toggle_bars(None, hub, rq, context),
@@ -4791,7 +4800,7 @@ impl View for Reader {
                 true
             }
             Event::Page(dir) => {
-                self.go_to_neighbor(dir, hub, rq, context);
+                self.go_to_neighbor(dir, hub, rq, context).await;
                 true
             }
             Event::GoTo(location) | Event::Select(EntryId::GoTo(location)) => {
@@ -5305,7 +5314,7 @@ impl View for Reader {
                 status: ButtonStatus::Pressed,
                 ..
             }) => {
-                self.quit(context);
+                self.quit(context).await;
                 hub.send((Event::Back).into()).ok();
                 true
             }
@@ -5315,7 +5324,7 @@ impl View for Reader {
             | Event::Select(EntryId::SwitchInstall)
             | Event::Back
             | Event::Suspend => {
-                self.quit(context);
+                self.quit(context).await;
                 false
             }
             Event::Focus(v) => {

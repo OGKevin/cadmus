@@ -130,7 +130,7 @@ fn handle_net_up(
     match context
         .device
         .wifi_manager()
-        .and_then(|wifi| wifi.network_info())
+        .and_then(|wifi| crate::runtime::block_on(wifi.network_info()))
     {
         Ok(Some(info)) => {
             let msg = fl!(

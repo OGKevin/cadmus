@@ -61,7 +61,7 @@ impl DeviceAuthView {
     /// If the device flow initiation fails, sends [`Event::Github`] with [`GithubEvent::DeviceAuthError`]
     /// immediately and returns a view with an error message.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-    pub fn new(hub: &Hub, context: &mut AppContext) -> Self {
+    pub async fn new(hub: &Hub, context: &mut AppContext) -> Self {
         let id = ID_FEEDER.next();
         let view_id = ViewId::Ota(OtaViewId::DeviceAuth);
         let (width, height) = context.device.dims();
@@ -71,18 +71,19 @@ impl DeviceAuthView {
         let mut children: Vec<Box<dyn View>> = Vec::new();
         children.push(Box::new(Filler::new(full_rect, WHITE)));
 
-        let (url_text, code_text) = match Self::initiate_and_spawn(hub, Arc::clone(&cancelled)) {
-            Ok((url, code)) => (format!("Go to: {}", url), format!("Enter code: {}", code)),
-            Err(e) => {
-                tracing::error!(error = %e, "Device flow initiation failed");
-                hub.send((Event::Github(GithubEvent::DeviceAuthError(e.to_string()))).into())
-                    .ok();
-                (
-                    "GitHub auth failed".to_owned(),
-                    "Check logs for details".to_owned(),
-                )
-            }
-        };
+        let (url_text, code_text) =
+            match Self::initiate_and_spawn(hub, Arc::clone(&cancelled)).await {
+                Ok((url, code)) => (format!("Go to: {}", url), format!("Enter code: {}", code)),
+                Err(e) => {
+                    tracing::error!(error = %e, "Device flow initiation failed");
+                    hub.send((Event::Github(GithubEvent::DeviceAuthError(e.to_string()))).into())
+                        .ok();
+                    (
+                        "GitHub auth failed".to_owned(),
+                        "Check logs for details".to_owned(),
+                    )
+                }
+            };
 
         let dpi = context.device.dpi();
         let font = font_from_style(&mut context.fonts, &NORMAL_STYLE, dpi);
@@ -138,13 +139,14 @@ impl DeviceAuthView {
     /// Returns `(verification_uri, user_code)` on success so the caller can
     /// display them. The polling task checks `cancelled` before each poll
     /// and exits cleanly when it is set.
-    fn initiate_and_spawn(
+    async fn initiate_and_spawn(
         hub: &Hub,
         cancelled: Arc<AtomicBool>,
     ) -> Result<(String, String), crate::github::GithubError> {
         let client = GithubClient::new(None)?;
-        let device_code_response =
-            crate::runtime::block_on(client.initiate_device_flow()).map_err(GithubError::Api)?;
+        let device_code_response = (client.initiate_device_flow())
+            .await
+            .map_err(GithubError::Api)?;
 
         let verification_uri = device_code_response.verification_uri.clone();
         let user_code = device_code_response.user_code.clone();
@@ -242,6 +244,7 @@ impl DeviceAuthView {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl View for DeviceAuthView {
     /// Handles events for the device auth view.
     ///
@@ -256,7 +259,7 @@ impl View for DeviceAuthView {
             ret(level = tracing::Level::TRACE)
         )
     )]
-    fn handle_event(
+    async fn handle_event(
         &mut self,
         evt: &Event,
         _hub: &Hub,
