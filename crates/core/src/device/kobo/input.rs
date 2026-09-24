@@ -5,8 +5,8 @@ use crate::settings::ButtonScheme;
 use crate::view::Event;
 use std::path::Path;
 use std::sync::Arc;
-use std::sync::mpsc::Sender;
 use std::time::Duration;
+use tokio::sync::mpsc::UnboundedSender;
 
 pub(crate) const CLOCK_REFRESH_INTERVAL: Duration = Duration::from_secs(60);
 pub(crate) const BATTERY_REFRESH_INTERVAL: Duration = Duration::from_secs(299);
@@ -33,7 +33,7 @@ fn touch_input_path() -> Option<String> {
 pub struct InputSource {
     pub(super) info: crate::input::DeviceInputInfo,
     pub(super) dpi: u16,
-    pub(super) raw_sender: Option<Sender<InputEvent>>,
+    pub(super) raw_sender: Option<UnboundedSender<InputEvent>>,
 }
 
 impl Default for InputSource {
@@ -121,16 +121,18 @@ impl crate::device::InputSource for InputSource {
 
         let tx2 = tx.clone();
         let inhibitor2 = Arc::clone(&inhibitor);
-        crate::runtime::spawn_blocking(move || {
-            while let Ok(evt) = touch_screen.recv() {
+        crate::runtime::current_handle().spawn(async move {
+            let mut touch_screen = touch_screen;
+            while let Some(evt) = touch_screen.recv().await {
                 crate::view::hub_message::send_input_hub_message(&tx2, &inhibitor2, evt);
             }
         });
 
         let tx3 = tx.clone();
         let inhibitor3 = Arc::clone(&inhibitor);
-        crate::runtime::spawn_blocking(move || {
-            while let Ok(evt) = usb_port.recv() {
+        crate::runtime::current_handle().spawn(async move {
+            let mut usb_port = usb_port;
+            while let Some(evt) = usb_port.recv().await {
                 crate::view::hub_message::send_input_hub_message(
                     &tx3,
                     &inhibitor3,

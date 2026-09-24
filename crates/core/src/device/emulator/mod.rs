@@ -42,8 +42,8 @@ use sdl3::render::{BlendMode, WindowCanvas, create_renderer};
 use std::fs::File;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::mpsc::{self, Sender};
 use std::time::Duration;
+use tokio::sync::mpsc::UnboundedSender;
 
 const CLOCK_REFRESH_INTERVAL: Duration = Duration::from_secs(60);
 const DEFAULT_ROTATION: i8 = 1;
@@ -75,7 +75,7 @@ impl std::ops::DerefMut for SendableEventPump {
 
 pub struct EmulatorInputSource {
     dpi: u16,
-    sender: Option<Sender<DeviceEvent>>,
+    sender: Option<UnboundedSender<DeviceEvent>>,
     sdl_context: Option<SendableSdl>,
 }
 
@@ -108,15 +108,16 @@ impl InputSource for EmulatorInputSource {
         inhibitor: Arc<Inhibitor>,
     ) -> (Hub, crate::view::HubReceiver) {
         let (hub, rx) = crate::view::hub_channel();
-        let (device_tx, device_rx) = mpsc::channel();
+        let (device_tx, device_rx) = tokio::sync::mpsc::unbounded_channel();
         self.sender = Some(device_tx.clone());
 
         let gesture_rx = crate::gesture::gesture_events(device_rx, self.dpi);
         let hub_clone = hub.clone();
         let gesture_inhibitor = Arc::clone(&inhibitor);
 
-        crate::runtime::spawn_blocking(move || {
-            while let Ok(event) = gesture_rx.recv() {
+        crate::runtime::current_handle().spawn(async move {
+            let mut gesture_rx = gesture_rx;
+            while let Some(event) = gesture_rx.recv().await {
                 crate::view::hub_message::send_input_hub_message(
                     &hub_clone,
                     &gesture_inhibitor,
