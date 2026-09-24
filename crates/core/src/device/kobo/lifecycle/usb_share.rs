@@ -288,8 +288,8 @@ mod tests {
     use crate::device::test_harness::DeviceRuntimeHarness;
     use crate::view::EntryId;
 
-    #[test]
-    fn handle_prepare_share_returns_error_without_settings_manager() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_prepare_share_returns_error_without_settings_manager() {
         let mut harness = DeviceRuntimeHarness::new();
         let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
             runtime.settings_manager = None;
@@ -298,8 +298,8 @@ mod tests {
         assert_eq!(outcome, EventOutcome::Error);
     }
 
-    #[test]
-    fn handle_prepare_share_early_return_when_shared() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_prepare_share_early_return_when_shared() {
         let mut harness = DeviceRuntimeHarness::new();
         harness.context.shared = true;
         let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
@@ -308,8 +308,8 @@ mod tests {
         assert_eq!(outcome, EventOutcome::Handled);
     }
 
-    #[test]
-    fn handle_share_early_return_when_shared() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_share_early_return_when_shared() {
         let mut harness = DeviceRuntimeHarness::new();
         harness.context.shared = true;
         let hub = harness.hub_tx.clone();
@@ -326,8 +326,8 @@ mod tests {
         assert_eq!(outcome, EventOutcome::Handled);
     }
 
-    #[test]
-    fn handle_share_enables_usb_mass_storage() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_share_enables_usb_mass_storage() {
         let mut harness = DeviceRuntimeHarness::new();
         let hub = harness.hub_tx.clone();
         let outcome =
@@ -348,8 +348,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn disable_usb_share_disables_mass_storage() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn disable_usb_share_disables_mass_storage() {
         let mut harness = DeviceRuntimeHarness::new();
         disable_usb_share(
             &harness.context,

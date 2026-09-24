@@ -1,7 +1,6 @@
 use anyhow::Error;
 use chrono::{DateTime, Duration, Utc};
 use sntpc::{NtpContext, NtpUdpSocket, StdTimestampGen};
-use std::future::Future;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex};
 use std::time::Duration as StdDuration;
@@ -293,25 +292,18 @@ impl<R: Rtc> TimeManager<R> {
 struct TokioNtpSocket(tokio::net::UdpSocket);
 
 impl NtpUdpSocket for TokioNtpSocket {
-    fn send_to(&self, buf: &[u8], addr: SocketAddr) -> impl Future<Output = sntpc::Result<usize>> {
-        async move {
-            self.0
-                .send_to(buf, addr)
-                .await
-                .map_err(|_| sntpc::Error::Network)
-        }
+    async fn send_to(&self, buf: &[u8], addr: SocketAddr) -> sntpc::Result<usize> {
+        self.0
+            .send_to(buf, addr)
+            .await
+            .map_err(|_| sntpc::Error::Network)
     }
 
-    fn recv_from(
-        &self,
-        buf: &mut [u8],
-    ) -> impl Future<Output = sntpc::Result<(usize, SocketAddr)>> {
-        async move {
-            self.0
-                .recv_from(buf)
-                .await
-                .map_err(|_| sntpc::Error::Network)
-        }
+    async fn recv_from(&self, buf: &mut [u8]) -> sntpc::Result<(usize, SocketAddr)> {
+        self.0
+            .recv_from(buf)
+            .await
+            .map_err(|_| sntpc::Error::Network)
     }
 }
 
@@ -554,8 +546,8 @@ mod tests {
     }
 
     #[ignore]
-    #[test]
-    fn ntp_query_with_hostname() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn ntp_query_with_hostname() {
         let server = NetworkAddress::ntp_cloudflare();
         let result = crate::runtime::block_on(query_ntp(&server));
         assert!(result.is_ok(), "NTP query failed: {:?}", result.err());

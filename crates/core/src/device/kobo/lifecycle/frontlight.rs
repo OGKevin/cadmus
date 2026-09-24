@@ -126,8 +126,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn handle_event_toggle_frontlight_updates_settings() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_event_toggle_frontlight_updates_settings() {
         let mut harness = DeviceRuntimeHarness::new();
         harness.context.settings.frontlight = false;
         let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
@@ -137,8 +137,8 @@ mod tests {
         assert!(harness.context.settings.frontlight);
     }
 
-    #[test]
-    fn handle_event_set_frontlight_levels_stops_auto_task() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_event_set_frontlight_levels_stops_auto_task() {
         let mut harness = DeviceRuntimeHarness::new();
         let mut background_tasks = TaskManager::new();
         background_tasks

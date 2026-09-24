@@ -142,7 +142,6 @@ fn check_interfaces(interfaces: &HashMap<String, HashMap<String, String>>, hub: 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::mpsc;
 
     #[test]
     fn check_interfaces_sends_netup_when_wpa_completed() {

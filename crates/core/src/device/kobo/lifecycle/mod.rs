@@ -286,8 +286,8 @@ mod tests {
         std::thread::sleep(Duration::from_millis(50));
     }
 
-    #[test]
-    fn on_startup_auto_disables_without_netup() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn on_startup_auto_disables_without_netup() {
         let mut harness = DeviceRuntimeHarness::new();
         harness.context.settings.wifi = WifiMode::Auto;
         harness.context.online = true;
@@ -321,8 +321,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn on_startup_always_on_sends_netup_when_connected() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn on_startup_always_on_sends_netup_when_connected() {
         let mut harness = DeviceRuntimeHarness::new();
         harness.context.settings.wifi = WifiMode::AlwaysOn;
         harness
@@ -354,8 +354,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn handle_event_device_delegates() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_event_device_delegates() {
         let mut harness = DeviceRuntimeHarness::new();
         let event = Event::Device(DeviceEvent::Button {
             code: ButtonCode::Light,
@@ -368,8 +368,8 @@ mod tests {
         assert_eq!(outcome, EventOutcome::Handled);
     }
 
-    #[test]
-    fn handle_event_check_battery_delegates() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_event_check_battery_delegates() {
         let mut harness = DeviceRuntimeHarness::new();
         let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
             Device::handle_event(&Event::CheckBattery, hub, bus, rq, context, runtime)
@@ -377,8 +377,8 @@ mod tests {
         assert_eq!(outcome, EventOutcome::Handled);
     }
 
-    #[test]
-    fn handle_event_set_wifi_delegates() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_event_set_wifi_delegates() {
         let mut harness = DeviceRuntimeHarness::new();
         let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
             Device::handle_event(
@@ -393,8 +393,8 @@ mod tests {
         assert_eq!(outcome, EventOutcome::Handled);
     }
 
-    #[test]
-    fn restore_boot_rotation_if_needed_noop_when_rotation_matches() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn restore_boot_rotation_if_needed_noop_when_rotation_matches() {
         let mut harness = DeviceRuntimeHarness::new();
         let boot_rotation = harness.context.device.boot_transformed_rotation();
         harness.context.display.rotation = boot_rotation;
@@ -404,8 +404,8 @@ mod tests {
         assert_eq!(harness.context.display.rotation, boot_rotation);
     }
 
-    #[test]
-    fn on_shutdown_disarms_soft_suspend_without_changing_settings() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn on_shutdown_disarms_soft_suspend_without_changing_settings() {
         let mut harness = DeviceRuntimeHarness::new();
         harness.context.settings.autosleep_mode = AutosleepMode::Mem;
         harness.context.inhibitor.set_mode(AutosleepMode::Mem);
@@ -418,8 +418,8 @@ mod tests {
         assert_eq!(harness.context.inhibitor.mode(), AutosleepMode::Off);
     }
 
-    #[test]
-    fn on_shutdown_clears_scheduled_alarms_for_power_off() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn on_shutdown_clears_scheduled_alarms_for_power_off() {
         let mut harness = DeviceRuntimeHarness::new();
         {
             let mut alarms = harness
@@ -459,8 +459,8 @@ mod tests {
         let _ = std::fs::remove_file("/tmp/power_off");
     }
 
-    #[test]
-    fn on_shutdown_clears_scheduled_alarms_for_quit() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn on_shutdown_clears_scheduled_alarms_for_quit() {
         let mut harness = DeviceRuntimeHarness::new();
         {
             let mut alarms = harness
@@ -492,8 +492,8 @@ mod tests {
         assert!(!rtc.alarm_enabled());
     }
 
-    #[test]
-    fn on_shutdown_completes_when_rtc_alarm_disable_fails() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn on_shutdown_completes_when_rtc_alarm_disable_fails() {
         let mut harness = DeviceRuntimeHarness::new();
         {
             let mut alarms = harness

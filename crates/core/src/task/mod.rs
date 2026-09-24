@@ -880,8 +880,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn start_and_stop() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn start_and_stop() {
         let mut manager = TaskManager::new();
         let (hub, _rx) = crate::view::hub_channel();
 
@@ -892,8 +892,8 @@ mod tests {
         assert!(!manager.is_running(&id));
     }
 
-    #[test]
-    fn duplicate_start_returns_error() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn duplicate_start_returns_error() {
         let mut manager = TaskManager::new();
         let (hub, _rx) = crate::view::hub_channel();
 
@@ -903,8 +903,8 @@ mod tests {
         assert!(matches!(err, TaskError::AlreadyRunning(TaskId::TestTask)));
     }
 
-    #[test]
-    fn finished_task_is_cleaned_up() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn finished_task_is_cleaned_up() {
         let mut manager = TaskManager::new();
         let (hub, _rx) = crate::view::hub_channel();
 
@@ -914,8 +914,8 @@ mod tests {
         assert!(!manager.is_running(&id));
     }
 
-    #[test]
-    fn stop_finished_task_returns_not_running() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn stop_finished_task_returns_not_running() {
         let mut manager = TaskManager::new();
         let (hub, _rx) = crate::view::hub_channel();
 
@@ -927,8 +927,8 @@ mod tests {
         assert!(matches!(err, TaskError::NotRunning(TaskId::TestTask2)));
     }
 
-    #[test]
-    fn running_tasks_excludes_finished() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn running_tasks_excludes_finished() {
         let mut manager = TaskManager::new();
         let (hub, _rx) = crate::view::hub_channel();
 
@@ -944,8 +944,8 @@ mod tests {
         manager.stop_all();
     }
 
-    #[test]
-    fn stop_all_stops_everything() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn stop_all_stops_everything() {
         let mut manager = TaskManager::new();
         let (hub, _rx) = crate::view::hub_channel();
 
@@ -1311,8 +1311,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn completed_import_emits_completion_and_schedules_thumbnails() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn completed_import_emits_completion_and_schedules_thumbnails() {
         let dir = tempfile::tempdir().expect("tempdir");
         std::fs::write(dir.path().join("book.epub"), b"epub content").expect("write");
         let context = import_context(dir.path());

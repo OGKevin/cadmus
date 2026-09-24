@@ -98,8 +98,8 @@ mod tests {
     use crate::device::suspend::has_task;
     use crate::device::test_harness::DeviceRuntimeHarness;
 
-    #[test]
-    fn handle_event_power_off_exits() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_event_power_off_exits() {
         let mut harness = DeviceRuntimeHarness::new();
         let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
             handle_event(
@@ -114,8 +114,8 @@ mod tests {
         assert_eq!(outcome, EventOutcome::Exit(ExitStatus::PowerOff));
     }
 
-    #[test]
-    fn full_inhibit_ignores_user_power_off() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn full_inhibit_ignores_user_power_off() {
         let mut harness = DeviceRuntimeHarness::new();
         let _guard = harness
             .context
@@ -135,8 +135,8 @@ mod tests {
         assert_eq!(outcome, EventOutcome::Handled);
     }
 
-    #[test]
-    fn full_inhibit_ignores_user_reboot() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn full_inhibit_ignores_user_reboot() {
         let mut harness = DeviceRuntimeHarness::new();
         let _guard = harness
             .context
@@ -156,8 +156,8 @@ mod tests {
         assert_eq!(outcome, EventOutcome::Handled);
     }
 
-    #[test]
-    fn full_inhibit_allows_exit_after_release() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn full_inhibit_allows_exit_after_release() {
         let mut harness = DeviceRuntimeHarness::new();
         let guard = harness
             .context
@@ -186,8 +186,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn handle_event_switch_install_exits_run_command() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_event_switch_install_exits_run_command() {
         let mut harness = DeviceRuntimeHarness::new();
         let peer_dir = std::env::temp_dir()
             .join("test-kobo-installation")
@@ -213,8 +213,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn handle_event_suspend_begins_suspend() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_event_suspend_begins_suspend() {
         let mut harness = DeviceRuntimeHarness::new();
         let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
             handle_event(
@@ -230,8 +230,8 @@ mod tests {
         assert!(has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
     }
 
-    #[test]
-    fn hold_button_long_power_cancels_pending_suspend_rtc() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn hold_button_long_power_cancels_pending_suspend_rtc() {
         use crate::AlarmType;
         use crate::chrono::Duration as ChronoDuration;
 
@@ -269,8 +269,8 @@ mod tests {
         assert!(!alarms.has_alarm(AlarmType::Suspend));
     }
 
-    #[test]
-    fn hold_button_long_power_cancels_wake_debounce() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn hold_button_long_power_cancels_wake_debounce() {
         use crate::AlarmType;
         use crate::chrono::Duration as ChronoDuration;
 
@@ -308,8 +308,8 @@ mod tests {
         assert!(!alarms.has_alarm(AlarmType::WakeDebounce));
     }
 
-    #[test]
-    fn hold_button_long_power_cancels_pending_prepare_suspend() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn hold_button_long_power_cancels_pending_prepare_suspend() {
         let mut harness = DeviceRuntimeHarness::new();
         harness.push_task(DeviceTaskId::PrepareSuspend);
         let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
@@ -326,8 +326,8 @@ mod tests {
         assert!(!has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
     }
 
-    #[test]
-    fn hold_button_long_power_exits_when_no_suspend_pending() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn hold_button_long_power_exits_when_no_suspend_pending() {
         let mut harness = DeviceRuntimeHarness::new();
         let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
             handle_event(

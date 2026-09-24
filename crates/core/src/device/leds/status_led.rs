@@ -341,8 +341,8 @@ mod tests {
         panic!("condition not met within timeout");
     }
 
-    #[test]
-    fn higher_priority_overrides_lower() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn higher_priority_overrides_lower() {
         let leds = Arc::new(CountingLeds {
             on_calls: AtomicU32::new(0),
             off_calls: AtomicU32::new(0),
@@ -366,8 +366,8 @@ mod tests {
         wait_for(|| leds.on_calls.load(Ordering::SeqCst) >= 2);
     }
 
-    #[test]
-    fn reverts_after_higher_release() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn reverts_after_higher_release() {
         let leds = Arc::new(CountingLeds {
             on_calls: AtomicU32::new(0),
             off_calls: AtomicU32::new(0),
@@ -389,8 +389,8 @@ mod tests {
         wait_for(|| leds.on_calls.load(Ordering::SeqCst) >= 2);
     }
 
-    #[test]
-    fn replace_same_name_updates_pattern() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn replace_same_name_updates_pattern() {
         let leds = Arc::new(CountingLeds {
             on_calls: AtomicU32::new(0),
             off_calls: AtomicU32::new(0),
@@ -419,8 +419,8 @@ mod tests {
         wait_for(|| leds.off_calls.load(Ordering::SeqCst) >= 2);
     }
 
-    #[test]
-    fn empty_map_turns_led_off() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn empty_map_turns_led_off() {
         let leds = Arc::new(CountingLeds {
             on_calls: AtomicU32::new(0),
             off_calls: AtomicU32::new(0),
@@ -436,8 +436,8 @@ mod tests {
         wait_for(|| leds.off_calls.load(Ordering::SeqCst) >= 1);
     }
 
-    #[test]
-    fn missing_hardware_succeeds_without_io() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn missing_hardware_succeeds_without_io() {
         let status_led = StatusLed::new(None);
         let guard = status_led.install(
             "soft-indicate",
@@ -447,8 +447,8 @@ mod tests {
         drop(guard);
     }
 
-    #[test]
-    fn drop_joins_worker_and_turns_led_off() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn drop_joins_worker_and_turns_led_off() {
         let leds = Arc::new(CountingLeds {
             on_calls: AtomicU32::new(0),
             off_calls: AtomicU32::new(0),

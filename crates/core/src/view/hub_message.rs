@@ -126,8 +126,8 @@ mod tests {
         (dir, inhibitor)
     }
 
-    #[test]
-    fn soft_suspend_message_holds_lease_until_dropped() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn soft_suspend_message_holds_lease_until_dropped() {
         let (_dir, inhibitor) = fixture();
 
         let _short = inhibitor
@@ -147,8 +147,8 @@ mod tests {
         assert!(inhibitor.is_empty());
     }
 
-    #[test]
-    fn rtc_alarm_message_holds_lease_until_dropped() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn rtc_alarm_message_holds_lease_until_dropped() {
         let (_dir, inhibitor) = fixture();
 
         let message = HubMessage::with_soft_suspend(
@@ -163,8 +163,8 @@ mod tests {
         assert!(inhibitor.is_empty());
     }
 
-    #[test]
-    fn bare_message_does_not_acquire_lease() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn bare_message_does_not_acquire_lease() {
         let (_dir, inhibitor) = fixture();
 
         let message = HubMessage::from(Event::ClockTick);

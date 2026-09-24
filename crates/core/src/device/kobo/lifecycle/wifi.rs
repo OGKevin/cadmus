@@ -242,8 +242,8 @@ mod tests {
         std::thread::sleep(Duration::from_millis(50));
     }
 
-    #[test]
-    fn handle_set_wifi_mode_noop_on_duplicate() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_set_wifi_mode_noop_on_duplicate() {
         let mut harness = DeviceRuntimeHarness::new();
         harness.context.settings.wifi = WifiMode::AlwaysOn;
         harness.context.wifi_session.set_mode(WifiMode::AlwaysOn);
@@ -264,8 +264,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn handle_set_wifi_mode_enable_always_on() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_set_wifi_mode_enable_always_on() {
         let mut harness = DeviceRuntimeHarness::new();
         harness.context.settings.wifi = WifiMode::Off;
         let outcome = handle_event(
@@ -281,8 +281,8 @@ mod tests {
         assert_eq!(wifi.enabled(), Some(true));
     }
 
-    #[test]
-    fn handle_set_wifi_mode_disable_clears_online() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_set_wifi_mode_disable_clears_online() {
         let mut harness = DeviceRuntimeHarness::new();
         harness.context.settings.wifi = WifiMode::AlwaysOn;
         harness.context.online = true;
@@ -299,8 +299,8 @@ mod tests {
         assert_eq!(wifi.disable_call_count(), 1);
     }
 
-    #[test]
-    fn handle_set_wifi_mode_always_on_sends_netup_when_connected() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_set_wifi_mode_always_on_sends_netup_when_connected() {
         use crate::device::wifi::{Essid, NetworkInfo};
         use crate::input::DeviceEvent;
 
@@ -330,8 +330,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn might_disable_wifi_after_idle() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn might_disable_wifi_after_idle() {
         let mut harness = DeviceRuntimeHarness::new();
         harness.context.settings.wifi = WifiMode::Auto;
         harness.context.settings.wifi_idle_timeout = 0.0;

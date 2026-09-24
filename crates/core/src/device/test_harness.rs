@@ -23,7 +23,7 @@ use crate::device::DeviceHardware as _;
 use crate::device::{DeviceRuntime, DeviceTask, DeviceTaskId, HistoryItem};
 use crate::framebuffer::Framebuffer as _;
 use crate::view::filler::Filler;
-use crate::view::{Bus, Event, Hub, HubMessage, RenderQueue, UpdateData, View};
+use crate::view::{Bus, Event, Hub, RenderQueue, UpdateData, View};
 
 /// Minimal runtime shell for device / suspend handler tests.
 ///

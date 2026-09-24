@@ -15,6 +15,10 @@ use std::path::{Path, PathBuf};
 // use std::sync::mpsc;
 
 fn main() -> Result<(), Error> {
+    cadmus_core::runtime::enter(async { run().await })
+}
+
+async fn run() -> Result<(), Error> {
     let args: Vec<String> = env::args().skip(1).collect();
 
     let mut opts = Options::new();

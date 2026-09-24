@@ -578,15 +578,15 @@ mod tests {
         (session, wifi)
     }
 
-    #[test]
-    fn off_rejects_acquire() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn off_rejects_acquire() {
         let (session, _) = session(WifiMode::Off);
         let err = drive(session.acquire("x")).unwrap_err();
         assert!(matches!(err, WifiSessionError::ModeOff));
     }
 
-    #[test]
-    fn acquire_when_already_online() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn acquire_when_already_online() {
         let (session, _) = session(WifiMode::Auto);
         session.notify_online();
         let lease = drive(session.acquire("a")).unwrap();
@@ -596,8 +596,8 @@ mod tests {
         assert!(session.idle_since().is_some());
     }
 
-    #[test]
-    fn two_holders_idle_only_after_last() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn two_holders_idle_only_after_last() {
         let (session, _) = session(WifiMode::Auto);
         session.notify_online();
         let a = drive(session.acquire("a")).unwrap();
@@ -608,8 +608,8 @@ mod tests {
         assert!(session.idle_since().is_some());
     }
 
-    #[test]
-    fn always_on_does_not_arm_idle() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn always_on_does_not_arm_idle() {
         let (session, _) = session(WifiMode::AlwaysOn);
         session.notify_online();
         let lease = drive(session.acquire("a")).unwrap();
@@ -617,13 +617,14 @@ mod tests {
         assert!(session.idle_since().is_none());
     }
 
-    #[test]
-    fn notify_online_unblocks_waiter() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn notify_online_unblocks_waiter() {
         let (session, wifi) = session(WifiMode::Auto);
         wifi.set_network_info(Ok(None));
         let session2 = Arc::clone(&session);
+        let runtime = tokio::runtime::Handle::current();
         let handle = thread::spawn(move || {
-            drive(session2.acquire_with_timeout("wait", Duration::from_secs(2)))
+            runtime.block_on(session2.acquire_with_timeout("wait", Duration::from_secs(2)))
         });
         thread::sleep(Duration::from_millis(50));
         session.notify_online();
@@ -631,13 +632,14 @@ mod tests {
         drop(lease);
     }
 
-    #[test]
-    fn acquire_enables_radio_when_disabled() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn acquire_enables_radio_when_disabled() {
         let (session, wifi) = session(WifiMode::Auto);
         assert!(!wifi.is_enabled());
         let session2 = Arc::clone(&session);
+        let runtime = tokio::runtime::Handle::current();
         let handle = thread::spawn(move || {
-            drive(session2.acquire_with_timeout("en", Duration::from_millis(200)))
+            runtime.block_on(session2.acquire_with_timeout("en", Duration::from_millis(200)))
         });
         thread::sleep(Duration::from_millis(30));
         assert!(wifi.is_enabled() || handle.is_finished());
@@ -645,8 +647,8 @@ mod tests {
         let _ = handle.join().unwrap();
     }
 
-    #[test]
-    fn acquire_timeout_releases_lease_without_deadlock() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn acquire_timeout_releases_lease_without_deadlock() {
         let (session, wifi) = session(WifiMode::Auto);
         wifi.set_network_info(Ok(None));
         let err = drive(session.acquire_with_timeout("t", Duration::from_millis(100))).unwrap_err();
@@ -655,8 +657,8 @@ mod tests {
         assert!(session.idle_since().is_some());
     }
 
-    #[test]
-    fn enable_radio_reports_connected_when_associated() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn enable_radio_reports_connected_when_associated() {
         let (session, wifi) = session(WifiMode::AlwaysOn);
         wifi.set_network_info(Ok(Some(crate::device::wifi::NetworkInfo {
             ip: "192.168.1.1".parse().unwrap(),
@@ -666,8 +668,8 @@ mod tests {
         assert!(session.is_online());
     }
 
-    #[test]
-    fn acquire_skips_wait_when_already_associated() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn acquire_skips_wait_when_already_associated() {
         let (session, wifi) = session(WifiMode::Auto);
         wifi.set_network_info(Ok(Some(crate::device::wifi::NetworkInfo {
             ip: "192.168.1.1".parse().unwrap(),
@@ -689,8 +691,8 @@ mod tests {
         (dir, inhibitor)
     }
 
-    #[test]
-    fn always_on_holds_soft_suspend_only_while_radio_on() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn always_on_holds_soft_suspend_only_while_radio_on() {
         let (_dir, soft) = soft_suspend_inhibitor();
         let (session, _) = session(WifiMode::Auto);
         session.set_inhibitor(Arc::clone(&soft));
@@ -715,8 +717,8 @@ mod tests {
         assert!(soft.is_empty());
     }
 
-    #[test]
-    fn always_on_keeps_soft_suspend_after_last_wifi_holder() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn always_on_keeps_soft_suspend_after_last_wifi_holder() {
         let (_dir, soft) = soft_suspend_inhibitor();
         let (session, _) = session(WifiMode::AlwaysOn);
         session.set_inhibitor(Arc::clone(&soft));
@@ -730,8 +732,8 @@ mod tests {
         assert!(!session.has_holders());
     }
 
-    #[test]
-    fn leaving_always_on_keeps_soft_suspend_while_holders_remain() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn leaving_always_on_keeps_soft_suspend_while_holders_remain() {
         let (_dir, soft) = soft_suspend_inhibitor();
         let (session, _) = session(WifiMode::AlwaysOn);
         session.set_inhibitor(Arc::clone(&soft));
@@ -746,8 +748,8 @@ mod tests {
         assert!(soft.is_empty());
     }
 
-    #[test]
-    fn disable_radio_drops_always_on_soft_suspend_lease() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn disable_radio_drops_always_on_soft_suspend_lease() {
         let (_dir, soft) = soft_suspend_inhibitor();
         let (session, _) = session(WifiMode::AlwaysOn);
         session.set_inhibitor(Arc::clone(&soft));
@@ -762,8 +764,8 @@ mod tests {
         assert!(!soft.is_empty());
     }
 
-    #[test]
-    fn auto_holder_pins_soft_suspend_while_radio_on() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn auto_holder_pins_soft_suspend_while_radio_on() {
         let (_dir, soft) = soft_suspend_inhibitor();
         let (session, _) = session(WifiMode::Auto);
         session.set_inhibitor(Arc::clone(&soft));
@@ -779,8 +781,8 @@ mod tests {
         assert!(soft.is_empty());
     }
 
-    #[test]
-    fn soft_suspend_stays_pinned_while_holder_active_under_churn() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn soft_suspend_stays_pinned_while_holder_active_under_churn() {
         use std::sync::atomic::{AtomicBool, Ordering};
 
         let (_dir, soft) = soft_suspend_inhibitor();
@@ -790,17 +792,21 @@ mod tests {
         session.notify_online();
 
         let failed = Arc::new(AtomicBool::new(false));
+        let runtime = tokio::runtime::Handle::current();
         let handles: Vec<_> = (0..4)
             .map(|i| {
                 let session = Arc::clone(&session);
                 let soft = Arc::clone(&soft);
                 let failed = Arc::clone(&failed);
+                let runtime = runtime.clone();
                 thread::spawn(move || {
                     for n in 0..250 {
                         if failed.load(Ordering::Relaxed) {
                             break;
                         }
-                        let lease = drive(session.acquire(format!("t{i}-{n}"))).unwrap();
+                        let lease = runtime
+                            .block_on(session.acquire(format!("t{i}-{n}")))
+                            .unwrap();
                         if session.has_holders() && soft.is_empty() {
                             failed.store(true, Ordering::Relaxed);
                             break;

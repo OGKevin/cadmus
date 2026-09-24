@@ -259,7 +259,7 @@ fn is_run_log_entry(entry: &DirEntry) -> bool {
 ///   retention settings.
 /// * `log_dir` - Absolute path to the directory where log files are written.
 ///   The caller is responsible for computing this from
-///   [`Device::data_path`](crate::device::Device::data_path) so that logs land
+///   [`DevicePaths::data_path`](crate::device::DevicePaths::data_path) so that logs land
 ///   on the SD card when one is present.
 ///
 /// # Returns

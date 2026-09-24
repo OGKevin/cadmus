@@ -816,8 +816,8 @@ mod wifi_tests {
     use crate::settings::WifiMode;
     use std::sync::Arc;
 
-    #[test]
-    fn ota_download_lease_acquire_succeeds_for_auto_and_always_on() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn ota_download_lease_acquire_succeeds_for_auto_and_always_on() {
         for mode in [WifiMode::Auto, WifiMode::AlwaysOn] {
             let wifi = Arc::new(NoopWifiManager::default());
             assert!(!wifi.is_enabled());

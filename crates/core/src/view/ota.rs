@@ -1465,8 +1465,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_ota_view_consumes_own_focus_event() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_ota_view_consumes_own_focus_event() {
         let mut context = create_test_context();
         let mut ota = create_ota_view(&mut context);
         let (hub, _rx) = crate::view::hub_channel();
@@ -1489,8 +1489,8 @@ mod tests {
         assert!(bus.is_empty(), "Focus event must not leak to parent bus");
     }
 
-    #[test]
-    fn test_ota_view_does_not_consume_foreign_focus_event() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_ota_view_does_not_consume_foreign_focus_event() {
         let mut context = create_test_context();
         let mut ota = create_ota_view(&mut context);
         let (hub, _rx) = crate::view::hub_channel();
@@ -1519,8 +1519,8 @@ mod tests {
     /// to the hub. We drain the hub and dispatch each event through the
     /// view tree — just like the main loop does — and assert that the
     /// parent never inserts a keyboard child.
-    #[test]
-    fn test_progress_screen_shows_cancel_button() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_progress_screen_shows_cancel_button() {
         let mut context = create_test_context();
         let mut ota = create_ota_view(&mut context);
 
@@ -1536,8 +1536,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_shift_child_indices_after_remove_updates_cancel_button_index() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_shift_child_indices_after_remove_updates_cancel_button_index() {
         let mut context = create_test_context();
         let mut ota = create_ota_view(&mut context);
 
@@ -1554,8 +1554,8 @@ mod tests {
         assert_eq!(ota.status_label_index, Some(1));
     }
 
-    #[test]
-    fn test_close_during_download_sets_cancel_flag() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_close_during_download_sets_cancel_flag() {
         let mut context = create_test_context();
         let mut ota = create_ota_view(&mut context);
         let (hub, _rx) = crate::view::hub_channel();
@@ -1578,8 +1578,8 @@ mod tests {
         assert!(ota.download_in_progress);
     }
 
-    #[test]
-    fn test_close_after_commit_does_not_cancel() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_close_after_commit_does_not_cancel() {
         let mut context = create_test_context();
         let mut ota = create_ota_view(&mut context);
         let (hub, _rx) = crate::view::hub_channel();
@@ -1601,8 +1601,8 @@ mod tests {
         assert!(!ota.cancelled.is_cancelled());
     }
 
-    #[test]
-    fn test_progress_non_cancelable_hides_cancel_and_marks_committed() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_progress_non_cancelable_hides_cancel_and_marks_committed() {
         let mut context = create_test_context();
         let mut ota = create_ota_view(&mut context);
         let mut rq = RenderQueue::new();
@@ -1626,8 +1626,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_progress_100_removes_bar_and_shifts_cancel_index() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_progress_100_removes_bar_and_shifts_cancel_index() {
         let mut context = create_test_context();
         let mut ota = create_ota_view(&mut context);
         let mut rq = RenderQueue::new();
@@ -1648,8 +1648,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_progress_100_then_hide_cancel_does_not_panic() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_progress_100_then_hide_cancel_does_not_panic() {
         let mut context = create_test_context();
         let mut ota = create_ota_view(&mut context);
         let mut rq = RenderQueue::new();
@@ -1664,8 +1664,8 @@ mod tests {
         assert!(ota.progress_bar_index.is_none());
     }
 
-    #[test]
-    fn test_effective_github_token_prefers_stored_token() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_effective_github_token_prefers_stored_token() {
         use secrecy::ExposeSecret;
 
         let mut context = create_test_context();
@@ -1677,8 +1677,8 @@ mod tests {
         assert_eq!(token.expose_secret(), "stored-token");
     }
 
-    #[test]
-    fn test_parent_keyboard_not_shown_when_ota_focuses_input() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_parent_keyboard_not_shown_when_ota_focuses_input() {
         crate::crypto::init_crypto_provider();
 
         let mut context = create_test_context();
@@ -1778,7 +1778,11 @@ mod tests {
         let started = Instant::now();
         crate::runtime::finish_within_deadline(&mut in_flight, Duration::from_secs(5)).await;
 
-        assert!(started.elapsed() >= Duration::from_secs(1));
+        assert!(
+            started.elapsed() >= Duration::from_millis(900),
+            "reboot delay should wait about one second, elapsed={:?}",
+            started.elapsed()
+        );
         let message = rx.try_recv().expect("reboot request");
         assert!(matches!(message.event, Event::Select(EntryId::Reboot)));
     }

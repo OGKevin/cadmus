@@ -1,17 +1,16 @@
-//! Process-wide Tokio runtime and the sync-to-async blocking facade.
+//! Process Tokio runtime and the sync-to-async blocking facade.
 //!
 //! Process entry builds one multi-thread runtime. The reactor is capped.
 //! The blocking pool uses Tokio's ceiling and creates a thread only when
 //! work is waiting. Synchronous callers use [`block_on`], which parks a
-//! runtime worker with `block_in_place` instead of nesting a bare `block_on`.
+//! runtime worker with `block_in_place`.
 //!
-//! [`enter`] (and the first [`current_handle`] on a live runtime) publish one
-//! process [`Handle`] so leftover `std::thread` tasks can still drive work on
-//! that runtime. Calling [`block_on`] or [`current_handle`] before any process
-//! runtime exists is a bug.
+//! There is no process-global [`Handle`]. Callers must already be on the
+//! runtime ([`enter`] or `#[tokio::test]`). Off-runtime work belongs on
+//! `spawn_blocking` / `tokio::spawn`, or takes an explicit handle at spawn.
 
 use std::future::Future;
-use std::sync::{Mutex, OnceLock};
+use std::sync::OnceLock;
 use std::time::Duration;
 use tokio::runtime::{Builder, Handle};
 use tokio::task::JoinSet;
@@ -51,15 +50,12 @@ where
     F: Future<Output = T>,
 {
     let runtime = builder().build().expect("failed to build process runtime");
-    publish_process_handle(runtime.handle().clone());
     let result = runtime.block_on(future);
     runtime.shutdown_timeout(SHUTDOWN_DEADLINE);
-    clear_process_handle();
     result
 }
 
-
-/// Runs `f` on the blocking pool of the current process runtime.
+/// Runs `f` on the blocking pool of the current runtime.
 pub fn spawn_blocking<F, R>(f: F) -> tokio::task::JoinHandle<R>
 where
     F: FnOnce() -> R + Send + 'static,
@@ -68,22 +64,15 @@ where
     current_handle().spawn_blocking(f)
 }
 
-/// Handle for the process runtime.
-///
-/// Prefers the caller's current runtime, then the handle published by
-/// [`enter`] or an earlier on-runtime [`current_handle`] call.
+/// Handle for the caller's current runtime.
 ///
 /// # Panics
 ///
-/// Panics when no process runtime exists yet. Use [`enter`] at process entry,
+/// Panics when not running on a Tokio runtime. Use [`enter`] at process entry,
 /// or `#[tokio::test]` in tests.
 #[track_caller]
 pub fn current_handle() -> Handle {
-    if let Ok(handle) = Handle::try_current() {
-        publish_process_handle(handle.clone());
-        return handle;
-    }
-    process_handle().unwrap_or_else(|| {
+    Handle::try_current().unwrap_or_else(|_| {
         panic!(
             "cadmus runtime handle required; call runtime::enter at process entry or use #[tokio::test] (at {})",
             std::panic::Location::caller()
@@ -91,23 +80,19 @@ pub fn current_handle() -> Handle {
     })
 }
 
-/// Runs `future` to completion on the process runtime.
+/// Runs `future` to completion on the current runtime.
 ///
-/// Parks the worker via `block_in_place` when called from a runtime thread.
-/// Off-worker callers (plain OS threads) use [`Handle::block_on`] directly.
+/// Parks the worker via `block_in_place`. Must be called from a runtime
+/// worker (including `#[tokio::test]`).
 ///
 /// # Panics
 ///
-/// Panics when no process runtime exists yet. Use [`enter`] at process entry,
+/// Panics when not running on a Tokio runtime. Use [`enter`] at process entry,
 /// or `#[tokio::test]` in tests.
 #[track_caller]
 pub fn block_on<F: Future>(future: F) -> F::Output {
     let handle = current_handle();
-    if tokio::runtime::Handle::try_current().is_ok() {
-        tokio::task::block_in_place(|| handle.block_on(future))
-    } else {
-        handle.block_on(future)
-    }
+    tokio::task::block_in_place(|| handle.block_on(future))
 }
 
 /// Bare `Handle::block_on` from a runtime worker.
@@ -179,49 +164,6 @@ fn in_flight() -> &'static tokio::sync::Mutex<JoinSet<()>> {
     IN_FLIGHT.get_or_init(|| tokio::sync::Mutex::new(JoinSet::new()))
 }
 
-fn process_handle_slot() -> &'static Mutex<Option<Handle>> {
-    static PROCESS_HANDLE: OnceLock<Mutex<Option<Handle>>> = OnceLock::new();
-    PROCESS_HANDLE.get_or_init(|| Mutex::new(None))
-}
-
-fn publish_process_handle(handle: Handle) {
-    *process_handle_slot().lock().expect("process handle lock") = Some(handle);
-}
-
-fn clear_process_handle() {
-    *process_handle_slot().lock().expect("process handle lock") = None;
-}
-
-fn process_handle() -> Option<Handle> {
-    process_handle_slot()
-        .lock()
-        .expect("process handle lock")
-        .clone()
-}
-
-/// Publishes a process [`Handle`] for unit tests that are not on `#[tokio::test]`.
-///
-/// Prefer `#[tokio::test]` for new tests. Helpers such as
-/// [`crate::context::test_helpers::create_test_context`] call this so
-/// plain `#[test]` cases still reach [`block_on`] under nextest isolation.
-#[cfg(test)]
-pub(crate) fn ensure_published_for_test() {
-    if process_handle().is_some() {
-        return;
-    }
-    if let Ok(handle) = Handle::try_current() {
-        publish_process_handle(handle);
-        return;
-    }
-    static TEST_RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
-    let runtime = TEST_RUNTIME.get_or_init(|| {
-        builder()
-            .build()
-            .expect("failed to build test process runtime")
-    });
-    publish_process_handle(runtime.handle().clone());
-}
-
 /// Runs `on_unwind` if this value is dropped while still armed.
 ///
 /// A panic in a spawned task does not stop the process. Arm a guard for the
@@ -258,6 +200,7 @@ impl<F: FnOnce()> Drop for UnwindGuard<F> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Instant;
 
     #[test]
     fn unwind_guard_runs_callback_on_unwind() {
@@ -281,8 +224,6 @@ mod tests {
         drop(guard);
         assert!(!hit.load(std::sync::atomic::Ordering::SeqCst));
     }
-
-    use std::time::Instant;
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     #[should_panic(expected = "bare nested block_on from a runtime worker")]
@@ -328,15 +269,6 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn block_on_works_on_the_test_runtime() {
         assert_eq!(block_on(async { 7 }), 7);
-    }
-
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn block_on_works_from_an_os_thread_after_handle_published() {
-        let _ = current_handle();
-        let value = std::thread::spawn(|| block_on(async { 11 }))
-            .join()
-            .expect("os thread");
-        assert_eq!(value, 11);
     }
 
     #[test]

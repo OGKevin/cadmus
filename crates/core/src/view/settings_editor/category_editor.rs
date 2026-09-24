@@ -1075,8 +1075,8 @@ mod tests {
         CategoryEditor::new(rect, Category::General, &mut rq, context)
     }
 
-    #[test]
-    fn test_add_library_event() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_add_library_event() {
         let mut context = create_test_context();
         context.settings = Settings::default();
         context.settings.libraries.clear();
@@ -1107,8 +1107,8 @@ mod tests {
         assert!(!rq.is_empty());
     }
 
-    #[test]
-    fn test_add_library_preserves_structural_children() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_add_library_preserves_structural_children() {
         let mut context = create_test_context();
         context.settings = create_test_settings_with_libraries(2);
         let mut editor = create_test_category_editor_with_context(&mut context);
@@ -1159,8 +1159,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_delete_library_event() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_delete_library_event() {
         let mut context = create_test_context();
         context.settings = create_test_settings_with_libraries(2);
         let mut editor = create_test_category_editor_with_context(&mut context);
@@ -1200,8 +1200,8 @@ mod tests {
         assert!(!rq.is_empty());
     }
 
-    #[test]
-    fn test_update_library_event() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_update_library_event() {
         let mut context = create_test_context();
         context.settings = create_test_settings_with_libraries(1);
         let mut editor = create_test_category_editor_with_context(&mut context);
@@ -1236,8 +1236,8 @@ mod tests {
         assert!(!rq.is_empty());
     }
 
-    #[test]
-    fn test_edit_library_event() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_edit_library_event() {
         let mut context = create_test_context();
         context.settings = create_test_settings_with_libraries(1);
         let mut editor = create_test_category_editor_with_context(&mut context);
@@ -1267,8 +1267,8 @@ mod tests {
         CategoryEditor::new(rect, Category::Intermissions, &mut rq, context)
     }
 
-    #[test]
-    fn test_set_intermission_logo() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_set_intermission_logo() {
         use crate::settings::{IntermKind, IntermissionDisplay};
 
         let mut context = create_test_context();
@@ -1296,8 +1296,8 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn test_set_intermission_cover() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_set_intermission_cover() {
         use crate::settings::{IntermKind, IntermissionDisplay};
 
         let mut context = create_test_context();
@@ -1325,8 +1325,8 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn test_set_intermission_blank_inverted() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_set_intermission_blank_inverted() {
         use crate::settings::{IntermKind, IntermissionDisplay};
 
         let mut context = create_test_context();
@@ -1354,8 +1354,8 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn test_pagination_children_structure() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_pagination_children_structure() {
         let mut context = create_test_context();
         context.settings = Settings::default();
         context.settings.libraries.clear();
@@ -1376,8 +1376,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_page_navigation_event() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_page_navigation_event() {
         let mut context = create_test_context();
         context.settings = Settings::default();
         context.settings.libraries.clear();
@@ -1431,8 +1431,8 @@ mod tests {
         assert_eq!(editor.current_page, 0, "Should not go below page 0");
     }
 
-    #[test]
-    fn test_download_dictionary_opens_confirmation_dialog() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_download_dictionary_opens_confirmation_dialog() {
         let mut context = create_test_context();
         context.online = true;
         let mut editor = create_test_dictionary_category_editor(&mut context);
@@ -1459,8 +1459,8 @@ mod tests {
         assert!(!rq.is_empty());
     }
 
-    #[test]
-    fn test_redownload_dictionary_opens_confirmation_dialog() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_redownload_dictionary_opens_confirmation_dialog() {
         let mut context = create_test_context();
         context.online = true;
         let mut editor = create_test_dictionary_category_editor(&mut context);
@@ -1484,8 +1484,8 @@ mod tests {
         assert!(!rq.is_empty());
     }
 
-    #[test]
-    fn test_close_dictionary_download_confirmation_removes_dialog() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_close_dictionary_download_confirmation_removes_dialog() {
         let mut context = create_test_context();
         context.online = true;
         let mut editor = create_test_dictionary_category_editor(&mut context);
@@ -1517,8 +1517,8 @@ mod tests {
         assert!(!rq.is_empty());
     }
 
-    #[test]
-    fn test_download_dictionary_invalid_language_rebuilds_rows() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_download_dictionary_invalid_language_rebuilds_rows() {
         let mut context = create_test_context();
         context.online = true;
         let mut editor = create_test_dictionary_category_editor(&mut context);
@@ -1567,8 +1567,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_force_import_opens_confirmation_dialog() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_force_import_opens_confirmation_dialog() {
         let mut context = create_test_context();
         let mut editor = create_test_import_category_editor(&mut context);
         let (hub, _receiver) = crate::view::hub_channel();
@@ -1596,8 +1596,8 @@ mod tests {
         assert!(!rq.is_empty());
     }
 
-    #[test]
-    fn test_close_force_import_confirmation_removes_dialog() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_close_force_import_confirmation_removes_dialog() {
         let mut context = create_test_context();
         let mut editor = create_test_import_category_editor(&mut context);
         let (hub, _receiver) = crate::view::hub_channel();
@@ -1628,8 +1628,8 @@ mod tests {
         assert!(!rq.is_empty());
     }
 
-    #[test]
-    fn test_close_general_named_inputs_removes_overlay_and_clears_focus() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_close_general_named_inputs_removes_overlay_and_clears_focus() {
         let mut context = create_test_context();
         let mut editor = create_test_general_category_editor(&mut context);
 
@@ -1658,7 +1658,7 @@ mod tests {
             assert!(handled, "OpenNamedInput event should be handled");
             assert!(locate_by_id(&editor, view_id).is_some());
 
-            let focus_event = receiver.blocking_recv().unwrap();
+            let focus_event = receiver.recv().await.unwrap();
             assert!(matches!(focus_event.event, Event::Focus(Some(id)) if id == view_id));
             editor.focus = Some(view_id);
 
@@ -1673,7 +1673,7 @@ mod tests {
             assert!(handled, "Close event should be handled");
             assert!(locate_by_id(&editor, view_id).is_none());
 
-            let focus_event = receiver.blocking_recv().unwrap();
+            let focus_event = receiver.recv().await.unwrap();
             assert!(matches!(focus_event.event, Event::Focus(None)));
             crate::runtime::block_on(editor.handle_event(
                 &focus_event.event,
@@ -1686,8 +1686,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_import_library_force_true_closes_confirmation_dialog() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_import_library_force_true_closes_confirmation_dialog() {
         let mut context = create_test_context();
         let mut editor = create_test_import_category_editor(&mut context);
         let (hub, _receiver) = crate::view::hub_channel();

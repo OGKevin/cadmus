@@ -405,7 +405,6 @@ pub mod test_helpers {
     }
 
     pub fn create_test_context_from_device(device: TestDevice) -> AppContext {
-        crate::runtime::ensure_published_for_test();
         let mut database = crate::runtime::block_on(Database::new(":memory:"))
             .expect("failed to create in-memory database");
         let mut settings = Settings::default();
