@@ -4,11 +4,16 @@
 //! network requests in the application. It is pre-configured with:
 //!
 //! - TLS using `webpki-roots` certificates (no system cert store required)
-//! - 30 second request timeout
+//! - Connect timeout and total request timeout (see [`CLIENT_CONNECT_TIMEOUT_SECS`]
+//!   / [`CLIENT_TIMEOUT_SECS`])
 //! - User agent identifying the application
 //! - Retries for transient failures (connection errors, timeouts, HTTP 408,
-//!   429, and 5xx): three attempts, starting at 1s, doubling, no jitter
+//!   429, and 5xx): three attempts, starting at 1s, doubling, no jitter;
+//!   `Retry-After` on successful responses is honoured (capped)
 //! - A tracing span per request attempt when the `tracing` feature is enabled
+//!
+//! Middleware retries wrap `send()` (headers). They do **not** retry mid-body
+//! read failures; see [`Client::download`].
 //!
 //! # Example
 //!
@@ -22,10 +27,10 @@
 //! }
 //! ```
 
+mod retry;
+
 use reqwest::Client as ReqwestClient;
-use reqwest_middleware::{ClientBuilder, ClientWithMiddleware, RequestBuilder};
-use reqwest_retry::policies::ExponentialBackoff;
-use reqwest_retry::{Jitter, RetryTransientMiddleware};
+use reqwest_middleware::{ClientWithMiddleware, RequestBuilder};
 use rustls::RootCertStore;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU8, Ordering};
@@ -33,7 +38,10 @@ use std::time::Duration;
 use thiserror::Error;
 use tokio::io::AsyncWriteExt;
 
+use retry::client_with_retry;
+
 pub const CLIENT_TIMEOUT_SECS: u64 = 30;
+pub const CLIENT_CONNECT_TIMEOUT_SECS: u64 = 10;
 
 pub(crate) const USER_AGENT: &str = concat!("github.com/OGKevin/cadmus/", env!("GIT_VERSION"));
 
@@ -166,7 +174,7 @@ const INITIAL_CHUNK_SIZE: usize = 1024 * 1024;
 /// Target 80% of the HTTP timeout to leave headroom for throughput variance.
 const TARGET_CHUNK_SECS: f64 = CLIENT_TIMEOUT_SECS as f64 * 0.8;
 /// Sleeps after a failed attempt. Two sleeps means three attempts in total.
-const RETRY_BACKOFFS: usize = 2;
+pub(crate) const RETRY_BACKOFFS: usize = 2;
 
 /// Error types that can occur during a chunked HTTP download.
 #[derive(Error, Debug)]
@@ -195,9 +203,10 @@ impl From<reqwest_middleware::Error> for ChunkedDownloadError {
 /// This client should be used as the base for all HTTP requests rather than
 /// constructing raw `reqwest` clients. It comes with:
 /// - TLS using `webpki-roots` certificates (works on Kobo devices without system cert store)
-/// - 30 second request timeout
+/// - Connect and total request timeouts
 /// - User agent header set
-/// - Transient-failure retries on every request, including chunked downloads
+/// - Transient-failure retries on every request (header/`send()` level), honouring
+///   `Retry-After` when present
 /// - Request spans when the `tracing` feature is enabled
 ///
 /// # Example
@@ -227,6 +236,7 @@ impl Client {
         let raw = ReqwestClient::builder()
             .use_preconfigured_tls(tls_config)
             .user_agent(USER_AGENT)
+            .connect_timeout(Duration::from_secs(CLIENT_CONNECT_TIMEOUT_SECS))
             .timeout(Duration::from_secs(CLIENT_TIMEOUT_SECS))
             .build()
             .map_err(HttpError::Build)?;
@@ -270,8 +280,16 @@ impl Client {
     ///
     /// `request_builder` is called once per chunk to produce a `RequestBuilder`
     /// for the given URL. The caller is responsible for adding any required
-    /// headers (e.g. `Authorization`). Transient failures are retried by the
-    /// client middleware, which reuses that built request.
+    /// headers (e.g. `Authorization`). Transient failures on `send()` (headers)
+    /// are retried by the client middleware, which reuses that built request.
+    ///
+    /// # Known limitation (mid-body failure)
+    ///
+    /// Chunks are sized to use most of [`CLIENT_TIMEOUT_SECS`]. Middleware retries
+    /// only wrap `send()` — once headers arrive, `.bytes().await` sits outside
+    /// the retry policy. A Wi-Fi drop mid-body fails the whole download. A future
+    /// streaming download (or an explicit send+body retry loop) should replace
+    /// this; TODO: streaming/chunk-body-aware retry.
     ///
     /// `progress_callback` is called after each successful chunk with
     /// `(bytes_downloaded_so_far, total_bytes)`.
@@ -289,8 +307,7 @@ impl Client {
     /// written, or renamed onto `dest`. Returns `ChunkedDownloadError::Request` if
     /// all retry attempts for any chunk fail. Returns
     /// `ChunkedDownloadError::Cancelled` when `should_cancel` reports cancellation
-    /// between chunks or before the file is published. Cancellation during a
-    /// chunk's retries is noticed at the next chunk boundary.
+    /// between chunks or before the file is published.
     ///
     /// # Example
     ///
@@ -409,7 +426,8 @@ impl Client {
 
     /// Downloads a specific byte range from a URL using the HTTP `Range` header.
     ///
-    /// Transient failures are retried by the client middleware.
+    /// Transient failures on `send()` / status are retried by the client
+    /// middleware. Body read failures are not (see [`Self::download`]).
     ///
     /// # Errors
     ///
@@ -443,32 +461,6 @@ impl Clone for Client {
             raw: self.raw.clone(),
             client: self.client.clone(),
         }
-    }
-}
-
-fn retry_policy() -> ExponentialBackoff {
-    ExponentialBackoff::builder()
-        .retry_bounds(Duration::from_secs(1), Duration::from_secs(60))
-        .jitter(Jitter::None)
-        .base(2)
-        .build_with_max_retries(u32::try_from(RETRY_BACKOFFS).unwrap_or(0))
-}
-
-fn client_with_retry(raw: ReqwestClient) -> ClientWithMiddleware {
-    attach_request_spans(
-        ClientBuilder::new(raw).with(RetryTransientMiddleware::new_with_policy(retry_policy())),
-    )
-    .build()
-}
-
-fn attach_request_spans(builder: ClientBuilder) -> ClientBuilder {
-    #[cfg(feature = "tracing")]
-    {
-        builder.with(reqwest_tracing::TracingMiddleware::default())
-    }
-    #[cfg(not(feature = "tracing"))]
-    {
-        builder
     }
 }
 

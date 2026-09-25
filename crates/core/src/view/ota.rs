@@ -475,17 +475,18 @@ impl OtaView {
     /// * `context` - Application context containing keyboard rectangle
     /// * `hub` - Event hub for sending close event
     fn handle_outside_tap(
-        &self,
+        &mut self,
         tap_position: crate::geom::Point,
         context: &AppContext,
         hub: &Hub,
+        rq: &mut RenderQueue,
     ) {
         if !self.rect.includes(tap_position)
             && !context.kb_rect.includes(tap_position)
             && !context.kb_rect.is_empty()
         {
             if self.download_in_progress && !self.download_committed {
-                self.cancel_download();
+                self.show_canceling(rq);
             } else {
                 hub.send((Event::Close(self.view_id)).into()).ok();
             }
@@ -520,19 +521,29 @@ impl OtaView {
     /// Consumes a **child-bus** close (Cancel button) during an in-flight download.
     ///
     /// The Cancel button pushes [`Event::Close`] onto the view bus. This method
-    /// requests cancellation and returns `true` so the event is not forwarded
-    /// to the hub. The overlay stays up until the worker finishes cleanup and
-    /// sends [`Event::Close`] on the hub.
+    /// requests cancellation, updates the button to “Canceling…”, and returns
+    /// `true` so the event is not forwarded to the hub. The overlay stays up
+    /// until the worker finishes cleanup and sends [`Event::Close`] on the hub.
     ///
     /// Hub `Close` is different: the main loop removes the child by id and
     /// never calls this. Worker failure paths (low battery, offline, download
     /// error) use hub `Close`, so the overlay is torn down immediately.
-    fn on_close_during_download(&mut self) -> bool {
+    fn on_close_during_download(&mut self, rq: &mut RenderQueue) -> bool {
         if self.download_in_progress && !self.download_committed {
-            self.cancel_download();
+            self.show_canceling(rq);
             true
         } else {
             false
+        }
+    }
+
+    fn show_canceling(&mut self, rq: &mut RenderQueue) {
+        self.cancel_download();
+        if let Some(idx) = self.cancel_button_index
+            && let Some(button) = self.children.get_mut(idx)
+            && let Some(button) = button.downcast_mut::<Button>()
+        {
+            button.set_text(fl!("ota-download-canceling"), rq);
         }
     }
 
@@ -886,12 +897,16 @@ async fn run_ota_download(ctx: OtaDownloadContext) {
             match download_result {
                 Ok(artifact_path) => {
                     info!("Download completed, starting deployment");
-                    let deploy_result = tokio::task::block_in_place(|| match kind {
-                        OtaDownloadKind::StableRelease => {
+                    let deploy_result = match kind {
+                        OtaDownloadKind::StableRelease => tokio::task::block_in_place(|| {
                             client.deploy(artifact_path, should_cancel)
+                        }),
+                        _ => {
+                            client
+                                .extract_and_deploy(artifact_path, should_cancel)
+                                .await
                         }
-                        _ => client.extract_and_deploy(artifact_path, should_cancel),
-                    });
+                    };
 
                     if matches!(deploy_result, Err(OtaError::Cancelled)) {
                         finish_ota_cancelled(&hub2, ota_view_id, &tmp_dir, &deploy_path);
@@ -974,7 +989,16 @@ impl RebootTimer {
 
     async fn wait(self) {
         self.delay.await;
-        self.hub.send((Event::Select(EntryId::Reboot)).into()).ok();
+        if self
+            .hub
+            .send((Event::Select(EntryId::Reboot)).into())
+            .is_err()
+        {
+            tracing::warn!("hub closed after OTA commit; writing reboot marker");
+            if let Err(error) = std::fs::File::create("/tmp/reboot") {
+                tracing::error!(error = %error, "failed to write /tmp/reboot after OTA");
+            }
+        }
     }
 }
 
@@ -1312,10 +1336,10 @@ impl View for OtaView {
                 true
             }
             Event::Gesture(GestureEvent::Tap(center)) => {
-                self.handle_outside_tap(*center, context, hub);
+                self.handle_outside_tap(*center, context, hub, rq);
                 true
             }
-            Event::Close(id) if *id == self.view_id => self.on_close_during_download(),
+            Event::Close(id) if *id == self.view_id => self.on_close_during_download(rq),
             Event::OtaDownloadProgress {
                 label,
                 percent,
@@ -1534,6 +1558,29 @@ mod tests {
             ota.children[cancel_idx].downcast_ref::<Button>().is_some(),
             "cancel child must be a Button"
         );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_cancel_during_download_shows_canceling_label() {
+        let mut context = create_test_context();
+        let mut ota = create_ota_view(&mut context);
+        let mut rq = RenderQueue::new();
+
+        let label = OtaDownloadKind::DefaultBranch.progress_label(0);
+        ota.build_progress_screen(&label, &mut context);
+        ota.begin_download();
+
+        assert!(ota.on_close_during_download(&mut rq));
+        assert!(ota.cancelled.is_cancelled());
+
+        let cancel_idx = ota
+            .cancel_button_index
+            .expect("cancel button stays until worker finishes");
+        let button = ota.children[cancel_idx]
+            .downcast_ref::<Button>()
+            .expect("cancel child");
+        assert_eq!(button.text_for_test(), fl!("ota-download-canceling"));
+        assert!(!rq.is_empty());
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

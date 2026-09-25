@@ -36,6 +36,16 @@ impl Button {
         self.disabled = value;
         self
     }
+
+    pub fn set_text(&mut self, text: String, rq: &mut RenderQueue) {
+        self.text = text;
+        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Gui));
+    }
+
+    #[cfg(test)]
+    pub(crate) fn text_for_test(&self) -> &str {
+        &self.text
+    }
 }
 
 #[async_trait::async_trait(?Send)]
