@@ -27,7 +27,7 @@ inputs:
     required: false
   rumdl_version:
     description: Version of rumdl to install.
-    default: "0.2.73"
+    default: "0.2.74"
     required: false
   rumdl_flags:
     description: Arguments passed to rumdl check (file list or paths).
