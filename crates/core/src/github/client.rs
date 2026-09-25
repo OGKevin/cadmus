@@ -137,11 +137,12 @@ pub(crate) struct ApiRequest<'a> {
 }
 
 impl ApiRequest<'_> {
-    /// Adds one header.
+    /// Adds one header for this GitHub JSON call.
     ///
-    /// Canonical names such as `Accept` are stored in lowercase. An invalid
-    /// name or value is recorded and returned from [`Self::send`] instead of
-    /// panicking.
+    /// These requests go through `octocrab`, not [`crate::http::Client`]'s
+    /// `RequestBuilder`, so per-call headers live on this builder. Invalid
+    /// names or values are recorded and returned from [`Self::send`] instead
+    /// of panicking. Canonical names such as `Accept` are stored lowercase.
     pub(crate) fn header(mut self, name: &'static str, value: &str) -> Self {
         if self.error.is_some() {
             return self;

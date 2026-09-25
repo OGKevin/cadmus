@@ -15,13 +15,11 @@ pub static malloc_conf: &[u8] = b"prof:true,prof_active:true,lg_prof_sample:19\0
 
 /// Starts Cadmus on one multi-thread Tokio runtime.
 ///
-/// Blocking jobs share one pool. It grows on demand up to
-/// [`cadmus_core::runtime::MAX_BLOCKING_THREADS`] and idle threads exit on
-/// their own. Past that ceiling, further blocking jobs wait.
-/// [`cadmus_core::runtime::WORKER_THREADS`] caps only the async reactor.
-///
-/// `#[tokio::main]` can set the reactor size and cannot set this pool, so
-/// entry goes through [`cadmus_core::runtime::enter`].
+/// Blocking jobs share Tokio's default pool ceiling
+/// ([`cadmus_core::runtime::MAX_BLOCKING_THREADS`]); idle threads exit on
+/// their own. [`cadmus_core::runtime::WORKER_THREADS`] caps only the async
+/// reactor. Entry goes through [`cadmus_core::runtime::enter`] so process
+/// exit can apply [`cadmus_core::runtime::SHUTDOWN_DEADLINE`].
 fn main() -> Result<(), Error> {
     cadmus_core::runtime::enter(async_main())
 }

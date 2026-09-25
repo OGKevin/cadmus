@@ -111,6 +111,10 @@ pub type Hub = tokio::sync::mpsc::UnboundedSender<hub_message::HubMessage>;
 pub type HubReceiver = tokio::sync::mpsc::UnboundedReceiver<hub_message::HubMessage>;
 
 /// Hub channel: synchronous send from OS threads, asynchronous receive in the app loop.
+///
+/// The channel is **unbounded**. It was unbounded before the async migration
+/// (plain `std::sync::mpsc`) and stays that way on purpose so device and
+/// background threads never block on a full queue.
 pub fn hub_channel() -> (Hub, HubReceiver) {
     tokio::sync::mpsc::unbounded_channel()
 }

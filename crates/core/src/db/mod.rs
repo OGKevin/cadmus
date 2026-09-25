@@ -18,9 +18,11 @@ use crate::version::get_current_version;
 /// The filename of the SQLite database used by Cadmus.
 pub const DB_FILENAME: &str = "cadmus.sqlite";
 
-/// Database handle providing synchronous API over async SQLx operations.
-/// Uses a bridge pattern with `crate::runtime::block_on()` to maintain synchronous interface
-/// for compatibility with existing single-threaded event loop.
+/// Database handle over async SQLx.
+///
+/// Callers use `async` methods on the pool directly. Prefer `.await` from
+/// async contexts; use [`crate::runtime::block_on`] only when bridging from
+/// synchronous code that cannot be made async yet.
 #[derive(Clone)]
 pub struct Database {
     pool: SqlitePool,
