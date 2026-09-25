@@ -101,10 +101,31 @@ fn parse_kern_log(line: &str) -> Option<ParsedKernelLog> {
 }
 
 #[cfg(all(feature = "kobo", feature = "test"))]
-static LOGREAD_CHILD: Mutex<Option<std::process::Child>> = Mutex::new(None);
+enum LogreadState {
+    Idle,
+    Starting,
+    Running(std::process::Child),
+    Stopped,
+}
 
 #[cfg(all(feature = "kobo", feature = "test"))]
-static LOGREAD_TASK: Mutex<Option<tokio::task::JoinHandle<()>>> = Mutex::new(None);
+struct LogreadSlot {
+    state: LogreadState,
+    task: Option<tokio::task::JoinHandle<()>>,
+}
+
+#[cfg(all(feature = "kobo", feature = "test"))]
+impl LogreadSlot {
+    const fn new() -> Self {
+        Self {
+            state: LogreadState::Idle,
+            task: None,
+        }
+    }
+}
+
+#[cfg(all(feature = "kobo", feature = "test"))]
+static LOGREAD: Mutex<LogreadSlot> = Mutex::new(LogreadSlot::new());
 
 /// Spawns a blocking-pool task that captures kernel logs.
 ///
@@ -153,6 +174,12 @@ pub fn spawn_kern_log_thread() {
         tracing::info!("klogd already running, reusing existing process");
     }
 
+    {
+        let mut slot = lock_mutex(&LOGREAD);
+        slot.state = LogreadState::Starting;
+        slot.task = None;
+    }
+
     let task = crate::runtime::spawn_blocking(move || {
         tracing::info!("Starting kernel log capture thread");
 
@@ -191,7 +218,25 @@ pub fn spawn_kern_log_thread() {
             }
         };
 
-        *lock_mutex(&LOGREAD_CHILD) = Some(child);
+        {
+            let mut slot = lock_mutex(&LOGREAD);
+            match slot.state {
+                LogreadState::Starting => {
+                    slot.state = LogreadState::Running(child);
+                }
+                LogreadState::Stopped => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return;
+                }
+                LogreadState::Idle | LogreadState::Running(_) => {
+                    tracing::warn!("unexpected logread state when installing child");
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return;
+                }
+            }
+        }
 
         let reader = BufReader::new(stdout);
 
@@ -222,36 +267,49 @@ pub fn spawn_kern_log_thread() {
 
         tracing::info!("Kernel log capture thread ending");
 
-        if let Some(mut child) = lock_mutex(&LOGREAD_CHILD).take() {
-            let _ = child.wait();
+        {
+            let mut slot = lock_mutex(&LOGREAD);
+            if let LogreadState::Running(mut child) =
+                std::mem::replace(&mut slot.state, LogreadState::Idle)
+            {
+                let _ = child.wait();
+            }
         }
         if let Some(mut klogd) = klogd {
             let _ = klogd.kill();
             let _ = klogd.wait();
         }
     });
-    *lock_mutex(&LOGREAD_TASK) = Some(task);
+    {
+        let mut slot = lock_mutex(&LOGREAD);
+        slot.task = Some(task);
+    }
 }
 
 /// Stops kernel log capture so its blocking-pool task can return.
 ///
 /// Kills `logread` when this process started it. The reader then sees EOF
-/// and leaves the pool before the runtime's shutdown deadline.
+/// and leaves the pool before the runtime's shutdown deadline. If stop runs
+/// before the child is stored, the slot moves to [`LogreadState::Stopped`] so
+/// the starter kills the process instead of installing it, and the join never
+/// waits on a live `logread`.
 pub fn stop_kern_log_thread() {
     #[cfg(all(feature = "kobo", feature = "test"))]
     {
-        release_child(&LOGREAD_CHILD);
-        if let Some(task) = lock_mutex(&LOGREAD_TASK).take() {
+        let task = {
+            let mut slot = lock_mutex(&LOGREAD);
+            match std::mem::replace(&mut slot.state, LogreadState::Stopped) {
+                LogreadState::Running(mut child) => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                }
+                LogreadState::Idle | LogreadState::Starting | LogreadState::Stopped => {}
+            }
+            slot.task.take()
+        };
+        if let Some(task) = task {
             let _ = crate::runtime::block_on(task);
         }
-    }
-}
-
-#[cfg(any(test, all(feature = "kobo", feature = "test")))]
-fn release_child(slot: &Mutex<Option<std::process::Child>>) {
-    if let Some(mut child) = lock_mutex(slot).take() {
-        let _ = child.kill();
-        let _ = child.wait();
     }
 }
 
@@ -373,10 +431,7 @@ mod tests {
 mod stop_tests {
     use std::io::{BufRead, BufReader};
     use std::process::{Command, Stdio};
-    use std::sync::Mutex;
     use std::time::Duration;
-
-    use super::release_child;
 
     #[test]
     fn killing_the_child_unblocks_its_stdout_reader() {
@@ -387,14 +442,14 @@ mod stop_tests {
             .spawn()
             .expect("sleep");
         let stdout = child.stdout.take().expect("stdout");
-        let child = Mutex::new(Some(child));
         let (tx, rx) = std::sync::mpsc::channel();
         let reader = std::thread::spawn(move || {
             for _line in BufReader::new(stdout).lines() {}
             let _ = tx.send(());
         });
 
-        release_child(&child);
+        let _ = child.kill();
+        let _ = child.wait();
 
         rx.recv_timeout(Duration::from_secs(2))
             .expect("reader unblocked");

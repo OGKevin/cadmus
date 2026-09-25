@@ -41,11 +41,8 @@ impl<R: Rtc + Send + 'static> BackgroundTask for TimeSyncTask<R> {
         TaskId::TimeSync
     }
 
-    /// Time synchronisation does not abandon an in-flight sync.
-    ///
-    /// A token that is already cancelled skips the run. Once the sync starts,
-    /// cancellation waits until the WiFi lease is released. Geolocation and
-    /// NTP both run on the runtime.
+    /// Synchronises the clock, checking cancellation between the same steps
+    /// master used (`should_stop` after lease, geolocation, and before apply).
     fn run<'a>(
         &'a mut self,
         hub: &'a crate::view::Hub,
@@ -73,6 +70,10 @@ impl<R: Rtc + Send + 'static> BackgroundTask for TimeSyncTask<R> {
                 }
             };
 
+            if cancel.is_cancelled() {
+                return;
+            }
+
             let geo = match Client::new() {
                 Ok(client) => match fetch_geolocation(&client).await {
                     Ok(geo) => Some(geo),
@@ -87,6 +88,10 @@ impl<R: Rtc + Send + 'static> BackgroundTask for TimeSyncTask<R> {
                 }
             };
 
+            if cancel.is_cancelled() {
+                return;
+            }
+
             let coordinates = geo.as_ref().map(|geo| geo.coordinates);
 
             if let Err(e) = self
@@ -95,6 +100,10 @@ impl<R: Rtc + Send + 'static> BackgroundTask for TimeSyncTask<R> {
                 .await
             {
                 tracing::error!(error = %e, "time sync failed");
+            }
+
+            if cancel.is_cancelled() {
+                return;
             }
 
             if let Some(coordinates) = coordinates {

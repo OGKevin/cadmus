@@ -10,12 +10,19 @@
 //! `spawn_blocking` / `tokio::spawn`, or takes an explicit handle at spawn.
 
 use std::future::Future;
+use std::io::Write;
 use std::sync::OnceLock;
 use std::time::Duration;
 use tokio::runtime::{Builder, Handle};
 use tokio::task::JoinSet;
 
 /// Reactor threads. Not the pool that runs blocking work.
+///
+/// With only two workers, CPU-heavy or `std` I/O that runs inline in an
+/// `async fn` (for example hashing a whole library file with BLAKE3, or
+/// `Command::output` for Wi-Fi scripts) can stall timers, input, and other
+/// tasks. That work belongs on [`spawn_blocking`] or `tokio::process`, not
+/// on these threads.
 pub const WORKER_THREADS: usize = 2;
 
 /// Ceiling for the blocking pool.
@@ -26,6 +33,11 @@ pub const WORKER_THREADS: usize = 2;
 pub const MAX_BLOCKING_THREADS: usize = 512;
 
 /// How long shutdown waits for in-flight async work before aborting it.
+///
+/// Tokio's blocking pool cannot cancel a stuck `recv`/`sleep` in a
+/// `spawn_blocking` closure. This ceiling keeps process exit finite after
+/// those loops are asked to stop (closed pipes, stop flags). Shrink only after
+/// every long-lived blocking task exits promptly on shutdown.
 pub const SHUTDOWN_DEADLINE: Duration = Duration::from_secs(5);
 
 /// Multi-thread builder with both thread pools capped.
@@ -40,8 +52,9 @@ pub fn builder() -> Builder {
 
 /// Drives `future` on the process runtime.
 ///
-/// `#[tokio::main]` cannot set [`MAX_BLOCKING_THREADS`], so process entry uses
-/// this builder instead of the attribute macro.
+/// Process entry uses this builder instead of `#[tokio::main]` so exit can
+/// apply [`SHUTDOWN_DEADLINE`] after the future returns. The blocking-pool
+/// ceiling matches Tokio's default ([`MAX_BLOCKING_THREADS`]).
 ///
 /// After `future` finishes, blocking tasks have [`SHUTDOWN_DEADLINE`] to
 /// return. A task blocked in a read would otherwise hold process exit open.
@@ -82,13 +95,15 @@ pub fn current_handle() -> Handle {
 
 /// Runs `future` to completion on the current runtime.
 ///
-/// Parks the worker via `block_in_place`. Must be called from a runtime
-/// worker (including `#[tokio::test]`).
+/// Parks the worker via `block_in_place`. Must be called from a **multi-thread**
+/// runtime worker (`#[tokio::test(flavor = "multi_thread")]` or [`enter`]).
+/// The default `#[tokio::test]` current-thread flavor panics on
+/// `block_in_place`.
 ///
 /// # Panics
 ///
-/// Panics when not running on a Tokio runtime. Use [`enter`] at process entry,
-/// or `#[tokio::test]` in tests.
+/// Panics when not running on a Tokio runtime, or when called from a
+/// current-thread runtime that cannot park.
 #[track_caller]
 pub fn block_on<F: Future>(future: F) -> F::Output {
     let handle = current_handle();
@@ -153,9 +168,11 @@ pub async fn finish_within_deadline(in_flight: &mut JoinSet<()>, deadline: Durat
 }
 
 fn report_shutdown_deadline(deadline: Duration) {
-    tracing::error!(
-        deadline_ms = deadline.as_millis() as u64,
-        "async shutdown deadline exceeded"
+    let deadline_ms = deadline.as_millis() as u64;
+    tracing::error!(deadline_ms, "async shutdown deadline exceeded");
+    let _ = writeln!(
+        std::io::stderr(),
+        "async shutdown deadline exceeded deadline_ms={deadline_ms}"
     );
 }
 

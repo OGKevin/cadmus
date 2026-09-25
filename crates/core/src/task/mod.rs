@@ -177,7 +177,9 @@ pub async fn sleep_unless_cancelled(cancel: &CancellationToken, duration: Durati
 /// Polled tasks check [`CancellationToken::is_cancelled`] at the same
 /// checkpoints they used to check for shutdown. Tasks that block on an
 /// external wait race [`CancellationToken::cancelled`]. Time synchronisation
-/// does not abandon an in-flight sync.
+/// also checks between Wi-Fi lease, geolocation, NTP apply, and coordinate
+/// publish so quit does not wait on the full sync or set the clock after
+/// cancel.
 pub trait BackgroundTask: Send {
     /// Returns the unique identifier for this task.
     fn id(&self) -> TaskId;
@@ -302,6 +304,10 @@ impl TaskManager {
     /// Cancels every running task and waits for them to finish.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(task_count = tracing::field::Empty
     )))]
+    /// Cancels every running task and waits for each join with a short deadline.
+    ///
+    /// Tasks that ignore cancel can still occupy a worker until the process
+    /// runtime's own shutdown timeout; this bound keeps quit responsive.
     pub fn stop_all(&mut self) {
         let tasks: Vec<_> = self.tasks.drain().collect();
 
@@ -314,9 +320,12 @@ impl TaskManager {
         for (_, task) in &tasks {
             task.cancel.cancel();
         }
-        for (_, task) in tasks {
-            if crate::runtime::block_on(task.handle).is_err() {
-                tracing::error!("task panicked");
+        const STOP_DEADLINE: std::time::Duration = std::time::Duration::from_secs(5);
+        for (id, task) in tasks {
+            match crate::runtime::block_on(tokio::time::timeout(STOP_DEADLINE, task.handle)) {
+                Ok(Ok(_)) => {}
+                Ok(Err(_)) => tracing::error!(task_id = %id, "task panicked"),
+                Err(_) => tracing::error!(task_id = %id, "task stop timed out"),
             }
         }
     }
