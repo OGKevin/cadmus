@@ -724,11 +724,16 @@ impl Library {
         }
 
         let full_path = self.home.join(path);
+        let display_path = full_path.display().to_string();
 
-        match full_path.fingerprint() {
-            Ok(fp) => Some(fp),
+        match crate::runtime::spawn_blocking(move || full_path.fingerprint()).await {
+            Ok(Ok(fp)) => Some(fp),
+            Ok(Err(e)) => {
+                error!(path = %display_path, error = %e, "failed to fingerprint path");
+                None
+            }
             Err(e) => {
-                error!(path = %full_path.display(), error = %e, "failed to fingerprint path");
+                error!(path = %display_path, error = %e, "fingerprint task join failed");
                 None
             }
         }

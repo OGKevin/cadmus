@@ -258,7 +258,7 @@ async fn scan_entries(
             continue;
         }
 
-        let file_meta = match entry.metadata() {
+        let file_meta = match tokio::fs::metadata(path).await {
             Ok(m) => m,
             Err(e) => {
                 error!(path = ?path, error = %e, "failed to read metadata, skipping");
@@ -298,13 +298,19 @@ async fn scan_entries(
             }
         }
 
-        let fp = match path.fingerprint() {
-            Ok(fp) => {
+        let path_for_hash = path.to_path_buf();
+        let fp = match crate::runtime::spawn_blocking(move || path_for_hash.fingerprint()).await {
+            Ok(Ok(fp)) => {
                 fingerprinted_count += 1;
                 fp
             }
-            Err(e) => {
+            Ok(Err(e)) => {
                 error!(path = ?path, error = %e, "failed to compute fingerprint, skipping");
+                send_progress(ctx.hub, ctx.notif_id, tracker, idx, total);
+                continue;
+            }
+            Err(e) => {
+                error!(path = ?path, error = %e, "fingerprint task join failed, skipping");
                 send_progress(ctx.hub, ctx.notif_id, tracker, idx, total);
                 continue;
             }

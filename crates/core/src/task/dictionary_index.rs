@@ -413,10 +413,15 @@ impl DictionaryIndexTask {
             .map(|s| s.to_string_lossy().into_owned())
             .unwrap_or_else(|| path_str.clone());
 
-        let fp = match index_path.fingerprint() {
-            Ok(fp) => fp,
-            Err(e) => {
+        let index_for_hash = index_path.to_path_buf();
+        let fp = match crate::runtime::spawn_blocking(move || index_for_hash.fingerprint()).await {
+            Ok(Ok(fp)) => fp,
+            Ok(Err(e)) => {
                 tracing::error!(path = %path_str, error = %e, "failed to fingerprint index file");
+                return;
+            }
+            Err(e) => {
+                tracing::error!(path = %path_str, error = %e, "fingerprint task join failed");
                 return;
             }
         };
@@ -733,7 +738,10 @@ impl BackgroundTask for DictionaryIndexTask {
                     continue;
                 }
 
-                if let Ok(fp) = entry.path().fingerprint() {
+                let entry_path = entry.path().to_path_buf();
+                if let Ok(Ok(fp)) =
+                    crate::runtime::spawn_blocking(move || entry_path.fingerprint()).await
+                {
                     on_disk_fingerprints.push(fp.to_string());
                 }
 

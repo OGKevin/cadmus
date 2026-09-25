@@ -111,6 +111,12 @@ pub struct WifiSession {
     tracker: LeaseTracker,
     wifi: Arc<dyn WifiManager>,
     state: Arc<Mutex<SessionState>>,
+    /// Wakes async waiters when the radio reports online.
+    ///
+    /// Tokio [`Notify`] replaces the old `std::sync::Condvar`: waiters
+    /// `.await` without parking an OS thread, and `notify_waiters` fans
+    /// out to every pending acquire. A Condvar still needs a Mutex and
+    /// a blocking wait, which does not fit the async lease path.
     online: Notify,
 }
 
@@ -566,11 +572,8 @@ mod tests {
     use crate::device::inhibitor::Inhibitor;
     use crate::device::soft_suspend::SoftSuspendBackend as _;
     use crate::device::test_device::TestWifiManager;
+    use crate::runtime;
     use std::thread;
-
-    fn drive<T>(future: impl std::future::Future<Output = T>) -> T {
-        crate::runtime::block_on(future)
-    }
 
     fn session(mode: WifiMode) -> (Arc<WifiSession>, Arc<TestWifiManager>) {
         let wifi = Arc::new(TestWifiManager::new());
@@ -581,7 +584,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn off_rejects_acquire() {
         let (session, _) = session(WifiMode::Off);
-        let err = drive(session.acquire("x")).unwrap_err();
+        let err = runtime::block_on(session.acquire("x")).unwrap_err();
         assert!(matches!(err, WifiSessionError::ModeOff));
     }
 
@@ -589,7 +592,7 @@ mod tests {
     async fn acquire_when_already_online() {
         let (session, _) = session(WifiMode::Auto);
         session.notify_online();
-        let lease = drive(session.acquire("a")).unwrap();
+        let lease = runtime::block_on(session.acquire("a")).unwrap();
         assert!(session.has_holders());
         drop(lease);
         assert!(!session.has_holders());
@@ -600,8 +603,8 @@ mod tests {
     async fn two_holders_idle_only_after_last() {
         let (session, _) = session(WifiMode::Auto);
         session.notify_online();
-        let a = drive(session.acquire("a")).unwrap();
-        let b = drive(session.acquire("b")).unwrap();
+        let a = runtime::block_on(session.acquire("a")).unwrap();
+        let b = runtime::block_on(session.acquire("b")).unwrap();
         drop(a);
         assert!(session.idle_since().is_none());
         drop(b);
@@ -612,7 +615,7 @@ mod tests {
     async fn always_on_does_not_arm_idle() {
         let (session, _) = session(WifiMode::AlwaysOn);
         session.notify_online();
-        let lease = drive(session.acquire("a")).unwrap();
+        let lease = runtime::block_on(session.acquire("a")).unwrap();
         drop(lease);
         assert!(session.idle_since().is_none());
     }
@@ -651,7 +654,8 @@ mod tests {
     async fn acquire_timeout_releases_lease_without_deadlock() {
         let (session, wifi) = session(WifiMode::Auto);
         wifi.set_network_info(Ok(None));
-        let err = drive(session.acquire_with_timeout("t", Duration::from_millis(100))).unwrap_err();
+        let err = runtime::block_on(session.acquire_with_timeout("t", Duration::from_millis(100)))
+            .unwrap_err();
         assert!(matches!(err, WifiSessionError::Timeout));
         assert!(!session.has_holders());
         assert!(session.idle_since().is_some());
@@ -664,7 +668,7 @@ mod tests {
             ip: "192.168.1.1".parse().unwrap(),
             essid: crate::device::wifi::Essid::new("test"),
         })));
-        assert!(drive(session.enable_radio()).unwrap());
+        assert!(runtime::block_on(session.enable_radio()).unwrap());
         assert!(session.is_online());
     }
 
@@ -675,7 +679,9 @@ mod tests {
             ip: "192.168.1.1".parse().unwrap(),
             essid: crate::device::wifi::Essid::new("test"),
         })));
-        let lease = drive(session.acquire_with_timeout("fast", Duration::from_millis(50))).unwrap();
+        let lease =
+            runtime::block_on(session.acquire_with_timeout("fast", Duration::from_millis(50)))
+                .unwrap();
         assert!(session.is_online());
         drop(lease);
     }
@@ -704,10 +710,10 @@ mod tests {
             "AlwaysOn without radio must not pin soft-suspend"
         );
 
-        drive(session.enable_radio()).unwrap();
+        runtime::block_on(session.enable_radio()).unwrap();
         assert!(!soft.is_empty());
 
-        drive(session.disable_radio()).unwrap();
+        runtime::block_on(session.disable_radio()).unwrap();
         assert!(
             soft.is_empty(),
             "disable_radio must drop soft-suspend wifi lease"
@@ -722,11 +728,11 @@ mod tests {
         let (_dir, soft) = soft_suspend_inhibitor();
         let (session, _) = session(WifiMode::AlwaysOn);
         session.set_inhibitor(Arc::clone(&soft));
-        drive(session.enable_radio()).unwrap();
+        runtime::block_on(session.enable_radio()).unwrap();
         session.notify_online();
         assert!(!soft.is_empty());
 
-        let lease = drive(session.acquire("a")).unwrap();
+        let lease = runtime::block_on(session.acquire("a")).unwrap();
         drop(lease);
         assert!(!soft.is_empty());
         assert!(!session.has_holders());
@@ -737,9 +743,9 @@ mod tests {
         let (_dir, soft) = soft_suspend_inhibitor();
         let (session, _) = session(WifiMode::AlwaysOn);
         session.set_inhibitor(Arc::clone(&soft));
-        drive(session.enable_radio()).unwrap();
+        runtime::block_on(session.enable_radio()).unwrap();
         session.notify_online();
-        let lease = drive(session.acquire("a")).unwrap();
+        let lease = runtime::block_on(session.acquire("a")).unwrap();
 
         session.set_mode(WifiMode::Auto);
         assert!(!soft.is_empty());
@@ -753,14 +759,14 @@ mod tests {
         let (_dir, soft) = soft_suspend_inhibitor();
         let (session, _) = session(WifiMode::AlwaysOn);
         session.set_inhibitor(Arc::clone(&soft));
-        drive(session.enable_radio()).unwrap();
+        runtime::block_on(session.enable_radio()).unwrap();
         assert!(!soft.is_empty());
 
-        drive(session.disable_radio()).unwrap();
+        runtime::block_on(session.disable_radio()).unwrap();
         assert!(soft.is_empty());
         assert_eq!(session.mode(), WifiMode::AlwaysOn);
 
-        drive(session.enable_radio()).unwrap();
+        runtime::block_on(session.enable_radio()).unwrap();
         assert!(!soft.is_empty());
     }
 
@@ -769,10 +775,10 @@ mod tests {
         let (_dir, soft) = soft_suspend_inhibitor();
         let (session, _) = session(WifiMode::Auto);
         session.set_inhibitor(Arc::clone(&soft));
-        drive(session.enable_radio()).unwrap();
+        runtime::block_on(session.enable_radio()).unwrap();
         session.notify_online();
 
-        let lease = drive(session.acquire("ntp")).unwrap();
+        let lease = runtime::block_on(session.acquire("ntp")).unwrap();
         assert!(
             !soft.is_empty(),
             "Auto-mode WiFi holder must pin soft-suspend while radio is on"
@@ -788,7 +794,7 @@ mod tests {
         let (_dir, soft) = soft_suspend_inhibitor();
         let (session, _) = session(WifiMode::Auto);
         session.set_inhibitor(Arc::clone(&soft));
-        drive(session.enable_radio()).unwrap();
+        runtime::block_on(session.enable_radio()).unwrap();
         session.notify_online();
 
         let failed = Arc::new(AtomicBool::new(false));

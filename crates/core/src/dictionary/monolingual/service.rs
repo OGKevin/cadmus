@@ -10,13 +10,15 @@ use super::errors::MonolingualError;
 use super::metadata::{DictionariesResponse, DictionaryEntry, download_url, download_url_no_etym};
 use crate::db::Database;
 use crate::db::types::UnixTimestamp;
+use crate::memory::{BufferPath, choose_buffer_path};
 use std::collections::HashSet;
 #[cfg(test)]
 use std::fs;
 use std::io::{self};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
-use zip::ZipArchive;
+use tokio::io::AsyncWriteExt;
+use tokio_util::compat::FuturesAsyncReadCompatExt;
 
 /// Subdirectory inside the dictionaries root where reader-dict downloads live.
 const READER_DICT_SUBDIR: &str = "reader-dict";
@@ -828,57 +830,78 @@ async fn has_dict_pair(dir: &Path) -> bool {
 /// or `.dict.dz`.
 ///
 /// Files with unrecognised extensions are skipped. Directories inside the ZIP
-/// are ignored because all output files land flat in `dest`. Inflation runs on
-/// the blocking pool; the archive bytes and the renamed files move through
-/// async filesystem calls.
+/// are ignored because all output files land flat in `dest`. When available RAM
+/// covers the archive plus working room, the zip is loaded into memory first;
+/// otherwise entries are inflated straight from disk. Each entry is written as
+/// it is inflated so inflated members are never held all at once.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(zip_path, dest)))]
 async fn extract_zip_renamed(
     zip_path: &Path,
     dest: &Path,
     lang: &str,
 ) -> Result<(), MonolingualError> {
-    let bytes = tokio::fs::read(zip_path).await?;
-    let lang = lang.to_owned();
-    let files = tokio::task::spawn_blocking(move || inflate_renamed_entries(bytes, &lang))
-        .await
-        .map_err(|error| MonolingualError::Extraction(error.to_string()))??;
-
-    for (name, data) in files {
-        let out_path = dest.join(&name);
-        tokio::fs::write(&out_path, data).await?;
-        tracing::debug!(path = %out_path.display(), "Extracted file");
+    let zip_size = tokio::fs::metadata(zip_path).await?.len();
+    let needed = zip_size.saturating_mul(2);
+    match choose_buffer_path(needed) {
+        BufferPath::InMemory => {
+            let bytes = tokio::fs::read(zip_path).await?;
+            let reader = async_zip::base::read::mem::ZipFileReader::new(bytes)
+                .await
+                .map_err(zip_open_error)?;
+            let targets = collect_renamed_dict_targets(reader.file(), lang)?;
+            for (index, target_name) in targets {
+                let entry = reader
+                    .reader_without_entry(index)
+                    .await
+                    .map_err(zip_entry_error)?;
+                let out_path = dest.join(&target_name);
+                stream_zip_entry_to_path(entry, &out_path).await?;
+                tracing::debug!(path = %out_path.display(), "Extracted file");
+            }
+            Ok(())
+        }
+        BufferPath::Stream => {
+            let reader = async_zip::tokio::read::fs::ZipFileReader::new(zip_path)
+                .await
+                .map_err(zip_open_error)?;
+            let targets = collect_renamed_dict_targets(reader.file(), lang)?;
+            for (index, target_name) in targets {
+                let entry = reader
+                    .reader_without_entry(index)
+                    .await
+                    .map_err(zip_entry_error)?;
+                let out_path = dest.join(&target_name);
+                stream_zip_entry_to_path(entry, &out_path).await?;
+                tracing::debug!(path = %out_path.display(), "Extracted file");
+            }
+            Ok(())
+        }
     }
-
-    Ok(())
 }
 
-fn inflate_renamed_entries(
-    bytes: Vec<u8>,
+fn zip_open_error(error: async_zip::error::ZipError) -> MonolingualError {
+    MonolingualError::Extraction(format!("failed to open zip archive: {error}"))
+}
+
+fn zip_entry_error(error: async_zip::error::ZipError) -> MonolingualError {
+    MonolingualError::Extraction(format!("failed to read zip entry: {error}"))
+}
+
+fn collect_renamed_dict_targets(
+    file: &async_zip::ZipFile,
     lang: &str,
-) -> Result<Vec<(String, Vec<u8>)>, MonolingualError> {
-    let mut archive = ZipArchive::new(std::io::Cursor::new(bytes))
-        .map_err(|e| MonolingualError::Extraction(format!("failed to open zip archive: {e}")))?;
-    let mut files = Vec::new();
-
-    for i in 0..archive.len() {
-        let mut file = archive.by_index(i).map_err(|e| {
-            MonolingualError::Extraction(format!("failed to read zip entry {i}: {e}"))
-        })?;
-
-        if file.is_dir() {
+) -> Result<Vec<(usize, String)>, MonolingualError> {
+    let mut targets = Vec::new();
+    for (index, stored) in file.entries().iter().enumerate() {
+        if stored.dir().map_err(|error| {
+            MonolingualError::Extraction(format!("failed to inspect zip entry {index}: {error}"))
+        })? {
             continue;
         }
 
-        let original_name = match file.enclosed_name() {
-            Some(p) => p
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("")
-                .to_string(),
-            None => {
-                tracing::warn!(index = i, "Skipping zip entry with unsafe path");
-                continue;
-            }
+        let Some(original_name) = zip_entry_basename(stored.filename()) else {
+            tracing::warn!(index, "Skipping zip entry with unsafe path");
+            continue;
         };
 
         let Some(target_name) = dict_file_target_name(&original_name, lang) else {
@@ -889,12 +912,34 @@ fn inflate_renamed_entries(
             continue;
         };
 
-        let mut data = Vec::new();
-        io::copy(&mut file, &mut data)?;
-        files.push((target_name, data));
+        targets.push((index, target_name));
     }
+    Ok(targets)
+}
 
-    Ok(files)
+fn zip_entry_basename(filename: &async_zip::ZipString) -> Option<String> {
+    let raw = filename.as_str().ok()?;
+    let trimmed = raw.trim_end_matches('/');
+    if trimmed.is_empty() || trimmed.split('/').any(|part| part == "..") {
+        return None;
+    }
+    Path::new(trimmed)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(str::to_owned)
+}
+
+async fn stream_zip_entry_to_path<R>(entry: R, out_path: &Path) -> Result<(), MonolingualError>
+where
+    R: futures_lite::io::AsyncRead + Unpin,
+{
+    let mut compat = entry.compat();
+    let mut out = tokio::fs::File::create(out_path).await?;
+    tokio::io::copy(&mut compat, &mut out)
+        .await
+        .map_err(|error| MonolingualError::Extraction(error.to_string()))?;
+    out.flush().await?;
+    Ok(())
 }
 
 /// Maps a ZIP entry filename to its renamed output filename `<lang>.<ext>`.

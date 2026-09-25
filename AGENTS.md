@@ -9,6 +9,7 @@ user experience.
 ## Rust Conventions
 
 - Prefer `?` over `unwrap()` / `expect()` in library and app code.
+- Prefer `tokio::process::Command` over `std::process::Command` in async code paths.
 - Use `thiserror` for custom error types and `anyhow` for ad-hoc errors.
 - Use iterators over index-based loops.
 - Use `&str` over `String` in function parameters when ownership is not needed.

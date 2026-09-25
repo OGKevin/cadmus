@@ -12,7 +12,6 @@ use std::path::{Path, PathBuf};
 
 #[cfg(test)]
 use std::cell::Cell;
-use zip::ZipArchive;
 
 #[cfg(all(not(test), not(feature = "emulator")))]
 use crate::settings::INTERNAL_CARD_ROOT;
@@ -111,7 +110,7 @@ pub enum OtaError {
 
     /// Failed to extract files from ZIP archive
     #[error("ZIP extraction error: {0}")]
-    ZipError(#[from] zip::result::ZipError),
+    ZipError(String),
 
     /// Deployment process failed after successful download
     #[error("Deployment error: {0}")]
@@ -898,7 +897,7 @@ impl OtaClient {
     /// * `OtaError::DeploymentError` - KoboRoot.tgz not found in archive
     /// * `OtaError::Io` - Failed to write deployment file before the bundle was renamed
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
-    pub fn extract_and_deploy(
+    pub async fn extract_and_deploy(
         &self,
         zip_path: PathBuf,
         should_cancel: CancelFunc<'_>,
@@ -910,57 +909,97 @@ impl OtaClient {
         tracing::info!(path = ?zip_path, "Extracting and deploying update");
         tracing::debug!(path = ?zip_path, "Starting extraction");
 
-        let file = File::open(&zip_path)?;
-        let mut archive = ZipArchive::new(file)?;
-
-        tracing::debug!(file_count = archive.len(), "Opened ZIP archive");
-
-        let mut kobo_root_data = Vec::new();
-        let mut found = false;
+        let zip_size = tokio::fs::metadata(&zip_path).await?.len();
+        let reader = async_zip::tokio::read::fs::ZipFileReader::new(&zip_path)
+            .await
+            .map_err(|error| OtaError::ZipError(error.to_string()))?;
 
         let kobo_root_name = cfg_select! {
             feature = "test" => { "KoboRoot-test.tgz" }
             _ => { "KoboRoot.tgz" }
         };
 
-        tracing::debug!(target_file = kobo_root_name, "Looking for file");
+        tracing::debug!(
+            file_count = reader.file().entries().len(),
+            target_file = kobo_root_name,
+            "Opened ZIP archive"
+        );
 
-        for i in 0..archive.len() {
+        let mut found_index = None;
+        let mut uncompressed = 0_u64;
+        for (index, stored) in reader.file().entries().iter().enumerate() {
             if should_cancel.is_cancelled() {
                 return Err(OtaError::Cancelled);
             }
-
-            let mut entry = archive.by_index(i)?;
-            let entry_name = entry.name().to_string();
-
-            tracing::debug!(index = i, name = %entry_name, "Checking entry");
-
-            if entry_name.eq(kobo_root_name) {
-                tracing::debug!(name = %entry_name, "Found target file");
-                read_cancellable(&mut entry, &mut kobo_root_data, should_cancel)?;
-                found = true;
+            let entry_name = stored
+                .filename()
+                .as_str()
+                .map_err(|error| OtaError::ZipError(error.to_string()))?;
+            tracing::debug!(index, name = %entry_name, "Checking entry");
+            if entry_name == kobo_root_name
+                || Path::new(entry_name)
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    == Some(kobo_root_name)
+            {
+                found_index = Some(index);
+                uncompressed = stored.uncompressed_size();
                 break;
             }
         }
 
-        if !found {
+        let Some(index) = found_index else {
             tracing::error!(
                 target_file = kobo_root_name,
                 "Target file not found in artifact"
             );
             return Err(OtaError::DeploymentError(format!(
-                "{} not found in artifact",
-                kobo_root_name
+                "{kobo_root_name} not found in artifact"
             )));
-        }
+        };
 
-        tracing::debug!(
-            bytes = kobo_root_data.len(),
-            file = kobo_root_name,
-            "Extracted file"
-        );
+        let needed = zip_size.saturating_add(uncompressed);
+        let outcome = match crate::memory::choose_buffer_path(needed) {
+            crate::memory::BufferPath::InMemory => {
+                let mut entry = reader
+                    .reader_without_entry(index)
+                    .await
+                    .map_err(|error| OtaError::ZipError(error.to_string()))?;
+                let mut kobo_root_data = Vec::new();
+                copy_async_cancellable(&mut entry, &mut kobo_root_data, should_cancel).await?;
+                tracing::debug!(
+                    bytes = kobo_root_data.len(),
+                    file = kobo_root_name,
+                    "Extracted file into memory"
+                );
+                self.deploy_bytes(&kobo_root_data, should_cancel)?
+            }
+            crate::memory::BufferPath::Stream => {
+                let extracted = self
+                    .tmp_dir
+                    .join(format!("kobo-root-{}.tgz", uuid::Uuid::now_v7()));
+                let mut unpublished = crate::fs::RemovePathOnDrop::file(extracted.clone());
+                {
+                    let mut entry = reader
+                        .reader_without_entry(index)
+                        .await
+                        .map_err(|error| OtaError::ZipError(error.to_string()))?;
+                    let mut out = tokio::fs::File::create(&extracted).await?;
+                    copy_async_entry_to_file(&mut entry, &mut out, should_cancel).await?;
+                    use tokio::io::AsyncWriteExt;
+                    out.flush().await?;
+                }
+                tracing::debug!(
+                    path = %extracted.display(),
+                    file = kobo_root_name,
+                    "Extracted file to staging path"
+                );
+                let outcome = self.deploy(extracted.clone(), should_cancel)?;
+                unpublished.disarm();
+                outcome
+            }
+        };
 
-        let outcome = self.deploy_bytes(&kobo_root_data, should_cancel)?;
         if let Err(e) = std::fs::remove_file(&zip_path) {
             tracing::error!(path = ?zip_path, error = %e, "Failed to remove source file");
         }
@@ -1224,21 +1263,54 @@ fn check_disk_space(path: &Path) -> Result<(), OtaError> {
     Ok(())
 }
 
-fn read_cancellable(
-    reader: &mut impl Read,
+async fn copy_async_cancellable<R>(
+    reader: &mut R,
     buf: &mut Vec<u8>,
     should_cancel: CancelFunc<'_>,
-) -> Result<(), OtaError> {
+) -> Result<(), OtaError>
+where
+    R: futures_lite::io::AsyncRead + Unpin,
+{
+    use futures_lite::io::AsyncReadExt;
     let mut chunk = [0_u8; 64 * 1024];
     loop {
         if should_cancel.is_cancelled() {
             return Err(OtaError::Cancelled);
         }
-        let n = reader.read(&mut chunk)?;
+        let n = reader
+            .read(&mut chunk)
+            .await
+            .map_err(|error| OtaError::ZipError(error.to_string()))?;
         if n == 0 {
             return Ok(());
         }
         buf.extend_from_slice(&chunk[..n]);
+    }
+}
+
+async fn copy_async_entry_to_file<R>(
+    reader: &mut R,
+    out: &mut tokio::fs::File,
+    should_cancel: CancelFunc<'_>,
+) -> Result<(), OtaError>
+where
+    R: futures_lite::io::AsyncRead + Unpin,
+{
+    use futures_lite::io::AsyncReadExt;
+    use tokio::io::AsyncWriteExt;
+    let mut chunk = [0_u8; 64 * 1024];
+    loop {
+        if should_cancel.is_cancelled() {
+            return Err(OtaError::Cancelled);
+        }
+        let n = reader
+            .read(&mut chunk)
+            .await
+            .map_err(|error| OtaError::ZipError(error.to_string()))?;
+        if n == 0 {
+            return Ok(());
+        }
+        out.write_all(&chunk[..n]).await?;
     }
 }
 
@@ -1329,8 +1401,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_extract_and_deploy_success() {
+    #[tokio::test]
+    async fn test_extract_and_deploy_success() {
         let temp_dir = ota_test_tempdir();
         let client = make_client(temp_dir.path().to_path_buf());
         let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -1338,7 +1410,9 @@ mod tests {
         let artifact_path = temp_dir.path().join("test_artifact.zip");
         std::fs::copy(&fixture_path, &artifact_path).unwrap();
 
-        let result = client.extract_and_deploy(artifact_path.clone(), no_cancel());
+        let result = client
+            .extract_and_deploy(artifact_path.clone(), no_cancel())
+            .await;
 
         assert!(
             result.is_ok(),
@@ -1584,8 +1658,8 @@ mod tests {
         assert_no_partial_staging(&deploy_path);
     }
 
-    #[test]
-    fn test_extract_and_deploy_cancelled_before_zip_walk() {
+    #[tokio::test]
+    async fn test_extract_and_deploy_cancelled_before_zip_walk() {
         use std::sync::atomic::{AtomicBool, Ordering};
 
         let temp_dir = ota_test_tempdir();
@@ -1597,8 +1671,9 @@ mod tests {
 
         let cancelled = AtomicBool::new(true);
         let cancel_check = || cancelled.load(Ordering::Relaxed);
-        let result =
-            client.extract_and_deploy(artifact_path.clone(), CancelFunc::new(&cancel_check));
+        let result = client
+            .extract_and_deploy(artifact_path.clone(), CancelFunc::new(&cancel_check))
+            .await;
 
         assert!(matches!(result, Err(OtaError::Cancelled)));
         assert!(
@@ -1608,8 +1683,8 @@ mod tests {
         assert_no_partial_staging(&client.deploy_path());
     }
 
-    #[test]
-    fn test_extract_and_deploy_cancelled_during_zip_walk() {
+    #[tokio::test]
+    async fn test_extract_and_deploy_cancelled_during_zip_walk() {
         use std::sync::atomic::{AtomicUsize, Ordering};
 
         let temp_dir = ota_test_tempdir();
@@ -1621,8 +1696,9 @@ mod tests {
 
         let checks = AtomicUsize::new(0);
         let cancel_check = || checks.fetch_add(1, Ordering::Relaxed) >= 1;
-        let result =
-            client.extract_and_deploy(artifact_path.clone(), CancelFunc::new(&cancel_check));
+        let result = client
+            .extract_and_deploy(artifact_path.clone(), CancelFunc::new(&cancel_check))
+            .await;
 
         assert!(matches!(result, Err(OtaError::Cancelled)));
         assert!(
@@ -1631,8 +1707,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_extract_and_deploy_cancelled_during_entry_read() {
+    #[tokio::test]
+    async fn test_extract_and_deploy_cancelled_during_entry_read() {
         use std::io::Write;
         use std::sync::atomic::{AtomicUsize, Ordering};
         use zip::ZipWriter;
@@ -1655,8 +1731,9 @@ mod tests {
 
         let checks = AtomicUsize::new(0);
         let cancel_check = || checks.fetch_add(1, Ordering::Relaxed) >= 3;
-        let result =
-            client.extract_and_deploy(artifact_path.clone(), CancelFunc::new(&cancel_check));
+        let result = client
+            .extract_and_deploy(artifact_path.clone(), CancelFunc::new(&cancel_check))
+            .await;
 
         assert!(matches!(result, Err(OtaError::Cancelled)));
         assert!(
@@ -1697,8 +1774,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_extract_and_deploy_missing_koboroot() {
+    #[tokio::test]
+    async fn test_extract_and_deploy_missing_koboroot() {
         let temp_dir = ota_test_tempdir();
         let client = make_client(temp_dir.path().to_path_buf());
         let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -1706,7 +1783,9 @@ mod tests {
         let artifact_path = temp_dir.path().join("empty_artifact.zip");
         std::fs::copy(&fixture_path, &artifact_path).unwrap();
 
-        let result = client.extract_and_deploy(artifact_path.clone(), no_cancel());
+        let result = client
+            .extract_and_deploy(artifact_path.clone(), no_cancel())
+            .await;
         assert!(result.is_err(), "Should fail when KoboRoot.tgz is missing");
 
         if let Err(OtaError::DeploymentError(msg)) = result {
@@ -1831,7 +1910,9 @@ mod tests {
             "Downloaded ZIP should not be empty"
         );
 
-        let deploy_result = client.extract_and_deploy(zip_path.clone(), no_cancel());
+        let deploy_result = client
+            .extract_and_deploy(zip_path.clone(), no_cancel())
+            .await;
 
         assert!(
             deploy_result.is_ok(),

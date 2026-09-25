@@ -32,14 +32,17 @@ septem = "1.1.0"
 byteorder = "1.5.0"
 cadmus-macros = { path = "../macros" }
 flate2 = "1.1.5"
+futures-lite = "2"
 levenshtein = "1.0.5"
 nix = { version = "0.31.0", features = ["fs", "ioctl", "mount", "poll", "time"] }
 indexmap = { version = "2.13.0", features = ["serde"] }
 arc-swap = "1"
 anyhow = "1.0.100"
 async-trait = { workspace = true }
+async_zip = { workspace = true }
 thiserror = "2.0.17"
 secrecy = { version = "0.10", features = ["serde"] }
+sysinfo = { workspace = true }
 walkdir = "2.5.0"
 globset = "0.4.18"
 html5ever = "0.39"
@@ -85,7 +88,7 @@ sqlx = { version = "0.9", features = [
     "chrono",
     "macros",
 ], default-features = false }
-tokio = { version = "1.40", features = ["fs", "macros", "net", "rt", "rt-multi-thread", "sync", "time"] }
+tokio = { version = "1.40", features = ["fs", "macros", "net", "process", "rt", "rt-multi-thread", "sync", "time"] }
 tokio-util = { workspace = true }
 sdl3 = { workspace = true, optional = true }
 
