@@ -3,7 +3,7 @@ use crate::github::types::{
     WorkflowRunsResponse,
 };
 use crate::github::{GithubClient, OtaProgress};
-use crate::http::{CancelFunc, ChunkedDownloadError};
+use crate::http::{CancelFlag, CancelFunc, ChunkedDownloadError};
 use crate::version::GitVersion;
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use std::fs::File;
@@ -241,12 +241,12 @@ impl OtaClient {
         &self,
         pr_number: u32,
         mut progress_callback: F,
-        should_cancel: CancelFunc<'_>,
+        should_cancel: Option<&CancelFlag>,
     ) -> Result<PathBuf, OtaError>
     where
         F: FnMut(OtaProgress),
     {
-        if should_cancel.is_cancelled() {
+        if should_cancel.is_some_and(CancelFlag::is_cancelled) {
             return Err(OtaError::Cancelled);
         }
 
@@ -418,12 +418,12 @@ impl OtaClient {
     pub async fn download_default_branch_artifact<F>(
         &self,
         mut progress_callback: F,
-        should_cancel: CancelFunc<'_>,
+        should_cancel: Option<&CancelFlag>,
     ) -> Result<PathBuf, OtaError>
     where
         F: FnMut(OtaProgress),
     {
-        if should_cancel.is_cancelled() {
+        if should_cancel.is_some_and(CancelFlag::is_cancelled) {
             return Err(OtaError::Cancelled);
         }
 
@@ -542,12 +542,12 @@ impl OtaClient {
     pub async fn download_stable_release_artifact<F>(
         &self,
         mut progress_callback: F,
-        should_cancel: CancelFunc<'_>,
+        should_cancel: Option<&CancelFlag>,
     ) -> Result<PathBuf, OtaError>
     where
         F: FnMut(OtaProgress),
     {
-        if should_cancel.is_cancelled() {
+        if should_cancel.is_some_and(CancelFlag::is_cancelled) {
             return Err(OtaError::Cancelled);
         }
 
@@ -1087,7 +1087,7 @@ impl OtaClient {
         artifact: &Artifact,
         download_path: &PathBuf,
         progress_callback: &mut F,
-        should_cancel: CancelFunc<'_>,
+        should_cancel: Option<&CancelFlag>,
     ) -> Result<(), OtaError>
     where
         F: FnMut(OtaProgress),
@@ -1106,7 +1106,7 @@ impl OtaClient {
                 &mut |downloaded, total| {
                     progress_callback(OtaProgress::DownloadingArtifact { downloaded, total })
                 },
-                Some(should_cancel),
+                should_cancel,
             )
             .await?;
         Ok(())
@@ -1126,7 +1126,7 @@ impl OtaClient {
         asset: &ReleaseAsset,
         download_path: &PathBuf,
         progress_callback: &mut F,
-        should_cancel: CancelFunc<'_>,
+        should_cancel: Option<&CancelFlag>,
     ) -> Result<(), OtaError>
     where
         F: FnMut(OtaProgress),
@@ -1140,7 +1140,7 @@ impl OtaClient {
                 &mut |downloaded, total| {
                     progress_callback(OtaProgress::DownloadingArtifact { downloaded, total })
                 },
-                Some(should_cancel),
+                should_cancel,
             )
             .await?;
         Ok(())
@@ -1889,7 +1889,7 @@ mod tests {
                 |progress| {
                     last_progress = Some(format!("{:?}", progress));
                 },
-                no_cancel(),
+                None,
             )
             .await;
 
@@ -1935,9 +1935,7 @@ mod tests {
     async fn test_external_download_stable_release_and_deploy() {
         let temp_dir = ota_test_tempdir();
         let client = create_external_client(temp_dir.path().to_path_buf());
-        let download_result = client
-            .download_stable_release_artifact(|_| {}, no_cancel())
-            .await;
+        let download_result = client.download_stable_release_artifact(|_| {}, None).await;
 
         assert!(
             download_result.is_ok(),

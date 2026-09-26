@@ -16,7 +16,57 @@ use reqwest_retry::{
 };
 use std::time::{Duration, SystemTime};
 
-use super::RETRY_BACKOFFS;
+use super::{HttpCancel, RETRY_BACKOFFS};
+
+/// Returned when [`HttpCancel`] fires before another attempt or during backoff.
+#[derive(Debug)]
+pub(super) struct RequestCancelled;
+
+impl std::fmt::Display for RequestCancelled {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("HTTP request cancelled")
+    }
+}
+
+impl std::error::Error for RequestCancelled {}
+
+fn request_cancelled(extensions: &Extensions) -> bool {
+    extensions
+        .get::<HttpCancel>()
+        .is_some_and(HttpCancel::is_cancelled)
+}
+
+fn cancelled_error() -> Error {
+    Error::Middleware(anyhow::Error::new(RequestCancelled))
+}
+
+/// How often to poll an armed [`HttpCancel`] during retry backoff.
+const CANCEL_POLL: Duration = Duration::from_millis(50);
+
+/// Sleeps `duration`, aborting if an armed [`HttpCancel`] flips.
+///
+/// [`HttpCancel`] is a sync poll (`Fn() -> bool`), not a wakeup future. A
+/// cancellable backoff is therefore `timeout(duration)` around a 50ms poll
+/// loop. [`HttpCancel::never`] (and a missing extension) sleeps once.
+async fn sleep_unless_cancelled(duration: Duration, extensions: &Extensions) -> Result<()> {
+    let Some(cancel) = extensions.get::<HttpCancel>().filter(|c| c.is_armed()) else {
+        tokio::time::sleep(duration).await;
+        return Ok(());
+    };
+
+    let poll_until_cancelled = async {
+        loop {
+            if cancel.is_cancelled() {
+                return Err(cancelled_error());
+            }
+            tokio::time::sleep(CANCEL_POLL).await;
+        }
+    };
+    match tokio::time::timeout(duration, poll_until_cancelled).await {
+        Ok(result) => result,
+        Err(_elapsed) => Ok(()),
+    }
+}
 
 pub(super) fn retry_policy() -> ExponentialBackoff {
     ExponentialBackoff::builder()
@@ -101,6 +151,9 @@ where
         let mut n_past_retries = 0;
         let start_time = SystemTime::now();
         loop {
+            if request_cancelled(extensions) {
+                return Err(cancelled_error());
+            }
             let duplicate_request = req.try_clone().ok_or_else(|| {
                 Error::Middleware(anyhow!(
                     "Request object is not cloneable. Are you passing a streaming body?"
@@ -126,7 +179,7 @@ where
                         ?retry_after,
                         "Retrying transient HTTP failure"
                     );
-                    tokio::time::sleep(duration).await;
+                    sleep_unless_cancelled(duration, extensions).await?;
                     n_past_retries += 1;
                     continue;
                 }

@@ -334,7 +334,7 @@ impl GithubClient {
         dest: &PathBuf,
         request_builder: B,
         progress_callback: &mut F,
-        should_cancel: Option<crate::http::CancelFunc<'_>>,
+        should_cancel: Option<&crate::http::CancelFlag>,
     ) -> Result<(), ChunkedDownloadError>
     where
         B: Fn(&str) -> RequestBuilder,

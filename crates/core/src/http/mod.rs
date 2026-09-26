@@ -10,6 +10,8 @@
 //! - Retries for transient failures (connection errors, timeouts, HTTP 408,
 //!   429, and 5xx): three attempts, starting at 1s, doubling, no jitter;
 //!   `Retry-After` on successful responses is honoured (capped)
+//! - Optional per-request cancellation during those retries via [`with_cancel`]
+//!   or a [`CancelFlag`] passed to [`Client::download`]
 //! - A tracing span per request attempt when the `tracing` feature is enabled
 //!
 //! Middleware retries wrap `send()` (headers). They do **not** retry mid-body
@@ -53,17 +55,17 @@ const CANCEL_STATE_COMMITTED: u8 = 2;
 ///
 /// Cancellation wins until [`Self::try_commit`] succeeds. After a successful
 /// commit transition, further cancel requests are ignored.
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct CancelFlag {
-    state: AtomicU8,
+    state: std::sync::Arc<AtomicU8>,
 }
 
 impl CancelFlag {
     /// Creates a running cancel flag.
     #[must_use]
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
         Self {
-            state: AtomicU8::new(CANCEL_STATE_RUNNING),
+            state: std::sync::Arc::new(AtomicU8::new(CANCEL_STATE_RUNNING)),
         }
     }
 
@@ -176,6 +178,66 @@ const TARGET_CHUNK_SECS: f64 = CLIENT_TIMEOUT_SECS as f64 * 0.8;
 /// Sleeps after a failed attempt. Two sleeps means three attempts in total.
 pub(crate) const RETRY_BACKOFFS: usize = 2;
 
+/// Per-request cancel check for the shared retry middleware.
+///
+/// [`Client::download`] attaches a [`CancelFlag`] so retry backoff observes
+/// the same cancel state as the chunk loop. Other callers opt in with
+/// [`with_cancel`]. [`Self::never`] is a no-op: middleware sleeps the backoff
+/// in one shot instead of polling.
+#[derive(Clone)]
+pub struct HttpCancel {
+    check: std::sync::Arc<dyn Fn() -> bool + Send + Sync>,
+    armed: bool,
+}
+
+impl HttpCancel {
+    /// A check that never cancels.
+    #[must_use]
+    pub fn never() -> Self {
+        Self {
+            check: std::sync::Arc::new(|| false),
+            armed: false,
+        }
+    }
+
+    /// Polls `check` from retry middleware for the life of the request.
+    #[must_use]
+    pub fn from_fn<F>(check: F) -> Self
+    where
+        F: Fn() -> bool + Send + Sync + 'static,
+    {
+        Self {
+            check: std::sync::Arc::new(check),
+            armed: true,
+        }
+    }
+
+    /// Polls a [`CancelFlag`]. Cloning the flag shares the same atomic state.
+    #[must_use]
+    pub fn from_flag(flag: &CancelFlag) -> Self {
+        let flag = flag.clone();
+        Self::from_fn(move || flag.is_cancelled())
+    }
+
+    /// Returns `true` when the attached check asks to stop.
+    #[must_use]
+    pub fn is_cancelled(&self) -> bool {
+        (self.check)()
+    }
+
+    /// Returns `true` when retry backoff should poll this check.
+    #[must_use]
+    pub(super) fn is_armed(&self) -> bool {
+        self.armed
+    }
+}
+
+/// Attaches `cancel` so client retry middleware can abort this request.
+#[must_use]
+pub fn with_cancel(builder: RequestBuilder, cancel: HttpCancel) -> RequestBuilder {
+    builder.with_extension(cancel)
+}
+
 /// Error types that can occur during a chunked HTTP download.
 #[derive(Error, Debug)]
 pub enum ChunkedDownloadError {
@@ -191,6 +253,11 @@ pub enum ChunkedDownloadError {
 
 impl From<reqwest_middleware::Error> for ChunkedDownloadError {
     fn from(error: reqwest_middleware::Error) -> Self {
+        if let reqwest_middleware::Error::Middleware(ref inner) = error
+            && inner.is::<retry::RequestCancelled>()
+        {
+            return Self::Cancelled;
+        }
         match reqwest_error(error) {
             Ok(error) => Self::Request(error),
             Err(message) => Self::Failed(message),
@@ -307,7 +374,11 @@ impl Client {
     /// written, or renamed onto `dest`. Returns `ChunkedDownloadError::Request` if
     /// all retry attempts for any chunk fail. Returns
     /// `ChunkedDownloadError::Cancelled` when `should_cancel` reports cancellation
-    /// between chunks or before the file is published.
+    /// between chunks, during retry backoff, or before the file is published.
+    ///
+    /// Cancellation uses [`CancelFlag`] so the check can live in request
+    /// extensions. A borrowed [`CancelFunc::Check`] cannot; pass a flag (or
+    /// `None`) at this call site.
     ///
     /// # Example
     ///
@@ -341,7 +412,7 @@ impl Client {
         dest: &PathBuf,
         request_builder: B,
         progress_callback: &mut F,
-        should_cancel: Option<CancelFunc<'_>>,
+        should_cancel: Option<&CancelFlag>,
     ) -> Result<(), ChunkedDownloadError>
     where
         B: Fn(&str) -> RequestBuilder,
@@ -366,7 +437,7 @@ impl Client {
         );
 
         while downloaded < total_size {
-            if should_cancel.is_some_and(CancelFunc::is_cancelled) {
+            if should_cancel.is_some_and(CancelFlag::is_cancelled) {
                 return Err(ChunkedDownloadError::Cancelled);
             }
 
@@ -383,7 +454,8 @@ impl Client {
 
             let start = std::time::Instant::now();
             let chunk_data =
-                Self::download_chunk(url, chunk_start, chunk_end, &request_builder).await?;
+                Self::download_chunk(url, chunk_start, chunk_end, &request_builder, should_cancel)
+                    .await?;
             let elapsed_secs = start.elapsed().as_secs_f64();
 
             file.write_all(&chunk_data).await?;
@@ -412,7 +484,7 @@ impl Client {
         }
 
         file.sync_all().await?;
-        if should_cancel.is_some_and(CancelFunc::is_cancelled) {
+        if should_cancel.is_some_and(CancelFlag::is_cancelled) {
             return Err(ChunkedDownloadError::Cancelled);
         }
         tokio::fs::rename(&staging, dest).await?;
@@ -438,18 +510,17 @@ impl Client {
         start: u64,
         end: u64,
         request_builder: &B,
+        should_cancel: Option<&CancelFlag>,
     ) -> Result<Vec<u8>, ChunkedDownloadError>
     where
         B: Fn(&str) -> RequestBuilder,
     {
         let range_header = format!("bytes={start}-{end}");
-        let bytes = request_builder(url)
-            .header("Range", range_header)
-            .send()
-            .await?
-            .error_for_status()?
-            .bytes()
-            .await?;
+        let mut request = request_builder(url).header("Range", range_header);
+        if let Some(flag) = should_cancel {
+            request = with_cancel(request, HttpCancel::from_flag(flag));
+        }
+        let bytes = request.send().await?.error_for_status()?.bytes().await?;
 
         Ok(bytes.to_vec())
     }
@@ -525,7 +596,8 @@ mod tests {
         let dest = temp_dir.path().join("partial.bin");
         std::fs::write(&dest, b"existing").expect("seed dest");
 
-        let cancel_check = || true;
+        let flag = CancelFlag::new();
+        flag.request_cancel();
         let result = client
             .download(
                 "https://example.invalid/unused",
@@ -533,7 +605,7 @@ mod tests {
                 &dest,
                 |url| client.get(url),
                 &mut |_, _| {},
-                Some(CancelFunc::new(&cancel_check)),
+                Some(&flag),
             )
             .await;
 
@@ -569,7 +641,7 @@ mod tests {
                 &dest,
                 |url| client.get(url),
                 &mut |_, _| {},
-                Some(CancelFunc::from_flag(&flag)),
+                Some(&flag),
             )
             .await;
 
@@ -603,7 +675,7 @@ mod tests {
                 &dest,
                 |url| client.get(url),
                 &mut |_, _| {},
-                Some(CancelFunc::from_flag(&flag)),
+                Some(&flag),
             )
             .await;
 

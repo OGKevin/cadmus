@@ -844,7 +844,7 @@ async fn run_ota_download(ctx: OtaDownloadContext) {
                                     );
                                 }
                             },
-                            should_cancel,
+                            Some(cancelled.as_ref()),
                         )
                         .await
                 }
@@ -864,7 +864,7 @@ async fn run_ota_download(ctx: OtaDownloadContext) {
                                     );
                                 }
                             },
-                            should_cancel,
+                            Some(cancelled.as_ref()),
                         )
                         .await
                 }
@@ -884,7 +884,7 @@ async fn run_ota_download(ctx: OtaDownloadContext) {
                                     );
                                 }
                             },
-                            should_cancel,
+                            Some(cancelled.as_ref()),
                         )
                         .await
                 }
