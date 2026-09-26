@@ -176,10 +176,7 @@ pub async fn sleep_unless_cancelled(cancel: &CancellationToken, duration: Durati
 ///
 /// Polled tasks check [`CancellationToken::is_cancelled`] at the same
 /// checkpoints they used to check for shutdown. Tasks that block on an
-/// external wait race [`CancellationToken::cancelled`]. Time synchronisation
-/// also checks between Wi-Fi lease, geolocation, NTP apply, and coordinate
-/// publish so quit does not wait on the full sync or set the clock after
-/// cancel.
+/// external wait race [`CancellationToken::cancelled`].
 pub trait BackgroundTask: Send {
     /// Returns the unique identifier for this task.
     fn id(&self) -> TaskId;

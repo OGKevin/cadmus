@@ -41,8 +41,19 @@ impl<R: Rtc + Send + 'static> BackgroundTask for TimeSyncTask<R> {
         TaskId::TimeSync
     }
 
-    /// Synchronises the clock, checking cancellation between the same steps
-    /// master used (`should_stop` after lease, geolocation, and before apply).
+    /// Synchronises the clock.
+    ///
+    /// Cancellation is observed before the Wi-Fi lease, after the lease, and
+    /// after geolocation. Once [`TimeManager::sync`] starts, this task runs it
+    /// to completion: NTP and applying the clock are not cancelled or
+    /// reconciled mid-flight.
+    ///
+    /// Shutdown after that still skips [`Event::AutoFrontlightCoordinates`].
+    /// The home view uses that event only to store
+    /// `auto_frontlight_last_coordinates` when the user has no manual
+    /// override, then refreshes the running frontlight UI. The main loop is
+    /// already stopping, so the publish would not be applied. The clock write
+    /// is unaffected.
     fn run<'a>(
         &'a mut self,
         hub: &'a crate::view::Hub,
