@@ -150,16 +150,13 @@ impl DictionaryIndexTask {
     ) -> Option<(i64, u64, u64, bool)> {
         let pool = self.database.pool().clone();
 
-        let meta = async {
-            sqlx::query!(
-                r#"SELECT dict_id, total_lines, indexed_lines, completed
+        let meta = sqlx::query!(
+            r#"SELECT dict_id, total_lines, indexed_lines, completed
                    FROM dictionary_index_meta
                    WHERE fingerprint = ?"#,
-                fp_str,
-            )
-            .fetch_optional(&pool)
-            .await
-        }
+            fp_str,
+        )
+        .fetch_optional(&pool)
         .await;
 
         let meta = match meta {
@@ -206,31 +203,26 @@ impl DictionaryIndexTask {
             }
         };
 
-        let result = async {
-            sqlx::query!(
-                r#"INSERT INTO dictionary_index_meta (fingerprint, dict_path, total_lines, indexed_lines, completed)
+        let result = sqlx::query!(
+            r#"INSERT INTO dictionary_index_meta (fingerprint, dict_path, total_lines, indexed_lines, completed)
                    VALUES (?, ?, ?, 0, 0)"#,
-                fp_str,
-                path_str,
-                total,
-            )
-            .execute(&pool)
-            .await
-        }.await;
+            fp_str,
+            path_str,
+            total,
+        )
+        .execute(&pool)
+        .await;
 
         if let Err(e) = result {
             tracing::error!(path = %path_str, error = %e, "failed to insert dictionary_index_meta row");
             return None;
         }
 
-        let dict_id: i64 = async {
-            sqlx::query_scalar!(
-                "SELECT dict_id FROM dictionary_index_meta WHERE fingerprint = ?",
-                fp_str
-            )
-            .fetch_one(&pool)
-            .await
-        }
+        let dict_id: i64 = sqlx::query_scalar!(
+            "SELECT dict_id FROM dictionary_index_meta WHERE fingerprint = ?",
+            fp_str
+        )
+        .fetch_one(&pool)
         .await
         .ok()?;
 
@@ -248,14 +240,11 @@ impl DictionaryIndexTask {
     ) {
         let pool = self.database.pool().clone();
 
-        let result = async {
-            sqlx::query!(
-                "UPDATE dictionary_index_meta SET completed = 1 WHERE dict_id = ?",
-                dict_id,
-            )
-            .execute(&pool)
-            .await
-        }
+        let result = sqlx::query!(
+            "UPDATE dictionary_index_meta SET completed = 1 WHERE dict_id = ?",
+            dict_id,
+        )
+        .execute(&pool)
         .await;
 
         if let Err(e) = result {
@@ -505,11 +494,10 @@ impl DictionaryIndexTask {
         let pool = self.database.pool().clone();
         let indexed_lines = current_line as i64;
 
-        async {
-            let mut tx = pool.begin().await?;
+        let mut tx = pool.begin().await?;
 
-            for (dict_id, word, offset, size, original) in batch {
-                sqlx::query!(
+        for (dict_id, word, offset, size, original) in batch {
+            sqlx::query!(
                     r#"INSERT OR IGNORE INTO dictionary_index_entry (dict_id, word, offset, size, original)
                        VALUES (?, ?, ?, ?, ?)"#,
                     dict_id,
@@ -520,20 +508,17 @@ impl DictionaryIndexTask {
                 )
                 .execute(&mut *tx)
                 .await?;
-            }
+        }
 
-            sqlx::query!(
-                "UPDATE dictionary_index_meta SET indexed_lines = ? WHERE dict_id = ?",
-                indexed_lines,
-                job.dict_id,
-            )
-            .execute(&mut *tx)
-            .await?;
+        sqlx::query!(
+            "UPDATE dictionary_index_meta SET indexed_lines = ? WHERE dict_id = ?",
+            indexed_lines,
+            job.dict_id,
+        )
+        .execute(&mut *tx)
+        .await?;
 
-            tx.commit().await?;
-
-            Ok::<_, anyhow::Error>(())
-        }.await?;
+        tx.commit().await?;
 
         let progress = NonZeroU64::new(job.total_lines)
             .and_then(|total_lines| {
@@ -570,55 +555,7 @@ impl DictionaryIndexTask {
         shutdown: &CancellationToken,
     ) {
         let pool = self.database.pool().clone();
-
-        let result = async {
-            let on_disk_set: HashSet<&str> =
-                on_disk_fingerprints.iter().map(|s| s.as_str()).collect();
-
-            let db_entries = sqlx::query!("SELECT fingerprint, dict_id FROM dictionary_index_meta")
-                .fetch_all(&pool)
-                .await?;
-
-            let mut deleted_any = false;
-
-            for row in db_entries {
-                let fp = row.fingerprint;
-
-                if on_disk_set.contains(fp.as_str()) {
-                    continue;
-                }
-
-                let dict_id = row.dict_id;
-
-                tracing::info!(fingerprint = %fp, "removing stale dictionary index");
-
-                sqlx::query!(
-                    "UPDATE dictionary_index_meta SET completed = 0, indexed_lines = 0 WHERE dict_id = ?",
-                    dict_id,
-                )
-                .execute(&pool)
-                .await?;
-
-                let total_deleted = delete_entries_for_dict(&pool, dict_id, shutdown).await?;
-
-                tracing::info!(fingerprint = %fp, total_deleted, "deleted stale dictionary index entries");
-
-                sqlx::query!(
-                    "DELETE FROM dictionary_index_meta WHERE fingerprint = ?",
-                    fp
-                )
-                .execute(&pool)
-                .await?;
-
-                deleted_any = true;
-
-                if shutdown.is_cancelled() {
-                    break;
-                }
-            }
-
-            Ok::<_, anyhow::Error>(deleted_any)
-        }.await;
+        let result = purge_stale_dictionary_indexes(&pool, on_disk_fingerprints, shutdown).await;
 
         match result {
             Ok(true) => {
@@ -630,6 +567,58 @@ impl DictionaryIndexTask {
             }
         }
     }
+}
+
+async fn purge_stale_dictionary_indexes(
+    pool: &sqlx::SqlitePool,
+    on_disk_fingerprints: &[String],
+    shutdown: &CancellationToken,
+) -> anyhow::Result<bool> {
+    let on_disk_set: HashSet<&str> = on_disk_fingerprints.iter().map(|s| s.as_str()).collect();
+
+    let db_entries = sqlx::query!("SELECT fingerprint, dict_id FROM dictionary_index_meta")
+        .fetch_all(pool)
+        .await?;
+
+    let mut deleted_any = false;
+
+    for row in db_entries {
+        let fp = row.fingerprint;
+
+        if on_disk_set.contains(fp.as_str()) {
+            continue;
+        }
+
+        let dict_id = row.dict_id;
+
+        tracing::info!(fingerprint = %fp, "removing stale dictionary index");
+
+        sqlx::query!(
+            "UPDATE dictionary_index_meta SET completed = 0, indexed_lines = 0 WHERE dict_id = ?",
+            dict_id,
+        )
+        .execute(pool)
+        .await?;
+
+        let total_deleted = delete_entries_for_dict(pool, dict_id, shutdown).await?;
+
+        tracing::info!(fingerprint = %fp, total_deleted, "deleted stale dictionary index entries");
+
+        sqlx::query!(
+            "DELETE FROM dictionary_index_meta WHERE fingerprint = ?",
+            fp
+        )
+        .execute(pool)
+        .await?;
+
+        deleted_any = true;
+
+        if shutdown.is_cancelled() {
+            break;
+        }
+    }
+
+    Ok(deleted_any)
 }
 
 /// Counts lines from `reader`. An I/O error stops the count instead of spinning.
@@ -862,20 +851,17 @@ mod tests {
         let pool = db.pool();
         let shutdown = CancellationToken::new();
 
-        async {
-            let dict_id = insert_meta(pool, "all-entries").await;
-            for i in 0..5_i64 {
-                insert_entry(pool, dict_id, "word", i).await;
-            }
-
-            let deleted = delete_entries_for_dict(pool, dict_id, &shutdown)
-                .await
-                .expect("delete should succeed");
-
-            assert_eq!(deleted, 5);
-            assert_eq!(count_entries(pool, dict_id).await, 0);
+        let dict_id = insert_meta(pool, "all-entries").await;
+        for i in 0..5_i64 {
+            insert_entry(pool, dict_id, "word", i).await;
         }
-        .await;
+
+        let deleted = delete_entries_for_dict(pool, dict_id, &shutdown)
+            .await
+            .expect("delete should succeed");
+
+        assert_eq!(deleted, 5);
+        assert_eq!(count_entries(pool, dict_id).await, 0);
     }
 
     #[tokio::test]
@@ -904,22 +890,19 @@ mod tests {
         let pool = db.pool();
         let shutdown = CancellationToken::new();
 
-        async {
-            let dict_a = insert_meta(pool, "dict-a").await;
-            let dict_b = insert_meta(pool, "dict-b").await;
+        let dict_a = insert_meta(pool, "dict-a").await;
+        let dict_b = insert_meta(pool, "dict-b").await;
 
-            insert_entry(pool, dict_a, "apple", 0).await;
-            insert_entry(pool, dict_b, "banana", 0).await;
-            insert_entry(pool, dict_b, "cherry", 0).await;
+        insert_entry(pool, dict_a, "apple", 0).await;
+        insert_entry(pool, dict_b, "banana", 0).await;
+        insert_entry(pool, dict_b, "cherry", 0).await;
 
-            let deleted = delete_entries_for_dict(pool, dict_a, &shutdown)
-                .await
-                .expect("delete should succeed");
+        let deleted = delete_entries_for_dict(pool, dict_a, &shutdown)
+            .await
+            .expect("delete should succeed");
 
-            assert_eq!(deleted, 1);
-            assert_eq!(count_entries(pool, dict_a).await, 0);
-            assert_eq!(count_entries(pool, dict_b).await, 2);
-        }
-        .await;
+        assert_eq!(deleted, 1);
+        assert_eq!(count_entries(pool, dict_a).await, 0);
+        assert_eq!(count_entries(pool, dict_b).await, 2);
     }
 }
