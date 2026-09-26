@@ -370,8 +370,8 @@ mod tests {
     mod logging_enabled {
         use super::*;
 
-        #[test]
-        fn handle_toggle_disables_when_enabled() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_toggle_disables_when_enabled() {
             let setting = LoggingEnabled;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -385,8 +385,8 @@ mod tests {
             assert!(!context.settings.logging.enabled);
         }
 
-        #[test]
-        fn handle_toggle_enables_when_disabled() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_toggle_enables_when_disabled() {
             let setting = LoggingEnabled;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -400,8 +400,8 @@ mod tests {
             assert!(context.settings.logging.enabled);
         }
 
-        #[test]
-        fn handle_returns_none_for_wrong_event() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_returns_none_for_wrong_event() {
             let setting = LoggingEnabled;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -412,8 +412,8 @@ mod tests {
             assert!(result.0.is_none());
         }
 
-        #[test]
-        fn handle_returns_none_for_wrong_toggle() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_returns_none_for_wrong_toggle() {
             let setting = LoggingEnabled;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -432,8 +432,8 @@ mod tests {
     mod log_level {
         use super::*;
 
-        #[test]
-        fn handle_set_level_updates_settings() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_set_level_updates_settings() {
             let setting = LogLevel;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -447,8 +447,8 @@ mod tests {
             assert_eq!(context.settings.logging.level, "WARN");
         }
 
-        #[test]
-        fn handle_can_set_all_levels() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_can_set_all_levels() {
             let setting = LogLevel;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -467,8 +467,8 @@ mod tests {
             }
         }
 
-        #[test]
-        fn handle_returns_none_for_wrong_event() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_returns_none_for_wrong_event() {
             let setting = LogLevel;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -542,8 +542,8 @@ mod tests {
     mod enable_kern_log {
         use super::*;
 
-        #[test]
-        fn handle_toggle_enables_when_disabled() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_toggle_enables_when_disabled() {
             let setting = EnableKernLog;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -557,8 +557,8 @@ mod tests {
             assert!(context.settings.logging.enable_kern_log);
         }
 
-        #[test]
-        fn handle_toggle_disables_when_enabled() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_toggle_disables_when_enabled() {
             let setting = EnableKernLog;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -572,8 +572,8 @@ mod tests {
             assert!(!context.settings.logging.enable_kern_log);
         }
 
-        #[test]
-        fn handle_returns_none_for_wrong_event() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_returns_none_for_wrong_event() {
             let setting = EnableKernLog;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -584,8 +584,8 @@ mod tests {
             assert!(result.0.is_none());
         }
 
-        #[test]
-        fn handle_returns_none_for_wrong_toggle() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_returns_none_for_wrong_toggle() {
             let setting = EnableKernLog;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -605,8 +605,8 @@ mod tests {
     mod enable_dbus_log {
         use super::*;
 
-        #[test]
-        fn handle_toggle_enables_when_disabled() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_toggle_enables_when_disabled() {
             let setting = EnableDbusLog;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -620,8 +620,8 @@ mod tests {
             assert!(context.settings.logging.enable_dbus_log);
         }
 
-        #[test]
-        fn handle_toggle_disables_when_enabled() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_toggle_disables_when_enabled() {
             let setting = EnableDbusLog;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -635,8 +635,8 @@ mod tests {
             assert!(!context.settings.logging.enable_dbus_log);
         }
 
-        #[test]
-        fn handle_returns_none_for_wrong_event() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_returns_none_for_wrong_event() {
             let setting = EnableDbusLog;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -647,8 +647,8 @@ mod tests {
             assert!(result.0.is_none());
         }
 
-        #[test]
-        fn handle_returns_none_for_wrong_toggle() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_returns_none_for_wrong_toggle() {
             let setting = EnableDbusLog;
             let mut context = create_test_context();
             context.settings = Settings::default();

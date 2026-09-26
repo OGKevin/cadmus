@@ -39,9 +39,9 @@ fn prepare_usb_share(
     rq: &mut RenderQueue,
 ) {
     tasks.clear();
-    view.handle_event(&Event::Back, hub, bus, rq, context);
+    crate::runtime::block_on(view.handle_event(&Event::Back, hub, bus, rq, context));
     while let Some(mut item) = history.pop() {
-        item.view.handle_event(&Event::Back, hub, bus, rq, context);
+        crate::runtime::block_on(item.view.handle_event(&Event::Back, hub, bus, rq, context));
         if item.rotation != context.display.rotation {
             wait_for_all(updating, context);
             if context.set_rotation(item.rotation).is_ok() {
@@ -57,24 +57,24 @@ fn prepare_usb_share(
         .save(&context.settings)
         .map_err(|error| tracing::error!(error = %error, "Can't save settings"))
         .ok();
-    context.database.close();
+    crate::runtime::block_on(context.database.close());
 
     if context.settings.frontlight {
         context.set_frontlight(false);
     }
     #[cfg(not(feature = "test"))]
     if context.settings.wifi != crate::settings::WifiMode::Off {
-        if let Err(error) = context.wifi_session.disable_radio() {
+        if let Err(error) = crate::runtime::block_on(context.wifi_session.disable_radio()) {
             tracing::error!(error = %error, "Failed to disable WiFi for USB share");
         }
         context.online = false;
     }
 
-    let interm = Intermission::new(
+    let interm = crate::runtime::block_on(Intermission::new(
         context.device.framebuffer().rect(),
         IntermKind::Share,
         context,
-    );
+    ));
     rq.add(RenderData::new(
         interm.id(),
         *interm.rect(),
@@ -288,8 +288,8 @@ mod tests {
     use crate::device::test_harness::DeviceRuntimeHarness;
     use crate::view::EntryId;
 
-    #[test]
-    fn handle_prepare_share_returns_error_without_settings_manager() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_prepare_share_returns_error_without_settings_manager() {
         let mut harness = DeviceRuntimeHarness::new();
         let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
             runtime.settings_manager = None;
@@ -298,8 +298,8 @@ mod tests {
         assert_eq!(outcome, EventOutcome::Error);
     }
 
-    #[test]
-    fn handle_prepare_share_early_return_when_shared() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_prepare_share_early_return_when_shared() {
         let mut harness = DeviceRuntimeHarness::new();
         harness.context.shared = true;
         let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
@@ -308,8 +308,8 @@ mod tests {
         assert_eq!(outcome, EventOutcome::Handled);
     }
 
-    #[test]
-    fn handle_share_early_return_when_shared() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_share_early_return_when_shared() {
         let mut harness = DeviceRuntimeHarness::new();
         harness.context.shared = true;
         let hub = harness.hub_tx.clone();
@@ -326,8 +326,8 @@ mod tests {
         assert_eq!(outcome, EventOutcome::Handled);
     }
 
-    #[test]
-    fn handle_share_enables_usb_mass_storage() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_share_enables_usb_mass_storage() {
         let mut harness = DeviceRuntimeHarness::new();
         let hub = harness.hub_tx.clone();
         let outcome =
@@ -348,9 +348,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn disable_usb_share_disables_mass_storage() {
-        let harness = DeviceRuntimeHarness::new();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn disable_usb_share_disables_mass_storage() {
+        let mut harness = DeviceRuntimeHarness::new();
         disable_usb_share(
             &harness.context,
             None,

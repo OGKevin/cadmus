@@ -90,6 +90,7 @@ impl ActionLabel {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl View for ActionLabel {
     /// Handles finger down/up events to toggle active state and update label scheme.
     ///
@@ -104,7 +105,7 @@ impl View for ActionLabel {
     ///
     /// Returns true if the event was handled, false otherwise.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, _bus, rq, _context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
-    fn handle_event(
+    async fn handle_event(
         &mut self,
         evt: &Event,
         _hub: &Hub,
@@ -162,7 +163,6 @@ mod tests {
     use crate::context::test_helpers::create_test_context;
     use crate::geom::Point;
     use std::collections::VecDeque;
-    use std::sync::mpsc::channel;
 
     #[test]
     fn test_new_creates_with_label_child() {
@@ -173,11 +173,11 @@ mod tests {
         assert!(!action_label.active);
     }
 
-    #[test]
-    fn test_finger_down_activates() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_finger_down_activates() {
         let rect = rect![0, 0, 200, 50];
         let mut action_label = ActionLabel::new(rect, "Test".to_string(), Align::Right(10));
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
         let mut context = create_test_context();
@@ -191,19 +191,25 @@ mod tests {
             id: 0,
             time: 0.0,
         });
-        let handled = action_label.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+        let handled = crate::runtime::block_on(action_label.handle_event(
+            &event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(handled);
         assert!(action_label.active);
         assert!(!rq.is_empty());
     }
 
-    #[test]
-    fn test_finger_up_deactivates() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_finger_up_deactivates() {
         let rect = rect![0, 0, 200, 50];
         let mut action_label = ActionLabel::new(rect, "Test".to_string(), Align::Right(10));
 
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
 
@@ -222,18 +228,24 @@ mod tests {
             id: 0,
             time: 0.0,
         });
-        let handled = action_label.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+        let handled = crate::runtime::block_on(action_label.handle_event(
+            &event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(handled);
         assert!(!action_label.active);
         assert!(!rq.is_empty());
     }
 
-    #[test]
-    fn test_finger_down_outside_rect_ignored() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_finger_down_outside_rect_ignored() {
         let rect = rect![0, 0, 200, 50];
         let mut action_label = ActionLabel::new(rect, "Test".to_string(), Align::Right(10));
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
         let mut context = create_test_context();
@@ -245,7 +257,13 @@ mod tests {
             id: 0,
             time: 0.0,
         });
-        let handled = action_label.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+        let handled = crate::runtime::block_on(action_label.handle_event(
+            &event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(!handled);
         assert!(!action_label.active);
@@ -265,13 +283,13 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_event_is_emitted_on_tap() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_event_is_emitted_on_tap() {
         let rect = rect![0, 0, 200, 50];
         let action_label =
             ActionLabel::new(rect, "Test".to_string(), Align::Right(10)).event(Some(Event::Back));
 
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
         let mut context = create_test_context();
@@ -280,27 +298,27 @@ mod tests {
         let tap_event = Event::Gesture(crate::gesture::GestureEvent::Tap(point));
 
         let mut boxed: Box<dyn View> = Box::new(action_label);
-        crate::view::handle_event(
+        crate::runtime::block_on(crate::view::handle_event(
             boxed.as_mut(),
             &tap_event,
             &hub,
             &mut bus,
             &mut rq,
             &mut context,
-        );
+        ));
 
         assert_eq!(bus.len(), 1);
         assert!(matches!(bus.pop_front(), Some(Event::Back)));
     }
 
-    #[test]
-    fn test_set_event_updates_label() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_set_event_updates_label() {
         let rect = rect![0, 0, 200, 50];
         let mut action_label = ActionLabel::new(rect, "Test".to_string(), Align::Right(10));
 
         action_label.set_event(Some(Event::Back));
 
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
         let mut context = create_test_context();
@@ -309,14 +327,14 @@ mod tests {
         let tap_event = Event::Gesture(crate::gesture::GestureEvent::Tap(point));
 
         let mut boxed: Box<dyn View> = Box::new(action_label);
-        crate::view::handle_event(
+        crate::runtime::block_on(crate::view::handle_event(
             boxed.as_mut(),
             &tap_event,
             &hub,
             &mut bus,
             &mut rq,
             &mut context,
-        );
+        ));
 
         assert_eq!(bus.len(), 1);
         assert!(matches!(bus.pop_front(), Some(Event::Back)));

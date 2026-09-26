@@ -133,7 +133,7 @@ impl DirectoryNavigationProvider {
     /// Lists directories using the library's filtering rules.
     #[inline]
     fn list_library_dirs(&self, path: &Path, context: &AppContext) -> BTreeSet<PathBuf> {
-        context.library.list(path, None, true).1
+        crate::runtime::block_on(context.library.list(path, None, true)).1
     }
 
     #[inline]
@@ -263,8 +263,8 @@ mod tests {
         temp_dir
     }
 
-    #[test]
-    fn filesystem_source_lists_all_directories() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn filesystem_source_lists_all_directories() {
         let temp_dir = create_test_directory_structure();
         let root = temp_dir.path().to_path_buf();
         let provider = DirectoryNavigationProvider::filesystem(root.clone());
@@ -278,8 +278,8 @@ mod tests {
         assert!(dirs.contains(&root.join("dir_c")));
     }
 
-    #[test]
-    fn filesystem_source_returns_empty_for_nonexistent_path() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn filesystem_source_returns_empty_for_nonexistent_path() {
         let root = PathBuf::from("/nonexistent/path");
         let provider = DirectoryNavigationProvider::filesystem(root.clone());
         let context = create_test_context();
@@ -289,8 +289,8 @@ mod tests {
         assert!(dirs.is_empty());
     }
 
-    #[test]
-    fn filesystem_source_returns_empty_for_file() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn filesystem_source_returns_empty_for_file() {
         let temp_dir = create_test_directory_structure();
         let root = temp_dir.path().to_path_buf();
         let provider = DirectoryNavigationProvider::filesystem(root.clone());
@@ -301,8 +301,8 @@ mod tests {
         assert!(dirs.is_empty());
     }
 
-    #[test]
-    fn is_root_returns_true_for_root() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn is_root_returns_true_for_root() {
         let temp_dir = create_test_directory_structure();
         let root = temp_dir.path().to_path_buf();
         let provider = DirectoryNavigationProvider::filesystem(root.clone());
@@ -310,8 +310,8 @@ mod tests {
         assert!(provider.is_root(&root, &create_test_context()));
     }
 
-    #[test]
-    fn is_root_returns_false_for_non_root() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn is_root_returns_false_for_non_root() {
         let temp_dir = create_test_directory_structure();
         let root = temp_dir.path().to_path_buf();
         let provider = DirectoryNavigationProvider::filesystem(root.clone());
@@ -320,8 +320,8 @@ mod tests {
         assert!(!provider.is_root(&subdir, &create_test_context()));
     }
 
-    #[test]
-    fn fetch_level_data_returns_directories() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn fetch_level_data_returns_directories() {
         let temp_dir = create_test_directory_structure();
         let root = temp_dir.path().to_path_buf();
         let provider = DirectoryNavigationProvider::filesystem(root.clone());
@@ -331,8 +331,8 @@ mod tests {
         assert_eq!(dirs.len(), 3);
     }
 
-    #[test]
-    fn leaf_for_bar_traversal_returns_selected_when_has_subdirs() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn leaf_for_bar_traversal_returns_selected_when_has_subdirs() {
         let temp_dir = create_test_directory_structure();
         let root = temp_dir.path().to_path_buf();
         let provider = DirectoryNavigationProvider::filesystem(root.clone());
@@ -343,8 +343,8 @@ mod tests {
         assert_eq!(result, selected);
     }
 
-    #[test]
-    fn leaf_for_bar_traversal_returns_parent_when_empty() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn leaf_for_bar_traversal_returns_parent_when_empty() {
         let temp_dir = create_test_directory_structure();
         let root = temp_dir.path().to_path_buf();
         let provider = DirectoryNavigationProvider::filesystem(root.clone());
@@ -355,8 +355,8 @@ mod tests {
         assert_eq!(result, root.join("dir_a"));
     }
 
-    #[test]
-    fn leaf_for_bar_traversal_returns_root_when_root_is_empty() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn leaf_for_bar_traversal_returns_root_when_root_is_empty() {
         let temp_dir = tempfile::tempdir().unwrap();
         let root = temp_dir.path().to_path_buf();
         let provider = DirectoryNavigationProvider::filesystem(root.clone());

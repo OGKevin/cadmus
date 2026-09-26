@@ -122,20 +122,18 @@ impl Dictionary {
 ///
 /// Returns `None` if the fingerprint is not found in `dictionary_index_meta`.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(database), fields(fingerprint = %fingerprint)))]
-pub fn resolve_dict_id(database: &Database, fingerprint: &Fp) -> Option<i64> {
+pub async fn resolve_dict_id(database: &Database, fingerprint: &Fp) -> Option<i64> {
     let fp_str = fingerprint.to_string();
     let pool = database.pool().clone();
 
-    crate::runtime::RUNTIME.block_on(async {
-        sqlx::query_scalar!(
-            "SELECT dict_id FROM dictionary_index_meta WHERE fingerprint = ?",
-            fp_str
-        )
-        .fetch_optional(&pool)
-        .await
-        .ok()
-        .flatten()
-    })
+    sqlx::query_scalar!(
+        "SELECT dict_id FROM dictionary_index_meta WHERE fingerprint = ?",
+        fp_str
+    )
+    .fetch_optional(&pool)
+    .await
+    .ok()
+    .flatten()
 }
 
 /// Load dictionary using a database-backed index reader.
@@ -151,7 +149,7 @@ pub fn load_dictionary_from_db<P: AsRef<Path> + std::fmt::Debug>(
     database: &Database,
     fingerprint: Fp,
 ) -> Result<Dictionary, errors::DictError> {
-    let dict_id = match resolve_dict_id(database, &fingerprint) {
+    let dict_id = match crate::runtime::block_on(resolve_dict_id(database, &fingerprint)) {
         Some(id) => id,
         None => {
             tracing::warn!(fingerprint = %fingerprint, "dictionary not yet indexed, skipping");
@@ -190,10 +188,11 @@ pub fn load_dictionary(content: Box<dyn DictReader>, index: Box<dyn IndexReader>
     }
 }
 
+/// Lookup goes through the synchronous reader API, which blocks on the async
+/// index queries. That needs the multi-thread runtime.
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime::RUNTIME;
 
     const PATH_CASE_SENSITIVE_DICT: &str = "src/dictionary/testdata/case_sensitive_dict.dict";
     const PATH_CASE_INSENSITIVE_DICT: &str = "src/dictionary/testdata/case_insensitive_dict.dict";
@@ -214,20 +213,19 @@ mod tests {
         ("straße", 532, 44, None),
     ];
 
-    fn load_test_dictionary(
+    async fn load_test_dictionary(
         content_path: &str,
         entries: &[TestEntry],
         case_sensitive: bool,
         all_chars: bool,
     ) -> Result<Dictionary, errors::DictError> {
-        let mut db = Database::new(":memory:").expect("in-memory db");
-        db.init_for_test(0).expect("migrations");
+        let mut db = Database::new(":memory:").await.expect("in-memory db");
+        db.init_for_test(0).await.expect("migrations");
 
         let fp = Fp::from_u64(1);
         let fp_str = fp.to_string();
 
-        RUNTIME.block_on(async {
-            sqlx::query!(
+        sqlx::query!(
                 r#"INSERT INTO dictionary_index_meta (fingerprint, dict_path, total_lines, indexed_lines, completed)
                    VALUES (?, ?, ?, 0, 0)"#,
                 fp_str,
@@ -238,16 +236,16 @@ mod tests {
             .await
             .expect("insert meta");
 
-            for (word, offset, size, original) in entries {
-                let normalized = apply_transform(word, !all_chars, !case_sensitive);
-                let stored_original = if normalized != *word {
-                    Some(*word)
-                } else {
-                    None
-                };
-                let final_original = original.or(stored_original);
+        for (word, offset, size, original) in entries {
+            let normalized = apply_transform(word, !all_chars, !case_sensitive);
+            let stored_original = if normalized != *word {
+                Some(*word)
+            } else {
+                None
+            };
+            let final_original = original.or(stored_original);
 
-                sqlx::query!(
+            sqlx::query!(
                     r#"INSERT OR IGNORE INTO dictionary_index_entry (dict_id, word, offset, size, original)
                        VALUES (?, ?, ?, ?, ?)"#,
                     1_i64,
@@ -259,8 +257,7 @@ mod tests {
                 .execute(db.pool())
                 .await
                 .expect("insert entry");
-            }
-        });
+        }
 
         load_dictionary_from_db(content_path, &db, fp)
     }
@@ -279,25 +276,27 @@ mod tests {
         dict
     }
 
-    #[test]
-    fn test_load_dictionary_from_db() {
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_load_dictionary_from_db() {
         let r = load_test_dictionary(
             PATH_CASE_INSENSITIVE_DICT,
             CASE_INSENSITIVE_ENTRIES,
             false,
             true,
-        );
+        )
+        .await;
         assert!(r.is_ok());
     }
 
-    #[test]
-    fn test_dictionary_lookup_case_insensitive() {
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_dictionary_lookup_case_insensitive() {
         let r = load_test_dictionary(
             PATH_CASE_INSENSITIVE_DICT,
             CASE_INSENSITIVE_ENTRIES,
             false,
             true,
-        );
+        )
+        .await;
         let mut dict = r.unwrap();
 
         dict = assert_dict_word_exists(dict, "bar", "test for case-sensitivity");
@@ -305,14 +304,15 @@ mod tests {
         assert_dict_word_exists(dict, "straße", "test for non-latin case-sensitivity");
     }
 
-    #[test]
-    fn test_dictionary_lookup_case_insensitive_fuzzy() {
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_dictionary_lookup_case_insensitive_fuzzy() {
         let r = load_test_dictionary(
             PATH_CASE_INSENSITIVE_DICT,
             CASE_INSENSITIVE_ENTRIES,
             false,
             true,
-        );
+        )
+        .await;
         let mut dict = r.unwrap();
 
         let r = dict.lookup("ba", true);
@@ -323,9 +323,10 @@ mod tests {
         assert!(search[0][1].contains("test for case-sensitivity"));
     }
 
-    #[test]
-    fn test_dictionary_lookup_case_sensitive() {
-        let r = load_test_dictionary(PATH_CASE_SENSITIVE_DICT, CASE_SENSITIVE_ENTRIES, true, true);
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_dictionary_lookup_case_sensitive() {
+        let r = load_test_dictionary(PATH_CASE_SENSITIVE_DICT, CASE_SENSITIVE_ENTRIES, true, true)
+            .await;
         let mut dict = r.unwrap();
 
         dict = assert_dict_word_exists(dict, "Bar", "test for case-sensitivity");
@@ -338,9 +339,10 @@ mod tests {
         assert!(r.unwrap().is_empty());
     }
 
-    #[test]
-    fn test_dictionary_lookup_case_sensitive_fuzzy() {
-        let r = load_test_dictionary(PATH_CASE_SENSITIVE_DICT, CASE_SENSITIVE_ENTRIES, true, true);
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_dictionary_lookup_case_sensitive_fuzzy() {
+        let r = load_test_dictionary(PATH_CASE_SENSITIVE_DICT, CASE_SENSITIVE_ENTRIES, true, true)
+            .await;
         let mut dict = r.unwrap();
 
         let r = dict.lookup("Ba", true);

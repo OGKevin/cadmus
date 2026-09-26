@@ -23,8 +23,7 @@ use crate::device::DeviceHardware as _;
 use crate::device::{DeviceRuntime, DeviceTask, DeviceTaskId, HistoryItem};
 use crate::framebuffer::Framebuffer as _;
 use crate::view::filler::Filler;
-use crate::view::{Bus, Event, Hub, HubMessage, RenderQueue, UpdateData, View};
-use std::sync::mpsc::Receiver;
+use crate::view::{Bus, Event, Hub, RenderQueue, UpdateData, View};
 
 /// Minimal runtime shell for device / suspend handler tests.
 ///
@@ -35,7 +34,7 @@ use std::sync::mpsc::Receiver;
 pub(crate) struct DeviceRuntimeHarness {
     pub(crate) context: AppContext,
     pub(crate) hub_tx: Hub,
-    hub_rx: Receiver<HubMessage>,
+    hub_rx: crate::view::HubReceiver,
     pub(crate) bus: Bus,
     pub(crate) rq: RenderQueue,
     pub(crate) view: Box<dyn View>,
@@ -47,7 +46,7 @@ pub(crate) struct DeviceRuntimeHarness {
 impl DeviceRuntimeHarness {
     /// Creates a harness with default test context, empty task list, and root filler view.
     pub(crate) fn new() -> Self {
-        let (hub_tx, hub_rx) = std::sync::mpsc::channel();
+        let (hub_tx, hub_rx) = crate::view::hub_channel();
         let context = create_test_context();
         let rect = context.device.framebuffer().rect();
         let view: Box<dyn View> = Box::new(Filler::new(rect, WHITE));
@@ -65,7 +64,7 @@ impl DeviceRuntimeHarness {
     }
 
     /// Collects all events sent on the hub since the last drain.
-    pub(crate) fn drain_hub(&self) -> Vec<Event> {
+    pub(crate) fn drain_hub(&mut self) -> Vec<Event> {
         let mut events = Vec::new();
         while let Ok(message) = self.hub_rx.try_recv() {
             events.push(message.event);

@@ -8,8 +8,9 @@ use crate::device::inhibitor::{Inhibitor, Kind, SoftSuspendName};
 use crate::library::Library;
 use crate::library::importer::{self, ImportOutcome};
 use crate::settings::Settings;
-use crate::task::{BackgroundTask, ShutdownSignal, TaskId};
+use crate::task::{BackgroundTask, TaskFuture, TaskId};
 use crate::view::{Event, ID_FEEDER, ViewId};
+use tokio_util::sync::CancellationToken;
 
 /// Runs an import for one library (or all libraries when `library_index` is `None`).
 ///
@@ -48,12 +49,12 @@ impl ImportTask {
         }
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(hub, shutdown, self)))]
-    fn run_for_index(
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(hub, cancel, self)))]
+    async fn run_for_index(
         &self,
         index: usize,
         hub: &crate::view::Hub,
-        shutdown: &ShutdownSignal,
+        cancel: &CancellationToken,
     ) -> ImportOutcome {
         let lib_settings = match self.settings.libraries.get(index) {
             Some(s) => s,
@@ -66,7 +67,9 @@ impl ImportTask {
             }
         };
 
-        let library = match Library::new(&lib_settings.path, &self.database, &lib_settings.name) {
+        let library = match Library::new(&lib_settings.path, &self.database, &lib_settings.name)
+            .await
+        {
             Ok(lib) => lib,
             Err(e) => {
                 tracing::error!(error = %e, library_index = index, "failed to open library for import");
@@ -84,8 +87,9 @@ impl ImportTask {
             self.force,
             hub,
             notif_id,
-            shutdown,
+            cancel,
         )
+        .await
     }
 }
 
@@ -95,42 +99,48 @@ impl BackgroundTask for ImportTask {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-    fn run(&mut self, hub: &crate::view::Hub, shutdown: &ShutdownSignal) {
-        let _soft_suspend = match self
-            .inhibitor
-            .acquire(Kind::SoftSuspend, SoftSuspendName::LibraryImport)
-        {
-            Ok(guard) => Some(guard),
-            Err(error) => {
-                tracing::error!(
-                    error = %error,
-                    soft_suspend_lease = %SoftSuspendName::LibraryImport,
-                    "failed to acquire soft-suspend lease for library import task"
-                );
-                None
-            }
-        };
-        match self.library_index {
-            Some(index) => {
-                self.outcome = self.run_for_index(index, hub, shutdown);
-            }
-            None => {
-                for index in 0..self.settings.libraries.len() {
-                    if shutdown.should_stop() {
-                        self.outcome = ImportOutcome::Interrupted;
-                        return;
-                    }
-                    match self.run_for_index(index, hub, shutdown) {
-                        ImportOutcome::Completed => {}
-                        failed_or_interrupted => {
-                            self.outcome = failed_or_interrupted;
+    fn run<'a>(
+        &'a mut self,
+        hub: &'a crate::view::Hub,
+        cancel: &'a CancellationToken,
+    ) -> TaskFuture<'a> {
+        Box::pin(async move {
+            let _soft_suspend = match self
+                .inhibitor
+                .acquire(Kind::SoftSuspend, SoftSuspendName::LibraryImport)
+            {
+                Ok(guard) => Some(guard),
+                Err(error) => {
+                    tracing::error!(
+                        error = %error,
+                        soft_suspend_lease = %SoftSuspendName::LibraryImport,
+                        "failed to acquire soft-suspend lease for library import task"
+                    );
+                    None
+                }
+            };
+            match self.library_index {
+                Some(index) => {
+                    self.outcome = self.run_for_index(index, hub, cancel).await;
+                }
+                None => {
+                    for index in 0..self.settings.libraries.len() {
+                        if cancel.is_cancelled() {
+                            self.outcome = ImportOutcome::Interrupted;
                             return;
                         }
+                        match self.run_for_index(index, hub, cancel).await {
+                            ImportOutcome::Completed => {}
+                            failed_or_interrupted => {
+                                self.outcome = failed_or_interrupted;
+                                return;
+                            }
+                        }
                     }
+                    self.outcome = ImportOutcome::Completed;
                 }
-                self.outcome = ImportOutcome::Completed;
             }
-        }
+        })
     }
 
     fn finished_event(&self) -> Option<Event> {

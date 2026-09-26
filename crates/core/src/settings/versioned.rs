@@ -77,7 +77,7 @@ impl SettingsManager {
     ///
     /// * `root_dir` - The directory that contains the `Settings/` subdirectory
     ///   and the legacy `Settings.toml` file. Pass
-    ///   [`Device::data_dir()`](crate::device::Device::data_dir) so that
+    ///   [`DevicePaths::data_dir()`](crate::device::DevicePaths::data_dir) so that
     ///   versioned settings are stored on the SD card when one is present.
     /// * `current_version` - The current application version (from
     ///   `get_current_version()`)

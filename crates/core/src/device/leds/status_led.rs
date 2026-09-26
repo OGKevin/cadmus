@@ -14,7 +14,6 @@ use crate::lease::LeaseName;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
-use std::thread;
 use std::time::Duration;
 
 /// Visual pattern driven on the physical status LED.
@@ -94,7 +93,7 @@ struct StatusLedInner {
 /// share the `Arc` across autosleep policy and future Full-inhibit wiring.
 pub struct StatusLed {
     inner: Arc<StatusLedInner>,
-    worker: Option<thread::JoinHandle<()>>,
+    worker: Option<tokio::task::JoinHandle<()>>,
 }
 
 /// RAII guard for an installed status-LED command.
@@ -229,7 +228,7 @@ impl StatusLed {
             sequence: AtomicU64::new(0),
         });
         let worker = Arc::clone(&inner);
-        let handle = thread::spawn(move || worker.run());
+        let handle = crate::runtime::spawn_blocking(move || worker.run());
         Arc::new(Self {
             inner,
             worker: Some(handle),
@@ -297,7 +296,7 @@ impl Drop for StatusLed {
         }
         self.inner.cv.notify_one();
         if let Some(handle) = self.worker.take() {
-            let _ = handle.join();
+            let _ = crate::runtime::block_on(handle);
         }
     }
 }
@@ -313,6 +312,7 @@ mod tests {
     use super::*;
     use crate::device::leds::LedsError;
     use std::sync::atomic::{AtomicU32, Ordering};
+    use std::thread;
 
     struct CountingLeds {
         on_calls: AtomicU32,
@@ -341,8 +341,8 @@ mod tests {
         panic!("condition not met within timeout");
     }
 
-    #[test]
-    fn higher_priority_overrides_lower() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn higher_priority_overrides_lower() {
         let leds = Arc::new(CountingLeds {
             on_calls: AtomicU32::new(0),
             off_calls: AtomicU32::new(0),
@@ -366,8 +366,8 @@ mod tests {
         wait_for(|| leds.on_calls.load(Ordering::SeqCst) >= 2);
     }
 
-    #[test]
-    fn reverts_after_higher_release() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn reverts_after_higher_release() {
         let leds = Arc::new(CountingLeds {
             on_calls: AtomicU32::new(0),
             off_calls: AtomicU32::new(0),
@@ -389,8 +389,8 @@ mod tests {
         wait_for(|| leds.on_calls.load(Ordering::SeqCst) >= 2);
     }
 
-    #[test]
-    fn replace_same_name_updates_pattern() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn replace_same_name_updates_pattern() {
         let leds = Arc::new(CountingLeds {
             on_calls: AtomicU32::new(0),
             off_calls: AtomicU32::new(0),
@@ -419,8 +419,8 @@ mod tests {
         wait_for(|| leds.off_calls.load(Ordering::SeqCst) >= 2);
     }
 
-    #[test]
-    fn empty_map_turns_led_off() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn empty_map_turns_led_off() {
         let leds = Arc::new(CountingLeds {
             on_calls: AtomicU32::new(0),
             off_calls: AtomicU32::new(0),
@@ -436,8 +436,8 @@ mod tests {
         wait_for(|| leds.off_calls.load(Ordering::SeqCst) >= 1);
     }
 
-    #[test]
-    fn missing_hardware_succeeds_without_io() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn missing_hardware_succeeds_without_io() {
         let status_led = StatusLed::new(None);
         let guard = status_led.install(
             "soft-indicate",
@@ -447,8 +447,8 @@ mod tests {
         drop(guard);
     }
 
-    #[test]
-    fn drop_joins_worker_and_turns_led_off() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn drop_joins_worker_and_turns_led_off() {
         let leds = Arc::new(CountingLeds {
             on_calls: AtomicU32::new(0),
             off_calls: AtomicU32::new(0),

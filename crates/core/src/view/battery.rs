@@ -51,10 +51,11 @@ impl Battery {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl View for Battery {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, bus, rq, context), fields(event = ?evt
     ), ret(level=tracing::Level::TRACE)))]
-    fn handle_event(
+    async fn handle_event(
         &mut self,
         evt: &Event,
         _hub: &Hub,

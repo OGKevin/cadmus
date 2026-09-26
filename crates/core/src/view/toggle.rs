@@ -41,13 +41,14 @@ impl SelectionBox {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl View for SelectionBox {
     #[cfg_attr(feature = "tracing", tracing::instrument(
         skip(self, _hub, _bus, _rq, _context),
         fields(event = ?_evt),
         ret(level=tracing::Level::TRACE)
     ))]
-    fn handle_event(
+    async fn handle_event(
         &mut self,
         _evt: &Event,
         _hub: &Hub,
@@ -341,10 +342,11 @@ impl Toggle {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl View for Toggle {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, bus, rq, _context), fields(event = ?evt
     ), ret(level=tracing::Level::TRACE)))]
-    fn handle_event(
+    async fn handle_event(
         &mut self,
         evt: &Event,
         _hub: &Hub,
@@ -399,10 +401,9 @@ mod tests {
     use crate::device::DeviceIdentity as _;
     use crate::view::{ToggleEvent, ViewId};
     use std::collections::VecDeque;
-    use std::sync::mpsc::channel;
 
-    #[test]
-    fn test_toggle_starts_in_enabled_state() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_toggle_starts_in_enabled_state() {
         let mut context = create_test_context();
         let rect = rect![0, 0, 200, 50];
         let toggle_event = Event::Toggle(ToggleEvent::View(ViewId::SettingsMenu));
@@ -419,8 +420,8 @@ mod tests {
         assert!(toggle.is_enabled());
     }
 
-    #[test]
-    fn test_toggle_starts_in_disabled_state() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_toggle_starts_in_disabled_state() {
         let mut context = create_test_context();
         let rect = rect![0, 0, 200, 50];
         let toggle_event = Event::Toggle(ToggleEvent::View(ViewId::SettingsMenu));
@@ -437,8 +438,8 @@ mod tests {
         assert!(!toggle.is_enabled());
     }
 
-    #[test]
-    fn test_toggle_event_intercepted_and_state_flipped() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_toggle_event_intercepted_and_state_flipped() {
         let mut context = create_test_context();
         let rect = rect![0, 0, 200, 50];
         let toggle_event = Event::Toggle(ToggleEvent::View(ViewId::SettingsMenu));
@@ -453,11 +454,17 @@ mod tests {
             context.device.dpi(),
         );
 
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
 
-        let handled = toggle.handle_event(&toggle_event, &hub, &mut bus, &mut rq, &mut context);
+        let handled = crate::runtime::block_on(toggle.handle_event(
+            &toggle_event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(handled);
         assert!(!toggle.is_enabled());
@@ -471,8 +478,8 @@ mod tests {
         assert!(!rq.is_empty());
     }
 
-    #[test]
-    fn test_labels_have_correct_events_configured() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_labels_have_correct_events_configured() {
         let mut context = create_test_context();
         let rect = rect![0, 0, 200, 50];
         let toggle_event = Event::Toggle(ToggleEvent::View(ViewId::SettingsMenu));
@@ -494,8 +501,8 @@ mod tests {
         assert!(right_label.text() == "Off");
     }
 
-    #[test]
-    fn test_labels_use_normal_scheme() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_labels_use_normal_scheme() {
         let mut context = create_test_context();
         let rect = rect![0, 0, 200, 50];
         let toggle_event = Event::Toggle(ToggleEvent::View(ViewId::SettingsMenu));
@@ -517,8 +524,8 @@ mod tests {
         assert_eq!(right_label.get_scheme(), TEXT_NORMAL);
     }
 
-    #[test]
-    fn test_filler_separator_is_present() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_filler_separator_is_present() {
         let mut context = create_test_context();
         let rect = rect![0, 0, 200, 50];
         let toggle_event = Event::Toggle(ToggleEvent::View(ViewId::SettingsMenu));
@@ -536,8 +543,8 @@ mod tests {
         assert!(toggle.children[1].is::<Filler>());
     }
 
-    #[test]
-    fn test_multiple_toggles_flips_state_multiple_times() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_multiple_toggles_flips_state_multiple_times() {
         let mut context = create_test_context();
         let rect = rect![0, 0, 200, 50];
         let toggle_event = Event::Toggle(ToggleEvent::View(ViewId::SettingsMenu));
@@ -552,22 +559,40 @@ mod tests {
             context.device.dpi(),
         );
 
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
 
-        toggle.handle_event(&toggle_event, &hub, &mut bus, &mut rq, &mut context);
+        crate::runtime::block_on(toggle.handle_event(
+            &toggle_event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
         assert!(!toggle.is_enabled());
 
-        toggle.handle_event(&toggle_event, &hub, &mut bus, &mut rq, &mut context);
+        crate::runtime::block_on(toggle.handle_event(
+            &toggle_event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
         assert!(toggle.is_enabled());
 
-        toggle.handle_event(&toggle_event, &hub, &mut bus, &mut rq, &mut context);
+        crate::runtime::block_on(toggle.handle_event(
+            &toggle_event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
         assert!(!toggle.is_enabled());
     }
 
-    #[test]
-    fn test_non_toggle_events_are_ignored() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_non_toggle_events_are_ignored() {
         let mut context = create_test_context();
         let rect = rect![0, 0, 200, 50];
         let toggle_event = Event::Toggle(ToggleEvent::View(ViewId::SettingsMenu));
@@ -582,20 +607,26 @@ mod tests {
             context.device.dpi(),
         );
 
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
 
         let other_event = Event::Back;
-        let handled = toggle.handle_event(&other_event, &hub, &mut bus, &mut rq, &mut context);
+        let handled = crate::runtime::block_on(toggle.handle_event(
+            &other_event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(!handled);
         assert!(toggle.is_enabled());
         assert_eq!(bus.len(), 0);
     }
 
-    #[test]
-    fn test_event_bubbling_continues_after_toggle() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_event_bubbling_continues_after_toggle() {
         let mut context = create_test_context();
         let rect = rect![0, 0, 200, 50];
         let toggle_event = Event::Toggle(ToggleEvent::View(ViewId::SettingsMenu));
@@ -610,11 +641,17 @@ mod tests {
             context.device.dpi(),
         );
 
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
 
-        toggle.handle_event(&toggle_event, &hub, &mut bus, &mut rq, &mut context);
+        crate::runtime::block_on(toggle.handle_event(
+            &toggle_event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert_eq!(bus.len(), 1);
         let emitted_event = bus.pop_front().unwrap();
@@ -624,8 +661,8 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn test_has_four_children() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_has_four_children() {
         let mut context = create_test_context();
         let rect = rect![0, 0, 200, 50];
         let toggle_event = Event::Toggle(ToggleEvent::View(ViewId::SettingsMenu));

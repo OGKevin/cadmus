@@ -130,7 +130,7 @@ fn handle_net_up(
     match context
         .device
         .wifi_manager()
-        .and_then(|wifi| wifi.network_info())
+        .and_then(|wifi| crate::runtime::block_on(wifi.network_info()))
     {
         Ok(Some(info)) => {
             let msg = fl!(
@@ -333,8 +333,8 @@ mod tests {
     use crate::input::PowerSource;
     use crate::view::EntryId;
 
-    #[test]
-    fn handle_power_button_ignored_when_shared() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_power_button_ignored_when_shared() {
         let mut harness = DeviceRuntimeHarness::new();
         harness.context.shared = true;
         let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
@@ -344,8 +344,8 @@ mod tests {
         assert!(harness.tasks.is_empty());
     }
 
-    #[test]
-    fn handle_power_button_begins_suspend() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_power_button_begins_suspend() {
         let mut harness = DeviceRuntimeHarness::new();
         let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
             handle_power_button_released(hub, bus, rq, context, runtime)
@@ -354,8 +354,8 @@ mod tests {
         assert!(has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
     }
 
-    #[test]
-    fn handle_power_button_cancels_suspend() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_power_button_cancels_suspend() {
         let mut harness = DeviceRuntimeHarness::new();
         harness.push_task(DeviceTaskId::PrepareSuspend);
         let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
@@ -365,9 +365,9 @@ mod tests {
         assert!(!has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
     }
 
-    #[test]
-    fn handle_light_button_forwards_toggle() {
-        let harness = DeviceRuntimeHarness::new();
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_light_button_forwards_toggle() {
+        let mut harness = DeviceRuntimeHarness::new();
         let outcome = handle_light_button_pressed(&harness.hub_tx);
         assert_eq!(outcome, EventOutcome::Handled);
         assert!(
@@ -378,8 +378,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn handle_rotate_screen_blocked_during_suspend() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_rotate_screen_blocked_during_suspend() {
         let mut harness = DeviceRuntimeHarness::new();
         {
             let mut alarms = harness
@@ -403,8 +403,8 @@ mod tests {
         assert!(harness.drain_hub().is_empty());
     }
 
-    #[test]
-    fn handle_rotate_screen_forwards_select() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_rotate_screen_forwards_select() {
         let mut harness = DeviceRuntimeHarness::new();
         let hub = harness.hub_tx.clone();
         let outcome = harness
@@ -418,8 +418,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn handle_net_up_sets_online_and_shows_notification() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_net_up_sets_online_and_shows_notification() {
         use crate::device::wifi::{Essid, NetworkInfo};
         use crate::fl;
         use std::net::{IpAddr, Ipv4Addr};
@@ -455,8 +455,8 @@ mod tests {
         }));
     }
 
-    #[test]
-    fn handle_net_up_online_without_notification_when_no_association() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_net_up_online_without_notification_when_no_association() {
         let mut harness = DeviceRuntimeHarness::new();
         harness
             .context
@@ -476,8 +476,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn handle_net_up_online_without_notification_when_disabled() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_net_up_online_without_notification_when_disabled() {
         let mut harness = DeviceRuntimeHarness::new();
         harness
             .context
@@ -497,8 +497,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn handle_net_up_noop_when_online() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_net_up_noop_when_online() {
         let mut harness = DeviceRuntimeHarness::new();
         harness.context.online = true;
         let outcome = harness
@@ -507,8 +507,8 @@ mod tests {
         assert!(harness.drain_hub().is_empty());
     }
 
-    #[test]
-    fn handle_cover_on_sets_covered_and_begins_suspend() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_cover_on_sets_covered_and_begins_suspend() {
         let mut harness = DeviceRuntimeHarness::new();
         harness.context.settings.sleep_cover = true;
         let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
@@ -519,8 +519,8 @@ mod tests {
         assert!(has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
     }
 
-    #[test]
-    fn handle_cover_off_cancels_suspend() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_cover_off_cancels_suspend() {
         let mut harness = DeviceRuntimeHarness::new();
         harness.context.covered = true;
         harness.context.settings.sleep_cover = true;
@@ -533,8 +533,8 @@ mod tests {
         assert!(!has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
     }
 
-    #[test]
-    fn handle_user_activity_reschedules_auto_suspend() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_user_activity_reschedules_auto_suspend() {
         let mut harness = DeviceRuntimeHarness::new();
         harness.context.settings.auto_suspend = 30.0;
         harness.with_runtime_only(handle_user_activity);
@@ -562,8 +562,8 @@ mod tests {
         assert!(second >= first);
     }
 
-    #[test]
-    fn handle_plug_host_auto_share() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_plug_host_auto_share() {
         let mut harness = DeviceRuntimeHarness::new();
         harness.context.settings.auto_share = true;
         let outcome = harness.with_parts(|hub, _bus, rq, context, runtime| {
@@ -579,8 +579,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn handle_unplug_reschedules_battery_check() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_unplug_reschedules_battery_check() {
         let mut harness = DeviceRuntimeHarness::new();
         harness.context.plugged = true;
         let outcome = harness
@@ -590,8 +590,8 @@ mod tests {
         assert!(has_task(&harness.tasks, DeviceTaskId::CheckBattery));
     }
 
-    #[test]
-    fn handle_unplug_when_shared_disables_usb() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_unplug_when_shared_disables_usb() {
         let mut harness = DeviceRuntimeHarness::new();
         harness.context.plugged = true;
         harness.context.shared = true;

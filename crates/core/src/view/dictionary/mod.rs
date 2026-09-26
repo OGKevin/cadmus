@@ -678,10 +678,11 @@ impl Dictionary {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl View for Dictionary {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, _bus, rq, context), fields(event = ?evt
     ), ret(level=tracing::Level::TRACE)))]
-    fn handle_event(
+    async fn handle_event(
         &mut self,
         evt: &Event,
         hub: &Hub,

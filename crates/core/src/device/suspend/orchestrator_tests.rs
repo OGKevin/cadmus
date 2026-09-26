@@ -14,8 +14,8 @@ use crate::settings::IntermissionDisplay;
 use chrono::TimeZone;
 use std::time::Duration;
 
-#[test]
-fn prepare_for_sleep_schedules_suspend_rtc() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn prepare_for_sleep_schedules_suspend_rtc() {
     let mut harness = DeviceRuntimeHarness::new();
     harness.push_task(DeviceTaskId::PrepareSuspend);
     harness.context.settings.wifi = crate::settings::WifiMode::AlwaysOn;
@@ -36,8 +36,8 @@ fn prepare_for_sleep_schedules_suspend_rtc() {
     );
 }
 
-#[test]
-fn prepare_for_sleep_turns_off_frontlight() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn prepare_for_sleep_turns_off_frontlight() {
     let mut harness = DeviceRuntimeHarness::new();
     harness.context.settings.frontlight = true;
     harness
@@ -61,8 +61,8 @@ fn prepare_for_sleep_turns_off_frontlight() {
     assert_eq!(levels.warmth, LightLevel::off());
 }
 
-#[test]
-fn schedule_alarms_past_due_auto_power_off_exits() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn schedule_alarms_past_due_auto_power_off_exits() {
     let mut harness = DeviceRuntimeHarness::new();
     harness.context.settings.auto_power_off = 1.0;
     lock_alarms(&mut harness)
@@ -72,8 +72,8 @@ fn schedule_alarms_past_due_auto_power_off_exits() {
     assert_eq!(outcome, Some(EventOutcome::Exit(ExitStatus::PowerOff)));
 }
 
-#[test]
-fn schedule_alarms_calendar_when_intermission_calendar() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn schedule_alarms_calendar_when_intermission_calendar() {
     let mut harness = DeviceRuntimeHarness::new();
     harness.context.settings.intermissions[IntermKind::Suspend] = IntermissionDisplay::Calendar;
     let outcome = harness.with_runtime_only(schedule_alarms_before_sleep);
@@ -81,8 +81,8 @@ fn schedule_alarms_calendar_when_intermission_calendar() {
     assert!(lock_alarms(&mut harness).has_alarm(AlarmType::CalendarUpdate));
 }
 
-#[test]
-fn handle_post_wake_auto_power_off_exit() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn handle_post_wake_auto_power_off_exit() {
     let mut harness = DeviceRuntimeHarness::new();
     let before = Local::now();
     {
@@ -102,8 +102,8 @@ fn handle_post_wake_auto_power_off_exit() {
     assert_eq!(outcome, EventOutcome::Exit(ExitStatus::PowerOff));
 }
 
-#[test]
-fn perform_suspend_resume_schedules_wake_debounce() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn perform_suspend_resume_schedules_wake_debounce() {
     let mut harness = DeviceRuntimeHarness::new();
     let (_before, _after) = harness.with_parts(|hub, _bus, _rq, context, runtime| {
         perform_suspend_resume(hub, context, runtime)
@@ -116,8 +116,8 @@ fn perform_suspend_resume_schedules_wake_debounce() {
     assert_eq!(power.resume_call_count(), 1);
 }
 
-#[test]
-fn wake_debounce_classic_reenters_via_enter_sleep() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn wake_debounce_classic_reenters_via_enter_sleep() {
     use crate::view::common::locate;
     use crate::view::intermission::Intermission;
 
@@ -182,8 +182,8 @@ fn wake_debounce_classic_reenters_via_enter_sleep() {
     assert!(lock_alarms(&mut harness).is_alarm_scheduled(AlarmType::WakeDebounce));
 }
 
-#[test]
-fn handle_rtc_auto_suspend_future_noop_when_not_fired_via_event() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn handle_rtc_auto_suspend_future_noop_when_not_fired_via_event() {
     let mut harness = DeviceRuntimeHarness::new();
     harness.context.settings.auto_suspend = 5.0;
     reschedule_auto_suspend_alarm(&mut harness.context);
@@ -191,8 +191,8 @@ fn handle_rtc_auto_suspend_future_noop_when_not_fired_via_event() {
     assert!(lock_alarms(&mut harness).is_alarm_scheduled(AlarmType::AutoSuspend));
 }
 
-#[test]
-fn handle_rtc_auto_suspend_fired_begins_suspend() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn handle_rtc_auto_suspend_fired_begins_suspend() {
     let mut harness = DeviceRuntimeHarness::new();
     harness.context.settings.auto_suspend = 30.0;
     let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
@@ -209,8 +209,8 @@ fn handle_rtc_auto_suspend_fired_begins_suspend() {
     assert!(has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
 }
 
-#[test]
-fn handle_rtc_auto_power_off_exits() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn handle_rtc_auto_power_off_exits() {
     let mut harness = DeviceRuntimeHarness::new();
     let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
         handle_event(
@@ -225,8 +225,8 @@ fn handle_rtc_auto_power_off_exits() {
     assert_eq!(outcome, EventOutcome::Exit(ExitStatus::PowerOff));
 }
 
-#[test]
-fn handle_rtc_auto_power_off_ignored_while_full_inhibit_active() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn handle_rtc_auto_power_off_ignored_while_full_inhibit_active() {
     let mut harness = DeviceRuntimeHarness::new();
     let _full = harness
         .context
@@ -246,8 +246,8 @@ fn handle_rtc_auto_power_off_ignored_while_full_inhibit_active() {
     assert_eq!(outcome, EventOutcome::Handled);
 }
 
-#[test]
-fn handle_rtc_auto_suspend_blocked_when_shared_reschedules() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn handle_rtc_auto_suspend_blocked_when_shared_reschedules() {
     let mut harness = DeviceRuntimeHarness::new();
     harness.context.settings.auto_suspend = 30.0;
     harness.context.shared = true;
@@ -266,8 +266,8 @@ fn handle_rtc_auto_suspend_blocked_when_shared_reschedules() {
     assert!(lock_alarms(&mut harness).is_alarm_scheduled(AlarmType::AutoSuspend));
 }
 
-#[test]
-fn reschedule_auto_suspend_zero_cancels() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn reschedule_auto_suspend_zero_cancels() {
     let mut harness = DeviceRuntimeHarness::new();
     harness.context.settings.auto_suspend = 30.0;
     reschedule_auto_suspend_alarm(&mut harness.context);
@@ -277,8 +277,8 @@ fn reschedule_auto_suspend_zero_cancels() {
     assert!(!lock_alarms(&mut harness).has_alarm(AlarmType::AutoSuspend));
 }
 
-#[test]
-fn reschedule_auto_suspend_moves_deadline_forward() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn reschedule_auto_suspend_moves_deadline_forward() {
     let mut harness = DeviceRuntimeHarness::new();
     harness.context.settings.auto_suspend = 30.0;
     reschedule_auto_suspend_alarm(&mut harness.context);
@@ -294,8 +294,8 @@ fn reschedule_auto_suspend_moves_deadline_forward() {
     assert!((second - 30 * 60).abs() < 2);
 }
 
-#[test]
-fn reschedule_auto_suspend_sub_minute_clamps_nonzero() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn reschedule_auto_suspend_sub_minute_clamps_nonzero() {
     let mut harness = DeviceRuntimeHarness::new();
     harness.context.settings.auto_suspend = 0.01;
     assert_eq!(
@@ -314,8 +314,8 @@ fn reschedule_auto_suspend_sub_minute_clamps_nonzero() {
     assert!(until >= 0);
 }
 
-#[test]
-fn start_cycle_cancels_auto_suspend_alarm() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn start_cycle_cancels_auto_suspend_alarm() {
     let mut harness = DeviceRuntimeHarness::new();
     harness.context.settings.auto_suspend = 30.0;
     reschedule_auto_suspend_alarm(&mut harness.context);
@@ -326,8 +326,8 @@ fn start_cycle_cancels_auto_suspend_alarm() {
     assert!(has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
 }
 
-#[test]
-fn cancel_prepare_suspend_reschedules_auto_suspend() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cancel_prepare_suspend_reschedules_auto_suspend() {
     let mut harness = DeviceRuntimeHarness::new();
     harness.context.settings.auto_suspend = 30.0;
     harness.with_parts(|hub, bus, rq, context, runtime| {
@@ -342,8 +342,8 @@ fn cancel_prepare_suspend_reschedules_auto_suspend() {
     assert!(lock_alarms(&mut harness).is_alarm_scheduled(AlarmType::AutoSuspend));
 }
 
-#[test]
-fn cancel_suspend_rtc_reschedules_auto_suspend() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cancel_suspend_rtc_reschedules_auto_suspend() {
     let mut harness = DeviceRuntimeHarness::new();
     harness.context.settings.auto_suspend = 30.0;
     harness.with_parts(|hub, bus, rq, context, runtime| {
@@ -363,8 +363,8 @@ fn cancel_suspend_rtc_reschedules_auto_suspend() {
     assert!(!lock_alarms(&mut harness).has_alarm(AlarmType::Suspend));
 }
 
-#[test]
-fn stale_suspend_rtc_after_cancel_skips_hardware_sleep() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn stale_suspend_rtc_after_cancel_skips_hardware_sleep() {
     let mut harness = DeviceRuntimeHarness::new();
     harness.context.settings.auto_suspend = 30.0;
     harness.context.settings.auto_power_off = 1.0;
@@ -407,8 +407,8 @@ fn stale_suspend_rtc_after_cancel_skips_hardware_sleep() {
     );
 }
 
-#[test]
-fn finish_cycle_clears_auto_power_off_before_post_wake_can_see_it() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn finish_cycle_clears_auto_power_off_before_post_wake_can_see_it() {
     let mut harness = DeviceRuntimeHarness::new();
     harness.with_parts(|hub, bus, rq, context, runtime| {
         start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks);
@@ -437,8 +437,8 @@ fn finish_cycle_clears_auto_power_off_before_post_wake_can_see_it() {
     );
 }
 
-#[test]
-fn classic_prepare_suspend_still_schedules_with_suspend_rtc() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn classic_prepare_suspend_still_schedules_with_suspend_rtc() {
     let mut harness = DeviceRuntimeHarness::new();
     assert!(!harness.context.inhibitor.mode().is_armed());
     harness.with_parts(|hub, bus, rq, context, runtime| {
@@ -459,8 +459,8 @@ fn classic_prepare_suspend_still_schedules_with_suspend_rtc() {
     assert!(lock_alarms(&mut harness).is_alarm_scheduled(AlarmType::Suspend));
 }
 
-#[test]
-fn soft_start_cycle_acquires_cycle_lease() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn soft_start_cycle_acquires_cycle_lease() {
     let mut harness = DeviceRuntimeHarness::new();
     let (_dir, _paths) = install_armed_soft_suspend(&mut harness);
     harness.with_parts(|hub, bus, rq, context, runtime| {
@@ -477,8 +477,8 @@ fn soft_start_cycle_acquires_cycle_lease() {
     assert!(has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
 }
 
-#[test]
-fn soft_prepare_suspend_enters_deep_idle() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn soft_prepare_suspend_enters_deep_idle() {
     let mut harness = DeviceRuntimeHarness::new();
     let (_dir, _paths) = install_armed_soft_suspend(&mut harness);
     harness.with_parts(|hub, bus, rq, context, runtime| {
@@ -509,8 +509,8 @@ fn soft_prepare_suspend_enters_deep_idle() {
     assert!(!lock_alarms(&mut harness).has_alarm(AlarmType::Suspend));
 }
 
-#[test]
-fn soft_deep_idle_has_no_holders_when_cycle_lease_dropped() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn soft_deep_idle_has_no_holders_when_cycle_lease_dropped() {
     let mut harness = DeviceRuntimeHarness::new();
     let (_dir, _paths) = install_armed_soft_suspend(&mut harness);
     harness.with_parts(|hub, bus, rq, context, runtime| {
@@ -526,8 +526,8 @@ fn soft_deep_idle_has_no_holders_when_cycle_lease_dropped() {
     );
 }
 
-#[test]
-fn soft_deep_idle_forces_mem_without_state_mem_write() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn soft_deep_idle_forces_mem_without_state_mem_write() {
     use std::fs;
 
     let mut harness = DeviceRuntimeHarness::new();
@@ -569,8 +569,8 @@ fn soft_deep_idle_forces_mem_without_state_mem_write() {
     assert!(autosleep.trim() == "freeze" || autosleep.trim() == "Freeze");
 }
 
-#[test]
-fn soft_deep_idle_schedules_wake_debounce_alarm() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn soft_deep_idle_schedules_wake_debounce_alarm() {
     let mut harness = DeviceRuntimeHarness::new();
     let (_dir, _paths) = install_armed_soft_suspend(&mut harness);
     harness.context.settings.auto_suspend = 30.0;
@@ -610,8 +610,8 @@ fn soft_deep_idle_schedules_wake_debounce_alarm() {
     assert!(locate::<Intermission>(harness.view.as_ref()).is_some());
 }
 
-#[test]
-fn soft_deep_idle_wake_debounce_fired_begins_suspend() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn soft_deep_idle_wake_debounce_fired_begins_suspend() {
     let mut harness = DeviceRuntimeHarness::new();
     let (_dir, _paths) = install_armed_soft_suspend(&mut harness);
     harness.context.settings.auto_suspend = 30.0;
@@ -650,8 +650,8 @@ fn soft_deep_idle_wake_debounce_fired_begins_suspend() {
     assert_eq!(intermission_count(harness.view.as_ref()), 1);
 }
 
-#[test]
-fn soft_deep_idle_calendar_wake_keeps_suspend_intermission() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn soft_deep_idle_calendar_wake_keeps_suspend_intermission() {
     let mut harness = DeviceRuntimeHarness::new();
     let (_dir, _paths) = install_armed_soft_suspend(&mut harness);
     harness.context.settings.intermissions[IntermKind::Suspend] = IntermissionDisplay::Calendar;
@@ -698,8 +698,8 @@ fn soft_deep_idle_calendar_wake_keeps_suspend_intermission() {
     );
 }
 
-#[test]
-fn soft_deep_idle_timeout_retries_without_finishing_cycle() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn soft_deep_idle_timeout_retries_without_finishing_cycle() {
     let mut harness = DeviceRuntimeHarness::new();
     let (_dir, _paths) = install_armed_soft_suspend(&mut harness);
     harness.context.settings.intermissions[IntermKind::Suspend] = IntermissionDisplay::Calendar;
@@ -758,8 +758,8 @@ fn soft_deep_idle_timeout_retries_without_finishing_cycle() {
     assert!(locate::<Intermission>(harness.view.as_ref()).is_some());
 }
 
-#[test]
-fn soft_deep_idle_wait_succeeds_with_input_lease_holders() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn soft_deep_idle_wait_succeeds_with_input_lease_holders() {
     let mut harness = DeviceRuntimeHarness::new();
     let (_dir, _paths) = install_armed_soft_suspend(&mut harness);
     harness.with_parts(|hub, bus, rq, context, runtime| {
@@ -790,8 +790,8 @@ fn soft_deep_idle_wait_succeeds_with_input_lease_holders() {
     assert!(lock_alarms(&mut harness).is_alarm_scheduled(AlarmType::WakeDebounce));
 }
 
-#[test]
-fn idle_soft_suspend_input_lease_keeps_holders() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn idle_soft_suspend_input_lease_keeps_holders() {
     let mut harness = DeviceRuntimeHarness::new();
     let (_dir, _paths) = install_armed_soft_suspend(&mut harness);
     assert!(harness.context.suspend.is_none());
@@ -824,8 +824,8 @@ fn five_minute_boundary_near_end() {
     assert_eq!(seconds_until_next_five_minute_boundary(&now), 2);
 }
 
-#[test]
-fn calendar_rearm_schedules_relative_from_system_boundary() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn calendar_rearm_schedules_relative_from_system_boundary() {
     let mut harness = DeviceRuntimeHarness::new();
     harness.context.settings.intermissions[IntermKind::Suspend] = IntermissionDisplay::Calendar;
 
@@ -837,8 +837,8 @@ fn calendar_rearm_schedules_relative_from_system_boundary() {
     );
 }
 
-#[test]
-fn soft_rtc_calendar_update_rearms_and_reenters() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn soft_rtc_calendar_update_rearms_and_reenters() {
     let mut harness = DeviceRuntimeHarness::new();
     let (_dir, _paths) = install_armed_soft_suspend(&mut harness);
     harness.context.settings.intermissions[IntermKind::Suspend] = IntermissionDisplay::Calendar;
@@ -879,8 +879,8 @@ fn soft_rtc_calendar_update_rearms_and_reenters() {
     assert!(lock_alarms(&mut harness).is_alarm_scheduled(AlarmType::CalendarUpdate));
 }
 
-#[test]
-fn soft_calendar_update_during_insleep_preserves_deep_idle_restore() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn soft_calendar_update_during_insleep_preserves_deep_idle_restore() {
     let mut harness = DeviceRuntimeHarness::new();
     let (_dir, _paths) = install_armed_soft_suspend(&mut harness);
     harness.context.settings.intermissions[IntermKind::Suspend] = IntermissionDisplay::Calendar;
@@ -935,17 +935,17 @@ fn soft_calendar_update_during_insleep_preserves_deep_idle_restore() {
     );
 }
 
-#[test]
-fn classic_rtc_calendar_update_rearms_and_reenters() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn classic_rtc_calendar_update_rearms_and_reenters() {
     let mut harness = DeviceRuntimeHarness::new();
     harness.context.settings.intermissions[IntermKind::Suspend] = IntermissionDisplay::Calendar;
     harness.context.suspend = Some(SuspendCycle::new(SuspendKind::Classic));
     harness.with_parts(|hub, bus, rq, context, runtime| {
-        let interm = Intermission::new(
+        let interm = crate::runtime::block_on(Intermission::new(
             context.device.framebuffer().rect(),
             IntermKind::Suspend,
             context,
-        );
+        ));
         runtime.view.children_mut().push(Box::new(interm));
         let _ = (hub, bus, rq);
     });
@@ -975,8 +975,8 @@ fn classic_rtc_calendar_update_rearms_and_reenters() {
     );
 }
 
-#[test]
-fn soft_armed_classic_suspend_refused_without_cycle_lease() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn soft_armed_classic_suspend_refused_without_cycle_lease() {
     let mut harness = DeviceRuntimeHarness::new();
     let (_dir, _paths) = install_armed_soft_suspend(&mut harness);
     harness.context.settings.auto_suspend = 30.0;
@@ -1006,8 +1006,8 @@ fn soft_armed_classic_suspend_refused_without_cycle_lease() {
     assert!(lock_alarms(&mut harness).is_alarm_scheduled(AlarmType::AutoSuspend));
 }
 
-#[test]
-fn soft_cancel_suspend_drops_cycle_lease_and_restores_mode() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn soft_cancel_suspend_drops_cycle_lease_and_restores_mode() {
     let mut harness = DeviceRuntimeHarness::new();
     let (_dir, _paths) = install_armed_soft_suspend(&mut harness);
     harness.context.settings.auto_suspend = 30.0;
@@ -1035,8 +1035,8 @@ fn soft_cancel_suspend_drops_cycle_lease_and_restores_mode() {
     assert!(lock_alarms(&mut harness).is_alarm_scheduled(AlarmType::AutoSuspend));
 }
 
-#[test]
-fn deep_idle_reentry_preserves_frontlight_levels() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn deep_idle_reentry_preserves_frontlight_levels() {
     let mut harness = DeviceRuntimeHarness::new();
     let (_dir, _paths) = install_armed_soft_suspend(&mut harness);
     harness.context.settings.frontlight = true;
@@ -1098,8 +1098,8 @@ fn deep_idle_reentry_preserves_frontlight_levels() {
     assert!(lock_alarms(&mut harness).is_alarm_scheduled(AlarmType::AutoSuspend));
 }
 
-#[test]
-fn suspend_during_deep_idle_wait_does_not_finish_cycle() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn suspend_during_deep_idle_wait_does_not_finish_cycle() {
     let mut harness = DeviceRuntimeHarness::new();
     let (_dir, _paths) = install_armed_soft_suspend(&mut harness);
     harness.with_parts(|hub, bus, rq, context, runtime| {
@@ -1132,8 +1132,8 @@ fn suspend_during_deep_idle_wait_does_not_finish_cycle() {
     assert!(locate::<Intermission>(harness.view.as_ref()).is_some());
 }
 
-#[test]
-fn deep_idle_timeout_cannot_rearm_finishes_cycle() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn deep_idle_timeout_cannot_rearm_finishes_cycle() {
     let mut harness = DeviceRuntimeHarness::new();
     let (_dir, _paths) = install_armed_soft_suspend(&mut harness);
     harness.with_parts(|hub, bus, rq, context, runtime| {
@@ -1159,8 +1159,8 @@ fn deep_idle_timeout_cannot_rearm_finishes_cycle() {
     assert!(!has_task(&harness.tasks, DeviceTaskId::PollDeepIdleWait));
 }
 
-#[test]
-fn wake_detect_inject_woke_without_realtime_step() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn wake_detect_inject_woke_without_realtime_step() {
     let mut harness = DeviceRuntimeHarness::new();
     let (_dir, _paths) = install_armed_soft_suspend(&mut harness);
     harness.with_parts(|hub, bus, rq, context, runtime| {
@@ -1188,8 +1188,8 @@ fn wake_detect_inject_woke_without_realtime_step() {
     assert!(lock_alarms(&mut harness).is_alarm_scheduled(AlarmType::WakeDebounce));
 }
 
-#[test]
-fn start_cycle_defers_while_full_inhibit_active() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn start_cycle_defers_while_full_inhibit_active() {
     let mut harness = DeviceRuntimeHarness::new();
     let _full = harness
         .context
@@ -1203,8 +1203,8 @@ fn start_cycle_defers_while_full_inhibit_active() {
     assert!(!has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
 }
 
-#[test]
-fn full_inhibit_cleared_flushes_deferred_suspend() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn full_inhibit_cleared_flushes_deferred_suspend() {
     let mut harness = DeviceRuntimeHarness::new();
     let full = harness
         .context
@@ -1223,8 +1223,8 @@ fn full_inhibit_cleared_flushes_deferred_suspend() {
     assert!(has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
 }
 
-#[test]
-fn clear_deferred_suspend_before_full_release_prevents_flush() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn clear_deferred_suspend_before_full_release_prevents_flush() {
     let mut harness = DeviceRuntimeHarness::new();
     let _full = harness
         .context
@@ -1243,8 +1243,8 @@ fn clear_deferred_suspend_before_full_release_prevents_flush() {
     assert!(!has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
 }
 
-#[test]
-fn reschedule_auto_suspend_clears_deferred_suspend() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn reschedule_auto_suspend_clears_deferred_suspend() {
     let mut harness = DeviceRuntimeHarness::new();
     harness.context.deferred_suspend = true;
     harness.context.settings.auto_suspend = 5.0;

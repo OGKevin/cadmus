@@ -14,7 +14,6 @@ use crate::framebuffer::UpdateMode;
 use crate::geom::{BorderSpec, CornerSpec, Point, Rectangle, big_half, small_half};
 use crate::gesture::GestureEvent;
 use crate::unit::scale_by_dpi;
-use std::thread;
 
 pub struct Menu {
     id: Id,
@@ -261,10 +260,11 @@ impl Menu {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl View for Menu {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, bus, rq, context), fields(event = ?evt
     ), ret(level=tracing::Level::TRACE)))]
-    fn handle_event(
+    async fn handle_event(
         &mut self,
         evt: &Event,
         hub: &Hub,
@@ -280,12 +280,13 @@ impl View for Menu {
                     bus,
                     rq,
                     context,
-                );
+                )
+                .await;
                 false
             }
             Event::PropagateSelect(..) => {
                 for c in &mut self.children {
-                    if c.handle_event(evt, hub, bus, rq, context) {
+                    if c.handle_event(evt, hub, bus, rq, context).await {
                         break;
                     }
                 }
@@ -294,8 +295,8 @@ impl View for Menu {
             Event::Validate if self.root => {
                 let hub2 = hub.clone();
                 let view_id = self.view_id;
-                thread::spawn(move || {
-                    thread::sleep(CLOSE_IGNITION_DELAY);
+                crate::runtime::current_handle().spawn(async move {
+                    tokio::time::sleep(CLOSE_IGNITION_DELAY).await;
                     hub2.send((Event::Close(view_id)).into()).ok();
                 });
                 true

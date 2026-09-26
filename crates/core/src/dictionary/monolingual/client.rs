@@ -51,17 +51,19 @@ impl MonolingualClient {
     /// Returns an error if the HTTP request fails or the response cannot be
     /// parsed.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
-    pub(super) fn fetch_metadata(&self) -> Result<DictionariesResponse, MonolingualError> {
+    pub(super) async fn fetch_metadata(&self) -> Result<DictionariesResponse, MonolingualError> {
         tracing::debug!("Fetching monolingual metadata from API");
 
         let text = self
             .http
             .get(MONOLINGUAL_API_URL)
             .send()
+            .await
             .map_err(|e| MonolingualError::Request(e.to_string()))?
             .error_for_status()
             .map_err(|e| MonolingualError::Request(e.to_string()))?
             .text()
+            .await
             .map_err(|e| MonolingualError::Request(e.to_string()))?;
 
         let metadata: DictionariesResponse = serde_json::from_str(&text)?;
@@ -79,7 +81,7 @@ impl MonolingualClient {
     /// Returns an error if the HTTP request fails or returns an unexpected
     /// status code.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(since = %since), ret(level=tracing::Level::TRACE)))]
-    pub(super) fn is_metadata_modified_since(
+    pub(super) async fn is_metadata_modified_since(
         &self,
         since: UnixTimestamp,
     ) -> Result<bool, MonolingualError> {
@@ -92,6 +94,7 @@ impl MonolingualClient {
             .head(MONOLINGUAL_API_URL)
             .header("If-Modified-Since", &since_str)
             .send()
+            .await
             .map_err(|e| MonolingualError::Request(e.to_string()))?;
 
         match response.status() {
@@ -117,7 +120,7 @@ impl MonolingualClient {
     /// status, if the `Content-Range` header is missing, or if the chunked
     /// download fails.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, progress_callback), fields(url = %url)))]
-    pub(super) fn download<F>(
+    pub(super) async fn download<F>(
         &self,
         url: &str,
         dest: &std::path::Path,
@@ -133,6 +136,7 @@ impl MonolingualClient {
             .head(url)
             .header("Range", "bytes=0-0")
             .send()
+            .await
             .map_err(|e| MonolingualError::Request(e.to_string()))?
             .error_for_status()
             .map_err(|e| MonolingualError::Request(e.to_string()))?;
@@ -156,6 +160,7 @@ impl MonolingualClient {
                 progress_callback,
                 None,
             )
+            .await
             .map_err(|e| MonolingualError::Request(e.to_string()))
     }
 }
@@ -177,11 +182,11 @@ mod tests {
     /// Fetches live metadata from the monolingual API.
     ///
     /// Run with: `cargo test -- --ignored`
-    #[test]
+    #[tokio::test]
     #[ignore = "requires network access to www.reader-dict.com"]
-    fn test_fetch_metadata_live() {
+    async fn test_fetch_metadata_live() {
         let client = create_test_client();
-        let result = client.fetch_metadata();
+        let result = client.fetch_metadata().await;
         assert!(result.is_ok(), "fetch_metadata failed: {:?}", result.err());
         let metadata = result.unwrap();
         assert!(
@@ -194,12 +199,12 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore = "requires network access to www.reader-dict.com"]
-    fn test_is_metadata_modified_since() {
+    async fn test_is_metadata_modified_since() {
         let client = create_test_client();
         let old_ts = UnixTimestamp::from(chrono::NaiveDate::from_ymd_opt(2000, 1, 1).unwrap());
-        let result = client.is_metadata_modified_since(old_ts);
+        let result = client.is_metadata_modified_since(old_ts).await;
         assert!(result.is_ok());
         assert!(
             result.unwrap(),

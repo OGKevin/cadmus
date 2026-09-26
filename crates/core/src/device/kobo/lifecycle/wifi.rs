@@ -5,10 +5,9 @@ use crate::input::DeviceEvent;
 use crate::settings::{WIFI_IDLE_TIMEOUT_MIN_MINUTES, WifiMode};
 use crate::view::{EntryId, Event, Hub};
 use std::sync::mpsc;
-use std::thread;
 use std::time::Duration;
 
-/// Spawns a background thread that periodically sends [`Event::MightDisableWifi`].
+/// Spawns a blocking task that periodically sends [`Event::MightDisableWifi`].
 ///
 /// Polls every [`WIFI_IDLE_TIMEOUT_MIN_MINUTES`] (converted to a duration).
 /// Positive idle timeouts below that minimum are clamped when settings are
@@ -42,30 +41,25 @@ pub(super) fn spawn_wifi_idle_poller(
         "starting wifi idle poller"
     );
 
-    if let Err(error) = thread::Builder::new()
-        .name("wifi-idle-poll".into())
-        .spawn(move || {
-            tracing::debug!("wifi idle poller thread running");
-            loop {
-                match idle_wake.recv_timeout(poll_interval) {
-                    Ok(()) => tracing::trace!("wifi idle wake"),
-                    Err(mpsc::RecvTimeoutError::Timeout) => {
-                        tracing::trace!("wifi idle poll tick");
-                    }
-                    Err(mpsc::RecvTimeoutError::Disconnected) => {
-                        tracing::debug!("wifi idle poller stopping: wake channel closed");
-                        break;
-                    }
+    crate::runtime::spawn_blocking(move || {
+        tracing::debug!("wifi idle poller running");
+        loop {
+            match idle_wake.recv_timeout(poll_interval) {
+                Ok(()) => tracing::trace!("wifi idle wake"),
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    tracing::trace!("wifi idle poll tick");
                 }
-                if hub.send((Event::MightDisableWifi).into()).is_err() {
-                    tracing::debug!("wifi idle poller stopping: hub closed");
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    tracing::debug!("wifi idle poller stopping: wake channel closed");
                     break;
                 }
             }
-        })
-    {
-        tracing::error!(error = %error, "failed to spawn wifi idle poller");
-    }
+            if hub.send((Event::MightDisableWifi).into()).is_err() {
+                tracing::debug!("wifi idle poller stopping: hub closed");
+                break;
+            }
+        }
+    });
 }
 
 /// Dispatches WiFi-related lifecycle events.
@@ -114,20 +108,22 @@ fn handle_set_wifi_mode(mode: WifiMode, hub: &Hub, context: &mut AppContext) -> 
         WifiMode::AlwaysOn => {
             let session = context.wifi_session.clone();
             let hub = hub.clone();
-            thread::spawn(move || match session.enable_radio() {
-                Ok(true) => {
-                    hub.send((Event::Device(DeviceEvent::NetUp)).into()).ok();
-                }
-                Ok(false) => {}
-                Err(error) => {
-                    tracing::error!(error = %error, "Failed to enable WiFi");
+            crate::runtime::current_handle().spawn(async move {
+                match session.enable_radio().await {
+                    Ok(true) => {
+                        hub.send((Event::Device(DeviceEvent::NetUp)).into()).ok();
+                    }
+                    Ok(false) => {}
+                    Err(error) => {
+                        tracing::error!(error = %error, "Failed to enable WiFi");
+                    }
                 }
             });
         }
         WifiMode::Off => {
             let session = context.wifi_session.clone();
-            thread::spawn(move || {
-                if let Err(error) = session.disable_radio() {
+            crate::runtime::current_handle().spawn(async move {
+                if let Err(error) = session.disable_radio().await {
                     tracing::error!(error = %error, "Failed to disable WiFi");
                 }
             });
@@ -136,9 +132,12 @@ fn handle_set_wifi_mode(mode: WifiMode, hub: &Hub, context: &mut AppContext) -> 
         WifiMode::Auto => {
             if !context.wifi_session.has_holders() {
                 let session = context.wifi_session.clone();
-                thread::spawn(move || {
-                    if let Err(error) = session.disable_radio() {
-                        tracing::error!(error = %error, "Failed to disable WiFi for Auto mode");
+                crate::runtime::current_handle().spawn(async move {
+                    if let Err(error) = session.disable_radio().await {
+                        tracing::error!(
+                            error = %error,
+                            "Failed to disable WiFi for Auto mode"
+                        );
                     }
                 });
                 context.online = false;
@@ -224,8 +223,8 @@ fn handle_might_disable_wifi(context: &mut AppContext) -> EventOutcome {
     context.online = false;
 
     let session = context.wifi_session.clone();
-    thread::spawn(move || {
-        if let Err(error) = session.disable_radio() {
+    crate::runtime::current_handle().spawn(async move {
+        if let Err(error) = session.disable_radio().await {
             tracing::error!(error = %error, "Failed to disable WiFi after idle");
         }
     });
@@ -243,8 +242,8 @@ mod tests {
         std::thread::sleep(Duration::from_millis(50));
     }
 
-    #[test]
-    fn handle_set_wifi_mode_noop_on_duplicate() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_set_wifi_mode_noop_on_duplicate() {
         let mut harness = DeviceRuntimeHarness::new();
         harness.context.settings.wifi = WifiMode::AlwaysOn;
         harness.context.wifi_session.set_mode(WifiMode::AlwaysOn);
@@ -265,8 +264,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn handle_set_wifi_mode_enable_always_on() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_set_wifi_mode_enable_always_on() {
         let mut harness = DeviceRuntimeHarness::new();
         harness.context.settings.wifi = WifiMode::Off;
         let outcome = handle_event(
@@ -282,8 +281,8 @@ mod tests {
         assert_eq!(wifi.enabled(), Some(true));
     }
 
-    #[test]
-    fn handle_set_wifi_mode_disable_clears_online() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_set_wifi_mode_disable_clears_online() {
         let mut harness = DeviceRuntimeHarness::new();
         harness.context.settings.wifi = WifiMode::AlwaysOn;
         harness.context.online = true;
@@ -300,8 +299,8 @@ mod tests {
         assert_eq!(wifi.disable_call_count(), 1);
     }
 
-    #[test]
-    fn handle_set_wifi_mode_always_on_sends_netup_when_connected() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_set_wifi_mode_always_on_sends_netup_when_connected() {
         use crate::device::wifi::{Essid, NetworkInfo};
         use crate::input::DeviceEvent;
 
@@ -331,15 +330,15 @@ mod tests {
         );
     }
 
-    #[test]
-    fn might_disable_wifi_after_idle() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn might_disable_wifi_after_idle() {
         let mut harness = DeviceRuntimeHarness::new();
         harness.context.settings.wifi = WifiMode::Auto;
         harness.context.settings.wifi_idle_timeout = 0.0;
         harness.context.wifi_session.set_mode(WifiMode::Auto);
         harness.context.online = true;
         harness.context.wifi_session.notify_online();
-        let lease = harness.context.wifi_session.acquire("t").unwrap();
+        let lease = crate::runtime::block_on(harness.context.wifi_session.acquire("t")).unwrap();
         drop(lease);
         assert!(harness.context.wifi_session.idle_since().is_some());
 

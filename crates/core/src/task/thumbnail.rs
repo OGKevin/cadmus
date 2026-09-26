@@ -8,10 +8,11 @@ use crate::device::inhibitor::{Inhibitor, Kind, SoftSuspendName};
 use crate::document::open;
 use crate::library::Library;
 use crate::settings::Settings;
-use crate::task::{BackgroundTask, ShutdownSignal, TaskId};
+use crate::task::{BackgroundTask, TaskFuture, TaskId};
 use crate::unit::scale_by_dpi;
 use crate::view::BIG_BAR_HEIGHT;
 use crate::view::Event;
+use tokio_util::sync::CancellationToken;
 
 /// Runs thumbnail extraction for missing book previews in a library (or all libraries when `library_index` is `None`).
 pub struct ThumbnailExtractionTask {
@@ -46,8 +47,13 @@ impl ThumbnailExtractionTask {
         }
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(hub, shutdown, self)))]
-    fn run_for_index(&self, index: usize, hub: &crate::view::Hub, shutdown: &ShutdownSignal) {
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(hub, cancel, self)))]
+    async fn run_for_index(
+        &self,
+        index: usize,
+        hub: &crate::view::Hub,
+        cancel: &CancellationToken,
+    ) {
         let lib_settings = match self.settings.libraries.get(index) {
             Some(s) => s,
             None => {
@@ -59,7 +65,9 @@ impl ThumbnailExtractionTask {
             }
         };
 
-        let library = match Library::new(&lib_settings.path, &self.database, &lib_settings.name) {
+        let library = match Library::new(&lib_settings.path, &self.database, &lib_settings.name)
+            .await
+        {
             Ok(lib) => lib,
             Err(e) => {
                 tracing::error!(error = %e, library_index = index, "failed to open library for thumbnail extraction");
@@ -67,7 +75,11 @@ impl ThumbnailExtractionTask {
             }
         };
 
-        let books = match library.db.books_without_thumbnails(library.library_id) {
+        let books = match library
+            .db
+            .books_without_thumbnails(library.library_id)
+            .await
+        {
             Ok(books) => books,
             Err(e) => {
                 tracing::error!(error = %e, library_id = library.library_id, "failed to query books without thumbnails");
@@ -95,7 +107,7 @@ impl ThumbnailExtractionTask {
         let tw = 3 * th / 4;
 
         for (fp, path) in books {
-            if shutdown.should_stop() {
+            if cancel.is_cancelled() {
                 tracing::info!("thumbnail extraction task shutdown requested, stopping");
                 return;
             }
@@ -103,19 +115,31 @@ impl ThumbnailExtractionTask {
             let full_path = library.home.join(&path);
             tracing::debug!(path = %path.display(), "extracting thumbnail");
 
-            match open(&full_path, &self.install_dir)
-                .and_then(|mut doc| doc.preview_pixmap(tw as f32, th as f32, self.color_samples))
-                .and_then(|pixmap| pixmap.to_png_bytes().ok())
-            {
-                Some(bytes) => {
-                    if let Err(e) = library.db.save_thumbnail(fp, &bytes) {
+            let install_dir = self.install_dir.clone();
+            let color_samples = self.color_samples;
+            let rendered = tokio::task::spawn_blocking(move || {
+                open(&full_path, &install_dir)
+                    .and_then(|mut doc| doc.preview_pixmap(tw as f32, th as f32, color_samples))
+                    .and_then(|pixmap| pixmap.to_png_bytes().ok())
+            })
+            .await;
+            if cancel.is_cancelled() {
+                tracing::info!("thumbnail extraction task shutdown requested, stopping");
+                return;
+            }
+            match rendered {
+                Ok(Some(bytes)) => {
+                    if let Err(e) = library.db.save_thumbnail(fp, &bytes).await {
                         tracing::error!(error = %e, path = %path.display(), "failed to save thumbnail to database");
                     } else {
                         hub.send((Event::RefreshBookPreview(path)).into()).ok();
                     }
                 }
-                None => {
+                Ok(None) => {
                     tracing::warn!(path = %path.display(), "failed to extract preview for book");
+                }
+                Err(error) => {
+                    tracing::error!(error = %error, path = %path.display(), "thumbnail render task panicked");
                 }
             }
         }
@@ -128,34 +152,40 @@ impl BackgroundTask for ThumbnailExtractionTask {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-    fn run(&mut self, hub: &crate::view::Hub, shutdown: &ShutdownSignal) {
-        let _soft_suspend = match self
-            .inhibitor
-            .acquire(Kind::SoftSuspend, SoftSuspendName::Thumbnail)
-        {
-            Ok(guard) => Some(guard),
-            Err(error) => {
-                tracing::error!(
-                    error = %error,
-                    soft_suspend_lease = %SoftSuspendName::Thumbnail,
-                    "failed to acquire soft-suspend lease for thumbnail task"
-                );
-                None
-            }
-        };
-        match self.library_index {
-            Some(index) => {
-                self.run_for_index(index, hub, shutdown);
-            }
-            None => {
-                for index in 0..self.settings.libraries.len() {
-                    if shutdown.should_stop() {
-                        return;
+    fn run<'a>(
+        &'a mut self,
+        hub: &'a crate::view::Hub,
+        cancel: &'a CancellationToken,
+    ) -> TaskFuture<'a> {
+        Box::pin(async move {
+            let _soft_suspend = match self
+                .inhibitor
+                .acquire(Kind::SoftSuspend, SoftSuspendName::Thumbnail)
+            {
+                Ok(guard) => Some(guard),
+                Err(error) => {
+                    tracing::error!(
+                        error = %error,
+                        soft_suspend_lease = %SoftSuspendName::Thumbnail,
+                        "failed to acquire soft-suspend lease for thumbnail task"
+                    );
+                    None
+                }
+            };
+            match self.library_index {
+                Some(index) => {
+                    self.run_for_index(index, hub, cancel).await;
+                }
+                None => {
+                    for index in 0..self.settings.libraries.len() {
+                        if cancel.is_cancelled() {
+                            return;
+                        }
+                        self.run_for_index(index, hub, cancel).await;
                     }
-                    self.run_for_index(index, hub, shutdown);
                 }
             }
-        }
+        })
     }
 
     fn finished_event(&self) -> Option<Event> {

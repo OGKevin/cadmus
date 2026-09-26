@@ -494,9 +494,10 @@ impl LibraryEditor {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl View for LibraryEditor {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
-    fn handle_event(
+    async fn handle_event(
         &mut self,
         evt: &Event,
         hub: &Hub,
@@ -565,7 +566,6 @@ mod tests {
     use super::*;
     use crate::context::test_helpers::create_test_context;
     use std::collections::VecDeque;
-    use std::sync::mpsc::channel;
 
     fn create_test_library() -> LibrarySettings {
         LibrarySettings {
@@ -575,11 +575,11 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_validate_empty_name_shows_notification() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_validate_empty_name_shows_notification() {
         let mut context = create_test_context();
         let rect = rect![0, 0, 600, 800];
-        let (hub, receiver) = channel();
+        let (hub, mut receiver) = crate::view::hub_channel();
         let mut rq = RenderQueue::new();
 
         let mut library = create_test_library();
@@ -589,7 +589,13 @@ mod tests {
 
         let mut bus = VecDeque::new();
 
-        let handled = editor.handle_event(&Event::Validate, &hub, &mut bus, &mut rq, &mut context);
+        let handled = crate::runtime::block_on(editor.handle_event(
+            &Event::Validate,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(handled);
         assert_eq!(bus.len(), 0);
@@ -605,11 +611,11 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_validate_nonexistent_path_shows_notification() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_validate_nonexistent_path_shows_notification() {
         let mut context = create_test_context();
         let rect = rect![0, 0, 600, 800];
-        let (hub, receiver) = channel();
+        let (hub, mut receiver) = crate::view::hub_channel();
         let mut rq = RenderQueue::new();
 
         let mut library = create_test_library();
@@ -619,7 +625,13 @@ mod tests {
 
         let mut bus = VecDeque::new();
 
-        let handled = editor.handle_event(&Event::Validate, &hub, &mut bus, &mut rq, &mut context);
+        let handled = crate::runtime::block_on(editor.handle_event(
+            &Event::Validate,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(handled);
         assert_eq!(bus.len(), 0);
@@ -635,11 +647,11 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_validate_success_emits_update_and_close() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_validate_success_emits_update_and_close() {
         let mut context = create_test_context();
         let rect = rect![0, 0, 600, 800];
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut rq = RenderQueue::new();
 
         let library = create_test_library();
@@ -656,7 +668,13 @@ mod tests {
 
         let mut bus = VecDeque::new();
 
-        let handled = editor.handle_event(&Event::Validate, &hub, &mut bus, &mut rq, &mut context);
+        let handled = crate::runtime::block_on(editor.handle_event(
+            &Event::Validate,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(handled);
         assert_eq!(bus.len(), 2);
@@ -675,11 +693,11 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_edit_library_name_opens_input() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_edit_library_name_opens_input() {
         let mut context = create_test_context();
         let rect = rect![0, 0, 600, 800];
-        let (hub, receiver) = channel();
+        let (hub, mut receiver) = crate::view::hub_channel();
         let mut rq = RenderQueue::new();
 
         let library = create_test_library();
@@ -690,13 +708,13 @@ mod tests {
 
         let mut bus = VecDeque::new();
 
-        let handled = editor.handle_event(
+        let handled = crate::runtime::block_on(editor.handle_event(
             &Event::Select(EntryId::EditLibraryName),
             &hub,
             &mut bus,
             &mut rq,
             &mut context,
-        );
+        ));
 
         assert!(handled);
         assert_eq!(editor.children.len(), initial_children_count + 1);
@@ -712,11 +730,11 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_edit_library_path_opens_file_chooser() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_edit_library_path_opens_file_chooser() {
         let mut context = create_test_context();
         let rect = rect![0, 0, 600, 800];
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut rq = RenderQueue::new();
 
         let library = create_test_library();
@@ -727,24 +745,24 @@ mod tests {
 
         let mut bus = VecDeque::new();
 
-        let handled = editor.handle_event(
+        let handled = crate::runtime::block_on(editor.handle_event(
             &Event::Select(EntryId::EditLibraryPath),
             &hub,
             &mut bus,
             &mut rq,
             &mut context,
-        );
+        ));
 
         assert!(handled);
         assert_eq!(editor.children.len(), initial_children_count + 1);
         assert!(!rq.is_empty());
     }
 
-    #[test]
-    fn test_file_chooser_closed_updates_path() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_file_chooser_closed_updates_path() {
         let mut context = create_test_context();
         let rect = rect![0, 0, 600, 800];
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut rq = RenderQueue::new();
 
         let library = create_test_library();
@@ -757,13 +775,13 @@ mod tests {
         let mut bus = VecDeque::new();
         rq = RenderQueue::new();
 
-        let handled = editor.handle_event(
+        let handled = crate::runtime::block_on(editor.handle_event(
             &Event::FileChooserClosed(Some(new_path.clone())),
             &hub,
             &mut bus,
             &mut rq,
             &mut context,
-        );
+        ));
 
         assert!(!handled);
         assert_ne!(editor.library.path, original_path);
@@ -771,11 +789,11 @@ mod tests {
         assert!(rq.is_empty());
     }
 
-    #[test]
-    fn test_submit_library_name_updates_library() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_submit_library_name_updates_library() {
         let mut context = create_test_context();
         let rect = rect![0, 0, 600, 800];
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut rq = RenderQueue::new();
 
         let library = create_test_library();
@@ -788,13 +806,13 @@ mod tests {
         let mut bus = VecDeque::new();
         rq = RenderQueue::new();
 
-        let handled = editor.handle_event(
+        let handled = crate::runtime::block_on(editor.handle_event(
             &Event::Submit(ViewId::LibraryRenameInput, new_name.clone()),
             &hub,
             &mut bus,
             &mut rq,
             &mut context,
-        );
+        ));
 
         assert!(!handled);
         assert_ne!(editor.library.name, original_name);

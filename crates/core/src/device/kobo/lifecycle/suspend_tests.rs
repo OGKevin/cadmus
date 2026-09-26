@@ -14,8 +14,8 @@ use crate::view::Event;
 use crate::view::common::locate;
 use crate::view::intermission::Intermission;
 
-#[test]
-fn power_release_during_wake_debounce_cancels_and_restores_auto_suspend() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn power_release_during_wake_debounce_cancels_and_restores_auto_suspend() {
     let mut harness = DeviceRuntimeHarness::new();
     let (_dir, _paths) = install_armed_soft_suspend(&mut harness);
     harness.context.settings.auto_suspend = 30.0;
@@ -58,8 +58,8 @@ fn power_release_during_wake_debounce_cancels_and_restores_auto_suspend() {
     assert!(harness.context.suspend.is_some());
 }
 
-#[test]
-fn power_release_after_deep_idle_timeout_retry_finishes_and_restores_auto_suspend() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn power_release_after_deep_idle_timeout_retry_finishes_and_restores_auto_suspend() {
     let mut harness = DeviceRuntimeHarness::new();
     let (_dir, _paths) = install_armed_soft_suspend(&mut harness);
     harness.context.settings.auto_suspend = 30.0;
@@ -94,8 +94,8 @@ fn power_release_after_deep_idle_timeout_retry_finishes_and_restores_auto_suspen
     assert!(lock_alarms(&mut harness).is_alarm_scheduled(AlarmType::AutoSuspend));
 }
 
-#[test]
-fn on_shutdown_preserves_frontlight_levels_during_deep_idle() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn on_shutdown_preserves_frontlight_levels_during_deep_idle() {
     use crate::device::DeviceHardware as _;
     use crate::device::ExitStatus;
     use crate::frontlight::{Frontlight as _, LightLevel, LightLevels};

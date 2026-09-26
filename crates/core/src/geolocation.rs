@@ -90,12 +90,14 @@ struct IpApiResponse {
 /// This uses `https://ipapi.co/json/` to resolve the device's public IP to a
 /// latitude/longitude pair and an IANA time zone. The request times out after
 /// 10 seconds.
-pub fn fetch_geolocation(client: &HttpClient) -> Result<GeoLocation, Error> {
+pub async fn fetch_geolocation(client: &HttpClient) -> Result<GeoLocation, Error> {
     let resp: IpApiResponse = client
         .get("https://ipapi.co/json/")
         .timeout(Duration::from_secs(10))
-        .send()?
-        .json()?;
+        .send()
+        .await?
+        .json()
+        .await?;
 
     let timezone = resp
         .timezone

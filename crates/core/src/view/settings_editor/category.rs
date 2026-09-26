@@ -69,7 +69,7 @@ impl Category {
     /// All other categories ignore it. Passing `None` for a `Dictionaries`
     /// category produces an empty list and logs a warning.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(context, dict_service)))]
-    pub fn settings(
+    pub async fn settings(
         &self,
         context: &AppContext,
         dict_service: Option<&MonolingualDictionaryService>,
@@ -165,7 +165,7 @@ impl Category {
                 };
 
                 let available: BTreeSet<String> = if context.online {
-                    match service.get_available_dictionaries() {
+                    match (service.get_available_dictionaries()).await {
                         Ok(dicts) => dicts.into_iter().map(|(lang, _)| lang).collect(),
                         Err(e) => {
                             tracing::warn!(error = %e, "Failed to load available dictionaries");
@@ -176,7 +176,8 @@ impl Category {
                     BTreeSet::new()
                 };
 
-                let installed: BTreeSet<String> = match service.get_installed_dictionaries() {
+                let installed: BTreeSet<String> = match (service.get_installed_dictionaries()).await
+                {
                     Ok(dicts) => dicts.into_iter().collect(),
                     Err(e) => {
                         tracing::warn!(error = %e, "Failed to load installed dictionaries");
@@ -187,20 +188,19 @@ impl Category {
                 let mut all_langs: Vec<String> = available.union(&installed).cloned().collect();
                 all_langs.sort();
 
-                all_langs
-                    .into_iter()
-                    .map(|lang| {
-                        let is_installed = installed.contains(&lang);
-                        let update_available = is_installed && service.is_update_available(&lang);
-                        let is_installing = service.is_installing(&lang);
-                        Box::new(DictionaryInfo {
-                            lang,
-                            is_installed,
-                            update_available,
-                            is_installing,
-                        }) as Box<dyn SettingKind>
-                    })
-                    .collect()
+                let mut rows = Vec::with_capacity(all_langs.len());
+                for lang in all_langs {
+                    let is_installed = installed.contains(&lang);
+                    let update_available = is_installed && service.is_update_available(&lang).await;
+                    let is_installing = service.is_installing(&lang);
+                    rows.push(Box::new(DictionaryInfo {
+                        lang,
+                        is_installed,
+                        update_available,
+                        is_installing,
+                    }) as Box<dyn SettingKind>);
+                }
+                rows
             }
         }
     }
@@ -231,11 +231,10 @@ mod tests {
     use crate::context::test_helpers::create_test_context;
     use crate::view::settings_editor::kinds::SettingIdentity;
 
-    #[test]
-    fn power_omits_soft_suspend_settings_when_unsupported() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn power_omits_soft_suspend_settings_when_unsupported() {
         let context = create_test_context();
-        let identities: Vec<_> = Category::Power
-            .settings(&context, None)
+        let identities: Vec<_> = crate::runtime::block_on(Category::Power.settings(&context, None))
             .iter()
             .map(|setting| setting.identity())
             .collect();
@@ -250,13 +249,12 @@ mod tests {
         );
     }
 
-    #[test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     #[cfg(target_os = "linux")]
-    fn power_includes_soft_suspend_settings_when_supported() {
+    async fn power_includes_soft_suspend_settings_when_supported() {
         let mut context = create_test_context();
         let _linux = crate::context::test_helpers::install_linux_soft_suspend(&mut context);
-        let identities: Vec<_> = Category::Power
-            .settings(&context, None)
+        let identities: Vec<_> = crate::runtime::block_on(Category::Power.settings(&context, None))
             .iter()
             .map(|setting| setting.identity())
             .collect();
@@ -274,14 +272,14 @@ mod tests {
         );
     }
 
-    #[test]
-    fn reader_includes_font_family() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn reader_includes_font_family() {
         let context = create_test_context();
-        let identities: Vec<_> = Category::Reader
-            .settings(&context, None)
-            .iter()
-            .map(|setting| setting.identity())
-            .collect();
+        let identities: Vec<_> =
+            crate::runtime::block_on(Category::Reader.settings(&context, None))
+                .iter()
+                .map(|setting| setting.identity())
+                .collect();
 
         assert_eq!(identities[0], SettingIdentity::FontFamily);
     }

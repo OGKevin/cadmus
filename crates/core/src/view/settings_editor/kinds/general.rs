@@ -808,8 +808,8 @@ mod tests {
     mod locale {
         use super::*;
 
-        #[test]
-        fn handle_set_locale_updates_settings() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_set_locale_updates_settings() {
             let setting = Locale;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -824,8 +824,8 @@ mod tests {
             assert_eq!(context.settings.locale, locale);
         }
 
-        #[test]
-        fn handle_returns_none_for_wrong_event() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_returns_none_for_wrong_event() {
             let setting = Locale;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -840,8 +840,8 @@ mod tests {
     mod keyboard_layout {
         use super::*;
 
-        #[test]
-        fn handle_set_layout_updates_settings() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_set_layout_updates_settings() {
             let setting = KeyboardLayout;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -855,8 +855,8 @@ mod tests {
             assert_eq!(context.settings.keyboard_layout, "German");
         }
 
-        #[test]
-        fn handle_returns_none_for_wrong_event() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_returns_none_for_wrong_event() {
             let setting = KeyboardLayout;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -898,8 +898,8 @@ mod tests {
     mod auto_share {
         use super::*;
 
-        #[test]
-        fn handle_toggle_event_toggles_value() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_toggle_event_toggles_value() {
             let setting = AutoShare;
             let mut context = create_test_context();
             context.settings = Settings {
@@ -916,8 +916,8 @@ mod tests {
             assert!(context.settings.auto_share);
         }
 
-        #[test]
-        fn handle_returns_none_for_wrong_event() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_returns_none_for_wrong_event() {
             let setting = AutoShare;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -932,8 +932,8 @@ mod tests {
     mod auto_frontlight {
         use super::*;
 
-        #[test]
-        fn brightness_apply_text_parses_and_updates() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn brightness_apply_text_parses_and_updates() {
             let setting = AutoFrontlightBrightness;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -958,8 +958,8 @@ mod tests {
             ));
         }
 
-        #[test]
-        fn brightness_apply_text_ignores_invalid_input() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn brightness_apply_text_ignores_invalid_input() {
             let setting = AutoFrontlightBrightness;
             let mut context = create_test_context();
             context.settings = Settings {
@@ -987,8 +987,8 @@ mod tests {
             ));
         }
 
-        #[test]
-        fn manual_coordinates_apply_text_parses_and_updates() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn manual_coordinates_apply_text_parses_and_updates() {
             let setting = AutoFrontlightManualCoordinates;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -1016,8 +1016,8 @@ mod tests {
             ));
         }
 
-        #[test]
-        fn manual_coordinates_apply_text_clears_on_empty_input() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn manual_coordinates_apply_text_clears_on_empty_input() {
             let setting = AutoFrontlightManualCoordinates;
             let mut context = create_test_context();
             context.settings = Settings {
@@ -1044,8 +1044,8 @@ mod tests {
             ));
         }
 
-        #[test]
-        fn manual_coordinates_apply_text_ignores_invalid_input() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn manual_coordinates_apply_text_ignores_invalid_input() {
             let setting = AutoFrontlightManualCoordinates;
             let mut context = create_test_context();
             context.settings = Settings {
@@ -1139,8 +1139,8 @@ mod tests {
         use super::*;
         use crate::settings::ButtonScheme;
 
-        #[test]
-        fn handle_toggle_event_switches_natural_to_inverted() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_toggle_event_switches_natural_to_inverted() {
             let setting = ButtonScheme;
             let mut context = create_test_context();
             context.settings = Settings {
@@ -1157,8 +1157,8 @@ mod tests {
             assert!(result.0.is_some());
         }
 
-        #[test]
-        fn handle_toggle_event_switches_inverted_to_natural() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_toggle_event_switches_inverted_to_natural() {
             let setting = ButtonScheme;
             let mut context = create_test_context();
             context.settings = Settings {
@@ -1175,8 +1175,8 @@ mod tests {
             assert!(result.0.is_some());
         }
 
-        #[test]
-        fn handle_set_scheme_event_applies_directly() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_set_scheme_event_applies_directly() {
             let setting = ButtonScheme;
             let mut context = create_test_context();
             context.settings = Settings {
@@ -1192,8 +1192,8 @@ mod tests {
             assert!(result.0.is_some());
         }
 
-        #[test]
-        fn handle_returns_none_for_wrong_event() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_returns_none_for_wrong_event() {
             let setting = ButtonScheme;
             let mut context = create_test_context();
             context.settings = Settings::default();

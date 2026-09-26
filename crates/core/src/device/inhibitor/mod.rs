@@ -286,8 +286,8 @@ mod tests {
         Inhibitor::noop_with_battery(battery)
     }
 
-    #[test]
-    fn soft_suspend_acquire_on_noop() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn soft_suspend_acquire_on_noop() {
         let inhibitor = Inhibitor::noop();
         let guard = inhibitor
             .acquire(Kind::SoftSuspend, SoftSuspendName::Wifi)
@@ -298,8 +298,8 @@ mod tests {
         assert_eq!(inhibitor.len(), 0);
     }
 
-    #[test]
-    fn full_tracking_on_noop() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn full_tracking_on_noop() {
         let inhibitor = inhibitor_with_capacity(50.0);
         let guard = inhibitor.acquire(Kind::Full, "ota").unwrap();
         assert!(inhibitor.full_active());
@@ -307,8 +307,8 @@ mod tests {
         assert!(!inhibitor.full_active());
     }
 
-    #[test]
-    fn full_implies_nested_soft_suspend_wake_lock() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn full_implies_nested_soft_suspend_wake_lock() {
         let inhibitor = inhibitor_with_capacity(50.0);
         let _guard = inhibitor.acquire(Kind::Full, "ota").unwrap();
         assert!(
@@ -319,8 +319,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn soft_suspend_only_does_not_block_full() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn soft_suspend_only_does_not_block_full() {
         let inhibitor = Inhibitor::noop();
         let _soft = inhibitor
             .acquire(Kind::SoftSuspend, SoftSuspendName::Wifi)
@@ -328,22 +328,22 @@ mod tests {
         assert!(!inhibitor.full_active());
     }
 
-    #[test]
-    fn full_acquire_rejected_below_min_capacity() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn full_acquire_rejected_below_min_capacity() {
         let inhibitor = inhibitor_with_capacity(FULL_INHIBIT_MIN_CAPACITY_PERCENT - 1.0);
         let result = inhibitor.acquire(Kind::Full, "ota");
         assert!(matches!(result, Err(InhibitorError::BatteryTooLow)));
         assert!(!inhibitor.full_active());
     }
 
-    #[test]
-    fn full_acquire_allowed_at_min_capacity() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn full_acquire_allowed_at_min_capacity() {
         let inhibitor = inhibitor_with_capacity(FULL_INHIBIT_MIN_CAPACITY_PERCENT);
         assert!(inhibitor.acquire(Kind::Full, "ota").is_ok());
     }
 
-    #[test]
-    fn full_release_notifier_runs_on_last_drop() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn full_release_notifier_runs_on_last_drop() {
         let inhibitor = inhibitor_with_capacity(50.0);
         let fired = Arc::new(AtomicU32::new(0));
         let fired_cb = Arc::clone(&fired);

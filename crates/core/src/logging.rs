@@ -259,7 +259,7 @@ fn is_run_log_entry(entry: &DirEntry) -> bool {
 ///   retention settings.
 /// * `log_dir` - Absolute path to the directory where log files are written.
 ///   The caller is responsible for computing this from
-///   [`Device::data_path`](crate::device::Device::data_path) so that logs land
+///   [`DevicePaths::data_path`](crate::device::DevicePaths::data_path) so that logs land
 ///   on the SD card when one is present.
 ///
 /// # Returns
@@ -374,6 +374,7 @@ pub fn init_logging(settings: &LoggingSettings, log_dir: std::path::PathBuf) -> 
 ///
 /// This function ensures all buffered log data is written to disk and, if enabled,
 /// exported to OpenTelemetry endpoints before the application exits. It:
+/// - Stops kernel log capture so its blocking task can finish
 /// - Flushes the file appender buffer (happens automatically via `LOG_GUARD` drop)
 /// - Shuts down OpenTelemetry providers (when `otel` feature is enabled)
 /// - Ensures no log data is lost on exit
@@ -398,6 +399,8 @@ pub fn init_logging(settings: &LoggingSettings, log_dir: std::path::PathBuf) -> 
 /// # Ok::<(), anyhow::Error>(())
 /// ```
 pub fn shutdown_logging() {
+    kern::stop_kern_log_thread();
+
     if let Some(mutex) = LOG_GUARD.get() {
         if let Ok(mut guard_opt) = mutex.lock() {
             if let Some(guard) = guard_opt.take() {

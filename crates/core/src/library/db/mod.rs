@@ -12,7 +12,6 @@ use crate::metadata::{
     CroppingMargins, FileInfo, Info, ReaderInfo, ScrollMode, SortMethod, TextAlign, ZoomMode,
     alphabetic_author, alphabetic_title, natural_cmp, sorter,
 };
-use crate::runtime::RUNTIME;
 use anyhow::Error;
 use conversion::{
     extract_authors, info_to_book_row, reader_info_to_reading_state_row, rows_to_toc_entries,
@@ -183,41 +182,37 @@ impl Db {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(path = %path, name = %name)))]
-    pub fn register_library(&self, path: &str, name: &str) -> Result<i64, Error> {
+    pub async fn register_library(&self, path: &str, name: &str) -> Result<i64, Error> {
         tracing::debug!(path = %path, name = %name, "registering library");
 
-        RUNTIME.block_on(async {
-            let now = UnixTimestamp::now();
+        let now = UnixTimestamp::now();
 
-            let result = sqlx::query!(
-                r#"
+        let result = sqlx::query!(
+            r#"
                         INSERT INTO libraries (path, name, created_at)
                         VALUES (?, ?, ?)
                         "#,
-                path,
-                name,
-                now
-            )
-            .execute(&self.pool)
-            .await?;
+            path,
+            name,
+            now
+        )
+        .execute(&self.pool)
+        .await?;
 
-            let library_id = result.last_insert_rowid();
-            tracing::info!(library_id, path = %path, name = %name, "library registered");
-            Ok(library_id)
-        })
+        let library_id = result.last_insert_rowid();
+        tracing::info!(library_id, path = %path, name = %name, "library registered");
+        Ok(library_id)
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(path = %path)))]
-    pub fn get_library_by_path(&self, path: &str) -> Result<Option<i64>, Error> {
+    pub async fn get_library_by_path(&self, path: &str) -> Result<Option<i64>, Error> {
         tracing::debug!(path = %path, "looking up library by path");
 
-        RUNTIME.block_on(async {
-            let id = sqlx::query_scalar!(r#"SELECT id FROM libraries WHERE path = ?"#, path)
-                .fetch_optional(&self.pool)
-                .await?;
+        let id = sqlx::query_scalar!(r#"SELECT id FROM libraries WHERE path = ?"#, path)
+            .fetch_optional(&self.pool)
+            .await?;
 
-            Ok(id)
-        })
+        Ok(id)
     }
 
     #[inline]
@@ -530,13 +525,11 @@ impl Db {
         feature = "tracing",
         tracing::instrument(skip(self), fields(library_id))
     )]
-    pub fn get_all_books(&self, library_id: i64) -> Result<Vec<Info>, Error> {
+    pub async fn get_all_books(&self, library_id: i64) -> Result<Vec<Info>, Error> {
         tracing::debug!(library_id, "fetching all books from database");
 
-        RUNTIME.block_on(async {
-            let mut conn = self.pool.acquire().await?;
-            Self::get_all_books_on(&mut conn, library_id).await
-        })
+        let mut conn = self.pool.acquire().await?;
+        Self::get_all_books_on(&mut conn, library_id).await
     }
 
     async fn get_all_books_on(
@@ -672,13 +665,16 @@ impl Db {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, path), fields(library_id, path = %path.display())))]
-    pub fn get_book_by_path(&self, library_id: i64, path: &Path) -> Result<Option<Info>, Error> {
+    pub async fn get_book_by_path(
+        &self,
+        library_id: i64,
+        path: &Path,
+    ) -> Result<Option<Info>, Error> {
         let path = path.to_string_lossy().into_owned();
 
-        RUNTIME.block_on(async {
-            let row = sqlx::query_as!(
-                StoredBookRow,
-                r#"
+        let row = sqlx::query_as!(
+            StoredBookRow,
+            r#"
                 SELECT
                     fingerprint as "fingerprint: Fp",
                     title,
@@ -725,38 +721,37 @@ impl Db {
                   AND status = 'active'
                 LIMIT 1
                 "#,
-                library_id,
-                path,
-            )
-            .fetch_optional(&self.pool)
-            .await?;
+            library_id,
+            path,
+        )
+        .fetch_optional(&self.pool)
+        .await?;
 
-            let Some(row) = row else {
-                return Ok(None);
-            };
+        let Some(row) = row else {
+            return Ok(None);
+        };
 
-            let toc_rows = Self::fetch_toc_entries_for_book(
-                &self.pool,
-                library_id,
-                &row.fingerprint.to_string(),
-            )
-            .await?;
-            let toc = (!toc_rows.is_empty())
-                .then(|| rows_to_toc_entries(&toc_rows))
-                .transpose()?;
+        let toc_rows =
+            Self::fetch_toc_entries_for_book(&self.pool, library_id, &row.fingerprint.to_string())
+                .await?;
+        let toc = (!toc_rows.is_empty())
+            .then(|| rows_to_toc_entries(&toc_rows))
+            .transpose()?;
 
-            Self::stored_book_row_to_info(row, toc).map(Some)
-        })
+        Self::stored_book_row_to_info(row, toc).map(Some)
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(library_id, fp = %fp)))]
-    pub fn get_book_by_fingerprint(&self, library_id: i64, fp: Fp) -> Result<Option<Info>, Error> {
+    pub async fn get_book_by_fingerprint(
+        &self,
+        library_id: i64,
+        fp: Fp,
+    ) -> Result<Option<Info>, Error> {
         let fingerprint = fp.to_string();
 
-        RUNTIME.block_on(async {
-            let row = sqlx::query_as!(
-                StoredBookRow,
-                r#"
+        let row = sqlx::query_as!(
+            StoredBookRow,
+            r#"
                 SELECT
                     fingerprint as "fingerprint: Fp",
                     title,
@@ -803,28 +798,24 @@ impl Db {
                   AND status = 'active'
                 LIMIT 1
                 "#,
-                library_id,
-                fingerprint,
-            )
-            .fetch_optional(&self.pool)
-            .await?;
+            library_id,
+            fingerprint,
+        )
+        .fetch_optional(&self.pool)
+        .await?;
 
-            let Some(row) = row else {
-                return Ok(None);
-            };
+        let Some(row) = row else {
+            return Ok(None);
+        };
 
-            let toc_rows = Self::fetch_toc_entries_for_book(
-                &self.pool,
-                library_id,
-                &row.fingerprint.to_string(),
-            )
-            .await?;
-            let toc = (!toc_rows.is_empty())
-                .then(|| rows_to_toc_entries(&toc_rows))
-                .transpose()?;
+        let toc_rows =
+            Self::fetch_toc_entries_for_book(&self.pool, library_id, &row.fingerprint.to_string())
+                .await?;
+        let toc = (!toc_rows.is_empty())
+            .then(|| rows_to_toc_entries(&toc_rows))
+            .transpose()?;
 
-            Self::stored_book_row_to_info(row, toc).map(Some)
-        })
+        Self::stored_book_row_to_info(row, toc).map(Some)
     }
 
     /// Fetches complete `Info` for multiple fingerprints in a single library using one
@@ -834,7 +825,7 @@ impl Db {
     /// relocation can copy metadata for `pending_discovery` stubs before the
     /// old fingerprint is removed. Shelf queries must filter `status = 'active'`.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fps), fields(library_id, count = fps.len())))]
-    pub fn batch_get_books_by_fingerprints(
+    pub async fn batch_get_books_by_fingerprints(
         &self,
         library_id: i64,
         fps: &[Fp],
@@ -849,16 +840,15 @@ impl Db {
             "batch fetching books by fingerprints"
         );
 
-        RUNTIME.block_on(async {
-            let mut result = FxHashMap::default();
-            let mut conn = self.pool.acquire().await?;
+        let mut result = FxHashMap::default();
+        let mut conn = self.pool.acquire().await?;
 
-            for fp in fps {
-                let fingerprint = fp.to_string();
+        for fp in fps {
+            let fingerprint = fp.to_string();
 
-                let row = sqlx::query_as!(
-                    StoredBookRow,
-                    r#"
+            let row = sqlx::query_as!(
+                StoredBookRow,
+                r#"
                     SELECT
                         fingerprint as "fingerprint: Fp",
                         title,
@@ -904,33 +894,32 @@ impl Db {
                     WHERE library_id = ? AND fingerprint = ?
                     LIMIT 1
                     "#,
-                    library_id,
-                    fingerprint,
-                )
-                .fetch_optional(&mut *conn)
-                .await?;
+                library_id,
+                fingerprint,
+            )
+            .fetch_optional(&mut *conn)
+            .await?;
 
-                let Some(row) = row else {
-                    continue;
-                };
+            let Some(row) = row else {
+                continue;
+            };
 
-                let toc_rows = Self::fetch_toc_entries_for_book(
-                    &self.pool,
-                    library_id,
-                    &row.fingerprint.to_string(),
-                )
-                .await?;
-                let toc = (!toc_rows.is_empty())
-                    .then(|| rows_to_toc_entries(&toc_rows))
-                    .transpose()?;
+            let toc_rows = Self::fetch_toc_entries_for_book(
+                &self.pool,
+                library_id,
+                &row.fingerprint.to_string(),
+            )
+            .await?;
+            let toc = (!toc_rows.is_empty())
+                .then(|| rows_to_toc_entries(&toc_rows))
+                .transpose()?;
 
-                if let Ok(info) = Self::stored_book_row_to_info(row, toc) {
-                    result.insert(*fp, info);
-                }
+            if let Ok(info) = Self::stored_book_row_to_info(row, toc) {
+                result.insert(*fp, info);
             }
+        }
 
-            Ok(result)
-        })
+        Ok(result)
     }
 
     /// Counts shelf-visible books so empty-library and trash UI match `get_all_books`.
@@ -938,30 +927,28 @@ impl Db {
         feature = "tracing",
         tracing::instrument(skip(self), fields(library_id))
     )]
-    pub fn count_books(&self, library_id: i64) -> Result<usize, Error> {
-        RUNTIME.block_on(async {
-            let count: i64 = sqlx::query_scalar!(
-                r#"
+    pub async fn count_books(&self, library_id: i64) -> Result<usize, Error> {
+        let count: i64 = sqlx::query_scalar!(
+            r#"
                 SELECT COUNT(*) AS "count!: i64"
                 FROM library_books lb
                 INNER JOIN books b ON b.fingerprint = lb.book_fingerprint
                 WHERE lb.library_id = ?
                   AND b.status = 'active'
                 "#,
-                library_id,
-            )
-            .fetch_one(&self.pool)
-            .await?;
+            library_id,
+        )
+        .fetch_one(&self.pool)
+        .await?;
 
-            Ok(count as usize)
-        })
+        Ok(count as usize)
     }
 
     #[cfg_attr(
         feature = "tracing",
         tracing::instrument(skip(self, prefix), fields(library_id))
     )]
-    pub fn list_books_under_prefix(
+    pub async fn list_books_under_prefix(
         &self,
         library_id: i64,
         prefix: &Path,
@@ -969,10 +956,9 @@ impl Db {
         let prefix =
             (!prefix.as_os_str().is_empty()).then(|| prefix.to_string_lossy().into_owned());
 
-        RUNTIME.block_on(async {
-            let rows: Vec<StoredBookRow> = sqlx::query_as!(
-                StoredBookRow,
-                r#"
+        let rows: Vec<StoredBookRow> = sqlx::query_as!(
+            StoredBookRow,
+            r#"
                 SELECT
                     fingerprint as "fingerprint: Fp",
                     title,
@@ -1019,26 +1005,24 @@ impl Db {
                   AND status = 'active'
                   AND (?2 IS NULL OR file_path = ?2 OR file_path LIKE (?2 || '/%'))
                 "#,
-                library_id,
-                prefix,
-            )
-            .fetch_all(&self.pool)
-            .await?;
+            library_id,
+            prefix,
+        )
+        .fetch_all(&self.pool)
+        .await?;
 
-            rows.into_iter()
-                .map(|row| Self::stored_book_row_to_info(row, None))
-                .collect()
-        })
+        rows.into_iter()
+            .map(|row| Self::stored_book_row_to_info(row, None))
+            .collect()
     }
 
-    pub fn most_recently_opened_reading_book(
+    pub async fn most_recently_opened_reading_book(
         &self,
         library_id: i64,
     ) -> Result<Option<Info>, Error> {
-        RUNTIME.block_on(async {
-            let row: Option<StoredBookRow> = sqlx::query_as!(
-                StoredBookRow,
-                r#"
+        let row: Option<StoredBookRow> = sqlx::query_as!(
+            StoredBookRow,
+            r#"
                 SELECT
                     fingerprint as "fingerprint: Fp",
                     title,
@@ -1088,14 +1072,13 @@ impl Db {
                 ORDER BY opened DESC
                 LIMIT 1
                 "#,
-                library_id,
-            )
-            .fetch_optional(&self.pool)
-            .await?;
+            library_id,
+        )
+        .fetch_optional(&self.pool)
+        .await?;
 
-            row.map(|r| Self::stored_book_row_to_info(r, None))
-                .transpose()
-        })
+        row.map(|r| Self::stored_book_row_to_info(r, None))
+            .transpose()
     }
 
     /// Recomputes sort ranks for all books in a library and writes them to the
@@ -1114,13 +1097,11 @@ impl Db {
     /// `import()`). It also restores uniform gaps whenever they have been
     /// partially exhausted by many consecutive single-book insertions.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
-    pub fn compute_sort_keys(&self, library_id: i64) -> Result<(), Error> {
-        RUNTIME.block_on(async {
-            let mut tx = self.pool.begin().await?;
-            Self::compute_sort_keys_on(&mut tx, library_id).await?;
-            tx.commit().await?;
-            Ok(())
-        })
+    pub async fn compute_sort_keys(&self, library_id: i64) -> Result<(), Error> {
+        let mut tx = self.pool.begin().await?;
+        Self::compute_sort_keys_on(&mut tx, library_id).await?;
+        tx.commit().await?;
+        Ok(())
     }
 
     async fn compute_sort_keys_on(
@@ -1182,16 +1163,21 @@ impl Db {
     /// by at most 1), it falls back to a full [`Self::compute_sort_keys`]
     /// recompute to restore uniform gaps for that library.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, info)))]
-    pub fn insert_sort_rank(&self, library_id: i64, fp: Fp, info: &Info) -> Result<(), Error> {
+    pub async fn insert_sort_rank(
+        &self,
+        library_id: i64,
+        fp: Fp,
+        info: &Info,
+    ) -> Result<(), Error> {
         let fp_str = fp.to_string();
-        let needs_full_recompute = self.try_insert_sort_rank(library_id, &fp_str, info)?;
+        let needs_full_recompute = self.try_insert_sort_rank(library_id, &fp_str, info).await?;
 
         if needs_full_recompute {
             tracing::debug!(
                 library_id,
                 "sort rank gaps exhausted, falling back to full recompute"
             );
-            self.compute_sort_keys(library_id)?;
+            self.compute_sort_keys(library_id).await?;
         }
 
         Ok(())
@@ -1201,17 +1187,17 @@ impl Db {
     ///
     /// Returns `true` if any column has gaps too small to split (i.e. a full
     /// recompute is needed), `false` if all ranks were assigned successfully.
-    fn try_insert_sort_rank(
+    async fn try_insert_sort_rank(
         &self,
         library_id: i64,
         fp_str: &str,
         info: &Info,
     ) -> Result<bool, Error> {
-        let title_rank = self.resolve_title_rank(library_id, fp_str, info)?;
-        let author_rank = self.resolve_author_rank(library_id, fp_str, info)?;
-        let filepath_rank = self.resolve_filepath_rank(library_id, fp_str, info)?;
-        let filename_rank = self.resolve_filename_rank(library_id, fp_str, info)?;
-        let series_rank = self.resolve_series_rank(library_id, fp_str, info)?;
+        let title_rank = self.resolve_title_rank(library_id, fp_str, info).await?;
+        let author_rank = self.resolve_author_rank(library_id, fp_str, info).await?;
+        let filepath_rank = self.resolve_filepath_rank(library_id, fp_str, info).await?;
+        let filename_rank = self.resolve_filename_rank(library_id, fp_str, info).await?;
+        let series_rank = self.resolve_series_rank(library_id, fp_str, info).await?;
 
         if [
             title_rank,
@@ -1226,50 +1212,50 @@ impl Db {
             return Ok(true);
         }
 
-        RUNTIME.block_on(async {
-            let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await?;
 
-            sqlx::query!(
-                "UPDATE library_books SET sort_title = ? WHERE library_id = ? AND book_fingerprint = ?",
-                title_rank, library_id, fp_str
-            )
-            .execute(&mut *tx)
-            .await?;
+        sqlx::query!(
+            "UPDATE library_books SET sort_title = ? WHERE library_id = ? AND book_fingerprint = ?",
+            title_rank,
+            library_id,
+            fp_str
+        )
+        .execute(&mut *tx)
+        .await?;
 
-            sqlx::query!(
+        sqlx::query!(
                 "UPDATE library_books SET sort_author = ? WHERE library_id = ? AND book_fingerprint = ?",
                 author_rank, library_id, fp_str
             )
             .execute(&mut *tx)
             .await?;
 
-            sqlx::query!(
+        sqlx::query!(
                 "UPDATE library_books SET sort_filepath = ? WHERE library_id = ? AND book_fingerprint = ?",
                 filepath_rank, library_id, fp_str
             )
             .execute(&mut *tx)
             .await?;
 
-            sqlx::query!(
+        sqlx::query!(
                 "UPDATE library_books SET sort_filename = ? WHERE library_id = ? AND book_fingerprint = ?",
                 filename_rank, library_id, fp_str
             )
             .execute(&mut *tx)
             .await?;
 
-            sqlx::query!(
+        sqlx::query!(
                 "UPDATE library_books SET sort_series = ? WHERE library_id = ? AND book_fingerprint = ?",
                 series_rank, library_id, fp_str
             )
             .execute(&mut *tx)
             .await?;
 
-            tx.commit().await?;
-            Ok(false)
-        })
+        tx.commit().await?;
+        Ok(false)
     }
 
-    fn resolve_title_rank(
+    async fn resolve_title_rank(
         &self,
         library_id: i64,
         fp_str: &str,
@@ -1283,7 +1269,7 @@ impl Db {
                 t.to_string()
             }
         };
-        let rows = self.fetch_title_sort_rows(library_id, fp_str)?;
+        let rows = self.fetch_title_sort_rows(library_id, fp_str).await?;
         let pos = rows.partition_point(|row| {
             let row_key = {
                 let t = alphabetic_title(&row.title, &row.language);
@@ -1304,14 +1290,14 @@ impl Db {
         ))
     }
 
-    fn resolve_author_rank(
+    async fn resolve_author_rank(
         &self,
         library_id: i64,
         fp_str: &str,
         info: &Info,
     ) -> Result<Option<i64>, Error> {
         let key = info.alphabetic_author().to_string();
-        let rows = self.fetch_author_sort_rows(library_id, fp_str)?;
+        let rows = self.fetch_author_sort_rows(library_id, fp_str).await?;
         let pos = rows.partition_point(|row| {
             alphabetic_author(row.authors.as_deref().unwrap_or_default()) < key.as_str()
         });
@@ -1321,14 +1307,14 @@ impl Db {
         ))
     }
 
-    fn resolve_filepath_rank(
+    async fn resolve_filepath_rank(
         &self,
         library_id: i64,
         fp_str: &str,
         info: &Info,
     ) -> Result<Option<i64>, Error> {
         let key = info.file.path.to_string_lossy().into_owned();
-        let rows = self.fetch_filepath_sort_rows(library_id, fp_str)?;
+        let rows = self.fetch_filepath_sort_rows(library_id, fp_str).await?;
         let pos = rows.partition_point(|row| {
             matches!(natural_cmp(&row.file_path, &key), std::cmp::Ordering::Less)
         });
@@ -1338,7 +1324,7 @@ impl Db {
         ))
     }
 
-    fn resolve_filename_rank(
+    async fn resolve_filename_rank(
         &self,
         library_id: i64,
         fp_str: &str,
@@ -1350,7 +1336,7 @@ impl Db {
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
-        let rows = self.fetch_filename_sort_rows(library_id, fp_str)?;
+        let rows = self.fetch_filename_sort_rows(library_id, fp_str).await?;
         let pos = rows.partition_point(|row| {
             let row_name = Path::new(&row.file_path)
                 .file_name()
@@ -1364,7 +1350,7 @@ impl Db {
         ))
     }
 
-    fn resolve_series_rank(
+    async fn resolve_series_rank(
         &self,
         library_id: i64,
         fp_str: &str,
@@ -1372,7 +1358,7 @@ impl Db {
     ) -> Result<Option<i64>, Error> {
         let series_key = &info.series;
         let number_key = &info.number;
-        let rows = self.fetch_series_sort_rows(library_id, fp_str)?;
+        let rows = self.fetch_series_sort_rows(library_id, fp_str).await?;
         let pos = rows.partition_point(|row| {
             row.series.cmp(series_key).then_with(|| {
                 row.number
@@ -1388,124 +1374,114 @@ impl Db {
         ))
     }
 
-    fn fetch_title_sort_rows(
+    async fn fetch_title_sort_rows(
         &self,
         library_id: i64,
         fp_str: &str,
     ) -> Result<Vec<TitleSortRow>, Error> {
-        RUNTIME.block_on(async {
-            sqlx::query_as!(
-                TitleSortRow,
-                r#"
+        sqlx::query_as!(
+            TitleSortRow,
+            r#"
                 SELECT title, language, file_path, sort_title as "sort_title?: i64"
                 FROM library_books_full_info
                 WHERE library_id = ? AND fingerprint != ?
                   AND status = 'active'
                 ORDER BY sort_title ASC NULLS LAST
                 "#,
-                library_id,
-                fp_str,
-            )
-            .fetch_all(&self.pool)
-            .await
-            .map_err(Into::into)
-        })
+            library_id,
+            fp_str,
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(Into::into)
     }
 
-    fn fetch_author_sort_rows(
+    async fn fetch_author_sort_rows(
         &self,
         library_id: i64,
         fp_str: &str,
     ) -> Result<Vec<AuthorSortRow>, Error> {
-        RUNTIME.block_on(async {
-            sqlx::query_as!(
-                AuthorSortRow,
-                r#"
+        sqlx::query_as!(
+            AuthorSortRow,
+            r#"
                 SELECT authors as "authors?: String", sort_author as "sort_author?: i64"
                 FROM library_books_full_info
                 WHERE library_id = ? AND fingerprint != ?
                   AND status = 'active'
                 ORDER BY sort_author ASC NULLS LAST
                 "#,
-                library_id,
-                fp_str,
-            )
-            .fetch_all(&self.pool)
-            .await
-            .map_err(Into::into)
-        })
+            library_id,
+            fp_str,
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(Into::into)
     }
 
-    fn fetch_filepath_sort_rows(
+    async fn fetch_filepath_sort_rows(
         &self,
         library_id: i64,
         fp_str: &str,
     ) -> Result<Vec<FilePathSortRow>, Error> {
-        RUNTIME.block_on(async {
-            sqlx::query_as!(
-                FilePathSortRow,
-                r#"
+        sqlx::query_as!(
+            FilePathSortRow,
+            r#"
                 SELECT file_path, sort_filepath as "sort_filepath?: i64"
                 FROM library_books_full_info
                 WHERE library_id = ? AND fingerprint != ?
                   AND status = 'active'
                 ORDER BY sort_filepath ASC NULLS LAST
                 "#,
-                library_id,
-                fp_str,
-            )
-            .fetch_all(&self.pool)
-            .await
-            .map_err(Into::into)
-        })
+            library_id,
+            fp_str,
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(Into::into)
     }
 
-    fn fetch_filename_sort_rows(
+    async fn fetch_filename_sort_rows(
         &self,
         library_id: i64,
         fp_str: &str,
     ) -> Result<Vec<FileNameSortRow>, Error> {
-        RUNTIME.block_on(async {
-            sqlx::query_as!(
-                FileNameSortRow,
-                r#"
+        sqlx::query_as!(
+            FileNameSortRow,
+            r#"
                 SELECT file_path, sort_filename as "sort_filename?: i64"
                 FROM library_books_full_info
                 WHERE library_id = ? AND fingerprint != ?
                   AND status = 'active'
                 ORDER BY sort_filename ASC NULLS LAST
                 "#,
-                library_id,
-                fp_str,
-            )
-            .fetch_all(&self.pool)
-            .await
-            .map_err(Into::into)
-        })
+            library_id,
+            fp_str,
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(Into::into)
     }
 
-    fn fetch_series_sort_rows(
+    async fn fetch_series_sort_rows(
         &self,
         library_id: i64,
         fp_str: &str,
     ) -> Result<Vec<SeriesSortRow>, Error> {
-        RUNTIME.block_on(async {
-            sqlx::query_as!(
-                SeriesSortRow,
-                r#"
+        sqlx::query_as!(
+            SeriesSortRow,
+            r#"
                 SELECT series, number, sort_series as "sort_series?: i64"
                 FROM library_books_full_info
                 WHERE library_id = ? AND fingerprint != ?
                   AND status = 'active'
                 ORDER BY sort_series ASC NULLS LAST
                 "#,
-                library_id,
-                fp_str,
-            )
-            .fetch_all(&self.pool)
-            .await
-            .map_err(Into::into)
-        })
+            library_id,
+            fp_str,
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(Into::into)
     }
 
     /// Returns a page of books under `prefix`, sorted by `sort_method`, along
@@ -1514,7 +1490,7 @@ impl Db {
     /// Uses untyped `sqlx::query_as` so the `ORDER BY` column can be selected
     /// dynamically.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
-    pub fn page_books(
+    pub async fn page_books(
         &self,
         library_id: i64,
         prefix: &Path,
@@ -1606,47 +1582,45 @@ impl Db {
             "#
         );
 
-        RUNTIME.block_on(async {
-            let total: i64 = sqlx::query_scalar!(
-                r#"
+        let total: i64 = sqlx::query_scalar!(
+            r#"
                 SELECT COUNT(*)
                 FROM library_books_full_info
                 WHERE library_id = ?
                   AND status = 'active'
                   AND (? IS NULL OR file_path = ? OR file_path LIKE (? || '/%'))
                 "#,
-                library_id,
-                prefix_str,
-                prefix_str,
-                prefix_str,
-            )
-            .fetch_one(&self.pool)
+            library_id,
+            prefix_str,
+            prefix_str,
+            prefix_str,
+        )
+        .fetch_one(&self.pool)
+        .await?;
+
+        let rows: Vec<StoredBookRow> = sqlx::query_as(AssertSqlSafe(data_sql.as_str()))
+            .bind(library_id)
+            .bind(&prefix_str)
+            .bind(&prefix_str)
+            .bind(&prefix_str)
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(&self.pool)
             .await?;
 
-            let rows: Vec<StoredBookRow> = sqlx::query_as(AssertSqlSafe(data_sql.as_str()))
-                .bind(library_id)
-                .bind(&prefix_str)
-                .bind(&prefix_str)
-                .bind(&prefix_str)
-                .bind(limit)
-                .bind(offset)
-                .fetch_all(&self.pool)
-                .await?;
+        let books: Result<Vec<Info>, Error> = rows
+            .into_iter()
+            .map(|row| Self::stored_book_row_to_info(row, None))
+            .collect();
 
-            let books: Result<Vec<Info>, Error> = rows
-                .into_iter()
-                .map(|row| Self::stored_book_row_to_info(row, None))
-                .collect();
-
-            Ok((books?, total))
-        })
+        Ok((books?, total))
     }
 
     #[cfg_attr(
         feature = "tracing",
         tracing::instrument(skip(self, prefix), fields(library_id))
     )]
-    pub fn list_directories_under_prefix(
+    pub async fn list_directories_under_prefix(
         &self,
         library_id: i64,
         prefix: &Path,
@@ -1654,8 +1628,7 @@ impl Db {
         let prefix =
             (!prefix.as_os_str().is_empty()).then(|| prefix.to_string_lossy().into_owned());
 
-        RUNTIME.block_on(async {
-            let children: Vec<String> = match prefix.as_deref() {
+        let children: Vec<String> = match prefix.as_deref() {
                 Some(prefix) => {
                     sqlx::query_scalar!(
                         r#"
@@ -1695,49 +1668,44 @@ impl Db {
                 }
             };
 
-            Ok(children
-                .into_iter()
-                .map(|child| PathBuf::from(&child))
-                .collect())
-        })
+        Ok(children
+            .into_iter()
+            .map(|child| PathBuf::from(&child))
+            .collect())
     }
 
     /// Returns the lifecycle status for a fingerprint, if a `books` row exists.
-    pub(crate) fn book_status(&self, fp: Fp) -> Result<Option<BookStatus>, Error> {
+    pub(crate) async fn book_status(&self, fp: Fp) -> Result<Option<BookStatus>, Error> {
         let fp_str = fp.to_string();
-        RUNTIME.block_on(async {
-            sqlx::query_scalar!(
-                r#"
+        sqlx::query_scalar!(
+            r#"
                 SELECT status AS "status: BookStatus"
                 FROM books
                 WHERE fingerprint = ?
                 "#,
-                fp_str,
-            )
-            .fetch_optional(&self.pool)
-            .await
-            .map_err(Into::into)
-        })
+            fp_str,
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(Into::into)
     }
 
     /// Status of every row in `books`, including those not linked to a given library.
-    pub(crate) fn all_book_statuses(&self) -> Result<FxHashMap<Fp, BookStatus>, Error> {
-        RUNTIME.block_on(async {
-            let rows = sqlx::query!(
-                r#"
+    pub(crate) async fn all_book_statuses(&self) -> Result<FxHashMap<Fp, BookStatus>, Error> {
+        let rows = sqlx::query!(
+            r#"
                 SELECT fingerprint AS "fingerprint!: Fp",
                        status AS "status!: BookStatus"
                 FROM books
                 "#,
-            )
-            .fetch_all(&self.pool)
-            .await?;
+        )
+        .fetch_all(&self.pool)
+        .await?;
 
-            Ok(rows
-                .into_iter()
-                .map(|row| (row.fingerprint, row.status))
-                .collect())
-        })
+        Ok(rows
+            .into_iter()
+            .map(|row| (row.fingerprint, row.status))
+            .collect())
     }
 
     async fn insert_books_row(
@@ -1927,42 +1895,41 @@ impl Db {
     /// - missing → [`Self::insert_book`]
     /// - pending → [`Self::update_book`] with [`BookStatus::Active`]
     /// - active → [`Self::link_book_to_library`]
-    pub(crate) fn ensure_active_book_in_library(
+    pub(crate) async fn ensure_active_book_in_library(
         &self,
         library_id: i64,
         fp: Fp,
         info: &Info,
     ) -> Result<(), Error> {
-        match self.book_status(fp)? {
-            None => self.insert_book(library_id, fp, info),
+        match self.book_status(fp).await? {
+            None => self.insert_book(library_id, fp, info).await,
             Some(BookStatus::PendingDiscovery) => {
                 self.update_book(library_id, fp, info, BookStatus::Active)
+                    .await
             }
-            Some(BookStatus::Active) => self.link_book_to_library(library_id, fp, info),
+            Some(BookStatus::Active) => self.link_book_to_library(library_id, fp, info).await,
         }
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, info), fields(fp = %fp, library_id)))]
-    pub fn insert_book(&self, library_id: i64, fp: Fp, info: &Info) -> Result<(), Error> {
+    pub async fn insert_book(&self, library_id: i64, fp: Fp, info: &Info) -> Result<(), Error> {
         tracing::debug!(fp = %fp, library_id, "inserting book into database");
 
-        RUNTIME.block_on(async {
-            let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await?;
 
-            let book_row = info_to_book_row(fp, info)?;
-            Self::insert_books_row(&mut tx, &book_row, BookStatus::Active).await?;
-            Self::attach_book_to_library(&mut tx, library_id, fp, info, &book_row).await?;
+        let book_row = info_to_book_row(fp, info)?;
+        Self::insert_books_row(&mut tx, &book_row, BookStatus::Active).await?;
+        Self::attach_book_to_library(&mut tx, library_id, fp, info, &book_row).await?;
 
-            tx.commit().await?;
+        tx.commit().await?;
 
-            tracing::debug!(fp = %fp, "book insert complete");
-            Ok(())
-        })
+        tracing::debug!(fp = %fp, "book insert complete");
+        Ok(())
     }
 
     /// Links an already-active book into a library without rewriting `books`.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, info), fields(fp = %fp, library_id)))]
-    pub(crate) fn link_book_to_library(
+    pub(crate) async fn link_book_to_library(
         &self,
         library_id: i64,
         fp: Fp,
@@ -1970,13 +1937,11 @@ impl Db {
     ) -> Result<(), Error> {
         tracing::debug!(fp = %fp, library_id, "linking book into library");
 
-        RUNTIME.block_on(async {
-            let mut tx = self.pool.begin().await?;
-            Self::link_book_to_library_on(&mut tx, library_id, fp, info).await?;
-            tx.commit().await?;
-            tracing::debug!(fp = %fp, "book link complete");
-            Ok(())
-        })
+        let mut tx = self.pool.begin().await?;
+        Self::link_book_to_library_on(&mut tx, library_id, fp, info).await?;
+        tx.commit().await?;
+        tracing::debug!(fp = %fp, "book link complete");
+        Ok(())
     }
 
     async fn link_book_to_library_on(
@@ -1991,7 +1956,7 @@ impl Db {
 
     /// Rewrites the stored metadata for one book and its library-specific path fields.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, info), fields(fp = %fp, library_id, status = %status)))]
-    pub(crate) fn update_book(
+    pub(crate) async fn update_book(
         &self,
         library_id: i64,
         fp: Fp,
@@ -2001,189 +1966,179 @@ impl Db {
         tracing::debug!(fp = %fp, library_id, status = %status, "updating book in database");
         let fp_str = fp.to_string();
 
-        RUNTIME.block_on(async {
-            let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await?;
 
-            let book_row = info_to_book_row(fp, info)?;
+        let book_row = info_to_book_row(fp, info)?;
 
-            sqlx::query!(
-                r#"
+        sqlx::query!(
+            r#"
                 UPDATE books SET
                     title = ?, subtitle = ?, year = ?, language = ?, publisher = ?,
                     series = ?, edition = ?, volume = ?, number = ?, identifier = ?,
                     file_kind = ?, file_size = ?, added_at = ?, status = ?
                 WHERE fingerprint = ?
                 "#,
-                book_row.title,
-                book_row.subtitle,
-                book_row.year,
-                book_row.language,
-                book_row.publisher,
-                book_row.series,
-                book_row.edition,
-                book_row.volume,
-                book_row.number,
-                book_row.identifier,
-                book_row.file_kind,
-                book_row.file_size,
-                book_row.added_at,
-                status,
+            book_row.title,
+            book_row.subtitle,
+            book_row.year,
+            book_row.language,
+            book_row.publisher,
+            book_row.series,
+            book_row.edition,
+            book_row.volume,
+            book_row.number,
+            book_row.identifier,
+            book_row.file_kind,
+            book_row.file_size,
+            book_row.added_at,
+            status,
+            fp_str,
+        )
+        .execute(&mut *tx)
+        .await?;
+
+        Self::upsert_library_book(&mut tx, library_id, &fp_str, &book_row, info).await?;
+
+        sqlx::query!(
+            r#"DELETE FROM book_authors WHERE book_fingerprint = ?"#,
+            fp_str
+        )
+        .execute(&mut *tx)
+        .await?;
+
+        let authors = extract_authors(&info.author);
+        for (position, author_name) in authors.iter().enumerate() {
+            sqlx::query!(
+                r#"INSERT OR IGNORE INTO authors (name) VALUES (?)"#,
+                author_name
+            )
+            .execute(&mut *tx)
+            .await?;
+
+            let author_id: i64 =
+                sqlx::query_scalar!(r#"SELECT id FROM authors WHERE name = ?"#, author_name)
+                    .fetch_one(&mut *tx)
+                    .await?;
+
+            let pos = position as i64;
+            sqlx::query!(
+                r#"
+                INSERT OR IGNORE INTO book_authors (book_fingerprint, author_id, position)
+                VALUES (?, ?, ?)
+                "#,
                 fp_str,
+                author_id,
+                pos
+            )
+            .execute(&mut *tx)
+            .await?;
+        }
+
+        sqlx::query!(
+            r#"DELETE FROM book_categories WHERE book_fingerprint = ?"#,
+            fp_str
+        )
+        .execute(&mut *tx)
+        .await?;
+
+        for category_name in &info.categories {
+            sqlx::query!(
+                r#"INSERT OR IGNORE INTO categories (name) VALUES (?)"#,
+                category_name
             )
             .execute(&mut *tx)
             .await?;
 
-            Self::upsert_library_book(&mut tx, library_id, &fp_str, &book_row, info).await?;
+            let category_id: i64 =
+                sqlx::query_scalar!(r#"SELECT id FROM categories WHERE name = ?"#, category_name)
+                    .fetch_one(&mut *tx)
+                    .await?;
 
             sqlx::query!(
-                r#"DELETE FROM book_authors WHERE book_fingerprint = ?"#,
-                fp_str
+                r#"
+                INSERT OR IGNORE INTO book_categories (book_fingerprint, category_id)
+                VALUES (?, ?)
+                "#,
+                fp_str,
+                category_id
             )
             .execute(&mut *tx)
             .await?;
+        }
 
-            let authors = extract_authors(&info.author);
-            for (position, author_name) in authors.iter().enumerate() {
-                sqlx::query!(
-                    r#"INSERT OR IGNORE INTO authors (name) VALUES (?)"#,
-                    author_name
-                )
-                .execute(&mut *tx)
-                .await?;
+        tx.commit().await?;
 
-                let author_id: i64 =
-                    sqlx::query_scalar!(r#"SELECT id FROM authors WHERE name = ?"#, author_name)
-                        .fetch_one(&mut *tx)
-                        .await?;
-
-                let pos = position as i64;
-                sqlx::query!(
-                    r#"
-                        INSERT OR IGNORE INTO book_authors (book_fingerprint, author_id, position)
-                        VALUES (?, ?, ?)
-                        "#,
-                    fp_str,
-                    author_id,
-                    pos
-                )
-                .execute(&mut *tx)
-                .await?;
-            }
-
-            sqlx::query!(
-                r#"DELETE FROM book_categories WHERE book_fingerprint = ?"#,
-                fp_str
-            )
-            .execute(&mut *tx)
-            .await?;
-
-            for category_name in &info.categories {
-                sqlx::query!(
-                    r#"INSERT OR IGNORE INTO categories (name) VALUES (?)"#,
-                    category_name
-                )
-                .execute(&mut *tx)
-                .await?;
-
-                let category_id: i64 = sqlx::query_scalar!(
-                    r#"SELECT id FROM categories WHERE name = ?"#,
-                    category_name
-                )
-                .fetch_one(&mut *tx)
-                .await?;
-
-                sqlx::query!(
-                    r#"
-                        INSERT OR IGNORE INTO book_categories (book_fingerprint, category_id)
-                        VALUES (?, ?)
-                        "#,
-                    fp_str,
-                    category_id
-                )
-                .execute(&mut *tx)
-                .await?;
-            }
-
-            tx.commit().await?;
-
-            tracing::debug!(fp = %fp, "book update complete");
-            Ok(())
-        })
+        tracing::debug!(fp = %fp, "book update complete");
+        Ok(())
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(fp = %fp)))]
-    pub fn delete_reading_state(&self, fp: Fp) -> Result<(), Error> {
+    pub async fn delete_reading_state(&self, fp: Fp) -> Result<(), Error> {
         tracing::debug!(fp = %fp, "deleting reading state from database");
 
-        RUNTIME.block_on(async {
-            let fp_str = fp.to_string();
+        let fp_str = fp.to_string();
 
-            sqlx::query!(
-                r#"DELETE FROM reading_states WHERE fingerprint = ?"#,
-                fp_str
-            )
-            .execute(&self.pool)
-            .await?;
+        sqlx::query!(
+            r#"DELETE FROM reading_states WHERE fingerprint = ?"#,
+            fp_str
+        )
+        .execute(&self.pool)
+        .await?;
 
-            Ok(())
-        })
+        Ok(())
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(fp = %fp, library_id)))]
-    pub fn delete_book(&self, library_id: i64, fp: Fp) -> Result<(), Error> {
+    pub async fn delete_book(&self, library_id: i64, fp: Fp) -> Result<(), Error> {
         tracing::debug!(fp = %fp, library_id, "deleting book from library");
 
-        RUNTIME.block_on(async {
-            let fp_str = fp.to_string();
-            let mut tx = self.pool.begin().await?;
+        let fp_str = fp.to_string();
+        let mut tx = self.pool.begin().await?;
 
-            sqlx::query!(
-                r#"DELETE FROM library_books WHERE library_id = ? AND book_fingerprint = ?"#,
-                library_id,
-                fp_str
-            )
-            .execute(&mut *tx)
-            .await?;
+        sqlx::query!(
+            r#"DELETE FROM library_books WHERE library_id = ? AND book_fingerprint = ?"#,
+            library_id,
+            fp_str
+        )
+        .execute(&mut *tx)
+        .await?;
 
-            let remaining: i64 = sqlx::query_scalar!(
-                r#"SELECT COUNT(*) FROM library_books WHERE book_fingerprint = ?"#,
-                fp_str
-            )
-            .fetch_one(&mut *tx)
-            .await?;
+        let remaining: i64 = sqlx::query_scalar!(
+            r#"SELECT COUNT(*) FROM library_books WHERE book_fingerprint = ?"#,
+            fp_str
+        )
+        .fetch_one(&mut *tx)
+        .await?;
 
-            if remaining == 0 {
-                tracing::debug!(fp = %fp, "book not in any library, deleting completely");
-                sqlx::query!(r#"DELETE FROM books WHERE fingerprint = ?"#, fp_str)
-                    .execute(&mut *tx)
-                    .await?;
-            }
+        if remaining == 0 {
+            tracing::debug!(fp = %fp, "book not in any library, deleting completely");
+            sqlx::query!(r#"DELETE FROM books WHERE fingerprint = ?"#, fp_str)
+                .execute(&mut *tx)
+                .await?;
+        }
 
-            tx.commit().await?;
+        tx.commit().await?;
 
-            tracing::debug!(fp = %fp, library_id, "book delete complete");
-            Ok(())
-        })
+        tracing::debug!(fp = %fp, library_id, "book delete complete");
+        Ok(())
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(fp = %fp)))]
-    pub fn get_thumbnail(&self, fp: Fp) -> Result<Option<Vec<u8>>, Error> {
+    pub async fn get_thumbnail(&self, fp: Fp) -> Result<Option<Vec<u8>>, Error> {
         tracing::debug!(fp = %fp, "fetching thumbnail from database");
         let fp_str = fp.to_string();
 
-        RUNTIME.block_on(async {
-            sqlx::query_scalar!(
-                "SELECT thumbnail_data FROM thumbnails WHERE fingerprint = ?",
-                fp_str
-            )
-            .fetch_optional(&self.pool)
-            .await
-            .map_err(Error::from)
-        })
+        sqlx::query_scalar!(
+            "SELECT thumbnail_data FROM thumbnails WHERE fingerprint = ?",
+            fp_str
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(Error::from)
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(library_id, path = %path.display())))]
-    pub fn get_thumbnail_by_path(
+    pub async fn get_thumbnail_by_path(
         &self,
         library_id: i64,
         path: &Path,
@@ -2191,8 +2146,7 @@ impl Db {
         let path = path.to_string_lossy().into_owned();
         tracing::debug!(library_id, path, "fetching thumbnail by path from database");
 
-        RUNTIME.block_on(async {
-            sqlx::query_scalar!(
+        sqlx::query_scalar!(
                 "SELECT t.thumbnail_data FROM library_books lb INNER JOIN thumbnails t ON lb.book_fingerprint = t.fingerprint WHERE lb.library_id = ? AND lb.file_path = ?",
                 library_id,
                 path
@@ -2200,125 +2154,113 @@ impl Db {
             .fetch_optional(&self.pool)
             .await
             .map_err(Error::from)
-        })
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, data), fields(fp = %fp, size = data.len())))]
-    pub fn save_thumbnail(&self, fp: Fp, data: &[u8]) -> Result<(), Error> {
+    pub async fn save_thumbnail(&self, fp: Fp, data: &[u8]) -> Result<(), Error> {
         tracing::debug!(fp = %fp, size = data.len(), "saving thumbnail to database");
         let fp_str = fp.to_string();
 
-        RUNTIME.block_on(async {
-            sqlx::query!(
-                r#"
+        sqlx::query!(
+            r#"
                 INSERT INTO thumbnails (fingerprint, thumbnail_data)
                 VALUES (?, ?)
                 ON CONFLICT(fingerprint) DO UPDATE SET
                     thumbnail_data = excluded.thumbnail_data
                 "#,
-                fp_str,
-                data,
-            )
-            .execute(&self.pool)
-            .await?;
+            fp_str,
+            data,
+        )
+        .execute(&self.pool)
+        .await?;
 
-            tracing::debug!(fp = %fp, "thumbnail save complete");
-            Ok(())
-        })
+        tracing::debug!(fp = %fp, "thumbnail save complete");
+        Ok(())
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(fp = %fp)))]
-    pub fn delete_thumbnail(&self, fp: Fp) -> Result<(), Error> {
+    pub async fn delete_thumbnail(&self, fp: Fp) -> Result<(), Error> {
         tracing::debug!(fp = %fp, "deleting thumbnail from database");
         let fp_str = fp.to_string();
 
-        RUNTIME.block_on(async {
-            sqlx::query!("DELETE FROM thumbnails WHERE fingerprint = ?", fp_str)
-                .execute(&self.pool)
-                .await?;
+        sqlx::query!("DELETE FROM thumbnails WHERE fingerprint = ?", fp_str)
+            .execute(&self.pool)
+            .await?;
 
-            tracing::debug!(fp = %fp, "thumbnail delete complete");
-            Ok(())
-        })
+        tracing::debug!(fp = %fp, "thumbnail delete complete");
+        Ok(())
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fps), fields(count = fps.len())))]
-    pub fn batch_delete_thumbnails(&self, fps: &[Fp]) -> Result<(), Error> {
+    pub async fn batch_delete_thumbnails(&self, fps: &[Fp]) -> Result<(), Error> {
         if fps.is_empty() {
             return Ok(());
         }
 
         tracing::debug!(count = fps.len(), "batch deleting thumbnails from database");
 
-        RUNTIME.block_on(async {
-            let mut tx = self.pool.begin().await?;
-            batch_delete_thumbnails_on(&mut tx, fps).await?;
-            tx.commit().await?;
-            Ok(())
-        })
+        let mut tx = self.pool.begin().await?;
+        batch_delete_thumbnails_on(&mut tx, fps).await?;
+        tx.commit().await?;
+        Ok(())
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(from = %from_fp, to = %to_fp)))]
-    pub fn move_thumbnail(&self, from_fp: Fp, to_fp: Fp) -> Result<(), Error> {
+    pub async fn move_thumbnail(&self, from_fp: Fp, to_fp: Fp) -> Result<(), Error> {
         tracing::debug!(from = %from_fp, to = %to_fp, "moving thumbnail in database");
         let from_fp_str = from_fp.to_string();
         let to_fp_str = to_fp.to_string();
 
-        RUNTIME.block_on(async {
-            sqlx::query!(
-                r#"
+        sqlx::query!(
+            r#"
                 UPDATE thumbnails
                 SET fingerprint = ?
                 WHERE fingerprint = ?
                 "#,
-                to_fp_str,
-                from_fp_str
-            )
-            .execute(&self.pool)
-            .await?;
+            to_fp_str,
+            from_fp_str
+        )
+        .execute(&self.pool)
+        .await?;
 
-            Ok(())
-        })
+        Ok(())
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, moves), fields(count = moves.len())))]
-    pub fn batch_move_thumbnails(&self, moves: &[(Fp, Fp)]) -> Result<(), Error> {
+    pub async fn batch_move_thumbnails(&self, moves: &[(Fp, Fp)]) -> Result<(), Error> {
         if moves.is_empty() {
             return Ok(());
         }
 
         tracing::debug!(count = moves.len(), "batch moving thumbnails in database");
 
-        RUNTIME.block_on(async {
-            let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await?;
 
-            for (from_fp, to_fp) in moves {
-                let from_str = from_fp.to_string();
-                let to_str = to_fp.to_string();
+        for (from_fp, to_fp) in moves {
+            let from_str = from_fp.to_string();
+            let to_str = to_fp.to_string();
 
-                sqlx::query!(
-                    r#"UPDATE thumbnails SET fingerprint = ? WHERE fingerprint = ?"#,
-                    to_str,
-                    from_str
-                )
-                .execute(&mut *tx)
-                .await?;
-            }
+            sqlx::query!(
+                r#"UPDATE thumbnails SET fingerprint = ? WHERE fingerprint = ?"#,
+                to_str,
+                from_str
+            )
+            .execute(&mut *tx)
+            .await?;
+        }
 
-            tx.commit().await?;
-            Ok(())
-        })
+        tx.commit().await?;
+        Ok(())
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, reader_info), fields(fp = %fp)))]
-    pub fn save_reading_state(&self, fp: Fp, reader_info: &ReaderInfo) -> Result<(), Error> {
+    pub async fn save_reading_state(&self, fp: Fp, reader_info: &ReaderInfo) -> Result<(), Error> {
         tracing::debug!(fp = %fp, "saving reading state to database");
 
-        RUNTIME.block_on(async {
-            let rs_row = reader_info_to_reading_state_row(fp, reader_info);
+        let rs_row = reader_info_to_reading_state_row(fp, reader_info);
 
-            sqlx::query!(
-                r#"
+        sqlx::query!(
+            r#"
                 INSERT INTO reading_states (
                     fingerprint, opened, current_page, pages_count, finished, dithered,
                     zoom_mode, scroll_mode, page_offset_x, page_offset_y, rotation,
@@ -2351,40 +2293,39 @@ impl Db {
                     bookmarks_json = excluded.bookmarks_json,
                     annotations_json = excluded.annotations_json
                 "#,
-                rs_row.fingerprint,
-                rs_row.opened,
-                rs_row.current_page,
-                rs_row.pages_count,
-                rs_row.finished,
-                rs_row.dithered,
-                rs_row.zoom_mode,
-                rs_row.scroll_mode,
-                rs_row.page_offset_x,
-                rs_row.page_offset_y,
-                rs_row.rotation,
-                rs_row.cropping_margins_json,
-                rs_row.margin_width,
-                rs_row.screen_margin_width,
-                rs_row.font_family,
-                rs_row.font_size,
-                rs_row.text_align,
-                rs_row.line_height,
-                rs_row.contrast_exponent,
-                rs_row.contrast_gray,
-                rs_row.page_names_json,
-                rs_row.bookmarks_json,
-                rs_row.annotations_json,
-            )
-            .execute(&self.pool)
-            .await?;
+            rs_row.fingerprint,
+            rs_row.opened,
+            rs_row.current_page,
+            rs_row.pages_count,
+            rs_row.finished,
+            rs_row.dithered,
+            rs_row.zoom_mode,
+            rs_row.scroll_mode,
+            rs_row.page_offset_x,
+            rs_row.page_offset_y,
+            rs_row.rotation,
+            rs_row.cropping_margins_json,
+            rs_row.margin_width,
+            rs_row.screen_margin_width,
+            rs_row.font_family,
+            rs_row.font_size,
+            rs_row.text_align,
+            rs_row.line_height,
+            rs_row.contrast_exponent,
+            rs_row.contrast_gray,
+            rs_row.page_names_json,
+            rs_row.bookmarks_json,
+            rs_row.annotations_json,
+        )
+        .execute(&self.pool)
+        .await?;
 
-            tracing::debug!(fp = %fp, "reading state save complete");
-            Ok(())
-        })
+        tracing::debug!(fp = %fp, "reading state save complete");
+        Ok(())
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, toc), fields(fp = %fp, entry_count = toc.len())))]
-    pub fn save_toc(&self, fp: Fp, toc: &[SimpleTocEntry]) -> Result<(), Error> {
+    pub async fn save_toc(&self, fp: Fp, toc: &[SimpleTocEntry]) -> Result<(), Error> {
         if toc.is_empty() {
             return Ok(());
         }
@@ -2392,38 +2333,38 @@ impl Db {
         tracing::debug!(fp = %fp, entry_count = toc.len(), "saving TOC to database");
         let fp_str = fp.to_string();
 
-        RUNTIME.block_on(async {
-            let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await?;
 
-            sqlx::query!("DELETE FROM toc_entries WHERE book_fingerprint = ?", fp_str)
-                .execute(&mut *tx)
-                .await?;
+        sqlx::query!("DELETE FROM toc_entries WHERE book_fingerprint = ?", fp_str)
+            .execute(&mut *tx)
+            .await?;
 
-            Self::insert_toc_entries(&mut tx, &fp_str, toc, None).await?;
+        Self::insert_toc_entries(&mut tx, &fp_str, toc, None).await?;
 
-            tx.commit().await?;
+        tx.commit().await?;
 
-            tracing::debug!(fp = %fp, "TOC save complete");
-            Ok(())
-        })
+        tracing::debug!(fp = %fp, "TOC save complete");
+        Ok(())
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, books), fields(library_id, count = books.len())))]
-    pub fn batch_insert_books(&self, library_id: i64, books: &[(Fp, &Info)]) -> Result<(), Error> {
+    pub async fn batch_insert_books(
+        &self,
+        library_id: i64,
+        books: &[(Fp, &Info)],
+    ) -> Result<(), Error> {
         if books.is_empty() {
             return Ok(());
         }
 
         tracing::debug!(library_id, count = books.len(), "batch inserting books");
 
-        RUNTIME.block_on(async {
-            let mut tx = self.pool.begin().await?;
-            Self::batch_insert_books_on(&mut tx, library_id, books).await?;
-            tx.commit().await?;
+        let mut tx = self.pool.begin().await?;
+        Self::batch_insert_books_on(&mut tx, library_id, books).await?;
+        tx.commit().await?;
 
-            tracing::debug!(count = books.len(), "batch insert complete");
-            Ok(())
-        })
+        tracing::debug!(count = books.len(), "batch insert complete");
+        Ok(())
     }
 
     async fn batch_insert_books_on(
@@ -2448,7 +2389,7 @@ impl Db {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, books), fields(library_id, count = books.len(), status = %status)))]
-    pub(crate) fn batch_update_books(
+    pub(crate) async fn batch_update_books(
         &self,
         library_id: i64,
         books: &[(Fp, &Info)],
@@ -2460,14 +2401,12 @@ impl Db {
 
         tracing::debug!(library_id, count = books.len(), status = %status, "batch updating books");
 
-        RUNTIME.block_on(async {
-            let mut tx = self.pool.begin().await?;
-            Self::batch_update_books_on(&mut tx, library_id, books, status).await?;
-            tx.commit().await?;
+        let mut tx = self.pool.begin().await?;
+        Self::batch_update_books_on(&mut tx, library_id, books, status).await?;
+        tx.commit().await?;
 
-            tracing::debug!(count = books.len(), "batch update complete");
-            Ok(())
-        })
+        tracing::debug!(count = books.len(), "batch update complete");
+        Ok(())
     }
 
     async fn batch_update_books_on(
@@ -2483,12 +2422,12 @@ impl Db {
 
             sqlx::query!(
                 r#"
-                    UPDATE books SET
-                        title = ?, subtitle = ?, year = ?, language = ?, publisher = ?,
-                        series = ?, edition = ?, volume = ?, number = ?, identifier = ?,
-                        file_kind = ?, file_size = ?, added_at = ?, status = ?
-                    WHERE fingerprint = ?
-                    "#,
+                UPDATE books SET
+                    title = ?, subtitle = ?, year = ?, language = ?, publisher = ?,
+                    series = ?, edition = ?, volume = ?, number = ?, identifier = ?,
+                    file_kind = ?, file_size = ?, added_at = ?, status = ?
+                WHERE fingerprint = ?
+                "#,
                 book_row.title,
                 book_row.subtitle,
                 book_row.year,
@@ -2603,10 +2542,9 @@ impl Db {
         feature = "tracing",
         tracing::instrument(skip(self), fields(library_id))
     )]
-    pub fn list_book_handles(&self, library_id: i64) -> Result<Vec<BookHandle>, Error> {
-        RUNTIME.block_on(async {
-            let rows = sqlx::query!(
-                r#"
+    pub async fn list_book_handles(&self, library_id: i64) -> Result<Vec<BookHandle>, Error> {
+        let rows = sqlx::query!(
+            r#"
                 SELECT lb.book_fingerprint AS "fingerprint!: Fp",
                        lb.file_path        AS "file_path!: String",
                        lb.absolute_path    AS "absolute_path!: String",
@@ -2617,23 +2555,22 @@ impl Db {
                 INNER JOIN books b ON b.fingerprint = lb.book_fingerprint
                 WHERE lb.library_id = ?
                 "#,
-                library_id,
-            )
-            .fetch_all(&self.pool)
-            .await?;
+            library_id,
+        )
+        .fetch_all(&self.pool)
+        .await?;
 
-            Ok(rows
-                .into_iter()
-                .map(|row| BookHandle {
-                    fp: row.fingerprint,
-                    relat: PathBuf::from(row.file_path),
-                    abs: PathBuf::from(row.absolute_path),
-                    mtime: row.mtime,
-                    file_size: row.file_size,
-                    status: row.status,
-                })
-                .collect())
-        })
+        Ok(rows
+            .into_iter()
+            .map(|row| BookHandle {
+                fp: row.fingerprint,
+                relat: PathBuf::from(row.file_path),
+                abs: PathBuf::from(row.absolute_path),
+                mtime: row.mtime,
+                file_size: row.file_size,
+                status: row.status,
+            })
+            .collect())
     }
 
     /// Returns `(fingerprint, path)` pairs for every book that does not have a thumbnail cached.
@@ -2641,31 +2578,32 @@ impl Db {
         feature = "tracing",
         tracing::instrument(skip(self), fields(library_id))
     )]
-    pub fn books_without_thumbnails(&self, library_id: i64) -> Result<Vec<(Fp, PathBuf)>, Error> {
-        RUNTIME.block_on(async {
-            let rows = sqlx::query!(
-                r#"
+    pub async fn books_without_thumbnails(
+        &self,
+        library_id: i64,
+    ) -> Result<Vec<(Fp, PathBuf)>, Error> {
+        let rows = sqlx::query!(
+            r#"
                 SELECT lb.book_fingerprint AS "fingerprint!: Fp",
                        lb.file_path        AS "file_path!: String"
                 FROM library_books lb
                 LEFT JOIN thumbnails t ON lb.book_fingerprint = t.fingerprint
                 WHERE lb.library_id = ? AND t.fingerprint IS NULL
                 "#,
-                library_id,
-            )
-            .fetch_all(&self.pool)
-            .await?;
+            library_id,
+        )
+        .fetch_all(&self.pool)
+        .await?;
 
-            rows.into_iter()
-                .map(|row| Ok((row.fingerprint, PathBuf::from(row.file_path))))
-                .collect()
-        })
+        rows.into_iter()
+            .map(|row| Ok((row.fingerprint, PathBuf::from(row.file_path))))
+            .collect()
     }
 
     /// Updates both the relative and absolute path of a book in a single transaction.
     /// No-op if the book is not found in the library.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(library_id, fp = %fp)))]
-    pub fn update_book_path(
+    pub async fn update_book_path(
         &self,
         library_id: i64,
         fp: Fp,
@@ -2676,10 +2614,9 @@ impl Db {
         let rel_str = rel_path.to_string_lossy().into_owned();
         let abs_str = abs_path.to_string_lossy().into_owned();
 
-        RUNTIME.block_on(async {
-            let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await?;
 
-            sqlx::query!(
+        sqlx::query!(
                 r#"UPDATE library_books SET file_path = ?, absolute_path = ? WHERE library_id = ? AND book_fingerprint = ?"#,
                 rel_str,
                 abs_str,
@@ -2689,16 +2626,15 @@ impl Db {
             .execute(&mut *tx)
             .await?;
 
-            tx.commit().await?;
-            Ok(())
-        })
+        tx.commit().await?;
+        Ok(())
     }
 
     /// Updates relative and absolute paths for multiple books in a single transaction,
     /// with one combined UPDATE per entry. Used by `import()` after directory scanning
     /// to record the final locations of books that were moved or renamed on disk.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, updates), fields(library_id, count = updates.len())))]
-    pub fn batch_update_book_paths(
+    pub async fn batch_update_book_paths(
         &self,
         library_id: i64,
         updates: &[PathUpdate],
@@ -2713,12 +2649,10 @@ impl Db {
             "batch updating book paths in library"
         );
 
-        RUNTIME.block_on(async {
-            let mut tx = self.pool.begin().await?;
-            Self::batch_update_book_paths_on(&mut tx, library_id, updates).await?;
-            tx.commit().await?;
-            Ok(())
-        })
+        let mut tx = self.pool.begin().await?;
+        Self::batch_update_book_paths_on(&mut tx, library_id, updates).await?;
+        tx.commit().await?;
+        Ok(())
     }
 
     async fn batch_update_book_paths_on(
@@ -2749,7 +2683,7 @@ impl Db {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, fps), fields(library_id, count = fps.len())))]
-    pub fn batch_delete_books(&self, library_id: i64, fps: &[Fp]) -> Result<(), Error> {
+    pub async fn batch_delete_books(&self, library_id: i64, fps: &[Fp]) -> Result<(), Error> {
         if fps.is_empty() {
             return Ok(());
         }
@@ -2760,14 +2694,12 @@ impl Db {
             "batch deleting books from library"
         );
 
-        RUNTIME.block_on(async {
-            let mut tx = self.pool.begin().await?;
-            Self::batch_delete_books_on(&mut tx, library_id, fps).await?;
-            tx.commit().await?;
+        let mut tx = self.pool.begin().await?;
+        Self::batch_delete_books_on(&mut tx, library_id, fps).await?;
+        tx.commit().await?;
 
-            tracing::debug!(count = fps.len(), "batch delete complete");
-            Ok(())
-        })
+        tracing::debug!(count = fps.len(), "batch delete complete");
+        Ok(())
     }
 
     async fn batch_delete_books_on(
@@ -2815,96 +2747,90 @@ impl Db {
         feature = "tracing",
         tracing::instrument(skip(self, allowed_kinds), fields(library_id))
     )]
-    pub fn delete_books_with_disallowed_kinds(
+    pub async fn delete_books_with_disallowed_kinds(
         &self,
         library_id: i64,
         allowed_kinds: &FxHashSet<FileExtension>,
     ) -> Result<Vec<Fp>, Error> {
-        RUNTIME.block_on(async {
-            let mut tx = self.pool.begin().await?;
-            let (purged, _) =
-                delete_books_with_disallowed_kinds_on(&mut tx, library_id, allowed_kinds).await?;
-            tx.commit().await?;
-            tracing::debug!(count = purged.len(), "disallowed kind cleanup complete");
-            Ok(purged)
-        })
+        let mut tx = self.pool.begin().await?;
+        let (purged, _) =
+            delete_books_with_disallowed_kinds_on(&mut tx, library_id, allowed_kinds).await?;
+        tx.commit().await?;
+        tracing::debug!(count = purged.len(), "disallowed kind cleanup complete");
+        Ok(purged)
     }
 
     /// Removes books whose kinds are no longer allowed and their thumbnails in
     /// one transaction.
-    pub fn purge_disallowed_books_and_thumbnails(
+    pub async fn purge_disallowed_books_and_thumbnails(
         &self,
         library_id: i64,
         allowed_kinds: &FxHashSet<FileExtension>,
     ) -> Result<Vec<Fp>, Error> {
-        RUNTIME.block_on(async {
-            let mut tx = self.pool.begin().await?;
-            let (purged, orphaned) =
-                delete_books_with_disallowed_kinds_on(&mut tx, library_id, allowed_kinds).await?;
+        let mut tx = self.pool.begin().await?;
+        let (purged, orphaned) =
+            delete_books_with_disallowed_kinds_on(&mut tx, library_id, allowed_kinds).await?;
 
-            #[cfg(test)]
-            if purge_fail_point::should_fail() {
-                tx.rollback().await?;
-                return Err(anyhow::anyhow!(
-                    "injected failure after disallowed book purge"
-                ));
-            }
+        #[cfg(test)]
+        if purge_fail_point::should_fail() {
+            tx.rollback().await?;
+            return Err(anyhow::anyhow!(
+                "injected failure after disallowed book purge"
+            ));
+        }
 
-            batch_delete_thumbnails_on(&mut tx, &orphaned).await?;
-            tx.commit().await?;
-            tracing::debug!(
-                count = purged.len(),
-                "disallowed kind and thumbnail cleanup complete"
-            );
-            Ok(purged)
-        })
+        batch_delete_thumbnails_on(&mut tx, &orphaned).await?;
+        tx.commit().await?;
+        tracing::debug!(
+            count = purged.len(),
+            "disallowed kind and thumbnail cleanup complete"
+        );
+        Ok(purged)
     }
 
-    pub(crate) fn flush_import_scan(
+    pub(crate) async fn flush_import_scan(
         &self,
         library_id: i64,
         flush: ImportFlush<'_>,
     ) -> Result<(), Error> {
-        RUNTIME.block_on(async {
-            let mut tx = self.pool.begin().await?;
-            batch_delete_thumbnails_on(&mut tx, flush.thumbnails_to_delete).await?;
+        let mut tx = self.pool.begin().await?;
+        batch_delete_thumbnails_on(&mut tx, flush.thumbnails_to_delete).await?;
 
+        #[cfg(test)]
+        if flush_fail_point::should_fail(flush_fail_point::Point::AfterThumbnails) {
+            tx.rollback().await?;
+            return Err(anyhow::anyhow!(
+                "injected failure after import thumbnail delete"
+            ));
+        }
+
+        Self::batch_insert_books_on(&mut tx, library_id, flush.books_to_insert).await?;
+        Self::batch_update_books_on(
+            &mut tx,
+            library_id,
+            flush.books_to_update,
+            BookStatus::Active,
+        )
+        .await?;
+        for (fp, info) in flush.books_to_link {
+            Self::link_book_to_library_on(&mut tx, library_id, *fp, info).await?;
+        }
+        Self::batch_update_book_paths_on(&mut tx, library_id, flush.path_updates).await?;
+        Self::batch_delete_books_on(&mut tx, library_id, flush.books_to_delete).await?;
+
+        if flush.sort_keys_dirty {
             #[cfg(test)]
-            if flush_fail_point::should_fail(flush_fail_point::Point::AfterThumbnails) {
+            if flush_fail_point::should_fail(flush_fail_point::Point::BeforeSortKeys) {
                 tx.rollback().await?;
                 return Err(anyhow::anyhow!(
-                    "injected failure after import thumbnail delete"
+                    "injected failure before import sort-key compute"
                 ));
             }
 
-            Self::batch_insert_books_on(&mut tx, library_id, flush.books_to_insert).await?;
-            Self::batch_update_books_on(
-                &mut tx,
-                library_id,
-                flush.books_to_update,
-                BookStatus::Active,
-            )
-            .await?;
-            for (fp, info) in flush.books_to_link {
-                Self::link_book_to_library_on(&mut tx, library_id, *fp, info).await?;
-            }
-            Self::batch_update_book_paths_on(&mut tx, library_id, flush.path_updates).await?;
-            Self::batch_delete_books_on(&mut tx, library_id, flush.books_to_delete).await?;
-
-            if flush.sort_keys_dirty {
-                #[cfg(test)]
-                if flush_fail_point::should_fail(flush_fail_point::Point::BeforeSortKeys) {
-                    tx.rollback().await?;
-                    return Err(anyhow::anyhow!(
-                        "injected failure before import sort-key compute"
-                    ));
-                }
-
-                Self::compute_sort_keys_on(&mut tx, library_id).await?;
-            }
-            tx.commit().await?;
-            Ok(())
-        })
+            Self::compute_sort_keys_on(&mut tx, library_id).await?;
+        }
+        tx.commit().await?;
+        Ok(())
     }
 }
 
@@ -3056,16 +2982,19 @@ mod tests {
     use std::path::{Path, PathBuf};
     use std::str::FromStr;
 
-    fn create_test_db() -> (Database, Db) {
-        let mut db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.init_for_test(0).expect("failed to run migrations");
+    async fn create_test_db() -> (Database, Db) {
+        let mut db = Database::new(":memory:")
+            .await
+            .expect("failed to create in-memory database");
+        db.init_for_test(0).await.expect("failed to run migrations");
         let libdb = Db::new(&db);
         (db, libdb)
     }
 
-    fn register_test_library(libdb: &Db, path: &str, name: &str) -> i64 {
+    async fn register_test_library(libdb: &Db, path: &str, name: &str) -> i64 {
         libdb
             .register_library(path, name)
+            .await
             .expect("failed to register library")
     }
 
@@ -3083,72 +3012,72 @@ mod tests {
         }
     }
 
-    #[test]
-    fn midpoint_rank_both_none_returns_stride() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn midpoint_rank_both_none_returns_stride() {
         assert_eq!(midpoint_rank(&[None, None], 0), Some(SORT_RANK_STRIDE));
     }
 
-    #[test]
-    fn midpoint_rank_empty_slice_returns_stride() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn midpoint_rank_empty_slice_returns_stride() {
         assert_eq!(midpoint_rank(&[], 0), Some(SORT_RANK_STRIDE));
     }
 
-    #[test]
-    fn midpoint_rank_left_none_right_some_bisects() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn midpoint_rank_left_none_right_some_bisects() {
         // pos=0 → left=None, right=Some(10) → 10/2 = 5
         assert_eq!(midpoint_rank(&[Some(10)], 0), Some(5));
     }
 
-    #[test]
-    fn midpoint_rank_left_none_right_some_exactly_one_returns_none() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn midpoint_rank_left_none_right_some_exactly_one_returns_none() {
         assert_eq!(midpoint_rank(&[Some(1)], 0), None);
     }
 
-    #[test]
-    fn midpoint_rank_left_none_right_some_zero_returns_none() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn midpoint_rank_left_none_right_some_zero_returns_none() {
         assert_eq!(midpoint_rank(&[Some(0)], 0), None);
     }
 
-    #[test]
-    fn midpoint_rank_left_some_right_none_adds_stride() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn midpoint_rank_left_some_right_none_adds_stride() {
         // pos=1 → left=Some(5), right=None → 5 + 1000
         assert_eq!(midpoint_rank(&[Some(5)], 1), Some(5 + SORT_RANK_STRIDE));
     }
 
-    #[test]
-    fn midpoint_rank_left_some_right_some_bisects() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn midpoint_rank_left_some_right_some_bisects() {
         // pos=1 → left=Some(2), right=Some(10) → (2+10)/2 = 6
         assert_eq!(midpoint_rank(&[Some(2), Some(10)], 1), Some(6));
     }
 
-    #[test]
-    fn midpoint_rank_adjacent_values_returns_none() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn midpoint_rank_adjacent_values_returns_none() {
         // pos=1 → left=Some(5), right=Some(6) → mid=5 which is not > l
         assert_eq!(midpoint_rank(&[Some(5), Some(6)], 1), None);
     }
 
-    #[test]
-    fn midpoint_rank_equal_values_returns_none() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn midpoint_rank_equal_values_returns_none() {
         // pos=1 → left=Some(5), right=Some(5) → mid=5 which is not > l
         assert_eq!(midpoint_rank(&[Some(5), Some(5)], 1), None);
     }
 
-    #[test]
-    fn midpoint_rank_none_slots_ignored_on_left_side() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn midpoint_rank_none_slots_ignored_on_left_side() {
         // Slot at pos-1 is None → flattens to left=None, right=Some(20) → 20/2=10
         assert_eq!(midpoint_rank(&[None, Some(20)], 1), Some(10));
     }
 
-    #[test]
-    fn midpoint_rank_pos_beyond_slice_uses_last_as_left() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn midpoint_rank_pos_beyond_slice_uses_last_as_left() {
         // pos beyond length → right is None; left is the last element
         let ranks = vec![Some(500i64)];
         assert_eq!(midpoint_rank(&ranks, 1), Some(500 + SORT_RANK_STRIDE));
     }
 
-    #[test]
-    fn test_insert_and_get_book() {
-        let (_db, libdb) = create_test_db();
+    #[tokio::test]
+    async fn test_insert_and_get_book() {
+        let (_db, libdb) = create_test_db().await;
         let fp = Fp::from_u64(1);
 
         let info = Info {
@@ -3173,13 +3102,15 @@ mod tests {
             ..Default::default()
         };
 
-        let library_id = register_test_library(&libdb, "/tmp/test_library", "Test Library");
+        let library_id = register_test_library(&libdb, "/tmp/test_library", "Test Library").await;
         libdb
             .insert_book(library_id, fp, &info)
+            .await
             .expect("failed to insert book");
 
         let books = libdb
             .get_all_books(library_id)
+            .await
             .expect("failed to get books");
         let retrieved_info = books.iter().find(|info| info.fp == Some(fp)).cloned();
         assert!(retrieved_info.is_some(), "book should exist in database");
@@ -3198,9 +3129,9 @@ mod tests {
         assert_eq!(retrieved_info.file.size, 1024);
     }
 
-    #[test]
-    fn test_insert_book_with_reading_state() {
-        let (_db, libdb) = create_test_db();
+    #[tokio::test]
+    async fn test_insert_book_with_reading_state() {
+        let (_db, libdb) = create_test_db().await;
         let fp = Fp::from_u64(2);
 
         let reader_info = ReaderInfo {
@@ -3221,13 +3152,16 @@ mod tests {
             ..Default::default()
         };
 
-        let library_id = register_test_library(&libdb, "/tmp/test_library2", "Test Library 2");
+        let library_id =
+            register_test_library(&libdb, "/tmp/test_library2", "Test Library 2").await;
         libdb
             .insert_book(library_id, fp, &info)
+            .await
             .expect("failed to insert book");
 
         let books = libdb
             .get_all_books(library_id)
+            .await
             .expect("failed to get books");
         let retrieved = books
             .iter()
@@ -3246,9 +3180,9 @@ mod tests {
         assert!(!retrieved_reader.finished);
     }
 
-    #[test]
-    fn test_delete_book() {
-        let (_db, libdb) = create_test_db();
+    #[tokio::test]
+    async fn test_delete_book() {
+        let (_db, libdb) = create_test_db().await;
         let fp = Fp::from_u64(3);
 
         let info = Info {
@@ -3263,13 +3197,16 @@ mod tests {
             ..Default::default()
         };
 
-        let library_id = register_test_library(&libdb, "/tmp/test_library3", "Test Library 3");
+        let library_id =
+            register_test_library(&libdb, "/tmp/test_library3", "Test Library 3").await;
         libdb
             .insert_book(library_id, fp, &info)
+            .await
             .expect("failed to insert book");
 
         let books = libdb
             .get_all_books(library_id)
+            .await
             .expect("failed to get books");
         assert!(
             books.iter().any(|info| info.fp == Some(fp)),
@@ -3278,10 +3215,12 @@ mod tests {
 
         libdb
             .delete_book(library_id, fp)
+            .await
             .expect("failed to delete book");
 
         let books = libdb
             .get_all_books(library_id)
+            .await
             .expect("failed to get books");
         assert!(
             !books.iter().any(|info| info.fp == Some(fp)),
@@ -3289,10 +3228,11 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_multiple_books() {
-        let (_db, libdb) = create_test_db();
-        let library_id = register_test_library(&libdb, "/tmp/test_library4", "Test Library 4");
+    #[tokio::test]
+    async fn test_multiple_books() {
+        let (_db, libdb) = create_test_db().await;
+        let library_id =
+            register_test_library(&libdb, "/tmp/test_library4", "Test Library 4").await;
 
         for i in 1..=5 {
             let fp = Fp::from_u64(i as u64);
@@ -3310,11 +3250,13 @@ mod tests {
 
             libdb
                 .insert_book(library_id, fp, &info)
+                .await
                 .expect("failed to insert book");
         }
 
         let books = libdb
             .get_all_books(library_id)
+            .await
             .expect("failed to get books");
         for i in 1..=5 {
             let fp = Fp::from_u64(i as u64);
@@ -3328,9 +3270,9 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_update_book() {
-        let (_db, libdb) = create_test_db();
+    #[tokio::test]
+    async fn test_update_book() {
+        let (_db, libdb) = create_test_db().await;
         let fp = Fp::from_u64(4);
 
         let mut info = Info {
@@ -3345,9 +3287,11 @@ mod tests {
             ..Default::default()
         };
 
-        let library_id = register_test_library(&libdb, "/tmp/test_library5", "Test Library 5");
+        let library_id =
+            register_test_library(&libdb, "/tmp/test_library5", "Test Library 5").await;
         libdb
             .insert_book(library_id, fp, &info)
+            .await
             .expect("failed to insert book");
 
         info.title = "Updated Title".to_string();
@@ -3356,10 +3300,12 @@ mod tests {
 
         libdb
             .update_book(library_id, fp, &info, BookStatus::Active)
+            .await
             .expect("failed to update book");
 
         let books = libdb
             .get_all_books(library_id)
+            .await
             .expect("failed to get books");
         let updated = books
             .iter()
@@ -3371,10 +3317,11 @@ mod tests {
         assert_eq!(updated.year, "2025");
     }
 
-    #[test]
-    fn test_get_all_books() {
-        let (_db, libdb) = create_test_db();
-        let library_id = register_test_library(&libdb, "/tmp/test_library6", "Test Library 6");
+    #[tokio::test]
+    async fn test_get_all_books() {
+        let (_db, libdb) = create_test_db().await;
+        let library_id =
+            register_test_library(&libdb, "/tmp/test_library6", "Test Library 6").await;
 
         for i in 1..=3 {
             let fp = Fp::from_u64(i as u64);
@@ -3392,11 +3339,13 @@ mod tests {
 
             libdb
                 .insert_book(library_id, fp, &info)
+                .await
                 .expect("failed to insert book");
         }
 
         let all_books = libdb
             .get_all_books(library_id)
+            .await
             .expect("failed to get all books");
         assert_eq!(all_books.len(), 3);
 
@@ -3406,11 +3355,11 @@ mod tests {
         assert!(titles.contains(&"Book 3".to_string()));
     }
 
-    #[test]
-    fn test_get_book_by_path_and_fingerprint() {
-        let (_db, libdb) = create_test_db();
+    #[tokio::test]
+    async fn test_get_book_by_path_and_fingerprint() {
+        let (_db, libdb) = create_test_db().await;
         let library_id =
-            register_test_library(&libdb, "/tmp/test_library_lookup", "Lookup Library");
+            register_test_library(&libdb, "/tmp/test_library_lookup", "Lookup Library").await;
         let fp = Fp::from_str("00000000000000A1").unwrap();
 
         let mut info = make_info("nested/book.pdf", "Lookup Book", "Lookup Author");
@@ -3422,10 +3371,12 @@ mod tests {
 
         libdb
             .insert_book(library_id, fp, &info)
+            .await
             .expect("failed to insert book");
 
         let by_path = libdb
             .get_book_by_path(library_id, Path::new("nested/book.pdf"))
+            .await
             .expect("failed to get book by path")
             .expect("book should exist by path");
         assert_eq!(by_path.fp, Some(fp));
@@ -3435,6 +3386,7 @@ mod tests {
 
         let by_fp = libdb
             .get_book_by_fingerprint(library_id, fp)
+            .await
             .expect("failed to get book by fingerprint")
             .expect("book should exist by fingerprint");
         assert_eq!(by_fp.fp, Some(fp));
@@ -3444,22 +3396,24 @@ mod tests {
         assert!(
             libdb
                 .get_book_by_path(library_id, Path::new("missing.pdf"))
+                .await
                 .expect("lookup should succeed")
                 .is_none()
         );
         assert!(
             libdb
                 .get_book_by_fingerprint(library_id, Fp::from_str("00000000000000FF").unwrap())
+                .await
                 .expect("lookup should succeed")
                 .is_none()
         );
     }
 
-    #[test]
-    fn test_batch_get_books_by_fingerprints() {
-        let (_db, libdb) = create_test_db();
+    #[tokio::test]
+    async fn test_batch_get_books_by_fingerprints() {
+        let (_db, libdb) = create_test_db().await;
         let library_id =
-            register_test_library(&libdb, "/tmp/test_library_batch_lookup", "Batch Lookup");
+            register_test_library(&libdb, "/tmp/test_library_batch_lookup", "Batch Lookup").await;
 
         let fp1 = Fp::from_str("00000000000000B1").unwrap();
         let fp2 = Fp::from_str("00000000000000B2").unwrap();
@@ -3471,6 +3425,7 @@ mod tests {
                 fp1,
                 &make_info("a/book1.pdf", "Book 1", "Author 1"),
             )
+            .await
             .expect("failed to insert first book");
         libdb
             .insert_book(
@@ -3478,10 +3433,12 @@ mod tests {
                 fp2,
                 &make_info("b/book2.pdf", "Book 2", "Author 2"),
             )
+            .await
             .expect("failed to insert second book");
 
         let books = libdb
             .batch_get_books_by_fingerprints(library_id, &[fp1, missing, fp2])
+            .await
             .expect("failed to batch get books");
 
         assert_eq!(books.len(), 2);
@@ -3491,16 +3448,21 @@ mod tests {
 
         let empty = libdb
             .batch_get_books_by_fingerprints(library_id, &[])
+            .await
             .expect("empty batch should succeed");
         assert!(empty.is_empty());
     }
 
-    #[test]
-    fn test_count_books() {
-        let (_db, libdb) = create_test_db();
-        let library_id = register_test_library(&libdb, "/tmp/test_library_count", "Count Library");
+    #[tokio::test]
+    async fn test_count_books() {
+        let (_db, libdb) = create_test_db().await;
+        let library_id =
+            register_test_library(&libdb, "/tmp/test_library_count", "Count Library").await;
 
-        assert_eq!(libdb.count_books(library_id).expect("count failed"), 0);
+        assert_eq!(
+            libdb.count_books(library_id).await.expect("count failed"),
+            0
+        );
 
         let fp1 = Fp::from_str("00000000000000C1").unwrap();
         let fp2 = Fp::from_str("00000000000000C2").unwrap();
@@ -3511,6 +3473,7 @@ mod tests {
                 fp1,
                 &make_info("count/one.pdf", "One", "Author"),
             )
+            .await
             .expect("failed to insert first book");
         libdb
             .insert_book(
@@ -3518,16 +3481,20 @@ mod tests {
                 fp2,
                 &make_info("count/two.pdf", "Two", "Author"),
             )
+            .await
             .expect("failed to insert second book");
 
-        assert_eq!(libdb.count_books(library_id).expect("count failed"), 2);
+        assert_eq!(
+            libdb.count_books(library_id).await.expect("count failed"),
+            2
+        );
     }
 
-    #[test]
-    fn test_list_books_under_prefix() {
-        let (_db, libdb) = create_test_db();
+    #[tokio::test]
+    async fn test_list_books_under_prefix() {
+        let (_db, libdb) = create_test_db().await;
         let library_id =
-            register_test_library(&libdb, "/tmp/test_library_prefix_books", "Prefix Books");
+            register_test_library(&libdb, "/tmp/test_library_prefix_books", "Prefix Books").await;
 
         let fp1 = Fp::from_str("00000000000000D1").unwrap();
         let fp2 = Fp::from_str("00000000000000D2").unwrap();
@@ -3539,6 +3506,7 @@ mod tests {
                 fp1,
                 &make_info("dir1/book1.pdf", "Book 1", "Author 1"),
             )
+            .await
             .expect("failed to insert book 1");
         libdb
             .insert_book(
@@ -3546,6 +3514,7 @@ mod tests {
                 fp2,
                 &make_info("dir1/sub/book2.pdf", "Book 2", "Author 2"),
             )
+            .await
             .expect("failed to insert book 2");
         libdb
             .insert_book(
@@ -3553,15 +3522,18 @@ mod tests {
                 fp3,
                 &make_info("dir2/book3.pdf", "Book 3", "Author 3"),
             )
+            .await
             .expect("failed to insert book 3");
 
         let root_books = libdb
             .list_books_under_prefix(library_id, Path::new(""))
+            .await
             .expect("root listing failed");
         assert_eq!(root_books.len(), 3);
 
         let dir1_books = libdb
             .list_books_under_prefix(library_id, Path::new("dir1"))
+            .await
             .expect("dir1 listing failed");
         let dir1_paths: BTreeSet<PathBuf> =
             dir1_books.into_iter().map(|info| info.file.path).collect();
@@ -3575,16 +3547,17 @@ mod tests {
 
         let exact_book = libdb
             .list_books_under_prefix(library_id, Path::new("dir2/book3.pdf"))
+            .await
             .expect("exact listing failed");
         assert_eq!(exact_book.len(), 1);
         assert_eq!(exact_book[0].fp, Some(fp3));
     }
 
-    #[test]
-    fn test_list_directories_under_prefix() {
-        let (_db, libdb) = create_test_db();
+    #[tokio::test]
+    async fn test_list_directories_under_prefix() {
+        let (_db, libdb) = create_test_db().await;
         let library_id =
-            register_test_library(&libdb, "/tmp/test_library_prefix_dirs", "Prefix Dirs");
+            register_test_library(&libdb, "/tmp/test_library_prefix_dirs", "Prefix Dirs").await;
 
         libdb
             .insert_book(
@@ -3592,6 +3565,7 @@ mod tests {
                 Fp::from_str("00000000000000E1").unwrap(),
                 &make_info("dir1/book1.pdf", "Book 1", "Author 1"),
             )
+            .await
             .expect("failed to insert book 1");
         libdb
             .insert_book(
@@ -3599,6 +3573,7 @@ mod tests {
                 Fp::from_str("00000000000000E2").unwrap(),
                 &make_info("dir1/sub/book2.pdf", "Book 2", "Author 2"),
             )
+            .await
             .expect("failed to insert book 2");
         libdb
             .insert_book(
@@ -3606,10 +3581,12 @@ mod tests {
                 Fp::from_str("00000000000000E3").unwrap(),
                 &make_info("dir2/book3.pdf", "Book 3", "Author 3"),
             )
+            .await
             .expect("failed to insert book 3");
 
         let root_dirs = libdb
             .list_directories_under_prefix(library_id, Path::new(""))
+            .await
             .expect("root dir listing failed");
         assert_eq!(
             root_dirs,
@@ -3618,18 +3595,20 @@ mod tests {
 
         let dir1_dirs = libdb
             .list_directories_under_prefix(library_id, Path::new("dir1"))
+            .await
             .expect("dir1 dir listing failed");
         assert_eq!(dir1_dirs, BTreeSet::from([PathBuf::from("sub")]));
 
         let leaf_dirs = libdb
             .list_directories_under_prefix(library_id, Path::new("dir2"))
+            .await
             .expect("leaf dir listing failed");
         assert!(leaf_dirs.is_empty());
     }
 
-    #[test]
-    fn test_reading_state_crud() {
-        let (_db, libdb) = create_test_db();
+    #[tokio::test]
+    async fn test_reading_state_crud() {
+        let (_db, libdb) = create_test_db().await;
         let fp = Fp::from_u64(5);
 
         let info = Info {
@@ -3644,9 +3623,11 @@ mod tests {
             ..Default::default()
         };
 
-        let library_id = register_test_library(&libdb, "/tmp/test_library7", "Test Library 7");
+        let library_id =
+            register_test_library(&libdb, "/tmp/test_library7", "Test Library 7").await;
         libdb
             .insert_book(library_id, fp, &info)
+            .await
             .expect("failed to insert book");
 
         let mut reader_info = ReaderInfo {
@@ -3657,10 +3638,12 @@ mod tests {
 
         libdb
             .save_reading_state(fp, &reader_info)
+            .await
             .expect("failed to save reading state");
 
         let books = libdb
             .get_all_books(library_id)
+            .await
             .expect("failed to get books");
         let retrieved = books
             .iter()
@@ -3677,10 +3660,12 @@ mod tests {
 
         libdb
             .save_reading_state(fp, &reader_info)
+            .await
             .expect("failed to update reading state");
 
         let books = libdb
             .get_all_books(library_id)
+            .await
             .expect("failed to get books");
         let updated = books
             .iter()
@@ -3693,10 +3678,11 @@ mod tests {
         assert!(updated_reader.finished);
     }
 
-    #[test]
-    fn test_batch_insert_books() {
-        let (_db, libdb) = create_test_db();
-        let library_id = register_test_library(&libdb, "/tmp/test_library8", "Test Library 8");
+    #[tokio::test]
+    async fn test_batch_insert_books() {
+        let (_db, libdb) = create_test_db().await;
+        let library_id =
+            register_test_library(&libdb, "/tmp/test_library8", "Test Library 8").await;
 
         let mut books = Vec::new();
         for i in 1..=5 {
@@ -3720,10 +3706,12 @@ mod tests {
 
         libdb
             .batch_insert_books(library_id, &book_refs)
+            .await
             .expect("failed to batch insert books");
 
         let all_books = libdb
             .get_all_books(library_id)
+            .await
             .expect("failed to get books");
         for (fp, info) in &books {
             let retrieved = all_books
@@ -3738,14 +3726,16 @@ mod tests {
 
         let all_books = libdb
             .get_all_books(library_id)
+            .await
             .expect("failed to get all books");
         assert_eq!(all_books.len(), 5);
     }
 
-    #[test]
-    fn test_batch_update_books() {
-        let (_db, libdb) = create_test_db();
-        let library_id = register_test_library(&libdb, "/tmp/test_library9", "Test Library 9");
+    #[tokio::test]
+    async fn test_batch_update_books() {
+        let (_db, libdb) = create_test_db().await;
+        let library_id =
+            register_test_library(&libdb, "/tmp/test_library9", "Test Library 9").await;
 
         let mut books = Vec::new();
         for i in 1..=3 {
@@ -3763,6 +3753,7 @@ mod tests {
             };
             libdb
                 .insert_book(library_id, fp, &info)
+                .await
                 .expect("failed to insert book");
 
             info.title = format!("Updated Book {}", i);
@@ -3774,10 +3765,12 @@ mod tests {
 
         libdb
             .batch_update_books(library_id, &book_refs, BookStatus::Active)
+            .await
             .expect("failed to batch update books");
 
         let all_books = libdb
             .get_all_books(library_id)
+            .await
             .expect("failed to get books");
         for (fp, info) in &books {
             let retrieved = all_books
@@ -3790,9 +3783,9 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_delete_reading_state() {
-        let (_db, libdb) = create_test_db();
+    #[tokio::test]
+    async fn test_delete_reading_state() {
+        let (_db, libdb) = create_test_db().await;
         let fp = Fp::from_str("0000000000000006").unwrap();
 
         let info = Info {
@@ -3812,13 +3805,16 @@ mod tests {
             ..Default::default()
         };
 
-        let library_id = register_test_library(&libdb, "/tmp/test_library10", "Test Library 10");
+        let library_id =
+            register_test_library(&libdb, "/tmp/test_library10", "Test Library 10").await;
         libdb
             .insert_book(library_id, fp, &info)
+            .await
             .expect("failed to insert book");
 
         let books = libdb
             .get_all_books(library_id)
+            .await
             .expect("failed to get books");
         let retrieved = books
             .iter()
@@ -3829,10 +3825,12 @@ mod tests {
 
         libdb
             .delete_reading_state(fp)
+            .await
             .expect("failed to delete reading state");
 
         let books = libdb
             .get_all_books(library_id)
+            .await
             .expect("failed to get books");
         let retrieved = books
             .iter()
@@ -3842,11 +3840,12 @@ mod tests {
         assert!(retrieved.reader_info.is_none());
     }
 
-    #[test]
-    fn test_thumbnail_crud() {
-        let (_db, libdb) = create_test_db();
+    #[tokio::test]
+    async fn test_thumbnail_crud() {
+        let (_db, libdb) = create_test_db().await;
         let library_id =
-            register_test_library(&libdb, "/tmp/test_library_thumbnails", "Thumbnail Library");
+            register_test_library(&libdb, "/tmp/test_library_thumbnails", "Thumbnail Library")
+                .await;
         let fp = Fp::from_str("0000000000000007").unwrap();
         let data = vec![1, 2, 3, 4, 5];
 
@@ -3856,34 +3855,47 @@ mod tests {
                 fp,
                 &make_info("thumbs/book.pdf", "Thumb Book", "Thumb Author"),
             )
+            .await
             .expect("failed to insert book");
 
-        let thumbnail = libdb.get_thumbnail(fp).expect("failed to get thumbnail");
+        let thumbnail = libdb
+            .get_thumbnail(fp)
+            .await
+            .expect("failed to get thumbnail");
         assert!(thumbnail.is_none());
 
         libdb
             .save_thumbnail(fp, &data)
+            .await
             .expect("failed to save thumbnail");
 
-        let thumbnail = libdb.get_thumbnail(fp).expect("failed to get thumbnail");
+        let thumbnail = libdb
+            .get_thumbnail(fp)
+            .await
+            .expect("failed to get thumbnail");
         assert_eq!(thumbnail, Some(data.clone()));
 
         libdb
             .delete_thumbnail(fp)
+            .await
             .expect("failed to delete thumbnail");
 
-        let thumbnail = libdb.get_thumbnail(fp).expect("failed to get thumbnail");
+        let thumbnail = libdb
+            .get_thumbnail(fp)
+            .await
+            .expect("failed to get thumbnail");
         assert!(thumbnail.is_none());
     }
 
-    #[test]
-    fn test_books_without_thumbnails() {
-        let (_db, libdb) = create_test_db();
+    #[tokio::test]
+    async fn test_books_without_thumbnails() {
+        let (_db, libdb) = create_test_db().await;
         let library_id = register_test_library(
             &libdb,
             "/tmp/test_library_thumbnails_missing",
             "Missing Thumbs Library",
-        );
+        )
+        .await;
         let fp1 = Fp::from_str("0000000000000008").unwrap();
         let fp2 = Fp::from_str("0000000000000009").unwrap();
 
@@ -3893,6 +3905,7 @@ mod tests {
                 fp1,
                 &make_info("thumbs/book1.epub", "Thumb Book 1", "Thumb Author 1"),
             )
+            .await
             .expect("failed to insert book 1");
 
         libdb
@@ -3901,33 +3914,35 @@ mod tests {
                 fp2,
                 &make_info("thumbs/book2.epub", "Thumb Book 2", "Thumb Author 2"),
             )
+            .await
             .expect("failed to insert book 2");
 
-        let missing = libdb.books_without_thumbnails(library_id).unwrap();
+        let missing = libdb.books_without_thumbnails(library_id).await.unwrap();
         assert_eq!(missing.len(), 2);
         assert!(missing.contains(&(fp1, PathBuf::from("thumbs/book1.epub"))));
         assert!(missing.contains(&(fp2, PathBuf::from("thumbs/book2.epub"))));
 
-        libdb.save_thumbnail(fp1, &[1, 2, 3]).unwrap();
+        libdb.save_thumbnail(fp1, &[1, 2, 3]).await.unwrap();
 
-        let missing = libdb.books_without_thumbnails(library_id).unwrap();
+        let missing = libdb.books_without_thumbnails(library_id).await.unwrap();
         assert_eq!(missing.len(), 1);
         assert_eq!(missing[0], (fp2, PathBuf::from("thumbs/book2.epub")));
 
-        libdb.save_thumbnail(fp2, &[4, 5, 6]).unwrap();
+        libdb.save_thumbnail(fp2, &[4, 5, 6]).await.unwrap();
 
-        let missing = libdb.books_without_thumbnails(library_id).unwrap();
+        let missing = libdb.books_without_thumbnails(library_id).await.unwrap();
         assert!(missing.is_empty());
     }
 
-    #[test]
-    fn test_batch_delete_thumbnails() {
-        let (_db, libdb) = create_test_db();
+    #[tokio::test]
+    async fn test_batch_delete_thumbnails() {
+        let (_db, libdb) = create_test_db().await;
         let library_id = register_test_library(
             &libdb,
             "/tmp/test_library_batch_delete_thumbnails",
             "Batch Delete Thumbnails",
-        );
+        )
+        .await;
         let fp1 = Fp::from_str("00000000000000F1").unwrap();
         let fp2 = Fp::from_str("00000000000000F2").unwrap();
         let fp3 = Fp::from_str("00000000000000F3").unwrap();
@@ -3938,6 +3953,7 @@ mod tests {
                 fp1,
                 &make_info("thumbs/one.pdf", "One", "Author One"),
             )
+            .await
             .expect("failed to insert first book");
         libdb
             .insert_book(
@@ -3945,36 +3961,45 @@ mod tests {
                 fp2,
                 &make_info("thumbs/two.pdf", "Two", "Author Two"),
             )
+            .await
             .expect("failed to insert second book");
 
         libdb
             .save_thumbnail(fp1, &[1, 2, 3])
+            .await
             .expect("failed to save thumbnail 1");
         libdb
             .save_thumbnail(fp2, &[4, 5, 6])
+            .await
             .expect("failed to save thumbnail 2");
 
         libdb
             .batch_delete_thumbnails(&[fp1, fp3])
+            .await
             .expect("failed to batch delete thumbnails");
 
         assert!(
             libdb
                 .get_thumbnail(fp1)
+                .await
                 .expect("failed to get thumbnail 1")
                 .is_none()
         );
         assert_eq!(
-            libdb.get_thumbnail(fp2).expect("failed to get thumbnail 2"),
+            libdb
+                .get_thumbnail(fp2)
+                .await
+                .expect("failed to get thumbnail 2"),
             Some(vec![4, 5, 6])
         );
     }
 
-    #[test]
-    fn test_move_thumbnail() {
-        let (_db, libdb) = create_test_db();
+    #[tokio::test]
+    async fn test_move_thumbnail() {
+        let (_db, libdb) = create_test_db().await;
         let library_id =
-            register_test_library(&libdb, "/tmp/test_library_move_thumbnail", "Move Thumbnail");
+            register_test_library(&libdb, "/tmp/test_library_move_thumbnail", "Move Thumbnail")
+                .await;
         let from_fp = Fp::from_str("0000000000000008").unwrap();
         let to_fp = Fp::from_str("0000000000000009").unwrap();
         let data = vec![9, 8, 7, 6];
@@ -3985,6 +4010,7 @@ mod tests {
                 from_fp,
                 &make_info("thumbs/from.pdf", "From Book", "From Author"),
             )
+            .await
             .expect("failed to insert source book");
         libdb
             .insert_book(
@@ -3992,35 +4018,41 @@ mod tests {
                 to_fp,
                 &make_info("thumbs/to.pdf", "To Book", "To Author"),
             )
+            .await
             .expect("failed to insert destination book");
 
         libdb
             .save_thumbnail(from_fp, &data)
+            .await
             .expect("failed to save thumbnail");
 
         libdb
             .move_thumbnail(from_fp, to_fp)
+            .await
             .expect("failed to move thumbnail");
 
         let old_thumbnail = libdb
             .get_thumbnail(from_fp)
+            .await
             .expect("failed to get old thumbnail");
         assert!(old_thumbnail.is_none());
 
         let new_thumbnail = libdb
             .get_thumbnail(to_fp)
+            .await
             .expect("failed to get new thumbnail");
         assert_eq!(new_thumbnail, Some(data));
     }
 
-    #[test]
-    fn test_batch_move_thumbnails() {
-        let (_db, libdb) = create_test_db();
+    #[tokio::test]
+    async fn test_batch_move_thumbnails() {
+        let (_db, libdb) = create_test_db().await;
         let library_id = register_test_library(
             &libdb,
             "/tmp/test_library_batch_move_thumbnails",
             "Batch Move Thumbnails",
-        );
+        )
+        .await;
         let from_fp1 = Fp::from_str("0000000000000101").unwrap();
         let to_fp1 = Fp::from_str("0000000000000102").unwrap();
         let from_fp2 = Fp::from_str("0000000000000103").unwrap();
@@ -4032,6 +4064,7 @@ mod tests {
                 from_fp1,
                 &make_info("thumbs/from1.pdf", "From 1", "Author 1"),
             )
+            .await
             .expect("failed to insert source book 1");
         libdb
             .insert_book(
@@ -4039,6 +4072,7 @@ mod tests {
                 to_fp1,
                 &make_info("thumbs/to1.pdf", "To 1", "Author 1"),
             )
+            .await
             .expect("failed to insert destination book 1");
         libdb
             .insert_book(
@@ -4046,6 +4080,7 @@ mod tests {
                 from_fp2,
                 &make_info("thumbs/from2.pdf", "From 2", "Author 2"),
             )
+            .await
             .expect("failed to insert source book 2");
         libdb
             .insert_book(
@@ -4053,57 +4088,68 @@ mod tests {
                 to_fp2,
                 &make_info("thumbs/to2.pdf", "To 2", "Author 2"),
             )
+            .await
             .expect("failed to insert destination book 2");
 
         libdb
             .save_thumbnail(from_fp1, &[1, 1, 1])
+            .await
             .expect("failed to save thumbnail 1");
         libdb
             .save_thumbnail(from_fp2, &[2, 2, 2])
+            .await
             .expect("failed to save thumbnail 2");
 
         libdb
             .batch_move_thumbnails(&[(from_fp1, to_fp1), (from_fp2, to_fp2)])
+            .await
             .expect("failed to batch move thumbnails");
 
         assert!(
             libdb
                 .get_thumbnail(from_fp1)
+                .await
                 .expect("failed to get old thumbnail 1")
                 .is_none()
         );
         assert!(
             libdb
                 .get_thumbnail(from_fp2)
+                .await
                 .expect("failed to get old thumbnail 2")
                 .is_none()
         );
         assert_eq!(
             libdb
                 .get_thumbnail(to_fp1)
+                .await
                 .expect("failed to get new thumbnail 1"),
             Some(vec![1, 1, 1])
         );
         assert_eq!(
             libdb
                 .get_thumbnail(to_fp2)
+                .await
                 .expect("failed to get new thumbnail 2"),
             Some(vec![2, 2, 2])
         );
     }
 
-    #[test]
-    fn test_list_book_handles_and_update_book_path() {
-        let (_db, libdb) = create_test_db();
-        let library_id = register_test_library(&libdb, "/tmp/test_library_handles", "Handles");
+    #[tokio::test]
+    async fn test_list_book_handles_and_update_book_path() {
+        let (_db, libdb) = create_test_db().await;
+        let library_id =
+            register_test_library(&libdb, "/tmp/test_library_handles", "Handles").await;
 
         let fp = Fp::from_str("0000000000000111").unwrap();
         libdb
             .insert_book(library_id, fp, &make_info("old/path.pdf", "Book", "Author"))
+            .await
             .expect("failed to insert book");
 
         let handles = libdb
             .list_book_handles(library_id)
+            .await
             .expect("failed to list handles");
         assert_eq!(handles.len(), 1);
         assert_eq!(handles[0].fp, fp);
@@ -4117,10 +4163,12 @@ mod tests {
                 Path::new("new/path.pdf"),
                 Path::new("/abs/new/path.pdf"),
             )
+            .await
             .expect("failed to update book path");
 
         let updated = libdb
             .get_book_by_fingerprint(library_id, fp)
+            .await
             .expect("failed to get updated book")
             .expect("book should exist");
         assert_eq!(updated.file.path, PathBuf::from("new/path.pdf"));
@@ -4131,6 +4179,7 @@ mod tests {
 
         let handles = libdb
             .list_book_handles(library_id)
+            .await
             .expect("failed to list handles after update");
         assert_eq!(handles.len(), 1);
         assert_eq!(handles[0].fp, fp);
@@ -4138,20 +4187,22 @@ mod tests {
         assert_eq!(handles[0].abs, PathBuf::from("/abs/new/path.pdf"));
     }
 
-    #[test]
-    fn test_batch_update_book_paths() {
-        let (_db, libdb) = create_test_db();
+    #[tokio::test]
+    async fn test_batch_update_book_paths() {
+        let (_db, libdb) = create_test_db().await;
         let library_id =
-            register_test_library(&libdb, "/tmp/test_library_batch_paths", "Batch Paths");
+            register_test_library(&libdb, "/tmp/test_library_batch_paths", "Batch Paths").await;
 
         let fp1 = Fp::from_str("0000000000000121").unwrap();
         let fp2 = Fp::from_str("0000000000000122").unwrap();
 
         libdb
             .insert_book(library_id, fp1, &make_info("old/one.pdf", "One", "Author"))
+            .await
             .expect("failed to insert first book");
         libdb
             .insert_book(library_id, fp2, &make_info("old/two.pdf", "Two", "Author"))
+            .await
             .expect("failed to insert second book");
 
         let fp1_mtime = UnixTimestamp::from(1_700_000_001);
@@ -4179,14 +4230,17 @@ mod tests {
                     },
                 ],
             )
+            .await
             .expect("failed to batch update book paths");
 
         let updated1 = libdb
             .get_book_by_fingerprint(library_id, fp1)
+            .await
             .expect("failed to get first updated book")
             .expect("first book should exist");
         let updated2 = libdb
             .get_book_by_fingerprint(library_id, fp2)
+            .await
             .expect("failed to get second updated book")
             .expect("second book should exist");
 
@@ -4203,6 +4257,7 @@ mod tests {
 
         let handles = libdb
             .list_book_handles(library_id)
+            .await
             .expect("failed to list handles");
         let h1 = handles.iter().find(|h| h.fp == fp1).expect("missing fp1");
         let h2 = handles.iter().find(|h| h.fp == fp2).expect("missing fp2");
@@ -4212,10 +4267,11 @@ mod tests {
         assert_eq!(h2.file_size, Some(fp2_size));
     }
 
-    #[test]
-    fn test_batch_delete_books() {
-        let (_db, libdb) = create_test_db();
-        let library_id = register_test_library(&libdb, "/tmp/test_library11", "Test Library 11");
+    #[tokio::test]
+    async fn test_batch_delete_books() {
+        let (_db, libdb) = create_test_db().await;
+        let library_id =
+            register_test_library(&libdb, "/tmp/test_library11", "Test Library 11").await;
 
         let mut fps = Vec::new();
         for i in 1..=4 {
@@ -4233,21 +4289,25 @@ mod tests {
             };
             libdb
                 .insert_book(library_id, fp, &info)
+                .await
                 .expect("failed to insert book");
             fps.push(fp);
         }
 
         let all_books = libdb
             .get_all_books(library_id)
+            .await
             .expect("failed to get books");
         assert_eq!(all_books.len(), 4);
 
         libdb
             .batch_delete_books(library_id, &fps[0..2])
+            .await
             .expect("failed to batch delete books");
 
         let remaining_books = libdb
             .get_all_books(library_id)
+            .await
             .expect("failed to get books");
         assert_eq!(remaining_books.len(), 2);
         assert!(remaining_books.iter().all(|info| {
@@ -4256,28 +4316,32 @@ mod tests {
         }));
     }
 
-    #[test]
-    fn test_batch_operations_with_empty_input() {
-        let (_db, libdb) = create_test_db();
-        let library_id = register_test_library(&libdb, "/tmp/test_library12", "Test Library 12");
+    #[tokio::test]
+    async fn test_batch_operations_with_empty_input() {
+        let (_db, libdb) = create_test_db().await;
+        let library_id =
+            register_test_library(&libdb, "/tmp/test_library12", "Test Library 12").await;
 
         let empty_books: Vec<(Fp, &Info)> = Vec::new();
         let empty_fps: Vec<Fp> = Vec::new();
 
         libdb
             .batch_insert_books(library_id, &empty_books)
+            .await
             .expect("empty batch insert should succeed");
         libdb
             .batch_update_books(library_id, &empty_books, BookStatus::Active)
+            .await
             .expect("empty batch update should succeed");
         libdb
             .batch_delete_books(library_id, &empty_fps)
+            .await
             .expect("empty batch delete should succeed");
     }
 
-    #[test]
-    fn test_categories_round_trip() {
-        let (_db, libdb) = create_test_db();
+    #[tokio::test]
+    async fn test_categories_round_trip() {
+        let (_db, libdb) = create_test_db().await;
         let fp = Fp::from_u64(0x99);
 
         let info = Info {
@@ -4298,13 +4362,16 @@ mod tests {
 
         let library_id = libdb
             .register_library("/tmp/test_library_cat", "Cat Library")
+            .await
             .expect("failed to register library");
         libdb
             .insert_book(library_id, fp, &info)
+            .await
             .expect("failed to insert book");
 
         let books = libdb
             .get_all_books(library_id)
+            .await
             .expect("failed to get books");
         let retrieved = books
             .iter()
@@ -4315,9 +4382,9 @@ mod tests {
         assert_eq!(retrieved.categories, info.categories);
     }
 
-    #[test]
-    fn test_categories_updated_on_update_book() {
-        let (_db, libdb) = create_test_db();
+    #[tokio::test]
+    async fn test_categories_updated_on_update_book() {
+        let (_db, libdb) = create_test_db().await;
         let fp = Fp::from_u64(0x9A);
 
         let mut info = Info {
@@ -4334,9 +4401,10 @@ mod tests {
         };
 
         let library_id =
-            register_test_library(&libdb, "/tmp/test_library_upd_cat", "Upd Cat Library");
+            register_test_library(&libdb, "/tmp/test_library_upd_cat", "Upd Cat Library").await;
         libdb
             .insert_book(library_id, fp, &info)
+            .await
             .expect("failed to insert book");
 
         info.categories = ["NewCat1", "NewCat2"]
@@ -4345,10 +4413,12 @@ mod tests {
             .collect();
         libdb
             .update_book(library_id, fp, &info, BookStatus::Active)
+            .await
             .expect("failed to update book");
 
         let books = libdb
             .get_all_books(library_id)
+            .await
             .expect("failed to get books");
         let retrieved = books
             .iter()
@@ -4359,22 +4429,23 @@ mod tests {
         assert_eq!(retrieved.categories, info.categories);
     }
 
-    #[test]
-    fn most_recently_opened_reading_book_none_when_empty() {
-        let (_db, libdb) = create_test_db();
-        let library_id = register_test_library(&libdb, "/tmp/mro_empty", "MRO Empty");
+    #[tokio::test]
+    async fn most_recently_opened_reading_book_none_when_empty() {
+        let (_db, libdb) = create_test_db().await;
+        let library_id = register_test_library(&libdb, "/tmp/mro_empty", "MRO Empty").await;
         assert!(
             libdb
                 .most_recently_opened_reading_book(library_id)
+                .await
                 .expect("query failed")
                 .is_none()
         );
     }
 
-    #[test]
-    fn most_recently_opened_reading_book_none_when_only_finished() {
-        let (_db, libdb) = create_test_db();
-        let library_id = register_test_library(&libdb, "/tmp/mro_finished", "MRO Finished");
+    #[tokio::test]
+    async fn most_recently_opened_reading_book_none_when_only_finished() {
+        let (_db, libdb) = create_test_db().await;
+        let library_id = register_test_library(&libdb, "/tmp/mro_finished", "MRO Finished").await;
         let fp = Fp::from_str("AA00000000000001").unwrap();
         let mut info = make_info("mro/finished.pdf", "Finished", "Author");
         info.reader_info = Some(ReaderInfo {
@@ -4383,20 +4454,22 @@ mod tests {
             finished: true,
             ..Default::default()
         });
-        libdb.insert_book(library_id, fp, &info).unwrap();
+        libdb.insert_book(library_id, fp, &info).await.unwrap();
 
         assert!(
             libdb
                 .most_recently_opened_reading_book(library_id)
+                .await
                 .expect("query failed")
                 .is_none()
         );
     }
 
-    #[test]
-    fn most_recently_opened_reading_book_returns_unfinished() {
-        let (_db, libdb) = create_test_db();
-        let library_id = register_test_library(&libdb, "/tmp/mro_unfinished", "MRO Unfinished");
+    #[tokio::test]
+    async fn most_recently_opened_reading_book_returns_unfinished() {
+        let (_db, libdb) = create_test_db().await;
+        let library_id =
+            register_test_library(&libdb, "/tmp/mro_unfinished", "MRO Unfinished").await;
 
         let fp1 = Fp::from_str("AA00000000000002").unwrap();
         let fp2 = Fp::from_str("AA00000000000003").unwrap();
@@ -4417,21 +4490,22 @@ mod tests {
             ..Default::default()
         });
 
-        libdb.insert_book(library_id, fp1, &info1).unwrap();
-        libdb.insert_book(library_id, fp2, &info2).unwrap();
+        libdb.insert_book(library_id, fp1, &info1).await.unwrap();
+        libdb.insert_book(library_id, fp2, &info2).await.unwrap();
 
         // Both unfinished — result should be one of them (not None).
         let result = libdb
             .most_recently_opened_reading_book(library_id)
+            .await
             .expect("query failed");
         assert!(result.is_some());
         assert!(!result.unwrap().reader_info.unwrap().finished);
     }
 
-    #[test]
-    fn most_recently_opened_reading_book_skips_never_opened() {
-        let (_db, libdb) = create_test_db();
-        let library_id = register_test_library(&libdb, "/tmp/mro_new", "MRO New");
+    #[tokio::test]
+    async fn most_recently_opened_reading_book_skips_never_opened() {
+        let (_db, libdb) = create_test_db().await;
+        let library_id = register_test_library(&libdb, "/tmp/mro_new", "MRO New").await;
 
         // Book with no reading state (never opened).
         let fp = Fp::from_str("AA00000000000004").unwrap();
@@ -4441,27 +4515,32 @@ mod tests {
                 fp,
                 &make_info("mro/new.pdf", "New Book", "Author"),
             )
+            .await
             .unwrap();
 
         assert!(
             libdb
                 .most_recently_opened_reading_book(library_id)
+                .await
                 .expect("query failed")
                 .is_none()
         );
     }
 
-    #[test]
-    fn compute_sort_keys_empty_library_is_noop() {
-        let (_db, libdb) = create_test_db();
-        let library_id = register_test_library(&libdb, "/tmp/sort_empty", "Sort Empty");
-        libdb.compute_sort_keys(library_id).expect("compute failed");
+    #[tokio::test]
+    async fn compute_sort_keys_empty_library_is_noop() {
+        let (_db, libdb) = create_test_db().await;
+        let library_id = register_test_library(&libdb, "/tmp/sort_empty", "Sort Empty").await;
+        libdb
+            .compute_sort_keys(library_id)
+            .await
+            .expect("compute failed");
     }
 
-    #[test]
-    fn compute_sort_keys_assigns_ranks_to_all_books() {
-        let (_db, libdb) = create_test_db();
-        let library_id = register_test_library(&libdb, "/tmp/sort_assign", "Sort Assign");
+    #[tokio::test]
+    async fn compute_sort_keys_assigns_ranks_to_all_books() {
+        let (_db, libdb) = create_test_db().await;
+        let library_id = register_test_library(&libdb, "/tmp/sort_assign", "Sort Assign").await;
 
         for i in 1u64..=3 {
             let fp = Fp::from_str(&format!("BB{:014X}", i)).unwrap();
@@ -4471,23 +4550,28 @@ mod tests {
                     fp,
                     &make_info(&format!("s/{i}.pdf"), &format!("Book {i}"), "Author"),
                 )
+                .await
                 .unwrap();
         }
 
-        libdb.compute_sort_keys(library_id).expect("compute failed");
+        libdb
+            .compute_sort_keys(library_id)
+            .await
+            .expect("compute failed");
 
         // After compute, page_books by Title should return all 3 in order.
         let (books, total) = libdb
             .page_books(library_id, Path::new(""), SortMethod::Title, false, 10, 0)
+            .await
             .expect("page_books failed");
         assert_eq!(total, 3);
         assert_eq!(books.len(), 3);
     }
 
-    #[test]
-    fn insert_sort_rank_places_new_book_between_neighbours() {
-        let (_db, libdb) = create_test_db();
-        let library_id = register_test_library(&libdb, "/tmp/sort_insert", "Sort Insert");
+    #[tokio::test]
+    async fn insert_sort_rank_places_new_book_between_neighbours() {
+        let (_db, libdb) = create_test_db().await;
+        let library_id = register_test_library(&libdb, "/tmp/sort_insert", "Sort Insert").await;
 
         // Insert two books and compute initial sort ranks.
         let fp_a = Fp::from_str("CC00000000000001").unwrap();
@@ -4495,39 +4579,45 @@ mod tests {
         let info_a = make_info("s/aardvark.pdf", "Aardvark", "Author");
         let info_z = make_info("s/zebra.pdf", "Zebra", "Author");
 
-        libdb.insert_book(library_id, fp_a, &info_a).unwrap();
-        libdb.insert_book(library_id, fp_z, &info_z).unwrap();
-        libdb.compute_sort_keys(library_id).unwrap();
+        libdb.insert_book(library_id, fp_a, &info_a).await.unwrap();
+        libdb.insert_book(library_id, fp_z, &info_z).await.unwrap();
+        libdb.compute_sort_keys(library_id).await.unwrap();
 
         // Insert a book that should land between the two alphabetically.
         let fp_m = Fp::from_str("CC00000000000003").unwrap();
         let info_m = make_info("s/mango.pdf", "Mango", "Author");
-        libdb.insert_book(library_id, fp_m, &info_m).unwrap();
-        libdb.insert_sort_rank(library_id, fp_m, &info_m).unwrap();
+        libdb.insert_book(library_id, fp_m, &info_m).await.unwrap();
+        libdb
+            .insert_sort_rank(library_id, fp_m, &info_m)
+            .await
+            .unwrap();
 
         let (books, _) = libdb
             .page_books(library_id, Path::new(""), SortMethod::Title, false, 10, 0)
+            .await
             .expect("page_books failed");
 
         let titles: Vec<&str> = books.iter().map(|b| b.title.as_str()).collect();
         assert_eq!(titles, vec!["Aardvark", "Mango", "Zebra"]);
     }
 
-    #[test]
-    fn insert_sort_rank_falls_back_to_full_recompute_when_gaps_exhausted() {
-        let (_db, libdb) = create_test_db();
-        let library_id = register_test_library(&libdb, "/tmp/sort_exhaust", "Sort Exhaust");
+    #[tokio::test]
+    async fn insert_sort_rank_falls_back_to_full_recompute_when_gaps_exhausted() {
+        let (_db, libdb) = create_test_db().await;
+        let library_id = register_test_library(&libdb, "/tmp/sort_exhaust", "Sort Exhaust").await;
 
         // Seed two books with ranks 1 and 2 (no room for a midpoint).
         let fp_a = Fp::from_str("DD00000000000001").unwrap();
         let fp_b = Fp::from_str("DD00000000000002").unwrap();
         libdb
             .insert_book(library_id, fp_a, &make_info("s/a.pdf", "Alpha", "Author"))
+            .await
             .unwrap();
         libdb
             .insert_book(library_id, fp_b, &make_info("s/b.pdf", "Beta", "Author"))
+            .await
             .unwrap();
-        libdb.compute_sort_keys(library_id).unwrap();
+        libdb.compute_sort_keys(library_id).await.unwrap();
 
         // Drain the gap between Alpha (1000) and Beta (2000) by inserting many
         // "Am*" books — each midpoint halves the gap until it exhausts.
@@ -4535,19 +4625,20 @@ mod tests {
             let fp = Fp::from_str(&format!("DD{:014X}", i + 10)).unwrap();
             let title = format!("Am{i:012}");
             let info = make_info(&format!("s/am{i}.pdf"), &title, "Author");
-            libdb.insert_book(library_id, fp, &info).unwrap();
+            libdb.insert_book(library_id, fp, &info).await.unwrap();
             // insert_sort_rank will eventually fall back; just verify it doesn't panic.
-            libdb.insert_sort_rank(library_id, fp, &info).unwrap();
+            libdb.insert_sort_rank(library_id, fp, &info).await.unwrap();
         }
 
         let (books, _) = libdb
             .page_books(library_id, Path::new(""), SortMethod::Title, false, 20, 0)
+            .await
             .expect("page_books failed");
         // All books are present and the first is still Alpha.
         assert_eq!(books[0].title, "Alpha");
     }
 
-    fn insert_books_for_paging(libdb: &Db, library_id: i64) {
+    async fn insert_books_for_paging(libdb: &Db, library_id: i64) {
         let books = [
             (
                 "p/a.pdf", "Alpha", "Zelda", "2020", "epub", 500u64, 100usize,
@@ -4566,103 +4657,110 @@ mod tests {
                 pages_count: *pages,
                 ..Default::default()
             });
-            libdb.insert_book(library_id, fp, &info).unwrap();
+            libdb.insert_book(library_id, fp, &info).await.unwrap();
         }
-        libdb.compute_sort_keys(library_id).unwrap();
+        libdb.compute_sort_keys(library_id).await.unwrap();
     }
 
-    #[test]
-    fn page_books_sort_by_author() {
-        let (_db, libdb) = create_test_db();
-        let library_id = register_test_library(&libdb, "/tmp/pb_author", "PB Author");
-        insert_books_for_paging(&libdb, library_id);
+    #[tokio::test]
+    async fn page_books_sort_by_author() {
+        let (_db, libdb) = create_test_db().await;
+        let library_id = register_test_library(&libdb, "/tmp/pb_author", "PB Author").await;
+        insert_books_for_paging(&libdb, library_id).await;
 
         let (books, total) = libdb
             .page_books(library_id, Path::new(""), SortMethod::Author, false, 10, 0)
+            .await
             .unwrap();
         assert_eq!(total, 3);
         assert_eq!(books[0].author, "Alpha");
     }
 
-    #[test]
-    fn page_books_sort_by_year() {
-        let (_db, libdb) = create_test_db();
-        let library_id = register_test_library(&libdb, "/tmp/pb_year", "PB Year");
-        insert_books_for_paging(&libdb, library_id);
+    #[tokio::test]
+    async fn page_books_sort_by_year() {
+        let (_db, libdb) = create_test_db().await;
+        let library_id = register_test_library(&libdb, "/tmp/pb_year", "PB Year").await;
+        insert_books_for_paging(&libdb, library_id).await;
 
         let (books, _) = libdb
             .page_books(library_id, Path::new(""), SortMethod::Year, false, 10, 0)
+            .await
             .unwrap();
         assert_eq!(books[0].year, "2019");
     }
 
-    #[test]
-    fn page_books_sort_by_size() {
-        let (_db, libdb) = create_test_db();
-        let library_id = register_test_library(&libdb, "/tmp/pb_size", "PB Size");
-        insert_books_for_paging(&libdb, library_id);
+    #[tokio::test]
+    async fn page_books_sort_by_size() {
+        let (_db, libdb) = create_test_db().await;
+        let library_id = register_test_library(&libdb, "/tmp/pb_size", "PB Size").await;
+        insert_books_for_paging(&libdb, library_id).await;
 
         let (books, _) = libdb
             .page_books(library_id, Path::new(""), SortMethod::Size, false, 10, 0)
+            .await
             .unwrap();
         assert_eq!(books[0].file.size, 300);
     }
 
-    #[test]
-    fn page_books_sort_by_kind() {
-        let (_db, libdb) = create_test_db();
-        let library_id = register_test_library(&libdb, "/tmp/pb_kind", "PB Kind");
-        insert_books_for_paging(&libdb, library_id);
+    #[tokio::test]
+    async fn page_books_sort_by_kind() {
+        let (_db, libdb) = create_test_db().await;
+        let library_id = register_test_library(&libdb, "/tmp/pb_kind", "PB Kind").await;
+        insert_books_for_paging(&libdb, library_id).await;
 
         let (books, _) = libdb
             .page_books(library_id, Path::new(""), SortMethod::Kind, false, 10, 0)
+            .await
             .unwrap();
         // epub < pdf alphabetically
         assert_eq!(books[0].file.kind, Some(FileExtension::Epub));
     }
 
-    #[test]
-    fn page_books_sort_by_pages() {
-        let (_db, libdb) = create_test_db();
-        let library_id = register_test_library(&libdb, "/tmp/pb_pages", "PB Pages");
-        insert_books_for_paging(&libdb, library_id);
+    #[tokio::test]
+    async fn page_books_sort_by_pages() {
+        let (_db, libdb) = create_test_db().await;
+        let library_id = register_test_library(&libdb, "/tmp/pb_pages", "PB Pages").await;
+        insert_books_for_paging(&libdb, library_id).await;
 
         let (books, _) = libdb
             .page_books(library_id, Path::new(""), SortMethod::Pages, false, 10, 0)
+            .await
             .unwrap();
         assert_eq!(books[0].reader_info.as_ref().unwrap().pages_count, 50);
     }
 
-    #[test]
-    fn page_books_sort_by_opened() {
-        let (_db, libdb) = create_test_db();
-        let library_id = register_test_library(&libdb, "/tmp/pb_opened", "PB Opened");
-        insert_books_for_paging(&libdb, library_id);
+    #[tokio::test]
+    async fn page_books_sort_by_opened() {
+        let (_db, libdb) = create_test_db().await;
+        let library_id = register_test_library(&libdb, "/tmp/pb_opened", "PB Opened").await;
+        insert_books_for_paging(&libdb, library_id).await;
 
         // Should not panic even when opened is NULL for some books.
         let (books, total) = libdb
             .page_books(library_id, Path::new(""), SortMethod::Opened, false, 10, 0)
+            .await
             .unwrap();
         assert_eq!(total, 3);
         assert_eq!(books.len(), 3);
     }
 
-    #[test]
-    fn page_books_sort_by_added() {
-        let (_db, libdb) = create_test_db();
-        let library_id = register_test_library(&libdb, "/tmp/pb_added", "PB Added");
-        insert_books_for_paging(&libdb, library_id);
+    #[tokio::test]
+    async fn page_books_sort_by_added() {
+        let (_db, libdb) = create_test_db().await;
+        let library_id = register_test_library(&libdb, "/tmp/pb_added", "PB Added").await;
+        insert_books_for_paging(&libdb, library_id).await;
 
         let (books, _) = libdb
             .page_books(library_id, Path::new(""), SortMethod::Added, false, 10, 0)
+            .await
             .unwrap();
         assert_eq!(books.len(), 3);
     }
 
-    #[test]
-    fn page_books_sort_by_status() {
-        let (_db, libdb) = create_test_db();
-        let library_id = register_test_library(&libdb, "/tmp/pb_status", "PB Status");
+    #[tokio::test]
+    async fn page_books_sort_by_status() {
+        let (_db, libdb) = create_test_db().await;
+        let library_id = register_test_library(&libdb, "/tmp/pb_status", "PB Status").await;
 
         let fp_new = Fp::from_str("FF00000000000001").unwrap();
         let fp_reading = Fp::from_str("FF00000000000002").unwrap();
@@ -4670,6 +4768,7 @@ mod tests {
 
         libdb
             .insert_book(library_id, fp_new, &make_info("s/new.pdf", "New", "A"))
+            .await
             .unwrap();
 
         let mut reading = make_info("s/reading.pdf", "Reading", "A");
@@ -4679,7 +4778,10 @@ mod tests {
             finished: false,
             ..Default::default()
         });
-        libdb.insert_book(library_id, fp_reading, &reading).unwrap();
+        libdb
+            .insert_book(library_id, fp_reading, &reading)
+            .await
+            .unwrap();
 
         let mut finished = make_info("s/finished.pdf", "Finished", "A");
         finished.reader_info = Some(ReaderInfo {
@@ -4690,20 +4792,22 @@ mod tests {
         });
         libdb
             .insert_book(library_id, fp_finished, &finished)
+            .await
             .unwrap();
 
         let (books, _) = libdb
             .page_books(library_id, Path::new(""), SortMethod::Status, false, 10, 0)
+            .await
             .unwrap();
         assert_eq!(books.len(), 3);
         // Finished first in ASC order
         assert_eq!(books[0].title, "Finished");
     }
 
-    #[test]
-    fn page_books_sort_by_progress() {
-        let (_db, libdb) = create_test_db();
-        let library_id = register_test_library(&libdb, "/tmp/pb_progress", "PB Progress");
+    #[tokio::test]
+    async fn page_books_sort_by_progress() {
+        let (_db, libdb) = create_test_db().await;
+        let library_id = register_test_library(&libdb, "/tmp/pb_progress", "PB Progress").await;
 
         let fp_finished = Fp::from_str("FE00000000000001").unwrap();
         let fp_reading = Fp::from_str("FE00000000000002").unwrap();
@@ -4717,6 +4821,7 @@ mod tests {
         });
         libdb
             .insert_book(library_id, fp_finished, &finished)
+            .await
             .unwrap();
 
         let mut reading = make_info("s/read.pdf", "Reading", "A");
@@ -4726,7 +4831,10 @@ mod tests {
             finished: false,
             ..Default::default()
         });
-        libdb.insert_book(library_id, fp_reading, &reading).unwrap();
+        libdb
+            .insert_book(library_id, fp_reading, &reading)
+            .await
+            .unwrap();
 
         let (books, _) = libdb
             .page_books(
@@ -4737,40 +4845,45 @@ mod tests {
                 10,
                 0,
             )
+            .await
             .unwrap();
         assert_eq!(books.len(), 2);
         assert_eq!(books[0].title, "Finished");
     }
 
-    #[test]
-    fn page_books_reverse_order() {
-        let (_db, libdb) = create_test_db();
-        let library_id = register_test_library(&libdb, "/tmp/pb_reverse", "PB Reverse");
-        insert_books_for_paging(&libdb, library_id);
+    #[tokio::test]
+    async fn page_books_reverse_order() {
+        let (_db, libdb) = create_test_db().await;
+        let library_id = register_test_library(&libdb, "/tmp/pb_reverse", "PB Reverse").await;
+        insert_books_for_paging(&libdb, library_id).await;
 
         let (asc, _) = libdb
             .page_books(library_id, Path::new(""), SortMethod::Title, false, 10, 0)
+            .await
             .unwrap();
         let (desc, _) = libdb
             .page_books(library_id, Path::new(""), SortMethod::Title, true, 10, 0)
+            .await
             .unwrap();
 
         assert_eq!(asc[0].title, desc[desc.len() - 1].title);
         assert_eq!(asc[asc.len() - 1].title, desc[0].title);
     }
 
-    #[test]
-    fn page_books_pagination_offset() {
-        let (_db, libdb) = create_test_db();
-        let library_id = register_test_library(&libdb, "/tmp/pb_pagination", "PB Pagination");
-        insert_books_for_paging(&libdb, library_id);
-        libdb.compute_sort_keys(library_id).unwrap();
+    #[tokio::test]
+    async fn page_books_pagination_offset() {
+        let (_db, libdb) = create_test_db().await;
+        let library_id = register_test_library(&libdb, "/tmp/pb_pagination", "PB Pagination").await;
+        insert_books_for_paging(&libdb, library_id).await;
+        libdb.compute_sort_keys(library_id).await.unwrap();
 
         let (page1, total) = libdb
             .page_books(library_id, Path::new(""), SortMethod::Title, false, 2, 0)
+            .await
             .unwrap();
         let (page2, _) = libdb
             .page_books(library_id, Path::new(""), SortMethod::Title, false, 2, 2)
+            .await
             .unwrap();
 
         assert_eq!(total, 3);
@@ -4779,78 +4892,78 @@ mod tests {
         assert_ne!(page1[0].title, page2[0].title);
     }
 
-    #[test]
-    fn parse_zoom_mode_none_returns_none() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn parse_zoom_mode_none_returns_none() {
         assert!(Db::parse_zoom_mode(None).is_none());
     }
 
-    #[test]
-    fn parse_zoom_mode_invalid_json_returns_none() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn parse_zoom_mode_invalid_json_returns_none() {
         assert!(Db::parse_zoom_mode(Some(&"not-valid-json".to_string())).is_none());
     }
 
-    #[test]
-    fn parse_scroll_mode_none_returns_none() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn parse_scroll_mode_none_returns_none() {
         assert!(Db::parse_scroll_mode(None).is_none());
     }
 
-    #[test]
-    fn parse_scroll_mode_invalid_json_returns_none() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn parse_scroll_mode_invalid_json_returns_none() {
         assert!(Db::parse_scroll_mode(Some(&"{{bad}}".to_string())).is_none());
     }
 
-    #[test]
-    fn parse_text_align_none_returns_none() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn parse_text_align_none_returns_none() {
         assert!(Db::parse_text_align(None).is_none());
     }
 
-    #[test]
-    fn parse_text_align_invalid_json_returns_none() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn parse_text_align_invalid_json_returns_none() {
         assert!(Db::parse_text_align(Some(&"???".to_string())).is_none());
     }
 
-    #[test]
-    fn parse_cropping_margins_none_returns_none() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn parse_cropping_margins_none_returns_none() {
         assert!(Db::parse_cropping_margins(None).is_none());
     }
 
-    #[test]
-    fn parse_cropping_margins_invalid_json_returns_none() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn parse_cropping_margins_invalid_json_returns_none() {
         assert!(Db::parse_cropping_margins(Some(&"bad".to_string())).is_none());
     }
 
-    #[test]
-    fn parse_page_names_none_returns_empty_map() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn parse_page_names_none_returns_empty_map() {
         assert!(Db::parse_page_names(None).is_empty());
     }
 
-    #[test]
-    fn parse_page_names_invalid_json_returns_empty_map() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn parse_page_names_invalid_json_returns_empty_map() {
         assert!(Db::parse_page_names(Some(&"!".to_string())).is_empty());
     }
 
-    #[test]
-    fn parse_bookmarks_none_returns_empty_set() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn parse_bookmarks_none_returns_empty_set() {
         assert!(Db::parse_bookmarks(None).is_empty());
     }
 
-    #[test]
-    fn parse_bookmarks_invalid_json_returns_empty_set() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn parse_bookmarks_invalid_json_returns_empty_set() {
         assert!(Db::parse_bookmarks(Some(&"!".to_string())).is_empty());
     }
 
-    #[test]
-    fn parse_annotations_none_returns_empty_vec() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn parse_annotations_none_returns_empty_vec() {
         assert!(Db::parse_annotations(None).is_empty());
     }
 
-    #[test]
-    fn parse_annotations_invalid_json_returns_empty_vec() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn parse_annotations_invalid_json_returns_empty_vec() {
         assert!(Db::parse_annotations(Some(&"!".to_string())).is_empty());
     }
 
-    #[test]
-    fn parse_page_offset_both_some_returns_point() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn parse_page_offset_both_some_returns_point() {
         let p = Db::parse_page_offset(Some(3), Some(7));
         assert!(p.is_some());
         let p = p.unwrap();
@@ -4858,43 +4971,44 @@ mod tests {
         assert_eq!(p.y, 7);
     }
 
-    #[test]
-    fn parse_page_offset_one_none_returns_none() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn parse_page_offset_one_none_returns_none() {
         assert!(Db::parse_page_offset(Some(1), None).is_none());
         assert!(Db::parse_page_offset(None, Some(1)).is_none());
         assert!(Db::parse_page_offset(None, None).is_none());
     }
 
-    #[test]
-    fn extract_authors_none_returns_empty_string() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn extract_authors_none_returns_empty_string() {
         assert_eq!(Db::extract_authors(None), "");
     }
 
-    #[test]
-    fn extract_authors_comma_separated_joins_with_space() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn extract_authors_comma_separated_joins_with_space() {
         assert_eq!(
             Db::extract_authors(Some("Alice,Bob,Carol".to_string())),
             "Alice, Bob, Carol"
         );
     }
 
-    #[test]
-    fn extract_categories_none_returns_empty_set() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn extract_categories_none_returns_empty_set() {
         assert!(Db::extract_categories(None).is_empty());
     }
 
-    #[test]
-    fn extract_categories_filters_empty_strings() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn extract_categories_filters_empty_strings() {
         let cats = Db::extract_categories(Some(",Fiction,,Science,".to_string()));
         assert_eq!(cats.len(), 2);
         assert!(cats.contains("Fiction"));
         assert!(cats.contains("Science"));
     }
 
-    #[test]
-    fn test_batch_insert_with_reading_state() {
-        let (_db, libdb) = create_test_db();
-        let library_id = register_test_library(&libdb, "/tmp/test_library13", "Test Library 13");
+    #[tokio::test]
+    async fn test_batch_insert_with_reading_state() {
+        let (_db, libdb) = create_test_db().await;
+        let library_id =
+            register_test_library(&libdb, "/tmp/test_library13", "Test Library 13").await;
 
         let mut books = Vec::new();
         for i in 1..=3 {
@@ -4925,10 +5039,12 @@ mod tests {
 
         libdb
             .batch_insert_books(library_id, &book_refs)
+            .await
             .expect("failed to batch insert books with reading state");
 
         let all_books = libdb
             .get_all_books(library_id)
+            .await
             .expect("failed to get books");
         for (fp, info) in &books {
             let retrieved = all_books
@@ -4950,13 +5066,13 @@ mod tests {
         }
     }
 
-    #[test]
-    fn delete_books_with_disallowed_kinds_removes_wrong_kind() {
+    #[tokio::test]
+    async fn delete_books_with_disallowed_kinds_removes_wrong_kind() {
         use crate::document::file_extension::FileExtension;
 
-        let (_db, libdb) = create_test_db();
+        let (_db, libdb) = create_test_db().await;
         let library_id =
-            register_test_library(&libdb, "/tmp/test_disallowed_kinds", "Disallowed Kinds");
+            register_test_library(&libdb, "/tmp/test_disallowed_kinds", "Disallowed Kinds").await;
 
         let epub_fp = Fp::from_u64(9001);
         let pdf_fp = Fp::from_u64(9002);
@@ -4984,6 +5100,7 @@ mod tests {
 
         libdb
             .batch_insert_books(library_id, &[(epub_fp, &epub_info), (pdf_fp, &pdf_info)])
+            .await
             .expect("insert books");
 
         let mut allowed = FxHashSet::default();
@@ -4991,27 +5108,29 @@ mod tests {
 
         let purged = libdb
             .delete_books_with_disallowed_kinds(library_id, &allowed)
+            .await
             .expect("purge disallowed");
 
         assert_eq!(purged, vec![pdf_fp], "only pdf should be purged");
 
-        let handles = libdb.list_book_handles(library_id).expect("handles");
+        let handles = libdb.list_book_handles(library_id).await.expect("handles");
         let fps: Vec<Fp> = handles.iter().map(|h| h.fp).collect();
 
         assert!(fps.contains(&epub_fp), "epub should remain");
         assert!(!fps.contains(&pdf_fp), "pdf should be gone");
     }
 
-    #[test]
-    fn purge_disallowed_books_and_thumbnails_rolls_back_on_error_after_books() {
+    #[tokio::test]
+    async fn purge_disallowed_books_and_thumbnails_rolls_back_on_error_after_books() {
         use crate::document::file_extension::FileExtension;
 
-        let (_db, libdb) = create_test_db();
+        let (_db, libdb) = create_test_db().await;
         let library_id = register_test_library(
             &libdb,
             "/tmp/test_disallowed_kinds_atomic",
             "Disallowed Kinds Atomic",
-        );
+        )
+        .await;
 
         let epub_fp = Fp::from_u64(9011);
         let pdf_fp = Fp::from_u64(9012);
@@ -5039,9 +5158,11 @@ mod tests {
 
         libdb
             .batch_insert_books(library_id, &[(epub_fp, &epub_info), (pdf_fp, &pdf_info)])
+            .await
             .expect("insert books");
         libdb
             .save_thumbnail(pdf_fp, b"pdf-thumb")
+            .await
             .expect("save thumbnail");
 
         let mut allowed = FxHashSet::default();
@@ -5050,13 +5171,14 @@ mod tests {
         let _fail = super::purge_fail_point::arm();
         let err = libdb
             .purge_disallowed_books_and_thumbnails(library_id, &allowed)
+            .await
             .expect_err("injected failure should abort the transaction");
         assert!(
             err.to_string().contains("injected failure"),
             "unexpected error: {err}"
         );
 
-        let handles = libdb.list_book_handles(library_id).expect("handles");
+        let handles = libdb.list_book_handles(library_id).await.expect("handles");
         let fps: Vec<Fp> = handles.iter().map(|h| h.fp).collect();
         assert!(fps.contains(&epub_fp), "epub should remain");
         assert!(
@@ -5064,15 +5186,16 @@ mod tests {
             "pdf book should remain after rollback"
         );
         assert_eq!(
-            libdb.get_thumbnail(pdf_fp).expect("thumbnail"),
+            libdb.get_thumbnail(pdf_fp).await.expect("thumbnail"),
             Some(b"pdf-thumb".to_vec()),
             "thumbnail should remain after rollback"
         );
     }
 
-    fn handle_fps(libdb: &Db, library_id: i64) -> Vec<Fp> {
+    async fn handle_fps(libdb: &Db, library_id: i64) -> Vec<Fp> {
         let mut fps: Vec<Fp> = libdb
             .list_book_handles(library_id)
+            .await
             .expect("handles")
             .into_iter()
             .map(|h| h.fp)
@@ -5081,31 +5204,33 @@ mod tests {
         fps
     }
 
-    fn flush_relocation(
+    async fn flush_relocation(
         libdb: &Db,
         library_id: i64,
         old_fp: Fp,
         new_fp: Fp,
         new_info: &Info,
     ) -> Result<(), Error> {
-        libdb.flush_import_scan(
-            library_id,
-            super::ImportFlush {
-                thumbnails_to_delete: &[old_fp],
-                books_to_insert: &[(new_fp, new_info)],
-                books_to_update: &[],
-                books_to_link: &[],
-                path_updates: &[],
-                books_to_delete: &[old_fp],
-                sort_keys_dirty: true,
-            },
-        )
+        libdb
+            .flush_import_scan(
+                library_id,
+                super::ImportFlush {
+                    thumbnails_to_delete: &[old_fp],
+                    books_to_insert: &[(new_fp, new_info)],
+                    books_to_update: &[],
+                    books_to_link: &[],
+                    path_updates: &[],
+                    books_to_delete: &[old_fp],
+                    sort_keys_dirty: true,
+                },
+            )
+            .await
     }
 
-    #[test]
-    fn flush_import_scan_keeps_relocated_book_and_thumbnail_on_error_after_delete() {
-        let (_db, libdb) = create_test_db();
-        let library_id = register_test_library(&libdb, "/tmp/flush_reloc", "Flush Reloc");
+    #[tokio::test]
+    async fn flush_import_scan_keeps_relocated_book_and_thumbnail_on_error_after_delete() {
+        let (_db, libdb) = create_test_db().await;
+        let library_id = register_test_library(&libdb, "/tmp/flush_reloc", "Flush Reloc").await;
 
         let old_fp = Fp::from_u64(9201);
         let new_fp = Fp::from_u64(9202);
@@ -5114,31 +5239,38 @@ mod tests {
 
         libdb
             .batch_insert_books(library_id, &[(old_fp, &old_info)])
+            .await
             .expect("insert old");
         libdb
             .save_thumbnail(old_fp, b"old-thumb")
+            .await
             .expect("save thumbnail");
 
         let _fail = super::flush_fail_point::arm(super::flush_fail_point::Point::AfterThumbnails);
         let err = flush_relocation(&libdb, library_id, old_fp, new_fp, &new_info)
+            .await
             .expect_err("injected failure");
         assert!(err.to_string().contains("injected failure"), "{err}");
 
-        assert_eq!(handle_fps(&libdb, library_id), vec![old_fp]);
+        assert_eq!(handle_fps(&libdb, library_id).await, vec![old_fp]);
         assert_eq!(
-            libdb.get_thumbnail(old_fp).expect("thumbnail"),
+            libdb.get_thumbnail(old_fp).await.expect("thumbnail"),
             Some(b"old-thumb".to_vec())
         );
         assert!(
-            libdb.get_thumbnail(new_fp).expect("new thumb").is_none(),
+            libdb
+                .get_thumbnail(new_fp)
+                .await
+                .expect("new thumb")
+                .is_none(),
             "new fingerprint must not exist after rollback"
         );
     }
 
-    #[test]
-    fn flush_import_scan_keeps_sort_keys_on_error_before_recompute() {
-        let (_db, libdb) = create_test_db();
-        let library_id = register_test_library(&libdb, "/tmp/flush_sort", "Flush Sort");
+    #[tokio::test]
+    async fn flush_import_scan_keeps_sort_keys_on_error_before_recompute() {
+        let (_db, libdb) = create_test_db().await;
+        let library_id = register_test_library(&libdb, "/tmp/flush_sort", "Flush Sort").await;
 
         let a = Fp::from_u64(9301);
         let b = Fp::from_u64(9302);
@@ -5149,10 +5281,12 @@ mod tests {
 
         libdb
             .batch_insert_books(library_id, &[(a, &a_info), (b, &b_info)])
+            .await
             .expect("insert");
-        libdb.compute_sort_keys(library_id).expect("sort");
+        libdb.compute_sort_keys(library_id).await.expect("sort");
         let titles_before: Vec<String> = libdb
             .get_all_books(library_id)
+            .await
             .expect("books")
             .into_iter()
             .map(|info| info.title)
@@ -5172,12 +5306,14 @@ mod tests {
                     sort_keys_dirty: true,
                 },
             )
+            .await
             .expect_err("injected failure");
         assert!(err.to_string().contains("injected failure"), "{err}");
 
-        assert_eq!(handle_fps(&libdb, library_id), vec![a, b]);
+        assert_eq!(handle_fps(&libdb, library_id).await, vec![a, b]);
         let titles_after: Vec<String> = libdb
             .get_all_books(library_id)
+            .await
             .expect("books")
             .into_iter()
             .map(|info| info.title)
@@ -5185,10 +5321,10 @@ mod tests {
         assert_eq!(titles_after, titles_before);
     }
 
-    #[test]
-    fn flush_import_scan_converges_after_interrupted_then_complete_run() {
-        let (_db, libdb) = create_test_db();
-        let library_id = register_test_library(&libdb, "/tmp/flush_conv", "Flush Conv");
+    #[tokio::test]
+    async fn flush_import_scan_converges_after_interrupted_then_complete_run() {
+        let (_db, libdb) = create_test_db().await;
+        let library_id = register_test_library(&libdb, "/tmp/flush_conv", "Flush Conv").await;
 
         let old_fp = Fp::from_u64(9401);
         let new_fp = Fp::from_u64(9402);
@@ -5197,40 +5333,51 @@ mod tests {
 
         libdb
             .batch_insert_books(library_id, &[(old_fp, &old_info)])
+            .await
             .expect("insert old");
         libdb
             .save_thumbnail(old_fp, b"old-thumb")
+            .await
             .expect("save thumbnail");
 
         {
-            let (_db2, golden) = create_test_db();
-            let golden_id = register_test_library(&golden, "/tmp/flush_conv_g", "Flush Conv G");
+            let (_db2, golden) = create_test_db().await;
+            let golden_id =
+                register_test_library(&golden, "/tmp/flush_conv_g", "Flush Conv G").await;
             golden
                 .batch_insert_books(golden_id, &[(old_fp, &old_info)])
+                .await
                 .expect("golden insert");
             golden
                 .save_thumbnail(old_fp, b"old-thumb")
+                .await
                 .expect("golden thumb");
-            flush_relocation(&golden, golden_id, old_fp, new_fp, &new_info).expect("golden flush");
-            let golden_fps = handle_fps(&golden, golden_id);
+            flush_relocation(&golden, golden_id, old_fp, new_fp, &new_info)
+                .await
+                .expect("golden flush");
+            let golden_fps = handle_fps(&golden, golden_id).await;
 
             {
                 let _fail =
                     super::flush_fail_point::arm(super::flush_fail_point::Point::AfterThumbnails);
                 flush_relocation(&libdb, library_id, old_fp, new_fp, &new_info)
+                    .await
                     .expect_err("interrupted");
             }
-            flush_relocation(&libdb, library_id, old_fp, new_fp, &new_info).expect("retry");
+            flush_relocation(&libdb, library_id, old_fp, new_fp, &new_info)
+                .await
+                .expect("retry");
 
-            assert_eq!(handle_fps(&libdb, library_id), golden_fps);
-            assert_eq!(handle_fps(&libdb, library_id), vec![new_fp]);
+            assert_eq!(handle_fps(&libdb, library_id).await, golden_fps);
+            assert_eq!(handle_fps(&libdb, library_id).await, vec![new_fp]);
         }
     }
 
-    #[test]
-    fn flush_import_scan_skips_sort_keys_when_not_dirty() {
-        let (_db, libdb) = create_test_db();
-        let library_id = register_test_library(&libdb, "/tmp/flush_skip_sort", "Flush Skip Sort");
+    #[tokio::test]
+    async fn flush_import_scan_skips_sort_keys_when_not_dirty() {
+        let (_db, libdb) = create_test_db().await;
+        let library_id =
+            register_test_library(&libdb, "/tmp/flush_skip_sort", "Flush Skip Sort").await;
 
         let a = Fp::from_u64(9501);
         let b = Fp::from_u64(9502);
@@ -5241,8 +5388,9 @@ mod tests {
 
         libdb
             .batch_insert_books(library_id, &[(a, &a_info), (b, &b_info), (c, &c_info)])
+            .await
             .expect("insert");
-        libdb.compute_sort_keys(library_id).expect("sort");
+        libdb.compute_sort_keys(library_id).await.expect("sort");
 
         let renamed = make_info("a.epub", "Zeta", "Author");
         libdb
@@ -5258,10 +5406,12 @@ mod tests {
                     sort_keys_dirty: false,
                 },
             )
+            .await
             .expect("flush");
 
         let titles: Vec<String> = libdb
             .page_books(library_id, Path::new(""), SortMethod::Title, false, 10, 0)
+            .await
             .expect("page")
             .0
             .into_iter()
@@ -5282,10 +5432,12 @@ mod tests {
                     sort_keys_dirty: true,
                 },
             )
+            .await
             .expect("recompute");
 
         let titles: Vec<String> = libdb
             .page_books(library_id, Path::new(""), SortMethod::Title, false, 10, 0)
+            .await
             .expect("page")
             .0
             .into_iter()
@@ -5294,13 +5446,13 @@ mod tests {
         assert_eq!(titles, ["Mike", "Zeta", "Zulu"]);
     }
 
-    #[test]
-    fn purge_disallowed_books_keeps_thumbnail_when_still_in_another_library() {
+    #[tokio::test]
+    async fn purge_disallowed_books_keeps_thumbnail_when_still_in_another_library() {
         use crate::document::file_extension::FileExtension;
 
-        let (_db, libdb) = create_test_db();
-        let lib_a = register_test_library(&libdb, "/tmp/purge_shared_a", "Shared A");
-        let lib_b = register_test_library(&libdb, "/tmp/purge_shared_b", "Shared B");
+        let (_db, libdb) = create_test_db().await;
+        let lib_a = register_test_library(&libdb, "/tmp/purge_shared_a", "Shared A").await;
+        let lib_b = register_test_library(&libdb, "/tmp/purge_shared_b", "Shared B").await;
 
         let pdf_fp = Fp::from_u64(9021);
         let pdf_info = Info {
@@ -5316,12 +5468,15 @@ mod tests {
 
         libdb
             .batch_insert_books(lib_a, &[(pdf_fp, &pdf_info)])
+            .await
             .expect("insert into A");
         libdb
             .link_book_to_library(lib_b, pdf_fp, &pdf_info)
+            .await
             .expect("link into B");
         libdb
             .save_thumbnail(pdf_fp, b"pdf-thumb")
+            .await
             .expect("save thumbnail");
 
         let mut allowed = FxHashSet::default();
@@ -5329,17 +5484,20 @@ mod tests {
 
         let purged = libdb
             .purge_disallowed_books_and_thumbnails(lib_a, &allowed)
+            .await
             .expect("purge A");
         assert_eq!(purged, vec![pdf_fp]);
 
         let a_fps: Vec<Fp> = libdb
             .list_book_handles(lib_a)
+            .await
             .expect("handles A")
             .iter()
             .map(|h| h.fp)
             .collect();
         let b_fps: Vec<Fp> = libdb
             .list_book_handles(lib_b)
+            .await
             .expect("handles B")
             .iter()
             .map(|h| h.fp)
@@ -5347,22 +5505,234 @@ mod tests {
         assert!(!a_fps.contains(&pdf_fp), "pdf should leave library A");
         assert!(b_fps.contains(&pdf_fp), "pdf should remain in library B");
         assert_eq!(
-            libdb.get_thumbnail(pdf_fp).expect("thumbnail"),
+            libdb.get_thumbnail(pdf_fp).await.expect("thumbnail"),
             Some(b"pdf-thumb".to_vec()),
             "thumbnail should remain while another library still has the book"
         );
     }
 
-    #[test]
-    fn pending_stub_survives_disallowed_kind_purge_with_reading_state() {
-        let (db, libdb) = create_test_db();
-        let library_id = register_test_library(&libdb, "/tmp/test_pending_purge", "Pending Purge");
+    #[tokio::test]
+    async fn pending_stub_survives_disallowed_kind_purge_with_reading_state() {
+        let (db, libdb) = create_test_db().await;
+        let library_id =
+            register_test_library(&libdb, "/tmp/test_pending_purge", "Pending Purge").await;
 
         let stub_fp = Fp::from_u64(9101);
         let fp_str = stub_fp.to_string();
         let now = crate::db::types::UnixTimestamp::now();
 
-        crate::runtime::RUNTIME.block_on(async {
+        sqlx::query!(
+            r#"
+                INSERT INTO books (fingerprint, file_kind, file_size, added_at, status)
+                VALUES (?, '', 0, ?, ?)
+                "#,
+            fp_str,
+            now,
+            BookStatus::PendingDiscovery,
+        )
+        .execute(db.pool())
+        .await
+        .expect("insert stub");
+        sqlx::query!(
+            r#"
+                INSERT INTO library_books (library_id, book_fingerprint, added_to_library_at)
+                VALUES (?, ?, ?)
+                "#,
+            library_id,
+            fp_str,
+            now,
+        )
+        .execute(db.pool())
+        .await
+        .expect("link stub");
+        sqlx::query!(
+            r#"
+                INSERT INTO reading_states (
+                    fingerprint, opened, current_page, pages_count, finished, dithered
+                ) VALUES (?, ?, 3, 10, 0, 0)
+                "#,
+            fp_str,
+            now,
+        )
+        .execute(db.pool())
+        .await
+        .expect("insert reading state");
+
+        let mut allowed = FxHashSet::default();
+        allowed.insert(FileExtension::Epub);
+
+        let purged = libdb
+            .delete_books_with_disallowed_kinds(library_id, &allowed)
+            .await
+            .expect("purge");
+
+        assert!(purged.is_empty(), "pending stub must not be purged");
+
+        let handles = libdb.list_book_handles(library_id).await.expect("handles");
+        assert!(
+            handles.iter().any(|h| h.fp == stub_fp),
+            "stub handle should remain for import"
+        );
+        assert_eq!(
+            handles.iter().find(|h| h.fp == stub_fp).unwrap().status,
+            BookStatus::PendingDiscovery
+        );
+
+        let page = sqlx::query_scalar!(
+            r#"SELECT current_page AS "current_page!" FROM reading_states WHERE fingerprint = ?"#,
+            fp_str,
+        )
+        .fetch_one(db.pool())
+        .await
+        .expect("reading state");
+        assert_eq!(page, 3);
+    }
+
+    #[tokio::test]
+    async fn shelf_view_omits_pending_includes_active() {
+        let (db, libdb) = create_test_db().await;
+        let library_id =
+            register_test_library(&libdb, "/tmp/test_shelf_status", "Shelf Status").await;
+
+        let active_fp = Fp::from_u64(9201);
+        let pending_fp = Fp::from_u64(9202);
+
+        let active_info = Info {
+            title: "Active".to_string(),
+            file: FileInfo {
+                path: PathBuf::from("active.epub"),
+                kind: Some(FileExtension::Epub),
+                size: 10,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        libdb
+            .batch_insert_books(library_id, &[(active_fp, &active_info)])
+            .await
+            .expect("insert active");
+
+        let pending_str = pending_fp.to_string();
+        let now = crate::db::types::UnixTimestamp::now();
+        sqlx::query!(
+            r#"
+                INSERT INTO books (fingerprint, file_kind, file_size, added_at, status)
+                VALUES (?, '', 0, ?, ?)
+                "#,
+            pending_str,
+            now,
+            BookStatus::PendingDiscovery,
+        )
+        .execute(db.pool())
+        .await
+        .expect("insert pending");
+        sqlx::query!(
+            r#"
+                INSERT INTO library_books (library_id, book_fingerprint, added_to_library_at)
+                VALUES (?, ?, ?)
+                "#,
+            library_id,
+            pending_str,
+            now,
+        )
+        .execute(db.pool())
+        .await
+        .expect("link pending");
+
+        let books = libdb.get_all_books(library_id).await.expect("shelf books");
+        let titles: Vec<_> = books.iter().map(|b| b.title.as_str()).collect();
+        assert!(titles.contains(&"Active"));
+        assert_eq!(books.len(), 1, "pending must be hidden from shelf queries");
+
+        let handles = libdb.list_book_handles(library_id).await.expect("handles");
+        assert_eq!(handles.len(), 2, "import handles include pending");
+    }
+
+    #[tokio::test]
+    async fn update_activates_existing_pending_stub_onto_shelf() {
+        let (db, libdb) = create_test_db().await;
+        let library_a = register_test_library(&libdb, "/tmp/test_promote_a", "Lib A").await;
+        let library_b = register_test_library(&libdb, "/tmp/test_promote_b", "Lib B").await;
+
+        let fp = Fp::from_u64(9301);
+        let fp_str = fp.to_string();
+        let now = crate::db::types::UnixTimestamp::now();
+
+        sqlx::query!(
+            r#"
+                INSERT INTO books (fingerprint, file_kind, file_size, added_at, status)
+                VALUES (?, '', 0, ?, ?)
+                "#,
+            fp_str,
+            now,
+            BookStatus::PendingDiscovery,
+        )
+        .execute(db.pool())
+        .await
+        .expect("insert stub");
+        sqlx::query!(
+            r#"
+                INSERT INTO library_books (library_id, book_fingerprint, added_to_library_at)
+                VALUES (?, ?, ?)
+                "#,
+            library_a,
+            fp_str,
+            now,
+        )
+        .execute(db.pool())
+        .await
+        .expect("link stub to A");
+
+        let info = Info {
+            title: "Promoted".to_string(),
+            file: FileInfo {
+                path: PathBuf::from("promoted.epub"),
+                kind: Some(FileExtension::Epub),
+                size: 42,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        libdb
+            .update_book(library_b, fp, &info, BookStatus::Active)
+            .await
+            .expect("update into B should activate pending");
+
+        let shelf_a = libdb.get_all_books(library_a).await.expect("shelf A");
+        assert!(
+            shelf_a.iter().any(|b| b.title == "Promoted"),
+            "library A should see activated book via shared books row"
+        );
+
+        let shelf_b = libdb.get_all_books(library_b).await.expect("shelf B");
+        assert!(
+            shelf_b.iter().any(|b| b.title == "Promoted"),
+            "library B should see the book after update+link"
+        );
+
+        let status = sqlx::query_scalar!(
+            r#"SELECT status AS "status!: BookStatus" FROM books WHERE fingerprint = ?"#,
+            fp_str,
+        )
+        .fetch_one(db.pool())
+        .await
+        .expect("status");
+        assert_eq!(status, BookStatus::Active);
+    }
+
+    #[tokio::test]
+    async fn update_and_batch_update_write_mtime_and_file_size_on_existing_membership() {
+        let (db, libdb) = create_test_db().await;
+        let library_id =
+            register_test_library(&libdb, "/tmp/test_update_mtime_size", "Update Mtime Size").await;
+
+        let update_fp = Fp::from_u64(9601);
+        let batch_fp = Fp::from_u64(9602);
+        let now = crate::db::types::UnixTimestamp::now();
+
+        for fp in [update_fp, batch_fp] {
+            let fp_str = fp.to_string();
             sqlx::query!(
                 r#"
                 INSERT INTO books (fingerprint, file_kind, file_size, added_at, status)
@@ -5388,230 +5758,7 @@ mod tests {
             .execute(db.pool())
             .await
             .expect("link stub");
-
-            sqlx::query!(
-                r#"
-                INSERT INTO reading_states (
-                    fingerprint, opened, current_page, pages_count, finished, dithered
-                ) VALUES (?, ?, 3, 10, 0, 0)
-                "#,
-                fp_str,
-                now,
-            )
-            .execute(db.pool())
-            .await
-            .expect("insert reading state");
-        });
-
-        let mut allowed = FxHashSet::default();
-        allowed.insert(FileExtension::Epub);
-
-        let purged = libdb
-            .delete_books_with_disallowed_kinds(library_id, &allowed)
-            .expect("purge");
-
-        assert!(purged.is_empty(), "pending stub must not be purged");
-
-        let handles = libdb.list_book_handles(library_id).expect("handles");
-        assert!(
-            handles.iter().any(|h| h.fp == stub_fp),
-            "stub handle should remain for import"
-        );
-        assert_eq!(
-            handles.iter().find(|h| h.fp == stub_fp).unwrap().status,
-            BookStatus::PendingDiscovery
-        );
-
-        let page = crate::runtime::RUNTIME.block_on(async {
-            sqlx::query_scalar!(
-                r#"SELECT current_page AS "current_page!" FROM reading_states WHERE fingerprint = ?"#,
-                fp_str,
-            )
-            .fetch_one(db.pool())
-            .await
-            .expect("reading state")
-        });
-        assert_eq!(page, 3);
-    }
-
-    #[test]
-    fn shelf_view_omits_pending_includes_active() {
-        let (db, libdb) = create_test_db();
-        let library_id = register_test_library(&libdb, "/tmp/test_shelf_status", "Shelf Status");
-
-        let active_fp = Fp::from_u64(9201);
-        let pending_fp = Fp::from_u64(9202);
-
-        let active_info = Info {
-            title: "Active".to_string(),
-            file: FileInfo {
-                path: PathBuf::from("active.epub"),
-                kind: Some(FileExtension::Epub),
-                size: 10,
-                ..Default::default()
-            },
-            ..Default::default()
-        };
-        libdb
-            .batch_insert_books(library_id, &[(active_fp, &active_info)])
-            .expect("insert active");
-
-        let pending_str = pending_fp.to_string();
-        let now = crate::db::types::UnixTimestamp::now();
-        crate::runtime::RUNTIME.block_on(async {
-            sqlx::query!(
-                r#"
-                INSERT INTO books (fingerprint, file_kind, file_size, added_at, status)
-                VALUES (?, '', 0, ?, ?)
-                "#,
-                pending_str,
-                now,
-                BookStatus::PendingDiscovery,
-            )
-            .execute(db.pool())
-            .await
-            .expect("insert pending");
-
-            sqlx::query!(
-                r#"
-                INSERT INTO library_books (library_id, book_fingerprint, added_to_library_at)
-                VALUES (?, ?, ?)
-                "#,
-                library_id,
-                pending_str,
-                now,
-            )
-            .execute(db.pool())
-            .await
-            .expect("link pending");
-        });
-
-        let books = libdb.get_all_books(library_id).expect("shelf books");
-        let titles: Vec<_> = books.iter().map(|b| b.title.as_str()).collect();
-        assert!(titles.contains(&"Active"));
-        assert_eq!(books.len(), 1, "pending must be hidden from shelf queries");
-
-        let handles = libdb.list_book_handles(library_id).expect("handles");
-        assert_eq!(handles.len(), 2, "import handles include pending");
-    }
-
-    #[test]
-    fn update_activates_existing_pending_stub_onto_shelf() {
-        let (db, libdb) = create_test_db();
-        let library_a = register_test_library(&libdb, "/tmp/test_promote_a", "Lib A");
-        let library_b = register_test_library(&libdb, "/tmp/test_promote_b", "Lib B");
-
-        let fp = Fp::from_u64(9301);
-        let fp_str = fp.to_string();
-        let now = crate::db::types::UnixTimestamp::now();
-
-        crate::runtime::RUNTIME.block_on(async {
-            sqlx::query!(
-                r#"
-                INSERT INTO books (fingerprint, file_kind, file_size, added_at, status)
-                VALUES (?, '', 0, ?, ?)
-                "#,
-                fp_str,
-                now,
-                BookStatus::PendingDiscovery,
-            )
-            .execute(db.pool())
-            .await
-            .expect("insert stub");
-
-            sqlx::query!(
-                r#"
-                INSERT INTO library_books (library_id, book_fingerprint, added_to_library_at)
-                VALUES (?, ?, ?)
-                "#,
-                library_a,
-                fp_str,
-                now,
-            )
-            .execute(db.pool())
-            .await
-            .expect("link stub to A");
-        });
-
-        let info = Info {
-            title: "Promoted".to_string(),
-            file: FileInfo {
-                path: PathBuf::from("promoted.epub"),
-                kind: Some(FileExtension::Epub),
-                size: 42,
-                ..Default::default()
-            },
-            ..Default::default()
-        };
-
-        libdb
-            .update_book(library_b, fp, &info, BookStatus::Active)
-            .expect("update into B should activate pending");
-
-        let shelf_a = libdb.get_all_books(library_a).expect("shelf A");
-        assert!(
-            shelf_a.iter().any(|b| b.title == "Promoted"),
-            "library A should see activated book via shared books row"
-        );
-
-        let shelf_b = libdb.get_all_books(library_b).expect("shelf B");
-        assert!(
-            shelf_b.iter().any(|b| b.title == "Promoted"),
-            "library B should see the book after update+link"
-        );
-
-        let status = crate::runtime::RUNTIME.block_on(async {
-            sqlx::query_scalar!(
-                r#"SELECT status AS "status!: BookStatus" FROM books WHERE fingerprint = ?"#,
-                fp_str,
-            )
-            .fetch_one(db.pool())
-            .await
-            .expect("status")
-        });
-        assert_eq!(status, BookStatus::Active);
-    }
-
-    #[test]
-    fn update_and_batch_update_write_mtime_and_file_size_on_existing_membership() {
-        let (db, libdb) = create_test_db();
-        let library_id =
-            register_test_library(&libdb, "/tmp/test_update_mtime_size", "Update Mtime Size");
-
-        let update_fp = Fp::from_u64(9601);
-        let batch_fp = Fp::from_u64(9602);
-        let now = crate::db::types::UnixTimestamp::now();
-
-        crate::runtime::RUNTIME.block_on(async {
-            for fp in [update_fp, batch_fp] {
-                let fp_str = fp.to_string();
-                sqlx::query!(
-                    r#"
-                    INSERT INTO books (fingerprint, file_kind, file_size, added_at, status)
-                    VALUES (?, '', 0, ?, ?)
-                    "#,
-                    fp_str,
-                    now,
-                    BookStatus::PendingDiscovery,
-                )
-                .execute(db.pool())
-                .await
-                .expect("insert stub");
-
-                sqlx::query!(
-                    r#"
-                    INSERT INTO library_books (library_id, book_fingerprint, added_to_library_at)
-                    VALUES (?, ?, ?)
-                    "#,
-                    library_id,
-                    fp_str,
-                    now,
-                )
-                .execute(db.pool())
-                .await
-                .expect("link stub");
-            }
-        });
+        }
 
         let update_mtime = UnixTimestamp::from(1_700_000_101);
         let batch_mtime = UnixTimestamp::from(1_700_000_102);
@@ -5640,12 +5787,14 @@ mod tests {
 
         libdb
             .update_book(library_id, update_fp, &update_info, BookStatus::Active)
+            .await
             .expect("update_book");
         libdb
             .batch_update_books(library_id, &[(batch_fp, &batch_info)], BookStatus::Active)
+            .await
             .expect("batch_update_books");
 
-        let handles = libdb.list_book_handles(library_id).expect("handles");
+        let handles = libdb.list_book_handles(library_id).await.expect("handles");
         let updated = handles.iter().find(|h| h.fp == update_fp).expect("updated");
         assert_eq!(updated.mtime, Some(update_mtime));
         assert_eq!(updated.file_size, Some(FileSize::from(111)));
@@ -5657,104 +5806,105 @@ mod tests {
         assert_eq!(batched.relat, PathBuf::from("batched.epub"));
     }
 
-    #[test]
-    fn batch_get_books_includes_pending_discovery_rows() {
-        let (db, libdb) = create_test_db();
+    #[tokio::test]
+    async fn batch_get_books_includes_pending_discovery_rows() {
+        let (db, libdb) = create_test_db().await;
         let library_id =
-            register_test_library(&libdb, "/tmp/test_batch_get_pending", "Pending Fetch");
+            register_test_library(&libdb, "/tmp/test_batch_get_pending", "Pending Fetch").await;
 
         let fp = Fp::from_u64(9401);
         let fp_str = fp.to_string();
         let now = crate::db::types::UnixTimestamp::now();
 
-        crate::runtime::RUNTIME.block_on(async {
-            sqlx::query!(
-                r#"
+        sqlx::query!(
+            r#"
                 INSERT INTO books (fingerprint, title, file_kind, file_size, added_at, status)
                 VALUES (?, 'Stub Title', '', 0, ?, ?)
                 "#,
-                fp_str,
-                now,
-                BookStatus::PendingDiscovery,
-            )
-            .execute(db.pool())
-            .await
-            .expect("insert stub");
-
-            sqlx::query!(
-                r#"
+            fp_str,
+            now,
+            BookStatus::PendingDiscovery,
+        )
+        .execute(db.pool())
+        .await
+        .expect("insert stub");
+        sqlx::query!(
+            r#"
                 INSERT INTO library_books (
                     library_id, book_fingerprint, added_to_library_at, file_path, absolute_path
                 ) VALUES (?, ?, ?, 'stub.epub', '/tmp/stub.epub')
                 "#,
-                library_id,
-                fp_str,
-                now,
-            )
-            .execute(db.pool())
-            .await
-            .expect("link stub");
-        });
+            library_id,
+            fp_str,
+            now,
+        )
+        .execute(db.pool())
+        .await
+        .expect("link stub");
 
         assert!(
-            libdb.get_all_books(library_id).expect("shelf").is_empty(),
+            libdb
+                .get_all_books(library_id)
+                .await
+                .expect("shelf")
+                .is_empty(),
             "pending stays off shelf queries"
         );
 
         let fetched = libdb
             .batch_get_books_by_fingerprints(library_id, &[fp])
+            .await
             .expect("fetch");
         let info = fetched.get(&fp).expect("pending row must be fetchable");
         assert_eq!(info.title, "Stub Title");
     }
 
-    #[test]
-    fn count_and_directories_exclude_pending_discovery() {
-        let (db, libdb) = create_test_db();
+    #[tokio::test]
+    async fn count_and_directories_exclude_pending_discovery() {
+        let (db, libdb) = create_test_db().await;
         let library_id =
-            register_test_library(&libdb, "/tmp/test_count_dirs_pending", "Pending Count Dirs");
+            register_test_library(&libdb, "/tmp/test_count_dirs_pending", "Pending Count Dirs")
+                .await;
 
         let pending_fp = Fp::from_u64(9501);
         let pending_fp_str = pending_fp.to_string();
         let now = crate::db::types::UnixTimestamp::now();
 
-        crate::runtime::RUNTIME.block_on(async {
-            sqlx::query!(
-                r#"
+        sqlx::query!(
+            r#"
                 INSERT INTO books (fingerprint, file_kind, file_size, added_at, status)
                 VALUES (?, '', 0, ?, ?)
                 "#,
-                pending_fp_str,
-                now,
-                BookStatus::PendingDiscovery,
-            )
-            .execute(db.pool())
-            .await
-            .expect("insert pending stub");
-
-            sqlx::query!(
-                r#"
+            pending_fp_str,
+            now,
+            BookStatus::PendingDiscovery,
+        )
+        .execute(db.pool())
+        .await
+        .expect("insert pending stub");
+        sqlx::query!(
+            r#"
                 INSERT INTO library_books (
                     library_id, book_fingerprint, added_to_library_at, file_path, absolute_path
                 ) VALUES (?, ?, ?, 'pending-only/stub.epub', '/tmp/pending-only/stub.epub')
                 "#,
-                library_id,
-                pending_fp_str,
-                now,
-            )
-            .execute(db.pool())
-            .await
-            .expect("link pending stub");
-        });
+            library_id,
+            pending_fp_str,
+            now,
+        )
+        .execute(db.pool())
+        .await
+        .expect("link pending stub");
 
         assert_eq!(
-            libdb.count_books(library_id).expect("count"),
+            libdb.count_books(library_id).await.expect("count"),
             0,
             "pending stub must not count as a visible book"
         );
         assert!(
             libdb
                 .list_directories_under_prefix(library_id, Path::new(""))
+                .await
                 .expect("dirs")
                 .is_empty(),
             "pending-only folder must not appear"
@@ -5766,12 +5916,14 @@ mod tests {
                 Fp::from_u64(9502),
                 &make_info("dir1/book.pdf", "Visible", "Author"),
             )
+            .await
             .expect("insert active book");
 
-        assert_eq!(libdb.count_books(library_id).expect("count"), 1);
+        assert_eq!(libdb.count_books(library_id).await.expect("count"), 1);
         assert_eq!(
             libdb
                 .list_directories_under_prefix(library_id, Path::new(""))
+                .await
                 .expect("dirs"),
             BTreeSet::from([PathBuf::from("dir1")])
         );

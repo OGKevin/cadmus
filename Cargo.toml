@@ -11,10 +11,23 @@ members = [
 ]
 
 [workspace.dependencies]
-backon = { version = "1.6", default-features = false, features = ["std"] }
+async-trait = "0.1"
+async_zip = { version = "0.0.17", default-features = false, features = ["deflate", "tokio", "tokio-fs"] }
 blake3 = "1"
+bytes = "1"
 cc = "1"
+http = "1"
+http-body-util = "0.1"
 io_tee = "0.1"
+octocrab = { version = "0.54.2", default-features = false, features = [
+    "jwt-rust-crypto",
+] }
+reqwest-middleware = { version = "0.5.2", default-features = false, features = [
+    "form",
+    "json",
+] }
+reqwest-retry = { version = "0.9.1", default-features = false }
+reqwest-tracing = { version = "0.7.1", default-features = false }
 rust-embed = "8"
 rustls = { version = "0.23", default-features = false, features = [
   "ring",
@@ -24,9 +37,16 @@ rustls = { version = "0.23", default-features = false, features = [
 ] }
 sdl3 = { version = "0.20.0", features = ["use-pkg-config"] }
 serde_json = "1.0.149"
+sysinfo = { version = "0.37", default-features = false, features = ["system"] }
+tokio-util = { version = "0.7", default-features = false, features = ["compat", "rt"] }
+tower = { version = "0.5", default-features = false }
 
 [workspace.lints]
 rustdoc.private_intra_doc_links = "allow"
+
+[workspace.lints.clippy]
+await_holding_lock = "deny"
+await_holding_refcell_ref = "deny"
 
 [profile.release-minsized]
 inherits = "release"

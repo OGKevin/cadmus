@@ -434,8 +434,8 @@ mod tests {
             assert_eq!(display, "30.0");
         }
 
-        #[test]
-        fn handle_submit_reschedules_auto_suspend_alarm() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_submit_reschedules_auto_suspend_alarm() {
             use crate::AlarmType;
 
             let setting = AutoSuspend;
@@ -474,8 +474,8 @@ mod tests {
             assert!(second < first);
         }
 
-        #[test]
-        fn handle_submit_zero_cancels_auto_suspend_alarm() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_submit_zero_cancels_auto_suspend_alarm() {
             use crate::AlarmType;
 
             let setting = AutoSuspend;
@@ -549,8 +549,8 @@ mod tests {
         use super::*;
         use crate::context::test_helpers::create_test_context;
 
-        #[test]
-        fn handle_toggle_event_toggles_value() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_toggle_event_toggles_value() {
             let setting = SleepCover;
             let mut context = create_test_context();
             context.settings = Settings {
@@ -567,8 +567,8 @@ mod tests {
             assert!(!context.settings.sleep_cover);
         }
 
-        #[test]
-        fn handle_returns_none_for_wrong_event() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_returns_none_for_wrong_event() {
             let setting = SleepCover;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -640,9 +640,9 @@ mod tests {
             );
         }
 
-        #[test]
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
         #[cfg(target_os = "linux")]
-        fn handle_select_updates_settings_and_session() {
+        async fn handle_select_updates_settings_and_session() {
             let setting = AutosleepModeSetting::new(vec![
                 AutosleepMode::Off,
                 AutosleepMode::Freeze,
@@ -663,9 +663,9 @@ mod tests {
             assert!(bus.is_empty());
         }
 
-        #[test]
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
         #[cfg(target_os = "linux")]
-        fn handle_select_persists_mode_even_if_session_sanitizes() {
+        async fn handle_select_persists_mode_even_if_session_sanitizes() {
             use crate::device::linux::soft_suspend::paths::SoftSuspendPaths;
             use std::fs;
             use std::sync::Arc;
@@ -697,8 +697,8 @@ mod tests {
             assert_eq!(context.inhibitor.mode(), AutosleepMode::Off);
         }
 
-        #[test]
-        fn handle_returns_none_for_wrong_event() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_returns_none_for_wrong_event() {
             let setting = AutosleepModeSetting::new(vec![
                 AutosleepMode::Off,
                 AutosleepMode::Freeze,
@@ -755,9 +755,9 @@ mod tests {
             }
         }
 
-        #[test]
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
         #[cfg(target_os = "linux")]
-        fn handle_toggle_event_toggles_value_and_session() {
+        async fn handle_toggle_event_toggles_value_and_session() {
             let setting = IndicateAutosleepLed;
             let mut context = create_test_context();
             let _linux = crate::context::test_helpers::install_linux_soft_suspend(&mut context);
@@ -777,9 +777,9 @@ mod tests {
             assert!(bus.is_empty());
         }
 
-        #[test]
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
         #[cfg(target_os = "linux")]
-        fn handle_toggle_enables_when_disabled() {
+        async fn handle_toggle_enables_when_disabled() {
             let setting = IndicateAutosleepLed;
             let mut context = create_test_context();
             let _linux = crate::context::test_helpers::install_linux_soft_suspend(&mut context);
@@ -798,8 +798,8 @@ mod tests {
             assert!(context.inhibitor.indicate_autosleep_led());
         }
 
-        #[test]
-        fn handle_returns_none_for_wrong_event() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_returns_none_for_wrong_event() {
             let setting = IndicateAutosleepLed;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -902,9 +902,9 @@ mod tests {
             assert_eq!(display, "5.0");
         }
 
-        #[test]
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
         #[cfg(target_os = "linux")]
-        fn handle_submit_applies_grace_to_session() {
+        async fn handle_submit_applies_grace_to_session() {
             let setting = AutosleepGrace;
             let mut context = create_test_context();
             let _linux = crate::context::test_helpers::install_linux_soft_suspend(&mut context);
@@ -924,8 +924,8 @@ mod tests {
             assert!(bus.is_empty());
         }
 
-        #[test]
-        fn handle_returns_none_for_wrong_event() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_returns_none_for_wrong_event() {
             let setting = AutosleepGrace;
             let mut context = create_test_context();
             context.settings = Settings::default();

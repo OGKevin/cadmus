@@ -42,8 +42,8 @@ use sdl3::render::{BlendMode, WindowCanvas, create_renderer};
 use std::fs::File;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::Duration;
+use tokio::sync::mpsc::UnboundedSender;
 
 const CLOCK_REFRESH_INTERVAL: Duration = Duration::from_secs(60);
 const DEFAULT_ROTATION: i8 = 1;
@@ -75,7 +75,7 @@ impl std::ops::DerefMut for SendableEventPump {
 
 pub struct EmulatorInputSource {
     dpi: u16,
-    sender: Option<Sender<DeviceEvent>>,
+    sender: Option<UnboundedSender<DeviceEvent>>,
     sdl_context: Option<SendableSdl>,
 }
 
@@ -106,17 +106,18 @@ impl InputSource for EmulatorInputSource {
         _display: crate::framebuffer::Display,
         _button_scheme: crate::settings::ButtonScheme,
         inhibitor: Arc<Inhibitor>,
-    ) -> (Hub, Receiver<crate::view::HubMessage>) {
-        let (hub, rx) = mpsc::channel();
-        let (device_tx, device_rx) = mpsc::channel();
+    ) -> (Hub, crate::view::HubReceiver) {
+        let (hub, rx) = crate::view::hub_channel();
+        let (device_tx, device_rx) = tokio::sync::mpsc::unbounded_channel();
         self.sender = Some(device_tx.clone());
 
         let gesture_rx = crate::gesture::gesture_events(device_rx, self.dpi);
         let hub_clone = hub.clone();
         let gesture_inhibitor = Arc::clone(&inhibitor);
 
-        std::thread::spawn(move || {
-            while let Ok(event) = gesture_rx.recv() {
+        crate::runtime::current_handle().spawn(async move {
+            let mut gesture_rx = gesture_rx;
+            while let Some(event) = gesture_rx.recv().await {
                 crate::view::hub_message::send_input_hub_message(
                     &hub_clone,
                     &gesture_inhibitor,
@@ -131,7 +132,7 @@ impl InputSource for EmulatorInputSource {
             let sender = device_tx;
             let mut event_pump =
                 SendableEventPump(sendable_sdl.0.event_pump().expect("SDL3 event pump failed"));
-            std::thread::spawn(move || {
+            crate::runtime::spawn_blocking(move || {
                 'outer: loop {
                     while let Some(sdl_evt) = event_pump.poll_event() {
                         #[cfg(feature = "tracing")]
@@ -275,9 +276,9 @@ impl InputSource for EmulatorInputSource {
         }
 
         let hub_clone = hub.clone();
-        std::thread::spawn(move || {
+        crate::runtime::current_handle().spawn(async move {
             loop {
-                std::thread::sleep(CLOCK_REFRESH_INTERVAL);
+                tokio::time::sleep(CLOCK_REFRESH_INTERVAL).await;
                 hub_clone.send(Event::ClockTick.into()).ok();
             }
         });
@@ -564,8 +565,8 @@ fn handle_set_wifi_mode(
     match mode {
         crate::settings::WifiMode::AlwaysOn => {
             let hub = hub.clone();
-            std::thread::spawn(move || {
-                std::thread::sleep(std::time::Duration::from_secs(2));
+            crate::runtime::current_handle().spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
                 hub.send((Event::Device(DeviceEvent::NetUp)).into()).ok();
             });
         }
@@ -597,14 +598,16 @@ fn show_suspend_intermission(
     context: &mut AppContext,
     runtime: &mut DeviceRuntime<'_>,
 ) {
-    runtime
-        .view
-        .handle_event(&Event::Suspend, hub, bus, rq, context);
-    let interm = Intermission::new(
+    crate::runtime::block_on(
+        runtime
+            .view
+            .handle_event(&Event::Suspend, hub, bus, rq, context),
+    );
+    let interm = crate::runtime::block_on(Intermission::new(
         context.device.framebuffer().rect(),
         IntermKind::Suspend,
         context,
-    );
+    ));
     rq.add(RenderData::new(
         interm.id(),
         *interm.rect(),
@@ -658,11 +661,18 @@ impl DeviceLifecycle for EmulatorDevice {
                     runtime.view.children_mut().remove(index);
                     rq.add(RenderData::expose(rect, UpdateMode::Full));
                 } else {
-                    runtime
-                        .view
-                        .handle_event(&Event::Suspend, hub, bus, rq, context);
-                    let interm =
-                        Intermission::new(context.device.framebuffer().rect(), *kind, context);
+                    crate::runtime::block_on(runtime.view.handle_event(
+                        &Event::Suspend,
+                        hub,
+                        bus,
+                        rq,
+                        context,
+                    ));
+                    let interm = crate::runtime::block_on(Intermission::new(
+                        context.device.framebuffer().rect(),
+                        *kind,
+                        context,
+                    ));
                     rq.add(RenderData::new(
                         interm.id(),
                         *interm.rect(),
@@ -805,29 +815,27 @@ mod wifi_tests {
     use crate::device::wifi::WifiSession;
     use crate::settings::WifiMode;
     use std::sync::Arc;
-    use std::sync::mpsc;
 
-    #[test]
-    fn ota_download_lease_acquire_succeeds_for_auto_and_always_on() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn ota_download_lease_acquire_succeeds_for_auto_and_always_on() {
         for mode in [WifiMode::Auto, WifiMode::AlwaysOn] {
             let wifi = Arc::new(NoopWifiManager::default());
             assert!(!wifi.is_enabled());
-            wifi.enable().expect("startup enable");
+            crate::runtime::block_on(wifi.enable()).expect("startup enable");
             assert!(wifi.is_enabled());
-            wifi.disable().expect("return to idle before acquire");
+            crate::runtime::block_on(wifi.disable()).expect("return to idle before acquire");
             assert!(!wifi.is_enabled());
 
             let session = WifiSession::new(wifi, mode);
-            let _ = session
-                .acquire("ota-download")
+            let _ = crate::runtime::block_on(session.acquire("ota-download"))
                 .expect("acquire should succeed without panic");
         }
     }
 
-    #[test]
-    fn handle_set_wifi_enable_does_not_set_online_immediately() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_set_wifi_enable_does_not_set_online_immediately() {
         let mut context = create_test_context();
-        let (hub, _rx) = mpsc::channel();
+        let (hub, _rx) = crate::view::hub_channel();
         assert_eq!(context.settings.wifi, WifiMode::Off);
         assert!(!context.online);
 
@@ -837,10 +845,10 @@ mod wifi_tests {
         assert!(!context.online);
     }
 
-    #[test]
-    fn handle_set_wifi_disable_clears_online() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_set_wifi_disable_clears_online() {
         let mut context = create_test_context();
-        let (hub, _rx) = mpsc::channel();
+        let (hub, _rx) = crate::view::hub_channel();
         context.settings.wifi = WifiMode::AlwaysOn;
         context.online = true;
 
@@ -850,8 +858,8 @@ mod wifi_tests {
         assert!(!context.online);
     }
 
-    #[test]
-    fn handle_net_up_sets_online() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_net_up_sets_online() {
         let mut context = create_test_context();
         assert!(!context.online);
 
@@ -861,10 +869,10 @@ mod wifi_tests {
         assert!(context.wifi_session.is_online());
     }
 
-    #[test]
-    fn toggle_wifi_enables_wifi_without_setting_online() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn toggle_wifi_enables_wifi_without_setting_online() {
         let mut context = create_test_context();
-        let (hub, _rx) = mpsc::channel();
+        let (hub, _rx) = crate::view::hub_channel();
         assert_eq!(context.settings.wifi, WifiMode::Off);
 
         let outcome = handle_set_wifi_mode(WifiMode::AlwaysOn, &mut context, &hub);
@@ -885,7 +893,6 @@ mod lifecycle {
     use crate::framebuffer::Framebuffer as _;
     use crate::view::filler::Filler;
     use crate::view::{Bus, EntryId, Event, RenderQueue, View};
-    use std::sync::mpsc;
 
     fn with_runtime<R>(
         f: impl FnOnce(
@@ -896,7 +903,7 @@ mod lifecycle {
             &mut DeviceRuntime<'_>,
         ) -> R,
     ) -> R {
-        let (hub, _rx) = mpsc::channel();
+        let (hub, _rx) = crate::view::hub_channel();
         let mut context = create_test_context();
         let rect = context.device.framebuffer().rect();
         let mut view: Box<dyn View> = Box::new(Filler::new(rect, WHITE));
@@ -917,16 +924,16 @@ mod lifecycle {
         f(&hub, &mut bus, &mut rq, &mut context, &mut runtime)
     }
 
-    #[test]
-    fn handle_toggle_frontlight_updates_settings() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_toggle_frontlight_updates_settings() {
         let mut context = create_test_context();
         context.settings.frontlight = false;
         handle_toggle_frontlight(&mut context);
         assert!(context.settings.frontlight);
     }
 
-    #[test]
-    fn handle_event_toggle_frontlight_continues() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_event_toggle_frontlight_continues() {
         let outcome = with_runtime(|hub, bus, rq, context, runtime| {
             context.settings.frontlight = false;
             EmulatorDevice::handle_event(&Event::ToggleFrontlight, hub, bus, rq, context, runtime)
@@ -934,8 +941,8 @@ mod lifecycle {
         assert_eq!(outcome, EventOutcome::Continue);
     }
 
-    #[test]
-    fn handle_event_restart_exits() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_event_restart_exits() {
         let outcome = with_runtime(|hub, bus, rq, context, runtime| {
             EmulatorDevice::handle_event(
                 &Event::Select(EntryId::Restart),
@@ -949,8 +956,8 @@ mod lifecycle {
         assert_eq!(outcome, EventOutcome::Exit(ExitStatus::Restart));
     }
 
-    #[test]
-    fn handle_event_power_off_exits() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_event_power_off_exits() {
         let outcome = with_runtime(|hub, bus, rq, context, runtime| {
             EmulatorDevice::handle_event(
                 &Event::Select(EntryId::PowerOff),

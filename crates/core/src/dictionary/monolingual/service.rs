@@ -10,12 +10,15 @@ use super::errors::MonolingualError;
 use super::metadata::{DictionariesResponse, DictionaryEntry, download_url, download_url_no_etym};
 use crate::db::Database;
 use crate::db::types::UnixTimestamp;
+use crate::memory::{BufferPath, choose_buffer_path};
 use std::collections::HashSet;
+#[cfg(test)]
 use std::fs;
 use std::io::{self};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
-use zip::ZipArchive;
+use tokio::io::AsyncWriteExt;
+use tokio_util::compat::FuturesAsyncReadCompatExt;
 
 /// Subdirectory inside the dictionaries root where reader-dict downloads live.
 const READER_DICT_SUBDIR: &str = "reader-dict";
@@ -75,10 +78,10 @@ impl MonolingualDictionaryService {
     ///
     /// Returns an error if the metadata cannot be loaded from cache or network.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
-    pub fn get_available_dictionaries(
+    pub async fn get_available_dictionaries(
         &self,
     ) -> Result<Vec<(String, DictionaryEntry)>, MonolingualError> {
-        let metadata = self.load_metadata()?;
+        let metadata = self.load_metadata().await?;
 
         let monolingual = metadata
             .into_iter()
@@ -97,11 +100,11 @@ impl MonolingualDictionaryService {
     ///
     /// Returns an error if the database read fails.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(lang = %lang)))]
-    pub fn get_entry_for_lang(
+    pub async fn get_entry_for_lang(
         &self,
         lang: &str,
     ) -> Result<Option<DictionaryEntry>, MonolingualError> {
-        Ok(self.db.get_entry(lang)?)
+        Ok(self.db.get_entry(lang).await?)
     }
 
     /// Returns the language codes of all locally installed dictionaries.
@@ -113,12 +116,15 @@ impl MonolingualDictionaryService {
     ///
     /// Returns an error if the registry cannot be read.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
-    pub fn get_installed_dictionaries(&self) -> Result<Vec<String>, MonolingualError> {
-        let registered = self.db.list_installed_langs()?;
-        Ok(registered
-            .into_iter()
-            .filter(|lang| has_dict_pair(&self.lang_dir(lang)))
-            .collect())
+    pub async fn get_installed_dictionaries(&self) -> Result<Vec<String>, MonolingualError> {
+        let registered = self.db.list_installed_langs().await?;
+        let mut installed = Vec::new();
+        for lang in registered {
+            if has_dict_pair(&self.lang_dir(&lang)).await {
+                installed.push(lang);
+            }
+        }
+        Ok(installed)
     }
 
     /// Returns `true` if a download is already in progress for `lang`.
@@ -195,7 +201,7 @@ impl MonolingualDictionaryService {
     /// if the download fails, if the archive cannot be parsed, or if files
     /// cannot be written to disk.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, entry, progress_callback), fields(lang = %lang, include_etymologies = include_etymologies)))]
-    pub fn install_dictionary<F>(
+    pub async fn install_dictionary<F>(
         &self,
         lang: &str,
         entry: &DictionaryEntry,
@@ -210,6 +216,7 @@ impl MonolingualDictionaryService {
         }
 
         self.install_reserved_dictionary(lang, entry, include_etymologies, progress_callback)
+            .await
     }
 
     /// Installs a dictionary after [`Self::try_begin_install`] reserves its language.
@@ -217,7 +224,7 @@ impl MonolingualDictionaryService {
     /// This keeps UI state synchronous with background work by allowing callers to
     /// mark a language as installing before spawning a thread.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, entry, progress_callback), fields(lang = %lang, include_etymologies = include_etymologies)))]
-    pub(crate) fn install_reserved_dictionary<F>(
+    pub(crate) async fn install_reserved_dictionary<F>(
         &self,
         lang: &str,
         entry: &DictionaryEntry,
@@ -227,7 +234,9 @@ impl MonolingualDictionaryService {
     where
         F: FnMut(u64, u64),
     {
-        let result = self.do_install(lang, entry, include_etymologies, progress_callback);
+        let result = self
+            .do_install(lang, entry, include_etymologies, progress_callback)
+            .await;
         self.finish_install(lang);
 
         result
@@ -237,7 +246,7 @@ impl MonolingualDictionaryService {
         feature = "tracing",
         tracing::instrument(skip(self, entry, progress_callback), fields(lang = %lang, include_etymologies = include_etymologies))
     )]
-    fn do_install<F>(
+    async fn do_install<F>(
         &self,
         lang: &str,
         entry: &DictionaryEntry,
@@ -257,20 +266,21 @@ impl MonolingualDictionaryService {
 
         let dest = self.lang_dir(lang);
         let staging = staging_dir(&self.reader_dict_dir(), lang);
-        if staging.exists() {
-            fs::remove_dir_all(&staging)?;
+        if tokio::fs::try_exists(&staging).await? {
+            tokio::fs::remove_dir_all(&staging).await?;
         }
-        fs::create_dir_all(&staging)?;
+        tokio::fs::create_dir_all(&staging).await?;
         let mut staging_guard = crate::fs::RemovePathOnDrop::dir(staging.clone());
         let temp_path = staging.join(DOWNLOAD_TMP_NAME);
 
-        self.client.download(&url, &temp_path, progress_callback)?;
+        self.client
+            .download(&url, &temp_path, progress_callback)
+            .await?;
 
         tracing::debug!(lang, dest = %dest.display(), "Extracting dictionary archive");
 
-        let file = fs::File::open(&temp_path)?;
-        extract_zip_renamed(file, &staging, lang)?;
-        if let Err(error) = fs::remove_file(&temp_path) {
+        extract_zip_renamed(&temp_path, &staging, lang).await?;
+        if let Err(error) = tokio::fs::remove_file(&temp_path).await {
             tracing::warn!(
                 path = %temp_path.display(),
                 error = %error,
@@ -278,10 +288,11 @@ impl MonolingualDictionaryService {
             );
         }
 
-        let previous = commit_extracted_dictionary(&dest, &staging, lang, &mut staging_guard)?;
-        if let Err(registry) = self.db.record_install(lang, entry.updated.into()) {
+        let previous =
+            commit_extracted_dictionary(&dest, &staging, lang, &mut staging_guard).await?;
+        if let Err(registry) = self.db.record_install(lang, entry.updated.into()).await {
             if let Err(restore) =
-                restore_previous_dictionary_after_registry_failure(&dest, previous.as_ref())
+                restore_previous_dictionary_after_registry_failure(&dest, previous.as_ref()).await
             {
                 return Err(MonolingualError::InstallRecordAndRestore {
                     registry: registry.to_string(),
@@ -290,7 +301,7 @@ impl MonolingualDictionaryService {
             }
             return Err(registry.into());
         }
-        discard_replaced_aside(previous.as_ref());
+        discard_replaced_aside(previous.as_ref()).await;
 
         tracing::info!(lang, dest = %dest.display(), "Dictionary installed");
 
@@ -305,15 +316,15 @@ impl MonolingualDictionaryService {
     /// propagating the error, as this is a best-effort cleanup step called from
     /// event handlers.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
-    pub fn remove_installed(&self, lang: &str) {
+    pub async fn remove_installed(&self, lang: &str) {
         let root = self.reader_dict_dir();
         for path in [
             replaced_dir(&root, lang),
             staging_dir(&root, lang),
             self.lang_dir(lang),
         ] {
-            if path.exists()
-                && let Err(error) = fs::remove_dir_all(&path)
+            if tokio::fs::try_exists(&path).await.unwrap_or(false)
+                && let Err(error) = tokio::fs::remove_dir_all(&path).await
             {
                 tracing::warn!(
                     lang,
@@ -323,7 +334,7 @@ impl MonolingualDictionaryService {
                 );
             }
         }
-        if let Err(e) = self.db.remove_installed(lang) {
+        if let Err(e) = self.db.remove_installed(lang).await {
             tracing::warn!(lang, error = %e, "Failed to remove installed dictionary record");
         }
     }
@@ -333,45 +344,48 @@ impl MonolingualDictionaryService {
     ///
     /// Returns `false` on any error to avoid surfacing spurious update badges.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
-    pub fn is_update_available(&self, lang: &str) -> bool {
-        self.db.is_update_available(lang).unwrap_or(false)
+    pub async fn is_update_available(&self, lang: &str) -> bool {
+        self.db.is_update_available(lang).await.unwrap_or(false)
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
-    fn load_metadata(&self) -> Result<DictionariesResponse, MonolingualError> {
-        if let Some(cached_at) = self.db.get_most_recent_cached_at()? {
-            match self.client.is_metadata_modified_since(cached_at) {
+    async fn load_metadata(&self) -> Result<DictionariesResponse, MonolingualError> {
+        if let Some(cached_at) = self.db.get_most_recent_cached_at().await? {
+            let use_cache = match self.client.is_metadata_modified_since(cached_at).await {
                 Ok(false) => {
                     tracing::debug!("Cache is fresh (304), using cached metadata");
-                    if let Some(cached) = self.get_cached_metadata()? {
-                        return Ok(cached);
-                    }
+                    true
                 }
                 Ok(true) => {
                     tracing::debug!("API has newer data (200), refreshing cache");
+                    false
                 }
                 Err(e) => {
                     tracing::warn!(error = %e, "HEAD check failed, falling back to cache");
-                    if let Some(cached) = self.get_cached_metadata()? {
-                        return Ok(cached);
-                    }
+                    true
                 }
+            };
+            if use_cache && let Some(cached) = self.get_cached_metadata().await? {
+                return Ok(cached);
             }
         }
 
-        self.fetch_and_cache_metadata().or_else(|_| {
-            self.get_cached_metadata()?
-                .ok_or_else(|| MonolingualError::NotFound("metadata unavailable".to_string()))
-        })
+        match self.fetch_and_cache_metadata().await {
+            Ok(metadata) => Ok(metadata),
+            Err(_) => self
+                .get_cached_metadata()
+                .await?
+                .ok_or_else(|| MonolingualError::NotFound("metadata unavailable".to_string())),
+        }
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
-    fn fetch_and_cache_metadata(&self) -> Result<DictionariesResponse, MonolingualError> {
-        let metadata = self.client.fetch_metadata()?;
+    async fn fetch_and_cache_metadata(&self) -> Result<DictionariesResponse, MonolingualError> {
+        let metadata = self.client.fetch_metadata().await?;
 
         for (source_lang, targets) in &metadata {
             if let Some(entry) = targets.get(source_lang.as_str()) {
-                self.db.upsert_entry(source_lang, entry)?;
+                self.db.upsert_entry(source_lang, entry).await?;
             }
         }
 
@@ -380,8 +394,8 @@ impl MonolingualDictionaryService {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
-    fn get_cached_metadata(&self) -> Result<Option<DictionariesResponse>, MonolingualError> {
-        let entries = self.db.get_all_entries()?;
+    async fn get_cached_metadata(&self) -> Result<Option<DictionariesResponse>, MonolingualError> {
+        let entries = self.db.get_all_entries().await?;
 
         if entries.is_empty() {
             tracing::debug!("No cached metadata found in database");
@@ -409,8 +423,8 @@ impl MonolingualDictionaryService {
     }
 
     #[cfg(test)]
-    fn reconcile(&self) -> Result<(), MonolingualError> {
-        reconcile_reader_dict_tree(&self.db, &self.reader_dict_dir())
+    async fn reconcile(&self) -> Result<(), MonolingualError> {
+        reconcile_reader_dict_tree(&self.db, &self.reader_dict_dir()).await
     }
 }
 
@@ -425,25 +439,25 @@ impl MonolingualDictionaryService {
     feature = "tracing",
     tracing::instrument(skip(database), fields(dict_dir = %dict_dir.display()))
 )]
-pub(crate) fn reconcile_installed_dictionaries(
+pub(crate) async fn reconcile_installed_dictionaries(
     database: &Database,
     dict_dir: &Path,
 ) -> Result<(), MonolingualError> {
     let db = Db::new(database);
-    reconcile_reader_dict_tree(&db, &dict_dir.join(READER_DICT_SUBDIR))
+    reconcile_reader_dict_tree(&db, &dict_dir.join(READER_DICT_SUBDIR)).await
 }
 
 #[cfg_attr(
     feature = "tracing",
     tracing::instrument(skip(db), fields(root = %root.display()))
 )]
-fn reconcile_reader_dict_tree(db: &Db, root: &Path) -> Result<(), MonolingualError> {
-    if !root.exists() {
+async fn reconcile_reader_dict_tree(db: &Db, root: &Path) -> Result<(), MonolingualError> {
+    if !tokio::fs::try_exists(root).await.unwrap_or(false) {
         tracing::debug!(root = %root.display(), "no reader-dict directory to reconcile");
         return Ok(());
     }
 
-    let mut registered: HashSet<String> = db.list_installed_langs()?.into_iter().collect();
+    let mut registered: HashSet<String> = db.list_installed_langs().await?.into_iter().collect();
     tracing::debug!(
         registered = registered.len(),
         "reconciling dictionary installs"
@@ -453,8 +467,9 @@ fn reconcile_reader_dict_tree(db: &Db, root: &Path) -> Result<(), MonolingualErr
     let mut replaced = Vec::new();
     let mut dests = Vec::new();
 
-    for entry in fs::read_dir(root)? {
-        let entry = entry?;
+    let mut entries = tokio::fs::read_dir(root).await?;
+    while let Some(entry) = entries.next_entry().await? {
+        let file_type = entry.file_type().await?;
         let path = entry.path();
         let Some(name) = path
             .file_name()
@@ -472,14 +487,14 @@ fn reconcile_reader_dict_tree(db: &Db, root: &Path) -> Result<(), MonolingualErr
             replaced.push((path, lang));
             continue;
         }
-        if !name.starts_with('.') && path.is_dir() {
+        if !name.starts_with('.') && file_type.is_dir() {
             dests.push((path, name));
         }
     }
 
     let mut failures = Vec::new();
     for (path, lang) in stagings {
-        if let Err(error) = reconcile_staging_dir(db, root, &path, &lang, &mut registered) {
+        if let Err(error) = reconcile_staging_dir(db, root, &path, &lang, &mut registered).await {
             tracing::warn!(
                 lang,
                 path = %path.display(),
@@ -490,7 +505,7 @@ fn reconcile_reader_dict_tree(db: &Db, root: &Path) -> Result<(), MonolingualErr
         }
     }
     for (path, lang) in replaced {
-        if let Err(error) = reconcile_replaced_dir(root, &path, &lang, &registered) {
+        if let Err(error) = reconcile_replaced_dir(root, &path, &lang, &registered).await {
             tracing::warn!(
                 lang,
                 path = %path.display(),
@@ -501,9 +516,9 @@ fn reconcile_reader_dict_tree(db: &Db, root: &Path) -> Result<(), MonolingualErr
         }
     }
     for (path, name) in dests {
-        if has_dict_pair(&path)
+        if has_dict_pair(&path).await
             && registered.insert(name.clone())
-            && let Err(error) = register_complete_install(db, &name)
+            && let Err(error) = register_complete_install(db, &name).await
         {
             registered.remove(&name);
             tracing::warn!(
@@ -534,7 +549,7 @@ fn reconcile_reader_dict_tree(db: &Db, root: &Path) -> Result<(), MonolingualErr
     feature = "tracing",
     tracing::instrument(skip(db, root, registered), fields(lang = %lang, staging = %staging.display()))
 )]
-fn reconcile_staging_dir(
+async fn reconcile_staging_dir(
     db: &Db,
     root: &Path,
     staging: &Path,
@@ -542,29 +557,29 @@ fn reconcile_staging_dir(
     registered: &mut HashSet<String>,
 ) -> Result<(), MonolingualError> {
     let dest = root.join(lang);
-    if has_dict_pair(staging) && !has_dict_pair(&dest) {
-        if dest.exists() {
-            fs::remove_dir_all(&dest)?;
+    if has_dict_pair(staging).await && !has_dict_pair(&dest).await {
+        if tokio::fs::try_exists(&dest).await? {
+            tokio::fs::remove_dir_all(&dest).await?;
             tracing::info!(
                 lang,
                 dest = %dest.display(),
                 "removed incomplete dictionary dest before promoting staging"
             );
         }
-        fs::rename(staging, &dest)?;
+        tokio::fs::rename(staging, &dest).await?;
         tracing::info!(
             lang,
             dest = %dest.display(),
             "promoted complete dictionary staging"
         );
         if !registered.contains(lang) {
-            register_complete_install(db, lang)?;
+            register_complete_install(db, lang).await?;
             registered.insert(lang.to_owned());
         }
         return Ok(());
     }
 
-    if let Err(error) = fs::remove_dir_all(staging) {
+    if let Err(error) = tokio::fs::remove_dir_all(staging).await {
         tracing::warn!(
             path = %staging.display(),
             error = %error,
@@ -584,45 +599,45 @@ fn reconcile_staging_dir(
     feature = "tracing",
     tracing::instrument(skip(root, registered), fields(lang = %lang, replaced = %replaced.display()))
 )]
-fn reconcile_replaced_dir(
+async fn reconcile_replaced_dir(
     root: &Path,
     replaced: &Path,
     lang: &str,
     registered: &HashSet<String>,
 ) -> Result<(), MonolingualError> {
     let dest = root.join(lang);
-    let dest_complete = has_dict_pair(&dest);
-    let aside_complete = has_dict_pair(replaced);
+    let dest_complete = has_dict_pair(&dest).await;
+    let aside_complete = has_dict_pair(replaced).await;
     let is_registered = registered.contains(lang);
 
     if dest_complete {
-        discard_replaced_tree(replaced, lang);
+        discard_replaced_tree(replaced, lang).await;
         return Ok(());
     }
 
     if aside_complete && is_registered {
-        restore_replaced_to_dest(&dest, replaced, lang)?;
+        restore_replaced_to_dest(&dest, replaced, lang).await?;
         return Ok(());
     }
 
-    discard_replaced_tree(replaced, lang);
+    discard_replaced_tree(replaced, lang).await;
     Ok(())
 }
 
-fn restore_replaced_to_dest(
+async fn restore_replaced_to_dest(
     dest: &Path,
     replaced: &Path,
     lang: &str,
 ) -> Result<(), MonolingualError> {
-    if dest.exists() {
-        fs::remove_dir_all(dest)?;
+    if tokio::fs::try_exists(dest).await? {
+        tokio::fs::remove_dir_all(dest).await?;
         tracing::info!(
             lang,
             dest = %dest.display(),
             "removed dictionary dest before restoring replaced"
         );
     }
-    fs::rename(replaced, dest)?;
+    tokio::fs::rename(replaced, dest).await?;
     tracing::info!(
         lang,
         dest = %dest.display(),
@@ -631,8 +646,8 @@ fn restore_replaced_to_dest(
     Ok(())
 }
 
-fn discard_replaced_tree(replaced: &Path, lang: &str) {
-    if let Err(error) = fs::remove_dir_all(replaced) {
+async fn discard_replaced_tree(replaced: &Path, lang: &str) {
+    if let Err(error) = tokio::fs::remove_dir_all(replaced).await {
         tracing::warn!(
             path = %replaced.display(),
             error = %error,
@@ -648,9 +663,9 @@ fn discard_replaced_tree(replaced: &Path, lang: &str) {
 }
 
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(db), fields(lang = %lang)))]
-fn register_complete_install(db: &Db, lang: &str) -> Result<(), MonolingualError> {
-    let version = install_version_for_registration(db, lang)?;
-    db.record_install(lang, version)?;
+async fn register_complete_install(db: &Db, lang: &str) -> Result<(), MonolingualError> {
+    let version = install_version_for_registration(db, lang).await?;
+    db.record_install(lang, version).await?;
     tracing::info!(lang, "registered complete dictionary install");
     Ok(())
 }
@@ -659,11 +674,11 @@ fn register_complete_install(db: &Db, lang: &str) -> Result<(), MonolingualError
 ///
 /// Uses the cached catalogue `updated` date when known. Otherwise records the
 /// Unix epoch so any later published build is treated as newer.
-fn install_version_for_registration(
+async fn install_version_for_registration(
     db: &Db,
     lang: &str,
 ) -> Result<UnixTimestamp, MonolingualError> {
-    Ok(match db.get_entry(lang)? {
+    Ok(match db.get_entry(lang).await? {
         Some(entry) => entry.updated.into(),
         None => UnixTimestamp::from(0),
     })
@@ -693,30 +708,25 @@ fn replaced_lang(name: &str) -> Option<&str> {
     feature = "tracing",
     tracing::instrument(skip(staging_guard), fields(lang = %lang, dest = %dest.display(), staging = %staging.display()))
 )]
-fn commit_extracted_dictionary(
+async fn commit_extracted_dictionary(
     dest: &Path,
     staging: &Path,
     lang: &str,
     staging_guard: &mut crate::fs::RemovePathOnDrop,
 ) -> Result<Option<PathBuf>, MonolingualError> {
-    if !has_dict_pair(staging) {
+    if !has_dict_pair(staging).await {
         return Err(MonolingualError::Extraction(
             "archive did not contain a complete .index and .dict pair".to_string(),
         ));
     }
-    Ok(publish_extracted_dictionary(
-        dest,
-        staging,
-        lang,
-        staging_guard,
-    )?)
+    Ok(publish_extracted_dictionary(dest, staging, lang, staging_guard).await?)
 }
 
 #[cfg_attr(
     feature = "tracing",
     tracing::instrument(skip(staging_guard), fields(lang = %lang, dest = %dest.display(), staging = %staging.display()))
 )]
-fn publish_extracted_dictionary(
+async fn publish_extracted_dictionary(
     dest: &Path,
     staging: &Path,
     lang: &str,
@@ -726,14 +736,14 @@ fn publish_extracted_dictionary(
         .parent()
         .map(|root| replaced_dir(root, lang))
         .unwrap_or_else(|| dest.with_file_name(format!(".{lang}{REPLACED_SUFFIX}")));
-    if aside.exists() {
-        fs::remove_dir_all(&aside)?;
+    if tokio::fs::try_exists(&aside).await? {
+        tokio::fs::remove_dir_all(&aside).await?;
     }
 
     let mut restore = None;
     let mut previous = None;
-    if dest.exists() {
-        fs::rename(dest, &aside)?;
+    if tokio::fs::try_exists(dest).await? {
+        tokio::fs::rename(dest, &aside).await?;
         restore = Some(crate::fs::RestorePathOnDrop::new(
             aside.clone(),
             dest.to_path_buf(),
@@ -741,7 +751,7 @@ fn publish_extracted_dictionary(
         previous = Some(aside.clone());
     }
 
-    fs::rename(staging, dest)?;
+    tokio::fs::rename(staging, dest).await?;
     staging_guard.disarm();
     if let Some(mut restore) = restore {
         restore.disarm();
@@ -749,7 +759,7 @@ fn publish_extracted_dictionary(
     Ok(previous)
 }
 
-fn restore_previous_dictionary_after_registry_failure(
+async fn restore_previous_dictionary_after_registry_failure(
     dest: &Path,
     previous: Option<&PathBuf>,
 ) -> Result<(), MonolingualError> {
@@ -757,10 +767,10 @@ fn restore_previous_dictionary_after_registry_failure(
         return Ok(());
     };
 
-    if dest.exists() {
-        fs::remove_dir_all(dest)?;
+    if tokio::fs::try_exists(dest).await? {
+        tokio::fs::remove_dir_all(dest).await?;
     }
-    fs::rename(aside, dest)?;
+    tokio::fs::rename(aside, dest).await?;
     tracing::warn!(
         dest = %dest.display(),
         aside = %aside.display(),
@@ -769,12 +779,12 @@ fn restore_previous_dictionary_after_registry_failure(
     Ok(())
 }
 
-fn discard_replaced_aside(previous: Option<&PathBuf>) {
+async fn discard_replaced_aside(previous: Option<&PathBuf>) {
     let Some(aside) = previous else {
         return;
     };
 
-    if let Err(error) = fs::remove_dir_all(aside) {
+    if let Err(error) = tokio::fs::remove_dir_all(aside).await {
         tracing::warn!(
             path = %aside.display(),
             error = %error,
@@ -785,12 +795,12 @@ fn discard_replaced_aside(previous: Option<&PathBuf>) {
 
 /// Returns `true` when `dir` contains at least one `.index` file that is
 /// paired with a `.dict` or `.dict.dz` file sharing the same stem.
-fn has_dict_pair(dir: &Path) -> bool {
-    let Ok(entries) = fs::read_dir(dir) else {
+async fn has_dict_pair(dir: &Path) -> bool {
+    let Ok(mut entries) = tokio::fs::read_dir(dir).await else {
         return false;
     };
 
-    for entry in entries.flatten() {
+    while let Ok(Some(entry)) = entries.next_entry().await {
         let path = entry.path();
         let name = match path.file_name().and_then(|n| n.to_str()) {
             Some(n) => n.to_string(),
@@ -805,7 +815,9 @@ fn has_dict_pair(dir: &Path) -> bool {
         let dict = dir.join(format!("{stem}.dict"));
         let dict_dz = dir.join(format!("{stem}.dict.dz"));
 
-        if dict.exists() || dict_dz.exists() {
+        if tokio::fs::try_exists(&dict).await.unwrap_or(false)
+            || tokio::fs::try_exists(&dict_dz).await.unwrap_or(false)
+        {
             return true;
         }
     }
@@ -818,39 +830,81 @@ fn has_dict_pair(dir: &Path) -> bool {
 /// or `.dict.dz`.
 ///
 /// Files with unrecognised extensions are skipped. Directories inside the ZIP
-/// are ignored because all output files land flat in `dest`.
-#[cfg_attr(feature = "tracing", tracing::instrument(skip(reader)))]
-fn extract_zip_renamed<R: std::io::Read + std::io::Seek>(
-    reader: R,
+/// are ignored because all output files land flat in `dest`. When available RAM
+/// covers the archive plus working room, the zip is loaded into memory first;
+/// otherwise entries are inflated straight from disk. Each entry is written as
+/// it is inflated so inflated members are never held all at once.
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(zip_path, dest)))]
+async fn extract_zip_renamed(
+    zip_path: &Path,
     dest: &Path,
     lang: &str,
 ) -> Result<(), MonolingualError> {
-    let mut archive = ZipArchive::new(reader)
-        .map_err(|e| MonolingualError::Extraction(format!("failed to open zip archive: {e}")))?;
+    let zip_size = tokio::fs::metadata(zip_path).await?.len();
+    let needed = zip_size.saturating_mul(2);
+    match choose_buffer_path(needed) {
+        BufferPath::InMemory => {
+            let bytes = tokio::fs::read(zip_path).await?;
+            let reader = async_zip::base::read::mem::ZipFileReader::new(bytes)
+                .await
+                .map_err(zip_open_error)?;
+            let targets = collect_renamed_dict_targets(reader.file(), lang)?;
+            for (index, target_name) in targets {
+                let entry = reader
+                    .reader_without_entry(index)
+                    .await
+                    .map_err(zip_entry_error)?;
+                let out_path = dest.join(&target_name);
+                stream_zip_entry_to_path(entry, &out_path).await?;
+                tracing::debug!(path = %out_path.display(), "Extracted file");
+            }
+            Ok(())
+        }
+        BufferPath::Stream => {
+            let reader = async_zip::tokio::read::fs::ZipFileReader::new(zip_path)
+                .await
+                .map_err(zip_open_error)?;
+            let targets = collect_renamed_dict_targets(reader.file(), lang)?;
+            for (index, target_name) in targets {
+                let entry = reader
+                    .reader_without_entry(index)
+                    .await
+                    .map_err(zip_entry_error)?;
+                let out_path = dest.join(&target_name);
+                stream_zip_entry_to_path(entry, &out_path).await?;
+                tracing::debug!(path = %out_path.display(), "Extracted file");
+            }
+            Ok(())
+        }
+    }
+}
 
-    for i in 0..archive.len() {
-        let mut file = archive.by_index(i).map_err(|e| {
-            MonolingualError::Extraction(format!("failed to read zip entry {i}: {e}"))
-        })?;
+fn zip_open_error(error: async_zip::error::ZipError) -> MonolingualError {
+    MonolingualError::Extraction(format!("failed to open zip archive: {error}"))
+}
 
-        if file.is_dir() {
+fn zip_entry_error(error: async_zip::error::ZipError) -> MonolingualError {
+    MonolingualError::Extraction(format!("failed to read zip entry: {error}"))
+}
+
+fn collect_renamed_dict_targets(
+    file: &async_zip::ZipFile,
+    lang: &str,
+) -> Result<Vec<(usize, String)>, MonolingualError> {
+    let mut targets = Vec::new();
+    for (index, stored) in file.entries().iter().enumerate() {
+        if stored.dir().map_err(|error| {
+            MonolingualError::Extraction(format!("failed to inspect zip entry {index}: {error}"))
+        })? {
             continue;
         }
 
-        let original_name = match file.enclosed_name() {
-            Some(p) => p
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("")
-                .to_string(),
-            None => {
-                tracing::warn!(index = i, "Skipping zip entry with unsafe path");
-                continue;
-            }
+        let Some(original_name) = zip_entry_basename(stored.filename()) else {
+            tracing::warn!(index, "Skipping zip entry with unsafe path");
+            continue;
         };
 
-        let target_name = dict_file_target_name(&original_name, lang);
-        let Some(target_name) = target_name else {
+        let Some(target_name) = dict_file_target_name(&original_name, lang) else {
             tracing::debug!(
                 original_name,
                 "Skipping zip entry with unrecognised extension"
@@ -858,12 +912,33 @@ fn extract_zip_renamed<R: std::io::Read + std::io::Seek>(
             continue;
         };
 
-        let out_path = dest.join(&target_name);
-        let mut out_file = fs::File::create(&out_path)?;
-        io::copy(&mut file, &mut out_file)?;
-        tracing::debug!(path = %out_path.display(), "Extracted file");
+        targets.push((index, target_name));
     }
+    Ok(targets)
+}
 
+fn zip_entry_basename(filename: &async_zip::ZipString) -> Option<String> {
+    let raw = filename.as_str().ok()?;
+    let trimmed = raw.trim_end_matches('/');
+    if trimmed.is_empty() || trimmed.split('/').any(|part| part == "..") {
+        return None;
+    }
+    Path::new(trimmed)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(str::to_owned)
+}
+
+async fn stream_zip_entry_to_path<R>(entry: R, out_path: &Path) -> Result<(), MonolingualError>
+where
+    R: futures_lite::io::AsyncRead + Unpin,
+{
+    let mut compat = entry.compat();
+    let mut out = tokio::fs::File::create(out_path).await?;
+    tokio::io::copy(&mut compat, &mut out)
+        .await
+        .map_err(|error| MonolingualError::Extraction(error.to_string()))?;
+    out.flush().await?;
     Ok(())
 }
 
@@ -894,11 +969,16 @@ mod tests {
     use std::io::Write;
     use tempfile::TempDir;
 
-    fn create_test_service() -> (MonolingualDictionaryService, TempDir, Database) {
+    async fn create_test_service() -> (MonolingualDictionaryService, TempDir, Database) {
         crate::crypto::init_crypto_provider();
         let dir = TempDir::new().expect("failed to create temp dir");
-        let mut database = Database::new(":memory:").expect("failed to create in-memory database");
-        database.init_for_test(0).expect("failed to run migrations");
+        let mut database = Database::new(":memory:")
+            .await
+            .expect("failed to create in-memory database");
+        database
+            .init_for_test(0)
+            .await
+            .expect("failed to run migrations");
         let service = MonolingualDictionaryService::new(&database, dir.path())
             .expect("failed to create service");
         (service, dir, database)
@@ -912,24 +992,24 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_get_installed_empty_when_no_dir() {
-        let (service, _dir, _db) = create_test_service();
-        let installed = service.get_installed_dictionaries().unwrap();
+    #[tokio::test]
+    async fn test_get_installed_empty_when_no_dir() {
+        let (service, _dir, _db) = create_test_service().await;
+        let installed = service.get_installed_dictionaries().await.unwrap();
         assert!(installed.is_empty());
     }
 
-    #[test]
-    fn test_get_installed_empty_when_dir_exists_but_empty() {
-        let (service, dir, _db) = create_test_service();
+    #[tokio::test]
+    async fn test_get_installed_empty_when_dir_exists_but_empty() {
+        let (service, dir, _db) = create_test_service().await;
         fs::create_dir_all(dir.path().join(READER_DICT_SUBDIR)).unwrap();
-        let installed = service.get_installed_dictionaries().unwrap();
+        let installed = service.get_installed_dictionaries().await.unwrap();
         assert!(installed.is_empty());
     }
 
-    #[test]
-    fn test_get_installed_detects_dict_pair() {
-        let (service, dir, _db) = create_test_service();
+    #[tokio::test]
+    async fn test_get_installed_detects_dict_pair() {
+        let (service, dir, _db) = create_test_service().await;
         let lang_dir = dir.path().join(READER_DICT_SUBDIR).join("en");
         fs::create_dir_all(&lang_dir).unwrap();
         fs::File::create(lang_dir.join("dict.index")).unwrap();
@@ -937,15 +1017,16 @@ mod tests {
         service
             .db
             .record_install("en", UnixTimestamp::now())
+            .await
             .unwrap();
 
-        let installed = service.get_installed_dictionaries().unwrap();
+        let installed = service.get_installed_dictionaries().await.unwrap();
         assert_eq!(installed, vec!["en".to_string()]);
     }
 
-    #[test]
-    fn test_get_installed_detects_dict_dz_pair() {
-        let (service, dir, _db) = create_test_service();
+    #[tokio::test]
+    async fn test_get_installed_detects_dict_dz_pair() {
+        let (service, dir, _db) = create_test_service().await;
         let lang_dir = dir.path().join(READER_DICT_SUBDIR).join("fr");
         fs::create_dir_all(&lang_dir).unwrap();
         fs::File::create(lang_dir.join("dict.index")).unwrap();
@@ -953,32 +1034,39 @@ mod tests {
         service
             .db
             .record_install("fr", UnixTimestamp::now())
+            .await
             .unwrap();
 
-        let installed = service.get_installed_dictionaries().unwrap();
+        let installed = service.get_installed_dictionaries().await.unwrap();
         assert_eq!(installed, vec!["fr".to_string()]);
     }
 
-    #[test]
-    fn test_get_installed_ignores_complete_files_without_registry() {
-        let (service, dir, _db) = create_test_service();
+    #[tokio::test]
+    async fn test_get_installed_ignores_complete_files_without_registry() {
+        let (service, dir, _db) = create_test_service().await;
         let lang_dir = dir.path().join(READER_DICT_SUBDIR).join("en");
         fs::create_dir_all(&lang_dir).unwrap();
         fs::File::create(lang_dir.join("dict.index")).unwrap();
         fs::File::create(lang_dir.join("dict.dict")).unwrap();
 
-        let installed = service.get_installed_dictionaries().unwrap();
+        let installed = service.get_installed_dictionaries().await.unwrap();
         assert!(installed.is_empty());
     }
 
-    #[test]
-    fn test_partial_extract_is_not_installed_and_does_not_block_dest() {
-        let (service, dir, _db) = create_test_service();
+    #[tokio::test]
+    async fn test_partial_extract_is_not_installed_and_does_not_block_dest() {
+        let (service, dir, _db) = create_test_service().await;
         let staging = staging_dir(&dir.path().join(READER_DICT_SUBDIR), "en");
         fs::create_dir_all(&staging).unwrap();
         fs::File::create(staging.join("dict.index")).unwrap();
 
-        assert!(service.get_installed_dictionaries().unwrap().is_empty());
+        assert!(
+            service
+                .get_installed_dictionaries()
+                .await
+                .unwrap()
+                .is_empty()
+        );
 
         let lang_dir = dir.path().join(READER_DICT_SUBDIR).join("en");
         fs::create_dir_all(&lang_dir).unwrap();
@@ -987,28 +1075,29 @@ mod tests {
         service
             .db
             .record_install("en", UnixTimestamp::now())
+            .await
             .unwrap();
 
         assert_eq!(
-            service.get_installed_dictionaries().unwrap(),
+            service.get_installed_dictionaries().await.unwrap(),
             vec!["en".to_string()]
         );
         assert!(staging.exists());
 
-        service.reconcile().unwrap();
+        service.reconcile().await.unwrap();
         assert!(
             !staging.exists(),
             "incomplete staging must not block a later install"
         );
         assert_eq!(
-            service.get_installed_dictionaries().unwrap(),
+            service.get_installed_dictionaries().await.unwrap(),
             vec!["en".to_string()]
         );
     }
 
-    #[test]
-    fn test_reconcile_promotes_complete_staging_over_incomplete_dest() {
-        let (service, dir, _db) = create_test_service();
+    #[tokio::test]
+    async fn test_reconcile_promotes_complete_staging_over_incomplete_dest() {
+        let (service, dir, _db) = create_test_service().await;
         let root = dir.path().join(READER_DICT_SUBDIR);
         let dest = root.join("en");
         let staging = staging_dir(&root, "en");
@@ -1018,20 +1107,20 @@ mod tests {
         fs::write(staging.join("dict.index"), b"new").unwrap();
         fs::write(staging.join("dict.dict"), b"new").unwrap();
 
-        service.reconcile().unwrap();
+        service.reconcile().await.unwrap();
 
         assert!(!staging.exists());
         assert_eq!(fs::read(dest.join("dict.index")).unwrap(), b"new");
-        assert!(has_dict_pair(&dest));
+        assert!(has_dict_pair(&dest).await);
         assert_eq!(
-            service.get_installed_dictionaries().unwrap(),
+            service.get_installed_dictionaries().await.unwrap(),
             vec!["en".to_string()]
         );
     }
 
-    #[test]
-    fn test_reconcile_keeps_complete_dest_and_drops_complete_staging() {
-        let (service, dir, _db) = create_test_service();
+    #[tokio::test]
+    async fn test_reconcile_keeps_complete_dest_and_drops_complete_staging() {
+        let (service, dir, _db) = create_test_service().await;
         let root = dir.path().join(READER_DICT_SUBDIR);
         let dest = root.join("en");
         let staging = staging_dir(&root, "en");
@@ -1044,57 +1133,68 @@ mod tests {
         service
             .db
             .record_install("en", UnixTimestamp::now())
+            .await
             .unwrap();
 
-        service.reconcile().unwrap();
+        service.reconcile().await.unwrap();
 
         assert!(!staging.exists());
         assert_eq!(fs::read(dest.join("dict.index")).unwrap(), b"old");
         assert_eq!(
-            service.get_installed_dictionaries().unwrap(),
+            service.get_installed_dictionaries().await.unwrap(),
             vec!["en".to_string()]
         );
     }
 
-    #[test]
-    fn test_reconcile_promotes_complete_staging_when_dest_missing() {
-        let (service, dir, _db) = create_test_service();
+    #[tokio::test]
+    async fn test_reconcile_promotes_complete_staging_when_dest_missing() {
+        let (service, dir, _db) = create_test_service().await;
         let staging = staging_dir(&dir.path().join(READER_DICT_SUBDIR), "en");
         fs::create_dir_all(&staging).unwrap();
         fs::File::create(staging.join("dict.index")).unwrap();
         fs::File::create(staging.join("dict.dict")).unwrap();
 
-        assert!(service.get_installed_dictionaries().unwrap().is_empty());
-        service.reconcile().unwrap();
+        assert!(
+            service
+                .get_installed_dictionaries()
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        service.reconcile().await.unwrap();
         assert!(!staging.exists());
-        assert!(has_dict_pair(
-            &dir.path().join(READER_DICT_SUBDIR).join("en")
-        ));
+        assert!(has_dict_pair(&dir.path().join(READER_DICT_SUBDIR).join("en")).await);
         assert_eq!(
-            service.get_installed_dictionaries().unwrap(),
+            service.get_installed_dictionaries().await.unwrap(),
             vec!["en".to_string()]
         );
     }
 
-    #[test]
-    fn test_reconcile_registers_complete_unrecorded_install() {
-        let (service, dir, _db) = create_test_service();
+    #[tokio::test]
+    async fn test_reconcile_registers_complete_unrecorded_install() {
+        let (service, dir, _db) = create_test_service().await;
         let lang_dir = dir.path().join(READER_DICT_SUBDIR).join("en");
         fs::create_dir_all(&lang_dir).unwrap();
         fs::File::create(lang_dir.join("dict.index")).unwrap();
         fs::File::create(lang_dir.join("dict.dict")).unwrap();
 
-        assert!(service.get_installed_dictionaries().unwrap().is_empty());
-        service.reconcile().unwrap();
+        assert!(
+            service
+                .get_installed_dictionaries()
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        service.reconcile().await.unwrap();
         assert_eq!(
-            service.get_installed_dictionaries().unwrap(),
+            service.get_installed_dictionaries().await.unwrap(),
             vec!["en".to_string()]
         );
     }
 
-    #[test]
-    fn test_reconcile_removes_abandoned_temps_without_accumulating() {
-        let (service, dir, _db) = create_test_service();
+    #[tokio::test]
+    async fn test_reconcile_removes_abandoned_temps_without_accumulating() {
+        let (service, dir, _db) = create_test_service().await;
         let root = dir.path().join(READER_DICT_SUBDIR);
 
         for _ in 0..2 {
@@ -1102,7 +1202,7 @@ mod tests {
             fs::create_dir_all(&staging).unwrap();
             fs::File::create(staging.join(DOWNLOAD_TMP_NAME)).unwrap();
             fs::File::create(staging.join("dict.index")).unwrap();
-            service.reconcile().unwrap();
+            service.reconcile().await.unwrap();
         }
 
         let leftover: Vec<_> = fs::read_dir(&root)
@@ -1114,12 +1214,18 @@ mod tests {
             leftover.is_empty(),
             "expected no leftover staging or temp files, got {leftover:?}"
         );
-        assert!(service.get_installed_dictionaries().unwrap().is_empty());
+        assert!(
+            service
+                .get_installed_dictionaries()
+                .await
+                .unwrap()
+                .is_empty()
+        );
     }
 
-    #[test]
-    fn test_incomplete_extract_does_not_replace_installed_dest() {
-        let (service, dir, _db) = create_test_service();
+    #[tokio::test]
+    async fn test_incomplete_extract_does_not_replace_installed_dest() {
+        let (service, dir, _db) = create_test_service().await;
         let root = dir.path().join(READER_DICT_SUBDIR);
         let dest = root.join("en");
         let staging = staging_dir(&root, "en");
@@ -1129,12 +1235,14 @@ mod tests {
         service
             .db
             .record_install("en", UnixTimestamp::now())
+            .await
             .unwrap();
         fs::create_dir_all(&staging).unwrap();
         fs::write(staging.join("dict.index"), b"new").unwrap();
 
         let mut guard = crate::fs::RemovePathOnDrop::dir(staging.clone());
         let err = commit_extracted_dictionary(&dest, &staging, "en", &mut guard)
+            .await
             .expect_err("incomplete extract must not publish");
         drop(guard);
 
@@ -1144,14 +1252,14 @@ mod tests {
         assert!(!replaced_dir(&root, "en").exists());
         assert!(!staging.exists());
         assert_eq!(
-            service.get_installed_dictionaries().unwrap(),
+            service.get_installed_dictionaries().await.unwrap(),
             vec!["en".to_string()]
         );
     }
 
-    #[test]
-    fn test_publish_replaces_existing_dest_and_keeps_aside() {
-        let (_service, dir, _db) = create_test_service();
+    #[tokio::test]
+    async fn test_publish_replaces_existing_dest_and_keeps_aside() {
+        let (_service, dir, _db) = create_test_service().await;
         let root = dir.path().join(READER_DICT_SUBDIR);
         let dest = root.join("en");
         let staging = staging_dir(&root, "en");
@@ -1164,7 +1272,9 @@ mod tests {
         fs::write(staging.join("dict.dict"), b"new").unwrap();
 
         let mut guard = crate::fs::RemovePathOnDrop::dir(staging.clone());
-        let previous = publish_extracted_dictionary(&dest, &staging, "en", &mut guard).unwrap();
+        let previous = publish_extracted_dictionary(&dest, &staging, "en", &mut guard)
+            .await
+            .unwrap();
 
         assert_eq!(fs::read(dest.join("dict.index")).unwrap(), b"new");
         assert_eq!(previous.as_ref(), Some(&aside));
@@ -1172,13 +1282,13 @@ mod tests {
         assert_eq!(fs::read(aside.join("dict.index")).unwrap(), b"old");
         assert!(!staging.exists());
 
-        discard_replaced_aside(previous.as_ref());
+        discard_replaced_aside(previous.as_ref()).await;
         assert!(!aside.exists());
     }
 
-    #[test]
-    fn test_restore_previous_dest_after_failed_registry_write() {
-        let (_service, dir, _db) = create_test_service();
+    #[tokio::test]
+    async fn test_restore_previous_dest_after_failed_registry_write() {
+        let (_service, dir, _db) = create_test_service().await;
         let root = dir.path().join(READER_DICT_SUBDIR);
         let dest = root.join("en");
         let staging = staging_dir(&root, "en");
@@ -1191,8 +1301,12 @@ mod tests {
         fs::write(staging.join("dict.dict"), b"new").unwrap();
 
         let mut guard = crate::fs::RemovePathOnDrop::dir(staging.clone());
-        let previous = publish_extracted_dictionary(&dest, &staging, "en", &mut guard).unwrap();
-        restore_previous_dictionary_after_registry_failure(&dest, previous.as_ref()).unwrap();
+        let previous = publish_extracted_dictionary(&dest, &staging, "en", &mut guard)
+            .await
+            .unwrap();
+        restore_previous_dictionary_after_registry_failure(&dest, previous.as_ref())
+            .await
+            .unwrap();
 
         assert_eq!(fs::read(dest.join("dict.index")).unwrap(), b"old");
         assert_eq!(fs::read(dest.join("dict.dict")).unwrap(), b"old");
@@ -1200,9 +1314,9 @@ mod tests {
         assert!(!staging.exists());
     }
 
-    #[test]
-    fn test_reconcile_prefers_complete_staging_over_replaced_aside() {
-        let (service, dir, _db) = create_test_service();
+    #[tokio::test]
+    async fn test_reconcile_prefers_complete_staging_over_replaced_aside() {
+        let (service, dir, _db) = create_test_service().await;
         let root = dir.path().join(READER_DICT_SUBDIR);
         let staging = staging_dir(&root, "en");
         let aside = replaced_dir(&root, "en");
@@ -1213,21 +1327,21 @@ mod tests {
         fs::write(aside.join("dict.index"), b"old").unwrap();
         fs::write(aside.join("dict.dict"), b"old").unwrap();
 
-        service.reconcile().unwrap();
+        service.reconcile().await.unwrap();
 
         let dest = root.join("en");
         assert_eq!(fs::read(dest.join("dict.index")).unwrap(), b"new");
         assert!(!staging.exists());
         assert!(!aside.exists());
         assert_eq!(
-            service.get_installed_dictionaries().unwrap(),
+            service.get_installed_dictionaries().await.unwrap(),
             vec!["en".to_string()]
         );
     }
 
-    #[test]
-    fn test_reconcile_discards_replaced_aside_when_not_registered() {
-        let (service, dir, _db) = create_test_service();
+    #[tokio::test]
+    async fn test_reconcile_discards_replaced_aside_when_not_registered() {
+        let (service, dir, _db) = create_test_service().await;
         let root = dir.path().join(READER_DICT_SUBDIR);
         let dest = root.join("en");
         let aside = replaced_dir(&root, "en");
@@ -1235,16 +1349,22 @@ mod tests {
         fs::File::create(aside.join("dict.index")).unwrap();
         fs::File::create(aside.join("dict.dict")).unwrap();
 
-        service.reconcile().unwrap();
+        service.reconcile().await.unwrap();
 
         assert!(!aside.exists());
         assert!(!dest.exists());
-        assert!(service.get_installed_dictionaries().unwrap().is_empty());
+        assert!(
+            service
+                .get_installed_dictionaries()
+                .await
+                .unwrap()
+                .is_empty()
+        );
     }
 
-    #[test]
-    fn test_reconcile_restores_replaced_aside_when_registered_and_dest_missing() {
-        let (service, dir, _db) = create_test_service();
+    #[tokio::test]
+    async fn test_reconcile_restores_replaced_aside_when_registered_and_dest_missing() {
+        let (service, dir, _db) = create_test_service().await;
         let root = dir.path().join(READER_DICT_SUBDIR);
         let aside = replaced_dir(&root, "en");
         fs::create_dir_all(&aside).unwrap();
@@ -1253,21 +1373,22 @@ mod tests {
         service
             .db
             .record_install("en", UnixTimestamp::now())
+            .await
             .unwrap();
 
-        service.reconcile().unwrap();
+        service.reconcile().await.unwrap();
 
         assert!(!aside.exists());
-        assert!(has_dict_pair(&root.join("en")));
+        assert!(has_dict_pair(&root.join("en")).await);
         assert_eq!(
-            service.get_installed_dictionaries().unwrap(),
+            service.get_installed_dictionaries().await.unwrap(),
             vec!["en".to_string()]
         );
     }
 
-    #[test]
-    fn test_reconcile_restores_replaced_aside_over_incomplete_dest() {
-        let (service, dir, _db) = create_test_service();
+    #[tokio::test]
+    async fn test_reconcile_restores_replaced_aside_over_incomplete_dest() {
+        let (service, dir, _db) = create_test_service().await;
         let root = dir.path().join(READER_DICT_SUBDIR);
         let dest = root.join("en");
         let aside = replaced_dir(&root, "en");
@@ -1279,22 +1400,23 @@ mod tests {
         service
             .db
             .record_install("en", UnixTimestamp::now())
+            .await
             .unwrap();
 
-        service.reconcile().unwrap();
+        service.reconcile().await.unwrap();
 
         assert!(!aside.exists());
         assert_eq!(fs::read(dest.join("dict.index")).unwrap(), b"complete");
-        assert!(has_dict_pair(&dest));
+        assert!(has_dict_pair(&dest).await);
         assert_eq!(
-            service.get_installed_dictionaries().unwrap(),
+            service.get_installed_dictionaries().await.unwrap(),
             vec!["en".to_string()]
         );
     }
 
-    #[test]
-    fn test_reconcile_keeps_complete_dest_when_aside_leftover_and_update_pending() {
-        let (service, dir, _db) = create_test_service();
+    #[tokio::test]
+    async fn test_reconcile_keeps_complete_dest_when_aside_leftover_and_update_pending() {
+        let (service, dir, _db) = create_test_service().await;
         let root = dir.path().join(READER_DICT_SUBDIR);
         let dest = root.join("en");
         let aside = replaced_dir(&root, "en");
@@ -1302,8 +1424,9 @@ mod tests {
         service
             .db
             .upsert_entry("en", &make_entry(2026, 4, 1))
+            .await
             .unwrap();
-        service.db.record_install("en", old_version).unwrap();
+        service.db.record_install("en", old_version).await.unwrap();
         fs::create_dir_all(&dest).unwrap();
         fs::write(dest.join("dict.index"), b"new").unwrap();
         fs::write(dest.join("dict.dict"), b"new").unwrap();
@@ -1311,24 +1434,24 @@ mod tests {
         fs::write(aside.join("dict.index"), b"old").unwrap();
         fs::write(aside.join("dict.dict"), b"old").unwrap();
 
-        assert!(service.is_update_available("en"));
-        service.reconcile().unwrap();
+        assert!(service.is_update_available("en").await);
+        service.reconcile().await.unwrap();
 
         assert!(!aside.exists());
         assert_eq!(fs::read(dest.join("dict.index")).unwrap(), b"new");
         assert!(
-            service.is_update_available("en"),
+            service.is_update_available("en").await,
             "complete dest wins; leftover aside must not hide an update"
         );
         assert_eq!(
-            service.get_installed_dictionaries().unwrap(),
+            service.get_installed_dictionaries().await.unwrap(),
             vec!["en".to_string()]
         );
     }
 
-    #[test]
-    fn test_reconcile_promotes_staging_without_restamping_existing_install() {
-        let (service, dir, _db) = create_test_service();
+    #[tokio::test]
+    async fn test_reconcile_promotes_staging_without_restamping_existing_install() {
+        let (service, dir, _db) = create_test_service().await;
         let root = dir.path().join(READER_DICT_SUBDIR);
         let dest = root.join("en");
         let staging = staging_dir(&root, "en");
@@ -1336,32 +1459,33 @@ mod tests {
         service
             .db
             .upsert_entry("en", &make_entry(2026, 4, 1))
+            .await
             .unwrap();
-        service.db.record_install("en", old_version).unwrap();
+        service.db.record_install("en", old_version).await.unwrap();
         fs::create_dir_all(&dest).unwrap();
         fs::write(dest.join("dict.index"), b"incomplete").unwrap();
         fs::create_dir_all(&staging).unwrap();
         fs::write(staging.join("dict.index"), b"new").unwrap();
         fs::write(staging.join("dict.dict"), b"new").unwrap();
 
-        assert!(service.is_update_available("en"));
-        service.reconcile().unwrap();
+        assert!(service.is_update_available("en").await);
+        service.reconcile().await.unwrap();
 
         assert!(!staging.exists());
         assert_eq!(fs::read(dest.join("dict.index")).unwrap(), b"new");
         assert!(
-            service.is_update_available("en"),
+            service.is_update_available("en").await,
             "promoting staging must keep the existing installed_version"
         );
         assert_eq!(
-            service.get_installed_dictionaries().unwrap(),
+            service.get_installed_dictionaries().await.unwrap(),
             vec!["en".to_string()]
         );
     }
 
-    #[test]
-    fn test_reconcile_discards_aside_when_install_already_recorded() {
-        let (service, dir, _db) = create_test_service();
+    #[tokio::test]
+    async fn test_reconcile_discards_aside_when_install_already_recorded() {
+        let (service, dir, _db) = create_test_service().await;
         let root = dir.path().join(READER_DICT_SUBDIR);
         let dest = root.join("en");
         let aside = replaced_dir(&root, "en");
@@ -1369,8 +1493,9 @@ mod tests {
         service
             .db
             .upsert_entry("en", &make_entry(2026, 4, 1))
+            .await
             .unwrap();
-        service.db.record_install("en", version).unwrap();
+        service.db.record_install("en", version).await.unwrap();
         fs::create_dir_all(&dest).unwrap();
         fs::write(dest.join("dict.index"), b"new").unwrap();
         fs::write(dest.join("dict.dict"), b"new").unwrap();
@@ -1378,13 +1503,13 @@ mod tests {
         fs::write(aside.join("dict.index"), b"old").unwrap();
         fs::write(aside.join("dict.dict"), b"old").unwrap();
 
-        assert!(!service.is_update_available("en"));
-        service.reconcile().unwrap();
+        assert!(!service.is_update_available("en").await);
+        service.reconcile().await.unwrap();
 
         assert!(!aside.exists());
         assert_eq!(fs::read(dest.join("dict.index")).unwrap(), b"new");
         assert_eq!(
-            service.get_installed_dictionaries().unwrap(),
+            service.get_installed_dictionaries().await.unwrap(),
             vec!["en".to_string()]
         );
     }
@@ -1399,9 +1524,9 @@ mod tests {
         assert_eq!(replaced_lang(".replaced"), None);
     }
 
-    #[test]
-    fn test_reconcile_ignores_empty_lang_staging_dir() {
-        let (service, dir, _db) = create_test_service();
+    #[tokio::test]
+    async fn test_reconcile_ignores_empty_lang_staging_dir() {
+        let (service, dir, _db) = create_test_service().await;
         let root = dir.path().join(READER_DICT_SUBDIR);
         let empty_lang_staging = root.join("..partial");
         let keep = root.join("en");
@@ -1412,40 +1537,46 @@ mod tests {
         fs::write(keep.join("dict.index"), b"en").unwrap();
         fs::write(keep.join("dict.dict"), b"en").unwrap();
 
-        service.reconcile().unwrap();
+        service.reconcile().await.unwrap();
 
         assert!(
             empty_lang_staging.exists(),
             "malformed empty-lang staging must not be treated as a language"
         );
         assert!(
-            has_dict_pair(&keep),
+            has_dict_pair(&keep).await,
             "existing language dirs must survive empty-lang staging"
         );
         assert_eq!(
-            service.get_installed_dictionaries().unwrap(),
+            service.get_installed_dictionaries().await.unwrap(),
             vec!["en".to_string()]
         );
         assert!(root.exists());
     }
 
-    #[test]
-    fn test_reconcile_ignores_dot_prefixed_dest_dir() {
-        let (service, dir, _db) = create_test_service();
+    #[tokio::test]
+    async fn test_reconcile_ignores_dot_prefixed_dest_dir() {
+        let (service, dir, _db) = create_test_service().await;
         let hidden = dir.path().join(READER_DICT_SUBDIR).join(".hidden");
         fs::create_dir_all(&hidden).unwrap();
         fs::write(hidden.join("dict.index"), b"x").unwrap();
         fs::write(hidden.join("dict.dict"), b"x").unwrap();
 
-        service.reconcile().unwrap();
+        service.reconcile().await.unwrap();
 
         assert!(hidden.exists());
-        assert!(service.get_installed_dictionaries().unwrap().is_empty());
+        assert!(
+            service
+                .get_installed_dictionaries()
+                .await
+                .unwrap()
+                .is_empty()
+        );
     }
 
-    #[test]
-    fn test_reconcile_restored_aside_keeps_existing_install_version() {
-        let (service, dir, _db) = create_test_service();
+    #[tokio::test]
+    async fn test_reconcile_restored_aside_keeps_existing_install_version() {
+        let (service, dir, _db) = create_test_service().await;
         let root = dir.path().join(READER_DICT_SUBDIR);
         let dest = root.join("en");
         let aside = replaced_dir(&root, "en");
@@ -1453,25 +1584,26 @@ mod tests {
         service
             .db
             .upsert_entry("en", &make_entry(2026, 4, 1))
+            .await
             .unwrap();
-        service.db.record_install("en", old_version).unwrap();
+        service.db.record_install("en", old_version).await.unwrap();
         fs::create_dir_all(&dest).unwrap();
         fs::write(dest.join("dict.index"), b"incomplete").unwrap();
         fs::create_dir_all(&aside).unwrap();
         fs::write(aside.join("dict.index"), b"old").unwrap();
         fs::write(aside.join("dict.dict"), b"old").unwrap();
 
-        assert!(service.is_update_available("en"));
-        service.reconcile().unwrap();
+        assert!(service.is_update_available("en").await);
+        service.reconcile().await.unwrap();
 
         assert!(!aside.exists());
         assert_eq!(fs::read(dest.join("dict.index")).unwrap(), b"old");
         assert!(
-            service.is_update_available("en"),
+            service.is_update_available("en").await,
             "restoring aside must keep the older installed_version"
         );
         assert_eq!(
-            service.get_installed_dictionaries().unwrap(),
+            service.get_installed_dictionaries().await.unwrap(),
             vec!["en".to_string()]
         );
     }
@@ -1489,9 +1621,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_restore_previous_fails_when_dest_cannot_be_removed() {
-        let (_service, dir, _db) = create_test_service();
+    #[tokio::test]
+    async fn test_restore_previous_fails_when_dest_cannot_be_removed() {
+        let (_service, dir, _db) = create_test_service().await;
         let root = dir.path().join(READER_DICT_SUBDIR);
         let dest = root.join("en");
         let aside = replaced_dir(&root, "en");
@@ -1502,14 +1634,15 @@ mod tests {
         fs::write(aside.join("dict.dict"), b"old").unwrap();
 
         restore_previous_dictionary_after_registry_failure(&dest, Some(&aside))
+            .await
             .expect_err("file dest must block restore");
         assert!(dest.is_file());
         assert!(aside.exists());
     }
 
-    #[test]
-    fn test_reconcile_continues_after_staging_failure() {
-        let (service, dir, _db) = create_test_service();
+    #[tokio::test]
+    async fn test_reconcile_continues_after_staging_failure() {
+        let (service, dir, _db) = create_test_service().await;
         let root = dir.path().join(READER_DICT_SUBDIR);
         fs::create_dir_all(&root).unwrap();
 
@@ -1527,6 +1660,7 @@ mod tests {
 
         let err = service
             .reconcile()
+            .await
             .expect_err("blocked staging promotion must surface after other work");
 
         assert!(
@@ -1537,9 +1671,9 @@ mod tests {
             !ok_staging.exists(),
             "successful staging must still be promoted"
         );
-        assert!(has_dict_pair(&root.join("fr")));
+        assert!(has_dict_pair(&root.join("fr")).await);
         assert_eq!(
-            service.get_installed_dictionaries().unwrap(),
+            service.get_installed_dictionaries().await.unwrap(),
             vec!["fr".to_string()]
         );
         assert!(
@@ -1548,9 +1682,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_remove_installed_clears_dest_and_aside_so_reconcile_cannot_restore() {
-        let (service, dir, _db) = create_test_service();
+    #[tokio::test]
+    async fn test_remove_installed_clears_dest_and_aside_so_reconcile_cannot_restore() {
+        let (service, dir, _db) = create_test_service().await;
         let root = dir.path().join(READER_DICT_SUBDIR);
         let dest = root.join("en");
         let staging = staging_dir(&root, "en");
@@ -1567,31 +1701,38 @@ mod tests {
         service
             .db
             .record_install("en", UnixTimestamp::now())
+            .await
             .unwrap();
 
-        service.remove_installed("en");
-        service.reconcile().unwrap();
+        service.remove_installed("en").await;
+        service.reconcile().await.unwrap();
 
         assert!(!aside.exists());
         assert!(!staging.exists());
         assert!(!dest.exists());
-        assert!(service.get_installed_dictionaries().unwrap().is_empty());
+        assert!(
+            service
+                .get_installed_dictionaries()
+                .await
+                .unwrap()
+                .is_empty()
+        );
     }
 
-    #[test]
-    fn test_get_installed_ignores_index_without_dict() {
-        let (service, dir, _db) = create_test_service();
+    #[tokio::test]
+    async fn test_get_installed_ignores_index_without_dict() {
+        let (service, dir, _db) = create_test_service().await;
         let lang_dir = dir.path().join(READER_DICT_SUBDIR).join("de");
         fs::create_dir_all(&lang_dir).unwrap();
         fs::File::create(lang_dir.join("dict.index")).unwrap();
 
-        let installed = service.get_installed_dictionaries().unwrap();
+        let installed = service.get_installed_dictionaries().await.unwrap();
         assert!(installed.is_empty());
     }
 
-    #[test]
-    fn test_install_dictionary_extracts_zip_renamed() {
-        let (_service, dir, _db) = create_test_service();
+    #[tokio::test]
+    async fn test_install_dictionary_extracts_zip_renamed() {
+        let (_service, dir, _db) = create_test_service().await;
 
         let zip_bytes = make_test_zip(&[
             ("dictorg-en-en.index", b"index content"),
@@ -1600,7 +1741,9 @@ mod tests {
 
         let dest = dir.path().join(READER_DICT_SUBDIR).join("en");
         fs::create_dir_all(&dest).unwrap();
-        extract_zip_renamed(Cursor::new(&zip_bytes), &dest, "en").unwrap();
+        let zip_path = dir.path().join("dict.zip");
+        fs::write(&zip_path, &zip_bytes).unwrap();
+        extract_zip_renamed(&zip_path, &dest, "en").await.unwrap();
 
         assert!(dest.join("Reader-Dict-en.index").exists());
         assert!(dest.join("Reader-Dict-en.dict").exists());
@@ -1621,15 +1764,15 @@ mod tests {
         buf
     }
 
-    #[test]
-    fn test_is_installing_false_initially() {
-        let (service, _dir, _db) = create_test_service();
+    #[tokio::test]
+    async fn test_is_installing_false_initially() {
+        let (service, _dir, _db) = create_test_service().await;
         assert!(!service.is_installing("en"));
     }
 
-    #[test]
-    fn test_is_installing_true_while_pending() {
-        let (service, _dir, _db) = create_test_service();
+    #[tokio::test]
+    async fn test_is_installing_true_while_pending() {
+        let (service, _dir, _db) = create_test_service().await;
         service
             .pending_installs
             .lock()
@@ -1639,18 +1782,18 @@ mod tests {
         assert!(!service.is_installing("en"));
     }
 
-    #[test]
-    fn test_try_begin_install_marks_pending_and_blocks_duplicate() {
-        let (service, _dir, _db) = create_test_service();
+    #[tokio::test]
+    async fn test_try_begin_install_marks_pending_and_blocks_duplicate() {
+        let (service, _dir, _db) = create_test_service().await;
 
         assert!(service.try_begin_install("en"));
         assert!(service.is_installing("en"));
         assert!(!service.try_begin_install("en"));
     }
 
-    #[test]
-    fn test_pending_installs_recovers_from_poisoned_lock() {
-        let (service, _dir, _db) = create_test_service();
+    #[tokio::test]
+    async fn test_pending_installs_recovers_from_poisoned_lock() {
+        let (service, _dir, _db) = create_test_service().await;
         let service_clone = service.clone();
 
         let result = std::thread::spawn(move || {
@@ -1666,9 +1809,9 @@ mod tests {
         assert!(!service.is_installing("en"));
     }
 
-    #[test]
-    fn test_is_installing_false_after_removal() {
-        let (service, _dir, _db) = create_test_service();
+    #[tokio::test]
+    async fn test_is_installing_false_after_removal() {
+        let (service, _dir, _db) = create_test_service().await;
         service
             .pending_installs
             .lock()
@@ -1678,9 +1821,9 @@ mod tests {
         assert!(!service.is_installing("en"));
     }
 
-    #[test]
-    fn test_concurrent_install_same_lang_returns_error() {
-        let (service, _dir, _db) = create_test_service();
+    #[tokio::test]
+    async fn test_concurrent_install_same_lang_returns_error() {
+        let (service, _dir, _db) = create_test_service().await;
         service
             .pending_installs
             .lock()
@@ -1690,6 +1833,7 @@ mod tests {
         let entry = make_entry(2026, 4, 1);
         let err = service
             .install_dictionary("de", &entry, false, &mut |_, _| {})
+            .await
             .expect_err("expected InstallationInProgress error");
 
         assert!(
@@ -1698,30 +1842,34 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_pending_cleared_after_failed_install() {
-        let (service, _dir, _db) = create_test_service();
+    #[tokio::test]
+    async fn test_pending_cleared_after_failed_install() {
+        let (service, _dir, _db) = create_test_service().await;
 
         let entry = make_entry(2026, 4, 1);
-        let _ = service.install_dictionary("zz", &entry, false, &mut |_, _| {});
+        let _ = service
+            .install_dictionary("zz", &entry, false, &mut |_, _| {})
+            .await;
         assert!(!service.is_installing("zz"));
     }
 
-    #[test]
-    fn test_reserved_install_clears_after_failed_install() {
-        let (service, _dir, _db) = create_test_service();
+    #[tokio::test]
+    async fn test_reserved_install_clears_after_failed_install() {
+        let (service, _dir, _db) = create_test_service().await;
         let entry = make_entry(2026, 4, 1);
 
         assert!(service.try_begin_install("zz"));
 
-        let _ = service.install_reserved_dictionary("zz", &entry, false, &mut |_, _| {});
+        let _ = service
+            .install_reserved_dictionary("zz", &entry, false, &mut |_, _| {})
+            .await;
 
         assert!(!service.is_installing("zz"));
     }
 
-    #[test]
-    fn test_is_installing_shared_across_clones() {
-        let (service, _dir, _db) = create_test_service();
+    #[tokio::test]
+    async fn test_is_installing_shared_across_clones() {
+        let (service, _dir, _db) = create_test_service().await;
         let clone = service.clone();
 
         service
@@ -1733,21 +1881,21 @@ mod tests {
         assert!(clone.is_installing("ja"));
     }
 
-    #[test]
-    fn test_get_entry_for_lang_returns_none_when_not_cached() {
-        let (service, _dir, _db) = create_test_service();
-        let result = service.get_entry_for_lang("en").unwrap();
+    #[tokio::test]
+    async fn test_get_entry_for_lang_returns_none_when_not_cached() {
+        let (service, _dir, _db) = create_test_service().await;
+        let result = service.get_entry_for_lang("en").await.unwrap();
         assert!(result.is_none());
     }
 
-    #[test]
-    fn test_get_entry_for_lang_returns_entry_after_cache() {
-        let (service, _dir, _db) = create_test_service();
+    #[tokio::test]
+    async fn test_get_entry_for_lang_returns_entry_after_cache() {
+        let (service, _dir, _db) = create_test_service().await;
 
         let entry = make_entry(2026, 4, 1);
-        service.db.upsert_entry("en", &entry).unwrap();
+        service.db.upsert_entry("en", &entry).await.unwrap();
 
-        let result = service.get_entry_for_lang("en").unwrap();
+        let result = service.get_entry_for_lang("en").await.unwrap();
         assert!(result.is_some());
         let fetched = result.unwrap();
         assert_eq!(fetched.words, 1_381_375);
@@ -1761,13 +1909,14 @@ mod tests {
     /// verifies that at least one `.index` + `.dict`/`.dict.dz` pair is present.
     ///
     /// Run with: `cargo test -- --ignored`
-    #[test]
+    #[tokio::test]
     #[ignore = "requires network access to www.reader-dict.com"]
-    fn test_install_dictionary_live() {
-        let (service, dir, _db) = create_test_service();
+    async fn test_install_dictionary_live() {
+        let (service, dir, _db) = create_test_service().await;
 
         let entry = service
             .get_available_dictionaries()
+            .await
             .unwrap()
             .into_iter()
             .find(|(l, _)| l == "en")
@@ -1776,6 +1925,7 @@ mod tests {
 
         service
             .install_dictionary("en", &entry, false, &mut |_, _| {})
+            .await
             .expect("install_dictionary failed");
 
         let lang_dir = dir.path().join(READER_DICT_SUBDIR).join("en");
@@ -1784,12 +1934,13 @@ mod tests {
             "language directory should exist after install"
         );
         assert!(
-            has_dict_pair(&lang_dir),
+            has_dict_pair(&lang_dir).await,
             "expected .index + .dict/.dict.dz pair in {lang_dir:?}"
         );
 
         let installed = service
             .get_installed_dictionaries()
+            .await
             .expect("get_installed_dictionaries failed");
         assert!(
             installed.contains(&"en".to_string()),

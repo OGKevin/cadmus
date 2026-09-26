@@ -4,33 +4,48 @@
 //! network requests in the application. It is pre-configured with:
 //!
 //! - TLS using `webpki-roots` certificates (no system cert store required)
-//! - 30 second request timeout
+//! - Connect timeout and total request timeout (see [`CLIENT_CONNECT_TIMEOUT_SECS`]
+//!   / [`CLIENT_TIMEOUT_SECS`])
 //! - User agent identifying the application
+//! - Retries for transient failures (connection errors, timeouts, HTTP 408,
+//!   429, and 5xx): three attempts, starting at 1s, doubling, no jitter;
+//!   `Retry-After` on successful responses is honoured (capped)
+//! - Optional per-request cancellation during those retries via [`with_cancel`]
+//!   or a [`CancelFlag`] passed to [`Client::download`]
+//! - A tracing span per request attempt when the `tracing` feature is enabled
+//!
+//! Middleware retries wrap `send()` (headers). They do **not** retry mid-body
+//! read failures; see [`Client::download`].
 //!
 //! # Example
 //!
 //! ```no_run
 //! use cadmus_core::http::Client;
 //!
-//! fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //!     let client = Client::new()?;
-//!     client.get("https://example.com").send()?;
+//!     client.get("https://example.com").send().await?;
 //!     Ok(())
 //! }
 //! ```
 
-use backon::{BackoffBuilder, ExponentialBuilder};
-use reqwest::blocking::{Client as ReqwestClient, RequestBuilder};
+mod retry;
+
+use reqwest::Client as ReqwestClient;
+use reqwest_middleware::{ClientWithMiddleware, RequestBuilder};
 use rustls::RootCertStore;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::Duration;
 use thiserror::Error;
+use tokio::io::AsyncWriteExt;
+
+use retry::client_with_retry;
 
 pub const CLIENT_TIMEOUT_SECS: u64 = 30;
+pub const CLIENT_CONNECT_TIMEOUT_SECS: u64 = 10;
 
-const USER_AGENT: &str = concat!("github.com/OGKevin/cadmus/", env!("GIT_VERSION"));
+pub(crate) const USER_AGENT: &str = concat!("github.com/OGKevin/cadmus/", env!("GIT_VERSION"));
 
 const CANCEL_STATE_RUNNING: u8 = 0;
 const CANCEL_STATE_CANCELLED: u8 = 1;
@@ -40,17 +55,17 @@ const CANCEL_STATE_COMMITTED: u8 = 2;
 ///
 /// Cancellation wins until [`Self::try_commit`] succeeds. After a successful
 /// commit transition, further cancel requests are ignored.
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct CancelFlag {
-    state: AtomicU8,
+    state: std::sync::Arc<AtomicU8>,
 }
 
 impl CancelFlag {
     /// Creates a running cancel flag.
     #[must_use]
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
         Self {
-            state: AtomicU8::new(CANCEL_STATE_RUNNING),
+            state: std::sync::Arc::new(AtomicU8::new(CANCEL_STATE_RUNNING)),
         }
     }
 
@@ -97,7 +112,7 @@ pub enum CancelFunc<'a> {
     /// Never cancels and always allows commit.
     Never,
     /// Poll-only cancel predicate without an atomic commit transition.
-    Check(&'a dyn Fn() -> bool),
+    Check(&'a (dyn Fn() -> bool + Send + Sync)),
     /// Shared cancel/commit gate.
     Flag(&'a CancelFlag),
 }
@@ -111,7 +126,7 @@ impl std::fmt::Debug for CancelFunc<'_> {
 impl<'a> CancelFunc<'a> {
     /// Wraps a cancel predicate that returns `true` when work should stop.
     #[must_use]
-    pub const fn new(check: &'a dyn Fn() -> bool) -> Self {
+    pub const fn new(check: &'a (dyn Fn() -> bool + Send + Sync)) -> Self {
         Self::Check(check)
     }
 
@@ -160,8 +175,68 @@ const MAX_CHUNK_SIZE: usize = 10 * 1024 * 1024;
 const INITIAL_CHUNK_SIZE: usize = 1024 * 1024;
 /// Target 80% of the HTTP timeout to leave headroom for throughput variance.
 const TARGET_CHUNK_SECS: f64 = CLIENT_TIMEOUT_SECS as f64 * 0.8;
-const MAX_RETRIES: usize = 3;
-const CANCEL_POLL_INTERVAL: Duration = Duration::from_millis(50);
+/// Sleeps after a failed attempt. Two sleeps means three attempts in total.
+pub(crate) const RETRY_BACKOFFS: usize = 2;
+
+/// Per-request cancel check for the shared retry middleware.
+///
+/// [`Client::download`] attaches a [`CancelFlag`] so retry backoff observes
+/// the same cancel state as the chunk loop. Other callers opt in with
+/// [`with_cancel`]. [`Self::never`] is a no-op: middleware sleeps the backoff
+/// in one shot instead of polling.
+#[derive(Clone)]
+pub struct HttpCancel {
+    check: std::sync::Arc<dyn Fn() -> bool + Send + Sync>,
+    armed: bool,
+}
+
+impl HttpCancel {
+    /// A check that never cancels.
+    #[must_use]
+    pub fn never() -> Self {
+        Self {
+            check: std::sync::Arc::new(|| false),
+            armed: false,
+        }
+    }
+
+    /// Polls `check` from retry middleware for the life of the request.
+    #[must_use]
+    pub fn from_fn<F>(check: F) -> Self
+    where
+        F: Fn() -> bool + Send + Sync + 'static,
+    {
+        Self {
+            check: std::sync::Arc::new(check),
+            armed: true,
+        }
+    }
+
+    /// Polls a [`CancelFlag`]. Cloning the flag shares the same atomic state.
+    #[must_use]
+    pub fn from_flag(flag: &CancelFlag) -> Self {
+        let flag = flag.clone();
+        Self::from_fn(move || flag.is_cancelled())
+    }
+
+    /// Returns `true` when the attached check asks to stop.
+    #[must_use]
+    pub fn is_cancelled(&self) -> bool {
+        (self.check)()
+    }
+
+    /// Returns `true` when retry backoff should poll this check.
+    #[must_use]
+    pub(super) fn is_armed(&self) -> bool {
+        self.armed
+    }
+}
+
+/// Attaches `cancel` so client retry middleware can abort this request.
+#[must_use]
+pub fn with_cancel(builder: RequestBuilder, cancel: HttpCancel) -> RequestBuilder {
+    builder.with_extension(cancel)
+}
 
 /// Error types that can occur during a chunked HTTP download.
 #[derive(Error, Debug)]
@@ -172,6 +247,22 @@ pub enum ChunkedDownloadError {
     Io(#[from] std::io::Error),
     #[error("Download cancelled")]
     Cancelled,
+    #[error("HTTP request error: {0}")]
+    Failed(String),
+}
+
+impl From<reqwest_middleware::Error> for ChunkedDownloadError {
+    fn from(error: reqwest_middleware::Error) -> Self {
+        if let reqwest_middleware::Error::Middleware(ref inner) = error
+            && inner.is::<retry::RequestCancelled>()
+        {
+            return Self::Cancelled;
+        }
+        match reqwest_error(error) {
+            Ok(error) => Self::Request(error),
+            Err(message) => Self::Failed(message),
+        }
+    }
 }
 
 /// Pre-configured HTTP client for making network requests.
@@ -179,22 +270,26 @@ pub enum ChunkedDownloadError {
 /// This client should be used as the base for all HTTP requests rather than
 /// constructing raw `reqwest` clients. It comes with:
 /// - TLS using `webpki-roots` certificates (works on Kobo devices without system cert store)
-/// - 30 second request timeout
+/// - Connect and total request timeouts
 /// - User agent header set
+/// - Transient-failure retries on every request (header/`send()` level), honouring
+///   `Retry-After` when present
+/// - Request spans when the `tracing` feature is enabled
 ///
 /// # Example
 ///
 /// ```no_run
 /// use cadmus_core::http::Client;
 ///
-/// fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// async fn example() -> Result<(), Box<dyn std::error::Error>> {
 ///     let client = Client::new()?;
-///     client.get("https://api.github.com").send()?;
+///     client.get("https://api.github.com").send().await?;
 ///     Ok(())
 /// }
 /// ```
 pub struct Client {
-    client: ReqwestClient,
+    raw: ReqwestClient,
+    client: ClientWithMiddleware,
 }
 
 impl Client {
@@ -205,15 +300,17 @@ impl Client {
             .with_root_certificates(root_store)
             .with_no_client_auth();
 
-        let client = ReqwestClient::builder()
+        let raw = ReqwestClient::builder()
             .use_preconfigured_tls(tls_config)
             .user_agent(USER_AGENT)
+            .connect_timeout(Duration::from_secs(CLIENT_CONNECT_TIMEOUT_SECS))
             .timeout(Duration::from_secs(CLIENT_TIMEOUT_SECS))
             .build()
             .map_err(HttpError::Build)?;
+        let client = client_with_retry(raw.clone());
 
         tracing::debug!("HTTP client built successfully");
-        Ok(Self { client })
+        Ok(Self { raw, client })
     }
 
     pub fn head(&self, url: &str) -> RequestBuilder {
@@ -228,17 +325,38 @@ impl Client {
         self.client.post(url)
     }
 
-    /// Returns the inner `reqwest::blocking::Client` for use with third-party
-    /// libraries that require a raw client (e.g. pyroscope-rs).
+    /// Returns the middleware client used for application requests.
+    ///
+    /// Includes transient retries and, when the `tracing` feature is enabled,
+    /// a span per attempt. The raw client from [`Self::into_reqwest`] does not.
+    pub(crate) fn middleware(&self) -> ClientWithMiddleware {
+        self.client.clone()
+    }
+
+    /// Returns the inner [`reqwest::Client`] for libraries that take one directly,
+    /// such as the OpenTelemetry exporter.
+    ///
+    /// The returned client has neither retry nor request-span middleware, so
+    /// export traffic does not retry through the application policy or trace
+    /// itself.
     pub fn into_reqwest(self) -> ReqwestClient {
-        self.client
+        self.raw
     }
 
     /// Downloads a file to `dest` using HTTP Range requests.
     ///
-    /// `request_builder` is called once per chunk (and per retry) to produce a
-    /// `RequestBuilder` for the given URL. The caller is responsible for adding
-    /// any required headers (e.g. `Authorization`).
+    /// `request_builder` is called once per chunk to produce a `RequestBuilder`
+    /// for the given URL. The caller is responsible for adding any required
+    /// headers (e.g. `Authorization`). Transient failures on `send()` (headers)
+    /// are retried by the client middleware, which reuses that built request.
+    ///
+    /// # Known limitation (mid-body failure)
+    ///
+    /// Chunks are sized to use most of [`CLIENT_TIMEOUT_SECS`]. Middleware retries
+    /// only wrap `send()` — once headers arrive, `.bytes().await` sits outside
+    /// the retry policy. A Wi-Fi drop mid-body fails the whole download. A future
+    /// streaming download (or an explicit send+body retry loop) should replace
+    /// this; TODO: streaming/chunk-body-aware retry.
     ///
     /// `progress_callback` is called after each successful chunk with
     /// `(bytes_downloaded_so_far, total_bytes)`.
@@ -255,8 +373,12 @@ impl Client {
     /// Returns `ChunkedDownloadError::Io` if the staging file cannot be created,
     /// written, or renamed onto `dest`. Returns `ChunkedDownloadError::Request` if
     /// all retry attempts for any chunk fail. Returns
-    /// `ChunkedDownloadError::Cancelled` when `should_cancel` reports cancellation,
-    /// including between retry attempts and during backoff.
+    /// `ChunkedDownloadError::Cancelled` when `should_cancel` reports cancellation
+    /// between chunks, during retry backoff, or before the file is published.
+    ///
+    /// Cancellation uses [`CancelFlag`] so the check can live in request
+    /// extensions. A borrowed [`CancelFunc::Check`] cannot; pass a flag (or
+    /// `None`) at this call site.
     ///
     /// # Example
     ///
@@ -264,7 +386,7 @@ impl Client {
     /// use cadmus_core::http::Client;
     /// use std::path::PathBuf;
     ///
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let client = Client::new()?;
     /// let dest = PathBuf::from("/tmp/downloaded_file");
     ///
@@ -275,7 +397,7 @@ impl Client {
     ///     |url| client.get(url),
     ///     &mut |downloaded, total| println!("{}/{}", downloaded, total),
     ///     None,
-    /// )?;
+    /// ).await?;
     /// # Ok(())
     /// # }
     /// ```
@@ -283,14 +405,14 @@ impl Client {
         feature = "tracing",
         tracing::instrument(skip(self, request_builder, progress_callback))
     )]
-    pub fn download<B, F>(
+    pub async fn download<B, F>(
         &self,
         url: &str,
         total_size: u64,
         dest: &PathBuf,
         request_builder: B,
         progress_callback: &mut F,
-        should_cancel: Option<CancelFunc<'_>>,
+        should_cancel: Option<&CancelFlag>,
     ) -> Result<(), ChunkedDownloadError>
     where
         B: Fn(&str) -> RequestBuilder,
@@ -304,7 +426,7 @@ impl Client {
         let staging = download_staging_path(dest);
         tracing::debug!(path = ?staging, "Download staging");
         let mut unpublished = crate::fs::RemovePathOnDrop::file(staging.clone());
-        let mut file = std::fs::File::create(&staging)?;
+        let mut file = tokio::fs::File::create(&staging).await?;
 
         let mut downloaded = 0u64;
         let mut chunk_size = INITIAL_CHUNK_SIZE;
@@ -315,7 +437,7 @@ impl Client {
         );
 
         while downloaded < total_size {
-            if should_cancel.is_some_and(CancelFunc::is_cancelled) {
+            if should_cancel.is_some_and(CancelFlag::is_cancelled) {
                 return Err(ChunkedDownloadError::Cancelled);
             }
 
@@ -331,19 +453,12 @@ impl Client {
             );
 
             let start = std::time::Instant::now();
-            let chunk_data = match Self::download_chunk_with_retries(
-                url,
-                chunk_start,
-                chunk_end,
-                &request_builder,
-                should_cancel,
-            ) {
-                Ok(data) => data,
-                Err(e) => return Err(e),
-            };
+            let chunk_data =
+                Self::download_chunk(url, chunk_start, chunk_end, &request_builder, should_cancel)
+                    .await?;
             let elapsed_secs = start.elapsed().as_secs_f64();
 
-            file.write_all(&chunk_data)?;
+            file.write_all(&chunk_data).await?;
             downloaded += chunk_data.len() as u64;
 
             if elapsed_secs > 0.0 {
@@ -368,11 +483,11 @@ impl Client {
             );
         }
 
-        file.sync_all()?;
-        if should_cancel.is_some_and(CancelFunc::is_cancelled) {
+        file.sync_all().await?;
+        if should_cancel.is_some_and(CancelFlag::is_cancelled) {
             return Err(ChunkedDownloadError::Cancelled);
         }
-        std::fs::rename(&staging, dest)?;
+        tokio::fs::rename(&staging, dest).await?;
         unpublished.disarm();
 
         tracing::debug!(bytes = downloaded, "Download complete");
@@ -381,89 +496,31 @@ impl Client {
         Ok(())
     }
 
-    /// Downloads a specific byte range with automatic exponential-backoff retry.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if all retry attempts fail, or
-    /// [`ChunkedDownloadError::Cancelled`] if cancellation is requested before a
-    /// retry or during backoff.
-    #[cfg_attr(
-        feature = "tracing",
-        tracing::instrument(skip(request_builder, should_cancel))
-    )]
-    fn download_chunk_with_retries<B>(
-        url: &str,
-        start: u64,
-        end: u64,
-        request_builder: &B,
-        should_cancel: Option<CancelFunc<'_>>,
-    ) -> Result<Vec<u8>, ChunkedDownloadError>
-    where
-        B: Fn(&str) -> RequestBuilder,
-    {
-        let mut backoff = ExponentialBuilder::default()
-            .with_min_delay(Duration::from_secs(1))
-            .with_factor(2.0)
-            .with_max_times(MAX_RETRIES.saturating_sub(1))
-            .build();
-        let mut attempt = 0_u32;
-
-        loop {
-            if should_cancel.is_some_and(CancelFunc::is_cancelled) {
-                return Err(ChunkedDownloadError::Cancelled);
-            }
-
-            attempt += 1;
-            match Self::download_chunk(url, start, end, request_builder) {
-                Ok(data) => {
-                    if attempt > 1 {
-                        tracing::debug!(attempt, "Chunk download succeeded after retry");
-                    }
-                    return Ok(data);
-                }
-                Err(ChunkedDownloadError::Cancelled) => {
-                    return Err(ChunkedDownloadError::Cancelled);
-                }
-                Err(e) => {
-                    tracing::warn!(attempt, error = %e, "Chunk download failed");
-                    match backoff.next() {
-                        Some(delay) => {
-                            tracing::debug!(
-                                backoff_ms = delay.as_millis(),
-                                "Retrying after backoff"
-                            );
-                            sleep_interruptible(delay, should_cancel)?;
-                        }
-                        None => return Err(e),
-                    }
-                }
-            }
-        }
-    }
-
     /// Downloads a specific byte range from a URL using the HTTP `Range` header.
+    ///
+    /// Transient failures on `send()` / status are retried by the client
+    /// middleware. Body read failures are not (see [`Self::download`]).
     ///
     /// # Errors
     ///
     /// Returns an error if the request fails or the server returns a non-2xx status.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(request_builder)))]
-    fn download_chunk<B>(
+    async fn download_chunk<B>(
         url: &str,
         start: u64,
         end: u64,
         request_builder: &B,
+        should_cancel: Option<&CancelFlag>,
     ) -> Result<Vec<u8>, ChunkedDownloadError>
     where
         B: Fn(&str) -> RequestBuilder,
     {
-        let range_header = format!("bytes={}-{}", start, end);
-
-        let bytes = request_builder(url)
-            .header("Range", range_header)
-            .send()?
-            .error_for_status()?
-            .bytes()?;
+        let range_header = format!("bytes={start}-{end}");
+        let mut request = request_builder(url).header("Range", range_header);
+        if let Some(flag) = should_cancel {
+            request = with_cancel(request, HttpCancel::from_flag(flag));
+        }
+        let bytes = request.send().await?.error_for_status()?.bytes().await?;
 
         Ok(bytes.to_vec())
     }
@@ -472,7 +529,23 @@ impl Client {
 impl Clone for Client {
     fn clone(&self) -> Self {
         Self {
+            raw: self.raw.clone(),
             client: self.client.clone(),
+        }
+    }
+}
+
+pub(crate) fn reqwest_error(error: reqwest_middleware::Error) -> Result<reqwest::Error, String> {
+    match error {
+        reqwest_middleware::Error::Reqwest(error) => Ok(error),
+        reqwest_middleware::Error::Middleware(error) => {
+            match error.downcast::<reqwest_retry::RetryError>() {
+                Ok(retry) => match retry {
+                    reqwest_retry::RetryError::Error(error) => reqwest_error(error),
+                    reqwest_retry::RetryError::WithRetries { err, .. } => reqwest_error(err),
+                },
+                Err(error) => Err(error.to_string()),
+            }
         }
     }
 }
@@ -489,31 +562,6 @@ fn download_staging_path(dest: &Path) -> PathBuf {
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_else(|| "download".to_owned());
     dest.with_file_name(format!("{name}.{}.partial", uuid::Uuid::now_v7()))
-}
-
-fn sleep_interruptible(
-    duration: Duration,
-    should_cancel: Option<CancelFunc<'_>>,
-) -> Result<(), ChunkedDownloadError> {
-    let Some(should_cancel) = should_cancel else {
-        std::thread::sleep(duration);
-        return Ok(());
-    };
-
-    let deadline = std::time::Instant::now() + duration;
-    while std::time::Instant::now() < deadline {
-        if should_cancel.is_cancelled() {
-            return Err(ChunkedDownloadError::Cancelled);
-        }
-        let remaining = deadline.saturating_duration_since(std::time::Instant::now());
-        std::thread::sleep(remaining.min(CANCEL_POLL_INTERVAL));
-    }
-
-    if should_cancel.is_cancelled() {
-        return Err(ChunkedDownloadError::Cancelled);
-    }
-
-    Ok(())
 }
 
 #[cfg(test)]
@@ -537,8 +585,8 @@ mod tests {
         assert!(!flag.try_commit());
     }
 
-    #[test]
-    fn download_returns_cancelled_before_first_chunk() {
+    #[tokio::test]
+    async fn download_returns_cancelled_before_first_chunk() {
         crate::crypto::init_crypto_provider();
         let client = Client::new().expect("client");
         let temp_dir = tempfile::Builder::new()
@@ -548,15 +596,18 @@ mod tests {
         let dest = temp_dir.path().join("partial.bin");
         std::fs::write(&dest, b"existing").expect("seed dest");
 
-        let cancel_check = || true;
-        let result = client.download(
-            "https://example.invalid/unused",
-            1024,
-            &dest,
-            |url| client.get(url),
-            &mut |_, _| {},
-            Some(CancelFunc::new(&cancel_check)),
-        );
+        let flag = CancelFlag::new();
+        flag.request_cancel();
+        let result = client
+            .download(
+                "https://example.invalid/unused",
+                1024,
+                &dest,
+                |url| client.get(url),
+                &mut |_, _| {},
+                Some(&flag),
+            )
+            .await;
 
         assert!(matches!(result, Err(ChunkedDownloadError::Cancelled)));
         assert_eq!(
@@ -570,44 +621,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn download_returns_cancelled_during_chunk_retries() {
-        use std::sync::atomic::{AtomicUsize, Ordering};
-
-        crate::crypto::init_crypto_provider();
-        let client = Client::new().expect("client");
-        let temp_dir = tempfile::Builder::new()
-            .prefix("cadmus-http-cancel-retry-")
-            .tempdir()
-            .expect("tempdir");
-        let dest = temp_dir.path().join("partial.bin");
-        std::fs::write(&dest, b"existing").expect("seed dest");
-        let checks = AtomicUsize::new(0);
-        let cancel_check = || checks.fetch_add(1, Ordering::Relaxed) >= 2;
-
-        let result = client.download(
-            "http://127.0.0.1:1/unused",
-            1024,
-            &dest,
-            |url| client.get(url),
-            &mut |_, _| {},
-            Some(CancelFunc::new(&cancel_check)),
-        );
-
-        assert!(matches!(result, Err(ChunkedDownloadError::Cancelled)));
-        assert_eq!(
-            std::fs::read(&dest).expect("dest preserved"),
-            b"existing",
-            "failed download must not truncate an existing destination"
-        );
-        assert!(
-            leftover_partials(temp_dir.path()).is_empty(),
-            "staging partial must be cleaned up"
-        );
-    }
-
-    #[test]
-    fn download_returns_cancelled_before_publish() {
+    #[tokio::test]
+    async fn download_returns_cancelled_before_publish() {
         crate::crypto::init_crypto_provider();
         let client = Client::new().expect("client");
         let temp_dir = tempfile::Builder::new()
@@ -619,14 +634,16 @@ mod tests {
         let flag = CancelFlag::new();
         flag.request_cancel();
 
-        let result = client.download(
-            "https://example.invalid/unused",
-            0,
-            &dest,
-            |url| client.get(url),
-            &mut |_, _| {},
-            Some(CancelFunc::from_flag(&flag)),
-        );
+        let result = client
+            .download(
+                "https://example.invalid/unused",
+                0,
+                &dest,
+                |url| client.get(url),
+                &mut |_, _| {},
+                Some(&flag),
+            )
+            .await;
 
         assert!(matches!(result, Err(ChunkedDownloadError::Cancelled)));
         assert_eq!(
@@ -640,8 +657,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn download_publish_leaves_cancel_flag_uncommitted() {
+    #[tokio::test]
+    async fn download_publish_leaves_cancel_flag_uncommitted() {
         crate::crypto::init_crypto_provider();
         let client = Client::new().expect("client");
         let temp_dir = tempfile::Builder::new()
@@ -651,14 +668,16 @@ mod tests {
         let dest = temp_dir.path().join("artifact.bin");
         let flag = CancelFlag::new();
 
-        let result = client.download(
-            "https://example.invalid/unused",
-            0,
-            &dest,
-            |url| client.get(url),
-            &mut |_, _| {},
-            Some(CancelFunc::from_flag(&flag)),
-        );
+        let result = client
+            .download(
+                "https://example.invalid/unused",
+                0,
+                &dest,
+                |url| client.get(url),
+                &mut |_, _| {},
+                Some(&flag),
+            )
+            .await;
 
         assert!(result.is_ok(), "empty download should publish dest");
         assert!(dest.exists(), "dest should be published");

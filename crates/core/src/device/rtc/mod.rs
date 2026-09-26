@@ -28,7 +28,7 @@ use std::collections::BTreeMap;
 use std::mem;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::thread::{self, JoinHandle};
+use std::thread;
 use std::time::Duration as StdDuration;
 
 #[repr(C)]
@@ -260,7 +260,7 @@ pub struct ScheduledAlarm {
 pub struct AlarmManager<R: Rtc> {
     rtc: Arc<R>,
     scheduled_alarms: BTreeMap<AlarmType, ScheduledAlarm>,
-    irq_thread: Option<JoinHandle<()>>,
+    irq_thread: Option<tokio::task::JoinHandle<()>>,
     stop: Arc<AtomicBool>,
 }
 
@@ -303,7 +303,7 @@ impl<R: Rtc> AlarmManager<R> {
     pub fn stop_irq_listener(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
         if let Some(handle) = self.irq_thread.take() {
-            let _ = handle.join();
+            let _ = crate::runtime::block_on(handle);
         }
     }
 
@@ -545,7 +545,7 @@ fn shutdown_alarm_manager<R: Rtc>(alarm_manager: &Option<Arc<Mutex<AlarmManager<
         manager.irq_thread.take()
     };
     if let Some(handle) = join_handle {
-        let _ = handle.join();
+        let _ = crate::runtime::block_on(handle);
     }
     let mut manager = alarm_manager
         .lock()
@@ -594,12 +594,15 @@ impl<R: Rtc + 'static> AlarmManager<R> {
         let rtc = Arc::clone(&guard.rtc);
         drop(guard);
 
-        let manager_for_thread = Arc::clone(manager);
-        let handle = thread::spawn(move || {
+        let manager_weak = Arc::downgrade(manager);
+        let handle = crate::runtime::spawn_blocking(move || {
             while !stop.load(Ordering::Relaxed) {
                 match rtc.wait_for_alarm_irq(Some(StdDuration::from_secs(1))) {
                     Ok(Some(_)) => {
-                        let due = match manager_for_thread.lock() {
+                        let Some(manager) = manager_weak.upgrade() else {
+                            break;
+                        };
+                        let due = match manager.lock() {
                             Ok(mut locked) => locked.claim_due_alarms(),
                             Err(poisoned) => poisoned.into_inner().claim_due_alarms(),
                         };
@@ -953,8 +956,8 @@ mod tests {
         assert!(manager.is_alarm_scheduled(AlarmType::AutoSuspend));
     }
 
-    #[test]
-    fn irq_listener_claims_past_due_on_simulated_irq() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn irq_listener_claims_past_due_on_simulated_irq() {
         use std::sync::{Arc, Mutex};
 
         let (rtc, manager) = test_alarm_manager();
@@ -982,6 +985,7 @@ mod tests {
 
         assert_eq!(*claimed.lock().unwrap(), vec![AlarmType::AutoSuspend]);
         assert!(!manager.lock().unwrap().has_alarm(AlarmType::AutoSuspend));
+        manager.lock().unwrap().stop_irq_listener();
     }
 
     #[test]
@@ -1047,8 +1051,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn shutdown_rtc_clears_logical_alarms_when_disable_fails() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn shutdown_rtc_clears_logical_alarms_when_disable_fails() {
         use crate::context::test_helpers::create_test_context;
         use crate::device::DeviceHardware as _;
 
@@ -1072,8 +1076,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn stop_irq_listener_is_idempotent() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn stop_irq_listener_is_idempotent() {
         let (_rtc, mut manager) = test_alarm_manager();
         manager.stop_irq_listener();
         manager.stop_irq_listener();

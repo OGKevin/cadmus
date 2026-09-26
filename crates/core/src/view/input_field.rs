@@ -211,10 +211,11 @@ impl InputField {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl View for InputField {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, bus, rq, context), fields(event = ?evt
     ), ret(level=tracing::Level::TRACE)))]
-    fn handle_event(
+    async fn handle_event(
         &mut self,
         evt: &Event,
         hub: &Hub,
@@ -427,13 +428,12 @@ mod tests {
     use super::*;
     use crate::context::test_helpers::create_test_context;
     use crate::geom::Dir;
-    use std::sync::mpsc::channel;
 
-    #[test]
-    fn unsupported_keyboard_events_propagate_without_redrawing() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn unsupported_keyboard_events_propagate_without_redrawing() {
         let mut input = InputField::new(Rectangle::default(), ViewId::SearchBar);
         input.focused = true;
-        let (hub, _) = channel();
+        let (hub, _rx) = crate::view::hub_channel();
         let mut bus = Bus::new();
         let mut render_queue = RenderQueue::new();
         let mut context = create_test_context();
@@ -444,34 +444,34 @@ mod tests {
             KeyboardEvent::Escape,
             KeyboardEvent::Control('c'),
         ] {
-            assert!(!input.handle_event(
+            assert!(!crate::runtime::block_on(input.handle_event(
                 &Event::Keyboard(keyboard_event),
                 &hub,
                 &mut bus,
                 &mut render_queue,
                 &mut context,
-            ));
+            )));
         }
 
         assert!(render_queue.is_empty());
     }
 
-    #[test]
-    fn supported_keyboard_events_are_handled_and_redrawn() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn supported_keyboard_events_are_handled_and_redrawn() {
         let mut input = InputField::new(Rectangle::default(), ViewId::SearchBar);
         input.focused = true;
-        let (hub, _) = channel();
+        let (hub, _rx) = crate::view::hub_channel();
         let mut bus = Bus::new();
         let mut render_queue = RenderQueue::new();
         let mut context = create_test_context();
 
-        assert!(input.handle_event(
+        assert!(crate::runtime::block_on(input.handle_event(
             &Event::Keyboard(KeyboardEvent::Append('x')),
             &hub,
             &mut bus,
             &mut render_queue,
             &mut context,
-        ));
+        )));
 
         assert_eq!(input.text, "x");
         assert_eq!(render_queue.len(), 1);

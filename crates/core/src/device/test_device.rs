@@ -17,7 +17,6 @@ use crate::frontlight::LightLevels;
 use crate::input::TouchProto;
 use crate::view::{Bus, Event, Hub, RenderQueue};
 use std::path::PathBuf;
-use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
 
 #[derive(Debug)]
@@ -100,8 +99,9 @@ impl Default for TestWifiManager {
     }
 }
 
+#[async_trait::async_trait]
 impl crate::device::wifi::WifiManager for TestWifiManager {
-    fn enable(&self) -> Result<(), crate::device::wifi::WifiError> {
+    async fn enable(&self) -> Result<(), crate::device::wifi::WifiError> {
         if let Ok(mut state) = self.state.lock() {
             state.enabled = Some(true);
             state.enable_calls += 1;
@@ -109,7 +109,7 @@ impl crate::device::wifi::WifiManager for TestWifiManager {
         Ok(())
     }
 
-    fn disable(&self) -> Result<(), crate::device::wifi::WifiError> {
+    async fn disable(&self) -> Result<(), crate::device::wifi::WifiError> {
         if let Ok(mut state) = self.state.lock() {
             state.enabled = Some(false);
             state.disable_calls += 1;
@@ -125,7 +125,7 @@ impl crate::device::wifi::WifiManager for TestWifiManager {
             .unwrap_or(false)
     }
 
-    fn network_info(
+    async fn network_info(
         &self,
     ) -> Result<Option<crate::device::wifi::NetworkInfo>, crate::device::wifi::WifiError> {
         if !self.is_enabled() {
@@ -352,8 +352,8 @@ impl InputSource for TestInputSource {
         _display: crate::framebuffer::Display,
         _button_scheme: crate::settings::ButtonScheme,
         _inhibitor: Arc<Inhibitor>,
-    ) -> (Hub, Receiver<crate::view::HubMessage>) {
-        std::sync::mpsc::channel()
+    ) -> (Hub, crate::view::HubReceiver) {
+        crate::view::hub_channel()
     }
 }
 

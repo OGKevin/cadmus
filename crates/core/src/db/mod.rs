@@ -3,7 +3,6 @@ pub mod migrations;
 pub mod types;
 pub mod version;
 
-use crate::runtime::RUNTIME;
 use anyhow::{Context, Error};
 use log::LevelFilter;
 use sqlx::ConnectOptions;
@@ -19,9 +18,11 @@ use crate::version::get_current_version;
 /// The filename of the SQLite database used by Cadmus.
 pub const DB_FILENAME: &str = "cadmus.sqlite";
 
-/// Database handle providing synchronous API over async SQLx operations.
-/// Uses a bridge pattern with `RUNTIME.block_on()` to maintain synchronous interface
-/// for compatibility with existing single-threaded event loop.
+/// Database handle over async SQLx.
+///
+/// Callers use `async` methods on the pool directly. Prefer `.await` from
+/// async contexts; use [`crate::runtime::block_on`] only when bridging from
+/// synchronous code that cannot be made async yet.
 #[derive(Clone)]
 pub struct Database {
     pool: SqlitePool,
@@ -51,7 +52,7 @@ impl Database {
     /// * `Ok(Database)` - Successfully connected database
     /// * `Err(Error)` - Connection failure
     #[cfg_attr(feature = "tracing", tracing::instrument(fields(db_path = %path.as_ref().display())))]
-    pub fn new<P: AsRef<Path> + std::fmt::Debug>(path: P) -> Result<Self, Error> {
+    pub async fn new<P: AsRef<Path> + std::fmt::Debug>(path: P) -> Result<Self, Error> {
         let path = path.as_ref();
         let db_dir = path
             .parent()
@@ -66,14 +67,12 @@ impl Database {
 
         tracing::info!(db_path = %path_str, "connecting to database");
 
-        RUNTIME.block_on(async {
-            let pool = open_pool(path).await?;
-            tracing::info!(db_path = %path_str, "database connected");
-            Ok(Database {
-                pool,
-                db_path: path.to_path_buf(),
-                db_dir,
-            })
+        let pool = open_pool(path).await?;
+        tracing::info!(db_path = %path_str, "database connected");
+        Ok(Database {
+            pool,
+            db_path: path.to_path_buf(),
+            db_dir,
         })
     }
 
@@ -82,11 +81,9 @@ impl Database {
     /// After calling this, no further database operations should be performed.
     /// This must be called before unmounting the filesystem that contains the database file,
     /// to ensure SQLite releases all file descriptors and flushes any pending WAL data.
-    pub fn close(&self) {
+    pub async fn close(&self) {
         tracing::info!("closing database connection pool");
-        RUNTIME.block_on(async {
-            self.pool.close().await;
-        });
+        self.pool.close().await;
         tracing::info!("database connection pool closed");
     }
 
@@ -116,7 +113,7 @@ impl Database {
     /// Must be called once after [`Database::new`] before the database is used.
     /// Intended for use in the synchronous startup path.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, device, settings)))]
-    pub fn init(
+    pub async fn init(
         &mut self,
         device: &AppDevice,
         backup_retention: usize,
@@ -124,24 +121,22 @@ impl Database {
     ) -> Result<(), Error> {
         let app_version = get_current_version();
 
-        RUNTIME.block_on(async {
-            self.restore_if_needed(&app_version).await?;
-            self.migrate(device, settings).await?;
-            version::stamp_db_version(&self.pool, &app_version, &version::current_migration_hash())
-                .await?;
-            tracing::info!(app_version = %app_version, "database version stamped");
-            self.create_version_backup(&app_version, backup_retention)
-                .await?;
-            Ok(())
-        })
+        self.restore_if_needed(&app_version).await?;
+        self.migrate(device, settings).await?;
+        version::stamp_db_version(&self.pool, &app_version, &version::current_migration_hash())
+            .await?;
+        tracing::info!(app_version = %app_version, "database version stamped");
+        self.create_version_backup(&app_version, backup_retention)
+            .await?;
+        Ok(())
     }
 
     /// Runs database initialization using a default [`TestDevice`](crate::device::test_device::TestDevice) for migrations.
     #[cfg(test)]
-    pub fn init_for_test(&mut self, backup_retention: usize) -> Result<(), Error> {
+    pub async fn init_for_test(&mut self, backup_retention: usize) -> Result<(), Error> {
         let device = crate::device::test_device::TestDevice::new();
         let mut settings = Settings::default();
-        self.init(&device, backup_retention, &mut settings)
+        self.init(&device, backup_retention, &mut settings).await
     }
 
     /// Checks integrity and the version gate, restoring a backup when either fails.
@@ -369,29 +364,30 @@ async fn open_pool(path: &Path) -> Result<SqlitePool, Error> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_database_creation() {
-        let mut db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.init_for_test(0).expect("failed to run migrations");
-
-        RUNTIME.block_on(async {
-            let result: (i64,) = sqlx::query_as(
-                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='books'",
-            )
-            .fetch_one(&db.pool)
+    #[tokio::test]
+    async fn test_database_creation() {
+        let mut db = Database::new(":memory:")
             .await
-            .expect("failed to query sqlite_master");
+            .expect("failed to create in-memory database");
+        db.init_for_test(0).await.expect("failed to run migrations");
 
-            assert_eq!(result.0, 1, "books table should exist after migrations");
-        });
+        let result: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='books'",
+        )
+        .fetch_one(&db.pool)
+        .await
+        .expect("failed to query sqlite_master");
+        assert_eq!(result.0, 1, "books table should exist after migrations");
     }
 
-    #[test]
-    fn test_migrate_stamps_version_on_first_run() {
-        let mut db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.init_for_test(0).expect("failed to run migrations");
+    #[tokio::test]
+    async fn test_migrate_stamps_version_on_first_run() {
+        let mut db = Database::new(":memory:")
+            .await
+            .expect("failed to create in-memory database");
+        db.init_for_test(0).await.expect("failed to run migrations");
 
-        let version = RUNTIME.block_on(async { version::read_db_version(&db.pool).await.unwrap() });
+        let version = version::read_db_version(&db.pool).await.unwrap();
         assert_eq!(
             version,
             Some(get_current_version()),
@@ -399,34 +395,38 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_migrate_current_version_is_idempotent() {
-        let mut db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.init_for_test(0).expect("first migrate");
+    #[tokio::test]
+    async fn test_migrate_current_version_is_idempotent() {
+        let mut db = Database::new(":memory:")
+            .await
+            .expect("failed to create in-memory database");
+        db.init_for_test(0).await.expect("first migrate");
         db.init_for_test(0)
+            .await
             .expect("second migrate should succeed (Current path)");
 
-        let version = RUNTIME.block_on(async { version::read_db_version(&db.pool).await.unwrap() });
+        let version = version::read_db_version(&db.pool).await.unwrap();
         assert_eq!(version, Some(get_current_version()));
     }
 
-    #[test]
-    fn test_migrate_upgrade_from_older_version() {
-        let mut db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.init_for_test(0).expect("initial migrate");
+    #[tokio::test]
+    async fn test_migrate_upgrade_from_older_version() {
+        let mut db = Database::new(":memory:")
+            .await
+            .expect("failed to create in-memory database");
+        db.init_for_test(0).await.expect("initial migrate");
 
         let older = crate::version::GitVersion::parse("v0.0.1").unwrap();
         let migration_hash = version::current_migration_hash();
-        RUNTIME.block_on(async {
-            version::stamp_db_version(&db.pool, &older, &migration_hash)
-                .await
-                .unwrap();
-        });
+        version::stamp_db_version(&db.pool, &older, &migration_hash)
+            .await
+            .unwrap();
 
         db.init_for_test(0)
+            .await
             .expect("migrate should succeed (Upgrade path)");
 
-        let version = RUNTIME.block_on(async { version::read_db_version(&db.pool).await.unwrap() });
+        let version = version::read_db_version(&db.pool).await.unwrap();
         assert_eq!(
             version,
             Some(get_current_version()),
@@ -434,21 +434,22 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_migrate_downgrade_without_db_dir_errors() {
-        let mut db = Database::new(":memory:").expect("failed to create in-memory database");
-        db.init_for_test(0).expect("initial migrate");
+    #[tokio::test]
+    async fn test_migrate_downgrade_without_db_dir_errors() {
+        let mut db = Database::new(":memory:")
+            .await
+            .expect("failed to create in-memory database");
+        db.init_for_test(0).await.expect("initial migrate");
 
         let newer = crate::version::GitVersion::parse("v99.99.99").unwrap();
         let migration_hash = incompatible_migration_hash();
-        RUNTIME.block_on(async {
-            version::stamp_db_version(&db.pool, &newer, &migration_hash)
-                .await
-                .unwrap();
-        });
+        version::stamp_db_version(&db.pool, &newer, &migration_hash)
+            .await
+            .unwrap();
 
         let err = db
             .init_for_test(0)
+            .await
             .expect_err("init should fail on downgrade without db_dir");
         assert!(
             err.to_string().contains("no database directory available"),
@@ -457,27 +458,28 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_migrate_downgrade_with_db_dir_errors_without_backup() {
+    #[tokio::test]
+    async fn test_migrate_downgrade_with_db_dir_errors_without_backup() {
         let dir = tempfile::Builder::new()
             .prefix("cadmus-downgrade-no-backup-")
             .tempdir()
             .expect("failed to create temp dir");
         let db_path = dir.path().join("test.sqlite");
 
-        let mut db = Database::new(db_path.to_str().unwrap()).expect("failed to create database");
-        db.init_for_test(0).expect("initial migrate");
+        let mut db = Database::new(db_path.to_str().unwrap())
+            .await
+            .expect("failed to create database");
+        db.init_for_test(0).await.expect("initial migrate");
 
         let newer = crate::version::GitVersion::parse("v99.99.99").unwrap();
         let migration_hash = incompatible_migration_hash();
-        RUNTIME.block_on(async {
-            version::stamp_db_version(&db.pool, &newer, &migration_hash)
-                .await
-                .unwrap();
-        });
+        version::stamp_db_version(&db.pool, &newer, &migration_hash)
+            .await
+            .unwrap();
 
         let err = db
             .init_for_test(0)
+            .await
             .expect_err("init should fail when no backup is available");
         assert!(
             err.to_string().contains("no compatible backup found"),
@@ -486,39 +488,38 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_migrate_downgrade_with_db_dir_restores_backup() {
+    #[tokio::test]
+    async fn test_migrate_downgrade_with_db_dir_restores_backup() {
         let dir = tempfile::Builder::new()
             .prefix("cadmus-downgrade-restore-")
             .tempdir()
             .expect("failed to create temp dir");
         let db_path = dir.path().join("test.sqlite");
 
-        let mut db = Database::new(db_path.to_str().unwrap()).expect("failed to create database");
-        db.init_for_test(0).expect("initial migrate");
+        let mut db = Database::new(db_path.to_str().unwrap())
+            .await
+            .expect("failed to create database");
+        db.init_for_test(0).await.expect("initial migrate");
 
         let app_version = get_current_version();
-        RUNTIME.block_on(async {
-            let backup_manager =
-                backup::DbBackupManager::new(dir.path().to_path_buf(), app_version.clone());
-            backup_manager
-                .create_backup(&db.pool, &db_path, 2)
-                .await
-                .unwrap();
-        });
+        let backup_manager =
+            backup::DbBackupManager::new(dir.path().to_path_buf(), app_version.clone());
+        backup_manager
+            .create_backup(&db.pool, &db_path, 2)
+            .await
+            .unwrap();
 
         let newer = crate::version::GitVersion::parse("v99.99.99").unwrap();
         let migration_hash = incompatible_migration_hash();
-        RUNTIME.block_on(async {
-            version::stamp_db_version(&db.pool, &newer, &migration_hash)
-                .await
-                .unwrap();
-        });
+        version::stamp_db_version(&db.pool, &newer, &migration_hash)
+            .await
+            .unwrap();
 
         db.init_for_test(0)
+            .await
             .expect("migrate should succeed on downgrade with db_dir (restore path)");
 
-        let version = RUNTIME.block_on(async { version::read_db_version(&db.pool).await.unwrap() });
+        let version = version::read_db_version(&db.pool).await.unwrap();
         assert_eq!(
             version,
             Some(get_current_version()),
@@ -536,39 +537,40 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_check_integrity_passes_on_valid_database() {
-        let db = Database::new(":memory:").expect("failed to create in-memory database");
-        RUNTIME.block_on(async {
-            db.check_integrity()
-                .await
-                .expect("integrity check should pass on a fresh database");
-        });
+    #[tokio::test]
+    async fn test_check_integrity_passes_on_valid_database() {
+        let db = Database::new(":memory:")
+            .await
+            .expect("failed to create in-memory database");
+        db.check_integrity()
+            .await
+            .expect("integrity check should pass on a fresh database");
     }
 
-    #[test]
-    fn test_init_restores_backup_on_corruption() {
+    #[tokio::test]
+    async fn test_init_restores_backup_on_corruption() {
         let dir = tempfile::Builder::new()
             .prefix("cadmus-corruption-restore-")
             .tempdir()
             .expect("failed to create temp dir");
         let db_path = dir.path().join("cadmus.sqlite");
 
-        let mut db = Database::new(db_path.to_str().unwrap()).expect("failed to create database");
+        let mut db = Database::new(db_path.to_str().unwrap())
+            .await
+            .expect("failed to create database");
         db.init_for_test(0)
+            .await
             .expect("failed to run initial migrations");
 
         let app_version = get_current_version();
-        RUNTIME.block_on(async {
-            let backup_manager =
-                backup::DbBackupManager::new(dir.path().to_path_buf(), app_version.clone());
-            backup_manager
-                .create_backup(&db.pool, &db_path, 2)
-                .await
-                .unwrap();
-        });
+        let backup_manager =
+            backup::DbBackupManager::new(dir.path().to_path_buf(), app_version.clone());
+        backup_manager
+            .create_backup(&db.pool, &db_path, 2)
+            .await
+            .unwrap();
 
-        RUNTIME.block_on(async { db.pool.close().await });
+        db.pool.close().await;
 
         {
             let mut bytes = std::fs::read(&db_path).expect("failed to read db file");
@@ -578,11 +580,14 @@ mod tests {
             std::fs::write(&db_path, &bytes).expect("failed to write corrupted db");
         }
 
-        let mut db = Database::new(db_path.to_str().unwrap()).expect("failed to reopen database");
+        let mut db = Database::new(db_path.to_str().unwrap())
+            .await
+            .expect("failed to reopen database");
         db.init_for_test(0)
+            .await
             .expect("init should restore from backup on corruption");
 
-        let version = RUNTIME.block_on(async { version::read_db_version(&db.pool).await.unwrap() });
+        let version = version::read_db_version(&db.pool).await.unwrap();
         assert_eq!(
             version,
             Some(get_current_version()),
@@ -590,18 +595,20 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_check_integrity_fails_on_corrupted_database() {
+    #[tokio::test]
+    async fn test_check_integrity_fails_on_corrupted_database() {
         let dir = tempfile::Builder::new()
             .prefix("cadmus-integrity-test-")
             .tempdir()
             .expect("failed to create temp dir");
         let db_path = dir.path().join("corrupt.sqlite");
 
-        let mut db = Database::new(db_path.to_str().unwrap()).expect("failed to create database");
-        db.init_for_test(0).expect("failed to run migrations");
+        let mut db = Database::new(db_path.to_str().unwrap())
+            .await
+            .expect("failed to create database");
+        db.init_for_test(0).await.expect("failed to run migrations");
 
-        RUNTIME.block_on(async { db.pool.close().await });
+        db.pool.close().await;
 
         {
             let mut bytes = std::fs::read(&db_path).expect("failed to read db file");
@@ -611,8 +618,10 @@ mod tests {
             std::fs::write(&db_path, &bytes).expect("failed to write corrupted db");
         }
 
-        let db = Database::new(db_path.to_str().unwrap()).expect("failed to reopen database");
-        let result = RUNTIME.block_on(async { db.check_integrity().await });
+        let db = Database::new(db_path.to_str().unwrap())
+            .await
+            .expect("failed to reopen database");
+        let result = db.check_integrity().await;
         let err = result.expect_err("integrity check should fail on corrupted database");
         let err_msg = err.to_string();
         assert!(

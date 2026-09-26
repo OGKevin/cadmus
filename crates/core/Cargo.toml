@@ -32,14 +32,17 @@ septem = "1.1.0"
 byteorder = "1.5.0"
 cadmus-macros = { path = "../macros" }
 flate2 = "1.1.5"
+futures-lite = "2"
 levenshtein = "1.0.5"
 nix = { version = "0.31.0", features = ["fs", "ioctl", "mount", "poll", "time"] }
 indexmap = { version = "2.13.0", features = ["serde"] }
 arc-swap = "1"
 anyhow = "1.0.100"
-backon = { workspace = true }
+async-trait = { workspace = true }
+async_zip = { workspace = true }
 thiserror = "2.0.17"
 secrecy = { version = "0.10", features = ["serde"] }
+sysinfo = { workspace = true }
 walkdir = "2.5.0"
 globset = "0.4.18"
 html5ever = "0.39"
@@ -59,15 +62,21 @@ chrono = { version = "0.4.42", features = [
 ], default-features = false }
 chrono-tz = "0.10"
 sunrise = "3.0"
+bytes = { workspace = true }
+http = { workspace = true }
+http-body-util = { workspace = true }
+octocrab = { workspace = true }
 reqwest = { version = "0.13.1", default-features = false, features = [
-    "blocking",
     "form",
     "json",
     "rustls-no-provider",
 ] }
+reqwest-middleware = { workspace = true }
+reqwest-retry = { workspace = true }
+reqwest-tracing = { workspace = true, optional = true }
+tower = { workspace = true }
 rustls = { workspace = true }
-sntpc = { version = "0.11", features = ["std", "sync"] }
-sntpc-net-std = "1.2"
+sntpc = { version = "0.11", features = ["std"] }
 webpki-roots = "1.0.5"
 
 ctor = "1.0"
@@ -79,7 +88,8 @@ sqlx = { version = "0.9", features = [
     "chrono",
     "macros",
 ], default-features = false }
-tokio = { version = "1.40", features = ["fs", "macros", "rt", "rt-multi-thread", "sync"] }
+tokio = { version = "1.40", features = ["fs", "macros", "net", "process", "rt", "rt-multi-thread", "sync", "time"] }
+tokio-util = { workspace = true }
 sdl3 = { workspace = true, optional = true }
 
 tracing = "0.1"
@@ -89,8 +99,8 @@ tracing-appender = "0.2"
 tracing-opentelemetry = { version = "0.33", optional = true }
 opentelemetry-appender-tracing = { version = "0.32", optional = true }
 opentelemetry = { version = "0.32", features = ["trace", "logs"], optional = true }
-opentelemetry-otlp = { version = "0.32", features = ["trace", "logs", "http-proto", "reqwest-blocking-client"], optional = true }
-opentelemetry_sdk = { version = "0.32", features = ["trace", "logs", "rt-tokio-current-thread"], optional = true }
+opentelemetry-otlp = { version = "0.32", features = ["trace", "logs", "http-proto", "reqwest-client"], optional = true }
+opentelemetry_sdk = { version = "0.32", features = ["experimental_logs_batch_log_processor_with_async_runtime", "experimental_trace_batch_span_processor_with_async_runtime", "logs", "rt-tokio", "trace"], optional = true }
 opentelemetry-semantic-conventions = { version = "0.32", optional = true }
 pyroscope = { version = "2.0", default-features = false, features = ["backend-jemalloc", "backend-pprof-rs", "rustls-no-provider"], optional = true }
 tikv-jemallocator = { version = "0.7", features = ["profiling"], optional = true }
@@ -142,6 +152,9 @@ tracing = [
     "opentelemetry_sdk",
     "opentelemetry-semantic-conventions",
     "gethostname",
+    "reqwest-tracing",
+    "reqwest-tracing/opentelemetry_0_32",
+    "reqwest-retry/tracing",
 ]
 profiling = ["pyroscope", "tikv-jemallocator"]
 telemetry = ["tracing", "profiling"]

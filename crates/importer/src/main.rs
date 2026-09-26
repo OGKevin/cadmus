@@ -15,6 +15,10 @@ use std::path::{Path, PathBuf};
 // use std::sync::mpsc;
 
 fn main() -> Result<(), Error> {
+    cadmus_core::runtime::enter(async { run().await })
+}
+
+async fn run() -> Result<(), Error> {
     let args: Vec<String> = env::args().skip(1).collect();
 
     let mut opts = Options::new();
@@ -129,13 +133,14 @@ fn main() -> Result<(), Error> {
         .opt_str("d")
         .map(PathBuf::from)
         .unwrap_or_else(|| library_path.join("cadmus.sqlite"));
-    let database = Database::new(db_path)?;
+    let database = cadmus_core::runtime::block_on(Database::new(db_path))?;
     let library_name = library_path
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("Imported Library")
         .to_string();
-    let mut library = Library::new(library_path, &database, &library_name)?;
+    let mut library =
+        cadmus_core::runtime::block_on(Library::new(library_path, &database, &library_name))?;
 
     if matches.opt_present("I") {
         // let notif_id = ViewId::MessageNotif(ID_FEEDER.next());
@@ -159,7 +164,7 @@ fn main() -> Result<(), Error> {
         let opt_consolidate = matches.opt_present("S");
         let opt_rename_from_info = matches.opt_present("N");
 
-        library.apply(|path, info| {
+        cadmus_core::runtime::block_on(library.apply(|path, info| {
             if added_after.is_none_or(|added| info.added >= added) {
                 if opt_extract_metadata_document
                     && info
@@ -182,7 +187,7 @@ fn main() -> Result<(), Error> {
                     rename_from_info(path, info);
                 }
             }
-        });
+        }));
     }
 
     Ok(())

@@ -5,13 +5,13 @@ use anyhow::{Context, Error};
 use rustc_hash::FxHashMap;
 use std::ffi::CString;
 use std::fs::File;
-use std::io::Read;
 use std::mem::{self, MaybeUninit};
-use std::os::unix::io::AsRawFd;
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
+use std::os::unix::fs::OpenOptionsExt;
 use std::ptr;
-use std::slice;
-use std::sync::mpsc::{self, Receiver, Sender};
-use std::thread;
+use tokio::io::Interest;
+use tokio::io::unix::AsyncFd;
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
 // Event types
 pub const EV_SYN: u16 = 0x00;
@@ -281,107 +281,272 @@ pub fn seconds(time: libc::timeval) -> f64 {
     time.tv_sec as f64 + time.tv_usec as f64 / 1e6
 }
 
-pub fn raw_events(paths: Vec<String>) -> (Sender<InputEvent>, Receiver<InputEvent>) {
-    let (tx, rx) = mpsc::channel();
-    let tx2 = tx.clone();
-    thread::spawn(move || parse_raw_events(&paths, &tx));
-    (tx2, rx)
+pub fn raw_events(
+    paths: Vec<String>,
+) -> (UnboundedSender<InputEvent>, UnboundedReceiver<InputEvent>) {
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    let tx_reader = tx.clone();
+    crate::runtime::current_handle().spawn(async move {
+        if let Err(err) = parse_raw_events(&paths, &tx_reader).await {
+            tracing::warn!(error = %err, "raw input reader stopped");
+        }
+    });
+    (tx, rx)
 }
 
-pub fn parse_raw_events(paths: &[String], tx: &Sender<InputEvent>) -> Result<(), Error> {
-    let mut files = Vec::new();
-    let mut pfds = Vec::new();
+pub async fn parse_raw_events(
+    paths: &[String],
+    tx: &UnboundedSender<InputEvent>,
+) -> Result<(), Error> {
+    let mut watched = Vec::with_capacity(paths.len());
+    for path in paths {
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NONBLOCK)
+            .open(path)
+            .with_context(|| format!("can't open input file {path}"))?;
+        let fd = AsyncFd::with_interest(file, Interest::READABLE)
+            .with_context(|| format!("can't watch input file {path}"))?;
+        watched.push((path.clone(), fd));
+    }
 
-    for path in paths.iter() {
-        let file = File::open(path).with_context(|| format!("can't open input file {}", path))?;
-        let fd = file.as_raw_fd();
-        files.push(file);
-        pfds.push(libc::pollfd {
-            fd,
-            events: libc::POLLIN,
-            revents: 0,
+    let mut readers = tokio::task::JoinSet::new();
+    for (path, fd) in watched {
+        let tx = tx.clone();
+        readers.spawn(async move {
+            if let Err(err) = read_input_events(fd, &tx).await {
+                tracing::warn!(path = %path, error = %err, "input device reader stopped");
+            }
         });
     }
-
-    loop {
-        let ret = unsafe { libc::poll(pfds.as_mut_ptr(), pfds.len() as libc::nfds_t, -1) };
-        if ret < 0 {
-            break;
-        }
-        for (pfd, mut file) in pfds.iter().zip(&files) {
-            if pfd.revents & libc::POLLIN != 0 {
-                let mut input_event = MaybeUninit::<InputEvent>::uninit();
-                unsafe {
-                    let event_slice = slice::from_raw_parts_mut(
-                        input_event.as_mut_ptr() as *mut u8,
-                        mem::size_of::<InputEvent>(),
-                    );
-                    if file.read_exact(event_slice).is_err() {
-                        break;
-                    }
-                    tx.send(input_event.assume_init()).ok();
-                }
-            }
-        }
-    }
-
+    while readers.join_next().await.is_some() {}
     Ok(())
 }
 
-pub fn usb_events() -> Receiver<DeviceEvent> {
-    let (tx, rx) = mpsc::channel();
-    thread::spawn(move || parse_usb_events(&tx));
-    rx
-}
-
-fn parse_usb_events(tx: &Sender<DeviceEvent>) {
-    let path = CString::new("/tmp/nickel-hardware-status").unwrap();
-    let fd = unsafe { libc::open(path.as_ptr(), libc::O_NONBLOCK | libc::O_RDWR) };
-
-    if fd < 0 {
-        return;
-    }
-
-    let mut pfd = libc::pollfd {
-        fd,
-        events: libc::POLLIN,
-        revents: 0,
-    };
-
-    const BUF_LEN: usize = 256;
-
+/// Forwards evdev events from one nonblocking device until it closes or `tx` drops.
+///
+/// `AsyncFd` only says the fd is readable. A single `read` may still return
+/// fewer bytes than `size_of::<InputEvent>()`. Treating
+/// that short read as EOF would drop the device for the rest of the session.
+/// `pending` / `filled` keep those bytes across `readable()` waits until one
+/// full record is available. A zero-length read is the only EOF.
+async fn read_input_events(
+    fd: AsyncFd<File>,
+    tx: &UnboundedSender<InputEvent>,
+) -> Result<(), Error> {
+    let mut pending = [0_u8; mem::size_of::<InputEvent>()];
+    let mut filled = 0usize;
     loop {
-        let ret = unsafe { libc::poll(&mut pfd as *mut libc::pollfd, 1, -1) };
-
-        if ret < 0 {
-            break;
-        }
-
-        let buf = CString::new(vec![1; BUF_LEN]).unwrap();
-        let c_buf = buf.into_raw();
-
-        if pfd.revents & libc::POLLIN != 0 {
-            let n = unsafe { libc::read(fd, c_buf as *mut libc::c_void, BUF_LEN as libc::size_t) };
-            let buf = unsafe { CString::from_raw(c_buf) };
-            if n > 0 {
-                if let Ok(s) = buf.to_str() {
-                    for msg in s[..n as usize].lines() {
-                        if msg == "usb plug add" {
-                            tx.send(DeviceEvent::Plug(PowerSource::Host)).ok();
-                        } else if msg == "usb plug remove" {
-                            tx.send(DeviceEvent::Unplug(PowerSource::Host)).ok();
-                        } else if msg == "usb ac add" {
-                            tx.send(DeviceEvent::Plug(PowerSource::Wall)).ok();
-                        } else if msg == "usb ac remove" {
-                            tx.send(DeviceEvent::Unplug(PowerSource::Wall)).ok();
-                        }
+        let mut guard = fd.readable().await?;
+        loop {
+            match guard.try_io(|inner| read_input_event(inner.get_ref(), &mut pending, &mut filled))
+            {
+                Ok(Ok(event)) => {
+                    if tx.send(event).is_err() {
+                        return Ok(());
                     }
                 }
-            } else {
-                break;
+                Ok(Err(err)) if err.kind() == std::io::ErrorKind::UnexpectedEof => return Ok(()),
+                Ok(Err(err)) => return Err(err.into()),
+                Err(_would_block) => break,
             }
         }
     }
+}
+
+/// Reads one `InputEvent`, keeping a short read in `pending` until the next
+/// readiness wake. A zero-length read is EOF. `WouldBlock` leaves `filled` as-is.
+///
+/// # Safety
+///
+/// `InputEvent` is a C layout with no safe constructor from raw bytes. The
+/// copy is sound because [`absorb_record`] returns `Some` only after `pending`
+/// holds exactly `size_of::<InputEvent>()` bytes, so every byte is written
+/// before `assume_init`. Nothing is read from uninitialised memory.
+fn read_input_event(
+    file: &File,
+    pending: &mut [u8; mem::size_of::<InputEvent>()],
+    filled: &mut usize,
+) -> std::io::Result<InputEvent> {
+    if *filled >= pending.len() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "evdev buffer overran a single event",
+        ));
+    }
+    let n = read_fd(file.as_raw_fd(), &mut pending[*filled..])?;
+    if n == 0 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::UnexpectedEof,
+            "evdev closed",
+        ));
+    }
+    let chunk = pending[*filled..*filled + n].to_vec();
+    let (record, _) = absorb_record(pending, filled, &chunk);
+    let Some(bytes) = record else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::WouldBlock,
+            "partial evdev event",
+        ));
+    };
+    let mut input_event = MaybeUninit::<InputEvent>::uninit();
+    unsafe {
+        ptr::copy_nonoverlapping(
+            bytes.as_ptr(),
+            input_event.as_mut_ptr().cast::<u8>(),
+            bytes.len(),
+        );
+        Ok(input_event.assume_init())
+    }
+}
+
+/// Appends `chunk` to a fixed-size record buffer. Returns the record once
+/// `buf` is full and resets `filled`. A chunk larger than the remaining space
+/// fills one record and reports how many bytes were consumed.
+fn absorb_record<const N: usize>(
+    buf: &mut [u8; N],
+    filled: &mut usize,
+    chunk: &[u8],
+) -> (Option<[u8; N]>, usize) {
+    let room = N.saturating_sub(*filled);
+    let n = chunk.len().min(room);
+    buf[*filled..*filled + n].copy_from_slice(&chunk[..n]);
+    *filled += n;
+    if *filled == N {
+        let done = *buf;
+        *filled = 0;
+        (Some(done), n)
+    } else {
+        (None, n)
+    }
+}
+
+pub fn usb_events() -> UnboundedReceiver<DeviceEvent> {
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    crate::runtime::current_handle().spawn(async move {
+        read_usb_events(&tx).await;
+    });
+    rx
+}
+
+/// Per-read size for `/tmp/nickel-hardware-status` (matches typical FIFO chunking).
+const USB_STATUS_READ_BYTES: usize = 256;
+/// Cap for an incomplete line held across reads: two read buffers, enough for any
+/// real nickel status string split across wakes (messages are short ASCII tokens).
+const USB_STATUS_PENDING_MAX: usize = USB_STATUS_READ_BYTES * 2;
+
+async fn read_usb_events(tx: &UnboundedSender<DeviceEvent>) {
+    let path = CString::new("/tmp/nickel-hardware-status").unwrap();
+    let fd = unsafe { libc::open(path.as_ptr(), libc::O_NONBLOCK | libc::O_RDWR) };
+    if fd < 0 {
+        return;
+    }
+    let owned = unsafe { OwnedFd::from_raw_fd(fd) };
+    let async_fd = match AsyncFd::with_interest(owned, Interest::READABLE) {
+        Ok(async_fd) => async_fd,
+        Err(err) => {
+            tracing::warn!(error = %err, "usb status reader failed");
+            return;
+        }
+    };
+
+    let mut pending = Vec::new();
+    loop {
+        let mut guard = match async_fd.readable().await {
+            Ok(guard) => guard,
+            Err(err) => {
+                tracing::warn!(error = %err, "usb status wait failed");
+                return;
+            }
+        };
+        loop {
+            match guard
+                .try_io(|inner| read_usb_status(inner.get_ref().as_raw_fd(), &mut pending, tx))
+            {
+                Ok(Ok(0)) => return,
+                Ok(Ok(_)) => {}
+                Ok(Err(err)) => {
+                    tracing::warn!(error = %err, "usb status read failed");
+                    return;
+                }
+                Err(_would_block) => break,
+            }
+        }
+    }
+}
+
+fn read_usb_status(
+    fd: RawFd,
+    pending: &mut Vec<u8>,
+    tx: &UnboundedSender<DeviceEvent>,
+) -> std::io::Result<usize> {
+    let mut buf = [0u8; USB_STATUS_READ_BYTES];
+    let n = read_fd(fd, &mut buf)?;
+    if n == 0 {
+        return Ok(0);
+    }
+    let end = buf[..n].iter().position(|byte| *byte == 0).unwrap_or(n);
+    feed_usb_status_chunk(pending, &buf[..end], tx);
+    Ok(n)
+}
+
+/// Appends `chunk` to `pending`, emits complete newline-delimited lines, and
+/// retains any trailing fragment for the next read.
+fn feed_usb_status_chunk(pending: &mut Vec<u8>, chunk: &[u8], tx: &UnboundedSender<DeviceEvent>) {
+    pending.extend_from_slice(chunk);
+    if pending.len() > USB_STATUS_PENDING_MAX {
+        tracing::warn!(
+            pending_len = pending.len(),
+            max = USB_STATUS_PENDING_MAX,
+            "usb status pending buffer overflow; discarding partial line"
+        );
+        pending.clear();
+        return;
+    }
+
+    while let Some(newline) = pending.iter().position(|byte| *byte == b'\n') {
+        let line = pending.drain(..=newline).collect::<Vec<u8>>();
+        let line = &line[..line.len() - 1];
+        let line = line.strip_suffix(b"\r").unwrap_or(line);
+        if line.is_empty() {
+            continue;
+        }
+        match std::str::from_utf8(line) {
+            Ok(message) => send_usb_hardware_message(tx, message),
+            Err(_) => tracing::warn!(bytes = ?line, "usb status line is not valid utf-8"),
+        }
+    }
+}
+
+fn read_fd(fd: RawFd, buf: &mut [u8]) -> std::io::Result<usize> {
+    loop {
+        let n = unsafe {
+            libc::read(
+                fd,
+                buf.as_mut_ptr().cast::<libc::c_void>(),
+                buf.len() as libc::size_t,
+            )
+        };
+        if n >= 0 {
+            return Ok(n as usize);
+        }
+        let err = std::io::Error::last_os_error();
+        if err.kind() == std::io::ErrorKind::Interrupted {
+            continue;
+        }
+        return Err(err);
+    }
+}
+
+fn send_usb_hardware_message(tx: &UnboundedSender<DeviceEvent>, message: &str) {
+    let event = match message {
+        "usb plug add" => DeviceEvent::Plug(PowerSource::Host),
+        "usb plug remove" => DeviceEvent::Unplug(PowerSource::Host),
+        "usb ac add" => DeviceEvent::Plug(PowerSource::Wall),
+        "usb ac remove" => DeviceEvent::Unplug(PowerSource::Wall),
+        _ => return,
+    };
+    tx.send(event).ok();
 }
 
 fn compute_mirror_axes(rotation: i8, mirroring_scheme: (i8, i8)) -> (bool, bool) {
@@ -402,7 +567,7 @@ pub struct DeviceInputInfo {
     pub swapping_scheme: i8,
     pub startup_rotation: i8,
     pub gyro_rotation_transform: GyroRotationTransform,
-    /// When true, the input thread swaps logical screen dimensions on 90° rotations.
+    /// When true, the device-event task swaps logical screen dimensions on 90° rotations.
     /// KoboFramebuffer2 does this in hardware; KoboFramebuffer1 does not.
     pub swap_dims_on_rotation: bool,
 }
@@ -427,11 +592,11 @@ impl Default for GyroRotationTransform {
 }
 
 pub fn device_events(
-    rx: Receiver<InputEvent>,
+    mut rx: UnboundedReceiver<InputEvent>,
     display: Display,
     button_scheme: ButtonScheme,
     info: DeviceInputInfo,
-) -> Receiver<DeviceEvent> {
+) -> UnboundedReceiver<DeviceEvent> {
     let Display { dims, rotation } = display;
     tracing::trace!(
         rotation,
@@ -443,9 +608,16 @@ pub fn device_events(
         startup_rotation = info.startup_rotation,
         "starting device event pipeline"
     );
-    let (ty, ry) = mpsc::channel();
-    thread::spawn(move || {
-        parse_device_events(&rx, &ty, Display { dims, rotation }, button_scheme, info)
+    let (ty, ry) = tokio::sync::mpsc::unbounded_channel();
+    crate::runtime::current_handle().spawn(async move {
+        parse_device_events(
+            &mut rx,
+            &ty,
+            Display { dims, rotation },
+            button_scheme,
+            info,
+        )
+        .await;
     });
     ry
 }
@@ -533,9 +705,9 @@ impl Default for TouchState {
         level = tracing::Level::TRACE,
     )
 )]
-pub fn parse_device_events(
-    rx: &Receiver<InputEvent>,
-    ty: &Sender<DeviceEvent>,
+pub async fn parse_device_events(
+    rx: &mut UnboundedReceiver<InputEvent>,
+    ty: &UnboundedSender<DeviceEvent>,
     display: Display,
     button_scheme: ButtonScheme,
     info: DeviceInputInfo,
@@ -595,7 +767,7 @@ pub fn parse_device_events(
 
     let mut button_scheme = button_scheme;
 
-    while let Ok(evt) = rx.recv() {
+    while let Some(evt) = rx.recv().await {
         let _span = tracing::trace_span!("processing input event", event = ?evt).entered();
 
         if evt.kind == EV_ABS {
@@ -831,5 +1003,136 @@ pub fn parse_device_events(
                 ty.send(DeviceEvent::RotateScreen(next_rotation)).ok();
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use std::time::Duration;
+
+    #[test]
+    fn feed_usb_status_chunk_reassembles_split_lines() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut pending = Vec::new();
+        feed_usb_status_chunk(&mut pending, b"usb plug ad", &tx);
+        assert!(pending == b"usb plug ad");
+        assert!(rx.try_recv().is_err());
+        feed_usb_status_chunk(&mut pending, b"d\n", &tx);
+        assert!(pending.is_empty());
+        assert!(matches!(
+            rx.try_recv().expect("plug event"),
+            DeviceEvent::Plug(PowerSource::Host)
+        ));
+    }
+
+    #[test]
+    fn feed_usb_status_chunk_handles_multiple_lines_and_crlf() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut pending = Vec::new();
+        feed_usb_status_chunk(
+            &mut pending,
+            b"usb ac add\r\nusb ac remove\nusb plug remove\n",
+            &tx,
+        );
+        assert!(matches!(
+            rx.try_recv().expect("wall plug"),
+            DeviceEvent::Plug(PowerSource::Wall)
+        ));
+        assert!(matches!(
+            rx.try_recv().expect("wall unplug"),
+            DeviceEvent::Unplug(PowerSource::Wall)
+        ));
+        assert!(matches!(
+            rx.try_recv().expect("host unplug"),
+            DeviceEvent::Unplug(PowerSource::Host)
+        ));
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn feed_usb_status_chunk_ignores_unknown_lines() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut pending = Vec::new();
+        feed_usb_status_chunk(&mut pending, b"noise\nusb plug add\n", &tx);
+        assert!(matches!(
+            rx.try_recv().expect("host plug"),
+            DeviceEvent::Plug(PowerSource::Host)
+        ));
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn absorb_record_keeps_a_short_read() {
+        let mut buf = [0_u8; 4];
+        let mut filled = 0usize;
+        let (record, n) = absorb_record(&mut buf, &mut filled, &[1, 2]);
+        assert!(record.is_none());
+        assert_eq!(n, 2);
+        assert_eq!(filled, 2);
+        let (record, n) = absorb_record(&mut buf, &mut filled, &[3, 4, 5]);
+        assert_eq!(record, Some([1, 2, 3, 4]));
+        assert_eq!(n, 2);
+        assert_eq!(filled, 0);
+    }
+
+    #[tokio::test]
+    async fn raw_reader_forwards_one_evdev_event() {
+        let path = std::env::temp_dir().join(format!(
+            "cadmus-evdev-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        let c_path = CString::new(path.to_str().expect("utf8 path")).expect("path");
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(unsafe { libc::mkfifo(c_path.as_ptr(), 0o600) }, 0);
+
+        let path_str = path.to_str().expect("utf8 path").to_string();
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let reader_path = path_str.clone();
+        let reader = tokio::spawn(async move { parse_raw_events(&[reader_path], &tx).await });
+
+        let writer_path = path.clone();
+        let writer = tokio::task::spawn_blocking(move || {
+            std::fs::OpenOptions::new().write(true).open(writer_path)
+        })
+        .await
+        .expect("writer task")
+        .expect("open fifo");
+
+        let event = InputEvent {
+            time: libc::timeval {
+                tv_sec: 4,
+                tv_usec: 5,
+            },
+            kind: EV_KEY,
+            code: KEY_HOME,
+            value: VAL_PRESS,
+        };
+        let mut bytes = vec![0u8; mem::size_of::<InputEvent>()];
+        unsafe {
+            std::ptr::write_unaligned(bytes.as_mut_ptr().cast::<InputEvent>(), event);
+        }
+        let mut writer = writer;
+        writer.write_all(&bytes).expect("write event");
+        writer.flush().expect("flush event");
+
+        let got = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+            .await
+            .expect("timed out waiting for evdev event")
+            .expect("reader closed");
+        assert_eq!(got.kind, EV_KEY);
+        assert_eq!(got.code, KEY_HOME);
+        assert_eq!(got.value, VAL_PRESS);
+        assert_eq!(got.time.tv_sec, 4);
+        assert_eq!(got.time.tv_usec, 5);
+
+        drop(writer);
+        reader.abort();
+        let _ = std::fs::remove_file(&path);
     }
 }

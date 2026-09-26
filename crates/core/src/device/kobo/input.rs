@@ -5,9 +5,8 @@ use crate::settings::ButtonScheme;
 use crate::view::Event;
 use std::path::Path;
 use std::sync::Arc;
-use std::sync::mpsc::{self, Sender};
-use std::thread;
 use std::time::Duration;
+use tokio::sync::mpsc::UnboundedSender;
 
 pub(crate) const CLOCK_REFRESH_INTERVAL: Duration = Duration::from_secs(60);
 pub(crate) const BATTERY_REFRESH_INTERVAL: Duration = Duration::from_secs(299);
@@ -34,7 +33,7 @@ fn touch_input_path() -> Option<String> {
 pub struct InputSource {
     pub(super) info: crate::input::DeviceInputInfo,
     pub(super) dpi: u16,
-    pub(super) raw_sender: Option<Sender<InputEvent>>,
+    pub(super) raw_sender: Option<UnboundedSender<InputEvent>>,
 }
 
 impl Default for InputSource {
@@ -69,10 +68,7 @@ impl crate::device::InputSource for InputSource {
         display: Display,
         button_scheme: ButtonScheme,
         inhibitor: Arc<Inhibitor>,
-    ) -> (
-        crate::view::Hub,
-        std::sync::mpsc::Receiver<crate::view::HubMessage>,
-    ) {
+    ) -> (crate::view::Hub, crate::view::HubReceiver) {
         let mut paths = Vec::new();
         let touch_path = touch_input_path();
         if let Some(path) = touch_path.as_ref() {
@@ -121,20 +117,22 @@ impl crate::device::InputSource for InputSource {
             self.dpi,
         );
         let usb_port = usb_events();
-        let (tx, rx) = mpsc::channel();
+        let (tx, rx) = crate::view::hub_channel();
 
         let tx2 = tx.clone();
         let inhibitor2 = Arc::clone(&inhibitor);
-        thread::spawn(move || {
-            while let Ok(evt) = touch_screen.recv() {
+        crate::runtime::current_handle().spawn(async move {
+            let mut touch_screen = touch_screen;
+            while let Some(evt) = touch_screen.recv().await {
                 crate::view::hub_message::send_input_hub_message(&tx2, &inhibitor2, evt);
             }
         });
 
         let tx3 = tx.clone();
         let inhibitor3 = Arc::clone(&inhibitor);
-        thread::spawn(move || {
-            while let Ok(evt) = usb_port.recv() {
+        crate::runtime::current_handle().spawn(async move {
+            let mut usb_port = usb_port;
+            while let Some(evt) = usb_port.recv().await {
                 crate::view::hub_message::send_input_hub_message(
                     &tx3,
                     &inhibitor3,
@@ -144,17 +142,17 @@ impl crate::device::InputSource for InputSource {
         });
 
         let tx4 = tx.clone();
-        thread::spawn(move || {
+        crate::runtime::current_handle().spawn(async move {
             loop {
-                thread::sleep(CLOCK_REFRESH_INTERVAL);
+                tokio::time::sleep(CLOCK_REFRESH_INTERVAL).await;
                 tx4.send(Event::ClockTick.into()).ok();
             }
         });
 
         let tx5 = tx.clone();
-        thread::spawn(move || {
+        crate::runtime::current_handle().spawn(async move {
             loop {
-                thread::sleep(BATTERY_REFRESH_INTERVAL);
+                tokio::time::sleep(BATTERY_REFRESH_INTERVAL).await;
                 tx5.send(Event::BatteryTick.into()).ok();
             }
         });

@@ -59,13 +59,14 @@ impl SettingRow {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl View for SettingRow {
     #[cfg_attr(feature = "tracing", tracing::instrument(
         skip(self, _hub, _bus, rq, _context),
         fields(event = ?evt),
         ret(level=tracing::Level::TRACE)
     ))]
-    fn handle_event(
+    async fn handle_event(
         &mut self,
         evt: &Event,
         _hub: &Hub,
@@ -129,7 +130,6 @@ mod tests {
     use crate::view::settings_editor::kinds::library::LibraryInfo;
     use std::collections::VecDeque;
     use std::path::PathBuf;
-    use std::sync::mpsc::channel;
 
     fn create_test_settings() -> Settings {
         let mut settings = Settings::default();
@@ -147,8 +147,8 @@ mod tests {
         settings
     }
 
-    #[test]
-    fn test_update_library_event_updates_matching_row() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_update_library_event_updates_matching_row() {
         let mut context = create_test_context();
         let settings = create_test_settings();
         let rect = rect![0, 0, 400, 60];
@@ -162,7 +162,7 @@ mod tests {
             &context.device.install_dir(),
         );
 
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
 
@@ -173,14 +173,20 @@ mod tests {
         };
 
         let event = Event::UpdateLibrary(0, Box::new(updated_library));
-        let handled = row.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+        let handled = crate::runtime::block_on(row.handle_event(
+            &event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(handled);
         assert!(!rq.is_empty());
     }
 
-    #[test]
-    fn test_update_library_event_ignores_non_matching() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_update_library_event_ignores_non_matching() {
         let mut context = create_test_context();
         let settings = create_test_settings();
         let rect = rect![0, 0, 400, 60];
@@ -194,7 +200,7 @@ mod tests {
             &context.device.install_dir(),
         );
 
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
 
@@ -205,14 +211,20 @@ mod tests {
         };
 
         let event = Event::UpdateLibrary(1, Box::new(updated_library));
-        let handled = row.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+        let handled = crate::runtime::block_on(row.handle_event(
+            &event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(!handled);
         assert!(rq.is_empty());
     }
 
-    #[test]
-    fn test_hold_finger_short_outside_label_rect_is_not_handled() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_hold_finger_short_outside_label_rect_is_not_handled() {
         let mut context = create_test_context();
         let settings = create_test_settings();
         let rect = rect![0, 0, 400, 60];
@@ -226,7 +238,7 @@ mod tests {
             &context.device.install_dir(),
         ));
 
-        let (hub, _receiver) = channel();
+        let (hub, _receiver) = crate::view::hub_channel();
         let mut bus = VecDeque::new();
         let mut rq = RenderQueue::new();
 
@@ -234,7 +246,14 @@ mod tests {
         let point = crate::geom::Point::new(500, 100);
         let event = Event::Gesture(GestureEvent::HoldFingerShort(point, 0));
 
-        crate::view::handle_event(row.as_mut(), &event, &hub, &mut bus, &mut rq, &mut context);
+        crate::runtime::block_on(crate::view::handle_event(
+            row.as_mut(),
+            &event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(
             bus.is_empty(),

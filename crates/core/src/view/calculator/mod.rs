@@ -28,7 +28,6 @@ use std::io::Write;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
-use std::thread;
 use tracing::error;
 
 const APP_DIR: &str = "bin/ivy";
@@ -92,7 +91,7 @@ impl Calculator {
             .ok_or_else(|| format_err!("can't take stderr"))?;
 
         let hub2 = hub.clone();
-        thread::spawn(move || {
+        crate::runtime::spawn_blocking(move || {
             let reader = BufReader::new(stdout);
             for line_res in reader.lines() {
                 if let Ok(line) = line_res {
@@ -105,7 +104,7 @@ impl Calculator {
         });
 
         let hub3 = hub.clone();
-        thread::spawn(move || {
+        crate::runtime::spawn_blocking(move || {
             let reader = BufReader::new(stderr);
             for line_res in reader.lines() {
                 if let Ok(line) = line_res {
@@ -663,10 +662,11 @@ impl Calculator {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl View for Calculator {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, _bus, rq, context), fields(event = ?evt
     ), ret(level=tracing::Level::TRACE)))]
-    fn handle_event(
+    async fn handle_event(
         &mut self,
         evt: &Event,
         hub: &Hub,

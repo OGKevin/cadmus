@@ -103,9 +103,10 @@ mod tests {
     use crate::device::DeviceRuntime;
     use crate::device::test_harness::DeviceRuntimeHarness;
     use crate::frontlight::LightLevels;
-    use crate::task::{BackgroundTask, ShutdownSignal, TaskId, TaskManager};
+    use crate::task::{BackgroundTask, TaskFuture, TaskId, TaskManager, sleep_unless_cancelled};
     use crate::view::Event;
     use std::time::Duration;
+    use tokio_util::sync::CancellationToken;
 
     struct WaitingTask;
 
@@ -114,13 +115,19 @@ mod tests {
             TaskId::AutoFrontlight
         }
 
-        fn run(&mut self, _hub: &crate::view::Hub, shutdown: &ShutdownSignal) {
-            shutdown.wait(Duration::from_secs(60));
+        fn run<'a>(
+            &'a mut self,
+            _hub: &'a crate::view::Hub,
+            cancel: &'a CancellationToken,
+        ) -> TaskFuture<'a> {
+            Box::pin(async move {
+                sleep_unless_cancelled(cancel, Duration::from_secs(60)).await;
+            })
         }
     }
 
-    #[test]
-    fn handle_event_toggle_frontlight_updates_settings() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_event_toggle_frontlight_updates_settings() {
         let mut harness = DeviceRuntimeHarness::new();
         harness.context.settings.frontlight = false;
         let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
@@ -130,8 +137,8 @@ mod tests {
         assert!(harness.context.settings.frontlight);
     }
 
-    #[test]
-    fn handle_event_set_frontlight_levels_stops_auto_task() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_event_set_frontlight_levels_stops_auto_task() {
         let mut harness = DeviceRuntimeHarness::new();
         let mut background_tasks = TaskManager::new();
         background_tasks

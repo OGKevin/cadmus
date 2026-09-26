@@ -172,8 +172,8 @@ mod tests {
             }
         }
 
-        #[test]
-        fn handle_ignores_events() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_ignores_events() {
             let setting = ForceFullImport;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -189,8 +189,8 @@ mod tests {
     mod import_sync_metadata {
         use super::*;
 
-        #[test]
-        fn handle_toggle_disables_when_enabled() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_toggle_disables_when_enabled() {
             let setting = ImportSyncMetadata;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -204,8 +204,8 @@ mod tests {
             assert!(!context.settings.import.sync_metadata);
         }
 
-        #[test]
-        fn handle_toggle_enables_when_disabled() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_toggle_enables_when_disabled() {
             let setting = ImportSyncMetadata;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -219,8 +219,8 @@ mod tests {
             assert!(context.settings.import.sync_metadata);
         }
 
-        #[test]
-        fn handle_returns_none_for_wrong_event() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_returns_none_for_wrong_event() {
             let setting = ImportSyncMetadata;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -232,8 +232,8 @@ mod tests {
             assert!(result.0.is_none());
         }
 
-        #[test]
-        fn handle_returns_none_for_wrong_toggle() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_returns_none_for_wrong_toggle() {
             let setting = ImportSyncMetadata;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -276,8 +276,8 @@ mod tests {
             ));
         }
 
-        #[test]
-        fn handle_toggle_adds_and_removes_extensions() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_toggle_adds_and_removes_extensions() {
             let setting = AllowedKindsSetting;
             let mut context = create_test_context();
             context.settings = Settings::default();

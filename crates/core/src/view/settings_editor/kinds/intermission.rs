@@ -303,8 +303,8 @@ mod tests {
         use super::*;
         use crate::view::EntryKind;
 
-        #[test]
-        fn handle_set_intermission_updates_settings() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_set_intermission_updates_settings() {
             let setting = IntermissionSuspend;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -323,8 +323,8 @@ mod tests {
             );
         }
 
-        #[test]
-        fn handle_file_chooser_closed_updates_settings() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_file_chooser_closed_updates_settings() {
             let setting = IntermissionSuspend;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -341,8 +341,8 @@ mod tests {
             );
         }
 
-        #[test]
-        fn handle_returns_none_for_wrong_kind() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_returns_none_for_wrong_kind() {
             let setting = IntermissionSuspend;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -357,8 +357,8 @@ mod tests {
             assert!(result.0.is_none());
         }
 
-        #[test]
-        fn handle_returns_none_for_cancelled_file_chooser() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_returns_none_for_cancelled_file_chooser() {
             let setting = IntermissionSuspend;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -441,8 +441,8 @@ mod tests {
         use super::*;
         use crate::view::EntryKind;
 
-        #[test]
-        fn handle_set_intermission_updates_settings() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_set_intermission_updates_settings() {
             let setting = IntermissionPowerOff;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -461,8 +461,8 @@ mod tests {
             );
         }
 
-        #[test]
-        fn handle_file_chooser_closed_updates_settings() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_file_chooser_closed_updates_settings() {
             let setting = IntermissionPowerOff;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -479,8 +479,8 @@ mod tests {
             );
         }
 
-        #[test]
-        fn handle_returns_none_for_wrong_kind() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_returns_none_for_wrong_kind() {
             let setting = IntermissionPowerOff;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -495,8 +495,8 @@ mod tests {
             assert!(result.0.is_none());
         }
 
-        #[test]
-        fn handle_returns_none_for_cancelled_file_chooser() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_returns_none_for_cancelled_file_chooser() {
             let setting = IntermissionPowerOff;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -507,8 +507,8 @@ mod tests {
             assert!(result.0.is_none());
         }
 
-        #[test]
-        fn handle_rejects_calendar_selection() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_rejects_calendar_selection() {
             let setting = IntermissionPowerOff;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -527,8 +527,8 @@ mod tests {
             );
         }
 
-        #[test]
-        fn handle_accepts_blank_selection() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_accepts_blank_selection() {
             let setting = IntermissionPowerOff;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -580,8 +580,8 @@ mod tests {
         use super::*;
         use crate::view::EntryKind;
 
-        #[test]
-        fn handle_set_intermission_updates_settings() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_set_intermission_updates_settings() {
             let setting = IntermissionShare;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -600,8 +600,8 @@ mod tests {
             );
         }
 
-        #[test]
-        fn handle_file_chooser_closed_updates_settings() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_file_chooser_closed_updates_settings() {
             let setting = IntermissionShare;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -618,8 +618,8 @@ mod tests {
             );
         }
 
-        #[test]
-        fn handle_returns_none_for_wrong_kind() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_returns_none_for_wrong_kind() {
             let setting = IntermissionShare;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -634,8 +634,8 @@ mod tests {
             assert!(result.0.is_none());
         }
 
-        #[test]
-        fn handle_returns_none_for_cancelled_file_chooser() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_returns_none_for_cancelled_file_chooser() {
             let setting = IntermissionShare;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -646,8 +646,8 @@ mod tests {
             assert!(result.0.is_none());
         }
 
-        #[test]
-        fn handle_rejects_calendar_selection() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_rejects_calendar_selection() {
             let setting = IntermissionShare;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -666,8 +666,8 @@ mod tests {
             );
         }
 
-        #[test]
-        fn handle_accepts_blank_inverted_selection() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_accepts_blank_inverted_selection() {
             let setting = IntermissionShare;
             let mut context = create_test_context();
             context.settings = Settings::default();
@@ -748,8 +748,8 @@ mod tests {
             }));
         }
 
-        #[test]
-        fn handle_set_black_updates_settings() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn handle_set_black_updates_settings() {
             let setting = IntermissionFillColor;
             let mut context = create_test_context();
             context.settings = Settings::default();

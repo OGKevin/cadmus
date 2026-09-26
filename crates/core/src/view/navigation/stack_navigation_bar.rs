@@ -1030,9 +1030,10 @@ fn find_closest_ancestor_by_provider<P: NavigationProvider>(
     None
 }
 
+#[async_trait::async_trait(?Send)]
 impl<P: NavigationProvider + 'static> View for StackNavigationBar<P> {
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, bus, _rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
-    fn handle_event(
+    async fn handle_event(
         &mut self,
         evt: &Event,
         _hub: &Hub,
@@ -1207,8 +1208,8 @@ mod tests {
         assert!(find_closest_ancestor_by_provider(&provider, &last, &selected).is_none());
     }
 
-    #[test]
-    fn set_selected_with_single_child_no_panic() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn set_selected_with_single_child_no_panic() {
         let mut context = create_test_context();
 
         let provider = Provider;
@@ -1223,8 +1224,8 @@ mod tests {
         assert!(!nav_bar.children.is_empty());
     }
 
-    #[test]
-    fn set_selected_from_empty_state() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn set_selected_from_empty_state() {
         let mut context = create_test_context();
 
         let provider = Provider;
@@ -1240,8 +1241,8 @@ mod tests {
         assert_eq!(nav_bar.selected, Key(3));
     }
 
-    #[test]
-    fn set_selected_reuses_existing_bars() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn set_selected_reuses_existing_bars() {
         let mut context = create_test_context();
 
         let provider = Provider;
@@ -1258,8 +1259,8 @@ mod tests {
         assert_eq!(nav_bar.selected, Key(3));
     }
 
-    #[test]
-    fn set_selected_to_parent_reduces_bars() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn set_selected_to_parent_reduces_bars() {
         let mut context = create_test_context();
 
         let provider = Provider;
@@ -1276,8 +1277,8 @@ mod tests {
         assert_eq!(nav_bar.selected, Key(2));
     }
 
-    #[test]
-    fn set_selected_handles_max_levels() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn set_selected_handles_max_levels() {
         let mut context = create_test_context();
 
         let provider = Provider;
@@ -1291,8 +1292,8 @@ mod tests {
         assert!(!nav_bar.children.is_empty());
     }
 
-    #[test]
-    fn resize_child_with_aggressive_north_swipe_maintains_minimum_height() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn resize_child_with_aggressive_north_swipe_maintains_minimum_height() {
         let mut context = create_test_context();
 
         let provider = Provider;
@@ -1345,8 +1346,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn shrink_proportionally_distributes_across_multiple_bars() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn shrink_proportionally_distributes_across_multiple_bars() {
         let mut context = create_test_context();
 
         let provider = Provider;
@@ -1390,8 +1391,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn shrink_removes_bars_when_exceeding_available_space() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn shrink_removes_bars_when_exceeding_available_space() {
         let mut context = create_test_context();
 
         let provider = Provider;
@@ -1420,8 +1421,8 @@ mod tests {
         assert!(final_bar_count >= 1, "Should always keep at least one bar");
     }
 
-    #[test]
-    fn shrink_handles_all_bars_at_minimum_height() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn shrink_handles_all_bars_at_minimum_height() {
         let mut context = create_test_context();
 
         let provider = Provider;
@@ -1454,8 +1455,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn resize_child_expansion_respects_vertical_limit() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn resize_child_expansion_respects_vertical_limit() {
         let mut context = create_test_context();
 
         let provider = Provider;
@@ -1494,8 +1495,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn resize_child_expansion_shifts_subsequent_children() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn resize_child_expansion_shifts_subsequent_children() {
         let mut context = create_test_context();
 
         let provider = Provider;
@@ -1542,8 +1543,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn shift_moves_all_children_and_container() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn shift_moves_all_children_and_container() {
         let mut context = create_test_context();
 
         let provider = Provider;
@@ -1577,8 +1578,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn handle_event_north_swipe_resizes_bar() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_event_north_swipe_resizes_bar() {
         use crate::gesture::GestureEvent;
 
         let mut context = create_test_context();
@@ -1590,7 +1591,7 @@ mod tests {
 
         nav_bar.set_selected(Key(2), &mut rq, &mut context);
 
-        let (tx, _rx) = std::sync::mpsc::channel();
+        let (tx, _rx) = crate::view::hub_channel();
         let hub = tx;
         let mut bus = std::collections::VecDeque::new();
 
@@ -1603,7 +1604,13 @@ mod tests {
             end,
         });
 
-        let handled = nav_bar.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+        let handled = crate::runtime::block_on(nav_bar.handle_event(
+            &event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(handled, "North swipe should be handled");
 
@@ -1616,8 +1623,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn handle_event_south_swipe_resizes_bar() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_event_south_swipe_resizes_bar() {
         use crate::gesture::GestureEvent;
 
         let mut context = create_test_context();
@@ -1629,7 +1636,7 @@ mod tests {
 
         nav_bar.set_selected(Key(2), &mut rq, &mut context);
 
-        let (tx, _rx) = std::sync::mpsc::channel();
+        let (tx, _rx) = crate::view::hub_channel();
         let hub = tx;
         let mut bus = std::collections::VecDeque::new();
 
@@ -1642,7 +1649,13 @@ mod tests {
             end,
         });
 
-        let handled = nav_bar.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+        let handled = crate::runtime::block_on(nav_bar.handle_event(
+            &event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(handled, "South swipe should be handled");
 
@@ -1655,8 +1668,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn handle_event_ignores_swipe_outside_rect() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_event_ignores_swipe_outside_rect() {
         use crate::gesture::GestureEvent;
 
         let mut context = create_test_context();
@@ -1668,7 +1681,7 @@ mod tests {
 
         nav_bar.set_selected(Key(2), &mut rq, &mut context);
 
-        let (tx, _rx) = std::sync::mpsc::channel();
+        let (tx, _rx) = crate::view::hub_channel();
         let hub = tx;
         let mut bus = std::collections::VecDeque::new();
 
@@ -1681,7 +1694,13 @@ mod tests {
             end,
         });
 
-        let handled = nav_bar.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+        let handled = crate::runtime::block_on(nav_bar.handle_event(
+            &event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(
             !handled,
@@ -1689,8 +1708,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn handle_event_ignores_horizontal_swipe() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn handle_event_ignores_horizontal_swipe() {
         use crate::gesture::GestureEvent;
 
         let mut context = create_test_context();
@@ -1702,7 +1721,7 @@ mod tests {
 
         nav_bar.set_selected(Key(2), &mut rq, &mut context);
 
-        let (tx, _rx) = std::sync::mpsc::channel();
+        let (tx, _rx) = crate::view::hub_channel();
         let hub = tx;
         let mut bus = std::collections::VecDeque::new();
 
@@ -1715,13 +1734,19 @@ mod tests {
             end,
         });
 
-        let handled = nav_bar.handle_event(&event, &hub, &mut bus, &mut rq, &mut context);
+        let handled = crate::runtime::block_on(nav_bar.handle_event(
+            &event,
+            &hub,
+            &mut bus,
+            &mut rq,
+            &mut context,
+        ));
 
         assert!(!handled, "Horizontal swipe should not be handled");
     }
 
-    #[test]
-    fn set_selected_handles_vertical_limit_constraint() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn set_selected_handles_vertical_limit_constraint() {
         let mut context = create_test_context();
 
         let provider = Provider;
