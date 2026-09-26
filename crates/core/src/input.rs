@@ -429,6 +429,12 @@ pub fn usb_events() -> UnboundedReceiver<DeviceEvent> {
     rx
 }
 
+/// Per-read size for `/tmp/nickel-hardware-status` (matches typical FIFO chunking).
+const USB_STATUS_READ_BYTES: usize = 256;
+/// Cap for an incomplete line held across reads: two read buffers, enough for any
+/// real nickel status string split across wakes (messages are short ASCII tokens).
+const USB_STATUS_PENDING_MAX: usize = USB_STATUS_READ_BYTES * 2;
+
 async fn read_usb_events(tx: &UnboundedSender<DeviceEvent>) {
     let path = CString::new("/tmp/nickel-hardware-status").unwrap();
     let fd = unsafe { libc::open(path.as_ptr(), libc::O_NONBLOCK | libc::O_RDWR) };
@@ -444,6 +450,7 @@ async fn read_usb_events(tx: &UnboundedSender<DeviceEvent>) {
         }
     };
 
+    let mut pending = Vec::new();
     loop {
         let mut guard = match async_fd.readable().await {
             Ok(guard) => guard,
@@ -453,7 +460,9 @@ async fn read_usb_events(tx: &UnboundedSender<DeviceEvent>) {
             }
         };
         loop {
-            match guard.try_io(|inner| read_usb_status(inner.get_ref().as_raw_fd(), tx)) {
+            match guard
+                .try_io(|inner| read_usb_status(inner.get_ref().as_raw_fd(), &mut pending, tx))
+            {
                 Ok(Ok(0)) => return,
                 Ok(Ok(_)) => {}
                 Ok(Err(err)) => {
@@ -466,19 +475,47 @@ async fn read_usb_events(tx: &UnboundedSender<DeviceEvent>) {
     }
 }
 
-fn read_usb_status(fd: RawFd, tx: &UnboundedSender<DeviceEvent>) -> std::io::Result<usize> {
-    let mut buf = [0u8; 256];
+fn read_usb_status(
+    fd: RawFd,
+    pending: &mut Vec<u8>,
+    tx: &UnboundedSender<DeviceEvent>,
+) -> std::io::Result<usize> {
+    let mut buf = [0u8; USB_STATUS_READ_BYTES];
     let n = read_fd(fd, &mut buf)?;
     if n == 0 {
         return Ok(0);
     }
     let end = buf[..n].iter().position(|byte| *byte == 0).unwrap_or(n);
-    if let Ok(text) = std::str::from_utf8(&buf[..end]) {
-        for message in text.lines() {
-            send_usb_hardware_message(tx, message);
+    feed_usb_status_chunk(pending, &buf[..end], tx);
+    Ok(n)
+}
+
+/// Appends `chunk` to `pending`, emits complete newline-delimited lines, and
+/// retains any trailing fragment for the next read.
+fn feed_usb_status_chunk(pending: &mut Vec<u8>, chunk: &[u8], tx: &UnboundedSender<DeviceEvent>) {
+    pending.extend_from_slice(chunk);
+    if pending.len() > USB_STATUS_PENDING_MAX {
+        tracing::warn!(
+            pending_len = pending.len(),
+            max = USB_STATUS_PENDING_MAX,
+            "usb status pending buffer overflow; discarding partial line"
+        );
+        pending.clear();
+        return;
+    }
+
+    while let Some(newline) = pending.iter().position(|byte| *byte == b'\n') {
+        let line = pending.drain(..=newline).collect::<Vec<u8>>();
+        let line = &line[..line.len() - 1];
+        let line = line.strip_suffix(b"\r").unwrap_or(line);
+        if line.is_empty() {
+            continue;
+        }
+        match std::str::from_utf8(line) {
+            Ok(message) => send_usb_hardware_message(tx, message),
+            Err(_) => tracing::warn!(bytes = ?line, "usb status line is not valid utf-8"),
         }
     }
-    Ok(n)
 }
 
 fn read_fd(fd: RawFd, buf: &mut [u8]) -> std::io::Result<usize> {
@@ -974,6 +1011,57 @@ mod tests {
     use super::*;
     use std::io::Write;
     use std::time::Duration;
+
+    #[test]
+    fn feed_usb_status_chunk_reassembles_split_lines() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut pending = Vec::new();
+        feed_usb_status_chunk(&mut pending, b"usb plug ad", &tx);
+        assert!(pending == b"usb plug ad");
+        assert!(rx.try_recv().is_err());
+        feed_usb_status_chunk(&mut pending, b"d\n", &tx);
+        assert!(pending.is_empty());
+        assert!(matches!(
+            rx.try_recv().expect("plug event"),
+            DeviceEvent::Plug(PowerSource::Host)
+        ));
+    }
+
+    #[test]
+    fn feed_usb_status_chunk_handles_multiple_lines_and_crlf() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut pending = Vec::new();
+        feed_usb_status_chunk(
+            &mut pending,
+            b"usb ac add\r\nusb ac remove\nusb plug remove\n",
+            &tx,
+        );
+        assert!(matches!(
+            rx.try_recv().expect("wall plug"),
+            DeviceEvent::Plug(PowerSource::Wall)
+        ));
+        assert!(matches!(
+            rx.try_recv().expect("wall unplug"),
+            DeviceEvent::Unplug(PowerSource::Wall)
+        ));
+        assert!(matches!(
+            rx.try_recv().expect("host unplug"),
+            DeviceEvent::Unplug(PowerSource::Host)
+        ));
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn feed_usb_status_chunk_ignores_unknown_lines() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut pending = Vec::new();
+        feed_usb_status_chunk(&mut pending, b"noise\nusb plug add\n", &tx);
+        assert!(matches!(
+            rx.try_recv().expect("host plug"),
+            DeviceEvent::Plug(PowerSource::Host)
+        ));
+        assert!(rx.try_recv().is_err());
+    }
 
     #[test]
     fn absorb_record_keeps_a_short_read() {

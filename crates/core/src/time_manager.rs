@@ -111,6 +111,12 @@ impl<R: Rtc> TimeManager<R> {
             .copied()
     }
 
+    /// Synchronises the system clock from NTP.
+    ///
+    /// Callers that observe cancellation before invoking this method should not
+    /// start a sync. Once this call is running, NTP and applying the returned
+    /// time run to completion; cancellation during NTP does not suppress the
+    /// clock write.
     pub async fn sync(
         &self,
         ntp_server: &NetworkAddress,

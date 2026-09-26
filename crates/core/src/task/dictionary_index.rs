@@ -422,6 +422,9 @@ impl DictionaryIndexTask {
                 return;
             }
         };
+        if shutdown.is_cancelled() {
+            return;
+        }
 
         let fp_str = fp.to_string();
 

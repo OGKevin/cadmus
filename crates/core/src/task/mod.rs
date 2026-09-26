@@ -123,6 +123,9 @@ pub enum TaskId {
     /// Second test-only task for unit tests.
     #[cfg(test)]
     TestTask2,
+    /// Third test-only task for unit tests.
+    #[cfg(test)]
+    TestTask3,
 }
 
 impl std::fmt::Display for TaskId {
@@ -146,6 +149,8 @@ impl std::fmt::Display for TaskId {
             TaskId::TestTask => write!(f, "test_task"),
             #[cfg(test)]
             TaskId::TestTask2 => write!(f, "test_task_2"),
+            #[cfg(test)]
+            TaskId::TestTask3 => write!(f, "test_task_3"),
         }
     }
 }
@@ -299,10 +304,16 @@ impl TaskManager {
     /// Cancels every running task and waits for each join.
     ///
     /// Each task gets its own five-second deadline, so several stuck tasks
-    /// can delay quit by about 5s times the task count. That is intentional:
-    /// every task gets a full chance to finish cleanly. A join that hits the
-    /// deadline is logged with `task_id` and abandoned; the process runtime
-    /// then applies its own separate shutdown deadline.
+    /// can delay quit by about 5s times the task count. That is an accepted
+    /// product bound: every task gets a full chance to finish cleanly. When a
+    /// join hits the deadline the task is aborted and the abort is awaited so
+    /// the join handle is not detached while shutdown continues.
+    ///
+    /// Abort stops the async task only; an in-flight `spawn_blocking` closure
+    /// may still run until it returns. Cooperative cancellation inside those
+    /// closures is task-specific.
+    ///
+    /// The process runtime then applies its own separate shutdown deadline.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(task_count = tracing::field::Empty
     )))]
     pub fn stop_all(&mut self) {
@@ -311,19 +322,30 @@ impl TaskManager {
         #[cfg(feature = "tracing")]
         tracing::Span::current().record("task_count", tasks.len());
 
-        if !tasks.is_empty() {
-            tracing::info!("stopping all tasks");
+        if tasks.is_empty() {
+            return;
         }
+
+        tracing::info!(task_count = tasks.len(), "stopping all tasks");
+        let started = std::time::Instant::now();
         for (_, task) in &tasks {
             task.cancel.cancel();
         }
         const STOP_DEADLINE: std::time::Duration = std::time::Duration::from_secs(5);
+        let mut timed_out = 0u32;
         for (id, task) in tasks {
-            match crate::runtime::block_on(tokio::time::timeout(STOP_DEADLINE, task.handle)) {
-                Ok(Ok(_)) => {}
-                Ok(Err(_)) => tracing::error!(task_id = %id, "task panicked"),
-                Err(_) => tracing::error!(task_id = %id, "task stop timed out"),
+            if join_task_with_deadline(&id, task.handle, STOP_DEADLINE) {
+                timed_out += 1;
             }
+        }
+        let elapsed = started.elapsed();
+        if timed_out > 0 || elapsed > STOP_DEADLINE {
+            tracing::warn!(
+                timed_out_tasks = timed_out,
+                elapsed_ms = elapsed.as_millis(),
+                per_task_deadline_secs = STOP_DEADLINE.as_secs(),
+                "background task shutdown was slow"
+            );
         }
     }
 
@@ -686,6 +708,38 @@ impl TaskManager {
     }
 }
 
+/// Joins `handle` within `deadline`, aborting and awaiting completion on timeout.
+///
+/// Returns `true` when the graceful deadline was exceeded and the task was aborted.
+fn join_task_with_deadline(
+    id: &TaskId,
+    mut handle: tokio::task::JoinHandle<Option<Event>>,
+    deadline: Duration,
+) -> bool {
+    match crate::runtime::block_on(tokio::time::timeout(deadline, &mut handle)) {
+        Ok(Ok(_)) => false,
+        Ok(Err(_)) => {
+            tracing::error!(task_id = %id, "task panicked");
+            false
+        }
+        Err(_) => {
+            tracing::warn!(
+                task_id = %id,
+                deadline_secs = deadline.as_secs(),
+                "task stop timed out; aborting"
+            );
+            handle.abort();
+            match crate::runtime::block_on(handle) {
+                Ok(_) => true,
+                Err(_) => {
+                    tracing::error!(task_id = %id, "aborted task panicked");
+                    true
+                }
+            }
+        }
+    }
+}
+
 impl Default for TaskManager {
     fn default() -> Self {
         Self::new()
@@ -886,6 +940,34 @@ mod tests {
         }
     }
 
+    struct IgnoresCancelTask {
+        finished: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    }
+
+    impl IgnoresCancelTask {
+        fn new(finished: std::sync::Arc<std::sync::atomic::AtomicBool>) -> Self {
+            Self { finished }
+        }
+    }
+
+    impl BackgroundTask for IgnoresCancelTask {
+        fn id(&self) -> TaskId {
+            TaskId::TestTask3
+        }
+
+        fn run<'a>(
+            &'a mut self,
+            _hub: &'a crate::view::Hub,
+            _cancel: &'a CancellationToken,
+        ) -> TaskFuture<'a> {
+            let finished = std::sync::Arc::clone(&self.finished);
+            Box::pin(async move {
+                tokio::time::sleep(Duration::from_secs(60)).await;
+                finished.store(true, std::sync::atomic::Ordering::SeqCst);
+            })
+        }
+    }
+
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn start_and_stop() {
         let mut manager = TaskManager::new();
@@ -959,6 +1041,31 @@ mod tests {
         manager.stop_all();
 
         assert!(!manager.is_running(&TaskId::TestTask));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn stop_all_aborts_and_joins_tasks_that_ignore_cancellation() {
+        let mut manager = TaskManager::new();
+        let (hub, _rx) = crate::view::hub_channel();
+        let finished = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+
+        manager
+            .start(Box::new(IgnoresCancelTask::new(finished.clone())), hub)
+            .unwrap();
+
+        let started = Instant::now();
+        manager.stop_all();
+        let elapsed = started.elapsed();
+
+        assert!(
+            elapsed < Duration::from_secs(8),
+            "stop_all should not wait the full task sleep: {elapsed:?}"
+        );
+        assert!(
+            !finished.load(std::sync::atomic::Ordering::SeqCst),
+            "task should be aborted before its sleep completes"
+        );
+        assert!(!manager.is_running(&TaskId::TestTask3));
     }
 
     #[tokio::test(flavor = "multi_thread")]

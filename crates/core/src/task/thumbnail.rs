@@ -123,6 +123,10 @@ impl ThumbnailExtractionTask {
                     .and_then(|pixmap| pixmap.to_png_bytes().ok())
             })
             .await;
+            if cancel.is_cancelled() {
+                tracing::info!("thumbnail extraction task shutdown requested, stopping");
+                return;
+            }
             match rendered {
                 Ok(Some(bytes)) => {
                     if let Err(e) = library.db.save_thumbnail(fp, &bytes).await {
