@@ -9,7 +9,6 @@ use std::mem::{self, MaybeUninit};
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
 use std::os::unix::fs::OpenOptionsExt;
 use std::ptr;
-use std::slice;
 use tokio::io::Interest;
 use tokio::io::unix::AsyncFd;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
@@ -324,14 +323,24 @@ pub async fn parse_raw_events(
     Ok(())
 }
 
+/// Forwards evdev events from one nonblocking device until it closes or `tx` drops.
+///
+/// `AsyncFd` only says the fd is readable. A single `read` may still return
+/// fewer bytes than `size_of::<InputEvent>()`. Treating
+/// that short read as EOF would drop the device for the rest of the session.
+/// `pending` / `filled` keep those bytes across `readable()` waits until one
+/// full record is available. A zero-length read is the only EOF.
 async fn read_input_events(
     fd: AsyncFd<File>,
     tx: &UnboundedSender<InputEvent>,
 ) -> Result<(), Error> {
+    let mut pending = [0_u8; mem::size_of::<InputEvent>()];
+    let mut filled = 0usize;
     loop {
         let mut guard = fd.readable().await?;
         loop {
-            match guard.try_io(|inner| read_input_event(inner.get_ref())) {
+            match guard.try_io(|inner| read_input_event(inner.get_ref(), &mut pending, &mut filled))
+            {
                 Ok(Ok(event)) => {
                     if tx.send(event).is_err() {
                         return Ok(());
@@ -345,28 +354,71 @@ async fn read_input_events(
     }
 }
 
-fn read_input_event(file: &File) -> std::io::Result<InputEvent> {
-    let mut input_event = MaybeUninit::<InputEvent>::uninit();
-    let event_slice = unsafe {
-        slice::from_raw_parts_mut(
-            input_event.as_mut_ptr().cast::<u8>(),
-            mem::size_of::<InputEvent>(),
-        )
-    };
-    let n = read_fd(file.as_raw_fd(), event_slice)?;
+/// Reads one `InputEvent`, keeping a short read in `pending` until the next
+/// readiness wake. A zero-length read is EOF. `WouldBlock` leaves `filled` as-is.
+///
+/// # Safety
+///
+/// `InputEvent` is a C layout with no safe constructor from raw bytes. The
+/// copy is sound because [`absorb_record`] returns `Some` only after `pending`
+/// holds exactly `size_of::<InputEvent>()` bytes, so every byte is written
+/// before `assume_init`. Nothing is read from uninitialised memory.
+fn read_input_event(
+    file: &File,
+    pending: &mut [u8; mem::size_of::<InputEvent>()],
+    filled: &mut usize,
+) -> std::io::Result<InputEvent> {
+    if *filled >= pending.len() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "evdev buffer overran a single event",
+        ));
+    }
+    let n = read_fd(file.as_raw_fd(), &mut pending[*filled..])?;
     if n == 0 {
         return Err(std::io::Error::new(
             std::io::ErrorKind::UnexpectedEof,
             "evdev closed",
         ));
     }
-    if n != event_slice.len() {
+    let chunk = pending[*filled..*filled + n].to_vec();
+    let (record, _) = absorb_record(pending, filled, &chunk);
+    let Some(bytes) = record else {
         return Err(std::io::Error::new(
-            std::io::ErrorKind::UnexpectedEof,
-            "short evdev read",
+            std::io::ErrorKind::WouldBlock,
+            "partial evdev event",
         ));
+    };
+    let mut input_event = MaybeUninit::<InputEvent>::uninit();
+    unsafe {
+        ptr::copy_nonoverlapping(
+            bytes.as_ptr(),
+            input_event.as_mut_ptr().cast::<u8>(),
+            bytes.len(),
+        );
+        Ok(input_event.assume_init())
     }
-    Ok(unsafe { input_event.assume_init() })
+}
+
+/// Appends `chunk` to a fixed-size record buffer. Returns the record once
+/// `buf` is full and resets `filled`. A chunk larger than the remaining space
+/// fills one record and reports how many bytes were consumed.
+fn absorb_record<const N: usize>(
+    buf: &mut [u8; N],
+    filled: &mut usize,
+    chunk: &[u8],
+) -> (Option<[u8; N]>, usize) {
+    let room = N.saturating_sub(*filled);
+    let n = chunk.len().min(room);
+    buf[*filled..*filled + n].copy_from_slice(&chunk[..n]);
+    *filled += n;
+    if *filled == N {
+        let done = *buf;
+        *filled = 0;
+        (Some(done), n)
+    } else {
+        (None, n)
+    }
 }
 
 pub fn usb_events() -> UnboundedReceiver<DeviceEvent> {
@@ -922,6 +974,20 @@ mod tests {
     use super::*;
     use std::io::Write;
     use std::time::Duration;
+
+    #[test]
+    fn absorb_record_keeps_a_short_read() {
+        let mut buf = [0_u8; 4];
+        let mut filled = 0usize;
+        let (record, n) = absorb_record(&mut buf, &mut filled, &[1, 2]);
+        assert!(record.is_none());
+        assert_eq!(n, 2);
+        assert_eq!(filled, 2);
+        let (record, n) = absorb_record(&mut buf, &mut filled, &[3, 4, 5]);
+        assert_eq!(record, Some([1, 2, 3, 4]));
+        assert_eq!(n, 2);
+        assert_eq!(filled, 0);
+    }
 
     #[tokio::test]
     async fn raw_reader_forwards_one_evdev_event() {
