@@ -63,6 +63,11 @@ impl DeviceLifecycle for Device {
             .is_some_and(|cycle| cycle.should_skip_main_loop_lease(event))
     }
 
+    /// Initializes cores, inhibitor callbacks, and startup Wi-Fi.
+    ///
+    /// The spawned radio reconcile reads the live session mode rather than a
+    /// snapshot captured before spawn, so a mode change queued in between
+    /// cannot power the radio the other way.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(context, hub, runtime), level = tracing::Level::TRACE
     ))]
     fn on_startup(
@@ -95,6 +100,7 @@ impl DeviceLifecycle for Device {
         let wifi_session = context.wifi_session.clone();
         let hub_wifi = hub.clone();
         crate::runtime::current_handle().spawn(async move {
+            let wants_on = wifi_session.mode().wants_radio_at_rest();
             if wants_on {
                 match wifi_session.enable_radio().await {
                     Ok(connected) => {
