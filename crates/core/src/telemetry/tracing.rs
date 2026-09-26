@@ -211,7 +211,10 @@ pub fn shutdown_telemetry() {
 
 /// Determines the OTLP endpoint from settings or environment variables.
 ///
-/// Environment variables take precedence over configuration file settings.
+/// Outside unit tests, `OTEL_EXPORTER_OTLP_ENDPOINT` takes precedence over
+/// configuration file settings (devenv sets this for local runs). Under
+/// `cfg(test)`, only `settings` is consulted so OTLP exporters are not started
+/// from the environment during tests.
 ///
 /// # Arguments
 ///
@@ -221,6 +224,7 @@ pub fn shutdown_telemetry() {
 ///
 /// Returns `Some(endpoint)` if an OTLP endpoint is configured, `None` otherwise.
 fn otel_endpoint(settings: &LoggingSettings) -> Option<String> {
+    #[cfg(not(test))]
     if let Ok(value) = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT") {
         return Some(value);
     }
