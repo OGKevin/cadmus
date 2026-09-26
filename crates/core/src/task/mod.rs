@@ -296,15 +296,15 @@ impl TaskManager {
         }
     }
 
-    /// Stops all running tasks.
+    /// Cancels every running task and waits for each join.
     ///
-    /// Cancels every running task and waits for them to finish.
+    /// Each task gets its own five-second deadline, so several stuck tasks
+    /// can delay quit by about 5s times the task count. That is intentional:
+    /// every task gets a full chance to finish cleanly. A join that hits the
+    /// deadline is logged with `task_id` and abandoned; the process runtime
+    /// then applies its own separate shutdown deadline.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(task_count = tracing::field::Empty
     )))]
-    /// Cancels every running task and waits for each join with a short deadline.
-    ///
-    /// Tasks that ignore cancel can still occupy a worker until the process
-    /// runtime's own shutdown timeout; this bound keeps quit responsive.
     pub fn stop_all(&mut self) {
         let tasks: Vec<_> = self.tasks.drain().collect();
 

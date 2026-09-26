@@ -148,7 +148,7 @@ pub async fn finish_within_deadline(in_flight: &mut JoinSet<()>, deadline: Durat
         }
         let remaining = deadline_at.saturating_duration_since(tokio::time::Instant::now());
         if remaining.is_zero() {
-            report_shutdown_deadline(deadline);
+            report_shutdown_deadline(deadline, in_flight.len());
             in_flight.abort_all();
             return;
         }
@@ -159,7 +159,7 @@ pub async fn finish_within_deadline(in_flight: &mut JoinSet<()>, deadline: Durat
                 }
             }
             () = tokio::time::sleep(remaining) => {
-                report_shutdown_deadline(deadline);
+                report_shutdown_deadline(deadline, in_flight.len());
                 in_flight.abort_all();
                 return;
             }
@@ -167,12 +167,12 @@ pub async fn finish_within_deadline(in_flight: &mut JoinSet<()>, deadline: Durat
     }
 }
 
-fn report_shutdown_deadline(deadline: Duration) {
+fn report_shutdown_deadline(deadline: Duration, in_flight: usize) {
     let deadline_ms = deadline.as_millis() as u64;
-    tracing::error!(deadline_ms, "async shutdown deadline exceeded");
+    tracing::error!(deadline_ms, in_flight, "async shutdown deadline exceeded");
     let _ = writeln!(
         std::io::stderr(),
-        "async shutdown deadline exceeded deadline_ms={deadline_ms}"
+        "async shutdown deadline exceeded deadline_ms={deadline_ms} in_flight={in_flight}"
     );
 }
 
