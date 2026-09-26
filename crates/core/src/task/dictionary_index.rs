@@ -193,10 +193,18 @@ impl DictionaryIndexTask {
         };
 
         let mut line_reader = BufReader::new(file).lines();
-        let mut total = 0_i64;
-        while let Ok(Some(_)) | Err(_) = line_reader.next_line().await {
-            total += 1;
-        }
+        let total = match count_lines(&mut line_reader).await {
+            Ok(total) => total,
+            Err(e) => {
+                tracing::error!(
+                    path = %path_str,
+                    fingerprint = %fp_str,
+                    error = %e,
+                    "failed to read index file for line count"
+                );
+                return None;
+            }
+        };
 
         let result = async {
             sqlx::query!(
@@ -624,6 +632,20 @@ impl DictionaryIndexTask {
     }
 }
 
+/// Counts lines from `reader`. An I/O error stops the count instead of spinning.
+async fn count_lines<R>(reader: &mut tokio::io::Lines<R>) -> std::io::Result<i64>
+where
+    R: tokio::io::AsyncBufRead + Unpin,
+{
+    let mut total = 0_i64;
+    loop {
+        match reader.next_line().await? {
+            Some(_) => total += 1,
+            None => return Ok(total),
+        }
+    }
+}
+
 /// Deletes all index entries for a single dictionary in batches.
 ///
 /// Each batch issues a single `DELETE … LIMIT` statement, keeping write locks
@@ -762,6 +784,35 @@ impl BackgroundTask for DictionaryIndexTask {
 mod tests {
     use super::*;
     use crate::db::Database;
+    use std::io;
+    use tokio::io::AsyncRead;
+
+    struct FailRead;
+
+    impl AsyncRead for FailRead {
+        fn poll_read(
+            self: std::pin::Pin<&mut Self>,
+            _cx: &mut std::task::Context<'_>,
+            _buf: &mut tokio::io::ReadBuf<'_>,
+        ) -> std::task::Poll<io::Result<()>> {
+            std::task::Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, "eio")))
+        }
+    }
+
+    #[tokio::test]
+    async fn count_lines_stops_on_io_error() {
+        let mut lines = BufReader::new(FailRead).lines();
+        let err = count_lines(&mut lines)
+            .await
+            .expect_err("persistent read error");
+        assert_eq!(err.kind(), io::ErrorKind::Other);
+    }
+
+    #[tokio::test]
+    async fn count_lines_counts_successful_lines() {
+        let mut lines = BufReader::new(&b"one\ntwo\n"[..]).lines();
+        assert_eq!(count_lines(&mut lines).await.expect("read"), 2);
+    }
 
     async fn setup_db() -> Database {
         let mut db = Database::new(":memory:")
