@@ -5,7 +5,7 @@
 //! recipes share the same CFLAGS via [`cross_env`], targeting the
 //! Kobo's Cortex-A9 CPU with NEON.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 
@@ -29,9 +29,16 @@ fn cross_env() -> [(&'static str, &'static str); 12] {
     ]
 }
 
+/// Path to a library's Meson cross file under `build-scripts/`.
+fn kobo_meson_cross_file(root: &Path, lib: &str) -> PathBuf {
+    root.join("build-scripts")
+        .join(lib)
+        .join("kobo-options.txt")
+}
+
 /// Build a single library by name, dispatching to the recipe that
 /// matches its upstream build system.
-pub fn build_library(name: &str, build_dir: &Path) -> Result<()> {
+pub fn build_library(name: &str, build_dir: &Path, root: &Path) -> Result<()> {
     println!("Building {name}...");
 
     let env = cross_env();
@@ -44,8 +51,8 @@ pub fn build_library(name: &str, build_dir: &Path) -> Result<()> {
         "jbig2dec" => build_jbig2dec(build_dir, &env),
         "libwebp" => build_libwebp(build_dir, &env),
         "freetype2" => build_freetype2(build_dir),
-        "harfbuzz" => build_harfbuzz(build_dir),
-        "gumbo" => build_gumbo(build_dir),
+        "harfbuzz" => build_harfbuzz(build_dir, root),
+        "gumbo" => build_gumbo(build_dir, root),
         "djvulibre" => build_djvulibre(build_dir),
         "mupdf" => super::mupdf::build_mupdf(build_dir),
         _ => anyhow::bail!("unknown library: {name}"),
@@ -293,7 +300,11 @@ fn build_freetype2(build_dir: &Path) -> Result<()> {
     cmd::run("make", &["-j4"], build_dir, &env).context("failed to build freetype2")
 }
 
-fn build_harfbuzz(build_dir: &Path) -> Result<()> {
+fn build_harfbuzz(build_dir: &Path, root: &Path) -> Result<()> {
+    let cross_file = kobo_meson_cross_file(root, "harfbuzz");
+    let cross_file = cross_file
+        .to_str()
+        .context("kobo-options.txt path must be UTF-8")?;
     cmd::run(
         "meson",
         &[
@@ -303,7 +314,7 @@ fn build_harfbuzz(build_dir: &Path) -> Result<()> {
             "-Dcairo=disabled",
             "-Dfreetype=enabled",
             "--cross-file",
-            "kobo-options.txt",
+            cross_file,
             "build",
         ],
         build_dir,
@@ -314,7 +325,11 @@ fn build_harfbuzz(build_dir: &Path) -> Result<()> {
         .context("failed to build harfbuzz")
 }
 
-fn build_gumbo(build_dir: &Path) -> Result<()> {
+fn build_gumbo(build_dir: &Path, root: &Path) -> Result<()> {
+    let cross_file = kobo_meson_cross_file(root, "gumbo");
+    let cross_file = cross_file
+        .to_str()
+        .context("kobo-options.txt path must be UTF-8")?;
     cmd::run(
         "meson",
         &[
@@ -326,7 +341,7 @@ fn build_gumbo(build_dir: &Path) -> Result<()> {
             "-Dfuzz=false",
             "-Dpython=false",
             "--cross-file",
-            "kobo-options.txt",
+            cross_file,
             "build",
         ],
         build_dir,

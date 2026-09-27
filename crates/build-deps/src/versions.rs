@@ -57,16 +57,6 @@ pub const SONAMES: &[&str] = &[
     "libmupdf.so",
 ];
 
-/// Patch series applied to the MuPDF source tree to add WebP support.
-///
-/// Applied by [`crate::build::mupdf::apply_webp_patches_if_needed`]
-/// and by [`crate::build::kobo::source::apply_patches`] when building MuPDF.
-pub const MUPDF_WEBP_PATCHES: &[&str] = &[
-    "webp-upstream-697749-kobo.patch",
-    "webp-image-h-kobo.patch",
-    "webp-load-webp-deviations-kobo.patch",
-];
-
 /// Cross-compilation environment variables injected when `cargo xtask
 /// build-kobo` runs `cargo build` for the Kobo ARM target.
 ///

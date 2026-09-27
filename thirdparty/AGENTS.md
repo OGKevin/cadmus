@@ -17,11 +17,10 @@ libraries earlier in the list. Respect this ordering when adding new entries.
 Each subdirectory is a git submodule containing upstream source code. Build
 patches and additional files are kept in `build-scripts/<lib>/`:
 
-- `kobo.patch` — applied before building. Used when upstream sources need
-  modification for the cross-compilation environment.
-- Additional patches named `*-kobo.patch` — when a library requires
-  multiple patches (e.g. from different origins), each gets a descriptive
-  name with a `-kobo` suffix.
+- Standard patch tiers — see [`build-scripts/AGENTS.md`](../build-scripts/AGENTS.md)
+  and [`build-scripts/README.md`](../build-scripts/README.md):
+  `generic/`, `native/` (`.gitkeep` when empty), and `kobo/`. Every patched
+  library should use this layout even when only one tier has `.patch` files.
 - `README-kobo.md` — Kobo-specific notes: patch provenance, deviations
   from upstream, and build quirks for the cross-compilation target.
 - `README-cadmus.md` — project-specific notes: why the library is needed,
@@ -31,8 +30,8 @@ patches and additional files are kept in `build-scripts/<lib>/`:
 
 ## Patched libraries
 
-Some libraries carry a `kobo.patch` in their `build-scripts/<lib>/`
-directory. Common reasons for patching:
+Some libraries carry patches under `build-scripts/<lib>/generic/` and/or
+`build-scripts/<lib>/kobo/`. Common reasons for patching:
 
 - Replacing pkg-config dependency lookups with hard-coded paths to sibling
   thirdparty build directories (needed because pkg-config is unavailable
@@ -72,5 +71,5 @@ submodule — no manual Renovate configuration is required.
 - Update the submodule commit in `.gitmodules` when upgrading a library.
 - Insert new libraries at the correct position in `LIBRARY_NAMES` (respecting
   the dependency chain).
-- Prefer a `kobo.patch` over modifying build logic to work around upstream
+- Prefer a patch file over modifying build logic to work around upstream
   issues — patches make the delta explicit and reviewable.

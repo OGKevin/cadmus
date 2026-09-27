@@ -9,7 +9,7 @@
 //!   without cross-compilation.
 //!
 //! The [`mupdf`] module holds the cross-flow MuPDF source
-//! preparation (WebP support patches) shared by both [`kobo`] and
+//! preparation (`generic/` + `kobo/` patches) shared by both [`kobo`] and
 //! [`native`].
 //!
 //! The [`mupdf_wrapper`] module compiles the small C glue library

@@ -5,23 +5,22 @@
 //! target only supplies its platform-specific pieces (WebP include
 //! path, `OS=kobo`, native-only output disables, …).
 //!
-//! Both flows also apply the Cadmus WebP support patch series to a
-//! MuPDF source tree before it is compiled. The series is defined in
-//! [`crate::versions::MUPDF_WEBP_PATCHES`] and is identical for both
-//! targets, so the application logic lives here in one place.
+//! Both flows apply Cadmus patches from `build-scripts/mupdf/{generic,kobo}/`
+//! before compile. Patch application is centralized in [`crate::patches`];
+//! the native flow uses [`crate::patches::PatchProfile::Native`].
 //!
-//! A `.webp-patched` marker file is written under the patched tree on
-//! success. Re-application is skipped while the marker is present,
-//! which keeps re-runs cheap when the build tree is reused (the
-//! native flow) and stays correct when the build tree is recreated
-//! from scratch (the Kobo flow).
+//! A [`.patches-applied`](crate::markers::PATCHES_APPLIED_MARKER) marker
+//! file is written under the patched tree on success. Re-application is
+//! skipped while the marker is present, which keeps re-runs cheap when
+//! the build tree is reused (the native flow) and stays correct when the
+//! build tree is recreated from scratch (the Kobo flow).
 
 use std::path::Path;
 
 use anyhow::{Context, Result};
 
-use crate::cmd;
 use crate::markers;
+use crate::patches;
 
 /// `make` variables passed to every MuPDF `libs` build (native and Kobo).
 pub const MAKE_LIBS_ARGS: &[&str] = &[
@@ -51,40 +50,25 @@ pub fn make_libs_invocation(xcflags: &str, extra: &[&str], xlibs: Option<&str>) 
     args
 }
 
-/// Apply the Cadmus WebP support patch series to a MuPDF source tree
-/// if the patches have not been applied yet.
+/// Apply sorted MuPDF patches when not already applied.
 ///
-/// A `.webp-patched` marker file is written under `mupdf_dir` after a
-/// successful application and re-applications are skipped while it
-/// exists. Returns `Ok(true)` when patches were applied during this
-/// call, `Ok(false)` when they were already in place.
-///
-/// # Errors
-///
-/// Returns an error if the patch list cannot be enumerated, any patch
-/// fails to apply, or the marker file cannot be written.
-pub fn apply_webp_patches_if_needed(mupdf_dir: &Path, root: &Path) -> Result<bool> {
-    if markers::is_webp_patched(mupdf_dir) {
-        println!("MuPDF WebP patches already applied.");
+/// Returns `Ok(true)` when patches were applied during this call,
+/// `Ok(false)` when they were already in place.
+pub fn apply_mupdf_patches_if_needed(
+    mupdf_dir: &Path,
+    root: &Path,
+    profile: patches::PatchProfile,
+) -> Result<bool> {
+    if markers::is_patches_applied(mupdf_dir) {
+        println!("MuPDF patches already applied.");
         return Ok(false);
     }
 
-    println!("Applying MuPDF WebP patches...");
+    println!("Applying MuPDF patches...");
     let patches_dir = root.join("build-scripts/mupdf");
-    for patch in crate::versions::MUPDF_WEBP_PATCHES {
-        let patch_path = patches_dir.join(patch);
-        let patch_str = patch_path
-            .to_str()
-            .context("patch path is not valid UTF-8")?;
-        cmd::run("patch", &["-p", "1", "-i", patch_str], mupdf_dir, &[])
-            .with_context(|| format!("failed to apply {patch}"))?;
-    }
+    patches::apply_sorted_patches(mupdf_dir, &patches_dir, profile)
+        .context("failed to apply MuPDF patches")?;
 
-    markers::write_marker(
-        mupdf_dir,
-        markers::WEBP_PATCHED_MARKER,
-        "mupdf",
-        "WebP patch",
-    )?;
+    markers::write_marker(mupdf_dir, markers::PATCHES_APPLIED_MARKER, "mupdf", "patch")?;
     Ok(true)
 }
