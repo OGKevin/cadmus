@@ -35,6 +35,13 @@
 # Contributor Guide
 
 - [Development Environment](contributing/devenv-setup.md)
+- [Third-party libraries](contributing/thirdparty/index.md)
+  - [Patch tiers](contributing/thirdparty/patches.md)
+  - [MuPDF](contributing/thirdparty/mupdf.md)
+  - [HarfBuzz](contributing/thirdparty/harfbuzz.md)
+  - [Gumbo](contributing/thirdparty/gumbo.md)
+  - [DjVuLibre](contributing/thirdparty/djvulibre.md)
+  - [SQLite](contributing/thirdparty/sqlite.md)
 - [SSH](contributing/ssh.md)
 - [Code Style and Linting](contributing/code-style.md)
 - [Event System](contributing/event-system.md)

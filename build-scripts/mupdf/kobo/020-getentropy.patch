@@ -1,0 +1,59 @@
+diff -ru a/source/fitz/random.c b/source/fitz/random.c
+--- a/source/fitz/random.c
++++ b/source/fitz/random.c
+@@ -33,6 +33,12 @@
+ #include <sys/random.h> // for getentropy()
+ #else
+ #include <unistd.h> // for getentropy()
++#ifdef __GLIBC__
++#include <features.h>
++#if defined(__GLIBC_PREREQ) && !__GLIBC_PREREQ(2, 25)
++#define MUPDF_NO_GETENTROPY 1
++#endif
++#endif
+ #endif
+ #endif
+ 
+@@ -72,6 +78,32 @@
+ 		fz_pack_uint32_le(s + i, random());
+ }
+ 
++#if defined(MUPDF_NO_GETENTROPY)
++#include <fcntl.h>
++
++static int read_urandom(unsigned char *buf, size_t len)
++{
++	int fd;
++	size_t off;
++
++	fd = open("/dev/urandom", O_RDONLY);
++	if (fd < 0)
++		return -1;
++	for (off = 0; off < len; )
++	{
++		ssize_t n = read(fd, buf + off, len - off);
++		if (n <= 0)
++		{
++			close(fd);
++			return -1;
++		}
++		off += (size_t)n;
++	}
++	close(fd);
++	return 0;
++}
++#endif
++
+ #endif
+ 
+ void fz_memrnd(fz_context *ctx, unsigned char *data, int len)
+@@ -95,6 +127,9 @@
+ 		// Android before 9.0 does not have getentropy(), but does have
+ 		// arc4random_buf that sources from /dev/urandom.
+ 		arc4random_buf(entropy, sizeof entropy);
++#elif defined(MUPDF_NO_GETENTROPY)
++		if (read_urandom(entropy, sizeof entropy) < 0)
++			getentropy_fallback(entropy, sizeof entropy);
+ #else
+ 		if (getentropy(entropy, sizeof entropy) < 0)
+ 			getentropy_fallback(entropy, sizeof entropy);

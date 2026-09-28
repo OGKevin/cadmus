@@ -66,10 +66,10 @@ use anyhow::{Context, Result};
 
 use crate::versions;
 
-/// File name written into a MuPDF source tree after the WebP support
-/// patches have been applied. Presence of this file indicates the
-/// patches are already in place and re-application can be skipped.
-pub const WEBP_PATCHED_MARKER: &str = ".webp-patched";
+/// File name written into a MuPDF source tree after Cadmus patches
+/// have been applied. Presence of this file indicates the patches are
+/// already in place and re-application can be skipped.
+pub const PATCHES_APPLIED_MARKER: &str = ".patches-applied";
 
 /// File name written into a per-library build directory after the
 /// library's build recipe has completed successfully.
@@ -320,9 +320,9 @@ pub fn mark_version(dir: &Path, name: &str, version: &str) -> Result<()> {
     Ok(())
 }
 
-/// Returns `true` if [`WEBP_PATCHED_MARKER`] is present in `mupdf_dir`.
-pub fn is_webp_patched(mupdf_dir: &Path) -> bool {
-    mupdf_dir.join(WEBP_PATCHED_MARKER).exists()
+/// Returns `true` if [`PATCHES_APPLIED_MARKER`] is present in `mupdf_dir`.
+pub fn is_patches_applied(mupdf_dir: &Path) -> bool {
+    mupdf_dir.join(PATCHES_APPLIED_MARKER).exists()
 }
 
 /// Write an empty marker file at `<dir>/<marker>`, recording that the
@@ -478,9 +478,9 @@ mod tests {
     #[test]
     fn digest_dir_changes_when_file_contents_change() {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("kobo.patch"), b"one").unwrap();
+        std::fs::write(tmp.path().join("000-kobo.patch"), b"one").unwrap();
         let before = digest_dir(tmp.path()).unwrap();
-        std::fs::write(tmp.path().join("kobo.patch"), b"two").unwrap();
+        std::fs::write(tmp.path().join("000-kobo.patch"), b"two").unwrap();
         let after = digest_dir(tmp.path()).unwrap();
         assert_ne!(before, after);
         assert_eq!(before.len(), 64);

@@ -18,7 +18,8 @@
 //! * The **native** flow (Linux or macOS development hosts) uses
 //!   system libraries through `pkg-config` and is exposed by
 //!   [`build::native`]. The MuPDF source tree is copied into a
-//!   per-target directory, the WebP support patches are applied, and
+//!   per-target directory, MuPDF patches from `build-scripts/mupdf/` are
+//!   applied, and
 //!   that patched tree is the canonical source of truth used both for
 //!   the compiled library and for the `mupdf_wrapper` C glue.
 //! * The **Kobo** cross-build targets `arm-unknown-linux-gnueabihf`
@@ -36,6 +37,7 @@ pub mod cargo_features;
 pub mod cmd;
 pub mod manifest;
 pub mod markers;
+pub mod patches;
 pub mod utils;
 pub mod versions;
 

@@ -34,7 +34,9 @@ This guide covers setup on both Linux and macOS.
    >
    > Other thirdparty C/C++ dependencies (MuPDF, libwebp, zlib, etc.) are
    > tracked as git submodules and built automatically by `build.rs` when
-   > you run `cargo build` or `cargo xtask run-emulator`.
+   > you run `cargo build` or `cargo xtask run-emulator`. Library inventory
+   > and per-library notes: [Third-party libraries](thirdparty/index.md).
+   > Patch tiers and apply order: [Patch tiers](thirdparty/patches.md).
 
 3. Download the packaged runtime assets used by Kobo builds:
 

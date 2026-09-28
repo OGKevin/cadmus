@@ -92,8 +92,12 @@ pub fn ensure_native_artifacts(root: &Path) -> Result<NativeArtifacts> {
         if !markers::is_built(root, &mupdf_build, "thirdparty/mupdf") {
             remove_build_dir(&mupdf_build)?;
             utils::cp_r(&mupdf_src, &mupdf_build).context("failed to copy mupdf source")?;
-            mupdf::apply_webp_patches_if_needed(&mupdf_build, root)
-                .context("failed to apply MuPDF WebP patches")?;
+            mupdf::apply_mupdf_patches_if_needed(
+                &mupdf_build,
+                root,
+                crate::patches::PatchProfile::Native,
+            )
+            .context("failed to apply MuPDF patches")?;
             build_mupdf_native(root).context("failed to build MuPDF")?;
         }
     }
@@ -666,44 +670,23 @@ mod tests {
     }
 
     #[test]
-    fn apply_mupdf_webp_patches_writes_marker_and_is_idempotent() {
-        let root = tempfile::tempdir().unwrap();
-        let mupdf = root.path().join("mupdf");
-        let patches = root.path().join("build-scripts/mupdf");
-        std::fs::create_dir_all(&patches).unwrap();
-
-        let source = mupdf.join("hello.txt");
-        std::fs::create_dir_all(source.parent().unwrap()).unwrap();
-        std::fs::write(&source, "first\n").unwrap();
-
-        let patch = patches.join("hello-kobo.patch");
-        std::fs::write(
-            &patch,
-            "--- a/hello.txt\n+++ b/hello.txt\n@@ -1 +1 @@\n-first\n+second\n",
-        )
-        .unwrap();
-
-        // We can't easily override `MUPDF_WEBP_PATCHES` from the test
-        // because it is a `pub const`. Instead, exercise the marker
-        // helper directly: writing the marker twice must leave a
-        // single file behind and `is_webp_patched` must report true
-        // on the second call.
-        let marker_dir = mupdf.clone();
+    fn mupdf_patch_marker_is_idempotent() {
+        let marker_dir = tempfile::tempdir().unwrap();
         crate::markers::write_marker(
-            &marker_dir,
-            crate::markers::WEBP_PATCHED_MARKER,
+            marker_dir.path(),
+            crate::markers::PATCHES_APPLIED_MARKER,
             "mupdf",
-            "WebP patch",
+            "patch",
         )
         .unwrap();
-        assert!(crate::markers::is_webp_patched(&marker_dir));
+        assert!(crate::markers::is_patches_applied(marker_dir.path()));
         crate::markers::write_marker(
-            &marker_dir,
-            crate::markers::WEBP_PATCHED_MARKER,
+            marker_dir.path(),
+            crate::markers::PATCHES_APPLIED_MARKER,
             "mupdf",
-            "WebP patch",
+            "patch",
         )
         .unwrap();
-        assert!(crate::markers::is_webp_patched(&marker_dir));
+        assert!(crate::markers::is_patches_applied(marker_dir.path()));
     }
 }

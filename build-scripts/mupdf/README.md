@@ -1,17 +1,21 @@
 # MuPDF Patches for Cadmus
 
-This directory contains the upstream MuPDF source tree (currently 1.27.0) plus
-Cadmus-specific patches. The patches are applied automatically by the
-`build-deps` crate's `build.rs` during compilation.
+Cadmus-specific MuPDF patches for Kobo cross-builds and native host builds.
+Patches live under `generic/` (shared), `native/` (host-only; may be empty),
+and `kobo/` (Kobo cross-compile). The active [`PatchProfile`](../../crates/build-deps/src/patches.rs)
+selects a tier stack (`generic` plus that tier). Files from the stack are merged and applied in
+**sorted file-name order** by
+[`crates/build-deps/src/patches.rs`](../../crates/build-deps/src/patches.rs).
 
 ## Patch overview
 
-| Patch                                  | Origin            | What it does                                                                                                                                                                                                               |
-| -------------------------------------- | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `kobo.patch`                           | Custom            | Build-system tweaks for the Kobo ARM cross-compile target.                                                                                                                                                                 |
-| `webp-upstream-697749-kobo.patch`      | KOReader verbatim | Complete upstream WebP support patch from [koreader/koreader-base](https://github.com/koreader/koreader-base/blob/master/thirdparty/mupdf/webp-upstream-697749.patch). See provenance below.                               |
-| `webp-image-h-kobo.patch`              | Custom            | Adds `fz_load_webp` / `fz_load_webp_info` declarations to `include/mupdf/fitz/image.h`. Our C wrapper code includes this header directly, whereas the upstream patch only adds declarations to the internal `image-imp.h`. |
-| `webp-load-webp-deviations-kobo.patch` | Cadmus            | All Cadmus-specific deviations from the upstream `source/fitz/load-webp.c`. See details below.                                                                                                                             |
+| Patch                                              | Tier    | Origin            | What it does                                                                                                                                                                                                               |
+| -------------------------------------------------- | ------- | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `kobo/000-kobo.patch`                              | kobo    | Custom            | Build-system tweaks for the Kobo ARM cross-compile target.                                                                                                                                                                 |
+| `kobo/020-getentropy.patch`                        | kobo    | Cadmus            | Avoids `getentropy()` when glibc &lt; 2.25 (Kobo cross sysroot). MuPDF 1.28+ ChaCha20 PRNG: [b4482e76](https://github.com/ArtifexSoftware/mupdf/commit/b4482e76). Not applied on native host builds.                       |
+| `generic/100-webp-upstream-697749-kobo.patch`      | generic | KOReader verbatim | Complete upstream WebP support patch from [koreader/koreader-base](https://github.com/koreader/koreader-base/blob/master/thirdparty/mupdf/webp-upstream-697749.patch). See provenance below.                               |
+| `generic/110-webp-image-h-kobo.patch`              | generic | Custom            | Adds `fz_load_webp` / `fz_load_webp_info` declarations to `include/mupdf/fitz/image.h`. Our C wrapper code includes this header directly, whereas the upstream patch only adds declarations to the internal `image-imp.h`. |
+| `generic/120-webp-load-webp-deviations-kobo.patch` | generic | Cadmus            | All Cadmus-specific deviations from the upstream `source/fitz/load-webp.c`. See details below.                                                                                                                             |
 
 ## Provenance of the WebP patches
 
@@ -26,13 +30,13 @@ The WebP support originates from three sources:
 
 3. **Cadmus** – Applied additional fixes on top of the KOReader patch.
 
-### The `webp-upstream-697749-kobo.patch` is included verbatim
+### The `100-webp-upstream-697749-kobo.patch` is included verbatim
 
 This file is byte-for-byte identical to KOReader's upstream patch so that the
 provenance chain is unambiguous and easy to verify:
 
 ```bash
-curl -L https://raw.githubusercontent.com/koreader/koreader-base/master/thirdparty/mupdf/webp-upstream-697749.patch | diff - thirdparty/mupdf/webp-upstream-697749-kobo.patch
+curl -L https://raw.githubusercontent.com/koreader/koreader-base/master/thirdparty/mupdf/webp-upstream-697749.patch | diff - build-scripts/mupdf/generic/100-webp-upstream-697749-kobo.patch
 ```
 
 The upstream patch touches the following files:
@@ -48,7 +52,7 @@ The upstream patch touches the following files:
 | `source/fitz/load-webp.c`                | **New file** — WebP decoder implementation (see deviations below)                    |
 | `source/html/mobi.c`                     | Extends MOBI image detection from 8 to 12 bytes                                      |
 
-### Cadmus deviations in `webp-load-webp-deviations-kobo.patch`
+### Cadmus deviations in `120-webp-load-webp-deviations-kobo.patch`
 
 This single patch contains all changes we made to the upstream `load-webp.c`:
 
@@ -64,7 +68,7 @@ This single patch contains all changes we made to the upstream `load-webp.c`:
 | Fix `yres` copy-paste bug in `fz_load_webp_info`              | Upstream had `*yresp = info.xres` instead of `*yresp = info.yres`.                                                                                                      |
 | Add `fz_always` colorspace cleanup in `fz_load_webp_info`     | Properly drops the colorspace on both success and failure paths.                                                                                                        |
 
-### `webp-image-h-kobo.patch`
+### `110-webp-image-h-kobo.patch`
 
 The upstream patch adds `fz_load_webp` / `fz_load_webp_info` declarations to the
 internal header `source/fitz/image-imp.h`. Cadmus' C wrapper code (`mupdf_wrapper`)

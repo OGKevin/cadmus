@@ -80,9 +80,9 @@ fn build_libraries(thirdparty_dir: &Path) -> Result<()> {
                 .with_context(|| format!("failed to remove old build dir for {name}"))?;
         }
 
-        source::copy_source(&src_dir, &build_dir, name, root)?;
+        source::copy_source(&src_dir, &build_dir, name)?;
         source::apply_patches(&build_dir, name, root)?;
-        recipes::build_library(name, &build_dir)?;
+        recipes::build_library(name, &build_dir, root)?;
 
         markers::kobo_mark_built(root, &build_dir, name)?;
     }
