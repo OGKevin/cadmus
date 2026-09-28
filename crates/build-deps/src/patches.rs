@@ -143,14 +143,20 @@ mod tests {
             .unwrap()
     }
 
-    #[test]
-    fn mupdf_kobo_tiers_sorted_order() {
-        let patches_dir = workspace_root().join("build-scripts/mupdf");
-        let paths = sorted_patch_files(&patches_dir, PatchProfile::Kobo).unwrap();
-        let names: Vec<String> = paths
+    fn patch_names(patches_dir: &Path, profile: PatchProfile) -> Vec<String> {
+        sorted_patch_files(patches_dir, profile)
+            .unwrap()
             .iter()
             .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
-            .collect();
+            .collect()
+    }
+
+    #[test]
+    fn mupdf_kobo_tiers_sorted_order() {
+        let names = patch_names(
+            &workspace_root().join("build-scripts/mupdf"),
+            PatchProfile::Kobo,
+        );
         assert_eq!(
             names,
             [
@@ -165,12 +171,10 @@ mod tests {
 
     #[test]
     fn native_mupdf_applies_generic_tier_only() {
-        let patches_dir = workspace_root().join("build-scripts/mupdf");
-        let paths = sorted_patch_files(&patches_dir, PatchProfile::Native).unwrap();
-        let names: Vec<String> = paths
-            .iter()
-            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
-            .collect();
+        let names = patch_names(
+            &workspace_root().join("build-scripts/mupdf"),
+            PatchProfile::Native,
+        );
         assert!(!names.iter().any(|n| n == "020-getentropy.patch"));
         assert!(!names.iter().any(|n| n == "000-kobo.patch"));
         assert!(names.contains(&"100-webp-upstream-697749-kobo.patch".to_string()));
@@ -293,13 +297,15 @@ mod tests {
     }
 
     #[test]
-    fn harfbuzz_kobo_profile_lists_kobo_patch() {
+    fn harfbuzz_profiles_list_generic_and_kobo_patches() {
         let patches_dir = workspace_root().join("build-scripts/harfbuzz");
-        let paths = sorted_patch_files(&patches_dir, PatchProfile::Kobo).unwrap();
-        let names: Vec<String> = paths
-            .iter()
-            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
-            .collect();
-        assert!(names.contains(&"000-kobo.patch".to_string()));
+        assert_eq!(
+            patch_names(&patches_dir, PatchProfile::Kobo),
+            ["000-kobo.patch", "010-graph-result-move.patch"]
+        );
+        assert_eq!(
+            patch_names(&patches_dir, PatchProfile::Native),
+            ["010-graph-result-move.patch"]
+        );
     }
 }
