@@ -37,7 +37,7 @@
 [submodule "thirdparty/gumbo"]
 	path = thirdparty/gumbo
 	url = https://github.com/gumbo-parser/gumbo-parser
-	branch = 0.14.0
+	branch = 0.14.1
 [submodule "thirdparty/djvulibre"]
 	path = thirdparty/djvulibre
 	url = https://github.com/barak/djvulibre
