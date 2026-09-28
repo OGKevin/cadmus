@@ -55,7 +55,17 @@ pub fn sorted_patch_files(patches_dir: &Path, profile: PatchProfile) -> Result<V
     Ok(paths)
 }
 
+fn absolute_patch_path(patch_path: &Path) -> Result<PathBuf> {
+    std::path::absolute(patch_path).with_context(|| {
+        format!(
+            "failed to resolve patch path to absolute: {}",
+            patch_path.display()
+        )
+    })
+}
+
 fn apply_one_patch(patch_path: &Path, build_dir: &Path) -> Result<()> {
+    let patch_path = absolute_patch_path(patch_path)?;
     let patch_str = patch_path
         .to_str()
         .with_context(|| format!("patch path is not valid UTF-8: {}", patch_path.display()))?;
@@ -221,6 +231,37 @@ mod tests {
             "beta\n"
         );
         assert!(apply_sorted_patches(&build_dir, &patches_dir, PatchProfile::Native).unwrap());
+        assert_eq!(
+            std::fs::read_to_string(build_dir.join("note.txt")).unwrap(),
+            "beta\n"
+        );
+    }
+
+    #[test]
+    fn apply_sorted_patches_works_when_patch_paths_are_relative_to_cwd() {
+        let tmp = tempfile::tempdir().unwrap();
+        let build_dir = tmp.path().join("build");
+        let patches_root = tmp.path().join("patches");
+        std::fs::create_dir_all(&build_dir).unwrap();
+        std::fs::create_dir_all(patches_root.join("generic")).unwrap();
+        std::fs::write(build_dir.join("note.txt"), "alpha\n").unwrap();
+
+        let patch = "\
+--- a/note.txt\n\
++++ b/note.txt\n\
+@@ -1 +1 @@\n\
+-alpha\n\
++beta\n\
+";
+        std::fs::write(patches_root.join("generic/010-note.patch"), patch).unwrap();
+
+        let relative_patches = Path::new("patches");
+        let previous = std::env::current_dir().unwrap();
+        std::env::set_current_dir(tmp.path()).unwrap();
+        let result = apply_sorted_patches(&build_dir, relative_patches, PatchProfile::Native);
+        std::env::set_current_dir(previous).unwrap();
+
+        result.unwrap();
         assert_eq!(
             std::fs::read_to_string(build_dir.join("note.txt")).unwrap(),
             "beta\n"

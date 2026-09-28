@@ -66,8 +66,14 @@ pub fn apply_mupdf_patches_if_needed(
 
     println!("Applying MuPDF patches...");
     let patches_dir = root.join("build-scripts/mupdf");
-    patches::apply_sorted_patches(mupdf_dir, &patches_dir, profile)
+    let applied = patches::apply_sorted_patches(mupdf_dir, &patches_dir, profile)
         .context("failed to apply MuPDF patches")?;
+    if !applied {
+        anyhow::bail!(
+            "no MuPDF patches found under {} for {profile:?} profile",
+            patches_dir.display()
+        );
+    }
 
     markers::write_marker(mupdf_dir, markers::PATCHES_APPLIED_MARKER, "mupdf", "patch")?;
     Ok(true)
@@ -126,5 +132,20 @@ mod tests {
 
         let again = apply_mupdf_patches_if_needed(&mupdf_dir, root, PatchProfile::Native).unwrap();
         assert!(!again);
+    }
+
+    #[test]
+    fn apply_mupdf_patches_if_needed_errors_when_no_patches_and_writes_no_marker() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let mupdf_dir = root.join("mupdf");
+        std::fs::create_dir_all(&mupdf_dir).unwrap();
+        std::fs::create_dir_all(root.join("build-scripts/mupdf/native")).unwrap();
+
+        let err = apply_mupdf_patches_if_needed(&mupdf_dir, root, PatchProfile::Native)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("no MuPDF patches found"), "unexpected: {err}");
+        assert!(!markers::is_patches_applied(&mupdf_dir));
     }
 }
