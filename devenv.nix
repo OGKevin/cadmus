@@ -24,107 +24,126 @@ let
     pkgs.lib.splitString "\n" (builtins.readFile ./.github/lint/actionlint-ignore.txt)
   );
 
-  # Rust 1.94+ changed lib/ in tarballs from a directory to a symlink.
-  # devenv's rust module calls mk-aggregated.nix directly from the rust-overlay
-  # source, bypassing pkgs overlays. lndir can't merge components when $out/lib
-  # is already a symlink, so cp --remove-destination in postBuild fails with
-  # "are the same file" on macOS.
+  # Rust 1.94+ ships `lib/` in the component tarballs as a symlink rather than
+  # a directory. `symlinkJoin` merges with `lndir`, which cannot write into a
+  # symlinked destination: it warns "lib: is a link instead of a directory" and
+  # leaves the link in place, so the remaining components' `lib` contents are
+  # never merged. mk-aggregated's `postBuild` then runs
+  # `cp --remove-destination` on paths under `$out/lib`, which resolves to the
+  # same store path as the source and fails with "are the same file".
   #
-  # Fix: wrap the produced toolchain derivation to resolve $out/lib from a
-  # symlink into a real directory before the cp step runs.
+  # Resolve `$out/lib` into a real directory at the top of each merge
+  # iteration, so every later component is merged normally. It has to happen
+  # inside the loop rather than in `postBuild`, which nixpkgs appends after the
+  # merge: by then `lndir` has already skipped the other components.
+  #
+  # The anchor below is nixpkgs' merge loop and must track it. `replaceStrings`
+  # returns its input unchanged when the pattern is absent, so a stale anchor
+  # makes this a silent no-op rather than an error — that is how the fix came
+  # to be "present but inert" on macOS. The assert turns that silent no-op into
+  # a hard evaluation error.
   fixRustToolchainLibSymlink =
     drv:
     drv.overrideAttrs (old: {
       buildCommand =
-        builtins.replaceStrings
-          [ "for i in $(cat $pathsPath); do\n" ]
-          [
-            (
-              "for i in $(cat $pathsPath); do\n"
-              + "  if [ -L \"$out/lib\" ]; then\n"
-              + "    _lib_t=$(readlink -f \"$out/lib\")\n"
-              + "    rm \"$out/lib\"\n"
-              + "    mkdir \"$out/lib\"\n"
-              + "    ${pkgs.lndir}/bin/lndir -silent \"$_lib_t\" \"$out/lib\"\n"
-              + "  fi\n"
-            )
-          ]
-          old.buildCommand;
+        let
+          mergeLoop = "for i in \"\${paths[@]}\"; do\n";
+          patched =
+            builtins.replaceStrings
+              [ mergeLoop ]
+              [
+                (
+                  mergeLoop
+                  + "  if [ -L \"$out/lib\" ]; then\n"
+                  + "    libTarget=$(${pkgs.coreutils}/bin/readlink -f \"$out/lib\")\n"
+                  + "    rm \"$out/lib\"\n"
+                  + "    mkdir \"$out/lib\"\n"
+                  + "    ${pkgs.lndir}/bin/lndir -silent \"$libTarget\" \"$out/lib\"\n"
+                  + "  fi\n"
+                )
+              ]
+              old.buildCommand;
+        in
+        assert patched != old.buildCommand
+          || throw "fixRustToolchainLibSymlink: nixpkgs symlinkJoin no longer contains the merge loop this patch anchors on; update mergeLoop";
+        patched;
     });
 
-  # Build the stable Rust toolchain the same way devenv does, but with the
-  # lib-symlink fix applied. We replicate devenv's channel != "nixpkgs" logic
-  # here so we can wrap the resulting derivation before devenv sees it.
-  rustToolchain =
-    let
-      rustOverlaySrc = inputs.rust-overlay;
-      rustBin = rustOverlaySrc.lib.mkRustBin { } pkgs.buildPackages;
+  # Build the stable Rust toolchain the way devenv does, with the lib-symlink
+  # fix applied. Replicates devenv's `channel != "nixpkgs"` wiring so the fix
+  # can wrap the derivation before devenv sees it.
+  darwinRustToolchainFix = pkgs.lib.optionalAttrs isDarwin {
+    rustToolchain =
+      let
+        rustOverlaySrc = inputs.rust-overlay;
+        rustBin = rustOverlaySrc.lib.mkRustBin { } pkgs.buildPackages;
 
-      mkAggregatedFn = import (rustOverlaySrc + "/lib/mk-aggregated.nix");
-      mkAggregatedArgs = builtins.functionArgs mkAggregatedFn;
-      mkAggregated = mkAggregatedFn (
-        {
-          inherit (pkgs)
-            lib
-            stdenv
-            symlinkJoin
-            bash
-            curl
-            ;
-          inherit (pkgs.buildPackages) rustc;
-          pkgsTargetTarget = pkgs.targetPackages;
-        }
-        // pkgs.lib.optionalAttrs (mkAggregatedArgs ? makeWrapper) { inherit (pkgs) makeWrapper; }
-        // pkgs.lib.optionalAttrs (mkAggregatedArgs ? pkgsHostHost) { inherit (pkgs) pkgsHostHost; }
-      );
+        mkAggregatedFn = import (rustOverlaySrc + "/lib/mk-aggregated.nix");
+        mkAggregatedArgs = builtins.functionArgs mkAggregatedFn;
+        mkAggregated = mkAggregatedFn (
+          {
+            inherit (pkgs)
+              lib
+              stdenv
+              symlinkJoin
+              bash
+              curl
+              ;
+            inherit (pkgs.buildPackages) rustc;
+            pkgsTargetTarget = pkgs.targetPackages;
+          }
+          // pkgs.lib.optionalAttrs (mkAggregatedArgs ? makeWrapper) { inherit (pkgs) makeWrapper; }
+          // pkgs.lib.optionalAttrs (mkAggregatedArgs ? pkgsHostHost) { inherit (pkgs) pkgsHostHost; }
+        );
 
-      toolchain = rustBin.stable.latest;
-      nativeTarget = pkgs.stdenv.hostPlatform.rust.rustcTargetSpec;
-      allTargets = pkgs.lib.unique ([ nativeTarget ] ++ [ "arm-unknown-linux-gnueabihf" ]);
-      components = [
-        "cargo"
-        "clippy"
-        "llvm-tools-preview"
-        "rustc"
-        "rustfmt"
-      ];
+        toolchain = rustBin.stable.latest;
+        nativeTarget = pkgs.stdenv.hostPlatform.rust.rustcTargetSpec;
+        allTargets = pkgs.lib.unique ([ nativeTarget ] ++ [ "arm-unknown-linux-gnueabihf" ]);
+        components = [
+          "cargo"
+          "clippy"
+          "llvm-tools-preview"
+          "rustc"
+          "rustfmt"
+        ];
 
-      availableComponents = toolchain._manifest.profiles.complete or [ ];
-      allComponents = toolchain._components or { };
+        availableComponents = toolchain._manifest.profiles.complete or [ ];
+        allComponents = toolchain._components or { };
 
-      targetComponents = builtins.map (
-        target:
-        let
-          targetComponentSet = allComponents.${target} or { };
-          targetRustStd = targetComponentSet.rust-std or null;
-        in
-        targetRustStd
-      ) allTargets;
+        targetComponents = builtins.map (
+          target:
+          let
+            targetComponentSet = allComponents.${target} or { };
+            targetRustStd = targetComponentSet.rust-std or null;
+          in
+          targetRustStd
+        ) allTargets;
 
-      resolvedComponents = builtins.map (
-        c:
-        let
-          resolvedName =
-            if builtins.elem c availableComponents then
-              c
-            else if builtins.elem "${c}-preview" availableComponents then
-              "${c}-preview"
-            else
-              throw "Component '${c}' not found";
-          toolchainComponents = builtins.removeAttrs toolchain [ "rust" ];
-        in
-        toolchainComponents.${resolvedName}
-      ) components;
+        resolvedComponents = builtins.map (
+          c:
+          let
+            resolvedName =
+              if builtins.elem c availableComponents then
+                c
+              else if builtins.elem "${c}-preview" availableComponents then
+                "${c}-preview"
+              else
+                throw "Component '${c}' not found";
+            toolchainComponents = builtins.removeAttrs toolchain [ "rust" ];
+          in
+          toolchainComponents.${resolvedName}
+        ) components;
 
-      allSelectedComponents = resolvedComponents ++ targetComponents;
+        allSelectedComponents = resolvedComponents ++ targetComponents;
 
-      profile = mkAggregated {
-        pname = "rust-stable-${toolchain._manifest.version}";
-        inherit (toolchain._manifest) version date;
-        selectedComponents = allSelectedComponents;
-      };
-    in
-    fixRustToolchainLibSymlink profile;
+        profile = mkAggregated {
+          pname = "rust-stable-${toolchain._manifest.version}";
+          inherit (toolchain._manifest) version date;
+          selectedComponents = allSelectedComponents;
+        };
+      in
+      fixRustToolchainLibSymlink profile;
+  };
 
   # cargo-diff-tools with Rust 1.70 for clap v2 compatibility.
   # Pinned nixpkgs still defaults fetchCrate to the crates.io API, which
@@ -409,9 +428,6 @@ in
       enable = true;
       channel = "stable";
       targets = [ "arm-unknown-linux-gnueabihf" ];
-      toolchain = {
-        inherit (pkgs) cargo-expand;
-      };
       components = [
         "cargo"
         "clippy"
@@ -419,7 +435,11 @@ in
         "rustc"
         "rustfmt"
       ];
-      toolchainPackage = pkgs.lib.mkForce rustToolchain;
+      rustdocflags = "-D warnings";
+      # The lib-symlink merge failure is macOS-only; on Linux leaving this
+      # alone lets devenv build the toolchain itself. Enforced by the
+      # macos-latest job in .github/workflows/devenv-test.yml.
+      toolchainPackage = pkgs.lib.mkIf isDarwin (pkgs.lib.mkForce darwinRustToolchainFix.rustToolchain);
     };
   };
 
@@ -893,8 +913,6 @@ in
   };
 
   enterShell = ''
-    export RUSTDOCFLAGS="''${RUSTDOCFLAGS:+''$RUSTDOCFLAGS }-D warnings"
-
     echo "Cadmus development environment"
     echo ""
     echo "Available commands:"
@@ -940,13 +958,17 @@ in
     echo ""
 
      echo "Linking rust source for stable access"
-     ln -fs ${config.env.RUST_SRC_PATH} ${config.env.DEVENV_STATE}/rust-lib-src
+     # rm first: `ln -fs` follows an existing symlink-to-directory and tries to
+     # create the link inside it, which fails on the read-only nix store.
+     rm -f ${config.env.DEVENV_STATE}/rust-lib-src
+     ln -s ${config.env.RUST_SRC_PATH} ${config.env.DEVENV_STATE}/rust-lib-src
   '';
 
   # https://devenv.sh/tests/
   enterTest = ''
-    echo "Running Cadmus tests"
-    cargo test --workspace
+    set -e
+    cargo xtask test --features emulator
+    cargo xtask test --features kobo
   '';
 
   treefmt = {
@@ -977,22 +999,13 @@ in
           "doc/**"
         ];
         formatter = {
-          # The treefmt-nix shfmt module does not expose a case-indent option,
-          # so we override the formatter directly to match CI's -ci flag.
+          # treefmt-nix already supplies -w, -i (via programs.shfmt.indent_size),
+          # -s (via programs.shfmt.simplify) and the file globs. Formatter
+          # settings are open submodules that merge rather than replace, so
+          # this only adds what the module has no option for: CI's -ci case
+          # indent. Repeating the other flags here just duplicates them.
           shfmt = {
-            command = "${pkgs.shfmt}/bin/shfmt";
-            options = [
-              "-i"
-              "2"
-              "-ci"
-              "-w"
-            ];
-            includes = [
-              "*.sh"
-              "*.bash"
-              "*.envrc"
-              "*.envrc.*"
-            ];
+            options = [ "-ci" ];
           };
 
           # actionlint does not support ignore patterns in its config file;
@@ -1024,14 +1037,6 @@ in
       files = "^\\.coderabbit\\.yaml$";
       entry = "${pkgs.check-jsonschema}/bin/check-jsonschema --schemafile https://coderabbit.ai/integrations/schema.v2.json .coderabbit.yaml";
       pass_filenames = false;
-    };
-    cargo-test = {
-      enable = true;
-      name = "cargo test (emulator features)";
-      entry = "cargo xtask test --features emulator";
-      files = "\\.rs$";
-      pass_filenames = false;
-      language = "system";
     };
     eslint = {
       enable = true;
