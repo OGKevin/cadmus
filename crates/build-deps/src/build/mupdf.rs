@@ -72,3 +72,59 @@ pub fn apply_mupdf_patches_if_needed(
     markers::write_marker(mupdf_dir, markers::PATCHES_APPLIED_MARKER, "mupdf", "patch")?;
     Ok(true)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::patches::PatchProfile;
+
+    #[test]
+    fn apply_mupdf_patches_if_needed_skips_when_marker_present() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mupdf_dir = tmp.path().join("mupdf");
+        std::fs::create_dir_all(&mupdf_dir).unwrap();
+        markers::write_marker(
+            &mupdf_dir,
+            markers::PATCHES_APPLIED_MARKER,
+            "mupdf",
+            "patch",
+        )
+        .unwrap();
+
+        let applied =
+            apply_mupdf_patches_if_needed(&mupdf_dir, tmp.path(), PatchProfile::Native).unwrap();
+        assert!(!applied);
+    }
+
+    #[test]
+    fn apply_mupdf_patches_if_needed_applies_generic_patches_and_writes_marker() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let mupdf_dir = root.join("mupdf");
+        let patches_dir = root.join("build-scripts/mupdf/generic");
+        std::fs::create_dir_all(&mupdf_dir).unwrap();
+        std::fs::create_dir_all(&patches_dir).unwrap();
+        std::fs::write(mupdf_dir.join("note.txt"), "alpha\n").unwrap();
+
+        let patch = "\
+--- a/note.txt\n\
++++ b/note.txt\n\
+@@ -1 +1 @@\n\
+-alpha\n\
++beta\n\
+";
+        std::fs::write(patches_dir.join("010-note.patch"), patch).unwrap();
+
+        let applied =
+            apply_mupdf_patches_if_needed(&mupdf_dir, root, PatchProfile::Native).unwrap();
+        assert!(applied);
+        assert!(markers::is_patches_applied(&mupdf_dir));
+        assert_eq!(
+            std::fs::read_to_string(mupdf_dir.join("note.txt")).unwrap(),
+            "beta\n"
+        );
+
+        let again = apply_mupdf_patches_if_needed(&mupdf_dir, root, PatchProfile::Native).unwrap();
+        assert!(!again);
+    }
+}

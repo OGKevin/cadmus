@@ -172,4 +172,93 @@ mod tests {
         assert!(PatchTier::all().contains(&PatchTier::Native));
         assert!(PatchTier::all().contains(&PatchTier::Kobo));
     }
+
+    #[test]
+    fn sorted_patch_files_empty_when_no_patches() {
+        let tmp = tempfile::tempdir().unwrap();
+        let patches_dir = tmp.path().join("lib");
+        std::fs::create_dir_all(patches_dir.join("kobo")).unwrap();
+        std::fs::write(patches_dir.join("kobo/.gitkeep"), "").unwrap();
+
+        let paths = sorted_patch_files(&patches_dir, PatchProfile::Kobo).unwrap();
+        assert!(paths.is_empty());
+    }
+
+    #[test]
+    fn apply_sorted_patches_returns_false_when_no_patches() {
+        let tmp = tempfile::tempdir().unwrap();
+        let build_dir = tmp.path().join("build");
+        let patches_dir = tmp.path().join("patches");
+        std::fs::create_dir_all(&build_dir).unwrap();
+        std::fs::create_dir_all(patches_dir.join("native")).unwrap();
+        std::fs::write(patches_dir.join("native/.gitkeep"), "").unwrap();
+
+        let applied = apply_sorted_patches(&build_dir, &patches_dir, PatchProfile::Native).unwrap();
+        assert!(!applied);
+    }
+
+    #[test]
+    fn apply_sorted_patches_applies_and_is_idempotent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let build_dir = tmp.path().join("build");
+        let patches_dir = tmp.path().join("patches");
+        std::fs::create_dir_all(&build_dir).unwrap();
+        std::fs::create_dir_all(patches_dir.join("generic")).unwrap();
+        std::fs::write(build_dir.join("note.txt"), "alpha\n").unwrap();
+
+        let patch = "\
+--- a/note.txt\n\
++++ b/note.txt\n\
+@@ -1 +1 @@\n\
+-alpha\n\
++beta\n\
+";
+        std::fs::write(patches_dir.join("generic/010-note.patch"), patch).unwrap();
+
+        assert!(apply_sorted_patches(&build_dir, &patches_dir, PatchProfile::Native).unwrap());
+        assert_eq!(
+            std::fs::read_to_string(build_dir.join("note.txt")).unwrap(),
+            "beta\n"
+        );
+        assert!(apply_sorted_patches(&build_dir, &patches_dir, PatchProfile::Native).unwrap());
+        assert_eq!(
+            std::fs::read_to_string(build_dir.join("note.txt")).unwrap(),
+            "beta\n"
+        );
+    }
+
+    #[test]
+    fn apply_sorted_patches_fails_when_patch_does_not_apply() {
+        let tmp = tempfile::tempdir().unwrap();
+        let build_dir = tmp.path().join("build");
+        let patches_dir = tmp.path().join("patches");
+        std::fs::create_dir_all(&build_dir).unwrap();
+        std::fs::create_dir_all(patches_dir.join("generic")).unwrap();
+        std::fs::write(build_dir.join("note.txt"), "wrong\n").unwrap();
+
+        let patch = "\
+--- a/note.txt\n\
++++ b/note.txt\n\
+@@ -1 +1 @@\n\
+-alpha\n\
++beta\n\
+";
+        std::fs::write(patches_dir.join("generic/010-note.patch"), patch).unwrap();
+
+        let err = apply_sorted_patches(&build_dir, &patches_dir, PatchProfile::Native)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("failed to apply"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn harfbuzz_kobo_profile_lists_kobo_patch() {
+        let patches_dir = workspace_root().join("build-scripts/harfbuzz");
+        let paths = sorted_patch_files(&patches_dir, PatchProfile::Kobo).unwrap();
+        let names: Vec<String> = paths
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        assert!(names.contains(&"000-kobo.patch".to_string()));
+    }
 }
