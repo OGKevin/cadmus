@@ -2,3 +2,4 @@ node_modules/
 public/
 out/
 .next/
+storybook-static/

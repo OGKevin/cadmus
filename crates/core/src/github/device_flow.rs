@@ -15,8 +15,15 @@ const DEV_TOKEN_ENV: &str = "GH_TOKEN";
 ///
 /// Only available in debug builds (`debug_assertions`). Release builds always
 /// return `None` so PATs cannot be injected via the environment on device.
+///
+/// Unit tests ignore the real environment so integration tests (for example
+/// [`crate::view::ota`]) stay hermetic under parallel `nextest`. Env precedence
+/// is covered by [`token_from_env_var`] and [`ResolvedAuth::load_with`].
 #[cfg(debug_assertions)]
 pub fn token_from_env() -> Option<SecretString> {
+    if cfg!(test) {
+        return None;
+    }
     token_from_env_var(std::env::var(DEV_TOKEN_ENV))
 }
 
