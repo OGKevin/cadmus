@@ -334,6 +334,7 @@ in
     pkgs.cargo-nextest
     pkgs.reviewdog
     pkgs.cargo-expand
+    pkgs.sccache
     pkgs.gnuplot
 
     # C/C++ build tools for compiling thirdparty libraries
@@ -491,6 +492,9 @@ in
     # sibling lib/ directory, so we point directly at the clang-tools package
     # that ships libclang.dylib / libclang.so.
     LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
+
+    RUSTC_WRAPPER = "${pkgs.sccache}/bin/sccache";
+    SCCACHE_CACHE_SIZE = "50G";
   };
 
   services.opentelemetry-collector = {
