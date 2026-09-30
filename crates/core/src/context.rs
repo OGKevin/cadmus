@@ -12,7 +12,7 @@ use crate::font::Fonts;
 use crate::framebuffer::{Display, Framebuffer};
 use crate::frontlight::Frontlight as _;
 use crate::geom::Rectangle;
-use crate::helpers::{Fingerprint, Fp, IsHidden, load_json};
+use crate::helpers::{Fingerprint, IsHidden, load_json};
 use crate::library::Library;
 use crate::settings::Settings;
 use crate::view::ViewId;
@@ -25,7 +25,7 @@ use rustc_hash::FxHashMap;
 use std::collections::{BTreeMap, VecDeque};
 #[cfg(test)]
 use std::env;
-use std::io;
+#[cfg(test)]
 use std::path::Path;
 use std::sync::Arc;
 use tracing::error;
@@ -164,9 +164,8 @@ impl<D: Device> Context<D> {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), level = tracing::Level::TRACE))]
-    pub fn load_keyboard_layouts(&mut self) {
-        let glob = Glob::new("**/*.json").unwrap().compile_matcher();
-
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
+    pub async fn load_keyboard_layouts(&mut self) {
         #[cfg(test)]
         let path = Path::new(
             &env::var("TEST_ROOT_DIR")
@@ -177,32 +176,43 @@ impl<D: Device> Context<D> {
         #[cfg(not(test))]
         let path = self.device.install_path(KEYBOARD_LAYOUTS_DIRNAME);
 
-        for entry in WalkDir::new(path)
-            .min_depth(1)
-            .into_iter()
-            .filter_entry(|e| !e.is_hidden())
-        {
-            if entry.is_err() {
-                continue;
-            }
-            let entry = entry.unwrap();
-            let path = entry.path();
-            if !glob.is_match(path) {
-                continue;
-            }
-            if let Ok(layout) = load_json::<Layout, _>(path)
-                .map_err(|e| error!("Can't load {}: {:#?}.", path.display(), e))
+        let layouts = match crate::runtime::spawn_blocking(move || {
+            let glob = Glob::new("**/*.json").unwrap().compile_matcher();
+            let mut layouts = Vec::new();
+            for entry in WalkDir::new(path)
+                .min_depth(1)
+                .into_iter()
+                .filter_entry(|e| !e.is_hidden())
             {
-                self.keyboard_layouts.insert(layout.name.clone(), layout);
+                let Ok(entry) = entry else { continue };
+                let path = entry.path();
+                if !glob.is_match(path) {
+                    continue;
+                }
+                match load_json::<Layout, _>(path) {
+                    Ok(layout) => layouts.push((layout.name.clone(), layout)),
+                    Err(e) => error!("Can't load {}: {:#?}.", path.display(), e),
+                }
             }
-        }
+            layouts
+        })
+        .await
+        {
+            Ok(layouts) => layouts,
+            Err(e) => {
+                error!(error = %e, "keyboard layout load task failed");
+                return;
+            }
+        };
+
+        self.keyboard_layouts.extend(layouts);
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
     pub async fn load_dictionaries(&mut self) {
         self.dictionaries.clear();
 
-        let glob = Glob::new("**/*.index").unwrap().compile_matcher();
+        let meta_by_path = crate::dictionary::index_meta_by_path(&self.database).await;
 
         #[cfg(test)]
         let path = Path::new(
@@ -215,66 +225,57 @@ impl<D: Device> Context<D> {
         #[cfg(not(test))]
         let path = self.device.data_path(DICTIONARIES_DIRNAME);
 
-        for entry in WalkDir::new(path)
-            .min_depth(1)
-            .into_iter()
-            .filter_entry(|e| !e.is_hidden())
-        {
-            if entry.is_err() {
-                continue;
-            }
-            let entry = entry.unwrap();
-            if !glob.is_match(entry.path()) {
-                continue;
-            }
-            let index_path = entry.path().to_path_buf();
-            let mut content_path = index_path.clone();
-            content_path.set_extension("dict.dz");
-            if !content_path.exists() {
-                content_path.set_extension("");
-            }
-
-            let path_key = index_path.to_string_lossy().into_owned();
-            let fp = if let Some(stored) = meta_by_path.get(&path_key) {
-                let index_path = index_path.clone();
-                move || fingerprint_dict_pair(&index_path)
-            })
-            .await
+        let entries = match crate::runtime::spawn_blocking(move || {
+            let glob = Glob::new("**/*.index").unwrap().compile_matcher();
+            let mut entries = Vec::new();
+            for entry in WalkDir::new(path)
+                .min_depth(1)
+                .into_iter()
+                .filter_entry(|e| !e.is_hidden())
             {
-                Ok(Ok(fp)) => fp,
-                Ok(Err(e)) => {
-                    tracing::warn!(
-                        path = %index_path.display(),
-                        error = %e,
-                        "failed to fingerprint index file, skipping dictionary"
-                    );
+                let Ok(entry) = entry else { continue };
+                if !glob.is_match(entry.path()) {
                     continue;
                 }
-            } else {
-                match tokio::task::spawn_blocking({
-                    let index_path = index_path.clone();
-                    move || fingerprint_dict_pair(&index_path)
-                })
-                .await
+                let index_path = entry.path().to_path_buf();
+                let mut content_path = index_path.clone();
+                content_path.set_extension("dict.dz");
+                if !content_path.exists() {
+                    content_path.set_extension("");
+                }
+                let stamp = index_path.stamp().ok();
+                entries.push((index_path, content_path, stamp));
+            }
+            entries
+        })
+        .await
+        {
+            Ok(entries) => entries,
+            Err(e) => {
+                tracing::error!(error = %e, "dictionary index walk failed");
+                return;
+            }
+        };
+
+        for (index_path, content_path, stamp) in entries {
+            let path_key = index_path.to_string_lossy().into_owned();
+            let fp = match meta_by_path.get(&path_key) {
+                Some((stored_fp, stored))
+                    if stamp.is_some_and(|current| current.is_unchanged_from(stored)) =>
                 {
-                    Ok(Ok(fp)) => fp,
-                    Ok(Err(e)) => {
+                    *stored_fp
+                }
+                Some(_) | None => match index_path.fingerprint().await {
+                    Ok(fp) => fp,
+                    Err(e) => {
                         tracing::warn!(
-                            path = %index_path.display(),
+                            path = %path_key,
                             error = %e,
                             "failed to fingerprint index file, skipping dictionary"
                         );
                         continue;
                     }
-                    Err(e) => {
-                        tracing::warn!(
-                            path = %index_path.display(),
-                            error = %e,
-                            "dictionary fingerprint task failed, skipping dictionary"
-                        );
-                        continue;
-                    }
-                }
+                },
             };
 
             let dict_result = load_dictionary_from_db(&content_path, &self.database, fp).await;
@@ -461,15 +462,6 @@ fn set_rotation<D: Device>(
     } else {
         result
     }
-}
-
-/// Fingerprints a StarDict dictionary pair by hashing only the `.index` file.
-///
-/// The `.index` and `.dict` files in a StarDict pair are always installed and
-/// replaced together, so hashing the `.index` alone is sufficient to detect
-/// any change to either file.
-fn fingerprint_dict_pair(index_path: &Path) -> io::Result<Fp> {
-    index_path.fingerprint()
 }
 
 #[cfg(test)]

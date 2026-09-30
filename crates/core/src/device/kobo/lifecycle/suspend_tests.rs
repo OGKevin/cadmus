@@ -19,25 +19,11 @@ async fn power_release_during_wake_debounce_cancels_and_restores_auto_suspend() 
     let mut harness = DeviceRuntimeHarness::new().await;
     let (_dir, _paths) = install_armed_soft_suspend(&mut harness);
     harness.context.settings.auto_suspend = 30.0;
-    harness.with_parts(|hub, bus, rq, context, runtime| {
-        crate::runtime::block_on(start_cycle(
-            context,
-            runtime.view.as_mut(),
-            hub,
-            bus,
-            rq,
-            runtime.tasks,
-        ));
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
     });
-    harness.with_parts(|hub, bus, rq, context, runtime| {
-        crate::runtime::block_on(handle_event(
-            &Event::PrepareSuspend,
-            hub,
-            bus,
-            rq,
-            context,
-            runtime,
-        ))
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::PrepareSuspend, hub, bus, rq, context, runtime)
     });
     pump_deep_idle_wake(&mut harness).await;
     assert!(lock_alarms(&mut harness).is_alarm_scheduled(AlarmType::WakeDebounce));
@@ -49,15 +35,8 @@ async fn power_release_during_wake_debounce_cancels_and_restores_auto_suspend() 
         status: ButtonStatus::Released,
         time: 0.0,
     });
-    let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
-        crate::runtime::block_on(super::Device::handle_event(
-            &wake_release,
-            hub,
-            bus,
-            rq,
-            context,
-            runtime,
-        ))
+    let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        super::Device::handle_event(&wake_release, hub, bus, rq, context, runtime)
     });
     assert_eq!(outcome, EventOutcome::Handled);
     assert!(!lock_alarms(&mut harness).has_alarm(AlarmType::WakeDebounce));
@@ -71,15 +50,8 @@ async fn power_release_during_wake_debounce_cancels_and_restores_auto_suspend() 
         status: ButtonStatus::Released,
         time: 1.0,
     });
-    let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
-        crate::runtime::block_on(super::Device::handle_event(
-            &intentional,
-            hub,
-            bus,
-            rq,
-            context,
-            runtime,
-        ))
+    let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        super::Device::handle_event(&intentional, hub, bus, rq, context, runtime)
     });
     assert_eq!(outcome, EventOutcome::Handled);
     assert!(has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
@@ -91,39 +63,18 @@ async fn power_release_after_deep_idle_timeout_retry_finishes_and_restores_auto_
     let mut harness = DeviceRuntimeHarness::new().await;
     let (_dir, _paths) = install_armed_soft_suspend(&mut harness);
     harness.context.settings.auto_suspend = 30.0;
-    harness.with_parts(|hub, bus, rq, context, runtime| {
-        crate::runtime::block_on(start_cycle(
-            context,
-            runtime.view.as_mut(),
-            hub,
-            bus,
-            rq,
-            runtime.tasks,
-        ));
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
     });
-    harness.with_parts(|hub, bus, rq, context, runtime| {
-        crate::runtime::block_on(handle_event(
-            &Event::PrepareSuspend,
-            hub,
-            bus,
-            rq,
-            context,
-            runtime,
-        ))
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::PrepareSuspend, hub, bus, rq, context, runtime)
     });
     harness
         .context
         .deep_idle_poll_inject
         .push_back(PollResult::TimedOut);
-    harness.with_parts(|hub, bus, rq, context, runtime| {
-        crate::runtime::block_on(handle_event(
-            &Event::PollDeepIdleWait,
-            hub,
-            bus,
-            rq,
-            context,
-            runtime,
-        ))
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::PollDeepIdleWait, hub, bus, rq, context, runtime)
     });
     assert!(harness.context.suspend.is_some());
     assert!(has_task(&harness.tasks, DeviceTaskId::PollDeepIdleWait));
@@ -133,15 +84,8 @@ async fn power_release_after_deep_idle_timeout_retry_finishes_and_restores_auto_
         status: ButtonStatus::Released,
         time: 0.0,
     });
-    let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
-        crate::runtime::block_on(super::Device::handle_event(
-            &wake_release,
-            hub,
-            bus,
-            rq,
-            context,
-            runtime,
-        ))
+    let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        super::Device::handle_event(&wake_release, hub, bus, rq, context, runtime)
     });
     assert_eq!(outcome, EventOutcome::Handled);
     assert!(harness.context.suspend.is_none());
@@ -177,25 +121,11 @@ async fn on_shutdown_preserves_frontlight_levels_during_deep_idle() {
         .set_warmth(expected.warmth)
         .unwrap();
 
-    harness.with_parts(|hub, bus, rq, context, runtime| {
-        crate::runtime::block_on(start_cycle(
-            context,
-            runtime.view.as_mut(),
-            hub,
-            bus,
-            rq,
-            runtime.tasks,
-        ));
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        start_cycle(context, runtime.view.as_mut(), hub, bus, rq, runtime.tasks)
     });
-    harness.with_parts(|hub, bus, rq, context, runtime| {
-        crate::runtime::block_on(handle_event(
-            &Event::PrepareSuspend,
-            hub,
-            bus,
-            rq,
-            context,
-            runtime,
-        ))
+    crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::PrepareSuspend, hub, bus, rq, context, runtime)
     });
     assert!(harness.context.suspend.is_some());
     assert_eq!(

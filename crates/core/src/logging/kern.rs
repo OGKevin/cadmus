@@ -23,8 +23,8 @@
 //! Mar 16 18:31:51 kernel: [ 3856.636842] -(0)[0:swapper/0][wlan] In HIF ISR.
 //! ```
 
-#[cfg(all(feature = "kobo", feature = "test"))]
-use std::sync::Mutex;
+#[cfg(feature = "test")]
+use crate::runtime::Job;
 
 /// Parsed kernel log entry with extracted fields.
 #[derive(Debug, PartialEq)]
@@ -100,37 +100,12 @@ fn parse_kern_log(line: &str) -> Option<ParsedKernelLog> {
     None
 }
 
-#[cfg(all(feature = "kobo", feature = "test"))]
-enum LogreadState {
-    Idle,
-    Starting,
-    Running(tokio::process::Child),
-    Stopped,
-}
-
-#[cfg(all(feature = "kobo", feature = "test"))]
-struct LogreadSlot {
-    state: LogreadState,
-    task: Option<tokio::task::JoinHandle<()>>,
-}
-
-#[cfg(all(feature = "kobo", feature = "test"))]
-impl LogreadSlot {
-    const fn new() -> Self {
-        Self {
-            state: LogreadState::Idle,
-            task: None,
-        }
-    }
-}
-
-#[cfg(all(feature = "kobo", feature = "test"))]
-static LOGREAD: Mutex<LogreadSlot> = Mutex::new(LogreadSlot::new());
-
-/// Spawns a blocking-pool task that captures kernel logs.
+/// Captures kernel logs until the returned [`Job`] is cancelled and joined.
 ///
-/// [`stop_kern_log_thread`] kills `logread` so the task can finish. The
-/// runtime otherwise waits on that blocked read during process exit.
+/// The `logread` child is owned by the job body, so cancelling drops it and
+/// `kill_on_drop` reaps it; the reader's pending read then ends and the job
+/// finishes. Callers must join the job during shutdown — the runtime otherwise
+/// waits on that blocked read during process exit.
 ///
 /// # Platform-specific behavior
 ///
@@ -154,7 +129,7 @@ static LOGREAD: Mutex<LogreadSlot> = Mutex::new(LogreadSlot::new());
 /// - `subsystem`: Kernel subsystem (e.g., "wlan") - may be empty
 /// - `message`: The actual log message
 #[cfg(all(feature = "kobo", feature = "test"))]
-pub async fn spawn_kern_log_thread() {
+pub async fn spawn_kern_log_thread() -> Option<Job> {
     use std::process::Stdio;
     use tokio::io::{AsyncBufReadExt, BufReader};
 
@@ -175,13 +150,7 @@ pub async fn spawn_kern_log_thread() {
         tracing::info!("klogd already running, reusing existing process");
     }
 
-    {
-        let mut slot = lock_mutex(&LOGREAD);
-        slot.state = LogreadState::Starting;
-        slot.task = None;
-    }
-
-    let task = tokio::spawn(async move {
+    Some(Job::spawn(move |cancel| async move {
         tracing::info!("Starting kernel log capture task");
 
         let klogd = if klogd_running {
@@ -218,24 +187,20 @@ pub async fn spawn_kern_log_thread() {
             return;
         };
 
-        {
-            let mut slot = lock_mutex(&LOGREAD);
-            match slot.state {
-                LogreadState::Starting => {
-                    slot.state = LogreadState::Running(child);
-                }
-                LogreadState::Stopped => {
-                    return;
-                }
-                LogreadState::Idle | LogreadState::Running(_) => {
-                    tracing::warn!("unexpected logread state when installing child");
-                    return;
-                }
-            }
-        }
-
         let mut lines = BufReader::new(stdout).lines();
-        while let Ok(Some(line)) = lines.next_line().await {
+        loop {
+            let line = tokio::select! {
+                () = cancel.cancelled() => break,
+                line = lines.next_line() => match line {
+                    Ok(Some(line)) => line,
+                    Ok(None) => break,
+                    Err(e) => {
+                        tracing::warn!(error = %e, "Kernel log capture read failed");
+                        break;
+                    }
+                },
+            };
+
             if let Some(parsed) = parse_kern_log(&line) {
                 tracing::debug!(
                     body = %line,
@@ -248,59 +213,19 @@ pub async fn spawn_kern_log_thread() {
                     message = %parsed.message,
                 );
             } else {
-                tracing::debug!("{}", line);
+                tracing::debug!(body = %line);
             }
         }
 
         tracing::info!("Kernel log capture task ending");
-
-        {
-            let mut slot = lock_mutex(&LOGREAD);
-            if matches!(slot.state, LogreadState::Running(_)) {
-                slot.state = LogreadState::Idle;
-            }
-        }
         drop(klogd);
-    });
-    {
-        let mut slot = lock_mutex(&LOGREAD);
-        slot.task = Some(task);
-    }
-}
-
-/// Stops kernel log capture so its task can return.
-///
-/// Kills `logread` when this process started it. `kill_on_drop` reaps it, so the
-/// reader task sees EOF and finishes before the process exits. If stop runs
-/// before the child is stored, the slot moves to [`LogreadState::Stopped`] so
-/// the starter does not install it.
-pub async fn stop_kern_log_thread() {
-    #[cfg(all(feature = "kobo", feature = "test"))]
-    {
-        let task = {
-            let mut slot = lock_mutex(&LOGREAD);
-            if let LogreadState::Running(mut child) =
-                std::mem::replace(&mut slot.state, LogreadState::Stopped)
-            {
-                let _ = child.start_kill();
-            }
-
-            slot.task.take()
-        };
-        if let Some(task) = task {
-            let _ = task.await;
-        }
-    }
-}
-
-#[cfg(all(feature = "kobo", feature = "test"))]
-fn lock_mutex<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
-    mutex.lock().unwrap_or_else(|err| err.into_inner())
+    }))
 }
 
 #[cfg(all(not(feature = "kobo"), feature = "test"))]
-pub async fn spawn_kern_log_thread() {
+pub async fn spawn_kern_log_thread() -> Option<Job> {
     tracing::debug!("Kernel log capture is a no-op on non-Kobo platforms");
+    None
 }
 
 #[cfg(test)]

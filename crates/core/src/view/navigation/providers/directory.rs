@@ -114,7 +114,7 @@ impl DirectoryNavigationProvider {
             Err(_) => return dirs,
         };
 
-        while let Ok(Some(entry)) = read_dir.next_entry().await {
+        while let Some(entry) = crate::fs::next_dir_entry(&mut read_dir).await {
             if let Ok(metadata) = entry.metadata().await
                 && metadata.is_dir()
             {

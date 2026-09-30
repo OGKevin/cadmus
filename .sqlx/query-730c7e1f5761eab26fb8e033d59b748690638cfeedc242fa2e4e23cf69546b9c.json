@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT dict_id, dict_path, fingerprint AS \"fingerprint: Fp\" FROM dictionary_index_meta",
+  "describe": {
+    "columns": [
+      {
+        "name": "dict_id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "dictionary_index_meta",
+            "name": "dict_id"
+          }
+        }
+      },
+      {
+        "name": "dict_path",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "dictionary_index_meta",
+            "name": "dict_path"
+          }
+        }
+      },
+      {
+        "name": "fingerprint: Fp",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "dictionary_index_meta",
+            "name": "fingerprint"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "730c7e1f5761eab26fb8e033d59b748690638cfeedc242fa2e4e23cf69546b9c"
+}

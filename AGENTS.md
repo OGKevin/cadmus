@@ -6,6 +6,21 @@ The emulator code path should **panic on errors** to catch issues early during
 development. The app code path should **handle errors gracefully** for a smooth
 user experience.
 
+## Nested instruction files
+
+Scope-specific conventions live next to the code they govern:
+
+- [`crates/core/AGENTS.md`](crates/core/AGENTS.md) — core crate: runtime, Jobs, async traits, views, SQL, test context.
+- [`crates/core/src/device/AGENTS.md`](crates/core/src/device/AGENTS.md) — device handlers and the test harness.
+- [`crates/core/src/device/wifi/AGENTS.md`](crates/core/src/device/wifi/AGENTS.md) — WiFi leases.
+- [`crates/core/src/task/AGENTS.md`](crates/core/src/task/AGENTS.md) — background task stop/join.
+- [`crates/core/i18n/AGENTS.md`](crates/core/i18n/AGENTS.md) — translations.
+- [`crates/cadmus/AGENTS.md`](crates/cadmus/AGENTS.md) — binary entry, event loop, shutdown.
+- [`build-scripts/AGENTS.md`](build-scripts/AGENTS.md) — thirdparty patch tiers.
+- [`docs/AGENTS.md`](docs/AGENTS.md) — documentation.
+- [`.github/workflows/AGENTS.md`](.github/workflows/AGENTS.md) — CI workflows.
+- [`thirdparty/AGENTS.md`](thirdparty/AGENTS.md) — thirdparty submodules.
+
 ## Rust Conventions
 
 - Prefer `?` over `unwrap()` / `expect()` in library and app code.
@@ -15,38 +30,17 @@ user experience.
   ioctls, hashing, large parses.
 - Never call a blocking function (`std::fs`, `Path::exists`, `std::thread::sleep`,
   a sync `Mutex` guard held across an `.await`) from an `async fn` on the Tokio
-  **worker** pool. The main app future runs on the **main thread** (see
-  `Runtime::block_on` in tests); sync I/O there freezes the UI like blocking the
-  main loop on master, but it does not starve the two worker threads. See
-  `crates/core/src/runtime.rs` for the runtime's cost model and
-  `crates/core/src/input.rs` for the `AsyncFd` reference pattern.
-- Work that outlives the current call (input pipelines, view polling, downloads)
-  must be a [`Job`](crates/core/src/runtime.rs) owned by the subsystem that
-  started it, not a bare `runtime::current_handle().spawn`. `runtime::block_on`
-  is for tests only. Short-lived helpers inside an existing job may use
-  `tokio::spawn` when they are tied to a parent [`CancellationToken`] (for
-  example per-finger hold timers under [`GesturePipeline`](crates/core/src/gesture.rs)).
+  worker pool, and never block the main thread. Details of the runtime's cost
+  model live in [`crates/core/AGENTS.md`](crates/core/AGENTS.md).
+- Work that outlives the current call must be a
+  [`Job`](crates/core/src/runtime.rs) owned by the subsystem that started it,
+  not a bare `runtime::current_handle().spawn`. See
+  [`crates/core/AGENTS.md`](crates/core/AGENTS.md) for the ownership rule and
+  [`crates/core/src/device/AGENTS.md`](crates/core/src/device/AGENTS.md) for the
+  device-handler test harness.
 - Async methods on a **public** trait must state their future's auto-trait
-  bounds. A bare `async fn` there warns (`async_fn_in_trait`): callers cannot
-  add bounds later without a breaking change, so the author has to choose.
-  Decide by object safety first, then by `Send`:
-  - **The trait is used as `dyn`** — `#[async_trait]`, the only form that stays
-    object-safe. Neither `trait_variant` nor a bare `async fn` do. A `!Send`
-    default method (boxed future, `self: Arc<Self>`, or a `where Self: Sized`
-    bound) also breaks dyn-compatibility, so dyn traits get no such helper.
-  - **Not used as `dyn`, and the future is `Send`** —
-    `#[trait_variant::make(Name: Send)]`, which states the bound without boxing
-    a future per call. See
-    <https://blog.rust-lang.org/2023/12/21/async-fn-rpit-in-traits.html>.
-  - **The future genuinely cannot be `Send`**, as with single-threaded view
-    state — `#[async_trait(?Send)]`, and say why in the trait's doc comment.
-  - Note that `trait_variant` cannot desugar a default body for an `async fn`,
-    so those methods need an explicit no-op in each impl.
-  - **Neither of the above fits** — declare the method as
-    `fn foo(..) -> impl Future<Output = T>` in the trait and `async fn foo(..)` in
-    the impl. The two spellings are allowed to mix; the declaration states the
-    bound and the impls avoid both `async_fn_in_trait` and clippy's
-    `manual_async_fn`, with no suppression. See `DeviceLifecycle`.
+  bounds; prefer the stable RPITIT form. The decision tree lives in
+  [`crates/core/AGENTS.md`](crates/core/AGENTS.md).
 - Use `thiserror` for custom error types and `anyhow` for ad-hoc errors.
 - Use iterators over index-based loops.
 - Use `&str` over `String` in function parameters when ownership is not needed.

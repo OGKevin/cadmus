@@ -334,14 +334,14 @@ mod tests {
     use crate::input::PowerSource;
     use crate::view::EntryId;
 
-    /// `handle_event` dispatches to the async handlers, so the closure passed to
-    /// the sync `with_parts` helper bridges with a test-only `block_on`.
+    /// Async handlers return a future from the `with_parts` closure; the harness
+    /// runs it on the test runtime.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn handle_power_button_ignored_when_shared() {
         let mut harness = DeviceRuntimeHarness::new().await;
         harness.context.shared = true;
-        let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
-            crate::runtime::block_on(handle_power_button_released(hub, bus, rq, context, runtime))
+        let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+            handle_power_button_released(hub, bus, rq, context, runtime)
         });
         assert_eq!(outcome, EventOutcome::Handled);
         assert!(harness.tasks.is_empty());
@@ -350,8 +350,8 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn handle_power_button_begins_suspend() {
         let mut harness = DeviceRuntimeHarness::new().await;
-        let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
-            crate::runtime::block_on(handle_power_button_released(hub, bus, rq, context, runtime))
+        let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+            handle_power_button_released(hub, bus, rq, context, runtime)
         });
         assert_eq!(outcome, EventOutcome::Handled);
         assert!(has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
@@ -361,8 +361,8 @@ mod tests {
     async fn handle_power_button_cancels_suspend() {
         let mut harness = DeviceRuntimeHarness::new().await;
         harness.push_task(DeviceTaskId::PrepareSuspend);
-        let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
-            crate::runtime::block_on(handle_power_button_released(hub, bus, rq, context, runtime))
+        let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+            handle_power_button_released(hub, bus, rq, context, runtime)
         });
         assert_eq!(outcome, EventOutcome::Handled);
         assert!(!has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
@@ -431,8 +431,8 @@ mod tests {
                 ip: "192.168.1.1".parse().unwrap(),
                 essid: Essid::new("test"),
             })));
-        let outcome = harness.with_parts(|hub, _bus, _rq, context, runtime| {
-            crate::runtime::block_on(handle_net_up(hub, context, runtime))
+        let outcome = crate::poll_parts!(harness, |hub, _bus, _rq, context, runtime| {
+            handle_net_up(hub, context, runtime)
         });
         assert_eq!(outcome, EventOutcome::Continue);
         assert!(harness.context.online);
@@ -459,8 +459,8 @@ mod tests {
             .device
             .wifi_manager_for_test()
             .set_network_info(Ok(None));
-        let outcome = harness.with_parts(|hub, _bus, _rq, context, runtime| {
-            crate::runtime::block_on(handle_net_up(hub, context, runtime))
+        let outcome = crate::poll_parts!(harness, |hub, _bus, _rq, context, runtime| {
+            handle_net_up(hub, context, runtime)
         });
         assert_eq!(outcome, EventOutcome::Continue);
         assert!(harness.context.online);
@@ -480,8 +480,8 @@ mod tests {
             .device
             .wifi_manager_for_test()
             .set_network_info(Err(crate::device::wifi::WifiError::Disabled));
-        let outcome = harness.with_parts(|hub, _bus, _rq, context, runtime| {
-            crate::runtime::block_on(handle_net_up(hub, context, runtime))
+        let outcome = crate::poll_parts!(harness, |hub, _bus, _rq, context, runtime| {
+            handle_net_up(hub, context, runtime)
         });
         assert_eq!(outcome, EventOutcome::Continue);
         assert!(harness.context.online);
@@ -497,8 +497,8 @@ mod tests {
     async fn handle_net_up_noop_when_online() {
         let mut harness = DeviceRuntimeHarness::new().await;
         harness.context.online = true;
-        let outcome = harness.with_parts(|hub, _bus, _rq, context, runtime| {
-            crate::runtime::block_on(handle_net_up(hub, context, runtime))
+        let outcome = crate::poll_parts!(harness, |hub, _bus, _rq, context, runtime| {
+            handle_net_up(hub, context, runtime)
         });
         assert_eq!(outcome, EventOutcome::Handled);
         assert!(harness.drain_hub().is_empty());
@@ -507,8 +507,8 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn handle_cover_on_sets_covered_and_begins_suspend() {
         let mut harness = DeviceRuntimeHarness::new().await;
-        let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
-            crate::runtime::block_on(handle_cover_on(hub, bus, rq, context, runtime))
+        let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+            handle_cover_on(hub, bus, rq, context, runtime)
         });
         assert_eq!(outcome, EventOutcome::Handled);
         assert!(harness.context.covered);

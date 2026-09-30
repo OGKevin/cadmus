@@ -63,15 +63,8 @@ pub(crate) async fn pump_deep_idle_wake(harness: &mut DeviceRuntimeHarness) {
             .is_some(),
         "deep-idle wait must be armed before pump"
     );
-    let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
-        crate::runtime::block_on(handle_event(
-            &Event::PollDeepIdleWait,
-            hub,
-            bus,
-            rq,
-            context,
-            runtime,
-        ))
+    let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+        handle_event(&Event::PollDeepIdleWait, hub, bus, rq, context, runtime)
     });
     assert_eq!(outcome, EventOutcome::Handled);
     assert!(

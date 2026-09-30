@@ -2,13 +2,12 @@
 //!
 //! Process entry builds one multi-thread runtime. The reactor is capped.
 //! The blocking pool uses Tokio's ceiling and creates a thread only when
-//! work is waiting. [`block_on`] exists for tests only; production callers
-//! `.await` so no worker parks (the process runtime has just two).
+//! work is waiting. Production callers `.await` so no worker parks (the
+//! process runtime has just two).
 //!
 //! There is no process-global [`Handle`] and no process-global job registry.
-//! Callers must already be on the runtime ([`enter`] or `#[tokio::test]`).
-//! Off-runtime work belongs on [`spawn_blocking`], or takes an explicit handle
-//! at spawn.
+//! Callers must already be on the runtime ([`enter`] or `#[tokio::test]`), so
+//! work that cannot be async belongs on [`spawn_blocking`].
 //!
 //! Work that outlives a call is started with [`Job`] and owned by whoever asked
 //! for it. Lifetime is the owner's `Drop`, so there is nothing for the process
@@ -136,6 +135,31 @@ where
     current_handle().spawn_blocking(f)
 }
 
+/// A cancellation observed by [`race_cancel`].
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub(crate) struct Cancelled;
+
+/// Runs `work` unless `cancel` trips first, dropping `work` when it does.
+///
+/// For I/O that must stay cancellable but has no cooperative checkpoint of its
+/// own — an HTTP request, a subprocess round trip. Gives up the borrow of `work`
+/// rather than waiting for it, so the abandoned request stops occupying a
+/// connection. `biased` makes cancellation win when both are ready in the same
+/// poll, so a cancel that lands as the result arrives is not lost.
+pub(crate) async fn race_cancel<T, E>(
+    cancel: &tokio_util::sync::CancellationToken,
+    work: impl Future<Output = Result<T, E>>,
+) -> Result<T, E>
+where
+    E: From<Cancelled>,
+{
+    tokio::select! {
+        biased;
+        _ = cancel.cancelled() => Err(E::from(Cancelled)),
+        result = work => result,
+    }
+}
+
 /// Handle for the caller's current runtime.
 ///
 /// # Panics
@@ -150,23 +174,6 @@ pub fn current_handle() -> Handle {
             std::panic::Location::caller()
         )
     })
-}
-
-/// Runs `future` to completion on the current runtime.
-///
-/// **Test-only.** Production code must `.await`; a parking `block_on` inside an
-/// `async fn` stalls a runtime worker, and the process runtime has only two.
-/// The `#[cfg]` is the guardrail: a production caller is a compile error.
-///
-/// Deliberately `#[cfg(test)]` alone — **not** `feature = "test"`. That feature
-/// is a *build kind* (`BuildKind::Test`), and also gates test-only device tasks;
-/// it says nothing about the cargo test harness, so using it here would conflate
-/// "build for testing" with "run tests".
-#[cfg(test)]
-#[track_caller]
-pub fn block_on<F: Future>(future: F) -> F::Output {
-    let handle = current_handle();
-    tokio::task::block_in_place(|| handle.block_on(future))
 }
 
 /// A background job with a known owner.
@@ -266,7 +273,8 @@ impl<T> Drop for Job<T> {
 /// while an earlier job consumes the shared budget. Jobs that outlive the
 /// deadline are aborted.
 ///
-/// Returns `true` when the shared budget ran out.
+/// Returns `true` when not every job finished within the budget — a timed-out,
+/// aborted, or panicked job.
 pub async fn finish_within_deadline(jobs: Vec<Job>, deadline: Duration) -> bool {
     for job in &jobs {
         job.cancel();
@@ -285,7 +293,7 @@ pub async fn finish_within_deadline(jobs: Vec<Job>, deadline: Duration) -> bool 
     if exceeded {
         tracing::error!(
             deadline_ms = deadline.as_millis() as u64,
-            "async shutdown deadline exceeded"
+            "async shutdown did not complete cleanly"
         );
     }
     exceeded
@@ -446,27 +454,6 @@ mod tests {
         .unwrap();
         let message = rx.recv().await.expect("hub message");
         assert!(matches!(message.event, crate::view::Event::ClockTick));
-    }
-
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn block_on_works_on_the_test_runtime() {
-        assert_eq!(block_on(async { 7 }), 7);
-    }
-
-    #[test]
-    fn enter_drives_block_on_from_the_process_runtime() {
-        enter(async {
-            assert_eq!(block_on(async { 7 }), 7);
-        });
-    }
-
-    /// [`Handle::try_current`] is thread-local, so a plain `#[test]` thread sees
-    /// no runtime even when sibling tests have one. That is what makes this
-    /// checkable in-process rather than in its own integration-test binary.
-    #[test]
-    #[should_panic(expected = "cadmus runtime handle required")]
-    fn block_on_panics_without_a_runtime() {
-        block_on(async {});
     }
 
     #[test]

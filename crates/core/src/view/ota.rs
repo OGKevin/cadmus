@@ -22,8 +22,8 @@ use crate::gesture::GestureEvent;
 use crate::github::GithubClient;
 use crate::github::device_flow;
 use crate::ota::{
-    CancelFlag, CancelFunc, DeployOutcome, OtaClient, OtaError, OtaProgress, clean_bundled_files,
-    cleanup_ota_cancel,
+    CancelFlag, CancelFunc, DeployOutcome, DownloadedArtifact, OtaClient, OtaError, OtaProgress,
+    clean_bundled_files, cleanup_ota_cancel,
 };
 use crate::unit::scale_by_dpi;
 use crate::version::{VersionComparison, get_current_version};
@@ -584,26 +584,7 @@ impl OtaView {
     /// [`Self::require_github_token`] first.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, context)))]
     async fn start_pr_download(&mut self, pr_number: u32, hub: &Hub, context: &mut AppContext) {
-        let Some(github_token) = self.effective_github_token() else {
-            tracing::error!(
-                "GitHub token is missing when starting download, this code path should be unreachable due to prior validation"
-            );
-            return;
-        };
-
-        self.begin_download();
-        let job = run_ota_download(OtaDownloadContext {
-            kind: OtaDownloadKind::Pr(pr_number),
-            hub: hub.clone(),
-            ota_view_id: self.view_id,
-            tmp_dir: context.device.tmp_dir(),
-            install_dir: context.device.install_dir(),
-            github_token: Some(github_token),
-            cancelled: Arc::clone(&self.cancelled),
-            wifi_session: context.wifi_session.clone(),
-            inhibitor: Arc::clone(&context.inhibitor),
-        });
-        self.download_job = Some(job);
+        self.start_artifact_download(OtaDownloadKind::Pr(pr_number), hub, context);
     }
 
     /// Starts a default-branch artifact download via [`run_ota_download`].
@@ -612,26 +593,7 @@ impl OtaView {
     /// [`Self::require_github_token`] first.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, context)))]
     async fn start_default_branch_download(&mut self, hub: &Hub, context: &mut AppContext) {
-        let Some(github_token) = self.effective_github_token() else {
-            tracing::error!(
-                "GitHub token is missing when starting download, this code path should be unreachable due to prior validation"
-            );
-            return;
-        };
-
-        self.begin_download();
-        let job = run_ota_download(OtaDownloadContext {
-            kind: OtaDownloadKind::DefaultBranch,
-            hub: hub.clone(),
-            ota_view_id: self.view_id,
-            tmp_dir: context.device.tmp_dir(),
-            install_dir: context.device.install_dir(),
-            github_token: Some(github_token),
-            cancelled: Arc::clone(&self.cancelled),
-            wifi_session: context.wifi_session.clone(),
-            inhibitor: Arc::clone(&context.inhibitor),
-        });
-        self.download_job = Some(job);
+        self.start_artifact_download(OtaDownloadKind::DefaultBranch, hub, context);
     }
 
     /// Starts a stable release download via [`run_ota_download`].
@@ -662,18 +624,17 @@ impl OtaView {
         };
 
         self.begin_download();
-        let job = run_ota_download(OtaDownloadContext {
-            kind: OtaDownloadKind::StableRelease,
+        self.download_job = Some(run_ota_download(OtaDownloadContext {
+            kind,
             hub: hub.clone(),
             ota_view_id: self.view_id,
             tmp_dir: context.device.tmp_dir(),
             install_dir: context.device.install_dir(),
-            github_token: self.effective_github_token(),
+            github_token,
             cancelled: Arc::clone(&self.cancelled),
             wifi_session: context.wifi_session.clone(),
             inhibitor: Arc::clone(&context.inhibitor),
-        });
-        self.download_job = Some(job);
+        }));
     }
 }
 
@@ -713,6 +674,13 @@ async fn finish_successful_deploy(hub: &Hub, install_dir: &Path, outcome: Deploy
     send_ota_progress(hub, fl!("ota-installing-and-rebooting"), 100, false);
 }
 
+fn report_artifact_download_progress(hub: &Hub, kind: OtaDownloadKind, ota_progress: OtaProgress) {
+    if let OtaProgress::DownloadingArtifact { downloaded, total } = ota_progress {
+        let percent = (downloaded as f32 / total as f32 * 100.0) as u8;
+        send_ota_progress(hub, kind.progress_label(percent), percent, true);
+    }
+}
+
 /// Sends an [`Event::OtaDownloadProgress`] update to the UI thread.
 fn send_ota_progress(hub: &Hub, label: String, percent: u8, cancelable: bool) {
     hub.send(
@@ -739,7 +707,10 @@ fn send_ota_progress(hub: &Hub, label: String, percent: u8, cancelable: bool) {
 /// install is not abandoned between the request and the exit it triggers.
 ///
 /// On user cancellation, deletes partial download and staging files via
-/// [`finish_ota_cancelled`] and closes the view without rebooting.
+/// [`finish_ota_cancelled`] and closes the view without rebooting. Every phase
+/// that waits on the network — the WiFi lease, scope verification and the
+/// artifact lookup — observes the cancel token, so a press takes effect there
+/// rather than when the request happens to return.
 ///
 /// On a 401 or insufficient-scopes response, sends [`Event::Github`] with
 /// [`GithubEvent::TokenInvalid`] without closing the view so re-authentication
@@ -865,19 +836,25 @@ fn run_ota_download(ctx: OtaDownloadContext) -> crate::runtime::Job {
             };
             let download_result = match kind {
                 OtaDownloadKind::Pr(pr_number) => {
-                    client
-                        .download_pr_artifact(pr_number, progress, Some(cancelled.as_ref()))
-                        .await
+                    crate::runtime::race_cancel(
+                        &job_cancel,
+                        client.download_pr_artifact(pr_number, progress, Some(cancelled.as_ref())),
+                    )
+                    .await
                 }
                 OtaDownloadKind::DefaultBranch => {
-                    client
-                        .download_default_branch_artifact(progress, Some(cancelled.as_ref()))
-                        .await
+                    crate::runtime::race_cancel(
+                        &job_cancel,
+                        client.download_default_branch_artifact(progress, Some(cancelled.as_ref())),
+                    )
+                    .await
                 }
                 OtaDownloadKind::StableRelease => {
-                    client
-                        .download_stable_release_artifact(progress, Some(cancelled.as_ref()))
-                        .await
+                    crate::runtime::race_cancel(
+                        &job_cancel,
+                        client.download_stable_release_artifact(progress, Some(cancelled.as_ref())),
+                    )
+                    .await
                 }
             };
 
@@ -886,16 +863,17 @@ fn run_ota_download(ctx: OtaDownloadContext) -> crate::runtime::Job {
                 return false;
             }
             match download_result {
-                Ok(artifact_path) => {
+                Ok(artifact) => {
                     info!("Download completed, starting deployment");
-                    let deploy_result = match kind {
-                        OtaDownloadKind::StableRelease => {
-                            client.deploy(artifact_path, should_cancel).await
+                    let deploy_result = match artifact {
+                        DownloadedArtifact::Bundle(path) => {
+                            client.deploy(path, should_cancel).await
                         }
-                        _ => {
-                            client
-                                .extract_and_deploy(artifact_path, should_cancel)
-                                .await
+                        DownloadedArtifact::InMemory(bytes) => {
+                            client.extract_and_deploy_bytes(bytes, should_cancel).await
+                        }
+                        DownloadedArtifact::Zipped(path) => {
+                            client.extract_and_deploy(path, should_cancel).await
                         }
                     };
 
@@ -993,6 +971,11 @@ impl OtaView {
         true
     }
 
+    /// Shows the progress screen and starts the stable-release version check.
+    ///
+    /// The check runs on a view-owned job whose token is raced against every
+    /// phase of the request, so removing the overlay — which drops the job —
+    /// abandons the request instead of waiting for it to fail or time out.
     #[inline]
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, context)))]
     async fn on_select_stable_release(&mut self, hub: &Hub, context: &mut AppContext) -> bool {
@@ -1011,7 +994,11 @@ impl OtaView {
         // so the check cannot race a radio teardown, and reports back through
         // the hub.
         self.check_job = Some(crate::runtime::Job::spawn(move |cancel| async move {
-            let outcome = Self::run_stable_release_check(github_token, tmp_dir, wifi_session).await;
+            let outcome = crate::runtime::race_cancel(
+                &cancel,
+                Self::run_stable_release_check(github_token, tmp_dir, wifi_session),
+            )
+            .await;
             if cancel.is_cancelled() {
                 return;
             }
@@ -1623,6 +1610,80 @@ mod tests {
         assert!(ota.download_in_progress);
     }
 
+    /// Reports when the request future a test raced has been dropped.
+    struct DroppedRequest(Option<tokio::sync::oneshot::Sender<()>>);
+
+    impl Drop for DroppedRequest {
+        fn drop(&mut self) {
+            if let Some(dropped) = self.0.take() {
+                dropped.send(()).ok();
+            }
+        }
+    }
+
+    /// A cancel during the API phase must not wait for the request.
+    ///
+    /// Scope verification, artifact lookup and the version check all sit in
+    /// the retry middleware for the whole client timeout, so the raced future
+    /// stands in for a request that is cancelled mid-flight and then keeps
+    /// hanging. Without the race the wait would last the full timeout.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn cancel_during_the_api_phase_does_not_wait_for_the_request() {
+        use std::time::Duration;
+
+        let cancelled = Arc::new(CancelFlag::new());
+        let token = cancelled.cancellation_token();
+        let (dropped_tx, dropped_rx) = tokio::sync::oneshot::channel();
+
+        let request = {
+            let cancelled = Arc::clone(&cancelled);
+            async move {
+                let _dropped = DroppedRequest(Some(dropped_tx));
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                cancelled.request_cancel();
+                tokio::time::sleep(Duration::from_secs(24)).await;
+                Ok(7_u32)
+            }
+        };
+
+        let outcome = tokio::time::timeout(
+            Duration::from_secs(2),
+            crate::runtime::race_cancel(&token, request),
+        )
+        .await
+        .expect("cancel must not wait out the request timeout");
+
+        assert!(matches!(outcome, Err(OtaError::Cancelled)));
+        dropped_rx
+            .await
+            .expect("the in-flight request must be dropped, not awaited");
+    }
+
+    /// The cancelled state has to reach the UI: the race reports
+    /// [`OtaError::Cancelled`], and the branch that consumes it removes the
+    /// partial download and closes the overlay on the hub.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn cancelled_download_cleans_up_and_closes_the_overlay() {
+        let tmp = tempfile::Builder::new()
+            .prefix("cadmus-ota-cancel-")
+            .tempdir()
+            .expect("tempdir");
+        let deploy_path = tmp.path().join("KoboRoot.tgz");
+        let partial = tmp.path().join("cadmus-ota-42.zip");
+        std::fs::write(&partial, b"partial").unwrap();
+
+        let (hub, mut rx) = crate::view::hub_channel();
+        let view_id = ViewId::Ota(OtaViewId::Main);
+        finish_ota_cancelled(&hub, view_id, tmp.path(), &deploy_path).await;
+
+        assert!(
+            !partial.exists(),
+            "a cancelled download must leave no partial artifact"
+        );
+        let message = rx.try_recv().expect("close event");
+        assert!(matches!(message.event, Event::Close(id) if id == view_id));
+    }
+
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_close_after_commit_does_not_cancel() {
         let mut context = create_test_context().await;
@@ -1716,7 +1777,7 @@ mod tests {
         crate::crypto::init_crypto_provider();
 
         let mut context = create_test_context().await;
-        context.load_keyboard_layouts();
+        context.load_keyboard_layouts().await;
         context.load_dictionaries().await;
 
         let (hub, mut rx) = crate::view::hub_channel();

@@ -39,7 +39,6 @@ indexmap = { version = "2.13.0", features = ["serde"] }
 arc-swap = "1"
 anyhow = "1.0.100"
 async-trait = { workspace = true }
-trait-variant = { workspace = true }
 async_zip = { workspace = true }
 thiserror = "2.0.17"
 secrecy = { version = "0.10", features = ["serde"] }

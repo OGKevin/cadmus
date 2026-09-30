@@ -239,7 +239,7 @@ impl FileChooser {
 
         match tokio::fs::read_dir(path).await {
             Ok(mut read_dir) => {
-                while let Ok(Some(entry)) = read_dir.next_entry().await {
+                while let Some(entry) = crate::fs::next_dir_entry(&mut read_dir).await {
                     if let Ok(metadata) = entry.metadata().await {
                         if metadata.is_dir() {
                             continue;

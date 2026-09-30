@@ -125,6 +125,7 @@ impl MonolingualClient {
         url: &str,
         dest: &std::path::Path,
         progress_callback: &mut F,
+        should_cancel: Option<&crate::http::CancelFlag>,
     ) -> Result<(), MonolingualError>
     where
         F: FnMut(u64, u64),
@@ -154,11 +155,11 @@ impl MonolingualClient {
         self.http
             .download(
                 url,
-                total_size,
+                Some(total_size),
                 dest,
                 |u| self.http.get(u),
                 progress_callback,
-                None,
+                should_cancel,
             )
             .await
             .map_err(|e| MonolingualError::Request(e.to_string()))

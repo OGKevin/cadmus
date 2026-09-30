@@ -250,7 +250,7 @@ impl TaskManager {
         #[cfg(feature = "tracing")]
         tracing::Span::current().record("task_id", tracing::field::display(&id));
 
-        if self.is_running(&id) {
+        if self.tasks.contains_key(&id) {
             return Err(TaskError::AlreadyRunning(id));
         }
 
@@ -377,17 +377,16 @@ impl TaskManager {
     /// Observes an event without consuming it.
     ///
     /// Must be called for every event before passing it to the view tree.
-    /// Always returns `false` — it never consumes events.
-    #[cfg_attr(
-        feature = "tracing",
-        tracing::instrument(skip(self, hub, context), ret)
-    )]
+    ///
+    /// Background tasks observe events here; they never consume them from the
+    /// main view tree (contrast [`crate::view::View::handle_event`]).
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, context)))]
     pub async fn handle_event(
         &mut self,
         evt: &Event,
         hub: &crate::view::Hub,
         context: &AppContext,
-    ) -> bool {
+    ) {
         self.cleanup_finished().await;
         self.flush_buffered_events(hub);
 
@@ -484,7 +483,6 @@ impl TaskManager {
             }
             _ => {}
         }
-        false
     }
 
     /// Schedules an import task, queuing the index if one is already running.
@@ -990,6 +988,18 @@ mod tests {
 
         wait_until_not_running(&mut manager, &id);
         assert!(!manager.is_running(&id));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn restarting_a_finished_but_unreaped_task_is_rejected() {
+        let mut manager = TaskManager::new();
+        let (hub, _rx) = crate::view::hub_channel();
+
+        let id = manager.start(Box::new(InstantTask), hub.clone()).unwrap();
+        wait_until_not_running(&mut manager, &id);
+
+        let err = manager.start(Box::new(InstantTask), hub).unwrap_err();
+        assert!(matches!(err, TaskError::AlreadyRunning(TaskId::TestTask2)));
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

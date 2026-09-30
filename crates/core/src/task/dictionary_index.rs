@@ -14,7 +14,7 @@ use crate::db::Database;
 use crate::device::inhibitor::{Inhibitor, Kind, SoftSuspendName};
 use crate::dictionary::{Entry, Metadata, normalize};
 use crate::fl;
-use crate::helpers::{Fingerprint, IsHidden};
+use crate::helpers::{Fingerprint, FingerprintStamp, Fp, IsHidden};
 use crate::task::{BackgroundTask, TaskId};
 use crate::view::notification::{NotificationEvent, PinnedProgress};
 use crate::view::{Event, ID_FEEDER, ViewId};
@@ -147,6 +147,7 @@ impl DictionaryIndexTask {
         index_path: &std::path::Path,
         path_str: &str,
         fp_str: &str,
+        stamp: Option<FingerprintStamp>,
     ) -> Option<(i64, u64, u64, bool)> {
         let pool = self.database.pool().clone();
 
@@ -169,6 +170,8 @@ impl DictionaryIndexTask {
 
         if let Some(row) = meta {
             if row.completed != 0 {
+                self.refresh_completed_index(row.dict_id, path_str, stamp)
+                    .await;
                 tracing::debug!(path = %path_str, fingerprint = %fp_str, "dictionary already indexed, skipping");
                 return None;
             }
@@ -204,11 +207,13 @@ impl DictionaryIndexTask {
         };
 
         let result = sqlx::query!(
-            r#"INSERT INTO dictionary_index_meta (fingerprint, dict_path, total_lines, indexed_lines, completed)
-                   VALUES (?, ?, ?, 0, 0)"#,
+            r#"INSERT INTO dictionary_index_meta (fingerprint, dict_path, total_lines, indexed_lines, completed, index_mtime, index_size)
+                   VALUES (?, ?, ?, 0, 0, ?, ?)"#,
             fp_str,
             path_str,
             total,
+            stamp.and_then(|s| s.mtime).map(i64::from),
+            stamp.map(|s| i64::from(s.size)),
         )
         .execute(&pool)
         .await;
@@ -227,6 +232,36 @@ impl DictionaryIndexTask {
         .ok()?;
 
         Some((dict_id, 0u64, total as u64, true))
+    }
+
+    /// Refreshes the path and stamp recorded for an already-completed row.
+    ///
+    /// A dictionary moved or touched without a content change keeps its
+    /// fingerprint, so this is what stops the path-keyed reload lookup from
+    /// missing it and hashing again on every reload.
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self), fields(path = %path_str, dict_id)))]
+    async fn refresh_completed_index(
+        &self,
+        dict_id: i64,
+        path_str: &str,
+        stamp: Option<FingerprintStamp>,
+    ) {
+        let pool = self.database.pool().clone();
+        let result = sqlx::query!(
+            r#"UPDATE dictionary_index_meta
+               SET dict_path = ?, index_mtime = ?, index_size = ?
+               WHERE dict_id = ?"#,
+            path_str,
+            stamp.and_then(|s| s.mtime).map(i64::from),
+            stamp.map(|s| i64::from(s.size)),
+            dict_id,
+        )
+        .execute(&pool)
+        .await;
+
+        if let Err(e) = result {
+            tracing::warn!(path = %path_str, error = %e, "failed to refresh dictionary index stamp");
+        }
     }
 
     /// Marks the dictionary as fully indexed in the metadata table.
@@ -406,11 +441,14 @@ impl DictionaryIndexTask {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all, fields(path = %index_path.display())))]
-    /// Indexes one `.index` file. Pinned progress is closed on normal exit,
-    /// cooperative cancel, and task abort via [`PinnedProgress`].
+    /// Indexes one `.index` file whose fingerprint and stamp the caller already
+    /// computed. Pinned progress is closed on normal exit, cooperative cancel,
+    /// and task abort via [`PinnedProgress`].
     async fn index_file(
         &self,
         index_path: &std::path::Path,
+        fp: Fp,
+        stamp: Option<FingerprintStamp>,
         hub: &crate::view::Hub,
         shutdown: &CancellationToken,
     ) {
@@ -421,26 +459,10 @@ impl DictionaryIndexTask {
             .map(|s| s.to_string_lossy().into_owned())
             .unwrap_or_else(|| path_str.clone());
 
-        let index_for_hash = index_path.to_path_buf();
-        let fp = match crate::runtime::spawn_blocking(move || index_for_hash.fingerprint()).await {
-            Ok(Ok(fp)) => fp,
-            Ok(Err(e)) => {
-                tracing::error!(path = %path_str, error = %e, "failed to fingerprint index file");
-                return;
-            }
-            Err(e) => {
-                tracing::error!(path = %path_str, error = %e, "fingerprint task join failed");
-                return;
-            }
-        };
-        if shutdown.is_cancelled() {
-            return;
-        }
-
         let fp_str = fp.to_string();
 
         let (dict_id, skip_lines, total_lines, is_new) = match self
-            .resolve_index_state(index_path, &path_str, &fp_str)
+            .resolve_index_state(index_path, &path_str, &fp_str, stamp)
             .await
         {
             Some(state) => state,
@@ -588,6 +610,10 @@ async fn purge_stale_dictionary_indexes(
     let mut deleted_any = false;
 
     for row in db_entries {
+        if shutdown.is_cancelled() {
+            break;
+        }
+
         let fp = row.fingerprint;
 
         if on_disk_set.contains(fp.as_str()) {
@@ -725,13 +751,13 @@ impl BackgroundTask for DictionaryIndexTask {
             let path = path.clone();
             let glob = glob.clone();
             let shutdown = shutdown.clone();
-            move || {
+            move || -> Option<Vec<(std::path::PathBuf, Option<FingerprintStamp>)>> {
                 if !path.is_dir() {
                     tracing::warn!(
                         path = %path.display(),
                         "dictionaries directory not found, skipping index"
                     );
-                    return Vec::new();
+                    return None;
                 }
                 let mut files = Vec::new();
                 for entry in WalkDir::new(&path)
@@ -740,20 +766,27 @@ impl BackgroundTask for DictionaryIndexTask {
                     .filter_entry(|e| !e.is_hidden())
                 {
                     if shutdown.is_cancelled() {
-                        return files;
+                        return None;
                     }
                     match entry {
-                        Ok(e) if glob.is_match(e.path()) => files.push(e.path().to_path_buf()),
+                        Ok(e) if glob.is_match(e.path()) => {
+                            let stamp = e
+                                .metadata()
+                                .ok()
+                                .map(|meta| FingerprintStamp::from_metadata(&meta));
+                            files.push((e.path().to_path_buf(), stamp));
+                        }
                         Ok(_) => {}
                         Err(e) => tracing::error!(error = %e, "failed to read directory entry"),
                     }
                 }
-                files
+                Some(files)
             }
         })
         .await
         {
-            Ok(files) => files,
+            Ok(Some(files)) => files,
+            Ok(None) => return,
             Err(e) => {
                 tracing::error!(error = %e, "dictionary scan task failed");
                 return;
@@ -761,27 +794,34 @@ impl BackgroundTask for DictionaryIndexTask {
         };
 
         if index_files.is_empty() {
+            if shutdown.is_cancelled() {
+                return;
+            }
             self.delete_stale_entries(&[], hub, shutdown).await;
             return;
         }
 
         let mut on_disk_fingerprints: Vec<String> = Vec::new();
 
-        for index_file in index_files {
+        for (index_file, stamp) in index_files {
             if shutdown.is_cancelled() {
                 return;
             }
 
-            if let Ok(Ok(fp)) = crate::runtime::spawn_blocking({
-                let entry_path = index_file.clone();
-                move || entry_path.fingerprint()
-            })
-            .await
-            {
-                on_disk_fingerprints.push(fp.to_string());
-            }
+            let fp = match index_file.fingerprint().await {
+                Ok(fp) => fp,
+                Err(e) => {
+                    tracing::error!(
+                        path = %index_file.display(),
+                        error = %e,
+                        "failed to fingerprint index file"
+                    );
+                    continue;
+                }
+            };
+            on_disk_fingerprints.push(fp.to_string());
 
-            self.index_file(&index_file, hub, shutdown).await;
+            self.index_file(&index_file, fp, stamp, hub, shutdown).await;
         }
 
         if shutdown.is_cancelled() {
@@ -932,6 +972,32 @@ mod tests {
         assert_eq!(count_entries(pool, dict_b).await, 2);
     }
 
+    #[tokio::test]
+    async fn cancelled_purge_leaves_indexes_intact() {
+        let db = setup_db().await;
+        let pool = db.pool();
+        let dict_id = insert_meta(pool, "keep-me").await;
+        insert_entry(pool, dict_id, "word", 0).await;
+
+        let shutdown = CancellationToken::new();
+        shutdown.cancel();
+        let deleted_any = purge_stale_dictionary_indexes(pool, &[], &shutdown)
+            .await
+            .expect("purge should succeed");
+
+        assert!(!deleted_any, "a cancelled purge must not delete anything");
+        let remaining = sqlx::query!("SELECT fingerprint, dict_id FROM dictionary_index_meta")
+            .fetch_all(pool)
+            .await
+            .expect("count meta");
+        assert_eq!(
+            remaining.len(),
+            1,
+            "the meta row must survive a cancelled purge"
+        );
+        assert_eq!(count_entries(pool, dict_id).await, 1);
+    }
+
     async fn write_large_index_file(path: &std::path::Path, lines: usize) {
         let mut content = String::new();
         for i in 0..lines {
@@ -956,9 +1022,12 @@ mod tests {
         let shutdown = CancellationToken::new();
         let shutdown_for_task = shutdown.clone();
 
+        let fp = index_path.fingerprint().await.expect("fingerprint");
+        let stamp = index_path.stamp().ok();
+
         let index_path_for_task = index_path.clone();
         let handle = tokio::spawn(async move {
-            task.index_file(&index_path_for_task, &hub, &shutdown_for_task)
+            task.index_file(&index_path_for_task, fp, stamp, &hub, &shutdown_for_task)
                 .await;
         });
 
@@ -984,5 +1053,45 @@ mod tests {
             saw_close,
             "cooperative cancel must close the pinned notification id"
         );
+    }
+
+    #[tokio::test]
+    async fn completed_row_refreshes_its_path_and_stamp() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let index_path = dir.path().join("moved.index");
+        tokio::fs::write(&index_path, b"word\tA\tA\n")
+            .await
+            .expect("write index");
+
+        let db = setup_db().await;
+        let dict_id = sqlx::query_scalar!(
+            "INSERT INTO dictionary_index_meta (fingerprint, dict_path, total_lines, indexed_lines, completed) VALUES (?, ?, 1, 1, 1) RETURNING dict_id",
+            "fp-completed",
+            "/stale/path.index",
+        )
+        .fetch_one(db.pool())
+        .await
+        .expect("insert completed meta");
+
+        let stamp = index_path.stamp().expect("stamp");
+        let path_str = index_path.display().to_string();
+        let task =
+            DictionaryIndexTask::new(db.clone(), dir.path().to_path_buf(), Inhibitor::noop());
+
+        let resolved = task
+            .resolve_index_state(&index_path, &path_str, "fp-completed", Some(stamp))
+            .await;
+        assert!(resolved.is_none(), "a completed row must still be skipped");
+
+        let row = sqlx::query!(
+            "SELECT dict_path, index_mtime, index_size FROM dictionary_index_meta WHERE dict_id = ?",
+            dict_id,
+        )
+        .fetch_one(db.pool())
+        .await
+        .expect("read meta");
+        assert_eq!(row.dict_path, path_str);
+        assert_eq!(row.index_mtime, stamp.mtime.map(i64::from));
+        assert_eq!(row.index_size, Some(i64::from(stamp.size)));
     }
 }

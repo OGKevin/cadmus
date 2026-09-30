@@ -365,7 +365,7 @@ impl GithubClient {
     pub async fn download<B, F>(
         &self,
         url: &str,
-        total_size: u64,
+        total_size: Option<u64>,
         dest: &PathBuf,
         request_builder: B,
         progress_callback: &mut F,
@@ -380,6 +380,41 @@ impl GithubClient {
                 url,
                 total_size,
                 dest,
+                request_builder,
+                progress_callback,
+                should_cancel,
+            )
+            .await
+    }
+
+    /// Downloads a file into memory using HTTP Range requests.
+    ///
+    /// Delegates to [`Client::download_to_vec`]. `request_builder` is called once
+    /// per chunk to produce a `RequestBuilder` for the given URL.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ChunkedDownloadError` if all retry attempts for any chunk fail.
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(skip(self, request_builder, progress_callback))
+    )]
+    pub async fn download_to_vec<B, F>(
+        &self,
+        url: &str,
+        total_size: Option<u64>,
+        request_builder: B,
+        progress_callback: &mut F,
+        should_cancel: Option<&crate::http::CancelFlag>,
+    ) -> Result<Vec<u8>, ChunkedDownloadError>
+    where
+        B: Fn(&str) -> RequestBuilder,
+        F: FnMut(u64, u64),
+    {
+        self.http
+            .download_to_vec(
+                url,
+                total_size,
                 request_builder,
                 progress_callback,
                 should_cancel,

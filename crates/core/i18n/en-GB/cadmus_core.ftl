@@ -48,6 +48,12 @@ notification-timezone-detection-failed = Timezone detection failed
 cancel = Cancel
 delete = Delete
 
+# GitHub device authorization
+device-auth-connecting = Connecting to GitHub…
+device-auth-go-to-uri = Go to: { $uri }
+device-auth-enter-code = Enter code: { $code }
+device-auth-cancelled-on-github = Authorization cancelled
+
 # Top Menu Strings
 top-menu-exit = Exit
 top-menu-reboot-device = Reboot Device

@@ -80,7 +80,7 @@ pub async fn cleanup_ota_artifacts(tmp_dir: &Path) {
         }
     };
 
-    while let Ok(Some(entry)) = read_dir.next_entry().await {
+    while let Some(entry) = crate::fs::next_dir_entry(&mut read_dir).await {
         let name = entry.file_name();
         if name.to_string_lossy().starts_with("cadmus-ota-") {
             let path = entry.path();
@@ -118,7 +118,7 @@ async fn cleanup_staging_partials(deploy_path: &Path) {
         }
     };
 
-    while let Ok(Some(entry)) = read_dir.next_entry().await {
+    while let Some(entry) = crate::fs::next_dir_entry(&mut read_dir).await {
         let name = entry.file_name();
         let name = name.to_string_lossy();
         if name.starts_with(&prefix) && name.ends_with(".partial") {

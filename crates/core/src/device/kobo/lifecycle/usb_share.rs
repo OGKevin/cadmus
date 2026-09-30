@@ -295,9 +295,9 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn handle_prepare_share_returns_error_without_settings_manager() {
         let mut harness = DeviceRuntimeHarness::new().await;
-        let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
+        let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
             runtime.settings_manager = None;
-            crate::runtime::block_on(handle_prepare_share(hub, bus, rq, context, runtime))
+            handle_prepare_share(hub, bus, rq, context, runtime)
         });
         assert_eq!(outcome, EventOutcome::Error);
     }
@@ -306,15 +306,8 @@ mod tests {
     async fn handle_prepare_share_early_return_when_shared() {
         let mut harness = DeviceRuntimeHarness::new().await;
         harness.context.shared = true;
-        let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
-            crate::runtime::block_on(handle_event(
-                &Event::PrepareShare,
-                hub,
-                bus,
-                rq,
-                context,
-                runtime,
-            ))
+        let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+            handle_event(&Event::PrepareShare, hub, bus, rq, context, runtime)
         });
         assert_eq!(outcome, EventOutcome::Handled);
     }
@@ -324,15 +317,10 @@ mod tests {
         let mut harness = DeviceRuntimeHarness::new().await;
         harness.context.shared = true;
         let hub = harness.hub_tx.clone();
-        let outcome = harness.with_runtime_only(|context, runtime| {
-            crate::runtime::block_on(handle_event(
-                &Event::Share,
-                &hub,
-                &mut Bus::new(),
-                &mut RenderQueue::new(),
-                context,
-                runtime,
-            ))
+        let mut bus = Bus::new();
+        let mut rq = RenderQueue::new();
+        let outcome = crate::poll_runtime_only!(harness, |context, runtime| {
+            handle_event(&Event::Share, &hub, &mut bus, &mut rq, context, runtime)
         });
         assert_eq!(outcome, EventOutcome::Handled);
     }

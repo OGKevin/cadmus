@@ -100,7 +100,6 @@ fn handle_update_auto_frontlight(context: &mut AppContext) {
 #[cfg(all(test, feature = "kobo"))]
 mod tests {
     use super::*;
-    use crate::device::DeviceRuntime;
     use crate::device::test_harness::DeviceRuntimeHarness;
     use crate::frontlight::LightLevels;
     use crate::task::{BackgroundTask, TaskId, TaskManager, sleep_unless_cancelled};
@@ -125,15 +124,8 @@ mod tests {
     async fn handle_event_toggle_frontlight_updates_settings() {
         let mut harness = DeviceRuntimeHarness::new().await;
         harness.context.settings.frontlight = false;
-        let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
-            crate::runtime::block_on(handle_event(
-                &Event::ToggleFrontlight,
-                hub,
-                bus,
-                rq,
-                context,
-                runtime,
-            ))
+        let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+            handle_event(&Event::ToggleFrontlight, hub, bus, rq, context, runtime)
         });
         assert_eq!(outcome, EventOutcome::Continue);
         assert!(harness.context.settings.frontlight);
@@ -151,25 +143,18 @@ mod tests {
             intensity: 50.0.into(),
             warmth: 25.0.into(),
         };
-        let outcome = {
-            let mut runtime = DeviceRuntime {
-                view: &mut harness.view,
-                history: &mut harness.history,
-                tasks: &mut harness.tasks,
-                updating: &mut harness.updating,
-                settings_manager: None,
-                startup_cwd: None,
-                background_tasks: Some(&mut background_tasks),
-            };
-            crate::runtime::block_on(handle_event(
+        let outcome = crate::poll_parts_with_background!(
+            harness,
+            &mut background_tasks,
+            |hub, bus, rq, context, runtime| handle_event(
                 &Event::SetFrontlightLevels(levels),
-                &harness.hub_tx,
-                &mut harness.bus,
-                &mut harness.rq,
-                &mut harness.context,
-                &mut runtime,
-            ))
-        };
+                hub,
+                bus,
+                rq,
+                context,
+                runtime
+            )
+        );
         assert_eq!(outcome, EventOutcome::Handled);
         assert_eq!(
             harness.context.settings.frontlight_levels.intensity,

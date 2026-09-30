@@ -3,7 +3,6 @@ use crate::input::{ButtonCode, ButtonStatus, DeviceEvent, FingerStatus};
 use crate::unit::mm_to_px;
 use crate::view::Event;
 use rustc_hash::FxHashMap;
-use std::f64;
 use std::fmt;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -603,7 +602,7 @@ async fn run_finger_hold(
         }
         if let Some(ts) = ct.get(&id) {
             let tp = &ts.positions;
-            if (ts.time - time).abs() < f64::EPSILON
+            if ts.time == time
                 && (tp[tp.len() - 1] - position).length() < hold_jitter
                 && (tp[tp.len() / 2] - position).length() < hold_jitter
             {
@@ -656,7 +655,7 @@ async fn run_finger_hold(
     }
     if let Some(ts) = ct.get_mut(&id) {
         let tp = &ts.positions;
-        if (ts.time - time).abs() < f64::EPSILON
+        if ts.time == time
             && (tp[tp.len() - 1] - position).length() < hold_jitter
             && (tp[tp.len() / 2] - position).length() < hold_jitter
         {
@@ -699,7 +698,7 @@ async fn run_button_hold(
     {
         let bt = buttons.lock().unwrap();
         match bt.get(&code) {
-            Some(&initial_time) if (initial_time - time).abs() < f64::EPSILON => {
+            Some(&initial_time) if initial_time == time => {
                 tracing::debug!(code = ?code, time, "hold button short fired");
                 ty.send(Event::Gesture(GestureEvent::HoldButtonShort(code)))
                     .ok();
@@ -722,7 +721,7 @@ async fn run_button_hold(
     }
     let bt = buttons.lock().unwrap();
     match bt.get(&code) {
-        Some(&initial_time) if (initial_time - time).abs() < f64::EPSILON => {
+        Some(&initial_time) if initial_time == time => {
             tracing::debug!(code = ?code, time, "hold button long fired");
             ty.send(Event::Gesture(GestureEvent::HoldButtonLong(code)))
                 .ok();
@@ -788,5 +787,131 @@ fn interpret_segment(sp: &[Point], tap_jitter: f32) -> GestureEvent {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::geom::Point;
+    use crate::input::{DeviceEvent, FingerStatus};
+    use std::time::Duration;
+    use tokio::sync::mpsc;
+
+    async fn next_gesture(
+        events: &mut UnboundedReceiver<Event>,
+        within: Duration,
+    ) -> Option<GestureEvent> {
+        let deadline = tokio::time::Instant::now() + within;
+        while tokio::time::Instant::now() < deadline {
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            match tokio::time::timeout(remaining, events.recv()).await {
+                Ok(Some(Event::Gesture(gesture))) => return Some(gesture),
+                Ok(Some(_)) => {}
+                Ok(None) | Err(_) => return None,
+            }
+        }
+        None
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn finger_hold_short_fires_when_contact_timestamp_unchanged() {
+        let (device_tx, device_rx) = mpsc::unbounded_channel();
+        let pipeline = GesturePipeline::start(device_rx, 300);
+        let mut events = pipeline.events;
+        let position = Point::new(10, 10);
+        let down_time = 42.0;
+
+        device_tx
+            .send(DeviceEvent::Finger {
+                id: 1,
+                time: down_time,
+                status: FingerStatus::Down,
+                position,
+            })
+            .unwrap();
+
+        let gesture =
+            next_gesture(&mut events, HOLD_DELAY_SHORT + Duration::from_millis(250)).await;
+
+        assert!(matches!(
+            gesture,
+            Some(GestureEvent::HoldFingerShort(pt, 1)) if pt == position
+        ));
+
+        drop(device_tx);
+        let _ = pipeline.job.join(Duration::from_secs(1)).await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn finger_hold_short_not_fired_after_release() {
+        let (device_tx, device_rx) = mpsc::unbounded_channel();
+        let pipeline = GesturePipeline::start(device_rx, 300);
+        let mut events = pipeline.events;
+        let position = Point::new(5, 5);
+
+        device_tx
+            .send(DeviceEvent::Finger {
+                id: 2,
+                time: 1.0,
+                status: FingerStatus::Down,
+                position,
+            })
+            .unwrap();
+        device_tx
+            .send(DeviceEvent::Finger {
+                id: 2,
+                time: 1.1,
+                status: FingerStatus::Up,
+                position,
+            })
+            .unwrap();
+
+        let gesture =
+            next_gesture(&mut events, HOLD_DELAY_SHORT + Duration::from_millis(250)).await;
+
+        assert!(!matches!(
+            gesture,
+            Some(GestureEvent::HoldFingerShort(_, 2))
+        ));
+
+        drop(device_tx);
+        let _ = pipeline.job.join(Duration::from_secs(1)).await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn finger_hold_short_uses_latest_down_timestamp() {
+        let (device_tx, device_rx) = mpsc::unbounded_channel();
+        let pipeline = GesturePipeline::start(device_rx, 300);
+        let mut events = pipeline.events;
+        let position = Point::new(0, 0);
+
+        device_tx
+            .send(DeviceEvent::Finger {
+                id: 3,
+                time: 1.0,
+                status: FingerStatus::Down,
+                position,
+            })
+            .unwrap();
+        device_tx
+            .send(DeviceEvent::Finger {
+                id: 3,
+                time: 9.0,
+                status: FingerStatus::Down,
+                position,
+            })
+            .unwrap();
+
+        let gesture =
+            next_gesture(&mut events, HOLD_DELAY_SHORT + Duration::from_millis(250)).await;
+
+        assert!(matches!(
+            gesture,
+            Some(GestureEvent::HoldFingerShort(pt, 3)) if pt == position
+        ));
+
+        drop(device_tx);
+        let _ = pipeline.job.join(Duration::from_secs(1)).await;
     }
 }

@@ -162,6 +162,10 @@ impl DeviceLifecycle for Device {
                 }
             }
         });
+        runtime.tasks.push(DeviceTask {
+            id: DeviceTaskId::WifiStartupReconcile,
+            job: startup_job,
+        });
 
         context.plugged = context
             .device
@@ -325,9 +329,10 @@ mod tests {
                 ip: "192.168.1.1".parse().unwrap(),
                 essid: Essid::new("test"),
             })));
-        harness.with_parts(|hub, _bus, _rq, context, runtime| {
-            crate::runtime::block_on(Device::on_startup(context, hub, runtime)).unwrap()
-        });
+        crate::poll_parts!(harness, |hub, _bus, _rq, context, runtime| {
+            Device::on_startup(context, hub, runtime)
+        })
+        .unwrap();
         wait_for_wifi_thread();
         assert!(!harness.context.online);
         assert_eq!(
@@ -359,9 +364,10 @@ mod tests {
                 ip: "192.168.1.1".parse().unwrap(),
                 essid: Essid::new("test"),
             })));
-        harness.with_parts(|hub, _bus, _rq, context, runtime| {
-            crate::runtime::block_on(Device::on_startup(context, hub, runtime)).unwrap()
-        });
+        crate::poll_parts!(harness, |hub, _bus, _rq, context, runtime| {
+            Device::on_startup(context, hub, runtime)
+        })
+        .unwrap();
         wait_for_wifi_thread();
         assert_eq!(
             harness
@@ -388,8 +394,8 @@ mod tests {
             status: ButtonStatus::Pressed,
             time: 0.0,
         });
-        let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
-            crate::runtime::block_on(Device::handle_event(&event, hub, bus, rq, context, runtime))
+        let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+            Device::handle_event(&event, hub, bus, rq, context, runtime)
         });
         assert_eq!(outcome, EventOutcome::Handled);
     }
@@ -397,15 +403,8 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn handle_event_check_battery_delegates() {
         let mut harness = DeviceRuntimeHarness::new().await;
-        let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
-            crate::runtime::block_on(Device::handle_event(
-                &Event::CheckBattery,
-                hub,
-                bus,
-                rq,
-                context,
-                runtime,
-            ))
+        let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+            Device::handle_event(&Event::CheckBattery, hub, bus, rq, context, runtime)
         });
         assert_eq!(outcome, EventOutcome::Handled);
     }
@@ -413,15 +412,15 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn handle_event_set_wifi_delegates() {
         let mut harness = DeviceRuntimeHarness::new().await;
-        let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
-            crate::runtime::block_on(Device::handle_event(
+        let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+            Device::handle_event(
                 &Event::SetWifiMode(crate::settings::WifiMode::AlwaysOn),
                 hub,
                 bus,
                 rq,
                 context,
                 runtime,
-            ))
+            )
         });
         assert_eq!(outcome, EventOutcome::Handled);
     }

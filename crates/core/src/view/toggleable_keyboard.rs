@@ -327,7 +327,7 @@ mod tests {
 
     async fn create_test_context_with_keyboard_data() -> AppContext {
         let mut context = create_test_context().await;
-        context.load_keyboard_layouts();
+        context.load_keyboard_layouts().await;
         context.load_dictionaries().await;
         context
     }

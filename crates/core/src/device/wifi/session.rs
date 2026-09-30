@@ -39,6 +39,8 @@ struct SessionState {
     online: bool,
     /// Whether the radio was last successfully enabled (cleared by [`WifiSession::disable_radio`]).
     radio_on: bool,
+    /// Hardware target under the radio lock; last writer wins across racing spawns.
+    desired_radio_on: bool,
     idle_since: Option<Instant>,
     /// Fired when the last lease is released into idle, so the idle-disable
     /// check can run without waiting for the next poll tick.
@@ -142,7 +144,11 @@ pub struct WifiSession {
 /// `radio_on` / online state updates while the hardware transition still
 /// finishes. The desired flag is re-read after acquiring the lock so a quick
 /// enable→disable sequence applies the latest intent, not spawn order.
-async fn apply_desired_radio_power(session: &WifiSession) -> Result<(), WifiError> {
+///
+/// Returns the state that was actually applied: `true` if the radio was enabled,
+/// `false` if it was disabled. Callers use this instead of assuming their request
+/// won, because a concurrently recorded intent is what gets applied.
+async fn apply_desired_radio_power(session: &WifiSession) -> Result<bool, WifiError> {
     let radio = Arc::clone(&session.radio);
     let state = Arc::clone(&session.state);
     let tracker = session.tracker.clone();
@@ -166,11 +172,14 @@ async fn apply_desired_radio_power(session: &WifiSession) -> Result<(), WifiErro
                 finish_disable_bookkeeping(&state, &tracker, &online);
             }
         }
-        result
+        result.map(|()| desired)
     });
     match task.await {
         Ok(result) => result,
-        Err(join) => Err(WifiError::Ioctl(join.to_string())),
+        Err(join) => {
+            tracing::error!(error = %join, "wifi radio transition task panicked");
+            Err(WifiError::Ioctl(join.to_string()))
+        }
     }
 }
 
@@ -262,6 +271,7 @@ impl WifiSession {
             mode,
             online: false,
             radio_on: false,
+            desired_radio_on: mode.wants_radio_at_rest(),
             idle_since: None,
             idle_wake: Arc::new(Notify::new()),
             hub: None,
@@ -315,6 +325,20 @@ impl WifiSession {
         sync_inhibitor_lease(&mut state, !self.tracker.is_empty());
     }
 
+    /// Records the radio state the session should settle on.
+    ///
+    /// Call this before handing the transition to a detached task, so the
+    /// recorded intent follows call order rather than task start order.
+    /// [`apply_desired_radio_power`] re-reads the flag under the radio lock, so
+    /// a later call wins even if an earlier transition is still in flight.
+    pub fn set_desired_radio_on(&self, desired: bool) {
+        let mut locked = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        if locked.desired_radio_on != desired {
+            tracing::debug!(desired, "recorded desired wifi radio state");
+        }
+        locked.desired_radio_on = desired;
+    }
+
     /// Updates the configured WiFi mode (from settings).
     #[cfg_attr(
         feature = "tracing",
@@ -324,6 +348,8 @@ impl WifiSession {
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         let previous = state.mode;
         state.mode = mode;
+        state.desired_radio_on =
+            mode.wants_radio_at_rest() || (mode != WifiMode::Off && !self.tracker.is_empty());
         if mode != WifiMode::Auto {
             state.idle_since = None;
         } else if self.tracker.is_empty() && state.online {
@@ -529,17 +555,22 @@ impl WifiSession {
                 locked.desired_radio_on = true;
             }
         }
-        if !self.is_radio_on() {
+        let applied_on = if !self.is_radio_on() {
             tracing::info!(name = %name, "enabling wifi radio for lease");
-            if let Err(error) = apply_desired_radio_power(self).await {
-                tracing::error!(name = %name, error = %error, "failed to enable wifi radio");
-                return Err(error.into());
+            match apply_desired_radio_power(self).await {
+                Ok(applied_on) => applied_on,
+                Err(error) => {
+                    tracing::error!(name = %name, error = %error, "failed to enable wifi radio");
+                    return Err(error.into());
+                }
             }
-        }
+        } else {
+            true
+        };
 
         {
             let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-            state.radio_on = true;
+            state.radio_on = applied_on;
             sync_inhibitor_lease(&mut state, !self.tracker.is_empty());
         }
 
@@ -600,19 +631,21 @@ impl WifiSession {
     /// [`WifiManager::network_info`] already reports an association (so the
     /// caller can emit [`crate::input::DeviceEvent::NetUp`] without waiting for
     /// a dhcpcd signal).
+    ///
+    /// Records `true` as the desired state before applying it. A detached caller
+    /// that can race another transition must record the intent itself and call
+    /// [`Self::apply_radio`] instead, or a late task start would clobber a newer
+    /// intent.
     #[cfg_attr(
         feature = "tracing",
         tracing::instrument(skip(self), err, level = tracing::Level::TRACE)
     )]
     pub async fn enable_radio(&self) -> Result<bool, WifiError> {
         tracing::info!("enabling wifi radio");
-        {
-            let mut locked = self.state.lock().unwrap_or_else(|e| e.into_inner());
-            locked.desired_radio_on = true;
-        }
+        self.set_desired_radio_on(true);
         let enabled = apply_desired_radio_power(self).await;
         match enabled {
-            Ok(()) => {
+            Ok(_) => {
                 let connected = self.wifi.is_enabled().await
                     && matches!(self.wifi.network_info().await, Ok(Some(_)));
                 tracing::debug!(connected, "wifi radio enabled");
@@ -625,18 +658,35 @@ impl WifiSession {
         }
     }
 
+    /// Applies the recorded radio intent without recording a new one.
+    ///
+    /// Detached transitions call this after their caller records the intent, so
+    /// a task that starts late applies the latest intent instead of overwriting
+    /// it. Returns whether the radio is enabled and associated, matching
+    /// [`Self::enable_radio`].
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(skip(self), err, level = tracing::Level::TRACE)
+    )]
+    pub async fn apply_radio(&self) -> Result<bool, WifiError> {
+        apply_desired_radio_power(self).await?;
+        Ok(self.wifi.is_enabled().await && matches!(self.wifi.network_info().await, Ok(Some(_))))
+    }
+
     /// Disables the radio and marks the session offline.
+    ///
+    /// Records `false` as the desired state before applying it. A detached
+    /// caller that can race another transition must record the intent itself and
+    /// call [`Self::apply_radio`] instead, so a late task start cannot clobber a
+    /// newer intent.
     #[cfg_attr(
         feature = "tracing",
         tracing::instrument(skip(self), err, level = tracing::Level::TRACE)
     )]
     pub async fn disable_radio(&self) -> Result<(), WifiError> {
         tracing::info!("disabling wifi radio");
-        {
-            let mut locked = self.state.lock().unwrap_or_else(|e| e.into_inner());
-            locked.desired_radio_on = false;
-        }
-        let result = apply_desired_radio_power(self).await;
+        self.set_desired_radio_on(false);
+        let result = apply_desired_radio_power(self).await.map(|_| ());
         if let Err(error) = &result {
             tracing::error!(error = %error, "failed to disable wifi radio");
         } else {
@@ -676,6 +726,104 @@ mod tests {
         let wifi = Arc::new(TestWifiManager::new());
         let session = WifiSession::new(wifi.clone(), mode);
         (session, wifi)
+    }
+
+    #[test]
+    fn set_mode_records_the_radio_intent_it_implies() {
+        for (mode, expected) in [
+            (WifiMode::AlwaysOn, true),
+            (WifiMode::Auto, false),
+            (WifiMode::Off, false),
+        ] {
+            let (session, _wifi) = session(mode);
+            session.set_mode(mode);
+            let recorded = session
+                .state
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .desired_radio_on;
+            assert_eq!(recorded, expected, "mode {mode:?}");
+        }
+    }
+
+    #[test]
+    fn later_intent_wins_regardless_of_transition_order() {
+        let (session, _wifi) = session(WifiMode::AlwaysOn);
+        session.set_desired_radio_on(true);
+        session.set_desired_radio_on(false);
+        let recorded = session
+            .state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .desired_radio_on;
+        assert!(!recorded, "a disable recorded after an enable must win");
+    }
+
+    /// A manager whose `enable` blocks until released, so a test can record a
+    /// newer intent while an older transition is still mid-flight.
+    struct BlockingEnableWifi {
+        gate: tokio::sync::Notify,
+        enabled: std::sync::atomic::AtomicBool,
+    }
+
+    #[async_trait::async_trait]
+    impl WifiManager for BlockingEnableWifi {
+        async fn enable(&self) -> Result<(), WifiError> {
+            self.gate.notified().await;
+            self.enabled
+                .store(true, std::sync::atomic::Ordering::SeqCst);
+            Ok(())
+        }
+
+        async fn disable(&self) -> Result<(), WifiError> {
+            self.enabled
+                .store(false, std::sync::atomic::Ordering::SeqCst);
+            Ok(())
+        }
+
+        async fn is_enabled(&self) -> bool {
+            self.enabled.load(std::sync::atomic::Ordering::SeqCst)
+        }
+
+        async fn network_info(
+            &self,
+        ) -> Result<Option<crate::device::wifi::NetworkInfo>, WifiError> {
+            Ok(None)
+        }
+    }
+
+    /// A detached transition that starts late must apply the latest intent, not
+    /// the one its task was spawned with.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_late_transition_applies_the_latest_intent() {
+        let wifi = Arc::new(BlockingEnableWifi {
+            gate: tokio::sync::Notify::new(),
+            enabled: std::sync::atomic::AtomicBool::new(false),
+        });
+        let session = WifiSession::new(wifi.clone(), WifiMode::AlwaysOn);
+        session.set_desired_radio_on(true);
+
+        let first = {
+            let session = Arc::clone(&session);
+            tokio::spawn(async move { session.apply_radio().await })
+        };
+        tokio::time::sleep(Duration::from_millis(20)).await;
+
+        session.set_desired_radio_on(false);
+        let second = {
+            let session = Arc::clone(&session);
+            tokio::spawn(async move { session.apply_radio().await })
+        };
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        wifi.gate.notify_one();
+
+        let _ = first.await;
+        let _ = second.await;
+
+        assert!(
+            !session.is_radio_on() && !wifi.is_enabled().await,
+            "the latest recorded intent (off) must win over the enqueued enable"
+        );
     }
 
     /// A manager that finishes `enable` only after `release` is signalled, so a
@@ -892,6 +1040,34 @@ mod tests {
         let lease = session.acquire("a").await.unwrap();
         drop(lease);
         assert!(session.idle_since().is_none());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn set_mode_auto_keeps_radio_intent_while_a_lease_is_held() {
+        let (session, _wifi) = session(WifiMode::AlwaysOn);
+        session.notify_online();
+        let lease = session.acquire("hold").await.unwrap();
+        assert!(session.has_holders());
+
+        session.set_mode(WifiMode::Auto);
+        let recorded = session
+            .state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .desired_radio_on;
+        assert!(
+            recorded,
+            "a held lease must keep the radio intent on in Auto mode"
+        );
+
+        drop(lease);
+        session.set_mode(WifiMode::Auto);
+        let recorded = session
+            .state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .desired_radio_on;
+        assert!(!recorded, "Auto with no holders must drop the radio intent");
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

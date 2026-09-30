@@ -1,9 +1,9 @@
 //! Transient-request retries with exponential backoff and `Retry-After` honouring.
 //!
 //! Middleware retries cover transport failures and retryable statuses after
-//! response headers arrive (`send()`). They do **not** retry mid-body read
-//! failures on chunked downloads — that needs an app-level loop or streaming
-//! download (see [`super::Client::download`]).
+//! response headers arrive (`send()`). Mid-body read failures on chunked
+//! downloads are recovered by [`super::Client::download`], which re-requests
+//! the range.
 
 use anyhow::anyhow;
 use http::Extensions;

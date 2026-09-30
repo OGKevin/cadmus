@@ -26,10 +26,10 @@ pub(super) fn spawn_wifi_idle_poller(
     hub: &Hub,
     wifi_idle_timeout: f32,
     session: &Arc<WifiSession>,
-) {
+) -> Option<crate::runtime::Job> {
     if wifi_idle_timeout < 0.0 {
         tracing::debug!(wifi_idle_timeout, "wifi idle poller not started");
-        return;
+        return None;
     }
 
     let hub = hub.clone();
@@ -116,7 +116,7 @@ fn handle_set_wifi_mode(mode: WifiMode, hub: &Hub, context: &mut AppContext) -> 
             let session = context.wifi_session.clone();
             let hub = hub.clone();
             crate::runtime::current_handle().spawn(async move {
-                match session.enable_radio().await {
+                match session.apply_radio().await {
                     Ok(true) => {
                         hub.send((Event::Device(DeviceEvent::NetUp)).into()).ok();
                     }
@@ -130,7 +130,7 @@ fn handle_set_wifi_mode(mode: WifiMode, hub: &Hub, context: &mut AppContext) -> 
         WifiMode::Off => {
             let session = context.wifi_session.clone();
             crate::runtime::current_handle().spawn(async move {
-                if let Err(error) = session.disable_radio().await {
+                if let Err(error) = session.apply_radio().await {
                     tracing::error!(error = %error, "Failed to disable WiFi");
                 }
             });
@@ -140,7 +140,7 @@ fn handle_set_wifi_mode(mode: WifiMode, hub: &Hub, context: &mut AppContext) -> 
             if !context.wifi_session.has_holders() {
                 let session = context.wifi_session.clone();
                 crate::runtime::current_handle().spawn(async move {
-                    if let Err(error) = session.disable_radio().await {
+                    if let Err(error) = session.apply_radio().await {
                         tracing::error!(
                             error = %error,
                             "Failed to disable WiFi for Auto mode"
@@ -227,11 +227,12 @@ fn handle_might_disable_wifi(context: &mut AppContext) -> EventOutcome {
     );
 
     context.wifi_session.mark_offline_pending();
+    context.wifi_session.set_desired_radio_on(false);
     context.online = false;
 
     let session = context.wifi_session.clone();
     crate::runtime::current_handle().spawn(async move {
-        if let Err(error) = session.disable_radio().await {
+        if let Err(error) = session.apply_radio().await {
             tracing::error!(error = %error, "Failed to disable WiFi after idle");
         }
     });

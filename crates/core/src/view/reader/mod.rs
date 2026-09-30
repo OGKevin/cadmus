@@ -3902,6 +3902,12 @@ impl Reader {
 
 #[async_trait::async_trait(?Send)]
 impl View for Reader {
+    fn stop_jobs(&self) {
+        if let Some(search) = &self.search {
+            search.running.store(false, AtomicOrdering::Relaxed);
+        }
+    }
+
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, _bus, rq, context), fields(event = ?evt
     ), ret(level=tracing::Level::TRACE)))]
     async fn handle_event(

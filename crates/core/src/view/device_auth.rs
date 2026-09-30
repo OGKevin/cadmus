@@ -15,6 +15,7 @@ use super::{Align, Bus, Event, Hub, ID_FEEDER, Id, RenderQueue, View, ViewId};
 use crate::color::WHITE;
 use crate::device::AppContext;
 use crate::device::DeviceIdentity as _;
+use crate::fl;
 use crate::font::{NORMAL_STYLE, font_from_style};
 use crate::geom::Rectangle;
 use crate::gesture::GestureEvent;
@@ -132,7 +133,7 @@ fn spawn_device_flow_job(
         let device_code = response.device_code;
         let mut interval = Duration::from_secs(response.interval);
         let mut poll_errors = 0u32;
-        const MAX_POLL_TRANSIENT_ERRORS: u32 = 8;
+        const MAX_CONSECUTIVE_POLL_ERRORS: u32 = 8;
 
         hub2.send(
             (Event::Github(GithubEvent::DeviceAuthStarted {
@@ -157,9 +158,11 @@ fn spawn_device_flow_job(
                     return;
                 }
                 Some(Ok(TokenPollResult::Pending)) => {
+                    poll_errors = 0;
                     tracing::debug!("Authorization pending, continuing to poll");
                 }
                 Some(Ok(TokenPollResult::SlowDown)) => {
+                    poll_errors = 0;
                     interval += Duration::from_secs(5);
                     tracing::debug!(interval_secs = interval.as_secs(), "Slowing down poll");
                 }
@@ -188,7 +191,7 @@ fn spawn_device_flow_job(
                 }
                 Some(Err(e)) => {
                     poll_errors += 1;
-                    if poll_errors > MAX_POLL_TRANSIENT_ERRORS {
+                    if poll_errors > MAX_CONSECUTIVE_POLL_ERRORS {
                         tracing::error!(error = %e, "Device flow poll error");
                         hub2.send(
                             (Event::Github(GithubEvent::DeviceAuthError(e.to_string()))).into(),
@@ -278,7 +281,7 @@ impl DeviceAuthView {
         children.push(Box::new(Button::new(
             cancel_rect,
             Event::Close(view_id),
-            "Cancel".to_owned(),
+            fl!("cancel"),
         )));
 
         let poll = spawn_device_flow_job(hub, Arc::clone(&cancelled), context.wifi_session.clone());

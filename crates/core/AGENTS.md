@@ -3,6 +3,50 @@
 ## See also
 
 - [Background task stop/join policy](src/task/AGENTS.md)
+- [Device handlers and the test harness](src/device/AGENTS.md)
+- [WiFi leases](src/device/wifi/AGENTS.md)
+- [UI string translations](i18n/AGENTS.md)
+
+## Async runtime and Jobs
+
+The process runtime is built by [`runtime::builder`](src/runtime.rs): one
+multi-thread Tokio runtime with the worker pool capped at `WORKER_THREADS` and
+the blocking pool capped at `MAX_BLOCKING_THREADS`. The main app future runs on
+the main thread; spawned tasks run on the worker pool. Blocking a worker stalls
+input and timers, so use an async API or `spawn_blocking` there.
+[`src/input.rs`](src/input.rs) is the `AsyncFd` reference pattern.
+
+Work that outlives the current call — input pipelines, view polling, downloads,
+timers — must be a [`Job`](src/runtime.rs) owned by the subsystem that started
+it, not a bare `runtime::current_handle().spawn`. Dropping the `Job` cancels and
+detaches; `Job::join` awaits completion. Short-lived helpers inside an existing
+job may use `tokio::spawn` when they are tied to a parent `CancellationToken`
+(for example per-finger hold timers under [`GesturePipeline`](src/gesture.rs)).
+
+Device handlers are driven through the test harness; see
+[Device handlers](src/device/AGENTS.md).
+
+## Async traits
+
+A bare `async fn` in a **public** trait warns (`async_fn_in_trait`): callers
+cannot name the future's auto-trait bounds, so adding `Send` later would be a
+breaking change. Pick a form by object safety first, then by `Send`:
+
+- **The trait is used as `dyn`** — `#[async_trait]`, the only form that stays
+  object-safe. A `!Send` default method (boxed future, `self: Arc<Self>`, or a
+  `where Self: Sized` bound) also breaks dyn-compatibility, so dyn traits get no
+  such helper.
+- **Not used as `dyn`, and the future is `Send`** — prefer the stable RPITIT
+  form: declare `fn foo(&self) -> impl Future<Output = T> + Send;` in the trait
+  and `async fn foo(..)` in the impl. The two spellings may mix; no boxing, no
+  dependency, no warning. [`Fingerprint`](src/helpers.rs) and
+  [`DeviceLifecycle`](src/device/mod.rs) do this. `#[trait_variant::make(Name:
+  Send)]` is the alternative when an unboxed bound from a macro is wanted; it is
+  not currently a workspace dependency and can be re-added when a use case
+  appears. It cannot desugar a default body, so those methods need an explicit
+  no-op in each impl.
+- **The future genuinely cannot be `Send`**, as with single-threaded view state —
+  `#[async_trait(?Send)]`, and say why in the trait's doc comment.
 
 ## Return Types
 
@@ -28,7 +72,7 @@ OpenTelemetry tracing attributes, gated behind the `tracing` feature.
 
 ```rust
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
-fn handle_event(&mut self, evt: &Event, hub: &Hub, bus: &mut Bus, rq: &mut RenderQueue, context: &mut AppContext) -> bool {
+async fn handle_event(&mut self, evt: &Event, hub: &Hub, bus: &mut Bus, rq: &mut RenderQueue, context: &mut AppContext) -> bool {
 ```
 
 ### `render`
@@ -125,18 +169,9 @@ comment explaining why the typed macro cannot be used.
 All user-visible strings must use the `fl!` macro (`use crate::fl;`). Never
 hardcode string literals for labels, buttons, placeholders, or notifications.
 
-### Translation rules
-
-1. Every user-visible string needs a Fluent message ID in
-   `crates/core/i18n/en-GB/cadmus_core.ftl`.
-2. Use `fl!("message-id")` at the call site.
-3. For parameterised strings, use Fluent variables (`{ $var }`) in the `.ftl`
-   file and pass values via `fl!("id", var = value)`.
-4. Keep `.ftl` keys sorted alphabetically within each comment section.
-5. Naming convention — kebab-case, prefixed by feature area:
-   - `settings-<category>-<description>` for settings labels
-   - `settings-<category>-<description>-input` for input fields
-   - `notification-<description>` for notifications
+Message IDs, sort order, and locale-editing rules live in
+[`i18n/AGENTS.md`](i18n/AGENTS.md). Pass parameters with
+`fl!("id", var = value)`.
 
 ### Where this applies
 

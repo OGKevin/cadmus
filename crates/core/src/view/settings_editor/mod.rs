@@ -350,6 +350,23 @@ impl SettingsEditor {
 
 #[async_trait::async_trait(?Send)]
 impl View for SettingsEditor {
+    /// Stops work owned by this view, including the parked category editors.
+    ///
+    /// The active editor is a child, and the tree walk that drives shutdown
+    /// already recurses into every child, so only the parked editors in
+    /// `editors` — invisible to that walk — need stopping here.
+    fn stop_jobs(&self) {
+        for editor in self.editors.values() {
+            editor.stop_jobs();
+        }
+    }
+
+    fn take_background_jobs(&mut self, jobs: &mut Vec<crate::runtime::Job>) {
+        for editor in self.editors.values_mut() {
+            editor.take_background_jobs(jobs);
+        }
+    }
+
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, _hub, _bus, rq, context), fields(event = ?evt), ret(level=tracing::Level::TRACE)))]
     async fn handle_event(
         &mut self,
@@ -467,5 +484,152 @@ impl View for SettingsEditor {
 
     fn is_background(&self) -> bool {
         true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::runtime::Job;
+    use rustc_hash::FxHashMap;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    /// Records whether a view was asked to stop or hand over its jobs.
+    struct Probe {
+        id: Id,
+        rect: Rectangle,
+        children: Vec<Box<dyn View>>,
+        stops: Arc<AtomicUsize>,
+        handed_over: Arc<AtomicUsize>,
+        jobs: usize,
+    }
+
+    #[async_trait::async_trait(?Send)]
+    impl View for Probe {
+        fn id(&self) -> Id {
+            self.id
+        }
+
+        async fn handle_event(
+            &mut self,
+            _evt: &Event,
+            _hub: &Hub,
+            _bus: &mut Bus,
+            _rq: &mut RenderQueue,
+            _context: &mut AppContext,
+        ) -> bool {
+            false
+        }
+
+        fn render(&self, _context: &mut AppContext, _rect: Rectangle) {}
+
+        fn rect(&self) -> &Rectangle {
+            &self.rect
+        }
+
+        fn rect_mut(&mut self) -> &mut Rectangle {
+            &mut self.rect
+        }
+
+        fn children(&self) -> &Vec<Box<dyn View>> {
+            &self.children
+        }
+
+        fn children_mut(&mut self) -> &mut Vec<Box<dyn View>> {
+            &mut self.children
+        }
+
+        fn stop_jobs(&self) {
+            self.stops.fetch_add(1, Ordering::SeqCst);
+        }
+
+        fn take_background_jobs(&mut self, jobs: &mut Vec<Job>) {
+            self.handed_over.fetch_add(1, Ordering::SeqCst);
+            jobs.extend((0..self.jobs).map(|_| {
+                Job::spawn(|token| async move {
+                    token.cancelled().await;
+                })
+            }));
+        }
+    }
+
+    fn probe(rect: Rectangle, jobs: usize) -> (Box<dyn View>, Arc<AtomicUsize>, Arc<AtomicUsize>) {
+        let stops = Arc::new(AtomicUsize::new(0));
+        let handed_over = Arc::new(AtomicUsize::new(0));
+        (
+            Box::new(Probe {
+                id: Id::default(),
+                rect,
+                children: Vec::new(),
+                stops: Arc::clone(&stops),
+                handed_over: Arc::clone(&handed_over),
+                jobs,
+            }),
+            stops,
+            handed_over,
+        )
+    }
+
+    #[test]
+    fn stop_jobs_reaches_each_editor_once_through_the_tree_walk() {
+        let rect = rect![0, 0, 600, 800];
+        let (active, active_stops, _) = probe(rect, 0);
+        let (parked, parked_stops, _) = probe(rect, 0);
+        let mut editors: FxHashMap<Category, Box<dyn View>> = FxHashMap::default();
+        editors.insert(Category::Libraries, parked);
+        let view = SettingsEditor {
+            id: Id::default(),
+            rect,
+            children: vec![active],
+            nav_bar_index: 0,
+            editor_index: 0,
+            editors,
+        };
+
+        crate::view::cancel_view_jobs(&view);
+
+        assert_eq!(
+            active_stops.load(Ordering::SeqCst),
+            1,
+            "the active editor is a child and must not also be stopped by the override"
+        );
+        assert_eq!(
+            parked_stops.load(Ordering::SeqCst),
+            1,
+            "the parked editor must be stopped"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn take_background_jobs_reaches_each_editor_once_through_the_tree_walk() {
+        let rect = rect![0, 0, 600, 800];
+        let (active, _, active_handover) = probe(rect, 1);
+        let (parked, _, parked_handover) = probe(rect, 2);
+        let mut editors: FxHashMap<Category, Box<dyn View>> = FxHashMap::default();
+        editors.insert(Category::Libraries, parked);
+        let mut view = SettingsEditor {
+            id: Id::default(),
+            rect,
+            children: vec![active],
+            nav_bar_index: 0,
+            editor_index: 0,
+            editors,
+        };
+
+        let mut jobs = Vec::new();
+        crate::view::take_view_jobs(&mut view, &mut jobs);
+
+        assert_eq!(
+            active_handover.load(Ordering::SeqCst),
+            1,
+            "the active editor is a child and must not also be drained by the override"
+        );
+        assert_eq!(
+            parked_handover.load(Ordering::SeqCst),
+            1,
+            "the parked editor must be drained"
+        );
+        assert_eq!(jobs.len(), 3, "both editors' jobs must be joinable");
     }
 }

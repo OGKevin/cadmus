@@ -20,7 +20,7 @@
 //!     client
 //!         .download(
 //!             url,
-//!             0,
+//!             Some(0),
 //!             dest,
 //!             |u| client.get(u),
 //!             &mut progress,
@@ -199,10 +199,11 @@ impl RequestCancel {
     /// Bridges a [`CancelFlag`], the source of truth for cancellation and for
     /// the commit transition.
     ///
-    /// Returns [`RequestCancel::Committed`] for a flag that is no longer
-    /// running, since a decided flag can no longer be abandoned either way.
+    /// Only a committed flag becomes [`RequestCancel::Committed`]; an
+    /// already-cancelled flag stays [`RequestCancel::Cancellable`] so its token
+    /// (already tripped) is observed and the request is abandoned.
     pub(crate) fn from_flag(flag: &CancelFlag) -> Self {
-        if flag.is_cancelled() || !flag.is_running() {
+        if !flag.is_running() && !flag.is_cancelled() {
             return Self::Committed;
         }
         Self::Cancellable(flag.cancellation_token())
@@ -259,12 +260,13 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn a_cancelled_flag_is_already_decided() {
+    async fn a_cancelled_flag_stays_cancellable() {
         let flag = CancelFlag::new();
         flag.request_cancel();
-        assert!(matches!(
-            RequestCancel::from_flag(&flag),
-            RequestCancel::Committed
-        ));
+
+        let cancel = RequestCancel::from_flag(&flag);
+        assert!(matches!(cancel, RequestCancel::Cancellable(_)));
+        assert!(cancel.is_cancelled(), "a cancelled flag must be observed");
+        cancel.cancelled().await;
     }
 }

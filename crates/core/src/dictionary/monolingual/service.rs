@@ -214,7 +214,7 @@ impl MonolingualDictionaryService {
             return Err(MonolingualError::InstallationInProgress(lang.to_string()));
         }
 
-        self.install_reserved_dictionary(lang, entry, include_etymologies, progress_callback)
+        self.install_reserved_dictionary(lang, entry, include_etymologies, progress_callback, None)
             .await
     }
 
@@ -229,6 +229,7 @@ impl MonolingualDictionaryService {
         entry: &DictionaryEntry,
         include_etymologies: bool,
         progress_callback: &mut F,
+        should_cancel: Option<&crate::http::CancelFlag>,
     ) -> Result<(), MonolingualError>
     where
         F: FnMut(u64, u64),
@@ -257,6 +258,7 @@ impl MonolingualDictionaryService {
         entry: &DictionaryEntry,
         include_etymologies: bool,
         progress_callback: &mut F,
+        should_cancel: Option<&crate::http::CancelFlag>,
     ) -> Result<(), MonolingualError>
     where
         F: FnMut(u64, u64),
@@ -805,7 +807,7 @@ async fn has_dict_pair(dir: &Path) -> bool {
         return false;
     };
 
-    while let Ok(Some(entry)) = entries.next_entry().await {
+    while let Some(entry) = crate::fs::next_dir_entry(&mut entries).await {
         let path = entry.path();
         let name = match path.file_name().and_then(|n| n.to_str()) {
             Some(n) => n.to_string(),

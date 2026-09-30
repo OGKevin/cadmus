@@ -15,8 +15,8 @@
 //!   middleware as a [`cancel::RequestCancel`]
 //! - A tracing span per request attempt when the `tracing` feature is enabled
 //!
-//! Middleware retries wrap `send()` (headers). They do **not** retry mid-body
-//! read failures; see [`Client::download`].
+//! Middleware retries wrap `send()` (headers). Mid-body read failures are
+//! recovered by [`Client::download`], which re-requests the range.
 //!
 //! # Example
 //!
@@ -174,18 +174,20 @@ impl Client {
 
     /// Downloads a file to `dest` using HTTP Range requests.
     ///
-    /// `request_builder` is called once per chunk to produce a `RequestBuilder`
+    /// The download tries one `bytes=0-(total_size - 1)` range first, then
+    /// adaptive smaller ranges if that fails or stops early. `request_builder`
+    /// is called once per range request to produce a `RequestBuilder`
     /// for the given URL. The caller is responsible for adding any required
     /// headers (e.g. `Authorization`). Transient failures on `send()` (headers)
     /// are retried by the client middleware, which reuses that built request.
     ///
-    /// # Known limitation (mid-body failure)
+    /// # Mid-body failures
     ///
-    /// Chunks are sized to use most of [`CLIENT_TIMEOUT_SECS`]. Middleware retries
-    /// only wrap `send()` — once headers arrive, `.bytes().await` sits outside
-    /// the retry policy. A Wi-Fi drop mid-body fails the whole download. A future
-    /// streaming download (or an explicit send+body retry loop) should replace
-    /// this; TODO: streaming/chunk-body-aware retry.
+    /// Middleware retries only wrap `send()` — once headers arrive, the body is
+    /// streamed outside the retry policy. A Wi-Fi drop mid-body is recovered by
+    /// re-requesting the range from the last byte written, so the drop costs the
+    /// bytes in flight rather than the whole chunk. A chunk whose body keeps
+    /// being interrupted fails after a bounded number of retries.
     ///
     /// `progress_callback` is called after each successful chunk with
     /// `(bytes_downloaded_so_far, total_bytes)`.
@@ -221,7 +223,7 @@ impl Client {
     ///
     /// client.download(
     ///     "https://example.com/large-file.bin",
-    ///     1024 * 1024,
+    ///     Some(1024 * 1024),
     ///     &dest,
     ///     |url| client.get(url),
     ///     &mut |downloaded, total| println!("{}/{}", downloaded, total),
@@ -237,7 +239,7 @@ impl Client {
     pub async fn download<B, F>(
         &self,
         url: &str,
-        total_size: u64,
+        total_size: Option<u64>,
         dest: &Path,
         request_builder: B,
         progress_callback: &mut F,
@@ -247,9 +249,6 @@ impl Client {
         B: Fn(&str) -> RequestBuilder,
         F: FnMut(u64, u64),
     {
-        let mut throttled_progress = TenthsProgress::new(progress_callback);
-        throttled_progress.report(0, total_size);
-
         tracing::debug!(url = %url, "Downloading file");
         tracing::debug!(path = ?dest, "Download destination");
 
@@ -258,66 +257,15 @@ impl Client {
         let mut unpublished = crate::fs::RemovePathOnDrop::file(staging.clone());
         let result: Result<(), ChunkedDownloadError> = async {
             let mut file = tokio::fs::File::create(&staging).await?;
-
-            let mut downloaded = 0u64;
-            let mut chunk_size = INITIAL_CHUNK_SIZE;
-
-            tracing::debug!(
-                initial_chunk_size = INITIAL_CHUNK_SIZE,
-                "Starting chunked download"
-            );
-
-            while downloaded < total_size {
-                if should_cancel.is_some_and(CancelFlag::is_cancelled) {
-                    return Err(ChunkedDownloadError::Cancelled);
-                }
-
-                let chunk_start = downloaded;
-                let chunk_end = std::cmp::min(downloaded + chunk_size as u64 - 1, total_size - 1);
-
-                tracing::debug!(
-                    chunk_start,
-                    chunk_end,
-                    chunk_size,
-                    total_size,
-                    "Downloading chunk"
-                );
-
-                let start = std::time::Instant::now();
-                let before = downloaded;
-                self.stream_chunk(
-                    &mut file,
-                    &mut downloaded,
-                    chunk_end,
-                    total_size,
-                    url,
-                    &request_builder,
-                    should_cancel,
-                    |done, total| throttled_progress.report(done, total),
-                )
-                .await?;
-                let written = downloaded - before;
-                let elapsed_secs = start.elapsed().as_secs_f64();
-
-                if elapsed_secs > 0.0 {
-                    let throughput = written as f64 / elapsed_secs;
-                    chunk_size = ((throughput * TARGET_CHUNK_SECS) as usize)
-                        .clamp(MIN_CHUNK_SIZE, MAX_CHUNK_SIZE);
-                    tracing::debug!(
-                        elapsed_secs,
-                        throughput_bytes_per_sec = throughput as u64,
-                        next_chunk_size = chunk_size,
-                        "Adjusted chunk size"
-                    );
-                }
-
-                tracing::debug!(
-                    downloaded,
-                    total_size,
-                    progress_percent = (downloaded as f64 / total_size as f64) * 100.0,
-                    "Download progress"
-                );
-            }
+            self.download_into(
+                &mut file,
+                total_size,
+                url,
+                &request_builder,
+                progress_callback,
+                should_cancel,
+            )
+            .await?;
 
             file.sync_all().await?;
             if should_cancel.is_some_and(CancelFlag::is_cancelled) {
@@ -325,7 +273,6 @@ impl Client {
             }
             tokio::fs::rename(&staging, dest).await?;
 
-            tracing::debug!(bytes = downloaded, "Download complete");
             tracing::debug!(path = ?dest, "Saved file");
 
             Ok(())
@@ -344,7 +291,236 @@ impl Client {
         }
     }
 
-    /// Streams `[downloaded, chunk_end]` straight into `file`, advancing
+    /// Downloads a file into memory using HTTP Range requests.
+    ///
+    /// Identical chunk sizing, retries, progress reporting, and cancellation to
+    /// [`Client::download`], but received bytes are appended to a [`Vec`] instead
+    /// of a staging file. Nothing touches disk, so there is no atomic publish;
+    /// the caller owns the returned buffer.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ChunkedDownloadError::Request` if all retry attempts for any
+    /// chunk fail, and `ChunkedDownloadError::Cancelled` when `should_cancel`
+    /// reports cancellation between chunks or during a chunk resume.
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(skip(self, request_builder, progress_callback))
+    )]
+    pub async fn download_to_vec<B, F>(
+        &self,
+        url: &str,
+        total_size: Option<u64>,
+        request_builder: B,
+        progress_callback: &mut F,
+        should_cancel: Option<&CancelFlag>,
+    ) -> Result<Vec<u8>, ChunkedDownloadError>
+    where
+        B: Fn(&str) -> RequestBuilder,
+        F: FnMut(u64, u64),
+    {
+        tracing::debug!(url = %url, "Downloading file into memory");
+
+        let capacity = total_size
+            .and_then(|total| usize::try_from(total).ok())
+            .unwrap_or(0);
+        let mut bytes = Vec::with_capacity(capacity);
+        self.download_into(
+            &mut bytes,
+            total_size,
+            url,
+            &request_builder,
+            progress_callback,
+            should_cancel,
+        )
+        .await?;
+
+        tracing::debug!(bytes = bytes.len(), "In-memory download complete");
+        Ok(bytes)
+    }
+
+    /// Resolves the download size with a HEAD request when the caller does not
+    /// know it.
+    ///
+    /// Only used for unauthenticated URLs: this HEAD does not carry the caller's
+    /// `request_builder`, so it cannot send an `Authorization` header. Pass the
+    /// size explicitly (`Some`) for authenticated downloads.
+    async fn resolve_total_size(&self, url: &str) -> Result<u64, ChunkedDownloadError> {
+        let response = self.head(url).send().await?.error_for_status()?;
+        response
+            .headers()
+            .get(reqwest::header::CONTENT_LENGTH)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.trim().parse::<u64>().ok())
+            .ok_or_else(|| {
+                ChunkedDownloadError::Failed(
+                    "HEAD response did not include a Content-Length".to_owned(),
+                )
+            })
+    }
+
+    /// Runs the download loop, writing every received byte into `sink`.
+    ///
+    /// Shared by [`Client::download`] (staging file) and
+    /// [`Client::download_to_vec`] (in-memory buffer). The first attempt is a
+    /// **single** whole-file range request `bytes=0-(total_size - 1)` that does
+    /// not retry the same range on a mid-body interruption; if it fails or stops
+    /// early, the remainder is fetched with adaptive chunk windows resuming from
+    /// the last byte written. Progress is throttled to tenths by
+    /// [`TenthsProgress`] on every body read, including during a whole-file
+    /// request.
+    async fn download_into<W, B, F>(
+        &self,
+        sink: &mut W,
+        total_size: Option<u64>,
+        url: &str,
+        request_builder: &B,
+        progress_callback: &mut F,
+        should_cancel: Option<&CancelFlag>,
+    ) -> Result<(), ChunkedDownloadError>
+    where
+        W: tokio::io::AsyncWrite + Unpin,
+        B: Fn(&str) -> RequestBuilder,
+        F: FnMut(u64, u64),
+    {
+        let total_size = match total_size {
+            Some(total) => total,
+            None => self.resolve_total_size(url).await?,
+        };
+        let mut throttled_progress = TenthsProgress::new(progress_callback);
+        throttled_progress.report(0, total_size);
+
+        let mut downloaded = 0u64;
+        let mut chunk_size = INITIAL_CHUNK_SIZE;
+
+        if total_size > 0 {
+            let whole_end = total_size - 1;
+            tracing::debug!(
+                total_size,
+                whole_end,
+                "Attempting whole-file range download"
+            );
+            let before = downloaded;
+            let whole_chunk = self.stream_chunk(
+                sink,
+                &mut downloaded,
+                whole_end,
+                total_size,
+                url,
+                request_builder,
+                should_cancel,
+                0,
+                |done, total| throttled_progress.report(done, total),
+            );
+            #[cfg(feature = "tracing")]
+            let whole_chunk = {
+                use tracing::Instrument as _;
+                whole_chunk.instrument(tracing::info_span!(
+                    "whole_file_range",
+                    total_size,
+                    range_end = whole_end
+                ))
+            };
+            match whole_chunk.await {
+                Ok(()) if downloaded >= total_size => {
+                    tracing::debug!(bytes = downloaded, "Whole-file range download complete");
+                    return Ok(());
+                }
+                Ok(()) => {
+                    tracing::debug!(
+                        downloaded,
+                        total_size,
+                        "Whole-file range download stopped early; continuing with chunked download"
+                    );
+                }
+                Err(error) => {
+                    tracing::debug!(
+                        error = %error,
+                        downloaded,
+                        total_size,
+                        "Whole-file range download failed; falling back to chunked download"
+                    );
+                    if downloaded <= before {
+                        tracing::trace!("Whole-file attempt made no progress");
+                    }
+                }
+            }
+        }
+
+        tracing::debug!(
+            initial_chunk_size = INITIAL_CHUNK_SIZE,
+            downloaded,
+            "Starting adaptive chunked download"
+        );
+
+        while downloaded < total_size {
+            if should_cancel.is_some_and(CancelFlag::is_cancelled) {
+                return Err(ChunkedDownloadError::Cancelled);
+            }
+
+            let chunk_start = downloaded;
+            let chunk_end = std::cmp::min(downloaded + chunk_size as u64 - 1, total_size - 1);
+
+            tracing::debug!(
+                chunk_start,
+                chunk_end,
+                chunk_size,
+                total_size,
+                "Downloading chunk"
+            );
+
+            let start = std::time::Instant::now();
+            let before = downloaded;
+            let adaptive_chunk = self.stream_chunk(
+                sink,
+                &mut downloaded,
+                chunk_end,
+                total_size,
+                url,
+                request_builder,
+                should_cancel,
+                MAX_BODY_RESUMES,
+                |done, total| throttled_progress.report(done, total),
+            );
+            #[cfg(feature = "tracing")]
+            let adaptive_chunk = {
+                use tracing::Instrument as _;
+                adaptive_chunk.instrument(tracing::info_span!(
+                    "adaptive_range",
+                    chunk_start,
+                    chunk_end,
+                    chunk_size
+                ))
+            };
+            adaptive_chunk.await?;
+            let written = downloaded - before;
+            let elapsed_secs = start.elapsed().as_secs_f64();
+
+            if elapsed_secs > 0.0 {
+                let throughput = written as f64 / elapsed_secs;
+                chunk_size = ((throughput * TARGET_CHUNK_SECS) as usize)
+                    .clamp(MIN_CHUNK_SIZE, MAX_CHUNK_SIZE);
+                tracing::debug!(
+                    elapsed_secs,
+                    throughput_bytes_per_sec = throughput as u64,
+                    next_chunk_size = chunk_size,
+                    "Adjusted chunk size"
+                );
+            }
+
+            tracing::debug!(
+                downloaded,
+                total_size,
+                progress_percent = (downloaded as f64 / total_size as f64) * 100.0,
+                "Download progress"
+            );
+        }
+
+        tracing::debug!(bytes = downloaded, "Download complete");
+        Ok(())
+    }
+
+    /// Streams `[downloaded, chunk_end]` straight into `sink`, advancing
     /// `downloaded` as bytes land.
     ///
     /// The body is never buffered, so peak RAM is one network chunk rather than
@@ -355,32 +531,86 @@ impl Client {
     /// re-requested from `*downloaded`, so a drop costs the bytes in flight and
     /// not the whole chunk. `send()` failures are already covered by the retry
     /// middleware; this covers what happens after the headers arrive.
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, request_builder, progress_callback, file), fields(start = %downloaded, end = chunk_end)))]
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(
+            skip(self, request_builder, progress_callback, sink, should_cancel),
+            fields(
+                range_start = *downloaded,
+                range_end = chunk_end,
+                total_size,
+                whole_file = chunk_end + 1 >= total_size && *downloaded == 0,
+                url = %url,
+                bytes_written = tracing::field::Empty,
+                bytes_at_end = tracing::field::Empty,
+                range_requests = tracing::field::Empty,
+                body_resumes = tracing::field::Empty,
+                duration_ms = tracing::field::Empty,
+                throughput_bytes_per_sec = tracing::field::Empty,
+                outcome = tracing::field::Empty,
+            )
+        )
+    )]
     #[allow(clippy::too_many_arguments)]
-    async fn stream_chunk<B, P>(
+    async fn stream_chunk<W, B, P>(
         &self,
-        file: &mut tokio::fs::File,
+        sink: &mut W,
         downloaded: &mut u64,
         chunk_end: u64,
         total_size: u64,
         url: &str,
         request_builder: &B,
         should_cancel: Option<&CancelFlag>,
+        max_body_resumes: usize,
         mut progress_callback: P,
     ) -> Result<(), ChunkedDownloadError>
     where
+        W: tokio::io::AsyncWrite + Unpin,
         B: Fn(&str) -> RequestBuilder,
         P: FnMut(u64, u64),
     {
         use tokio::io::AsyncWriteExt as _;
 
-        let mut resumes = 0usize;
+        #[cfg(feature = "tracing")]
+        let range_start = *downloaded;
+        #[cfg(feature = "tracing")]
+        let started = std::time::Instant::now();
+        #[cfg(feature = "tracing")]
+        let mut range_requests = 0usize;
+        let mut body_resumes = 0usize;
         loop {
             if *downloaded > chunk_end {
+                #[cfg(feature = "tracing")]
+                record_stream_chunk_span(
+                    range_start,
+                    *downloaded,
+                    started,
+                    range_requests,
+                    body_resumes,
+                    "already_complete",
+                );
                 return Ok(());
             }
+            #[cfg(feature = "tracing")]
             {
+                range_requests += 1;
+            }
+            #[cfg(feature = "tracing")]
+            let attempt_index = range_requests;
+            #[cfg(feature = "tracing")]
+            let range_start_byte = *downloaded;
+            #[cfg(feature = "tracing")]
+            let after_body_resume = body_resumes > 0;
+
+            enum RangeAttemptFlow {
+                ResumeAfterInterrupt,
+                ChunkComplete,
+            }
+
+            let attempt = async {
                 if should_cancel.is_some_and(CancelFlag::is_cancelled) {
+                    #[cfg(feature = "tracing")]
+                    record_span_fields(0, 0, "cancelled");
                     return Err(ChunkedDownloadError::Cancelled);
                 }
 
@@ -389,8 +619,17 @@ impl Client {
                 if let Some(flag) = should_cancel {
                     request = request.with_extension(RequestCancel::from_flag(flag));
                 }
-                let response = request.send().await?.error_for_status()?;
+                let response = match request.send().await?.error_for_status() {
+                    Ok(response) => response,
+                    Err(error) => {
+                        #[cfg(feature = "tracing")]
+                        record_span_fields(0, 0, "request_failed");
+                        return Err(ChunkedDownloadError::Request(error));
+                    }
+                };
                 if response.status() != reqwest::StatusCode::PARTIAL_CONTENT {
+                    #[cfg(feature = "tracing")]
+                    record_span_fields(0, 0, "unexpected_status");
                     return Err(ChunkedDownloadError::Failed(format!(
                         "range request expected 206 Partial Content, got {}",
                         response.status()
@@ -401,47 +640,172 @@ impl Client {
                     let header = header.to_str().map_err(|_| {
                         ChunkedDownloadError::Failed("invalid Content-Range header".to_owned())
                     })?;
-                    validate_content_range(header, *downloaded, chunk_end)?;
+                    let content_range_ok = validate_content_range(header, *downloaded, chunk_end);
+                    #[cfg(feature = "tracing")]
+                    let content_range_ok = content_range_ok.inspect_err(|_| {
+                        record_span_fields(0, 0, "content_range_mismatch");
+                    });
+                    content_range_ok?;
                 }
 
                 let mut response = response;
-                let mut body_started = false;
-                let mut interrupted = None;
-                loop {
-                    match response.chunk().await {
-                        Ok(Some(bytes)) => {
-                            body_started = true;
-                            file.write_all(&bytes).await?;
-                            *downloaded += bytes.len() as u64;
-                            progress_callback(*downloaded, total_size);
-                        }
-                        Ok(None) => break,
-                        Err(error) => {
-                            tracing::warn!(
-                                error = %error,
-                                downloaded = *downloaded,
-                                "chunk body interrupted; resuming from the last byte written"
-                            );
-                            interrupted = Some(error);
-                            break;
+                #[cfg(feature = "tracing")]
+                let bytes_before_body = *downloaded;
+                let mut chunk_reads = 0u64;
+                let read_body = async {
+                    let mut body_started = false;
+                    let mut interrupted = None;
+                    loop {
+                        match response.chunk().await {
+                            Ok(Some(bytes)) => {
+                                body_started = true;
+                                chunk_reads += 1;
+                                sink.write_all(&bytes).await?;
+                                *downloaded += bytes.len() as u64;
+                                progress_callback(*downloaded, total_size);
+                            }
+                            Ok(None) => break,
+                            Err(error) => {
+                                if body_resumes < max_body_resumes {
+                                    tracing::warn!(
+                                        error = %error,
+                                        downloaded = *downloaded,
+                                        "chunk body interrupted; resuming from the last byte written"
+                                    );
+                                } else {
+                                    tracing::debug!(
+                                        error = %error,
+                                        downloaded = *downloaded,
+                                        "chunk body interrupted; not resuming this range"
+                                    );
+                                }
+                                interrupted = Some(error);
+                                break;
+                            }
                         }
                     }
-                }
+                    #[cfg(feature = "tracing")]
+                    record_span_fields(
+                        downloaded.saturating_sub(bytes_before_body),
+                        chunk_reads,
+                        if interrupted.is_some() {
+                            "interrupted"
+                        } else {
+                            "complete"
+                        },
+                    );
+                    Ok::<_, ChunkedDownloadError>((body_started, interrupted, chunk_reads))
+                };
+
+                #[cfg(feature = "tracing")]
+                let (body_started, interrupted, chunk_reads) = {
+                    use tracing::Instrument as _;
+                    read_body
+                        .instrument(tracing::info_span!(
+                            "read_response_body",
+                            body_start = bytes_before_body,
+                            bytes_read = tracing::field::Empty,
+                            chunk_reads = tracing::field::Empty,
+                            outcome = tracing::field::Empty,
+                        ))
+                        .await?
+                };
+                #[cfg(not(feature = "tracing"))]
+                let (body_started, interrupted, _chunk_reads) = read_body.await?;
+
+                #[cfg(feature = "tracing")]
+                let bytes_read = downloaded.saturating_sub(bytes_before_body);
 
                 if interrupted.is_some() {
-                    resumes += 1;
-                    if resumes > MAX_BODY_RESUMES {
+                    #[cfg(feature = "tracing")]
+                    record_span_fields(bytes_read, chunk_reads, "body_interrupted");
+                    return Ok(RangeAttemptFlow::ResumeAfterInterrupt);
+                }
+
+                if !body_started && *downloaded <= chunk_end {
+                    #[cfg(feature = "tracing")]
+                    record_span_fields(0, 0, "empty_body");
+                    return Err(ChunkedDownloadError::Failed(
+                        "range response body was empty".to_owned(),
+                    ));
+                }
+
+                #[cfg(feature = "tracing")]
+                record_span_fields(bytes_read, chunk_reads, "complete");
+                Ok(RangeAttemptFlow::ChunkComplete)
+            };
+
+            #[cfg(feature = "tracing")]
+            let attempt = {
+                use tracing::Instrument as _;
+                attempt.instrument(tracing::info_span!(
+                    "range_attempt",
+                    attempt = attempt_index,
+                    range_start = range_start_byte,
+                    range_end = chunk_end,
+                    after_body_resume = after_body_resume,
+                    bytes_read = tracing::field::Empty,
+                    chunk_reads = tracing::field::Empty,
+                    outcome = tracing::field::Empty,
+                ))
+            };
+
+            match attempt.await {
+                Ok(RangeAttemptFlow::ResumeAfterInterrupt) => {
+                    body_resumes += 1;
+                    if body_resumes > max_body_resumes {
+                        #[cfg(feature = "tracing")]
+                        record_stream_chunk_span(
+                            range_start,
+                            *downloaded,
+                            started,
+                            range_requests,
+                            body_resumes,
+                            "body_resume_exhausted",
+                        );
                         return Err(ChunkedDownloadError::Failed(format!(
-                            "chunk body interrupted more than {MAX_BODY_RESUMES} times"
+                            "chunk body interrupted more than {max_body_resumes} times"
                         )));
                     }
                     continue;
                 }
-
-                if !body_started && *downloaded <= chunk_end {
-                    return Err(ChunkedDownloadError::Failed(
-                        "range response body was empty".to_owned(),
-                    ));
+                Ok(RangeAttemptFlow::ChunkComplete) => {
+                    if *downloaded > chunk_end {
+                        #[cfg(feature = "tracing")]
+                        record_stream_chunk_span(
+                            range_start,
+                            *downloaded,
+                            started,
+                            range_requests,
+                            body_resumes,
+                            "complete",
+                        );
+                        return Ok(());
+                    }
+                }
+                Err(ChunkedDownloadError::Cancelled) => {
+                    #[cfg(feature = "tracing")]
+                    record_stream_chunk_span(
+                        range_start,
+                        *downloaded,
+                        started,
+                        range_requests,
+                        body_resumes,
+                        "cancelled",
+                    );
+                    return Err(ChunkedDownloadError::Cancelled);
+                }
+                Err(error) => {
+                    #[cfg(feature = "tracing")]
+                    record_stream_chunk_span(
+                        range_start,
+                        *downloaded,
+                        started,
+                        range_requests,
+                        body_resumes,
+                        "failed",
+                    );
+                    return Err(error);
                 }
             }
         }
@@ -487,6 +851,41 @@ fn validate_content_range(
         )));
     }
     Ok(())
+}
+
+#[cfg(feature = "tracing")]
+fn record_span_fields(bytes_read: u64, chunk_reads: u64, outcome: &'static str) {
+    let span = tracing::Span::current();
+    span.record("bytes_read", bytes_read);
+    span.record("chunk_reads", chunk_reads);
+    span.record("outcome", outcome);
+}
+
+#[cfg(feature = "tracing")]
+fn record_stream_chunk_span(
+    range_start: u64,
+    downloaded: u64,
+    started: std::time::Instant,
+    range_requests: usize,
+    body_resumes: usize,
+    outcome: &'static str,
+) {
+    let bytes_written = downloaded.saturating_sub(range_start);
+    let elapsed = started.elapsed();
+    let duration_ms = elapsed.as_millis().min(u128::from(u64::MAX)) as u64;
+    let throughput_bytes_per_sec = if elapsed.as_secs_f64() > 0.0 {
+        (bytes_written as f64 / elapsed.as_secs_f64()) as u64
+    } else {
+        0
+    };
+    let span = tracing::Span::current();
+    span.record("bytes_written", bytes_written);
+    span.record("bytes_at_end", downloaded);
+    span.record("range_requests", range_requests as u64);
+    span.record("body_resumes", body_resumes as u64);
+    span.record("duration_ms", duration_ms);
+    span.record("throughput_bytes_per_sec", throughput_bytes_per_sec);
+    span.record("outcome", outcome);
 }
 
 /// Parses `bytes start-end/total` from a `Content-Range` header value.
@@ -682,7 +1081,7 @@ mod tests {
         let result = client
             .download(
                 &url,
-                total,
+                Some(total),
                 &dest,
                 |url| client.get(url),
                 &mut |_, _| {},
@@ -719,7 +1118,7 @@ mod tests {
         let result = client
             .download(
                 "https://example.invalid/unused",
-                1024,
+                Some(1024),
                 &dest,
                 |url| client.get(url),
                 &mut |_, _| {},
@@ -739,6 +1138,57 @@ mod tests {
         );
     }
 
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn chunked_download_to_vec_resumes_after_a_short_body() {
+        use std::sync::atomic::Ordering;
+
+        crate::crypto::init_crypto_provider();
+        let client = Client::new().expect("client");
+
+        let total = 64 * 1024u64;
+        let (port, served, server) = serve_truncating_ranges(total).await;
+        let url = format!("http://127.0.0.1:{port}/artifact.bin");
+
+        let bytes = client
+            .download_to_vec(
+                &url,
+                Some(total),
+                |url| client.get(url),
+                &mut |_, _| {},
+                None,
+            )
+            .await
+            .expect("in-memory download should complete");
+
+        server.abort();
+        assert_eq!(bytes.len() as u64, total);
+        assert!(bytes.iter().all(|&byte| byte == b'A'));
+        assert!(
+            served.load(Ordering::SeqCst) > 1,
+            "a short body must be re-requested, not served once and abandoned"
+        );
+    }
+
+    #[tokio::test]
+    async fn download_to_vec_returns_cancelled_before_first_chunk() {
+        crate::crypto::init_crypto_provider();
+        let client = Client::new().expect("client");
+        let flag = CancelFlag::new();
+        flag.request_cancel();
+
+        let result = client
+            .download_to_vec(
+                "https://example.invalid/unused",
+                Some(1024),
+                |url| client.get(url),
+                &mut |_, _| {},
+                Some(&flag),
+            )
+            .await;
+
+        assert!(matches!(result, Err(ChunkedDownloadError::Cancelled)));
+    }
+
     #[tokio::test]
     async fn download_returns_cancelled_before_publish() {
         crate::crypto::init_crypto_provider();
@@ -755,7 +1205,7 @@ mod tests {
         let result = client
             .download(
                 "https://example.invalid/unused",
-                0,
+                Some(0),
                 &dest,
                 |url| client.get(url),
                 &mut |_, _| {},
@@ -789,7 +1239,7 @@ mod tests {
         let result = client
             .download(
                 "https://example.invalid/unused",
-                0,
+                Some(0),
                 &dest,
                 |url| client.get(url),
                 &mut |_, _| {},
@@ -803,6 +1253,254 @@ mod tests {
         assert!(
             flag.is_cancelled(),
             "zip publish must not lock out later cancel"
+        );
+    }
+
+    #[cfg(feature = "tracing")]
+    #[test]
+    fn download_spans_record_declared_fields() {
+        use std::sync::{Arc, Mutex};
+
+        struct SharedWriter(Arc<Mutex<Vec<u8>>>);
+        impl std::io::Write for SharedWriter {
+            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(buf);
+                Ok(buf.len())
+            }
+
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+
+        crate::crypto::init_crypto_provider();
+        let client = Client::new().expect("client");
+        let temp_dir = tempfile::Builder::new()
+            .prefix("cadmus-http-span-fields-")
+            .tempdir()
+            .expect("tempdir");
+        let dest = temp_dir.path().join("artifact.bin");
+
+        let total = 64 * 1024u64;
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("current-thread runtime");
+        let (port, _served, server) = runtime.block_on(serve_truncating_ranges(total));
+        let url = format!("http://127.0.0.1:{port}/artifact.bin");
+
+        let buffer = Arc::new(Mutex::new(Vec::<u8>::new()));
+        let writer = {
+            let buffer = Arc::clone(&buffer);
+            move || SharedWriter(Arc::clone(&buffer))
+        };
+        let subscriber = tracing_subscriber::fmt()
+            .with_writer(writer)
+            .with_ansi(false)
+            .with_span_events(tracing_subscriber::fmt::format::FmtSpan::CLOSE)
+            .with_max_level(tracing::Level::TRACE)
+            .finish();
+
+        // `DefaultGuard` is not allowed across an await point, so drive the
+        // download through a synchronous `block_on` while it is set.
+        let guard = tracing::subscriber::set_default(subscriber);
+        let result = runtime.block_on(async {
+            client
+                .download(
+                    &url,
+                    Some(total),
+                    &dest,
+                    |url| client.get(url),
+                    &mut |_, _| {},
+                    None,
+                )
+                .await
+        });
+        drop(guard);
+        server.abort();
+        assert!(result.is_ok(), "download should complete: {result:?}");
+
+        let output = String::from_utf8(buffer.lock().unwrap().clone()).expect("utf8");
+        assert!(
+            output.contains("stream_chunk"),
+            "stream_chunk span missing from captured output:\n{output}"
+        );
+        assert!(
+            output.contains("outcome="),
+            "recorded outcome field missing (span record is a no-op?):\n{output}"
+        );
+        assert!(
+            output.contains("bytes_written="),
+            "recorded bytes_written field missing (span record is a no-op?):\n{output}"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn download_resolves_missing_total_size_with_head() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        crate::crypto::init_crypto_provider();
+        let client = Client::new().expect("client");
+        let temp_dir = tempfile::Builder::new()
+            .prefix("cadmus-http-head-")
+            .tempdir()
+            .expect("tempdir");
+        let dest = temp_dir.path().join("artifact.bin");
+
+        let total = 8 * 1024u64;
+        let saw_head = Arc::new(AtomicBool::new(false));
+        let saw_head_srv = Arc::clone(&saw_head);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let port = listener.local_addr().expect("addr").port();
+        let server = tokio::spawn(async move {
+            while let Ok((mut stream, _)) = listener.accept().await {
+                let mut buf = [0u8; 1024];
+                if stream.read(&mut buf).await.is_err() {
+                    continue;
+                }
+                let request = String::from_utf8_lossy(&buf).to_string();
+                if request.starts_with("HEAD ") {
+                    saw_head_srv.store(true, Ordering::SeqCst);
+                    let header = format!("HTTP/1.1 200 OK\r\nContent-Length: {total}\r\n\r\n");
+                    let _ = stream.write_all(header.as_bytes()).await;
+                    let _ = stream.flush().await;
+                    continue;
+                }
+                let (start, end) = request
+                    .split("bytes=")
+                    .nth(1)
+                    .and_then(|rest| {
+                        let mut parts = rest.split('-');
+                        let start: u64 = parts.next()?.trim().parse().ok()?;
+                        let end: u64 = parts.next()?.split_whitespace().next()?.parse().ok()?;
+                        Some((start, end))
+                    })
+                    .unwrap_or((0, total - 1));
+                let len = end - start + 1;
+                let header = format!(
+                    "HTTP/1.1 206 Partial Content\r\nContent-Length: {len}\r\nContent-Range: bytes {start}-{end}/{total}\r\n\r\n"
+                );
+                let _ = stream.write_all(header.as_bytes()).await;
+                let _ = stream.write_all(&vec![b'C'; len as usize]).await;
+                let _ = stream.flush().await;
+            }
+        });
+
+        let url = format!("http://127.0.0.1:{port}/artifact.bin");
+        let result = client
+            .download(
+                &url,
+                None,
+                &dest,
+                |url| client.get(url),
+                &mut |_, _| {},
+                None,
+            )
+            .await;
+        server.abort();
+
+        assert!(result.is_ok(), "download should complete: {result:?}");
+        assert!(
+            saw_head.load(Ordering::SeqCst),
+            "a missing total_size must trigger a HEAD"
+        );
+        assert_eq!(
+            std::fs::metadata(&dest).expect("dest").len(),
+            total,
+            "HEAD-resolved download must produce the full length"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn whole_file_attempt_is_single_request_then_falls_back_to_chunks() {
+        use std::sync::{Arc, Mutex};
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        crate::crypto::init_crypto_provider();
+        let client = Client::new().expect("client");
+        let temp_dir = tempfile::Builder::new()
+            .prefix("cadmus-http-whole-file-")
+            .tempdir()
+            .expect("tempdir");
+        let dest = temp_dir.path().join("artifact.bin");
+
+        let total = 3 * 1024 * 1024u64;
+        let requests: Arc<Mutex<Vec<(u64, u64)>>> = Arc::new(Mutex::new(Vec::new()));
+        let requests_srv = Arc::clone(&requests);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let port = listener.local_addr().expect("addr").port();
+        let server = tokio::spawn(async move {
+            let mut first = true;
+            while let Ok((mut stream, _)) = listener.accept().await {
+                let mut buf = [0u8; 1024];
+                if stream.read(&mut buf).await.is_err() {
+                    continue;
+                }
+                let request = String::from_utf8_lossy(&buf).to_string();
+                let range = request.split("bytes=").nth(1).and_then(|rest| {
+                    let mut parts = rest.split('-');
+                    let start: u64 = parts.next()?.trim().parse().ok()?;
+                    let end: u64 = parts.next()?.split_whitespace().next()?.parse().ok()?;
+                    Some((start, end))
+                });
+                if let Some(span) = range {
+                    requests_srv.lock().unwrap().push(span);
+                }
+                if first {
+                    first = false;
+                    let header =
+                        format!("HTTP/1.1 206 Partial Content\r\nContent-Length: {total}\r\n\r\n");
+                    let _ = stream.write_all(header.as_bytes()).await;
+                    let _ = stream.write_all(&vec![b'A'; 4096]).await;
+                    let _ = stream.flush().await;
+                    continue;
+                }
+                if let Some((start, end)) = range {
+                    let len = end - start + 1;
+                    let header = format!(
+                        "HTTP/1.1 206 Partial Content\r\nContent-Length: {len}\r\nContent-Range: bytes {start}-{end}/{total}\r\n\r\n"
+                    );
+                    let _ = stream.write_all(header.as_bytes()).await;
+                    let _ = stream.write_all(&vec![b'B'; len as usize]).await;
+                    let _ = stream.flush().await;
+                }
+            }
+        });
+
+        let url = format!("http://127.0.0.1:{port}/artifact.bin");
+        let result = client
+            .download(
+                &url,
+                Some(total),
+                &dest,
+                |url| client.get(url),
+                &mut |_, _| {},
+                None,
+            )
+            .await;
+        server.abort();
+
+        assert!(result.is_ok(), "download should recover: {result:?}");
+        let requests = requests.lock().unwrap();
+        assert!(
+            requests.len() > 1,
+            "an interrupted whole-file attempt must be followed by chunked requests: {requests:?}"
+        );
+        assert_eq!(
+            requests[0],
+            (0, total - 1),
+            "the first request must be the whole-file range"
+        );
+        assert_eq!(
+            std::fs::metadata(&dest).expect("dest").len(),
+            total,
+            "the resumed download must produce the full length"
         );
     }
 

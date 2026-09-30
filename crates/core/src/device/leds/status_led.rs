@@ -143,6 +143,10 @@ impl StatusLedInner {
         job_cancel: CancellationToken,
     ) {
         loop {
+            if job_cancel.is_cancelled() {
+                break;
+            }
+            signal.borrow_and_update();
             let (pattern, generation) = {
                 let state = self.state.lock().unwrap_or_else(|e| e.into_inner());
                 (self.winning_pattern(&state), state.generation)
@@ -173,17 +177,24 @@ impl StatusLedInner {
                     }
                 }
                 Some(LedPattern::Blink { on, off }) => {
+                    let blink_snapshot = (pattern, generation);
                     self.write_led(true);
                     match self.blink_phase(&mut signal, &job_cancel, on).await {
                         BlinkPhaseOutcome::Stopped => break,
                         BlinkPhaseOutcome::Changed => continue,
                         BlinkPhaseOutcome::Elapsed => {}
                     }
+                    if self.snapshot_winning() != blink_snapshot {
+                        continue;
+                    }
                     self.write_led(false);
                     match self.blink_phase(&mut signal, &job_cancel, off).await {
                         BlinkPhaseOutcome::Stopped => break,
                         BlinkPhaseOutcome::Changed => continue,
                         BlinkPhaseOutcome::Elapsed => {}
+                    }
+                    if self.snapshot_winning() != blink_snapshot {
+                        continue;
                     }
                 }
             }
@@ -254,6 +265,11 @@ impl StatusLedInner {
             .map(|command| command.pattern)
     }
 
+    fn snapshot_winning(&self) -> (Option<LedPattern>, u64) {
+        let state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        (self.winning_pattern(&state), state.generation)
+    }
+
     fn write_led(&self, on: bool) {
         let Some(leds) = self.leds.as_ref() else {
             return;
@@ -311,6 +327,9 @@ impl StatusLed {
                     sequence,
                 },
             );
+            state.generation = state.generation.wrapping_add(1);
+            let generation = state.generation;
+            self.inner.signal.send(LedSignal::Changed(generation)).ok();
         }
         StatusLedGuard {
             name,
@@ -321,15 +340,10 @@ impl StatusLed {
 
     /// Releases `name` when the installed command still matches `sequence`.
     fn release(self: &Arc<Self>, name: &LeaseName, sequence: LedCommandSequence) {
-        let removed = {
-            let mut state = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
-            let removed = match state.commands.get(name) {
-                Some(command) if command.sequence == sequence => {
-                    state.commands.remove(name).is_some()
-                }
-                _ => false,
-            };
-            removed
+        let mut state = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
+        let removed = match state.commands.get(name) {
+            Some(command) if command.sequence == sequence => state.commands.remove(name).is_some(),
+            _ => false,
         };
         if removed {
             state.generation = state.generation.wrapping_add(1);
@@ -363,12 +377,18 @@ mod tests {
 
     struct CountingLeds {
         on_calls: AtomicU32,
-        off_calls: AtomicU32,
+        off_calls: Arc<AtomicU32>,
+        on_first_on: Option<Box<dyn Fn() + Send + Sync>>,
     }
 
     impl DeviceLeds for CountingLeds {
         fn on(&self) -> Result<(), LedsError> {
             self.on_calls.fetch_add(1, Ordering::SeqCst);
+            if self.on_calls.load(Ordering::SeqCst) == 1
+                && let Some(callback) = &self.on_first_on
+            {
+                callback();
+            }
             Ok(())
         }
 
@@ -398,13 +418,17 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn blink_applies_command_change_before_opposite_phase() {
         let override_guard = Arc::new(Mutex::new(None));
+        let off_at_change = Arc::new(AtomicU32::new(0));
+        let off_calls = Arc::new(AtomicU32::new(0));
         let status_led = Arc::new(Mutex::new(None::<Arc<StatusLed>>));
         let leds = Arc::new(CountingLeds {
             on_calls: AtomicU32::new(0),
-            off_calls: AtomicU32::new(0),
+            off_calls: Arc::clone(&off_calls),
             on_first_on: Some(Box::new({
                 let status_led = Arc::clone(&status_led);
                 let override_guard = Arc::clone(&override_guard);
+                let off_at_change = Arc::clone(&off_at_change);
+                let off_calls = Arc::clone(&off_calls);
                 move || {
                     let led = status_led.lock().unwrap();
                     let led = led.as_ref().expect("status LED installed");
@@ -413,6 +437,15 @@ mod tests {
                         LedPriority::FullInhibit,
                         LedPattern::SolidOff,
                     ));
+                    // The post-change `off` is written only after this `on()`
+                    // returns, so the count captured here is a deterministic
+                    // baseline. Waiting for the count to exceed it proves the
+                    // change was applied without the blink's own off phase
+                    // running first. Waiting on a bare `off_calls >= 1` is
+                    // flaky: the worker writes the LED off once at startup,
+                    // before any command is installed, which satisfies that
+                    // predicate before the first `on()` ever runs.
+                    off_at_change.store(off_calls.load(Ordering::SeqCst), Ordering::SeqCst);
                 }
             })),
         });
@@ -427,8 +460,9 @@ mod tests {
             },
         );
 
-        wait_for(|| leds.off_calls.load(Ordering::SeqCst) >= 1).await;
-        assert!(override_guard.lock().unwrap().is_some());
+        wait_for(|| override_guard.lock().unwrap().is_some()).await;
+        let baseline = off_at_change.load(Ordering::SeqCst);
+        wait_for(|| leds.off_calls.load(Ordering::SeqCst) > baseline).await;
         assert_eq!(
             leds.on_calls.load(Ordering::SeqCst),
             1,
@@ -440,7 +474,7 @@ mod tests {
     async fn blink_keeps_toggling_across_multiple_phases() {
         let leds = Arc::new(CountingLeds {
             on_calls: AtomicU32::new(0),
-            off_calls: AtomicU32::new(0),
+            off_calls: Arc::new(AtomicU32::new(0)),
             on_first_on: None,
         });
         let status_led = StatusLed::new(Some(leds.clone() as Arc<dyn DeviceLeds>));
@@ -465,7 +499,8 @@ mod tests {
     async fn higher_priority_overrides_lower() {
         let leds = Arc::new(CountingLeds {
             on_calls: AtomicU32::new(0),
-            off_calls: AtomicU32::new(0),
+            off_calls: Arc::new(AtomicU32::new(0)),
+            on_first_on: None,
         });
         let status_led = StatusLed::new(Some(leds.clone() as Arc<dyn DeviceLeds>));
         let _low = status_led.install(
@@ -490,7 +525,8 @@ mod tests {
     async fn reverts_after_higher_release() {
         let leds = Arc::new(CountingLeds {
             on_calls: AtomicU32::new(0),
-            off_calls: AtomicU32::new(0),
+            off_calls: Arc::new(AtomicU32::new(0)),
+            on_first_on: None,
         });
         let status_led = StatusLed::new(Some(leds.clone() as Arc<dyn DeviceLeds>));
         let _low = status_led.install(
@@ -513,7 +549,8 @@ mod tests {
     async fn replace_same_name_updates_pattern() {
         let leds = Arc::new(CountingLeds {
             on_calls: AtomicU32::new(0),
-            off_calls: AtomicU32::new(0),
+            off_calls: Arc::new(AtomicU32::new(0)),
+            on_first_on: None,
         });
         let status_led = StatusLed::new(Some(leds.clone() as Arc<dyn DeviceLeds>));
         let first = status_led.install(
@@ -551,7 +588,8 @@ mod tests {
     async fn empty_map_turns_led_off() {
         let leds = Arc::new(CountingLeds {
             on_calls: AtomicU32::new(0),
-            off_calls: AtomicU32::new(0),
+            off_calls: Arc::new(AtomicU32::new(0)),
+            on_first_on: None,
         });
         let status_led = StatusLed::new(Some(leds.clone() as Arc<dyn DeviceLeds>));
         let guard = status_led.install(
@@ -579,7 +617,8 @@ mod tests {
     async fn drop_signals_shutdown_and_worker_turns_led_off() {
         let leds = Arc::new(CountingLeds {
             on_calls: AtomicU32::new(0),
-            off_calls: AtomicU32::new(0),
+            off_calls: Arc::new(AtomicU32::new(0)),
+            on_first_on: None,
         });
         let status_led = StatusLed::new(Some(leds.clone() as Arc<dyn DeviceLeds>));
         let guard = status_led.install(

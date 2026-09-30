@@ -61,38 +61,60 @@ use tracing::{error, info, warn};
 
 pub const APP_NAME: &str = "Cadmus";
 
-/// Stops every remaining event producer, then drains what they already queued.
+/// The main loop's mutable state, borrowed by shutdown.
+struct ShutdownState<'a> {
+    view: &'a mut Box<dyn View>,
+    history: &'a mut Vec<HistoryItem>,
+    tasks: &'a mut Vec<DeviceTask>,
+    updating: &'a mut Vec<UpdateData>,
+    bus: &'a mut Bus,
+    rq: &'a mut RenderQueue,
+    context: &'a mut AppContext,
+    settings_manager: &'a SettingsManager,
+    startup_cwd: &'a Option<PathBuf>,
+    background_tasks: &'a mut TaskManager,
+}
+
+/// Stops every remaining event producer, then drains the shutdown-related
+/// events they already queued.
 ///
-/// Draining has to come after the producers stop, and the main loop has usually
-/// already broken by the time a committed OTA install queues its reboot: the
-/// download job sends `Event::Select(EntryId::Reboot)` from the background, and
-/// only `handle_event` turns that into an exit. Without this, a device that
-/// finished a deploy while shutting down would exit without rebooting into the
-/// new release.
+/// Draining comes after the producers stop so no new event arrives mid-drain,
+/// and the main loop has usually already broken by the time a committed OTA
+/// install queues its reboot.
 ///
-/// View-owned [`Job`](cadmus_core::runtime::Job)s are cancelled while each view still holds its handle,
-/// then moved out and joined. Reversing that order clears the handle before
-/// cancellation runs, so the job never receives stop.
+/// View-owned [`Job`](cadmus_core::runtime::Job)s are cancelled while each view
+/// still holds its handle, then moved out and joined. Reversing that order
+/// clears the handle before cancellation runs, so the job never receives stop.
 ///
-/// Queued exit intents are merged with `exit_status` using fixed precedence
-/// (`Reboot` > `Restart` > `PowerOff` / `RunCommand` > `Quit`); non-exit events
-/// are ignored so teardown cannot start a suspend cycle.
-#[allow(clippy::too_many_arguments)]
+/// Only shutdown-related events are acted on: [`Event::CheckBattery`], which can
+/// return a low-battery `PowerOff` and records battery state before teardown, and
+/// the direct exit intents (`Select(PowerOff|Restart|Reboot|Quit)` and
+/// [`Event::Quit`]). The exit intents are dispatched through the normal device
+/// handler so `user_exit_blocked`, the power-off intermission, and the emulator's
+/// `Reboot` → `Quit` mapping still apply. Everything else is dropped — replaying an
+/// arbitrary queued device event here would run teardown-hostile transitions such
+/// as `PrepareShare` (which closes the database and enables mass storage) after
+/// the process has begun exiting. An exit is merged with `exit_status` using fixed
+/// precedence (`Reboot` > `Restart` > `PowerOff` > `Quit`).
 async fn stop_producers_and_drain(
-    _tx: &Hub,
+    tx: &Hub,
     rx: &mut HubReceiver,
-    view: &mut Box<dyn View>,
-    history: &mut Vec<HistoryItem>,
-    tasks: &mut Vec<DeviceTask>,
-    _updating: &mut Vec<UpdateData>,
-    _bus: &mut Bus,
-    _rq: &mut RenderQueue,
-    _context: &mut AppContext,
-    _manager: &SettingsManager,
-    _startup_cwd: &Option<PathBuf>,
-    _background_tasks: &mut TaskManager,
+    state: &mut ShutdownState<'_>,
     exit_status: ExitStatus,
 ) -> ExitStatus {
+    let ShutdownState {
+        view,
+        history,
+        tasks,
+        updating,
+        bus,
+        rq,
+        context,
+        settings_manager,
+        startup_cwd,
+        background_tasks,
+    } = state;
+
     tasks.clear();
     for item in history.iter() {
         cadmus_core::view::cancel_view_jobs(item.view.as_ref());
@@ -111,14 +133,47 @@ async fn stop_producers_and_drain(
     .await;
 
     let mut drained_exit = exit_status;
+    let mut runtime = cadmus_core::device::DeviceRuntime {
+        view,
+        history,
+        tasks,
+        updating,
+        settings_manager: Some(settings_manager),
+        startup_cwd: Some(startup_cwd),
+        background_tasks: Some(background_tasks),
+    };
+
     while let Ok(message) = rx.try_recv() {
         let (evt, _input_wake) = message.into_parts();
-        if let Some(candidate) = exit_status_from_drain_event(&evt) {
-            drained_exit = merge_shutdown_exit_status(drained_exit, candidate);
+        if !is_shutdown_related_event(&evt) {
             continue;
+        }
+        let outcome = AppDevice::handle_event(&evt, tx, bus, rq, context, &mut runtime).await;
+        if let cadmus_core::device::EventOutcome::Exit(status) = outcome {
+            drained_exit = merge_shutdown_exit_status(drained_exit, status);
         }
     }
     drained_exit
+}
+
+/// Whether a queued device event must still run during shutdown.
+///
+/// [`Event::CheckBattery`] can return a low-battery [`ExitStatus::PowerOff`] and
+/// records the battery level before the device goes down. The direct exit intents
+/// are replayed through the device handler (not short-circuited) so that
+/// `user_exit_blocked`, the power-off intermission, and the emulator's `Reboot` →
+/// `Quit` mapping still run. Any other event can only mutate UI or platform state
+/// that teardown is already dismantling, so it is dropped rather than replayed.
+fn is_shutdown_related_event(evt: &Event) -> bool {
+    matches!(
+        evt,
+        Event::CheckBattery
+            | Event::Quit
+            | Event::Select(EntryId::PowerOff)
+            | Event::Select(EntryId::Restart)
+            | Event::Select(EntryId::Reboot)
+            | Event::Select(EntryId::Quit)
+    )
 }
 
 /// Exit intents queued during shutdown. Higher precedence wins when several are
@@ -138,17 +193,6 @@ fn shutdown_exit_precedence(status: &ExitStatus) -> u8 {
         ExitStatus::PowerOff => 3,
         ExitStatus::RunCommand(_) => 3,
         ExitStatus::Quit => 1,
-    }
-}
-
-fn exit_status_from_drain_event(evt: &Event) -> Option<ExitStatus> {
-    match evt {
-        Event::Select(EntryId::Reboot) => Some(ExitStatus::Reboot),
-        Event::Select(EntryId::Restart) => Some(ExitStatus::Restart),
-        Event::Select(EntryId::PowerOff) => Some(ExitStatus::PowerOff),
-        Event::Select(EntryId::Quit) => Some(ExitStatus::Quit),
-        Event::Quit => Some(ExitStatus::Quit),
-        _ => None,
     }
 }
 
@@ -410,7 +454,7 @@ pub async fn run() -> Result<(), Error> {
         .context("can't build context")?;
 
     context.load_dictionaries().await;
-    context.load_keyboard_layouts();
+    context.load_keyboard_layouts().await;
 
     let (tx, mut rx) = context.device.input_mut().start(
         context.display,
@@ -1050,16 +1094,18 @@ pub async fn run() -> Result<(), Error> {
     exit_status = stop_producers_and_drain(
         &tx,
         &mut rx,
-        &mut view,
-        &mut history,
-        &mut tasks,
-        &mut updating,
-        &mut bus,
-        &mut rq,
-        &mut context,
-        &manager,
-        &startup_cwd,
-        &mut background_tasks,
+        &mut ShutdownState {
+            view: &mut view,
+            history: &mut history,
+            tasks: &mut tasks,
+            updating: &mut updating,
+            bus: &mut bus,
+            rq: &mut rq,
+            context: &mut context,
+            settings_manager: &manager,
+            startup_cwd: &startup_cwd,
+            background_tasks: &mut background_tasks,
+        },
         exit_status,
     )
     .await;
@@ -1085,4 +1131,44 @@ pub async fn run() -> Result<(), Error> {
     cadmus_core::telemetry::profiling::shutdown_profiling();
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reboot_outranks_a_later_quit() {
+        let merged = merge_shutdown_exit_status(ExitStatus::Reboot, ExitStatus::Quit);
+        assert!(matches!(merged, ExitStatus::Reboot));
+    }
+
+    #[test]
+    fn a_queued_power_off_is_not_downgraded_by_quit() {
+        let merged = merge_shutdown_exit_status(ExitStatus::PowerOff, ExitStatus::Quit);
+        assert!(matches!(merged, ExitStatus::PowerOff));
+    }
+
+    #[test]
+    fn restart_outranks_power_off() {
+        let merged = merge_shutdown_exit_status(ExitStatus::PowerOff, ExitStatus::Restart);
+        assert!(matches!(merged, ExitStatus::Restart));
+    }
+
+    #[test]
+    fn exit_selects_are_replayed_through_the_handler() {
+        assert!(is_shutdown_related_event(&Event::Select(EntryId::Reboot)));
+        assert!(is_shutdown_related_event(&Event::Select(EntryId::Restart)));
+        assert!(is_shutdown_related_event(&Event::Select(EntryId::PowerOff)));
+        assert!(is_shutdown_related_event(&Event::Select(EntryId::Quit)));
+        assert!(is_shutdown_related_event(&Event::Quit));
+    }
+
+    #[test]
+    fn only_shutdown_related_events_are_replayed_through_the_handler() {
+        assert!(is_shutdown_related_event(&Event::CheckBattery));
+        assert!(!is_shutdown_related_event(&Event::PrepareShare));
+        assert!(!is_shutdown_related_event(&Event::Share));
+        assert!(!is_shutdown_related_event(&Event::ToggleFrontlight));
+    }
 }

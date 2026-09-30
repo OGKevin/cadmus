@@ -174,7 +174,7 @@ impl DbBackupManager {
         active_path: &Path,
         newer_version: &GitVersion,
     ) -> Result<PathBuf, RestoreError> {
-        let Some(entry) = self.find_best_backup(&self.current_version)? else {
+        let Some(entry) = self.find_best_backup(&self.current_version).await? else {
             tracing::warn!(
                 target_version = %self.current_version,
                 "no database backup found for downgrade; continuing with current database"
@@ -185,7 +185,7 @@ impl DbBackupManager {
         };
 
         let backup_path = self.backup_dir().join(&entry.file);
-        if !backup_path.exists() {
+        if !tokio::fs::try_exists(&backup_path).await.unwrap_or(false) {
             tracing::error!(
                 file = %entry.file,
                 path = %backup_path.display(),
@@ -242,70 +242,69 @@ impl DbBackupManager {
     /// Prefers an exact version match. Otherwise, returns the newest backup whose
     /// version is less than or equal to the target version.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
-    pub fn find_best_backup(
+    pub async fn find_best_backup(
         &self,
         target_version: &GitVersion,
     ) -> Result<Option<BackupEntry>, Error> {
-        let manifest = self.read_manifest()?;
+        let manifest = self.read_manifest().await?;
 
         let current_hash = current_migration_hash();
-        let candidates: Vec<_> = manifest
-            .entries
-            .into_iter()
-            .filter(|e| e.version <= *target_version)
-            .filter(|e| {
-                let compatible = e.migration_hash == current_hash;
-                if !compatible {
-                    tracing::warn!(
-                        version = %e.version,
-                        file = %e.file,
-                        backup_migration_hash = %e.migration_hash,
-                        current_migration_hash = %current_hash,
-                        "skipping backup with incompatible migration hash"
-                    );
-                }
-                compatible
-            })
-            .filter(|e| {
-                let exists = self.backup_dir().join(&e.file).exists();
-                if !exists {
-                    tracing::warn!(
-                        version = %e.version,
-                        file = %e.file,
-                        "skipping manifest entry whose backup file is missing"
-                    );
-                }
-                exists
-            })
-            .collect();
-
-        if candidates.is_empty() {
-            return Ok(None);
+        let mut candidates = Vec::new();
+        for e in manifest.entries {
+            if e.version > *target_version {
+                continue;
+            }
+            if e.migration_hash != current_hash {
+                tracing::warn!(
+                    version = %e.version,
+                    file = %e.file,
+                    backup_migration_hash = %e.migration_hash,
+                    current_migration_hash = %current_hash,
+                    "skipping backup with incompatible migration hash"
+                );
+                continue;
+            }
+            let backup_path = self.backup_dir().join(&e.file);
+            if !tokio::fs::try_exists(&backup_path).await.unwrap_or(false) {
+                tracing::warn!(
+                    version = %e.version,
+                    file = %e.file,
+                    "skipping manifest entry whose backup file is missing"
+                );
+                continue;
+            }
+            candidates.push(e);
         }
 
-        let best = candidates
+        Ok(candidates
             .into_iter()
-            .max_by(|a, b| a.version.cmp(&b.version))
-            .expect("candidates should not be empty after filtering");
-
-        Ok(Some(best))
+            .max_by(|a, b| a.version.cmp(&b.version)))
     }
 
     /// Reads the backup manifest from disk.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
-    fn read_manifest(&self) -> Result<BackupManifest, Error> {
-        if self.manifest_path().exists() {
-            crate::helpers::load_toml::<BackupManifest, _>(&self.manifest_path())
-                .context("failed to read backup manifest")
-        } else {
-            Ok(BackupManifest::default())
-        }
+    async fn read_manifest(&self) -> Result<BackupManifest, Error> {
+        let path = self.manifest_path();
+        tokio::task::spawn_blocking(move || {
+            if path.exists() {
+                crate::helpers::load_toml::<BackupManifest, _>(&path)
+                    .context("failed to read backup manifest")
+            } else {
+                Ok(BackupManifest::default())
+            }
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("backup manifest read task failed: {e}"))?
     }
 
     /// Writes the backup manifest to disk.
-    fn write_manifest(&self, manifest: &BackupManifest) -> Result<(), Error> {
-        crate::helpers::save_toml(manifest, self.manifest_path())
-            .context("failed to write backup manifest")
+    async fn write_manifest(&self, manifest: BackupManifest) -> Result<(), Error> {
+        let path = self.manifest_path();
+        tokio::task::spawn_blocking(move || {
+            crate::helpers::save_toml(&manifest, &path).context("failed to write backup manifest")
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("backup manifest write task failed: {e}"))?
     }
 
     /// Updates the manifest with a new backup entry and removes old backups.
@@ -320,7 +319,7 @@ impl DbBackupManager {
         migration_hash: MigrationHash,
         retention: usize,
     ) -> Result<(), Error> {
-        let mut manifest = self.read_manifest()?;
+        let mut manifest = self.read_manifest().await?;
 
         manifest
             .entries
@@ -352,7 +351,7 @@ impl DbBackupManager {
             for entry in candidates {
                 let file_path = self.backup_dir().join(&entry.file);
 
-                if file_path.exists()
+                if tokio::fs::try_exists(&file_path).await.unwrap_or(false)
                     && let Err(e) = remove_sqlite_files(&file_path).await
                 {
                     tracing::warn!(
@@ -377,7 +376,7 @@ impl DbBackupManager {
             manifest.entries.extend(current);
         }
 
-        self.write_manifest(&manifest)
+        self.write_manifest(manifest).await
     }
 }
 
@@ -439,7 +438,7 @@ async fn rename_sqlite_files(src: &Path, dest: &Path) -> Result<(), Error> {
 
     for suffix in SQLITE_COMPANION_SUFFIXES {
         let src_extra = add_suffix(src, suffix);
-        if src_extra.exists() {
+        if fs::try_exists(&src_extra).await.unwrap_or(false) {
             let dest_extra = add_suffix(dest, suffix);
             fs::rename(&src_extra, &dest_extra).await.with_context(|| {
                 format!(
@@ -463,7 +462,7 @@ async fn copy_sqlite_files(src: &Path, dest: &Path) -> Result<(), Error> {
 
     for suffix in SQLITE_COMPANION_SUFFIXES {
         let src_extra = add_suffix(src, suffix);
-        if src_extra.exists() {
+        if fs::try_exists(&src_extra).await.unwrap_or(false) {
             let dest_extra = add_suffix(dest, suffix);
             fs::copy(&src_extra, &dest_extra).await.with_context(|| {
                 format!(
@@ -481,7 +480,7 @@ async fn copy_sqlite_files(src: &Path, dest: &Path) -> Result<(), Error> {
 /// Removes an SQLite database file and its WAL/SHM companions.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(path)))]
 async fn remove_sqlite_files(path: &Path) -> Result<(), Error> {
-    if path.exists() {
+    if fs::try_exists(path).await.unwrap_or(false) {
         fs::remove_file(path)
             .await
             .with_context(|| format!("failed to remove {}", path.display()))?;
@@ -489,7 +488,7 @@ async fn remove_sqlite_files(path: &Path) -> Result<(), Error> {
 
     for suffix in SQLITE_COMPANION_SUFFIXES {
         let extra = add_suffix(path, suffix);
-        if extra.exists() {
+        if fs::try_exists(&extra).await.unwrap_or(false) {
             fs::remove_file(&extra)
                 .await
                 .with_context(|| format!("failed to remove {}", extra.display()))?;
@@ -538,7 +537,10 @@ mod tests {
 
         assert!(backup_path.exists(), "backup file should exist");
 
-        let manifest = manager.read_manifest().expect("failed to read manifest");
+        let manifest = manager
+            .read_manifest()
+            .await
+            .expect("failed to read manifest");
         assert_eq!(manifest.entries.len(), 1);
         assert_eq!(manifest.entries[0].version, version);
         assert_eq!(manifest.entries[0].migration_hash, current_migration_hash());
@@ -566,7 +568,10 @@ mod tests {
         manager.create_backup(db.pool(), &db_path, 2).await.unwrap();
 
         let manager = DbBackupManager::new(dir.path().to_path_buf(), v3.clone());
-        let manifest = manager.read_manifest().expect("failed to read manifest");
+        let manifest = manager
+            .read_manifest()
+            .await
+            .expect("failed to read manifest");
         assert_eq!(manifest.entries.len(), 2);
         assert!(
             manifest.entries.iter().any(|e| e.version == v2),
@@ -698,6 +703,7 @@ mod tests {
         let manager = DbBackupManager::new(dir.path().to_path_buf(), v100.clone());
         let best = manager
             .find_best_backup(&v100)
+            .await
             .expect("find_best_backup failed")
             .expect("should find a valid backup");
         assert_eq!(
@@ -727,6 +733,7 @@ mod tests {
         let manager = DbBackupManager::new(dir.path().to_path_buf(), v095.clone());
         let best = manager
             .find_best_backup(&v095)
+            .await
             .expect("find_best_backup failed")
             .expect("should find a backup");
         assert_eq!(best.version, v090, "v0.9.0 is the closest older backup");

@@ -530,18 +530,17 @@ impl CategoryEditor {
         true
     }
 
-    /// Spawns a background thread to download and install a dictionary for the
-    /// given language code.
+    /// Starts a [`Job`](crate::runtime::Job) to download and install a dictionary for `lang`.
     ///
     /// Uses `include_etymologies = false` to prefer the smaller no-etymology
     /// variant. Progress is reported via a sticky pinned notification that is
-    /// dismissed when the download completes. On completion the thread sends
+    /// dismissed when the download completes. On completion the job sends
     /// `Event::DictionaryInstallComplete` via the hub so the UI can rebuild
     /// the rows on the main thread.
     ///
     /// If a download is already in progress for `lang` the request is silently
-    /// ignored to prevent duplicate background threads racing to write the same
-    /// files.
+    /// ignored. Starting another language cancels the previous job via
+    /// [`View::stop_jobs`].
     #[inline]
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, rq, context)))]
     async fn handle_download_dictionary(
@@ -661,6 +660,7 @@ impl CategoryEditor {
                         )
                         .ok();
                     },
+                    Some(&download_cancel),
                 )
                 .await
                 .map_err(|e| e.to_string());

@@ -161,8 +161,9 @@ pub fn cancel_view_jobs(view: &dyn View) {
 
 /// Moves every [`crate::runtime::Job`] owned by views in the tree into `jobs`.
 ///
-/// Call this before [`cancel_view_jobs`] during shutdown so producer jobs can be
-/// joined instead of only cancelled in place.
+/// Called after [`cancel_view_jobs`] during shutdown: cancelling signals every
+/// producer to stop, and moving the handles out lets the caller join them with a
+/// deadline instead of only cancelling them in place.
 pub fn take_view_jobs(view: &mut dyn View, jobs: &mut Vec<crate::runtime::Job>) {
     view.take_background_jobs(jobs);
     for child in view.children_mut() {
@@ -587,6 +588,9 @@ pub enum Event {
         sort_by: Option<(SortMethod, bool)>,
     },
     CheckFetcher(u32),
+    /// Home posted this after geometry changed (for example display rotation) so
+    /// navigation and shelf layout can be rebuilt asynchronously.
+    HomeRelayoutAfterResize,
     EndOfSearch,
     Finished,
     ClockTick,

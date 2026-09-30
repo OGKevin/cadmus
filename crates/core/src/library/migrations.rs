@@ -26,7 +26,7 @@ use crate::library::{METADATA_FILENAME, READING_STATES_DIRNAME};
 use crate::metadata::Info;
 use indexmap::IndexMap;
 use rustc_hash::FxBuildHasher;
-use sqlx::{Row, Sqlite, Transaction};
+use sqlx::{Sqlite, Transaction};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
@@ -84,6 +84,12 @@ crate::migration!(
     }
 );
 
+/// One book row the v2 re-hash pass walks, with the path it hashes from.
+struct LibraryBookForRekey {
+    fingerprint: String,
+    absolute_path: Option<String>,
+}
+
 crate::migration!(
     /// Re-fingerprints every book in all libraries using BLAKE3 content hashing.
     ///
@@ -100,8 +106,9 @@ crate::migration!(
     "v2_rehash_fingerprints",
     async fn rehash_fingerprints(ctx: &mut crate::db::migrations::MigrationContext<'_>) {
         let pool = ctx.pool;
-        let books: Vec<(String, Option<String>)> = sqlx::query(
-                r#"
+        let books = sqlx::query_as!(
+            LibraryBookForRekey,
+            r#"
                 SELECT
                     b.fingerprint,
                     (
@@ -116,28 +123,20 @@ crate::migration!(
                 "#
             )
             .fetch_all(pool)
-            .await?
-            .into_iter()
-            .map(|row| {
-                (
-                    row.get::<String, _>("fingerprint"),
-                    row.get::<Option<String>, _>("absolute_path?: String"),
-                )
-            })
-            .collect();
+            .await?;
 
-        for (old_fp_str, absolute_path) in &books {
-            let Some(absolute_path) = absolute_path.as_ref() else {
+        for book in &books {
+            let Some(absolute_path) = book.absolute_path.as_ref() else {
                 continue;
             };
 
             let abs_path = PathBuf::from(absolute_path);
 
-            if !abs_path.exists() {
+            if !fs::try_exists(&abs_path).await.unwrap_or(false) {
                 continue;
             }
 
-            let new_fp = match abs_path.fingerprint() {
+            let new_fp = match abs_path.fingerprint().await {
                 Ok(fp) => fp,
                 Err(e) => {
                     error!(path = ?abs_path, error = %e, "failed to compute BLAKE3 fingerprint, skipping");
@@ -147,13 +146,13 @@ crate::migration!(
 
             let new_fp_str = new_fp.to_string();
 
-            if new_fp_str == *old_fp_str {
+            if new_fp_str == book.fingerprint {
                 continue;
             }
 
-            if let Err(e) = rekey_book(pool, old_fp_str, &new_fp_str).await {
+            if let Err(e) = rekey_book(pool, &book.fingerprint, &new_fp_str).await {
                 error!(
-                    old_fp = %old_fp_str,
+                    old_fp = %book.fingerprint,
                     new_fp = %new_fp_str,
                     error = %e,
                     "failed to re-key book, skipping"
@@ -170,9 +169,10 @@ crate::migration!(
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(pool, books)))]
 async fn canonicalize_legacy_fingerprints(
     pool: &sqlx::SqlitePool,
-    books: &[(String, Option<String>)],
+    books: &[LibraryBookForRekey],
 ) -> Result<(), anyhow::Error> {
-    for (old_fp_str, _) in books {
+    for book in books {
+        let old_fp_str = &book.fingerprint;
         if old_fp_str.len() == 64 {
             continue;
         }
@@ -695,7 +695,7 @@ async fn import_orphan_reading_states(
     reading_states_dir: &Path,
     already_imported: &HashSet<Fp>,
 ) -> usize {
-    if !reading_states_dir.exists() {
+    if !fs::try_exists(reading_states_dir).await.unwrap_or(false) {
         return 0;
     }
 
@@ -820,7 +820,7 @@ async fn ensure_stub_book(
 async fn delete_thumbnail_previews(library_path: &Path) {
     let previews_dir = library_path.join(THUMBNAIL_PREVIEWS_DIRNAME);
 
-    if !previews_dir.exists() {
+    if !fs::try_exists(&previews_dir).await.unwrap_or(false) {
         return;
     }
 
@@ -831,7 +831,7 @@ async fn delete_thumbnail_previews(library_path: &Path) {
 
 #[cfg_attr(feature = "tracing", tracing::instrument(fields(path = ?path), ret(level = tracing::Level::TRACE)))]
 async fn load_metadata(path: &Path) -> Option<IndexMap<Fp, Info, FxBuildHasher>> {
-    if !path.exists() {
+    if !fs::try_exists(path).await.unwrap_or(false) {
         return None;
     }
 
@@ -1337,7 +1337,10 @@ mod tests {
             .await
             .expect("failed to register library");
         let legacy_fp = "00000000000000aa";
-        let expected_fp = book_path.fingerprint().expect("failed to fingerprint file");
+        let expected_fp = book_path
+            .fingerprint()
+            .await
+            .expect("failed to fingerprint file");
         let now = UnixTimestamp::now();
 
         sqlx::query(

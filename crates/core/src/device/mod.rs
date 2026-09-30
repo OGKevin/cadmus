@@ -44,7 +44,7 @@ mod emulator;
 ))]
 pub(crate) mod test_device;
 
-#[cfg(all(test, feature = "kobo"))]
+#[cfg(test)]
 pub(crate) mod test_harness;
 
 #[cfg(all(
@@ -133,6 +133,10 @@ pub enum DeviceTaskId {
     PrepareSuspend,
     /// Periodic tick while waiting for soft-suspend deep idle to sleep/wake.
     PollDeepIdleWait,
+    /// Kobo Wi-Fi idle-disable poller ([`kobo::lifecycle::wifi::spawn_wifi_idle_poller`]).
+    WifiIdlePoller,
+    /// Startup Wi-Fi reconcile from [`kobo::lifecycle::Device::on_startup`].
+    WifiStartupReconcile,
     Exit,
 }
 

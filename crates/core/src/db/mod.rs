@@ -20,9 +20,7 @@ pub const DB_FILENAME: &str = "cadmus.sqlite";
 
 /// Database handle over async SQLx.
 ///
-/// Callers use `async` methods on the pool directly. Prefer `.await` from
-/// async contexts; use [`crate::runtime::block_on`] only when bridging from
-/// synchronous code that cannot be made async yet.
+/// Callers use `async` methods on the pool directly and `.await` them.
 #[derive(Clone)]
 pub struct Database {
     pool: SqlitePool,
@@ -348,19 +346,32 @@ fn log_version_gate(gate: version::VersionGateResult) {
 }
 
 /// Opens a connection pool for the given SQLite database path.
+///
+/// A 30-second busy timeout keeps concurrent writers from failing with
+/// `SQLITE_BUSY`. WAL is enabled with a best-effort pragma after the pool
+/// connects rather than as a connect option: WAL persists on the database file,
+/// so one success covers every later connection, and a corrupt database still
+/// opens so the integrity check can detect it and restore a backup.
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(path)))]
 async fn open_pool(path: &Path) -> Result<SqlitePool, Error> {
     let path_str = path.display().to_string();
     let options = SqliteConnectOptions::from_str(&format!("sqlite://{}", path_str))?
         .create_if_missing(true)
         .foreign_keys(true)
+        .busy_timeout(Duration::from_secs(30))
         .log_slow_statements(LevelFilter::Warn, Duration::from_secs(2));
 
-    SqlitePoolOptions::new()
+    let pool = SqlitePoolOptions::new()
         .max_connections(5)
         .connect_with(options)
         .await
-        .context("failed to open database pool")
+        .context("failed to open database pool")?;
+
+    if let Err(error) = sqlx::query("PRAGMA journal_mode=WAL").execute(&pool).await {
+        tracing::warn!(error = %error, "failed to enable WAL journal mode");
+    }
+
+    Ok(pool)
 }
 
 #[cfg(test)]

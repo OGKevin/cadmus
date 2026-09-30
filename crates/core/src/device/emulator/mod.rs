@@ -942,46 +942,11 @@ mod wifi_tests {
 #[cfg(all(test, feature = "emulator"))]
 mod lifecycle {
     use super::{EmulatorDevice, handle_toggle_frontlight};
-    use crate::color::WHITE;
     use crate::context::test_helpers::create_test_context;
-    use crate::device::DeviceHardware as _;
     use crate::device::DeviceLifecycle as _;
-    use crate::device::{DeviceRuntime, EventOutcome, ExitStatus, HistoryItem};
-    use crate::framebuffer::Framebuffer as _;
-    use crate::view::filler::Filler;
-    use crate::view::{Bus, EntryId, Event, RenderQueue, View};
-
-    /// `block_on` inside: the test closure borrows the harness parts, which a
-    /// future-returning helper cannot express (higher-ranked lifetimes).
-    fn with_runtime<R>(
-        f: impl FnOnce(
-            &crate::view::Hub,
-            &mut Bus,
-            &mut RenderQueue,
-            &mut crate::device::AppContext,
-            &mut DeviceRuntime<'_>,
-        ) -> R,
-    ) -> R {
-        let (hub, _rx) = crate::view::hub_channel();
-        let mut context = crate::runtime::block_on(create_test_context());
-        let rect = context.device.framebuffer().rect();
-        let mut view: Box<dyn View> = Box::new(Filler::new(rect, WHITE));
-        let mut bus = Bus::new();
-        let mut rq = RenderQueue::new();
-        let mut tasks = Vec::new();
-        let mut history = Vec::<HistoryItem>::new();
-        let mut updating = Vec::new();
-        let mut runtime = DeviceRuntime {
-            view: &mut view,
-            history: &mut history,
-            tasks: &mut tasks,
-            updating: &mut updating,
-            settings_manager: None,
-            startup_cwd: None,
-            background_tasks: None,
-        };
-        f(&hub, &mut bus, &mut rq, &mut context, &mut runtime)
-    }
+    use crate::device::test_harness::DeviceRuntimeHarness;
+    use crate::device::{EventOutcome, ExitStatus};
+    use crate::view::{EntryId, Event};
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn handle_toggle_frontlight_updates_settings() {
@@ -993,46 +958,42 @@ mod lifecycle {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn handle_event_toggle_frontlight_continues() {
-        let outcome = with_runtime(|hub, bus, rq, context, runtime| {
-            context.settings.frontlight = false;
-            crate::runtime::block_on(EmulatorDevice::handle_event(
-                &Event::ToggleFrontlight,
-                hub,
-                bus,
-                rq,
-                context,
-                runtime,
-            ))
+        let mut harness = DeviceRuntimeHarness::new().await;
+        harness.context.settings.frontlight = false;
+        let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+            EmulatorDevice::handle_event(&Event::ToggleFrontlight, hub, bus, rq, context, runtime)
         });
         assert_eq!(outcome, EventOutcome::Continue);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn handle_event_restart_exits() {
-        let outcome = with_runtime(|hub, bus, rq, context, runtime| {
-            crate::runtime::block_on(EmulatorDevice::handle_event(
+        let mut harness = DeviceRuntimeHarness::new().await;
+        let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+            EmulatorDevice::handle_event(
                 &Event::Select(EntryId::Restart),
                 hub,
                 bus,
                 rq,
                 context,
                 runtime,
-            ))
+            )
         });
         assert_eq!(outcome, EventOutcome::Exit(ExitStatus::Restart));
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn handle_event_power_off_exits() {
-        let outcome = with_runtime(|hub, bus, rq, context, runtime| {
-            crate::runtime::block_on(EmulatorDevice::handle_event(
+        let mut harness = DeviceRuntimeHarness::new().await;
+        let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+            EmulatorDevice::handle_event(
                 &Event::Select(EntryId::PowerOff),
                 hub,
                 bus,
                 rq,
                 context,
                 runtime,
-            ))
+            )
         });
         assert_eq!(outcome, EventOutcome::Exit(ExitStatus::PowerOff));
     }

@@ -103,15 +103,15 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn handle_event_power_off_exits() {
         let mut harness = DeviceRuntimeHarness::new().await;
-        let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
-            crate::runtime::block_on(handle_event(
+        let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+            handle_event(
                 &Event::Select(EntryId::PowerOff),
                 hub,
                 bus,
                 rq,
                 context,
                 runtime,
-            ))
+            )
         });
         assert_eq!(outcome, EventOutcome::Exit(ExitStatus::PowerOff));
     }
@@ -124,15 +124,15 @@ mod tests {
             .inhibitor
             .acquire(Kind::Full, "ota")
             .unwrap();
-        let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
-            crate::runtime::block_on(handle_event(
+        let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+            handle_event(
                 &Event::Select(EntryId::PowerOff),
                 hub,
                 bus,
                 rq,
                 context,
                 runtime,
-            ))
+            )
         });
         assert_eq!(outcome, EventOutcome::Handled);
     }
@@ -145,15 +145,15 @@ mod tests {
             .inhibitor
             .acquire(Kind::Full, "ota")
             .unwrap();
-        let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
-            crate::runtime::block_on(handle_event(
+        let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+            handle_event(
                 &Event::Select(EntryId::Reboot),
                 hub,
                 bus,
                 rq,
                 context,
                 runtime,
-            ))
+            )
         });
         assert_eq!(outcome, EventOutcome::Handled);
     }
@@ -167,15 +167,15 @@ mod tests {
             .acquire(Kind::Full, "ota")
             .unwrap();
         drop(guard);
-        let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
-            crate::runtime::block_on(handle_event(
+        let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+            handle_event(
                 &Event::Select(EntryId::Reboot),
                 hub,
                 bus,
                 rq,
                 context,
                 runtime,
-            ))
+            )
         });
         assert_eq!(outcome, EventOutcome::Exit(ExitStatus::Reboot));
     }
@@ -199,15 +199,15 @@ mod tests {
         std::fs::write(&launcher, "#!/bin/sh\n").unwrap();
         let _cleanup = RemovePeerLauncherOnDrop(launcher.clone());
 
-        let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
-            crate::runtime::block_on(handle_event(
+        let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+            handle_event(
                 &Event::Select(EntryId::SwitchInstall),
                 hub,
                 bus,
                 rq,
                 context,
                 runtime,
-            ))
+            )
         });
         assert_eq!(
             outcome,
@@ -218,15 +218,15 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn handle_event_suspend_begins_suspend() {
         let mut harness = DeviceRuntimeHarness::new().await;
-        let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
-            crate::runtime::block_on(handle_event(
+        let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+            handle_event(
                 &Event::Select(EntryId::Suspend),
                 hub,
                 bus,
                 rq,
                 context,
                 runtime,
-            ))
+            )
         });
         assert_eq!(outcome, EventOutcome::Handled);
         assert!(has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
@@ -250,15 +250,15 @@ mod tests {
                 .schedule_in(AlarmType::Suspend, ChronoDuration::seconds(15))
                 .unwrap();
         }
-        let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
-            crate::runtime::block_on(handle_event(
+        let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+            handle_event(
                 &Event::Gesture(GestureEvent::HoldButtonLong(ButtonCode::Power)),
                 hub,
                 bus,
                 rq,
                 context,
                 runtime,
-            ))
+            )
         });
         assert_eq!(outcome, EventOutcome::Handled);
         let alarms = harness
@@ -289,15 +289,15 @@ mod tests {
                 .schedule_in(AlarmType::WakeDebounce, ChronoDuration::seconds(15))
                 .unwrap();
         }
-        let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
-            crate::runtime::block_on(handle_event(
+        let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+            handle_event(
                 &Event::Gesture(GestureEvent::HoldButtonLong(ButtonCode::Power)),
                 hub,
                 bus,
                 rq,
                 context,
                 runtime,
-            ))
+            )
         });
         assert_eq!(outcome, EventOutcome::Handled);
         let alarms = harness
@@ -314,15 +314,15 @@ mod tests {
     async fn hold_button_long_power_cancels_pending_prepare_suspend() {
         let mut harness = DeviceRuntimeHarness::new().await;
         harness.push_task(DeviceTaskId::PrepareSuspend);
-        let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
-            crate::runtime::block_on(handle_event(
+        let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+            handle_event(
                 &Event::Gesture(GestureEvent::HoldButtonLong(ButtonCode::Power)),
                 hub,
                 bus,
                 rq,
                 context,
                 runtime,
-            ))
+            )
         });
         assert_eq!(outcome, EventOutcome::Handled);
         assert!(!has_task(&harness.tasks, DeviceTaskId::PrepareSuspend));
@@ -331,15 +331,15 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn hold_button_long_power_exits_when_no_suspend_pending() {
         let mut harness = DeviceRuntimeHarness::new().await;
-        let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
-            crate::runtime::block_on(handle_event(
+        let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
+            handle_event(
                 &Event::Gesture(GestureEvent::HoldButtonLong(ButtonCode::Power)),
                 hub,
                 bus,
                 rq,
                 context,
                 runtime,
-            ))
+            )
         });
         assert_eq!(outcome, EventOutcome::Exit(ExitStatus::PowerOff));
     }

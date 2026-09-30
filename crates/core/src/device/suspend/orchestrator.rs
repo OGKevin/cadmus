@@ -977,10 +977,11 @@ pub(in crate::device::suspend) fn finish_cycle(
     context.suspend = None;
     context.set_frontlight(context.settings.frontlight);
     if context.settings.wifi.wants_radio_at_rest() {
+        context.wifi_session.set_desired_radio_on(true);
         let session = context.wifi_session.clone();
         let hub = hub.clone();
         crate::runtime::current_handle().spawn(async move {
-            match session.enable_radio().await {
+            match session.apply_radio().await {
                 Ok(true) => {
                     hub.send((Event::Device(crate::input::DeviceEvent::NetUp)).into())
                         .ok();

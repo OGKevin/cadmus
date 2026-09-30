@@ -40,7 +40,6 @@ use anyhow::{Error, format_err};
 use rand_core::Rng;
 use rustc_hash::FxHashMap;
 use serde_json::{Value as JsonValue, json};
-use std::fs;
 use std::mem;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -75,6 +74,7 @@ struct Fetcher {
     sort_method: Option<SortMethod>,
     first_column: Option<FirstColumn>,
     second_column: Option<SecondColumn>,
+    reader_cancel: CancellationToken,
 }
 
 impl Home {
@@ -1618,11 +1618,9 @@ impl Home {
         context: &mut AppContext,
     ) -> Result<(), Error> {
         let full_path = context.library.home.join(path);
-        if full_path.exists() {
+        if tokio::fs::try_exists(&full_path).await.unwrap_or(false) {
             let trash_path = context.library.home.join(TRASH_DIRNAME);
-            if !trash_path.is_dir() {
-                fs::create_dir(&trash_path)?;
-            }
+            tokio::fs::create_dir_all(&trash_path).await?;
             let mut trash = (Library::new(trash_path, &context.database, "Trash")).await?;
             trash.sort_method = SortMethod::Added;
             trash.reverse_order = true;
@@ -1919,6 +1917,7 @@ impl Home {
                         sort_method,
                         first_column,
                         second_column,
+                        reader_cancel: reader_cancel.clone(),
                     },
                 );
             }
@@ -2032,42 +2031,12 @@ impl Home {
                                         .into(),
                                     )
                                     .ok();
+                                }
+                                _ => (),
                             }
                         }
-                        Some("removeDocument") => {
-                            if let Some(path) = event.get("path").and_then(JsonValue::as_str) {
-                                hub2.send(
-                                    (Event::FetcherRemoveDocument(id, PathBuf::from(path))).into(),
-                                )
-                                .ok();
-                            }
-                        }
-                        Some("search") => {
-                            let path = event
-                                .get("path")
-                                .and_then(JsonValue::as_str)
-                                .map(PathBuf::from);
-                            let query = event
-                                .get("query")
-                                .and_then(JsonValue::as_str)
-                                .map(String::from);
-                            let sort_by = event
-                                .get("sortBy")
-                                .map(ToString::to_string)
-                                .and_then(|v| serde_json::from_str(&v).ok());
-                            hub2.send(
-                                (Event::FetcherSearch {
-                                    id,
-                                    path,
-                                    query,
-                                    sort_by,
-                                })
-                                .into(),
-                            )
-                            .ok();
-                        }
-                        _ => (),
                     }
+                    Ok(None) | Err(_) => break,
                 }
             }
             hub2.send((Event::CheckFetcher(id)).into()).ok();
@@ -2084,9 +2053,21 @@ impl Home {
                     .unwrap()
                     .set_selected(directory, rq, context)
                     .await;
+                self.adjust_shelf_top_edge();
+                rq.add(RenderData::new(
+                    self.child(index + 1).id(),
+                    *self.child(index + 1).rect(),
+                    UpdateMode::Partial,
+                ));
+                rq.add(RenderData::new(
+                    self.child(index).id(),
+                    *self.child(index).rect(),
+                    UpdateMode::Partial,
+                ));
             }
         }
         self.update_shelf(true, rq, context).await;
+        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Full));
     }
 
     async fn reseed(&mut self, rq: &mut RenderQueue, context: &mut AppContext) {
@@ -2106,6 +2087,12 @@ impl Home {
 
 #[async_trait::async_trait(?Send)]
 impl View for Home {
+    fn stop_jobs(&self) {
+        for fetcher in self.background_fetchers.values() {
+            fetcher.reader_cancel.cancel();
+        }
+    }
+
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self, hub, _bus, rq, context), fields(event = ?evt
     ), ret(level=tracing::Level::TRACE)))]
     async fn handle_event(
@@ -2574,6 +2561,10 @@ impl View for Home {
                 }
                 false
             }
+            Event::HomeRelayoutAfterResize => {
+                self.relayout_after_resize(rq, context).await;
+                true
+            }
             _ => false,
         }
     }
@@ -2748,6 +2739,7 @@ impl View for Home {
         self.children[self.shelf_index].resize(shelf_rect, hub, rq, context);
 
         self.update_bottom_bar(&mut RenderQueue::new(), context);
+        hub.send((Event::HomeRelayoutAfterResize).into()).ok();
 
         // Floating windows.
         for i in bottom_bar_index + 1..self.children.len() {
@@ -2755,7 +2747,6 @@ impl View for Home {
         }
 
         self.rect = rect;
-        rq.add(RenderData::new(self.id, self.rect, UpdateMode::Full));
     }
 
     fn rect(&self) -> &Rectangle {
@@ -2843,5 +2834,76 @@ mod tests {
             );
         }
         .await;
+    }
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn home_relayout_after_resize_rebuilds_nav_bar_and_shelf() {
+        let mut context = create_test_context().await;
+        let (hub, _rx) = crate::view::hub_channel();
+        let mut rq = RenderQueue::new();
+        context.settings.home.navigation_bar = true;
+
+        let portrait = rect![0, 0, 600, 800];
+        let mut home = Home::new(portrait, &mut rq, &mut context).await.unwrap();
+
+        home.handle_event(
+            &Event::HomeRelayoutAfterResize,
+            &hub,
+            &mut Bus::new(),
+            &mut rq,
+            &mut context,
+        )
+        .await;
+
+        let nav_bar_index = locate::<StackNavigationBar<DirectoryNavigationProvider>>(&home)
+            .expect("navigation bar must exist after relayout");
+        let nav_bar = &home.children[nav_bar_index];
+        assert!(
+            !nav_bar.children().is_empty(),
+            "navigation bar must have rows rebuilt after a resize"
+        );
+        assert!(
+            nav_bar.rect().max.y <= portrait.max.y,
+            "navigation bar must fit the viewport it was laid out for"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn resize_then_relayout_keeps_nav_bar_separator_and_shelf_aligned() {
+        let mut context = create_test_context().await;
+        let (hub, _rx) = crate::view::hub_channel();
+        let mut rq = RenderQueue::new();
+        context.settings.home.navigation_bar = true;
+
+        let portrait = rect![0, 0, 600, 800];
+        let mut home = Home::new(portrait, &mut rq, &mut context).await.unwrap();
+
+        let landscape = rect![0, 0, 800, 600];
+        home.resize(landscape, &hub, &mut rq, &mut context);
+        home.handle_event(
+            &Event::HomeRelayoutAfterResize,
+            &hub,
+            &mut Bus::new(),
+            &mut rq,
+            &mut context,
+        )
+        .await;
+
+        let nav_bar_index = locate::<StackNavigationBar<DirectoryNavigationProvider>>(&home)
+            .expect("navigation bar must exist after relayout");
+        let separator_index = home.shelf_index - 1;
+        let nav_bar = &home.children[nav_bar_index];
+        let separator = &home.children[separator_index];
+        let shelf = &home.children[home.shelf_index];
+
+        assert_eq!(
+            nav_bar.rect().max.y,
+            separator.rect().min.y,
+            "navigation bar must sit directly above the separator after a resize"
+        );
+        assert_eq!(
+            separator.rect().max.y,
+            shelf.rect().min.y,
+            "separator must sit directly above the shelf after a resize"
+        );
     }
 }

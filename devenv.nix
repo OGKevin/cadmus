@@ -515,8 +515,8 @@ in
           tls.insecure = true;
         };
 
-        loki = {
-          endpoint = "http://localhost:3100/loki/api/v1/push";
+        "otlphttp/loki" = {
+          endpoint = "http://localhost:3100/otlp";
         };
 
         prometheus = {
@@ -541,7 +541,7 @@ in
         logs = {
           receivers = [ "otlp" ];
           processors = [ "batch" ];
-          exporters = [ "loki" ];
+          exporters = [ "otlphttp/loki" ];
         };
 
         metrics = {
@@ -591,7 +591,7 @@ in
   processes = {
     tempo = {
       exec = ''
-        mkdir -p ${config.devenv.state}/tempo/{traces,wal,work}
+        mkdir -p ${config.devenv.state}/tempo/{traces,wal,live-store,shutdown-marker}
 
         ${pkgs.tempo}/bin/tempo \
           -config.file=${pkgs.writeText "tempo.yaml" ''
@@ -610,22 +610,24 @@ in
                     http:
                       endpoint: 0.0.0.0:4328
 
-            ingester:
+            live_store:
+              wal:
+                path: ${config.devenv.state}/tempo/live-store
+              shutdown_marker_dir: ${config.devenv.state}/tempo/shutdown-marker
+              max_trace_idle: 10s
               max_block_duration: 5m
-              trace_idle_period: 10s
 
             memberlist:
               bind_addr:
                 - 127.0.0.1
               abort_if_cluster_join_fails: false
 
-            compactor:
+            backend_scheduler:
+              local_work_path: ${config.devenv.state}/tempo/work
+
+            backend_worker:
               compaction:
                 block_retention: 1h
-              ring:
-                kvstore:
-                  store: inmemory
-                instance_addr: 127.0.0.1
 
             storage:
               trace:
@@ -715,6 +717,7 @@ in
     pyroscope = {
       exec = ''
         mkdir -p ${config.devenv.state}/pyroscope/{data,data-compactor}
+        mkdir -p ${config.devenv.state}/pyroscope/metastore/{data,raft}
         mkdir -p ${config.devenv.state}/pyroscope-sync
 
         ${pkgs.pyroscope}/bin/pyroscope \
@@ -739,6 +742,8 @@ in
               abort_if_cluster_join_fails: false
           ''} \
           -blocks-storage.bucket-store.sync-dir=${config.devenv.state}/pyroscope-sync \
+          -metastore.data-dir=${config.devenv.state}/pyroscope/metastore/data \
+          -metastore.raft.dir=${config.devenv.state}/pyroscope/metastore/raft \
           -target=all \
           -self-profiling.disable-push=true
       '';

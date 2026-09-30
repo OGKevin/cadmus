@@ -5,12 +5,20 @@
 //! and the [`DeviceRuntime`] fields handlers expect (tasks, history, render
 //! queue, hub channel). Use it without booting the full application loop.
 //!
+//! Handler tests are `#[tokio::test]` async functions. Use [`crate::poll_parts!`]
+//! or [`crate::poll_runtime_only!`] to `.await` an async handler, and
+//! [`DeviceRuntimeHarness::with_parts`] /
+//! [`DeviceRuntimeHarness::with_runtime_only`] for synchronous handlers.
+//! The polling macros expand at the call site, so the [`DeviceRuntime`] they
+//! build and the future borrowing it share one scope.
+//! [`DeviceRuntimeHarness::run_on_shutdown`] is async — always `.await` it.
+//!
 //! # Example
 //!
 //! ```ignore
 //! let mut harness = DeviceRuntimeHarness::new().await;
 //! harness.context.settings.wifi = WifiMode::AlwaysOn;
-//! let outcome = harness.with_parts(|hub, bus, rq, context, runtime| {
+//! let outcome = crate::poll_parts!(harness, |hub, bus, rq, context, runtime| {
 //!     suspend::handle_event(&Event::PrepareSuspend, hub, bus, rq, context, runtime)
 //! });
 //! assert_eq!(outcome, EventOutcome::Handled);
@@ -31,8 +39,8 @@ use crate::view::{Bus, Event, Hub, RenderQueue, UpdateData, View};
 ///
 /// Owns an [`AppContext`], hub channel, view tree, and [`DeviceRuntime`]
 /// state. Construct with [`DeviceRuntimeHarness::new`] and pass mutable
-/// references into handlers via [`DeviceRuntimeHarness::with_parts`] or
-/// [`DeviceRuntimeHarness::with_runtime_only`].
+/// references into handlers via [`crate::poll_parts!`], [`crate::poll_runtime_only!`], or the
+/// `_sync` helpers.
 pub(crate) struct DeviceRuntimeHarness {
     pub(crate) context: AppContext,
     pub(crate) hub_tx: Hub,
@@ -45,6 +53,10 @@ pub(crate) struct DeviceRuntimeHarness {
     pub(crate) updating: Vec<UpdateData>,
 }
 
+// Not every device feature compiles every test that uses this harness, so a
+// given feature build sees helpers it never calls. `poll_parts!` and friends
+// cover the async paths; the rest are for the feature's own tests.
+#[allow(dead_code)]
 impl DeviceRuntimeHarness {
     /// Creates a harness with default test context, empty task list, and root filler view.
     pub(crate) async fn new() -> Self {
@@ -137,4 +149,74 @@ impl DeviceRuntimeHarness {
             .expect("on_shutdown in test harness");
         self.tasks = tasks;
     }
+}
+
+/// Awaits an async handler with hub, bus, render queue, context, and a fresh
+/// runtime borrow.
+///
+/// Expands at the call site so the [`DeviceRuntime`] local and the handler
+/// future that borrows it share one scope, which is what lets the future be
+/// `.await`ed directly instead of driven from a synchronous frame.
+#[macro_export]
+macro_rules! poll_parts {
+    ($harness:expr, |$hub:ident, $bus:ident, $rq:ident, $context:ident, $runtime:ident| $future:expr) => {
+        $crate::__poll_parts!($harness, None, |$hub, $bus, $rq, $context, $runtime| {
+            $future
+        })
+    };
+}
+
+/// Like [`poll_parts`], but lends a [`TaskManager`](crate::task::TaskManager) to
+/// the handler as `runtime.background_tasks`.
+#[macro_export]
+macro_rules! poll_parts_with_background {
+    ($harness:expr, $background:expr, |$hub:ident, $bus:ident, $rq:ident, $context:ident, $runtime:ident| $future:expr) => {
+        $crate::__poll_parts!(
+            $harness,
+            Some($background),
+            |$hub, $bus, $rq, $context, $runtime| $future
+        )
+    };
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __poll_parts {
+    ($harness:expr, $background:expr, |$hub:ident, $bus:ident, $rq:ident, $context:ident, $runtime:ident| $future:expr) => {{
+        let mut runtime = $crate::device::DeviceRuntime {
+            view: &mut $harness.view,
+            history: &mut $harness.history,
+            tasks: &mut $harness.tasks,
+            updating: &mut $harness.updating,
+            settings_manager: None,
+            startup_cwd: None,
+            background_tasks: $background,
+        };
+        let ($hub, $bus, $rq, $context, $runtime) = (
+            &$harness.hub_tx,
+            &mut $harness.bus,
+            &mut $harness.rq,
+            &mut $harness.context,
+            &mut runtime,
+        );
+        $future.await
+    }};
+}
+
+/// Awaits an async handler with only context and a fresh runtime borrow.
+#[macro_export]
+macro_rules! poll_runtime_only {
+    ($harness:expr, |$context:ident, $runtime:ident| $future:expr) => {{
+        let mut runtime = $crate::device::DeviceRuntime {
+            view: &mut $harness.view,
+            history: &mut $harness.history,
+            tasks: &mut $harness.tasks,
+            updating: &mut $harness.updating,
+            settings_manager: None,
+            startup_cwd: None,
+            background_tasks: None,
+        };
+        let ($context, $runtime) = (&mut $harness.context, &mut runtime);
+        $future.await
+    }};
 }

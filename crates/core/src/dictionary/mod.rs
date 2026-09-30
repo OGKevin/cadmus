@@ -7,6 +7,7 @@
 
 mod dictreader;
 mod errors;
+mod migrations;
 cfg_select! {
     feature = "bench" => { pub mod indexing; }
     _ => { mod indexing; }
@@ -17,13 +18,15 @@ mod monolingual;
 
 pub(crate) use monolingual::{MonolingualDictionaryService, reconcile_installed_dictionaries};
 
+use std::collections::HashMap;
 use std::path::Path;
 
 use self::dictreader::DictReader;
 use self::indexing::IndexReader;
 pub(crate) use self::indexing::{Entry, apply_transform, normalize};
 use crate::db::Database;
-use crate::helpers::Fp;
+use crate::db::types::{FileSize, UnixTimestamp};
+use crate::helpers::{FingerprintStamp, Fp};
 
 /// A dictionary wrapper.
 ///
@@ -119,6 +122,40 @@ impl Dictionary {
     pub async fn url(&mut self) -> Result<String, errors::DictError> {
         self.metadata("url").await
     }
+}
+
+/// Maps on-disk `.index` paths to the fingerprint and file stamp recorded by
+/// the indexer.
+///
+/// Used by [`crate::context::Context::load_dictionaries`] to skip re-hashing an
+/// index file whose size and mtime are unchanged since it was indexed.
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(database)))]
+pub(crate) async fn index_meta_by_path(
+    database: &Database,
+) -> HashMap<String, (Fp, FingerprintStamp)> {
+    let pool = database.pool().clone();
+    let rows = match sqlx::query!(
+        r#"SELECT dict_path, fingerprint AS "fingerprint: Fp", index_mtime, index_size
+           FROM dictionary_index_meta"#,
+    )
+    .fetch_all(&pool)
+    .await
+    {
+        Ok(rows) => rows,
+        Err(error) => {
+            tracing::error!(error = %error, "failed to load dictionary_index_meta for reload");
+            return HashMap::new();
+        }
+    };
+    rows.into_iter()
+        .map(|row| {
+            let stamp = FingerprintStamp {
+                mtime: row.index_mtime.map(UnixTimestamp::from),
+                size: FileSize::from(row.index_size.unwrap_or_default()),
+            };
+            (row.dict_path, (row.fingerprint, stamp))
+        })
+        .collect()
 }
 
 /// Resolves the `dict_id` for a given fingerprint from the database.

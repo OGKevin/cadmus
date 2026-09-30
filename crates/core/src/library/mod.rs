@@ -301,21 +301,7 @@ impl Library {
 
     pub async fn add_document(&mut self, info: Info) {
         let path = self.home.join(&info.file.path);
-        // BLAKE3 over a whole e-book: real CPU work, so it belongs on the
-        // blocking pool rather than parking one of the two runtime workers.
-        let fp = match crate::runtime::spawn_blocking({
-            let path = path.clone();
-            move || path.fingerprint()
-        })
-        .await
-        {
-            Ok(result) => result,
-            Err(join) => {
-                error!(path = %path.display(), error = %join, "fingerprint task failed");
-                return;
-            }
-        };
-        let fp = match fp {
+        let fp = match path.fingerprint().await {
             Ok(fp) => fp,
             Err(e) => {
                 error!(path = %path.display(), error = %e, "failed to fingerprint document");
@@ -751,14 +737,10 @@ impl Library {
         let full_path = self.home.join(path);
         let display_path = full_path.display().to_string();
 
-        match crate::runtime::spawn_blocking(move || full_path.fingerprint()).await {
-            Ok(Ok(fp)) => Some(fp),
-            Ok(Err(e)) => {
-                error!(path = %display_path, error = %e, "failed to fingerprint path");
-                None
-            }
+        match full_path.fingerprint().await {
+            Ok(fp) => Some(fp),
             Err(e) => {
-                error!(path = %display_path, error = %e, "fingerprint task join failed");
+                error!(path = %display_path, error = %e, "failed to fingerprint path");
                 None
             }
         }
@@ -1877,6 +1859,7 @@ mod tests {
         fs::write(&fallback_path, b"fallback content").expect("failed to write fallback file");
         let expected_fallback_fp = fallback_path
             .fingerprint()
+            .await
             .expect("failed to fingerprint fallback file");
 
         assert_eq!(

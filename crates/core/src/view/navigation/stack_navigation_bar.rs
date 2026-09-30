@@ -14,6 +14,10 @@ use std::path::Path;
 
 /// Domain adapter for [`StackNavigationBar`].
 ///
+/// Implemented with [`async_trait::async_trait(?Send)`] because navigation
+/// bars run on the main thread with view state. The trait is not used as
+/// `dyn NavigationProvider`; each screen owns a concrete provider type.
+///
 /// A `NavigationProvider` tells the container how to traverse hierarchical levels
 /// (e.g. directory parents), and how to populate each bar with pre-fetched data.
 /// This trait abstracts the domain-specific logic from the navigation bar's layout

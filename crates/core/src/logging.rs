@@ -79,6 +79,8 @@
 //! # }
 //! ```
 
+#[cfg(feature = "test")]
+use crate::runtime::Job;
 use crate::settings::LoggingSettings;
 #[cfg(feature = "tracing")]
 use crate::telemetry;
@@ -103,6 +105,8 @@ const LOG_FILE_PREFIX: &str = "cadmus-";
 const LOG_FILE_SUFFIX: &str = "json";
 
 static LOG_GUARD: OnceLock<Mutex<Option<WorkerGuard>>> = OnceLock::new();
+#[cfg(feature = "test")]
+static KERN_LOG_JOB: OnceLock<Mutex<Option<Job>>> = OnceLock::new();
 static RUN_ID: OnceLock<String> = OnceLock::new();
 static WRITER_INNER: OnceLock<ArcSwap<NonBlocking>> = OnceLock::new();
 
@@ -370,8 +374,10 @@ pub async fn init_logging(
     );
 
     #[cfg(feature = "test")]
-    if settings.enable_kern_log {
-        kern::spawn_kern_log_thread().await;
+    if settings.enable_kern_log
+        && let Some(job) = kern::spawn_kern_log_thread().await
+    {
+        let _ = KERN_LOG_JOB.set(Mutex::new(Some(job)));
     }
 
     Ok(())
@@ -408,26 +414,41 @@ pub async fn init_logging(
 /// # }
 /// ```
 pub async fn shutdown_logging() {
-    kern::stop_kern_log_thread().await;
+    #[cfg(feature = "test")]
+    if let Some(job) = take_kern_log_job() {
+        job.cancel();
+        let _ = job.join(crate::runtime::SHUTDOWN_DEADLINE).await;
+    }
 
-    if let Some(mutex) = LOG_GUARD.get() {
-        if let Ok(mut guard_opt) = mutex.lock() {
-            if let Some(guard) = guard_opt.take() {
-                let (tx, rx) = mpsc::channel();
+    if let Some(mutex) = LOG_GUARD.get()
+        && let Ok(mut guard_opt) = mutex.lock()
+        && let Some(guard) = guard_opt.take()
+    {
+        let (tx, rx) = mpsc::channel();
 
-                thread::spawn(move || {
-                    drop(guard);
-                    let _ = tx.send(());
-                });
+        thread::spawn(move || {
+            drop(guard);
+            let _ = tx.send(());
+        });
 
-                let _ = rx.recv_timeout(Duration::from_secs(5));
-                eprintln!("Logging shutdown complete.");
-            }
-        }
+        let _ = rx.recv_timeout(Duration::from_secs(5));
+        eprintln!("Logging shutdown complete.");
     }
 
     #[cfg(feature = "tracing")]
     telemetry::tracing::shutdown_telemetry();
+}
+
+/// Takes the kernel-log job out of its slot.
+///
+/// The lock is released before the caller joins, so the job's `await` never
+/// runs while the slot is held.
+#[cfg(feature = "test")]
+fn take_kern_log_job() -> Option<crate::runtime::Job> {
+    KERN_LOG_JOB
+        .get()
+        .and_then(|slot| slot.lock().ok())
+        .and_then(|mut slot| slot.take())
 }
 
 /// Redirects log output to `dir`, flushing the current file first.
