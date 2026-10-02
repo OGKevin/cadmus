@@ -8,7 +8,7 @@ use crate::tasks::util::{fs, github};
 
 const REPO: &str = "nicoverbruggen/ebook-fonts";
 /// Tracked by Renovate via a regex manager in `renovate.json`.
-pub const EBOOK_FONTS_VERSION: &str = "v2026.07.02";
+pub const EBOOK_FONTS_VERSION: &str = "v2026.08.05";
 const CORE_ASSET: &str = "other-core-fonts.zip";
 const EXTRA_ASSET: &str = "other-extra-fonts.zip";
 
