@@ -37,6 +37,60 @@ pub enum Model {
     TouchC,
 }
 
+/// Known device-tree `compatible` property tokens for Kobo hardware.
+///
+/// These are the tokens matched against the null-separated `compatible`
+/// property of `/proc/device-tree/compatible` (or
+/// `/sys/firmware/devicetree/base/compatible`). A model is only identified
+/// when both its compatible token(s) and its firmware model number
+/// ([`Model::model_number`]) agree:
+///
+/// | Model          | Compatible token(s)                          | Firmware model number |
+/// |----------------|----------------------------------------------|-----------------------|
+/// | [`ClaraHD`]     | `kobo,clarahd`                               | `376`                 |
+/// | [`LibraColour`] | `mediatek,mt8110` + `mediatek,mt8512`        | `390`                 |
+///
+/// [`ClaraHD`]: Model::ClaraHD
+/// [`LibraColour`]: Model::LibraColour
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
+pub(crate) enum DeviceTreeCompatible {
+    KoboClaraHd,
+    MediatekMt8110,
+    MediatekMt8512,
+}
+
+impl DeviceTreeCompatible {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::KoboClaraHd => "kobo,clarahd",
+            Self::MediatekMt8110 => "mediatek,mt8110",
+            Self::MediatekMt8512 => "mediatek,mt8512",
+        }
+    }
+
+    fn parse(value: &str) -> Option<Self> {
+        match value {
+            "kobo,clarahd" => Some(Self::KoboClaraHd),
+            "mediatek,mt8110" => Some(Self::MediatekMt8110),
+            "mediatek,mt8512" => Some(Self::MediatekMt8512),
+            _ => None,
+        }
+    }
+}
+
+/// Parses a null-separated device-tree `compatible` blob into known tokens.
+pub(crate) fn parse_device_tree_compatible_bytes(bytes: &[u8]) -> Vec<DeviceTreeCompatible> {
+    bytes
+        .split(|byte| *byte == 0)
+        .filter(|value| !value.is_empty())
+        .filter_map(|value| {
+            std::str::from_utf8(value)
+                .ok()
+                .and_then(DeviceTreeCompatible::parse)
+        })
+        .collect()
+}
+
 impl fmt::Display for Model {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
@@ -84,21 +138,21 @@ impl Model {
             "alyssum" => Model::GloHD,
             "pika" => Model::Touch2,
             "daylight" => {
-                if model_number == "381" {
+                if Model::AuraONELimEd.has_model_number(model_number) {
                     Model::AuraONELimEd
                 } else {
                     Model::AuraONE
                 }
             }
             "star" => {
-                if model_number == "379" {
+                if Model::AuraEd2V2.has_model_number(model_number) {
                     Model::AuraEd2V2
                 } else {
                     Model::AuraEd2V1
                 }
             }
             "snow" => {
-                if model_number == "378" {
+                if Model::AuraH2OEd2V2.has_model_number(model_number) {
                     Model::AuraH2OEd2V2
                 } else {
                     Model::AuraH2OEd2V1
@@ -106,7 +160,7 @@ impl Model {
             }
             "nova" => Model::ClaraHD,
             "frost" => {
-                if model_number == "380" {
+                if Model::Forma32GB.has_model_number(model_number) {
                     Model::Forma32GB
                 } else {
                     Model::Forma
@@ -123,13 +177,61 @@ impl Model {
             "spaColour" => Model::ClaraColour,
             "monza" => Model::LibraColour,
             _ => {
-                if model_number == "320" {
+                if Model::TouchC.has_model_number(model_number) {
                     Model::TouchC
                 } else {
                     Model::TouchAB
                 }
             }
         }
+    }
+
+    /// Kobo firmware model number from `.kobo/version` field 5 (see `metadata` docs).
+    ///
+    /// Single source of truth for the per-model number: product-codename
+    /// disambiguation ([`Model::new`]) and device-tree detection
+    /// ([`Model::from_device_tree`]) both read it.
+    ///
+    /// A pure lookup: it returns `None` for models without a distinct number
+    /// and deliberately does not log. It is called per candidate in
+    /// [`Model::new`], and the startup path runs before logging is
+    /// initialized. Unknown-number diagnostics belong at the call sites that
+    /// actually consume it, e.g. [`Device`](crate::device::kobo::Device)
+    /// detection logging when the device tree and model number do not match.
+    pub(crate) fn model_number(self) -> Option<&'static str> {
+        match self {
+            Self::TouchC => Some("320"),
+            Self::ClaraHD => Some("376"),
+            Self::AuraH2OEd2V2 => Some("378"),
+            Self::AuraEd2V2 => Some("379"),
+            Self::Forma32GB => Some("380"),
+            Self::AuraONELimEd => Some("381"),
+            Self::LibraColour => Some("390"),
+            _ => None,
+        }
+    }
+
+    fn has_model_number(self, model_number: &str) -> bool {
+        self.model_number() == Some(model_number)
+    }
+
+    /// Identifies hardware from parsed device-tree `compatible` values and model number.
+    pub(crate) fn from_device_tree(
+        compatible: &[DeviceTreeCompatible],
+        model_number: &str,
+    ) -> Option<Self> {
+        if compatible.contains(&DeviceTreeCompatible::KoboClaraHd)
+            && Model::ClaraHD.has_model_number(model_number)
+        {
+            return Some(Self::ClaraHD);
+        }
+        if Model::LibraColour.has_model_number(model_number)
+            && compatible.contains(&DeviceTreeCompatible::MediatekMt8110)
+            && compatible.contains(&DeviceTreeCompatible::MediatekMt8512)
+        {
+            return Some(Self::LibraColour);
+        }
+        None
     }
 
     pub(super) fn gyro_rotation_fn(self) -> fn(i8) -> i8 {
@@ -975,6 +1077,57 @@ mod tests {
             assert_eq!(forma.should_mirror_axes(mxy), (true, true));
             assert_eq!(forma.should_mirror_axes(mx), (true, false));
             assert_eq!(forma.should_mirror_axes(my), (false, true));
+        }
+    }
+
+    mod device_tree {
+        use super::{DeviceTreeCompatible, Model, parse_device_tree_compatible_bytes};
+
+        #[test]
+        fn parses_nul_separated_compatible_values() {
+            assert_eq!(
+                parse_device_tree_compatible_bytes(b"mediatek,mt8110\0mediatek,mt8512\0"),
+                [
+                    DeviceTreeCompatible::MediatekMt8110,
+                    DeviceTreeCompatible::MediatekMt8512,
+                ]
+            );
+        }
+
+        #[test]
+        fn maps_only_known_device_tree_values() {
+            assert_eq!(
+                Model::from_device_tree(
+                    &parse_device_tree_compatible_bytes(b"kobo,clarahd\0"),
+                    Model::ClaraHD.model_number().unwrap(),
+                ),
+                Some(Model::ClaraHD)
+            );
+            assert_eq!(
+                Model::from_device_tree(&parse_device_tree_compatible_bytes(b"kobo,clarahd\0"), "",),
+                None
+            );
+            assert_eq!(
+                Model::from_device_tree(
+                    &parse_device_tree_compatible_bytes(b"mediatek,mt8110\0mediatek,mt8512\0"),
+                    Model::LibraColour.model_number().unwrap(),
+                ),
+                Some(Model::LibraColour)
+            );
+            assert_eq!(
+                Model::from_device_tree(
+                    &parse_device_tree_compatible_bytes(b"mediatek,mt8110\0mediatek,mt8512\0"),
+                    "",
+                ),
+                None
+            );
+            assert_eq!(
+                Model::from_device_tree(
+                    &parse_device_tree_compatible_bytes(b"unknown,device\0"),
+                    Model::LibraColour.model_number().unwrap(),
+                ),
+                None
+            );
         }
     }
 }

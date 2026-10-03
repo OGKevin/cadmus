@@ -417,6 +417,11 @@ impl TestDevice {
     pub fn leds_for_test(&self) -> &TestLeds {
         self.leds.as_ref()
     }
+
+    /// Builds the test device.
+    pub async fn from_environment() -> anyhow::Result<Self> {
+        Ok(Self::default())
+    }
 }
 
 impl Default for TestDevice {

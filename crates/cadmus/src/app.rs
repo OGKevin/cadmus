@@ -381,7 +381,9 @@ pub async fn run() -> Result<(), Error> {
 
     let mut exit_status = ExitStatus::Quit;
 
-    let mut device = AppDevice::default();
+    let mut device = AppDevice::from_environment()
+        .await
+        .expect("failed to initialize device");
 
     let manager = SettingsManager::new(device.data_dir(), get_current_version());
     let mut settings = manager.load();

@@ -25,7 +25,7 @@ const RTC_DEVICE: &str = "/dev/rtc0";
 impl Model {
     /// Creates a `KoboDevice` for this model with the correct hardware properties.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip_all))]
-    pub fn device(self) -> anyhow::Result<Device> {
+    pub async fn device(self) -> anyhow::Result<Device> {
         let mark = self.mark();
         let startup_rotation = self.startup_rotation();
         let has_gyroscope = self.has_gyroscope();
@@ -33,7 +33,9 @@ impl Model {
         let has_lightsensor = self.has_lightsensor();
         let frontlight_kind = self.frontlight_kind();
 
-        let metadata = DeviceMetadata::read().context("failed to read device metadata")?;
+        let metadata = DeviceMetadata::read()
+            .await
+            .context("failed to read device metadata")?;
 
         let mut framebuffer: Box<dyn Framebuffer + Send> = cfg_select! {
             test => {

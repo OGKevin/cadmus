@@ -49,10 +49,10 @@ impl Model {
     }
 
     /// Creates a `KoboDevice` for this model with the correct hardware properties.
-    pub fn device(self) -> anyhow::Result<AppDevice> {
+    pub async fn device(self) -> anyhow::Result<AppDevice> {
         match self {
             #[cfg(all(feature = "kobo", not(test)))]
-            Model::Kobo(m) => m.device(),
+            Model::Kobo(m) => m.device().await,
             #[cfg(all(feature = "kobo", test))]
             Model::Kobo(_) => {
                 panic!(
